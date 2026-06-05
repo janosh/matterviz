@@ -3,7 +3,7 @@
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
-  import { constrain_tooltip_position } from '$lib/plot/layout'
+  import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import { sanitize_html } from '$lib/sanitize'
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'

@@ -4,7 +4,7 @@ import {
   have_compatible_units,
   toggle_group_visibility,
   toggle_series_visibility,
-} from '$lib/plot/utils/series-visibility'
+} from '$lib/plot/core/utils/series-visibility'
 import { describe, expect, test } from 'vitest'
 
 describe(`have_compatible_units`, () => {

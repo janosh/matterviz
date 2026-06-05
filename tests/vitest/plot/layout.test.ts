@@ -12,7 +12,7 @@ import {
   rect_within_rect,
   sample_series_obstacle_points,
   TICK_LABEL_HEIGHT,
-} from '$lib/plot/layout'
+} from '$lib/plot/core/layout'
 import { describe, expect, it, test } from 'vitest'
 
 describe(`layout utility functions`, () => {

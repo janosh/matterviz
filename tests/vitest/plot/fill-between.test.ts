@@ -1,6 +1,6 @@
 // Tests for fill-between: utility functions and type structures
 import type { Vec2 } from '$lib/math'
-import type { Pt } from '$lib/plot/fill-utils'
+import type { Pt } from '$lib/plot/core/fill-utils'
 import {
   compute_fill_segments,
   convert_error_band_to_fill_region,
@@ -9,7 +9,7 @@ import {
   monotone_interpolate,
   resolve_boundary_points,
   resolve_series_ref,
-} from '$lib/plot/fill-utils'
+} from '$lib/plot/core/fill-utils'
 import type {
   DataSeries,
   FillBoundary,
@@ -19,8 +19,8 @@ import type {
   FillHoverStyle,
   FillRegion,
   LegendItem,
-} from '$lib/plot/types'
-import { FILL_CURVE_TYPES } from '$lib/plot/types'
+} from '$lib/plot/core/types'
+import { FILL_CURVE_TYPES } from '$lib/plot/core/types'
 import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
 

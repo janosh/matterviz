@@ -1,4 +1,4 @@
-import type { Surface3DConfig } from '$lib/plot/types'
+import type { Surface3DConfig } from '$lib/plot/core/types'
 import { describe, expect, test } from 'vitest'
 
 // Tests for surface configuration logic that affects material properties.

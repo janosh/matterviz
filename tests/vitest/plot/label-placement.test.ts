@@ -1,6 +1,6 @@
 import type { DataSeries, InternalPoint } from '$lib/plot'
-import type { PlotScaleFn } from '$lib/plot/scales'
-import type { LabelPlacementConfig } from '$lib/plot/types'
+import type { PlotScaleFn } from '$lib/plot/core/scales'
+import type { LabelPlacementConfig } from '$lib/plot/core/types'
 import {
   compute_delta_energy,
   compute_label_positions,
@@ -13,7 +13,7 @@ import {
   rect_overlap_area,
   segment_rect_intersects,
   segments_intersect,
-} from '$lib/plot/utils/label-placement'
+} from '$lib/plot/core/utils/label-placement'
 import { describe, expect, test } from 'vitest'
 
 // === Geometry helpers ===

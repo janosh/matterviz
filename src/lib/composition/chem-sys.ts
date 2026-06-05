@@ -2,7 +2,7 @@
 // (counterpart to pymatviz's chem_sys_sunburst).
 
 // type-only import (erased at runtime, so no import cycle with $lib/plot)
-import type { SunburstNode } from '$lib/plot/types'
+import type { SunburstNode } from '$lib/plot/core/types'
 import { is_valid_element, parse_formula } from './parse'
 
 export interface ChemSysSunburstMetadata {

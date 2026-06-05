@@ -2,8 +2,8 @@
   import { PLOT_COLORS } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { SettingsSection } from '$lib/layout'
-  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
-  import type { AxisConfig, DataSeries } from '$lib/plot/types'
+  import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import type { ComponentProps } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-multiselect/attachments'
   import {

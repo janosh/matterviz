@@ -1,4 +1,4 @@
-import type { IndexedRefLine } from '$lib/plot/reference-line'
+import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
   group_ref_lines_by_z,
@@ -7,8 +7,8 @@ import {
   normalize_value,
   resolve_line_endpoints,
   span_or,
-} from '$lib/plot/reference-line'
-import type { RefLine } from '$lib/plot/types'
+} from '$lib/plot/core/reference-line'
+import type { RefLine } from '$lib/plot/core/types'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`normalize_value`, () => {

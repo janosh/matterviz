@@ -7,7 +7,7 @@
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import Histogram from '$lib/plot/Histogram.svelte'
+  import Histogram from '$lib/plot/histogram/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import type { HTMLAttributes } from 'svelte/elements'

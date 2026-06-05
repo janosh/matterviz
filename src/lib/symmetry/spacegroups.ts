@@ -1,7 +1,7 @@
 // Space group to crystal system mappings and utilities
 
 // type-only import (erased at runtime, so no import cycle with $lib/plot)
-import type { SunburstNode } from '$lib/plot/types'
+import type { SunburstNode } from '$lib/plot/core/types'
 
 // Crystal system ranges: [min, max] space group numbers (inclusive)
 export const CRYSTAL_SYSTEM_RANGES: Record<CrystalSystem, [number, number]> = {

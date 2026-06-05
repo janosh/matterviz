@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
-  import type { AxisConfig } from '$lib/plot/types'
+  import type { AxisConfig } from '$lib/plot/core/types'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

@@ -10,14 +10,14 @@ import {
   generate_ticks,
   get_nice_data_range,
   scale_arcsinh,
-} from '$lib/plot/scales'
-import type { ArcsinhScaleConfig, ScaleType } from '$lib/plot/types'
+} from '$lib/plot/core/scales'
+import type { ArcsinhScaleConfig, ScaleType } from '$lib/plot/core/types'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_scale_type_name,
   is_time_scale,
-} from '$lib/plot/types'
+} from '$lib/plot/core/types'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test } from 'vitest'
 
