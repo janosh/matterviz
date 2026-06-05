@@ -73,6 +73,35 @@ export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): s
   )}`
 }
 
+// Remap explicit bond metadata after site deletion: drop bonds touching deleted
+// sites and shift each surviving index down by the number of deleted indices below it.
+export function remap_bonds_after_deletion(
+  bonds: readonly StructureBond[],
+  deleted_indices: ReadonlySet<number>,
+): StructureBond[] {
+  // Sort the deleted indices once; shift each surviving index down by the count of deleted
+  // indices below it via binary search (O(log m) per lookup vs re-filtering the set each call).
+  const sorted = [...deleted_indices].sort((idx_a, idx_b) => idx_a - idx_b)
+  const shift = (idx: number) => {
+    let [lo, hi] = [0, sorted.length]
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (sorted[mid] < idx) lo = mid + 1
+      else hi = mid
+    }
+    return idx - lo // lo == count of deleted indices < idx
+  }
+  return bonds
+    .filter(
+      (bond) => !deleted_indices.has(bond.site_idx_1) && !deleted_indices.has(bond.site_idx_2),
+    )
+    .map((bond) => ({
+      ...bond,
+      site_idx_1: shift(bond.site_idx_1),
+      site_idx_2: shift(bond.site_idx_2),
+    }))
+}
+
 export type BondEditState = {
   added_bonds: StructureBond[]
   removed_bonds: StructureBond[]
@@ -533,24 +562,26 @@ export function get_bond_render_matrices(
 ): Float32Array[] {
   const order = bond.bond_order ?? 1
   const gap = bond_thickness * 1.8
-  const offsets_and_scales: [number, number][] =
-    order === 2
-      ? [
-          [-gap / 2, 0.65],
-          [gap / 2, 0.65],
-        ]
-      : order === 3
-        ? [
-            [-gap, 0.55],
-            [0, 0.55],
-            [gap, 0.55],
-          ]
-        : order === 1.5 || order === `aromatic`
-          ? [
-              [-gap / 2, 0.75],
-              [gap / 2, 0.4],
-            ]
-          : []
+  // Parallel cylinder [offset, radius_scale] pairs per bond order; empty → a single
+  // full-width bond (handled by the fallback below)
+  let offsets_and_scales: [number, number][] = []
+  if (order === 2)
+    offsets_and_scales = [
+      [-gap / 2, 0.65],
+      [gap / 2, 0.65],
+    ]
+  else if (order === 3)
+    offsets_and_scales = [
+      [-gap, 0.55],
+      [0, 0.55],
+      [gap, 0.55],
+    ]
+  else if (order === 1.5 || order === `aromatic`) {
+    offsets_and_scales = [
+      [-gap / 2, 0.75],
+      [gap / 2, 0.4],
+    ]
+  }
   return offsets_and_scales.length === 0
     ? [bond.transform_matrix]
     : offsets_and_scales.map(([offset, radius_scale]) =>

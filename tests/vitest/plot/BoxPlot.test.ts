@@ -78,6 +78,24 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelectorAll(`.value-label`)).toHaveLength(2)
   })
 
+  test(`show_mean keeps the mean line inside the plot even when outliers are hidden`, async () => {
+    // heavy outlier drags mean (~1004) far above whisker_high (~9); with outliers
+    // hidden, the mean used to be excluded from the auto-range and rendered off-plot
+    const plot = await mount_sized_box_plot({
+      series: [{ y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10_000], label: `skewed` }],
+      show_mean: true,
+      show_outliers: false,
+    })
+    // the dashed line is the mean glyph (median/whiskers/caps are solid)
+    const mean_line = [...plot.querySelectorAll(`.box-series line`)].find((line) =>
+      line.hasAttribute(`stroke-dasharray`),
+    )
+    expect(mean_line).toBeDefined()
+    const mean_y = Number(mean_line?.getAttribute(`y1`))
+    expect(mean_y).toBeGreaterThanOrEqual(0) // was ≈ -27000 before the fix
+    expect(mean_y).toBeLessThanOrEqual(300)
+  })
+
   test(`a far outlier expands the value-axis range`, async () => {
     // value_points must reach the extreme outliers, not just the whiskers. The component
     // pushes only the sorted outlier extremes (outliers[0]/[last]) so this also stays safe

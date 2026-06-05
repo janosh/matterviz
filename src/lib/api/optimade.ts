@@ -42,37 +42,44 @@ export interface OptimadeProvider {
   }
 }
 
-// Multiple CORS proxies for fallback reliability
-const CORS_PROXIES = [
-  `https://corsproxy.io/?`,
-  `https://api.allorigins.win/raw?url=`,
-  `https://cors-anywhere.herokuapp.com/`,
-  `https://thingproxy.freeboard.io/fetch/`,
-  `https://cors.bridged.cc/`,
+// CORS proxies for fallback reliability. Query-style proxies need the target URL
+// percent-encoded; path-suffix proxies need it verbatim (encoded can never succeed).
+const CORS_PROXIES: { prefix: string; encode: boolean }[] = [
+  { prefix: `https://corsproxy.io/?`, encode: true },
+  { prefix: `https://api.allorigins.win/raw?url=`, encode: true },
+  { prefix: `https://cors-anywhere.herokuapp.com/`, encode: false },
+  { prefix: `https://thingproxy.freeboard.io/fetch/`, encode: false },
+  { prefix: `https://cors.bridged.cc/`, encode: false },
 ]
 
 let cached_providers: OptimadeProvider[] | null = null
 let providers_cache_time = 0
 const CACHE_DURATION = 5 * 60 * 1000
 
-const resolved_provider_urls: Record<string, string> = {}
-let resolved_urls_cache_time = 0
+// Per-key timestamps: a shared one would let any resolution refresh every entry's TTL
+const resolved_provider_urls: Record<string, { url: string; time: number }> = {}
 const RESOLVED_URLS_CACHE_DURATION = 10 * 60 * 1000
 
 async function fetch_with_cors_proxy(url: string): Promise<Response> {
+  const headers = { Accept: `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` }
+  let direct: Response | undefined
   try {
-    const direct_response = await fetch(url, {
-      headers: { Accept: `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` },
-    })
-    if (direct_response.ok) return direct_response
+    direct = await fetch(url, { headers })
   } catch {
-    // Direct access failed, will try CORS proxies
+    // No response at all (network/CORS failure) — fall back to CORS proxies below
+  }
+  // A returned response means CORS succeeded. Surface a definitive HTTP error status
+  // directly (rather than masking a 404/500 behind callers' JSON.parse or the proxy
+  // fallback); only a thrown fetch (no response) warrants the proxies.
+  if (direct) {
+    if (direct.ok) return direct
+    throw new Error(`Request failed: ${direct.status} ${direct.statusText} for ${url}`)
   }
 
-  for (const proxy of CORS_PROXIES) {
+  for (const { prefix, encode } of CORS_PROXIES) {
     try {
-      const response = await fetch(`${proxy}${encodeURIComponent(url)}`, {
-        headers: { Accept: `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` },
+      const response = await fetch(`${prefix}${encode ? encodeURIComponent(url) : url}`, {
+        headers,
       })
       if (response.ok) return response
     } catch {
@@ -85,11 +92,9 @@ async function fetch_with_cors_proxy(url: string): Promise<Response> {
 
 async function resolve_provider_url(provider_base_url: string): Promise<string> {
   const now = Date.now()
-  if (
-    resolved_provider_urls[provider_base_url] &&
-    now - resolved_urls_cache_time < RESOLVED_URLS_CACHE_DURATION
-  ) {
-    return resolved_provider_urls[provider_base_url]
+  const cached = resolved_provider_urls[provider_base_url]
+  if (cached && now - cached.time < RESOLVED_URLS_CACHE_DURATION) {
+    return cached.url
   }
 
   for (const endpoint of [`/links`, `/v1/links`]) {
@@ -104,18 +109,17 @@ async function resolve_provider_url(provider_base_url: string): Promise<string> 
           link.attributes.link_type === `child`,
       )
 
-      if (self_link?.attributes.base_url) {
-        resolved_provider_urls[provider_base_url] = self_link.attributes.base_url
-        resolved_urls_cache_time = now
-        return self_link.attributes.base_url
+      const url = self_link?.attributes.base_url
+      if (url) {
+        resolved_provider_urls[provider_base_url] = { url, time: now }
+        return url
       }
     } catch {
       // Try next endpoint
     }
   }
 
-  resolved_provider_urls[provider_base_url] = provider_base_url
-  resolved_urls_cache_time = now
+  resolved_provider_urls[provider_base_url] = { url: provider_base_url, time: now }
   return provider_base_url
 }
 

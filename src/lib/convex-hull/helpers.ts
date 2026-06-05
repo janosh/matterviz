@@ -176,6 +176,18 @@ export function current_entry<Entry extends { entry_id?: string }>(
   return entries.includes(entry) ? entry : null
 }
 
+// Same logical entry: same object or same entry_id. The id check is proxy-safe — a raw
+// plot entry equals its $state-proxied copy, so the selection effect doesn't reassign
+// forever (effect_update_depth_exceeded) on identity mismatch.
+export function same_entry<Entry extends { entry_id?: string }>(
+  a: Entry | null | undefined,
+  b: Entry | null | undefined,
+): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.entry_id != null && a.entry_id === b.entry_id
+}
+
 // Build a tooltip text for any phase entry (shared)
 export function build_entry_tooltip_text(entry: PhaseData): string {
   const is_element = is_unary_entry(entry)

@@ -42,6 +42,24 @@ describe(`measure: distances`, () => {
       expect(displacement_pbc(from, to, lattice_matrix)).toEqual([3, 5, 5])
     },
   )
+
+  test(`pbc flags disable wrapping along vacuum axes (slabs)`, () => {
+    const lat = cubic(10)
+    // Slab with vacuum along z: distance must NOT wrap across the vacuum gap
+    expect(
+      distance_pbc([0, 0, 1], [0, 0, 9], lat, undefined, [true, true, false]),
+    ).toBeCloseTo(8, 12)
+    // Fully periodic: wraps to the minimum image distance of 2
+    expect(distance_pbc([0, 0, 1], [0, 0, 9], lat)).toBeCloseTo(2, 12)
+
+    const disp = displacement_pbc([0, 0, 1], [0, 0, 9], lat, undefined, [true, true, false])
+    expect(disp[2]).toBeCloseTo(8, 12)
+    // Periodic axes still wrap with mixed pbc
+    const disp_xy = displacement_pbc([1, 1, 1], [9, 9, 9], lat, undefined, [true, true, false])
+    expect(disp_xy[0]).toBeCloseTo(-2, 12)
+    expect(disp_xy[1]).toBeCloseTo(-2, 12)
+    expect(disp_xy[2]).toBeCloseTo(8, 12)
+  })
 })
 
 describe(`measure: angles`, () => {

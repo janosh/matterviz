@@ -155,6 +155,10 @@ function resolve_optimade_element(
     if (!best || conc > best.conc) best = { symbol, conc, sym_idx }
   }
   if (best) return { symbol: best.symbol, sym_idx: best.sym_idx }
+  // Fallback: the name may be an element with a trailing atom index (e.g. 'O1');
+  // element symbols never contain digits, so stripping them is safe
+  const stripped = species_name.replace(/\d+$/, ``)
+  if (is_known_element_symbol(stripped)) return { symbol: stripped, sym_idx: -1 }
   return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
 }
 
@@ -1248,6 +1252,19 @@ export function normalize_fractional_coords(structure: ParsedStructure): ParsedS
   return { ...structure, sites: normalized_sites }
 }
 
+// Detect a structure inside already-stringified JSON (OPTIMADE or pymatgen/nested).
+// Throws if `content` isn't valid JSON; returns null if it holds no known structure.
+const detect_json_structure = (content: string): ParsedStructure | null => {
+  const parsed = JSON.parse(content)
+  if (is_optimade_raw(parsed)) {
+    const result = parse_optimade_from_raw(parsed)
+    if (result) return result
+  }
+  // Otherwise try parsing as pymatgen/nested structure JSON
+  const structure = find_structure_in_json(parsed)
+  return structure ? normalize_fractional_coords(structure) : null
+}
+
 // Auto-detect file format and parse accordingly
 export function parse_structure_file(
   content: string,
@@ -1269,24 +1286,16 @@ export function parse_structure_file(
     // CIF files
     if (ext === `cif`) return parse_cif(content)
 
-    // JSON files - try OPTIMADE JSON structure format first, then pymatgen
+    // JSON files - extension is authoritative, so failures return null
     if (ext === `json`) {
       try {
-        // Parse once, reuse for detection and parsing
-        const parsed = JSON.parse(content)
-        if (is_optimade_raw(parsed)) {
-          const result = parse_optimade_from_raw(parsed)
-          if (result) return result
-        }
-        // Otherwise, try to parse as pymatgen/nested structure JSON
-        const structure = find_structure_in_json(parsed)
-        if (structure) return normalize_fractional_coords(structure)
+        const result = detect_json_structure(content)
+        if (result) return result
         console.error(`JSON file does not contain a valid structure format`)
-        return null
       } catch (error) {
         console.error(`Error parsing JSON file:`, error)
-        return null
       }
+      return null
     }
 
     // YAML files (phonopy)
@@ -1298,28 +1307,21 @@ export function parse_structure_file(
     }
   }
 
-  // Try to auto-detect based on content
+  // Try to auto-detect based on content.
+  // JSON detection must come before the line-count guard: minified JSON
+  // (e.g. fetched via extensionless blob: object URLs) is a single line.
+  try {
+    const result = detect_json_structure(content)
+    if (result) return result
+  } catch {
+    // Not JSON, continue with other format detection
+  }
+
   const lines = content.trim().split(/\r?\n/)
 
   if (lines.length < 2) {
     console.error(`File too short to determine format`)
     return null
-  }
-
-  // JSON format detection: try to parse as JSON first
-  try {
-    const parsed = JSON.parse(content)
-    if (is_optimade_raw(parsed)) {
-      const result = parse_optimade_from_raw(parsed)
-      if (result) return result
-    }
-    // Otherwise try parsing as regular JSON structure
-    const structure = find_structure_in_json(parsed)
-    if (structure) {
-      return normalize_fractional_coords(structure)
-    }
-  } catch {
-    // Not JSON, continue with other format detection
   }
 
   // XYZ format detection: first line should be a number, second line is comment

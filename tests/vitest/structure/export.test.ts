@@ -859,45 +859,65 @@ describe(`Export functionality`, () => {
       }
     })
 
-    it(`exports CIF with space group information`, () => {
-      const structure_with_symmetry: AnyStructure = {
-        id: `test_symmetry`,
+    it(`exports CIF with quoted H-M symbol, IT number, and identity symmetry ops loop`, () => {
+      const structure: AnyStructure = {
+        ...simple_structure,
+        // @ts-expect-error - symmetry is not on AnyStructure but read by the CIF exporter
+        symmetry: { space_group_symbol: `F m -3 m`, space_group_number: 225 },
+      }
+      const lines = structure_to_cif_str(structure)
+        .split(`\n`)
+        .map((line) => line.trim())
+
+      // Unquoted multi-word H-M symbols would break CIF tokenization downstream
+      expect(lines).toContain(`_space_group_name_H-M_alt 'F m -3 m'`)
+      expect(lines).toContain(`_space_group_IT_number 225`)
+      // Identity ops loop prevents parsers (e.g. pymatgen) from re-applying the 192
+      // Fm-3m operators to the already-P1-expanded sites
+      const ops_idx = lines.indexOf(`_symmetry_equiv_pos_as_xyz`)
+      expect(lines[ops_idx - 1]).toBe(`loop_`)
+      expect(lines[ops_idx + 1]).toBe(`'x, y, z'`)
+    })
+
+    it(`exports one CIF row per species on disordered sites and round-trips`, () => {
+      const disordered: AnyStructure = {
+        ...simple_structure,
         sites: [
           {
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-            abc: [0.0, 0.0, 0.0],
-            xyz: [0.0, 0.0, 0.0],
-            label: `H1`,
+            species: [
+              { element: `Cu`, occu: 0.7, oxidation_state: 0 },
+              { element: `Au`, occu: 0.3, oxidation_state: 0 },
+            ],
+            abc: [0.25, 0.25, 0.25],
+            xyz: [2.5, 2.5, 2.5],
+            label: `Cu1`,
             properties: {},
           },
         ],
-        lattice: {
-          matrix: [
-            [2.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0],
-            [0.0, 0.0, 2.0],
-          ],
-          pbc: [true, true, true],
-          a: 2,
-          b: 2,
-          c: 2,
-          alpha: 90,
-          beta: 90,
-          gamma: 90,
-          volume: 8,
-        },
-        // @ts-expect-error - test symmetry property
-        symmetry: {
-          space_group_symbol: `P1`,
-          space_group_number: 1,
-        },
       }
+      const cif_content = structure_to_cif_str(disordered)
+      const atom_rows = cif_content
+        .split(`\n`)
+        .filter((line) => /^\S+ (Cu|Au) /.test(line.trim()))
+      expect(atom_rows).toHaveLength(2)
 
-      const cif_content = structure_to_cif_str(structure_with_symmetry)
-      const lines = cif_content.split(`\n`)
+      // each element's row carries the site coords and its OWN occupancy (col order:
+      // label element x y z occupancy) — distinct occupancies catch a swapped assignment
+      const cif_occ = (element: string): number => {
+        const row = atom_rows.find((line) => line.trim().split(/\s+/)[1] === element)
+        if (!row) throw new Error(`missing CIF row for ${element}`)
+        const cols = row.trim().split(/\s+/)
+        expect(cols.slice(2, 5)).toEqual([`0.25000000`, `0.25000000`, `0.25000000`])
+        return Number(cols.at(-1))
+      }
+      expect(cif_occ(`Cu`)).toBeCloseTo(0.7, 8)
+      expect(cif_occ(`Au`)).toBeCloseTo(0.3, 8)
 
-      expect(lines).toContain(`_space_group_name_H-M_alt P1`)
-      expect(lines).toContain(`_space_group_IT_number 1`)
+      // Round-trip: each element keeps its own partial occupancy through parse_cif
+      const species = parse_cif(cif_content)?.sites.flatMap((site) => site.species) ?? []
+      expect(species.map((sp) => sp.element).sort()).toEqual([`Au`, `Cu`])
+      expect(species.find((sp) => sp.element === `Cu`)?.occu).toBeCloseTo(0.7, 8)
+      expect(species.find((sp) => sp.element === `Au`)?.occu).toBeCloseTo(0.3, 8)
     })
 
     it.each([

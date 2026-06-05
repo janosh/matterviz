@@ -2,25 +2,34 @@
 
 import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
 import { min_image_displacement, subtract } from '$lib/math'
+import type { Pbc } from './pbc'
 
 export type AngleMode = `degrees` | `radians`
 
 export const MAX_SELECTED_SITES = 8
 
 // Calculate minimum image displacement between two points under PBC
-// If lattice_matrix is null/undefined, returns Euclidean displacement
+// If lattice_matrix is null/undefined, returns Euclidean displacement.
+// pbc flags disable wrapping along non-periodic axes (e.g. slab vacuum directions).
 export function displacement_pbc(
   from: Vec3,
   to: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
   converters?: LatticeConverters,
+  pbc?: Pbc,
 ): Vec3 {
   if (!lattice_matrix) return subtract(to, from)
-  return min_image_displacement(from, to, lattice_matrix, converters)
+  return min_image_displacement(from, to, lattice_matrix, converters, pbc)
 }
 
-export function distance_pbc(a: Vec3, b: Vec3, lattice_matrix: Matrix3x3): number {
-  const [dx, dy, dz] = displacement_pbc(a, b, lattice_matrix)
+export function distance_pbc(
+  a: Vec3,
+  b: Vec3,
+  lattice_matrix: Matrix3x3,
+  converters?: LatticeConverters,
+  pbc?: Pbc,
+): number {
+  const [dx, dy, dz] = displacement_pbc(a, b, lattice_matrix, converters, pbc)
   return Math.hypot(dx, dy, dz)
 }
 

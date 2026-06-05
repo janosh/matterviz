@@ -75,6 +75,9 @@ export interface BandGridData {
   n_bands: number
   n_spins: number // 1 or 2
   origin?: Vec3 // k-space origin (default [0,0,0])
+  // true: points sit at k=i/n with no duplicated endpoint (FRMSF); false/undefined:
+  // endpoint-inclusive grid storing both equivalent k=0 and k=1 (BXSF)
+  periodic?: boolean
 }
 
 // 2D Fermi slice data (cross-section through the BZ)

@@ -65,7 +65,8 @@ export function decompress_file(file: File): Promise<{ content: string; filename
       () => {
         try {
           const result = reader.result
-          if (!result) throw new Error(`Failed to read file`)
+          // strict null check: empty files legitimately read as '' (falsy)
+          if (result === null) throw new Error(`Failed to read file`)
 
           if (is_supported && format) {
             if (!(result instanceof ArrayBuffer)) throw new Error(`Expected binary file data`)
