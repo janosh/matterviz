@@ -64,13 +64,13 @@ describe(`fermi-surface grid/lattice conventions`, () => {
   // field v=[fx,0,0] must sample to exactly iso everywhere. Hexagonal catches a missing
   // transpose; off-center iso catches wrap/centering errors.
   test.each([
-    [`identity`, IDENTITY, 0.5],
-    [`identity`, IDENTITY, 0.25],
-    [`hexagonal`, HEXAGONAL, 0.5],
-    [`hexagonal`, HEXAGONAL, 0.25],
+    { name: `identity`, k_lattice: IDENTITY, iso: 0.5 },
+    { name: `identity`, k_lattice: IDENTITY, iso: 0.25 },
+    { name: `hexagonal`, k_lattice: HEXAGONAL, iso: 0.5 },
+    { name: `hexagonal`, k_lattice: HEXAGONAL, iso: 0.25 },
   ])(
-    `velocities sample the true k-point (%s lattice, plane at fx=%d)`,
-    (_lat, k_lattice, iso) => {
+    `velocities sample the true k-point ($name lattice, plane at fx=$iso)`,
+    ({ k_lattice, iso }) => {
       const band_data = make_band_data(21, (fx) => fx, {
         k_lattice,
         velocity_fn: (fx) => [fx, 0, 0],

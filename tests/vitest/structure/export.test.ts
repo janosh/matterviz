@@ -885,8 +885,8 @@ describe(`Export functionality`, () => {
         sites: [
           {
             species: [
-              { element: `Cu`, occu: 0.5, oxidation_state: 0 },
-              { element: `Au`, occu: 0.5, oxidation_state: 0 },
+              { element: `Cu`, occu: 0.7, oxidation_state: 0 },
+              { element: `Au`, occu: 0.3, oxidation_state: 0 },
             ],
             abc: [0.25, 0.25, 0.25],
             xyz: [2.5, 2.5, 2.5],
@@ -899,17 +899,25 @@ describe(`Export functionality`, () => {
       const atom_rows = cif_content
         .split(`\n`)
         .filter((line) => /^\S+ (Cu|Au) /.test(line.trim()))
-      // both species rows carry the site's coords, each with its own occupancy
       expect(atom_rows).toHaveLength(2)
-      for (const row of atom_rows) {
-        expect(row).toContain(`0.25000000`)
-        expect(row).toContain(`0.50000000`)
-      }
 
-      // Round-trip: both partial occupancies survive parsing
+      // each element's row carries the site coords and its OWN occupancy (col order:
+      // label element x y z occupancy) — distinct occupancies catch a swapped assignment
+      const cif_occ = (element: string): number => {
+        const row = atom_rows.find((line) => line.trim().split(/\s+/)[1] === element)
+        if (!row) throw new Error(`missing CIF row for ${element}`)
+        const cols = row.trim().split(/\s+/)
+        expect(cols.slice(2, 5)).toEqual([`0.25000000`, `0.25000000`, `0.25000000`])
+        return Number(cols.at(-1))
+      }
+      expect(cif_occ(`Cu`)).toBeCloseTo(0.7, 8)
+      expect(cif_occ(`Au`)).toBeCloseTo(0.3, 8)
+
+      // Round-trip: each element keeps its own partial occupancy through parse_cif
       const species = parse_cif(cif_content)?.sites.flatMap((site) => site.species) ?? []
       expect(species.map((sp) => sp.element).sort()).toEqual([`Au`, `Cu`])
-      expect(species.reduce((sum, sp) => sum + sp.occu, 0)).toBeCloseTo(1, 8)
+      expect(species.find((sp) => sp.element === `Cu`)?.occu).toBeCloseTo(0.7, 8)
+      expect(species.find((sp) => sp.element === `Au`)?.occu).toBeCloseTo(0.3, 8)
     })
 
     it.each([

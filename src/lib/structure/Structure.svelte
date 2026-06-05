@@ -1226,7 +1226,9 @@
           const to_delete = scene_to_structure_indices(selected_sites, true)
           const n_deleted = to_delete.size
           clear_selection()
-          // Remap explicit bond metadata so surviving bonds track shifted site indices
+          // Remap explicit bond metadata so surviving bonds track shifted site indices.
+          // structure_with_bonds prefers the bindable `bonds` prop, so remap that too.
+          if (bonds !== undefined) bonds = remap_bonds_after_deletion(bonds, to_delete)
           const old_bonds = structure.properties?.bonds
           structure = {
             ...structure,

@@ -309,7 +309,11 @@
       // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
       if ((is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type === `log`) {
         const min_pos = samples.reduce((min, val) => (val > 0 && val < min ? val : min), Infinity)
-        clip = [Math.max(clip?.[0] ?? -Infinity, min_pos), clip?.[1] ?? null]
+        // Guard: no positive samples → min_pos is Infinity; leave clip unchanged so the KDE
+        // never receives a non-finite lower bound
+        if (Number.isFinite(min_pos)) {
+          clip = [Math.max(clip?.[0] ?? -Infinity, min_pos), clip?.[1] ?? null]
+        }
       }
       map.set(
         box_item.idx,

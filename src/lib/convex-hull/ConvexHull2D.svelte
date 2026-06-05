@@ -436,8 +436,10 @@
   const selected_scatter_point = $derived.by(() => {
     const entry = selected_entry
     if (!entry) return null
-    const idx = visible_entries.findIndex((vis_entry) => vis_entry === entry)
-    return idx !== -1 ? { series_idx: 0, point_idx: idx } : null
+    // match by entry_id (same_entry), not reference: selected_entry may be a proxied/
+    // different instance than visible_entries elements when bound to a parent $state
+    const idx = visible_entries.findIndex((vis_entry) => helpers.same_entry(vis_entry, entry))
+    return idx === -1 ? null : { series_idx: 0, point_idx: idx }
   })
 
   // Convex hull statistics - compute internally and expose via bindable prop
