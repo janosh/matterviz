@@ -7,7 +7,7 @@
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
-  import { DEG_TO_RAD, to_degrees } from '$lib/math'
+  import { DEG_TO_RAD } from '$lib/math'
   import type {
     BasePlotProps,
     LegendConfig,
@@ -30,6 +30,11 @@
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { create_color_scale } from '$lib/plot/core/scales'
+  import {
+    arc_label_transform,
+    project_arcs,
+    type ScreenArc as ScreenArcOf,
+  } from '$lib/plot/sunburst/render'
   import { compute_sunburst_layout, type PositionedArc } from '$lib/plot/sunburst/sunburst'
   import { DEFAULTS } from '$lib/settings'
   import { arc as d3_arc } from 'd3-shape'
@@ -40,22 +45,14 @@
   import { SvelteSet } from 'svelte/reactivity'
 
   const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
-  const TWO_PI = 2 * Math.PI
 
   // An arc with its current screen-space geometry (angles in radians, radii in px)
-  interface ScreenArc {
-    arc: PositionedArc<Metadata>
-    a0: number
-    a1: number
-    r0: number
-    r1: number
-    visible: boolean
-  }
+  type ScreenArc = ScreenArcOf<Metadata>
 
   let {
     data = $bindable([]),
-    shape = $bindable(DEFAULTS.sunburst.shape as SunburstShape),
-    value_mode = $bindable(DEFAULTS.sunburst.value_mode as SunburstValueMode),
+    shape = $bindable(DEFAULTS.sunburst.shape),
+    value_mode = $bindable(DEFAULTS.sunburst.value_mode),
     sort = `none`,
     level_lighten = 0,
     min_fraction = $bindable(DEFAULTS.sunburst.min_fraction),
@@ -64,8 +61,8 @@
     inner_radius = $bindable(DEFAULTS.sunburst.inner_radius),
     pad_angle = $bindable(DEFAULTS.sunburst.pad_angle),
     show_labels = $bindable(DEFAULTS.sunburst.show_labels),
-    label_rotation = $bindable(DEFAULTS.sunburst.label_rotation as SunburstLabelRotation),
-    label_text = $bindable(DEFAULTS.sunburst.label_text as SunburstLabelText),
+    label_rotation = $bindable(DEFAULTS.sunburst.label_rotation),
+    label_text = $bindable(DEFAULTS.sunburst.label_text),
     zoom_on_click = $bindable(DEFAULTS.sunburst.zoom_on_click),
     zoom_root_id = $bindable(null),
     show_breadcrumbs = $bindable(DEFAULTS.sunburst.show_breadcrumbs),
@@ -123,7 +120,7 @@
     color_scale?: D3InterpolateName
     color_range?: [number, number] // defaults to the metric's [min, max]
     colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
-    export_buttons?: boolean // SVG/PNG download buttons in the header
+    export_buttons?: boolean // SVG/PNG download buttons in the controls pane
     export_filename?: string
     tween?: TweenOptions<{ x0: number; x1: number; y0: number; n_rings: number }>
     value_format?: string
@@ -168,7 +165,16 @@
 
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
-  let inner_height = $derived(Math.max(0, height - pad.t - pad.b))
+  let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
+  // measured height of the bottom colorbar, reserved from the chart so it never overlaps
+  // the arcs (16px covers its bottom offset + a small gap). reset to 0 when the colorbar
+  // is hidden (effect below) since bind:clientHeight doesn't clear on unmount; capped at
+  // half the area so a bad measurement can't collapse the chart
+  let colorbar_height = $state(0)
+  let colorbar_reserve = $derived(
+    colorbar_height > 0 ? Math.min(colorbar_height + 16, avail_height / 2) : 0,
+  )
+  let inner_height = $derived(avail_height - colorbar_reserve)
 
   // Degrade to an empty layout (instead of crashing the host page) on invalid data.
   // Layout depends only on data/value semantics - not on size or zoom.
@@ -233,55 +239,12 @@
   // Min 14px center hole when zoomed so there's always a zoom-out click target
   let hole_r = $derived(Math.max(inner_radius * radius, zoomed ? 14 : 0))
 
-  const clamp01 = (val: number) => Math.min(1, Math.max(0, val))
+  let screen_geom = $derived({ shape, inner_width, inner_height, radius, hole_r })
 
-  // Project all arcs through a view window into screen space. Called with view.current
-  // once per animation frame, and with view.target where settled geometry suffices
-  // (e.g. legend placement, which shouldn't rerun per frame). The two shapes share
-  // the same window-mapping math, only the scale constants differ:
-  // Sunburst: a0/a1 = angles in radians, r0/r1 = radii in px.
-  // Icicle: a0/a1 = x in px, r0/r1 = y in px (rows top-down).
-  // Returns `all` (indexed by node_idx, for event lookups) and `visible` (collapsed
-  // arcs pruned) from one pass.
-  function project(
-    win: { x0: number; x1: number; y0: number; n_rings: number },
-  ): { all: ScreenArc[]; visible: ScreenArc[] } {
-    const span = Math.max(win.x1 - win.x0, 1e-9)
-    const icicle = shape === `icicle`
-    const x_scale = icicle ? inner_width : TWO_PI // angle/x per window fraction
-    const y_offset = icicle ? 0 : hole_r
-    const y_unit = (icicle ? inner_height : Math.max(0, radius - hole_r)) /
-      Math.max(win.n_rings, 1e-9) // px per ring
-    const min_x_extent = icicle ? 0.1 : 1e-6
-    // Window fraction -> angle/x (clamped: out-of-window arcs collapse to zero extent
-    // and animate smoothly through the clamps during zoom tweens)
-    const x_of = (frac: number) => clamp01((frac - win.x0) / span) * x_scale
-    // Ring offset below the zoom root -> radius/y, clamped into the visible rings
-    const y_of = (ring: number) =>
-      y_offset + Math.min(Math.max(ring - win.y0 - 1, 0), win.n_rings) * y_unit
-
-    const all: ScreenArc[] = []
-    const visible: ScreenArc[] = []
-    for (const arc of layout.arcs) {
-      const a0 = x_of(arc.x0)
-      const a1 = x_of(arc.x1)
-      const r0 = y_of(arc.y0)
-      const r1 = y_of(arc.y1)
-      const screen = {
-        arc,
-        a0,
-        a1,
-        r0,
-        r1,
-        visible: arc.depth > 0 && a1 - a0 > min_x_extent && r1 - r0 > 0.1,
-      }
-      all.push(screen)
-      if (screen.visible) visible.push(screen)
-    }
-    return { all, visible }
-  }
-
-  let projection = $derived(project(view.current))
+  // Projected with view.current once per animation frame; project_arcs is also called
+  // with view.target where settled geometry suffices (e.g. legend placement, which
+  // shouldn't rerun per frame)
+  let projection = $derived(project_arcs(layout.arcs, view.current, screen_geom))
   let screen_arcs = $derived(projection.all)
   // Rendering iterates only non-collapsed arcs - when zoomed into a small subtree of
   // a large hierarchy this keeps per-frame template work proportional to what's on screen
@@ -350,6 +313,10 @@
   })
   const arc_color = (arc: PositionedArc<Metadata>): string =>
     metric?.colors[arc.node_idx] ?? arc.color
+  // release the colorbar's reserved chart space when it's not rendered
+  $effect(() => {
+    if (!metric || colorbar == null) colorbar_height = 0
+  })
 
   // Predicate keeping the hovered arc + its ancestors/descendants fully opaque.
   // Pre-order indexing makes both tests O(1): a subtree is the contiguous index
@@ -615,66 +582,12 @@
     }),
   )
 
-  // Arc label placement: fit the text radially or tangentially (whichever has more
-  // room in 'auto' mode), hide labels that don't fit. Angles are clockwise from 12
-  // o'clock, so the point at (a, r) is (sin(a)*r, -cos(a)*r). Icicle cells label
-  // horizontally, or rotated 90° when too narrow but tall enough to fit upright.
+  // Label text + placement transform for an arc; null = doesn't fit, hide the label
   function label_attrs(d: ScreenArc): { transform: string; text: string } | null {
     const { text, width: text_w } = arc_info[d.arc.node_idx]
     if (!text) return null
-
-    if (shape === `icicle`) {
-      const cell_width = d.a1 - d.a0
-      const cell_height = d.r1 - d.r0
-      const mid_x = (d.a0 + d.a1) / 2
-      const mid_y = (d.r0 + d.r1) / 2
-      // Horizontal when the text fits the row width; otherwise rotate 90° (read
-      // bottom-up) to use a thin-but-tall cell's height. Only cells too small in
-      // both dimensions stay unlabeled.
-      if (text_w <= cell_width - 6 && cell_height >= 12) {
-        return { transform: `translate(${mid_x}, ${mid_y})`, text }
-      }
-      if (text_w <= cell_height - 6 && cell_width >= 12) {
-        return { transform: `translate(${mid_x}, ${mid_y}) rotate(-90)`, text }
-      }
-      return null
-    }
-
-    const mid_a = (d.a0 + d.a1) / 2
-    const mid_r = (d.r0 + d.r1) / 2
-    const angular_px = (d.a1 - d.a0) * mid_r // arc length at mid radius
-    const radial_px = d.r1 - d.r0
-    const fits = (along: number, across: number) =>
-      text_w <= along - 6 && across >= 12
-    const mode = label_rotation === `auto`
-      ? (radial_px >= angular_px ? `radial` : `tangential`)
-      : label_rotation
-
-    if (mode === `horizontal`) {
-      if (!fits(Math.max(angular_px, radial_px), Math.min(angular_px, radial_px))) {
-        return null
-      }
-      return {
-        transform: `translate(${Math.sin(mid_a) * mid_r}, ${-Math.cos(mid_a) * mid_r})`,
-        text,
-      }
-    }
-    if (mode === `radial`) {
-      if (!fits(radial_px, angular_px)) return null
-      // Read outward, flipped on the left half so text is never upside down
-      const deg = to_degrees(mid_a) - 90
-      const flip = mid_a > Math.PI ? 180 : 0
-      return { transform: `rotate(${deg}) translate(${mid_r}, 0) rotate(${flip})`, text }
-    }
-    // tangential: follow the circumference, flipped on the bottom half
-    if (!fits(angular_px, radial_px)) return null
-    const upside_down = mid_a > Math.PI / 2 && mid_a < (3 * Math.PI) / 2
-    return {
-      transform: `rotate(${to_degrees(mid_a)}) translate(0, ${-mid_r}) rotate(${
-        upside_down ? 180 : 0
-      })`,
-      text,
-    }
+    const transform = arc_label_transform(d, text_w, shape, label_rotation)
+    return transform ? { transform, text } : null
   }
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
@@ -686,7 +599,7 @@
     // Place against the settled (target) geometry, not the animated view - placement
     // is stable during zoom tweens and compute_element_placement runs once per zoom
     // instead of once per frame
-    const settled = project(view.target).visible
+    const settled = project_arcs(layout.arcs, view.target, screen_geom).visible
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },
       element: legend_element,
@@ -811,19 +724,11 @@
           bind:label_text
           bind:zoom_on_click
           bind:show_breadcrumbs
+          {export_buttons}
+          on_export={export_chart}
         >
           {@render controls_extra?.({ zoom_root_id })}
         </SunburstControls>
-      {/if}
-      {#if export_buttons}
-        {#each [`svg`, `png`] as const as fmt (fmt)}
-          <button
-            type="button"
-            class="export-btn"
-            aria-label={`Download ${fmt.toUpperCase()}`}
-            onclick={() => export_chart(fmt)}
-          >{fmt.toUpperCase()}</button>
-        {/each}
       {/if}
       {#if fullscreen_toggle}
         <FullscreenToggle bind:fullscreen />
@@ -1003,14 +908,17 @@
   {/if}
 
   {#if metric && colorbar != null}
-    <ColorBar
-      color_scale={color_scale}
-      range={metric.range}
-      {...colorbar}
-      wrapper_style={`position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto; ${
-        colorbar?.wrapper_style ?? ``
-      }`}
-    />
+    <div
+      bind:clientHeight={colorbar_height}
+      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
+    >
+      <ColorBar
+        color_scale={color_scale}
+        range={metric.range}
+        {...colorbar}
+        wrapper_style={`width: 100%; ${colorbar?.wrapper_style ?? ``}`}
+      />
+    </div>
   {/if}
 
   {@render children?.({ height, width, fullscreen })}
@@ -1060,7 +968,6 @@
     position: static;
     opacity: 1;
   }
-  .export-btn,
   .breadcrumb {
     background: var(--sunburst-btn-bg, rgba(128, 128, 128, 0.15));
     color: inherit;
@@ -1068,13 +975,10 @@
     border-radius: 3pt;
     padding: 1px 6px;
     cursor: pointer;
+    font: inherit;
   }
-  .export-btn:hover,
   .breadcrumb:hover:not(:disabled) {
     background: var(--sunburst-btn-hover-bg, rgba(128, 128, 128, 0.35));
-  }
-  .export-btn {
-    font-size: 0.75em;
   }
   .breadcrumbs {
     position: absolute;
@@ -1087,10 +991,6 @@
     flex-wrap: wrap;
     max-width: 75%;
     font-size: var(--sunburst-breadcrumbs-font-size, 0.85em);
-  }
-  .breadcrumb {
-    font: inherit;
-    font-size: inherit;
   }
   .breadcrumb:disabled {
     cursor: default;

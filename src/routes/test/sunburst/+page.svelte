@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SunburstNode } from '$lib/plot'
+  import type { PositionedArc, SunburstNode } from '$lib/plot'
   import { Sunburst, sunburst_from_labels_parents } from '$lib/plot'
   import { spacegroup_sunburst_data } from '$lib/symmetry'
 
@@ -27,7 +27,7 @@
     { ids: [`triclinic`, `triclinic/1`, `triclinic/2`, `cubic`, `cubic/225`, `cubic/229`] },
   )
 
-  // Synthetic spacegroup distribution: 7 crystal systems, several spacegroups each
+  // Synthetic spacegroup distribution covering all 7 crystal systems
   const spacegroups = [
     ...Array(40).fill(225),
     ...Array(25).fill(227),
@@ -53,9 +53,6 @@
     })),
   }))
 
-  // shared by every section so Playwright can target any pane toggle
-  const controls_toggle_props = { class: `sunburst-controls-toggle` }
-
   let hover_msg = $state(`Hover over an arc`)
   let click_msg = $state(`Click an arc`)
   let zoom_msg = $state(`Zoom root: (root)`)
@@ -69,12 +66,7 @@
 
 <section id="basic-sunburst">
   <h2>Basic (nested data)</h2>
-  <Sunburst
-    data={energy}
-    zoom_on_click={false}
-    {controls_toggle_props}
-    style="height: 360px"
-  />
+  <Sunburst data={energy} style="height: 360px" />
 </section>
 
 <section id="flat-sunburst">
@@ -83,7 +75,6 @@
     data={flat}
     value_mode="total"
     show_legend
-    {controls_toggle_props}
     style="height: 360px"
   />
 </section>
@@ -104,7 +95,6 @@
     on_zoom={(data) => {
       zoom_msg = `Zoom root: ${data.root?.label ?? `(root)`}`
     }}
-    {controls_toggle_props}
     style="height: 360px"
   />
   <div class="handler-info">
@@ -120,7 +110,6 @@
     shape="icicle"
     data={energy}
     tween={{ duration: 50 }}
-    {controls_toggle_props}
     style="height: 360px"
   />
 </section>
@@ -137,7 +126,6 @@
     ]}
     min_fraction={0.05}
     label_text="label+percent"
-    {controls_toggle_props}
     style="height: 360px"
   />
 </section>
@@ -148,16 +136,19 @@
     data={large}
     tween={{ duration: 50 }}
     show_labels={false}
-    {controls_toggle_props}
     style="height: 400px"
   />
+</section>
+
+<section id="metric-sunburst">
+  <h2>Metric coloring (colorbar reserves space, no overlap)</h2>
+  <Sunburst data={energy} color_values={(arc: PositionedArc) => arc.value} style="height: 360px" />
 </section>
 
 <section id="spacegroup-sunburst">
   <h2>Spacegroup sunburst (crystal system &rarr; spacegroup)</h2>
   <Sunburst
     data={spacegroup_sunburst_data(spacegroups)}
-    {controls_toggle_props}
     style="height: 400px"
   />
 </section>

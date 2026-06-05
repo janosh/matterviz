@@ -66,9 +66,9 @@
     },
     {
       href: `/plot/sunburst`,
-      title: `Sunburst`,
+      title: `Sunburst & Icicle`,
       description:
-        `Zoomable hierarchical rings with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
+        `Zoomable hierarchical rings or stacked rows with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
       icon: `Graph`,
     },
     {

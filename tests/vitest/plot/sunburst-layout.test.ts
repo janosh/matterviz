@@ -5,6 +5,7 @@ import {
   sunburst_from_labels_parents,
   sunburst_from_paths,
 } from '$lib/plot'
+import { hsl } from 'd3-color'
 import { describe, expect, test, vi } from 'vitest'
 
 const close = (val: number) => expect.closeTo(val, 9)
@@ -103,8 +104,13 @@ describe(`compute_sunburst_layout`, () => {
         { label: `c1`, value: 8 },
         { label: `c2`, value: 4 },
       ]
-      compute_sunburst_layout({ label: `P`, value: 10, children }, { value_mode: `total` })
+      const { arcs } = compute_sunburst_layout(
+        { label: `P`, value: 10, children },
+        { value_mode: `total` },
+      )
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/children of "P" sum to 12/))
+      // layout does NOT clamp the overflow: c2 ends at 12/10 of the circle
+      expect(arcs[2].x1).toBeCloseTo(1.2, 9)
       warn.mockRestore()
     })
   })
@@ -158,8 +164,9 @@ describe(`compute_sunburst_layout`, () => {
       )
       const [, arc_a, arc_a1, arc_a1a] = arcs
       expect(arc_a.color).toBe(`#1f77b4`) // explicit, untouched
-      expect(arc_a1.color).not.toBe(arc_a.color)
-      expect(arc_a1a.color).not.toBe(arc_a1.color)
+      // lightness strictly increases with depth
+      expect(hsl(arc_a1.color).l).toBeGreaterThan(hsl(arc_a.color).l)
+      expect(hsl(arc_a1a.color).l).toBeGreaterThan(hsl(arc_a1.color).l)
       expect(arc_a1.color).toMatch(/^#[0-9a-f]{6}$/)
     })
   })
@@ -342,6 +349,20 @@ describe(`min_fraction 'Other' bucketing`, () => {
       color: `teal`, // inherits parent chain color
       label_path: [`P`, `rest`],
     })
+  })
+
+  test(`drops descendants of bucketed small branches`, () => {
+    // s1 (3) and s2 (4) fall below 0.05 * 97 = 4.85 -> bucketed; s1's child must vanish
+    const { arcs } = compute_sunburst_layout(
+      [
+        { label: `big`, value: 90 },
+        { label: `s1`, children: [{ label: `s1a`, value: 3 }] },
+        { label: `s2`, value: 4 },
+      ],
+      { min_fraction: 0.05 },
+    )
+    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `big`, `Other`])
+    expect(arcs[2]).toMatchObject({ is_other: true, is_leaf: true, value: 7 })
   })
 
   test(`composes with sort descending (smalls still trail)`, () => {

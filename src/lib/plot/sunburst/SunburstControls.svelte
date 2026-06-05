@@ -6,29 +6,27 @@
     SunburstShape,
     SunburstValueMode,
   } from '$lib/plot'
-  import { unique_id } from '$lib/plot/core/utils'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import ControlPane from '$lib/plot/core/components/ControlPane.svelte'
 
-  // Unique id prefix to avoid label/input collisions with other instances
-  const uid = unique_id(`sunburst`)
-
   let {
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    shape = $bindable(`sunburst`),
-    value_mode = $bindable(`leaf-sum`),
+    shape = $bindable(DEFAULTS.sunburst.shape),
+    value_mode = $bindable(DEFAULTS.sunburst.value_mode),
     max_depth = $bindable(DEFAULTS.sunburst.max_depth),
     inner_radius = $bindable(DEFAULTS.sunburst.inner_radius),
     pad_angle = $bindable(DEFAULTS.sunburst.pad_angle),
     min_fraction = $bindable(DEFAULTS.sunburst.min_fraction),
-    show_labels = $bindable(true),
-    label_rotation = $bindable(`auto`),
-    label_text = $bindable(`label`),
-    zoom_on_click = $bindable(true),
-    show_breadcrumbs = $bindable(true),
+    show_labels = $bindable(DEFAULTS.sunburst.show_labels),
+    label_rotation = $bindable(DEFAULTS.sunburst.label_rotation),
+    label_text = $bindable(DEFAULTS.sunburst.label_text),
+    zoom_on_click = $bindable(DEFAULTS.sunburst.zoom_on_click),
+    show_breadcrumbs = $bindable(DEFAULTS.sunburst.show_breadcrumbs),
+    export_buttons = true,
+    on_export,
     toggle_props = {},
     pane_props = {},
     children,
@@ -46,6 +44,8 @@
     label_text?: SunburstLabelText
     zoom_on_click?: boolean
     show_breadcrumbs?: boolean
+    export_buttons?: boolean // show SVG/PNG download buttons in the pane
+    on_export?: (format: `svg` | `png`) => void
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
@@ -96,17 +96,19 @@
         show_breadcrumbs,
       }}
       on_reset={() => {
-        shape = DEFAULTS.sunburst.shape as SunburstShape
-        value_mode = DEFAULTS.sunburst.value_mode as SunburstValueMode
-        max_depth = DEFAULTS.sunburst.max_depth
-        inner_radius = DEFAULTS.sunburst.inner_radius
-        pad_angle = DEFAULTS.sunburst.pad_angle
-        min_fraction = DEFAULTS.sunburst.min_fraction
-        show_labels = DEFAULTS.sunburst.show_labels
-        label_rotation = DEFAULTS.sunburst.label_rotation as SunburstLabelRotation
-        label_text = DEFAULTS.sunburst.label_text as SunburstLabelText
-        zoom_on_click = DEFAULTS.sunburst.zoom_on_click
-        show_breadcrumbs = DEFAULTS.sunburst.show_breadcrumbs
+        ;({
+          shape,
+          value_mode,
+          max_depth,
+          inner_radius,
+          pad_angle,
+          min_fraction,
+          show_labels,
+          label_rotation,
+          label_text,
+          zoom_on_click,
+          show_breadcrumbs,
+        } = DEFAULTS.sunburst)
       }}
       style="display: flex; flex-wrap: wrap; gap: 2ex"
     >
@@ -114,13 +116,13 @@
       single source of truth -->
       <label style="flex: 1">
         Shape:
-        <select bind:value={shape} id="{uid}-shape">
+        <select bind:value={shape}>
           {@render options(SETTINGS_CONFIG.sunburst.shape.enum ?? {})}
         </select>
       </label>
       <label style="flex: 1">
         Value mode:
-        <select bind:value={value_mode} id="{uid}-value-mode">
+        <select bind:value={value_mode}>
           {@render options(SETTINGS_CONFIG.sunburst.value_mode.enum ?? {})}
         </select>
       </label>
@@ -128,14 +130,14 @@
         <!-- icicle labels are always horizontal; inner radius/pad angle are polar-only -->
         <label style="flex: 1">
           Labels:
-          <select bind:value={label_rotation} id="{uid}-label-rotation">
+          <select bind:value={label_rotation}>
             {@render options(SETTINGS_CONFIG.sunburst.label_rotation.enum ?? {})}
           </select>
         </label>
       {/if}
       <label style="flex: 1">
         Label text:
-        <select bind:value={label_text} id="{uid}-label-text">
+        <select bind:value={label_text}>
           {@render options(SETTINGS_CONFIG.sunburst.label_text.enum ?? {})}
         </select>
       </label>
@@ -160,5 +162,39 @@
       {@render check_row(`Show breadcrumbs when zoomed`, () => show_breadcrumbs, (val) =>
         show_breadcrumbs = val)}
     </SettingsSection>
+    {#if export_buttons && on_export}
+      <div class="export-row">
+        Export:
+        {#each [`svg`, `png`] as const as fmt (fmt)}
+          <button
+            type="button"
+            class="export-btn"
+            aria-label="Download {fmt.toUpperCase()}"
+            onclick={() => on_export?.(fmt)}
+          >{fmt.toUpperCase()}</button>
+        {/each}
+      </div>
+    {/if}
   </ControlPane>
 {/if}
+
+<style>
+  .export-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 0.85em;
+  }
+  .export-btn {
+    background: var(--sunburst-btn-bg, rgba(128, 128, 128, 0.15));
+    color: inherit;
+    border: none;
+    border-radius: 3pt;
+    padding: 1px 6px;
+    cursor: pointer;
+  }
+  .export-btn:hover {
+    background: var(--sunburst-btn-hover-bg, rgba(128, 128, 128, 0.35));
+  }
+</style>

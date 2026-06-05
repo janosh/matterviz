@@ -42,7 +42,7 @@ Deeply nested trees are easiest to build from path rows via `sunburst_from_paths
 - `max_depth` limits how many rings show below the zoom root (like plotly's `maxdepth`) — switch to 3 rings and zooming reveals deeper levels progressively
 - a custom `tooltip` snippet renders the `label_path` breadcrumb plus share-of-parent
 - labels auto-hide on arcs too small to fit them, so zooming in reveals more labels; arrow keys move keyboard focus between siblings (left/right), children (down) and parents (up)
-- hover the chart for SVG/PNG download buttons (top-right)
+- the controls pane (gear icon, top-right) holds SVG/PNG export buttons
 
 ```svelte example
 <script lang="ts">
@@ -258,7 +258,6 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 <Sunburst
   {data}
   color_values={(arc) => (arc.metadata?.e_above_hull as number | undefined) ?? null}
-  color_scale="interpolateViridis"
   colorbar={{ title: `E<sub>hull</sub> (eV/atom)` }}
   style="height: 450px"
 />
@@ -311,7 +310,29 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 <Sunburst
   data={spacegroup_sunburst_data(spacegroups)}
   {min_fraction}
+  label_text="label+percent"
   show_legend
   style="height: 500px"
 />
+```
+
+## Chemical system sunburst
+
+`chem_sys_sunburst_data` builds the arity &rarr; chemical-system hierarchy from a list of formulas and/or chemical systems (one entry per occurrence), the counterpart to pymatviz's `chem_sys_sunburst`. Entries are normalized to alphabetical element order, so `Li2O`, `LiO` and `O-Li` all count toward `Li-O`.
+
+```svelte example
+<script lang="ts">
+  import { chem_sys_sunburst_data, Sunburst } from 'matterviz'
+
+  // synthetic dataset: [formula or chemical system, occurrence count]
+  const distribution: [string, number][] = [
+    [`Si`, 18], [`Fe`, 12], [`C`, 8], // unary
+    [`Fe2O3`, 45], [`Li2O`, 30], [`GaN`, 25], [`Mo-S`, 20], [`Bi-Te`, 14], // binary
+    [`LiCoO2`, 32], [`BaTiO3`, 28], [`MgAl2O4`, 22], [`Li-Mn-O`, 16], [`CsPbBr3`, 12], // ternary
+    [`LiFePO4`, 38], [`Cu2ZnSnS4`, 9], // quaternary
+  ]
+  const entries = distribution.flatMap(([sys, count]) => Array(count).fill(sys))
+</script>
+
+<Sunburst data={chem_sys_sunburst_data(entries)} label_text="label+value" style="height: 450px" />
 ```

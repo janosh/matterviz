@@ -89,13 +89,13 @@ describe(`Sunburst`, () => {
     expect(fill(`B`)).toBe(DEFAULT_SERIES_COLORS[0]) // palette
   })
 
-  test.each([{ data: [] as SunburstNode[] }, { data: [{ label: `solo`, value: 1 }] }])(
-    `renders without error for empty/degenerate data %#`,
-    async (props) => {
-      const plot = await mount_sized_sunburst(props)
-      expect(n_arcs(plot)).toBeLessThanOrEqual(1)
-    },
-  )
+  test.each([
+    [{ data: [] as SunburstNode[] }, 0],
+    [{ data: [{ label: `solo`, value: 1 }] }, 1],
+  ])(`renders without error for empty/degenerate data %#`, async (props, expected) => {
+    const plot = await mount_sized_sunburst(props)
+    expect(n_arcs(plot)).toBe(expected)
+  })
 
   test(`shows a tooltip and fires hover callback with breadcrumb payload`, async () => {
     const on_node_hover = vi.fn()
@@ -142,18 +142,6 @@ describe(`Sunburst`, () => {
     expect(n_arcs(plot)).toBe(4)
   })
 
-  test(`clicking the center circle zooms back out`, async () => {
-    const on_zoom = vi.fn()
-    const plot = await mount_sized_sunburst({ data: tree, on_zoom })
-    await fire(arc_path(plot, `A`))
-    expect(n_arcs(plot)).toBe(2)
-    await fire(plot.querySelector(`.center-circle`))
-    expect(n_arcs(plot)).toBe(4)
-    expect(on_zoom).toHaveBeenLastCalledWith({ root: null })
-    // back at the root, the center is no longer an interactive zoom-out target
-    expect(plot.querySelector(`.center-circle`)?.getAttribute(`role`)).toBeNull()
-  })
-
   test.each([
     [`zoom_root_id re-roots the view`, { zoom_root_id: `A` }, 2],
     [`stale zoom_root_id falls back to the root`, { zoom_root_id: `ghost` }, 4],
@@ -166,13 +154,13 @@ describe(`Sunburst`, () => {
   // boolean props that remove a feature's DOM when false
   test.each([
     [`show_labels`, `.arc-label`, {}],
-    [`export_buttons`, `[aria-label="Download SVG"]`, {}],
+    [`export_buttons`, `[aria-label="Download SVG"]`, { controls_open: true }], // buttons live in the controls pane
     [`show_breadcrumbs`, `.breadcrumbs`, { zoom_root_id: `A` }],
   ] as const)(`%s=false removes %s`, async (prop, selector, extra) => {
+    // each mount lives in its own container, so both variants can coexist
     const shown = await mount_sized_sunburst({ data: tree, ...extra })
-    expect(shown.querySelectorAll(selector).length).toBeGreaterThan(0)
-    document.body.innerHTML = ``
     const hidden = await mount_sized_sunburst({ data: tree, ...extra, [prop]: false })
+    expect(shown.querySelectorAll(selector).length).toBeGreaterThan(0)
     expect(hidden.querySelectorAll(selector)).toHaveLength(0)
   })
 
@@ -187,7 +175,30 @@ describe(`Sunburst`, () => {
 
   test(`renders a legend with one item per depth-1 category`, async () => {
     const plot = await mount_sized_sunburst({ data: tree, show_legend: true })
-    expect(plot.querySelector(`.legend`)?.textContent).toMatch(/A[\s\S]*B/)
+    const items = [...plot.querySelectorAll(`.legend-item`)]
+    expect(items.map((el) => el.querySelector(`.legend-label`)?.textContent)).toEqual([
+      `A`,
+      `B`,
+    ])
+  })
+
+  test(`legend toggle mutes a category's subtree; re-click restores it`, async () => {
+    const plot = await mount_sized_sunburst({ data: tree, show_legend: true })
+    const opacities = () =>
+      ([`A`, `A1`, `A2`, `B`] as const).map((lbl) =>
+        arc_path(plot, lbl).getAttribute(`fill-opacity`),
+      )
+    await fire(plot.querySelector(`.legend-item`)) // mute A
+    expect(opacities()).toEqual([`0.12`, `0.12`, `0.12`, `1`])
+    await fire(plot.querySelector(`.legend-item`)) // unmute A
+    expect(opacities()).toEqual([`1`, `1`, `1`, `1`])
+  })
+
+  test(`hovering an arc dims unrelated arcs but keeps its ancestors opaque`, async () => {
+    const plot = await mount_sized_sunburst({ data: tree })
+    await fire(arc_path(plot, `A1`), mouse(`mousemove`))
+    const opacity = (lbl: keyof typeof IDX) => arc_path(plot, lbl).getAttribute(`fill-opacity`)
+    expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `0.3`])
   })
 
   test(`default tooltip shows breadcrumb + percent of total`, async () => {
@@ -204,11 +215,25 @@ describe(`Sunburst`, () => {
     expect(plot.querySelector(`.center-label`)?.textContent).toContain(`10`)
   })
 
-  test(`keyboard Enter on an arc triggers click handling`, async () => {
-    const on_node_click = vi.fn()
-    const plot = await mount_sized_sunburst({ data: tree, on_node_click })
-    await fire(arc_path(plot, `B`), key(`Enter`))
-    expect(on_node_click).toHaveBeenCalledOnce()
+  test.each([`Enter`, ` `])(
+    `keyboard activation key %j on an arc triggers click handling`,
+    async (key_name) => {
+      const on_node_click = vi.fn()
+      const plot = await mount_sized_sunburst({ data: tree, on_node_click })
+      await fire(arc_path(plot, `B`), key(key_name))
+      expect(on_node_click).toHaveBeenCalledOnce()
+    },
+  )
+
+  // regression for cf6e3e62: leaving the chart must reset the bindable hover state
+  test(`mouseleave on the svg clears the tooltip and reports a null hover`, async () => {
+    const on_node_hover = vi.fn()
+    const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
+    await fire(arc_path(plot, `A1`), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+    await fire(plot.querySelector(`svg[role="application"]`), new MouseEvent(`mouseleave`))
+    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+    expect(on_node_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`click-to-zoom dismisses the tooltip of the clicked arc`, async () => {
@@ -262,13 +287,6 @@ describe(`Sunburst label selection`, () => {
     expect(on_node_click).not.toHaveBeenCalled()
     get_selection.mockRestore()
   })
-
-  test(`clicking the center label zooms out`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree, zoom_root_id: `A` })
-    expect(n_arcs(plot)).toBe(2)
-    await fire(plot.querySelector(`.center-label`))
-    expect(n_arcs(plot)).toBe(4)
-  })
 })
 
 describe(`Sunburst zoom navigation`, () => {
@@ -283,9 +301,10 @@ describe(`Sunburst zoom navigation`, () => {
     expect(plot.querySelector(`.breadcrumbs`)).toBeNull()
   })
 
-  // Escape (one level out) and background double-click (reset to root) both return a
-  // depth-1 zoomed view to the full chart; identical setup + assertion, only the trigger differs
+  // every zoom-out trigger returns a depth-1 zoomed view to the full chart
   test.each<[string, (plot: HTMLElement) => Promise<void>]>([
+    [`center circle click`, (plot) => fire(plot.querySelector(`.center-circle`))],
+    [`center label click`, (plot) => fire(plot.querySelector(`.center-label`))],
     [
       `Escape key`,
       async (plot) => {
@@ -297,11 +316,17 @@ describe(`Sunburst zoom navigation`, () => {
       `background double-click`,
       (plot) => fire(plot.querySelector(`.arcs`), mouse(`dblclick`)),
     ],
-  ])(`%s zooms a depth-1 view back to the root`, async (_name, zoom_out) => {
-    const plot = await mount_sized_sunburst({ data: tree, zoom_root_id: `A` })
+  ])(`%s zooms a depth-1 view back to the root`, async (trigger, zoom_out) => {
+    const on_zoom = vi.fn()
+    const plot = await mount_sized_sunburst({ data: tree, zoom_root_id: `A`, on_zoom })
     expect(n_arcs(plot)).toBe(2)
     await zoom_out(plot)
     expect(n_arcs(plot)).toBe(4)
+    if (trigger === `center circle click`) {
+      expect(on_zoom).toHaveBeenLastCalledWith({ root: null })
+      // back at the root, the center is no longer an interactive zoom-out target
+      expect(plot.querySelector(`.center-circle`)?.getAttribute(`role`)).toBeNull()
+    }
   })
 
   test(`arrow keys move focus between siblings and across levels`, async () => {
@@ -310,6 +335,7 @@ describe(`Sunburst zoom navigation`, () => {
     for (const [arrow, from, to] of [
       [`ArrowRight`, `A`, `B`], // next sibling
       [`ArrowRight`, `B`, `A`], // wraps around
+      [`ArrowLeft`, `B`, `A`], // previous sibling
       [`ArrowDown`, `A`, `A1`], // first child
       [`ArrowUp`, `A1`, `A`], // back to parent
     ] as const) {
@@ -318,20 +344,30 @@ describe(`Sunburst zoom navigation`, () => {
     }
   })
 
-  test(`roving tabindex puts exactly one arc in the tab order`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree })
-    const tab_stops = [...plot.querySelectorAll(`.arcs path`)].filter(
-      (el) => el.getAttribute(`tabindex`) === `0`,
-    )
-    expect(tab_stops).toHaveLength(1)
+  test(`roving tabindex keeps exactly one arc in the tab order and follows focus`, async () => {
+    // on_node_click makes every arc (including leaves) clickable/focusable
+    const plot = await mount_sized_sunburst({ data: tree, on_node_click: vi.fn() })
+    const tab_stops = () =>
+      [...plot.querySelectorAll(`.arcs path`)].filter(
+        (el) => el.getAttribute(`tabindex`) === `0`,
+      )
+    expect(tab_stops()).toEqual([arc_path(plot, `A`)]) // first clickable arc
+    await fire(arc_path(plot, `B`), new FocusEvent(`focusin`, { bubbles: true }))
+    expect(tab_stops()).toEqual([arc_path(plot, `B`)]) // tab stop follows focus
   })
 })
 
 describe(`Sunburst display options`, () => {
-  test(`label_text=percent renders percentages of the total`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree, label_text: `percent` })
+  // tree fixture: A=10 (50%), A1=4 (20%), A2=6 (30%), B=10 (50%)
+  test.each([
+    [`percent`, `50%`],
+    [`value`, `4`],
+    [`label+value`, `A1 4`],
+    [`label+percent`, `A1 20%`],
+  ] as const)(`label_text=%s renders %j`, async (label_text, expected) => {
+    const plot = await mount_sized_sunburst({ data: tree, label_text })
     const labels = [...plot.querySelectorAll(`.arc-label`)].map((el) => el.textContent?.trim())
-    expect(labels).toContain(`50%`) // A and B are each half the total
+    expect(labels).toContain(expected)
   })
 
   test(`color_values colors arcs from the colormap and renders a colorbar`, async () => {
