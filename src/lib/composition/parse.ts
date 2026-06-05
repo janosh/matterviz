@@ -115,9 +115,9 @@ export const parse_formula = (formula: string): CompositionType => {
     const multiplier = coeff ? parseFloat(coeff) : 1
     const expanded = expand_parentheses(segment.slice(coeff?.length ?? 0))
     for (const match of expanded.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
-      const [element, count] = [match[1], parse_count(match[2])]
+      const [, element, count] = match
       if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
-      composition[element] = (composition[element] ?? 0) + count * multiplier
+      composition[element] = (composition[element] ?? 0) + parse_count(count) * multiplier
     }
   }
   return composition

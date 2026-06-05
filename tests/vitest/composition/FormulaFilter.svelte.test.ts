@@ -1024,38 +1024,19 @@ describe(`FormulaFilter`, () => {
       )
     })
 
-    test(`invalid exact formulas emit invalid validation state`, () => {
+    test.each([
+      [`Xx2`, `Invalid element symbol`],
+      // unbalanced parentheses must neither hang nor escape input handling
+      [`Ca(OH2`, `parentheses`],
+      [`Fe(`, `parentheses`],
+      [`Mg()O2`, `parentheses`],
+    ])(`invalid exact formula %s emits invalid validation state`, (raw_input, msg_part) => {
       const on_validation = vi.fn()
       mount_filter({ value: ``, on_validation })
-      submit_input(`Xx2`)
-
-      const last_validation = on_validation.mock.calls[
-        on_validation.mock.calls.length - 1
-      ][0] as {
-        state: string
-        message: string | null
-      }
-      expect(last_validation.state).toBe(`invalid`)
-      expect(last_validation.message).toContain(`Invalid element symbol`)
+      submit_input(raw_input)
+      expect(on_validation.mock.lastCall?.[0].state).toBe(`invalid`)
+      expect(on_validation.mock.lastCall?.[0].message).toContain(msg_part)
       expect(doc_query(`.formula-filter`).classList.contains(`invalid`)).toBe(true)
-    })
-
-    test.each([`Ca(OH2`, `Fe(`, `Mg()O2`])(
-      `unbalanced parentheses %s neither hang nor escape input handling`,
-      (raw_input) => {
-        const on_validation = vi.fn()
-        mount_filter({ value: ``, on_validation })
-        submit_input(raw_input)
-        expect(on_validation.mock.lastCall?.[0].state).toBe(`invalid`)
-        expect(on_validation.mock.lastCall?.[0].message).toContain(`parentheses`)
-      },
-    )
-
-    test(`hydrate dot survives unicode normalization (deleting it would glue digits)`, () => {
-      const onchange = vi.fn()
-      mount_filter({ value: ``, onchange })
-      submit_input(`CuSO4·5H2O`)
-      expect(onchange).toHaveBeenLastCalledWith(`CuH10O9S`, `exact`)
     })
 
     test(`invalid non-exact tokens are not silently dropped on submit`, () => {
@@ -1085,19 +1066,11 @@ describe(`FormulaFilter`, () => {
     })
 
     test.each([
-      {
-        case_name: `normalize_exact=false preserves user exact formula order`,
-        props: { normalize_exact: false },
-        input: `NaCl`,
-        expected: `NaCl`,
-      },
-      {
-        case_name: `unicode subscripts normalize in exact mode`,
-        props: {},
-        input: `Fe₂O₃`,
-        expected: `Fe2O3`,
-      },
-    ])(`$case_name`, ({ props, input, expected }) => {
+      [`normalize_exact=false preserves order`, { normalize_exact: false }, `NaCl`, `NaCl`],
+      [`unicode subscripts normalize`, {}, `Fe₂O₃`, `Fe2O3`],
+      // deleting the hydrate dot in normalization would glue digits: CuSO45H2O
+      [`hydrate dot survives normalization`, {}, `CuSO4·5H2O`, `CuH10O9S`],
+    ])(`exact mode: %s`, (_name, props, input, expected) => {
       const onchange = vi.fn()
       mount_filter({ value: ``, onchange, ...props })
       submit_input(input)

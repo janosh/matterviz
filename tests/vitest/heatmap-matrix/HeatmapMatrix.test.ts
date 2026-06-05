@@ -186,18 +186,13 @@ describe(`values and colors`, () => {
   })
 
   test(`color_overrides takes precedence over computed color`, () => {
-    mount(HeatmapMatrix, {
-      target: document.body,
-      props: {
-        x_items: make_items([`A`, `B`]),
-        y_items: make_items([`X`]),
-        values: [[0.2, 0.8]],
-        color_overrides: {
-          [make_color_override_key(`B`, `X`)]: `rgb(1, 2, 3)`,
-        },
-      },
+    mount_matrix({
+      x_items: make_items([`A`, `B`]),
+      y_items: make_items([`X`]),
+      values: [[0.2, 0.8]],
+      color_overrides: { [make_color_override_key(`B`, `X`)]: `rgb(1, 2, 3)` },
     })
-    const cells = document.querySelectorAll<HTMLElement>(`.cell:not(.empty)`)
+    const cells = get_data_cells()
     expect(cells[1].style.backgroundColor).toBe(`rgb(1, 2, 3)`)
     expect(cells[0].style.backgroundColor).not.toBe(`rgb(1, 2, 3)`)
   })
@@ -222,15 +217,12 @@ describe(`values and colors`, () => {
   })
 
   test(`log mode safely handles non-positive color range minimum`, () => {
-    mount(HeatmapMatrix, {
-      target: document.body,
-      props: {
-        x_items: make_items([`A`]),
-        y_items: make_items([`X`]),
-        values: [[1]],
-        log: true,
-        color_scale_range: [-10, 10],
-      },
+    mount_matrix({
+      x_items: make_items([`A`]),
+      y_items: make_items([`X`]),
+      values: [[1]],
+      log: true,
+      color_scale_range: [-10, 10],
     })
     const cell = doc_query(`.cell:not(.empty)`)
     expect(cell.style.backgroundColor).not.toBe(``)

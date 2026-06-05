@@ -73,40 +73,24 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
         two_theta_range: [0, 90],
       })
 
-      // Angle tolerance (degrees)
-      const angle_tol = 5e-3
-      const d_rtol = 1e-6
-      const d_atol = 1e-6
+      const angle_tol = 5e-3 // degrees
+      const has_close = (arr: number[], target: number, tol: number) =>
+        arr.some((val) => Math.abs(val - target) <= tol)
 
-      // Compare peak positions in a set-wise manner: each expected peak should
-      // have a computed counterpart within tolerance (independent of intensity filtering)
-      const has_close = (arr: number[], target: number, tol: number): boolean => {
-        for (let idx = 0; idx < arr.length; idx++) {
-          if (Math.abs(arr[idx] - target) <= tol) return true
-        }
-        return false
-      }
-      // Focus on strongest expected peaks by intensity to avoid discrepancies from
-      // low-intensity filtering differences between implementations
-      const top_n = Math.min(200, expected.x.length)
+      // Compare peak positions set-wise over the strongest expected peaks (by intensity)
+      // to avoid discrepancies from low-intensity filtering differences between implementations
       const top_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
-        .sort((i, j) => expected.y[j] - expected.y[i])
-        .slice(0, top_n)
-        .sort((a, b) => a - b)
-      let matched = 0
-      for (let ii = 0; ii < top_indices.length; ii++) {
-        const idx = top_indices[ii]
-        const angle = expected.x[idx]
-        if (has_close(computed.x, angle, angle_tol)) matched++
-      }
-      const min_match_ratio = 0.95
-      expect(matched / top_indices.length).toBeGreaterThanOrEqual(min_match_ratio)
+        .sort((i1, i2) => expected.y[i2] - expected.y[i1])
+        .slice(0, Math.min(200, expected.x.length))
+      const matched = top_indices.filter((idx) =>
+        has_close(computed.x, expected.x[idx], angle_tol),
+      ).length
+      expect(matched / top_indices.length).toBeGreaterThanOrEqual(0.95)
 
       // The 20 strongest expected peaks must also match in normalized intensity (both
       // patterns scaled to max=100). Regression for the missing Z − 41.78214·s² prefactor
       // in the atomic scattering factor, which skewed relative peak heights (38.3 vs 51.0)
-      const top_20 = [...top_indices].sort((i1, i2) => expected.y[i2] - expected.y[i1])
-      for (const idx of top_20.slice(0, 20)) {
+      for (const idx of top_indices.slice(0, 20)) {
         const diffs = computed.x.map((x_val) => Math.abs(x_val - expected.x[idx]))
         const nearest = diffs.indexOf(Math.min(...diffs))
         if (diffs[nearest] > angle_tol) continue // position check covers misses
@@ -114,21 +98,14 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
         expect(y_err, `y at 2θ=${expected.x[idx].toFixed(3)}`).toBeLessThanOrEqual(1)
       }
 
-      // Compare d-spacings if present, over overlapping range only
-      if (expected.d_hkls && computed.d_hkls) {
-        const top_d_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
-          .sort((i, j) => expected.y[j] - expected.y[i])
-          .slice(0, Math.min(200, expected.d_hkls.length))
-          .sort((a, b) => a - b)
-        let d_matched = 0
-        for (let ii = 0; ii < top_d_indices.length; ii++) {
-          const idx = top_d_indices[ii]
-          const d_val = expected.d_hkls[idx]
-          const tol = d_atol + d_rtol * Math.abs(d_val)
-          if (has_close(computed.d_hkls, d_val, tol)) d_matched++
-        }
-        const min_d_match_ratio = 0.95
-        expect(d_matched / top_d_indices.length).toBeGreaterThanOrEqual(min_d_match_ratio)
+      // Compare d-spacings if present (fixture consistency test asserts d_hkls aligns with x)
+      const computed_d = computed.d_hkls
+      if (expected.d_hkls && computed_d) {
+        const expected_d = expected.d_hkls
+        const d_matched = top_indices.filter((idx) =>
+          has_close(computed_d, expected_d[idx], 1e-6 + 1e-6 * Math.abs(expected_d[idx])),
+        ).length
+        expect(d_matched / top_indices.length).toBeGreaterThanOrEqual(0.95)
       }
     },
   )

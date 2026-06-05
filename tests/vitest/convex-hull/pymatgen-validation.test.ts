@@ -40,56 +40,41 @@ function to_phase_data(entry: PymatgenEntry): PhaseData {
 
 describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
   const all_entries = reference.entries.map(to_phase_data)
+  const results = calculate_e_above_hull(all_entries, all_entries)
 
   test(`reference data has expected structure`, () => {
     expect(reference.elements).toEqual([`Li`, `Na`, `K`, `Rb`, `Cs`])
     expect(reference.entries).toHaveLength(12)
     expect(reference.n_stable).toBe(6)
     expect(reference.n_unstable).toBe(6)
+    // Every element must have an elemental reference entry in the fixture
+    const unary_elements = reference.entries
+      .filter((entry) => Object.keys(entry.composition).length === 1)
+      .flatMap((entry) => Object.keys(entry.composition))
+    expect(unary_elements.toSorted()).toEqual(reference.elements.toSorted())
   })
 
   // Direct comparison of e_above_hull against pymatgen's PhaseDiagram values
   test.each(reference.entries)(`e_above_hull matches pymatgen for $id`, (entry) => {
-    const results = calculate_e_above_hull(all_entries, all_entries)
     expect(results[entry.id]).toBeCloseTo(entry.e_above_hull, 3)
     expect(results[entry.id] < 1e-6).toBe(entry.is_stable)
-  })
-
-  // Elemental references should always have e_above_hull = 0
-  test.each(reference.elements)(`elemental %s has e_above_hull = 0`, (element) => {
-    const entry = reference.entries.find(
-      (reference_entry) =>
-        Object.keys(reference_entry.composition).length === 1 &&
-        element in reference_entry.composition,
-    )
-    if (!entry) throw new Error(`${element} not found`)
-    expect(calculate_e_above_hull(to_phase_data(entry), all_entries)).toBeCloseTo(0, 10)
-  })
-
-  test(`single entry mode matches batch mode`, () => {
-    const batch_results = calculate_e_above_hull(all_entries, all_entries)
-    for (const entry of reference.entries) {
-      const single_result = calculate_e_above_hull(to_phase_data(entry), all_entries)
-      expect(single_result).toBeCloseTo(batch_results[entry.id], 10)
+    expect(results[entry.id]).toBeGreaterThanOrEqual(0) // valid: non-NaN, non-negative
+    // Elemental references sit exactly on the hull
+    if (Object.keys(entry.composition).length === 1) {
+      expect(results[entry.id]).toBeCloseTo(0, 10)
     }
   })
 
-  // All results should be valid (non-NaN, non-negative)
-  test(`returns valid results for all entries`, () => {
-    const results = calculate_e_above_hull(all_entries, all_entries)
-
+  test(`single entry mode matches batch mode`, () => {
     for (const entry of reference.entries) {
-      const result = results[entry.id]
-      expect(Number.isNaN(result)).toBe(false)
-      expect(result).toBeGreaterThanOrEqual(0)
+      const single_result = calculate_e_above_hull(to_phase_data(entry), all_entries)
+      expect(single_result).toBeCloseTo(results[entry.id], 10)
     }
   })
 
   // Test that results are monotonic in energy for same-composition entries
   // (entries with higher energy should have higher or equal e_above_hull)
   test(`e_above_hull is monotonic in energy for same composition`, () => {
-    const results = calculate_e_above_hull(all_entries, all_entries)
-
     // Group entries by composition key
     const by_composition = new Map<string, PymatgenEntry[]>()
     for (const entry of reference.entries) {

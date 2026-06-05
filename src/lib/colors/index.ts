@@ -1,4 +1,4 @@
-import { rgb } from 'd3-color'
+import { color as d3_color, rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { Vec3 } from '$lib/math'
 import type { ELEM_SYMBOLS } from '$lib/labels'
@@ -78,32 +78,13 @@ export const ELEMENT_COLOR_SCHEMES = {
 export type ColorSchemeName = keyof typeof ELEMENT_COLOR_SCHEMES
 export const default_element_colors = { ...vesta_hex }
 
-// Hex colors and rgb/rgba, hsl/hsla, color(), var() functions (incomplete prefixes like `rgb` fail)
-const COLOR_FN_REGEX =
-  /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\))$/i
-
-// Validate a bare word (e.g. `red`) via the browser's CSS parser, which rejects arbitrary
-// strings like `pending`. Cached since is_color runs per-cell in large tables. SSR has no
-// `document`, so bare named colors aren't recognized server-side (functional forms still are).
-const named_color_cache = new Map<string, boolean>()
-const is_css_named_color = (word: string): boolean => {
-  if (typeof document === `undefined`) return false
-  let is_named = named_color_cache.get(word)
-  if (is_named === undefined) {
-    const { style } = document.createElement(`span`)
-    style.color = word
-    is_named = style.color !== ``
-    named_color_cache.set(word, is_named)
-  }
-  return is_named
-}
-
-// Helper function to detect if a value is a color string
+// Detect if a value is a CSS color string. d3-color parses hex, rgb()/rgba(),
+// hsl()/hsla(), and named colors case-insensitively, rejecting arbitrary words like
+// `pending`. It doesn't parse var()/color()/currentcolor, so match those explicitly.
 export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
   const trimmed = val.trim()
-  // bare words must be real CSS named colors, not arbitrary strings like `pending`
-  return COLOR_FN_REGEX.test(trimmed) || is_css_named_color(trimmed.toLowerCase())
+  return /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) || d3_color(trimmed) !== null
 }
 
 export const PLOT_COLORS = [

@@ -119,7 +119,9 @@ function parse_coordinate_line(line: string): number[] {
     tokens = sanitized.split(/\s+/)
   }
 
-  if (tokens.length < 3) throw new Error(`Insufficient coordinates in line: ${line}`)
+  if (tokens.length < 3) {
+    throw new Error(`Insufficient coordinates in line: ${line}`)
+  }
 
   return tokens.slice(0, 3).map(parse_coordinate)
 }
@@ -137,17 +139,15 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   return fallback
 }
 
-type OptimadeSpecies = NonNullable<OptimadeStructure[`attributes`][`species`]>[number]
-
 // Per OPTIMADE spec, species_at_sites holds species NAMES (e.g. 'Si1') resolved via the
 // species list: highest-concentration entry in chemical_symbols wins, non-element entries
 // like 'vacancy' are skipped, and unresolved names are treated as element symbols.
 function resolve_optimade_element(
   species_name: string,
-  species_map: Map<string, OptimadeSpecies>,
+  species_list: OptimadeStructure[`attributes`][`species`],
   index: number,
 ): ElementSymbol {
-  const spec = species_map.get(species_name)
+  const spec = species_list?.find((entry) => entry.name === species_name)
   let best: { symbol: ElementSymbol; conc: number } | undefined
   for (const [sym_idx, symbol] of (spec?.chemical_symbols ?? []).entries()) {
     if (!is_known_element_symbol(symbol)) continue
@@ -340,24 +340,16 @@ export function parse_poscar(content: string): ParsedStructure | null {
               selective_dynamics = [tokens[3] === `T`, tokens[4] === `T`, tokens[5] === `T`]
             }
           }
-          let xyz: Vec3
-          let abc: Vec3
-
-          if (is_direct) {
-            // Store fractional coordinates, wrapping to [0, 1) range
-            abc = wrap_to_unit_cell(coords)
-            xyz = poscar_frac_to_cart(abc)
-          } else {
-            // Already Cartesian, scale if needed
-            xyz = apply_axis_scale(coords)
-            const raw_abc = poscar_cart_to_frac
-              ? poscar_cart_to_frac(xyz)
-              : approximate_cart_to_frac(xyz, poscar_axis_lengths)
-            // Wrap fractional coordinates to [0, 1) range
-            abc = wrap_to_unit_cell(raw_abc)
-            // Sync xyz with wrapped abc (skip approximate path for singular lattices)
-            if (poscar_cart_to_frac) xyz = poscar_frac_to_cart(abc)
-          }
+          // Cartesian input is scaled then converted to fractional (axis-length fallback
+          // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
+          // both stay consistent (singular Cartesian keeps the scaled input as xyz)
+          const cart = is_direct ? null : apply_axis_scale(coords)
+          const raw_abc = cart
+            ? (poscar_cart_to_frac?.(cart) ??
+              approximate_cart_to_frac(cart, poscar_axis_lengths))
+            : coords
+          const abc = wrap_to_unit_cell(raw_abc)
+          const xyz = cart && !poscar_cart_to_frac ? cart : poscar_frac_to_cart(abc)
 
           const site: Site = {
             species: [{ element, occu: 1, oxidation_state: 0 }],
@@ -656,12 +648,16 @@ const extract_cif_cell_parameters = (text: string, type: string, strict = true):
       const sans_comment = line.replace(/\s#.*$/, ``)
       const tokens = sans_comment.split(/\s+/).filter(Boolean)
       if (tokens.length < 2) {
-        if (strict) throw new Error(`Invalid CIF cell parameter line format: ${line}`)
+        if (strict) {
+          throw new Error(`Invalid CIF cell parameter line format: ${line}`)
+        }
         return null
       }
       const value = parseFloat(tokens[1].split(`(`)[0])
       if (isNaN(value)) {
-        if (strict) throw new Error(`Invalid CIF cell parameter in line: ${line}`)
+        if (strict) {
+          throw new Error(`Invalid CIF cell parameter in line: ${line}`)
+        }
         return null // Return null for invalid values in non-strict mode
       }
       return value
@@ -1034,7 +1030,13 @@ export function parse_cif(
           seen_site_keys.add(key)
           const xyz = frac_to_cart(abc)
           all_sites.push({
-            species: [{ element, occu: equiv_atom.occupancy, oxidation_state: 0 }],
+            species: [
+              {
+                element,
+                occu: equiv_atom.occupancy,
+                oxidation_state: 0,
+              },
+            ],
             abc,
             xyz,
             label: equiv_atom.id,
@@ -1082,7 +1084,10 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   // Calculate lattice parameters
   const calculated_lattice_params = math.calc_lattice_params(lattice_matrix)
 
-  return { sites, lattice: { matrix: lattice_matrix, ...calculated_lattice_params } }
+  return {
+    sites,
+    lattice: { matrix: lattice_matrix, ...calculated_lattice_params },
+  }
 }
 
 export type CellType =
@@ -1486,9 +1491,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     if (lattice_matrix && !optimade_exact_cart_to_frac) {
       console.warn(`Failed to create exact coordinate converter for OPTIMADE structure`)
     }
-    const optimade_species_map = new Map<string, OptimadeSpecies>(
-      Array.isArray(attrs.species) ? attrs.species.map((spec) => [spec.name, spec]) : [],
-    )
+    const optimade_species = Array.isArray(attrs.species) ? attrs.species : undefined
     const sites: Site[] = []
     for (let idx = 0; idx < positions.length; idx++) {
       const pos = positions[idx]
@@ -1502,7 +1505,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
         continue
       }
 
-      const element = resolve_optimade_element(element_symbol, optimade_species_map, idx)
+      const element = resolve_optimade_element(element_symbol, optimade_species, idx)
 
       // Calculate fractional coordinates if lattice is available
       const abc: Vec3 = optimade_cart_to_frac ? optimade_cart_to_frac(xyz) : [0, 0, 0]
@@ -1605,8 +1608,6 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
     ]
     const lattice_params = math.calc_lattice_params(lattice_matrix)
 
-    // Build species lookup for site properties (mass, concentration, etc.)
-    const species_map = new Map(species?.map((spec) => [spec.name, spec]))
     const crystal_cart_to_frac =
       try_create_cart_to_frac(lattice_matrix) ??
       ((xyz: Vec3): Vec3 =>
@@ -1615,13 +1616,13 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
     const sites = cartesian_site_positions.map((pos, idx) => {
       const element_symbol = species_at_sites[idx]
       if (!element_symbol) throw new Error(`Missing species for site ${idx}`)
-      const element = resolve_optimade_element(element_symbol, species_map, idx)
+      const element = resolve_optimade_element(element_symbol, species, idx)
 
       const xyz = vec3_from_values(pos, `OPTIMADE atom position ${idx + 1}`)
       const abc: Vec3 = crystal_cart_to_frac ? crystal_cart_to_frac(xyz) : [0, 0, 0]
 
       // Extract mass/concentration from species data
-      const spec = species_map.get(element_symbol)
+      const spec = species?.find((entry) => entry.name === element_symbol)
       const site_props: Record<string, unknown> = {}
       if (spec?.mass?.[0] !== undefined) site_props.mass = spec.mass[0]
       if (spec?.concentration?.[0] !== undefined && spec.concentration[0] !== 1) {
@@ -1638,7 +1639,11 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
 
     return {
       sites,
-      lattice: { matrix: lattice_matrix, ...lattice_params, pbc: [true, true, true] },
+      lattice: {
+        matrix: lattice_matrix,
+        ...lattice_params,
+        pbc: [true, true, true],
+      },
       id: optimade_structure.id,
       properties,
     }
@@ -1653,7 +1658,9 @@ export function is_structure_file(filename: string): boolean {
   const name = filename.toLowerCase()
 
   // Trajectory-only formats (can't be structures)
-  if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
+  if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) {
+    return false
+  }
 
   // Always structure formats
   if (STRUCTURE_EXTENSIONS_REGEX.test(name)) return true
@@ -1663,7 +1670,9 @@ export function is_structure_file(filename: string): boolean {
   if (/\.(xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
 
   // Keyword-based detection for YAML/XML
-  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
+  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) {
+    return true
+  }
 
   // More restrictive keyword detection for JSON files
   if (
@@ -1671,8 +1680,9 @@ export function is_structure_file(filename: string): boolean {
     STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
     !TRAJ_KEYWORDS_REGEX.test(name) &&
     !CONFIG_DIRS_REGEX.test(name)
-  )
+  ) {
     return true
+  }
 
   // Compressed files - check base filename recursively
   if (COMPRESSION_EXTENSIONS_REGEX.test(name)) {

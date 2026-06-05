@@ -222,35 +222,20 @@ describe(`compute_convex_hull`, () => {
     ).toThrow(/Need ≥4 vertices/)
   })
 
+  // All 8 corners of the [-1, 1]³ cube
+  const cube_verts = [-1, 1].flatMap((z) =>
+    [-1, 1].flatMap((y) => [-1, 1].map((x) => [x, y, z] as Vec3)),
+  )
+  const tetrahedron_verts: Vec3[] = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [0.5, Math.sqrt(3) / 2, 0],
+    [0.5, Math.sqrt(3) / 6, Math.sqrt(2 / 3)],
+  ]
+
   test.each([
-    [
-      `tetrahedron`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0.5, Math.sqrt(3) / 2, 0],
-        [0.5, Math.sqrt(3) / 6, Math.sqrt(2 / 3)],
-      ],
-      4,
-      4,
-      6,
-    ],
-    [
-      `cube`,
-      [
-        [-1, -1, -1],
-        [1, -1, -1],
-        [-1, 1, -1],
-        [1, 1, -1],
-        [-1, -1, 1],
-        [1, -1, 1],
-        [-1, 1, 1],
-        [1, 1, 1],
-      ],
-      8,
-      12,
-      12,
-    ],
+    [`tetrahedron`, tetrahedron_verts, 4, 4, 6],
+    [`cube`, cube_verts, 8, 12, 12],
   ] as [string, Vec3[], number, number, number][])(
     `%s: %d vertices, %d faces, %d edges`,
     (_, vertices, v_count, f_count, e_count) => {
@@ -262,18 +247,8 @@ describe(`compute_convex_hull`, () => {
   )
 
   test(`edge_sharp_angle_deg controls edge filtering`, () => {
-    const cube: Vec3[] = [
-      [-1, -1, -1],
-      [1, -1, -1],
-      [-1, 1, -1],
-      [1, 1, -1],
-      [-1, -1, 1],
-      [1, -1, 1],
-      [-1, 1, 1],
-      [1, 1, 1],
-    ]
-    const strict = compute_convex_hull(cube, 1)
-    const loose = compute_convex_hull(cube, 45)
+    const strict = compute_convex_hull(cube_verts, 1)
+    const loose = compute_convex_hull(cube_verts, 45)
     expect(strict.edges.length).toBeGreaterThan(0)
     expect(loose.edges.length).toBeGreaterThan(0)
   })
@@ -498,30 +473,20 @@ describe(`fractional_to_cartesian_rotation`, () => {
     },
   )
 
+  const singular_w: Matrix3x3 = [
+    [0, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  const zero_mat: Matrix3x3 = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
   test.each([
-    {
-      name: `singular W`,
-      W: [
-        [0, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ] as Matrix3x3,
-      k: k_lattice,
-    },
-    {
-      name: `singular k_lattice`,
-      W: IDENTITY_MAT,
-      k: [
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-      ] as Matrix3x3,
-    },
-  ])(`returns identity matrix for $name`, ({ W, k }) => {
-    expect(fractional_to_cartesian_rotation(W, k)).toEqual([
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ])
+    [`singular W`, singular_w, k_lattice],
+    [`singular k_lattice`, IDENTITY_MAT, zero_mat],
+  ] as [string, Matrix3x3, Matrix3x3][])(`returns identity matrix for %s`, (_, W, k) => {
+    expect(fractional_to_cartesian_rotation(W, k)).toEqual(IDENTITY_MAT)
   })
 })

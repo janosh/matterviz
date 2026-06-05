@@ -423,10 +423,12 @@ describe(`calculate_e_above_hull`, () => {
       ...Object.keys(equimolar).map((el) => make_quinary_elem(el)),
       make_phase(equimolar, -2.0, { entry_id: `stable-quinary` }),
     ]
-    // Query at same composition with e_form = -0.5 eV/atom sits 0.5 eV/atom above the
-    // stable compound. A degenerate hull would wrongly report 0 (elemental tie-plane).
+    // Same-composition queries sit (e_form + 1.0) eV/atom above the stable compound.
+    // A degenerate hull would wrongly report max(0, e_form) off the elemental tie-plane.
     const query = make_phase(equimolar, -1.5, { entry_id: `above-hull` })
     expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0.5, 5)
+    const above_tie = make_phase(equimolar, -0.8, { entry_id: `above-tie-plane` })
+    expect(calculate_e_above_hull(above_tie, refs)).toBeCloseTo(1.2, 5)
   })
 
   test.each([
@@ -443,23 +445,6 @@ describe(`calculate_e_above_hull`, () => {
       expect(calculate_e_above_hull(below, refs)).toBeCloseTo(0, 10)
     },
   )
-
-  test(`quinary: interior point above hull has positive distance`, () => {
-    const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
-    refs.push(
-      make_phase(
-        { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 } as Partial<Record<ElementSymbol, number>>,
-        -1.5,
-        { entry_id: `stable-interior` },
-      ),
-    )
-    const unstable = make_phase(
-      { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 } as Partial<Record<ElementSymbol, number>>,
-      -0.8,
-      { entry_id: `unstable-interior` },
-    )
-    expect(calculate_e_above_hull(unstable, refs)).toBeGreaterThan(0)
-  })
 
   test.each([
     { id: `Li-1`, energy: -1.0, expected: 0 },

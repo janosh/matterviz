@@ -10,24 +10,30 @@ import {
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 
+// Parse the 7-line XDATCAR header at lines[start]: title, scale factor, 3 lattice rows
+// (multiplied by scale), element names, element counts
+function parse_xdatcar_header(lines: string[], start: number) {
+  const scale = parseFloat(lines[start + 1])
+  const rows = lines.slice(start + 2, start + 5).map((line) =>
+    line
+      .trim()
+      .split(/\s+/)
+      .map((val) => parseFloat(val) * scale),
+  )
+  const names = lines[start + 5].trim().split(/\s+/)
+  const counts = lines[start + 6].trim().split(/\s+/).map(Number)
+  return { scale, rows, names, counts }
+}
+
 export function parse_vasp_xdatcar(content: string, filename?: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
-  const scale = parseFloat(lines[1])
-  if (isNaN(scale)) throw new Error(`Invalid scale factor`)
+  const header = parse_xdatcar_header(lines, 0)
+  const { names: element_names, counts: element_counts } = header
+  if (isNaN(header.scale)) throw new Error(`Invalid scale factor`)
+  let lattice_matrix = validate_3x3_matrix(header.rows)
 
-  let lattice_matrix = validate_3x3_matrix(
-    lines.slice(2, 5).map((line) =>
-      line
-        .trim()
-        .split(/\s+/)
-        .map((component) => parseFloat(component) * scale),
-    ),
-  )
-
-  const element_names = lines[5].trim().split(/\s+/)
-  const element_counts = lines[6].trim().split(/\s+/).map(Number)
   if (element_names.length !== element_counts.length) {
     throw new Error(
       `XDATCAR element names/counts mismatch: names=${element_names.length}, counts=${element_counts.length}`,
@@ -42,13 +48,9 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
       `XDATCAR contains invalid element counts: expected finite positive integers`,
     )
   }
-  const validated_element_names = element_names.map((name) => {
-    if (!is_valid_element_symbol(name)) {
-      throw new Error(`Invalid element symbol in XDATCAR: ${name}`)
-    }
-    return name
-  })
-  let elements: ElementSymbol[] = validated_element_names.flatMap((name, idx) =>
+  const bad_element = element_names.find((name) => !is_valid_element_symbol(name))
+  if (bad_element) throw new Error(`Invalid element symbol in XDATCAR: ${bad_element}`)
+  let elements: ElementSymbol[] = element_names.flatMap((name, idx) =>
     Array(element_counts[idx]).fill(name),
   )
 
@@ -64,28 +66,20 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
 
     // Variable-cell runs (NPT/ISIF=3) repeat the full 7-line header before each configuration
     if (config_idx - line_idx >= 7) {
-      const hdr = config_idx - 7
-      const new_scale = parseFloat(lines[hdr + 1])
-      const rows = lines.slice(hdr + 2, hdr + 5).map((line) =>
-        line
-          .trim()
-          .split(/\s+/)
-          .map((val) => parseFloat(val) * new_scale),
-      )
-      const names = lines[hdr + 5].trim().split(/\s+/)
-      const counts = lines[hdr + 6].trim().split(/\s+/).map(Number)
+      const hdr = parse_xdatcar_header(lines, config_idx - 7)
       if (
-        Number.isFinite(new_scale) &&
-        rows.every((row) => row.length === 3 && row.every(Number.isFinite))
+        Number.isFinite(hdr.scale) &&
+        hdr.rows.every((row) => row.length === 3 && row.every(Number.isFinite))
       ) {
-        lattice_matrix = validate_3x3_matrix(rows)
+        lattice_matrix = validate_3x3_matrix(hdr.rows)
         frac_to_cart = math.create_frac_to_cart(lattice_matrix)
         if (
-          names.length === counts.length &&
-          names.every(is_valid_element_symbol) &&
-          counts.every((count) => Number.isInteger(count) && count > 0)
-        )
-          elements = names.flatMap((name, idx) => Array(counts[idx]).fill(name))
+          hdr.names.length === hdr.counts.length &&
+          hdr.names.every(is_valid_element_symbol) &&
+          hdr.counts.every((count) => Number.isInteger(count) && count > 0)
+        ) {
+          elements = hdr.names.flatMap((name, idx) => Array(hdr.counts[idx]).fill(name))
+        }
       }
     }
 

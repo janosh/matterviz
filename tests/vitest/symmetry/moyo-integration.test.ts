@@ -19,6 +19,9 @@ function get_structure(id: string) {
   return structure
 }
 
+const analyze = (id: string, symprec = 1e-4) =>
+  analyze_structure_symmetry(get_structure(id), { symprec })
+
 describe(`moyo-wasm integration`, () => {
   beforeAll(init_moyo_for_tests)
 
@@ -28,10 +31,7 @@ describe(`moyo-wasm integration`, () => {
     [`mp-1183085-Ac4Mg2-orthorhombic`, [`Ac`, `Mg`]],
     [`mp-1183089-Ac4Mg2-monoclinic`, [`Ac`, `Mg`]],
   ])(`%s Wyckoff table includes expected elements`, async (id, expected) => {
-    const sym_data = await analyze_structure_symmetry(get_structure(id), {
-      symprec: 1e-4,
-    })
-    const elements = wyckoff_positions_from_moyo(sym_data).map((pos) => pos.elem)
+    const elements = wyckoff_positions_from_moyo(await analyze(id)).map((pos) => pos.elem)
     expect(elements).toEqual(expect.arrayContaining(expected))
   })
 
@@ -43,9 +43,7 @@ describe(`moyo-wasm integration`, () => {
     [`mp-862690-Ac4-hexagonal`, 194],
     [`mp-1207297-Ac2Br2O1-tetragonal`, 123],
   ])(`%s has space group %i`, async (id, expected_sg) => {
-    const sym_data = await analyze_structure_symmetry(get_structure(id), {
-      symprec: 1e-4,
-    })
+    const sym_data = await analyze(id)
     expect(sym_data.number).toBe(expected_sg)
     expect(sym_data.hm_symbol).toBeDefined()
   })
@@ -55,10 +53,7 @@ describe(`moyo-wasm integration`, () => {
     [`mp-2`, 1],
     [`mp-1234`, 2],
   ])(`%s has %i unique Wyckoff positions`, async (id, expected_count) => {
-    const sym_data = await analyze_structure_symmetry(get_structure(id), {
-      symprec: 1e-4,
-    })
-    expect(wyckoff_positions_from_moyo(sym_data)).toHaveLength(expected_count)
+    expect(wyckoff_positions_from_moyo(await analyze(id))).toHaveLength(expected_count)
   })
 
   // Regression: moyo-wasm serializes operation.rotation as a flat 9-array in COLUMN-major
@@ -68,8 +63,7 @@ describe(`moyo-wasm integration`, () => {
     `%s: every symmetry op maps each site onto a symmetry-equivalent site`,
     async (id) => {
       const structure = get_structure(id)
-      if (!(`lattice` in structure)) throw new Error(`expected periodic structure`)
-      const sym_data = await analyze_structure_symmetry(structure, { symprec: 1e-4 })
+      const sym_data = await analyze(id) // throws if structure is not periodic
       expect(sym_data.operations.length).toBeGreaterThan(1)
 
       const frac_dist = (p1: Vec3, p2: Vec3) =>
@@ -90,10 +84,7 @@ describe(`moyo-wasm integration`, () => {
   )
 
   test(`highly oblique TlBiSe2 cell is handled correctly`, async () => {
-    const sym_data = await analyze_structure_symmetry(
-      get_structure(`TlBiSe2-highly-oblique-cell`),
-      { symprec: 1e-3 },
-    )
+    const sym_data = await analyze(`TlBiSe2-highly-oblique-cell`, 1e-3)
 
     expect(sym_data.number).toBeGreaterThan(0)
     expect(sym_data.std_cell.numbers.length).toBeGreaterThan(0)

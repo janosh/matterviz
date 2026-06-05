@@ -30,115 +30,126 @@ export function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefine
   return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
 }
 
+// Keys anchored at ^|\s and followed by [=:] so single-letter keys (E/V/P/T) don't match mid-word
+const make_pattern = (keys: string): RegExp =>
+  new RegExp(`(?:^|\\s)(?:${keys})\\s*[=:]\\s*([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)`, `i`)
+
+const METADATA_PATTERNS = {
+  energy: make_pattern(`energy|E|etot|total_energy`),
+  volume: make_pattern(`volume|vol|V`),
+  pressure: make_pattern(`pressure|press|P`),
+  temperature: make_pattern(`temperature|temp|T`),
+  force_max: make_pattern(`max_force|force_max|fmax`),
+  bandgap: make_pattern(`bandgap|E_gap|gap`),
+} as const
+
+// Extract step number and scalar properties from an (ext)XYZ comment line
+export function parse_xyz_comment_metadata(comment: string): {
+  step?: number
+  properties: Record<string, number>
+} {
+  const properties: Record<string, number> = {}
+  for (const [key, pattern] of Object.entries(METADATA_PATTERNS)) {
+    const match = pattern.exec(comment)
+    if (match) properties[key] = parseFloat(match[1])
+  }
+  const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i.exec(comment)?.[1]
+  return { step: step ? parseInt(step, 10) : undefined, properties }
+}
+
+type ForceStats = { forces: number[][]; force_max: number; force_norm: number }
+
+// Parse num_atoms atom lines starting at lines[start], reading species/pos/forces from
+// their Properties-declared column offsets; invalid atoms are skipped with a warning.
+// force_stats holds raw forces plus max and RMS force magnitudes when forces are present.
+export function parse_xyz_atom_lines(
+  lines: string[],
+  start: number,
+  num_atoms: number,
+  comment: string,
+  frame_label: string,
+): { elements: ElementSymbol[]; positions: number[][]; force_stats: ForceStats | null } {
+  const { species_col, pos_col, forces_col, min_cols } = parse_extxyz_columns(comment)
+  const elements: ElementSymbol[] = []
+  const positions: number[][] = []
+  const forces: number[][] = []
+
+  for (let idx = 0; idx < num_atoms; idx++) {
+    const parts = lines[start + idx]?.trim().split(/\s+/) ?? []
+    if (parts.length < min_cols) continue
+    const pos = parts.slice(pos_col, pos_col + 3).map(parseFloat)
+    if (!pos.every(Number.isFinite)) {
+      console.warn(
+        `Skipping XYZ atom with invalid coordinates in ${frame_label} at line ${
+          start + idx + 1
+        }`,
+      )
+      continue
+    }
+    const symbol = parts[species_col]
+    const element_symbol = coerce_element_symbol(symbol)
+    if (!element_symbol) {
+      console.warn(
+        `Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label}`,
+      )
+      continue
+    }
+    elements.push(element_symbol)
+    positions.push(pos)
+    if (forces_col >= 0 && parts.length >= forces_col + 3) {
+      const force_vec = parts.slice(forces_col, forces_col + 3).map(parseFloat)
+      if (force_vec.every(Number.isFinite)) forces.push(force_vec)
+    }
+  }
+
+  if (forces.length === 0) return { elements, positions, force_stats: null }
+  const mags = forces.map((force) => Math.hypot(...force))
+  const force_norm = Math.sqrt(mags.reduce((sum, mag) => sum + mag ** 2, 0) / mags.length)
+  return {
+    elements,
+    positions,
+    force_stats: { forces, force_max: Math.max(...mags), force_norm },
+  }
+}
+
 export function parse_xyz_trajectory(content: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
   let line_idx = 0
 
   while (line_idx < lines.length) {
-    if (!lines[line_idx]?.trim()) {
-      line_idx++
-      continue
-    }
-
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
     if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
-      line_idx++
+      line_idx++ // skip blank/invalid lines until the next frame's atom-count line
       continue
     }
 
-    const comment = lines[++line_idx] || ``
-    const metadata: Record<string, unknown> = {}
-
-    // Keys anchored at ^|\s and followed by [=:] so single-letter keys don't match mid-word
-    const extractors = {
-      step: /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i,
-      energy:
-        /(?:^|\s)(?:energy|E|etot|total_energy)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      volume: /(?:^|\s)(?:volume|vol|V)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      pressure: /(?:^|\s)(?:pressure|press|P)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      temperature:
-        /(?:^|\s)(?:temperature|temp|T)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      force_max:
-        /(?:^|\s)(?:max_force|force_max|fmax)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      bandgap: /(?:^|\s)(?:bandgap|E_gap|gap)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-    }
-
-    const step_match = extractors.step.exec(comment)
-    const step = step_match?.[1] ? parseInt(step_match[1], 10) : frames.length
-    Object.entries(extractors).forEach(([key, pattern]) => {
-      if (key === `step`) return
-      const match = pattern.exec(comment)
-      if (match) metadata[key] = parseFloat(match[1])
-    })
+    const comment = lines[line_idx + 1] || ``
+    const { step, properties } = parse_xyz_comment_metadata(comment)
+    const metadata: Record<string, unknown> = { ...properties }
 
     const lattice_matrix = parse_extxyz_lattice(comment)
     if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
 
-    // Parse atoms, reading each field from its Properties-declared column offset
-    const positions: number[][] = []
-    const elements: ElementSymbol[] = []
-    const forces: number[][] = []
-    const { species_col, pos_col, forces_col, min_cols } = parse_extxyz_columns(comment)
-
-    for (let idx = 0; idx < num_atoms; idx++) {
-      line_idx++
-      if (line_idx >= lines.length) break
-      const parts = lines[line_idx].trim().split(/\s+/)
-      if (parts.length >= min_cols) {
-        const x_coord = parseFloat(parts[pos_col])
-        const y_coord = parseFloat(parts[pos_col + 1])
-        const z_coord = parseFloat(parts[pos_col + 2])
-        if (
-          !Number.isFinite(x_coord) ||
-          !Number.isFinite(y_coord) ||
-          !Number.isFinite(z_coord)
-        ) {
-          console.warn(
-            `Skipping XYZ atom with invalid coordinates in frame ${frames.length} at line ${
-              line_idx + 1
-            }`,
-          )
-          continue
-        }
-
-        const raw_symbol = parts[species_col]
-        const element_symbol = coerce_element_symbol(raw_symbol)
-        if (!element_symbol) {
-          console.warn(
-            `Skipping XYZ atom with unknown element symbol "${raw_symbol}" in frame ${frames.length}`,
-          )
-          continue
-        }
-        elements.push(element_symbol)
-        positions.push([x_coord, y_coord, z_coord])
-
-        if (forces_col >= 0 && parts.length >= forces_col + 3) {
-          const force_vec = parts.slice(forces_col, forces_col + 3).map(parseFloat)
-          if (force_vec.every(Number.isFinite)) forces.push(force_vec)
-        }
-      }
-    }
-    if (forces.length > 0) {
-      metadata.forces = forces
-      const magnitudes = forces.map((force) => Math.hypot(...force))
-      metadata.force_max = Math.max(...magnitudes)
-      // Calculate RMS (root mean square) of force magnitudes
-      metadata.force_norm = Math.sqrt(
-        magnitudes.reduce((sum, mag) => sum + mag ** 2, 0) / magnitudes.length,
-      )
-    }
+    const { elements, positions, force_stats } = parse_xyz_atom_lines(
+      lines,
+      line_idx + 2,
+      num_atoms,
+      comment,
+      `frame ${frames.length}`,
+    )
+    Object.assign(metadata, force_stats)
     frames.push(
       create_trajectory_frame(
         positions,
         elements,
         lattice_matrix,
         lattice_matrix ? [true, true, true] : undefined,
-        step,
+        step ?? frames.length,
         metadata,
       ),
     )
-    line_idx++
+    line_idx += num_atoms + 2
   }
 
   return {

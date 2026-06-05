@@ -144,6 +144,9 @@ export function find_lowest_energy_unary_refs(
   return refs
 }
 
+// Result key for an entry: entry_id, falling back to its serialized composition
+const id_of = (entry: PhaseData) => entry.entry_id ?? JSON.stringify(entry.composition)
+
 // Calculate energy above hull (eV/atom). Missing pure element refs default to E_form = 0.
 export function calculate_e_above_hull(
   entry: PhaseData,
@@ -201,7 +204,7 @@ export function calculate_e_above_hull(
   if (arity === 1) {
     // Unary system
     for (const { entry, e_form } of interest_data) {
-      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      const id = id_of(entry)
       // For unary, e_above_hull is simply e_form (since stable state is 0)
       // Unless we have multiple polymorphs, in which case the hull is at min(e_form) which should be 0
       // But compute_e_form_per_atom already subtracts the stable unary reference energy.
@@ -234,7 +237,7 @@ export function calculate_e_above_hull(
     const lower_hull = compute_lower_hull_2d(hull_points)
 
     for (const { entry, e_form } of interest_data) {
-      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      const id = id_of(entry)
       if (typeof e_form !== `number`) {
         results[id] = NaN
         continue
@@ -270,14 +273,9 @@ export function calculate_e_above_hull(
         composition_to_barycentric_3d({ [el]: 1 }, elements),
         0,
       )
-      if (
-        !ref_points.some(
-          (point) =>
-            Math.hypot(point.x - corner.x, point.y - corner.y, point.z - corner.z) < 1e-9,
-        )
-      ) {
-        ref_points.push(corner)
-      }
+      const dist = (point: Point3D) =>
+        Math.hypot(point.x - corner.x, point.y - corner.y, point.z - corner.z)
+      if (!ref_points.some((point) => dist(point) < 1e-9)) ref_points.push(corner)
     }
 
     const hull_triangles = compute_lower_hull_triangles(ref_points)
@@ -286,7 +284,7 @@ export function calculate_e_above_hull(
     const degenerate_hull_3d = hull_triangles.length === 0 && ref_points.length >= arity
 
     for (const { entry, e_form } of interest_data) {
-      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      const id = id_of(entry)
       if (typeof e_form !== `number`) {
         results[id] = NaN
         continue
@@ -335,36 +333,29 @@ export function calculate_e_above_hull(
     // No facets despite enough refs → all coplanar at e_form = 0: use elemental tie-plane
     const degenerate_hull_4d = hull_tetrahedra.length === 0 && ref_points.length >= arity
     const interest_points: Point4D[] = []
-    const interest_indices: number[] = []
+    const idx_to_point_idx = new Map<number, number>() // entry idx -> point idx
 
     interest_data.forEach(({ entry, e_form }, idx) => {
-      if (typeof e_form === `number`) {
-        try {
-          const bary = composition_to_barycentric_4d(entry.composition, elements)
-          const tet = barycentric_to_tetrahedral(bary)
-          interest_points.push({ ...tet, w: e_form })
-          interest_indices.push(idx)
-        } catch {
-          // Skip
-        }
+      if (typeof e_form !== `number`) return
+      try {
+        const bary = composition_to_barycentric_4d(entry.composition, elements)
+        const tet = barycentric_to_tetrahedral(bary)
+        idx_to_point_idx.set(idx, interest_points.length)
+        interest_points.push({ ...tet, w: e_form })
+      } catch {
+        // Skip
       }
     })
 
     const distances = compute_e_above_hull_4d(interest_points, hull_tetrahedra)
 
-    // Build reverse lookup for O(1) access
-    const idx_to_point_idx = new Map<number, number>()
-    interest_indices.forEach((original_idx, point_idx) => {
-      idx_to_point_idx.set(original_idx, point_idx)
-    })
-
     // Map back
     for (let idx = 0; idx < interest_data.length; idx++) {
       const { entry, e_form } = interest_data[idx]
-      const id = entry.entry_id ?? JSON.stringify(entry.composition)
-      const point_idx = idx_to_point_idx.get(idx) ?? -1
+      const id = id_of(entry)
+      const point_idx = idx_to_point_idx.get(idx)
       const on_tie_plane = degenerate_hull_4d && typeof e_form === `number`
-      if (point_idx === -1) results[id] = NaN
+      if (point_idx === undefined) results[id] = NaN
       else results[id] = Math.max(0, on_tie_plane ? e_form : distances[point_idx])
     }
   } else {
@@ -435,28 +426,18 @@ export function calculate_e_above_hull(
         ? compute_e_above_hull_nd(interest_points, hull_facets, ref_points)
         : []
 
-    // Map results back to entries
+    // Map results back to entries (degenerate hull → tie-hyperplane at energy 0)
     for (let idx = 0; idx < interest_data.length; idx++) {
       const { entry, e_form } = interest_data[idx]
-      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      const id = id_of(entry)
       const point_idx = idx_to_point_idx.get(idx)
-
-      if (point_idx === undefined) {
-        results[id] = NaN
-      } else if (hull_facets.length === 0 && typeof e_form === `number`) {
-        // Degenerate case: hull is tie-hyperplane at energy 0
-        results[id] = Math.max(0, e_form)
-      } else {
-        results[id] = Math.max(0, distances[point_idx])
-      }
+      const on_tie_plane = hull_facets.length === 0 && typeof e_form === `number`
+      if (point_idx === undefined) results[id] = NaN
+      else results[id] = Math.max(0, on_tie_plane ? e_form : distances[point_idx])
     }
   }
 
-  if (is_single) {
-    const id =
-      entries_of_interest[0].entry_id ?? JSON.stringify(entries_of_interest[0].composition)
-    return results[id]
-  }
+  if (is_single) return results[id_of(entries_of_interest[0])]
   return results
 }
 
@@ -583,7 +564,7 @@ export function process_hull_for_stats(
     const hull_distances = calculate_e_above_hull(processed.entries, processed.entries)
 
     for (const entry of processed.entries) {
-      const dist = hull_distances[entry.entry_id ?? JSON.stringify(entry.composition)]
+      const dist = hull_distances[id_of(entry)]
       if (typeof dist === `number` && Number.isFinite(dist)) {
         entry.e_above_hull = dist
         entry.is_stable = dist < HULL_STABILITY_TOL

@@ -92,10 +92,19 @@ export function scale_bin_transform(scale_type?: ScaleType): BinTransform {
 }
 
 // Data range of one bin: edges are uniform in transformed space, mapped back via inverse
-const bin_range = (txf: BinTransform, lo: number, hi: number, bin: number, n_bins: number) => {
-  const t_min = txf.forward(lo)
-  const step = (txf.forward(hi) - t_min || 1) / n_bins
-  return [txf.inverse(t_min + bin * step), txf.inverse(t_min + (bin + 1) * step)] as Vec2
+const bin_range = (
+  txf: BinTransform | undefined,
+  range: Vec2,
+  bin: number,
+  n_bins: number,
+) => {
+  const transform = txf ?? identity
+  const [t_min, t_max] = range_bounds(range).map(transform.forward)
+  const step = (t_max - t_min || 1) / n_bins
+  return [
+    transform.inverse(t_min + bin * step),
+    transform.inverse(t_min + (bin + 1) * step),
+  ] as Vec2
 }
 
 export const get_metadata_at = <Metadata>(
@@ -236,14 +245,12 @@ export function density_bin_at_point(
   const count = density.counts[y_bin * density.x_bins + x_bin]
   if (!count) return null
 
-  const [x_min, x_max] = range_bounds(x_range)
-  const [y_min, y_max] = range_bounds(y_range)
   return {
     x_bin,
     y_bin,
     count,
-    x_range: bin_range(transforms?.x ?? identity, x_min, x_max, x_bin, density.x_bins),
-    y_range: bin_range(transforms?.y ?? identity, y_min, y_max, y_bin, density.y_bins),
+    x_range: bin_range(transforms?.x, x_range, x_bin, density.x_bins),
+    y_range: bin_range(transforms?.y, y_range, y_bin, density.y_bins),
   }
 }
 

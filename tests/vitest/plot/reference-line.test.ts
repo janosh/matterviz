@@ -93,70 +93,25 @@ describe(`resolve_line_endpoints`, () => {
     y_scale: (val: number) => 190 - val * 1.8,
   }
 
-  test(`horizontal line returns correct endpoints`, () => {
-    const result = resolve_line_endpoints({ type: `horizontal`, y: 50 }, bounds, scales)
-    expect(result).not.toBeNull()
-    expect(result?.[1]).toBe(result?.[3]) // y1 === y2
-    expect(result?.[0]).toBe(scales.x_scale(0))
-    expect(result?.[2]).toBe(scales.x_scale(100))
-  })
-
-  test(`vertical line returns correct endpoints`, () => {
-    const result = resolve_line_endpoints({ type: `vertical`, x: 50 }, bounds, scales)
-    expect(result).not.toBeNull()
-    expect(result?.[0]).toBe(result?.[2]) // x1 === x2
-  })
-
-  test(`x_span constrains horizontal line`, () => {
-    const result = resolve_line_endpoints(
-      { type: `horizontal`, y: 50, x_span: [20, 80] },
-      bounds,
-      scales,
-    )
-    expect(result).not.toBeNull()
-    expect(result?.[0]).toBe(scales.x_scale(20))
-    expect(result?.[2]).toBe(scales.x_scale(80))
-  })
-
-  test(`y_span constrains vertical line`, () => {
-    const result = resolve_line_endpoints(
-      { type: `vertical`, x: 50, y_span: [10, 90] },
-      bounds,
-      scales,
-    )
-    expect(result).not.toBeNull()
-    expect(result?.[1]).toBe(scales.y_scale(10))
-    expect(result?.[3]).toBe(scales.y_scale(90))
-  })
-
-  test(`diagonal slope=0 within bounds returns endpoints`, () => {
-    const result = resolve_line_endpoints(
-      { type: `diagonal`, slope: 0, intercept: 50 },
-      bounds,
-      scales,
-    )
-    expect(result).toEqual([
-      scales.x_scale(0),
-      scales.y_scale(50),
-      scales.x_scale(100),
-      scales.y_scale(50),
-    ])
-  })
-
-  // Endpoints must stay paired: each must satisfy y = slope·x + intercept, spans recompute
-  // the other coordinate instead of clamping one independently
+  // Expected [x1, y1, x2, y2] in data coords. Diagonal endpoints must stay paired: each
+  // must satisfy y = slope·x + intercept, spans recompute the other coordinate instead of
+  // clamping one independently
   test.each([
+    [{ type: `horizontal`, y: 50 }, [0, 50, 100, 50]],
+    [{ type: `horizontal`, y: 50, x_span: [20, 80] }, [20, 50, 80, 50]],
+    [{ type: `vertical`, x: 50 }, [50, 0, 50, 100]],
+    [{ type: `vertical`, x: 50, y_span: [10, 90] }, [50, 10, 50, 90]],
+    [{ type: `diagonal`, slope: 0, intercept: 50 }, [0, 50, 100, 50]],
     [{ type: `diagonal`, slope: -1, intercept: 100, x_span: [20, 80] }, [20, 80, 80, 20]],
     [{ type: `diagonal`, slope: -1, intercept: 100 }, [0, 100, 100, 0]],
     [{ type: `diagonal`, slope: 1, intercept: 0, x_span: [20, 80] }, [20, 20, 80, 80]],
     [{ type: `diagonal`, slope: 1, intercept: 0, y_span: [30, 70] }, [30, 30, 70, 70]],
-  ] as const)(`%o keeps endpoints paired`, (line, expected) => {
+  ] as const)(`%o resolves expected endpoints`, (line, [x1, y1, x2, y2]) => {
     const result = resolve_line_endpoints(line as RefLine, bounds, scales)
-    const [x1, y1, x2, y2] = expected
-    expect(result?.[0]).toBeCloseTo(scales.x_scale(x1))
-    expect(result?.[1]).toBeCloseTo(scales.y_scale(y1))
-    expect(result?.[2]).toBeCloseTo(scales.x_scale(x2))
-    expect(result?.[3]).toBeCloseTo(scales.y_scale(y2))
+    expect(result?.[0]).toBeCloseTo(scales.x_scale(x1), 8)
+    expect(result?.[1]).toBeCloseTo(scales.y_scale(y1), 8)
+    expect(result?.[2]).toBeCloseTo(scales.x_scale(x2), 8)
+    expect(result?.[3]).toBeCloseTo(scales.y_scale(y2), 8)
   })
 
   // Liang-Barsky segment clipping: preserves angle by computing true intersections

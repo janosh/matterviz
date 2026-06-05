@@ -1,5 +1,4 @@
 // Unified frame loader for XYZ and ASE trajectories (large file indexing)
-import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import type {
   FrameIndex,
@@ -10,7 +9,6 @@ import type {
 } from './index'
 import { MAX_METADATA_SIZE } from './constants'
 import {
-  coerce_element_symbol,
   convert_atomic_numbers,
   count_xyz_frames,
   create_trajectory_frame,
@@ -18,7 +16,11 @@ import {
   validate_3x3_matrix,
 } from './helpers'
 import { strip_compression_extensions } from './format-detect'
-import { parse_extxyz_columns, parse_extxyz_lattice } from './parse/xyz'
+import {
+  parse_extxyz_lattice,
+  parse_xyz_atom_lines,
+  parse_xyz_comment_metadata,
+} from './parse/xyz'
 
 export class TrajFrameReader implements FrameLoader {
   private readonly format: `xyz` | `ase`
@@ -264,16 +266,12 @@ export class TrajFrameReader implements FrameLoader {
     let [current_frame, line_idx] = [0, 0]
 
     while (line_idx < lines.length && current_frame < frame_number) {
-      if (!lines[line_idx]?.trim()) {
-        line_idx++
+      const skip_atoms = parseInt(lines[line_idx].trim(), 10)
+      if (isNaN(skip_atoms) || skip_atoms <= 0) {
+        line_idx++ // skip blank/invalid lines until the next frame's atom-count line
         continue
       }
-      const num_atoms = parseInt(lines[line_idx].trim(), 10)
-      if (isNaN(num_atoms) || num_atoms <= 0) {
-        line_idx++
-        continue
-      }
-      line_idx += 2 + num_atoms
+      line_idx += 2 + skip_atoms
       current_frame++
     }
 
@@ -282,67 +280,22 @@ export class TrajFrameReader implements FrameLoader {
     if (isNaN(num_atoms) || line_idx + num_atoms + 1 >= lines.length) return null
 
     const comment = lines[line_idx + 1] || ``
-    const positions: number[][] = []
-    const elements: ElementSymbol[] = []
-    const forces: number[][] = []
     const lattice_matrix = parse_extxyz_lattice(comment)
-    const { species_col, pos_col, forces_col, min_cols } = parse_extxyz_columns(comment)
-
-    for (let idx = 0; idx < num_atoms; idx++) {
-      const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
-      if (parts && parts.length >= min_cols) {
-        const x_coord = parseFloat(parts[pos_col])
-        const y_coord = parseFloat(parts[pos_col + 1])
-        const z_coord = parseFloat(parts[pos_col + 2])
-        if (
-          !Number.isFinite(x_coord) ||
-          !Number.isFinite(y_coord) ||
-          !Number.isFinite(z_coord)
-        ) {
-          console.warn(
-            `Skipping XYZ atom with invalid coordinates in indexed frame ${frame_number} at line ${
-              line_idx + 2 + idx
-            }`,
-          )
-          continue
-        }
-
-        const raw_symbol = parts[species_col]
-        const element_symbol = coerce_element_symbol(raw_symbol)
-        if (!element_symbol) {
-          console.warn(
-            `Skipping XYZ atom with unknown element symbol "${raw_symbol}" in indexed frame ${frame_number}`,
-          )
-          continue
-        }
-
-        elements.push(element_symbol)
-        positions.push([x_coord, y_coord, z_coord])
-
-        if (forces_col >= 0 && parts.length >= forces_col + 3) {
-          const force_vec = parts.slice(forces_col, forces_col + 3).map(parseFloat)
-          if (force_vec.every(Number.isFinite)) forces.push(force_vec)
-        }
-      }
-    }
-
-    const metadata = this.parse_xyz_metadata(comment, frame_number)
-    const properties: Record<string, unknown> = { ...metadata.properties }
-    if (forces.length > 0) {
-      const mags = forces.map((force) => Math.hypot(...force))
-      properties.forces = forces
-      properties.force_max = Math.max(...mags)
-      properties.force_norm = Math.sqrt(
-        mags.reduce((sum, mag) => sum + mag ** 2, 0) / mags.length,
-      )
-    }
+    const { elements, positions, force_stats } = parse_xyz_atom_lines(
+      lines,
+      line_idx + 2,
+      num_atoms,
+      comment,
+      `indexed frame ${frame_number}`,
+    )
+    const { step, properties } = this.parse_xyz_metadata(comment, frame_number)
     return create_trajectory_frame(
       positions,
       elements,
       lattice_matrix,
       lattice_matrix ? [true, true, true] : undefined,
-      metadata.step,
-      properties,
+      step,
+      { ...properties, ...force_stats },
     )
   }
 
@@ -404,25 +357,8 @@ export class TrajFrameReader implements FrameLoader {
   }
 
   private parse_xyz_metadata(comment: string, frame_number: number): TrajectoryMetadata {
-    const properties: Record<string, number> = {}
-
-    // Keys anchored at ^|\s and followed by [=:] so single-letter keys don't match mid-word
-    const patterns = {
-      energy: /(?:^|\s)(?:energy|E|etot)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      volume: /(?:^|\s)(?:volume|vol|V)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      pressure: /(?:^|\s)(?:pressure|press|P)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      force_max: /(?:^|\s)(?:max_force|fmax)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-    }
-
-    Object.entries(patterns).forEach(([key, pattern]) => {
-      const match = pattern.exec(comment)
-      if (match) properties[key] = parseFloat(match[1])
-    })
-
-    const step_match = /(?:^|\s)(?:step|frame)\s*[=:]?\s*(\d+)/i.exec(comment)
-    const step = step_match ? parseInt(step_match[1], 10) : frame_number
-
-    return { frame_number, step, properties }
+    const { step, properties } = parse_xyz_comment_metadata(comment)
+    return { frame_number, step: step ?? frame_number, properties }
   }
 
   private parse_ase_metadata(
