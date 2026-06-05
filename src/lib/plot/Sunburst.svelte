@@ -428,6 +428,7 @@
       change(hover_info)
       if (event) on_node_hover?.({ ...hover_info, event })
     } else {
+      hovered = false
       hovered_idx = null
       hover_info = null
       change(null)
@@ -849,10 +850,7 @@
       viewBox="0 0 {width} {height}"
       role="application"
       aria-label={rest[`aria-label`] ?? `${shape === `icicle` ? `Icicle` : `Sunburst`} chart`}
-      onmouseleave={() => {
-        hovered = false
-        set_arc_hover(null)
-      }}
+      onmouseleave={() => set_arc_hover(null)}
     >
       <!-- Hover/click delegation sits on the chart group (not the arcs group) so
       labels - which carry the same data-sunburst-node-idx and are selectable text -
