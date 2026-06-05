@@ -55,9 +55,9 @@
     current_values={{ orientation, kind, side, whisker_mode, show_outliers, show_mean }}
     on_reset={() => {
       orientation = `vertical`
-      kind = DEFAULTS.box.kind as ViolinKind
-      side = DEFAULTS.box.side as ViolinSide
-      whisker_mode = DEFAULTS.box.whisker_mode as WhiskerMode
+      kind = DEFAULTS.box.kind
+      side = DEFAULTS.box.side
+      whisker_mode = DEFAULTS.box.whisker_mode
       show_outliers = DEFAULTS.box.show_outliers
       show_mean = DEFAULTS.box.show_mean
     }}

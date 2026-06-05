@@ -116,22 +116,26 @@ describe(`Sankey`, () => {
     // fixture nodes omit `id`; the layout backfills id = index, so muting keys consistently
     const plot = await mount_sized_sankey({ data, show_legend: true })
     const dim_nodes = () =>
-      [...plot.querySelectorAll<SVGGElement>(`.node`)].filter(
-        (node_g) => node_g.style.opacity === `0.12`,
-      ).length
+      [...plot.querySelectorAll<SVGGElement>(`.node`)]
+        .filter((node_g) => node_g.style.opacity === `0.12`)
+        .map((node_g) => node_g.querySelector(`.node-label`)?.textContent?.trim())
     const dim_links = () =>
       [...plot.querySelectorAll(`.links path`)].filter(
         (path) => Number(path.getAttribute(`stroke-opacity`)) < 0.2,
       ).length
 
-    expect(dim_nodes()).toBe(0)
+    expect(dim_nodes()).toEqual([])
     expect(dim_links()).toBe(0)
 
     plot.querySelector<HTMLElement>(`.legend-item`)?.click() // toggle first node (A)
     await tick()
-
-    expect(dim_nodes()).toBe(1) // node A dimmed
+    expect(dim_nodes()).toEqual([`A`]) // node A dimmed
     expect(dim_links()).toBe(1) // its single link (A->C) dimmed
+
+    plot.querySelector<HTMLElement>(`.legend-item`)?.click() // re-click restores
+    await tick()
+    expect(dim_nodes()).toEqual([])
+    expect(dim_links()).toBe(0)
   })
 
   test.each([

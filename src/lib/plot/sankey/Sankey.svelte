@@ -35,10 +35,10 @@
 
   let {
     data = $bindable({ nodes: [], links: [] }),
-    orientation = $bindable(DEFAULTS.sankey.orientation as SankeyOrientation),
+    orientation = $bindable(DEFAULTS.sankey.orientation),
     node_width = $bindable(DEFAULTS.sankey.node_width),
     node_padding = $bindable(DEFAULTS.sankey.node_padding),
-    node_align = $bindable(DEFAULTS.sankey.node_align as SankeyNodeAlign),
+    node_align = $bindable(DEFAULTS.sankey.node_align),
     iterations = DEFAULTS.sankey.iterations,
     link_opacity = $bindable(DEFAULTS.sankey.link_opacity),
     link_color_mode = `source`,

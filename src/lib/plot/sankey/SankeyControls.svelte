@@ -1,14 +1,10 @@
 <script lang="ts">
   import { SettingsSection } from '$lib/layout'
   import type { SankeyNodeAlign, SankeyOrientation } from '$lib/plot'
-  import { unique_id } from '$lib/plot/core/utils'
   import ControlPane from '$lib/plot/core/components/ControlPane.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-
-  // Unique id prefix to avoid label/input collisions with other instances
-  const uid = unique_id(`sankey`)
 
   let {
     show_controls = $bindable(true),
@@ -51,25 +47,27 @@
         show_node_labels,
       }}
       on_reset={() => {
-        orientation = DEFAULTS.sankey.orientation as SankeyOrientation
-        node_align = DEFAULTS.sankey.node_align as SankeyNodeAlign
-        node_width = DEFAULTS.sankey.node_width
-        node_padding = DEFAULTS.sankey.node_padding
-        link_opacity = DEFAULTS.sankey.link_opacity
-        show_node_labels = DEFAULTS.sankey.show_node_labels
+        ;({
+          orientation,
+          node_align,
+          node_width,
+          node_padding,
+          link_opacity,
+          show_node_labels,
+        } = DEFAULTS.sankey)
       }}
       style="display: flex; flex-wrap: wrap; gap: 2ex"
     >
       <label style="flex: 1">
         Orientation:
-        <select bind:value={orientation} id="{uid}-orientation">
+        <select bind:value={orientation}>
           <option value="horizontal">Horizontal</option>
           <option value="vertical">Vertical</option>
         </select>
       </label>
       <label style="flex: 1">
         Node align:
-        <select bind:value={node_align} id="{uid}-node-align">
+        <select bind:value={node_align}>
           <option value="justify">Justify</option>
           <option value="left">Left</option>
           <option value="right">Right</option>
