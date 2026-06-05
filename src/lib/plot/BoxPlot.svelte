@@ -45,6 +45,7 @@
   } from '$lib/plot/hover-lock.svelte'
   import {
     get_relative_coords,
+    MIN_TOUCH_DISTANCE_PIXELS,
     pan_range,
     PINCH_ZOOM_THRESHOLD,
     pixels_to_data_delta,
@@ -691,7 +692,8 @@
     const dx = curr_center.x - start_center.x
     const dy = curr_center.y - start_center.y
     const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
-    if (start_dist < Number.EPSILON) return
+    // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
+    if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
     const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
     const scale = curr_dist / start_dist
     if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
