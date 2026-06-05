@@ -100,10 +100,9 @@ export async function load_from_url(
       return callback(buffer, filename)
     }
 
-    if (resp.headers.get(`content-encoding`) === `gzip`) {
-      return callback(await resp.text(), filename)
-    }
-
+    // Content-Encoding is transparent transport compression: fetch already
+    // decompressed the body, so binary formats (npz, pkl, brml, ...) must still
+    // be read as ArrayBuffer — .text() would corrupt them via lossy UTF-8 decode
     return callback(await resp.arrayBuffer(), filename)
   }
 

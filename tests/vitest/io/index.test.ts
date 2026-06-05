@@ -490,26 +490,33 @@ describe(`load_from_url`, () => {
   })
 
   describe(`non-gzip binary files with content-encoding`, () => {
-    test(`gzip content-encoding on non-.gz URL returns text`, async () => {
-      const mock_response = new Response(`decompressed content`, {
+    test(`gzip content-encoding on binary extension stays ArrayBuffer`, async () => {
+      // Content-Encoding is transparent: fetch auto-decompresses, so the body is
+      // the original binary and must not be lossily decoded to text
+      const payload = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00, 0x80])
+      const mock_response = new Response(payload, {
         headers: {
           'content-encoding': `gzip`,
-          'content-type': `text/plain`,
+          'content-type': `application/octet-stream`,
         },
+      })
+      Object.defineProperty(mock_response, `arrayBuffer`, {
+        value: () => Promise.resolve(payload.buffer),
       })
       globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
       let received_content: string | ArrayBuffer | null = null
       let received_filename: string | null = null
       await load_from_url(
-        `https://example.com/data.npz`, // binary extension but with gzip content-encoding
+        `https://example.com/data.npz`, // binary extension with gzip content-encoding
         (content, filename) => {
           received_content = content
           received_filename = filename
         },
       )
 
-      expect(typeof received_content).toBe(`string`)
+      expect(received_content).toBeInstanceOf(ArrayBuffer)
+      expect(new Uint8Array(received_content as unknown as ArrayBuffer)).toEqual(payload)
       expect(received_filename).toBe(`data.npz`)
     })
   })

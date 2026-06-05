@@ -1248,6 +1248,19 @@ export function normalize_fractional_coords(structure: ParsedStructure): ParsedS
   return { ...structure, sites: normalized_sites }
 }
 
+// Detect a structure inside already-stringified JSON (OPTIMADE or pymatgen/nested).
+// Throws if `content` isn't valid JSON; returns null if it holds no known structure.
+const detect_json_structure = (content: string): ParsedStructure | null => {
+  const parsed = JSON.parse(content)
+  if (is_optimade_raw(parsed)) {
+    const result = parse_optimade_from_raw(parsed)
+    if (result) return result
+  }
+  // Otherwise try parsing as pymatgen/nested structure JSON
+  const structure = find_structure_in_json(parsed)
+  return structure ? normalize_fractional_coords(structure) : null
+}
+
 // Auto-detect file format and parse accordingly
 export function parse_structure_file(
   content: string,
@@ -1269,24 +1282,16 @@ export function parse_structure_file(
     // CIF files
     if (ext === `cif`) return parse_cif(content)
 
-    // JSON files - try OPTIMADE JSON structure format first, then pymatgen
+    // JSON files - extension is authoritative, so failures return null
     if (ext === `json`) {
       try {
-        // Parse once, reuse for detection and parsing
-        const parsed = JSON.parse(content)
-        if (is_optimade_raw(parsed)) {
-          const result = parse_optimade_from_raw(parsed)
-          if (result) return result
-        }
-        // Otherwise, try to parse as pymatgen/nested structure JSON
-        const structure = find_structure_in_json(parsed)
-        if (structure) return normalize_fractional_coords(structure)
+        const result = detect_json_structure(content)
+        if (result) return result
         console.error(`JSON file does not contain a valid structure format`)
-        return null
       } catch (error) {
         console.error(`Error parsing JSON file:`, error)
-        return null
       }
+      return null
     }
 
     // YAML files (phonopy)
@@ -1302,16 +1307,8 @@ export function parse_structure_file(
   // JSON detection must come before the line-count guard: minified JSON
   // (e.g. fetched via extensionless blob: object URLs) is a single line.
   try {
-    const parsed = JSON.parse(content)
-    if (is_optimade_raw(parsed)) {
-      const result = parse_optimade_from_raw(parsed)
-      if (result) return result
-    }
-    // Otherwise try parsing as regular JSON structure
-    const structure = find_structure_in_json(parsed)
-    if (structure) {
-      return normalize_fractional_coords(structure)
-    }
+    const result = detect_json_structure(content)
+    if (result) return result
   } catch {
     // Not JSON, continue with other format detection
   }
