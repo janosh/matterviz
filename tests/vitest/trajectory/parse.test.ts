@@ -432,6 +432,20 @@ describe(`VASP XDATCAR Parser`, () => {
       `XDATCAR file too short`,
     )
   })
+
+  it(`should re-read repeated headers in variable-cell (NPT) XDATCAR`, async () => {
+    const frame = (lat_a: number, idx: number) =>
+      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5`
+    const trajectory = await parse_trajectory_data(
+      `${frame(10, 1)}\n${frame(20, 2)}`,
+      `XDATCAR`,
+    )
+
+    expect(trajectory.frames).toHaveLength(2)
+    const structure = trajectory.frames[1].structure
+    expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(20)
+    expect(structure.sites[0].xyz).toEqual([10, 10, 10])
+  })
 })
 
 describe(`LAMMPS Trajectory Format`, () => {
@@ -1007,18 +1021,56 @@ describe(`XYZ Trajectory Format`, () => {
     ])
   })
 
-  it(`should handle forces in extended XYZ format`, async () => {
-    const content = `3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3\n3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3`
-    const trajectory = await parse_trajectory_data(content, `test.extxyz`)
+  it.each<[string, string, number[][]]>([
+    // forces directly after pos, after momenta, and after a scalar column
+    [
+      `species:S:1:pos:R:3:forces:R:3`,
+      `H 0 0 0 0.1 0 0\nH 1 0 0 0 0 0.3`,
+      [
+        [0.1, 0, 0],
+        [0, 0, 0.3],
+      ],
+    ],
+    [
+      `species:S:1:pos:R:3:momenta:R:3:forces:R:3`,
+      `H 0 0 0 9.9 9.9 9.9 0.1 0.2 0.3`,
+      [[0.1, 0.2, 0.3]],
+    ],
+    [
+      `species:S:1:pos:R:3:node_energy:R:1:forces:R:3`,
+      `H 0 0 0 9.9 0.1 0.2 0.3`,
+      [[0.1, 0.2, 0.3]],
+    ],
+  ])(
+    `should read forces at Properties column offset: %s`,
+    async (properties, atom_lines, expected_forces) => {
+      const n_atoms = atom_lines.split(`\n`).length
+      const frame = `${n_atoms}\nProperties=${properties}\n${atom_lines}`
+      const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.extxyz`)
 
-    const metadata = trajectory.frames[0]?.metadata
-    expect(metadata?.forces).toEqual([
-      [0.1, 0.0, 0.0],
-      [0.0, 0.2, 0.0],
-      [0.0, 0.0, 0.3],
-    ])
-    expect(metadata?.force_max).toBe(0.3)
-  })
+      const metadata = trajectory.frames[0]?.metadata
+      expect(metadata?.forces).toEqual(expected_forces)
+      expect(metadata?.force_max).toBeCloseTo(
+        Math.max(...expected_forces.map((vec) => Math.hypot(...vec))),
+      )
+    },
+  )
+
+  it.each<[string, Record<string, number>]>([
+    [`frame=5`, {}], // 'e' of frame must not match energy
+    [`step=100 dt=0.5`, {}], // 'p' of step / 't' of dt must not match pressure/temperature
+    [`E = 2.0`, { energy: 2.0 }],
+    [`Temperature: 300`, { temperature: 300 }],
+  ])(
+    `should anchor comment metadata keys at word boundaries: %s`,
+    async (comment, expected) => {
+      const frame = `1\n${comment}\nH 0.0 0.0 0.0`
+      const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.xyz`)
+
+      const { energy, pressure, temperature } = trajectory.frames[0]?.metadata ?? {}
+      expect({ energy, pressure, temperature }).toEqual(expected)
+    },
+  )
 
   it(`should handle invalid atom counts gracefully`, async () => {
     const content = `invalid\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
@@ -1262,6 +1314,65 @@ describe(`Format Detection`, () => {
 
     expect(single_trajectory.metadata?.source_format).toBe(`single_xyz`)
     expect(multi_trajectory.metadata?.source_format).toBe(`xyz_trajectory`)
+  })
+
+  // Filenames from blob: object URLs (URL.createObjectURL) are UUIDs without extension,
+  // so detection must fall back to content sniffing (https://github.com/janosh/matterviz/issues/353)
+  describe(`content-based detection without filename hint`, () => {
+    const single_frame = `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const blob_uuid = `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
+    const lammps_content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2
+ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0
+ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
+
+    it.each([undefined, blob_uuid])(
+      `detects multi-frame XYZ content (filename=%s)`,
+      async (filename) => {
+        const multi_frame = `${single_frame}\n${single_frame}`
+        const trajectory = await parse_trajectory_data(multi_frame, filename)
+        expect(trajectory.metadata?.source_format).toBe(`xyz_trajectory`)
+        expect(trajectory.frames).toHaveLength(2)
+      },
+    )
+
+    it.each([undefined, blob_uuid])(
+      `detects single-frame XYZ content (filename=%s)`,
+      async (filename) => {
+        const trajectory = await parse_trajectory_data(single_frame, filename)
+        expect(trajectory.metadata?.source_format).toBe(`single_xyz`)
+        expect(trajectory.frames).toHaveLength(1)
+      },
+    )
+
+    it.each([
+      [`LAMMPS`, lammps_content, `lammps_trajectory`],
+      [`XDATCAR`, read_test_file(`vasp-XDATCAR.MD.gz`), `vasp_xdatcar`],
+    ])(`detects %s content without filename`, async (_label, content, expected) => {
+      const trajectory = await parse_trajectory_data(content, undefined)
+      expect(trajectory.metadata?.source_format).toBe(expected)
+    })
+
+    it.each([
+      [`HDF5`, `flame-gold-cluster-55-atoms.h5`, `hdf5_trajectory`],
+      [`ASE .traj`, `ase-LiMnO2-chgnet-relax.traj`, `ase_trajectory`],
+    ])(`detects %s binary signature without filename`, async (_label, fixture, expected) => {
+      const trajectory = await parse_trajectory_data(read_binary_test_file(fixture))
+      expect(trajectory.metadata?.source_format).toBe(expected)
+    })
+
+    it(`still respects conflicting extensions over content`, async () => {
+      // XYZ content explicitly named .json must not be sniffed as XYZ
+      const multi_frame = `${single_frame}\n${single_frame}`
+      await expect(parse_trajectory_data(multi_frame, `data.json`)).rejects.toThrow(
+        `Unsupported text format`,
+      )
+    })
+
+    it(`still rejects unparsable content without filename`, async () => {
+      await expect(parse_trajectory_data(`not a trajectory`, undefined)).rejects.toThrow(
+        `Unsupported text format`,
+      )
+    })
   })
 
   it(`should detect HDF5 signature correctly`, async () => {

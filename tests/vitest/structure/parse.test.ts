@@ -147,6 +147,26 @@ describe(`POSCAR Parser`, () => {
     }
   })
 
+  // Edge cases: Cartesian xyz must be recomputed from wrapped abc; a blank first
+  // (comment) line and a 3-component per-axis scale line are valid POSCAR headers
+  const scale3 = `Test\n2 1 3\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`
+  const cubic5 = `5 0 0\n0 5 0\n0 0 5`
+  test.each([
+    // [content, element, lattice_abc, site_abc, site_xyz]
+    [`Test\n1.0\n${cubic5}\nH\n1\nCartesian\n-1 0 0`, `H`, [5, 5, 5], [0.8, 0, 0], [4, 0, 0]],
+    [`Test\n2\n${cubic5}\nH\n1\nCartesian\n6 0 0`, `H`, [10, 10, 10], [0.2, 0, 0], [2, 0, 0]],
+    [`\n1.0\n${cubic5}\nSi\n1\nDirect\n0 0 0`, `Si`, [5, 5, 5], [0, 0, 0], [0, 0, 0]],
+    [`${scale3}Direct\n0.5 0.5 0.5`, `H`, [2, 1, 3], [0.5, 0.5, 0.5], [1, 0.5, 1.5]],
+    [`${scale3}Cartesian\n0.5 0.5 0.5`, `H`, [2, 1, 3], [0.5, 0.5, 0.5], [1, 0.5, 1.5]],
+  ])(`should handle POSCAR edge case %#`, (content, element, lattice_abc, abc, xyz) => {
+    const result = parse_poscar(content)
+    assert(result, `Failed to parse POSCAR`)
+    expect(result.sites[0].species[0].element).toBe(element)
+    expect([result.lattice?.a, result.lattice?.b, result.lattice?.c]).toEqual(lattice_abc)
+    abc.forEach((val, idx) => expect(result.sites[0].abc[idx]).toBeCloseTo(val, TOL))
+    xyz.forEach((val, idx) => expect(result.sites[0].xyz[idx]).toBeCloseTo(val, TOL))
+  })
+
   it(`keeps singular Cartesian POSCAR fractional coordinates finite`, () => {
     const result = parse_poscar(
       `Test
@@ -714,6 +734,18 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites).toHaveLength(3)
     expect(result.lattice?.a).toBeCloseTo(4.916, 6)
   })
+
+  // regression: tokens.at(-1) made trailing comments break cell-parameter parsing
+  test.each([`5.4309 # angstrom`, `5.4309(5)`, `5.4309(5) # angstrom`])(
+    `should parse cell parameter line with %s`,
+    (a_value) => {
+      const result = parse_cif(
+        `data_test\n_cell_length_a ${a_value}\n_cell_length_b 4\n_cell_length_c 3\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1 0 0 0`,
+      )
+      assert(result, `Failed to parse CIF with ${a_value}`)
+      expect(result.lattice?.a).toBeCloseTo(5.4309, 4)
+    },
+  )
 
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
     const result = parse_cif(ru_p_complex_cif)
@@ -2337,6 +2369,29 @@ describe(`OPTIMADE JSON parser`, () => {
     }
   })
 
+  test.each([
+    // [species, species_at_sites, expected_elements]: highest-concentration symbol wins,
+    // 'vacancy' entries are skipped, names without species list parsed as element symbols
+    [[{ name: `Si1`, chemical_symbols: [`Si`] }], [`Si1`, `Si1`], [`Si`, `Si`]],
+    [[{ name: `A`, chemical_symbols: [`Fe`, `Ni`], concentration: [1, 3] }], [`A`], [`Ni`]],
+    [[{ name: `v`, chemical_symbols: [`vacancy`, `O`], concentration: [9, 1] }], [`v`], [`O`]],
+    [undefined, [`Fe`, `O`], [`Fe`, `O`]],
+  ])(`should resolve species_at_sites %#`, (species, species_at_sites, expected) => {
+    const result = parse_optimade_json(
+      JSON.stringify({
+        id: `test-species`,
+        type: `structures`,
+        attributes: {
+          cartesian_site_positions: species_at_sites.map((_, idx) => [idx, 0, 0]),
+          species_at_sites,
+          species, // undefined is dropped by JSON.stringify
+        },
+      }),
+    )
+    assert(result, `Failed to parse OPTIMADE JSON`)
+    expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
+  })
+
   it.each([
     {
       name: `missing required fields`,
@@ -2918,7 +2973,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     expect(result.properties?.species_at_sites).toBeUndefined()
   })
 
-  it(`should extract species properties (mass) to site.properties`, () => {
+  it(`should extract species properties (mass) and resolve named species`, () => {
     const optimade_structure = {
       id: `test`,
       type: `structures` as const,
@@ -2932,10 +2987,10 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
           [0.0, 0.0, 0.0],
           [2.5, 2.5, 2.5],
         ],
-        species_at_sites: [`Fe`, `O`],
+        species_at_sites: [`Fe`, `O1`],
         species: [
           { name: `Fe`, mass: [55.845], concentration: [1.0] },
-          { name: `O`, mass: [15.999], concentration: [0.5] },
+          { name: `O1`, chemical_symbols: [`O`], mass: [15.999], concentration: [0.5] },
         ],
       },
     }
@@ -2944,8 +2999,40 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
 
     expect(result.sites[0].properties.mass).toBe(55.845)
     expect(result.sites[0].properties.concentration).toBeUndefined() // 1.0 is default, not stored
+    // named species 'O1' resolves to element O through chemical_symbols
+    expect(result.sites[1].species[0].element).toBe(`O`)
     expect(result.sites[1].properties.mass).toBe(15.999)
     expect(result.sites[1].properties.concentration).toBe(0.5)
+  })
+
+  it(`picks mass/concentration for the dominant element, not index 0`, () => {
+    // Disordered site: dominant element (Ni, conc 0.7) is NOT chemical_symbols[0]
+    const optimade_structure = {
+      id: `disordered`,
+      type: `structures` as const,
+      attributes: {
+        lattice_vectors: [
+          [5, 0, 0],
+          [0, 5, 0],
+          [0, 0, 5],
+        ],
+        cartesian_site_positions: [[0, 0, 0]],
+        species_at_sites: [`D`],
+        species: [
+          {
+            name: `D`,
+            chemical_symbols: [`Fe`, `Ni`],
+            mass: [55.845, 58.693],
+            concentration: [0.3, 0.7],
+          },
+        ],
+      },
+    }
+    const result = optimade_to_crystal(optimade_structure)
+    assert(result, `Failed to convert OPTIMADE structure`)
+    expect(result.sites[0].species[0].element).toBe(`Ni`) // highest concentration wins
+    expect(result.sites[0].properties.mass).toBe(58.693) // mass[1], not mass[0]
+    expect(result.sites[0].properties.concentration).toBe(0.7) // concentration[1], not [0]
   })
 })
 

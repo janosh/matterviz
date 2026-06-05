@@ -197,15 +197,21 @@ describe(`load_from_url`, () => {
   })
 
   test.each([
-    [`GZIP magic bytes`, [0x1f, 0x8b], `ArrayBuffer`, undefined, undefined],
     [
-      `GZIP magic bytes with callback rejection`,
-      [0x1f, 0x8b],
+      `HDF5 magic bytes with callback rejection`,
+      [0x89, 0x48, 0x44, 0x46],
       `ArrayBuffer`,
       undefined,
       `callback failed`,
     ],
     [`HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], `ArrayBuffer`, undefined, undefined],
+    [
+      `ASE Ulm magic bytes`,
+      [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d],
+      `ArrayBuffer`,
+      undefined,
+      undefined,
+    ],
     [
       `unknown format`,
       [0x12, 0x34, 0x56, 0x78],
@@ -266,6 +272,46 @@ describe(`load_from_url`, () => {
       expect(globalThis.fetch).toHaveBeenCalledTimes(2)
     },
   )
+
+  test(`sniffed gzip without .gz extension is decompressed`, async () => {
+    mock_decompress.mockResolvedValue(`decompressed content`)
+    const header = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)])
+    const full_body = new ArrayBuffer(100)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(create_mock_response(header.buffer, {}))
+      .mockResolvedValueOnce(create_mock_response(full_body, {}))
+
+    let received_content: string | ArrayBuffer | null = null
+    let received_filename: string | null = null
+    await load_from_url(`https://example.com/data.bin`, (content, filename) => {
+      received_content = content
+      received_filename = filename
+    })
+
+    expect(received_content).toBe(`decompressed content`)
+    expect(received_filename).toBe(`data.bin`)
+    expect(mock_decompress).toHaveBeenCalledWith(full_body, `gzip`)
+  })
+
+  test(`blob: object URL with text content passes UUID basename to callback`, async () => {
+    const xyz_content = `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const mock_response = create_mock_response(xyz_content, {})
+    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
+
+    let received_content: string | ArrayBuffer | null = null
+    let received_filename: string | null = null
+    await load_from_url(
+      `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`,
+      (content, filename) => {
+        received_content = content
+        received_filename = filename
+      },
+    )
+
+    expect(received_content).toBe(xyz_content)
+    expect(received_filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
+  })
 
   test(`fetch error`, async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error(`Network error`))

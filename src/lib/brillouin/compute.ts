@@ -32,7 +32,10 @@ export function extract_point_group_from_operations(
     if (seen.has(key)) continue
     seen.add(key)
 
-    const rot = math.vec9_to_mat3x3(Array.from(rotation)) as Matrix3x3
+    // moyo serializes rotations COLUMN-major; vec9_to_mat3x3 reads row-major → transpose to get W
+    const rot = math.transpose_3x3_matrix(
+      math.vec9_to_mat3x3(Array.from(rotation)) as Matrix3x3,
+    )
     unique_rotations.push(rot)
   }
 
@@ -54,23 +57,18 @@ function mat3x3_multiply(A: Matrix3x3, B: Matrix3x3): Matrix3x3 {
   return result
 }
 
-// Convert fractional-coordinate rotation W to Cartesian k-space rotation.
-// In reciprocal space: R_cart = B · W^{-T} · B^{-1}, where B is the k_lattice
-// and W^{-T} is the inverse transpose of the direct-space rotation matrix.
-// This follows the dual-basis relation: if direct fractional rotation is x' = W·x,
-// then reciprocal fractional rotation is q' = W^{-T}·q. For non-orthogonal lattices
-// (monoclinic, triclinic, hexagonal), W^{-1} ≠ W^T since integer rotation matrices
-// are not orthogonal in these systems.
+// Convert fractional rotation W to Cartesian k-space rotation. k_lattice stores reciprocal
+// vectors as ROWS (k_cart = Bᵀ·q) and reciprocal fractional rotation is q' = W^{-T}·q, so
+// R_cart = Bᵀ·W^{-T}·B^{-T}. For non-orthogonal lattices W^{-1} ≠ Wᵀ, so the transpose matters.
 export function fractional_to_cartesian_rotation(
   W: Matrix3x3,
   k_lattice: Matrix3x3,
 ): Matrix3x3 {
   try {
-    const k_lattice_inv = math.matrix_inverse_3x3(k_lattice)
-    const W_inv = math.matrix_inverse_3x3(W)
-    const W_inv_T = math.transpose_3x3_matrix(W_inv)
-    // R_cart = B · W^{-T} · B^{-1}
-    return mat3x3_multiply(mat3x3_multiply(k_lattice, W_inv_T), k_lattice_inv)
+    const B_T = math.transpose_3x3_matrix(k_lattice)
+    const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(W))
+    // R_cart = Bᵀ · W^{-T} · B^{-T}
+    return mat3x3_multiply(mat3x3_multiply(B_T, W_inv_T), math.matrix_inverse_3x3(B_T))
   } catch {
     // Fallback to identity if inversion fails (shouldn't happen for valid rotations)
     return [
@@ -479,7 +477,7 @@ export function compute_irreducible_bz(
   edge_sharp_angle_deg = 5,
 ): IrreducibleBZData | null {
   // Convert fractional rotations to Cartesian k-space rotations
-  // R_cart = B · W^{-T} · B^{-1}, where B is k_lattice and W^{-T} is inverse-transpose
+  // R_cart = Bᵀ · W^{-T} · B^{-T}, where B is k_lattice (reciprocal vectors as rows)
   const cartesian_ops = point_group_ops.map((W) =>
     fractional_to_cartesian_rotation(W, bz_data.k_lattice),
   )

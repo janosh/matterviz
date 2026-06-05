@@ -76,6 +76,17 @@ describe(`trilinear_interpolate`, () => {
     expect(trilinear_interpolate(grid, 0.5, 0, 0, false)).toBeCloseTo(1.5)
   })
 
+  test(`non-periodic grid is exact and continuous at the upper boundary`, () => {
+    const grid = make_grid(4, 4, 4, (ix) => ix)
+    // fx=1 must hit grid[3]=3 (floor-based xd gave grid[nx-2]=2, vs f(0.999)≈2.997)
+    expect(trilinear_interpolate(grid, 1, 0, 0, false)).toBe(3)
+    expect(trilinear_interpolate(grid, 0.999, 0, 0, false)).toBeCloseTo(2.997)
+    const grid_y = make_grid(4, 4, 4, (_ix, iy) => iy)
+    const grid_z = make_grid(4, 4, 4, (_ix, _iy, iz) => iz)
+    expect(trilinear_interpolate(grid_y, 0, 1, 0, false)).toBe(3)
+    expect(trilinear_interpolate(grid_z, 0, 0, 1, false)).toBe(3)
+  })
+
   test(`returns 0 for empty grid`, () => {
     expect(trilinear_interpolate([], 0.5, 0.5, 0.5, true)).toBe(0)
   })

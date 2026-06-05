@@ -469,10 +469,13 @@
   let bond_order_overrides = $state<StructureBond[]>([])
   let bond_undo_stack = $state<BondEditHistorySnapshot[]>([])
   let bond_redo_stack = $state<BondEditHistorySnapshot[]>([])
-  let bond_history_context = $state<BondEditContext>()
-  let last_bond_structure_identity = $state(structure)
+  // These hold object-identity tokens (structure_identity) compared with ===/!==,
+  // so they must stay raw — proxying them via $state would break identity comparisons
+  // (state_proxy_equality_mismatch) against the raw `structure` prop.
+  let bond_history_context = $state.raw<BondEditContext>()
+  let last_bond_structure_identity = $state.raw(structure)
   let last_emitted_bond_signature = $state<string>()
-  let bond_edit_snapshot = $state<BondEditSnapshot>()
+  let bond_edit_snapshot = $state.raw<BondEditSnapshot>()
   let has_bond_edits = $derived(
     added_bonds.length > 0 || removed_bonds.length > 0 ||
       bond_order_overrides.length > 0,

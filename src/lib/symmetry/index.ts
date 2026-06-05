@@ -289,12 +289,12 @@ export function apply_symmetry_operations(
 
   return operations
     .map(({ rotation, translation }) => {
-      // Apply 3x3 rotation matrix and translation: new_pos = R * position + t
+      // new_pos = W·position + t; moyo serializes W COLUMN-major: W[dim][j] = rotation[dim + 3j]
       const new_pos: Vec3 = [0, 1, 2].map(
         (dim) =>
-          rotation[dim * 3] * position[0] +
-          rotation[dim * 3 + 1] * position[1] +
-          rotation[dim * 3 + 2] * position[2] +
+          rotation[dim] * position[0] +
+          rotation[dim + 3] * position[1] +
+          rotation[dim + 6] * position[2] +
           translation[dim],
       ) as Vec3
       return new_pos.map(to_unit) as Vec3

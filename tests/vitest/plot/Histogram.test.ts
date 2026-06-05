@@ -17,10 +17,12 @@ function mount_histogram(props: Record<string, unknown>) {
   })
 }
 
-function get_y_tick_numbers(): number[] {
-  const nodes = Array.from(document.querySelectorAll(`g.y-axis .tick text`))
+function get_tick_numbers(axis: `x` | `y`): number[] {
+  const nodes = Array.from(document.querySelectorAll(`g.${axis}-axis .tick text`))
   return nodes.map((n) => Number((n.textContent || ``).trim())).filter((v) => !Number.isNaN(v))
 }
+
+const get_y_tick_numbers = (): number[] => get_tick_numbers(`y`)
 
 describe(`Histogram`, () => {
   test.each([
@@ -157,9 +159,10 @@ describe(`Histogram`, () => {
   test(`mounts with x2-axis series and renders x2 axis`, async () => {
     mount_histogram({
       series: [
-        { x: [0, 1, 2], y: [70, 72, 68], label: `Mass (kg)` },
-        { x: [0, 1, 2], y: [154, 158, 150], label: `Mass (lbs)`, x_axis: `x2` },
+        { x: [], y: [70, 72, 68], label: `Mass (kg)` },
+        { x: [], y: [154, 154, 154, 154, 158], label: `Mass (lbs)`, x_axis: `x2` },
       ],
+      bins: 5,
       x2_axis: { label: `Mass (lbs)` },
       mode: `overlay`,
     })
@@ -167,6 +170,12 @@ describe(`Histogram`, () => {
     expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Mass (lbs)`)
+    // x1 auto-range must come from x1 series only, excluding x2 magnitudes (~150)
+    const x_ticks = get_tick_numbers(`x`)
+    expect(x_ticks.length).toBeGreaterThan(0)
+    expect(Math.max(...x_ticks)).toBeLessThan(100)
+    // y-range must bin the x2 series over the x2 domain (4 of 5 values share one bin)
+    expect(Math.max(...get_y_tick_numbers())).toBeGreaterThanOrEqual(4)
   })
 
   test(`renders without error when legend prop is null`, async () => {

@@ -206,6 +206,13 @@
         : 1),
   )
 
+  // smallest positive bound for log color mapping (matches the auto ColorBar's log scale)
+  let cs_min_pos = $derived.by(() => {
+    if (cs_min > 0) return cs_min
+    const pos = heat_values.flat().filter((v): v is number => typeof v === `number` && v > 0)
+    return pos.length > 0 ? Math.min(...pos) : cs_max
+  })
+
   let bg_color = $derived(
     (
       value: number | number[] | string | string[] | false,
@@ -238,8 +245,12 @@
       const span = cs_max - cs_min
       if (span === 0) return color_scale_fn?.(0.5) // midpoint when all values equal
 
-      if (log) value = Math.log((value as number) - cs_min + 1) / Math.log(span + 1)
-      else value = ((value as number) - cs_min) / span
+      if (log) {
+        // log mapping matching the log ColorBar (value <= 0 returned missing_color above)
+        const log_span = Math.log(cs_max) - Math.log(cs_min_pos)
+        if (log_span === 0) return color_scale_fn?.(0.5)
+        value = (Math.log(value as number) - Math.log(cs_min_pos)) / log_span
+      } else value = ((value as number) - cs_min) / span
       return color_scale_fn?.(value as number)
     },
   )

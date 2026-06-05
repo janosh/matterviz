@@ -81,6 +81,13 @@ describe(`parse_formula`, () => {
     [`Ca(OH)0.5`, { Ca: 1, O: 0.5, H: 0.5 }, `decimal parentheses multiplier`],
     [`(H.0000001)2`, { H: 0.0000002 }, `small decimal parentheses multiplier`],
     [`(H0.1)3`, { H: 0.3 }, `rounds expanded decimal products`],
+    [`CuSO4·5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }, `hydrate dot notation`],
+    [`CuSO4⋅5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }, `hydrate unicode dot operator`],
+    [`MgSO4*7H2O`, { Mg: 1, S: 1, O: 11, H: 14 }, `hydrate asterisk notation`],
+    [`Ca(OH)2·2H2O`, { Ca: 1, O: 4, H: 6 }, `hydrate with parentheses`],
+    [`CaCl2·H2O`, { Ca: 1, Cl: 2, H: 2, O: 1 }, `hydrate without coefficient`],
+    [`CaSO4·0.5H2O`, { Ca: 1, S: 1, O: 4.5, H: 1 }, `hydrate decimal coefficient`],
+    [`CuSO4·.5H2O`, { Cu: 1, S: 1, O: 4.5, H: 1 }, `hydrate leading-dot coefficient`],
     [``, {}, `empty formula`],
   ])(`%s -> %j (%s)`, (formula, expected, _description) => {
     expect(parse_formula(formula)).toEqual(expected)
@@ -89,6 +96,9 @@ describe(`parse_formula`, () => {
   test.each([
     [`Xx2`, `Invalid element symbol: Xx`],
     [`ABC`, `Invalid element symbol: A`],
+    [`Ca(OH2`, `parentheses`],
+    [`)(`, `parentheses`],
+    [`Mg()O2`, `parentheses`],
   ])(`throws for invalid formula %s`, (formula, error) => {
     expect(() => parse_formula(formula)).toThrow(error)
   })

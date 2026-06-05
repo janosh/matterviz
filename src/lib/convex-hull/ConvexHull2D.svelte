@@ -320,7 +320,7 @@
   let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
   // Structure popup state
-  let structure_popup = $state<{
+  let structure_popup = $state.raw<{
     open: boolean
     structure: AnyStructure | null
     entry: ConvexHullEntry | null
@@ -489,7 +489,7 @@
   )
 
   // Custom hover tooltip state used with ScatterPlot events
-  let hover_data = $state<HoverData3D<ConvexHullEntry> | null>(null)
+  let hover_data = $state.raw<HoverData3D<ConvexHullEntry> | null>(null)
   $effect(() => {
     const current_selection = helpers.current_entry(selected_entry, plot_entries)
     if (selected_entry && !current_selection) selected_entry = null

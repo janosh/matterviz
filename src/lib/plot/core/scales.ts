@@ -497,7 +497,13 @@ export function generate_log_ticks(
     return detailed_ticks.filter((tick) => tick >= min && tick <= max)
   }
 
-  return powers.filter((power) => power >= min && power <= max)
+  const filtered_powers = powers.filter((power) => power >= min && power <= max)
+  if (filtered_powers.length >= 2) return filtered_powers
+
+  // Sub-decade domains (e.g. after zoom) have <2 powers of 10 — use d3's mantissa log ticks
+  const tick_count = typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : 5
+  const fallback = scaleLog().domain([min, max]).ticks(tick_count)
+  return fallback.length > 0 ? fallback : filtered_powers
 }
 
 // Get custom label for a tick value if provided, otherwise return null

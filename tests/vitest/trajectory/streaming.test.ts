@@ -195,6 +195,22 @@ describe(`Trajectory Streaming`, () => {
       const frame = await loader.load_frame(data, 8)
       expect(frame?.step).toBe(8)
     })
+
+    it(`should parse Lattice and Properties-offset forces in indexed loads`, async () => {
+      const comment = `Lattice="6 0 0 0 6 0 0 0 6" Properties=species:S:1:pos:R:3:momenta:R:3:forces:R:3 energy=-1.5`
+      const frame = `1\n${comment}\nH 0.0 0.0 0.0 9.9 9.9 9.9 0.1 0.2 0.3`
+
+      const loaded = await new TrajFrameReader(`test.xyz`).load_frame(`${frame}\n${frame}`, 1)
+      const structure = loaded?.structure
+      expect(structure && `lattice` in structure && structure.lattice.matrix).toEqual([
+        [6, 0, 0],
+        [0, 6, 0],
+        [0, 0, 6],
+      ])
+      expect(loaded?.metadata?.forces).toEqual([[0.1, 0.2, 0.3]])
+      expect(loaded?.metadata?.energy).toBe(-1.5)
+      expect(loaded?.metadata?.volume).toBe(216) // derived from lattice (6^3), parity with eager parser
+    })
   })
 
   describe(`Plot Metadata Extraction`, () => {
@@ -209,6 +225,19 @@ describe(`Trajectory Streaming`, () => {
       expect(metadata[1].properties.energy).toBe(-10.3) // frame 3
       expect(metadata[0].properties.volume).toBe(100)
       expect(metadata[1].properties.volume).toBe(103) // frame 3
+    })
+
+    it.each<[string, Record<string, number>]>([
+      [`step=100 dt=0.5`, {}], // 'p' of step must not match pressure
+      [`frame=5`, {}], // 'e' of frame must not match energy
+      [`energy=-1.5 volume=100`, { energy: -1.5, volume: 100 }],
+    ])(`should anchor metadata keys at word boundaries: %s`, async (comment, expected) => {
+      const frame = `1\n${comment}\nH 0.0 0.0 0.0`
+      const loader = new TrajFrameReader(`test.xyz`)
+      const metadata = await loader.extract_plot_metadata(`${frame}\n${frame}`, {
+        sample_rate: 1,
+      })
+      expect(metadata[0].properties).toEqual(expected)
     })
 
     it(`should filter properties when requested`, async () => {

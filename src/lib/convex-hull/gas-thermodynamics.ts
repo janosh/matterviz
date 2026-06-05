@@ -377,15 +377,11 @@ export function apply_gas_corrections(
     // If no correction needed, return entry unchanged
     if (Math.abs(correction) < 1e-12) return entry
 
-    // Apply correction to energy (update both energy and energy_per_atom
-    // so downstream formation energy calculations use the corrected value)
-    // Both fields store per-atom values, and correction is also per-atom
-    const corrected_energy = entry.energy + correction
-    return {
-      ...entry,
-      energy: corrected_energy,
-      energy_per_atom: corrected_energy,
-    }
+    // compute_gas_correction is PER-ATOM: shift energy_per_atom by it and rescale total
+    // energy by atom count so downstream formation energies use the corrected values
+    const atoms = count_atoms_in_composition(entry.composition)
+    const energy_per_atom = (entry.energy_per_atom ?? entry.energy / atoms) + correction
+    return { ...entry, energy: energy_per_atom * atoms, energy_per_atom }
   })
 }
 

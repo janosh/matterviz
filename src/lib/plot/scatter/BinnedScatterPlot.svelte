@@ -25,6 +25,7 @@
     get_metadata_at,
     pick_from_index,
     range_bounds,
+    scale_bin_transform,
     series_extents,
     should_render_points,
     type DensityBin,
@@ -237,9 +238,17 @@
     x: Math.max(8, Math.ceil(plot_width / density_settings.bin_px)),
     y: Math.max(8, Math.ceil(plot_height / density_settings.bin_px)),
   })
+  // Bin in scale space so the heatmap, hover, and zoom stay aligned with log/arcsinh axes
+  let bin_transforms = $derived({
+    x: scale_bin_transform(x_scale_type),
+    y: scale_bin_transform(y_scale_type),
+  })
+  let bin_series = $derived(has_plot_size ? series : [])
   let density_result = $derived(
-    bin_points(has_plot_size ? series : [], x_range, y_range, density_bins.x, density_bins.y),
+    bin_points(bin_series, x_range, y_range, density_bins.x, density_bins.y, bin_transforms),
   )
+  const bin_at = (coords: Point2D) =>
+    density_bin_at_point(density_result, coords, plot_rect, x_range, y_range, bin_transforms)
   let auto_color_range = $derived<Vec2>([1, Math.max(1, density_result.max_count)])
   let color_scale_fn = $derived(create_color_scale(density_settings.color_scale, auto_color_range))
   let hovered_bin_color = $derived(hovered_bin ? color_scale_fn(hovered_bin.count) : undefined)
@@ -655,7 +664,7 @@
 
     if (render_mode === `density`) {
       hovered_point = null
-      const bin = density_bin_at_point(density_result, coords, plot_rect, x_range, y_range)
+      const bin = bin_at(coords)
       if (
         hovered_bin?.x_bin !== bin?.x_bin ||
         hovered_bin?.y_bin !== bin?.y_bin ||
@@ -701,7 +710,7 @@
     if (!coords) return
 
     if (render_mode === `density`) {
-      const bin = density_bin_at_point(density_result, coords, plot_rect, x_range, y_range)
+      const bin = bin_at(coords)
       if (!bin) return
       if (density_settings.bin_click === `none`) return
       if (bin.count > 1 && density_settings.bin_click === `zoom`) {

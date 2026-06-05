@@ -338,8 +338,8 @@
       normalized = normalized.replaceAll(superscript, ascii)
     }
     return normalized
-      .replaceAll(`·`, ``)
-      .replaceAll(`⋅`, ``)
+      // keep hydrate dots (deleting would glue digits: CuSO4·5H2O -> CuSO45H2O)
+      .replaceAll(`⋅`, `·`)
       .replaceAll(`−`, `-`)
       .replaceAll(/\s+/g, ``)
   }

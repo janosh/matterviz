@@ -108,6 +108,25 @@ describe(`marching_cubes`, () => {
     expect(periodic.faces.length).toBeGreaterThanOrEqual(non_periodic.faces.length)
   })
 
+  test(`periodic boundary-crossing isosurface has no cell-spanning triangles`, () => {
+    // Gaussian at frac (0,0,0) wraps all cell boundaries. Regression: edge cache keys
+    // used wrapped grid coords, merging opposite-face vertices into spanning triangles.
+    const min_frac = (idx: number) => Math.min(idx / 8, 1 - idx / 8)
+    const grid = make_grid(8, 8, 8, (ix, iy, iz) =>
+      Math.exp(-(min_frac(ix) ** 2 + min_frac(iy) ** 2 + min_frac(iz) ** 2) / 0.045),
+    )
+    const opts = { periodic: true, centered: false }
+    const { vertices, faces } = marching_cubes(grid, 0.3, IDENTITY, opts)
+    expect(faces.length).toBeGreaterThan(0)
+    const edge_len = (i1: number, i2: number) =>
+      Math.hypot(...vertices[i1].map((coord, axis) => coord - vertices[i2][axis]))
+    const max_edge = Math.max(
+      ...faces.flatMap(([a, b, c]) => [edge_len(a, b), edge_len(b, c), edge_len(c, a)]),
+    )
+    // No triangle edge should span more than half the unit cell
+    expect(max_edge).toBeLessThan(0.5)
+  })
+
   test(`interpolate=false places vertices at different positions than interpolated`, () => {
     // Quadratic gradient: interpolation won't land at midpoints
     const grid = make_grid(4, 4, 4, (ix) => ix * ix)

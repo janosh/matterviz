@@ -3,6 +3,7 @@ import {
   apply_gas_corrections,
   compute_element_chemical_potential,
   compute_gas_chemical_potential,
+  compute_gas_correction,
   create_default_gas_provider,
   DEFAULT_ELEMENT_TO_GAS,
   format_chemical_potential,
@@ -319,6 +320,20 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].energy).toBe(-5) // Compound unchanged
+  })
+
+  test(`per-atom correction scales total energy by atom count for O2-style refs`, () => {
+    // {O: 2} entry: 2 atoms, energy_per_atom = energy / 2
+    const entry: PhaseData = { composition: { O: 2 }, energy: -9.86, energy_per_atom: -4.93 }
+    const config: GasThermodynamicsConfig = { enabled_gases: [`O2`], pressures: { O2: 1.0 } }
+    const pressures = get_effective_pressures(config)
+    const correction = compute_gas_correction(entry, config, 1000, pressures)
+    expect(correction).toBeCloseTo(-1.2623, 4) // -T*S(O2, 1000K) per atom at P_REF
+
+    const [result] = apply_gas_corrections([entry], config, 1000)
+    // correction is PER-ATOM: energy_per_atom shifts by it, total energy by 2x
+    expect(result.energy_per_atom).toBeCloseTo(-4.93 + correction, 10)
+    expect(result.energy).toBeCloseTo((-4.93 + correction) * 2, 10)
   })
 
   test(`correction to O reference changes with pressure`, () => {

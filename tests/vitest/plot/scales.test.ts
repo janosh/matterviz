@@ -216,6 +216,21 @@ describe(`scales`, () => {
       const result = generate_log_ticks(-10, 100, 5)
       expect(result.every((t) => t >= math.LOG_EPS)).toBe(true)
     })
+
+    // Sub-decade domains (e.g. after zoom-drag) must not return zero ticks at default count
+    test(`sub-decade domains get in-range mantissa ticks; decades keep powers of 10`, () => {
+      for (const [min, max] of [
+        [2, 8],
+        [3, 7],
+        [0.2, 0.8],
+        [5, 50],
+      ]) {
+        const ticks = generate_log_ticks(min, max, 5)
+        expect(ticks.length, `[${min}, ${max}]`).toBeGreaterThanOrEqual(2)
+        expect(ticks.every((tick) => tick >= min && tick <= max)).toBe(true)
+      }
+      expect(generate_log_ticks(0.1, 1000, 5)).toEqual([0.1, 1, 10, 100, 1000])
+    })
   })
 
   describe(`generate_ticks`, () => {

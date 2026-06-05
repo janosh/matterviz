@@ -799,6 +799,8 @@ export function merge_coplanar_triangles(
       emit_tri(verts[0], verts[1], verts[2])
     }
   }
+  const tri_area = (va: Vec3, vb: Vec3, vc: Vec3): number =>
+    0.5 * Math.hypot(...cross_3d(subtract(vb, va), subtract(vc, va)))
   for (const members of groups.values()) {
     if (members.length === 1) {
       emit_original(members)
@@ -845,6 +847,18 @@ export function merge_coplanar_triangles(
       }
       return unique_verts[best_idx]
     })
+
+    // Convex hull fills notches of concave patches, inventing area — keep originals then
+    let group_area = 0
+    let fan_area = 0
+    for (const tri_idx of members) group_area += tri_area(...tri_planes[tri_idx].verts)
+    for (let idx = 1; idx < hull_3d.length - 1; idx++) {
+      fan_area += tri_area(hull_3d[0], hull_3d[idx], hull_3d[idx + 1])
+    }
+    if (Math.abs(fan_area - group_area) > Math.max(group_area, 1e-12) * 1e-6) {
+      emit_original(members)
+      continue
+    }
 
     // Fan-triangulate from hull vertex 0
     for (let idx = 1; idx < hull_3d.length - 1; idx++) {

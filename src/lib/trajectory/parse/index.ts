@@ -7,12 +7,17 @@ import type { AnyStructure } from '$lib/structure/index'
 import { parse_xyz } from '$lib/structure/parse'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
 import {
+  ext_hint,
   FORMAT_PATTERNS,
   is_trajectory_file,
   strip_compression_extensions,
 } from '$lib/trajectory/format-detect'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
-import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
+import {
+  count_xyz_frames,
+  create_trajectory_frame,
+  validate_3x3_matrix,
+} from '$lib/trajectory/helpers'
 import type {
   FrameLoader,
   ParseProgress,
@@ -63,8 +68,10 @@ export async function parse_trajectory_data(
       return parse_lammps_trajectory(content, filename, atom_type_mapping)
     }
 
-    // Single XYZ fallback
-    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
+    // Single XYZ fallback (content-sniffed when the filename gives no format hint,
+    // e.g. blob: object URLs whose basenames are UUIDs)
+    const xyz_hint = ext_hint(filename, /\.(xyz|extxyz)$/)
+    if (xyz_hint || (xyz_hint === null && count_xyz_frames(content) === 1)) {
       try {
         const structure = parse_xyz(content)
         if (structure) {
@@ -281,8 +288,15 @@ export async function parse_trajectory_async(
     }
 
     // Use indexed loading for supported large files (including compressed names).
+    // When the filename gives no format hint (e.g. blob: URLs), sniff a content
+    // prefix for XYZ frames so large extensionless files still get indexed.
     const base_filename = strip_compression_extensions(filename)
-    if (should_use_indexing && /\.(xyz|extxyz|traj)$/.test(base_filename)) {
+    const can_index =
+      /\.(xyz|extxyz|traj)$/.test(base_filename) ||
+      (typeof data === `string` &&
+        ext_hint(filename, /\.(xyz|extxyz)$/) === null &&
+        count_xyz_frames(data.slice(0, 2 ** 20)) >= 1)
+    if (should_use_indexing && can_index) {
       return await parse_with_unified_loader(
         data,
         filename,

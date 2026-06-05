@@ -120,6 +120,12 @@ describe(`Settings`, () => {
       expect(result.scatter.point.size).toBe(DEFAULTS.scatter.point.size)
     })
 
+    test(`merges symmetry overrides while preserving symmetry defaults`, () => {
+      const result = merge({ symmetry: { symprec: 1e-2 } } as Partial<DefaultSettings>)
+      expect(result.symmetry.symprec).toBe(1e-2)
+      expect(result.symmetry.algo).toBe(DEFAULTS.symmetry.algo)
+    })
+
     test(`partial updates don't affect other sections`, () => {
       const result = merge({
         structure: { atom_radius: 2.0 },

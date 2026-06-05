@@ -2,6 +2,20 @@ import { flushSync, mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
+// Force the canvas hit-test to resolve to a real plot entry so hovering can be
+// exercised deterministically in jsdom (synthetic events can't land on points).
+vi.mock(`$lib/convex-hull/helpers`, async (import_actual) => {
+  const actual = await import_actual()
+  return {
+    ...(actual as Record<string, unknown>),
+    find_hull_entry_at_mouse: (
+      _canvas: unknown,
+      _event: unknown,
+      entries: readonly unknown[],
+    ) => entries?.[0] ?? null,
+  }
+})
+
 class MockPath2D {
   arc(): void {}
 }
@@ -62,6 +76,31 @@ describe(`convex hull replacement state`, () => {
       await tick()
 
       expect(selected_text()).toBe(replaced)
+    },
+  )
+
+  // Regression: hovering a point stored hover_data in a deeply-proxied $state, so
+  // current_entry() returned the raw plot entry while hover_data.entry was its proxy.
+  // The identity comparison was always unequal -> reassign -> effect_update_depth_exceeded.
+  test.each([`3d`, `4d`] as const)(
+    `hovering a point does not trigger an infinite effect loop (%s)`,
+    async (dim) => {
+      mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
+      flushSync()
+      await tick()
+
+      const canvas = document.querySelector(`canvas`)
+      expect(canvas instanceof HTMLCanvasElement).toBe(true)
+
+      // Dispatching a mousemove sets hover_data via the (mocked) hit-test; flushSync
+      // would throw effect_update_depth_exceeded if the proxy-identity loop regressed.
+      canvas?.dispatchEvent(
+        new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
+      )
+      expect(() => flushSync()).not.toThrow()
+      await tick()
+
+      expect(document.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
     },
   )
 })

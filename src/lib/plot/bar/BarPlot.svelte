@@ -1270,33 +1270,18 @@
   // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
   let stacked_offsets = $derived.by(() => {
     if (mode !== `stacked`) return [] as number[][]
-    const max_len = Math.max(
-      0,
-      ...internal_series.map((srs) => srs.y.length),
-    )
-    const offsets = internal_series.map(() =>
-      Array.from({ length: max_len }, () => 0)
-    )
-
-    // Separate accumulators for y1 and y2 axes
-    const y1_pos_acc = Array.from({ length: max_len }, () => 0)
-    const y1_neg_acc = Array.from({ length: max_len }, () => 0)
-    const y2_pos_acc = Array.from({ length: max_len }, () => 0)
-    const y2_neg_acc = Array.from({ length: max_len }, () => 0)
-
+    const offsets = internal_series.map((srs) => Array.from(srs.x, () => 0))
+    // Cumulative totals keyed by axis/sign/x value so series with misaligned x grids
+    // stack on the correct baseline (matching stacked_totals in auto_ranges)
+    const acc = new SvelteMap<string, number>()
     internal_series.forEach((srs, series_idx) => {
       if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
-
-      const use_y2 = srs.y_axis === `y2`
-      const pos_acc = use_y2 ? y2_pos_acc : y1_pos_acc
-      const neg_acc = use_y2 ? y2_neg_acc : y1_neg_acc
-
-      for (let bar_idx = 0; bar_idx < max_len; bar_idx++) {
+      srs.x.forEach((x_val, bar_idx) => {
         const y_val = srs.y[bar_idx] ?? 0
-        const acc = y_val >= 0 ? pos_acc : neg_acc
-        offsets[series_idx][bar_idx] = acc[bar_idx]
-        acc[bar_idx] += y_val
-      }
+        const key = `${srs.y_axis === `y2` ? `y2` : `y1`}:${y_val >= 0 ? `+` : `-`}:${x_val}`
+        offsets[series_idx][bar_idx] = acc.get(key) ?? 0
+        acc.set(key, (acc.get(key) ?? 0) + y_val)
+      })
     })
     return offsets
   })

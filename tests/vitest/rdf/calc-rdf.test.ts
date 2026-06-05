@@ -15,6 +15,12 @@ if (!lu_al_structure || !pd_structure || !bi2zr2o8_structure) {
   throw new Error(`Required test structures not found in structure_map`)
 }
 
+// Cartesian-site shorthand for create_test_structure
+const make_site = (element: string, xyz: number[]) => ({
+  species: [{ element, occu: 1, oxidation_state: 0 }],
+  xyz,
+})
+
 // Helper to check basic RDF properties that all RDFs should satisfy
 function check_basic_rdf_properties(
   radii: number[],
@@ -44,24 +50,9 @@ describe(`calculate_rdf`, () => {
 
   test.each([
     { sites: [], name: `empty structure`, should_be_zero: true },
+    { sites: [make_site(`Si`, [0, 0, 0])], name: `single atom`, should_be_zero: true },
     {
-      sites: [
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [0, 0, 0],
-        },
-      ],
-      name: `single atom`,
-      should_be_zero: true,
-    },
-    {
-      sites: [
-        { species: [{ element: `Si`, occu: 1, oxidation_state: 0 }], xyz: [0, 0, 0] },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [4.5, 4.5, 4.5],
-        },
-      ],
+      sites: [make_site(`Si`, [0, 0, 0]), make_site(`Si`, [4.5, 4.5, 4.5])],
       name: `distant atoms (cutoff 0.1)`,
       should_be_zero: true,
       cutoff: 0.1,
@@ -120,10 +111,9 @@ describe(`calculate_rdf`, () => {
     let seed = 12345
     const random = () => ((seed = (seed * 1664525 + 1013904223) % 2 ** 32), seed / 2 ** 32)
 
-    const sites = Array.from({ length: n_atoms }, () => ({
-      species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-      xyz: [random() * 30, random() * 30, random() * 30],
-    }))
+    const sites = Array.from({ length: n_atoms }, () =>
+      make_site(`Si`, [random() * 30, random() * 30, random() * 30]),
+    )
 
     const large_structure = create_test_structure(30, sites)
     const result = calculate_rdf(large_structure, { cutoff: 12, n_bins: 75 })
@@ -135,64 +125,20 @@ describe(`calculate_rdf`, () => {
     expect(avg_last).toBeLessThan(1.1)
   })
 
+  const corner_sites = [
+    [0.5, 0.5, 0.5],
+    [9.5, 0.5, 0.5],
+    [0.5, 9.5, 0.5],
+    [9.5, 9.5, 0.5],
+  ].map((xyz) => make_site(`Si`, xyz))
+
   test.each([
-    {
-      pbc: [true, true, true] as Pbc,
-      name: `full PBC`,
-      sites: [
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.5, 0.5, 0.5],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [9.5, 0.5, 0.5],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.5, 9.5, 0.5],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [9.5, 9.5, 0.5],
-        },
-      ],
-    },
-    {
-      pbc: [false, false, false] as Pbc,
-      name: `no PBC`,
-      sites: [
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.5, 0.5, 0.5],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [9.5, 0.5, 0.5],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.5, 9.5, 0.5],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [9.5, 9.5, 0.5],
-        },
-      ],
-    },
+    { pbc: [true, true, true] as Pbc, name: `full PBC`, sites: corner_sites },
+    { pbc: [false, false, false] as Pbc, name: `no PBC`, sites: corner_sites },
     {
       pbc: [true, true, false] as Pbc,
       name: `slab PBC (xy only)`,
-      sites: [
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.5, 0.5, 5.0],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [9.5, 0.5, 5.0],
-        },
-      ],
+      sites: [make_site(`Si`, [0.5, 0.5, 5.0]), make_site(`Si`, [9.5, 0.5, 5.0])],
     },
   ])(`PBC effects: $name`, ({ pbc, sites }) => {
     expect.assertions(5)
@@ -203,28 +149,71 @@ describe(`calculate_rdf`, () => {
   })
 
   test(`different PBC settings should give different neighbor counts`, () => {
-    const sites = [
-      { species: [{ element: `Si`, occu: 1, oxidation_state: 0 }], xyz: [0.5, 0.5, 0.5] },
-      { species: [{ element: `Si`, occu: 1, oxidation_state: 0 }], xyz: [9.5, 0.5, 0.5] },
-    ]
+    const sites = [make_site(`Si`, [0.5, 0.5, 0.5]), make_site(`Si`, [9.5, 0.5, 0.5])]
     const structure = create_test_structure(10, sites)
 
-    const result_pbc = calculate_rdf(structure, {
-      cutoff: 8,
-      n_bins: 100,
-      pbc: [true, true, true],
-      auto_expand: false,
-    })
-    const result_no_pbc = calculate_rdf(structure, {
-      cutoff: 8,
-      n_bins: 100,
-      pbc: [false, false, false],
-      auto_expand: false,
-    })
+    const opts = { cutoff: 8, n_bins: 100, auto_expand: false }
+    const result_pbc = calculate_rdf(structure, { ...opts, pbc: [true, true, true] })
+    const result_no_pbc = calculate_rdf(structure, { ...opts, pbc: [false, false, false] })
 
     const sum_pbc = result_pbc.g_r.reduce((sum, val) => sum + val, 0)
     const sum_no_pbc = result_no_pbc.g_r.reduce((sum, val) => sum + val, 0)
     expect(sum_pbc).toBeGreaterThan(sum_no_pbc)
+  })
+
+  // Regression: auto-expansion used to disable PBC on the expanded structure, so atoms near
+  // the supercell boundary lost neighbors while normalization still assumed homogeneous
+  // density, biasing g(r) low (first-shell coordination 5.26 instead of 6)
+  test(`simple cubic keeps PBC after auto-expansion: coordination numbers exact`, () => {
+    const [a_len, cutoff, n_bins] = [4, 15, 150]
+    const structure = create_test_structure(a_len, [`Si`], [[0, 0, 0]])
+    const { r, g_r } = calculate_rdf(structure, { cutoff, n_bins, auto_expand: true })
+
+    // Coordination number n(r_max) = ∫₀^r_max 4πr²ρ·g(r)dr with ρ = 1/a³
+    const coordination = (r_max: number) =>
+      r.reduce(
+        (sum, rad, idx) =>
+          rad < r_max
+            ? sum + (4 * Math.PI * rad ** 2 * g_r[idx] * (cutoff / n_bins)) / a_len ** 3
+            : sum,
+        0,
+      )
+
+    // First shell: 6 neighbors at r = a (second shell sits at a·√2 ≈ 5.66)
+    expect(coordination(1.2 * a_len)).toBeCloseTo(6, 1)
+
+    // Full integral must recover the exact brute-force count of cubic-lattice neighbors
+    const span = Array.from({ length: 9 }, (_, idx) => idx - 4) // |idx| ≤ 4 > cutoff/a_len
+    const exact_count = span
+      .flatMap((ii) => span.flatMap((jj) => span.map((kk) => a_len * Math.hypot(ii, jj, kk))))
+      .filter((dist) => dist > 0 && dist < cutoff).length
+    expect(coordination(Infinity)).toBeCloseTo(exact_count, 0)
+  })
+
+  // Regression: calculate_all_pair_rdfs used to force pbc=[false,false,false], discarding
+  // the caller's pbc (e.g. from RdfPlot) and dropping cross-boundary pairs
+  test(`calculate_all_pair_rdfs preserves caller pbc`, () => {
+    // min-image distance between the sites is 1 Å, reachable only with PBC; without PBC
+    // the nearest pair sits at 9 Å, beyond the cutoff, leaving g(r) all zero
+    const structure = create_test_structure(
+      10,
+      [`Si`, `Si`],
+      [
+        [0.05, 0.05, 0.05],
+        [0.95, 0.05, 0.05],
+      ],
+    )
+    const opts = { cutoff: 8, n_bins: 80, auto_expand: false, pbc: [true, true, true] as Pbc }
+    const [all_pair] = calculate_all_pair_rdfs(structure, opts)
+    const direct = calculate_rdf(structure, {
+      ...opts,
+      center_species: `Si`,
+      neighbor_species: `Si`,
+    })
+    const first_peak_idx = all_pair.g_r.findIndex((val) => val > 0)
+    expect(first_peak_idx).not.toBe(-1)
+    expect(all_pair.r[first_peak_idx]).toBeCloseTo(1, 0)
+    expect(all_pair.g_r).toEqual(direct.g_r)
   })
 
   test(`RDF calculation should be deterministic`, () => {
@@ -275,22 +264,10 @@ describe(`calculate_rdf`, () => {
         [0.5, 1.5, 7.0],
       ] satisfies Matrix3x3,
       sites: [
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.0, 0.0, 0.0],
-        },
-        {
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-          xyz: [2.5, 3.0, 3.5],
-        },
-        {
-          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-          xyz: [1.0, 1.0, 1.0],
-        },
-        {
-          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-          xyz: [3.0, 4.0, 4.5],
-        },
+        make_site(`Si`, [0.0, 0.0, 0.0]),
+        make_site(`Si`, [2.5, 3.0, 3.5]),
+        make_site(`O`, [1.0, 1.0, 1.0]),
+        make_site(`O`, [3.0, 4.0, 4.5]),
       ],
       cutoff: 10,
       n_bins: 100,
@@ -308,16 +285,7 @@ describe(`calculate_rdf`, () => {
         [0.0, 6.0, 0.0],
         [2.0, 0.0, 7.0],
       ] satisfies Matrix3x3,
-      sites: [
-        {
-          species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.0, 0.0, 0.0],
-        },
-        {
-          species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
-          xyz: [2.5, 3.0, 3.5],
-        },
-      ],
+      sites: [make_site(`Na`, [0.0, 0.0, 0.0]), make_site(`Cl`, [2.5, 3.0, 3.5])],
       cutoff: 8,
       n_bins: 80,
       expected_angles: {

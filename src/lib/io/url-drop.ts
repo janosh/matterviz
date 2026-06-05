@@ -73,8 +73,8 @@ export async function load_from_url(
       // Need to decompress manually
       const buffer = await resp.arrayBuffer()
       const content = await decompress_data(buffer, `gzip`)
-      // Remove .gz extension when manually decompressing
-      return callback(content, filename.replace(/\.gz$/, ``))
+      // Remove .gz/.gzip extension when manually decompressing
+      return callback(content, filename.replace(/\.(gz|gzip)$/i, ``))
     }
 
     // For H5 files, always load as binary regardless of signature
@@ -110,24 +110,32 @@ export async function load_from_url(
   // Skip Range requests for known text formats to avoid production server issues
   // Include VASP files that don't have extensions (POSCAR, XDATCAR, CONTCAR)
   const is_known_text = TEXT_EXTENSIONS.has(ext) || VASP_BASENAME_RE.test(url_basename)
-  let binary_callback_args: [content: ArrayBuffer, filename: string] | undefined
+  let sniffed_callback_args: [content: string | ArrayBuffer, filename: string] | undefined
 
   if (!is_known_text) {
     try {
-      // Check for magic bytes only for unknown formats
+      // Check for magic bytes only for unknown formats (covers extensionless URLs
+      // like blob: object URLs whose basenames are UUIDs)
       const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
       if (head.ok) {
         const buf = new Uint8Array(await head.arrayBuffer())
         const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
         const is_hdf5 =
           buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 && buf[3] === 0x46
-        if (is_gzip || is_hdf5) {
+        // ASE .traj files start with the Ulm signature "- of Ulm"
+        const is_ase_traj = [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d].every(
+          (byte, idx) => buf[idx] === byte,
+        )
+        if (is_gzip || is_hdf5 || is_ase_traj) {
           const resp = await fetch(url)
           if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-          binary_callback_args = [
-            await resp.arrayBuffer(),
-            extract_filename(resp.headers, url_basename),
-          ]
+          const filename = extract_filename(resp.headers, url_basename)
+          const buffer = await resp.arrayBuffer()
+          // Decompress sniffed gzip since downstream parsers expect text or
+          // format-specific binary, not raw gzip bytes
+          sniffed_callback_args = is_gzip
+            ? [await decompress_data(buffer, `gzip`), filename.replace(/\.(gz|gzip)$/i, ``)]
+            : [buffer, filename]
         }
       }
     } catch {
@@ -135,7 +143,7 @@ export async function load_from_url(
     }
   }
 
-  if (binary_callback_args) return callback(...binary_callback_args)
+  if (sniffed_callback_args) return callback(...sniffed_callback_args)
 
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)

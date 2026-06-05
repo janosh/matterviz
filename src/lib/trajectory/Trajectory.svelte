@@ -32,7 +32,6 @@
   import { TrajectoryError, TrajectoryExportPane, TrajectoryInfoPane } from './index'
   import type { AtomTypeMapping, LoadingOptions } from './parse'
   import {
-    create_frame_loader,
     get_unsupported_format_message,
     MAX_BIN_FILE_SIZE,
     MAX_TEXT_FILE_SIZE,
@@ -751,9 +750,10 @@
         parsing_progress = progress
       }, merged_options)
 
-      // Attach frame loader and original data directly to trajectory for unified access
-      orig_data = data
-      trajectory.frame_loader = create_frame_loader(filename)
+      // Keep original data for on-demand frame loads only when indexed parsing attached a
+      // frame_loader. Direct-parse fallbacks (e.g. large JSON or extensionless blob:
+      // filenames) load all frames upfront, so retaining a full duplicate payload wastes memory.
+      orig_data = trajectory?.frame_loader ? data : null
     } catch (error) {
       console.error(`Indexed loading failed:`, error)
       throw error
