@@ -1298,15 +1298,9 @@ export function parse_structure_file(
     }
   }
 
-  // Try to auto-detect based on content
-  const lines = content.trim().split(/\r?\n/)
-
-  if (lines.length < 2) {
-    console.error(`File too short to determine format`)
-    return null
-  }
-
-  // JSON format detection: try to parse as JSON first
+  // Try to auto-detect based on content.
+  // JSON detection must come before the line-count guard: minified JSON
+  // (e.g. fetched via extensionless blob: object URLs) is a single line.
   try {
     const parsed = JSON.parse(content)
     if (is_optimade_raw(parsed)) {
@@ -1320,6 +1314,13 @@ export function parse_structure_file(
     }
   } catch {
     // Not JSON, continue with other format detection
+  }
+
+  const lines = content.trim().split(/\r?\n/)
+
+  if (lines.length < 2) {
+    console.error(`File too short to determine format`)
+    return null
   }
 
   // XYZ format detection: first line should be a number, second line is comment

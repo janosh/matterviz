@@ -1733,6 +1733,28 @@ unit_cell:
 })
 
 describe(`parse_structure_file`, () => {
+  // Filenames from blob: object URLs (URL.createObjectURL) are extensionless UUIDs,
+  // so format detection must fall back to content sniffing — same bug class as
+  // https://github.com/janosh/matterviz/issues/353 for trajectories
+  test.each([
+    [`CIF`, `Li10GeP2S12.cif`],
+    [`POSCAR`, `BaTiO3-tetragonal.poscar`],
+    [`pymatgen JSON`, `mp-1.json`],
+    [`extxyz`, `quartz.extxyz`],
+    [`phonopy YAML`, `BeO-zw12zc18p-phono3py.yaml.gz`],
+  ])(`detects %s content with blob-URL UUID filename`, (_label, fixture) => {
+    const content = read_maybe_gz(`./src/site/structures/${fixture}`)
+    const result = parse_structure_file(content, `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
+    expect(result, `failed to content-detect ${fixture}`).not.toBeNull()
+    expect(result?.sites.length).toBeGreaterThan(0)
+  })
+
+  test(`still trusts conflicting extension over content`, () => {
+    // CIF content explicitly named .json must not be sniffed as CIF
+    const content = read_maybe_gz(`./src/site/structures/Li10GeP2S12.cif`)
+    expect(parse_structure_file(content, `data.json`)).toBeNull()
+  })
+
   test(`parses nested JSON structure correctly`, () => {
     // Read the actual test file
     const content = read_maybe_gz(`./src/site/structures/${hea_hcp_filename}`)
