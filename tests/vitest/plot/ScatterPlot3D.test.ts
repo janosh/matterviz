@@ -1,5 +1,5 @@
 import { ScatterPlot3D } from '$lib'
-import type { DataSeries3D, Surface3DConfig } from '$lib/plot/types'
+import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import ScatterPlot3DHarness from './ScatterPlot3DHarness.svelte'

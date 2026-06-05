@@ -1,0 +1,2114 @@
+<script
+  lang="ts"
+  generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
+>
+  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import { format_value } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
+  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import type { Point2D, Vec2 } from '$lib/math'
+  import type {
+    AxisLoadError,
+    BarHandlerProps,
+    BarMode,
+    BarSeries,
+    BarStyle,
+    BasePlotProps,
+    DataLoaderFn,
+    InitialRanges,
+    InternalPoint,
+    LegendConfig,
+    LegendItem,
+    LineStyle,
+    Orientation,
+    PanConfig,
+    PlotConfig,
+    RefLine,
+    RefLineEvent,
+    ScaleType,
+    UserContentProps,
+  } from '$lib/plot'
+  import {
+    BarPlotControls,
+    compute_element_placement,
+    PlotAxis,
+    PlotLegend,
+    ReferenceLine,
+    ScatterPoint,
+  } from '$lib/plot'
+  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
+  import { create_axis_change_handler } from '$lib/plot/core/axis-utils'
+  import { process_prop } from '$lib/plot/core/data-transform'
+  import {
+    create_dimension_tracker,
+    create_hover_lock,
+  } from '$lib/plot/core/hover-lock.svelte'
+  import {
+    get_relative_coords,
+    pan_range,
+    PINCH_ZOOM_THRESHOLD,
+    pixels_to_data_delta,
+  } from '$lib/plot/core/interactions'
+  import type { IndexedRefLine } from '$lib/plot/core/reference-line'
+  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import {
+    create_color_scale,
+    create_scale,
+    create_size_scale,
+    generate_ticks,
+    get_nice_data_range,
+    get_tick_label,
+  } from '$lib/plot/core/scales'
+  import { DEFAULT_MARKERS, get_scale_type_name } from '$lib/plot/core/types'
+  import { DEFAULTS } from '$lib/settings'
+  import { extent } from 'd3-array'
+  import type { Snippet } from 'svelte'
+  import { untrack } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
+  import { Tween, type TweenOptions } from 'svelte/motion'
+  import { SvelteMap } from 'svelte/reactivity'
+  import {
+    build_obstacles_norm,
+    clip_bar,
+    has_explicit_position,
+    measured_footprint,
+    place_decorations,
+  } from '$lib/plot/core/auto-place'
+  import {
+    calc_auto_padding,
+    constrain_tooltip_position,
+    filter_padding,
+    LABEL_GAP_DEFAULT,
+    measure_max_tick_width,
+  } from '$lib/plot/core/layout'
+  import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
+  import { bar_path } from '$lib/plot/core/svg'
+  import { unique_id } from '$lib/plot/core/utils'
+  import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
+  import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
+
+  // Handler props for line marker events (extends BarHandlerProps with point-specific data)
+  interface LineMarkerHandlerProps extends BarHandlerProps<Metadata> {
+    point: InternalPoint<Metadata>
+  }
+
+  // Extended point type with computed screen coordinates (used internally for rendering)
+  type LineSeriesPoint = InternalPoint<Metadata> & {
+    x: number // Screen x coordinate
+    y: number // Screen y coordinate
+    data_x: number // Original data x value
+    data_y: number // Original data y value
+    idx: number // Index in series
+  }
+
+  let {
+    series = $bindable([]),
+    orientation = $bindable(`vertical`),
+    mode = $bindable(`overlay`),
+    x_axis = $bindable({}),
+    x2_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
+    display = $bindable(DEFAULTS.bar.display),
+    x_range = [null, null],
+    x2_range = [null, null],
+    y_range = [null, null],
+    y2_range = [null, null],
+    range_padding = 0.05,
+    padding = { t: 20, b: 60, l: 60, r: 20 },
+    legend = {},
+    show_legend,
+    bar = {},
+    line = {},
+    tooltip,
+    user_content,
+    hovered = $bindable(false),
+    change = () => {},
+    on_bar_click,
+    on_bar_hover,
+    // Line marker props (matching ScatterPlot)
+    color_scale = {
+      type: `linear`,
+      scheme: `interpolateViridis`,
+      value_range: undefined,
+    },
+    size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
+    point_tween,
+    on_point_click,
+    on_point_hover,
+    ref_lines = $bindable([]),
+    on_ref_line_click,
+    on_ref_line_hover,
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
+    controls_toggle_props,
+    controls_pane_props,
+    fullscreen = $bindable(false),
+    fullscreen_toggle = true,
+    children,
+    header_controls,
+    controls_extra,
+    data_loader,
+    on_axis_change,
+    on_error,
+    pan = {},
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
+    series?: BarSeries<Metadata>[]
+    // Component-specific props
+    orientation?: Orientation
+    mode?: BarMode
+    legend?: LegendConfig | null
+    show_legend?: boolean
+    bar?: BarStyle
+    line?: LineStyle
+    tooltip?: Snippet<[BarHandlerProps<Metadata>]>
+    user_content?: Snippet<[UserContentProps]>
+    header_controls?: Snippet<
+      [{ height: number; width: number; fullscreen: boolean }]
+    >
+    controls_extra?: Snippet<
+      [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
+    >
+    change?: (data: BarHandlerProps<Metadata> | null) => void
+    on_bar_click?: (
+      data: BarHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
+    ) => void
+    on_bar_hover?: (
+      data:
+        | (BarHandlerProps<Metadata> & {
+          event: MouseEvent | FocusEvent | KeyboardEvent
+        })
+        | null,
+    ) => void
+    // Line marker props (matching ScatterPlot)
+    // Note: For line series with markers, BOTH on_bar_* AND on_point_* events fire.
+    // Use on_point_* for marker-specific data (includes `point` with InternalPoint details)
+    // or on_bar_* for backward compatibility with bar-style event handling.
+    color_scale?: {
+      type?: ScaleType
+      scheme?: D3ColorSchemeName | D3InterpolateName
+      value_range?: [number, number]
+    } | D3InterpolateName
+    size_scale?: {
+      type?: ScaleType
+      radius_range?: [number, number]
+      value_range?: [number, number]
+    }
+    point_tween?: TweenOptions<Point2D>
+    on_point_click?: (
+      data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
+    ) => void
+    on_point_hover?: (
+      data:
+        | (LineMarkerHandlerProps & {
+          event: MouseEvent | FocusEvent | KeyboardEvent
+        })
+        | null,
+    ) => void
+    ref_lines?: RefLine[]
+    on_ref_line_click?: (event: RefLineEvent) => void
+    on_ref_line_hover?: (event: RefLineEvent | null) => void
+    // Interactive axis props
+    data_loader?: DataLoaderFn<Metadata, BarSeries<Metadata>>
+    on_axis_change?: (
+      axis: `x` | `x2` | `y` | `y2`,
+      key: string,
+      new_series: BarSeries<Metadata>[],
+    ) => void
+    on_error?: (error: AxisLoadError) => void
+    pan?: PanConfig
+  } = $props()
+
+  // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
+  let bar_state = $derived({ ...DEFAULTS.bar.bar, ...bar })
+  let line_state = $derived({ ...DEFAULTS.bar.line, ...line })
+  y2_axis = {
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { y: 60 },
+    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
+    range: [null, null],
+    ...y2_axis,
+  }
+  x2_axis = {
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { x: 0, y: 40 },
+    tick: { label: { shift: { x: 0, y: 0 } } },
+    range: [null, null],
+    ...x2_axis,
+  }
+
+  let [width, height] = $state([0, 0])
+  let wrapper: HTMLDivElement | undefined = $state()
+  let svg_element: SVGElement | null = $state(null)
+  const clip_path_id = unique_id(`chart-clip`) // stable, collision-resistant (see unique_id)
+
+  // Reference line hover state
+  let hovered_ref_line_idx = $state<number | null>(null)
+
+  // Interactive axis loading state
+  let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
+
+  // Compute ref_lines with index and group by z-index (using shared utilities)
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
+
+  // === Categorical Normalization ===
+  // Internal type with guaranteed numeric x (for downstream scale/rendering code)
+  type NumericBarSeries = Omit<BarSeries<Metadata>, `x`> & { x: readonly number[] }
+
+  let is_categorical = $derived(
+    series.some((srs) => srs.x.some((val) => typeof val === `string`)),
+  )
+
+  let category_list = $derived.by(() => {
+    if (!is_categorical) return [] as string[]
+    if (x_axis.categories?.length) return [...x_axis.categories]
+    return [...new Set(series.flatMap((srs) => srs.x.map(String)))]
+  })
+
+  let category_indices = $derived(
+    category_list.length > 0 ? category_list.map((_, idx) => idx) : null,
+  )
+
+  let internal_series = $derived.by<NumericBarSeries[]>(() => {
+    // safe: when !category_indices, all x values are numeric (is_categorical is false)
+    if (!category_indices) return series as unknown as NumericBarSeries[]
+    return series.map((srs) => {
+      const orig_map = new Map(srs.x.map((val, idx) => [String(val), idx]))
+      if (orig_map.size < srs.x.length) {
+        console.warn(
+          `BarPlot: series "${
+            srs.label ?? `?`
+          }" has duplicate x values — last occurrence wins`,
+        )
+      }
+      // Resolve original index for each category (undefined if series lacks it)
+      const orig_indices = category_list.map((cat) => orig_map.get(cat))
+      const remap = <T>(arr: readonly T[] | null | undefined, fallback: T): T[] =>
+        orig_indices.map((oi) => oi != null ? (arr?.[oi] ?? fallback) : fallback)
+      const bw_arr = Array.isArray(srs.bar_width) ? srs.bar_width : null
+      const meta_arr = Array.isArray(srs.metadata) ? srs.metadata : null
+      return {
+        ...srs,
+        x: category_indices,
+        y: remap(srs.y, srs.render_mode === `line` ? NaN : 0),
+        labels: remap(srs.labels, null),
+        metadata: orig_indices.map((oi) =>
+          oi != null ? (meta_arr ? meta_arr[oi] : srs.metadata) : undefined
+        ) as Metadata[],
+        ...(bw_arr ? { bar_width: remap(bw_arr, 0.5) } : {}),
+        ...(srs.color_values ? { color_values: remap(srs.color_values, null) } : {}),
+        ...(srs.size_values ? { size_values: remap(srs.size_values, null) } : {}),
+      } as NumericBarSeries
+    })
+  })
+
+  // Compute auto ranges from visible series
+  let visible_series = $derived(
+    internal_series.filter((srs) => srs?.visible ?? true),
+  )
+
+  // Separate series by y-axis
+  let y1_series = $derived(
+    visible_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`),
+  )
+  let y2_series = $derived(
+    visible_series.filter((srs) => srs.y_axis === `y2`),
+  )
+  let x2_series = $derived(
+    visible_series.filter((srs) => srs.x_axis === `x2`),
+  )
+
+  let auto_ranges = $derived.by(() => {
+    // Calculate separate ranges for y1 and y2 axes
+    const calc_y_range = (
+      series_list: typeof visible_series,
+      y_limit: typeof y_range,
+      scale_type: ScaleType,
+    ) => {
+      let points = series_list.flatMap((srs) =>
+        srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
+      )
+
+      // In stacked mode, calculate stacked totals for accurate range (only for bars on the same axis)
+      if (mode === `stacked`) {
+        const stacked_totals = new SvelteMap<number, { pos: number; neg: number }>()
+
+        // Only include visible bar series (not lines) in stacking
+        series_list
+          .filter((srs) => srs.render_mode !== `line`)
+          .forEach((srs) =>
+            srs.x.forEach((x_val, idx) => {
+              const y_val = srs.y[idx] ?? 0
+              const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
+              if (y_val >= 0) totals.pos += y_val
+              else totals.neg += y_val
+              stacked_totals.set(x_val, totals)
+            })
+          )
+
+        // Replace points with stacked totals + line series (which don't stack)
+        points = [
+          ...Array.from(stacked_totals).flatMap(([x_val, { pos, neg }]) => [
+            ...(pos > 0 ? [{ x: x_val, y: pos }] : []),
+            ...(neg < 0 ? [{ x: x_val, y: neg }] : []),
+          ]),
+          ...series_list
+            .filter((srs) => srs.render_mode === `line`)
+            .flatMap((srs) =>
+              srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
+            ),
+        ]
+      }
+
+      if (points.length === 0) return [0, 1]
+
+      let computed_y_range = get_nice_data_range(
+        points,
+        (pt) => pt.y,
+        y_limit,
+        scale_type,
+        range_padding,
+        false,
+      )
+
+      // For bar plots, ensure the value axis starts at 0 unless there are negative values
+      // Only apply zero-clamping for linear and arcsinh scales (not log)
+      const type_name = get_scale_type_name(scale_type)
+      if (type_name === `linear` || type_name === `arcsinh`) {
+        const has_negative = points.some((pt) => pt.y < 0)
+        const has_positive = points.some((pt) => pt.y > 0)
+
+        // Only adjust if no explicit y_range is set
+        if (y_limit?.[0] == null && y_limit?.[1] == null) {
+          if (has_positive && !has_negative) computed_y_range = [0, computed_y_range[1]]
+          else if (has_negative && !has_positive) computed_y_range = [computed_y_range[0], 0]
+        }
+      }
+
+      return computed_y_range
+    }
+
+    // Get x values split by axis for range calculation
+    // For categorical data, use fixed range centered on integer indices
+    let x_auto_range: number[]
+    if (category_list.length > 0) {
+      x_auto_range = [-0.5, category_list.length - 0.5]
+    } else {
+      const x1_x_points = visible_series
+        .filter((srs) => (srs.x_axis ?? `x1`) === `x1`)
+        .flatMap((srs) => srs.x.map((x_val) => ({ x: x_val, y: 0 })))
+      x_auto_range = x1_x_points.length > 0
+        ? get_nice_data_range(
+          x1_x_points,
+          (pt) => pt.x,
+          x_range,
+          x_axis.scale_type ?? `linear`,
+          range_padding,
+          x_axis.format?.startsWith(`%`) || false,
+        )
+        : [0, 1]
+    }
+
+    const x2_x_points = x2_series.flatMap((srs) =>
+      srs.x.map((x_val) => ({ x: x_val, y: 0 }))
+    )
+    const x2_scale_type = x2_axis.scale_type ?? `linear`
+    const x2_auto_range = x2_x_points.length > 0
+      ? get_nice_data_range(
+        x2_x_points,
+        (pt) => pt.x,
+        x2_range,
+        x2_scale_type,
+        range_padding,
+        x2_axis.format?.startsWith(`%`) || false,
+      )
+      : [0, 1]
+
+    const y1_range = calc_y_range(y1_series, y_range, y_axis.scale_type ?? `linear`)
+    const y2_auto_range = calc_y_range(
+      y2_series,
+      y2_range,
+      y2_axis.scale_type ?? `linear`,
+    )
+
+    // Map data ranges to axis ranges depending on orientation
+    return orientation === `horizontal`
+      ? ({ x: y1_range, x2: x2_auto_range, y: x_auto_range, y2: y2_auto_range })
+      : ({ x: x_auto_range, x2: x2_auto_range, y: y1_range, y2: y2_auto_range })
+  })
+
+  // Initialize and current ranges
+  let ranges = $state<{
+    initial: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
+    current: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
+  }>({
+    initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
+    current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
+  })
+
+  $effect(() => { // handle x_axis.range / x2_axis.range / y_axis.range / y2_axis.range changes
+    const new_x = [
+      x_axis.range?.[0] ?? auto_ranges.x[0],
+      x_axis.range?.[1] ?? auto_ranges.x[1],
+    ] as Vec2
+    const new_x2 = [
+      x2_axis.range?.[0] ?? auto_ranges.x2[0],
+      x2_axis.range?.[1] ?? auto_ranges.x2[1],
+    ] as Vec2
+    const new_y = [
+      y_axis.range?.[0] ?? auto_ranges.y[0],
+      y_axis.range?.[1] ?? auto_ranges.y[1],
+    ] as Vec2
+    const new_y2 = [
+      y2_axis.range?.[0] ?? auto_ranges.y2[0],
+      y2_axis.range?.[1] ?? auto_ranges.y2[1],
+    ] as Vec2
+    // Only update if the initial (data-driven) ranges changed, not when user pans
+    // Comparing against initial preserves user's pan/zoom state
+    if (
+      ranges.initial.x[0] !== new_x[0] ||
+      ranges.initial.x[1] !== new_x[1] ||
+      ranges.initial.x2[0] !== new_x2[0] ||
+      ranges.initial.x2[1] !== new_x2[1] ||
+      ranges.initial.y[0] !== new_y[0] ||
+      ranges.initial.y[1] !== new_y[1] ||
+      ranges.initial.y2[0] !== new_y2[0] ||
+      ranges.initial.y2[1] !== new_y2[1]
+    ) {
+      ranges = {
+        initial: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
+        current: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
+      }
+    }
+  })
+
+  // Layout: dynamic padding based on tick label widths
+  const default_padding = { t: 20, b: 60, l: 60, r: 20 }
+  // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
+  let base_pad = $derived(filter_padding(padding, default_padding))
+
+  // Update padding when format or ticks change
+  $effect(() => {
+    const new_pad = width && height && ticks.y.length > 0
+      ? calc_auto_padding({
+        padding,
+        default_padding,
+        x2_axis: { ...x2_axis, tick_values: ticks.x2 },
+        y_axis: { ...y_axis, tick_values: ticks.y },
+        y2_axis: { ...y2_axis, tick_values: ticks.y2 },
+      })
+      : filter_padding(padding, default_padding)
+    // Expand right padding if y2 ticks are shown (only for vertical orientation)
+    if (
+      width && height && y2_series.length > 0 && ticks.y2.length > 0 &&
+      orientation === `vertical`
+    ) {
+      // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
+      // When ticks are inside, they don't contribute to padding
+      const inside = y2_axis.tick?.label?.inside ?? false
+      const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
+      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
+      const label_space = y2_axis.label ? 20 : 0
+      new_pad.r = Math.max(
+        new_pad.r,
+        tick_shift + tick_width_contribution + 30 + label_space,
+      )
+    }
+    // Expand top padding if x2 ticks are shown (only for vertical orientation)
+    if (
+      width && height && x2_series.length > 0 && ticks.x2.length > 0 &&
+      orientation === `vertical`
+    ) {
+      const inside = x2_axis.tick?.label?.inside ?? false
+      const tick_shift = inside ? 0 : Math.abs(x2_axis.tick?.label?.shift?.y ?? 0) + 5
+      const tick_height = inside ? 0 : 16
+      const label_space = x2_axis.label ? 20 : 0
+      new_pad.t = Math.max(new_pad.t, tick_shift + tick_height + 30 + label_space)
+    }
+
+    // Only update if padding actually changed (prevents infinite loop)
+    if (
+      base_pad.t !== new_pad.t || base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l || base_pad.r !== new_pad.r
+    ) base_pad = new_pad
+  })
+
+  let legend_element = $state<HTMLDivElement | undefined>()
+  const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 60 }))
+  const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
+
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each bar is modeled as a segment
+  // from baseline to its tip so the legend can't hide inside a tall bar. Built from internal_series
+  // (pad-independent) + ranges so the crowding decision can't see its own reservation.
+  const obstacles_norm = $derived.by(() => {
+    if (!width || !height || visible_series.length === 0) return []
+    const base_w = width - base_pad.l - base_pad.r
+    const base_h = height - base_pad.t - base_pad.b
+    if (base_w <= 0 || base_h <= 0) return []
+    const bars: { points: { x: number; y: number }[]; draws_line: boolean }[] = []
+    const vertical = orientation === `vertical`
+    internal_series.forEach((srs, series_idx) => {
+      if (!(srs?.visible ?? true)) return
+      const is_line = srs.render_mode === `line`
+      const series_offsets = stacked_offsets[series_idx] ?? []
+      const [ax0, ax1] = srs.x_axis === `x2` ? ranges.current.x2 : ranges.current.x
+      const [vy0, vy1] = srs.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
+      const [cy0, cy1] = ranges.current.y
+      const x_span = ax1 - ax0
+      const y_span = vy1 - vy0
+      const cy_span = cy1 - cy0
+      if (!(x_span > 0) || !((vertical ? y_span : cy_span) > 0)) return
+      srs.x.forEach((x_val, bar_idx) => {
+        const base = !is_line && mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
+        const value = base + srs.y[bar_idx]
+        // vertical: category on x, value rises on y (inverted). horizontal: category on y, value on x
+        const seg = vertical
+          ? clip_bar(true, (x_val - ax0) / x_span, 1 - (value - vy0) / y_span, 1 - (base - vy0) / y_span)
+          : clip_bar(false, 1 - (x_val - cy0) / cy_span, (value - ax0) / x_span, (base - ax0) / x_span)
+        if (seg) bars.push(seg)
+      })
+    })
+    return build_obstacles_norm(bars, base_w, base_h)
+  })
+
+  // Move the legend to the bottom margin when no interior spot avoids the bars
+  const decor = $derived.by(() =>
+    place_decorations({
+      base_pad,
+      width,
+      height,
+      obstacles_norm,
+      // gate on legend_element (the render signal) not legend_data, whose entries can read pad
+      legend: legend != null &&
+          (show_legend !== undefined ? show_legend : series.length > 1) &&
+          legend_element != null && !legend_has_explicit_pos
+        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+        : null,
+    })
+  )
+  const pad = $derived(decor.pad)
+  const legend_auto_outside = $derived(decor.legend_outside)
+  const legend_outside_x = $derived(decor.legend_pos.x)
+  const legend_outside_y = $derived(decor.legend_pos.y)
+  const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
+  const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
+
+  // Scales
+  let scales = $derived({
+    x: create_scale(x_axis.scale_type ?? `linear`, ranges.current.x, [
+      pad.l,
+      width - pad.r,
+    ]),
+    x2: create_scale(x2_axis.scale_type ?? `linear`, ranges.current.x2, [
+      pad.l,
+      width - pad.r,
+    ]),
+    y: create_scale(y_axis.scale_type ?? `linear`, ranges.current.y, [
+      height - pad.b,
+      pad.t,
+    ]),
+    y2: create_scale(y2_axis.scale_type ?? `linear`, ranges.current.y2, [
+      height - pad.b,
+      pad.t,
+    ]),
+  })
+
+  // Compute plot center for point tweening origin
+  let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
+  let plot_center_y = $derived(pad.t + (height - pad.b - pad.t) / 2)
+
+  // Compute color values from line series for color scaling (filter to numbers only)
+  let all_color_values = $derived(
+    visible_series
+      .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
+      .flatMap((srs: BarSeries<Metadata>) =>
+        (srs.color_values ?? []).filter(
+          (val): val is number => typeof val === `number`,
+        )
+      ),
+  )
+
+  // Create auto color range (safely handle empty arrays or undefined extent results)
+  let auto_color_range: [number, number] = $derived.by(() => {
+    if (all_color_values.length === 0) return [0, 1]
+    const [min_val, max_val] = extent(all_color_values)
+    return [min_val ?? 0, max_val ?? 1]
+  })
+
+  // All size values from line series (for size scale, filter to numbers only)
+  let all_size_values = $derived(
+    visible_series
+      .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
+      .flatMap((srs: BarSeries<Metadata>) =>
+        [...(srs.size_values ?? [])].filter(
+          (val): val is number => typeof val === `number`,
+        )
+      ),
+  )
+
+  // Color scale function (using shared utility)
+  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
+
+  // Size scale function (using shared utility)
+  let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
+
+  // Auto-generate tick labels for categorical data (unless user provides explicit ticks)
+  // In vertical mode categories are on x-axis; in horizontal mode on y-axis
+  let cat_axis = $derived(orientation === `horizontal` ? `y` : `x`)
+  let effective_cat_ticks = $derived.by(() => {
+    if (category_list.length === 0) return undefined
+    // Only respect user ticks when they're a Record (custom label mapping),
+    // not a number (tick count) or array (tick positions)
+    const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
+    if (
+      user_ticks != null && typeof user_ticks === `object` &&
+      !Array.isArray(user_ticks)
+    ) return user_ticks
+    return Object.fromEntries(
+      category_list.map((cat, idx) => [idx, cat]),
+    ) as Record<number, string>
+  })
+
+  // Ticks
+  let ticks = $derived({
+    x: width && height
+      ? (category_indices && cat_axis === `x` ? category_indices : generate_ticks(
+        ranges.current.x,
+        x_axis.scale_type ?? `linear`,
+        x_axis.ticks,
+        scales.x,
+        { default_count: 8 },
+      ))
+      : [],
+    y: width && height
+      ? (category_indices && cat_axis === `y` ? category_indices : generate_ticks(
+        ranges.current.y,
+        y_axis.scale_type ?? `linear`,
+        y_axis.ticks,
+        scales.y,
+        { default_count: 6 },
+      ))
+      : [],
+    y2: width && height && y2_series.length > 0 && orientation === `vertical`
+      ? generate_ticks(
+        ranges.current.y2,
+        y2_axis.scale_type ?? `linear`,
+        y2_axis.ticks,
+        scales.y2,
+        {
+          default_count: 6,
+        },
+      )
+      : [],
+    x2: width && height && x2_series.length > 0 && orientation === `vertical`
+      ? generate_ticks(
+        ranges.current.x2,
+        x2_axis.scale_type ?? `linear`,
+        x2_axis.ticks,
+        scales.x2,
+        {
+          default_count: 8,
+        },
+      )
+      : [],
+  })
+
+  // Cache measured tick-label widths so expensive canvas text measurement
+  // only runs when ticks/format change, not on every template rerender.
+  let tick_label_widths = $derived({
+    y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
+    x2_max: measure_max_tick_width(ticks.x2, x2_axis.format ?? ``),
+  })
+
+  // Zoom drag state
+  let drag_state = $state<{
+    start: { x: number; y: number } | null
+    current: { x: number; y: number } | null
+    bounds: DOMRect | null
+  }>({ start: null, current: null, bounds: null })
+
+  // Pan state
+  let is_focused = $state(false)
+  let shift_held = $state(false)
+  let pan_drag_state = $state<
+    InitialRanges & { start: { x: number; y: number } } | null
+  >(null)
+  let touch_state = $state<
+    InitialRanges & { start_touches: { x: number; y: number }[] } | null
+  >(null)
+  const on_window_mouse_move = (evt: MouseEvent) => {
+    if (!drag_state.start || !drag_state.bounds) return
+    drag_state.current = {
+      x: evt.clientX - drag_state.bounds.left,
+      y: evt.clientY - drag_state.bounds.top,
+    }
+  }
+  const on_window_mouse_up = () => {
+    if (drag_state.start && drag_state.current) {
+      const x1_raw = scales.x.invert(drag_state.start.x) as number | Date
+      const x2_raw = scales.x.invert(drag_state.current.x) as number | Date
+      const y1 = scales.y.invert(drag_state.start.y)
+      const y2 = scales.y.invert(drag_state.current.y)
+      const y2_1 = scales.y2.invert(drag_state.start.y)
+      const y2_2 = scales.y2.invert(drag_state.current.y)
+      const x2a_1_raw = scales.x2.invert(drag_state.start.x) as number | Date
+      const x2a_2_raw = scales.x2.invert(drag_state.current.x) as number | Date
+      const dx = Math.abs(drag_state.start.x - drag_state.current.x)
+      const dy = Math.abs(drag_state.start.y - drag_state.current.y)
+
+      let xr1: number, xr2: number
+      if (x1_raw instanceof Date && x2_raw instanceof Date) {
+        ;[xr1, xr2] = [x1_raw.getTime(), x2_raw.getTime()]
+      } else if (typeof x1_raw === `number` && typeof x2_raw === `number`) {
+        ;[xr1, xr2] = [x1_raw, x2_raw]
+      } else [xr1, xr2] = [NaN, NaN] // bail: mixed types
+
+      let x2r1: number, x2r2: number
+      if (x2a_1_raw instanceof Date && x2a_2_raw instanceof Date) {
+        ;[x2r1, x2r2] = [x2a_1_raw.getTime(), x2a_2_raw.getTime()]
+      } else if (typeof x2a_1_raw === `number` && typeof x2a_2_raw === `number`) {
+        ;[x2r1, x2r2] = [x2a_1_raw, x2a_2_raw]
+      } else [x2r1, x2r2] = [NaN, NaN]
+
+      if (dx > 5 && dy > 5 && Number.isFinite(xr1) && Number.isFinite(xr2)) {
+        // Update axis ranges to trigger reactivity and prevent effect from overriding
+        x_axis = { ...x_axis, range: [Math.min(xr1, xr2), Math.max(xr1, xr2)] }
+        if (x2_series.length > 0 && Number.isFinite(x2r1) && Number.isFinite(x2r2)) {
+          x2_axis = {
+            ...x2_axis,
+            range: [Math.min(x2r1, x2r2), Math.max(x2r1, x2r2)],
+          }
+        }
+        y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
+        y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
+      }
+    }
+    drag_state = { start: null, current: null, bounds: null }
+    window.removeEventListener(`mousemove`, on_window_mouse_move)
+    window.removeEventListener(`mouseup`, on_window_mouse_up)
+    document.body.style.cursor = `default`
+  }
+
+  // Pan drag handlers
+  const on_pan_move = (evt: MouseEvent) => {
+    if (!pan_drag_state) return
+    const dx = evt.clientX - pan_drag_state.start.x
+    const dy = evt.clientY - pan_drag_state.start.y
+
+    // Convert pixel delta to data delta (note: drag direction is inverted for natural pan feel)
+    const sensitivity = pan?.drag_sensitivity ?? 1
+
+    const x_delta = pixels_to_data_delta(
+      -dx * sensitivity,
+      pan_drag_state.initial_x_range,
+      chart_width,
+    )
+    const x2_delta = pixels_to_data_delta(
+      -dx * sensitivity,
+      pan_drag_state.initial_x2_range,
+      chart_width,
+    )
+    const y_delta = pixels_to_data_delta(
+      dy * sensitivity,
+      pan_drag_state.initial_y_range,
+      chart_height,
+    )
+    const y2_delta = pixels_to_data_delta(
+      dy * sensitivity,
+      pan_drag_state.initial_y2_range,
+      chart_height,
+    )
+
+    ranges.current.x = pan_range(pan_drag_state.initial_x_range, x_delta)
+    ranges.current.x2 = pan_range(pan_drag_state.initial_x2_range, x2_delta)
+    ranges.current.y = pan_range(pan_drag_state.initial_y_range, y_delta)
+    ranges.current.y2 = pan_range(pan_drag_state.initial_y2_range, y2_delta)
+  }
+
+  const on_pan_end = () => {
+    pan_drag_state = null
+    document.body.style.cursor = ``
+    window.removeEventListener(`mousemove`, on_pan_move)
+    window.removeEventListener(`mouseup`, on_pan_end)
+  }
+
+  function handle_mouse_down(evt: MouseEvent) {
+    const coords = get_relative_coords(evt)
+    if (!coords || !svg_element) return
+
+    // Check if pan is enabled and shift is held for pan mode
+    const pan_enabled = pan?.enabled !== false
+    if (pan_enabled && evt.shiftKey) {
+      evt.preventDefault()
+      pan_drag_state = {
+        start: { x: evt.clientX, y: evt.clientY },
+        initial_x_range: [...ranges.current.x] as [number, number],
+        initial_x2_range: [...ranges.current.x2] as [number, number],
+        initial_y_range: [...ranges.current.y] as [number, number],
+        initial_y2_range: [...ranges.current.y2] as [number, number],
+      }
+      document.body.style.cursor = `grabbing`
+      window.addEventListener(`mousemove`, on_pan_move)
+      window.addEventListener(`mouseup`, on_pan_end)
+      return
+    }
+
+    drag_state = {
+      start: coords,
+      current: coords,
+      bounds: svg_element.getBoundingClientRect(),
+    }
+    window.addEventListener(`mousemove`, on_window_mouse_move)
+    window.addEventListener(`mouseup`, on_window_mouse_up)
+    evt.preventDefault()
+  }
+
+  // Wheel handler for pan (requires focus and shift)
+  function handle_wheel(evt: WheelEvent) {
+    const pan_enabled = pan?.enabled !== false
+    // Only capture wheel when focused AND Shift is held
+    // Use shift_held state (tracked via keydown/keyup) for compatibility with synthetic events
+    if (!pan_enabled || !is_focused || !shift_held) return
+
+    evt.preventDefault()
+
+    const sensitivity = pan?.wheel_sensitivity ?? 1
+
+    // Determine pan direction based on wheel delta
+    const x_delta = pixels_to_data_delta(
+      evt.deltaX * sensitivity,
+      ranges.current.x,
+      chart_width,
+    )
+    const x2_delta = pixels_to_data_delta(
+      evt.deltaX * sensitivity,
+      ranges.current.x2,
+      chart_width,
+    )
+    const y_delta = pixels_to_data_delta(
+      evt.deltaY * sensitivity,
+      ranges.current.y,
+      chart_height,
+    )
+    const y2_delta = pixels_to_data_delta(
+      evt.deltaY * sensitivity,
+      ranges.current.y2,
+      chart_height,
+    )
+
+    if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
+      ranges.current.x = pan_range(ranges.current.x, x_delta)
+      ranges.current.x2 = pan_range(ranges.current.x2, x2_delta)
+    } else {
+      ranges.current.y = pan_range(ranges.current.y, y_delta)
+      ranges.current.y2 = pan_range(ranges.current.y2, y2_delta)
+    }
+  }
+
+  // Touch handlers for pinch-zoom and two-finger pan
+  function handle_touch_start(evt: TouchEvent) {
+    const touch_enabled = pan?.enabled !== false && pan?.touch_enabled !== false
+    if (!touch_enabled || evt.touches.length !== 2) return
+
+    evt.preventDefault()
+    const touches = Array.from(evt.touches)
+    touch_state = {
+      start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
+      initial_x_range: [...ranges.current.x] as [number, number],
+      initial_x2_range: [...ranges.current.x2] as [number, number],
+      initial_y_range: [...ranges.current.y] as [number, number],
+      initial_y2_range: [...ranges.current.y2] as [number, number],
+    }
+  }
+
+  function handle_touch_move(evt: TouchEvent) {
+    if (!touch_state || evt.touches.length !== 2) return
+    evt.preventDefault()
+
+    const [t1, t2] = Array.from(evt.touches)
+    const [s1, s2] = touch_state.start_touches
+
+    // Calculate center movement for pan
+    const start_center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 }
+    const curr_center = {
+      x: (t1.clientX + t2.clientX) / 2,
+      y: (t1.clientY + t2.clientY) / 2,
+    }
+    const dx = curr_center.x - start_center.x
+    const dy = curr_center.y - start_center.y
+
+    // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
+    const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
+    // Guard against zero-distance pinch to avoid Infinity scale
+    if (start_dist < Number.EPSILON) return
+    const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
+    const scale = curr_dist / start_dist
+
+    // If scale changed significantly, treat as pinch-zoom
+    // Also guard against scale being too small to avoid division by zero
+    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
+      // Pinch zoom centered on gesture center
+      // Divide by scale so spread (scale > 1) = smaller span (zoom in)
+      const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
+      const x2_span = touch_state.initial_x2_range[1] -
+        touch_state.initial_x2_range[0]
+      const y_span = touch_state.initial_y_range[1] - touch_state.initial_y_range[0]
+      const y2_span = touch_state.initial_y2_range[1] -
+        touch_state.initial_y2_range[0]
+      const x_center =
+        (touch_state.initial_x_range[0] + touch_state.initial_x_range[1]) / 2
+      const x2_center =
+        (touch_state.initial_x2_range[0] + touch_state.initial_x2_range[1]) / 2
+      const y_center =
+        (touch_state.initial_y_range[0] + touch_state.initial_y_range[1]) / 2
+      const y2_center =
+        (touch_state.initial_y2_range[0] + touch_state.initial_y2_range[1]) / 2
+
+      ranges.current.x = [
+        x_center - x_span / scale / 2,
+        x_center + x_span / scale / 2,
+      ]
+      ranges.current.x2 = [
+        x2_center - x2_span / scale / 2,
+        x2_center + x2_span / scale / 2,
+      ]
+      ranges.current.y = [
+        y_center - y_span / scale / 2,
+        y_center + y_span / scale / 2,
+      ]
+      ranges.current.y2 = [
+        y2_center - y2_span / scale / 2,
+        y2_center + y2_span / scale / 2,
+      ]
+    } else {
+      // Pan
+      const x_delta = pixels_to_data_delta(
+        -dx,
+        touch_state.initial_x_range,
+        chart_width,
+      )
+      const x2_delta = pixels_to_data_delta(
+        -dx,
+        touch_state.initial_x2_range,
+        chart_width,
+      )
+      const y_delta = pixels_to_data_delta(
+        dy,
+        touch_state.initial_y_range,
+        chart_height,
+      )
+      const y2_delta = pixels_to_data_delta(
+        dy,
+        touch_state.initial_y2_range,
+        chart_height,
+      )
+      ranges.current.x = pan_range(touch_state.initial_x_range, x_delta)
+      ranges.current.x2 = pan_range(touch_state.initial_x2_range, x2_delta)
+      ranges.current.y = pan_range(touch_state.initial_y_range, y_delta)
+      ranges.current.y2 = pan_range(touch_state.initial_y2_range, y2_delta)
+    }
+  }
+
+  function handle_touch_end() {
+    touch_state = null
+  }
+
+  // Legend data and handlers
+  let legend_data = $derived.by<LegendItem[]>(() =>
+    series.map((srs: BarSeries<Metadata>, idx: number) => {
+      const is_line = srs.render_mode === `line`
+      const series_markers = srs.markers ?? DEFAULT_MARKERS
+      const has_line = series_markers === `line` || series_markers === `line+points`
+      const has_points = series_markers === `points` ||
+        series_markers === `line+points`
+      const series_color = srs.color ?? (is_line ? line_state.color : bar_state.color)
+
+      // Get point style for symbol color (handle array or single object)
+      const first_point_style = Array.isArray(srs.point_style)
+        ? srs.point_style[0]
+        : srs.point_style
+      const first_color_value = srs.color_values?.[0]
+      const point_color = first_color_value != null
+        ? color_scale_fn(first_color_value)
+        : first_point_style?.fill ?? series_color
+
+      if (is_line) {
+        // Line series: show line and/or symbol based on markers
+        return {
+          series_idx: idx,
+          label: srs.label ?? `Series ${idx + 1}`,
+          visible: srs.visible ?? true,
+          legend_group: srs.legend_group,
+          display_style: {
+            ...(has_line
+              ? {
+                line_color: series_color,
+                line_dash: srs.line_style?.line_dash,
+              }
+              : {}),
+            ...(has_points
+              ? {
+                symbol_type: first_point_style?.symbol_type ??
+                  DEFAULTS.scatter.symbol_type,
+                symbol_color: point_color,
+              }
+              : {}),
+          },
+        }
+      }
+      // Bar series: show square symbol
+      return {
+        series_idx: idx,
+        label: srs.label ?? `Series ${idx + 1}`,
+        visible: srs.visible ?? true,
+        legend_group: srs.legend_group,
+        display_style: {
+          symbol_type: `Square` as const,
+          symbol_color: series_color,
+        },
+      }
+    })
+  )
+
+  function toggle_series_visibility(series_idx: number) {
+    if (series_idx >= 0 && series_idx < series.length) {
+      series = series.map((srs, idx) =>
+        idx === series_idx ? { ...srs, visible: !(srs.visible ?? true) } : srs
+      )
+    }
+  }
+
+  function toggle_group_visibility(_group_name: string, series_indices: number[]) {
+    // Filter to valid indices upfront (consistent with shared toggle_group_visibility)
+    const valid_indices = series_indices.filter((idx) =>
+      idx >= 0 && idx < series.length
+    )
+    if (valid_indices.length === 0) return
+
+    const idx_set = new Set(valid_indices)
+    // Check if all series in the group are currently visible
+    const all_visible = valid_indices.every((idx) => series[idx].visible ?? true)
+    // Toggle: if all visible, hide all; otherwise show all
+    const new_visibility = !all_visible
+    series = series.map((srs, idx) =>
+      idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs
+    )
+  }
+
+  // Collect bar and line positions for legend placement
+  let bar_points_for_placement = $derived.by(() => {
+    if (!width || !height || visible_series.length === 0) return []
+
+    return internal_series.flatMap((srs, series_idx) => {
+      if (!(srs?.visible ?? true)) return []
+      const is_line = srs.render_mode === `line`
+      const series_offsets = stacked_offsets[series_idx] ?? []
+      const use_y2 = srs.y_axis === `y2`
+      const y_scale = use_y2 ? scales.y2 : scales.y
+      const use_x2_pl = srs.x_axis === `x2`
+      const x_scale_pl = use_x2_pl ? scales.x2 : scales.x
+      return srs.x
+        .map((x_val, bar_idx) => {
+          const y_val = srs.y[bar_idx]
+          const base = !is_line && mode === `stacked`
+            ? (series_offsets[bar_idx] ?? 0)
+            : 0
+          const [bar_x, bar_y] = orientation === `vertical`
+            ? [x_scale_pl(x_val), y_scale(base + y_val)]
+            : [x_scale_pl(base + y_val), scales.y(x_val)]
+          return { x: bar_x, y: bar_y }
+        })
+        .filter(({ x, y }) => isFinite(x) && isFinite(y))
+    })
+  })
+
+  // Legend placement stability state (legend_element declared above for the auto-place block)
+  let hovered_legend_series_idx = $state<number | null>(null)
+  const legend_hover = create_hover_lock()
+  const dim_tracker = create_dimension_tracker()
+  let has_initial_legend_placement = $state(false)
+
+  // Clear pending hover lock timeout on unmount
+  $effect(() => () => legend_hover.cleanup())
+
+  // Calculate best legend placement using continuous grid sampling
+  let legend_placement = $derived.by(() => {
+    const should_show = show_legend !== undefined ? show_legend : series.length > 1
+    if (!should_show || !width || !height) return null
+
+    const result = compute_element_placement({
+      plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
+      element: legend_element,
+      element_size: { width: 120, height: 60 }, // fallback before first render
+      axis_clearance: legend?.axis_clearance,
+      exclude_rects: [],
+      points: bar_points_for_placement,
+    })
+
+    return result
+  })
+
+  // Tweened legend coordinates for smooth animation - create once, update target via effect
+  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
+  const tweened_legend_coords = new Tween(
+    { x: 0, y: 0 },
+    untrack(() => ({ duration: 400, ...legend?.tween })),
+  )
+
+  // Update legend position with stability checks
+  $effect(() => {
+    if (!width || !height || !legend_placement) return
+
+    // Track dimensions for resize detection
+    const dims_changed = dim_tracker.has_changed(width, height)
+    if (dims_changed) dim_tracker.update(width, height)
+
+    const is_responsive = legend?.responsive ?? false
+    // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not yet initially placed))
+    const should_update = dims_changed || (!legend_hover.is_locked.current &&
+      (is_responsive || !has_initial_legend_placement))
+
+    if (should_update) {
+      tweened_legend_coords.set(
+        { x: legend_placement.x, y: legend_placement.y },
+        // Skip animation on initial placement to avoid jump from (0, 0)
+        has_initial_legend_placement ? undefined : { duration: 0 },
+      )
+      // Only lock position after we have actual measured size
+      if (legend_element) {
+        has_initial_legend_placement = true
+      }
+    }
+  })
+
+  // Tooltip state
+  let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
+  let tooltip_el = $state<HTMLDivElement | undefined>()
+
+  function get_bar_data(
+    series_idx: number,
+    bar_idx: number,
+    color: string,
+  ): BarHandlerProps<Metadata> {
+    const srs = internal_series[series_idx]
+    const [x, y] = [srs.x[bar_idx], srs.y[bar_idx]]
+    const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
+    const metadata = Array.isArray(srs.metadata)
+      ? srs.metadata[bar_idx]
+      : srs.metadata
+    const label = srs.labels?.[bar_idx] ?? null
+    const active_y_axis = srs.y_axis ?? `y1`
+    const active_x_axis = srs.x_axis ?? `x1`
+    const category_label = category_list[x]
+    const coords = {
+      x,
+      y,
+      orient_x,
+      orient_y,
+      x_axis: active_x_axis === `x2` ? x2_axis : x_axis,
+      x2_axis,
+      y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
+      y2_axis,
+    }
+    return {
+      ...coords,
+      metadata,
+      color,
+      label,
+      series_idx,
+      bar_idx,
+      active_y_axis,
+      active_x_axis,
+      category_label,
+    }
+  }
+
+  // Find the point closest to the cursor on a polyline overlay (O(n) scan).
+  function find_closest_point(
+    evt: MouseEvent,
+    points: LineSeriesPoint[],
+  ): LineSeriesPoint | null {
+    const target = evt.target
+    if (!(target instanceof Element)) return null
+    const svg_el = target.closest(`svg`)
+    if (!svg_el) return null
+    const rect = svg_el.getBoundingClientRect()
+    const mx = evt.clientX - rect.left
+    const my = evt.clientY - rect.top
+    let best: LineSeriesPoint | null = null
+    let best_dist = Infinity
+    for (const pt of points) {
+      const dist = (pt.x - mx) ** 2 + (pt.y - my) ** 2
+      if (dist < best_dist) {
+        best_dist = dist
+        best = pt
+      }
+    }
+    return best
+  }
+
+  const line_point_fill = (pt: LineSeriesPoint, series_color: string): string =>
+    pt.color_value != null
+      ? color_scale_fn(pt.color_value)
+      : pt.point_style?.fill ?? series_color
+
+  const handle_bar_hover =
+    (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
+      hovered = true
+      hover_info = get_bar_data(series_idx, bar_idx, color)
+      change(hover_info)
+      on_bar_hover?.({ ...hover_info, event })
+    }
+
+  // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
+  let stacked_offsets = $derived.by(() => {
+    if (mode !== `stacked`) return [] as number[][]
+    const max_len = Math.max(
+      0,
+      ...internal_series.map((srs) => srs.y.length),
+    )
+    const offsets = internal_series.map(() =>
+      Array.from({ length: max_len }, () => 0)
+    )
+
+    // Separate accumulators for y1 and y2 axes
+    const y1_pos_acc = Array.from({ length: max_len }, () => 0)
+    const y1_neg_acc = Array.from({ length: max_len }, () => 0)
+    const y2_pos_acc = Array.from({ length: max_len }, () => 0)
+    const y2_neg_acc = Array.from({ length: max_len }, () => 0)
+
+    internal_series.forEach((srs, series_idx) => {
+      if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
+
+      const use_y2 = srs.y_axis === `y2`
+      const pos_acc = use_y2 ? y2_pos_acc : y1_pos_acc
+      const neg_acc = use_y2 ? y2_neg_acc : y1_neg_acc
+
+      for (let bar_idx = 0; bar_idx < max_len; bar_idx++) {
+        const y_val = srs.y[bar_idx] ?? 0
+        const acc = y_val >= 0 ? pos_acc : neg_acc
+        offsets[series_idx][bar_idx] = acc[bar_idx]
+        acc[bar_idx] += y_val
+      }
+    })
+    return offsets
+  })
+
+  // Calculate group positions for grouped mode (side-by-side bars)
+  let group_info = $derived.by(() => {
+    if (mode !== `grouped`) return { bar_series_count: 0, bar_series_indices: [] }
+    const bar_series_indices = internal_series
+      .map((srs, idx) =>
+        (srs?.visible ?? true) && srs.render_mode !== `line` ? idx : -1
+      )
+      .filter((idx) => idx >= 0)
+    return { bar_series_count: bar_series_indices.length, bar_series_indices }
+  })
+
+  // Set theme-aware background when entering fullscreen
+  $effect(() => {
+    set_fullscreen_bg(wrapper, fullscreen, `--barplot-fullscreen-bg`)
+  })
+
+  // State accessors for shared axis change handler
+  const axis_state: AxisChangeState<BarSeries<Metadata>> = {
+    get_axis: (axis) => {
+      if (axis === `x`) return x_axis
+      if (axis === `x2`) return x2_axis
+      if (axis === `y`) return y_axis
+      return y2_axis
+    },
+    set_axis: (axis, config) => {
+      // Spread into existing state to preserve merged type structure
+      if (axis === `x`) x_axis = { ...x_axis, ...config }
+      else if (axis === `x2`) x2_axis = { ...x2_axis, ...config }
+      else if (axis === `y`) y_axis = { ...y_axis, ...config }
+      else y2_axis = { ...y2_axis, ...config }
+    },
+    get_series: () => series,
+    set_series: (new_series) => (series = new_series),
+    get_loading: () => axis_loading,
+    set_loading: (axis) => (axis_loading = axis),
+  }
+
+  // Create shared handler bound to this component's state
+  // Using $derived so handler updates when callback props change
+  const handle_axis_change = $derived(create_axis_change_handler(
+    axis_state,
+    data_loader,
+    on_axis_change,
+    on_error,
+  ))
+
+  let auto_load_attempted = false // prevent infinite retries on failure
+
+  // Auto-load data if series is empty but options exist (runs once)
+  $effect(() => {
+    if (series.length === 0 && data_loader && !auto_load_attempted) {
+      // Check x-axis first, then y-axis
+      if (x_axis.options?.length) {
+        auto_load_attempted = true
+        const first_key = x_axis.selected_key ?? x_axis.options[0].key
+        handle_axis_change(`x`, first_key).catch(() => {})
+      } else if (y_axis.options?.length) {
+        auto_load_attempted = true
+        const first_key = y_axis.selected_key ?? y_axis.options[0].key
+        handle_axis_change(`y`, first_key).catch(() => {})
+      }
+    }
+  })
+</script>
+
+{#snippet ref_lines_layer(lines: IndexedRefLine[])}
+  {#each lines as line (line.id ?? line.idx)}
+    <ReferenceLine
+      ref_line={line}
+      line_idx={line.idx}
+      x_min={line.x_axis === `x2` ? ranges.current.x2[0] : ranges.current.x[0]}
+      x_max={line.x_axis === `x2` ? ranges.current.x2[1] : ranges.current.x[1]}
+      y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
+      y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
+      x_scale={scales.x}
+      x2_scale={scales.x2}
+      y_scale={scales.y}
+      y2_scale={scales.y2}
+      {clip_path_id}
+      hovered_line_idx={hovered_ref_line_idx}
+      on_click={(event: RefLineEvent) => {
+        line.on_click?.(event)
+        on_ref_line_click?.(event)
+      }}
+      on_hover={(event: RefLineEvent | null) => {
+        hovered_ref_line_idx = event?.line_idx ?? null
+        line.on_hover?.(event)
+        on_ref_line_hover?.(event)
+      }}
+    />
+  {/each}
+{/snippet}
+
+<svelte:window
+  onkeydown={(evt) => {
+    if (evt.key === `Escape` && fullscreen) {
+      evt.preventDefault()
+      fullscreen = false
+    }
+    if (evt.key === `Shift`) shift_held = true
+  }}
+  onkeyup={(evt) => {
+    if (evt.key === `Shift`) shift_held = false
+  }}
+/>
+
+<div
+  bind:this={wrapper}
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  {...rest}
+  class="bar-plot {rest.class ?? ``}"
+  class:fullscreen
+>
+  {#if width && height}
+    <div class="header-controls">
+      {@render header_controls?.({ height, width, fullscreen })}
+      {#if fullscreen_toggle}
+        <FullscreenToggle bind:fullscreen />
+      {/if}
+    </div>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <svg
+      bind:this={svg_element}
+      role="application"
+      aria-label={rest[`aria-label`] ??
+      ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Bar chart`)}
+      tabindex="0"
+      onfocusin={() => (is_focused = true)}
+      onfocusout={() => (is_focused = false)}
+      onmousedown={handle_mouse_down}
+      ondblclick={() => {
+        // Reset zoom to initial ranges (undo any pan/zoom)
+        ranges.current.x = [...ranges.initial.x] as [number, number]
+        ranges.current.x2 = [...ranges.initial.x2] as [number, number]
+        ranges.current.y = [...ranges.initial.y] as [number, number]
+        ranges.current.y2 = [...ranges.initial.y2] as [number, number]
+        // Also reset axis props so future data changes recalculate auto ranges
+        x_axis = { ...x_axis, range: [null, null] }
+        x2_axis = { ...x2_axis, range: [null, null] }
+        y_axis = { ...y_axis, range: [null, null] }
+        y2_axis = { ...y2_axis, range: [null, null] }
+      }}
+      onmouseleave={() => {
+        hovered = false
+        hover_info = null
+        change(null)
+        on_bar_hover?.(null)
+      }}
+      onwheel={handle_wheel}
+      ontouchstart={handle_touch_start}
+      ontouchmove={handle_touch_move}
+      ontouchend={handle_touch_end}
+      style:cursor={pan_drag_state
+      ? `grabbing`
+      : shift_held && pan?.enabled !== false
+      ? `grab`
+      : `crosshair`}
+    >
+      <ZoomRect start={drag_state.start} current={drag_state.current} />
+
+      <!-- User content (custom overlays, reference lines, etc.) -->
+      {@render user_content?.({
+        height,
+        width,
+        x_scale_fn: scales.x,
+        x2_scale_fn: scales.x2,
+        y_scale_fn: scales.y,
+        y2_scale_fn: scales.y2,
+        pad,
+        x_range: ranges.current.x,
+        x2_range: ranges.current.x2,
+        y_range: ranges.current.y,
+        y2_range: ranges.current.y2,
+        fullscreen,
+      })}
+
+      <!-- Reference lines: below grid (rendered before axes which contain grid lines) -->
+      {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+
+      <!-- X-axis -->
+      <PlotAxis
+        side="x"
+        ticks={ticks.x as number[]}
+        place={scales.x}
+        axis={x_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={display.x_grid}
+        tick_label={(tick) =>
+        get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
+        label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
+        label_y={height - pad.b / 3 + (x_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `x`}
+        on_axis_change={(key) => handle_axis_change(`x`, key)}
+      />
+
+      <!-- X2-axis (Top) -->
+      <!-- Note: x2 axis is only supported for vertical orientation -->
+      {#if x2_series.length > 0 && orientation === `vertical`}
+        <PlotAxis
+          side="x2"
+          ticks={ticks.x2 as number[]}
+          place={scales.x2}
+          axis={x2_axis}
+          {pad}
+          {width}
+          {height}
+          show_grid={display.x2_grid}
+          tick_label={(tick) => get_tick_label(tick, x2_axis.ticks)}
+          label_x={pad.l + chart_width / 2 + (x2_axis.label_shift?.x ?? 0)}
+          label_y={Math.max(12, pad.t - (x2_axis.label_shift?.y ?? 40))}
+          axis_loading={axis_loading === `x2`}
+          on_axis_change={(key) => handle_axis_change(`x2`, key)}
+        />
+      {/if}
+
+      <!-- Y-axis -->
+      <PlotAxis
+        side="y"
+        ticks={ticks.y as number[]}
+        place={scales.y}
+        axis={y_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={display.y_grid}
+        tick_label={(tick) =>
+        get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
+        label_x={Math.max(
+          12,
+          pad.l - (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
+            LABEL_GAP_DEFAULT,
+        ) + (y_axis.label_shift?.x ?? 0)}
+        label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `y`}
+        on_axis_change={(key) => handle_axis_change(`y`, key)}
+      />
+
+      <!-- Y2-axis (Right) -->
+      <!-- Note: y2 axis is only supported for vertical orientation. Implementing x2 for horizontal mode requires additional complexity. -->
+      {#if y2_series.length > 0 && orientation === `vertical`}
+        {@const y2_inside = y2_axis.tick?.label?.inside ?? false}
+        {@const y2_tick_shift = y2_inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8}
+        {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
+        <PlotAxis
+          side="y2"
+          ticks={ticks.y2 as number[]}
+          place={scales.y2}
+          axis={y2_axis}
+          {pad}
+          {width}
+          {height}
+          show_grid={display.y2_grid}
+          tick_label={(tick) => get_tick_label(tick, y2_axis.ticks)}
+          label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
+          (y2_axis.label_shift?.x ?? 0)}
+          label_y={pad.t + chart_height / 2 + (y2_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `y2`}
+          on_axis_change={(key) => handle_axis_change(`y2`, key)}
+        />
+      {/if}
+
+      <!-- Define clip path for chart area -->
+      <defs>
+        <clipPath id={clip_path_id}>
+          <rect x={pad.l} y={pad.t} width={chart_width} height={chart_height} />
+        </clipPath>
+      </defs>
+
+      <!-- Clipped content: zero lines, bars, and lines -->
+      <g clip-path="url(#{clip_path_id})">
+        <ZeroLines
+          {display}
+          x_scale_fn={scales.x}
+          x2_scale_fn={scales.x2}
+          y_scale_fn={scales.y}
+          y2_scale_fn={scales.y2}
+          x_range={ranges.current.x}
+          x2_range={ranges.current.x2}
+          y_range={ranges.current.y}
+          y2_range={ranges.current.y2}
+          x_scale_type={x_axis.scale_type}
+          x2_scale_type={x2_axis.scale_type}
+          y_scale_type={y_axis.scale_type}
+          y2_scale_type={y2_axis.scale_type}
+          x_is_time={x_axis.format?.startsWith(`%`) ?? false}
+          x2_is_time={x2_axis.format?.startsWith(`%`) ?? false}
+          has_x2={x2_series.length > 0}
+          has_y2={y2_series.length > 0}
+          {width}
+          {height}
+          {pad}
+        />
+
+        <!-- Reference lines: below lines -->
+        {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+
+        <!-- Bars and Lines -->
+        {#each internal_series as srs, series_idx (srs?.id ?? series_idx)}
+          {#if srs?.visible ?? true}
+            {@const is_line = srs.render_mode === `line`}
+            <g
+              class={is_line ? `line-series` : `bar-series`}
+              data-series-idx={series_idx}
+              opacity={hovered_legend_series_idx !== null &&
+                  hovered_legend_series_idx !== series_idx
+                ? 0.25
+                : 1}
+            >
+              {#if is_line}
+                <!-- Render as line -->
+                {@const color = srs.color ?? line_state.color ?? `steelblue`}
+                {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width ?? 2}
+                {@const line_dash = srs.line_style?.line_dash ?? `none`}
+                {@const use_y2 = srs.y_axis === `y2`}
+                {@const y_scale = use_y2 ? scales.y2 : scales.y}
+                {@const use_x2 = srs.x_axis === `x2`}
+                {@const x_scale = use_x2 ? scales.x2 : scales.x}
+                {@const series_markers = srs.markers ?? DEFAULT_MARKERS}
+                {@const show_line = series_markers === `line` ||
+            series_markers === `line+points`}
+                {@const show_points = series_markers === `points` ||
+            series_markers === `line+points`}
+                {@const points = srs.x.map((x_val, idx) => {
+            const y_val = srs.y[idx]
+            // Lines don't stack - they show absolute values (useful for totals/trends)
+            const plot_x = orientation === `vertical`
+              ? x_scale(x_val)
+              : x_scale(y_val)
+            const plot_y = orientation === `vertical`
+              ? y_scale(y_val)
+              : scales.y(x_val)
+            // Create internal point with all needed data
+            const color_value = srs.color_values?.[idx] ?? null
+            const size_value = srs.size_values?.[idx] ?? null
+            const point_style = process_prop(srs.point_style, idx)
+            const point_hover = process_prop(srs.point_hover, idx)
+            const point_label = process_prop(srs.point_label, idx)
+            const point_offset = process_prop(srs.point_offset, idx)
+            const metadata = Array.isArray(srs.metadata)
+              ? srs.metadata[idx]
+              : srs.metadata
+            return {
+              x: plot_x,
+              y: plot_y,
+              data_x: x_val,
+              data_y: y_val,
+              idx,
+              color_value,
+              size_value,
+              point_style,
+              point_hover,
+              point_label,
+              point_offset,
+              metadata,
+              series_idx,
+              point_idx: idx,
+            } as LineSeriesPoint
+          }).filter((pt) => isFinite(pt.x) && isFinite(pt.y))}
+                {@const polyline_str = show_line && points.length > 1
+            ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
+            : ``}
+                {#if polyline_str}
+                  <polyline
+                    points={polyline_str}
+                    fill="none"
+                    stroke={color}
+                    stroke-width={stroke_width}
+                    stroke-dasharray={line_dash}
+                    stroke-linejoin="round"
+                    stroke-linecap="round"
+                  />
+                {/if}
+                {#if polyline_str && !show_points && (on_bar_hover || on_bar_click)}
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <polyline
+                    points={polyline_str}
+                    fill="none"
+                    stroke="transparent"
+                    stroke-width={Math.max(10, stroke_width * 3)}
+                    stroke-linejoin="round"
+                    stroke-linecap="round"
+                    style:cursor={on_bar_click ? `pointer` : undefined}
+                    onmousemove={(evt) => {
+                      const pt = find_closest_point(evt, points)
+                      if (!pt) return
+                      hovered = true
+                      const fill = line_point_fill(pt, color)
+                      hover_info = get_bar_data(series_idx, pt.idx, fill)
+                      change(hover_info)
+                      on_bar_hover?.({ ...hover_info!, event: evt })
+                    }}
+                    onmouseleave={() => {
+                      change(null)
+                      hover_info = null
+                      on_bar_hover?.(null)
+                    }}
+                    onclick={(evt) => {
+                      const pt = find_closest_point(evt, points)
+                      if (!pt) return
+                      const fill = line_point_fill(pt, color)
+                      const bar_data = get_bar_data(series_idx, pt.idx, fill)
+                      on_bar_click?.({ ...bar_data, event: evt })
+                    }}
+                  />
+                {/if}
+                {#if show_points}
+                  {@const clickable = on_bar_click || on_point_click}
+                  {@const get_pt = (evt: Event) => {
+            const attr = evt.target instanceof Element
+              ? evt.target.closest(`[data-bar-idx]`)?.getAttribute(
+                `data-bar-idx`,
+              )
+              : null
+            return points.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
+          }}
+                  {@const set_hover = (
+            pt: LineSeriesPoint | null,
+            evt: MouseEvent | FocusEvent,
+          ) => {
+            if (pt) {
+              hovered = true
+              const fill = line_point_fill(pt, color)
+              hover_info = get_bar_data(series_idx, pt.idx, fill)
+              change(hover_info)
+            } else {
+              change(null)
+              hover_info = null
+            }
+            on_bar_hover?.(pt ? { ...hover_info!, event: evt } : null)
+            on_point_hover?.(
+              pt ? { ...hover_info!, event: evt, point: pt } : null,
+            )
+          }}
+                  {@const do_click = (
+            pt: LineSeriesPoint,
+            evt: MouseEvent | KeyboardEvent,
+          ) => {
+            const fill = line_point_fill(pt, color)
+            const bar_data = get_bar_data(series_idx, pt.idx, fill)
+            on_bar_click?.({ ...bar_data, event: evt })
+            on_point_click?.({ ...bar_data, event: evt, point: pt })
+          }}
+                  {@const leaving = (evt: MouseEvent | FocusEvent) =>
+            (evt.relatedTarget instanceof Element
+              ? evt.relatedTarget.closest(`.line-points`)
+              : null) !== evt.currentTarget}
+                  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_mouse_events_have_key_events -->
+                  <g
+                    class="line-points"
+                    role="group"
+                    onmouseover={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt) set_hover(pt, evt)
+                    }}
+                    onfocusin={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt) set_hover(pt, evt)
+                    }}
+                    onmouseout={(evt) => {
+                      if (leaving(evt)) set_hover(null, evt)
+                    }}
+                    onfocusout={(evt) => {
+                      if (leaving(evt)) set_hover(null, evt)
+                    }}
+                    onclick={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt && clickable) do_click(pt, evt)
+                    }}
+                    onkeydown={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt && clickable && (evt.key === `Enter` || evt.key === ` `)) {
+                        evt.preventDefault()
+                        do_click(pt, evt)
+                      }
+                    }}
+                  >
+                    {#each points as pt (pt.idx)}
+                      {@const sty = pt.point_style}
+                      {@const fl = line_point_fill(pt, color)}
+                      {@const rad = pt.size_value != null
+              ? size_scale_fn(pt.size_value)
+              : sty?.radius ?? 4}
+                      {@const hov = hover_info?.series_idx === series_idx &&
+              hover_info?.bar_idx === pt.idx}
+                      <ScatterPoint
+                        x={pt.x}
+                        y={pt.y}
+                        is_hovered={hov}
+                        {point_tween}
+                        style={{
+                          ...sty,
+                          radius: rad,
+                          fill: fl,
+                          stroke: sty?.stroke ?? `transparent`,
+                          stroke_width: sty?.stroke_width ?? 1,
+                          fill_opacity: sty?.fill_opacity ?? 1,
+                          stroke_opacity: sty?.stroke_opacity ?? 1,
+                          cursor: clickable ? `pointer` : undefined,
+                        }}
+                        hover={pt.point_hover ?? {}}
+                        label={pt.point_label ?? {}}
+                        offset={pt.point_offset ?? { x: 0, y: 0 }}
+                        origin={{ x: plot_center_x, y: plot_center_y }}
+                        --point-fill-color={fl}
+                        data-bar-idx={pt.idx}
+                        tabindex={clickable ? (hov ? 0 : -1) : undefined}
+                      />
+                    {/each}
+                  </g>
+                {/if}
+              {:else}
+                <!-- Render as bars -->
+                {#each srs.x as x_val, bar_idx (bar_idx)}
+                  {@const y_val = srs.y[bar_idx]}
+                  {@const base = mode === `stacked`
+            ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0)
+            : 0}
+                  {@const color = srs.color ?? bar_state.color ?? `steelblue`}
+                  {@const bar_width_val = Array.isArray(srs.bar_width)
+            ? (srs.bar_width[bar_idx] ?? 0.5)
+            : (srs.bar_width ?? 0.5)}
+                  {@const half = mode === `grouped` && group_info.bar_series_count > 1
+            ? bar_width_val / (2 * group_info.bar_series_count)
+            : bar_width_val / 2}
+                  {@const calculate_group_offset = (idx: number) => {
+            const position = group_info.bar_series_indices.indexOf(idx)
+            const offset = position - (group_info.bar_series_count - 1) / 2
+            return offset * (bar_width_val / group_info.bar_series_count)
+          }}
+                  {@const group_offset = mode === `grouped` && group_info.bar_series_count > 1
+            ? calculate_group_offset(series_idx)
+            : 0}
+                  {@const is_vertical = orientation === `vertical`}
+                  {@const cat_val = x_val}
+                  {@const val = y_val}
+                  {@const use_y2 = srs.y_axis === `y2`}
+                  {@const y_scale = use_y2 ? scales.y2 : scales.y}
+                  {@const use_x2_bar = srs.x_axis === `x2`}
+                  {@const x_scale_bar = use_x2_bar ? scales.x2 : scales.x}
+                  {@const [cat_scale, val_scale] = is_vertical
+            ? [x_scale_bar, y_scale]
+            : [scales.y, x_scale_bar]}
+                  {@const c0 = cat_scale(cat_val + group_offset - half)}
+                  {@const c1 = cat_scale(cat_val + group_offset + half)}
+                  {@const v0 = val_scale(base)}
+                  {@const v1 = val_scale(base + val)}
+                  {@const [rect_x, rect_y] = is_vertical
+            ? [Math.min(c0, c1), Math.min(v0, v1)]
+            : [Math.min(v0, v1), Math.min(c0, c1)]}
+                  {@const [rect_w, rect_h] = is_vertical
+            ? [Math.max(1, Math.abs(c1 - c0)), Math.max(0, Math.abs(v1 - v0))]
+            : [Math.max(1, Math.abs(v1 - v0)), Math.max(0, Math.abs(c1 - c0))]}
+                  {#if (is_vertical ? rect_h : rect_w) > 0}
+                    <path
+                      d={bar_path(
+                        rect_x,
+                        rect_y,
+                        rect_w,
+                        rect_h,
+                        Math.min(bar_state.border_radius ?? 0, rect_w / 2, rect_h / 2),
+                        is_vertical,
+                      )}
+                      fill={color}
+                      opacity={mode === `overlay` ? bar_state.opacity : 1}
+                      stroke={bar_state.stroke_color}
+                      stroke-opacity={bar_state.stroke_opacity}
+                      stroke-width={bar_state.stroke_width}
+                      role="button"
+                      tabindex="0"
+                      aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
+                      style:cursor={on_bar_click ? `pointer` : undefined}
+                      onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
+                      onmouseleave={() => {
+                        hover_info = null
+                        change(null)
+                        on_bar_hover?.(null)
+                      }}
+                      onclick={(evt) =>
+                      on_bar_click?.({
+                        ...get_bar_data(series_idx, bar_idx, color),
+                        event: evt,
+                      })}
+                      onkeydown={(evt) => {
+                        if (evt.key === `Enter` || evt.key === ` `) {
+                          evt.preventDefault()
+                          on_bar_click?.({
+                            ...get_bar_data(series_idx, bar_idx, color),
+                            event: evt,
+                          })
+                        }
+                      }}
+                    />
+                    {#if srs.labels?.[bar_idx]}
+                      <text
+                        x={is_vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
+                        y={is_vertical ? Math.max(0, Math.min(v0, v1) - 6) : (c0 + c1) / 2}
+                        text-anchor={is_vertical ? `middle` : undefined}
+                        dominant-baseline={is_vertical ? undefined : `central`}
+                        class="bar-label"
+                      >
+                        {srs.labels[bar_idx]}
+                      </text>
+                    {/if}
+                  {/if}
+                {/each}
+              {/if}
+            </g>
+          {/if}
+        {/each}
+
+        <!-- Reference lines: below points -->
+        {@render ref_lines_layer(ref_lines_by_z.below_points)}
+
+        <!-- Reference lines: above all -->
+        {@render ref_lines_layer(ref_lines_by_z.above_all)}
+      </g>
+    </svg>
+
+    <!-- Legend -->
+    {#if legend && (show_legend !== undefined ? show_legend : series.length > 1)}
+      {@const legend_left = legend_auto_outside
+      ? legend_outside_x
+      : legend_placement
+      ? tweened_legend_coords.current.x
+      : pad.l + 10}
+      {@const legend_top = legend_auto_outside
+      ? legend_outside_y
+      : legend_placement
+      ? tweened_legend_coords.current.y
+      : pad.t + 10}
+      <PlotLegend
+        bind:root_element={legend_element}
+        {...legend}
+        series_data={legend_data}
+        on_toggle={legend?.on_toggle || toggle_series_visibility}
+        on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
+        on_hover_change={legend_hover.set_locked}
+        on_item_hover={(item) =>
+          (hovered_legend_series_idx = item != null && item.series_idx >= 0
+            ? item.series_idx
+            : null)}
+        active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
+        style={`
+          position: absolute;
+          left: ${legend_left}px;
+          top: ${legend_top}px;
+          pointer-events: auto;
+          ${legend?.style || ``}
+        `}
+      />
+    {/if}
+
+    {#if hover_info && hovered}
+      {@const cx = (hover_info.active_x_axis === `x2` ? scales.x2 : scales.x)(
+      hover_info.orient_x,
+    )}
+      {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
+      hover_info.orient_y,
+    )}
+      {@const tooltip_pos = constrain_tooltip_position(
+      cx,
+      cy,
+      tooltip_el?.offsetWidth ?? 140,
+      tooltip_el?.offsetHeight ?? 50,
+      width,
+      height,
+      { offset_x: 10, offset_y: 5 },
+    )}
+      <PlotTooltip
+        x={tooltip_pos.x}
+        y={tooltip_pos.y}
+        offset={{ x: 0, y: 0 }}
+        bg_color={hover_info.color}
+        bind:wrapper={tooltip_el}
+      >
+        {#if tooltip}
+          {@render tooltip({ ...hover_info, fullscreen })}
+        {:else}
+          {@const series_label = series[hover_info.series_idx]?.label}
+          {#if series.length > 1 && series_label}
+            <div><strong>{series_label}</strong></div>
+          {/if}
+          <div>
+            {@html sanitize_html(hover_info.x_axis.label || `x`)}: {
+              (cat_axis === `x` ? hover_info.category_label : undefined) ??
+              format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)
+            }
+          </div>
+          <div>
+            {@html sanitize_html(hover_info.y_axis.label || `y`)}: {
+              (cat_axis === `y` ? hover_info.category_label : undefined) ??
+              format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)
+            }
+          </div>
+        {/if}
+      </PlotTooltip>
+    {/if}
+
+    {#if show_controls}
+      <BarPlotControls
+        toggle_props={{
+          ...controls_toggle_props,
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
+            controls_toggle_props?.style ?? ``
+          }`,
+        }}
+        pane_props={controls_pane_props}
+        bind:show_controls
+        bind:controls_open
+        bind:orientation
+        bind:mode
+        bind:x_axis
+        bind:x2_axis
+        bind:y_axis
+        bind:y2_axis
+        bind:display
+        auto_x_range={auto_ranges.x as Vec2}
+        auto_x2_range={auto_ranges.x2 as Vec2}
+        auto_y_range={auto_ranges.y as Vec2}
+        auto_y2_range={auto_ranges.y2 as Vec2}
+        has_x2_points={x2_series.length > 0}
+        has_y2_points={y2_series.length > 0}
+        children={controls_extra}
+      />
+    {/if}
+  {/if}
+
+  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
+  {@render children?.({ height, width, fullscreen })}
+</div>
+
+<style>
+  .bar-plot {
+    position: relative;
+    width: 100%;
+    height: var(--barplot-height, auto);
+    min-height: var(--barplot-min-height, 300px);
+    container-type: size;
+    z-index: var(--barplot-z-index, auto);
+    border-radius: var(--barplot-border-radius, var(--border-radius, 3pt));
+    flex: var(--barplot-flex, 1);
+    display: var(--barplot-display, flex);
+    flex-direction: column;
+    background: var(--barplot-bg, var(--plot-bg));
+  }
+  .bar-plot.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    /* Must be higher than Structure.svelte's --struct-buttons-z-index. */
+    z-index: var(--barplot-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
+    margin: 0;
+    border-radius: 0;
+    background: var(--barplot-fullscreen-bg, var(--barplot-bg, var(--plot-bg)));
+    max-height: none !important;
+    overflow: hidden;
+    /* Add padding to prevent titles from being cropped at top */
+    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    box-sizing: border-box;
+  }
+  .header-controls {
+    position: absolute;
+    top: var(--ctrl-btn-top, 5pt);
+    right: var(--fullscreen-btn-right, 4px);
+    z-index: var(--fullscreen-btn-z-index, 10);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-controls :global(.fullscreen-toggle) {
+    position: static; /* Override absolute positioning since container handles it */
+    opacity: 1; /* Always visible when inside header-controls, container controls visibility */
+  }
+  /* Hide controls and fullscreen toggles by default, show on hover */
+  .bar-plot :global(.pane-toggle),
+  .bar-plot .header-controls {
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s;
+  }
+  .bar-plot:hover :global(.pane-toggle),
+  .bar-plot:hover .header-controls,
+  .bar-plot :global(.pane-toggle:focus-visible),
+  .bar-plot :global(.pane-toggle[aria-expanded='true']),
+  .bar-plot .header-controls:focus-within {
+    opacity: 1;
+  }
+  svg {
+    width: var(--barplot-svg-width, 100%);
+    height: var(--barplot-svg-height, 100%);
+    flex: var(--barplot-svg-flex, 1);
+    overflow: var(--barplot-svg-overflow, visible);
+    fill: var(--text-color);
+    font-weight: var(--scatter-font-weight);
+    font-size: var(--scatter-font-size);
+  }
+  .bar-plot.dragover {
+    border: var(--barplot-dragover-border, var(--dragover-border));
+    background-color: var(--barplot-dragover-bg, var(--dragover-bg));
+  }
+  .bar-label {
+    fill: var(--text-color);
+    font-size: 11px;
+  }
+</style>

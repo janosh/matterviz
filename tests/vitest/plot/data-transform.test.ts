@@ -3,7 +3,7 @@ import {
   create_data_points,
   extract_series_color,
   prepare_legend_data,
-} from '$lib/plot/data-transform'
+} from '$lib/plot/core/data-transform'
 import { DEFAULTS } from '$lib/settings'
 import { describe, expect, test } from 'vitest'
 

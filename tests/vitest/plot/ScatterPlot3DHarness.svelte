@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ScatterPlot3D from '$lib/plot/ScatterPlot3D.svelte'
-  import type { DataSeries3D } from '$lib/plot/types'
+  import ScatterPlot3D from '$lib/plot/scatter-3d/ScatterPlot3D.svelte'
+  import type { DataSeries3D } from '$lib/plot/core/types'
 
   type IdMode = `none` | `unique` | `duplicate` | `duplicate_collision`
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ScatterPlot3D } from '$lib'
   import type { Vec3 } from '$lib/math'
-  import type { DataSeries3D } from '$lib/plot/types'
+  import type { DataSeries3D } from '$lib/plot/core/types'
 
   // Generate test data with color values to trigger ColorBar rendering
   // This replicates the original issue where ColorBar could block gizmo clicks

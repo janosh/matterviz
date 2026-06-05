@@ -27,6 +27,10 @@ function default_download(data: string | Blob, filename: string, type: string) {
   link.style.display = `none`
   link.href = url
   link.download = filename
+  // keep the synthetic download click from bubbling to document-level handlers
+  // (e.g. DraggablePane's click-outside) that would dismiss an open pane the export
+  // button lives in
+  link.addEventListener(`click`, (evt) => evt.stopPropagation())
   document.body.append(link)
   link.click()
   link.remove()

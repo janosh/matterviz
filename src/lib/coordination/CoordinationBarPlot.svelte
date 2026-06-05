@@ -9,7 +9,7 @@
     BarHandlerProps,
     BarSeries,
     Orientation,
-  } from '$lib/plot/types'
+  } from '$lib/plot/core/types'
   import type { AnyStructure } from '$lib/structure'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { parse_any_structure } from '$lib/structure/parse'

@@ -1,4 +1,4 @@
-import { rects_overlap } from '$lib/plot/layout'
+import { rects_overlap } from '$lib/plot/core/layout'
 import { expect, type Locator, test } from '@playwright/test'
 
 // Helper functions for placement stability tests
