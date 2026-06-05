@@ -227,6 +227,59 @@ describe(`calculate_rdf`, () => {
     expect(sum_pbc).toBeGreaterThan(sum_no_pbc)
   })
 
+  // Regression: auto-expansion used to disable PBC on the expanded structure, so atoms near
+  // the supercell boundary lost neighbors while normalization still assumed homogeneous
+  // density, biasing g(r) low (first-shell coordination 5.26 instead of 6)
+  test(`simple cubic keeps PBC after auto-expansion: coordination numbers exact`, () => {
+    const [a_len, cutoff, n_bins] = [4, 15, 150]
+    const structure = create_test_structure(a_len, [`Si`], [[0, 0, 0]])
+    const { r, g_r } = calculate_rdf(structure, { cutoff, n_bins, auto_expand: true })
+
+    // Coordination number n(r_max) = ∫₀^r_max 4πr²ρ·g(r)dr with ρ = 1/a³
+    const coordination = (r_max: number) =>
+      r.reduce(
+        (sum, rad, idx) =>
+          rad < r_max
+            ? sum + (4 * Math.PI * rad ** 2 * g_r[idx] * (cutoff / n_bins)) / a_len ** 3
+            : sum,
+        0,
+      )
+
+    // First shell: 6 neighbors at r = a (second shell sits at a·√2 ≈ 5.66)
+    expect(coordination(1.2 * a_len)).toBeCloseTo(6, 1)
+
+    // Full integral must recover the exact brute-force count of cubic-lattice neighbors
+    const span = Array.from({ length: 9 }, (_, idx) => idx - 4) // |idx| ≤ 4 > cutoff/a_len
+    const exact_count = span
+      .flatMap((ii) => span.flatMap((jj) => span.map((kk) => a_len * Math.hypot(ii, jj, kk))))
+      .filter((dist) => dist > 0 && dist < cutoff).length
+    expect(coordination(Infinity)).toBeCloseTo(exact_count, 0)
+  })
+
+  // Regression: calculate_all_pair_rdfs used to force pbc=[false,false,false], discarding
+  // the caller's pbc (e.g. from RdfPlot) and dropping cross-boundary pairs
+  test(`calculate_all_pair_rdfs preserves caller pbc`, () => {
+    // min-image distance between the sites is 1 Å, reachable only with PBC; without PBC
+    // the nearest pair sits at 9 Å, beyond the cutoff, leaving g(r) all zero
+    const structure = create_test_structure(
+      10,
+      [`Si`, `Si`],
+      [
+        [0.05, 0.05, 0.05],
+        [0.95, 0.05, 0.05],
+      ],
+    )
+    const opts = { cutoff: 8, n_bins: 80, auto_expand: false, pbc: [true, true, true] as Pbc }
+    const [all_pair] = calculate_all_pair_rdfs(structure, opts)
+    const direct = calculate_rdf(structure, {
+      ...opts,
+      center_species: `Si`,
+      neighbor_species: `Si`,
+    })
+    expect(all_pair.r[all_pair.g_r.findIndex((val) => val > 0)]).toBeCloseTo(1, 0)
+    expect(all_pair.g_r).toEqual(direct.g_r)
+  })
+
   test(`RDF calculation should be deterministic`, () => {
     const result1 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })
     const result2 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })

@@ -143,14 +143,20 @@ describe(`resolve_line_endpoints`, () => {
     ])
   })
 
-  test(`negative slope diagonal with x_span normalizes endpoint order`, () => {
-    const result = resolve_line_endpoints(
-      { type: `diagonal`, slope: -1, intercept: 100, x_span: [20, 80] },
-      bounds,
-      scales,
-    )
-    expect(result?.[0]).toBe(scales.x_scale(20))
-    expect(result?.[2]).toBe(scales.x_scale(80))
+  // Endpoints must stay paired: each must satisfy y = slope·x + intercept, spans recompute
+  // the other coordinate instead of clamping one independently
+  test.each([
+    [{ type: `diagonal`, slope: -1, intercept: 100, x_span: [20, 80] }, [20, 80, 80, 20]],
+    [{ type: `diagonal`, slope: -1, intercept: 100 }, [0, 100, 100, 0]],
+    [{ type: `diagonal`, slope: 1, intercept: 0, x_span: [20, 80] }, [20, 20, 80, 80]],
+    [{ type: `diagonal`, slope: 1, intercept: 0, y_span: [30, 70] }, [30, 30, 70, 70]],
+  ] as const)(`%o keeps endpoints paired`, (line, expected) => {
+    const result = resolve_line_endpoints(line as RefLine, bounds, scales)
+    const [x1, y1, x2, y2] = expected
+    expect(result?.[0]).toBeCloseTo(scales.x_scale(x1))
+    expect(result?.[1]).toBeCloseTo(scales.y_scale(y1))
+    expect(result?.[2]).toBeCloseTo(scales.x_scale(x2))
+    expect(result?.[3]).toBeCloseTo(scales.y_scale(y2))
   })
 
   // Liang-Barsky segment clipping: preserves angle by computing true intersections

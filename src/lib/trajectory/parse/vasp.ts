@@ -17,7 +17,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
   const scale = parseFloat(lines[1])
   if (isNaN(scale)) throw new Error(`Invalid scale factor`)
 
-  const lattice_matrix = validate_3x3_matrix(
+  let lattice_matrix = validate_3x3_matrix(
     lines.slice(2, 5).map((line) =>
       line
         .trim()
@@ -48,19 +48,46 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     }
     return name
   })
-  const elements: ElementSymbol[] = validated_element_names.flatMap((name, idx) =>
+  let elements: ElementSymbol[] = validated_element_names.flatMap((name, idx) =>
     Array(element_counts[idx]).fill(name),
   )
 
   const frames: TrajectoryFrame[] = []
   let line_idx = 7
-  const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+  let frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
     const config_idx = lines.findIndex(
       (line, idx) => idx >= line_idx && line.includes(`Direct configuration=`),
     )
     if (config_idx === -1) break
+
+    // Variable-cell runs (NPT/ISIF=3) repeat the full 7-line header before each configuration
+    if (config_idx - line_idx >= 7) {
+      const hdr = config_idx - 7
+      const new_scale = parseFloat(lines[hdr + 1])
+      const rows = lines.slice(hdr + 2, hdr + 5).map((line) =>
+        line
+          .trim()
+          .split(/\s+/)
+          .map((val) => parseFloat(val) * new_scale),
+      )
+      const names = lines[hdr + 5].trim().split(/\s+/)
+      const counts = lines[hdr + 6].trim().split(/\s+/).map(Number)
+      if (
+        Number.isFinite(new_scale) &&
+        rows.every((row) => row.length === 3 && row.every(Number.isFinite))
+      ) {
+        lattice_matrix = validate_3x3_matrix(rows)
+        frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+        if (
+          names.length === counts.length &&
+          names.every(is_valid_element_symbol) &&
+          counts.every((count) => Number.isInteger(count) && count > 0)
+        )
+          elements = names.flatMap((name, idx) => Array(counts[idx]).fill(name))
+      }
+    }
 
     const config_line = lines[config_idx]
     line_idx = config_idx + 1

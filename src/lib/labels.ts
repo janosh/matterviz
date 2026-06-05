@@ -186,8 +186,9 @@ export function parse_si_float<T extends string | number | null | undefined>(
   // Remove whitespace and commas
   const cleaned = value.trim().replaceAll(/(\d),(\d)/g, `$1$2`)
 
-  // Check if the value is a SI-formatted number (e.g. "1.23k", "4.56M", "789µ", "12n")
-  const match = /^([-+]?\d*\.?\d+)\s*([yzafpnµmkMGTPEZY])?$/i.exec(cleaned)
+  // SI-formatted number (e.g. "1.23k", "789µ"). Suffixes are case-sensitive (m=milli vs
+  // M=mega), so no `i` flag: mismatched-case suffixes return the string as-is.
+  const match = /^([-+]?\d*\.?\d+)\s*([yzafpnµmkMGTPEZY])?$/.exec(cleaned)
   if (match) {
     const [, num_part, suffix] = match
     let multiplier = 1

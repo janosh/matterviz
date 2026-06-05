@@ -1,16 +1,8 @@
 // Cross-validation test comparing our N-dimensional convex hull implementation
 // against pymatgen's PhaseDiagram for a 5-element (quinary) system.
 //
-// NOTE: The N-dimensional quickhull algorithm works correctly for well-separated
-// point configurations (as demonstrated in thermodynamics.test.ts). However, when
-// all interior points cluster near the center of the simplex (as in realistic
-// phase diagrams where stable compounds are near equimolar compositions), the
-// algorithm may fall back to a degenerate hull. This is a known numerical limitation.
-//
-// For production use with complex datasets, consider:
-// 1. Using pymatgen directly for phase diagram calculations
-// 2. Restricting to 4-element (quaternary) systems where the specialized 4D hull works
-// 3. Pre-filtering data to ensure well-separated point distributions
+// Hull points use reduced barycentric coords ((N-1) spatial + 1 energy): full barycentric
+// coords sum to 1 and would confine all points to an affine subspace (degenerate hull).
 
 import { calculate_e_above_hull } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
@@ -54,6 +46,13 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
     expect(reference.entries).toHaveLength(12)
     expect(reference.n_stable).toBe(6)
     expect(reference.n_unstable).toBe(6)
+  })
+
+  // Direct comparison of e_above_hull against pymatgen's PhaseDiagram values
+  test.each(reference.entries)(`e_above_hull matches pymatgen for $id`, (entry) => {
+    const results = calculate_e_above_hull(all_entries, all_entries)
+    expect(results[entry.id]).toBeCloseTo(entry.e_above_hull, 3)
+    expect(results[entry.id] < 1e-6).toBe(entry.is_stable)
   })
 
   // Elemental references should always have e_above_hull = 0

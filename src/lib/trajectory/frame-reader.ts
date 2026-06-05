@@ -18,6 +18,7 @@ import {
   validate_3x3_matrix,
 } from './helpers'
 import { strip_compression_extensions } from './format-detect'
+import { parse_extxyz_columns, parse_extxyz_lattice } from './parse/xyz'
 
 export class TrajFrameReader implements FrameLoader {
   private readonly format: `xyz` | `ase`
@@ -283,13 +284,16 @@ export class TrajFrameReader implements FrameLoader {
     const comment = lines[line_idx + 1] || ``
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
+    const forces: number[][] = []
+    const lattice_matrix = parse_extxyz_lattice(comment)
+    const { species_col, pos_col, forces_col, min_cols } = parse_extxyz_columns(comment)
 
     for (let idx = 0; idx < num_atoms; idx++) {
       const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
-      if (parts?.length >= 4) {
-        const x_coord = parseFloat(parts[1])
-        const y_coord = parseFloat(parts[2])
-        const z_coord = parseFloat(parts[3])
+      if (parts && parts.length >= min_cols) {
+        const x_coord = parseFloat(parts[pos_col])
+        const y_coord = parseFloat(parts[pos_col + 1])
+        const z_coord = parseFloat(parts[pos_col + 2])
         if (
           !Number.isFinite(x_coord) ||
           !Number.isFinite(y_coord) ||
@@ -303,7 +307,7 @@ export class TrajFrameReader implements FrameLoader {
           continue
         }
 
-        const raw_symbol = parts[0]
+        const raw_symbol = parts[species_col]
         const element_symbol = coerce_element_symbol(raw_symbol)
         if (!element_symbol) {
           console.warn(
@@ -314,17 +318,31 @@ export class TrajFrameReader implements FrameLoader {
 
         elements.push(element_symbol)
         positions.push([x_coord, y_coord, z_coord])
+
+        if (forces_col >= 0 && parts.length >= forces_col + 3) {
+          const force_vec = parts.slice(forces_col, forces_col + 3).map(parseFloat)
+          if (force_vec.every(Number.isFinite)) forces.push(force_vec)
+        }
       }
     }
 
     const metadata = this.parse_xyz_metadata(comment, frame_number)
+    const properties: Record<string, unknown> = { ...metadata.properties }
+    if (forces.length > 0) {
+      const mags = forces.map((force) => Math.hypot(...force))
+      properties.forces = forces
+      properties.force_max = Math.max(...mags)
+      properties.force_norm = Math.sqrt(
+        mags.reduce((sum, mag) => sum + mag ** 2, 0) / mags.length,
+      )
+    }
     return create_trajectory_frame(
       positions,
       elements,
-      undefined,
-      undefined,
+      lattice_matrix,
+      lattice_matrix ? [true, true, true] : undefined,
       metadata.step,
-      metadata.properties,
+      properties,
     )
   }
 
@@ -388,11 +406,12 @@ export class TrajFrameReader implements FrameLoader {
   private parse_xyz_metadata(comment: string, frame_number: number): TrajectoryMetadata {
     const properties: Record<string, number> = {}
 
+    // Keys anchored at ^|\s and followed by [=:] so single-letter keys don't match mid-word
     const patterns = {
-      energy: /(?:energy|E|etot)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      volume: /(?:volume|vol|V)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      pressure: /(?:pressure|press|P)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      force_max: /(?:max_force|fmax)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      energy: /(?:^|\s)(?:energy|E|etot)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      volume: /(?:^|\s)(?:volume|vol|V)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      pressure: /(?:^|\s)(?:pressure|press|P)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      force_max: /(?:^|\s)(?:max_force|fmax)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
     }
 
     Object.entries(patterns).forEach(([key, pattern]) => {
@@ -400,7 +419,7 @@ export class TrajFrameReader implements FrameLoader {
       if (match) properties[key] = parseFloat(match[1])
     })
 
-    const step_match = /(?:step|frame)\s*[=:]?\s*(\d+)/i.exec(comment)
+    const step_match = /(?:^|\s)(?:step|frame)\s*[=:]?\s*(\d+)/i.exec(comment)
     const step = step_match ? parseInt(step_match[1], 10) : frame_number
 
     return { frame_number, step, properties }

@@ -186,8 +186,12 @@ describe(`is_color function`, () => {
     [`red`, true],
     [`blue`, true],
     [`green`, true],
+    [`rebeccapurple`, true],
+    [`RED`, true], // named colors are case-insensitive
     [`transparent`, true],
     [`currentcolor`, true],
+
+    [`pending`, false], // arbitrary words are not colors
 
     // Invalid patterns - incomplete functions
     [`rgb`, false],

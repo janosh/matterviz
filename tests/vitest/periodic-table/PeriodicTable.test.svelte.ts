@@ -632,6 +632,20 @@ describe(`PeriodicTable`, () => {
       expect(tick_text.some((text) => text?.includes(`1`) && text.length > 1)).toBe(true)
     })
 
+    test(`log tile colors use true log mapping matching the log ColorBar`, () => {
+      const color_scale = (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [0.001, 0.01, 0.1], log: true, color_scale },
+      })
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+      const red = (idx: number) => Number(/\d+/.exec(tiles[idx].style.backgroundColor)?.[0])
+      // 0.01 is the log midpoint of [0.001, 0.1] (the old log1p mapping put it at ~0.095)
+      expect(red(0)).toBe(0)
+      expect(Math.abs(red(1) - 127.5)).toBeLessThanOrEqual(1)
+      expect(red(2)).toBe(255)
+    })
+
     test(`customizes via color_bar_props`, () => {
       mount(PeriodicTable, {
         target: document.body,

@@ -4,6 +4,32 @@ import * as math from '$lib/math'
 import { coerce_element_symbol, create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
+// Resolve species/pos/forces column offsets from an extxyz Properties string of
+// name:type:ncols triples (e.g. "species:S:1:pos:R:3:forces:R:3"), falling back
+// to the conventional "symbol x y z" layout when absent or malformed
+export function parse_extxyz_columns(comment: string) {
+  const fields = /Properties\s*=\s*"?([^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
+  let layout: Record<string, { offset: number; ncols: number }> | null = {}
+  for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
+    const ncols = parseInt(fields[idx + 2], 10)
+    if (Number.isInteger(ncols) && ncols > 0) {
+      layout[fields[idx].toLowerCase()] = { offset, ncols }
+      offset += ncols
+    } else layout = null
+  }
+  const species_col = layout?.species?.offset ?? 0
+  const pos_col = layout?.pos?.offset ?? 1
+  const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
+  return { species_col, pos_col, forces_col, min_cols: Math.max(pos_col + 3, species_col + 1) }
+}
+
+// Parse Lattice="ax ay az bx by bz cx cy cz" from an extxyz comment line
+export function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
+  const vals = /Lattice\s*=\s*"([^"]+)"/i.exec(comment)?.[1].trim().split(/\s+/).map(Number)
+  if (vals?.length !== 9 || !vals.every(Number.isFinite)) return undefined
+  return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
+}
+
 export function parse_xyz_trajectory(content: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
@@ -24,15 +50,18 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     const comment = lines[++line_idx] || ``
     const metadata: Record<string, unknown> = {}
 
-    // Extract properties efficiently
+    // Keys anchored at ^|\s and followed by [=:] so single-letter keys don't match mid-word
     const extractors = {
-      step: /(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i,
-      energy: /(?:energy|E|etot|total_energy)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      volume: /(?:volume|vol|V)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      pressure: /(?:pressure|press|P)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      temperature: /(?:temperature|temp|T)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      force_max: /(?:max_force|force_max|fmax)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      bandgap: /(?:bandgap|E_gap|gap)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      step: /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i,
+      energy:
+        /(?:^|\s)(?:energy|E|etot|total_energy)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      volume: /(?:^|\s)(?:volume|vol|V)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      pressure: /(?:^|\s)(?:pressure|press|P)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      temperature:
+        /(?:^|\s)(?:temperature|temp|T)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      force_max:
+        /(?:^|\s)(?:max_force|force_max|fmax)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      bandgap: /(?:^|\s)(?:bandgap|E_gap|gap)\s*[=:]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
     }
 
     const step_match = extractors.step.exec(comment)
@@ -43,35 +72,23 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
       if (match) metadata[key] = parseFloat(match[1])
     })
 
-    // Extract lattice matrix
-    const lattice_match = /Lattice\s*=\s*"([^"]+)"/i.exec(comment)
-    let lattice_matrix: math.Matrix3x3 | undefined
-    if (lattice_match) {
-      const values = lattice_match[1].split(/\s+/).map(Number)
-      if (values.length === 9 && values.every((value) => Number.isFinite(value))) {
-        lattice_matrix = [
-          [values[0], values[1], values[2]],
-          [values[3], values[4], values[5]],
-          [values[6], values[7], values[8]],
-        ]
-        metadata.volume = math.calc_lattice_params(lattice_matrix).volume
-      }
-    }
+    const lattice_matrix = parse_extxyz_lattice(comment)
+    if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
 
-    // Parse atoms
+    // Parse atoms, reading each field from its Properties-declared column offset
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
     const forces: number[][] = []
-    const has_forces = comment.includes(`forces:R:3`)
+    const { species_col, pos_col, forces_col, min_cols } = parse_extxyz_columns(comment)
 
     for (let idx = 0; idx < num_atoms; idx++) {
       line_idx++
       if (line_idx >= lines.length) break
       const parts = lines[line_idx].trim().split(/\s+/)
-      if (parts.length >= 4) {
-        const x_coord = parseFloat(parts[1])
-        const y_coord = parseFloat(parts[2])
-        const z_coord = parseFloat(parts[3])
+      if (parts.length >= min_cols) {
+        const x_coord = parseFloat(parts[pos_col])
+        const y_coord = parseFloat(parts[pos_col + 1])
+        const z_coord = parseFloat(parts[pos_col + 2])
         if (
           !Number.isFinite(x_coord) ||
           !Number.isFinite(y_coord) ||
@@ -85,7 +102,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
           continue
         }
 
-        const raw_symbol = parts[0]
+        const raw_symbol = parts[species_col]
         const element_symbol = coerce_element_symbol(raw_symbol)
         if (!element_symbol) {
           console.warn(
@@ -96,17 +113,9 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
         elements.push(element_symbol)
         positions.push([x_coord, y_coord, z_coord])
 
-        if (has_forces && parts.length >= 7) {
-          const force_x = parseFloat(parts[4])
-          const force_y = parseFloat(parts[5])
-          const force_z = parseFloat(parts[6])
-          if (
-            Number.isFinite(force_x) &&
-            Number.isFinite(force_y) &&
-            Number.isFinite(force_z)
-          ) {
-            forces.push([force_x, force_y, force_z])
-          }
+        if (forces_col >= 0 && parts.length >= forces_col + 3) {
+          const force_vec = parts.slice(forces_col, forces_col + 3).map(parseFloat)
+          if (force_vec.every(Number.isFinite)) forces.push(force_vec)
         }
       }
     }

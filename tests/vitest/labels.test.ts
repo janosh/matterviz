@@ -138,6 +138,9 @@ describe(`parse_si_float function`, () => {
     [`2 µ`, 0.000002], // with space
     [`foo`, `foo`],
     [`123foo`, `123foo`],
+    [`12K`, `12K`], // mismatched-case suffix returned as-is (kilo is lowercase k)
+    [`2g`, `2g`], // giga is uppercase G
+    [`5E`, 5e18], // exa (uppercase E) is a valid SI suffix
     [-12, -12], // int -> int
     [124.847321, 124.847321], // float -> float
     [``, ``], // empty string

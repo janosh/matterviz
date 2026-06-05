@@ -59,10 +59,11 @@ function silverman_bandwidth_unordered(samples: number[]): number {
 }
 
 // Scott's rule: std * n^(-1/5) for 1-D data.
-export function scott_bandwidth(sorted: readonly number[]): number {
-  const n_vals = sorted.length
+// `samples` need not be sorted (only uses sample_deviation, unlike silverman_bandwidth)
+export function scott_bandwidth(samples: readonly number[]): number {
+  const n_vals = samples.length
   if (n_vals < 2) return 1
-  const std = sample_deviation(sorted) || 1
+  const std = sample_deviation(samples) || 1
   return std * n_vals ** (-1 / 5)
 }
 

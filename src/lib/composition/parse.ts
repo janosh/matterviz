@@ -80,7 +80,7 @@ export const atomic_symbol_to_num = (
 // Expand parentheses in chemical formulas
 const expand_parentheses = (formula: string): string => {
   while (formula.includes(`(`)) {
-    formula = formula.replaceAll(
+    const expanded = formula.replaceAll(
       /\(([^()]+)\)(\d+(?:\.\d+)?|\.\d+)?/g,
       (_match, group, multiplier) => {
         const mult = parse_count(multiplier)
@@ -93,21 +93,32 @@ const expand_parentheses = (formula: string): string => {
         )
       },
     )
+    if (expanded === formula) {
+      // unclosed/empty parens match nothing -> would loop forever
+      throw new Error(`Unbalanced or empty parentheses in formula: ${formula}`)
+    }
+    formula = expanded
   }
   return formula
 }
 
-// Parse chemical formula string into composition object
+// Parse chemical formula string into composition object. Hydrate/adduct segments
+// joined by ·, ⋅, or * are scaled by their leading coefficient (CuSO4·5H2O -> Cu S O9 H10)
 export const parse_formula = (formula: string): CompositionType => {
   const composition: CompositionType = {}
-  const cleaned_formula = expand_parentheses(formula.replaceAll(/\s/g, ``))
+  const cleaned = formula.replaceAll(/\s/g, ``)
+  const segments = cleaned.split(/[·⋅*]/).filter(Boolean)
 
-  for (const match of cleaned_formula.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
-    const element = match[1]
-    const count = parse_count(match[2])
-
-    if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
-    composition[element] = (composition[element] ?? 0) + count
+  for (const [seg_idx, segment] of segments.entries()) {
+    // only hydrate segments (after a separator) carry a leading multiplier
+    const coeff = seg_idx > 0 ? /^\d+(?:\.\d+)?/.exec(segment)?.[0] : undefined
+    const multiplier = coeff ? parseFloat(coeff) : 1
+    const expanded = expand_parentheses(segment.slice(coeff?.length ?? 0))
+    for (const match of expanded.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
+      const [element, count] = [match[1], parse_count(match[2])]
+      if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
+      composition[element] = (composition[element] ?? 0) + count * multiplier
+    }
   }
   return composition
 }

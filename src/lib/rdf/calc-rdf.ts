@@ -5,7 +5,7 @@ import {
   euclidean_dist,
   pbc_dist,
 } from '$lib/math'
-import type { Crystal, Pbc } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 import type { RdfOptions, RdfPattern } from './index'
 
@@ -26,7 +26,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     auto_expand = true,
     expansion_factor = 2.0,
   } = options
-  let { pbc = [true, true, true] } = options
+  const { pbc = [true, true, true] } = options
   if (cutoff <= 0 || n_bins <= 0) {
     throw new Error(`cutoff and n_bins must be positive`)
   }
@@ -38,6 +38,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 
   let lattice: Matrix3x3 = structure.lattice.matrix
   let { sites } = structure
+  let center_sites = sites
 
   // Expand structure if needed to ensure shortest lattice vector is expansion_factor× the cutoff
   // This prevents artificial close contacts at cell boundaries when using PBC
@@ -55,7 +56,10 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
       )
       sites = expanded_structure.sites
       lattice = expanded_structure.lattice.matrix
-      pbc = [false, false, false] // Disable PBC since we explicitly expanded the structure
+      // Keep PBC: min-image is exact once every lattice vector ≥ 2× cutoff (disabling PBC
+      // starves boundary atoms and biases g(r) low). Under full PBC all periodic copies are
+      // equivalent, so restrict centers to the first copy (make_supercell emits (0,0,0) first)
+      center_sites = pbc.every(Boolean) ? sites.slice(0, structure.sites.length) : sites
     }
   }
 
@@ -66,7 +70,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   if (sites.length === 0) return { r, g_r }
 
   // Get occupancy weight for a site-species pair (supports mixed occupancy)
-  const centers = sites.filter((site) => has_species(site, center_species))
+  const centers = center_sites.filter((site) => has_species(site, center_species))
   const neighbors = sites.filter((site) => has_species(site, neighbor_species))
 
   if (centers.length === 0 || neighbors.length === 0) {
@@ -130,35 +134,11 @@ export function calculate_all_pair_rdfs(
     ...new Set(structure.sites.flatMap((site) => site.species.map((spec) => spec.element))),
   ].sort()
 
-  // If auto_expand is true, expand the structure once and reuse it for all pairs
-  // to avoid repeated supercell computations
-  let structure_to_use = structure
-  if (options.auto_expand !== false) {
-    const { cutoff = 15, expansion_factor = 2.0 } = options
-    const lattice = structure.lattice?.matrix
-    if (lattice) {
-      const { a, b, c } = calc_lattice_params(lattice)
-      const min_size = cutoff * expansion_factor
-      const [n_a, n_b, n_c] = [a, b, c].map((len) => Math.ceil(min_size / len))
-
-      if (n_a > 1 || n_b > 1 || n_c > 1) {
-        structure_to_use = make_supercell(
-          structure,
-          [n_a, n_b, n_c] as Vec3,
-          false, // Don't fold back to unit cell
-        )
-      }
-    }
-  }
-
-  // Pass auto_expand=false since we've already expanded, and pbc=false for expanded structure
-  const pbc = [false, false, false] as Pbc
-  const rdf_options = { ...options, auto_expand: false, pbc }
-
+  // Forward options unchanged (preserves caller's pbc); each calculate_rdf expands itself
   return elems.flatMap((el1, idx1) =>
     elems.slice(idx1).map((el2) =>
-      calculate_rdf(structure_to_use, {
-        ...rdf_options,
+      calculate_rdf(structure, {
+        ...options,
         center_species: el1,
         neighbor_species: el2,
       }),

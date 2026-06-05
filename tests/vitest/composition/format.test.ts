@@ -46,6 +46,9 @@ describe(`get_alphabetical_formula`, () => {
     [{ Fe: 0.001, O: 0.002 }, false, ` `, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
     [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
+    // default SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
+    [`Li0.5FeO2`, true, ``, undefined, `FeLi0.5O2`],
+    [{ Li: 0.001, Fe: 1, O: 2 }, true, ``, `.3~s`, `FeLi0.001O2`],
     // Invalid inputs return empty string
     [`invalid`, undefined, undefined, undefined, ``],
     [`123`, undefined, undefined, undefined, ``],

@@ -5,7 +5,7 @@ import { DEFAULTS } from '$lib/settings'
 import type { StructureHandlerData } from '$lib/structure'
 import * as exports from '$lib/structure/export'
 import { structures } from '$site/structures'
-import { mount, tick } from 'svelte'
+import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   assert_hover_scoped_shortcut,
@@ -53,6 +53,25 @@ const create_drop_event = (files: File[]): DragEvent => {
 
 // Tests for Structure component functionality
 describe(`Structure`, () => {
+  // Regression: bond-edit identity tokens (structure_identity) were stored in
+  // deeply-proxied $state, so comparing them against the raw `structure` prop
+  // triggered state_proxy_equality_mismatch on mount. They must use $state.raw.
+  test(`mount does not emit state_proxy_equality_mismatch warning`, async () => {
+    const warns: string[] = []
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation((...args: unknown[]) => {
+      warns.push(args.map(String).join(` `))
+    })
+    mount(Structure, { target: document.body, props: { structure } })
+    flushSync()
+    await tick()
+    flushSync()
+    warn_spy.mockRestore()
+    const proxy_warns = warns.filter((warn) =>
+      /state_proxy_equality_mismatch|effect_update_depth/i.test(warn),
+    )
+    expect(proxy_warns).toEqual([])
+  })
+
   test(`open control pane when clicking toggle button`, () => {
     mount(Structure, {
       target: document.body,

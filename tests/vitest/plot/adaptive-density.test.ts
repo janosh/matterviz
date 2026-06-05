@@ -4,6 +4,7 @@ import {
   density_bin_at_point,
   first_point_in_bin,
   pick_from_index,
+  scale_bin_transform,
   series_extents,
   should_render_points,
   type DensePointSeries,
@@ -173,6 +174,34 @@ describe(`adaptive density utilities`, () => {
 
     expect(picked?.point_id).toBe(`d`)
     expect(accesses).toBe(2)
+  })
+
+  describe(`log-scale binning`, () => {
+    const log_xy = { x: scale_bin_transform(`log`), y: scale_bin_transform(`log`) }
+    const range: [number, number] = [1, 100]
+
+    it(`bins log-scale data in transformed space`, () => {
+      const log_series: DensePointSeries[] = [{ x: [10], y: [10] }]
+      const linear = bin_points(log_series, range, range, 3, 3)
+      const log_binned = bin_points(log_series, range, range, 3, 3, log_xy)
+      // x=10 sits at 9% of the linear span (bin 0) but is the geometric midpoint of [1, 100]
+      expect([...linear.counts].indexOf(1)).toBe(0)
+      expect([...log_binned.counts].indexOf(1)).toBe(1 * 3 + 1) // center bin
+      // linear/undefined scale types fall back to the identity transform
+      expect(scale_bin_transform(`linear`).forward(42)).toBe(42)
+      expect(scale_bin_transform(undefined).inverse(42)).toBe(42)
+    })
+
+    it(`maps density bins back through the inverse transform`, () => {
+      // x=y=20 is strictly inside the upper log-space half of [1, 100] (geometric mid: 10)
+      const density = bin_points([{ x: [20], y: [20] }], range, range, 2, 2, log_xy)
+      const rect = { x: 0, y: 0, width: 100, height: 100 }
+      // pointer in upper-right screen quadrant = data bin ([10, 100], [10, 100])
+      const bin = density_bin_at_point(density, { x: 75, y: 25 }, rect, range, range, log_xy)
+      expect(bin?.count).toBe(1)
+      expect(bin?.x_range.map(Math.round)).toEqual([10, 100])
+      expect(bin?.y_range.map(Math.round)).toEqual([10, 100])
+    })
   })
 
   it(`bins one million finite points below the interaction latency budget`, () => {

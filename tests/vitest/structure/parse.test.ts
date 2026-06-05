@@ -147,6 +147,31 @@ describe(`POSCAR Parser`, () => {
     }
   })
 
+  test.each([
+    // [content, expected_abc, expected_xyz]: Cartesian xyz must be recomputed from wrapped abc
+    [`Test\n1.0\n10 0 0\n0 10 0\n0 0 10\nH\n1\nCartesian\n-1 0 0`, [0.9, 0, 0], [9, 0, 0]],
+    [`Test\n2.0\n5 0 0\n0 5 0\n0 0 5\nH\n1\nCartesian\n6 0 0`, [0.2, 0, 0], [2, 0, 0]],
+  ])(`should keep Cartesian xyz consistent with wrapped abc %#`, (content, abc, xyz) => {
+    const result = parse_poscar(content)
+    assert(result, `Failed to parse POSCAR`)
+    abc.forEach((val, idx) => expect(result.sites[0].abc[idx]).toBeCloseTo(val, TOL))
+    xyz.forEach((val, idx) => expect(result.sites[0].xyz[idx]).toBeCloseTo(val, TOL))
+  })
+
+  // POSCAR header edge cases: blank comment line + 3-component per-axis scaling line
+  const scale3 = `Test\n2 1 3\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`
+  test.each([
+    [`\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0`, `Si`, [5, 5, 5], [0, 0, 0]],
+    [`${scale3}Direct\n0.5 0.5 0.5`, `H`, [2, 1, 3], [1, 0.5, 1.5]],
+    [`${scale3}Cartesian\n0.5 0.5 0.5`, `H`, [2, 1, 3], [1, 0.5, 1.5]],
+  ])(`should parse POSCAR header variant %#`, (content, element, lattice_abc, xyz) => {
+    const result = parse_poscar(content)
+    assert(result, `Failed to parse POSCAR`)
+    expect(result.sites[0].species[0].element).toBe(element)
+    expect([result.lattice?.a, result.lattice?.b, result.lattice?.c]).toEqual(lattice_abc)
+    xyz.forEach((val, idx) => expect(result.sites[0].xyz[idx]).toBeCloseTo(val, TOL))
+  })
+
   it(`keeps singular Cartesian POSCAR fractional coordinates finite`, () => {
     const result = parse_poscar(
       `Test
@@ -714,6 +739,18 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites).toHaveLength(3)
     expect(result.lattice?.a).toBeCloseTo(4.916, 6)
   })
+
+  // regression: tokens.at(-1) made trailing comments break cell-parameter parsing
+  test.each([`5.4309 # angstrom`, `5.4309(5)`, `5.4309(5) # angstrom`])(
+    `should parse cell parameter line with %s`,
+    (a_value) => {
+      const result = parse_cif(
+        `data_test\n_cell_length_a ${a_value}\n_cell_length_b 4\n_cell_length_c 3\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1 0 0 0`,
+      )
+      assert(result, `Failed to parse CIF with ${a_value}`)
+      expect(result.lattice?.a).toBeCloseTo(5.4309, 4)
+    },
+  )
 
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
     const result = parse_cif(ru_p_complex_cif)
@@ -2337,6 +2374,29 @@ describe(`OPTIMADE JSON parser`, () => {
     }
   })
 
+  test.each([
+    // [species, species_at_sites, expected_elements]: highest-concentration symbol wins,
+    // 'vacancy' entries are skipped, names without species list parsed as element symbols
+    [[{ name: `Si1`, chemical_symbols: [`Si`] }], [`Si1`, `Si1`], [`Si`, `Si`]],
+    [[{ name: `A`, chemical_symbols: [`Fe`, `Ni`], concentration: [1, 3] }], [`A`], [`Ni`]],
+    [[{ name: `v`, chemical_symbols: [`vacancy`, `O`], concentration: [9, 1] }], [`v`], [`O`]],
+    [undefined, [`Fe`, `O`], [`Fe`, `O`]],
+  ])(`should resolve species_at_sites %#`, (species, species_at_sites, expected) => {
+    const result = parse_optimade_json(
+      JSON.stringify({
+        id: `test-species`,
+        type: `structures`,
+        attributes: {
+          cartesian_site_positions: species_at_sites.map((_, idx) => [idx, 0, 0]),
+          species_at_sites,
+          species, // undefined is dropped by JSON.stringify
+        },
+      }),
+    )
+    assert(result, `Failed to parse OPTIMADE JSON`)
+    expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
+  })
+
   it.each([
     {
       name: `missing required fields`,
@@ -2699,6 +2759,26 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     } else {
       expect(result.lattice).toBeUndefined()
     }
+  })
+
+  test(`should resolve named species through chemical_symbols`, () => {
+    const result = optimade_to_crystal({
+      id: `test-named-species`,
+      type: `structures`,
+      attributes: {
+        lattice_vectors: [
+          [5, 0, 0],
+          [0, 5, 0],
+          [0, 0, 5],
+        ],
+        cartesian_site_positions: [[0, 0, 0]],
+        species_at_sites: [`Si1`],
+        species: [{ name: `Si1`, chemical_symbols: [`Si`], mass: [28.0855] }],
+      },
+    })
+    assert(result, `Failed to convert OPTIMADE structure`)
+    expect(result.sites[0].species[0].element).toBe(`Si`)
+    expect(result.sites[0].properties.mass).toBe(28.0855)
   })
 
   it.each([

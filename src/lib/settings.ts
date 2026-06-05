@@ -1813,6 +1813,7 @@ export const merge = (user?: Partial<DefaultSettings>): DefaultSettings =>
   ({
     ...DEFAULTS,
     ...user,
+    symmetry: merge_nested(DEFAULTS.symmetry, user?.symmetry),
     structure: merge_nested(DEFAULTS.structure, user?.structure),
     trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
     composition: merge_nested(DEFAULTS.composition, user?.composition),

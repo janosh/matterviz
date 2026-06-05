@@ -1,7 +1,8 @@
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import type { Crystal, Pbc } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
-import { add_xrd_pattern, compute_xrd_pattern, type XrdPattern } from '$lib/xrd'
+import { add_xrd_pattern, compute_xrd_pattern, WAVELENGTHS, type XrdPattern } from '$lib/xrd'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -101,6 +102,18 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
       const min_match_ratio = 0.95
       expect(matched / top_indices.length).toBeGreaterThanOrEqual(min_match_ratio)
 
+      // The 20 strongest expected peaks must also match in normalized intensity (both
+      // patterns scaled to max=100). Regression for the missing Z − 41.78214·s² prefactor
+      // in the atomic scattering factor, which skewed relative peak heights (38.3 vs 51.0)
+      const top_20 = [...top_indices].sort((i1, i2) => expected.y[i2] - expected.y[i1])
+      for (const idx of top_20.slice(0, 20)) {
+        const diffs = computed.x.map((x_val) => Math.abs(x_val - expected.x[idx]))
+        const nearest = diffs.indexOf(Math.min(...diffs))
+        if (diffs[nearest] > angle_tol) continue // position check covers misses
+        const y_err = Math.abs(computed.y[nearest] - expected.y[idx])
+        expect(y_err, `y at 2θ=${expected.x[idx].toFixed(3)}`).toBeLessThanOrEqual(1)
+      }
+
       // Compare d-spacings if present, over overlapping range only
       if (expected.d_hkls && computed.d_hkls) {
         const top_d_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
@@ -168,6 +181,40 @@ describe(`compute_xrd_pattern edge cases`, () => {
       scaled_intensity_tol: 0, // include everything after scaling
     })
     expect(many_pass.x.length).toBeGreaterThan(0)
+  })
+
+  // Regression: hkl bounds from reciprocal-row norms (max_radius/|b_i| + 2) miss in-sphere
+  // reflections for skewed cells — this monoclinic cell (γ ≈ 32°) silently dropped 82 of
+  // 2132 reflections in [0°, 180°]. Correct bound uses direct rows: |h_i| ≤ R·|a_i|.
+  test(`skewed monoclinic cell enumerates every in-sphere reflection`, () => {
+    const file_name = `mp-1183089-Ac4Mg2-monoclinic.json`
+    const structure = parse_structure_file(
+      read_maybe_gz(path.join(structures_dir, file_name)),
+      file_name,
+    ) as Crystal
+    const pattern = compute_xrd_pattern(structure, {
+      wavelength: `CuKa`,
+      two_theta_range: [0, 180],
+      scaled_intensity_tol: 0, // keep every peak so multiplicities are complete
+    })
+    const total_multiplicity = (pattern.hkls ?? [])
+      .flat()
+      .reduce((sum, fam) => sum + (fam.multiplicity ?? 0), 0)
+
+    // Brute-force count with generous index bound 25 (exact bound is ≤ 11 for this cell)
+    const recip_cols = math.matrix_inverse_3x3(structure.lattice.matrix) // bᵢ as columns
+    const max_radius = 2 / WAVELENGTHS.CuKa // 2·sin(90°)/λ
+    const span = Array.from({ length: 51 }, (_, idx) => idx - 25)
+    const brute_count = span
+      .flatMap((h_idx) =>
+        span.flatMap((k_idx) =>
+          span.map((l_idx) => Math.hypot(...math.dot(recip_cols, [h_idx, k_idx, l_idx]))),
+        ),
+      )
+      .filter((g_norm) => g_norm > 0 && g_norm <= max_radius).length
+
+    expect(brute_count).toBeGreaterThan(2000) // sanity: full sphere covered
+    expect(total_multiplicity).toBe(brute_count)
   })
 
   test(`enumeration safety cap throws for pathological ranges`, () => {

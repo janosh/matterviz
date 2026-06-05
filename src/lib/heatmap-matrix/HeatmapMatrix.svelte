@@ -358,14 +358,18 @@
     return numeric_values
   })
 
-  // Single-pass min/max to avoid spreading large arrays into Math.min/max
-  let [auto_min, auto_max] = $derived.by(() => {
-    let [min, max] = [Infinity, -Infinity]
+  // Single-pass min/max to avoid spreading large arrays into Math.min/max. min_pos is
+  // the log-mode lower bound when the domain min is <= 0 (the old Number.MIN_VALUE
+  // floor gave log_min ~ -744, squashing all colors to the top)
+  let [auto_min, auto_max, min_pos] = $derived.by(() => {
+    let [min, max, pos] = [Infinity, -Infinity, Infinity]
     for (const value of valid_numeric_values) {
       if (value < min) min = value
       if (value > max) max = value
+      if (value > 0 && value < pos) pos = value
     }
-    return min <= max ? [min, max] as const : [0, 1] as const
+    const min_pos_val = Number.isFinite(pos) ? pos : null
+    return min <= max ? [min, max, min_pos_val] as const : [0, 1, min_pos_val] as const
   })
 
   let [robust_min, robust_max] = $derived.by(() => {
@@ -418,7 +422,7 @@
       const lower_bound = Math.min(cs_min, cs_max)
       const upper_bound = Math.max(cs_min, cs_max)
       if (upper_bound <= 0) return missing_color || null
-      const safe_lower_bound = Math.max(lower_bound, Number.MIN_VALUE)
+      const safe_lower_bound = lower_bound > 0 ? lower_bound : (min_pos ?? upper_bound)
       const safe_value = Math.max(val, safe_lower_bound)
       const log_min = Math.log(safe_lower_bound)
       const log_max = Math.log(upper_bound)

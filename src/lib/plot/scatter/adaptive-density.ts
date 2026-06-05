@@ -1,4 +1,6 @@
 import type { Point2D, Vec2 } from '$lib/math'
+import type { ScaleType } from '$lib/plot/core/types'
+import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
 export type NumericArray = ArrayLike<number>
 
@@ -64,6 +66,38 @@ export interface PlotRect {
   height: number
 }
 
+// Monotonic transform pair: density bins are uniform in transformed (scale) space so
+// they align with the axis pixel grid on log/arcsinh axes
+export interface BinTransform {
+  forward: (value: number) => number
+  inverse: (value: number) => number
+}
+export type BinTransforms = { x?: BinTransform; y?: BinTransform }
+
+const identity: BinTransform = { forward: (val) => val, inverse: (val) => val }
+
+// Map an axis scale_type to the transform density binning should happen in
+export function scale_bin_transform(scale_type?: ScaleType): BinTransform {
+  const type_name = get_scale_type_name(scale_type)
+  if (type_name === `log`) {
+    // Clamp to avoid -Infinity for non-positive values (not displayable on log axes anyway)
+    return { forward: (val) => Math.log(Math.max(val, Number.MIN_VALUE)), inverse: Math.exp }
+  }
+  if (type_name !== `arcsinh`) return identity
+  const threshold = get_arcsinh_threshold(scale_type)
+  return {
+    forward: (val) => Math.asinh(val / threshold),
+    inverse: (val) => Math.sinh(val) * threshold,
+  }
+}
+
+// Data range of one bin: edges are uniform in transformed space, mapped back via inverse
+const bin_range = (txf: BinTransform, lo: number, hi: number, bin: number, n_bins: number) => {
+  const t_min = txf.forward(lo)
+  const step = (txf.forward(hi) - t_min || 1) / n_bins
+  return [txf.inverse(t_min + bin * step), txf.inverse(t_min + (bin + 1) * step)] as Vec2
+}
+
 export const get_metadata_at = <Metadata>(
   metadata: DensePointSeries<Metadata>[`metadata`],
   point_idx: number,
@@ -121,16 +155,20 @@ export function bin_points(
   y_range: Vec2,
   x_bins: number,
   y_bins: number,
+  transforms?: BinTransforms,
 ): DensityBinResult {
   const counts = new Uint32Array(x_bins * y_bins)
   const first_point_idxs = new Int32Array(counts.length)
   const first_series_idxs = new Int32Array(counts.length)
   const [x_min, x_max] = range_bounds(x_range)
   const [y_min, y_max] = range_bounds(y_range)
-  const x_span = x_max - x_min || 1
-  const y_span = y_max - y_min || 1
-  const x_bin_scale = x_bins / x_span
-  const y_bin_scale = y_bins / y_span
+  // Bin in transformed (scale) space so bins align with the axis pixel grid
+  const x_fwd = transforms?.x?.forward ?? identity.forward
+  const y_fwd = transforms?.y?.forward ?? identity.forward
+  const t_x_min = x_fwd(x_min)
+  const t_y_min = y_fwd(y_min)
+  const x_bin_scale = x_bins / (x_fwd(x_max) - t_x_min || 1)
+  const y_bin_scale = y_bins / (y_fwd(y_max) - t_y_min || 1)
   const last_x_bin = x_bins - 1
   const last_y_bin = y_bins - 1
   let visible_count = 0
@@ -152,10 +190,10 @@ export function bin_points(
       )
         continue
 
-      const raw_x_bin = Math.floor((x - x_min) * x_bin_scale)
-      const raw_y_bin = Math.floor((y - y_min) * y_bin_scale)
-      const x_bin = raw_x_bin > last_x_bin ? last_x_bin : raw_x_bin
-      const y_bin = raw_y_bin > last_y_bin ? last_y_bin : raw_y_bin
+      const raw_x_bin = Math.floor((x_fwd(x) - t_x_min) * x_bin_scale)
+      const raw_y_bin = Math.floor((y_fwd(y) - t_y_min) * y_bin_scale)
+      const x_bin = raw_x_bin < 0 ? 0 : raw_x_bin > last_x_bin ? last_x_bin : raw_x_bin
+      const y_bin = raw_y_bin < 0 ? 0 : raw_y_bin > last_y_bin ? last_y_bin : raw_y_bin
       const idx = y_bin * x_bins + x_bin
       const count = ++counts[idx]
       if (count === 1) {
@@ -184,6 +222,7 @@ export function density_bin_at_point(
   plot_rect: PlotRect,
   x_range: Vec2,
   y_range: Vec2,
+  transforms?: BinTransforms,
 ): DensityBin | null {
   const rel_x = pointer.x - plot_rect.x
   const rel_y = pointer.y - plot_rect.y
@@ -199,14 +238,12 @@ export function density_bin_at_point(
 
   const [x_min, x_max] = range_bounds(x_range)
   const [y_min, y_max] = range_bounds(y_range)
-  const x_step = (x_max - x_min || 1) / density.x_bins
-  const y_step = (y_max - y_min || 1) / density.y_bins
   return {
     x_bin,
     y_bin,
     count,
-    x_range: [x_min + x_bin * x_step, x_min + (x_bin + 1) * x_step],
-    y_range: [y_min + y_bin * y_step, y_min + (y_bin + 1) * y_step],
+    x_range: bin_range(transforms?.x ?? identity, x_min, x_max, x_bin, density.x_bins),
+    y_range: bin_range(transforms?.y ?? identity, y_min, y_max, y_bin, density.y_bins),
   }
 }
 

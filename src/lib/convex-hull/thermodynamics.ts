@@ -215,6 +215,7 @@ export function calculate_e_above_hull(
     const hull_input_map = new Map<number, number>() // x -> min_e_form
 
     for (const ref of reference_entries) {
+      if (ref.exclude_from_hull) continue // Shown but not used in hull construction
       const e_form = compute_e_form(ref)
       if (typeof e_form !== `number`) continue
       const total = count_atoms_in_composition(ref.composition)
@@ -252,6 +253,7 @@ export function calculate_e_above_hull(
     // Ternary system
     const ref_points: Point3D[] = []
     for (const ref of reference_entries) {
+      if (ref.exclude_from_hull) continue // Shown but not used in hull construction
       const e_form = compute_e_form(ref)
       if (typeof e_form !== `number`) continue
       try {
@@ -280,6 +282,8 @@ export function calculate_e_above_hull(
 
     const hull_triangles = compute_lower_hull_triangles(ref_points)
     const hull_models = build_lower_hull_model(hull_triangles)
+    // No facets despite enough refs → all coplanar at e_form = 0: use elemental tie-plane
+    const degenerate_hull_3d = hull_triangles.length === 0 && ref_points.length >= arity
 
     for (const { entry, e_form } of interest_data) {
       const id = entry.entry_id ?? JSON.stringify(entry.composition)
@@ -289,6 +293,10 @@ export function calculate_e_above_hull(
       }
       try {
         const bary = composition_to_barycentric_3d(entry.composition, elements)
+        if (degenerate_hull_3d) {
+          results[id] = Math.max(0, e_form)
+          continue
+        }
         const point = barycentric_to_ternary_xyz(bary, e_form)
         const z_hull = e_hull_at_xy(hull_models, point.x, point.y)
         results[id] = z_hull === null ? NaN : Math.max(0, point.z - z_hull)
@@ -300,6 +308,7 @@ export function calculate_e_above_hull(
     // Quaternary system
     const ref_points: Point4D[] = []
     for (const ref of reference_entries) {
+      if (ref.exclude_from_hull) continue // Shown but not used in hull construction
       const e_form = compute_e_form(ref)
       if (typeof e_form !== `number`) continue
       try {
@@ -323,6 +332,8 @@ export function calculate_e_above_hull(
     }
 
     const hull_tetrahedra = compute_lower_hull_4d(ref_points)
+    // No facets despite enough refs → all coplanar at e_form = 0: use elemental tie-plane
+    const degenerate_hull_4d = hull_tetrahedra.length === 0 && ref_points.length >= arity
     const interest_points: Point4D[] = []
     const interest_indices: number[] = []
 
@@ -349,21 +360,22 @@ export function calculate_e_above_hull(
 
     // Map back
     for (let idx = 0; idx < interest_data.length; idx++) {
-      const { entry } = interest_data[idx]
+      const { entry, e_form } = interest_data[idx]
       const id = entry.entry_id ?? JSON.stringify(entry.composition)
       const point_idx = idx_to_point_idx.get(idx) ?? -1
-      if (point_idx !== -1) {
-        results[id] = Math.max(0, distances[point_idx])
-      } else {
-        results[id] = NaN
-      }
+      const on_tie_plane = degenerate_hull_4d && typeof e_form === `number`
+      if (point_idx === -1) results[id] = NaN
+      else results[id] = Math.max(0, on_tie_plane ? e_form : distances[point_idx])
     }
   } else {
     // Arity 5+ uses generalized N-dimensional convex hull
-    // Helper to convert entry to hull point, returns null on expected errors
+    // Helper to convert entry to hull point, returns null on expected errors.
+    // Barycentric coords sum to 1, so the first is dropped: keeping all N would confine
+    // points to an (N-1)-dim affine subspace, leaving the hull permanently degenerate.
     const to_hull_point = (entry: PhaseData, e_form: number): number[] | null => {
       try {
-        return [...composition_to_barycentric_nd(entry.composition, elements), e_form]
+        const bary = composition_to_barycentric_nd(entry.composition, elements)
+        return [...bary.slice(1), e_form]
       } catch (err) {
         // Skip expected errors (missing elements), warn on unexpected
         if (err instanceof Error && !err.message.includes(`no elements from the system`)) {
@@ -376,16 +388,18 @@ export function calculate_e_above_hull(
     // Build reference points
     const ref_points: number[][] = []
     for (const ref of reference_entries) {
+      if (ref.exclude_from_hull) continue // Shown but not used in hull construction
       const e_form = compute_e_form(ref)
       if (typeof e_form !== `number`) continue
       const point = to_hull_point(ref, e_form)
       if (point) ref_points.push(point)
     }
 
-    // Ensure corner points (pure elements default to e_form = 0)
+    // Ensure corner points (pure elements default to e_form = 0). In reduced
+    // coordinates, element 0 is the origin; element k > 0 has (k-1)th coord = 1.
     for (let el_idx = 0; el_idx < arity; el_idx++) {
-      const corner = Array(arity + 1).fill(0)
-      corner[el_idx] = 1 // ith barycentric coord = 1
+      const corner = Array(arity).fill(0)
+      if (el_idx > 0) corner[el_idx - 1] = 1
       if (!ref_points.some((pt) => norm_nd(subtract_nd(pt, corner)) < EPS)) {
         ref_points.push(corner)
       }
@@ -393,12 +407,11 @@ export function calculate_e_above_hull(
 
     const hull_facets = compute_lower_hull_nd(compute_quickhull_nd(ref_points))
 
-    // Warn if hull is degenerate (all points coplanar or insufficient spread)
+    // Degenerate hull (all refs co-hyperplanar, e.g. all e_form = 0): tie-plane fallback is exact
     if (hull_facets.length === 0 && ref_points.length >= arity + 1) {
       console.warn(
-        `N-dimensional hull for ${arity}-element system is degenerate. ` +
-          `Falling back to tie-hyperplane at energy 0. ` +
-          `Consider using pymatgen for complex high-dimensional phase diagrams.`,
+        `N-dimensional hull for ${arity}-element system is degenerate ` +
+          `(all reference points co-hyperplanar). Falling back to tie-hyperplane at energy 0.`,
       )
     }
 

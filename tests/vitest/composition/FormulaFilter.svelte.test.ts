@@ -1040,6 +1040,24 @@ describe(`FormulaFilter`, () => {
       expect(doc_query(`.formula-filter`).classList.contains(`invalid`)).toBe(true)
     })
 
+    test.each([`Ca(OH2`, `Fe(`, `Mg()O2`])(
+      `unbalanced parentheses %s neither hang nor escape input handling`,
+      (raw_input) => {
+        const on_validation = vi.fn()
+        mount_filter({ value: ``, on_validation })
+        submit_input(raw_input)
+        expect(on_validation.mock.lastCall?.[0].state).toBe(`invalid`)
+        expect(on_validation.mock.lastCall?.[0].message).toContain(`parentheses`)
+      },
+    )
+
+    test(`hydrate dot survives unicode normalization (deleting it would glue digits)`, () => {
+      const onchange = vi.fn()
+      mount_filter({ value: ``, onchange })
+      submit_input(`CuSO4·5H2O`)
+      expect(onchange).toHaveBeenLastCalledWith(`CuH10O9S`, `exact`)
+    })
+
     test(`invalid non-exact tokens are not silently dropped on submit`, () => {
       const onchange = vi.fn()
       const on_validation = vi.fn()

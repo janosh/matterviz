@@ -202,6 +202,25 @@ describe(`values and colors`, () => {
     expect(cells[0].style.backgroundColor).not.toBe(`rgb(1, 2, 3)`)
   })
 
+  test(`log mode anchors at smallest positive value when data has non-positives`, () => {
+    mount_matrix({
+      x_items: make_items([`A`, `B`, `C`, `D`]),
+      y_items: make_items([`X`]),
+      values: [[-1, 0.01, 1, 100]],
+      log: true,
+      missing_color: `red`,
+      color_scale: (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`,
+    })
+    const cells = get_data_cells()
+    const red = (idx: number) => Number(/\d+/.exec(cells[idx].style.backgroundColor)?.[0])
+    expect(cells[0].style.backgroundColor).toBe(`red`) // non-positive -> missing color
+    // a Number.MIN_VALUE lower bound squashes all positives into [0.985, 1]; instead
+    // 0.01 must map to the bottom, 100 to the top, 1 to the log midpoint
+    expect(red(1)).toBe(0)
+    expect(Math.abs(red(2) - 127.5)).toBeLessThanOrEqual(1)
+    expect(red(3)).toBe(255)
+  })
+
   test(`log mode safely handles non-positive color range minimum`, () => {
     mount(HeatmapMatrix, {
       target: document.body,

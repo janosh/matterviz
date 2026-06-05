@@ -361,6 +361,27 @@ describe(`calculate_e_above_hull`, () => {
     ).toBeGreaterThanOrEqual(0)
   })
 
+  // exclude_from_hull guard exists in all arity branches (ternary, quaternary, N-D);
+  // each must skip the excluded entry when building the hull
+  test.each([
+    { arity: 3, els: [`Li`, `Fe`, `O`] },
+    { arity: 4, els: [`Li`, `Fe`, `P`, `O`] },
+    { arity: 5, els: [`Li`, `Na`, `K`, `Rb`, `Cs`] },
+  ])(`arity-$arity exclude_from_hull entry doesn't shape the hull`, ({ els }) => {
+    const comp = Object.fromEntries(els.map((el) => [el, 1])) as Partial<
+      Record<ElementSymbol, number>
+    >
+    const refs = [
+      ...els.map((el) => make_quinary_elem(el, 0)),
+      // Very stable compound, but excluded → must not lower the hull
+      make_phase(comp, -2.0, { entry_id: `excluded`, exclude_from_hull: true }),
+    ]
+    // Same-composition query below the elemental tie-plane → clamped to 0. If the
+    // excluded compound wrongly shaped the hull, this would be ~1.0.
+    const query = make_phase(comp, -1.0, { entry_id: `query` })
+    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0, 10)
+  })
+
   test(`throws for empty refs`, () => {
     expect(() => calculate_e_above_hull(make_phase({ Fe: 1 }, -4.0), [])).toThrow(
       /cannot be empty/,
@@ -394,6 +415,34 @@ describe(`calculate_e_above_hull`, () => {
       calculate_e_above_hull(make_phase({ Li: 1 }, -1.5, { entry_id: `Li-unstable` }), refs),
     ).toBeCloseTo(0.4, 5)
   })
+
+  test(`quinary: compound phase below tie-plane shapes the hull (non-degenerate)`, () => {
+    // Stable equimolar compound at e_form = -1.0 eV/atom (elements at -1.0 eV/atom each)
+    const equimolar = { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 }
+    const refs = [
+      ...Object.keys(equimolar).map((el) => make_quinary_elem(el)),
+      make_phase(equimolar, -2.0, { entry_id: `stable-quinary` }),
+    ]
+    // Query at same composition with e_form = -0.5 eV/atom sits 0.5 eV/atom above the
+    // stable compound. A degenerate hull would wrongly report 0 (elemental tie-plane).
+    const query = make_phase(equimolar, -1.5, { entry_id: `above-hull` })
+    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0.5, 5)
+  })
+
+  test.each([
+    { arity: 3, comp: { Li: 1, Fe: 1, O: 1 } },
+    { arity: 4, comp: { Li: 1, Fe: 1, P: 1, O: 1 } },
+  ])(
+    `arity-$arity falls back to elemental tie-plane when all refs have e_form = 0`,
+    ({ comp }) => {
+      // All refs coplanar at e_form = 0 → no hull facets; tie-plane fallback must apply
+      const refs = Object.keys(comp).map((el) => make_quinary_elem(el, 0))
+      const above = make_phase(comp, 0.5, { entry_id: `above-tie-plane` })
+      expect(calculate_e_above_hull(above, refs)).toBeCloseTo(0.5, 10)
+      const below = make_phase(comp, -0.2, { entry_id: `below-tie-plane` })
+      expect(calculate_e_above_hull(below, refs)).toBeCloseTo(0, 10)
+    },
+  )
 
   test(`quinary: interior point above hull has positive distance`, () => {
     const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
@@ -608,6 +657,23 @@ describe(`process_hull_for_stats`, () => {
     // Fe is unary → is_element
     const fe_entry = all.find((entry) => Object.keys(entry.composition).length === 1)
     expect(fe_entry?.is_element).toBe(true)
+  })
+
+  test(`exclude_from_hull entries don't shape the hull but are still scored`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
+      make_phase({ Fe: 1 }, 0, { entry_id: `Fe` }),
+      make_phase({ Li: 1, Fe: 1 }, -0.5, { entry_id: `LiFe`, exclude_from_hull: true }),
+      make_phase({ Li: 1, Fe: 2 }, -0.1, { entry_id: `LiFe2` }),
+    ]
+    const result = process_hull_for_stats(entries)
+    const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
+    // Excluded LiFe (-0.5 eV/atom) must not shape the hull: LiFe2 (-0.1) sits on the
+    // Li-Fe tie-line (else ~0.233 eV/atom above the Li-LiFe-Fe hull). LiFe itself is
+    // still scored as a query (below hull → clamped to 0) but never counted stable.
+    expect(all.find((entry) => entry.entry_id === `LiFe2`)?.e_above_hull).toBeCloseTo(0, 10)
+    expect(all.find((entry) => entry.entry_id === `LiFe`)?.e_above_hull).toBeCloseTo(0, 10)
+    expect(result?.stable_entries.some((entry) => entry.entry_id === `LiFe`)).toBe(false)
   })
 
   test(`preserves pre-computed e_form_per_atom`, () => {

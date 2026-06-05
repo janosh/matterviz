@@ -2,7 +2,12 @@
 // Uses real WASM binary to verify symmetry detection behavior
 // Note: Most symmetry tests use mocks (see index.test.ts, symmetry-utils.test.ts)
 
-import { analyze_structure_symmetry, wyckoff_positions_from_moyo } from '$lib/symmetry'
+import type { Vec3 } from '$lib/math'
+import {
+  analyze_structure_symmetry,
+  apply_symmetry_operations,
+  wyckoff_positions_from_moyo,
+} from '$lib/symmetry'
 import { structure_map } from '$site/structures'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { init_moyo_for_tests } from '../setup'
@@ -55,6 +60,34 @@ describe(`moyo-wasm integration`, () => {
     })
     expect(wyckoff_positions_from_moyo(sym_data)).toHaveLength(expected_count)
   })
+
+  // Regression: moyo-wasm serializes operation.rotation as a flat 9-array in COLUMN-major
+  // order (nalgebra). A row-major read applies Wᵀ instead of W, sending atoms off-site for
+  // hexagonal/trigonal cells where W is not symmetric.
+  test.each([`mp-862690-Ac4-hexagonal`, `mp-1183089-Ac4Mg2-monoclinic`])(
+    `%s: every symmetry op maps each site onto a symmetry-equivalent site`,
+    async (id) => {
+      const structure = get_structure(id)
+      if (!(`lattice` in structure)) throw new Error(`expected periodic structure`)
+      const sym_data = await analyze_structure_symmetry(structure, { symprec: 1e-4 })
+      expect(sym_data.operations.length).toBeGreaterThan(1)
+
+      const frac_dist = (p1: Vec3, p2: Vec3) =>
+        // minimum-image distance in frac coords
+        Math.hypot(...p1.map((c1, idx) => c1 - p2[idx] - Math.round(c1 - p2[idx])))
+
+      for (const site of structure.sites) {
+        for (const image of apply_symmetry_operations(site.abc, sym_data.operations)) {
+          const on_site = structure.sites.some(
+            (other) =>
+              other.species[0]?.element === site.species[0]?.element &&
+              frac_dist(image, other.abc) < 1e-3,
+          )
+          expect(on_site, `${site.species[0]?.element} image ${image} off-site`).toBe(true)
+        }
+      }
+    },
+  )
 
   test(`highly oblique TlBiSe2 cell is handled correctly`, async () => {
     const sym_data = await analyze_structure_symmetry(
