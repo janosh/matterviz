@@ -17,6 +17,7 @@
     SankeyOrientation,
   } from '$lib/plot'
   import { DEFAULT_SERIES_COLORS, PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
+  import { closest_data_idx } from '$lib/plot/interactions'
   import { compute_element_placement, constrain_tooltip_position, filter_padding } from '$lib/plot/layout'
   import type { Sides } from '$lib/plot/layout'
   import {
@@ -299,23 +300,13 @@
     }
   }
 
-  const closest_index = (
-    event: Event,
-    attr: `data-sankey-link-idx` | `data-sankey-node-idx`,
-  ): number | null => {
-    const target = event.target instanceof Element ? event.target.closest(`[${attr}]`) : null
-    if (!target || !svg_element?.contains(target)) return null
-    const idx = Number(target.getAttribute(attr))
-    return Number.isInteger(idx) ? idx : null
-  }
-
   const link_from_event = (event: Event): PositionedLink | null => {
-    const idx = closest_index(event, `data-sankey-link-idx`)
+    const idx = closest_data_idx(event, `data-sankey-link-idx`, svg_element)
     return idx == null ? null : layout.links[idx] ?? null
   }
 
   const node_from_event = (event: Event): PositionedNode | null => {
-    const idx = closest_index(event, `data-sankey-node-idx`)
+    const idx = closest_data_idx(event, `data-sankey-node-idx`, svg_element)
     return idx == null ? null : node_by_idx.get(idx) ?? null
   }
 
