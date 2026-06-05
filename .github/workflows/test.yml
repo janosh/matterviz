@@ -12,28 +12,30 @@ on:
     types: [published]
 
 jobs:
-  tests:
+  unit-tests:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        test-type: [unit, end-to-end]
     steps:
       - uses: actions/checkout@v6
-
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-
       - run: corepack enable && pnpm install
-
       - name: Unit tests
-        if: matrix.test-type == 'unit'
         run: pnpm exec vp test --run
 
+  e2e-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # let every shard finish so we see all failures, not just the first
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable && pnpm install
       - name: Install Playwright
-        if: matrix.test-type == 'end-to-end'
         run: npx playwright install chromium
-
-      - name: E2E tests
-        if: matrix.test-type == 'end-to-end'
-        run: npx playwright test
+      - name: E2E tests (shard ${{ matrix.shard }}/4)
+        run: npx playwright test --shard=${{ matrix.shard }}/4
