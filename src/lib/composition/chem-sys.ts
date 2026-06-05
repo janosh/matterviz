@@ -21,9 +21,12 @@ const ARITY_NAMES = [
   `senary`,
   `septenary`,
   `octonary`,
+  `nonary`,
+  `denary`,
 ] as const
 
-export const arity_name = (arity: number): string => ARITY_NAMES[arity] ?? `${arity}-ary`
+// || (not ??) so the empty index-0 placeholder also falls through to "0-ary"
+export const arity_name = (arity: number): string => ARITY_NAMES[arity] || `${arity}-ary`
 
 // Build arity -> chemical-system sunburst data from a list of chemical systems
 // ("Li-Fe-O") and/or formulas ("LiFePO4"), one entry per occurrence (counts become
@@ -76,16 +79,18 @@ export function chem_sys_sunburst_data(
 
   // One composite sort (arity ascending, then count descending) puts systems in
   // final order; consecutive same-arity runs then collapse into one branch each
-  const sorted = [...counts].sort(
-    ([sys_a, count_a], [sys_b, count_b]) =>
-      sys_a.split(`-`).length - sys_b.split(`-`).length || count_b - count_a,
-  )
+  const sorted = [...counts]
+    .map(([chem_sys, count]) => ({ chem_sys, count, arity: chem_sys.split(`-`).length }))
+    .sort((sys_a, sys_b) => sys_a.arity - sys_b.arity || sys_b.count - sys_a.count)
   const roots: SunburstNode<ChemSysSunburstMetadata>[] = []
-  for (const [chem_sys, count] of sorted) {
-    const arity = chem_sys.split(`-`).length
+  let branch: SunburstNode<ChemSysSunburstMetadata> | undefined
+  for (const { chem_sys, count, arity } of sorted) {
     const name = arity_name(arity)
-    if (roots.at(-1)?.id !== name) roots.push({ id: name, label: name, children: [] })
-    roots.at(-1)?.children?.push({
+    if (branch?.id !== name) {
+      branch = { id: name, label: name, children: [] }
+      roots.push(branch)
+    }
+    branch.children?.push({
       id: `${name}/${chem_sys}`,
       label: chem_sys,
       value: count,

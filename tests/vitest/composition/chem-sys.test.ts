@@ -47,12 +47,15 @@ describe(`chem_sys_sunburst_data`, () => {
 
 describe(`arity_name`, () => {
   test.each([
+    [0, `0-ary`], // index-0 placeholder falls through to the n-ary fallback
     [1, `unary`],
     [2, `binary`],
     [3, `ternary`],
     [4, `quaternary`],
     [5, `quinary`],
-    [9, `9-ary`],
+    [9, `nonary`],
+    [10, `denary`],
+    [11, `11-ary`],
   ])(`maps %i to %s`, (arity, expected) => {
     expect(arity_name(arity)).toBe(expected)
   })
