@@ -10,6 +10,16 @@ import type {
   DataSeries,
 } from '$lib/plot/core/types'
 
+// Shared axis defaults across plot components (single source of truth)
+export const AXIS_DEFAULTS = {
+  format: ``,
+  scale_type: `linear` as const,
+  ticks: 5,
+  label_shift: { x: 0, y: 0 },
+  tick: { label: { shift: { x: 0, y: 0 }, inside: false } },
+  range: [null, null] as [number | null, number | null],
+}
+
 type AxisType = `x` | `x2` | `y` | `y2`
 
 // Merge new series with preserved UI state from old series.

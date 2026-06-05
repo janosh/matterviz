@@ -55,13 +55,12 @@
     place_decorations,
   } from '$lib/plot/core/auto-place'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { create_axis_change_handler } from '$lib/plot/core/axis-utils'
+  import { AXIS_DEFAULTS, create_axis_change_handler } from '$lib/plot/core/axis-utils'
   import {
     get_series_color,
     get_series_symbol,
     process_prop,
   } from '$lib/plot/core/data-transform'
-  import { AXIS_DEFAULTS } from '$lib/plot/core/defaults'
   import {
     create_dimension_tracker,
     create_hover_lock,
