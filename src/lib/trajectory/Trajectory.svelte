@@ -750,10 +750,10 @@
         parsing_progress = progress
       }, merged_options)
 
-      // Keep original data for on-demand frame loads. Indexed parsing attaches its own
-      // frame_loader; direct-parse fallbacks (e.g. large JSON or extensionless blob:
-      // filenames) load all frames upfront and don't need one.
-      orig_data = data
+      // Keep original data for on-demand frame loads only when indexed parsing attached a
+      // frame_loader. Direct-parse fallbacks (e.g. large JSON or extensionless blob:
+      // filenames) load all frames upfront, so retaining a full duplicate payload wastes memory.
+      orig_data = trajectory?.frame_loader ? data : null
     } catch (error) {
       console.error(`Indexed loading failed:`, error)
       throw error

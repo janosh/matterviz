@@ -111,7 +111,7 @@ export const parse_formula = (formula: string): CompositionType => {
 
   for (const [seg_idx, segment] of segments.entries()) {
     // only hydrate segments (after a separator) carry a leading multiplier
-    const coeff = seg_idx > 0 ? /^\d+(?:\.\d+)?/.exec(segment)?.[0] : undefined
+    const coeff = seg_idx > 0 ? /^(?:\d+(?:\.\d+)?|\.\d+)/.exec(segment)?.[0] : undefined
     const multiplier = coeff ? parseFloat(coeff) : 1
     const expanded = expand_parentheses(segment.slice(coeff?.length ?? 0))
     for (const match of expanded.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {

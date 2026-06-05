@@ -87,6 +87,7 @@ describe(`parse_formula`, () => {
     [`Ca(OH)2·2H2O`, { Ca: 1, O: 4, H: 6 }, `hydrate with parentheses`],
     [`CaCl2·H2O`, { Ca: 1, Cl: 2, H: 2, O: 1 }, `hydrate without coefficient`],
     [`CaSO4·0.5H2O`, { Ca: 1, S: 1, O: 4.5, H: 1 }, `hydrate decimal coefficient`],
+    [`CuSO4·.5H2O`, { Cu: 1, S: 1, O: 4.5, H: 1 }, `hydrate leading-dot coefficient`],
     [``, {}, `empty formula`],
   ])(`%s -> %j (%s)`, (formula, expected, _description) => {
     expect(parse_formula(formula)).toEqual(expected)

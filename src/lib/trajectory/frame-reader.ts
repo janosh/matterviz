@@ -289,13 +289,16 @@ export class TrajFrameReader implements FrameLoader {
       `indexed frame ${frame_number}`,
     )
     const { step, properties } = this.parse_xyz_metadata(comment, frame_number)
+    const metadata: Record<string, unknown> = { ...properties, ...force_stats }
+    // Derive volume from the lattice (parity with the eager parse_xyz_trajectory parser)
+    if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
     return create_trajectory_frame(
       positions,
       elements,
       lattice_matrix,
       lattice_matrix ? [true, true, true] : undefined,
       step,
-      { ...properties, ...force_stats },
+      metadata,
     )
   }
 

@@ -1,4 +1,4 @@
-import type { Point2D, Vec2 } from '$lib/math'
+import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
 import type { ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
@@ -80,8 +80,9 @@ const identity: BinTransform = { forward: (val) => val, inverse: (val) => val }
 export function scale_bin_transform(scale_type?: ScaleType): BinTransform {
   const type_name = get_scale_type_name(scale_type)
   if (type_name === `log`) {
-    // Clamp to avoid -Infinity for non-positive values (not displayable on log axes anyway)
-    return { forward: (val) => Math.log(Math.max(val, Number.MIN_VALUE)), inverse: Math.exp }
+    // Clamp to LOG_EPS (same floor as the rendered log scale) so bin edges align with the
+    // axis; non-positive samples are already dropped by the range filter in bin_points
+    return { forward: (val) => Math.log(Math.max(val, LOG_EPS)), inverse: Math.exp }
   }
   if (type_name !== `arcsinh`) return identity
   const threshold = get_arcsinh_threshold(scale_type)

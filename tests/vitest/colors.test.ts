@@ -132,6 +132,8 @@ describe(`is_color function`, () => {
     // Invalid patterns - malformed
     [`rgb(255, 0)`, false], // incomplete rgb values are rejected
     [`#gg0000`, false],
+    [`#12345`, false], // 5-digit hex is invalid (regression vs old COLOR_FN_REGEX)
+    [`#1234567`, false], // 7-digit hex is invalid (regression vs old COLOR_FN_REGEX)
     [`hello world`, false],
     [``, false],
     [123, false],

@@ -209,6 +209,7 @@ describe(`Trajectory Streaming`, () => {
       ])
       expect(loaded?.metadata?.forces).toEqual([[0.1, 0.2, 0.3]])
       expect(loaded?.metadata?.energy).toBe(-1.5)
+      expect(loaded?.metadata?.volume).toBe(216) // derived from lattice (6^3), parity with eager parser
     })
   })
 

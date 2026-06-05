@@ -119,9 +119,7 @@ function parse_coordinate_line(line: string): number[] {
     tokens = sanitized.split(/\s+/)
   }
 
-  if (tokens.length < 3) {
-    throw new Error(`Insufficient coordinates in line: ${line}`)
-  }
+  if (tokens.length < 3) throw new Error(`Insufficient coordinates in line: ${line}`)
 
   return tokens.slice(0, 3).map(parse_coordinate)
 }
@@ -142,19 +140,22 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
 // Per OPTIMADE spec, species_at_sites holds species NAMES (e.g. 'Si1') resolved via the
 // species list: highest-concentration entry in chemical_symbols wins, non-element entries
 // like 'vacancy' are skipped, and unresolved names are treated as element symbols.
+// Returns the chosen element plus its index into the species' chemical_symbols
+// (sym_idx = -1 on fallback), so callers can read the matching mass/concentration entry.
 function resolve_optimade_element(
   species_name: string,
   species_list: OptimadeStructure[`attributes`][`species`],
   index: number,
-): ElementSymbol {
+): { symbol: ElementSymbol; sym_idx: number } {
   const spec = species_list?.find((entry) => entry.name === species_name)
-  let best: { symbol: ElementSymbol; conc: number } | undefined
+  let best: { symbol: ElementSymbol; conc: number; sym_idx: number } | undefined
   for (const [sym_idx, symbol] of (spec?.chemical_symbols ?? []).entries()) {
     if (!is_known_element_symbol(symbol)) continue
     const conc = spec?.concentration?.[sym_idx] ?? 0
-    if (!best || conc > best.conc) best = { symbol, conc }
+    if (!best || conc > best.conc) best = { symbol, conc, sym_idx }
   }
-  return best?.symbol ?? validate_element_symbol(species_name, index)
+  if (best) return { symbol: best.symbol, sym_idx: best.sym_idx }
+  return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
 }
 
 const try_create_cart_to_frac = (
@@ -648,16 +649,12 @@ const extract_cif_cell_parameters = (text: string, type: string, strict = true):
       const sans_comment = line.replace(/\s#.*$/, ``)
       const tokens = sans_comment.split(/\s+/).filter(Boolean)
       if (tokens.length < 2) {
-        if (strict) {
-          throw new Error(`Invalid CIF cell parameter line format: ${line}`)
-        }
+        if (strict) throw new Error(`Invalid CIF cell parameter line format: ${line}`)
         return null
       }
       const value = parseFloat(tokens[1].split(`(`)[0])
       if (isNaN(value)) {
-        if (strict) {
-          throw new Error(`Invalid CIF cell parameter in line: ${line}`)
-        }
+        if (strict) throw new Error(`Invalid CIF cell parameter in line: ${line}`)
         return null // Return null for invalid values in non-strict mode
       }
       return value
@@ -1030,13 +1027,7 @@ export function parse_cif(
           seen_site_keys.add(key)
           const xyz = frac_to_cart(abc)
           all_sites.push({
-            species: [
-              {
-                element,
-                occu: equiv_atom.occupancy,
-                oxidation_state: 0,
-              },
-            ],
+            species: [{ element, occu: equiv_atom.occupancy, oxidation_state: 0 }],
             abc,
             xyz,
             label: equiv_atom.id,
@@ -1084,10 +1075,7 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   // Calculate lattice parameters
   const calculated_lattice_params = math.calc_lattice_params(lattice_matrix)
 
-  return {
-    sites,
-    lattice: { matrix: lattice_matrix, ...calculated_lattice_params },
-  }
+  return { sites, lattice: { matrix: lattice_matrix, ...calculated_lattice_params } }
 }
 
 export type CellType =
@@ -1505,7 +1493,11 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
         continue
       }
 
-      const element = resolve_optimade_element(element_symbol, optimade_species, idx)
+      const { symbol: element } = resolve_optimade_element(
+        element_symbol,
+        optimade_species,
+        idx,
+      )
 
       // Calculate fractional coordinates if lattice is available
       const abc: Vec3 = optimade_cart_to_frac ? optimade_cart_to_frac(xyz) : [0, 0, 0]
@@ -1616,17 +1608,27 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
     const sites = cartesian_site_positions.map((pos, idx) => {
       const element_symbol = species_at_sites[idx]
       if (!element_symbol) throw new Error(`Missing species for site ${idx}`)
-      const element = resolve_optimade_element(element_symbol, species, idx)
+      const { symbol: element, sym_idx } = resolve_optimade_element(
+        element_symbol,
+        species,
+        idx,
+      )
 
       const xyz = vec3_from_values(pos, `OPTIMADE atom position ${idx + 1}`)
       const abc: Vec3 = crystal_cart_to_frac ? crystal_cart_to_frac(xyz) : [0, 0, 0]
 
-      // Extract mass/concentration from species data
+      // Extract mass/concentration for the chosen element. sym_idx indexes the (parallel)
+      // chemical_symbols/mass/concentration arrays; -1 (name resolved directly, no
+      // chemical_symbols) falls back to index 0 — the single-element entry.
       const spec = species?.find((entry) => entry.name === element_symbol)
+      const spec_idx = Math.max(sym_idx, 0)
       const site_props: Record<string, unknown> = {}
-      if (spec?.mass?.[0] !== undefined) site_props.mass = spec.mass[0]
-      if (spec?.concentration?.[0] !== undefined && spec.concentration[0] !== 1) {
-        site_props.concentration = spec.concentration[0]
+      if (spec?.mass?.[spec_idx] !== undefined) site_props.mass = spec.mass[spec_idx]
+      if (
+        spec?.concentration?.[spec_idx] !== undefined &&
+        spec.concentration[spec_idx] !== 1
+      ) {
+        site_props.concentration = spec.concentration[spec_idx]
       }
       return {
         species: [{ element, occu: 1, oxidation_state: 0 }],
@@ -1639,11 +1641,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
 
     return {
       sites,
-      lattice: {
-        matrix: lattice_matrix,
-        ...lattice_params,
-        pbc: [true, true, true],
-      },
+      lattice: { matrix: lattice_matrix, ...lattice_params, pbc: [true, true, true] },
       id: optimade_structure.id,
       properties,
     }
@@ -1658,9 +1656,7 @@ export function is_structure_file(filename: string): boolean {
   const name = filename.toLowerCase()
 
   // Trajectory-only formats (can't be structures)
-  if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) {
-    return false
-  }
+  if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
 
   // Always structure formats
   if (STRUCTURE_EXTENSIONS_REGEX.test(name)) return true
@@ -1670,9 +1666,7 @@ export function is_structure_file(filename: string): boolean {
   if (/\.(xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
 
   // Keyword-based detection for YAML/XML
-  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) {
-    return true
-  }
+  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
 
   // More restrictive keyword detection for JSON files
   if (
@@ -1680,9 +1674,8 @@ export function is_structure_file(filename: string): boolean {
     STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
     !TRAJ_KEYWORDS_REGEX.test(name) &&
     !CONFIG_DIRS_REGEX.test(name)
-  ) {
+  )
     return true
-  }
 
   // Compressed files - check base filename recursively
   if (COMPRESSION_EXTENSIONS_REGEX.test(name)) {

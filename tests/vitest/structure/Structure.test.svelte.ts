@@ -61,11 +61,14 @@ describe(`Structure`, () => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation((...args: unknown[]) => {
       warns.push(args.map(String).join(` `))
     })
-    mount(Structure, { target: document.body, props: { structure } })
-    flushSync()
-    await tick()
-    flushSync()
-    warn_spy.mockRestore()
+    try {
+      mount(Structure, { target: document.body, props: { structure } })
+      flushSync()
+      await tick()
+      flushSync()
+    } finally {
+      warn_spy.mockRestore()
+    }
     const proxy_warns = warns.filter((warn) =>
       /state_proxy_equality_mismatch|effect_update_depth/i.test(warn),
     )

@@ -9,7 +9,10 @@ import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 // to the conventional "symbol x y z" layout when absent or malformed
 export function parse_extxyz_columns(comment: string) {
   const fields = /Properties\s*=\s*"?([^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
-  let layout: Record<string, { offset: number; ncols: number }> | null = {}
+  // Well-formed Properties is name:type:ncols triples; a non-multiple of 3 is malformed,
+  // so bail to the conventional default rather than trusting a partial layout
+  let layout: Record<string, { offset: number; ncols: number }> | null =
+    fields.length % 3 === 0 ? {} : null
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
     const ncols = parseInt(fields[idx + 2], 10)
     if (Number.isInteger(ncols) && ncols > 0) {

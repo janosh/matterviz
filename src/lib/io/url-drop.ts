@@ -73,8 +73,8 @@ export async function load_from_url(
       // Need to decompress manually
       const buffer = await resp.arrayBuffer()
       const content = await decompress_data(buffer, `gzip`)
-      // Remove .gz extension when manually decompressing
-      return callback(content, filename.replace(/\.gz$/, ``))
+      // Remove .gz/.gzip extension when manually decompressing
+      return callback(content, filename.replace(/\.(gz|gzip)$/i, ``))
     }
 
     // For H5 files, always load as binary regardless of signature
@@ -134,7 +134,7 @@ export async function load_from_url(
           // Decompress sniffed gzip since downstream parsers expect text or
           // format-specific binary, not raw gzip bytes
           sniffed_callback_args = is_gzip
-            ? [await decompress_data(buffer, `gzip`), filename.replace(/\.gz$/i, ``)]
+            ? [await decompress_data(buffer, `gzip`), filename.replace(/\.(gz|gzip)$/i, ``)]
             : [buffer, filename]
         }
       }

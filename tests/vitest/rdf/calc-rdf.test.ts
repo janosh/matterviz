@@ -210,7 +210,9 @@ describe(`calculate_rdf`, () => {
       center_species: `Si`,
       neighbor_species: `Si`,
     })
-    expect(all_pair.r[all_pair.g_r.findIndex((val) => val > 0)]).toBeCloseTo(1, 0)
+    const first_peak_idx = all_pair.g_r.findIndex((val) => val > 0)
+    expect(first_peak_idx).not.toBe(-1)
+    expect(all_pair.r[first_peak_idx]).toBeCloseTo(1, 0)
     expect(all_pair.g_r).toEqual(direct.g_r)
   })
 
