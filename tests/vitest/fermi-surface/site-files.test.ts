@@ -30,7 +30,8 @@ describe(`fermi_surface_files`, () => {
   })
 
   it(`serves every file from a path-derived /fermi-surfaces/ url, no .json duplicates`, () => {
-    // the prod bug produced non-string urls; CI also gunzips .json.gz, which must not leak
+    // the prod bug produced non-string urls; the glob must not match plain .json files
+    // (vite's json_gz_plugin serves .json.gz directly, no gunzipped copies exist)
     for (const file of fermi_surface_files) {
       expect(file.url).toBe(`/fermi-surfaces/${file.name}`)
       expect(file.name.endsWith(`.json`)).toBe(false)
