@@ -461,6 +461,10 @@
     font-size: var(--plot-legend-font-size, 0.8em);
     max-width: var(--plot-legend-max-width);
     width: fit-content;
+    /* cap height so legends with many series don't overflow the plot; scroll the rest.
+    % resolves against the (position: relative) plot wrapper's height. */
+    max-height: var(--plot-legend-max-height, 80%);
+    overflow-y: auto;
     z-index: var(--plot-legend-z-index, 2);
     box-sizing: border-box;
   }

@@ -2,7 +2,7 @@ import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { inside_clip_path, resize_element } from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -116,6 +116,24 @@ describe(`BarPlot`, () => {
     expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
+  test(`y2 axis title shares the y axis title's vertical center`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic, { x: [1, 2, 3], y: [100, 200, 300], label: `Sec`, y_axis: `y2` }],
+      y_axis: { label: `Primary` },
+      y2_axis: { label: `Secondary` },
+    })
+    // both y titles rotate about the plot's vertical center; a stale label_shift default
+    // used to push the y2 title 60px below center
+    const pivot_y = (selector: string) => {
+      const transform =
+        plot.querySelector(selector)?.closest(`foreignObject`)?.getAttribute(`transform`) ?? ``
+      const match = /rotate\(-90,\s*[\d.-]+,\s*([\d.-]+)\)/.exec(transform)
+      if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
+      return Number(match[1])
+    }
+    expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
+  })
+
   test.each<[Orientation, BarMode]>([
     [`vertical`, `overlay`],
     [`horizontal`, `overlay`],
@@ -135,20 +153,14 @@ describe(`BarPlot`, () => {
       `overlay`,
       [
         { x: [1, 2, 3, 4], y: [-10, -5, 15, 20] },
-        {
-          x: [1, 2, 3, 4],
-          y: [5, -8, 12, -3],
-        },
+        { x: [1, 2, 3, 4], y: [5, -8, 12, -3] },
       ],
     ],
     [
       `stacked`,
       [
         { x: [1, 2, 3, 4], y: [10, -5, 15, 20] },
-        {
-          x: [1, 2, 3, 4],
-          y: [-5, 10, -8, 5],
-        },
+        { x: [1, 2, 3, 4], y: [-5, 10, -8, 5] },
       ],
     ],
     [
@@ -373,16 +385,36 @@ describe(`BarPlot`, () => {
       },
     )
 
-    test(`single series with 3 categories renders 3 bars`, async () => {
-      mount(BarPlot, {
-        target: document.body,
-        props: {
-          series: [{ x: [`Foo`, `Bar`, `Baz`], y: [1, 2, 3], color: `blue` }],
-          style: `width: 400px; height: 300px`,
-        },
+    // every category renders a bar; x-axis ticks thin only when labels can't fit the
+    // 400px axis at ~28px each (3 fit untouched, 30 thin to every ~3rd category)
+    test.each([
+      { desc: `few categories keep every tick`, n_cats: 3, min_ticks: 3, max_ticks: 3 },
+      { desc: `many categories thin the ticks`, n_cats: 30, min_ticks: 3, max_ticks: 14 },
+    ])(
+      `single categorical series renders every bar ($desc)`,
+      async ({ n_cats, min_ticks, max_ticks }) => {
+        const cats = Array.from({ length: n_cats }, (_cat, idx) => `cat${idx}`)
+        const plot = await mount_sized_bar_plot({
+          series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
+        })
+        expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(n_cats)
+        const tick_count = plot.querySelectorAll(`g.x-axis g.tick`).length
+        expect(tick_count).toBeGreaterThanOrEqual(min_ticks)
+        expect(tick_count).toBeLessThanOrEqual(max_ticks)
+      },
+    )
+
+    // categorical ticks are generated for every category regardless of the view, so
+    // a panned/zoomed range must cull the ones that fall outside the plot area
+    test(`ticks panned outside the plot area are culled`, async () => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [`A`, `B`, `C`, `D`, `E`], y: [1, 2, 3, 4, 5], color: `blue` }],
+        x_axis: { range: [1.5, 3.5] }, // panned view: only C and D remain in range
       })
-      await tick()
-      expect(document.querySelectorAll(`path[role="button"]`)).toHaveLength(3)
+      const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)].map((el) =>
+        el.textContent?.trim(),
+      )
+      expect(labels).toEqual([`C`, `D`])
     })
 
     test(`hover provides category_label and preserves metadata`, async () => {
@@ -553,5 +585,51 @@ describe(`BarPlot`, () => {
     expect(legend).toBeInstanceOf(HTMLElement)
     // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
     expect(parseFloat(legend?.style.top ?? `0`)).toBeGreaterThan(150)
+  })
+
+  // double-clicking a legend item isolates that series (shared helper, same as
+  // ScatterPlot); a second double-click restores the previous visibility
+  test(`legend double-click isolates a series and restores on repeat`, async () => {
+    const series = [basic, { ...basic, label: `Other`, color: `tomato` }]
+    const plot = await mount_sized_bar_plot({ series, show_legend: true })
+    const visible_states = () =>
+      [...plot.querySelectorAll(`.legend-item`)].map((el) => !el.classList.contains(`hidden`))
+    expect(visible_states()).toEqual([true, true])
+    const dblclick = () =>
+      plot
+        .querySelector(`.legend-item`)
+        ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    dblclick()
+    await tick()
+    expect(visible_states()).toEqual([true, false]) // isolated
+    dblclick()
+    await tick()
+    expect(visible_states()).toEqual([true, true]) // restored
+  })
+
+  // ref-line annotations must render outside the chart clip group so labels at the
+  // plot edges (e.g. a vertical line's top label) can overflow instead of being cropped,
+  // while z ordering still holds: below-lines refs paint behind bars, above-all in front
+  test(`reference-line annotations are unclipped and z-ordered around the bars`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic],
+      ref_lines: [
+        { type: `vertical`, x: 3, annotation: { text: `behind` } }, // default z: below-lines
+        { type: `vertical`, x: 4, z_index: `above-all`, annotation: { text: `front` } },
+      ],
+    })
+    await tick()
+    const labels = Object.fromEntries(
+      [...plot.querySelectorAll(`svg text`)].map((el) => [el.textContent?.trim(), el]),
+    )
+    const bars = plot.querySelector(`svg .bar-series`)
+    if (!labels.behind || !labels.front || !bars) throw new Error(`missing elements`)
+    for (const label of [labels.behind, labels.front]) {
+      expect(inside_clip_path(label), `annotation must escape the clip-path`).toBe(false)
+    }
+    // document order encodes paint order: below-lines < bars < above-all
+    const order = (el: Element) => bars.compareDocumentPosition(el)
+    expect(Boolean(order(labels.behind) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true)
+    expect(Boolean(order(labels.front) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
   })
 })

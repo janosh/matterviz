@@ -462,8 +462,10 @@
     border-radius: 0;
     max-height: none !important;
     overflow: hidden;
-    /* Add padding to prevent titles from being cropped at top */
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--scatter3d-bg, var(--plot-bg, transparent));
     box-sizing: border-box;
   }
   /* Threlte Canvas container needs flex: 1 to fill available space in flex layout

@@ -415,10 +415,7 @@ describe(`XrdPlot`, () => {
     const target = create_sized_container()
     mount(XrdPlot, {
       target,
-      props: {
-        patterns: pattern,
-        allow_file_drop: true,
-      },
+      props: { patterns: pattern, allow_file_drop: true },
     })
 
     await wait_for_plot_render(target)
@@ -429,20 +426,14 @@ describe(`XrdPlot`, () => {
     expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
 
     // Simulate dragover
-    const drag_event = new DragEvent(`dragover`, {
-      bubbles: true,
-      cancelable: true,
-    })
+    const drag_event = new DragEvent(`dragover`, { bubbles: true, cancelable: true })
     bar_plot?.dispatchEvent(drag_event)
 
     await tick()
     expect(bar_plot?.classList.contains(`dragover`)).toBe(true)
 
     // Simulate dragleave
-    const leave_event = new DragEvent(`dragleave`, {
-      bubbles: true,
-      cancelable: true,
-    })
+    const leave_event = new DragEvent(`dragleave`, { bubbles: true, cancelable: true })
     bar_plot?.dispatchEvent(leave_event)
 
     await tick()

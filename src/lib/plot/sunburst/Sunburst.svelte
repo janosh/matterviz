@@ -24,7 +24,6 @@
   import { closest_data_idx, get_relative_coords } from '$lib/plot/core/interactions'
   import {
     compute_element_placement,
-    constrain_tooltip_position,
     filter_padding,
     measure_text_width,
   } from '$lib/plot/core/layout'
@@ -32,6 +31,7 @@
   import { create_color_scale } from '$lib/plot/core/scales'
   import {
     arc_label_transform,
+    arrow_nav_target,
     project_arcs,
     type ScreenArc as ScreenArcOf,
   } from '$lib/plot/sunburst/render'
@@ -155,7 +155,6 @@
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGSVGElement | null = $state(null)
   let center_el: SVGCircleElement | null = $state(null)
-  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   let hovered_idx = $state<number | null>(null)
   let hover_info = $state<SunburstNodeHandlerProps<Metadata> | null>(null)
@@ -202,12 +201,16 @@
 
   // Drop muted ids that no longer exist when data changes (untrack avoids a
   // self-trigger loop from reading/writing muted_ids in the same effect).
+  // Hover/focus state is index-based, so a layout swap would otherwise leave a stale
+  // tooltip and highlight whatever unrelated node now occupies the old index.
   $effect(() => {
     const valid = new Set(
       layout.arcs.filter((arc) => arc.depth === 1).map((arc) => arc.id),
     )
     untrack(() => {
       for (const id of muted_ids) if (!valid.has(id)) muted_ids.delete(id)
+      set_arc_hover(null)
+      focused_idx = null
     })
   })
 
@@ -225,12 +228,14 @@
 
   // Zooming tweens this single object; all arc geometry re-derives from view.current
   // each frame via clamping scales (the classic zoomable-sunburst trick - no per-arc
-  // tweens, no re-layout). Initialized at the target so charts load fully drawn.
-  const view = new Tween(
-    untrack(() => view_target),
+  // tweens, no re-layout). Tween.of seeds it at view_target (charts load fully drawn)
+  // then re-targets on change via a render-effect that reads only view_target, never
+  // view.current - so the tween can't feed back into its own target. untrack reads the
+  // tween options once at init (they're not meant to update reactively).
+  const view = Tween.of(
+    () => view_target,
     untrack(() => ({ duration: 400, easing: cubicInOut, ...tween })),
   )
-  $effect(() => void view.set(view_target))
 
   // Pixel geometry
   let radius = $derived(Math.max(0, Math.min(inner_width, inner_height) / 2))
@@ -333,8 +338,9 @@
   const is_muted = (arc: PositionedArc<Metadata>): boolean =>
     arc.path.length > 0 && muted_ids.has(arc.path[0])
 
+  const MUTED_OPACITY = 0.12
   const arc_opacity = (arc: PositionedArc<Metadata>): number => {
-    if (is_muted(arc)) return 0.12
+    if (is_muted(arc)) return MUTED_OPACITY
     if (active && !active(arc)) return 0.3
     return 1
   }
@@ -382,8 +388,10 @@
     event?: MouseEvent | FocusEvent,
   ) {
     // Same arc as before: only the cursor anchor moves - skip rebuilding the handler
-    // payload and re-firing change/on_node_hover on every mousemove within an arc
-    if (screen && screen.arc.node_idx === hovered_idx) {
+    // payload and re-firing change/on_node_hover on every mousemove within an arc.
+    // Requires hover_info: legend item hover sets hovered_idx alone (for dimming), and
+    // skipping then would leave the arc's own tooltip permanently suppressed.
+    if (screen && screen.arc.node_idx === hovered_idx && hover_info) {
       hover_pos = event_pos(event) ?? hover_pos
       return
     }
@@ -395,6 +403,9 @@
       change(hover_info)
       if (event) on_node_hover?.({ ...hover_info, event })
     } else {
+      // Already clear: don't re-fire change(null)/on_node_hover(null) - both the svg
+      // and chart group have mouseleave handlers, and zoom_to clears unconditionally
+      if (hovered_idx == null && hover_info == null) return
       hovered = false
       hovered_idx = null
       hover_info = null
@@ -450,9 +461,13 @@
   }
 
   // Double-clicking empty chart background resets the zoom to the root (double-
-  // clicking an arc or label is click-to-zoom/text-selection territory, not a reset)
+  // clicking an arc or label is click-to-zoom/text-selection territory, not a reset;
+  // the center zoom-out button already fired its own click action twice - compounding
+  // a third full reset would teleport step-by-step zoom-outs straight to the root)
   function handle_dblclick(event: MouseEvent) {
     if (screen_arc_from_event(event) || selection_in_chart()) return
+    const target = event.target as Element | null
+    if (target?.closest?.(`.center-circle, .center-label`)) return
     if (zoomed) zoom_to(null)
   }
 
@@ -464,50 +479,24 @@
   }
 
   // Arrow-key navigation: left/right cycle through visible siblings (wrapping),
-  // down enters the first child, up returns to the parent
-  function arrow_nav_target(event: KeyboardEvent): number | null {
-    if (![`ArrowRight`, `ArrowLeft`, `ArrowUp`, `ArrowDown`].includes(event.key)) {
-      return null
-    }
+  // down enters the first child, up returns to the parent. The pre-order walk
+  // lives in render.ts (arrow_nav_target); this wrapper supplies the event's arc
+  // and the current screen-space visibility.
+  const nav_target_from_event = (event: KeyboardEvent): number | null => {
     const cur = screen_arc_from_event(event)?.arc
     if (!cur) return null
-    if (event.key === `ArrowDown`) {
-      // pre-order: a branch's first child directly follows it
-      const child = layout.arcs[cur.node_idx + 1]
-      return child && child.parent_idx === cur.node_idx &&
-          screen_arcs[child.node_idx]?.visible
-        ? child.node_idx
-        : null
-    }
-    if (event.key === `ArrowUp`) {
-      const parent = parent_of(cur)
-      return parent && parent.depth > 0 && screen_arcs[parent.node_idx]?.visible
-        ? parent.node_idx
-        : null
-    }
-    // Walk siblings via the contiguous pre-order subtree ranges (each sibling starts
-    // right after the previous one's subtree ends) - pre-order also matches angular
-    // order, so no sorting needed and no full-arcs scan per keypress
-    const parent = parent_of(cur)
-    const last = parent?.subtree_end ?? layout.arcs.length - 1
-    const siblings: number[] = []
-    for (
-      let idx = (parent?.node_idx ?? 0) + 1;
-      idx <= last;
-      idx = layout.arcs[idx].subtree_end + 1
-    ) {
-      if (screen_arcs[idx]?.visible) siblings.push(idx)
-    }
-    if (siblings.length < 2) return null
-    const pos = siblings.indexOf(cur.node_idx)
-    const step = event.key === `ArrowRight` ? 1 : -1
-    return siblings[(pos + step + siblings.length) % siblings.length]
+    return arrow_nav_target(
+      layout.arcs,
+      (idx) => screen_arcs[idx]?.visible ?? false,
+      cur.node_idx,
+      event.key,
+    )
   }
 
   const is_activation_key = (evt: KeyboardEvent) => [`Enter`, ` `].includes(evt.key)
 
   function handle_arc_keydown(event: KeyboardEvent) {
-    const nav_target = arrow_nav_target(event)
+    const nav_target = nav_target_from_event(event)
     if (nav_target != null) {
       event.preventDefault()
       focus_arc(nav_target)
@@ -518,12 +507,14 @@
     const prev_root = zoom_root_id
     handle_arc_click(event)
     // Zooming via keyboard unmounts the focused arc - move focus to the center circle
-    // (the zoom-out button; first arc of the new view in icicle mode) so keyboard
-    // users stay inside the chart
+    // (the zoom-out button) so keyboard users stay inside the chart. In icicle mode
+    // focus the new root's first child (pre-order: node_idx + 1): the clicked arc
+    // itself collapses to zero height once the zoom tween settles, so focusing it
+    // (the roving index) would drop focus to <body> mid-animation.
     if (zoom_root_id !== prev_root) {
       tick().then(() => {
         if (shape === `sunburst`) center_el?.focus()
-        else focus_arc(roving_idx)
+        else focus_arc(zoom_root ? zoom_root.node_idx + 1 : roving_idx)
       })
     }
   }
@@ -807,6 +798,7 @@
                   data-sunburst-node-idx={screen.arc.node_idx}
                   transform={lbl.transform}
                   fill={label_color(screen.arc)}
+                  fill-opacity={is_muted(screen.arc) ? MUTED_OPACITY : undefined}
                   style:cursor={arc_clickable(screen.arc) ? `pointer` : `text`}
                 >
                   {lbl.text}
@@ -858,21 +850,13 @@
   {/if}
 
   {#if hover_info}
-    {@const tip = constrain_tooltip_position(
-      hover_pos.x,
-      hover_pos.y,
-      tooltip_el?.offsetWidth ?? 140,
-      tooltip_el?.offsetHeight ?? 44,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
-    )}
     <PlotTooltip
-      x={tip.x}
-      y={tip.y}
-      offset={{ x: 0, y: 0 }}
+      x={hover_pos.x}
+      y={hover_pos.y}
+      offset={{ x: 10, y: 5 }}
+      constrain_to={{ width, height }}
+      fallback_size={{ width: 140, height: 44 }}
       bg_color={hover_info.color}
-      bind:wrapper={tooltip_el}
     >
       {#if tooltip}
         {@render tooltip(hover_info)}
@@ -952,7 +936,10 @@
     background: var(--sunburst-fullscreen-bg, var(--sunburst-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--sunburst-fullscreen-bg, var(--sunburst-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
   .header-controls {
@@ -1025,7 +1012,7 @@
     /* stroke via CSS (not presentation attributes): var() substitution in SVG
     presentation attributes is not reliably supported across browsers */
     stroke: var(--sunburst-arc-stroke, var(--plot-bg, white));
-    stroke-width: var(--sunburst-arc-stroke-width, 0.5);
+    stroke-width: var(--sunburst-arc-stroke-width, 0.25);
     transition: fill-opacity 0.15s ease, transform 0.15s ease;
     /* hover 'pull': scaling about the chart center offsets the arc radially */
     transform-origin: 0 0;

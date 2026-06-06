@@ -3,8 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
-  import type { D3SymbolName } from '$lib/labels'
-  import { format_value, symbol_names } from '$lib/labels'
+  import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -55,12 +54,8 @@
     place_decorations,
   } from '$lib/plot/core/auto-place'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { AXIS_DEFAULTS, create_axis_change_handler } from '$lib/plot/core/axis-utils'
-  import {
-    get_series_color,
-    get_series_symbol,
-    process_prop,
-  } from '$lib/plot/core/data-transform'
+  import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
   import {
     create_dimension_tracker,
     create_hover_lock,
@@ -71,17 +66,12 @@
     is_time_scale,
   } from '$lib/plot/core/types'
   import { compute_label_positions } from '$lib/plot/core/utils/label-placement'
-  import type { SeriesVisibilitySnapshot } from '$lib/plot/core/utils/series-visibility'
-  import {
-    handle_legend_double_click,
-    toggle_group_visibility,
-    toggle_series_visibility,
-  } from '$lib/plot/core/utils/series-visibility'
+  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { scaleTime } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
@@ -90,23 +80,26 @@
     compute_fill_segments,
     convert_error_band_to_fill_region,
     generate_fill_path,
-    is_fill_gradient,
   } from '$lib/plot/core/fill-utils'
   import {
     expand_range_if_needed,
     get_relative_coords,
+    MIN_TOUCH_DISTANCE_PIXELS,
     normalize_y2_sync,
-    pan_range,
+    pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
-    pixels_to_data_delta,
+    remove_drag_listeners,
+    sorted_range,
     sync_y2_range,
+    to_epoch_num,
+    zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     calc_auto_padding,
-    constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    y2_axis_label_x,
     measure_full_footprint,
     measure_max_tick_width,
     sample_series_obstacle_points,
@@ -121,9 +114,11 @@
     get_nice_data_range,
   } from '$lib/plot/core/scales'
   import { resolve_line_tween, unique_id } from '$lib/plot/core/utils'
-
-  const in_range = (val: number | null | undefined, lo: number, hi: number) =>
-    val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
+  import {
+    build_legend_data,
+    filter_series_to_ranges,
+    pick_tooltip_bg,
+  } from './scatter-data'
 
   let {
     series = $bindable([]),
@@ -314,7 +309,7 @@
   let zoom_x2_range = $state<[number, number]>([0, 1])
   let zoom_y_range = $state<[number, number]>([0, 1])
   let zoom_y2_range = $state<[number, number]>([0, 1])
-  let prev_series_visibility: SeriesVisibilitySnapshot | null = $state(null)
+  const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
 
   // Y2 axis sync configuration
   let y2_sync_config = $derived(normalize_y2_sync(y2_axis?.sync))
@@ -386,9 +381,6 @@
     legend_hover.cleanup()
     colorbar_hover.cleanup()
   })
-
-  // Tooltip element reference for dynamic sizing
-  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   // Module-level constants to avoid repeated allocations
   // Create and categorize points in a single pass (instead of 3 separate iterations)
@@ -647,7 +639,14 @@
       if (result.changed) initial_y2_range = result.range
       // Apply sync if enabled, otherwise use expanded range (or keep current if unchanged)
       if (y2_sync_config.mode !== `none`) {
-        zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
+        // untrack the read of zoom_y_range: this effect also writes it (fresh array per
+        // run when y.explicit), so a tracked read would loop until
+        // effect_update_depth_exceeded. Pan/zoom handlers sync y2 themselves.
+        zoom_y2_range = sync_y2_range(
+          untrack(() => zoom_y_range),
+          initial_y2_range,
+          y2_sync_config,
+        )
       } else if (result.changed) {
         zoom_y2_range = result.range
       }
@@ -720,78 +719,12 @@
 
   // Filter series data to only include points within bounds and augment with internal data
   let filtered_series = $derived(
-    series_with_ids
-      .map((data_series: DataSeries<Metadata>, series_idx): DataSeries<Metadata> => {
-        // Handle null/undefined series first
-        if (!data_series) {
-          return {
-            x: [],
-            y: [],
-            visible: true,
-            filtered_data: [],
-            _id: series_idx,
-            orig_series_idx: series_idx,
-          }
-        }
-
-        // Handle explicitly hidden series
-        if (!(data_series.visible ?? true)) {
-          return {
-            ...data_series,
-            visible: false,
-            filtered_data: [],
-            orig_series_idx: series_idx,
-          }
-        }
-
-        const { x: xs, y: ys, color_values, size_values, ...series_rest } = data_series
-
-        // Process points internally, adding properties beyond the base Point type
-        const processed_points: InternalPoint<Metadata>[] = xs.map(
-          (x_val: number, point_idx: number) => ({
-            x: x_val,
-            y: ys[point_idx],
-            color_value: color_values?.[point_idx],
-            metadata: process_prop(series_rest.metadata, point_idx) as Metadata | undefined,
-            point_style: process_prop(series_rest.point_style, point_idx),
-            point_hover: process_prop(series_rest.point_hover, point_idx),
-            point_label: process_prop(series_rest.point_label, point_idx),
-            point_offset: process_prop(series_rest.point_offset, point_idx),
-            series_idx,
-            point_idx,
-            size_value: size_values?.[point_idx],
-          }),
-        )
-
-        // Filter to points within the plot bounds (handles inverted ranges like [3.5, 1.4])
-        // Determine which ranges to use based on series axis properties
-        const [series_x_min, series_x_max] = (data_series.x_axis ?? `x1`) === `x2`
-          ? [x2_min, x2_max]
-          : [x_min, x_max]
-        const [series_y_min, series_y_max] = (data_series.y_axis ?? `y1`) === `y2`
-          ? [y2_min, y2_max]
-          : [y_min, y_max]
-
-        const filtered_data_with_extras = processed_points.filter(
-          ({ x, y }) =>
-            in_range(x, series_x_min, series_x_max) &&
-            in_range(y, series_y_min, series_y_max),
-        )
-
-        // Return structure consistent with DataSeries but acknowledge internal data structure (filtered_data)
-        return {
-          ...data_series,
-          visible: true, // Mark series as visible here
-          filtered_data: filtered_data_with_extras,
-          orig_series_idx: series_idx, // Store original index for auto-cycling colors/symbols
-        }
-      })
-      // Filter series end up completely empty after point filtering
-      .filter((
-        srs,
-      ): srs is DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] } =>
-        (srs.filtered_data?.length ?? 0) > 0
-      ),
+    filter_series_to_ranges(series_with_ids, {
+      x: [x_min, x_max],
+      x2: [x2_min, x2_max],
+      y: [y_min, y_max],
+      y2: [y2_min, y2_max],
+    }),
   )
 
   // Tally line series/points to budget path-morph tweens (see resolve_line_tween).
@@ -835,14 +768,6 @@
     }
     return points
   })
-
-  // Explicitly define the type for display_style matching PlotLegend expectations
-  type LegendDisplayStyle = {
-    symbol_type?: D3SymbolName
-    symbol_color?: string
-    line_color?: string
-    line_dash?: string
-  }
 
   const fill_hover_key = (
     source_type: `fill_region` | `error_band`,
@@ -958,161 +883,9 @@
   })
 
   // Prepare data needed for the legend component
-  let legend_data = $derived.by(() => {
-    const items = series_with_ids.map(
-      (data_series: DataSeries & { _id?: string | number }, series_idx: number) => {
-        const is_visible = data_series?.visible ?? true
-        // Prefer top-level label, fallback to metadata label
-        const explicit_label = data_series?.label ??
-          (typeof data_series?.metadata === `object` &&
-              data_series.metadata !== null &&
-              `label` in data_series.metadata &&
-              typeof data_series.metadata.label === `string`
-            ? data_series.metadata.label
-            : null)
-        // Use explicit label or generate default
-        const label = explicit_label ?? `Series ${series_idx + 1}`
-        const has_explicit_label = explicit_label != null
-
-        // Use series-specific defaults for auto-differentiation
-        const series_default_color = get_series_color(series_idx)
-        const series_default_symbol = get_series_symbol(series_idx)
-
-        const display_style: LegendDisplayStyle = {
-          symbol_type: series_default_symbol,
-          symbol_color: series_default_color,
-          line_color: series_default_color,
-        }
-        const series_markers = data_series?.markers ?? DEFAULT_MARKERS
-
-        // Check point_style (could be object or array)
-        const first_point_style = Array.isArray(data_series?.point_style)
-          ? data_series.point_style[0]
-          : data_series?.point_style
-
-        if (series_markers?.includes(`points`)) {
-          if (first_point_style) {
-            // Use explicit symbol_type if provided and valid, otherwise keep series default
-            if (
-              typeof first_point_style.symbol_type === `string` &&
-              symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
-            ) {
-              display_style.symbol_type = first_point_style
-                .symbol_type as D3SymbolName
-            }
-
-            // Use explicit fill color if provided
-            if (first_point_style.fill) {
-              display_style.symbol_color = first_point_style.fill
-            }
-            if (first_point_style.stroke) {
-              // Use stroke color if fill is none or transparent
-              if (
-                !display_style.symbol_color ||
-                display_style.symbol_color === `none` ||
-                display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
-              ) display_style.symbol_color = first_point_style.stroke
-            }
-          }
-          // else: keep series-specific defaults for symbol_type and symbol_color
-        } else {
-          // If no points marker, explicitly remove marker style for legend
-          display_style.symbol_type = undefined
-          display_style.symbol_color = undefined
-        }
-
-        // Check line_style
-        if (series_markers?.includes(`line`)) {
-          // Prefer explicit line stroke, then other explicit colors, then series default
-          let legend_line_color = data_series?.line_style?.stroke
-          if (!legend_line_color) {
-            // Try color scale if available
-            const first_cv = Array.isArray(data_series?.color_values)
-              ? data_series?.color_values?.find((color_val: number | null) =>
-                color_val != null
-              )
-              : undefined
-            legend_line_color =
-              (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
-              first_point_style?.fill ||
-              first_point_style?.stroke ||
-              series_default_color
-          }
-          display_style.line_color = legend_line_color
-          display_style.line_dash = data_series?.line_style?.line_dash
-        } else {
-          // If no line marker, explicitly remove line style for legend
-          display_style.line_dash = undefined
-          display_style.line_color = undefined
-        }
-
-        return {
-          series_idx,
-          label,
-          visible: is_visible,
-          display_style,
-          has_explicit_label,
-          legend_group: data_series?.legend_group,
-        }
-      },
-    )
-
-    // Deduplicate by label+legend_group - keep first occurrence of each unique combination
-    const seen_labels = new SvelteSet<string>()
-    const series_items = items.filter(
-      (
-        legend_item: {
-          label: string
-          series_idx: number
-          visible: boolean
-          display_style: LegendDisplayStyle
-          has_explicit_label: boolean
-          legend_group?: string
-        },
-      ) => {
-        // Use label+group as unique key (group may be undefined)
-        const unique_key = `${legend_item.legend_group ?? ``}::${legend_item.label}`
-        if (seen_labels.has(unique_key)) return false
-        seen_labels.add(unique_key)
-        return true
-      },
-    )
-
-    // Add fill region items to legend (deduplicated using same key format as series)
-    const fill_items = computed_fills
-      .filter((fill) => fill.show_in_legend !== false && fill.label)
-      .filter((fill) => {
-        // Use same composite key as series: legend_group::label
-        const unique_key = `${fill.legend_group ?? ``}::${fill.label ?? ``}`
-        if (seen_labels.has(unique_key)) return false
-        seen_labels.add(unique_key)
-        return true
-      })
-      .map((fill) => {
-        // Pass gradient for swatch rendering, or solid color as fallback
-        const fill_gradient = is_fill_gradient(fill.fill) ? fill.fill : undefined
-        const fill_color = typeof fill.fill === `string` ? fill.fill : undefined
-
-        return {
-          series_idx: -1, // Not a series
-          fill_idx: fill.idx,
-          fill_source_type: fill.source_type,
-          fill_source_idx: fill.source_idx,
-          item_type: `fill` as const,
-          label: fill.label ?? ``,
-          visible: fill.visible !== false,
-          legend_group: fill.legend_group,
-          display_style: {
-            fill_color,
-            fill_opacity: fill.fill_opacity ?? 0.3,
-            edge_color: fill.edge_upper?.color,
-            fill_gradient,
-          },
-        }
-      })
-
-    return [...series_items, ...fill_items]
-  })
+  let legend_data = $derived(
+    build_legend_data(series_with_ids, computed_fills, color_scale_fn),
+  )
 
   // Group fills by z-index for ordered rendering (single pass instead of 4 filters)
   let fills_by_z = $derived.by(() => {
@@ -1358,33 +1131,11 @@
       const start_data_y_val = y_scale_fn.invert(drag_start_coords.y)
       const end_data_y_val = y_scale_fn.invert(drag_current_coords.y)
 
-      // Ensure range is not zero and order is correct
-      let x1: number, x2: number
-      if (start_data_x_val instanceof Date && end_data_x_val instanceof Date) {
-        x1 = start_data_x_val.getTime()
-        x2 = end_data_x_val.getTime()
-      } else if (
-        typeof start_data_x_val === `number` &&
-        typeof end_data_x_val === `number`
-      ) {
-        x1 = start_data_x_val
-        x2 = end_data_x_val
-      } else {
-        console.error(`Mismatched types for x-axis zoom calculation`)
-        // Reset states without zooming if types are wrong
-        drag_start_coords = null
-        drag_current_coords = null
-        window.removeEventListener(`mousemove`, on_window_mouse_move)
-        window.removeEventListener(`mouseup`, on_window_mouse_up)
-        return
-      }
-
-      const next_x_range: [number, number] = [Math.min(x1, x2), Math.max(x1, x2)]
+      // Same scale inverts both coords, so both are numbers or both are Dates
+      const [x1, x2] = [to_epoch_num(start_data_x_val), to_epoch_num(end_data_x_val)]
+      const next_x_range = sorted_range(x1, x2)
       // Y axis is always number
-      const next_y_range: [number, number] = [
-        Math.min(start_data_y_val, end_data_y_val),
-        Math.max(start_data_y_val, end_data_y_val),
-      ]
+      const next_y_range = sorted_range(start_data_y_val, end_data_y_val)
 
       // Check for minuscule zoom box (e.g. accidental click)
       const min_zoom_size = 5 // Minimum pixels to trigger zoom
@@ -1398,24 +1149,22 @@
         next_y_range[0] !== next_y_range[1]
       ) {
         // Update axis ranges to trigger reactivity (like BarPlot/Histogram do)
-        // Y2 sync is handled by the effect that reacts to y_axis changes
         x_axis = { ...x_axis, range: next_x_range }
         y_axis = { ...y_axis, range: next_y_range }
 
         // X2 axis: invert screen coords using x2 scale
         if (x2_points.length > 0) {
-          const start_x2_val = x2_scale_fn.invert(drag_start_coords.x)
-          const end_x2_val = x2_scale_fn.invert(drag_current_coords.x)
-          const x2_a = start_x2_val instanceof Date
-            ? start_x2_val.getTime()
-            : start_x2_val as number
-          const x2_b = end_x2_val instanceof Date
-            ? end_x2_val.getTime()
-            : end_x2_val as number
-          x2_axis = {
-            ...x2_axis,
-            range: [Math.min(x2_a, x2_b), Math.max(x2_a, x2_b)],
-          }
+          const x2_a = to_epoch_num(x2_scale_fn.invert(drag_start_coords.x))
+          const x2_b = to_epoch_num(x2_scale_fn.invert(drag_current_coords.x))
+          x2_axis = { ...x2_axis, range: sorted_range(x2_a, x2_b) }
+        }
+
+        // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
+        // y2 must zoom from the rect directly (parity with BarPlot/Histogram/BoxPlot)
+        if (y2_points.length > 0 && y2_sync_config.mode === `none`) {
+          const y2_a = y2_scale_fn.invert(drag_start_coords.y)
+          const y2_b = y2_scale_fn.invert(drag_current_coords.y)
+          y2_axis = { ...y2_axis, range: sorted_range(y2_a, y2_b) }
         }
       }
     }
@@ -1429,45 +1178,38 @@
     document.body.style.cursor = `default`
   }
 
-  // Pan drag handlers
-  const on_pan_move = (evt: MouseEvent) => {
-    if (!pan_drag_state) return
-    const dx = evt.clientX - pan_drag_state.start.x
-    const dy = evt.clientY - pan_drag_state.start.y
-
-    // Convert pixel delta to data delta (note: drag direction is inverted for natural pan feel)
-    // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
+  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
+  // scale's transform space (log axes pan by a constant factor, linear by a shift).
+  // Plot dims clamped to 1px so degenerate containers can't produce Infinity deltas.
+  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
     const plot_width = Math.max(1, width - pad.l - pad.r)
     const plot_height = Math.max(1, height - pad.t - pad.b)
-    const sensitivity = pan?.drag_sensitivity ?? 1
-
-    const x_delta = pixels_to_data_delta(
-      -dx * sensitivity,
-      pan_drag_state.initial_x_range,
-      plot_width,
-    )
-    const x2_delta = pixels_to_data_delta(
-      -dx * sensitivity,
-      pan_drag_state.initial_x2_range,
-      plot_width,
-    )
-    const y_delta = pixels_to_data_delta(
-      dy * sensitivity,
-      pan_drag_state.initial_y_range,
-      plot_height,
-    )
-    const y2_delta = pixels_to_data_delta(
-      dy * sensitivity,
-      pan_drag_state.initial_y2_range,
-      plot_height,
-    )
-
-    zoom_x_range = pan_range(pan_drag_state.initial_x_range, x_delta)
-    zoom_x2_range = pan_range(pan_drag_state.initial_x2_range, x2_delta)
-    zoom_y_range = pan_range(pan_drag_state.initial_y_range, y_delta)
+    zoom_x_range = pan_range_by_pixels(init.initial_x_range, dx_px, plot_width, final_x_axis.scale_type)
+    zoom_x2_range = pan_range_by_pixels(init.initial_x2_range, dx_px, plot_width, final_x2_axis.scale_type)
+    zoom_y_range = pan_range_by_pixels(init.initial_y_range, dy_px, plot_height, final_y_axis.scale_type)
     zoom_y2_range = get_synced_y2(
       zoom_y_range,
-      pan_range(pan_drag_state.initial_y2_range, y2_delta),
+      pan_range_by_pixels(init.initial_y2_range, dy_px, plot_height, final_y2_axis.scale_type),
+    )
+  }
+  const zoom_all_axes = (init: InitialRanges, factor: number) => {
+    zoom_x_range = zoom_range_by_factor(init.initial_x_range, factor, final_x_axis.scale_type)
+    zoom_x2_range = zoom_range_by_factor(init.initial_x2_range, factor, final_x2_axis.scale_type)
+    zoom_y_range = zoom_range_by_factor(init.initial_y_range, factor, final_y_axis.scale_type)
+    zoom_y2_range = get_synced_y2(
+      zoom_y_range,
+      zoom_range_by_factor(init.initial_y2_range, factor, final_y2_axis.scale_type),
+    )
+  }
+
+  // Pan drag handler (drag direction inverted on x for natural pan feel)
+  const on_pan_move = (evt: MouseEvent) => {
+    if (!pan_drag_state) return
+    const sensitivity = pan?.drag_sensitivity ?? 1
+    pan_all_axes(
+      pan_drag_state,
+      -(evt.clientX - pan_drag_state.start.x) * sensitivity,
+      (evt.clientY - pan_drag_state.start.y) * sensitivity,
     )
   }
 
@@ -1477,6 +1219,17 @@
     window.removeEventListener(`mousemove`, on_pan_move)
     window.removeEventListener(`mouseup`, on_pan_end)
   }
+
+  // Tear down any window listeners + cursor override if the component unmounts mid-drag
+  // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
+  // onDestroy also runs during SSR teardown, where window/document don't exist.
+  onDestroy(() => {
+    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
+    drag_start_coords = null
+    drag_current_coords = null
+    svg_bounding_box = null
+    pan_drag_state = null
+  })
 
   function handle_mouse_down(evt: MouseEvent) {
     if (!svg_element) return
@@ -1529,35 +1282,19 @@
     const plot_height = Math.max(1, height - pad.t - pad.b)
     const sensitivity = pan?.wheel_sensitivity ?? 1
 
-    // Determine pan direction based on wheel delta
-    // deltaX for horizontal scroll (trackpad), deltaY for vertical
-    const x_delta = pixels_to_data_delta(
-      evt.deltaX * sensitivity,
-      zoom_x_range,
-      plot_width,
-    )
-    const x2_delta = pixels_to_data_delta(
-      evt.deltaX * sensitivity,
-      zoom_x2_range,
-      plot_width,
-    )
-    const y_delta = pixels_to_data_delta(
-      evt.deltaY * sensitivity,
-      zoom_y_range,
-      plot_height,
-    )
-    const y2_delta = pixels_to_data_delta(
-      evt.deltaY * sensitivity,
-      zoom_y2_range,
-      plot_height,
-    )
-
+    // Pan along the dominant wheel direction
+    // (deltaX for horizontal scroll on trackpads, deltaY for vertical)
     if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      zoom_x_range = pan_range(zoom_x_range, x_delta)
-      zoom_x2_range = pan_range(zoom_x2_range, x2_delta)
+      const dx = evt.deltaX * sensitivity
+      zoom_x_range = pan_range_by_pixels(zoom_x_range, dx, plot_width, final_x_axis.scale_type)
+      zoom_x2_range = pan_range_by_pixels(zoom_x2_range, dx, plot_width, final_x2_axis.scale_type)
     } else {
-      zoom_y_range = pan_range(zoom_y_range, y_delta)
-      zoom_y2_range = get_synced_y2(zoom_y_range, pan_range(zoom_y2_range, y2_delta))
+      const dy = evt.deltaY * sensitivity
+      zoom_y_range = pan_range_by_pixels(zoom_y_range, dy, plot_height, final_y_axis.scale_type)
+      zoom_y2_range = get_synced_y2(
+        zoom_y_range,
+        pan_range_by_pixels(zoom_y2_range, dy, plot_height, final_y2_axis.scale_type),
+      )
     }
   }
 
@@ -1595,75 +1332,15 @@
 
     // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
     const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
-    // Guard against zero-distance pinch to avoid Infinity scale
-    if (start_dist < Number.EPSILON) return
+    // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
+    if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
     const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
     const scale = curr_dist / start_dist
 
-    // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    const plot_width = Math.max(1, width - pad.l - pad.r)
-    const plot_height = Math.max(1, height - pad.t - pad.b)
-
-    // If scale changed significantly, treat as pinch-zoom
-    // Also guard against scale being too small to avoid division by zero
+    // Pinch zoom about the view center (spread = zoom in, pinch = zoom out)
     if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      // Pinch zoom centered on gesture center
-      // Divide by scale so spread (scale > 1) = smaller span (zoom in)
-      const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
-      const x2_span = touch_state.initial_x2_range[1] -
-        touch_state.initial_x2_range[0]
-      const y_span = touch_state.initial_y_range[1] - touch_state.initial_y_range[0]
-      const y2_span = touch_state.initial_y2_range[1] -
-        touch_state.initial_y2_range[0]
-      const x_center =
-        (touch_state.initial_x_range[0] + touch_state.initial_x_range[1]) / 2
-      const x2_center =
-        (touch_state.initial_x2_range[0] + touch_state.initial_x2_range[1]) / 2
-      const y_center =
-        (touch_state.initial_y_range[0] + touch_state.initial_y_range[1]) / 2
-      const y2_center =
-        (touch_state.initial_y2_range[0] + touch_state.initial_y2_range[1]) / 2
-
-      zoom_x_range = [x_center - x_span / scale / 2, x_center + x_span / scale / 2]
-      zoom_x2_range = [
-        x2_center - x2_span / scale / 2,
-        x2_center + x2_span / scale / 2,
-      ]
-      zoom_y_range = [y_center - y_span / scale / 2, y_center + y_span / scale / 2]
-      zoom_y2_range = get_synced_y2(zoom_y_range, [
-        y2_center - y2_span / scale / 2,
-        y2_center + y2_span / scale / 2,
-      ])
-    } else {
-      // Pan
-      const x_delta = pixels_to_data_delta(
-        -dx,
-        touch_state.initial_x_range,
-        plot_width,
-      )
-      const x2_delta = pixels_to_data_delta(
-        -dx,
-        touch_state.initial_x2_range,
-        plot_width,
-      )
-      const y_delta = pixels_to_data_delta(
-        dy,
-        touch_state.initial_y_range,
-        plot_height,
-      )
-      const y2_delta = pixels_to_data_delta(
-        dy,
-        touch_state.initial_y2_range,
-        plot_height,
-      )
-      zoom_x_range = pan_range(touch_state.initial_x_range, x_delta)
-      zoom_x2_range = pan_range(touch_state.initial_x2_range, x2_delta)
-      zoom_y_range = pan_range(touch_state.initial_y_range, y_delta)
-      zoom_y2_range = get_synced_y2(
-        zoom_y_range,
-        pan_range(touch_state.initial_y2_range, y2_delta),
-      )
-    }
+      zoom_all_axes(touch_state, scale)
+    } else pan_all_axes(touch_state, -dx, dy)
   }
 
   function handle_touch_end() {
@@ -1874,7 +1551,6 @@
     return construct_handler_props(tooltip_point)
   })
 
-  let using_controls = $derived(controls.show)
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
 
   // Precompute non-click event names from point_events so we don't rebuild
@@ -1911,32 +1587,12 @@
     set_loading: (axis) => (axis_loading = axis),
   }
 
-  // Create shared handler bound to this component's state
-  // Using $derived so handler updates when callback props change
-  const handle_axis_change = $derived(create_axis_change_handler(
+  // Shared handler + one-shot auto-load bound to this component's state
+  const { handle_axis_change, try_auto_load } = create_axis_loader(
     axis_state,
-    data_loader,
-    on_axis_change,
-    on_error,
-  ))
-
-  let auto_load_attempted = false // prevent infinite retries on failure
-
-  // Auto-load data if series is empty but options exist (runs once)
-  $effect(() => {
-    if (series.length === 0 && data_loader && !auto_load_attempted) {
-      // Check x-axis first, then y-axis
-      if (x_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = x_axis.selected_key ?? x_axis.options[0].key
-        handle_axis_change(`x`, first_key).catch(() => {})
-      } else if (y_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = y_axis.selected_key ?? y_axis.options[0].key
-        handle_axis_change(`y`, first_key).catch(() => {})
-      }
-    }
-  })
+    () => ({ data_loader, on_axis_change, on_error }),
+  )
+  $effect(try_auto_load)
 </script>
 
 {#snippet fill_regions_layer(fills: typeof computed_fills)}
@@ -2067,6 +1723,7 @@
       ontouchstart={handle_touch_start}
       ontouchmove={handle_touch_move}
       ontouchend={handle_touch_end}
+      ontouchcancel={handle_touch_end}
       style:cursor={pan_drag_state
       ? `grabbing`
       : shift_held && pan?.enabled !== false
@@ -2159,9 +1816,6 @@
 
       <!-- Y2-axis (Right) -->
       {#if y2_points.length > 0}
-        {@const y2_inside = final_y2_axis.tick?.label?.inside ?? false}
-        {@const y2_tick_shift = y2_inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-        {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
         <PlotAxis
           side="y2"
           ticks={y2_tick_values}
@@ -2175,8 +1829,7 @@
           domain={[y2_min, y2_max]}
           unit_on_first_tick
           tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
-          label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
-          (final_y2_axis.label_shift?.x ?? 0)}
+          label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
           label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
           axis_loading={axis_loading === `y2`}
           on_axis_change={(key) => handle_axis_change(`y2`, key)}
@@ -2268,7 +1921,7 @@
               {@const finite_screen_points = all_line_points
           .map((point) => get_screen_coords(point, series_data))
           .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
-              {@const apply_line_controls = using_controls &&
+              {@const apply_line_controls = controls.show &&
           (!has_multiple_series ||
             series_data._id === series_with_ids[selected_series_idx]?._id)}
               {@const ls = series_data.line_style}
@@ -2339,7 +1992,7 @@
                 {@const screen_y = isFinite(raw_screen_y)
           ? raw_screen_y
           : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
-                {@const apply_controls = using_controls &&
+                {@const apply_controls = controls.show &&
           (!has_multiple_series ||
             series_data._id === series_with_ids[selected_series_idx]?._id)}
                 {@const pt = point.point_style}
@@ -2414,60 +2067,19 @@
 
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
     {#if handler_props && hovered && tooltip_point}
-      {@const { color_value, point_label, point_style, series_idx } = tooltip_point}
-      {@const hovered_series = series_with_ids[series_idx]}
-      {@const series_markers = hovered_series?.markers ?? DEFAULT_MARKERS}
-      {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
-      !color ||
-      color === `none` ||
-      color === `transparent` ||
-      /rgba\([^)]+[,/]\s*0(\.0*)?\s*\)$/.test(color)}
-      {@const tooltip_bg_color = (() => {
-      const scale_color = color_value != null
-        ? color_scale_fn(color_value)
-        : undefined
-      if (!is_transparent_or_none(scale_color)) return scale_color
-      const fill_color = point_style?.fill
-      if (!is_transparent_or_none(fill_color)) return fill_color
-      if (series_markers?.includes(`points`)) {
-        const stroke_color = point_style?.stroke
-        if (!is_transparent_or_none(stroke_color)) return stroke_color
-      }
-      if (series_markers?.includes(`line`)) {
-        const line_style = hovered_series?.line_style ?? {}
-        const first_point_style = Array.isArray(hovered_series?.point_style)
-          ? hovered_series?.point_style[0]
-          : hovered_series?.point_style
-        const first_color_value = hovered_series?.color_values?.[0]
-        let line_color_candidate = line_style.stroke
-        if (is_transparent_or_none(line_color_candidate)) {line_color_candidate =
-            first_point_style?.fill}
-        if (
-          is_transparent_or_none(line_color_candidate) && first_color_value != null
-        ) line_color_candidate = color_scale_fn(first_color_value)
-        if (
-          is_transparent_or_none(line_color_candidate) &&
-          series_markers?.includes(`points`)
-        ) line_color_candidate = first_point_style?.stroke
-        if (!is_transparent_or_none(line_color_candidate)) return line_color_candidate
-      }
-      return `rgba(0, 0, 0, 0.7)`
-    })()}
-      {@const tooltip_pos = constrain_tooltip_position(
-      handler_props.cx,
-      handler_props.cy,
-      tooltip_el?.offsetWidth ?? 120,
-      tooltip_el?.offsetHeight ?? 50,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
+      {@const { point_label, series_idx } = tooltip_point}
+      {@const tooltip_bg_color = pick_tooltip_bg(
+      tooltip_point,
+      series_with_ids[series_idx],
+      color_scale_fn,
     )}
       <PlotTooltip
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        offset={{ x: 0, y: 0 }}
+        x={handler_props.cx}
+        y={handler_props.cy}
+        offset={{ x: 10, y: 5 }}
+        constrain_to={{ width, height }}
+        fallback_size={{ width: 120, height: 50 }}
         bg_color={tooltip_bg_color}
-        bind:wrapper={tooltip_el}
       >
         {#if tooltip}
           {@render tooltip(handler_props)}
@@ -2596,24 +2208,9 @@
           null}
         draggable={legend?.draggable ?? true}
         {...legend}
-        on_toggle={legend?.on_toggle ??
-        ((series_idx: number) => {
-          series = toggle_series_visibility(series, series_idx)
-        })}
-        on_double_click={legend?.on_double_click ??
-        ((double_clicked_idx: number) => {
-          const result = handle_legend_double_click(
-            series,
-            double_clicked_idx,
-            prev_series_visibility,
-          )
-          series = result.series
-          prev_series_visibility = result.prev_visibility
-        })}
-        on_group_toggle={legend?.on_group_toggle ??
-        ((_group_name: string, series_indices: number[]) => {
-          series = toggle_group_visibility(series, series_indices)
-        })}
+        on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
+        on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
+        on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
         on_fill_toggle={(source_type: `fill_region` | `error_band`, source_idx: number) => {
           // Only fill_regions can be toggled (error_bands are not bindable)
           if (source_type === `fill_region`) {
@@ -2687,8 +2284,10 @@
     background: var(--scatter-fullscreen-bg, var(--scatter-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
-    /* Add padding to prevent titles from being cropped at top */
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--scatter-fullscreen-bg, var(--scatter-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
   /* Center the colorbar within its wrapper when shorter than it (e.g. capped by --cbar-max-height

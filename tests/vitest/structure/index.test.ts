@@ -400,13 +400,7 @@ describe(`get_structure_vector_keys`, () => {
     },
     {
       desc: `prefixed keys across sites`,
-      sites: [
-        { force_DFT: [1, 0, 0] },
-        {
-          force_MLFF: [0.9, 0, 0],
-          force_DFT: [1, 0, 0],
-        },
-      ],
+      sites: [{ force_DFT: [1, 0, 0] }, { force_MLFF: [0.9, 0, 0], force_DFT: [1, 0, 0] }],
       expected: [`force_DFT`, `force_MLFF`],
     },
     {
@@ -433,10 +427,7 @@ describe(`get_structure_vector_keys`, () => {
       sites: [
         { force: [1, 0, 0] },
         { magmom: [0, 0, 1] },
-        {
-          spin_DFT: 0.5,
-          force_MLFF: [0, 1, 0],
-        },
+        { spin_DFT: 0.5, force_MLFF: [0, 1, 0] },
       ],
       expected: [`force`, `force_MLFF`, `magmom`, `spin_DFT`],
     },

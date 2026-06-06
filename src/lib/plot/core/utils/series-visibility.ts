@@ -1,43 +1,59 @@
-import type { DataSeries } from '$lib/plot/core/types'
+// Minimal series shape the visibility helpers need - generic over the concrete series
+// type (DataSeries, BarSeries, BoxPlotSeries, ...) so toggled arrays keep their type
+type VisSeries = {
+  label?: string | null
+  unit?: string
+  y_axis?: string
+  visible?: boolean
+  x?: unknown
+  y?: unknown
+}
 
-export type StrRecord = Record<string, unknown>
-
-type SeriesSource = [string, string, string, unknown, unknown]
+type SeriesSource = [string, string, string, ...unknown[]]
 
 export type SeriesVisibilitySnapshot = {
   visibility: boolean[]
   source: SeriesSource[]
 }
 
-const series_source = <Metadata extends StrRecord = StrRecord>(
-  series: DataSeries<Metadata>[],
-  length = series.length,
-): SeriesSource[] =>
+// Length + first/last element: a by-value signature for x/y data. Deliberately NOT
+// array identity: inside components those are $state proxies whose identity changes
+// when the series prop is reassigned (e.g. by the isolate itself), which made the
+// snapshot reject itself and permanently broke restore-from-isolation.
+const data_sig = (arr: unknown): unknown[] =>
+  Array.isArray(arr) ? [arr.length, arr[0], arr[arr.length - 1]] : [arr]
+
+const series_source = (series: VisSeries[], length = series.length): SeriesSource[] =>
   series
     .slice(0, length)
-    .map((srs) => [srs.label ?? ``, srs.unit ?? ``, srs.y_axis ?? ``, srs.x, srs.y])
+    .map((srs) => [
+      srs.label ?? ``,
+      srs.unit ?? ``,
+      srs.y_axis ?? ``,
+      ...data_sig(srs.x),
+      ...data_sig(srs.y),
+    ])
 
 const same_series_source = (
   series: SeriesSource[],
   snapshot_series: SeriesSource[],
 ): boolean =>
   series.length === snapshot_series.length &&
-  series.every((source, idx) =>
-    source.every((part, part_idx) => Object.is(part, snapshot_series[idx][part_idx])),
+  series.every(
+    (source, idx) =>
+      source.length === snapshot_series[idx].length &&
+      source.every((part, part_idx) => Object.is(part, snapshot_series[idx][part_idx])),
   )
 
-export function have_compatible_units<Metadata extends StrRecord = StrRecord>(
-  series1: DataSeries<Metadata>,
-  series2: DataSeries<Metadata>,
-): boolean {
+export function have_compatible_units(series1: VisSeries, series2: VisSeries): boolean {
   if (!series1.unit || !series2.unit) return true
   return series1.unit === series2.unit
 }
 
-export function toggle_series_visibility<Metadata extends StrRecord = StrRecord>(
-  series: DataSeries<Metadata>[],
+export function toggle_series_visibility<Series extends VisSeries>(
+  series: Series[],
   series_idx: number,
-): DataSeries<Metadata>[] {
+): Series[] {
   if (series_idx < 0 || series_idx >= series.length || !series[series_idx]) return series
 
   const toggled = series[series_idx]
@@ -60,10 +76,10 @@ export function toggle_series_visibility<Metadata extends StrRecord = StrRecord>
   })
 }
 
-export function toggle_group_visibility<Metadata extends StrRecord = StrRecord>(
-  series: DataSeries<Metadata>[],
+export function toggle_group_visibility<Series extends VisSeries>(
+  series: Series[],
   series_indices: number[],
-): DataSeries<Metadata>[] {
+): Series[] {
   // Filter to valid indices upfront
   const valid_indices = series_indices.filter((idx) => idx >= 0 && idx < series.length)
   if (valid_indices.length === 0) return series
@@ -81,12 +97,12 @@ export function toggle_group_visibility<Metadata extends StrRecord = StrRecord>(
   )
 }
 
-export function handle_legend_double_click<Metadata extends StrRecord = StrRecord>(
-  series: DataSeries<Metadata>[],
+export function handle_legend_double_click<Series extends VisSeries>(
+  series: Series[],
   idx: number,
   prev_snapshot: SeriesVisibilitySnapshot | null,
 ): {
-  series: DataSeries<Metadata>[]
+  series: Series[]
   prev_visibility: SeriesVisibilitySnapshot | null
 } {
   if (idx < 0 || idx >= series.length) {
@@ -136,5 +152,29 @@ export function handle_legend_double_click<Metadata extends StrRecord = StrRecor
       return (srs.visible ?? true) !== in_group ? { ...srs, visible: in_group } : srs
     }),
     prev_visibility: new_prev,
+  }
+}
+
+// Bundle the three legend visibility handlers (click toggle, group toggle,
+// double-click isolate/restore) around a series accessor pair. Owns the
+// isolate/restore snapshot internally so components don't each carry it.
+export function create_legend_visibility<Series extends VisSeries>(
+  get_series: () => Series[],
+  set_series: (series: Series[]) => void,
+): {
+  on_toggle: (series_idx: number) => void
+  on_group_toggle: (group_name: string, series_indices: number[]) => void
+  on_double_click: (series_idx: number) => void
+} {
+  let prev_visibility: SeriesVisibilitySnapshot | null = null
+  return {
+    on_toggle: (series_idx) => set_series(toggle_series_visibility(get_series(), series_idx)),
+    on_group_toggle: (_group_name, series_indices) =>
+      set_series(toggle_group_visibility(get_series(), series_indices)),
+    on_double_click: (series_idx) => {
+      const result = handle_legend_double_click(get_series(), series_idx, prev_visibility)
+      set_series(result.series)
+      prev_visibility = result.prev_visibility
+    },
   }
 }

@@ -48,7 +48,7 @@
       tick_labels={0}
       title_side="left"
       wrapper_style="width: 100%;"
-      title_style="width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;"
+      title_style="width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: 0.9rem;"
       {...colorbar}
     />
   {/snippet}

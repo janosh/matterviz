@@ -123,6 +123,38 @@ export const create_axis_change_handler =
     }
   }
 
+// Bundle axis change handler with one-shot auto-load of the first axis option.
+// get_props keeps callback props fresh; try_auto_load reads series/axis configs
+// through state getters so a component `$effect(try_auto_load)` tracks them reactively.
+export function create_axis_loader<T extends DataSeries | BarSeries>(
+  state: AxisChangeState<T>,
+  get_props: () => {
+    data_loader?: DataLoaderFn<Record<string, unknown>, T>
+    on_axis_change?: (axis: AxisType, key: string, new_series: T[]) => void
+    on_error?: (error: AxisLoadError) => void
+  },
+) {
+  let auto_load_attempted = false // prevent infinite retries on failure
+  const handle_axis_change = (axis: AxisType, key: string) => {
+    const { data_loader, on_axis_change, on_error } = get_props()
+    return create_axis_change_handler(state, data_loader, on_axis_change, on_error)(axis, key)
+  }
+  // Auto-load data if series is empty but options exist (runs once, x-axis first then y)
+  const try_auto_load = () => {
+    if (state.get_series().length > 0 || !get_props().data_loader || auto_load_attempted)
+      return
+    for (const axis of [`x`, `y`] as const) {
+      const config = state.get_axis(axis)
+      if (config.options?.length) {
+        auto_load_attempted = true
+        handle_axis_change(axis, config.selected_key ?? config.options[0].key).catch(() => {})
+        return
+      }
+    }
+  }
+  return { handle_axis_change, try_auto_load }
+}
+
 // Constants for axis label foreignObject positioning (all values in px)
 // Use minimal dimensions - overflow: visible handles any dropdown expansion
 export const AXIS_LABEL_CONTAINER = {
