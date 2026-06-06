@@ -373,17 +373,24 @@ describe(`BarPlot`, () => {
       },
     )
 
-    test(`single series with 3 categories renders 3 bars`, async () => {
-      mount(BarPlot, {
-        target: document.body,
-        props: {
-          series: [{ x: [`Foo`, `Bar`, `Baz`], y: [1, 2, 3], color: `blue` }],
-          style: `width: 400px; height: 300px`,
-        },
-      })
-      await tick()
-      expect(document.querySelectorAll(`path[role="button"]`)).toHaveLength(3)
-    })
+    // every category renders a bar; x-axis ticks thin only when labels can't fit the
+    // 400px axis at ~28px each (3 fit untouched, 30 thin to every ~3rd category)
+    test.each([
+      { desc: `few categories keep every tick`, n_cats: 3, min_ticks: 3, max_ticks: 3 },
+      { desc: `many categories thin the ticks`, n_cats: 30, min_ticks: 3, max_ticks: 14 },
+    ])(
+      `single categorical series renders every bar ($desc)`,
+      async ({ n_cats, min_ticks, max_ticks }) => {
+        const cats = Array.from({ length: n_cats }, (_cat, idx) => `cat${idx}`)
+        const plot = await mount_sized_bar_plot({
+          series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
+        })
+        expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(n_cats)
+        const tick_count = plot.querySelectorAll(`g.x-axis g.tick`).length
+        expect(tick_count).toBeGreaterThanOrEqual(min_ticks)
+        expect(tick_count).toBeLessThanOrEqual(max_ticks)
+      },
+    )
 
     test(`hover provides category_label and preserves metadata`, async () => {
       const hover_fn = vi.fn()

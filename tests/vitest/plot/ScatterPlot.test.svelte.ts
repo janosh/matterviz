@@ -20,7 +20,10 @@ async function mount_sized_scatter_plot(
   document.body.append(container)
   mount(ScatterPlot, {
     target: container,
-    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
+    // Object.assign (not spread) keeps bind_props accessors intact for bindable-prop tests
+    props: Object.assign(props, {
+      style: `width: 400px; height: 300px; ${props.style ?? ``}`,
+    }),
   })
   const plot = container.querySelector<HTMLElement>(`.scatter`)
   if (!plot) throw new Error(`ScatterPlot root element not found`)
@@ -695,26 +698,17 @@ describe(`ScatterPlot`, () => {
   // Histogram and BoxPlot all do; only the synced/align modes derive y2 from y1
   test(`rect-zoom updates y2 range when y2 sync is 'none'`, async () => {
     const state = { y2_axis: {} as Record<string, unknown> }
-    // mount directly: mount_sized_scatter_plot spreads props, which would sever the
-    // bind_props getters and lose the y2_axis write-back
-    const container = document.createElement(`div`)
-    document.body.append(container)
-    mount(ScatterPlot, {
-      target: container,
-      props: bind_props(
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
         {
           series: [
             { x: [1, 2, 3], y: [1, 2, 3] },
             { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
           ],
-          style: `width: 400px; height: 300px;`,
         },
         state,
       ),
-    })
-    const plot = container.querySelector<HTMLElement>(`.scatter`)
-    if (!plot) throw new Error(`ScatterPlot root element not found`)
-    await resize_element(plot, 400, 300)
+    )
     const svg = plot.querySelector(`svg[role="application"]`) // chart svg, not control icons
     if (!svg) throw new Error(`svg not found`)
     svg.dispatchEvent(

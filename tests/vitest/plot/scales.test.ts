@@ -49,12 +49,15 @@ describe(`scales`, () => {
         domain: [-1000, -5] as Vec2,
         expected: [math.LOG_EPS, math.LOG_EPS],
       },
-    ])(`log scale clamps non-positive domain ($name) stays finite`, ({ domain, expected }) => {
-      const scale = create_scale(`log`, domain, [0, 500])
-      expect(scale.domain()).toEqual(expected)
-      expect(Number.isFinite(scale(10))).toBe(true)
-      expect(Number.isFinite(scale.invert(250))).toBe(true)
-    })
+    ])(
+      `log scale clamps non-positive domain ($name) and stays finite`,
+      ({ domain, expected }) => {
+        const scale = create_scale(`log`, domain, [0, 500])
+        expect(scale.domain()).toEqual(expected)
+        expect(Number.isFinite(scale(10))).toBe(true)
+        expect(Number.isFinite(scale.invert(250))).toBe(true)
+      },
+    )
 
     test(`arcsinh scale with config object`, () => {
       const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 10 }
