@@ -217,6 +217,17 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     value: link.value,
   }))
 
+  // Drop nodes with no incoming or outgoing links. d3-sankey gives such orphans
+  // value 0 (zero height) and still stacks them with node_padding each, so extra
+  // labels pile up and overflow past the plot edge. They are never referenced by a
+  // link, so removing them can't break link resolution (node_idx stays stable).
+  const linked_node_idxs = new Set<number>()
+  for (const link of link_copies) {
+    linked_node_idxs.add(link.source)
+    linked_node_idxs.add(link.target)
+  }
+  const used_nodes = node_copies.filter((node) => linked_node_idxs.has(node.node_idx))
+
   const is_vertical = orientation === `vertical`
   // d3 lays out left->right (depth on x). For vertical we run in a transposed
   // extent (depth on what becomes screen y) then swap node boxes afterwards.
@@ -240,7 +251,7 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
 
   let graph: { nodes: PositionedNode[]; links: PositionedLink[] }
   try {
-    graph = layout({ nodes: node_copies, links: link_copies }) as typeof graph
+    graph = layout({ nodes: used_nodes, links: link_copies }) as typeof graph
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`Sankey layout failed (graph must be a DAG without cycles): ${msg}`, {

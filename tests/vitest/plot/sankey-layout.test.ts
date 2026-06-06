@@ -152,6 +152,38 @@ describe(`compute_sankey_layout`, () => {
     for (const link of links) expect(link.path).not.toContain(`NaN`)
   })
 
+  test(`drops link-less nodes so extra labels don't pile up below the plot`, () => {
+    // orphan nodes (extra labels with no links) used to get value 0 / zero height yet
+    // still stack with node_padding each, overflowing past the plot bottom edge
+    const data: SankeyData = {
+      nodes: [
+        { label: `A` },
+        { label: `B` },
+        ...Array.from({ length: 20 }, (_, idx) => ({ label: `orphan-${idx}` })),
+      ],
+      links: [{ source: 0, target: 1, value: 5 }],
+    }
+    const { nodes } = compute_sankey_layout(data, dims)
+    expect(nodes.map((nd) => nd.label)).toEqual([`A`, `B`])
+    for (const node of nodes) {
+      expect(node.y0).toBeGreaterThanOrEqual(-1e-6)
+      expect(node.y1).toBeLessThanOrEqual(dims.height + 1e-6)
+    }
+  })
+
+  test(`keeps node_idx stable when a link-less node sits between linked nodes`, () => {
+    // dropping the middle orphan must not shift indices: colors/metadata in the
+    // component are keyed by the original node_idx, and links resolve by it too
+    const data: SankeyData = {
+      nodes: [{ label: `A` }, { label: `gap` }, { label: `B` }],
+      links: [{ source: 0, target: 2, value: 3 }], // skips node 1
+    }
+    const { nodes, links } = compute_sankey_layout(data, dims)
+    expect(nodes.map((nd) => nd.node_idx)).toEqual([0, 2])
+    expect(links[0].source.node_idx).toBe(0)
+    expect(links[0].target.node_idx).toBe(2)
+  })
+
   test(`warns when node labels collide and no ids are set`, () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const data: SankeyData = {
@@ -219,6 +251,14 @@ describe(`sankey_from_links`, () => {
     expect(data.nodes.map((node) => node.label)).toEqual([`A`, `B`, `2`])
     // the layout must resolve the highest-indexed link without throwing
     expect(() => compute_sankey_layout(data, dims)).not.toThrow()
+  })
+
+  test(`surplus labels beyond linked indices are dropped by the layout`, () => {
+    // builder pads nodes up to labels.length; the extras are orphans (no links) that
+    // compute_sankey_layout must drop, else they pile up/overflow below the plot
+    const data = sankey_from_links([0], [1], [5], [`A`, `B`, `extra1`, `extra2`])
+    expect(data.nodes).toHaveLength(4) // builder keeps every label
+    expect(compute_sankey_layout(data, dims).nodes.map((nd) => nd.label)).toEqual([`A`, `B`])
   })
 
   test.each([

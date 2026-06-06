@@ -1,5 +1,37 @@
 # Changelog
 
+## [v0.4.0](https://github.com/janosh/matterviz/compare/v0.3.6...v0.4.0)
+
+> 6 June 2026
+
+### 🚀 New Features
+
+- Add `BoxPlot` and `Violin` components (raw-data quantiles + Gaussian KDE, tukey/minmax/percentile/std whiskers, split/one-sided violins, `violin+box` overlay) and a `d3-sankey` flow diagram https://github.com/janosh/matterviz/pull/349
+- Add zoomable `Sunburst`/`Icicle` hierarchical charts (drill-down breadcrumbs, `value_mode`, `min_fraction` "Other" bucketing, metric coloring, SVG/PNG export) plus chem-system and spacegroup data builders https://github.com/janosh/matterviz/pull/352
+- Add `extensions/anywidget`: a self-contained ESM bundle published to npm as `matterviz-anywidget` for notebook/host runtimes (consumed by pymatviz) https://github.com/janosh/matterviz/pull/351
+
+### 🛠 Enhancements
+
+- Rewrite fill-between to trace each boundary through its own `monotoneX` points (edges hug their lines), add fills to the legend with synced hover highlighting, and re-target `starry-night` syntax highlighting to `data-theme` https://github.com/janosh/matterviz/pull/346
+- Auto-detect format for extensionless `blob:` URLs via content/magic-byte sniffing, read gzip `Content-Encoding` responses binary-safe, and content-detect minified single-line JSON structures https://github.com/janosh/matterviz/pull/355
+- Keep `HeatmapTable` tooltips alive across sort/filter/pagination via a `MutationObserver`, and gzip large Brillouin-zone and XRD test fixtures https://github.com/janosh/matterviz/pull/348
+- Split chart content into z-ordered clip groups so reference lines interleave while annotations overflow, and cap/scroll overflowing legends https://github.com/janosh/matterviz/pull/356
+
+### 🐛 Bug Fixes
+
+- Fix correctness bugs across science kernels (XRD scattering prefactor + hkl bounds, `e_above_hull` for arity ≥ 5, gas corrections, moyo-wasm column-major rotations, RDF PBC, marching-cubes) and parsers (POSCAR/CIF/OPTIMADE, NPT XDATCAR, extxyz, composition), each with red→green regression tests https://github.com/janosh/matterviz/pull/354
+- Fix OPTIMADE element resolution, a convex-hull click-to-select page freeze (`effect_update_depth_exceeded`), fermi-surface upsampling/NaN crashes, violin KDE on log axes, and PBC-aware structure measurements https://github.com/janosh/matterviz/pull/355
+- Fix plot reactive update loops, clamp both ends of log domains to the positive floor (panning past zero stays recoverable), and gate y2 range write-back on actual y2-series presence https://github.com/janosh/matterviz/pull/356
+- Fix the fill `where` callback argument order and the reference-line `left`/`right` label side https://github.com/janosh/matterviz/pull/346
+- Unskip and triage ~75 Playwright tests, removing bit-rotted pixel-based suites and fixing the bugs they surfaced https://github.com/janosh/matterviz/pull/350
+
+### 💡 Refactoring
+
+- Adopt the shared `@janosh/vite-config` oxlint ruleset, apply the resulting fixes across ~226 files (`to_error()` normalization, node-protocol imports, etc.), and migrate CI/tooling to pnpm on Node 24 https://github.com/janosh/matterviz/pull/347
+- Extend linting to the `extensions/` tree and fix the surfaced issues across the VS Code and Dash extensions https://github.com/janosh/matterviz/pull/348
+- Extract a reusable `ControlPane` and a crash-safe `unique_id()` helper shared across plot components https://github.com/janosh/matterviz/pull/349
+- Dedup plot interaction helpers: centralize tooltip constraining in `PlotTooltip`, extract `remove_drag_listeners`/`create_axis_loader`, and adopt screen-uniform pan-zoom https://github.com/janosh/matterviz/pull/356
+
 ## [v0.3.6](https://github.com/janosh/matterviz/compare/v0.3.5...v0.3.6)
 
 > 30 May 2026
