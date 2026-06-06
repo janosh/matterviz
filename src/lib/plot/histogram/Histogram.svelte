@@ -391,16 +391,17 @@
       ]
       : auto_ranges.y2
 
-    // Only update if the initial (data-driven) ranges changed, not when user pans
-    // Comparing against initial preserves user's pan/zoom state
-    const x_changed = new_x[0] !== ranges.initial.x[0] ||
-      new_x[1] !== ranges.initial.x[1]
-    const x2_changed = new_x2[0] !== ranges.initial.x2[0] ||
-      new_x2[1] !== ranges.initial.x2[1]
-    const y_changed = new_y[0] !== ranges.initial.y[0] ||
-      new_y[1] !== ranges.initial.y[1]
-    const y2_changed = new_y2[0] !== ranges.initial.y2[0] ||
-      new_y2[1] !== ranges.initial.y2[1]
+    // Skip transient non-finite ranges: writing NaN breaks scales and makes the
+    // comparison below never settle (NaN !== NaN), causing an infinite effect loop.
+    if (![...new_x, ...new_x2, ...new_y, ...new_y2].every(Number.isFinite)) return
+    // Only update if the initial (data-driven) ranges changed, not when user pans.
+    // untrack the reads of `ranges` so the writes below can't re-trigger this effect
+    // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
+    const init = untrack(() => ranges.initial)
+    const x_changed = new_x[0] !== init.x[0] || new_x[1] !== init.x[1]
+    const x2_changed = new_x2[0] !== init.x2[0] || new_x2[1] !== init.x2[1]
+    const y_changed = new_y[0] !== init.y[0] || new_y[1] !== init.y[1]
+    const y2_changed = new_y2[0] !== init.y2[0] || new_y2[1] !== init.y2[1]
 
     if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
     if (x2_changed) [ranges.initial.x2, ranges.current.x2] = [new_x2, new_x2]
@@ -733,9 +734,13 @@
           ...y_axis,
           range: [Math.min(start_y, end_y), Math.max(start_y, end_y)],
         }
-        y2_axis = {
-          ...y2_axis,
-          range: [Math.min(start_y2, end_y2), Math.max(start_y2, end_y2)],
+        // gate on y2 series presence (like x2): the y2 scale is a [0, 1] sentinel
+        // otherwise, so inverting would store a phantom range in the bindable prop
+        if (y2_series.length > 0) {
+          y2_axis = {
+            ...y2_axis,
+            range: [Math.min(start_y2, end_y2), Math.max(start_y2, end_y2)],
+          }
         }
       }
     }
@@ -1326,6 +1331,7 @@
       <g
         class="histogram-series"
         data-series-idx={series_idx}
+        clip-path="url(#{clip_path_id})"
         opacity={hovered_legend_series_idx !== null &&
             hovered_legend_series_idx !== series_idx
           ? 0.25

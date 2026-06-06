@@ -690,4 +690,67 @@ describe(`ScatterPlot`, () => {
     const legend = doc_query<HTMLElement>(`.legend`)
     expect(parseFloat(legend.style.top)).toBeGreaterThan(150)
   })
+
+  // rect-zoom must zoom y2 series too when sync is 'none' (the default) - BarPlot,
+  // Histogram and BoxPlot all do; only the synced/align modes derive y2 from y1
+  test(`rect-zoom updates y2 range when y2 sync is 'none'`, async () => {
+    const state = { y2_axis: {} as Record<string, unknown> }
+    // mount directly: mount_sized_scatter_plot spreads props, which would sever the
+    // bind_props getters and lose the y2_axis write-back
+    const container = document.createElement(`div`)
+    document.body.append(container)
+    mount(ScatterPlot, {
+      target: container,
+      props: bind_props(
+        {
+          series: [
+            { x: [1, 2, 3], y: [1, 2, 3] },
+            { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
+          ],
+          style: `width: 400px; height: 300px;`,
+        },
+        state,
+      ),
+    })
+    const plot = container.querySelector<HTMLElement>(`.scatter`)
+    if (!plot) throw new Error(`ScatterPlot root element not found`)
+    await resize_element(plot, 400, 300)
+    const svg = plot.querySelector(`svg[role="application"]`) // chart svg, not control icons
+    if (!svg) throw new Error(`svg not found`)
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, { clientX: 100, clientY: 50, bubbles: true }),
+    )
+    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 200 }))
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
+    await tick()
+    const y2_range = state.y2_axis.range as [number, number] | undefined
+    if (!y2_range) throw new Error(`y2_axis.range not set by rect-zoom`)
+    expect(y2_range.every(Number.isFinite)).toBe(true)
+    expect(y2_range[0]).toBeLessThan(y2_range[1])
+    expect(y2_range[1] - y2_range[0]).toBeLessThan(20) // narrower than full data span
+  })
+
+  // Regression guard for effect_update_depth_exceeded: with an explicit y range the
+  // range-sync effect assigns zoom_y_range a fresh array every run, and the y2-sync
+  // branch reads it back - a tracked read would re-trigger the effect forever. Svelte's
+  // loop guard logs via console.error and throws, so a clean mount proves the fix.
+  test(`explicit y range + y2 sync mounts without a reactive loop`, async () => {
+    const errors: unknown[][] = []
+    const error_spy = vi
+      .spyOn(console, `error`)
+      .mockImplementation((...args) => void errors.push(args))
+    try {
+      await mount_sized_scatter_plot({
+        series: [
+          { x: [1, 2, 3], y: [1, 2, 3] },
+          { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` },
+        ],
+        y_axis: { range: [0, 5] as Vec2 },
+        y2_axis: { sync: `synced` },
+      })
+    } finally {
+      error_spy.mockRestore()
+    }
+    expect(errors.map(String).join(`\n`)).toBe(``)
+  })
 })

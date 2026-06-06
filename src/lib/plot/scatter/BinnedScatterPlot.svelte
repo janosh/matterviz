@@ -199,6 +199,9 @@
   function set_auto_range() {
     const next_x_range = axis_range(x_axis, auto_ranges.x)
     const next_y_range = axis_range(y_axis, auto_ranges.y)
+    // Skip non-finite ranges (e.g. a NaN bound in an axis range prop): NaN !== NaN
+    // means same_range never settles, looping until effect_update_depth_exceeded
+    if (![...next_x_range, ...next_y_range].every(Number.isFinite)) return
     if (!same_range(x_range, next_x_range)) x_range = next_x_range
     if (!same_range(y_range, next_y_range)) y_range = next_y_range
   }

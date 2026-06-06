@@ -2,7 +2,7 @@ import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { inside_clip_path, resize_element } from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -553,5 +553,31 @@ describe(`BarPlot`, () => {
     expect(legend).toBeInstanceOf(HTMLElement)
     // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
     expect(parseFloat(legend?.style.top ?? `0`)).toBeGreaterThan(150)
+  })
+
+  // ref-line annotations must render outside the chart clip group so labels at the
+  // plot edges (e.g. a vertical line's top label) can overflow instead of being cropped,
+  // while z ordering still holds: below-lines refs paint behind bars, above-all in front
+  test(`reference-line annotations are unclipped and z-ordered around the bars`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic],
+      ref_lines: [
+        { type: `vertical`, x: 3, annotation: { text: `behind` } }, // default z: below-lines
+        { type: `vertical`, x: 4, z_index: `above-all`, annotation: { text: `front` } },
+      ],
+    })
+    await tick()
+    const labels = Object.fromEntries(
+      [...plot.querySelectorAll(`svg text`)].map((el) => [el.textContent?.trim(), el]),
+    )
+    const bars = plot.querySelector(`svg .bar-series`)
+    if (!labels.behind || !labels.front || !bars) throw new Error(`missing elements`)
+    for (const label of [labels.behind, labels.front]) {
+      expect(inside_clip_path(label), `annotation must escape the clip-path`).toBe(false)
+    }
+    // document order encodes paint order: below-lines < bars < above-all
+    const order = (el: Element) => bars.compareDocumentPosition(el)
+    expect(Boolean(order(labels.behind) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true)
+    expect(Boolean(order(labels.front) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
   })
 })

@@ -647,7 +647,14 @@
       if (result.changed) initial_y2_range = result.range
       // Apply sync if enabled, otherwise use expanded range (or keep current if unchanged)
       if (y2_sync_config.mode !== `none`) {
-        zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
+        // untrack the read of zoom_y_range: this effect also writes it (fresh array per
+        // run when y.explicit), so a tracked read would loop until
+        // effect_update_depth_exceeded. Pan/zoom handlers sync y2 themselves.
+        zoom_y2_range = sync_y2_range(
+          untrack(() => zoom_y_range),
+          initial_y2_range,
+          y2_sync_config,
+        )
       } else if (result.changed) {
         zoom_y2_range = result.range
       }
@@ -1398,7 +1405,6 @@
         next_y_range[0] !== next_y_range[1]
       ) {
         // Update axis ranges to trigger reactivity (like BarPlot/Histogram do)
-        // Y2 sync is handled by the effect that reacts to y_axis changes
         x_axis = { ...x_axis, range: next_x_range }
         y_axis = { ...y_axis, range: next_y_range }
 
@@ -1415,6 +1421,17 @@
           x2_axis = {
             ...x2_axis,
             range: [Math.min(x2_a, x2_b), Math.max(x2_a, x2_b)],
+          }
+        }
+
+        // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
+        // y2 must zoom from the rect directly (parity with BarPlot/Histogram/BoxPlot)
+        if (y2_points.length > 0 && y2_sync_config.mode === `none`) {
+          const y2_a = y2_scale_fn.invert(drag_start_coords.y)
+          const y2_b = y2_scale_fn.invert(drag_current_coords.y)
+          y2_axis = {
+            ...y2_axis,
+            range: [Math.min(y2_a, y2_b), Math.max(y2_a, y2_b)],
           }
         }
       }

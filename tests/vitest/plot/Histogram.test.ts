@@ -78,15 +78,23 @@ describe(`Histogram`, () => {
       series: [repeated_histogram_series, repeated_histogram_series],
       expected_indices: [`0`, `1`],
     },
-  ])(`rendered series keep original indices $name`, async ({ series, expected_indices }) => {
-    mount_histogram({ series, show_legend: true })
-    await tick()
+  ])(
+    `rendered series keep original indices and clip to chart area $name`,
+    async ({ series, expected_indices }) => {
+      mount_histogram({ series, show_legend: true })
+      await tick()
 
-    const series_indices = Array.from(document.querySelectorAll(`g.histogram-series`)).map(
-      (element) => element.getAttribute(`data-series-idx`),
-    )
-    expect(series_indices).toEqual(expected_indices)
-  })
+      const groups = Array.from(document.querySelectorAll(`g.histogram-series`))
+      const series_indices = groups.map((element) => element.getAttribute(`data-series-idx`))
+      expect(series_indices).toEqual(expected_indices)
+
+      // bars must clip to the chart area, else zooming/panning the y range lets tall
+      // bars paint over the top margin and x2 axis (ref lines stay outside the clip)
+      for (const group of groups) {
+        expect(group.getAttribute(`clip-path`)).toMatch(/^url\(#histogram-clip/)
+      }
+    },
+  )
 
   test(`single mode falls back when selected_property is stale`, async () => {
     mount_histogram({

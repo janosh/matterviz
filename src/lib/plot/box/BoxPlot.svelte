@@ -57,6 +57,7 @@
     LABEL_GAP_DEFAULT,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
+  import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import {
@@ -417,11 +418,17 @@
     const new_x2 = resolve_range(x2_axis, auto_ranges.x2)
     const new_y = resolve_range(y_axis, auto_ranges.y)
     const new_y2 = resolve_range(y2_axis, auto_ranges.y2)
+    // Skip transient non-finite ranges: writing NaN breaks scales and makes the
+    // comparison below never settle (NaN !== NaN), causing an infinite effect loop.
+    if (![...new_x, ...new_x2, ...new_y, ...new_y2].every(Number.isFinite)) return
+    // untrack the read of `ranges` so the assignment can't re-trigger this effect
+    // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
+    const init = untrack(() => ranges.initial)
     if (
-      ranges.initial.x[0] !== new_x[0] || ranges.initial.x[1] !== new_x[1] ||
-      ranges.initial.x2[0] !== new_x2[0] || ranges.initial.x2[1] !== new_x2[1] ||
-      ranges.initial.y[0] !== new_y[0] || ranges.initial.y[1] !== new_y[1] ||
-      ranges.initial.y2[0] !== new_y2[0] || ranges.initial.y2[1] !== new_y2[1]
+      init.x[0] !== new_x[0] || init.x[1] !== new_x[1] ||
+      init.x2[0] !== new_x2[0] || init.x2[1] !== new_x2[1] ||
+      init.y[0] !== new_y[0] || init.y[1] !== new_y[1] ||
+      init.y2[0] !== new_y2[0] || init.y2[1] !== new_y2[1]
     ) {
       ranges = {
         initial: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
@@ -517,6 +524,20 @@
     y2: create_scale(y2_axis.scale_type ?? `linear`, ranges.current.y2, [height - pad.b, pad.t]),
   })
 
+  // Value scale for a box (vertical -> y/y2, horizontal -> x/x2), made log-safe: on a
+  // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
+  // outliers) have no finite pixel. Clamp to LOG_EPS so whiskers/boxes/labels draw
+  // toward the plot edge (the clip group crops the overshoot) instead of NaN coords.
+  const box_val_scale = (srs: BoxPlotSeries<Metadata>): (val: number) => number => {
+    const vertical = orientation === `vertical`
+    const secondary = is_secondary(srs)
+    const scale = vertical
+      ? (secondary ? scales.y2 : scales.y)
+      : (secondary ? scales.x2 : scales.x)
+    const axis = vertical ? (secondary ? y2_axis : y_axis) : (secondary ? x2_axis : x_axis)
+    return axis.scale_type === `log` ? (val) => scale(Math.max(val, LOG_EPS)) : scale
+  }
+
   // Categorical tick labels (slot index -> category name) unless user provides a label mapping
   let effective_cat_ticks = $derived.by(() => {
     if (slot_list.length === 0) return undefined
@@ -605,7 +626,11 @@
           x2_axis = { ...x2_axis, range: [Math.min(x2_1, x2_2), Math.max(x2_1, x2_2)] }
         }
         y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
-        y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
+        // gate on secondary series presence (like x2): the y2 scale is a sentinel
+        // otherwise, so inverting would store a phantom range in the bindable prop
+        if (has_secondary && Number.isFinite(y2_1) && Number.isFinite(y2_2)) {
+          y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
+        }
       }
     }
     drag_state = { start: null, current: null, bounds: null }
@@ -782,10 +807,7 @@
     const vertical = orientation === `vertical`
     return visible_boxes
       .map((box_item) => {
-        const secondary = is_secondary(box_item.series)
-        const val_scale = vertical
-          ? (secondary ? scales.y2 : scales.y)
-          : (secondary ? scales.x2 : scales.x)
+        const val_scale = box_val_scale(box_item.series)
         const cat_scale = vertical ? scales.x : scales.y
         const cc = cat_scale(box_item.slot)
         const vc = val_scale(box_item.stats.median)
@@ -838,10 +860,7 @@
 
   function get_box_data(box_item: Box, color: string): BoxHover {
     const vertical = orientation === `vertical`
-    const secondary = is_secondary(box_item.series)
-    const val_scale = vertical
-      ? (secondary ? scales.y2 : scales.y)
-      : (secondary ? scales.x2 : scales.x)
+    const val_scale = box_val_scale(box_item.series)
     const cat_scale = vertical ? scales.x : scales.y
     const cc = cat_scale(box_item.slot)
     const v_hi = val_scale(box_item.stats.whisker_high)
@@ -1101,6 +1120,10 @@
         </clipPath>
       </defs>
 
+      <!-- Chart content is clipped in two groups so reference lines can interleave
+           at their z positions while staying outside the chart clip: each line still
+           self-clips to the plot area inside ReferenceLine, only its annotation text
+           is allowed to overflow the plot edges. -->
       <g clip-path="url(#{clip_path_id})">
         <ZeroLines
           {display}
@@ -1122,19 +1145,18 @@
           {height}
           {pad}
         />
+      </g>
 
-        {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+      {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
-        <!-- Boxes -->
+      <!-- Boxes -->
+      <g clip-path="url(#{clip_path_id})">
         {#each visible_boxes as box_item (box_item.series.id ?? box_item.idx)}
           {@const stats = box_item.stats}
           {#if Number.isFinite(stats.median)}
             {@const vertical = orientation === `vertical`}
-            {@const secondary = is_secondary(box_item.series)}
             {@const cat_scale = vertical ? scales.x : scales.y}
-            {@const val_scale = vertical
-            ? (secondary ? scales.y2 : scales.y)
-            : (secondary ? scales.x2 : scales.x)}
+            {@const val_scale = box_val_scale(box_item.series)}
             {@const color = box_color(box_item.idx)}
             {@const draw_box = draws_box(box_item.series)}
             {@const kde = violin_kdes.get(box_item.idx)}
@@ -1292,10 +1314,10 @@
             </g>
           {/if}
         {/each}
-
-        {@render ref_lines_layer(ref_lines_by_z.below_points)}
-        {@render ref_lines_layer(ref_lines_by_z.above_all)}
       </g>
+
+      {@render ref_lines_layer(ref_lines_by_z.below_points)}
+      {@render ref_lines_layer(ref_lines_by_z.above_all)}
     </svg>
 
     {#if legend && should_show_legend}

@@ -275,6 +275,18 @@
     category_list.length > 0 ? category_list.map((_, idx) => idx) : null,
   )
 
+  // Thin categorical tick labels + grid lines when many categories would overlap.
+  // Bars still render for every category (this only reduces drawn ticks/labels/grid).
+  let cat_tick_indices = $derived.by<number[]>(() => {
+    if (!category_indices) return []
+    const axis_px = (orientation === `horizontal` ? height : width) || 0
+    const max_ticks = Math.max(1, Math.floor(axis_px / 28)) // ~28px per category label
+    const step = Math.ceil(category_indices.length / max_ticks)
+    return step <= 1
+      ? category_indices
+      : category_indices.filter((_, idx) => idx % step === 0)
+  })
+
   let internal_series = $derived.by<NumericBarSeries[]>(() => {
     // safe: when !category_indices, all x values are numeric (is_categorical is false)
     if (!category_indices) return series as unknown as NumericBarSeries[]
@@ -469,17 +481,22 @@
       y2_axis.range?.[0] ?? auto_ranges.y2[0],
       y2_axis.range?.[1] ?? auto_ranges.y2[1],
     ] as Vec2
-    // Only update if the initial (data-driven) ranges changed, not when user pans
-    // Comparing against initial preserves user's pan/zoom state
+    // Skip transient non-finite ranges (e.g. before data/size is ready): writing NaN
+    // would both break scales and make the comparison below never settle (NaN !== NaN).
+    if (![...new_x, ...new_x2, ...new_y, ...new_y2].every(Number.isFinite)) return
+    // Only update if the initial (data-driven) ranges changed, not when user pans.
+    // untrack the read of `ranges` so the assignment below can't re-trigger this effect
+    // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
+    const init = untrack(() => ranges.initial)
     if (
-      ranges.initial.x[0] !== new_x[0] ||
-      ranges.initial.x[1] !== new_x[1] ||
-      ranges.initial.x2[0] !== new_x2[0] ||
-      ranges.initial.x2[1] !== new_x2[1] ||
-      ranges.initial.y[0] !== new_y[0] ||
-      ranges.initial.y[1] !== new_y[1] ||
-      ranges.initial.y2[0] !== new_y2[0] ||
-      ranges.initial.y2[1] !== new_y2[1]
+      init.x[0] !== new_x[0] ||
+      init.x[1] !== new_x[1] ||
+      init.x2[0] !== new_x2[0] ||
+      init.x2[1] !== new_x2[1] ||
+      init.y[0] !== new_y[0] ||
+      init.y[1] !== new_y[1] ||
+      init.y2[0] !== new_y2[0] ||
+      init.y2[1] !== new_y2[1]
     ) {
       ranges = {
         initial: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
@@ -678,7 +695,7 @@
   // Ticks
   let ticks = $derived({
     x: width && height
-      ? (category_indices && cat_axis === `x` ? category_indices : generate_ticks(
+      ? (category_indices && cat_axis === `x` ? cat_tick_indices : generate_ticks(
         ranges.current.x,
         x_axis.scale_type ?? `linear`,
         x_axis.ticks,
@@ -687,7 +704,7 @@
       ))
       : [],
     y: width && height
-      ? (category_indices && cat_axis === `y` ? category_indices : generate_ticks(
+      ? (category_indices && cat_axis === `y` ? cat_tick_indices : generate_ticks(
         ranges.current.y,
         y_axis.scale_type ?? `linear`,
         y_axis.ticks,
@@ -787,7 +804,11 @@
           }
         }
         y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
-        y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
+        // gate on y2 series presence (like x2): the y2 scale is a [0, 1] sentinel
+        // otherwise, so inverting would store a phantom range in the bindable prop
+        if (y2_series.length > 0) {
+          y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
+        }
       }
     }
     drag_state = { start: null, current: null, bounds: null }
@@ -1558,7 +1579,10 @@
         </clipPath>
       </defs>
 
-      <!-- Clipped content: zero lines, bars, and lines -->
+      <!-- Chart content is clipped in two groups so reference lines can interleave
+           at their z positions while staying outside the chart clip: each line still
+           self-clips to the plot area inside ReferenceLine, only its annotation text
+           is allowed to overflow the plot edges. -->
       <g clip-path="url(#{clip_path_id})">
         <ZeroLines
           {display}
@@ -1582,11 +1606,12 @@
           {height}
           {pad}
         />
+      </g>
 
-        <!-- Reference lines: below lines -->
-        {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+      {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
-        <!-- Bars and Lines -->
+      <!-- Bars and Lines -->
+      <g clip-path="url(#{clip_path_id})">
         {#each internal_series as srs, series_idx (srs?.id ?? series_idx)}
           {#if srs?.visible ?? true}
             {@const is_line = srs.render_mode === `line`}
@@ -1900,13 +1925,10 @@
             </g>
           {/if}
         {/each}
-
-        <!-- Reference lines: below points -->
-        {@render ref_lines_layer(ref_lines_by_z.below_points)}
-
-        <!-- Reference lines: above all -->
-        {@render ref_lines_layer(ref_lines_by_z.above_all)}
       </g>
+
+      {@render ref_lines_layer(ref_lines_by_z.below_points)}
+      {@render ref_lines_layer(ref_lines_by_z.above_all)}
     </svg>
 
     <!-- Legend -->

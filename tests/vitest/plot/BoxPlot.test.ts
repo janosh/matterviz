@@ -2,7 +2,7 @@ import { BoxPlot } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { inside_clip_path, resize_element } from '../setup'
 
 const dist = (n: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -292,5 +292,37 @@ describe(`BoxPlot`, () => {
     ]
     const plot = await mount_sized_box_plot({ series, kind: `violin` })
     expect(plot.querySelectorAll(`g.x-axis g.tick`)).toHaveLength(2)
+  })
+
+  // on a log value axis, stats <= 0 (whisker_low is often exactly 0, outliers can be
+  // negative) must clamp to the log floor instead of rendering NaN coordinates
+  test(`log value axis renders finite coordinates when data includes zero`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [{ y: [0, 1, 2, 5, 10, 100], label: `Z` }],
+      y_axis: { scale_type: `log` },
+    })
+    const attrs = [...plot.querySelectorAll(`.box-series line, .box-series rect`)].flatMap(
+      (el) => [...el.attributes].map((attr) => attr.value),
+    )
+    expect(attrs.length).toBeGreaterThan(0)
+    expect(
+      attrs.some((val) => val.includes(`NaN`)),
+      `no NaN in box glyphs`,
+    ).toBe(false)
+  })
+
+  // same contract as BarPlot: ref-line annotations render outside the chart clip group
+  // so labels at the plot edges can overflow instead of being cropped
+  test(`reference-line annotation is not clipped by the chart area`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [basic],
+      ref_lines: [{ type: `horizontal`, y: 0, annotation: { text: `threshold` } }],
+    })
+    await tick()
+    const label = [...plot.querySelectorAll(`svg text`)].find(
+      (el) => el.textContent?.trim() === `threshold`,
+    )
+    if (!label) throw new Error(`annotation text should render`)
+    expect(inside_clip_path(label), `annotation must escape the clip-path`).toBe(false)
   })
 })
