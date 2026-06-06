@@ -2,7 +2,9 @@ name: Publish
 
 # On a new vX.Y.Z tag: gate on lint + unit tests, then publish in parallel the
 # `matterviz` npm package, the VS Code extension (Marketplace + Open VSX) and the
-# `matterviz-anywidget` npm bundle. workflow_dispatch (re)publishes a given version.
+# `matterviz-anywidget` npm bundle. workflow_dispatch (re)publishes a given version by
+# building that version's tag -- use it to publish an already-pushed tag that never
+# reached a registry (run from the default branch so this workflow file is current).
 #
 # npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
 # both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
@@ -16,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (e.g. 0.4.0)
+        description: Version to (re)publish, e.g. 0.4.0 (its tag must already be pushed unless dry_run)
         required: true
         type: string
       dry_run:
@@ -27,9 +29,9 @@ on:
 permissions:
   contents: read
 
-# one publish per ref, but never cancel an in-flight one (a half-published release is worse)
+# one publish per version, but never cancel an in-flight one (a half-published release is worse)
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish-${{ github.event.inputs.version || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -37,11 +39,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
+      ref: ${{ steps.resolve.outputs.ref }} # exact commit every other job checks out
     steps:
       - id: resolve
         # input via env (not ${{ }}) to avoid shell injection; validate before use
         env:
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = workflow_dispatch ]; then
@@ -52,13 +56,29 @@ jobs:
           version="${version#v}" # strip optional leading v from tags / manual input alike
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
             echo "Invalid version: $version"; exit 1; }
+          # Build & publish the exact tagged commit (vX.Y.Z), so a manual run (re)publishes an
+          # already-pushed tag rather than whatever the workflow ran from. Fall back to the
+          # triggering ref for a dry run of a not-yet-tagged version.
+          tag="refs/tags/v$version"
+          if git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY" "$tag" >/dev/null 2>&1; then
+            ref="$tag"
+          elif [ "$DRY_RUN" = true ]; then
+            ref="$GITHUB_REF"
+            echo "::notice::tag $tag not found -- dry-run building $GITHUB_REF"
+          else
+            echo "::error::tag $tag does not exist -- push it first, or run with dry_run=true"; exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
-  # === Gate: publish only if lint + unit tests pass for this exact ref ===
+  # === Gate: publish only if lint + unit tests pass for the published commit ===
   lint:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
       # ext deps so type-aware lint / svelte-check resolve their imports in CI
       - uses: ./.github/actions/setup
         with:
@@ -66,9 +86,12 @@ jobs:
       - uses: j178/prek-action@v2
 
   test:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
       - uses: ./.github/actions/setup
       - name: Unit tests
         run: pnpm exec vp test --run
@@ -83,9 +106,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # skip on dry runs (a not-yet-tagged dry run builds a ref whose version differs)
       - name: Verify version matches the tag
+        if: ${{ !inputs.dry_run }}
         env:
           EXPECTED: ${{ needs.version.outputs.version }}
         run: |
@@ -113,12 +139,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
       # root install too: the webview build bundles ../../src/lib (three/d3/etc.)
       - uses: ./.github/actions/setup
         with:
           extensions: vscode
       - name: Verify version matches the tag
+        if: ${{ !inputs.dry_run }}
         env:
           EXPECTED: ${{ needs.version.outputs.version }}
         run: |
@@ -154,6 +182,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
