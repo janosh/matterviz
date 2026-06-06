@@ -1528,15 +1528,8 @@
     if (!(target instanceof HTMLElement)) return
     // Don't reset if double-click was on UI controls/panes/legend
     if (
-      target.closest(`.control-buttons`) ||
-      target.closest(`.structure-legend`) ||
-      target.closest(`.atom-legend`) ||
-      target.closest(`.info-pane`) ||
-      target.closest(`.export-pane`) ||
-      target.closest(`.controls-pane`) ||
-      target.tagName === `BUTTON` ||
-      target.tagName === `INPUT` ||
-      target.tagName === `SELECT`
+      [`.control-buttons`, `.structure-legend`, `.atom-legend`, `.info-pane`, `.export-pane`, `.controls-pane`].some((selector) => target.closest(selector))
+      || target.tagName === `BUTTON` || target.tagName === `INPUT` || target.tagName === `SELECT`
     ) return
     // Reset camera for double-clicks on the 3D scene
     reset_camera()
@@ -1643,22 +1636,9 @@
                 {#each [
             { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
             { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
-            {
-              mode: `edit-atoms`,
-              icon: `Edit`,
-              label: `Edit Atoms`,
-              scale: 1.0,
-            },
-            {
-              mode: `edit-bonds`,
-              icon: `Link`,
-              label: `Edit Bonds`,
-              scale: 1.0,
-            },
-          ] as const as
-                  { mode, icon, label, scale }
-                  (mode)
-                }
+            { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
+            { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 },
+          ] as const as { mode, icon, label, scale } (mode)}
                   <button
                     class="view-mode-option"
                     class:selected={measure_mode === mode}

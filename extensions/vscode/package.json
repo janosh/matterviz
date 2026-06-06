@@ -1,7 +1,7 @@
 {
   "name": "matterviz",
   "displayName": "MatterViz",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
   "categories": [
     "Data Science",

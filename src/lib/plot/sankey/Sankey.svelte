@@ -356,13 +356,18 @@
       points: layout.nodes.map(node_center),
     })
   })
+  // Only nodes that survive the layout (orphans with no links are dropped, see
+  // compute_sankey_layout) - keeps the legend in sync with what's drawn.
   let legend_data = $derived.by<LegendItem[]>(() =>
-    data.nodes.map((node, idx) => ({
-      series_idx: idx,
-      label: node.label ?? `${node.id ?? idx}`,
-      visible: !muted_nodes.has(node.id ?? idx),
-      display_style: { symbol_type: `Square` as const, symbol_color: node_colors[idx] },
-    }))
+    data.nodes
+      .map((node, idx) => ({ node, idx }))
+      .filter(({ idx }) => node_by_idx.has(idx))
+      .map(({ node, idx }) => ({
+        series_idx: idx,
+        label: node.label ?? `${node.id ?? idx}`,
+        visible: !muted_nodes.has(node.id ?? idx),
+        display_style: { symbol_type: `Square` as const, symbol_color: node_colors[idx] },
+      }))
   )
 
   function toggle_node(series_idx: number) {
