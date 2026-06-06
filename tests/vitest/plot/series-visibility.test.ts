@@ -169,6 +169,25 @@ describe(`handle_legend_double_click`, () => {
     expect(result.prev_visibility).toBeNull()
   })
 
+  // inside components, x/y are $state proxies whose identity changes when the series
+  // prop is reassigned by the isolate itself - the snapshot must match by value, not
+  // by array identity, else restore-from-isolation permanently breaks
+  test(`restores when data is value-identical but referentially new`, () => {
+    const original: DataSeries[] = [
+      { x: [1], y: [2], label: `A`, visible: true },
+      { x: [3], y: [4], label: `B`, visible: true },
+    ]
+    const isolated = handle_legend_double_click(original, 0, null)
+    const reproxied = isolated.series.map((srs) => ({
+      ...srs,
+      x: [...srs.x],
+      y: [...srs.y],
+    }))
+    const result = handle_legend_double_click(reproxied, 0, isolated.prev_visibility)
+    expect(result.series.map((srs) => srs.visible)).toEqual([true, true])
+    expect(result.prev_visibility).toBeNull()
+  })
+
   test.each([
     { new_vis: true, desc: `keeps true visibility` },
     { new_vis: false, desc: `keeps false visibility` },

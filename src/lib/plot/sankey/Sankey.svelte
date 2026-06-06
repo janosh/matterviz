@@ -639,7 +639,10 @@
     background: var(--sankey-fullscreen-bg, var(--sankey-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--sankey-fullscreen-bg, var(--sankey-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
   .header-controls {

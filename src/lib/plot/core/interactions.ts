@@ -1,5 +1,6 @@
-import type { Point2D, Vec2 } from '$lib/math'
-import type { Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
 // Get coordinates of a mouse event relative to an element (the event's
 // currentTarget by default; pass `element` when the handler is delegated and the
@@ -86,21 +87,132 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
   return y2_base_range
 }
 
-// Shift a range by a delta amount (no bounds constraint for free panning)
-export const pan_range = (current: Vec2, delta: number): Vec2 => [
-  current[0] + delta,
-  current[1] + delta,
-]
+// Forward/inverse transform pair mapping an axis's data values onto its visual
+// metric (the space where equal pixel steps are equal steps; identity for
+// linear/time). Pan and pinch must be uniform in *screen* space - doing the math
+// linearly on a log axis stretches one end of the view and shifts past zero into
+// an all-NaN domain. log clamps at LOG_EPS so a non-positive bound (stale explicit
+// range) recovers instead of propagating -Infinity.
+function axis_transform(scale_type: ScaleType | undefined): {
+  to: (val: number) => number
+  from: (val: number) => number
+} {
+  const name = get_scale_type_name(scale_type)
+  if (name === `log`) {
+    return { to: (val) => Math.log(Math.max(val, LOG_EPS)), from: Math.exp }
+  }
+  if (name === `arcsinh`) {
+    const threshold = get_arcsinh_threshold(scale_type)
+    const to = (val: number) => Math.asinh(val / threshold)
+    const from = (val: number) => Math.sinh(val) * threshold
+    return { to, from }
+  }
+  return { to: (val) => val, from: (val) => val }
+}
 
-// Convert pixel delta to data delta using current data range and pixel range
-export function pixels_to_data_delta(
+// Pan a range by a pixel delta, uniformly in screen space: linear axes shift by a
+// constant amount, log axes by a constant factor (which also can't cross zero).
+// `pixel_span` is the plot's pixel extent along the axis.
+export function pan_range_by_pixels(
+  range: Vec2,
   pixel_delta: number,
-  data_range: Vec2,
-  pixel_range: number,
-): number {
-  if (pixel_range === 0) return 0
-  const data_span = data_range[1] - data_range[0]
-  return (pixel_delta / pixel_range) * data_span
+  pixel_span: number,
+  scale_type?: ScaleType,
+): Vec2 {
+  if (pixel_span === 0) return range
+  const { to, from } = axis_transform(scale_type)
+  const [t0, t1] = [to(range[0]), to(range[1])]
+  const t_delta = (pixel_delta / pixel_span) * (t1 - t0)
+  return [from(t0 + t_delta), from(t1 + t_delta)]
+}
+
+// Zoom a range about its screen-space center by `factor` (pinch: >1 zooms in).
+// On log axes the fixed point is the geometric mean - the visual center.
+export function zoom_range_by_factor(
+  range: Vec2,
+  factor: number,
+  scale_type?: ScaleType,
+): Vec2 {
+  // Guard invalid factors (0/negative/NaN) that would emit Infinity/NaN into axis state
+  if (!Number.isFinite(factor) || factor <= 0) return range
+  const { to, from } = axis_transform(scale_type)
+  const [t0, t1] = [to(range[0]), to(range[1])]
+  const center = (t0 + t1) / 2
+  const half_span = (t1 - t0) / factor / 2
+  return [from(center - half_span), from(center + half_span)]
+}
+
+// Coerce a scale.invert result (number, or Date for time scales) to an epoch number
+export const to_epoch_num = (val: number | Date): number =>
+  val instanceof Date ? val.getTime() : val
+
+// Remove window drag/pan listeners and reset the body cursor. Call from onDestroy:
+// a component unmounting mid-drag would otherwise leak its listeners and leave the
+// cursor stuck (the mouseup that normally cleans up never fires after unmount).
+export function remove_drag_listeners(
+  move_handlers: ((evt: MouseEvent) => void)[],
+  up_handlers: ((evt: MouseEvent) => void)[],
+): void {
+  if (typeof window === `undefined`) return
+  for (const handler of move_handlers) {
+    window.removeEventListener(`mousemove`, handler as EventListener)
+  }
+  for (const handler of up_handlers) {
+    window.removeEventListener(`mouseup`, handler as EventListener)
+  }
+  document.body.style.cursor = ``
+}
+
+// Sorted [min, max] from two scalar bounds (rect-zoom inverts drag start/end,
+// which arrive in either order depending on drag direction)
+export const sorted_range = (a: number, b: number): Vec2 => [Math.min(a, b), Math.max(a, b)]
+
+// Strict per-bound equality of two [min, max] ranges
+export const vec2_equal = (a: Vec2, b: Vec2): boolean => a[0] === b[0] && a[1] === b[1]
+
+// True when all four axis ranges match. The range-sync effects use this to skip
+// no-op writes that would otherwise re-trigger the effect and loop.
+export const axis_ranges_equal = (a: AxisRanges, b: AxisRanges): boolean =>
+  vec2_equal(a.x, b.x) &&
+  vec2_equal(a.x2, b.x2) &&
+  vec2_equal(a.y, b.y) &&
+  vec2_equal(a.y2, b.y2)
+
+type AxisRangeOverride = { range?: [number | null, number | null] }
+type AutoRanges = {
+  x: readonly number[]
+  x2: readonly number[]
+  y: readonly number[]
+  y2: readonly number[]
+}
+
+// Merge each axis's explicit range over its auto range (per-bound: a null bound
+// falls back to the auto value). Returns null if any resolved bound is non-finite so
+// the caller can skip the sync - writing NaN breaks scales and, since NaN !== NaN,
+// makes the change comparison never settle (an infinite effect loop).
+export function resolve_axis_ranges(
+  axes: {
+    x: AxisRangeOverride
+    x2: AxisRangeOverride
+    y: AxisRangeOverride
+    y2: AxisRangeOverride
+  },
+  auto: AutoRanges,
+): AxisRanges | null {
+  const resolve = (axis: AxisRangeOverride, fallback: readonly number[]): Vec2 => [
+    axis.range?.[0] ?? fallback[0],
+    axis.range?.[1] ?? fallback[1],
+  ]
+  const next: AxisRanges = {
+    x: resolve(axes.x, auto.x),
+    x2: resolve(axes.x2, auto.x2),
+    y: resolve(axes.y, auto.y),
+    y2: resolve(axes.y2, auto.y2),
+  }
+  for (const [lo, hi] of [next.x, next.x2, next.y, next.y2]) {
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null
+  }
+  return next
 }
 
 // Threshold for distinguishing pinch-zoom from pan in touch gestures

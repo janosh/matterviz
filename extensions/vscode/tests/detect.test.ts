@@ -132,11 +132,7 @@ describe(`detect_view_type`, () => {
     [
       `dos (phonon)`,
       `dos`,
-      {
-        type: `phonon`,
-        frequencies: [0, 100, 200],
-        densities: [[0.1, 0.2, 0.3]],
-      },
+      { type: `phonon`, frequencies: [0, 100, 200], densities: [[0.1, 0.2, 0.3]] },
     ],
     [`band_structure (pymatgen)`, `band_structure`, pymatgen_bands],
     [
@@ -356,14 +352,7 @@ describe(`detect_view_type`, () => {
         temperature_range: [300, 1500],
       },
     ],
-    [
-      `column table with unequal lengths`,
-      null,
-      {
-        col_a: [1, 2, 3],
-        col_b: [4, 5],
-      },
-    ],
+    [`column table with unequal lengths`, null, { col_a: [1, 2, 3], col_b: [4, 5] }],
     [
       `row table with inconsistent keys`,
       null,

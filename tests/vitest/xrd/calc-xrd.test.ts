@@ -140,10 +140,7 @@ describe(`compute_xrd_pattern edge cases`, () => {
 
   test(`scaled_intensity_tol filters peaks as configured`, () => {
     const structure = make_simple_cubic_structure(3)
-    const base_opts = {
-      wavelength: `CuKa` as const,
-      two_theta_range: [0, 90] as Vec2,
-    }
+    const base_opts = { wavelength: `CuKa` as const, two_theta_range: [0, 90] as Vec2 }
 
     const none_pass = compute_xrd_pattern(structure, {
       ...base_opts,

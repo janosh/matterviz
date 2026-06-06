@@ -344,19 +344,28 @@
   // Prevent circular updates when syncing legend toggles back to bindable visible_properties.
   let syncing_visible_properties = false
 
-  // Regenerate plot series when trajectory, config, or visible_properties change
+  // Regenerate plot series when trajectory, config, or visible_properties change.
+  // Read ALL reactive deps before the syncing guard can return: a guarded run that
+  // reads no dependencies leaves the effect dep-less, and Svelte permanently unlinks
+  // dep-less effects - trajectory changes would then never regenerate the plot.
   $effect(() => {
+    const [traj, extractor, config, keys] = [
+      trajectory,
+      data_extractor,
+      extended_config,
+      visible_properties,
+    ]
     if (syncing_visible_properties) return
-    const keys_set = visible_properties ? new Set(visible_properties) : undefined
+    const keys_set = keys ? new Set(keys) : undefined
 
-    if (trajectory?.plot_metadata) {
-      plot_series = generate_streaming_plot_series(trajectory.plot_metadata, {
-        property_config: extended_config,
+    if (traj?.plot_metadata) {
+      plot_series = generate_streaming_plot_series(traj.plot_metadata, {
+        property_config: config,
         default_visible_properties: keys_set,
       })
-    } else if (trajectory) {
-      plot_series = generate_plot_series(trajectory, data_extractor, {
-        property_config: extended_config,
+    } else if (traj) {
+      plot_series = generate_plot_series(traj, extractor, {
+        property_config: config,
         default_visible_properties: keys_set,
       })
     } else {

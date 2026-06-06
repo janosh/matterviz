@@ -1,77 +1,92 @@
 // Unit tests for plot interaction utilities
 import type { Vec2 } from '$lib/math'
+import { LOG_EPS } from '$lib/math'
 import {
+  axis_ranges_equal,
   expand_range_if_needed,
   normalize_y2_sync,
-  pan_range,
-  pixels_to_data_delta,
+  pan_range_by_pixels,
+  resolve_axis_ranges,
+  sorted_range,
   sync_y2_range,
+  vec2_equal,
+  zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
-import type { Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
 import { describe, expect, it } from 'vitest'
 
-describe(`pan_range`, () => {
-  // [range, delta, expected]
-  it.each<[Vec2, number, Vec2]>([
-    [[0, 10], 5, [5, 15]],
-    [[0, 10], -5, [-5, 5]],
-    [[-10, -5], 3, [-7, -2]],
-    [[0, 100], 0.5, [0.5, 100.5]],
-  ])(`pan_range(%j, %s) = %j`, (range, delta, expected) => {
-    expect(pan_range(range, delta)).toEqual(expected)
+describe(`pan_range_by_pixels`, () => {
+  // pan must be uniform in *screen* space: constant shift on linear axes,
+  // constant factor on log axes (never crossing zero), asinh-shift on arcsinh
+  // [desc, range, px, span, scale_type, expected]
+  it.each<[string, Vec2, number, number, ScaleType | undefined, Vec2]>([
+    [`linear matches pan_range`, [0, 100], 50, 200, undefined, [25, 125]],
+    [`linear default scale_type`, [0, 10], -100, 200, `linear`, [-5, 5]],
+    [`time is linear in ms`, [0, 1000], 100, 200, `time`, [500, 1500]],
+    [`log shifts by one decade`, [1, 100], 100, 200, `log`, [10, 1000]],
+    [`log shifts back a decade`, [10, 1000], -100, 200, `log`, [1, 100]],
+    [`inverted linear stays inverted`, [100, 0], 50, 200, undefined, [75, -25]],
+    [`degenerate range is a no-op`, [50, 50], 100, 200, undefined, [50, 50]],
+  ])(`%s`, (_desc, range, px, span, type, expected) => {
+    const result = pan_range_by_pixels(range, px, span, type)
+    expect(result[0]).toBeCloseTo(expected[0], 9)
+    expect(result[1]).toBeCloseTo(expected[1], 9)
   })
 
-  it(`returns a new array (immutable)`, () => {
-    const original: Vec2 = [0, 10]
-    const result = pan_range(original, 5)
-    expect(result).not.toBe(original)
-    expect(original).toEqual([0, 10])
+  it(`log pan cannot cross zero, no matter how far`, () => {
+    const result = pan_range_by_pixels([1, 100], -10_000, 200, `log`)
+    expect(result.every((val) => Number.isFinite(val) && val > 0)).toBe(true)
+  })
+
+  it(`log pan preserves the ratio between bounds (screen-uniform)`, () => {
+    const [lo, hi] = pan_range_by_pixels([2, 50], 37, 200, `log`)
+    expect(hi / lo).toBeCloseTo(25, 9)
+  })
+
+  it(`log recovers a stale non-positive bound instead of NaN`, () => {
+    const result = pan_range_by_pixels([-5, 100], 10, 200, `log`)
+    expect(result.every((val) => Number.isFinite(val) && val >= LOG_EPS)).toBe(true)
+  })
+
+  it(`arcsinh pan stays finite across zero`, () => {
+    const result = pan_range_by_pixels([-100, 100], 80, 200, `arcsinh`)
+    expect(result.every(Number.isFinite)).toBe(true)
+    expect(result[0]).toBeLessThan(result[1])
+  })
+
+  it.each<ScaleType>([`linear`, `log`])(`%s: zero pixel span is a no-op`, (type) => {
+    expect(pan_range_by_pixels([1, 100], 50, 0, type)).toEqual([1, 100])
   })
 })
 
-describe(`pixels_to_data_delta`, () => {
-  // [px, data_range, pixel_range, expected]
-  it.each<[number, Vec2, number, number]>([
-    [100, [0, 100], 200, 50],
-    [-100, [0, 100], 200, -50],
-    [0, [0, 100], 200, 0],
-    [100, [-50, 50], 200, 50],
-    [100, [100, 200], 200, 50],
-    [10, [0, 50], 100, 5],
-    [0.5, [0, 100], 1, 50],
-    [100, [0, 1e12], 200, 5e11],
-    [100, [50, 50], 200, 0],
-    [60, [0, 1000], 600, 100],
-    [100, [0, 100], 0, 0],
-    [50, [0, 100], 100, 50],
-    [50, [0, 100], 200, 25],
-  ])(`pixels_to_data_delta(%s, %j, %s) = %s`, (px, data, size, expected) => {
-    expect(pixels_to_data_delta(px, data, size)).toBe(expected)
+describe(`zoom_range_by_factor`, () => {
+  // [desc, range, factor, scale_type, expected]
+  it.each<[string, Vec2, number, ScaleType | undefined, Vec2]>([
+    [`linear zoom in about center`, [0, 10], 2, undefined, [2.5, 7.5]],
+    [`linear zoom out about center`, [2.5, 7.5], 0.5, undefined, [0, 10]],
+    [`log zoom in keeps geometric center`, [1, 10_000], 2, `log`, [10, 1000]],
+    [`log zoom out`, [10, 1000], 0.5, `log`, [1, 10_000]],
+    [`inverted linear stays inverted`, [10, 0], 2, undefined, [7.5, 2.5]],
+  ])(`%s`, (_desc, range, factor, type, expected) => {
+    const result = zoom_range_by_factor(range, factor, type)
+    expect(result[0]).toBeCloseTo(expected[0], 9)
+    expect(result[1]).toBeCloseTo(expected[1], 9)
   })
 
-  it(`handles high-precision data ranges`, () => {
-    expect(pixels_to_data_delta(100, [0.001, 0.002], 200)).toBeCloseTo(0.0005)
-  })
-})
-
-describe(`pan_range + pixels_to_data_delta integration`, () => {
-  it(`50px drag on 200px plot with [0,100] range → 25 data units`, () => {
-    const delta = pixels_to_data_delta(50, [0, 100], 200)
-    expect(delta).toBe(25)
-    expect(pan_range([0, 100], delta)).toEqual([25, 125])
+  it(`log zoom never produces non-positive bounds`, () => {
+    const result = zoom_range_by_factor([0.001, 10], 0.01, `log`)
+    expect(result.every((val) => Number.isFinite(val) && val > 0)).toBe(true)
   })
 
-  it(`multiple pans preserve range span`, () => {
-    let range: Vec2 = [0, 100]
-    range = pan_range(range, pixels_to_data_delta(50, range, 200))
-    range = pan_range(range, pixels_to_data_delta(-30, range, 200))
-    range = pan_range(range, pixels_to_data_delta(20, range, 200))
-    expect(range[1] - range[0]).toBe(100)
+  it(`arcsinh zoom out across zero stays finite and symmetric-ish`, () => {
+    const [lo, hi] = zoom_range_by_factor([-100, 100], 0.5, `arcsinh`)
+    expect(Number.isFinite(lo) && Number.isFinite(hi)).toBe(true)
+    expect(lo).toBeCloseTo(-hi, 9) // asinh is odd, so symmetry is preserved
   })
 
-  it(`zoomed state: smaller range = larger per-pixel movement`, () => {
-    expect(pixels_to_data_delta(100, [40, 60], 200)).toBe(10)
-    expect(pan_range([40, 60], 10)).toEqual([50, 70])
+  // invalid factors would emit Infinity/NaN into axis state - return the range unchanged
+  it.each([0, -2, NaN, Infinity])(`factor %s returns the range unchanged`, (factor) => {
+    expect(zoom_range_by_factor([10, 20], factor)).toEqual([10, 20])
   })
 })
 
@@ -234,5 +249,54 @@ describe(`expand_range_if_needed`, () => {
     expect(result.range[0]).toBeCloseTo(0.3)
     expect(result.range[1]).toBeCloseTo(1.8)
     expect(result.changed).toBe(true)
+  })
+})
+
+describe(`sorted_range`, () => {
+  it(`sorts bounds ascending regardless of input order`, () => {
+    expect(sorted_range(5, 1)).toEqual([1, 5]) // reversed
+    expect(sorted_range(4, 4)).toEqual([4, 4]) // degenerate
+  })
+})
+
+describe(`vec2_equal`, () => {
+  it(`compares bounds; NaN never equal (so the sync effect can't loop)`, () => {
+    expect(vec2_equal([1, 2], [1, 2])).toBe(true)
+    expect(vec2_equal([1, 2], [1, 3])).toBe(false)
+    expect(vec2_equal([NaN, 5], [NaN, 5])).toBe(false)
+  })
+})
+
+describe(`axis_ranges_equal`, () => {
+  // a diff in any single axis must register (guards the && chain from dropping an axis)
+  const base: AxisRanges = { x: [0, 1], x2: [2, 3], y: [4, 5], y2: [6, 7] }
+  it.each<[string, AxisRanges, boolean]>([
+    [`all match`, { x: [0, 1], x2: [2, 3], y: [4, 5], y2: [6, 7] }, true],
+    [`x differs`, { x: [9, 9], x2: [2, 3], y: [4, 5], y2: [6, 7] }, false],
+    [`x2 differs`, { x: [0, 1], x2: [9, 9], y: [4, 5], y2: [6, 7] }, false],
+    [`y differs`, { x: [0, 1], x2: [2, 3], y: [9, 9], y2: [6, 7] }, false],
+    [`y2 differs`, { x: [0, 1], x2: [2, 3], y: [4, 5], y2: [9, 9] }, false],
+  ])(`%s`, (_desc, other, expected) => {
+    expect(axis_ranges_equal(base, other)).toBe(expected)
+  })
+})
+
+describe(`resolve_axis_ranges`, () => {
+  const auto = { x: [0, 10], x2: [0, 20], y: [0, 30], y2: [0, 40] }
+  const no_overrides = { x: {}, x2: {}, y: {}, y2: {} }
+
+  it(`merges explicit over auto per-bound; null/missing bounds fall back to auto`, () => {
+    const resolved = resolve_axis_ranges(
+      { x: { range: [1, 9] }, x2: { range: [null, 5] }, y: { range: [3, null] }, y2: {} },
+      auto,
+    )
+    // x: full override, x2/y: one-sided pins, y2: full fallback
+    expect(resolved).toEqual({ x: [1, 9], x2: [0, 5], y: [3, 30], y2: [0, 40] })
+  })
+
+  it(`returns null when any resolved bound is non-finite`, () => {
+    expect(resolve_axis_ranges(no_overrides, { ...auto, y: [0, NaN] })).toBeNull()
+    const inf = { ...no_overrides, x: { range: [0, Infinity] as [number, number] } }
+    expect(resolve_axis_ranges(inf, auto)).toBeNull()
   })
 })

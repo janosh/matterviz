@@ -7,6 +7,21 @@ export type Sides = { t?: number; b?: number; l?: number; r?: number }
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 30
 
+// X position for a right-side (y2) axis label: past the plot edge plus tick shift and
+// measured tick-label width (both zero when tick labels render inside the plot)
+export function y2_axis_label_x(
+  axis: AxisConfig,
+  width: number,
+  pad_r: number,
+  max_tick_width: number,
+): number {
+  const inside = axis.tick?.label?.inside ?? false
+  const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0) + 8
+  const label_offset =
+    (inside ? 0 : max_tick_width) + LABEL_GAP_DEFAULT + (axis.label_shift?.x ?? 0)
+  return width - pad_r + tick_shift + label_offset
+}
+
 // Filter undefined values from padding to prevent overriding defaults when spreading
 // Guards against undefined/null padding inputs (common for optional props)
 export const filter_padding = (
@@ -269,10 +284,9 @@ export function sample_series_obstacle_points(
       const n_samples = Math.floor(Math.hypot(point.x - prev.x, point.y - prev.y) / step)
       for (let idx = 1; idx < n_samples; idx++) {
         const frac = idx / n_samples
-        obstacles.push({
-          x: prev.x + (point.x - prev.x) * frac,
-          y: prev.y + (point.y - prev.y) * frac,
-        })
+        const x = prev.x + (point.x - prev.x) * frac
+        const y = prev.y + (point.y - prev.y) * frac
+        obstacles.push({ x, y })
       }
     }
     prev = point
@@ -398,8 +412,9 @@ export function compute_element_placement(
 
       // Corner preference: use element's actual corner (not center) for distance
       // This ensures a wide element at the left edge gets proper corner credit
-      const elem_right = cand_x + element_size.width
-      const elem_bottom = cand_y + element_size.height
+      // (measured footprint, same as cand_rect — not the element_size fallback)
+      const elem_right = cand_x + elem_width
+      const elem_bottom = cand_y + elem_height
 
       // Distance from element's matching corner to each plot corner
       const min_corner_dist = Math.min(

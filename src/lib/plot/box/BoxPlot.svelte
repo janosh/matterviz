@@ -39,24 +39,27 @@
   } from '$lib/plot/core/auto-place'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
+  import { create_dimension_tracker, create_hover_lock } from '$lib/plot/core/hover-lock.svelte'
+  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
-    create_dimension_tracker,
-    create_hover_lock,
-  } from '$lib/plot/core/hover-lock.svelte'
-  import {
+    axis_ranges_equal,
     get_relative_coords,
     MIN_TOUCH_DISTANCE_PIXELS,
-    pan_range,
+    pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
-    pixels_to_data_delta,
+    remove_drag_listeners,
+    resolve_axis_ranges,
+    sorted_range,
+    zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
-    constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
+  import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import {
@@ -113,14 +116,10 @@
     series = $bindable([]),
     orientation = $bindable(`vertical`),
     x_axis = $bindable({}),
-    x2_axis = $bindable({}),
+    x2_axis: x2_axis_prop = $bindable({}),
     y_axis = $bindable({}),
-    y2_axis = $bindable({}),
+    y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.box.display),
-    x_range = [null, null],
-    x2_range = [null, null],
-    y_range = [null, null],
-    y2_range = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     legend = {},
@@ -217,8 +216,26 @@
   let outlier_state = $derived({ ...DEFAULTS.box.outlier, ...outlier_style })
   let violin_state = $derived({ ...DEFAULTS.box.violin, ...violin_style })
 
-  y2_axis = { format: ``, scale_type: `linear`, ticks: 5, range: [null, null], ...y2_axis }
-  x2_axis = { format: ``, scale_type: `linear`, ticks: 5, range: [null, null], ...x2_axis }
+  // Merge secondary-axis defaults as deriveds instead of assigning back into the
+  // $bindable props (which would push library defaults into the parent's bound state)
+  let y2_axis = $derived(
+    {
+      format: ``,
+      scale_type: `linear`,
+      ticks: 5,
+      range: [null, null],
+      ...y2_axis_prop,
+    } as typeof y2_axis_prop,
+  )
+  let x2_axis = $derived(
+    {
+      format: ``,
+      scale_type: `linear`,
+      ticks: 5,
+      range: [null, null],
+      ...x2_axis_prop,
+    } as typeof x2_axis_prop,
+  )
 
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
@@ -376,7 +393,7 @@
     const primary_boxes = visible_boxes.filter((box_item) => !is_secondary(box_item.series))
     const calc_value_range = (
       boxes: Box[],
-      limit: typeof y_range,
+      limit: [number | null, number | null],
       scale_type: ScaleType,
     ): Vec2 => {
       const pts = value_points(boxes)
@@ -386,12 +403,12 @@
     const vertical = orientation === `vertical`
     const value_primary = calc_value_range(
       primary_boxes,
-      vertical ? y_range : x_range,
+      (vertical ? y_axis.range : x_axis.range) ?? [null, null],
       (vertical ? y_axis.scale_type : x_axis.scale_type) ?? `linear`,
     )
     const value_secondary = calc_value_range(
       secondary_boxes,
-      vertical ? y2_range : x2_range,
+      (vertical ? y2_axis.range : x2_axis.range) ?? [null, null],
       (vertical ? y2_axis.scale_type : x2_axis.scale_type) ?? `linear`,
     )
 
@@ -409,24 +426,15 @@
   })
 
   $effect(() => { // sync ranges from axis.range overrides / auto ranges
-    const resolve_range = (
-      axis: { range?: [number | null, number | null] },
-      auto: Vec2,
-    ): Vec2 => [axis.range?.[0] ?? auto[0], axis.range?.[1] ?? auto[1]]
-    const new_x = resolve_range(x_axis, auto_ranges.x)
-    const new_x2 = resolve_range(x2_axis, auto_ranges.x2)
-    const new_y = resolve_range(y_axis, auto_ranges.y)
-    const new_y2 = resolve_range(y2_axis, auto_ranges.y2)
-    if (
-      ranges.initial.x[0] !== new_x[0] || ranges.initial.x[1] !== new_x[1] ||
-      ranges.initial.x2[0] !== new_x2[0] || ranges.initial.x2[1] !== new_x2[1] ||
-      ranges.initial.y[0] !== new_y[0] || ranges.initial.y[1] !== new_y[1] ||
-      ranges.initial.y2[0] !== new_y2[0] || ranges.initial.y2[1] !== new_y2[1]
-    ) {
-      ranges = {
-        initial: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
-        current: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
-      }
+    // resolve_axis_ranges returns null for transient non-finite bounds (skip: writing
+    // NaN breaks scales and, since NaN !== NaN, loops the effect)
+    const next = resolve_axis_ranges({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis }, auto_ranges)
+    if (!next) return
+    // untrack the read of `ranges` so the assignment can't re-trigger this effect
+    // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
+    const init = untrack(() => ranges.initial)
+    if (!axis_ranges_equal(init, next)) {
+      ranges = { initial: { ...next }, current: { ...next } }
     }
   })
 
@@ -517,6 +525,20 @@
     y2: create_scale(y2_axis.scale_type ?? `linear`, ranges.current.y2, [height - pad.b, pad.t]),
   })
 
+  // Value scale for a box (vertical -> y/y2, horizontal -> x/x2), made log-safe: on a
+  // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
+  // outliers) have no finite pixel. Clamp to LOG_EPS so whiskers/boxes/labels draw
+  // toward the plot edge (the clip group crops the overshoot) instead of NaN coords.
+  const box_val_scale = (srs: BoxPlotSeries<Metadata>): (val: number) => number => {
+    const vertical = orientation === `vertical`
+    const secondary = is_secondary(srs)
+    const scale = vertical
+      ? (secondary ? scales.y2 : scales.y)
+      : (secondary ? scales.x2 : scales.x)
+    const axis = vertical ? (secondary ? y2_axis : y_axis) : (secondary ? x2_axis : x_axis)
+    return axis.scale_type === `log` ? (val) => scale(Math.max(val, LOG_EPS)) : scale
+  }
+
   // Categorical tick labels (slot index -> category name) unless user provides a label mapping
   let effective_cat_ticks = $derived.by(() => {
     if (slot_list.length === 0) return undefined
@@ -524,10 +546,7 @@
     if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks)) {
       return user_ticks
     }
-    return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat])) as Record<
-      number,
-      string
-    >
+    return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat]))
   })
 
   let ticks = $derived({
@@ -600,12 +619,23 @@
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
       if (dx > 5 && dy > 5 && Number.isFinite(x1) && Number.isFinite(x2)) {
-        x_axis = { ...x_axis, range: [Math.min(x1, x2), Math.max(x1, x2)] }
-        if (has_secondary && Number.isFinite(x2_1) && Number.isFinite(x2_2)) {
-          x2_axis = { ...x2_axis, range: [Math.min(x2_1, x2_2), Math.max(x2_1, x2_2)] }
+        x_axis = { ...x_axis, range: sorted_range(x1, x2) }
+        // the secondary value axis is x2 only in horizontal mode, y2 only in vertical
+        // (is_secondary keys off orientation); writing the off-orientation axis would
+        // store a phantom range from its [0, 1] sentinel scale into the bound prop
+        if (
+          has_secondary && orientation === `horizontal` &&
+          Number.isFinite(x2_1) && Number.isFinite(x2_2)
+        ) {
+          x2_axis_prop = { ...x2_axis_prop, range: sorted_range(x2_1, x2_2) }
         }
-        y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
-        y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
+        y_axis = { ...y_axis, range: sorted_range(y1, y2) }
+        if (
+          has_secondary && orientation === `vertical` &&
+          Number.isFinite(y2_1) && Number.isFinite(y2_2)
+        ) {
+          y2_axis_prop = { ...y2_axis_prop, range: sorted_range(y2_1, y2_2) }
+        }
       }
     }
     drag_state = { start: null, current: null, bounds: null }
@@ -614,19 +644,30 @@
     document.body.style.cursor = `default`
   }
 
+  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
+  // scale's transform space (log axes pan by a constant factor, linear by a shift)
+  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
+    ranges.current.x = pan_range_by_pixels(init.initial_x_range, dx_px, chart_width, x_axis.scale_type)
+    ranges.current.x2 = pan_range_by_pixels(init.initial_x2_range, dx_px, chart_width, x2_axis.scale_type)
+    ranges.current.y = pan_range_by_pixels(init.initial_y_range, dy_px, chart_height, y_axis.scale_type)
+    ranges.current.y2 = pan_range_by_pixels(init.initial_y2_range, dy_px, chart_height, y2_axis.scale_type)
+  }
+  const zoom_all_axes = (init: InitialRanges, factor: number) => {
+    ranges.current.x = zoom_range_by_factor(init.initial_x_range, factor, x_axis.scale_type)
+    ranges.current.x2 = zoom_range_by_factor(init.initial_x2_range, factor, x2_axis.scale_type)
+    ranges.current.y = zoom_range_by_factor(init.initial_y_range, factor, y_axis.scale_type)
+    ranges.current.y2 = zoom_range_by_factor(init.initial_y2_range, factor, y2_axis.scale_type)
+  }
+
+  // Pan drag handler (drag direction inverted on x for natural pan feel)
   const on_pan_move = (evt: MouseEvent) => {
     if (!pan_drag_state) return
-    const dx = evt.clientX - pan_drag_state.start.x
-    const dy = evt.clientY - pan_drag_state.start.y
     const sensitivity = pan?.drag_sensitivity ?? 1
-    const x_delta = pixels_to_data_delta(-dx * sensitivity, pan_drag_state.initial_x_range, chart_width)
-    const x2_delta = pixels_to_data_delta(-dx * sensitivity, pan_drag_state.initial_x2_range, chart_width)
-    const y_delta = pixels_to_data_delta(dy * sensitivity, pan_drag_state.initial_y_range, chart_height)
-    const y2_delta = pixels_to_data_delta(dy * sensitivity, pan_drag_state.initial_y2_range, chart_height)
-    ranges.current.x = pan_range(pan_drag_state.initial_x_range, x_delta)
-    ranges.current.x2 = pan_range(pan_drag_state.initial_x2_range, x2_delta)
-    ranges.current.y = pan_range(pan_drag_state.initial_y_range, y_delta)
-    ranges.current.y2 = pan_range(pan_drag_state.initial_y2_range, y2_delta)
+    pan_all_axes(
+      pan_drag_state,
+      -(evt.clientX - pan_drag_state.start.x) * sensitivity,
+      (evt.clientY - pan_drag_state.start.y) * sensitivity,
+    )
   }
   const on_pan_end = () => {
     pan_drag_state = null
@@ -639,14 +680,9 @@
   // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
   // onDestroy also runs during SSR teardown, where window/document don't exist.
   onDestroy(() => {
-    if (typeof window === `undefined`) return
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
+    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
     drag_state = { start: null, current: null, bounds: null }
     pan_drag_state = null
-    document.body.style.cursor = ``
   })
 
   function handle_mouse_down(evt: MouseEvent) {
@@ -678,16 +714,14 @@
     if (!pan_enabled || !is_focused || !shift_held) return
     evt.preventDefault()
     const sensitivity = pan?.wheel_sensitivity ?? 1
-    const x_delta = pixels_to_data_delta(evt.deltaX * sensitivity, ranges.current.x, chart_width)
-    const x2_delta = pixels_to_data_delta(evt.deltaX * sensitivity, ranges.current.x2, chart_width)
-    const y_delta = pixels_to_data_delta(evt.deltaY * sensitivity, ranges.current.y, chart_height)
-    const y2_delta = pixels_to_data_delta(evt.deltaY * sensitivity, ranges.current.y2, chart_height)
     if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      ranges.current.x = pan_range(ranges.current.x, x_delta)
-      ranges.current.x2 = pan_range(ranges.current.x2, x2_delta)
+      const dx = evt.deltaX * sensitivity
+      ranges.current.x = pan_range_by_pixels(ranges.current.x, dx, chart_width, x_axis.scale_type)
+      ranges.current.x2 = pan_range_by_pixels(ranges.current.x2, dx, chart_width, x2_axis.scale_type)
     } else {
-      ranges.current.y = pan_range(ranges.current.y, y_delta)
-      ranges.current.y2 = pan_range(ranges.current.y2, y2_delta)
+      const dy = evt.deltaY * sensitivity
+      ranges.current.y = pan_range_by_pixels(ranges.current.y, dy, chart_height, y_axis.scale_type)
+      ranges.current.y2 = pan_range_by_pixels(ranges.current.y2, dy, chart_height, y2_axis.scale_type)
     }
   }
 
@@ -718,34 +752,10 @@
     if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
     const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
     const scale = curr_dist / start_dist
+    // Pinch zoom about the view center (spread = zoom in, pinch = zoom out)
     if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      const zoom = (rng: Vec2): Vec2 => {
-        const span = rng[1] - rng[0]
-        const center = (rng[0] + rng[1]) / 2
-        return [center - span / scale / 2, center + span / scale / 2]
-      }
-      ranges.current.x = zoom(touch_state.initial_x_range)
-      ranges.current.x2 = zoom(touch_state.initial_x2_range)
-      ranges.current.y = zoom(touch_state.initial_y_range)
-      ranges.current.y2 = zoom(touch_state.initial_y2_range)
-    } else {
-      ranges.current.x = pan_range(
-        touch_state.initial_x_range,
-        pixels_to_data_delta(-dx, touch_state.initial_x_range, chart_width),
-      )
-      ranges.current.x2 = pan_range(
-        touch_state.initial_x2_range,
-        pixels_to_data_delta(-dx, touch_state.initial_x2_range, chart_width),
-      )
-      ranges.current.y = pan_range(
-        touch_state.initial_y_range,
-        pixels_to_data_delta(dy, touch_state.initial_y_range, chart_height),
-      )
-      ranges.current.y2 = pan_range(
-        touch_state.initial_y2_range,
-        pixels_to_data_delta(dy, touch_state.initial_y2_range, chart_height),
-      )
-    }
+      zoom_all_axes(touch_state, scale)
+    } else pan_all_axes(touch_state, -dx, dy)
   }
   const handle_touch_end = () => (touch_state = null)
 
@@ -760,32 +770,14 @@
     })),
   )
 
-  function toggle_series_visibility(series_idx: number) {
-    if (series_idx >= 0 && series_idx < series.length) {
-      series = series.map((srs, idx) =>
-        idx === series_idx ? { ...srs, visible: !(srs.visible ?? true) } : srs
-      )
-    }
-  }
-  function toggle_group_visibility(_group: string, indices: number[]) {
-    const valid = indices.filter((idx) => idx >= 0 && idx < series.length)
-    if (valid.length === 0) return
-    const idx_set = new Set(valid)
-    const all_visible = valid.every((idx) => series[idx].visible ?? true)
-    series = series.map((srs, idx) =>
-      idx_set.has(idx) ? { ...srs, visible: !all_visible } : srs
-    )
-  }
+  const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
 
   let box_points_for_placement = $derived.by(() => {
     if (!width || !height || visible_boxes.length === 0) return []
     const vertical = orientation === `vertical`
     return visible_boxes
       .map((box_item) => {
-        const secondary = is_secondary(box_item.series)
-        const val_scale = vertical
-          ? (secondary ? scales.y2 : scales.y)
-          : (secondary ? scales.x2 : scales.x)
+        const val_scale = box_val_scale(box_item.series)
         const cat_scale = vertical ? scales.x : scales.y
         const cc = cat_scale(box_item.slot)
         const vc = val_scale(box_item.stats.median)
@@ -834,14 +826,10 @@
 
   // === Tooltip / hover ===
   let hover_info = $state<BoxHover | null>(null)
-  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   function get_box_data(box_item: Box, color: string): BoxHover {
     const vertical = orientation === `vertical`
-    const secondary = is_secondary(box_item.series)
-    const val_scale = vertical
-      ? (secondary ? scales.y2 : scales.y)
-      : (secondary ? scales.x2 : scales.x)
+    const val_scale = box_val_scale(box_item.series)
     const cat_scale = vertical ? scales.x : scales.y
     const cc = cat_scale(box_item.slot)
     const v_hi = val_scale(box_item.stats.whisker_high)
@@ -984,9 +972,9 @@
         ranges.current.y = [...ranges.initial.y] as Vec2
         ranges.current.y2 = [...ranges.initial.y2] as Vec2
         x_axis = { ...x_axis, range: [null, null] }
-        x2_axis = { ...x2_axis, range: [null, null] }
+        x2_axis_prop = { ...x2_axis_prop, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
-        y2_axis = { ...y2_axis, range: [null, null] }
+        y2_axis_prop = { ...y2_axis_prop, range: [null, null] }
       }}
       onmouseleave={() => {
         hovered = false
@@ -1029,6 +1017,7 @@
         ticks={ticks.x as number[]}
         place={scales.x}
         axis={x_axis}
+        domain={ranges.current.x as Vec2}
         {pad}
         {width}
         {height}
@@ -1046,6 +1035,7 @@
           ticks={ticks.x2 as number[]}
           place={scales.x2}
           axis={x2_axis}
+          domain={ranges.current.x2 as Vec2}
           {pad}
           {width}
           {height}
@@ -1061,6 +1051,7 @@
         ticks={ticks.y as number[]}
         place={scales.y}
         axis={y_axis}
+        domain={ranges.current.y as Vec2}
         {pad}
         {width}
         {height}
@@ -1076,21 +1067,18 @@
       />
 
       {#if has_secondary && orientation === `vertical`}
-        {@const y2_inside = y2_axis.tick?.label?.inside ?? false}
-        {@const y2_tick_shift = y2_inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-        {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
         <PlotAxis
           side="y2"
           ticks={ticks.y2 as number[]}
           place={scales.y2}
           axis={y2_axis}
+          domain={ranges.current.y2 as Vec2}
           {pad}
           {width}
           {height}
           show_grid={display.y2_grid}
           tick_label={(tick) => get_tick_label(tick, y2_axis.ticks)}
-          label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
-          (y2_axis.label_shift?.x ?? 0)}
+          label_x={y2_axis_label_x(y2_axis, width, pad.r, tick_label_widths.y2_max)}
           label_y={pad.t + chart_height / 2 + (y2_axis.label_shift?.y ?? 0)}
         />
       {/if}
@@ -1101,6 +1089,10 @@
         </clipPath>
       </defs>
 
+      <!-- Chart content is clipped in two groups so reference lines can interleave
+           at their z positions while staying outside the chart clip: each line still
+           self-clips to the plot area inside ReferenceLine, only its annotation text
+           is allowed to overflow the plot edges. -->
       <g clip-path="url(#{clip_path_id})">
         <ZeroLines
           {display}
@@ -1122,19 +1114,18 @@
           {height}
           {pad}
         />
+      </g>
 
-        {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+      {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
-        <!-- Boxes -->
+      <!-- Boxes -->
+      <g clip-path="url(#{clip_path_id})">
         {#each visible_boxes as box_item (box_item.series.id ?? box_item.idx)}
           {@const stats = box_item.stats}
           {#if Number.isFinite(stats.median)}
             {@const vertical = orientation === `vertical`}
-            {@const secondary = is_secondary(box_item.series)}
             {@const cat_scale = vertical ? scales.x : scales.y}
-            {@const val_scale = vertical
-            ? (secondary ? scales.y2 : scales.y)
-            : (secondary ? scales.x2 : scales.x)}
+            {@const val_scale = box_val_scale(box_item.series)}
             {@const color = box_color(box_item.idx)}
             {@const draw_box = draws_box(box_item.series)}
             {@const kde = violin_kdes.get(box_item.idx)}
@@ -1292,10 +1283,10 @@
             </g>
           {/if}
         {/each}
-
-        {@render ref_lines_layer(ref_lines_by_z.below_points)}
-        {@render ref_lines_layer(ref_lines_by_z.above_all)}
       </g>
+
+      {@render ref_lines_layer(ref_lines_by_z.below_points)}
+      {@render ref_lines_layer(ref_lines_by_z.above_all)}
     </svg>
 
     {#if legend && should_show_legend}
@@ -1313,8 +1304,9 @@
         bind:root_element={legend_element}
         {...legend}
         series_data={legend_data}
-        on_toggle={legend?.on_toggle || toggle_series_visibility}
-        on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
+        on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
+        on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
+        on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_hover_change={legend_hover.set_locked}
         on_item_hover={(item) =>
           (hovered_legend_series_idx = item != null && item.series_idx >= 0
@@ -1328,21 +1320,13 @@
     {/if}
 
     {#if hover_info && hovered}
-      {@const tooltip_pos = constrain_tooltip_position(
-      hover_info.cx,
-      hover_info.cy,
-      tooltip_el?.offsetWidth ?? 140,
-      tooltip_el?.offsetHeight ?? 50,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
-    )}
       <PlotTooltip
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        offset={{ x: 0, y: 0 }}
+        x={hover_info.cx}
+        y={hover_info.cy}
+        offset={{ x: 10, y: 5 }}
+        constrain_to={{ width, height }}
+        fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
-        bind:wrapper={tooltip_el}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
@@ -1388,9 +1372,9 @@
         bind:kind
         bind:side
         bind:x_axis
-        bind:x2_axis
+        bind:x2_axis={x2_axis_prop}
         bind:y_axis
-        bind:y2_axis
+        bind:y2_axis={y2_axis_prop}
         bind:display
         auto_x_range={auto_ranges.x as Vec2}
         auto_x2_range={auto_ranges.x2 as Vec2}
@@ -1432,7 +1416,10 @@
     background: var(--boxplot-fullscreen-bg, var(--boxplot-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--boxplot-fullscreen-bg, var(--boxplot-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
   .header-controls {

@@ -3,7 +3,59 @@
 
 import { ascending } from 'd3-array'
 import { quantile_unordered } from '$lib/plot/box/quantile'
-import type { WhiskerMode } from '$lib/plot/core/types'
+import type { HandlerProps } from '$lib/plot/core/types'
+
+// === Box plot types ===
+// How box plot whiskers are computed from a raw distribution
+export type WhiskerMode = `tukey` | `minmax` | `percentile` | `std`
+
+// Which glyph(s) to draw per series: a box, a violin (KDE density), or both
+export type ViolinKind = `box` | `violin` | `violin+box`
+// Which half of the category slot a violin occupies (for one-sided / split violins)
+export type ViolinSide = `both` | `positive` | `negative`
+// Bandwidth selector for the KDE (a number, or a rule-of-thumb name)
+export type BandwidthOption = number | `silverman` | `scott`
+
+// One box/violin in a BoxPlot, summarizing a single raw distribution (y)
+export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
+  id?: string | number // Optional stable identifier (used for keying)
+  y: readonly number[] // raw distribution for THIS box (quantiles/KDE computed internally)
+  label?: string // category label (axis tick + legend + tooltip title)
+  color?: string
+  box_width?: number // fraction of the category slot (0..1), default from settings
+  visible?: boolean
+  // Group name for organizing legend items (same semantics as BarSeries.legend_group)
+  legend_group?: string
+  metadata?: Metadata
+  // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
+  x_axis?: `x1` | `x2`
+  // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
+  y_axis?: `y1` | `y2`
+  // Per-series whisker overrides (else fall back to component-level props)
+  whisker_mode?: WhiskerMode
+  whisker_range?: number
+  whisker_percentiles?: [number, number]
+  // Violin overrides (else fall back to component-level props)
+  kind?: ViolinKind // 'box' (default), 'violin', or 'violin+box'
+  side?: ViolinSide // 'both' (default), 'positive', or 'negative'
+  bandwidth?: BandwidthOption
+  violin_width?: number // fraction of the category slot
+  clip?: [number | null, number | null] // hard KDE bounds (e.g. [0, null] for RMSD)
+  // Series sharing a `category` occupy the same slot (for split/grouped violins).
+  // When omitted, each series gets its own slot (default box/violin behavior).
+  category?: string
+}
+
+export interface BoxHandlerProps<
+  Metadata = Record<string, unknown>,
+> extends HandlerProps<Metadata> {
+  box_idx: number
+  stats: BoxStats
+  color: string
+  category_label?: string
+  active_y_axis: `y1` | `y2`
+  active_x_axis: `x1` | `x2`
+}
 
 // Summary statistics for a single box, in data units.
 export interface BoxStats {

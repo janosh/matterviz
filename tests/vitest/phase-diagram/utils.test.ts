@@ -765,9 +765,7 @@ describe(`tokenize_formula`, () => {
         { sub: `12` },
         { text: `H` },
         { sub: `22` },
-        {
-          text: `O`,
-        },
+        { text: `O` },
         { sub: `11` },
       ],
       desc: `multi-digit subscripts`,

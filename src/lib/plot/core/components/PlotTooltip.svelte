@@ -1,5 +1,6 @@
 <script lang="ts">
   import { luminance } from '$lib/colors'
+  import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -9,6 +10,8 @@
     bg_color,
     offset = { x: 6, y: 0 },
     fixed = false,
+    constrain_to,
+    fallback_size,
     wrapper = $bindable(),
     children,
     ...rest
@@ -18,6 +21,8 @@
     bg_color?: string | null
     offset?: { x: number; y: number }
     fixed?: boolean // Use position: fixed (for viewport coords) vs absolute
+    constrain_to?: { width: number; height: number } // flip/clamp within these bounds (offset consumed by constraining)
+    fallback_size?: { width: number; height: number } // size estimate before first measure
     wrapper?: HTMLDivElement // Bindable reference for measuring tooltip size
     children: Snippet
   } = $props()
@@ -29,6 +34,17 @@
 
   // For fixed positioning (viewport coords), flip to opposite side when near viewport edges
   const pos = $derived.by(() => {
+    if (constrain_to) {
+      return constrain_tooltip_position(
+        x,
+        y,
+        wrapper?.offsetWidth ?? fallback_size?.width ?? 0,
+        wrapper?.offsetHeight ?? fallback_size?.height ?? 0,
+        constrain_to.width,
+        constrain_to.height,
+        { offset_x: offset.x, offset_y: offset.y },
+      )
+    }
     const raw_x = x + offset.x
     const raw_y = y + offset.y
     if (!fixed) return { x: raw_x, y: raw_y }

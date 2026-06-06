@@ -291,9 +291,15 @@
   .pie-segment.interactive:focus {
     outline: none;
   }
+  svg {
+    /* very thin slices place their labels outside the pie at 1.2x the outer radius,
+    past the square viewBox - the default svg overflow: hidden would clip them */
+    overflow: visible;
+  }
   foreignobject {
     pointer-events: none;
     transition: all 0.2s ease;
+    overflow: visible;
   }
   foreignobject.hovered {
     font-weight: 700;
@@ -307,9 +313,6 @@
     height: 100%;
     transition: all 0.2s ease;
     white-space: nowrap;
-  }
-  foreignobject {
-    overflow: visible;
   }
   .pie-label.hovered {
     font-weight: 700;

@@ -3,10 +3,7 @@ import { compute_broadened_pattern, DEFAULT_BROADENING } from '$lib/xrd/broadeni
 import { describe, expect, test } from 'vitest'
 
 describe(`compute_broadened_pattern`, () => {
-  const dummy_pattern = {
-    x: [20, 40],
-    y: [100, 50],
-  }
+  const dummy_pattern = { x: [20, 40], y: [100, 50] }
 
   describe(`input validation`, () => {
     test.each([

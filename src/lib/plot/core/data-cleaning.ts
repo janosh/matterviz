@@ -1,19 +1,102 @@
 // Data cleaning utilities for plot data
 // Detects oscillations, enforces physical bounds, and handles multi-dimensional datasets
 
+import type { Vec2 } from '$lib/math'
+import type { DataSeries } from '$lib/plot/core/types'
 import { apply_gaussian_smearing } from '$lib/spectral/helpers'
-import type {
-  CleaningConfig,
-  CleaningQuality,
-  CleaningResult,
-  DataSeries,
-  InstabilityResult,
-  InvalidValueMode,
-  LocalOutlierConfig,
-  LocalOutlierResult,
-  PhysicalBounds,
-  SmoothingConfig,
-} from '$lib/plot/core/types'
+
+// --- Data Cleaning Types ---
+
+// Oscillation detection weights (all default to 1.0)
+export interface OscillationWeights {
+  derivative_variance?: number // Weight for derivative variance method
+  amplitude_growth?: number // Weight for exponential amplitude growth
+  sign_changes?: number // Weight for derivative sign change frequency
+}
+
+// How to handle invalid values (NaN, Infinity)
+export type InvalidValueMode = `remove` | `propagate` | `interpolate`
+
+// Truncation strategy when instability detected
+export type TruncationMode = `hard_cut` | `mark_unstable`
+
+// Physical bounds configuration
+export interface PhysicalBounds {
+  min?: number | ((x: number) => number) // Static or x-dependent minimum
+  max?: number | ((x: number) => number) // Static or x-dependent maximum
+  mode?: `clamp` | `filter` | `null` // How to handle violations
+}
+
+// Smoothing algorithm configuration (discriminated union for type safety)
+export type SmoothingConfig =
+  | { type: `moving_avg`; window: number }
+  | { type: `savgol`; window: number; polynomial_order?: number } // window must be odd
+  | { type: `gaussian`; sigma: number } // sigma controls Gaussian kernel width
+
+// Local outlier detection config (sliding window approach)
+export interface LocalOutlierConfig {
+  window_half?: number // Points on each side for local context (default: 7)
+  mad_threshold?: number // MADs from local median to flag outlier (default: 2.0)
+  max_iterations?: number // Iterative passes to catch clustered outliers (default: 5)
+}
+
+// Result of local outlier detection
+export interface LocalOutlierResult {
+  kept_indices: number[]
+  removed_indices: number[]
+  iterations_used: number
+}
+
+// Main cleaning configuration
+export interface CleaningConfig {
+  // Oscillation detection
+  oscillation_threshold?: number // Combined score threshold (default: 3.0)
+  oscillation_weights?: OscillationWeights // Method weights
+  window_size?: number // Rolling window for detection (default: 5)
+
+  // Data handling
+  invalid_values?: InvalidValueMode // NaN/Infinity handling (default: 'remove')
+  bounds?: PhysicalBounds // Physical constraints
+  smooth?: SmoothingConfig // Optional smoothing
+  local_outliers?: LocalOutlierConfig // Local sliding window outlier removal
+
+  // Truncation
+  truncation_mode?: TruncationMode // 'hard_cut' or 'mark_unstable' (default: 'mark_unstable')
+
+  // Performance
+  in_place?: boolean // Mutate input arrays (default: true)
+}
+
+// Quality report from cleaning operation
+export interface CleaningQuality {
+  points_removed: number
+  invalid_values_found: number // NaN/Infinity count
+  oscillation_detected: boolean
+  oscillation_score?: number // Combined weighted score
+  bounds_violations: number
+  outliers_removed?: number // Count of local outliers removed
+  stable_range?: Vec2 // [start_x, end_x] if mark_unstable mode
+  truncated_at_x?: number // x value if hard_cut mode
+}
+
+// Result of a cleaning operation
+export interface CleaningResult<T = DataSeries> {
+  series: T // Cleaned data (same ref if in_place)
+  quality: CleaningQuality
+}
+
+// Instability detection result
+export interface InstabilityResult {
+  detected: boolean
+  onset_index: number
+  onset_x: number
+  combined_score: number
+  method_scores: {
+    derivative_variance: number
+    amplitude_growth: number
+    sign_changes: number
+  }
+}
 
 // Default configuration values
 const DEFAULT_WINDOW_SIZE = 5

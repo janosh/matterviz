@@ -8,8 +8,42 @@
 import { hsl } from 'd3-color'
 import type { HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
-import type { SunburstNode, SunburstSort, SunburstValueMode } from '$lib/plot/core/types'
 import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
+
+// === Sunburst chart types ===
+// How node values are interpreted (plotly `branchvalues` semantics):
+// 'leaf-sum'  - parent values ignored, computed as sum of leaf values (d3 .sum default)
+// 'total'     - every node's value is authoritative; children should sum <= parent
+//               (plotly branchvalues='total'; a shortfall leaves an angular gap)
+// 'remainder' - a node's own value is added on top of its children's sum
+export type SunburstValueMode = `leaf-sum` | `total` | `remainder`
+// Arc label orientation: 'auto' picks radial/tangential per arc based on available space
+export type SunburstLabelRotation = `auto` | `radial` | `tangential` | `horizontal`
+// Sibling ordering: 'none' preserves input order (e.g. spacegroup number order)
+export type SunburstSort = `descending` | `ascending` | `none`
+// What arc labels display (plotly textinfo equivalent); percent is of the root total
+export type SunburstLabelText = `label` | `value` | `percent` | `label+value` | `label+percent`
+// Chart geometry: polar rings (sunburst) or stacked horizontal rows (icicle)
+export type SunburstShape = `sunburst` | `icicle`
+
+export interface SunburstNode<Metadata = Record<string, unknown>> {
+  id?: string | number // stable id (defaults to slash-joined label path, e.g. "cubic/Fm-3m")
+  label?: string
+  value?: number // required on leaves ('leaf-sum') / authoritative on all nodes ('total')
+  color?: string // explicit color, inherited by descendants without their own
+  children?: SunburstNode<Metadata>[]
+  metadata?: Metadata
+}
+
+// Event payload for hover/click/zoom callbacks: a PositionedArc minus its geometry
+// (screen coords are an implementation detail), plus the resolved parent id
+export interface SunburstNodeHandlerProps<Metadata = Record<string, unknown>> extends Omit<
+  PositionedArc<Metadata>,
+  `x0` | `x1` | `y0` | `y1` | `subtree_end` | `parent_idx`
+> {
+  type: `node`
+  parent_id: string | number | null
+}
 
 // An arc after layout, in normalized partition coordinates (pixel mapping at render)
 export interface PositionedArc<Metadata = Record<string, unknown>> {

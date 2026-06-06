@@ -81,6 +81,18 @@ export const doc_query = <T extends HTMLElement>(
 
 export const svg_query = (selector: string): SVGElement => query_required(selector)
 
+// Walk up from `el` to the owning <svg>: true if any ancestor applies a clip-path.
+// Used to assert reference-line annotations render unclipped at the plot edges.
+export const inside_clip_path = (el: Element | null | undefined): boolean => {
+  for (
+    let node = el?.parentElement;
+    node && node.tagName.toLowerCase() !== `svg`;
+    node = node.parentElement
+  )
+    if (node.getAttribute(`clip-path`)) return true
+  return false
+}
+
 export function set_element_size(element: HTMLElement, width: number, height: number): void {
   Object.defineProperty(element, `clientWidth`, { value: width, configurable: true })
   Object.defineProperty(element, `clientHeight`, { value: height, configurable: true })

@@ -254,8 +254,13 @@ export function create_scale(
   const type_name = get_scale_type_name(scale_type)
 
   if (type_name === `log`) {
+    // Clamp BOTH ends to the positive floor: panning shifts ranges linearly, so a
+    // log axis panned past zero can arrive with max <= 0 — an unclamped max makes
+    // every scale output (and invert) NaN, blanking the chart and polluting axis
+    // ranges. A clamped degenerate domain just renders flat and stays recoverable.
+    const lo = Math.max(min_val, math.LOG_EPS)
     return scaleLog()
-      .domain([Math.max(min_val, math.LOG_EPS), max_val])
+      .domain([lo, Math.max(max_val, lo)])
       .range(output_range)
   }
   if (type_name === `arcsinh`) {

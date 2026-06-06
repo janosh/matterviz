@@ -1087,7 +1087,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 1,
       },
       stroke_width: {
-        value: 1.5,
+        value: 0.5,
         description: `Box outline width`,
         minimum: 0,
         maximum: 5,
@@ -1105,7 +1105,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     whisker: {
       width: {
-        value: 1.5,
+        value: 1,
         description: `Whisker line width`,
         minimum: 0.5,
         maximum: 5,
@@ -1123,7 +1123,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     median: {
       width: {
-        value: 2,
+        value: 1.5,
         description: `Median line width`,
         minimum: 0.5,
         maximum: 6,
@@ -1237,7 +1237,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 0.8,
     },
     pad_angle: {
-      value: 0.2,
+      value: 0.1,
       description: `Angular gap in degrees between sibling arcs`,
       minimum: 0,
       maximum: 4,

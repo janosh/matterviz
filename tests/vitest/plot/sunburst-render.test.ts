@@ -1,5 +1,10 @@
 import type { SunburstNode } from '$lib/plot'
-import { arc_label_transform, compute_sunburst_layout, project_arcs } from '$lib/plot'
+import {
+  arc_label_transform,
+  arrow_nav_target,
+  compute_sunburst_layout,
+  project_arcs,
+} from '$lib/plot'
 import type { ScreenGeometry, ViewWindow } from '$lib/plot/sunburst/render'
 import { describe, expect, test } from 'vitest'
 
@@ -102,5 +107,54 @@ describe(`arc_label_transform`, () => {
     const transform = arc_label_transform(d, text_w, shape, rotation)
     if (expected === null) expect(transform).toBeNull()
     else expect(transform).toMatch(expected)
+  })
+})
+
+describe(`arrow_nav_target`, () => {
+  // pre-order indices: root=0, a=1, a1=2, a2=3, b=4, b1=5, c=6
+  const nav_tree: SunburstNode[] = [
+    {
+      label: `a`,
+      children: [
+        { label: `a1`, value: 1 },
+        { label: `a2`, value: 2 },
+      ],
+    },
+    { label: `b`, children: [{ label: `b1`, value: 4 }] },
+    { label: `c`, value: 8 },
+  ]
+  const { arcs: nav_arcs } = compute_sunburst_layout(nav_tree)
+  const all_visible = () => true
+
+  test.each([
+    [`ArrowRight steps to the next sibling`, 1, `ArrowRight`, 4], // a -> b
+    [`ArrowRight wraps from the last sibling to the first`, 6, `ArrowRight`, 1], // c -> a
+    [`ArrowLeft wraps from the first sibling to the last`, 1, `ArrowLeft`, 6], // a -> c
+    [`ArrowDown enters the first visible child`, 1, `ArrowDown`, 2], // a -> a1
+    [`ArrowDown on a leaf is a no-op`, 6, `ArrowDown`, null], // c has no children
+    [`ArrowUp returns to the parent`, 2, `ArrowUp`, 1], // a1 -> a
+    [`ArrowUp never targets the hidden root at depth 0`, 1, `ArrowUp`, null], // a -> root
+    [`single visible sibling: left/right are no-ops`, 5, `ArrowRight`, null], // b1 alone
+    [`non-arrow keys are ignored`, 1, `Enter`, null],
+    [`unknown current index returns null`, 99, `ArrowRight`, null],
+  ] as const)(`%s`, (_name, current_idx, key, expected) => {
+    expect(arrow_nav_target(nav_arcs, all_visible, current_idx, key)).toBe(expected)
+  })
+
+  test(`hidden arcs are skipped when cycling siblings (wrap respects visibility)`, () => {
+    const b_hidden = (idx: number) => idx !== 4
+    // a -> c directly (b hidden), and c wraps back to a
+    expect(arrow_nav_target(nav_arcs, b_hidden, 1, `ArrowRight`)).toBe(6)
+    expect(arrow_nav_target(nav_arcs, b_hidden, 6, `ArrowRight`)).toBe(1)
+    // only one sibling left visible -> no-op
+    const only_a_visible = (idx: number) => idx === 1
+    expect(arrow_nav_target(nav_arcs, only_a_visible, 1, `ArrowLeft`)).toBeNull()
+  })
+
+  test(`ArrowDown and ArrowUp respect visibility of the target`, () => {
+    // a's first child a1 hidden -> ArrowDown is a no-op (no fall-through to a2)
+    expect(arrow_nav_target(nav_arcs, (idx) => idx !== 2, 1, `ArrowDown`)).toBeNull()
+    // parent a hidden -> ArrowUp from a1 is a no-op
+    expect(arrow_nav_target(nav_arcs, (idx) => idx !== 1, 2, `ArrowUp`)).toBeNull()
   })
 })

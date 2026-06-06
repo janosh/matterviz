@@ -9,6 +9,7 @@
   import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
+  import { unique_id } from '$lib/plot/core/utils'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -123,6 +124,11 @@
   // Shared icon/toggle styling for controls and export panes
   const pane_icon_style = `width: 14px; height: 14px`
   const pane_toggle_props = { style: `padding: 0` }
+
+  // Instance-unique prefix for gradient ids: region ids come from user data (e.g.
+  // 'liquid'), so two diagrams on one page would otherwise cross-reference each
+  // other's gradients (first-in-document wins, with that instance's pixel coords)
+  const gradient_uid = unique_id(`pd-gradient`)
 
   // Rebuild diagram data when diagram_input changes ($derived auto-recomputes)
   const rebuilt_data = $derived.by(() => {
@@ -619,7 +625,7 @@
         {#each transformed_regions as region (region.id)}
           {#if region.gradient}
             <linearGradient
-              id="gradient-{region.id}"
+              id="{gradient_uid}-{region.id}"
               x1={region.x_min}
               x2={region.x_max}
               y1="0"
@@ -661,7 +667,7 @@
           <path
             d={region.svg_path}
             fill={region.gradient
-            ? `url(#gradient-${region.id})`
+            ? `url(#${gradient_uid}-${region.id})`
             : (region.color || get_phase_color(region.name))}
             stroke="none"
             class:hovered={hovered_region?.id === region.id}

@@ -137,6 +137,30 @@ describe(`BinnedScatterPlot`, () => {
     expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
   })
 
+  // a NaN bound in a partially-set axis range would otherwise loop the auto-range
+  // effect forever (NaN !== NaN never settles) until effect_update_depth_exceeded
+  test(`NaN axis-range bound mounts without a reactive loop`, async () => {
+    const errors: unknown[][] = []
+    const error_spy = vi
+      .spyOn(console, `error`)
+      .mockImplementation((...args) => void errors.push(args))
+    try {
+      mount(BinnedScatterPlot, {
+        target: document.body,
+        props: {
+          series: [{ x: [0, 1], y: [0, 1] }],
+          density: hidden_density,
+          x_axis: { range: [null, NaN] as [null, number] },
+          style: `width: 800px; height: 600px`,
+        },
+      })
+      await settle()
+    } finally {
+      error_spy.mockRestore()
+    }
+    expect(errors.map(String).join(`\n`)).toBe(``)
+  })
+
   test(`can hide the fullscreen toggle`, async () => {
     mount(BinnedScatterPlot, {
       target: document.body,
