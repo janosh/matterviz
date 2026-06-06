@@ -153,6 +153,10 @@ jobs:
   vscode:
     needs: [version, verify, lint, test]
     runs-on: ubuntu-latest
+    # `release` environment gives a stable OIDC subject (repo:.../environment:release) that
+    # one Entra federated credential matches for both tag pushes and manual runs. Empty on
+    # dry runs so they never wait on any environment protection rules.
+    environment: ${{ !inputs.dry_run && 'release' || '' }}
     permissions:
       contents: read
       id-token: write # azure/login OIDC for the Marketplace publish
