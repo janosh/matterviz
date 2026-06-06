@@ -8,9 +8,11 @@ name: Publish
 #
 # npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
 # both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
-# Required repo secrets (extensions only):
-#   VSCE_PAT   - Azure DevOps PAT for the VS Code Marketplace (publisher `janosh`)
-#   OVSX_PAT   - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
+# The VS Code Marketplace publishes via Azure OIDC (no PAT) -- an Entra app with a federated
+# credential for this repo, added as a member of the `janosh` publisher.
+# Required repo secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID - the Entra app's IDs (for azure/login OIDC)
+#   OVSX_PAT                         - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
 
 on:
   push:
@@ -151,6 +153,9 @@ jobs:
   vscode:
     needs: [version, verify, lint, test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # azure/login OIDC for the Marketplace publish
     steps:
       - uses: actions/checkout@v6
         with:
@@ -166,13 +171,21 @@ jobs:
         working-directory: extensions/vscode
         run: npx @vscode/vsce package --no-dependencies -o matterviz.vsix
       # vsce/ovsx have no dry-run; packaging above already exercises the build, so a
-      # dry run just skips the two uploads (and needs no PATs)
+      # dry run just skips the two uploads
+      # Marketplace via OIDC federated identity (no PAT): azure/login mints a short-lived
+      # token that `vsce --azure-credential` uses; the Entra app must be a member of the
+      # `janosh` publisher. allow-no-subscriptions: the app needs no Azure subscription role.
+      - name: Azure login (OIDC)
+        if: ${{ !inputs.dry_run }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
       - name: Publish to VS Code Marketplace
         if: ${{ !inputs.dry_run }}
         working-directory: extensions/vscode
-        run: npx @vscode/vsce publish --no-dependencies --packagePath matterviz.vsix
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish --no-dependencies --azure-credential --packagePath matterviz.vsix
       - name: Publish to Open VSX
         if: ${{ !inputs.dry_run }}
         working-directory: extensions/vscode
