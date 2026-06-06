@@ -629,11 +629,8 @@
       for (let idx = 0; idx < 4; idx++) {
         const vx = vertices[idx]
         // Direction from centroid to vertex
-        const dir = {
-          x: vx.x - centroid.x,
-          y: vx.y - centroid.y,
-          z: vx.z - centroid.z,
-        }
+        const { x: cx, y: cy, z: cz } = centroid
+        const dir = { x: vx.x - cx, y: vx.y - cy, z: vx.z - cz }
         const len = Math.hypot(dir.x, dir.y, dir.z) || 1
         const label_pos = {
           x: vx.x + (dir.x / len) * distance,

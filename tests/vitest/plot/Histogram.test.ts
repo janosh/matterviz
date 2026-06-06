@@ -2,6 +2,7 @@ import { Histogram } from '$lib'
 import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { resize_element } from '../setup'
 
 function mount_histogram(props: Record<string, unknown>) {
   document.body.innerHTML = ``
@@ -227,6 +228,34 @@ describe(`Histogram`, () => {
     expect(Math.max(...x_ticks)).toBeLessThan(100)
     // y-range must bin the x2 series over the x2 domain (4 of 5 values share one bin)
     expect(Math.max(...get_y_tick_numbers())).toBeGreaterThanOrEqual(4)
+  })
+
+  test(`y2 axis title shares the y axis title's vertical center`, async () => {
+    mount_histogram({
+      series: [
+        { x: [], y: [1, 2, 3], label: `Main` },
+        { x: [], y: [10, 20, 30], label: `Sec`, y_axis: `y2` },
+      ],
+      mode: `overlay`, // single mode (default) would drop the y2 series
+      y_axis: { label: `Primary` },
+      y2_axis: { label: `Secondary` },
+    })
+    const plot = document.querySelector<HTMLElement>(`.histogram`)
+    if (!plot) throw new Error(`Histogram root element not found`)
+    await resize_element(plot, 400, 300) // axis labels only render once the plot has a size
+    // both y titles rotate about the plot's vertical center; a stale label_shift default
+    // used to push the y2 title 60px below center
+    const pivot_y = (selector: string) => {
+      const transform =
+        document
+          .querySelector(selector)
+          ?.closest(`foreignObject`)
+          ?.getAttribute(`transform`) ?? ``
+      const match = /rotate\(-90,\s*[\d.-]+,\s*([\d.-]+)\)/.exec(transform)
+      if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
+      return Number(match[1])
+    }
+    expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 
   test(`renders without error when legend prop is null`, async () => {

@@ -331,9 +331,7 @@ describe(`Trajectory Streaming`, () => {
         data,
         `compressed-trajectory.xyz.gz`,
         undefined,
-        {
-          use_indexing: true,
-        },
+        { use_indexing: true },
       )
 
       expect(result.is_indexed).toBe(true)

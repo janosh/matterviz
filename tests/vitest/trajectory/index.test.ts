@@ -54,10 +54,7 @@ describe(`Trajectory Validation`, () => {
       trajectory: {
         frames: [
           {
-            structure: {
-              sites: [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)],
-              charge: 0,
-            },
+            structure: { sites: [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)], charge: 0 },
             step: `invalid`,
             metadata: {},
           },

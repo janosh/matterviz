@@ -284,10 +284,9 @@ export function sample_series_obstacle_points(
       const n_samples = Math.floor(Math.hypot(point.x - prev.x, point.y - prev.y) / step)
       for (let idx = 1; idx < n_samples; idx++) {
         const frac = idx / n_samples
-        obstacles.push({
-          x: prev.x + (point.x - prev.x) * frac,
-          y: prev.y + (point.y - prev.y) * frac,
-        })
+        const x = prev.x + (point.x - prev.x) * frac
+        const y = prev.y + (point.y - prev.y) * frac
+        obstacles.push({ x, y })
       }
     }
     prev = point

@@ -376,12 +376,7 @@ describe(`ScatterPoint`, () => {
       },
       {
         name: `starts at explicit negative origin`,
-        props: {
-          x: -100,
-          y: -150,
-          origin: { x: -50, y: -75 },
-          offset: { x: -10, y: 10 },
-        },
+        props: { x: -100, y: -150, origin: { x: -50, y: -75 }, offset: { x: -10, y: 10 } },
         expected_origin: { x: -50, y: -75 },
       },
     ] as const)(`$name`, ({ props, expected_origin }) => {
@@ -396,12 +391,7 @@ describe(`ScatterPoint`, () => {
       const target = doc_query(`div`)
       mount(ScatterPoint, {
         target,
-        props: {
-          x: 100,
-          y: 150,
-          origin: { x: 12, y: 34 },
-          point_tween: { duration: 800 },
-        },
+        props: { x: 100, y: 150, origin: { x: 12, y: 34 }, point_tween: { duration: 800 } },
       })
       expect(doc_query(`g`).getAttribute(`transform`)).toBe(`translate(12 34)`)
     })

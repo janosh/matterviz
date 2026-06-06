@@ -75,11 +75,7 @@ describe(`ScatterPlot`, () => {
     {
       series: [
         basic,
-        {
-          x: [1, 2, 3],
-          y: [2, 5, 3],
-          point_style: { fill: `orangered`, radius: 4 },
-        },
+        { x: [1, 2, 3], y: [2, 5, 3], point_style: { fill: `orangered`, radius: 4 } },
       ],
       markers: `line+points`,
       expected_markers: 8,
