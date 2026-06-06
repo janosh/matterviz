@@ -1,7 +1,7 @@
 import { Sunburst } from '$lib'
 import type { PositionedArc, SunburstNode, SunburstNodeHandlerProps } from '$lib/plot'
 import { DEFAULT_SERIES_COLORS } from '$lib/plot'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { resize_element } from '../setup'
 
@@ -182,16 +182,28 @@ describe(`Sunburst`, () => {
     ])
   })
 
-  test(`legend toggle mutes a category's subtree; re-click restores it`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree, show_legend: true })
+  test(`legend toggle mutes a category's subtree (labels too); re-click restores it`, async () => {
+    const plot = await mount_sized_sunburst({
+      data: tree,
+      show_legend: true,
+      show_labels: true,
+    })
     const opacities = () =>
       ([`A`, `A1`, `A2`, `B`] as const).map((lbl) =>
         arc_path(plot, lbl).getAttribute(`fill-opacity`),
       )
+    const label_opacity = (text: string) =>
+      [...plot.querySelectorAll(`.arc-label`)]
+        .find((el) => el.textContent?.trim().startsWith(text))
+        ?.getAttribute(`fill-opacity`)
     await fire(plot.querySelector(`.legend-item`)) // mute A
     expect(opacities()).toEqual([`0.12`, `0.12`, `0.12`, `1`])
+    // muted arcs must not keep fully opaque labels floating over invisible arcs
+    expect(label_opacity(`A`)).toBe(`0.12`)
+    expect(label_opacity(`B`)).toBeNull()
     await fire(plot.querySelector(`.legend-item`)) // unmute A
     expect(opacities()).toEqual([`1`, `1`, `1`, `1`])
+    expect(label_opacity(`A`)).toBeNull()
   })
 
   test(`hovering an arc dims unrelated arcs but keeps its ancestors opaque`, async () => {
@@ -213,6 +225,53 @@ describe(`Sunburst`, () => {
     ]
     const plot = await mount_sized_sunburst({ data, value_mode: `total` })
     expect(plot.querySelector(`.center-label`)?.textContent).toContain(`10`)
+  })
+
+  // Regression guard for the effect_update_depth_exceeded class: a multi-root
+  // value_mode='total' hierarchy rendered as two instances with the default
+  // (non-zero) tween - the exact shape that surfaced the bug. A reactive read/write
+  // cycle in an effect (e.g. the view tween feeding back into its own target) trips
+  // Svelte's infinite-loop guard, which logs via console.error and throws; happy-dom
+  // flushes effects eagerly at mount, so it fires here. Mounts directly (not via the
+  // duration:0 helper) so the real Tween.of render-effect path is exercised.
+  test(`multi-root value_mode=total renders two instances without a reactive loop`, async () => {
+    const errors: unknown[][] = []
+    const error_spy = vi
+      .spyOn(console, `error`)
+      .mockImplementation((...args) => void errors.push(args))
+    // 7 roots x 34 numeric-labeled children, parent value == children sum (no warning)
+    const multi_root: SunburstNode[] = Array.from({ length: 7 }, (_root, sys) => ({
+      id: `sys${sys}`,
+      label: `sys${sys}`,
+      value: 34,
+      children: Array.from({ length: 34 }, (_child, num) => ({
+        id: `sys${sys}/${num}`,
+        label: `${num}`,
+        value: 1,
+      })),
+    }))
+    try {
+      for (let idx = 0; idx < 2; idx++) {
+        const target = document.createElement(`div`)
+        document.body.append(target)
+        mount(Sunburst, {
+          target,
+          props: {
+            data: multi_root,
+            value_mode: `total`,
+            style: `width: 500px; height: 360px`,
+          },
+        })
+        const plot = target.querySelector<HTMLElement>(`.sunburst`)
+        if (!plot) throw new Error(`Sunburst root element not found`)
+        await resize_element(plot, 500, 360)
+        expect(n_arcs(plot)).toBe(7 * 35) // 7 roots x (34 children + 1 root arc)
+      }
+    } finally {
+      error_spy.mockRestore()
+    }
+    // a clean render logs nothing; the loop guard logs (and throws) on a feedback cycle
+    expect(errors, errors.map(String).join(`\n`)).toHaveLength(0)
   })
 
   test.each([`Enter`, ` `])(
@@ -243,6 +302,108 @@ describe(`Sunburst`, () => {
     await fire(arc_path(plot, `A`))
     // the clicked arc collapsed into the hole - its tooltip must not linger
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+  })
+
+  // hover/focus state is index-based - swapping data must clear it, else the old
+  // tooltip lingers and whatever node now occupies the index renders as hovered
+  test(`swapping data clears stale hover/tooltip state`, async () => {
+    const props = $state({
+      data: tree,
+      tween: { duration: 0 },
+      style: `width: 500px; height: 360px;`,
+    })
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    mount(Sunburst, { target, props })
+    const plot = target.querySelector<HTMLElement>(`.sunburst`)
+    if (!plot) throw new Error(`Sunburst root element not found`)
+    await resize_element(plot, 500, 360)
+    await fire(arc_path(plot, `B`), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+    props.data = Array.from({ length: 5 }, (_node, idx) => ({
+      label: `N${idx}`,
+      value: idx + 1,
+    }))
+    flushSync()
+    await tick()
+    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+    // no arc of the new data may inherit the stale hover highlight/dimming
+    const opacities = [...plot.querySelectorAll(`.arcs path`)].map((path) =>
+      path.getAttribute(`fill-opacity`),
+    )
+    expect(opacities).toEqual([`1`, `1`, `1`, `1`, `1`])
+  })
+
+  // legend hover sets hovered_idx without hover_info (dim-only); the same-arc early
+  // return in set_arc_hover must not then suppress the arc's own tooltip forever
+  test(`tooltip still appears on an arc after its legend item was hovered`, async () => {
+    const plot = await mount_sized_sunburst({ data: tree, show_legend: true })
+    const legend_item = plot.querySelector(`.legend-item`) // item for category A
+    await fire(legend_item, mouse(`mouseenter`))
+    await fire(arc_path(plot, `A`), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+  })
+
+  // leaving the chart fires mouseleave on both the chart <g> and the <svg>; a hover
+  // clear must only report null once (and not at all when nothing was hovered)
+  test(`clearing an empty hover does not re-fire null callbacks`, async () => {
+    const on_node_hover = vi.fn()
+    const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
+    const svg = plot.querySelector(`svg[role="application"]`)
+    await fire(arc_path(plot, `A`), mouse(`mousemove`)) // 1 call (hover info)
+    await fire(svg, new MouseEvent(`mouseleave`)) // 2nd call (null)
+    await fire(svg, new MouseEvent(`mouseleave`)) // already clear - no 3rd call
+    expect(on_node_hover.mock.calls.map((args) => args[0] && `info`)).toEqual([`info`, null])
+  })
+
+  // a fast double-click on the center zoom-out button fires click+click+dblclick;
+  // the dblclick background-reset must not compound onto the two zoom-out steps
+  test(`double-clicking the center circle steps out without resetting to root`, async () => {
+    const chain: SunburstNode[] = [
+      {
+        label: `L1`,
+        children: [
+          {
+            label: `L2`,
+            children: [
+              {
+                label: `L3`,
+                children: [
+                  { label: `L4a`, value: 1 },
+                  { label: `L4b`, value: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+    const on_zoom = vi.fn()
+    const plot = await mount_sized_sunburst({ data: chain, on_zoom })
+    await fire(plot.querySelector(`[data-sunburst-node-idx="3"]`)) // zoom to L3 (depth 3)
+    const center = plot.querySelector(`.center-circle`)
+    await fire(center) // zoom out -> L2
+    await fire(center) // zoom out -> L1
+    await fire(center, mouse(`dblclick`)) // must NOT additionally reset to root
+    const last_root = on_zoom.mock.lastCall?.[0]?.root
+    expect(last_root?.label).toBe(`L1`)
+  })
+
+  // keyboard-zooming an icicle must move focus to the new root's first child: the
+  // clicked row itself collapses once the zoom tween settles, so focusing it (the
+  // roving index) would drop keyboard users out of the chart onto <body>
+  test(`icicle keyboard zoom focuses the new root's first child`, async () => {
+    const plot = await mount_sized_sunburst({
+      data: deep,
+      shape: `icicle`,
+      tween: { duration: 50 }, // real tween: the collapsing row is still mounted at t=0
+    })
+    const l1 = plot.querySelector<SVGPathElement>(`[data-sunburst-node-idx="1"]`)
+    l1?.focus()
+    await fire(l1, key(`Enter`)) // zoom to L1
+    await tick() // focus handoff runs in tick().then()
+    await tick()
+    expect(document.activeElement?.getAttribute(`data-sunburst-node-idx`)).toBe(`2`)
   })
 
   test.each([

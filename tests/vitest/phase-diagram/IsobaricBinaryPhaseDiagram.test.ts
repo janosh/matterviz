@@ -1,6 +1,53 @@
-import { format_hover_info_text, type LeverRuleResult } from '$lib/phase-diagram'
+import { format_hover_info_text, IsobaricBinaryPhaseDiagram } from '$lib/phase-diagram'
+import type { LeverRuleResult, PhaseDiagramData } from '$lib/phase-diagram/types'
+import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { resize_element } from '../setup'
 import { create_hover_info } from './fixtures/test-data'
+
+describe(`IsobaricBinaryPhaseDiagram`, () => {
+  // gradient ids derive from user region ids ('alpha + beta' etc.) - two diagrams on
+  // one page would otherwise cross-reference each other's gradients (first id wins,
+  // with that instance's userSpaceOnUse pixel coords)
+  test(`multi-phase gradient ids are unique per instance`, async () => {
+    const data: PhaseDiagramData = {
+      components: [`Al`, `Cu`],
+      temperature_range: [300, 1000],
+      regions: [
+        {
+          id: `ab`,
+          name: `α + β`, // 2+ phases -> gradient fill
+          vertices: [
+            [0, 300],
+            [1, 300],
+            [1, 1000],
+            [0, 1000],
+          ],
+        },
+      ],
+      boundaries: [],
+    }
+    for (let idx = 0; idx < 2; idx++) {
+      const target = document.createElement(`div`)
+      document.body.append(target)
+      mount(IsobaricBinaryPhaseDiagram, {
+        target,
+        props: { data, style: `width: 500px; height: 400px;` },
+      })
+      const wrapper = target.querySelector<HTMLElement>(`.binary-phase-diagram`)
+      if (!wrapper) throw new Error(`phase diagram root not found`)
+      await resize_element(wrapper, 500, 400)
+    }
+    const ids = [...document.querySelectorAll(`linearGradient`)].map((el) => el.id)
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+    // each region path must reference its own instance's gradient
+    const fills = [...document.querySelectorAll(`.phase-regions path`)].map((el) =>
+      el.getAttribute(`fill`),
+    )
+    expect(fills).toEqual(ids.map((id) => `url(#${id})`))
+  })
+})
 
 describe(`format_hover_info_text`, () => {
   test(`formats basic phase info with phase name`, () => {
