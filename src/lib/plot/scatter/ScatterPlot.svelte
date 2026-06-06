@@ -54,7 +54,7 @@
     place_decorations,
   } from '$lib/plot/core/auto-place'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { AXIS_DEFAULTS, create_axis_change_handler } from '$lib/plot/core/axis-utils'
+  import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
   import {
     create_dimension_tracker,
@@ -88,6 +88,7 @@
     normalize_y2_sync,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    remove_drag_listeners,
     sorted_range,
     sync_y2_range,
     to_epoch_num,
@@ -96,7 +97,6 @@
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     calc_auto_padding,
-    constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
@@ -381,9 +381,6 @@
     legend_hover.cleanup()
     colorbar_hover.cleanup()
   })
-
-  // Tooltip element reference for dynamic sizing
-  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   // Module-level constants to avoid repeated allocations
   // Create and categorize points in a single pass (instead of 3 separate iterations)
@@ -1227,16 +1224,11 @@
   // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
   // onDestroy also runs during SSR teardown, where window/document don't exist.
   onDestroy(() => {
-    if (typeof window === `undefined`) return
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
+    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
     drag_start_coords = null
     drag_current_coords = null
     svg_bounding_box = null
     pan_drag_state = null
-    document.body.style.cursor = ``
   })
 
   function handle_mouse_down(evt: MouseEvent) {
@@ -1595,32 +1587,12 @@
     set_loading: (axis) => (axis_loading = axis),
   }
 
-  // Create shared handler bound to this component's state
-  // Using $derived so handler updates when callback props change
-  const handle_axis_change = $derived(create_axis_change_handler(
+  // Shared handler + one-shot auto-load bound to this component's state
+  const { handle_axis_change, try_auto_load } = create_axis_loader(
     axis_state,
-    data_loader,
-    on_axis_change,
-    on_error,
-  ))
-
-  let auto_load_attempted = false // prevent infinite retries on failure
-
-  // Auto-load data if series is empty but options exist (runs once)
-  $effect(() => {
-    if (series.length === 0 && data_loader && !auto_load_attempted) {
-      // Check x-axis first, then y-axis
-      if (x_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = x_axis.selected_key ?? x_axis.options[0].key
-        handle_axis_change(`x`, first_key).catch(() => {})
-      } else if (y_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = y_axis.selected_key ?? y_axis.options[0].key
-        handle_axis_change(`y`, first_key).catch(() => {})
-      }
-    }
-  })
+    () => ({ data_loader, on_axis_change, on_error }),
+  )
+  $effect(try_auto_load)
 </script>
 
 {#snippet fill_regions_layer(fills: typeof computed_fills)}
@@ -2101,21 +2073,13 @@
       series_with_ids[series_idx],
       color_scale_fn,
     )}
-      {@const tooltip_pos = constrain_tooltip_position(
-      handler_props.cx,
-      handler_props.cy,
-      tooltip_el?.offsetWidth ?? 120,
-      tooltip_el?.offsetHeight ?? 50,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
-    )}
       <PlotTooltip
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        offset={{ x: 0, y: 0 }}
+        x={handler_props.cx}
+        y={handler_props.cy}
+        offset={{ x: 10, y: 5 }}
+        constrain_to={{ width, height }}
+        fallback_size={{ width: 120, height: 50 }}
         bg_color={tooltip_bg_color}
-        bind:wrapper={tooltip_el}
       >
         {#if tooltip}
           {@render tooltip(handler_props)}

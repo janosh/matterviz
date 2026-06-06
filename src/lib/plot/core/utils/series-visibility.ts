@@ -1,5 +1,3 @@
-export type StrRecord = Record<string, unknown>
-
 // Minimal series shape the visibility helpers need - generic over the concrete series
 // type (DataSeries, BarSeries, BoxPlotSeries, ...) so toggled arrays keep their type
 type VisSeries = {

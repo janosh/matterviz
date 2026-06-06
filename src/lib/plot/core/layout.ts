@@ -17,7 +17,8 @@ export function y2_axis_label_x(
 ): number {
   const inside = axis.tick?.label?.inside ?? false
   const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0) + 8
-  const label_offset = (inside ? 0 : max_tick_width) + LABEL_GAP_DEFAULT + (axis.label_shift?.x ?? 0)
+  const label_offset =
+    (inside ? 0 : max_tick_width) + LABEL_GAP_DEFAULT + (axis.label_shift?.x ?? 0)
   return width - pad_r + tick_shift + label_offset
 }
 

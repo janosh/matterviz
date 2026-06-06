@@ -28,10 +28,8 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
 
   if (category_list.length === 0) {
     // safe: when no categories were found, all x values are numeric
-    return {
-      category_list,
-      internal_series: series as unknown as NumericBarSeries<Metadata>[],
-    }
+    const internal_series = series as NumericBarSeries<Metadata>[]
+    return { category_list, internal_series }
   }
 
   const category_indices = category_list.map((_, idx) => idx)
@@ -46,6 +44,12 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
     const orig_indices = category_list.map((cat) => orig_map.get(cat))
     const remap = <T>(arr: readonly T[] | null | undefined, fallback: T): T[] =>
       orig_indices.map((oi) => (oi != null ? (arr?.[oi] ?? fallback) : fallback))
+    // Reorder a per-point prop that may be a single value (broadcast, left as-is) or an
+    // array (must follow the category reordering, else point styles misalign with bars)
+    const remap_per_point = <T>(prop: T[] | T | undefined): T[] | T | undefined =>
+      Array.isArray(prop)
+        ? (orig_indices.map((oi) => (oi != null ? prop[oi] : undefined)) as T[])
+        : prop
     const bw_arr = Array.isArray(srs.bar_width) ? srs.bar_width : null
     const meta_arr = Array.isArray(srs.metadata) ? srs.metadata : null
     return {
@@ -56,6 +60,10 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
       metadata: orig_indices.map((oi) =>
         oi != null ? (meta_arr ? meta_arr[oi] : srs.metadata) : undefined,
       ) as Metadata[],
+      point_style: remap_per_point(srs.point_style),
+      point_hover: remap_per_point(srs.point_hover),
+      point_label: remap_per_point(srs.point_label),
+      point_offset: remap_per_point(srs.point_offset),
       ...(bw_arr ? { bar_width: remap(bw_arr, 0.5) } : {}),
       ...(srs.color_values ? { color_values: remap(srs.color_values, null) } : {}),
       ...(srs.size_values ? { size_values: remap(srs.size_values, null) } : {}),

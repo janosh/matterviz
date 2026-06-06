@@ -37,7 +37,7 @@
     ScatterPoint,
   } from '$lib/plot'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { create_axis_change_handler } from '$lib/plot/core/axis-utils'
+  import { create_axis_loader } from '$lib/plot/core/axis-utils'
   import {
     create_dimension_tracker,
     create_hover_lock,
@@ -49,6 +49,7 @@
     MIN_TOUCH_DISTANCE_PIXELS,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    remove_drag_listeners,
     resolve_axis_ranges,
     sorted_range,
     to_epoch_num,
@@ -79,7 +80,6 @@
   } from '$lib/plot/core/auto-place'
   import {
     calc_auto_padding,
-    constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
@@ -231,7 +231,7 @@
     format: ``,
     scale_type: `linear`,
     ticks: 5,
-    label_shift: { y: 60 },
+    label_shift: { x: 0, y: 0 }, // y2 title stays vertically centered (x pos set by y2_axis_label_x)
     tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
     range: [null, null],
     ...y2_axis_prop,
@@ -678,14 +678,9 @@
   // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
   // onDestroy also runs during SSR teardown, where window/document don't exist.
   onDestroy(() => {
-    if (typeof window === `undefined`) return
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
+    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
     drag_state = { start: null, current: null, bounds: null }
     pan_drag_state = null
-    document.body.style.cursor = ``
   })
 
   function handle_mouse_down(evt: MouseEvent) {
@@ -940,7 +935,6 @@
 
   // Tooltip state
   let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
-  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   function get_bar_data(
     series_idx: number,
@@ -1049,32 +1043,12 @@
     set_loading: (axis) => (axis_loading = axis),
   }
 
-  // Create shared handler bound to this component's state
-  // Using $derived so handler updates when callback props change
-  const handle_axis_change = $derived(create_axis_change_handler(
+  // Shared handler + one-shot auto-load bound to this component's state
+  const { handle_axis_change, try_auto_load } = create_axis_loader(
     axis_state,
-    data_loader,
-    on_axis_change,
-    on_error,
-  ))
-
-  let auto_load_attempted = false // prevent infinite retries on failure
-
-  // Auto-load data if series is empty but options exist (runs once)
-  $effect(() => {
-    if (series.length === 0 && data_loader && !auto_load_attempted) {
-      // Check x-axis first, then y-axis
-      if (x_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = x_axis.selected_key ?? x_axis.options[0].key
-        handle_axis_change(`x`, first_key).catch(() => {})
-      } else if (y_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = y_axis.selected_key ?? y_axis.options[0].key
-        handle_axis_change(`y`, first_key).catch(() => {})
-      }
-    }
-  })
+    () => ({ data_loader, on_axis_change, on_error }),
+  )
+  $effect(try_auto_load)
 </script>
 
 {#snippet ref_lines_layer(lines: IndexedRefLine[])}
@@ -1638,21 +1612,13 @@
       {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
       hover_info.orient_y,
     )}
-      {@const tooltip_pos = constrain_tooltip_position(
-      cx,
-      cy,
-      tooltip_el?.offsetWidth ?? 140,
-      tooltip_el?.offsetHeight ?? 50,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
-    )}
       <PlotTooltip
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        offset={{ x: 0, y: 0 }}
+        x={cx}
+        y={cy}
+        offset={{ x: 10, y: 5 }}
+        constrain_to={{ width, height }}
+        fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
-        bind:wrapper={tooltip_el}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

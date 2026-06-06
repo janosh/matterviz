@@ -83,6 +83,11 @@ describe(`zoom_range_by_factor`, () => {
     expect(Number.isFinite(lo) && Number.isFinite(hi)).toBe(true)
     expect(lo).toBeCloseTo(-hi, 9) // asinh is odd, so symmetry is preserved
   })
+
+  // invalid factors would emit Infinity/NaN into axis state - return the range unchanged
+  it.each([0, -2, NaN, Infinity])(`factor %s returns the range unchanged`, (factor) => {
+    expect(zoom_range_by_factor([10, 20], factor)).toEqual([10, 20])
+  })
 })
 
 describe(`normalize_y2_sync`, () => {

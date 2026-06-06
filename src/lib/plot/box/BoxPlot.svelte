@@ -47,13 +47,13 @@
     MIN_TOUCH_DISTANCE_PIXELS,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    remove_drag_listeners,
     resolve_axis_ranges,
     sorted_range,
     zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
-    constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
@@ -546,10 +546,7 @@
     if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks)) {
       return user_ticks
     }
-    return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat])) as Record<
-      number,
-      string
-    >
+    return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat]))
   })
 
   let ticks = $derived({
@@ -623,13 +620,20 @@
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
       if (dx > 5 && dy > 5 && Number.isFinite(x1) && Number.isFinite(x2)) {
         x_axis = { ...x_axis, range: sorted_range(x1, x2) }
-        if (has_secondary && Number.isFinite(x2_1) && Number.isFinite(x2_2)) {
+        // the secondary value axis is x2 only in horizontal mode, y2 only in vertical
+        // (is_secondary keys off orientation); writing the off-orientation axis would
+        // store a phantom range from its [0, 1] sentinel scale into the bound prop
+        if (
+          has_secondary && orientation === `horizontal` &&
+          Number.isFinite(x2_1) && Number.isFinite(x2_2)
+        ) {
           x2_axis_prop = { ...x2_axis_prop, range: sorted_range(x2_1, x2_2) }
         }
         y_axis = { ...y_axis, range: sorted_range(y1, y2) }
-        // gate on secondary series presence (like x2): the y2 scale is a sentinel
-        // otherwise, so inverting would store a phantom range in the bindable prop
-        if (has_secondary && Number.isFinite(y2_1) && Number.isFinite(y2_2)) {
+        if (
+          has_secondary && orientation === `vertical` &&
+          Number.isFinite(y2_1) && Number.isFinite(y2_2)
+        ) {
           y2_axis_prop = { ...y2_axis_prop, range: sorted_range(y2_1, y2_2) }
         }
       }
@@ -676,14 +680,9 @@
   // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
   // onDestroy also runs during SSR teardown, where window/document don't exist.
   onDestroy(() => {
-    if (typeof window === `undefined`) return
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
+    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
     drag_state = { start: null, current: null, bounds: null }
     pan_drag_state = null
-    document.body.style.cursor = ``
   })
 
   function handle_mouse_down(evt: MouseEvent) {
@@ -827,7 +826,6 @@
 
   // === Tooltip / hover ===
   let hover_info = $state<BoxHover | null>(null)
-  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   function get_box_data(box_item: Box, color: string): BoxHover {
     const vertical = orientation === `vertical`
@@ -1322,21 +1320,13 @@
     {/if}
 
     {#if hover_info && hovered}
-      {@const tooltip_pos = constrain_tooltip_position(
-      hover_info.cx,
-      hover_info.cy,
-      tooltip_el?.offsetWidth ?? 140,
-      tooltip_el?.offsetHeight ?? 50,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
-    )}
       <PlotTooltip
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        offset={{ x: 0, y: 0 }}
+        x={hover_info.cx}
+        y={hover_info.cy}
+        offset={{ x: 10, y: 5 }}
+        constrain_to={{ width, height }}
+        fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
-        bind:wrapper={tooltip_el}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

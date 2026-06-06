@@ -116,6 +116,24 @@ describe(`BarPlot`, () => {
     expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
+  test(`y2 axis title shares the y axis title's vertical center`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic, { x: [1, 2, 3], y: [100, 200, 300], label: `Sec`, y_axis: `y2` }],
+      y_axis: { label: `Primary` },
+      y2_axis: { label: `Secondary` },
+    })
+    // both y titles rotate about the plot's vertical center; a stale label_shift default
+    // used to push the y2 title 60px below center
+    const pivot_y = (selector: string) => {
+      const transform =
+        plot.querySelector(selector)?.closest(`foreignObject`)?.getAttribute(`transform`) ?? ``
+      const match = /rotate\(-90,\s*[\d.-]+,\s*([\d.-]+)\)/.exec(transform)
+      if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
+      return Number(match[1])
+    }
+    expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
+  })
+
   test.each<[Orientation, BarMode]>([
     [`vertical`, `overlay`],
     [`horizontal`, `overlay`],
@@ -135,20 +153,14 @@ describe(`BarPlot`, () => {
       `overlay`,
       [
         { x: [1, 2, 3, 4], y: [-10, -5, 15, 20] },
-        {
-          x: [1, 2, 3, 4],
-          y: [5, -8, 12, -3],
-        },
+        { x: [1, 2, 3, 4], y: [5, -8, 12, -3] },
       ],
     ],
     [
       `stacked`,
       [
         { x: [1, 2, 3, 4], y: [10, -5, 15, 20] },
-        {
-          x: [1, 2, 3, 4],
-          y: [-5, 10, -8, 5],
-        },
+        { x: [1, 2, 3, 4], y: [-5, 10, -8, 5] },
       ],
     ],
     [

@@ -18,7 +18,7 @@
     ReferenceLine,
   } from '$lib/plot'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { AXIS_DEFAULTS, create_axis_change_handler } from '$lib/plot/core/axis-utils'
+  import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/core/data-transform'
   import {
     create_dimension_tracker,
@@ -30,6 +30,7 @@
     MIN_TOUCH_DISTANCE_PIXELS,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    remove_drag_listeners,
     resolve_axis_ranges,
     sorted_range,
     vec2_equal,
@@ -37,7 +38,6 @@
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
-    constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
@@ -175,10 +175,10 @@
     ...x2_axis_init,
   })))
   let y_axis = $state(untrack(() => ({ ...axis_state_defaults, ...y_axis_init })))
-  // y2-axis needs different default label_shift for right-side positioning
+  // y2 title stays vertically centered; its x position is computed by y2_axis_label_x
   let y2_axis = $state(untrack(() => ({
     ...axis_state_defaults,
-    label_shift: { x: 0, y: 60 },
+    label_shift: { x: 0, y: 0 },
     ...y2_axis_init,
   })))
   let display = $state(
@@ -208,7 +208,6 @@
   // Compute ref_lines with index and group by z-index (using shared utilities)
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
   let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
-  let tooltip_el = $state<HTMLDivElement | undefined>()
   let drag_state = $state<{
     start: { x: number; y: number } | null
     current: { x: number; y: number } | null
@@ -765,14 +764,9 @@
   // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
   // onDestroy also runs during SSR teardown, where window/document don't exist.
   onDestroy(() => {
-    if (typeof window === `undefined`) return
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
+    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
     drag_state = { start: null, current: null, bounds: null }
     pan_drag_state = null
-    document.body.style.cursor = ``
   })
 
   function handle_mouse_down(evt: MouseEvent) {
@@ -952,32 +946,12 @@
     set_loading: (axis) => (axis_loading = axis),
   }
 
-  // Create shared handler bound to this component's state
-  // Using $derived so handler updates when callback props change
-  const handle_axis_change = $derived(create_axis_change_handler(
+  // Shared handler + one-shot auto-load bound to this component's state
+  const { handle_axis_change, try_auto_load } = create_axis_loader(
     axis_state,
-    data_loader,
-    on_axis_change,
-    on_error,
-  ))
-
-  let auto_load_attempted = false // prevent infinite retries on failure
-
-  // Auto-load data if series is empty but options exist (runs once)
-  $effect(() => {
-    if (series.length === 0 && data_loader && !auto_load_attempted) {
-      // Check x-axis first, then y-axis
-      if (x_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = x_axis.selected_key ?? x_axis.options[0].key
-        handle_axis_change(`x`, first_key).catch(() => {})
-      } else if (y_axis.options?.length) {
-        auto_load_attempted = true
-        const first_key = y_axis.selected_key ?? y_axis.options[0].key
-        handle_axis_change(`y`, first_key).catch(() => {})
-      }
-    }
-  })
+    () => ({ data_loader, on_axis_change, on_error }),
+  )
+  $effect(try_auto_load)
 </script>
 
 {#snippet ref_lines_layer(lines: IndexedRefLine[])}
@@ -1276,20 +1250,12 @@
     {@const { value, count, property, active_y_axis, active_x_axis } = hover_info}
     {@const tooltip_x = (active_x_axis === `x2` ? scales.x2 : scales.x)(value)}
     {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
-    {@const tooltip_pos = constrain_tooltip_position(
-      tooltip_x,
-      tooltip_y,
-      tooltip_el?.offsetWidth ?? 120,
-      tooltip_el?.offsetHeight ?? (mode === `overlay` ? 60 : 40),
-      width,
-      height,
-      { offset_x: 5, offset_y: -10 },
-    )}
     <PlotTooltip
-      x={tooltip_pos.x}
-      y={tooltip_pos.y}
-      offset={{ x: 0, y: 0 }}
-      bind:wrapper={tooltip_el}
+      x={tooltip_x}
+      y={tooltip_y}
+      offset={{ x: 5, y: -10 }}
+      constrain_to={{ width, height }}
+      fallback_size={{ width: 120, height: mode === `overlay` ? 60 : 40 }}
     >
       {#if tooltip}
         {@render tooltip({ ...hover_info, fullscreen })}

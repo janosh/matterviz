@@ -2,7 +2,7 @@ import { BoxPlot } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { inside_clip_path, resize_element } from '../setup'
+import { bind_props, inside_clip_path, resize_element } from '../setup'
 
 const dist = (n: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -132,6 +132,45 @@ describe(`BoxPlot`, () => {
     })
     expect(plot.querySelector(`g.y2-axis`)).toBeInstanceOf(SVGGElement)
     expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
+  })
+
+  test(`vertical rect-zoom zooms y2 but writes no phantom x2 range`, async () => {
+    // vertical orientation: the secondary value axis is y2; x is categorical and x2 is a
+    // sentinel, so rect-zoom must not write back an x2 range. Mount directly (the helper
+    // spreads props, which would sever the bind_props getters and lose the write-back).
+    const state = {
+      x2_axis: {} as Record<string, unknown>,
+      y2_axis: {} as Record<string, unknown>,
+    }
+    const container = document.createElement(`div`)
+    document.body.append(container)
+    mount(BoxPlot, {
+      target: container,
+      props: bind_props(
+        {
+          series: [
+            { y: dist(40, 0, 1), label: `A` },
+            { y: dist(40, 50, 5), label: `B`, y_axis: `y2` as const },
+          ],
+          style: `width: 400px; height: 300px;`,
+        },
+        state,
+      ),
+    })
+    const plot = container.querySelector<HTMLElement>(`.box-plot`)
+    if (!plot) throw new Error(`BoxPlot root element not found`)
+    await resize_element(plot, 400, 300)
+    const svg = plot.querySelector(`svg[role="application"]`)
+    if (!svg) throw new Error(`svg not found`)
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, { clientX: 100, clientY: 50, bubbles: true }),
+    )
+    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 200 }))
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
+    await tick()
+    const y2_range = state.y2_axis.range as [number, number] | undefined
+    expect(y2_range?.every(Number.isFinite)).toBe(true)
+    expect(state.x2_axis.range).toBeUndefined() // no phantom x2 range in vertical mode
   })
 
   test(`category tick labels are colored per box`, async () => {

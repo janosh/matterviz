@@ -103,10 +103,9 @@ function axis_transform(scale_type: ScaleType | undefined): {
   }
   if (name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    return {
-      to: (val) => Math.asinh(val / threshold),
-      from: (val) => Math.sinh(val) * threshold,
-    }
+    const to = (val: number) => Math.asinh(val / threshold)
+    const from = (val: number) => Math.sinh(val) * threshold
+    return { to, from }
   }
   return { to: (val) => val, from: (val) => val }
 }
@@ -134,6 +133,8 @@ export function zoom_range_by_factor(
   factor: number,
   scale_type?: ScaleType,
 ): Vec2 {
+  // Guard invalid factors (0/negative/NaN) that would emit Infinity/NaN into axis state
+  if (!Number.isFinite(factor) || factor <= 0) return range
   const { to, from } = axis_transform(scale_type)
   const [t0, t1] = [to(range[0]), to(range[1])]
   const center = (t0 + t1) / 2
@@ -144,6 +145,23 @@ export function zoom_range_by_factor(
 // Coerce a scale.invert result (number, or Date for time scales) to an epoch number
 export const to_epoch_num = (val: number | Date): number =>
   val instanceof Date ? val.getTime() : val
+
+// Remove window drag/pan listeners and reset the body cursor. Call from onDestroy:
+// a component unmounting mid-drag would otherwise leak its listeners and leave the
+// cursor stuck (the mouseup that normally cleans up never fires after unmount).
+export function remove_drag_listeners(
+  move_handlers: ((evt: MouseEvent) => void)[],
+  up_handlers: ((evt: MouseEvent) => void)[],
+): void {
+  if (typeof window === `undefined`) return
+  for (const handler of move_handlers) {
+    window.removeEventListener(`mousemove`, handler as EventListener)
+  }
+  for (const handler of up_handlers) {
+    window.removeEventListener(`mouseup`, handler as EventListener)
+  }
+  document.body.style.cursor = ``
+}
 
 // Sorted [min, max] from two scalar bounds (rect-zoom inverts drag start/end,
 // which arrive in either order depending on drag direction)

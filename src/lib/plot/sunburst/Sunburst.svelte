@@ -24,7 +24,6 @@
   import { closest_data_idx, get_relative_coords } from '$lib/plot/core/interactions'
   import {
     compute_element_placement,
-    constrain_tooltip_position,
     filter_padding,
     measure_text_width,
   } from '$lib/plot/core/layout'
@@ -156,7 +155,6 @@
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGSVGElement | null = $state(null)
   let center_el: SVGCircleElement | null = $state(null)
-  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   let hovered_idx = $state<number | null>(null)
   let hover_info = $state<SunburstNodeHandlerProps<Metadata> | null>(null)
@@ -852,21 +850,13 @@
   {/if}
 
   {#if hover_info}
-    {@const tip = constrain_tooltip_position(
-      hover_pos.x,
-      hover_pos.y,
-      tooltip_el?.offsetWidth ?? 140,
-      tooltip_el?.offsetHeight ?? 44,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
-    )}
     <PlotTooltip
-      x={tip.x}
-      y={tip.y}
-      offset={{ x: 0, y: 0 }}
+      x={hover_pos.x}
+      y={hover_pos.y}
+      offset={{ x: 10, y: 5 }}
+      constrain_to={{ width, height }}
+      fallback_size={{ width: 140, height: 44 }}
       bg_color={hover_info.color}
-      bind:wrapper={tooltip_el}
     >
       {#if tooltip}
         {@render tooltip(hover_info)}

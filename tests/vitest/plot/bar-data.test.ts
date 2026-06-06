@@ -94,8 +94,19 @@ describe(`normalize_categorical`, () => {
         color_values: [7, 8],
         size_values: [5, 6],
         metadata: { tag: `scalar` },
+        // per-point style arrays must follow the category reorder too
+        point_style: [{ fill: `red` }, { fill: `blue` }],
+        point_offset: [
+          { x: 1, y: 1 },
+          { x: 2, y: 2 },
+        ],
       },
-      { x: [`a`, `b`, `c`], y: [1, 2, 3], metadata: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+      {
+        x: [`a`, `b`, `c`],
+        y: [1, 2, 3],
+        metadata: [{ id: 1 }, { id: 2 }, { id: 3 }],
+        point_style: { fill: `green` }, // scalar: broadcast, must pass through unchanged
+      },
     ]
     const { internal_series } = normalize_categorical(series)
     // categories: ['b', 'c', 'a'] (first-seen order across series)
@@ -104,9 +115,14 @@ describe(`normalize_categorical`, () => {
     expect(s1.bar_width).toEqual([0.2, 0.4, 0.5])
     expect(s1.color_values).toEqual([7, 8, null])
     expect(s1.size_values).toEqual([5, 6, null])
-    // scalar metadata is replicated for present categories, undefined for missing
+    // per-point style arrays reorder with categories; missing slot -> undefined
+    expect(s1.point_style).toEqual([{ fill: `red` }, { fill: `blue` }, undefined])
+    expect(s1.point_offset).toEqual([{ x: 1, y: 1 }, { x: 2, y: 2 }, undefined])
+    // scalar metadata is replicated per category; a scalar point prop is left as a single
+    // object (process_prop broadcasts it at render) - not replicated, not reordered
     expect(s1.metadata).toEqual([{ tag: `scalar` }, { tag: `scalar` }, undefined])
     expect(s2.metadata).toEqual([{ id: 2 }, { id: 3 }, { id: 1 }])
+    expect(s2.point_style).toEqual({ fill: `green` })
   })
 })
 
