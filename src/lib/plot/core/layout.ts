@@ -398,8 +398,9 @@ export function compute_element_placement(
 
       // Corner preference: use element's actual corner (not center) for distance
       // This ensures a wide element at the left edge gets proper corner credit
-      const elem_right = cand_x + element_size.width
-      const elem_bottom = cand_y + element_size.height
+      // (measured footprint, same as cand_rect — not the element_size fallback)
+      const elem_right = cand_x + elem_width
+      const elem_bottom = cand_y + elem_height
 
       // Distance from element's matching corner to each plot corner
       const min_corner_dist = Math.min(

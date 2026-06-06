@@ -757,7 +757,7 @@ export type Corner = (typeof CORNER_CELLS)[number]
 export const DEFAULT_GRID_STYLE = {
   stroke: `var(--border-color, gray)`,
   'stroke-dasharray': `4`,
-  'stroke-width': `1`,
+  'stroke-width': `0.5`,
 } as const
 
 export const DEFAULT_MARKERS = `line+points` as const

@@ -40,9 +40,20 @@ describe(`scales`, () => {
       expect(scale.range()).toEqual(range)
     })
 
-    test(`log scale with negative domain`, () => {
-      const scale = create_scale(`log`, [-5, 100], [0, 500])
-      expect(scale.domain()).toEqual([math.LOG_EPS, 100])
+    test.each([
+      { name: `negative min`, domain: [-5, 100] as Vec2, expected: [math.LOG_EPS, 100] },
+      // panning a log axis past zero arrives with max <= 0: an unclamped max would make
+      // every output/invert NaN (blank chart); clamping keeps the scale finite/recoverable
+      {
+        name: `non-positive min and max`,
+        domain: [-1000, -5] as Vec2,
+        expected: [math.LOG_EPS, math.LOG_EPS],
+      },
+    ])(`log scale clamps non-positive domain ($name) stays finite`, ({ domain, expected }) => {
+      const scale = create_scale(`log`, domain, [0, 500])
+      expect(scale.domain()).toEqual(expected)
+      expect(Number.isFinite(scale(10))).toBe(true)
+      expect(Number.isFinite(scale.invert(250))).toBe(true)
     })
 
     test(`arcsinh scale with config object`, () => {
