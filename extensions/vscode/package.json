@@ -872,6 +872,337 @@
           "default": true,
           "description": "Show Y-axis zero reference line"
         },
+        "matterviz.box.whisker_mode": {
+          "type": "string",
+          "default": "tukey",
+          "description": "How whiskers are computed: 'tukey' (1.5*IQR), 'minmax' (data extremes), 'percentile' (5th/95th), or 'std' (mean ± std)",
+          "enum": [
+            "tukey",
+            "minmax",
+            "percentile",
+            "std"
+          ]
+        },
+        "matterviz.box.box_width": {
+          "type": "number",
+          "default": 0.8,
+          "description": "Box width as a fraction of the category slot",
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        "matterviz.box.show_outliers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show outlier points beyond the whiskers"
+        },
+        "matterviz.box.show_mean": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the mean marker inside each box"
+        },
+        "matterviz.box.kind": {
+          "type": "string",
+          "default": "box",
+          "description": "Glyph to draw per series: box, violin (KDE density), or both",
+          "enum": [
+            "box",
+            "violin",
+            "violin+box"
+          ]
+        },
+        "matterviz.box.side": {
+          "type": "string",
+          "default": "both",
+          "description": "Which half of the slot a violin occupies (one-sided / split violins)",
+          "enum": [
+            "both",
+            "positive",
+            "negative"
+          ]
+        },
+        "matterviz.box.bandwidth": {
+          "type": "string",
+          "default": "silverman",
+          "description": "KDE bandwidth rule for violins",
+          "enum": [
+            "silverman",
+            "scott"
+          ]
+        },
+        "matterviz.box.violin_width": {
+          "type": "number",
+          "default": 0.9,
+          "description": "Violin width as a fraction of the category slot",
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        "matterviz.box.violin_box_width": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Inner box width (fraction of slot) when a box is drawn inside a violin",
+          "minimum": 0.05,
+          "maximum": 1
+        },
+        "matterviz.box.box.color": {
+          "type": "string",
+          "default": "#4A9EFF",
+          "description": "Box fill color"
+        },
+        "matterviz.box.box.opacity": {
+          "type": "number",
+          "default": 0.6,
+          "description": "Box fill opacity",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.box.box.stroke_width": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Box outline width",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "matterviz.box.box.stroke_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Box outline color"
+        },
+        "matterviz.box.box.border_radius": {
+          "type": "number",
+          "default": 0,
+          "description": "Corner radius for boxes (px)",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "matterviz.box.whisker.width": {
+          "type": "number",
+          "default": 1,
+          "description": "Whisker line width",
+          "minimum": 0.5,
+          "maximum": 5
+        },
+        "matterviz.box.whisker.color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Whisker line color"
+        },
+        "matterviz.box.whisker.cap_fraction": {
+          "type": "number",
+          "default": 0.3,
+          "description": "Whisker cap width as a fraction of the box width",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.box.median.width": {
+          "type": "number",
+          "default": 1.5,
+          "description": "Median line width",
+          "minimum": 0.5,
+          "maximum": 6
+        },
+        "matterviz.box.median.color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Median line color"
+        },
+        "matterviz.box.outlier.radius": {
+          "type": "number",
+          "default": 2.5,
+          "description": "Outlier point radius (px)",
+          "minimum": 0.5,
+          "maximum": 10
+        },
+        "matterviz.box.outlier.opacity": {
+          "type": "number",
+          "default": 0.6,
+          "description": "Outlier point opacity",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.box.outlier.stroke_width": {
+          "type": "number",
+          "default": 0,
+          "description": "Outlier point stroke width",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "matterviz.box.violin.opacity": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Violin fill opacity",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.box.violin.stroke_width": {
+          "type": "number",
+          "default": 1,
+          "description": "Violin outline width",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "matterviz.box.display.x_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis grid lines"
+        },
+        "matterviz.box.display.y_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis grid lines"
+        },
+        "matterviz.box.display.y2_grid": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y2-axis grid lines"
+        },
+        "matterviz.box.display.x_zero_line": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis zero reference line"
+        },
+        "matterviz.box.display.y_zero_line": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis zero reference line"
+        },
+        "matterviz.sankey.orientation": {
+          "type": "string",
+          "default": "horizontal",
+          "description": "Flow direction of the Sankey diagram",
+          "enum": [
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "matterviz.sankey.node_align": {
+          "type": "string",
+          "default": "justify",
+          "description": "How nodes are aligned across columns (maps to d3-sankey alignment)",
+          "enum": [
+            "justify",
+            "left",
+            "right",
+            "center"
+          ]
+        },
+        "matterviz.sankey.node_width": {
+          "type": "number",
+          "default": 24,
+          "description": "Node thickness in pixels",
+          "minimum": 4,
+          "maximum": 60
+        },
+        "matterviz.sankey.node_padding": {
+          "type": "number",
+          "default": 12,
+          "description": "Vertical gap in pixels between nodes sharing a column",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "matterviz.sankey.link_opacity": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Opacity of link ribbons",
+          "minimum": 0.05,
+          "maximum": 1
+        },
+        "matterviz.sankey.show_node_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show node labels next to each node"
+        },
+        "matterviz.sankey.iterations": {
+          "type": "number",
+          "default": 6,
+          "description": "Number of d3-sankey relaxation iterations for node positioning",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "matterviz.sunburst.shape": {
+          "type": "string",
+          "default": "sunburst",
+          "description": "Chart geometry: polar rings (sunburst) or stacked rows (icicle)",
+          "enum": [
+            "sunburst",
+            "icicle"
+          ]
+        },
+        "matterviz.sunburst.value_mode": {
+          "type": "string",
+          "default": "leaf-sum",
+          "description": "How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children",
+          "enum": [
+            "leaf-sum",
+            "total",
+            "remainder"
+          ]
+        },
+        "matterviz.sunburst.max_depth": {
+          "type": "number",
+          "default": 0,
+          "description": "Number of rings shown below the current zoom root (0 = all)",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "matterviz.sunburst.inner_radius": {
+          "type": "number",
+          "default": 0.25,
+          "description": "Center hole size as fraction of the outer radius",
+          "minimum": 0,
+          "maximum": 0.8
+        },
+        "matterviz.sunburst.pad_angle": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Angular gap in degrees between sibling arcs",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "matterviz.sunburst.min_fraction": {
+          "type": "number",
+          "default": 0,
+          "description": "Group sibling arcs smaller than this fraction of the total into one 'Other' slice per parent (0 = off)",
+          "minimum": 0,
+          "maximum": 0.2
+        },
+        "matterviz.sunburst.show_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show labels on arcs large enough to fit them"
+        },
+        "matterviz.sunburst.label_rotation": {
+          "type": "string",
+          "default": "auto",
+          "description": "Arc label orientation (auto picks radial/tangential per arc)",
+          "enum": [
+            "auto",
+            "radial",
+            "tangential",
+            "horizontal"
+          ]
+        },
+        "matterviz.sunburst.label_text": {
+          "type": "string",
+          "default": "label",
+          "description": "What arc labels display (percent is of the root total)",
+          "enum": [
+            "label",
+            "value",
+            "percent",
+            "label+value",
+            "label+percent"
+          ]
+        },
+        "matterviz.sunburst.zoom_on_click": {
+          "type": "boolean",
+          "default": true,
+          "description": "Clicking a branch arc zooms into that subtree (center circle zooms out)"
+        },
+        "matterviz.sunburst.show_breadcrumbs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a clickable trail of ancestors when zoomed into a subtree"
+        },
         "matterviz.composition.display_mode": {
           "type": "string",
           "default": "pie",
