@@ -44,10 +44,14 @@
   } from '$lib/plot/core/hover-lock.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
+    axis_ranges_equal,
     get_relative_coords,
     MIN_TOUCH_DISTANCE_PIXELS,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    resolve_axis_ranges,
+    sorted_range,
+    to_epoch_num,
     zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
@@ -78,6 +82,7 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
@@ -324,43 +329,16 @@
   })
 
   $effect(() => { // handle x_axis.range / x2_axis.range / y_axis.range / y2_axis.range changes
-    const new_x = [
-      x_axis.range?.[0] ?? auto_ranges.x[0],
-      x_axis.range?.[1] ?? auto_ranges.x[1],
-    ] as Vec2
-    const new_x2 = [
-      x2_axis.range?.[0] ?? auto_ranges.x2[0],
-      x2_axis.range?.[1] ?? auto_ranges.x2[1],
-    ] as Vec2
-    const new_y = [
-      y_axis.range?.[0] ?? auto_ranges.y[0],
-      y_axis.range?.[1] ?? auto_ranges.y[1],
-    ] as Vec2
-    const new_y2 = [
-      y2_axis.range?.[0] ?? auto_ranges.y2[0],
-      y2_axis.range?.[1] ?? auto_ranges.y2[1],
-    ] as Vec2
-    // Skip transient non-finite ranges (e.g. before data/size is ready): writing NaN
-    // would both break scales and make the comparison below never settle (NaN !== NaN).
-    if (![...new_x, ...new_x2, ...new_y, ...new_y2].every(Number.isFinite)) return
+    // resolve_axis_ranges returns null for transient non-finite bounds (skip: writing
+    // NaN breaks scales and, since NaN !== NaN, loops the effect)
+    const next = resolve_axis_ranges({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis }, auto_ranges)
+    if (!next) return
     // Only update if the initial (data-driven) ranges changed, not when user pans.
     // untrack the read of `ranges` so the assignment below can't re-trigger this effect
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
     const init = untrack(() => ranges.initial)
-    if (
-      init.x[0] !== new_x[0] ||
-      init.x[1] !== new_x[1] ||
-      init.x2[0] !== new_x2[0] ||
-      init.x2[1] !== new_x2[1] ||
-      init.y[0] !== new_y[0] ||
-      init.y[1] !== new_y[1] ||
-      init.y2[0] !== new_y2[0] ||
-      init.y2[1] !== new_y2[1]
-    ) {
-      ranges = {
-        initial: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
-        current: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
-      }
+    if (!axis_ranges_equal(init, next)) {
+      ranges = { initial: { ...next }, current: { ...next } }
     }
   })
 
@@ -639,37 +617,21 @@
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
 
-      let xr1: number, xr2: number
-      if (x1_raw instanceof Date && x2_raw instanceof Date) {
-        ;[xr1, xr2] = [x1_raw.getTime(), x2_raw.getTime()]
-      } else if (typeof x1_raw === `number` && typeof x2_raw === `number`) {
-        ;[xr1, xr2] = [x1_raw, x2_raw]
-      } else [xr1, xr2] = [NaN, NaN] // bail: mixed types
-
-      let x2r1: number, x2r2: number
-      if (x2a_1_raw instanceof Date && x2a_2_raw instanceof Date) {
-        ;[x2r1, x2r2] = [x2a_1_raw.getTime(), x2a_2_raw.getTime()]
-      } else if (typeof x2a_1_raw === `number` && typeof x2a_2_raw === `number`) {
-        ;[x2r1, x2r2] = [x2a_1_raw, x2a_2_raw]
-      } else [x2r1, x2r2] = [NaN, NaN]
+      // Same scale inverts both coords, so each pair is all-number or all-Date
+      const [xr1, xr2] = [to_epoch_num(x1_raw), to_epoch_num(x2_raw)]
+      const [x2r1, x2r2] = [to_epoch_num(x2a_1_raw), to_epoch_num(x2a_2_raw)]
 
       if (dx > 5 && dy > 5 && Number.isFinite(xr1) && Number.isFinite(xr2)) {
         // Update axis ranges to trigger reactivity and prevent effect from overriding
-        x_axis = { ...x_axis, range: [Math.min(xr1, xr2), Math.max(xr1, xr2)] }
+        x_axis = { ...x_axis, range: sorted_range(xr1, xr2) }
         if (x2_series.length > 0 && Number.isFinite(x2r1) && Number.isFinite(x2r2)) {
-          x2_axis_prop = {
-            ...x2_axis_prop,
-            range: [Math.min(x2r1, x2r2), Math.max(x2r1, x2r2)],
-          }
+          x2_axis_prop = { ...x2_axis_prop, range: sorted_range(x2r1, x2r2) }
         }
-        y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
+        y_axis = { ...y_axis, range: sorted_range(y1, y2) }
         // gate on y2 series presence (like x2): the y2 scale is a [0, 1] sentinel
         // otherwise, so inverting would store a phantom range in the bindable prop
         if (y2_series.length > 0) {
-          y2_axis_prop = {
-            ...y2_axis_prop,
-            range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)],
-          }
+          y2_axis_prop = { ...y2_axis_prop, range: sorted_range(y2_1, y2_2) }
         }
       }
     }
@@ -1298,9 +1260,6 @@
       <!-- Y2-axis (Right) -->
       <!-- Note: y2 axis is only supported for vertical orientation. Implementing x2 for horizontal mode requires additional complexity. -->
       {#if y2_series.length > 0 && orientation === `vertical`}
-        {@const y2_inside = y2_axis.tick?.label?.inside ?? false}
-        {@const y2_tick_shift = y2_inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-        {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
         <PlotAxis
           side="y2"
           ticks={ticks.y2 as number[]}
@@ -1312,8 +1271,7 @@
           {height}
           show_grid={display.y2_grid}
           tick_label={(tick) => get_tick_label(tick, y2_axis.ticks)}
-          label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
-          (y2_axis.label_shift?.x ?? 0)}
+          label_x={y2_axis_label_x(y2_axis, width, pad.r, tick_label_widths.y2_max)}
           label_y={pad.t + chart_height / 2 + (y2_axis.label_shift?.y ?? 0)}
           axis_loading={axis_loading === `y2`}
           on_axis_change={(key) => handle_axis_change(`y2`, key)}

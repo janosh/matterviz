@@ -42,10 +42,13 @@
   import { create_dimension_tracker, create_hover_lock } from '$lib/plot/core/hover-lock.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
+    axis_ranges_equal,
     get_relative_coords,
     MIN_TOUCH_DISTANCE_PIXELS,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    resolve_axis_ranges,
+    sorted_range,
     zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
@@ -53,6 +56,7 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
   import { LOG_EPS } from '$lib/math'
@@ -422,30 +426,15 @@
   })
 
   $effect(() => { // sync ranges from axis.range overrides / auto ranges
-    const resolve_range = (
-      axis: { range?: [number | null, number | null] },
-      auto: Vec2,
-    ): Vec2 => [axis.range?.[0] ?? auto[0], axis.range?.[1] ?? auto[1]]
-    const new_x = resolve_range(x_axis, auto_ranges.x)
-    const new_x2 = resolve_range(x2_axis, auto_ranges.x2)
-    const new_y = resolve_range(y_axis, auto_ranges.y)
-    const new_y2 = resolve_range(y2_axis, auto_ranges.y2)
-    // Skip transient non-finite ranges: writing NaN breaks scales and makes the
-    // comparison below never settle (NaN !== NaN), causing an infinite effect loop.
-    if (![...new_x, ...new_x2, ...new_y, ...new_y2].every(Number.isFinite)) return
+    // resolve_axis_ranges returns null for transient non-finite bounds (skip: writing
+    // NaN breaks scales and, since NaN !== NaN, loops the effect)
+    const next = resolve_axis_ranges({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis }, auto_ranges)
+    if (!next) return
     // untrack the read of `ranges` so the assignment can't re-trigger this effect
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
     const init = untrack(() => ranges.initial)
-    if (
-      init.x[0] !== new_x[0] || init.x[1] !== new_x[1] ||
-      init.x2[0] !== new_x2[0] || init.x2[1] !== new_x2[1] ||
-      init.y[0] !== new_y[0] || init.y[1] !== new_y[1] ||
-      init.y2[0] !== new_y2[0] || init.y2[1] !== new_y2[1]
-    ) {
-      ranges = {
-        initial: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
-        current: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
-      }
+    if (!axis_ranges_equal(init, next)) {
+      ranges = { initial: { ...next }, current: { ...next } }
     }
   })
 
@@ -633,21 +622,15 @@
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
       if (dx > 5 && dy > 5 && Number.isFinite(x1) && Number.isFinite(x2)) {
-        x_axis = { ...x_axis, range: [Math.min(x1, x2), Math.max(x1, x2)] }
+        x_axis = { ...x_axis, range: sorted_range(x1, x2) }
         if (has_secondary && Number.isFinite(x2_1) && Number.isFinite(x2_2)) {
-          x2_axis_prop = {
-            ...x2_axis_prop,
-            range: [Math.min(x2_1, x2_2), Math.max(x2_1, x2_2)],
-          }
+          x2_axis_prop = { ...x2_axis_prop, range: sorted_range(x2_1, x2_2) }
         }
-        y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
+        y_axis = { ...y_axis, range: sorted_range(y1, y2) }
         // gate on secondary series presence (like x2): the y2 scale is a sentinel
         // otherwise, so inverting would store a phantom range in the bindable prop
         if (has_secondary && Number.isFinite(y2_1) && Number.isFinite(y2_2)) {
-          y2_axis_prop = {
-            ...y2_axis_prop,
-            range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)],
-          }
+          y2_axis_prop = { ...y2_axis_prop, range: sorted_range(y2_1, y2_2) }
         }
       }
     }
@@ -1086,9 +1069,6 @@
       />
 
       {#if has_secondary && orientation === `vertical`}
-        {@const y2_inside = y2_axis.tick?.label?.inside ?? false}
-        {@const y2_tick_shift = y2_inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-        {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
         <PlotAxis
           side="y2"
           ticks={ticks.y2 as number[]}
@@ -1100,8 +1080,7 @@
           {height}
           show_grid={display.y2_grid}
           tick_label={(tick) => get_tick_label(tick, y2_axis.ticks)}
-          label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
-          (y2_axis.label_shift?.x ?? 0)}
+          label_x={y2_axis_label_x(y2_axis, width, pad.r, tick_label_widths.y2_max)}
           label_y={pad.t + chart_height / 2 + (y2_axis.label_shift?.y ?? 0)}
         />
       {/if}

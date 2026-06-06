@@ -2,13 +2,17 @@
 import type { Vec2 } from '$lib/math'
 import { LOG_EPS } from '$lib/math'
 import {
+  axis_ranges_equal,
   expand_range_if_needed,
   normalize_y2_sync,
   pan_range_by_pixels,
+  resolve_axis_ranges,
+  sorted_range,
   sync_y2_range,
+  vec2_equal,
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
-import type { ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
 import { describe, expect, it } from 'vitest'
 
 describe(`pan_range_by_pixels`, () => {
@@ -240,5 +244,54 @@ describe(`expand_range_if_needed`, () => {
     expect(result.range[0]).toBeCloseTo(0.3)
     expect(result.range[1]).toBeCloseTo(1.8)
     expect(result.changed).toBe(true)
+  })
+})
+
+describe(`sorted_range`, () => {
+  it(`sorts bounds ascending regardless of input order`, () => {
+    expect(sorted_range(5, 1)).toEqual([1, 5]) // reversed
+    expect(sorted_range(4, 4)).toEqual([4, 4]) // degenerate
+  })
+})
+
+describe(`vec2_equal`, () => {
+  it(`compares bounds; NaN never equal (so the sync effect can't loop)`, () => {
+    expect(vec2_equal([1, 2], [1, 2])).toBe(true)
+    expect(vec2_equal([1, 2], [1, 3])).toBe(false)
+    expect(vec2_equal([NaN, 5], [NaN, 5])).toBe(false)
+  })
+})
+
+describe(`axis_ranges_equal`, () => {
+  // a diff in any single axis must register (guards the && chain from dropping an axis)
+  const base: AxisRanges = { x: [0, 1], x2: [2, 3], y: [4, 5], y2: [6, 7] }
+  it.each<[string, AxisRanges, boolean]>([
+    [`all match`, { x: [0, 1], x2: [2, 3], y: [4, 5], y2: [6, 7] }, true],
+    [`x differs`, { x: [9, 9], x2: [2, 3], y: [4, 5], y2: [6, 7] }, false],
+    [`x2 differs`, { x: [0, 1], x2: [9, 9], y: [4, 5], y2: [6, 7] }, false],
+    [`y differs`, { x: [0, 1], x2: [2, 3], y: [9, 9], y2: [6, 7] }, false],
+    [`y2 differs`, { x: [0, 1], x2: [2, 3], y: [4, 5], y2: [9, 9] }, false],
+  ])(`%s`, (_desc, other, expected) => {
+    expect(axis_ranges_equal(base, other)).toBe(expected)
+  })
+})
+
+describe(`resolve_axis_ranges`, () => {
+  const auto = { x: [0, 10], x2: [0, 20], y: [0, 30], y2: [0, 40] }
+  const no_overrides = { x: {}, x2: {}, y: {}, y2: {} }
+
+  it(`merges explicit over auto per-bound; null/missing bounds fall back to auto`, () => {
+    const resolved = resolve_axis_ranges(
+      { x: { range: [1, 9] }, x2: { range: [null, 5] }, y: { range: [3, null] }, y2: {} },
+      auto,
+    )
+    // x: full override, x2/y: one-sided pins, y2: full fallback
+    expect(resolved).toEqual({ x: [1, 9], x2: [0, 5], y: [3, 30], y2: [0, 40] })
+  })
+
+  it(`returns null when any resolved bound is non-finite`, () => {
+    expect(resolve_axis_ranges(no_overrides, { ...auto, y: [0, NaN] })).toBeNull()
+    const inf = { ...no_overrides, x: { range: [0, Infinity] as [number, number] } }
+    expect(resolve_axis_ranges(inf, auto)).toBeNull()
   })
 })

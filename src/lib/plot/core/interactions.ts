@@ -1,5 +1,5 @@
 import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
-import type { ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
 // Get coordinates of a mouse event relative to an element (the event's
@@ -139,6 +139,62 @@ export function zoom_range_by_factor(
   const center = (t0 + t1) / 2
   const half_span = (t1 - t0) / factor / 2
   return [from(center - half_span), from(center + half_span)]
+}
+
+// Coerce a scale.invert result (number, or Date for time scales) to an epoch number
+export const to_epoch_num = (val: number | Date): number =>
+  val instanceof Date ? val.getTime() : val
+
+// Sorted [min, max] from two scalar bounds (rect-zoom inverts drag start/end,
+// which arrive in either order depending on drag direction)
+export const sorted_range = (a: number, b: number): Vec2 => [Math.min(a, b), Math.max(a, b)]
+
+// Strict per-bound equality of two [min, max] ranges
+export const vec2_equal = (a: Vec2, b: Vec2): boolean => a[0] === b[0] && a[1] === b[1]
+
+// True when all four axis ranges match. The range-sync effects use this to skip
+// no-op writes that would otherwise re-trigger the effect and loop.
+export const axis_ranges_equal = (a: AxisRanges, b: AxisRanges): boolean =>
+  vec2_equal(a.x, b.x) &&
+  vec2_equal(a.x2, b.x2) &&
+  vec2_equal(a.y, b.y) &&
+  vec2_equal(a.y2, b.y2)
+
+type AxisRangeOverride = { range?: [number | null, number | null] }
+type AutoRanges = {
+  x: readonly number[]
+  x2: readonly number[]
+  y: readonly number[]
+  y2: readonly number[]
+}
+
+// Merge each axis's explicit range over its auto range (per-bound: a null bound
+// falls back to the auto value). Returns null if any resolved bound is non-finite so
+// the caller can skip the sync - writing NaN breaks scales and, since NaN !== NaN,
+// makes the change comparison never settle (an infinite effect loop).
+export function resolve_axis_ranges(
+  axes: {
+    x: AxisRangeOverride
+    x2: AxisRangeOverride
+    y: AxisRangeOverride
+    y2: AxisRangeOverride
+  },
+  auto: AutoRanges,
+): AxisRanges | null {
+  const resolve = (axis: AxisRangeOverride, fallback: readonly number[]): Vec2 => [
+    axis.range?.[0] ?? fallback[0],
+    axis.range?.[1] ?? fallback[1],
+  ]
+  const next: AxisRanges = {
+    x: resolve(axes.x, auto.x),
+    x2: resolve(axes.x2, auto.x2),
+    y: resolve(axes.y, auto.y),
+    y2: resolve(axes.y2, auto.y2),
+  }
+  for (const [lo, hi] of [next.x, next.x2, next.y, next.y2]) {
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null
+  }
+  return next
 }
 
 // Threshold for distinguishing pinch-zoom from pan in touch gestures

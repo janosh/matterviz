@@ -88,7 +88,9 @@
     normalize_y2_sync,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    sorted_range,
     sync_y2_range,
+    to_epoch_num,
     zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import type { Rect, Sides } from '$lib/plot/core/layout'
@@ -97,6 +99,7 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    y2_axis_label_x,
     measure_full_footprint,
     measure_max_tick_width,
     sample_series_obstacle_points,
@@ -1131,33 +1134,11 @@
       const start_data_y_val = y_scale_fn.invert(drag_start_coords.y)
       const end_data_y_val = y_scale_fn.invert(drag_current_coords.y)
 
-      // Ensure range is not zero and order is correct
-      let x1: number, x2: number
-      if (start_data_x_val instanceof Date && end_data_x_val instanceof Date) {
-        x1 = start_data_x_val.getTime()
-        x2 = end_data_x_val.getTime()
-      } else if (
-        typeof start_data_x_val === `number` &&
-        typeof end_data_x_val === `number`
-      ) {
-        x1 = start_data_x_val
-        x2 = end_data_x_val
-      } else {
-        console.error(`Mismatched types for x-axis zoom calculation`)
-        // Reset states without zooming if types are wrong
-        drag_start_coords = null
-        drag_current_coords = null
-        window.removeEventListener(`mousemove`, on_window_mouse_move)
-        window.removeEventListener(`mouseup`, on_window_mouse_up)
-        return
-      }
-
-      const next_x_range: [number, number] = [Math.min(x1, x2), Math.max(x1, x2)]
+      // Same scale inverts both coords, so both are numbers or both are Dates
+      const [x1, x2] = [to_epoch_num(start_data_x_val), to_epoch_num(end_data_x_val)]
+      const next_x_range = sorted_range(x1, x2)
       // Y axis is always number
-      const next_y_range: [number, number] = [
-        Math.min(start_data_y_val, end_data_y_val),
-        Math.max(start_data_y_val, end_data_y_val),
-      ]
+      const next_y_range = sorted_range(start_data_y_val, end_data_y_val)
 
       // Check for minuscule zoom box (e.g. accidental click)
       const min_zoom_size = 5 // Minimum pixels to trigger zoom
@@ -1176,18 +1157,9 @@
 
         // X2 axis: invert screen coords using x2 scale
         if (x2_points.length > 0) {
-          const start_x2_val = x2_scale_fn.invert(drag_start_coords.x)
-          const end_x2_val = x2_scale_fn.invert(drag_current_coords.x)
-          const x2_a = start_x2_val instanceof Date
-            ? start_x2_val.getTime()
-            : start_x2_val as number
-          const x2_b = end_x2_val instanceof Date
-            ? end_x2_val.getTime()
-            : end_x2_val as number
-          x2_axis = {
-            ...x2_axis,
-            range: [Math.min(x2_a, x2_b), Math.max(x2_a, x2_b)],
-          }
+          const x2_a = to_epoch_num(x2_scale_fn.invert(drag_start_coords.x))
+          const x2_b = to_epoch_num(x2_scale_fn.invert(drag_current_coords.x))
+          x2_axis = { ...x2_axis, range: sorted_range(x2_a, x2_b) }
         }
 
         // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
@@ -1195,10 +1167,7 @@
         if (y2_points.length > 0 && y2_sync_config.mode === `none`) {
           const y2_a = y2_scale_fn.invert(drag_start_coords.y)
           const y2_b = y2_scale_fn.invert(drag_current_coords.y)
-          y2_axis = {
-            ...y2_axis,
-            range: [Math.min(y2_a, y2_b), Math.max(y2_a, y2_b)],
-          }
+          y2_axis = { ...y2_axis, range: sorted_range(y2_a, y2_b) }
         }
       }
     }
@@ -1590,7 +1559,6 @@
     return construct_handler_props(tooltip_point)
   })
 
-  let using_controls = $derived(controls.show)
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
 
   // Precompute non-click event names from point_events so we don't rebuild
@@ -1876,9 +1844,6 @@
 
       <!-- Y2-axis (Right) -->
       {#if y2_points.length > 0}
-        {@const y2_inside = final_y2_axis.tick?.label?.inside ?? false}
-        {@const y2_tick_shift = y2_inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-        {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
         <PlotAxis
           side="y2"
           ticks={y2_tick_values}
@@ -1892,8 +1857,7 @@
           domain={[y2_min, y2_max]}
           unit_on_first_tick
           tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
-          label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
-          (final_y2_axis.label_shift?.x ?? 0)}
+          label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
           label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
           axis_loading={axis_loading === `y2`}
           on_axis_change={(key) => handle_axis_change(`y2`, key)}
@@ -1985,7 +1949,7 @@
               {@const finite_screen_points = all_line_points
           .map((point) => get_screen_coords(point, series_data))
           .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
-              {@const apply_line_controls = using_controls &&
+              {@const apply_line_controls = controls.show &&
           (!has_multiple_series ||
             series_data._id === series_with_ids[selected_series_idx]?._id)}
               {@const ls = series_data.line_style}
@@ -2056,7 +2020,7 @@
                 {@const screen_y = isFinite(raw_screen_y)
           ? raw_screen_y
           : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
-                {@const apply_controls = using_controls &&
+                {@const apply_controls = controls.show &&
           (!has_multiple_series ||
             series_data._id === series_with_ids[selected_series_idx]?._id)}
                 {@const pt = point.point_style}

@@ -2,7 +2,6 @@
 // stateless: component $state/$derived values are passed in as parameters.
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
-import type { Vec2 } from '$lib/math'
 import type { DataSeries, FillRegion, InternalPoint, LegendItem, PointStyle } from '$lib/plot'
 import {
   get_series_color,
@@ -10,17 +9,12 @@ import {
   process_prop,
 } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
-import { DEFAULT_MARKERS } from '$lib/plot/core/types'
+import { type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
+
+export type { AxisRanges }
 
 const in_range = (val: number | null | undefined, lo: number, hi: number) =>
   val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
-
-export interface AxisRanges {
-  x: Vec2
-  x2: Vec2
-  y: Vec2
-  y2: Vec2
-}
 
 // Filter series data to only include points within bounds and augment with internal data.
 // Full x/y arrays are kept on each returned series (via spread) so connecting lines can

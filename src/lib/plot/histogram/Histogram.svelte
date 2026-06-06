@@ -30,6 +30,9 @@
     MIN_TOUCH_DISTANCE_PIXELS,
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
+    resolve_axis_ranges,
+    sorted_range,
+    vec2_equal,
     zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
@@ -37,6 +40,7 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
   import {
@@ -363,48 +367,21 @@
   })
 
   $effect(() => {
-    // Support one-sided range pinning: merge user range with auto range for null values
-    const new_x: [number, number] = final_x_axis.range
-      ? [
-        final_x_axis.range[0] ?? auto_ranges.x[0],
-        final_x_axis.range[1] ?? auto_ranges.x[1],
-      ]
-      : auto_ranges.x
-    const new_x2: [number, number] = final_x2_axis.range
-      ? [
-        final_x2_axis.range[0] ?? auto_ranges.x2[0],
-        final_x2_axis.range[1] ?? auto_ranges.x2[1],
-      ]
-      : auto_ranges.x2
-    const new_y: [number, number] = final_y_axis.range
-      ? [
-        final_y_axis.range[0] ?? auto_ranges.y[0],
-        final_y_axis.range[1] ?? auto_ranges.y[1],
-      ]
-      : auto_ranges.y
-    const new_y2: [number, number] = final_y2_axis.range
-      ? [
-        final_y2_axis.range[0] ?? auto_ranges.y2[0],
-        final_y2_axis.range[1] ?? auto_ranges.y2[1],
-      ]
-      : auto_ranges.y2
-
-    // Skip transient non-finite ranges: writing NaN breaks scales and makes the
-    // comparison below never settle (NaN !== NaN), causing an infinite effect loop.
-    if (![...new_x, ...new_x2, ...new_y, ...new_y2].every(Number.isFinite)) return
-    // Only update if the initial (data-driven) ranges changed, not when user pans.
+    // Supports one-sided range pinning (null bounds fall back to auto); returns null
+    // for transient non-finite bounds (skip: writing NaN breaks scales and loops here)
+    const next = resolve_axis_ranges(
+      { x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis },
+      auto_ranges,
+    )
+    if (!next) return
+    // Update only changed axes (preserving each unchanged axis's panned current view).
     // untrack the reads of `ranges` so the writes below can't re-trigger this effect
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
     const init = untrack(() => ranges.initial)
-    const x_changed = new_x[0] !== init.x[0] || new_x[1] !== init.x[1]
-    const x2_changed = new_x2[0] !== init.x2[0] || new_x2[1] !== init.x2[1]
-    const y_changed = new_y[0] !== init.y[0] || new_y[1] !== init.y[1]
-    const y2_changed = new_y2[0] !== init.y2[0] || new_y2[1] !== init.y2[1]
-
-    if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
-    if (x2_changed) [ranges.initial.x2, ranges.current.x2] = [new_x2, new_x2]
-    if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
-    if (y2_changed) [ranges.initial.y2, ranges.current.y2] = [new_y2, new_y2]
+    if (!vec2_equal(init.x, next.x)) [ranges.initial.x, ranges.current.x] = [next.x, next.x]
+    if (!vec2_equal(init.x2, next.x2)) [ranges.initial.x2, ranges.current.x2] = [next.x2, next.x2]
+    if (!vec2_equal(init.y, next.y)) [ranges.initial.y, ranges.current.y] = [next.y, next.y]
+    if (!vec2_equal(init.y2, next.y2)) [ranges.initial.y2, ranges.current.y2] = [next.y2, next.y2]
   })
 
   // Layout: dynamic padding based on tick label widths
@@ -718,27 +695,15 @@
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
       if (dx > 5 && dy > 5) {
         // Update axis ranges to trigger reactivity and prevent effect from overriding
-        x_axis = {
-          ...x_axis,
-          range: [Math.min(start_x, end_x), Math.max(start_x, end_x)],
-        }
+        x_axis = { ...x_axis, range: sorted_range(start_x, end_x) }
         if (x2_series.length > 0) {
-          x2_axis = {
-            ...x2_axis,
-            range: [Math.min(start_x2, end_x2), Math.max(start_x2, end_x2)],
-          }
+          x2_axis = { ...x2_axis, range: sorted_range(start_x2, end_x2) }
         }
-        y_axis = {
-          ...y_axis,
-          range: [Math.min(start_y, end_y), Math.max(start_y, end_y)],
-        }
+        y_axis = { ...y_axis, range: sorted_range(start_y, end_y) }
         // gate on y2 series presence (like x2): the y2 scale is a [0, 1] sentinel
         // otherwise, so inverting would store a phantom range in the bindable prop
         if (y2_series.length > 0) {
-          y2_axis = {
-            ...y2_axis,
-            range: [Math.min(start_y2, end_y2), Math.max(start_y2, end_y2)],
-          }
+          y2_axis = { ...y2_axis, range: sorted_range(start_y2, end_y2) }
         }
       }
     }
@@ -1217,9 +1182,6 @@
 
     <!-- Y2-axis (Right) -->
     {#if y2_series.length > 0}
-      {@const y2_inside = final_y2_axis.tick?.label?.inside ?? false}
-      {@const y2_tick_shift = y2_inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-      {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
       <PlotAxis
         side="y2"
         ticks={ticks.y2 as number[]}
@@ -1231,8 +1193,7 @@
         {height}
         show_grid={display.y2_grid}
         tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
-        label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
-        (final_y2_axis.label_shift?.x ?? 0)}
+        label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
         label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `y2`}
         on_axis_change={(key) => handle_axis_change(`y2`, key)}

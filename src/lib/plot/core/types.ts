@@ -64,6 +64,9 @@ export type InitialRanges = {
   initial_y2_range: Vec2
 }
 
+// Current [min, max] range of each of the four axes
+export type AxisRanges = { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
+
 export type Point<Metadata = Record<string, unknown>> = {
   x: number
   y: number

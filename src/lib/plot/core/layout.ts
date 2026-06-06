@@ -7,6 +7,20 @@ export type Sides = { t?: number; b?: number; l?: number; r?: number }
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 30
 
+// X position for a right-side (y2) axis label: past the plot edge plus tick shift and
+// measured tick-label width (both zero when tick labels render inside the plot)
+export function y2_axis_label_x(
+  axis: AxisConfig,
+  width: number,
+  pad_r: number,
+  max_tick_width: number,
+): number {
+  const inside = axis.tick?.label?.inside ?? false
+  const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0) + 8
+  const label_offset = (inside ? 0 : max_tick_width) + LABEL_GAP_DEFAULT + (axis.label_shift?.x ?? 0)
+  return width - pad_r + tick_shift + label_offset
+}
+
 // Filter undefined values from padding to prevent overriding defaults when spreading
 // Guards against undefined/null padding inputs (common for optional props)
 export const filter_padding = (
