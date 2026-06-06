@@ -4,8 +4,9 @@ name: Publish
 # `matterviz` npm package, the VS Code extension (Marketplace + Open VSX) and the
 # `matterviz-anywidget` npm bundle. workflow_dispatch (re)publishes a given version.
 #
-# Required repo secrets:
-#   NPM_TOKEN  - npm automation token (matterviz + matterviz-anywidget)
+# npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
+# both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
+# Required repo secrets (extensions only):
 #   VSCE_PAT   - Azure DevOps PAT for the VS Code Marketplace (publisher `janosh`)
 #   OVSX_PAT   - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
 
@@ -78,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance
+      id-token: write # npm OIDC trusted publishing + provenance
     steps:
       - uses: actions/checkout@v6
         with:
@@ -92,17 +93,17 @@ jobs:
           [ "$actual" = "$EXPECTED" ] || { echo "package.json ($actual) != release ($EXPECTED) -- bump it in the release commit"; exit 1; }
       - name: Build component library
         run: pnpm package:dist
-      # npm (not pnpm): only `npm publish --provenance` emits provenance. --dry-run packs
-      # & validates without uploading (and skips provenance, which needs the registry)
+      # OIDC trusted publishing (no token): npm >= 11.5.1 + id-token:write authenticate via
+      # the npmjs Trusted Publisher configured for this repo/workflow; provenance is automatic
       - name: Publish to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
+          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
           if [ "$DRY_RUN" = true ]; then
             npm publish --ignore-scripts --access public --dry-run
           else
-            npm publish --ignore-scripts --provenance --access public
+            npm publish --ignore-scripts --access public
           fi
 
   # === Publish: VS Code extension to Marketplace + Open VSX ===
@@ -149,7 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance
+      id-token: write # npm OIDC trusted publishing + provenance
     steps:
       - uses: actions/checkout@v6
         with:
@@ -173,14 +174,15 @@ jobs:
           # >1MB: all components present; <5MB: h5wasm/moyo WASM didn't creep back in
           test "$js_bytes" -gt 1000000 || { echo "bundle too small ($js_bytes B)"; exit 1; }
           test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- WASM re-bundled?"; exit 1; }
+      # OIDC trusted publishing (needs its own Trusted Publisher config for matterviz-anywidget)
       - name: Publish to npm
         working-directory: extensions/anywidget
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
+          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
           if [ "$DRY_RUN" = true ]; then
             npm publish --ignore-scripts --access public --dry-run
           else
-            npm publish --ignore-scripts --provenance --access public
+            npm publish --ignore-scripts --access public
           fi
