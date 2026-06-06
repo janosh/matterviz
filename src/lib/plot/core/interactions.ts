@@ -1,5 +1,6 @@
-import type { Point2D, Vec2 } from '$lib/math'
-import type { Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
+import type { ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
 // Get coordinates of a mouse event relative to an element (the event's
 // currentTarget by default; pass `element` when the handler is delegated and the
@@ -86,21 +87,58 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
   return y2_base_range
 }
 
-// Shift a range by a delta amount (no bounds constraint for free panning)
-export const pan_range = (current: Vec2, delta: number): Vec2 => [
-  current[0] + delta,
-  current[1] + delta,
-]
+// Forward/inverse transform pair mapping an axis's data values onto its visual
+// metric (the space where equal pixel steps are equal steps; identity for
+// linear/time). Pan and pinch must be uniform in *screen* space - doing the math
+// linearly on a log axis stretches one end of the view and shifts past zero into
+// an all-NaN domain. log clamps at LOG_EPS so a non-positive bound (stale explicit
+// range) recovers instead of propagating -Infinity.
+function axis_transform(scale_type: ScaleType | undefined): {
+  to: (val: number) => number
+  from: (val: number) => number
+} {
+  const name = get_scale_type_name(scale_type)
+  if (name === `log`) {
+    return { to: (val) => Math.log(Math.max(val, LOG_EPS)), from: Math.exp }
+  }
+  if (name === `arcsinh`) {
+    const threshold = get_arcsinh_threshold(scale_type)
+    return {
+      to: (val) => Math.asinh(val / threshold),
+      from: (val) => Math.sinh(val) * threshold,
+    }
+  }
+  return { to: (val) => val, from: (val) => val }
+}
 
-// Convert pixel delta to data delta using current data range and pixel range
-export function pixels_to_data_delta(
+// Pan a range by a pixel delta, uniformly in screen space: linear axes shift by a
+// constant amount, log axes by a constant factor (which also can't cross zero).
+// `pixel_span` is the plot's pixel extent along the axis.
+export function pan_range_by_pixels(
+  range: Vec2,
   pixel_delta: number,
-  data_range: Vec2,
-  pixel_range: number,
-): number {
-  if (pixel_range === 0) return 0
-  const data_span = data_range[1] - data_range[0]
-  return (pixel_delta / pixel_range) * data_span
+  pixel_span: number,
+  scale_type?: ScaleType,
+): Vec2 {
+  if (pixel_span === 0) return range
+  const { to, from } = axis_transform(scale_type)
+  const [t0, t1] = [to(range[0]), to(range[1])]
+  const t_delta = (pixel_delta / pixel_span) * (t1 - t0)
+  return [from(t0 + t_delta), from(t1 + t_delta)]
+}
+
+// Zoom a range about its screen-space center by `factor` (pinch: >1 zooms in).
+// On log axes the fixed point is the geometric mean - the visual center.
+export function zoom_range_by_factor(
+  range: Vec2,
+  factor: number,
+  scale_type?: ScaleType,
+): Vec2 {
+  const { to, from } = axis_transform(scale_type)
+  const [t0, t1] = [to(range[0]), to(range[1])]
+  const center = (t0 + t1) / 2
+  const half_span = (t1 - t0) / factor / 2
+  return [from(center - half_span), from(center + half_span)]
 }
 
 // Threshold for distinguishing pinch-zoom from pan in touch gestures

@@ -4,8 +4,11 @@
 // Sunburst.svelte wires them to reactive state and the DOM.
 
 import { to_degrees } from '$lib/math'
-import type { SunburstLabelRotation, SunburstShape } from '$lib/plot/core/types'
-import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
+import type {
+  PositionedArc,
+  SunburstLabelRotation,
+  SunburstShape,
+} from '$lib/plot/sunburst/sunburst'
 
 const TWO_PI = 2 * Math.PI
 
@@ -76,6 +79,45 @@ export function project_arcs<Metadata>(
     if (screen.visible) visible.push(screen)
   }
   return { all, visible }
+}
+
+// Arrow-key navigation over the pre-order arc array: ArrowLeft/ArrowRight cycle
+// through visible siblings (wrapping), ArrowDown enters the first child, ArrowUp
+// returns to the parent (never the hidden root at depth 0). Visibility is delegated
+// to is_visible (the component supplies screen-space collapse state). Returns the
+// target node_idx, or null when the key isn't an arrow key or no target qualifies.
+export function arrow_nav_target<Metadata>(
+  arcs: readonly PositionedArc<Metadata>[],
+  is_visible: (idx: number) => boolean,
+  current_idx: number,
+  key: string,
+): number | null {
+  if (![`ArrowRight`, `ArrowLeft`, `ArrowUp`, `ArrowDown`].includes(key)) return null
+  const cur = arcs[current_idx]
+  if (!cur) return null
+  if (key === `ArrowDown`) {
+    // pre-order: a branch's first child directly follows it
+    const child = arcs[cur.node_idx + 1]
+    return child && child.parent_idx === cur.node_idx && is_visible(child.node_idx)
+      ? child.node_idx
+      : null
+  }
+  const parent = cur.parent_idx != null ? arcs[cur.parent_idx] : null
+  if (key === `ArrowUp`) {
+    return parent && parent.depth > 0 && is_visible(parent.node_idx) ? parent.node_idx : null
+  }
+  // Walk siblings via the contiguous pre-order subtree ranges (each sibling starts
+  // right after the previous one's subtree ends) - pre-order also matches angular
+  // order, so no sorting needed and no full-arcs scan per keypress
+  const last = parent?.subtree_end ?? arcs.length - 1
+  const siblings: number[] = []
+  for (let idx = (parent?.node_idx ?? 0) + 1; idx <= last; idx = arcs[idx].subtree_end + 1) {
+    if (is_visible(idx)) siblings.push(idx)
+  }
+  if (siblings.length < 2) return null
+  const pos = siblings.indexOf(cur.node_idx)
+  const step = key === `ArrowRight` ? 1 : -1
+  return siblings[(pos + step + siblings.length) % siblings.length]
 }
 
 // Arc label placement: fit the text radially or tangentially (whichever has more room

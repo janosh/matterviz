@@ -442,11 +442,14 @@ describe(`Sunburst label selection`, () => {
     const get_selection = vi
       .spyOn(globalThis, `getSelection`)
       .mockReturnValue({ isCollapsed: false, anchorNode: label } as unknown as Selection)
-    await fire(arc_path(plot, `A`))
-    // the mouseup ending a selection drag must not zoom or fire click handlers
-    expect(on_zoom).not.toHaveBeenCalled()
-    expect(on_node_click).not.toHaveBeenCalled()
-    get_selection.mockRestore()
+    try {
+      await fire(arc_path(plot, `A`))
+      // the mouseup ending a selection drag must not zoom or fire click handlers
+      expect(on_zoom).not.toHaveBeenCalled()
+      expect(on_node_click).not.toHaveBeenCalled()
+    } finally {
+      get_selection.mockRestore() // always restore so the spy can't leak into other tests
+    }
   })
 })
 

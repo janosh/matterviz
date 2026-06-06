@@ -1,17 +1,58 @@
 import type { D3SymbolName } from '$lib/labels'
 import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
-// type-only circular import (sunburst.ts imports from this file) - erased at runtime
-import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
-import type { BoxStats } from '$lib/plot/box/box-plot'
 import type { Sides } from '$lib/plot/core/layout'
 import type PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
 import type { TicksOption } from '$lib/plot/core/scales'
 
 export type { TweenOptions } from 'svelte/motion'
+
+// Chart-family types live next to their chart code; re-exported here (type-only,
+// erased at runtime) so existing `$lib/plot/core/types` import paths keep working.
+export type {
+  BandwidthOption,
+  BoxHandlerProps,
+  BoxPlotSeries,
+  ViolinKind,
+  ViolinSide,
+  WhiskerMode,
+} from '$lib/plot/box/box-plot'
+export type {
+  CleaningConfig,
+  CleaningQuality,
+  CleaningResult,
+  InstabilityResult,
+  InvalidValueMode,
+  LocalOutlierConfig,
+  LocalOutlierResult,
+  OscillationWeights,
+  PhysicalBounds,
+  SmoothingConfig,
+  TruncationMode,
+} from '$lib/plot/core/data-cleaning'
+export type {
+  SankeyData,
+  SankeyHandlerProps,
+  SankeyLink,
+  SankeyLinkColorMode,
+  SankeyLinkHandlerProps,
+  SankeyNode,
+  SankeyNodeAlign,
+  SankeyNodeHandlerProps,
+  SankeyOrientation,
+} from '$lib/plot/sankey/sankey-types'
+export type {
+  SunburstLabelRotation,
+  SunburstLabelText,
+  SunburstNode,
+  SunburstNodeHandlerProps,
+  SunburstShape,
+  SunburstSort,
+  SunburstValueMode,
+} from '$lib/plot/sunburst/sunburst'
 
 export type XyShift = { x?: number; y?: number } // For optional shift/offset values
 
@@ -344,147 +385,6 @@ export type UserContentProps = {
 export type Orientation = `vertical` | `horizontal`
 export type BarMode = `overlay` | `stacked` | `grouped`
 
-// How box plot whiskers are computed from a raw distribution
-export type WhiskerMode = `tukey` | `minmax` | `percentile` | `std`
-
-// Which glyph(s) to draw per series: a box, a violin (KDE density), or both
-export type ViolinKind = `box` | `violin` | `violin+box`
-// Which half of the category slot a violin occupies (for one-sided / split violins)
-export type ViolinSide = `both` | `positive` | `negative`
-// Bandwidth selector for the KDE (a number, or a rule-of-thumb name)
-export type BandwidthOption = number | `silverman` | `scott`
-
-// One box/violin in a BoxPlot, summarizing a single raw distribution (y)
-export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
-  id?: string | number // Optional stable identifier (used for keying)
-  y: readonly number[] // raw distribution for THIS box (quantiles/KDE computed internally)
-  label?: string // category label (axis tick + legend + tooltip title)
-  color?: string
-  box_width?: number // fraction of the category slot (0..1), default from settings
-  visible?: boolean
-  // Group name for organizing legend items (same semantics as BarSeries.legend_group)
-  legend_group?: string
-  metadata?: Metadata
-  // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
-  x_axis?: `x1` | `x2`
-  // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
-  y_axis?: `y1` | `y2`
-  // Per-series whisker overrides (else fall back to component-level props)
-  whisker_mode?: WhiskerMode
-  whisker_range?: number
-  whisker_percentiles?: [number, number]
-  // Violin overrides (else fall back to component-level props)
-  kind?: ViolinKind // 'box' (default), 'violin', or 'violin+box'
-  side?: ViolinSide // 'both' (default), 'positive', or 'negative'
-  bandwidth?: BandwidthOption
-  violin_width?: number // fraction of the category slot
-  clip?: [number | null, number | null] // hard KDE bounds (e.g. [0, null] for RMSD)
-  // Series sharing a `category` occupy the same slot (for split/grouped violins).
-  // When omitted, each series gets its own slot (default box/violin behavior).
-  category?: string
-}
-
-export interface BoxHandlerProps<
-  Metadata = Record<string, unknown>,
-> extends HandlerProps<Metadata> {
-  box_idx: number
-  stats: BoxStats
-  color: string
-  category_label?: string
-  active_y_axis: `y1` | `y2`
-  active_x_axis: `x1` | `x2`
-}
-
-// === Sankey diagram ===
-// Flow direction: 'horizontal' = columns left->right, 'vertical' = columns top->bottom
-export type SankeyOrientation = `horizontal` | `vertical`
-// Maps to d3-sankey alignment functions (sankeyLeft/Right/Center/Justify)
-export type SankeyNodeAlign = `left` | `right` | `center` | `justify`
-// How each link ribbon derives its color when no explicit link.color is set
-export type SankeyLinkColorMode = `source` | `target` | `gradient` | `static`
-
-export interface SankeyNode<Metadata = Record<string, unknown>> {
-  id?: string | number // stable id (defaults to array index); referenced by links
-  label?: string
-  color?: string // defaults to cycled DEFAULT_SERIES_COLORS
-  metadata?: Metadata
-}
-
-export interface SankeyLink<Metadata = Record<string, unknown>> {
-  source: number | string // node id, or zero-based index into nodes
-  target: number | string // node id, or zero-based index into nodes
-  value: number // flow magnitude (controls ribbon thickness)
-  color?: string // overrides link_color_mode for this link
-  label?: string
-  metadata?: Metadata
-}
-
-export interface SankeyData<Metadata = Record<string, unknown>> {
-  nodes: SankeyNode<Metadata>[]
-  links: SankeyLink<Metadata>[]
-}
-
-export interface SankeyNodeHandlerProps<Metadata = Record<string, unknown>> {
-  type: `node`
-  node_idx: number
-  id: string | number
-  label?: string
-  value: number // sum of incoming/outgoing link values
-  color: string
-  metadata?: Metadata
-}
-
-export interface SankeyLinkHandlerProps<Metadata = Record<string, unknown>> {
-  type: `link`
-  link_idx: number
-  source_idx: number
-  target_idx: number
-  source_label?: string
-  target_label?: string
-  value: number
-  color: string
-  metadata?: Metadata
-}
-
-export type SankeyHandlerProps<Metadata = Record<string, unknown>> =
-  | SankeyNodeHandlerProps<Metadata>
-  | SankeyLinkHandlerProps<Metadata>
-
-// === Sunburst chart ===
-// How node values are interpreted (plotly `branchvalues` semantics):
-// 'leaf-sum'  - parent values ignored, computed as sum of leaf values (d3 .sum default)
-// 'total'     - every node's value is authoritative; children should sum <= parent
-//               (plotly branchvalues='total'; a shortfall leaves an angular gap)
-// 'remainder' - a node's own value is added on top of its children's sum
-export type SunburstValueMode = `leaf-sum` | `total` | `remainder`
-// Arc label orientation: 'auto' picks radial/tangential per arc based on available space
-export type SunburstLabelRotation = `auto` | `radial` | `tangential` | `horizontal`
-// Sibling ordering: 'none' preserves input order (e.g. spacegroup number order)
-export type SunburstSort = `descending` | `ascending` | `none`
-// What arc labels display (plotly textinfo equivalent); percent is of the root total
-export type SunburstLabelText = `label` | `value` | `percent` | `label+value` | `label+percent`
-// Chart geometry: polar rings (sunburst) or stacked horizontal rows (icicle)
-export type SunburstShape = `sunburst` | `icicle`
-
-export interface SunburstNode<Metadata = Record<string, unknown>> {
-  id?: string | number // stable id (defaults to slash-joined label path, e.g. "cubic/Fm-3m")
-  label?: string
-  value?: number // required on leaves ('leaf-sum') / authoritative on all nodes ('total')
-  color?: string // explicit color, inherited by descendants without their own
-  children?: SunburstNode<Metadata>[]
-  metadata?: Metadata
-}
-
-// Event payload for hover/click/zoom callbacks: a PositionedArc minus its geometry
-// (screen coords are an implementation detail), plus the resolved parent id
-export interface SunburstNodeHandlerProps<Metadata = Record<string, unknown>> extends Omit<
-  PositionedArc<Metadata>,
-  `x0` | `x1` | `y0` | `y1` | `subtree_end` | `parent_idx`
-> {
-  type: `node`
-  parent_id: string | number | null
-}
-
 export interface BarSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly (number | string)[]
@@ -710,11 +610,6 @@ export interface PlotControlsProps extends PlotConfig {
 // Base props shared across plot components (non-bindable props only)
 // Components should declare x_axis, y_axis, display, etc. as $bindable() grouped configs
 export interface BasePlotProps {
-  // Axis limits (non-bindable - used for auto-range calculation)
-  x_range?: [number | null, number | null]
-  x2_range?: [number | null, number | null]
-  y_range?: [number | null, number | null]
-  y2_range?: [number | null, number | null]
   range_padding?: number // Factor to pad auto-detected ranges before nicing (e.g. 0.05 = 5%)
   padding?: Sides
   // State
@@ -1197,96 +1092,3 @@ export type RefPlane = RefPlaneBase &
     | { type: `normal`; normal: Vec3; point: Vec3 }
     | { type: `points`; p1: Vec3; p2: Vec3; p3: Vec3 } // plane through 3 points
   )
-
-// --- Data Cleaning Types ---
-
-// Oscillation detection weights (all default to 1.0)
-export interface OscillationWeights {
-  derivative_variance?: number // Weight for derivative variance method
-  amplitude_growth?: number // Weight for exponential amplitude growth
-  sign_changes?: number // Weight for derivative sign change frequency
-}
-
-// How to handle invalid values (NaN, Infinity)
-export type InvalidValueMode = `remove` | `propagate` | `interpolate`
-
-// Truncation strategy when instability detected
-export type TruncationMode = `hard_cut` | `mark_unstable`
-
-// Physical bounds configuration
-export interface PhysicalBounds {
-  min?: number | ((x: number) => number) // Static or x-dependent minimum
-  max?: number | ((x: number) => number) // Static or x-dependent maximum
-  mode?: `clamp` | `filter` | `null` // How to handle violations
-}
-
-// Smoothing algorithm configuration (discriminated union for type safety)
-export type SmoothingConfig =
-  | { type: `moving_avg`; window: number }
-  | { type: `savgol`; window: number; polynomial_order?: number } // window must be odd
-  | { type: `gaussian`; sigma: number } // sigma controls Gaussian kernel width
-
-// Local outlier detection config (sliding window approach)
-export interface LocalOutlierConfig {
-  window_half?: number // Points on each side for local context (default: 7)
-  mad_threshold?: number // MADs from local median to flag outlier (default: 2.0)
-  max_iterations?: number // Iterative passes to catch clustered outliers (default: 5)
-}
-
-// Result of local outlier detection
-export interface LocalOutlierResult {
-  kept_indices: number[]
-  removed_indices: number[]
-  iterations_used: number
-}
-
-// Main cleaning configuration
-export interface CleaningConfig {
-  // Oscillation detection
-  oscillation_threshold?: number // Combined score threshold (default: 3.0)
-  oscillation_weights?: OscillationWeights // Method weights
-  window_size?: number // Rolling window for detection (default: 5)
-
-  // Data handling
-  invalid_values?: InvalidValueMode // NaN/Infinity handling (default: 'remove')
-  bounds?: PhysicalBounds // Physical constraints
-  smooth?: SmoothingConfig // Optional smoothing
-  local_outliers?: LocalOutlierConfig // Local sliding window outlier removal
-
-  // Truncation
-  truncation_mode?: TruncationMode // 'hard_cut' or 'mark_unstable' (default: 'mark_unstable')
-
-  // Performance
-  in_place?: boolean // Mutate input arrays (default: true)
-}
-
-// Quality report from cleaning operation
-export interface CleaningQuality {
-  points_removed: number
-  invalid_values_found: number // NaN/Infinity count
-  oscillation_detected: boolean
-  oscillation_score?: number // Combined weighted score
-  bounds_violations: number
-  outliers_removed?: number // Count of local outliers removed
-  stable_range?: Vec2 // [start_x, end_x] if mark_unstable mode
-  truncated_at_x?: number // x value if hard_cut mode
-}
-
-// Result of a cleaning operation
-export interface CleaningResult<T = DataSeries> {
-  series: T // Cleaned data (same ref if in_place)
-  quality: CleaningQuality
-}
-
-// Instability detection result
-export interface InstabilityResult {
-  detected: boolean
-  onset_index: number
-  onset_x: number
-  combined_score: number
-  method_scores: {
-    derivative_variance: number
-    amplitude_growth: number
-    sign_changes: number
-  }
-}

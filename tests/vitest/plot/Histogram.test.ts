@@ -24,6 +24,22 @@ function get_tick_numbers(axis: `x` | `y`): number[] {
 
 const get_y_tick_numbers = (): number[] => get_tick_numbers(`y`)
 
+const get_svg = () => {
+  const svg = document.querySelector(`svg[role="application"]`)
+  if (!svg) throw new Error(`histogram plot area not found`)
+  return svg
+}
+
+// happy-dom lacks Touch/TouchEvent constructors, so dispatch plain events
+// carrying a touches array (the handlers only read touches[*].clientX/Y)
+const touch_event = (type: string, touches: readonly (readonly [number, number])[]) => {
+  const evt = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(evt, `touches`, {
+    value: touches.map(([clientX, clientY]) => ({ clientX, clientY })),
+  })
+  return evt
+}
+
 describe(`Histogram`, () => {
   test.each([
     {
@@ -46,6 +62,30 @@ describe(`Histogram`, () => {
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeGreaterThanOrEqual(expected_min_max[0])
     expect(max_tick).toBeLessThanOrEqual(expected_min_max[1])
+  })
+
+  // pan must be screen-uniform: on a log axis that's a constant *factor*, not a
+  // constant amount. A multi-plot-height wheel pan over [1, 100] must land decades
+  // up while still spanning 2 decades - the old linear-space math collapsed the
+  // view to a sub-decade slice (and panning down shifted past zero into NaN)
+  test(`shift+wheel pan on a log y axis shifts by decades, not linearly`, async () => {
+    mount_histogram({
+      series: [{ x: [], y: [1, 2, 3, 4, 5], label: `A` }],
+      y_axis: { scale_type: `log`, range: [1, 100] },
+    })
+    await tick()
+    const plot = get_svg()
+    plot.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
+    await tick()
+    plot.dispatchEvent(new WheelEvent(`wheel`, { deltaY: 2000, bubbles: true }))
+    await tick()
+    const ticks = get_y_tick_numbers()
+    expect(ticks.length).toBeGreaterThan(0)
+    expect(Math.min(...ticks)).toBeGreaterThan(100) // moved decades up from [1, 100]
+    // log pan preserves the visible span (a constant factor): ticks still cover >= 1
+    // decade; the old linear math left a sub-decade slice here
+    expect(Math.max(...ticks) / Math.min(...ticks)).toBeGreaterThanOrEqual(10)
   })
 
   test(`multi-series uses maximum counts across series`, async () => {
@@ -123,15 +163,19 @@ describe(`Histogram`, () => {
     expect(max_few).toBeGreaterThanOrEqual(max_many)
   })
 
-  test(`y_range caps auto count domain`, async () => {
-    mount_histogram({ series: [{ x: [], y: [1, 1, 1, 1, 1] }], bins: 5, y_range: [0, 3] })
+  test(`y_axis.range caps auto count domain`, async () => {
+    mount_histogram({
+      series: [{ x: [], y: [1, 1, 1, 1, 1] }],
+      bins: 5,
+      y_axis: { range: [0, 3] },
+    })
     await tick()
     const ticks = get_y_tick_numbers()
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeLessThanOrEqual(3)
   })
 
-  test(`x_range applies domain; y max tick >= computed max bin count`, async () => {
+  test(`x_axis.range applies domain; y max tick >= computed max bin count`, async () => {
     const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
 
     mount_histogram({ series, bins: 5 })
@@ -142,7 +186,7 @@ describe(`Histogram`, () => {
     const full_expected = d3max(full_hist, (b) => b.length) ?? 0
     expect(full_max).toBeGreaterThanOrEqual(full_expected)
 
-    mount_histogram({ series, bins: 5, x_range: [0, 3] })
+    mount_histogram({ series, bins: 5, x_axis: { range: [0, 3] } })
     await tick()
     const ticks_zoom = get_y_tick_numbers()
     const zoom_max = Math.max(...ticks_zoom)
@@ -155,8 +199,7 @@ describe(`Histogram`, () => {
     mount_histogram({
       series: [{ x: [], y: [1, 1, 1, 1, 1] }],
       bins: 5,
-      y_axis: { scale_type: `log`, format: `.2r` },
-      y_range: [1, null],
+      y_axis: { scale_type: `log`, format: `.2r`, range: [1, null] },
     })
     await tick()
     const ticks = get_y_tick_numbers()
@@ -199,6 +242,36 @@ describe(`Histogram`, () => {
     await tick()
     // Verify component mounted without crashing
     expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
+  })
+
+  // oxfmt-ignore
+  test.each([
+    {
+      // 1px apart: passes a Number.EPSILON guard, so curr_dist / start_dist would
+      // blow up the zoom factor without the MIN_TOUCH_DISTANCE_PIXELS guard
+      name: `near-coincident two-finger start is ignored (no explosive pinch zoom)`,
+      events: [[`touchstart`, [[100, 100], [101, 100]]], [`touchmove`, [[50, 100], [250, 100]]]],
+    },
+    {
+      // OS-cancelled gesture (e.g. notification swipe) fires touchcancel, not touchend;
+      // stale touch state must not let the later touchmove pan
+      name: `touchcancel clears touch state so later touchmove does not pan`,
+      events: [
+        [`touchstart`, [[100, 100], [200, 100]]],
+        [`touchcancel`, []],
+        [`touchmove`, [[150, 150], [250, 150]]],
+      ],
+    },
+  ] as const)(`$name`, async ({ events }) => {
+    mount_histogram({ series: [{ x: [], y: [1, 2, 3, 4, 5], label: `A` }] })
+    await tick()
+    const svg = get_svg()
+    const ticks_before = { x: get_tick_numbers(`x`), y: get_y_tick_numbers() }
+    expect(ticks_before.x.length).toBeGreaterThan(0)
+    for (const [type, touches] of events) svg.dispatchEvent(touch_event(type, touches))
+    await tick()
+    expect(get_tick_numbers(`x`)).toEqual(ticks_before.x)
+    expect(get_y_tick_numbers()).toEqual(ticks_before.y)
   })
 
   test(`legend auto-moves to the bottom margin when bars fill the plot`, async () => {

@@ -32,6 +32,7 @@
   import { create_color_scale } from '$lib/plot/core/scales'
   import {
     arc_label_transform,
+    arrow_nav_target,
     project_arcs,
     type ScreenArc as ScreenArcOf,
   } from '$lib/plot/sunburst/render'
@@ -480,50 +481,24 @@
   }
 
   // Arrow-key navigation: left/right cycle through visible siblings (wrapping),
-  // down enters the first child, up returns to the parent
-  function arrow_nav_target(event: KeyboardEvent): number | null {
-    if (![`ArrowRight`, `ArrowLeft`, `ArrowUp`, `ArrowDown`].includes(event.key)) {
-      return null
-    }
+  // down enters the first child, up returns to the parent. The pre-order walk
+  // lives in render.ts (arrow_nav_target); this wrapper supplies the event's arc
+  // and the current screen-space visibility.
+  const nav_target_from_event = (event: KeyboardEvent): number | null => {
     const cur = screen_arc_from_event(event)?.arc
     if (!cur) return null
-    if (event.key === `ArrowDown`) {
-      // pre-order: a branch's first child directly follows it
-      const child = layout.arcs[cur.node_idx + 1]
-      return child && child.parent_idx === cur.node_idx &&
-          screen_arcs[child.node_idx]?.visible
-        ? child.node_idx
-        : null
-    }
-    if (event.key === `ArrowUp`) {
-      const parent = parent_of(cur)
-      return parent && parent.depth > 0 && screen_arcs[parent.node_idx]?.visible
-        ? parent.node_idx
-        : null
-    }
-    // Walk siblings via the contiguous pre-order subtree ranges (each sibling starts
-    // right after the previous one's subtree ends) - pre-order also matches angular
-    // order, so no sorting needed and no full-arcs scan per keypress
-    const parent = parent_of(cur)
-    const last = parent?.subtree_end ?? layout.arcs.length - 1
-    const siblings: number[] = []
-    for (
-      let idx = (parent?.node_idx ?? 0) + 1;
-      idx <= last;
-      idx = layout.arcs[idx].subtree_end + 1
-    ) {
-      if (screen_arcs[idx]?.visible) siblings.push(idx)
-    }
-    if (siblings.length < 2) return null
-    const pos = siblings.indexOf(cur.node_idx)
-    const step = event.key === `ArrowRight` ? 1 : -1
-    return siblings[(pos + step + siblings.length) % siblings.length]
+    return arrow_nav_target(
+      layout.arcs,
+      (idx) => screen_arcs[idx]?.visible ?? false,
+      cur.node_idx,
+      event.key,
+    )
   }
 
   const is_activation_key = (evt: KeyboardEvent) => [`Enter`, ` `].includes(evt.key)
 
   function handle_arc_keydown(event: KeyboardEvent) {
-    const nav_target = arrow_nav_target(event)
+    const nav_target = nav_target_from_event(event)
     if (nav_target != null) {
       event.preventDefault()
       focus_arc(nav_target)
@@ -971,7 +946,10 @@
     background: var(--sunburst-fullscreen-bg, var(--sunburst-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--sunburst-fullscreen-bg, var(--sunburst-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
   .header-controls {

@@ -39,16 +39,14 @@
   } from '$lib/plot/core/auto-place'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
-  import {
-    create_dimension_tracker,
-    create_hover_lock,
-  } from '$lib/plot/core/hover-lock.svelte'
+  import { create_dimension_tracker, create_hover_lock } from '$lib/plot/core/hover-lock.svelte'
+  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
     get_relative_coords,
     MIN_TOUCH_DISTANCE_PIXELS,
-    pan_range,
+    pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
-    pixels_to_data_delta,
+    zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
@@ -114,14 +112,10 @@
     series = $bindable([]),
     orientation = $bindable(`vertical`),
     x_axis = $bindable({}),
-    x2_axis = $bindable({}),
+    x2_axis: x2_axis_prop = $bindable({}),
     y_axis = $bindable({}),
-    y2_axis = $bindable({}),
+    y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.box.display),
-    x_range = [null, null],
-    x2_range = [null, null],
-    y_range = [null, null],
-    y2_range = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     legend = {},
@@ -218,8 +212,26 @@
   let outlier_state = $derived({ ...DEFAULTS.box.outlier, ...outlier_style })
   let violin_state = $derived({ ...DEFAULTS.box.violin, ...violin_style })
 
-  y2_axis = { format: ``, scale_type: `linear`, ticks: 5, range: [null, null], ...y2_axis }
-  x2_axis = { format: ``, scale_type: `linear`, ticks: 5, range: [null, null], ...x2_axis }
+  // Merge secondary-axis defaults as deriveds instead of assigning back into the
+  // $bindable props (which would push library defaults into the parent's bound state)
+  let y2_axis = $derived(
+    {
+      format: ``,
+      scale_type: `linear`,
+      ticks: 5,
+      range: [null, null],
+      ...y2_axis_prop,
+    } as typeof y2_axis_prop,
+  )
+  let x2_axis = $derived(
+    {
+      format: ``,
+      scale_type: `linear`,
+      ticks: 5,
+      range: [null, null],
+      ...x2_axis_prop,
+    } as typeof x2_axis_prop,
+  )
 
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
@@ -377,7 +389,7 @@
     const primary_boxes = visible_boxes.filter((box_item) => !is_secondary(box_item.series))
     const calc_value_range = (
       boxes: Box[],
-      limit: typeof y_range,
+      limit: [number | null, number | null],
       scale_type: ScaleType,
     ): Vec2 => {
       const pts = value_points(boxes)
@@ -387,12 +399,12 @@
     const vertical = orientation === `vertical`
     const value_primary = calc_value_range(
       primary_boxes,
-      vertical ? y_range : x_range,
+      (vertical ? y_axis.range : x_axis.range) ?? [null, null],
       (vertical ? y_axis.scale_type : x_axis.scale_type) ?? `linear`,
     )
     const value_secondary = calc_value_range(
       secondary_boxes,
-      vertical ? y2_range : x2_range,
+      (vertical ? y2_axis.range : x2_axis.range) ?? [null, null],
       (vertical ? y2_axis.scale_type : x2_axis.scale_type) ?? `linear`,
     )
 
@@ -623,13 +635,19 @@
       if (dx > 5 && dy > 5 && Number.isFinite(x1) && Number.isFinite(x2)) {
         x_axis = { ...x_axis, range: [Math.min(x1, x2), Math.max(x1, x2)] }
         if (has_secondary && Number.isFinite(x2_1) && Number.isFinite(x2_2)) {
-          x2_axis = { ...x2_axis, range: [Math.min(x2_1, x2_2), Math.max(x2_1, x2_2)] }
+          x2_axis_prop = {
+            ...x2_axis_prop,
+            range: [Math.min(x2_1, x2_2), Math.max(x2_1, x2_2)],
+          }
         }
         y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
         // gate on secondary series presence (like x2): the y2 scale is a sentinel
         // otherwise, so inverting would store a phantom range in the bindable prop
         if (has_secondary && Number.isFinite(y2_1) && Number.isFinite(y2_2)) {
-          y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
+          y2_axis_prop = {
+            ...y2_axis_prop,
+            range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)],
+          }
         }
       }
     }
@@ -639,19 +657,30 @@
     document.body.style.cursor = `default`
   }
 
+  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
+  // scale's transform space (log axes pan by a constant factor, linear by a shift)
+  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
+    ranges.current.x = pan_range_by_pixels(init.initial_x_range, dx_px, chart_width, x_axis.scale_type)
+    ranges.current.x2 = pan_range_by_pixels(init.initial_x2_range, dx_px, chart_width, x2_axis.scale_type)
+    ranges.current.y = pan_range_by_pixels(init.initial_y_range, dy_px, chart_height, y_axis.scale_type)
+    ranges.current.y2 = pan_range_by_pixels(init.initial_y2_range, dy_px, chart_height, y2_axis.scale_type)
+  }
+  const zoom_all_axes = (init: InitialRanges, factor: number) => {
+    ranges.current.x = zoom_range_by_factor(init.initial_x_range, factor, x_axis.scale_type)
+    ranges.current.x2 = zoom_range_by_factor(init.initial_x2_range, factor, x2_axis.scale_type)
+    ranges.current.y = zoom_range_by_factor(init.initial_y_range, factor, y_axis.scale_type)
+    ranges.current.y2 = zoom_range_by_factor(init.initial_y2_range, factor, y2_axis.scale_type)
+  }
+
+  // Pan drag handler (drag direction inverted on x for natural pan feel)
   const on_pan_move = (evt: MouseEvent) => {
     if (!pan_drag_state) return
-    const dx = evt.clientX - pan_drag_state.start.x
-    const dy = evt.clientY - pan_drag_state.start.y
     const sensitivity = pan?.drag_sensitivity ?? 1
-    const x_delta = pixels_to_data_delta(-dx * sensitivity, pan_drag_state.initial_x_range, chart_width)
-    const x2_delta = pixels_to_data_delta(-dx * sensitivity, pan_drag_state.initial_x2_range, chart_width)
-    const y_delta = pixels_to_data_delta(dy * sensitivity, pan_drag_state.initial_y_range, chart_height)
-    const y2_delta = pixels_to_data_delta(dy * sensitivity, pan_drag_state.initial_y2_range, chart_height)
-    ranges.current.x = pan_range(pan_drag_state.initial_x_range, x_delta)
-    ranges.current.x2 = pan_range(pan_drag_state.initial_x2_range, x2_delta)
-    ranges.current.y = pan_range(pan_drag_state.initial_y_range, y_delta)
-    ranges.current.y2 = pan_range(pan_drag_state.initial_y2_range, y2_delta)
+    pan_all_axes(
+      pan_drag_state,
+      -(evt.clientX - pan_drag_state.start.x) * sensitivity,
+      (evt.clientY - pan_drag_state.start.y) * sensitivity,
+    )
   }
   const on_pan_end = () => {
     pan_drag_state = null
@@ -703,16 +732,14 @@
     if (!pan_enabled || !is_focused || !shift_held) return
     evt.preventDefault()
     const sensitivity = pan?.wheel_sensitivity ?? 1
-    const x_delta = pixels_to_data_delta(evt.deltaX * sensitivity, ranges.current.x, chart_width)
-    const x2_delta = pixels_to_data_delta(evt.deltaX * sensitivity, ranges.current.x2, chart_width)
-    const y_delta = pixels_to_data_delta(evt.deltaY * sensitivity, ranges.current.y, chart_height)
-    const y2_delta = pixels_to_data_delta(evt.deltaY * sensitivity, ranges.current.y2, chart_height)
     if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      ranges.current.x = pan_range(ranges.current.x, x_delta)
-      ranges.current.x2 = pan_range(ranges.current.x2, x2_delta)
+      const dx = evt.deltaX * sensitivity
+      ranges.current.x = pan_range_by_pixels(ranges.current.x, dx, chart_width, x_axis.scale_type)
+      ranges.current.x2 = pan_range_by_pixels(ranges.current.x2, dx, chart_width, x2_axis.scale_type)
     } else {
-      ranges.current.y = pan_range(ranges.current.y, y_delta)
-      ranges.current.y2 = pan_range(ranges.current.y2, y2_delta)
+      const dy = evt.deltaY * sensitivity
+      ranges.current.y = pan_range_by_pixels(ranges.current.y, dy, chart_height, y_axis.scale_type)
+      ranges.current.y2 = pan_range_by_pixels(ranges.current.y2, dy, chart_height, y2_axis.scale_type)
     }
   }
 
@@ -743,34 +770,10 @@
     if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
     const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
     const scale = curr_dist / start_dist
+    // Pinch zoom about the view center (spread = zoom in, pinch = zoom out)
     if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      const zoom = (rng: Vec2): Vec2 => {
-        const span = rng[1] - rng[0]
-        const center = (rng[0] + rng[1]) / 2
-        return [center - span / scale / 2, center + span / scale / 2]
-      }
-      ranges.current.x = zoom(touch_state.initial_x_range)
-      ranges.current.x2 = zoom(touch_state.initial_x2_range)
-      ranges.current.y = zoom(touch_state.initial_y_range)
-      ranges.current.y2 = zoom(touch_state.initial_y2_range)
-    } else {
-      ranges.current.x = pan_range(
-        touch_state.initial_x_range,
-        pixels_to_data_delta(-dx, touch_state.initial_x_range, chart_width),
-      )
-      ranges.current.x2 = pan_range(
-        touch_state.initial_x2_range,
-        pixels_to_data_delta(-dx, touch_state.initial_x2_range, chart_width),
-      )
-      ranges.current.y = pan_range(
-        touch_state.initial_y_range,
-        pixels_to_data_delta(dy, touch_state.initial_y_range, chart_height),
-      )
-      ranges.current.y2 = pan_range(
-        touch_state.initial_y2_range,
-        pixels_to_data_delta(dy, touch_state.initial_y2_range, chart_height),
-      )
-    }
+      zoom_all_axes(touch_state, scale)
+    } else pan_all_axes(touch_state, -dx, dy)
   }
   const handle_touch_end = () => (touch_state = null)
 
@@ -785,22 +788,7 @@
     })),
   )
 
-  function toggle_series_visibility(series_idx: number) {
-    if (series_idx >= 0 && series_idx < series.length) {
-      series = series.map((srs, idx) =>
-        idx === series_idx ? { ...srs, visible: !(srs.visible ?? true) } : srs
-      )
-    }
-  }
-  function toggle_group_visibility(_group: string, indices: number[]) {
-    const valid = indices.filter((idx) => idx >= 0 && idx < series.length)
-    if (valid.length === 0) return
-    const idx_set = new Set(valid)
-    const all_visible = valid.every((idx) => series[idx].visible ?? true)
-    series = series.map((srs, idx) =>
-      idx_set.has(idx) ? { ...srs, visible: !all_visible } : srs
-    )
-  }
+  const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
 
   let box_points_for_placement = $derived.by(() => {
     if (!width || !height || visible_boxes.length === 0) return []
@@ -1003,9 +991,9 @@
         ranges.current.y = [...ranges.initial.y] as Vec2
         ranges.current.y2 = [...ranges.initial.y2] as Vec2
         x_axis = { ...x_axis, range: [null, null] }
-        x2_axis = { ...x2_axis, range: [null, null] }
+        x2_axis_prop = { ...x2_axis_prop, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
-        y2_axis = { ...y2_axis, range: [null, null] }
+        y2_axis_prop = { ...y2_axis_prop, range: [null, null] }
       }}
       onmouseleave={() => {
         hovered = false
@@ -1048,6 +1036,7 @@
         ticks={ticks.x as number[]}
         place={scales.x}
         axis={x_axis}
+        domain={ranges.current.x as Vec2}
         {pad}
         {width}
         {height}
@@ -1065,6 +1054,7 @@
           ticks={ticks.x2 as number[]}
           place={scales.x2}
           axis={x2_axis}
+          domain={ranges.current.x2 as Vec2}
           {pad}
           {width}
           {height}
@@ -1080,6 +1070,7 @@
         ticks={ticks.y as number[]}
         place={scales.y}
         axis={y_axis}
+        domain={ranges.current.y as Vec2}
         {pad}
         {width}
         {height}
@@ -1103,6 +1094,7 @@
           ticks={ticks.y2 as number[]}
           place={scales.y2}
           axis={y2_axis}
+          domain={ranges.current.y2 as Vec2}
           {pad}
           {width}
           {height}
@@ -1335,8 +1327,9 @@
         bind:root_element={legend_element}
         {...legend}
         series_data={legend_data}
-        on_toggle={legend?.on_toggle || toggle_series_visibility}
-        on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
+        on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
+        on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
+        on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_hover_change={legend_hover.set_locked}
         on_item_hover={(item) =>
           (hovered_legend_series_idx = item != null && item.series_idx >= 0
@@ -1410,9 +1403,9 @@
         bind:kind
         bind:side
         bind:x_axis
-        bind:x2_axis
+        bind:x2_axis={x2_axis_prop}
         bind:y_axis
-        bind:y2_axis
+        bind:y2_axis={y2_axis_prop}
         bind:display
         auto_x_range={auto_ranges.x as Vec2}
         auto_x2_range={auto_ranges.x2 as Vec2}
@@ -1454,7 +1447,10 @@
     background: var(--boxplot-fullscreen-bg, var(--boxplot-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--boxplot-fullscreen-bg, var(--boxplot-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
   .header-controls {

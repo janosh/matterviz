@@ -1014,7 +1014,10 @@
     margin: 0;
     max-height: none !important;
     overflow: hidden;
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--binned-scatter-fullscreen-bg, var(--binned-scatter-bg, var(--plot-bg, Canvas)));
     position: fixed;
     top: 0;
     width: 100vw !important;

@@ -24,11 +24,13 @@
     create_dimension_tracker,
     create_hover_lock,
   } from '$lib/plot/core/hover-lock.svelte'
+  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
     get_relative_coords,
-    pan_range,
+    MIN_TOUCH_DISTANCE_PIXELS,
+    pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
-    pixels_to_data_delta,
+    zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
@@ -66,7 +68,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import type { Vec2 } from '$lib/math'
@@ -81,10 +83,6 @@
     y_axis: y_axis_init = {},
     y2_axis: y2_axis_init = {},
     display: display_init = DEFAULTS.histogram.display,
-    x_range = [null, null],
-    x2_range = [null, null],
-    y_range = [null, null],
-    y2_range = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     bins = $bindable(100),
@@ -275,7 +273,7 @@
     const auto_x = get_nice_data_range(
       x1_values.map((val) => ({ x: val, y: 0 })),
       ({ x }) => x,
-      x_range,
+      final_x_axis.range ?? [null, null],
       final_x_axis.scale_type ?? `linear`,
       range_padding,
       false,
@@ -286,7 +284,7 @@
       ? get_nice_data_range(
         x2_values.map((val) => ({ x: val, y: 0 })),
         ({ x }) => x,
-        x2_range,
+        final_x2_axis.range ?? [null, null],
         final_x2_axis.scale_type ?? `linear`,
         range_padding,
         false,
@@ -296,7 +294,7 @@
     // Calculate y-range for a specific set of series
     const calc_y_range = (
       series_list: typeof selected_series,
-      y_limit: typeof y_range,
+      y_limit: [number | null, number | null],
       scale_type: ScaleType,
     ): Vec2 => {
       const type_name = get_scale_type_name(scale_type)
@@ -336,12 +334,12 @@
 
     const y1_range = calc_y_range(
       y1_series,
-      y_range,
+      final_y_axis.range ?? [null, null],
       final_y_axis.scale_type ?? `linear`,
     )
     const y2_auto_range = calc_y_range(
       y2_series,
-      y2_range,
+      final_y2_axis.range ?? [null, null],
       final_y2_axis.scale_type ?? `linear`,
     )
 
@@ -762,42 +760,33 @@
     document.body.style.cursor = `default`
   }
 
-  // Pan drag handlers
+  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
+  // scale's transform space (log axes pan by a constant factor, linear by a shift).
+  // Plot dims clamped to 1px so degenerate containers can't produce Infinity deltas.
+  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
+    const plot_width = Math.max(1, width - pad.l - pad.r)
+    const plot_height = Math.max(1, height - pad.t - pad.b)
+    ranges.current.x = pan_range_by_pixels(init.initial_x_range, dx_px, plot_width, final_x_axis.scale_type)
+    ranges.current.x2 = pan_range_by_pixels(init.initial_x2_range, dx_px, plot_width, final_x2_axis.scale_type)
+    ranges.current.y = pan_range_by_pixels(init.initial_y_range, dy_px, plot_height, final_y_axis.scale_type)
+    ranges.current.y2 = pan_range_by_pixels(init.initial_y2_range, dy_px, plot_height, final_y2_axis.scale_type)
+  }
+  const zoom_all_axes = (init: InitialRanges, factor: number) => {
+    ranges.current.x = zoom_range_by_factor(init.initial_x_range, factor, final_x_axis.scale_type)
+    ranges.current.x2 = zoom_range_by_factor(init.initial_x2_range, factor, final_x2_axis.scale_type)
+    ranges.current.y = zoom_range_by_factor(init.initial_y_range, factor, final_y_axis.scale_type)
+    ranges.current.y2 = zoom_range_by_factor(init.initial_y2_range, factor, final_y2_axis.scale_type)
+  }
+
+  // Pan drag handler (drag direction inverted on x for natural pan feel)
   const on_pan_move = (evt: MouseEvent) => {
     if (!pan_drag_state) return
-    const dx = evt.clientX - pan_drag_state.start.x
-    const dy = evt.clientY - pan_drag_state.start.y
-
-    // Convert pixel delta to data delta (note: drag direction is inverted for natural pan feel)
-    const plot_width = width - pad.l - pad.r
-    const plot_height = height - pad.t - pad.b
     const sensitivity = pan?.drag_sensitivity ?? 1
-
-    const x_delta = pixels_to_data_delta(
-      -dx * sensitivity,
-      pan_drag_state.initial_x_range,
-      plot_width,
+    pan_all_axes(
+      pan_drag_state,
+      -(evt.clientX - pan_drag_state.start.x) * sensitivity,
+      (evt.clientY - pan_drag_state.start.y) * sensitivity,
     )
-    const x2_delta = pixels_to_data_delta(
-      -dx * sensitivity,
-      pan_drag_state.initial_x2_range,
-      plot_width,
-    )
-    const y_delta = pixels_to_data_delta(
-      dy * sensitivity,
-      pan_drag_state.initial_y_range,
-      plot_height,
-    )
-    const y2_delta = pixels_to_data_delta(
-      dy * sensitivity,
-      pan_drag_state.initial_y2_range,
-      plot_height,
-    )
-
-    ranges.current.x = pan_range(pan_drag_state.initial_x_range, x_delta)
-    ranges.current.x2 = pan_range(pan_drag_state.initial_x2_range, x2_delta)
-    ranges.current.y = pan_range(pan_drag_state.initial_y_range, y_delta)
-    ranges.current.y2 = pan_range(pan_drag_state.initial_y2_range, y2_delta)
   }
 
   const on_pan_end = () => {
@@ -806,6 +795,20 @@
     window.removeEventListener(`mousemove`, on_pan_move)
     window.removeEventListener(`mouseup`, on_pan_end)
   }
+
+  // Tear down any window listeners + cursor override if the component unmounts mid-drag
+  // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
+  // onDestroy also runs during SSR teardown, where window/document don't exist.
+  onDestroy(() => {
+    if (typeof window === `undefined`) return
+    window.removeEventListener(`mousemove`, on_window_mouse_move)
+    window.removeEventListener(`mouseup`, on_window_mouse_up)
+    window.removeEventListener(`mousemove`, on_pan_move)
+    window.removeEventListener(`mouseup`, on_pan_end)
+    drag_state = { start: null, current: null, bounds: null }
+    pan_drag_state = null
+    document.body.style.cursor = ``
+  })
 
   function handle_mouse_down(evt: MouseEvent) {
     const coords = get_relative_coords(evt)
@@ -852,34 +855,15 @@
     const plot_height = Math.max(1, height - pad.t - pad.b)
     const sensitivity = pan?.wheel_sensitivity ?? 1
 
-    // Determine pan direction based on wheel delta
-    const x_delta = pixels_to_data_delta(
-      evt.deltaX * sensitivity,
-      ranges.current.x,
-      plot_width,
-    )
-    const x2_delta = pixels_to_data_delta(
-      evt.deltaX * sensitivity,
-      ranges.current.x2,
-      plot_width,
-    )
-    const y_delta = pixels_to_data_delta(
-      evt.deltaY * sensitivity,
-      ranges.current.y,
-      plot_height,
-    )
-    const y2_delta = pixels_to_data_delta(
-      evt.deltaY * sensitivity,
-      ranges.current.y2,
-      plot_height,
-    )
-
+    // Pan along the dominant wheel direction
     if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      ranges.current.x = pan_range(ranges.current.x, x_delta)
-      ranges.current.x2 = pan_range(ranges.current.x2, x2_delta)
+      const dx = evt.deltaX * sensitivity
+      ranges.current.x = pan_range_by_pixels(ranges.current.x, dx, plot_width, final_x_axis.scale_type)
+      ranges.current.x2 = pan_range_by_pixels(ranges.current.x2, dx, plot_width, final_x2_axis.scale_type)
     } else {
-      ranges.current.y = pan_range(ranges.current.y, y_delta)
-      ranges.current.y2 = pan_range(ranges.current.y2, y2_delta)
+      const dy = evt.deltaY * sensitivity
+      ranges.current.y = pan_range_by_pixels(ranges.current.y, dy, plot_height, final_y_axis.scale_type)
+      ranges.current.y2 = pan_range_by_pixels(ranges.current.y2, dy, plot_height, final_y2_axis.scale_type)
     }
   }
 
@@ -917,78 +901,15 @@
 
     // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
     const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
-    // Guard against zero-distance pinch to avoid Infinity scale
-    if (start_dist < Number.EPSILON) return
+    // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
+    if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
     const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
     const scale = curr_dist / start_dist
 
-    // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    const plot_width = Math.max(1, width - pad.l - pad.r)
-    const plot_height = Math.max(1, height - pad.t - pad.b)
-
-    // If scale changed significantly, treat as pinch-zoom
-    // Also guard against scale being too small to avoid division by zero
+    // Pinch zoom about the view center (spread = zoom in, pinch = zoom out)
     if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      // Pinch zoom centered on gesture center
-      // Divide by scale so spread (scale > 1) = smaller span (zoom in)
-      const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
-      const x2_span = touch_state.initial_x2_range[1] -
-        touch_state.initial_x2_range[0]
-      const y_span = touch_state.initial_y_range[1] - touch_state.initial_y_range[0]
-      const y2_span = touch_state.initial_y2_range[1] -
-        touch_state.initial_y2_range[0]
-      const x_center =
-        (touch_state.initial_x_range[0] + touch_state.initial_x_range[1]) / 2
-      const x2_center =
-        (touch_state.initial_x2_range[0] + touch_state.initial_x2_range[1]) / 2
-      const y_center =
-        (touch_state.initial_y_range[0] + touch_state.initial_y_range[1]) / 2
-      const y2_center =
-        (touch_state.initial_y2_range[0] + touch_state.initial_y2_range[1]) / 2
-
-      ranges.current.x = [
-        x_center - x_span / scale / 2,
-        x_center + x_span / scale / 2,
-      ]
-      ranges.current.x2 = [
-        x2_center - x2_span / scale / 2,
-        x2_center + x2_span / scale / 2,
-      ]
-      ranges.current.y = [
-        y_center - y_span / scale / 2,
-        y_center + y_span / scale / 2,
-      ]
-      ranges.current.y2 = [
-        y2_center - y2_span / scale / 2,
-        y2_center + y2_span / scale / 2,
-      ]
-    } else {
-      // Pan
-      const x_delta = pixels_to_data_delta(
-        -dx,
-        touch_state.initial_x_range,
-        plot_width,
-      )
-      const x2_delta = pixels_to_data_delta(
-        -dx,
-        touch_state.initial_x2_range,
-        plot_width,
-      )
-      const y_delta = pixels_to_data_delta(
-        dy,
-        touch_state.initial_y_range,
-        plot_height,
-      )
-      const y2_delta = pixels_to_data_delta(
-        dy,
-        touch_state.initial_y2_range,
-        plot_height,
-      )
-      ranges.current.x = pan_range(touch_state.initial_x_range, x_delta)
-      ranges.current.x2 = pan_range(touch_state.initial_x2_range, x2_delta)
-      ranges.current.y = pan_range(touch_state.initial_y_range, y_delta)
-      ranges.current.y2 = pan_range(touch_state.initial_y2_range, y2_delta)
-    }
+      zoom_all_axes(touch_state, scale)
+    } else pan_all_axes(touch_state, -dx, dy)
   }
 
   function handle_touch_end() {
@@ -1038,16 +959,7 @@
     on_bar_hover?.({ value, count, property, event: evt })
   }
 
-  function toggle_series_visibility(series_idx: number) {
-    if (series_idx >= 0 && series_idx < series.length) {
-      // Toggle series visibility
-      series = series.map((srs: DataSeries, idx: number) => {
-        if (idx === series_idx) return { ...srs, visible: !(srs.visible ?? true) }
-        return srs
-      })
-      ;(legend?.on_toggle || on_series_toggle)(series_idx)
-    }
-  }
+  const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
 
   // Set theme-aware background when entering fullscreen
   $effect(() => {
@@ -1183,6 +1095,7 @@
     ontouchstart={handle_touch_start}
     ontouchmove={handle_touch_move}
     ontouchend={handle_touch_end}
+    ontouchcancel={handle_touch_end}
     style:cursor={pan_drag_state
     ? `grabbing`
     : shift_held && pan?.enabled !== false
@@ -1248,6 +1161,7 @@
       ticks={ticks.x as number[]}
       place={scales.x}
       axis={final_x_axis}
+      domain={ranges.current.x as Vec2}
       {pad}
       {width}
       {height}
@@ -1266,6 +1180,7 @@
         ticks={ticks.x2 as number[]}
         place={scales.x2}
         axis={final_x2_axis}
+        domain={ranges.current.x2 as Vec2}
         {pad}
         {width}
         {height}
@@ -1284,6 +1199,7 @@
       ticks={ticks.y as number[]}
       place={scales.y}
       axis={final_y_axis}
+      domain={ranges.current.y as Vec2}
       {pad}
       {width}
       {height}
@@ -1309,6 +1225,7 @@
         ticks={ticks.y2 as number[]}
         place={scales.y2}
         axis={final_y2_axis}
+        domain={ranges.current.y2 as Vec2}
         {pad}
         {width}
         {height}
@@ -1470,7 +1387,12 @@
       bind:root_element={legend_element}
       {...legend}
       series_data={legend_data}
-      on_toggle={legend?.on_toggle || toggle_series_visibility}
+      on_toggle={legend?.on_toggle ?? ((series_idx: number) => {
+        if (series_idx < 0 || series_idx >= series.length) return
+        legend_vis.on_toggle(series_idx)
+        on_series_toggle(series_idx)
+      })}
+      on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
       on_hover_change={legend_hover.set_locked}
       on_item_hover={(item) =>
         (hovered_legend_series_idx = item != null && item.series_idx >= 0
@@ -1518,8 +1440,10 @@
     background: var(--histogram-fullscreen-bg, var(--histogram-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
-    /* Add padding to prevent titles from being cropped at top */
-    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
+    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
+    border-top: var(--plot-fullscreen-padding-top, 2em) solid
+      var(--histogram-fullscreen-bg, var(--histogram-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
   .header-controls {

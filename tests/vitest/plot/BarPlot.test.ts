@@ -392,6 +392,19 @@ describe(`BarPlot`, () => {
       },
     )
 
+    // categorical ticks are generated for every category regardless of the view, so
+    // a panned/zoomed range must cull the ones that fall outside the plot area
+    test(`ticks panned outside the plot area are culled`, async () => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [`A`, `B`, `C`, `D`, `E`], y: [1, 2, 3, 4, 5], color: `blue` }],
+        x_axis: { range: [1.5, 3.5] }, // panned view: only C and D remain in range
+      })
+      const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)].map((el) =>
+        el.textContent?.trim(),
+      )
+      expect(labels).toEqual([`C`, `D`])
+    })
+
     test(`hover provides category_label and preserves metadata`, async () => {
       const hover_fn = vi.fn()
       mount(BarPlot, {
@@ -560,6 +573,26 @@ describe(`BarPlot`, () => {
     expect(legend).toBeInstanceOf(HTMLElement)
     // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
     expect(parseFloat(legend?.style.top ?? `0`)).toBeGreaterThan(150)
+  })
+
+  // double-clicking a legend item isolates that series (shared helper, same as
+  // ScatterPlot); a second double-click restores the previous visibility
+  test(`legend double-click isolates a series and restores on repeat`, async () => {
+    const series = [basic, { ...basic, label: `Other`, color: `tomato` }]
+    const plot = await mount_sized_bar_plot({ series, show_legend: true })
+    const visible_states = () =>
+      [...plot.querySelectorAll(`.legend-item`)].map((el) => !el.classList.contains(`hidden`))
+    expect(visible_states()).toEqual([true, true])
+    const dblclick = () =>
+      plot
+        .querySelector(`.legend-item`)
+        ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    dblclick()
+    await tick()
+    expect(visible_states()).toEqual([true, false]) // isolated
+    dblclick()
+    await tick()
+    expect(visible_states()).toEqual([true, true]) // restored
   })
 
   // ref-line annotations must render outside the chart clip group so labels at the
