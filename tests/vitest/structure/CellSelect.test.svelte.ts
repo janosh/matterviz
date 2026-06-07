@@ -20,6 +20,7 @@ type CellSelectProps = {
   loading?: boolean
   direction?: `up` | `down`
   align?: `left` | `right`
+  suppress_hover?: boolean
 }
 
 const normalize_supercell_label = (label: string | undefined): string | undefined =>
@@ -86,6 +87,40 @@ describe(`CellSelect`, () => {
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
+    })
+
+    test(`suppress_hover blocks hover/focus opening and closes an open menu`, async () => {
+      let suppressed = $state(false)
+      mount(CellSelect, {
+        target: document.body,
+        props: {
+          supercell_scaling: `1x1x1`,
+          get suppress_hover() {
+            return suppressed
+          },
+        },
+      })
+
+      // hover opens normally
+      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      await tick()
+      expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
+
+      // suppressing (e.g. the atom color-mode dropdown opened) closes it...
+      suppressed = true
+      await tick()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
+
+      // ...and hover/focus no longer reopen it while suppressed
+      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      doc_query(`.cell-select`).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      await tick()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
+
+      // a manual toggle click must not reopen it either while suppressed
+      doc_query(`.toggle-btn`).dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
     })
 
     test.each([

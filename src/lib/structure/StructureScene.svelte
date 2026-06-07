@@ -53,7 +53,17 @@
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { type Camera, Color, type Mesh, type Object3D, type Scene, Vector3 } from 'three'
+  import {
+    BufferAttribute,
+    BufferGeometry,
+    type Camera,
+    Color,
+    DoubleSide,
+    type Mesh,
+    type Object3D,
+    type Scene,
+    Vector3,
+  } from 'three'
   import Bond from './Bond.svelte'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
@@ -65,6 +75,7 @@
     get_bond_key,
     get_bond_render_matrices,
     get_explicit_bond_metadata,
+    get_majority_element,
     set_bond_order as apply_set_bond_order,
     structure_bond_to_bond_pair,
   } from './bonding'
@@ -78,6 +89,8 @@
     LABEL_OFFSET_EPS,
     make_label_position_calculator,
   } from './label-placement'
+  import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
+  import { compute_polyhedra, merge_polyhedra_buffers } from './polyhedra'
 
   type InstancedAtomGroup = {
     element: string
@@ -168,6 +181,18 @@
     auto_bond_order = DEFAULTS.structure.auto_bond_order,
     aromatic_display = DEFAULTS.structure.aromatic_display,
     bonding_options = {},
+    show_polyhedra = DEFAULTS.structure.show_polyhedra,
+    polyhedra_opacity = DEFAULTS.structure.polyhedra_opacity,
+    polyhedra_show_edges = DEFAULTS.structure.polyhedra_show_edges,
+    polyhedra_edge_color = DEFAULTS.structure.polyhedra_edge_color,
+    polyhedra_color_mode = DEFAULTS.structure.polyhedra_color_mode,
+    polyhedra_color = DEFAULTS.structure.polyhedra_color,
+    polyhedra_hide_center_atoms = DEFAULTS.structure.polyhedra_hide_center_atoms,
+    polyhedra_min_neighbors = DEFAULTS.structure.polyhedra_min_neighbors,
+    polyhedra_max_neighbors = DEFAULTS.structure.polyhedra_max_neighbors,
+    polyhedra_excluded_elements = DEFAULTS.structure.polyhedra_excluded_elements,
+    polyhedra_included_elements = DEFAULTS.structure.polyhedra_included_elements,
+    polyhedra_rendered_elements = $bindable<string[]>([]),
     fov = DEFAULTS.structure.fov,
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
@@ -262,6 +287,18 @@
     auto_bond_order?: boolean
     aromatic_display?: `aromatic` | `kekule`
     bonding_options?: Record<string, unknown>
+    show_polyhedra?: ShowBonds // when to render coordination polyhedra
+    polyhedra_opacity?: number
+    polyhedra_show_edges?: boolean
+    polyhedra_edge_color?: string
+    polyhedra_color_mode?: PolyhedraColorMode
+    polyhedra_color?: string // custom color used when polyhedra_color_mode is 'uniform'
+    polyhedra_hide_center_atoms?: boolean
+    polyhedra_min_neighbors?: number // min coordination number to form a polyhedron
+    polyhedra_max_neighbors?: number // max CN - skips e.g. CN-12 cuboctahedra
+    polyhedra_excluded_elements?: readonly string[] // elements never used as polyhedra centers
+    polyhedra_included_elements?: readonly string[] // force-include (bypasses spectator hiding)
+    polyhedra_rendered_elements?: string[] // (output) elements that currently have polyhedra
     fov?: number
     ambient_light?: number
     directional_light?: number
@@ -923,16 +960,19 @@
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
-  $effect(() => {
-    if (structure && show_bonds !== `never`) {
-      // Determine if we should show bonds based on the setting and structure type
-      const should_show_bonds = show_bonds === `always` ||
-        (show_bonds === `crystals` && lattice) ||
-        (show_bonds === `molecules` && !lattice)
+  // Whether a never|always|crystals|molecules setting applies to the current structure
+  const applies_to_structure = (when: ShowBonds): boolean =>
+    when === `always` ||
+    (when === `crystals` && Boolean(lattice)) ||
+    (when === `molecules` && !lattice)
 
-      if (should_show_bonds) {
-        bond_pairs = BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
-      } else bond_pairs = []
+  $effect(() => {
+    // Bonds are computed when either bond rendering or polyhedra need them.
+    // Rendering of bond cylinders is gated separately on show_bonds below.
+    const want_bonds = applies_to_structure(show_bonds)
+    const want_polyhedra = applies_to_structure(show_polyhedra)
+    if (structure && (want_bonds || want_polyhedra)) {
+      bond_pairs = BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
     } else bond_pairs = []
   })
 
@@ -966,6 +1006,11 @@
       // Skip sites with hidden property values
       const prop_val = property_colors?.values[orig_idx]
       if (prop_val !== undefined && hidden_prop_vals.has(prop_val)) return []
+
+      // Optionally hide atoms at the center of a rendered polyhedron
+      if (polyhedra_hide_center_atoms && polyhedra_center_site_idxs.has(site_idx)) {
+        return []
+      }
 
       // Calculate radius: same_size > site override > element override > default
       // All radii scale uniformly with atom_radius for consistent slider behavior
@@ -1079,13 +1124,105 @@
     return [...calculated, ...added]
   })
 
+  // Bonds drawn as cylinders. When show_bonds doesn't apply, calculated bonds are
+  // hidden but manually added bonds stay visible (bond_pairs may still be computed
+  // for polyhedra, so this can't rely on bond_pairs being empty).
+  let bonds_to_render = $derived.by(() => {
+    if (applies_to_structure(show_bonds)) return filtered_bond_pairs
+    const added_keys = new Set(added_bonds.map(bond_key_for))
+    return filtered_bond_pairs.filter((bond) => added_keys.has(bond_key_for(bond)))
+  })
+
   let editable_bond_pairs = $derived(
-    bond_edits_enabled ? filtered_bond_pairs.filter(can_edit_bond) : [],
+    bond_edits_enabled ? bonds_to_render.filter(can_edit_bond) : [],
   )
+
+  // Coordination polyhedra around cation-like centers, derived from the same
+  // (edited, filtered) bond graph as rendered bonds so the two never disagree.
+  // Colors are resolved in polyhedra_buffers below, so color-scheme/mode changes
+  // never recompute the hull geometry.
+  let polyhedra: Polyhedron[] = $derived.by(() => {
+    if (
+      !structure?.sites || dragging_atoms || !applies_to_structure(show_polyhedra) ||
+      filtered_bond_pairs.length === 0
+    ) return []
+    return compute_polyhedra(structure, filtered_bond_pairs, {
+      min_neighbors: polyhedra_min_neighbors,
+      max_neighbors: polyhedra_max_neighbors,
+      excluded_center_elements: polyhedra_excluded_elements,
+      included_center_elements: polyhedra_included_elements,
+    })
+  })
+
+  // Color of a site: property color (coordination/Wyckoff modes) or element color
+  const polyhedra_site_color = (site_idx: number): string => {
+    const site = structure?.sites[site_idx]
+    const orig_idx = get_orig_site_idx(site, site_idx)
+    const element = get_majority_element(site)
+    return property_colors?.colors[orig_idx] ??
+      (element && colors.element?.[element]) ?? `#808080`
+  }
+
+  // Separate derived so material-only changes (opacity, edge color) don't rebuild
+  // buffers and color changes don't rebuild hulls
+  let polyhedra_buffers = $derived.by(() => {
+    if (polyhedra.length === 0) return null
+    const get_vertex_color = (poly: Polyhedron, vertex_idx: number): string => {
+      if (polyhedra_color_mode === `uniform`) return polyhedra_color
+      if (polyhedra_color_mode === `center`) {
+        return polyhedra_site_color(poly.center_site_idx)
+      }
+      // 'vertex' (default): each corner takes the color of the atom that forms it
+      return polyhedra_site_color(poly.vertex_site_idxs[vertex_idx])
+    }
+    return merge_polyhedra_buffers(polyhedra, get_vertex_color)
+  })
+
+  let polyhedra_center_site_idxs = $derived(
+    new Set(polyhedra.map((poly) => poly.center_site_idx)),
+  )
+
+  // Publish which elements currently anchor polyhedra (consumed by controls so
+  // per-element toggles reflect the actual render state incl. spectator hiding)
+  $effect(() => {
+    const elems = [...new Set(polyhedra.map((poly) => poly.center_element))].sort()
+    if (elems.join(`,`) !== polyhedra_rendered_elements.join(`,`)) {
+      polyhedra_rendered_elements = elems
+    }
+  })
+
+  // Geometries with proper disposal on dependency change (same pattern as ReferencePlane)
+  const buffer_geometry = (attrs: Record<string, Float32Array>): BufferGeometry => {
+    const geo = new BufferGeometry()
+    for (const [name, array] of Object.entries(attrs)) {
+      geo.setAttribute(name, new BufferAttribute(array, 3))
+    }
+    return geo
+  }
+  let polyhedra_geometry: BufferGeometry | null = $state(null)
+  $effect(() => {
+    let geo: BufferGeometry | null = null
+    if (polyhedra_buffers && polyhedra_buffers.triangle_count > 0) {
+      const { positions: position, colors: color } = polyhedra_buffers
+      geo = buffer_geometry({ position, color })
+      geo.computeVertexNormals() // non-indexed -> per-face normals (flat shading)
+    }
+    polyhedra_geometry = geo
+    return () => geo?.dispose()
+  })
+
+  let polyhedra_edge_geometry: BufferGeometry | null = $state(null)
+  $effect(() => {
+    const geo = polyhedra_show_edges && polyhedra_buffers && polyhedra_buffers.edge_count > 0
+      ? buffer_geometry({ position: polyhedra_buffers.edge_positions })
+      : null
+    polyhedra_edge_geometry = geo
+    return () => geo?.dispose()
+  })
 
   let smart_site_label_offsets = $derived.by(() => {
     const offsets = new SvelteMap<number, Vec3>()
-    if (filtered_bond_pairs.length === 0) return offsets
+    if (bonds_to_render.length === 0) return offsets
 
     const bond_directions_by_site = new SvelteMap<number, Vec3[]>()
     const add_bond_direction = (site_idx: number, pos_1: Vec3, pos_2: Vec3) => {
@@ -1100,7 +1237,7 @@
       ])
     }
 
-    for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of filtered_bond_pairs) {
+    for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bonds_to_render) {
       add_bond_direction(site_idx_1, pos_1, pos_2)
       add_bond_direction(site_idx_2, pos_2, pos_1)
     }
@@ -1111,7 +1248,7 @@
   })
 
   let instanced_bond_groups = $derived.by(() => {
-    if (!structure?.sites || filtered_bond_pairs.length === 0) return []
+    if (!structure?.sites || bonds_to_render.length === 0) return []
 
     const group = {
       thickness: bond_thickness,
@@ -1124,7 +1261,7 @@
       }[],
     }
 
-    for (const bond_data of filtered_bond_pairs) {
+    for (const bond_data of bonds_to_render) {
       const site_a = structure.sites[bond_data.site_idx_1]
       const site_b = structure.sites[bond_data.site_idx_2]
 
@@ -1694,6 +1831,32 @@
         {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
           {@render bond_instanced_mesh_snippet(group)}
         {/each}
+      {/if}
+
+      <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
+        LineSegments (1-2 draw calls regardless of supercell size) -->
+      {#if polyhedra_geometry}
+        <T.Mesh geometry={polyhedra_geometry} frustumCulled={false} raycast={() => null}>
+          <!-- depthWrite when mostly opaque: VESTA-like occlusion between polyhedra;
+            fully translucent settings fall back to see-through blending -->
+          <T.MeshStandardMaterial
+            vertexColors
+            transparent={polyhedra_opacity < 1}
+            opacity={polyhedra_opacity}
+            side={DoubleSide}
+            depthWrite={polyhedra_opacity >= 0.65}
+            flatShading
+          />
+        </T.Mesh>
+        {#if polyhedra_edge_geometry}
+          <T.LineSegments
+            geometry={polyhedra_edge_geometry}
+            frustumCulled={false}
+            raycast={() => null}
+          >
+            <T.LineBasicMaterial color={polyhedra_edge_color} />
+          </T.LineSegments>
+        {/if}
       {/if}
 
       <!-- Clickable bond hit-test cylinders in edit-bonds mode -->

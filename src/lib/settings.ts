@@ -20,6 +20,7 @@ import type {
   WhiskerMode,
 } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
+import type { PolyhedraColorMode } from '$lib/structure/polyhedra'
 import { merge_nested } from './utils'
 
 // SettingType interface with optional context to control where settings apply
@@ -37,6 +38,10 @@ export interface SettingType<T = unknown> {
 
 export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
+// Shared enum labels for never|always|crystals|molecules settings (bonds, polyhedra)
+const SHOW_BONDS_ENUM = Object.fromEntries(
+  SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
+) as Readonly<Record<ShowBonds, string>>
 
 export type CameraProjection = `perspective` | `orthographic`
 
@@ -182,6 +187,18 @@ export interface SettingsConfig {
     show_bonds: SettingType<ShowBonds>
     bond_color: SettingType<string>
     bonding_strategy: SettingType<BondingStrategy>
+    // Coordination Polyhedra
+    show_polyhedra: SettingType<ShowBonds>
+    polyhedra_opacity: SettingType<number>
+    polyhedra_show_edges: SettingType<boolean>
+    polyhedra_edge_color: SettingType<string>
+    polyhedra_color_mode: SettingType<PolyhedraColorMode>
+    polyhedra_color: SettingType<string>
+    polyhedra_hide_center_atoms: SettingType<boolean>
+    polyhedra_min_neighbors: SettingType<number>
+    polyhedra_max_neighbors: SettingType<number>
+    polyhedra_excluded_elements: SettingType<readonly string[]>
+    polyhedra_included_elements: SettingType<readonly string[]>
     atom_color_mode: SettingType<AtomColorMode>
     atom_color_scale: SettingType<D3InterpolateName>
     atom_color_scale_type: SettingType<ColorScaleType>
@@ -508,9 +525,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_bonds: {
       value: `always`,
       description: `When to display bonds between atoms`,
-      enum: Object.fromEntries(
-        SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
-      ) as Readonly<Record<ShowBonds, string>>,
+      enum: SHOW_BONDS_ENUM,
     },
     bond_color: {
       value: `#666666`,
@@ -523,6 +538,62 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         electroneg_ratio: `Electronegativity Ratio`,
         solid_angle: `Solid Angle`,
       },
+    },
+    show_polyhedra: {
+      value: `crystals`,
+      description: `When to render coordination polyhedra around cation-like centers`,
+      enum: SHOW_BONDS_ENUM,
+    },
+    polyhedra_opacity: {
+      value: 0.2,
+      description: `Opacity of coordination polyhedra faces`,
+      minimum: 0,
+      maximum: 1,
+    },
+    polyhedra_show_edges: {
+      value: true,
+      description: `Draw outlines along coordination polyhedra edges`,
+    },
+    polyhedra_edge_color: {
+      value: `#222222`,
+      description: `Color of coordination polyhedra edge lines`,
+    },
+    polyhedra_color_mode: {
+      value: `vertex`,
+      description: `Color polyhedra by the atoms at their corners, the center atom, or a single custom color`,
+      enum: {
+        vertex: `Vertex Atoms`,
+        center: `Center Atom`,
+        uniform: `Custom Color`,
+      } as Readonly<Record<PolyhedraColorMode, string>>,
+    },
+    polyhedra_color: {
+      value: `#4a90d9`,
+      description: `Custom polyhedra color (used when color mode is Custom Color)`,
+    },
+    polyhedra_hide_center_atoms: {
+      value: false,
+      description: `Hide the central atom of each rendered polyhedron`,
+    },
+    polyhedra_min_neighbors: {
+      value: 4,
+      description: `Minimum number of bonded neighbors (coordination number) to form a polyhedron`,
+      minimum: 4, // hulls of <4 points are degenerate and render nothing
+      maximum: 12,
+    },
+    polyhedra_max_neighbors: {
+      value: 8,
+      description: `Maximum number of bonded neighbors for a polyhedron (skips e.g. CN-12 cuboctahedra around large A-site cations)`,
+      minimum: 4,
+      maximum: 16,
+    },
+    polyhedra_excluded_elements: {
+      value: [] as readonly string[],
+      description: `Elements excluded from acting as polyhedra centers`,
+    },
+    polyhedra_included_elements: {
+      value: [] as readonly string[],
+      description: `Elements always allowed as polyhedra centers (overrides automatic hiding of spectator cations like alkali metals and the max neighbors cap)`,
     },
     atom_color_mode: {
       value: `element`,
