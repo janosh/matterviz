@@ -14,6 +14,7 @@
     loading = $bindable(false),
     direction = `down`,
     align = `right`,
+    suppress_hover = false,
   }: {
     supercell_scaling: string
     cell_type?: CellType
@@ -21,6 +22,7 @@
     loading?: boolean
     direction?: `up` | `down`
     align?: `left` | `right`
+    suppress_hover?: boolean // don't auto-open the menu on hover/focus (e.g. while a sibling popover is open)
   } = $props()
 
   let menu_open = $state(false)
@@ -80,20 +82,26 @@
       input_value = supercell_scaling
     }
   })
+
+  // Close + keep closed while suppressed so the menu can't obscure a sibling popover
+  // (e.g. the atom color-mode dropdown) the user is actively interacting with
+  $effect(() => {
+    if (suppress_hover) menu_open = false
+  })
 </script>
 
 <div
   class="cell-select"
   role="group"
   {@attach click_outside({ callback: () => (menu_open = false) })}
-  onmouseenter={() => (menu_open = true)}
+  onmouseenter={() => (menu_open = !suppress_hover)}
   onmouseleave={() => (menu_open = false)}
-  onfocusin={() => (menu_open = true)}
+  onfocusin={() => (menu_open = !suppress_hover)}
   onfocusout={handle_focus_out}
 >
   <button
     type="button"
-    onclick={() => (menu_open = !menu_open)}
+    onclick={() => (menu_open = !suppress_hover && !menu_open)}
     onkeydown={handle_key_down}
     class="toggle-btn"
     class:active={menu_open}

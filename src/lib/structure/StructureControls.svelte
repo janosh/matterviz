@@ -19,6 +19,7 @@
     VECTOR_PALETTE,
   } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -54,6 +55,7 @@
     volumetric_data = $bindable<VolumetricData[]>(),
     isosurface_settings = $bindable<IsosurfaceSettings>(),
     active_volume_idx = $bindable(0),
+    polyhedra_rendered_elements = [],
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -74,6 +76,7 @@
     volumetric_data?: VolumetricData[] // Volumetric data volumes for isosurface controls
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Active volume index
+    polyhedra_rendered_elements?: string[] // elements currently anchoring polyhedra
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
@@ -111,6 +114,44 @@
       atom_color_config.scale_type = `continuous`
     }
   })
+
+  // Unique majority elements in the structure, for polyhedra center toggles.
+  // Majority (not all) species so the list matches what compute_polyhedra can
+  // actually use as centers - minority occupancies of disordered sites never are.
+  let structure_elements = $derived(
+    [
+      ...new Set(
+        (structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? []),
+      ),
+    ].sort(),
+  )
+
+  // An element counts as an enabled polyhedra center if it isn't excluded and is
+  // either force-included or currently rendered. Using configured intent (not just
+  // the transient render state) keeps the checkbox reversible: a force-included
+  // element that the CN/geometry filters can't render still shows checked, so the
+  // user can toggle it back off.
+  const is_polyhedra_center_enabled = (element: string): boolean => {
+    const excluded = scene_props.polyhedra_excluded_elements ?? []
+    const included = scene_props.polyhedra_included_elements ?? []
+    return !excluded.includes(element) &&
+      (included.includes(element) || polyhedra_rendered_elements.includes(element))
+  }
+
+  // Toggle an element as polyhedra center. Enabled elements get excluded; disabled
+  // ones get force-included (which also bypasses the automatic hiding of spectator
+  // cations like Li/Na/Ba).
+  function toggle_polyhedra_element(element: string) {
+    const excluded = scene_props.polyhedra_excluded_elements ?? []
+    const included = scene_props.polyhedra_included_elements ?? []
+    if (is_polyhedra_center_enabled(element)) {
+      scene_props.polyhedra_excluded_elements = [...new Set([...excluded, element])]
+      scene_props.polyhedra_included_elements = included.filter((el) => el !== element)
+    } else {
+      scene_props.polyhedra_excluded_elements = excluded.filter((el) => el !== element)
+      scene_props.polyhedra_included_elements = [...new Set([...included, element])]
+    }
+  }
 
   const hex_color_pattern = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i
   const color_mix_pattern =
@@ -293,6 +334,7 @@
     current_values={{
       show_atoms: scene_props.show_atoms,
       show_bonds: scene_props.show_bonds,
+      show_polyhedra: scene_props.show_polyhedra,
       show_image_atoms,
       show_site_labels: scene_props.show_site_labels,
       show_site_indices: scene_props.show_site_indices,
@@ -302,6 +344,7 @@
     on_reset={() => {
       scene_props.show_atoms = DEFAULTS.structure.show_atoms
       scene_props.show_bonds = DEFAULTS.structure.show_bonds
+      scene_props.show_polyhedra = DEFAULTS.structure.show_polyhedra
       scene_props.show_site_labels = DEFAULTS.structure.show_site_labels
       scene_props.show_site_indices = DEFAULTS.structure.show_site_indices
       scene_props.vector_configs = default_vector_configs(available_vector_keys)
@@ -387,6 +430,20 @@
       Bonds:
       <select bind:value={scene_props.show_bonds}>
         {#each Object.entries(SETTINGS_CONFIG.structure.show_bonds.enum ?? {}) as
+          [value, label]
+          (value)
+        }
+          <option {value}>{label}</option>
+        {/each}
+      </select>
+    </label>
+    <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_polyhedra.description })}
+      style="gap: 6pt"
+    >
+      Polyhedra:
+      <select bind:value={scene_props.show_polyhedra}>
+        {#each Object.entries(SETTINGS_CONFIG.structure.show_polyhedra.enum ?? {}) as
           [value, label]
           (value)
         }
@@ -1213,6 +1270,163 @@
           bind:value={scene_props.bond_thickness}
         />
       </label>
+    </SettingsSection>
+  {/if}
+
+  {#if scene_props.show_polyhedra && scene_props.show_polyhedra !== `never`}
+    <SettingsSection
+      title="Polyhedra"
+      current_values={{
+        polyhedra_opacity: scene_props.polyhedra_opacity,
+        polyhedra_show_edges: scene_props.polyhedra_show_edges,
+        polyhedra_edge_color: scene_props.polyhedra_edge_color,
+        polyhedra_color_mode: scene_props.polyhedra_color_mode,
+        polyhedra_color: scene_props.polyhedra_color,
+        polyhedra_hide_center_atoms: scene_props.polyhedra_hide_center_atoms,
+        polyhedra_min_neighbors: scene_props.polyhedra_min_neighbors,
+        polyhedra_max_neighbors: scene_props.polyhedra_max_neighbors,
+        polyhedra_excluded_elements: scene_props.polyhedra_excluded_elements,
+        polyhedra_included_elements: scene_props.polyhedra_included_elements,
+      }}
+      on_reset={() => {
+        scene_props.polyhedra_opacity = DEFAULTS.structure.polyhedra_opacity
+        scene_props.polyhedra_show_edges = DEFAULTS.structure.polyhedra_show_edges
+        scene_props.polyhedra_edge_color = DEFAULTS.structure.polyhedra_edge_color
+        scene_props.polyhedra_color_mode = DEFAULTS.structure.polyhedra_color_mode
+        scene_props.polyhedra_color = DEFAULTS.structure.polyhedra_color
+        scene_props.polyhedra_hide_center_atoms =
+          DEFAULTS.structure.polyhedra_hide_center_atoms
+        scene_props.polyhedra_min_neighbors = DEFAULTS.structure.polyhedra_min_neighbors
+        scene_props.polyhedra_max_neighbors = DEFAULTS.structure.polyhedra_max_neighbors
+        scene_props.polyhedra_excluded_elements =
+          DEFAULTS.structure.polyhedra_excluded_elements
+        scene_props.polyhedra_included_elements =
+          DEFAULTS.structure.polyhedra_included_elements
+      }}
+    >
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.polyhedra_opacity.description,
+        })}
+      >
+        Opacity
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.05}
+          bind:value={scene_props.polyhedra_opacity}
+        />
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          bind:value={scene_props.polyhedra_opacity}
+        />
+      </label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.polyhedra_color_mode.description,
+        })}
+      >
+        Color <select bind:value={scene_props.polyhedra_color_mode}>
+          {#each Object.entries(
+            SETTINGS_CONFIG.structure.polyhedra_color_mode.enum ?? {},
+          ) as
+            [value, label]
+            (value)
+          }
+            <option {value}>{label}</option>
+          {/each}
+        </select>
+        {#if scene_props.polyhedra_color_mode === `uniform`}
+          <input type="color" bind:value={scene_props.polyhedra_color} />
+        {/if}
+      </label>
+      <label
+        style="gap: 6pt"
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.polyhedra_show_edges.description,
+        })}
+      >
+        <input type="checkbox" bind:checked={scene_props.polyhedra_show_edges} />
+        Edges
+        {#if scene_props.polyhedra_show_edges}
+          <input type="color" bind:value={scene_props.polyhedra_edge_color} />
+        {/if}
+      </label>
+      <label
+        style="gap: 6pt"
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.polyhedra_hide_center_atoms.description,
+        })}
+      >
+        <input type="checkbox" bind:checked={scene_props.polyhedra_hide_center_atoms} />
+        Hide center atoms
+      </label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.polyhedra_min_neighbors.description,
+        })}
+      >
+        Min neighbors
+        <input
+          type="number"
+          min={4}
+          max={12}
+          step={1}
+          bind:value={scene_props.polyhedra_min_neighbors}
+        />
+        <input
+          type="range"
+          min={4}
+          max={12}
+          step={1}
+          bind:value={scene_props.polyhedra_min_neighbors}
+        />
+      </label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.polyhedra_max_neighbors.description,
+        })}
+      >
+        Max neighbors
+        <input
+          type="number"
+          min={4}
+          max={16}
+          step={1}
+          bind:value={scene_props.polyhedra_max_neighbors}
+        />
+        <input
+          type="range"
+          min={4}
+          max={16}
+          step={1}
+          bind:value={scene_props.polyhedra_max_neighbors}
+        />
+      </label>
+      {#if structure_elements.length > 0}
+        <div
+          style="display: flex; flex-wrap: wrap; gap: 8pt; align-items: center"
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.polyhedra_excluded_elements.description,
+          })}
+        >
+          Centers:
+          {#each structure_elements as element (element)}
+            <label style="gap: 4pt">
+              <input
+                type="checkbox"
+                checked={is_polyhedra_center_enabled(element)}
+                onchange={() => toggle_polyhedra_element(element)}
+              />
+              {element}
+            </label>
+          {/each}
+        </div>
+      {/if}
     </SettingsSection>
   {/if}
 </DraggablePane>

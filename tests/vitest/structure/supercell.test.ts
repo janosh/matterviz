@@ -348,7 +348,9 @@ describe(`image atom behavior`, () => {
     const image_atoms = find_image_atoms(supercell)
 
     expect(image_atoms.length).toBeGreaterThan(0)
-    expect(image_atoms.length).toBeLessThan(supercell.sites.length * 2)
+    // bond-completing images (find_image_atoms phase 2) add boundary-crossing
+    // neighbors; Ba's large covalent radius in this tiny 4 Å cell yields many
+    expect(image_atoms.length).toBeLessThan(supercell.sites.length * 5)
   })
 
   test(`handles edge cases correctly`, () => {
@@ -385,9 +387,10 @@ describe(`image atom behavior`, () => {
     expect(unit_images.length).toBeGreaterThan(0)
     expect(supercell_images.length).toBeGreaterThan(0)
 
-    // No distant negative coordinates in supercell
+    // Images may extend up to a bond length beyond the cell (bond-completing
+    // images, ~2*covalent radius + slack = 4.7 Å for Ba) but never further
     const distant_negative = supercell_images.filter(([_idx, xyz]) =>
-      xyz.some((coord) => coord < -1.0),
+      xyz.some((coord) => coord < -5.0),
     )
     expect(distant_negative).toHaveLength(0)
   })

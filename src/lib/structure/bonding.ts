@@ -1,18 +1,26 @@
 // Bonding algorithms for structure visualization
 
 import { element_data } from '$lib/element'
+import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 
-type SpatialGrid = Map<string, number[]>
+type SpatialGrid = Map<number, number[]>
 
-const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
+// Shared per-symbol element data lookup (also used by pbc.ts and polyhedra.ts)
+export const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
 const covalent_radii = new Map<string, number>(
   element_data.flatMap((el) =>
     el.covalent_radius === null ? [] : [[el.symbol, el.covalent_radius]],
   ),
 )
+
+// Majority-occupancy element of a (possibly disordered) site
+export const get_majority_element = (site: Site | undefined): ElementSymbol | null => {
+  if (!site?.species?.length) return null
+  return site.species.reduce((max, spec) => (spec.occu > max.occu ? spec : max)).element
+}
 
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
@@ -589,13 +597,6 @@ export function get_bond_render_matrices(
       )
 }
 
-// Get the species with highest occupancy from a site.
-const get_majority_species = (site: Site) =>
-  (site.species ?? []).reduce(
-    (max_species, species) => (species.occu > max_species.occu ? species : max_species),
-    site.species?.[0] ?? { element: ``, occu: -1 },
-  )
-
 // Helper to extract numeric index from site properties
 function get_orig_idx(site: Site, fallback: number): number {
   const props = site.properties
@@ -680,12 +681,22 @@ export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
   ])
 }
 
+// Pack quantized cell coordinates into one integer key (exact for cell coords in
+// [-512, 511], i.e. structures up to ~1000 cells per axis - far beyond any real
+// case). Integer Map keys avoid per-lookup string building in the hot pair loop.
+const CELL_OFFSET = 512
+const pack_cell_key = (x: number, y: number, z: number): number =>
+  (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
+
 // Build spatial grid by dividing 3D space into cubic cells.
 function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
   const grid: SpatialGrid = new Map()
   for (let idx = 0; idx < sites.length; idx++) {
-    const [x, y, z] = sites[idx].xyz.map((coord) => Math.floor(coord / cell_size))
-    const key = `${x},${y},${z}`
+    const key = pack_cell_key(
+      Math.floor(sites[idx].xyz[0] / cell_size),
+      Math.floor(sites[idx].xyz[1] / cell_size),
+      Math.floor(sites[idx].xyz[2] / cell_size),
+    )
     const cell = grid.get(key)
     if (cell) cell.push(idx)
     else grid.set(key, [idx])
@@ -704,8 +715,8 @@ function get_neighbors_from_grid(pos: Vec3, grid: SpatialGrid, cell_size: number
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dz = -1; dz <= 1; dz++) {
-        const cell = grid.get(`${cx + dx},${cy + dy},${cz + dz}`)
-        if (cell) neighbors.push(...cell)
+        const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
+        if (cell) for (const idx of cell) neighbors.push(idx)
       }
     }
   }
@@ -754,20 +765,40 @@ export function electroneg_ratio(
 
   const bonds: BondPair[] = []
   const min_dist_sq = min_bond_dist ** 2
-  const closest = new Map<number, number>()
 
-  const props = sites.map((site) => {
-    const majority = get_majority_species(site)
-    const elem = majority.element
-    const data = element_lookup.get(elem)
-    return {
-      element: elem,
-      electroneg: data?.electronegativity ?? 2.0,
-      is_metal: data?.metal ?? false,
-      is_nonmetal: data?.nonmetal ?? false,
-      radius: elem ? covalent_radii.get(elem) : undefined,
+  // Per-site properties in flat typed arrays - the pair loop below visits
+  // millions of candidate pairs in large supercells, so object property chains
+  // and Map lookups are replaced with indexed array reads.
+  const n_sites = sites.length
+  const electronegs = new Float64Array(n_sites)
+  const radii = new Float64Array(n_sites) // 0 = no covalent radius known
+  const metal_flags = new Uint8Array(n_sites)
+  const nonmetal_flags = new Uint8Array(n_sites)
+  const elem_ids = new Int32Array(n_sites) // same-species check via integer ids
+  const orig_idxs = new Int32Array(n_sites)
+  const elem_id_lookup = new Map<string, number>()
+  for (let idx = 0; idx < n_sites; idx++) {
+    const elem = get_majority_element(sites[idx])
+    const data = elem ? element_lookup.get(elem) : undefined
+    electronegs[idx] = data?.electronegativity ?? 2.0
+    metal_flags[idx] = data?.metal ? 1 : 0
+    nonmetal_flags[idx] = data?.nonmetal ? 1 : 0
+    radii[idx] = (elem ? covalent_radii.get(elem) : undefined) ?? 0
+    let elem_id = elem_id_lookup.get(elem ?? ``)
+    if (elem_id === undefined) {
+      elem_id = elem_id_lookup.size
+      elem_id_lookup.set(elem ?? ``, elem_id)
     }
-  })
+    elem_ids[idx] = elem_id
+    // Valid orig indices always reference a site in this structure; fall back to
+    // the site's own index on malformed orig_*_idx properties so the typed
+    // `closest` array below stays bounded by n_sites
+    const orig_idx = get_orig_idx(sites[idx], idx)
+    orig_idxs[idx] =
+      Number.isInteger(orig_idx) && orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
+  }
+  // Closest normalized bond distance per original atom (typed array instead of Map)
+  const closest = new Float64Array(n_sites).fill(Infinity)
 
   let max_radius = 0
   for (const radius of covalent_radii.values()) {
@@ -793,34 +824,43 @@ export function electroneg_ratio(
   const potential_bonds: PotentialBond[] = []
 
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
+    const radius_a = radii[idx_a]
+    if (radius_a === 0) continue // no covalent radius -> no pairs (symmetric: idx_b skips too)
     const [x1, y1, z1] = sites[idx_a].xyz
-    const props_a = props[idx_a]
+    const electroneg_a = electronegs[idx_a]
+    const is_metal_a = metal_flags[idx_a] === 1
+    const is_nonmetal_a = nonmetal_flags[idx_a] === 1
+    const elem_id_a = elem_ids[idx_a]
 
     for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
       if (idx_b <= idx_a) continue
 
+      const radius_b = radii[idx_b]
+      if (radius_b === 0) continue
       const [x2, y2, z2] = sites[idx_b].xyz
-      const props_b = props[idx_b]
-
-      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
+      const dx = x2 - x1
+      const dy = y2 - y1
+      const dz = z2 - z1
       const dist_sq = dx * dx + dy * dy + dz * dz
+      if (dist_sq < min_dist_sq) continue
+
+      // Compare squared distances to defer the sqrt until a pair survives the
+      // cutoff (the vast majority of candidate pairs are rejected here)
+      const expected = radius_a + radius_b
+      const max_dist = expected * max_distance_ratio
+      if (dist_sq > max_dist * max_dist) continue
       const dist = Math.sqrt(dist_sq)
 
-      if (dist_sq < min_dist_sq || !props_a.radius || !props_b.radius) continue
+      const electroneg_b = electronegs[idx_b]
+      const electroneg_diff = Math.abs(electroneg_a - electroneg_b)
+      const electroneg_balance = electroneg_diff / (electroneg_a + electroneg_b)
 
-      const expected = props_a.radius + props_b.radius
-      if (dist > expected * max_distance_ratio) continue
-
-      const electroneg_diff = Math.abs(props_a.electroneg - props_b.electroneg)
-      const electroneg_balance = electroneg_diff / (props_a.electroneg + props_b.electroneg)
-
+      const is_metal_b = metal_flags[idx_b] === 1
+      const is_nonmetal_b = nonmetal_flags[idx_b] === 1
       let bond_strength = 1.0
-      if (props_a.is_metal && props_b.is_metal) {
+      if (is_metal_a && is_metal_b) {
         bond_strength *= metal_metal_penalty
-      } else if (
-        (props_a.is_metal && props_b.is_nonmetal) ||
-        (props_a.is_nonmetal && props_b.is_metal)
-      ) {
+      } else if ((is_metal_a && is_nonmetal_b) || (is_nonmetal_a && is_metal_b)) {
         bond_strength *= metal_nonmetal_bonus
         if (electroneg_diff > electronegativity_threshold) bond_strength *= 1.3
       } else if (electroneg_diff < 0.5) {
@@ -831,25 +871,22 @@ export function electroneg_ratio(
       const electroneg_weight = 1.0 - 0.3 * electroneg_balance
       let strength = bond_strength * dist_weight * electroneg_weight
 
-      if (props_a.element === props_b.element) strength *= same_species_penalty
+      if (elem_id_a === elem_ids[idx_b]) strength *= same_species_penalty
 
       // If raw strength is already too low, we can skip early
       // (penalty will only reduce it further)
       if (strength <= strength_threshold) continue
 
-      // Use helper logic to handle both supercell and image atoms with robust normalization
-      const orig_idx_a = get_orig_idx(sites[idx_a], idx_a)
-      const orig_idx_b = get_orig_idx(sites[idx_b], idx_b)
+      // Use precomputed original-site indices to handle supercell and image atoms
+      const orig_idx_a = orig_idxs[idx_a]
+      const orig_idx_b = orig_idxs[idx_b]
 
       // Update closest known normalized distance (dist / expected) for original atoms
       // Normalized distance handles atoms of different sizes better than raw distance
       // (e.g. C-H is short but C-C is longer; we don't want C-H to penalize C-C just because H is small)
       const norm_dist = dist / expected
-      const closest_dist_a = closest.get(orig_idx_a) ?? Infinity
-      if (norm_dist < closest_dist_a) closest.set(orig_idx_a, norm_dist)
-
-      const closest_dist_b = closest.get(orig_idx_b) ?? Infinity
-      if (norm_dist < closest_dist_b) closest.set(orig_idx_b, norm_dist)
+      if (norm_dist < closest[orig_idx_a]) closest[orig_idx_a] = norm_dist
+      if (norm_dist < closest[orig_idx_b]) closest[orig_idx_b] = norm_dist
 
       potential_bonds.push({
         site_idx_1: idx_a,
@@ -875,8 +912,8 @@ export function electroneg_ratio(
       orig_idx_b,
     } = bond
 
-    const closest_dist_a = closest.get(orig_idx_a) ?? Infinity
-    const closest_dist_b = closest.get(orig_idx_b) ?? Infinity
+    const closest_dist_a = closest[orig_idx_a]
+    const closest_dist_b = closest[orig_idx_b]
     const norm_dist = dist / expected_dist
 
     let strength = base_strength
@@ -930,15 +967,15 @@ export function solid_angle(
 
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
-    const majority_a = get_majority_species(sites[idx_a])
-    const radius_a = majority_a.element ? covalent_radii.get(majority_a.element) : undefined
+    const elem_a = get_majority_element(sites[idx_a])
+    const radius_a = elem_a ? covalent_radii.get(elem_a) : undefined
 
     for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
       if (idx_b <= idx_a) continue
 
       const [x2, y2, z2] = sites[idx_b].xyz
-      const majority_b = get_majority_species(sites[idx_b])
-      const radius_b = majority_b.element ? covalent_radii.get(majority_b.element) : undefined
+      const elem_b = get_majority_element(sites[idx_b])
+      const radius_b = elem_b ? covalent_radii.get(elem_b) : undefined
 
       const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
       const dist_sq = dx * dx + dy * dy + dz * dz
