@@ -5,7 +5,7 @@ import * as ap from '$lib/structure/atom-properties'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 
-type MoyoDatasetWithOrigMap = MoyoDataset & { orig_site_indices_by_std_idx?: number[][] }
+type MoyoDatasetWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
 const make_site = (xyz: Vec3, element = `C`): Site => ({
   xyz,
@@ -417,7 +417,9 @@ describe(`Wyckoff`, () => {
     expect(result.values).toEqual([`unknown`, `b|C`])
   })
 
-  test(`uses orig_site_indices_by_std_idx mapping for merged disordered sites`, () => {
+  test(`uses orig_site_indices_by_input_idx mapping for merged disordered sites`, () => {
+    // moyo's wyckoffs array indexes the (merged) INPUT cell: input site 0 is the merged
+    // O/F disordered site (original sites 0+1), input site 1 is Li (original site 2)
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `O` },
       { xyz: [1, 1, 1], element: `F` },
@@ -425,7 +427,7 @@ describe(`Wyckoff`, () => {
     ])
     const result = ap.get_wyckoff_colors(structure, {
       wyckoffs: [`a`, `b`],
-      orig_site_indices_by_std_idx: [[0, 1], [2]],
+      orig_site_indices_by_input_idx: [[0, 1], [2]],
     } as unknown as MoyoDatasetWithOrigMap)
     expect(result.values).toEqual([`a|O`, `a|F`, `b|Li`])
   })

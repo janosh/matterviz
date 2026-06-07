@@ -5,9 +5,9 @@ import {
   to_cell_json,
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
-import type { MoyoDataset, MoyoOperation } from '@spglib/moyo-wasm'
+import type { MoyoOperation } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_symmetry_structure as make_structure } from '../setup'
+import { make_symmetry_structure, make_wyckoff_dataset } from '../setup'
 
 const make_operation = (rot: Vec9, trans: Vec3): MoyoOperation => ({
   rotation: rot,
@@ -89,7 +89,7 @@ describe(`simplicity_score`, () => {
 })
 
 describe(`to_cell_json`, () => {
-  const cubic = make_structure(
+  const cubic = make_symmetry_structure(
     [
       [5, 0, 0],
       [0, 5, 0],
@@ -127,7 +127,7 @@ describe(`to_cell_json`, () => {
   })
 
   test(`handles non-orthogonal hexagonal lattice`, () => {
-    const hex = make_structure(
+    const hex = make_symmetry_structure(
       [
         [3, 0, 0],
         [-1.5, 2.598076211353316, 0],
@@ -155,7 +155,7 @@ describe(`to_cell_json`, () => {
 
   test(`handles triclinic lattice with all angles non-orthogonal`, () => {
     // Triclinic: all angles different from 90°
-    const triclinic = make_structure(
+    const triclinic = make_symmetry_structure(
       [
         [4, 0, 0],
         [1, 3, 0],
@@ -173,7 +173,7 @@ describe(`to_cell_json`, () => {
   })
 
   test(`throws error for unknown or empty element`, () => {
-    const unknown_elem = make_structure(
+    const unknown_elem = make_symmetry_structure(
       [
         [5, 0, 0],
         [0, 5, 0],
@@ -183,7 +183,7 @@ describe(`to_cell_json`, () => {
     )
     expect(() => to_cell_json(unknown_elem)).toThrow(`Unknown element at site 0`)
 
-    const empty_elem = make_structure(
+    const empty_elem = make_symmetry_structure(
       [
         [5, 0, 0],
         [0, 5, 0],
@@ -195,7 +195,7 @@ describe(`to_cell_json`, () => {
   })
 
   test(`handles multiple sites of same element with correct ordering`, () => {
-    const bcc_fe = make_structure(
+    const bcc_fe = make_symmetry_structure(
       [
         [2.87, 0, 0],
         [0, 2.87, 0],
@@ -344,25 +344,13 @@ describe(`apply_symmetry_operations`, () => {
 })
 
 describe(`wyckoff_positions_from_moyo`, () => {
-  const make_sym_data = (
-    positions: number[][],
-    numbers: number[],
-    wyckoffs: (string | null)[],
-    orig_indices?: number[],
-  ) =>
-    ({
-      std_cell: { positions, numbers },
-      wyckoffs,
-      ...(orig_indices && { orig_indices }),
-    }) as MoyoDataset & { orig_indices?: number[] }
-
   test(`returns empty array for null data`, () => {
     expect(wyckoff_positions_from_moyo(null)).toEqual([])
   })
 
   test(`generates and formats Wyckoff positions correctly`, () => {
     const result = wyckoff_positions_from_moyo(
-      make_sym_data(
+      make_wyckoff_dataset(
         [
           [0, 0, 0],
           [0.5, 0.5, 0.5],
@@ -383,7 +371,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
   test(`groups equivalent sites by Wyckoff letter and element`, () => {
     const result = wyckoff_positions_from_moyo(
-      make_sym_data(
+      make_wyckoff_dataset(
         [
           [0, 0, 0],
           [0.5, 0, 0],
@@ -404,7 +392,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
   test(`chooses simplest position when grouping`, () => {
     const result = wyckoff_positions_from_moyo(
-      make_sym_data(
+      make_wyckoff_dataset(
         [
           [0.123, 0.456, 0.789],
           [0, 0, 0], // simplest
@@ -422,14 +410,14 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
   test(`handles empty or null Wyckoff letter`, () => {
     const empty_result = wyckoff_positions_from_moyo(
-      make_sym_data([[0.25, 0.25, 0.25]], [14], [``]),
+      make_wyckoff_dataset([[0.25, 0.25, 0.25]], [14], [``]),
     )
     expect(empty_result).toHaveLength(1)
     expect(empty_result[0].wyckoff).toBe(`1`)
     expect(empty_result[0].elem).toBe(`Si`)
 
     const null_result = wyckoff_positions_from_moyo(
-      make_sym_data([[0.1, 0.2, 0.3]], [29], [null]),
+      make_wyckoff_dataset([[0.1, 0.2, 0.3]], [29], [null]),
     )
     expect(null_result).toHaveLength(1)
     expect(null_result[0].wyckoff).toBe(`1`)
@@ -437,18 +425,20 @@ describe(`wyckoff_positions_from_moyo`, () => {
   })
 
   test(`preserves and maps original indices correctly`, () => {
-    const single = wyckoff_positions_from_moyo(make_sym_data([[0, 0, 0]], [6], [`1a`], [42]))
+    const single = wyckoff_positions_from_moyo(
+      make_wyckoff_dataset([[0, 0, 0]], [6], [`1a`], [[42]]),
+    )
     expect(single[0].site_indices).toEqual([42])
 
     const multiple = wyckoff_positions_from_moyo(
-      make_sym_data(
+      make_wyckoff_dataset(
         [
           [0, 0, 0],
           [0.5, 0.5, 0.5],
         ],
         [8, 8],
         [`4a`, `4a`],
-        [10, 25],
+        [[10], [25]],
       ),
     )
     expect(multiple).toHaveLength(1)
@@ -457,7 +447,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
   test(`sorts by multiplicity then alphabetically`, () => {
     const result = wyckoff_positions_from_moyo(
-      make_sym_data(
+      make_wyckoff_dataset(
         [
           [0, 0, 0],
           [0.5, 0, 0],
@@ -479,7 +469,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
   test(`separates different elements at same Wyckoff position`, () => {
     const result = wyckoff_positions_from_moyo(
-      make_sym_data(
+      make_wyckoff_dataset(
         [
           [0, 0, 0],
           [0.5, 0.5, 0.5],
@@ -503,7 +493,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
   test(`handles complex structure with multiple Wyckoff positions`, () => {
     // Simulate a perovskite-like structure
     const result = wyckoff_positions_from_moyo(
-      make_sym_data(
+      make_wyckoff_dataset(
         [
           [0, 0, 0], // A site
           [0.5, 0.5, 0.5], // B site
@@ -530,7 +520,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
   test(`extracts Wyckoff letter from full notation`, () => {
     const result = wyckoff_positions_from_moyo(
-      make_sym_data([[0, 0, 0]], [26], [`24abc`]), // unusual notation
+      make_wyckoff_dataset([[0, 0, 0]], [26], [`24abc`]), // unusual notation
     )
 
     // Should extract just the letter(s) at the end

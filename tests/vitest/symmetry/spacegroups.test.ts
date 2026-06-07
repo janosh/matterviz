@@ -85,6 +85,45 @@ describe(`spacegroup_num_to_crystal_sys`, () => {
   )
 })
 
+describe(`spacegroup_num_to_lattice_system`, () => {
+  // The lattice system equals the crystal system except for the 7 R-centered trigonal
+  // groups, which have rhombohedral lattices; all other trigonal (P) groups are hexagonal.
+  test.each([
+    [1, `triclinic`],
+    [15, `monoclinic`],
+    [74, `orthorhombic`],
+    [142, `tetragonal`],
+    [194, `hexagonal`],
+    [230, `cubic`],
+    // R-centered trigonal → rhombohedral
+    [146, `rhombohedral`], // R3
+    [148, `rhombohedral`], // R-3
+    [155, `rhombohedral`], // R32
+    [160, `rhombohedral`], // R3m
+    [161, `rhombohedral`], // R3c
+    [166, `rhombohedral`], // R-3m
+    [167, `rhombohedral`], // R-3c
+    // P trigonal → hexagonal lattice
+    [143, `hexagonal`], // P3
+    [147, `hexagonal`], // P-3
+    [150, `hexagonal`], // P321
+  ] as const)(`space group %i has lattice system %s`, (num, expected) => {
+    expect(spg.spacegroup_num_to_lattice_system(num)).toBe(expected)
+  })
+
+  test(`RHOMBOHEDRAL_SPACEGROUPS lists exactly the R-centered trigonal groups`, () => {
+    expect([...spg.RHOMBOHEDRAL_SPACEGROUPS]).toEqual([146, 148, 155, 160, 161, 166, 167])
+    // every entry is trigonal in the crystal-system classification
+    for (const num of spg.RHOMBOHEDRAL_SPACEGROUPS) {
+      expect(spg.spacegroup_num_to_crystal_sys(num)).toBe(`trigonal`)
+    }
+  })
+
+  test.each([0, -1, 231, 1000])(`returns null for invalid number %i`, (invalid) => {
+    expect(spg.spacegroup_num_to_lattice_system(invalid)).toBeNull()
+  })
+})
+
 describe(`spacegroup_to_crystal_sys`, () => {
   test.each([
     [1, `triclinic`],

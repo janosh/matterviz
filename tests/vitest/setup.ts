@@ -2,7 +2,7 @@ import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { Crystal, LatticeParams, Pbc, Site } from '$lib/structure'
 import type { TrajectoryFrame } from '$lib/trajectory'
-import init from '@spglib/moyo-wasm'
+import init, { type MoyoDataset } from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -453,6 +453,42 @@ export function make_symmetry_structure(
   return lattice_params
     ? { ...crystal, lattice: { ...crystal.lattice, ...lattice_params } }
     : crystal
+}
+
+// Encode a 3x3 matrix as a flat 9-array in COLUMN-major order — how moyo/nalgebra serialize
+// rotation matrices on the wire (inverse of mat3_from_flat_col_major in symmetry-elements).
+export const col_major = (mat: math.Matrix3x3): number[] => {
+  const [[a1, a2, a3], [a4, a5, a6], [a7, a8, a9]] = mat
+  return [a1, a4, a7, a2, a5, a8, a3, a6, a9]
+}
+
+// Build an orbit-path SymmetryDataset mock from std-cell-aligned fields. The input cell is
+// taken to equal the std cell (identity std_linear) and sites are grouped into orbits by
+// shared Wyckoff letter + element — the same grouping the production orbit path applies, so
+// these mocks exercise wyckoff_rows_from_input_orbits with hand-computed expectations.
+export const make_wyckoff_dataset = (
+  positions: number[][],
+  numbers: number[],
+  wyckoffs: (string | null)[],
+  orig_site_indices_by_input_idx?: number[][],
+): MoyoDataset => {
+  const letter = (idx: number) => /[a-z]+$/.exec(wyckoffs[idx] ?? ``)?.[0] ?? null
+  // Orbit representative = first site sharing this letter + element (null letter ⇒ own orbit)
+  const orbits = wyckoffs.map((_w, idx) =>
+    letter(idx) === null
+      ? idx
+      : wyckoffs.findIndex(
+          (_v, jdx) => letter(jdx) === letter(idx) && numbers[jdx] === numbers[idx],
+        ),
+  )
+  return {
+    std_cell: { positions, numbers },
+    input_cell: { positions, numbers },
+    wyckoffs: wyckoffs.map((w) => w ?? ``),
+    orbits,
+    std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    ...(orig_site_indices_by_input_idx ? { orig_site_indices_by_input_idx } : {}),
+  } as unknown as MoyoDataset
 }
 
 // ResizeObserver mock - triggers callback with dimensions on observe

@@ -34,6 +34,7 @@
 </script>
 
 {#if wyckoff_positions && wyckoff_positions.length > 0}
+  {@const has_site_symmetry = wyckoff_positions.some((pos) => pos.site_symmetry)}
   <table {...rest} class="wyckoff-table {rest.class ?? ``}">
     <thead>
       <tr>
@@ -41,6 +42,12 @@
           [`Wyckoff`, `Wyckoff position: Multiplicity + Letter`],
           [`Element`, `Chemical element symbol`],
           [`Fractional Coords`, `Fractional coordinates within the unit cell`],
+          ...(has_site_symmetry
+          ? [[
+            `Site Symm.`,
+            `Site symmetry: point group of operations leaving the site invariant`,
+          ]]
+          : []),
         ] as
           [col, title]
           (col)
@@ -89,6 +96,9 @@
             </span>
           </td>
           <td>({abc?.map(format_fractional).join(` , `) ?? `N/A`})</td>
+          {#if has_site_symmetry}
+            <td>{wyckoff_pos.site_symmetry ?? ``}</td>
+          {/if}
         </tr>
       {/each}
     </tbody>

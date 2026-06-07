@@ -22,17 +22,10 @@ export function moyo_cell_to_structure(
   cell: MoyoCell, // The MoyoCell from symmetry analysis (std_cell or prim_std_cell)
   original_structure: Crystal, // The original structure (used to preserve pbc and other metadata)
 ): Crystal {
-  // Convert flat 9-element basis to 3x3 matrix
-  // moyo-wasm uses the same row-major serialization for both input and output
-  // (see to_cell_json comment: column-major(B) == row-major(RB))
-  // So the flat array is row-major: [a1, a2, a3, b1, b2, b3, c1, c2, c3]
-  // where each row is a lattice vector in the pymatgen convention
-  const basis = cell.lattice.basis
-  const lattice_matrix: math.Matrix3x3 = [
-    [basis[0], basis[1], basis[2]], // First lattice vector (a)
-    [basis[3], basis[4], basis[5]], // Second lattice vector (b)
-    [basis[6], basis[7], basis[8]], // Third lattice vector (c)
-  ]
+  // Convert flat 9-element basis to 3x3 matrix. moyo-wasm uses the same row-major
+  // serialization for both input and output (see to_cell_json: column-major(B) ==
+  // row-major(RB)), so the flat array is row-major with each row a lattice vector.
+  const lattice_matrix = math.vec9_to_mat3x3([...cell.lattice.basis])
 
   // Calculate lattice parameters from matrix
   const lattice_params = math.calc_lattice_params(lattice_matrix)
