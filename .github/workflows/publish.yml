@@ -1,18 +1,19 @@
 name: Publish
 
 # On a new vX.Y.Z tag: gate on lint + unit tests, then publish in parallel the
-# `matterviz` npm package, the VS Code extension (Marketplace + Open VSX) and the
-# `matterviz-anywidget` npm bundle. workflow_dispatch (re)publishes a given version by
-# building that version's tag -- use it to publish an already-pushed tag that never
-# reached a registry (run from the default branch so this workflow file is current).
+# `matterviz` npm package, the `matterviz-anywidget` npm bundle, and the VS Code extension
+# to Open VSX (the VS Code Marketplace is uploaded manually -- see below). workflow_dispatch
+# (re)publishes a given version by building that version's tag -- use it to publish an
+# already-pushed tag that never reached a registry (run from the default branch so this
+# workflow file is current).
 #
 # npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
 # both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
-# The VS Code Marketplace publishes via Azure OIDC (no PAT) -- an Entra app with a federated
-# credential for this repo, added as a member of the `janosh` publisher.
+# The VS Code Marketplace is NOT auto-published (the publisher's Azure org can't issue a
+# publish PAT/identity): the vscode job uploads a `matterviz-vsix` artifact to upload by hand
+# at https://marketplace.visualstudio.com/manage.
 # Required repo secrets:
-#   AZURE_CLIENT_ID, AZURE_TENANT_ID - the Entra app's IDs (for azure/login OIDC)
-#   OVSX_PAT                         - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
+#   OVSX_PAT - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
 
 on:
   push:
@@ -151,17 +152,10 @@ jobs:
             npm publish --ignore-scripts --access public
           fi
 
-  # === Publish: VS Code extension to Marketplace + Open VSX ===
+  # === Publish: VS Code extension to Open VSX (Marketplace upload is manual) ===
   vscode:
     needs: [version, verify, lint, test]
     runs-on: ubuntu-latest
-    # `release` environment gives a stable OIDC subject (repo:.../environment:release) that
-    # one Entra federated credential matches for both tag pushes and manual runs. Empty on
-    # dry runs so they never wait on any environment protection rules.
-    environment: ${{ !inputs.dry_run && 'release' || '' }}
-    permissions:
-      contents: read
-      id-token: write # azure/login OIDC for the Marketplace publish
     steps:
       - uses: actions/checkout@v6
         with:
@@ -176,22 +170,14 @@ jobs:
       - name: Package VSIX
         working-directory: extensions/vscode
         run: npx @vscode/vsce package --no-dependencies -o matterviz.vsix
-      # vsce/ovsx have no dry-run; packaging above already exercises the build, so a
-      # dry run just skips the two uploads
-      # Marketplace via OIDC federated identity (no PAT): azure/login mints a short-lived
-      # token that `vsce --azure-credential` uses; the Entra app must be a member of the
-      # `janosh` publisher. allow-no-subscriptions: the app needs no Azure subscription role.
-      - name: Azure login (OIDC)
-        if: ${{ !inputs.dry_run }}
-        uses: azure/login@v2
+      # the Marketplace needs a publish PAT/Azure identity the publisher's org can't issue,
+      # so upload the .vsix for manual upload at https://marketplace.visualstudio.com/manage
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          allow-no-subscriptions: true
-      - name: Publish to VS Code Marketplace
-        if: ${{ !inputs.dry_run }}
-        working-directory: extensions/vscode
-        run: npx @vscode/vsce publish --no-dependencies --azure-credential --packagePath matterviz.vsix
+          name: matterviz-vsix
+          path: extensions/vscode/matterviz.vsix
+      # ovsx has no dry-run; the package step above exercises the build, so a dry run skips this
       - name: Publish to Open VSX
         if: ${{ !inputs.dry_run }}
         working-directory: extensions/vscode

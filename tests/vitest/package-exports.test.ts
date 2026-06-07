@@ -27,7 +27,7 @@ function source_candidates(dist_target: string): string[] {
     return readdirSync(parent, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .flatMap((entry) =>
-        source_extensions.map((ext) => join(lib_dir, `${prefix}${entry.name}${suffix}${ext}`))
+        source_extensions.map((ext) => join(lib_dir, `${prefix}${entry.name}${suffix}${ext}`)),
       )
   }
   return source_extensions.map((ext) => join(lib_dir, `${base}${ext}`))
