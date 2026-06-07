@@ -428,11 +428,58 @@ describe(`compute_irreducible_bz`, () => {
     expect(ibz).not.toBeNull()
     if (!ibz) return
     expect(ibz.volume).toBeGreaterThan(0)
-    // C3 symmetry should give ~1/3 of BZ volume (geometric clipping is approximate)
-    const expected_ratio = 1 / 3
-    const actual_ratio = ibz.volume / hex_bz.volume
-    expect(actual_ratio).toBeGreaterThan(expected_ratio * 0.7) // at least 70% of expected
-    expect(actual_ratio).toBeLessThan(expected_ratio * 1.3) // at most 130% of expected
+    // The Dirichlet fundamental-domain construction is exact: V_IBZ = V_BZ / |G|
+    expect(ibz.volume / hex_bz.volume).toBeCloseTo(1 / 3, 6)
+  })
+
+  // Regression: the IBZ construction previously picked a DIFFERENT reference point per
+  // rotation, so the clipping half-spaces did not form a consistent fundamental domain
+  // and the IBZ volume deviated from V_BZ/|G| for larger point groups.
+  test(`C4 group → exactly 1/4 volume`, () => {
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 4, 6)
+  })
+
+  test(`mirror symmetry → exactly half volume`, () => {
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 2, 6)
+  })
+
+  test(`full cubic point group Oh (48 ops) → exactly 1/48 volume`, () => {
+    // All 48 signed permutation matrices (proper + improper rotations of the cube)
+    const oh_ops: Matrix3x3[] = []
+    const perms = [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ]
+    for (const perm of perms) {
+      for (let signs = 0; signs < 8; signs++) {
+        const mat: Matrix3x3 = [
+          [0, 0, 0],
+          [0, 0, 0],
+          [0, 0, 0],
+        ]
+        for (let row = 0; row < 3; row++) {
+          mat[row][perm[row]] = signs & (1 << row) ? -1 : 1
+        }
+        oh_ops.push(mat)
+      }
+    }
+    expect(oh_ops).toHaveLength(48)
+
+    const ibz = compute_irreducible_bz(bz, oh_ops)
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 48, 8)
+    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
   })
 })
 

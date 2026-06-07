@@ -33,6 +33,18 @@
     sym_data ? wyckoff_positions_from_moyo(sym_data).length : 0,
   )
   const display_hm_symbol = $derived(sym_data?.hm_symbol?.replaceAll(/\s+/g, ``) ?? `?`)
+  // Crystal system, plus the lattice system in parens when it differs (e.g. trigonal
+  // space groups split into rhombohedral R-centered and hexagonal P lattices)
+  const crystal_system_label = $derived.by(() => {
+    if (!sym_data) return `?`
+    const crystal_sys = spg.spacegroup_to_crystal_sys(sym_data.number)
+    const lattice_sys = spg.spacegroup_num_to_lattice_system(sym_data.number)
+    if (!crystal_sys) return `?`
+    const suffix = lattice_sys && lattice_sys !== crystal_sys
+      ? ` (${lattice_sys} lattice)`
+      : ``
+    return `${crystal_sys}${suffix}`
+  })
 
   const sym_ops_counts = $derived.by(() => {
     const EPS = 1e-10
@@ -63,7 +75,7 @@
     space_group:
       `International Tables Space group number (1-230) - unique identifier for each space group. Higher numbers indicate more symmetries in the crystal.`,
     crystal_system:
-      `Crystal system classification based on the unit cell symmetry. Seven systems: triclinic, monoclinic, orthorhombic, tetragonal, trigonal, hexagonal, and cubic.`,
+      `Crystal system classification based on the unit cell symmetry. Seven systems: triclinic, monoclinic, orthorhombic, tetragonal, trigonal, hexagonal, and cubic. For trigonal space groups, the lattice system (rhombohedral for R-centered groups, hexagonal otherwise) is shown in parentheses when it differs from the crystal system.`,
     hermann_mauguin:
       `Hermann-Mauguin symbol describes symmetry operations. Format: Lattice type + Point group symmetry. Example: P4/mmm = Primitive + 4-fold rotation + mirror planes`,
     hall_number:
@@ -151,7 +163,7 @@
         Space Group <strong>{sym_data.number} ({display_hm_symbol})</strong>
       </div>
       <div title={tooltips?.crystal_system} {@attach tooltip()}>
-        Crystal System <strong>{spg.spacegroup_to_crystal_sys(sym_data.number)}</strong>
+        Crystal System <strong>{crystal_system_label}</strong>
       </div>
       <div title={tooltips?.hall_number} {@attach tooltip()}>
         Hall Number <strong>{sym_data.hall_number}</strong>

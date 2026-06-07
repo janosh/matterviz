@@ -42,6 +42,8 @@
     get_orig_site_idx,
     get_property_colors,
   } from '$lib/structure/atom-properties'
+  import type { SymmetryElement } from '$lib/symmetry'
+  import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
   import * as measure from '$lib/structure/measure'
   import {
     compute_slice_geometry,
@@ -199,6 +201,8 @@
     directional_light = DEFAULTS.structure.directional_light,
     sphere_segments = DEFAULTS.structure.sphere_segments,
     lattice_props = {},
+    symmetry_elements = [],
+    symmetry_elements_props = {},
     atom_label,
     camera_is_moving = $bindable(false),
     width = 0,
@@ -304,6 +308,11 @@
     directional_light?: number
     sphere_segments?: number
     lattice_props?: ComponentProps<typeof Lattice>
+    // Symmetry elements (from symmetry_elements_from_ops) to overlay on the structure.
+    // Fractional coords must refer to the SAME cell as the rendered lattice (moyo
+    // operations are in the input-cell frame, i.e. the original untransformed cell).
+    symmetry_elements?: SymmetryElement[]
+    symmetry_elements_props?: Omit<ComponentProps<typeof SymmetryElements>, `elements` | `lattice`>
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
     site_label_size?: number
     site_label_offset?: Vec3
@@ -2149,6 +2158,13 @@
 
       {#if visual_lattice}
         <Lattice matrix={visual_lattice.matrix} {...lattice_props} />
+        {#if symmetry_elements.length > 0}
+          <SymmetryElements
+            elements={symmetry_elements}
+            lattice={visual_lattice.matrix}
+            {...symmetry_elements_props}
+          />
+        {/if}
       {/if}
 
       <!-- TransformControls for editing atoms in edit-atoms mode -->

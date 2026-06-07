@@ -355,56 +355,53 @@ export function compute_brillouin_zone(
 // Clipping plane defined by normal and distance from origin (n·x = d)
 type ClippingPlane = { normal: Vec3; dist: number }
 
-// Test points for IBZ plane detection. These are chosen to:
-// 1. Avoid common rotation axes (2-fold, 3-fold, 4-fold, 6-fold)
-// 2. Span different directions to catch all symmetry operations
-// 3. Include a generic point [1,2,3] that lies on no special axis
-const IBZ_TEST_POINTS: Vec3[] = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1], // basis vectors (avoid 4-fold axes)
-  [1, 1, 0],
-  [1, 0, 1],
-  [0, 1, 1], // face diagonals (avoid 2-fold axes)
-  [1, 1, 1], // body diagonal (avoid 3-fold axis)
-  [1, 2, 3], // generic point on no special axis
+// Generic reference directions for the Dirichlet-domain construction. Irrational-ish
+// component ratios keep them off every rotation axis and mirror plane of crystallographic
+// point groups in practice; the later directions are fallbacks in case a pathological
+// Cartesian orientation pins the first onto a symmetry element.
+const IBZ_REFERENCE_DIRECTIONS: Vec3[] = [
+  [1, Math.SQRT2 / 3, Math.E / 7],
+  [Math.PI / 5, 1, Math.SQRT1_2 / 4],
+  [Math.E / 9, Math.LN2, 1],
 ]
 
-// Compute clipping planes from point group operations.
-// For each non-identity rotation, we define a plane that selects one representative
-// from each equivalence class.
+// Compute clipping planes from point group operations via the Dirichlet (Voronoi)
+// fundamental-domain construction: pick ONE generic direction t with trivial stabilizer,
+// then for every non-identity operation R keep the half-space x·t ≥ x·(R·t), i.e.
+// (R·t − t)·x ≤ 0. Intersecting all half-spaces with the BZ yields an irreducible wedge
+// of exactly volume(BZ)/|G|. (Using a different reference point per operation — or
+// flipping individual planes — does NOT yield a fundamental domain in general.)
 export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): ClippingPlane[] {
+  const non_identity_ops = point_group_ops.filter((rot) => !is_identity_rotation(rot))
+  if (non_identity_ops.length === 0) return []
+
+  // Pick the first reference direction not fixed by any non-identity operation
+  const ref_dir =
+    IBZ_REFERENCE_DIRECTIONS.find((dir) =>
+      non_identity_ops.every(
+        (rot) => Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, dir), dir)) > 1e-8,
+      ),
+    ) ?? IBZ_REFERENCE_DIRECTIONS[0]
+
   const planes: ClippingPlane[] = []
   const seen_normals = new Set<string>()
 
-  for (const rot of point_group_ops) {
-    if (is_identity_rotation(rot)) continue
+  for (const rot of non_identity_ops) {
+    const rotated = math.mat3x3_vec3_multiply(rot, ref_dir)
+    const diff: Vec3 = math.subtract(rotated, ref_dir)
+    if (Math.hypot(...diff) < TOL) continue // ref_dir on a symmetry element (degenerate)
 
-    for (const test_pt of IBZ_TEST_POINTS) {
-      const rotated = math.mat3x3_vec3_multiply(rot, test_pt)
-      const diff: Vec3 = math.subtract(rotated, test_pt)
-      if (Math.hypot(...diff) < TOL) continue // point on rotation axis
-
-      const plane_normal = normalize(diff)
-      const key = plane_normal.map((val) => Math.round(val * 1000)).join(`,`)
-      const neg_key = plane_normal.map((val) => Math.round(-val * 1000)).join(`,`)
-
-      if (!seen_normals.has(key) && !seen_normals.has(neg_key)) {
-        seen_normals.add(key)
-        planes.push({ normal: plane_normal, dist: 0 })
-      }
-      break
+    const plane_normal = normalize(diff)
+    // NOTE: do NOT merge antiparallel normals — n and −n select opposite half-spaces
+    const key = plane_normal.map((val) => Math.round(val * 1e6)).join(`,`)
+    if (!seen_normals.has(key)) {
+      seen_normals.add(key)
+      planes.push({ normal: plane_normal, dist: 0 })
     }
   }
 
   return planes
 }
-
-// Flip a clipping plane to the opposite half-space
-const flip_plane = (plane: ClippingPlane): ClippingPlane => ({
-  normal: math.scale(plane.normal, -1),
-  dist: -plane.dist,
-})
 
 // Clip polyhedron vertices by a half-space, adding intersection points where edges cross
 function clip_polyhedron_by_plane(
@@ -497,21 +494,16 @@ export function compute_irreducible_bz(
   let current_faces = [...bz_data.faces]
 
   for (const plane of clipping_planes) {
-    // Try clipping with plane, then flipped plane if needed
-    let clipped_successfully = false
-    for (const try_plane of [plane, flip_plane(plane)]) {
-      const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, try_plane)
-      const hull = try_build_hull(clipped, edge_sharp_angle_deg)
-      if (hull) {
-        current_vertices = hull.vertices
-        current_faces = hull.faces
-        clipped_successfully = true
-        break
-      }
-    }
-    // If both orientations failed, vertices unchanged - continue with best effort
-    if (!clipped_successfully) {
-      console.warn(`IBZ clipping: plane orientation failed, continuing with current geometry`)
+    // Planes from the Dirichlet construction are consistently oriented (the kept side
+    // n·x ≤ 0 always contains the reference direction) so clip directly — flipping a
+    // plane would select the wrong half-space and break the fundamental-domain property
+    const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, plane)
+    const hull = try_build_hull(clipped, edge_sharp_angle_deg)
+    if (hull) {
+      current_vertices = hull.vertices
+      current_faces = hull.faces
+    } else {
+      console.warn(`IBZ clipping: degenerate clip result, skipping plane`)
     }
   }
 

@@ -11,6 +11,7 @@
     default_sym_settings,
     ensure_moyo_wasm_ready,
     map_wyckoff_to_all_atoms,
+    symmetry_elements_from_ops,
     SymmetryStats,
     wyckoff_positions_from_moyo,
     WyckoffTable,
@@ -34,6 +35,14 @@
   let wide_example_symmetry_settings = $state<SymmetrySettings>(default_sym_settings)
   let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)
   let stacked_sym_settings = $state<SymmetrySettings>(default_sym_settings)
+  let show_sym_elements = $state(false)
+  // Symmetry elements are in the input-cell frame, matching the default 'original'
+  // cell display (switch cell type back to original for correct overlay positions)
+  const sym_elements = $derived(
+    show_sym_elements && top_ex_sym_data
+      ? symmetry_elements_from_ops(top_ex_sym_data.operations)
+      : [],
+  )
 
   onMount(() => { // Initialize WASM
     ensure_moyo_wasm_ready()
@@ -98,6 +107,10 @@
         on_hover={(site_indices) => hovered_wyckoff_sites = site_indices ?? []}
         on_click={(site_indices) => active_wyckoff_sites = site_indices ?? []}
       />
+      <label style="display: flex; gap: 6pt; align-items: center; margin-top: 1em">
+        <input type="checkbox" bind:checked={show_sym_elements} />
+        Show symmetry elements (rotation axes, mirror/glide planes, inversion centers)
+      </label>
     {:else}
       <EmptyState
         message="Load a structure to analyze its symmetry"
@@ -114,6 +127,7 @@
     scene_props={{
       active_sites: active_wyckoff_sites,
       selected_sites: hovered_wyckoff_sites,
+      symmetry_elements: sym_elements,
     }}
     on_file_load={({ structure, filename = `` }) => {
       current_filename = filename

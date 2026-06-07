@@ -440,6 +440,24 @@ describe(`orig site mapping`, () => {
     )
     expect(mapped).toEqual([[1]])
   })
+
+  test(`maps std positions through non-symmetric P before matching`, () => {
+    // P (column-major flat [0,0,-1, 1,0,0, 0,-1,0]) is a NON-symmetric axis permutation
+    // so a transposed (row-major) read or a skipped transform picks the wrong site.
+    // x_in = P·x_std: std (0.7, 0.1, 0.8) ≡ input site 0 at (0.1, 0.2, 0.3) mod 1.
+    const mapped = map_std_to_orig_site_indices(
+      [[0.7, 0.1, 0.8]],
+      [14],
+      [
+        [0.1, 0.2, 0.3],
+        [0.7, 0.5, 0.9],
+      ],
+      [14, 14],
+      [[0], [1]],
+      { std_linear: [0, 0, -1, 1, 0, 0, 0, -1, 0], std_origin_shift: [0, 0, 0] },
+    )
+    expect(mapped).toEqual([[0]])
+  })
 })
 
 describe(`site coverage verification`, () => {
@@ -1045,5 +1063,22 @@ describe(`map_wyckoff_to_all_atoms`, () => {
 
     expect(end_time - start_time).toBeLessThan(100)
     expect(result).toHaveLength(wyckoff_pos.length)
+  })
+
+  test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {
+    // displayed site sits 1e-7 below 1.0; the equivalent position wraps to 0.0 —
+    // matching requires probing neighbor cells of the spatial hash with wraparound
+    const original = make_crystal(1, [{ element: `H` as const, abc: [0, 0, 0] }])
+    const displayed = make_crystal(1, [
+      { element: `H` as const, abc: [0.9999999, 0.9999999, 0.9999999] },
+    ])
+    const sym_data = mock_sym_data()
+    const rows = map_wyckoff_to_all_atoms(
+      [{ wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
+      displayed,
+      original,
+      sym_data,
+    )
+    expect(rows[0].site_indices).toEqual([0])
   })
 })
