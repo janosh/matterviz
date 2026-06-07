@@ -14,20 +14,7 @@ import {
 import type { SymmetryElement } from '$lib/symmetry'
 import { operations_from_number } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { init_moyo_for_tests } from '../setup'
-
-// Build the flat COLUMN-major 9-array moyo uses from a row-major matrix
-const col_major = (mat: Matrix3x3): number[] => [
-  mat[0][0],
-  mat[1][0],
-  mat[2][0],
-  mat[0][1],
-  mat[1][1],
-  mat[2][1],
-  mat[0][2],
-  mat[1][2],
-  mat[2][2],
-]
+import { col_major, init_moyo_for_tests } from '../setup'
 
 const IDENTITY: Matrix3x3 = [
   [1, 0, 0],
@@ -90,42 +77,26 @@ describe(`classify_symmetry_op`, () => {
     expect(elem?.point).toEqual([0.25, 0.25, 0.25])
   })
 
-  test(`pure 2-fold rotation about z`, () => {
-    const elem = classify_symmetry_op(col_major(ROT2_Z), [0, 0, 0])
-    expect(elem).toMatchObject({
-      kind: `rotation`,
-      order: 2,
-      label: `2`,
-      axis: [0, 0, 1],
-      point: [0, 0, 0],
-      translation: null,
-    })
-  })
-
-  test(`2-fold with perpendicular translation = rotation about a shifted axis`, () => {
-    // (−x+1/2, −y+1/2, z): no intrinsic part, axis passes through (1/4, 1/4, z)
-    const elem = classify_symmetry_op(col_major(ROT2_Z), [0.5, 0.5, 0])
-    expect(elem).toMatchObject({ kind: `rotation`, label: `2`, axis: [0, 0, 1] })
-    expect(elem?.point).toEqual([0.25, 0.25, 0])
-  })
-
-  test(`2_1 screw axis along z`, () => {
-    const elem = classify_symmetry_op(col_major(ROT2_Z), [0, 0, 0.5])
-    expect(elem).toMatchObject({
-      kind: `screw`,
-      order: 2,
-      label: `2_1`,
-      axis: [0, 0, 1],
-      point: [0, 0, 0],
-    })
-    expect(elem?.translation).toEqual([0, 0, 0.5])
-  })
-
-  test(`full-period translation along axis is NOT a screw`, () => {
-    // (W, w + lattice vector along axis) describes a pure rotation about a shifted axis
-    const elem = classify_symmetry_op(col_major(ROT2_Z), [0, 0, 1])
-    expect(elem).toMatchObject({ kind: `rotation`, label: `2`, translation: null })
-  })
+  // The 2-fold about z (ROT2_Z) decomposes a translation into an in-axis screw part and a
+  // perpendicular part that only shifts the axis location, covering every branch of the
+  // proper-rotation classifier in one place:
+  test.each([
+    // [name, translation, expected {kind,label,point,translation}]
+    [`pure rotation`, [0, 0, 0], `rotation`, `2`, [0, 0, 0], null],
+    // perpendicular translation → same axis direction, shifted location at (1/4,1/4,z)
+    [`perpendicular shift`, [0.5, 0.5, 0], `rotation`, `2`, [0.25, 0.25, 0], null],
+    // half-period along axis → 2_1 screw with intrinsic (0,0,1/2)
+    [`half-period screw`, [0, 0, 0.5], `screw`, `2_1`, [0, 0, 0], [0, 0, 0.5]],
+    // full lattice period along axis is NOT intrinsic → still a pure rotation
+    [`full-period not screw`, [0, 0, 1], `rotation`, `2`, [0, 0, 0], null],
+  ] as [string, Vec3, string, string, Vec3, Vec3 | null][])(
+    `2-fold about z: %s`,
+    (_, translation, kind, label, point, intrinsic) => {
+      const elem = classify_symmetry_op(col_major(ROT2_Z), translation)
+      expect(elem).toMatchObject({ kind, order: 2, label, axis: [0, 0, 1], point })
+      expect(elem?.translation).toEqual(intrinsic)
+    },
+  )
 
   test(`P2_1/c operation 2: screw 2_1 along b at (0, y, 1/4)`, () => {
     // ITA #14: (−x, y+1/2, −z+1/2)
@@ -304,6 +275,29 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(elements.some((elem) => elem.kind === `inversion`)).toBe(true)
   })
 
+  // Exact in-cell counts (hand-verified vs ITA diagrams) pin element_locus_key dedup and
+  // invariant_translations' in-plane invariance check; each kills a distinct mutation:
+  // - P4mm=14: dropping the plane-offset wrap splits lattice-equivalent mirrors
+  // - R-3m=94: locus-key fmt precision 4→1 collides/shifts trigonal loci
+  // - Cm=4: weakening invariant_translations' some()→every() invariance test
+  test.each([
+    [`P4mm`, 99, 14],
+    [`R-3m`, 166, 94],
+    [`Cm`, 8, 4],
+  ])(`%s (#%i) has exactly %i distinct in-cell elements`, (_, spg, expected) => {
+    expect(elements_for(spg)).toHaveLength(expected)
+  })
+
+  test(`R-3m (#166) emits a g-glide: rhombohedral diagonal glides reduce to no a/b/c/n/d letter in the hexagonal-axes basis, so glide_letter must fall back to "g"`, () => {
+    // The reduced glide vector (1/6, 1/3, 1/3) — no half cell-axis (a/b/c), half diagonal
+    // (n), or quarter diagonal (d) — hits glide_letter's otherwise-untested catch-all "g".
+    const labels = elements_for(166).map((elem) => elem.label)
+    expect(labels).toContain(`g`)
+    // and it really is a glide plane, not mislabeled as something else
+    const g_glides = elements_for(166).filter((elem) => elem.label === `g`)
+    expect(g_glides.every((elem) => elem.kind === `glide` && elem.order === 2)).toBe(true)
+  })
+
   test(`every space group yields classifiable operations`, () => {
     // Smoke test: classification must not throw for ANY operation of ANY space group,
     // and every non-trivial op must classify to an element with a valid label
@@ -456,6 +450,31 @@ describe(`cell clipping helpers`, () => {
     expect(poly.length).toBeGreaterThanOrEqual(3)
     // Cartesian normal: (1,-2,0)·L = a1 − 2·a2 = (0,-1.6,0) → the plane is y = 0
     for (const vert of poly) expect(vert[1]).toBeCloseTo(0, 8)
+  })
+
+  test(`clip_plane_to_cell returns vertices in convex winding order`, () => {
+    // The body-diagonal plane through the cell center cuts a regular hexagon. Vertices
+    // must come out sorted around the centroid (the angle-sort step) — otherwise the
+    // rendered polygon self-intersects. A convex, consistently-wound polygon turns the
+    // same way at every vertex, so all consecutive edge cross products project onto the
+    // plane normal with the same sign.
+    const lattice: Matrix3x3 = [
+      [2, 0, 0],
+      [0, 2, 0],
+      [0, 0, 2],
+    ]
+    const poly = clip_plane_to_cell([0.5, 0.5, 0.5], [1, 1, 1], lattice)
+    expect(poly).toHaveLength(6) // hexagonal cross-section
+    const normal = math.normalize_vec([1, 1, 1])
+    const turn_signs = poly.map((vert, idx) => {
+      const edge_a = math.subtract(poly[(idx + 1) % poly.length], vert)
+      const edge_b = math.subtract(
+        poly[(idx + 2) % poly.length],
+        poly[(idx + 1) % poly.length],
+      )
+      return Math.sign(math.dot(math.cross_3d(edge_a, edge_b), normal))
+    })
+    expect(new Set(turn_signs)).toEqual(new Set([1])) // all same-sign → convex, no crossings
   })
 })
 

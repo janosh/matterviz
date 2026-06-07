@@ -33,9 +33,7 @@ export function extract_point_group_from_operations(
     seen.add(key)
 
     // moyo serializes rotations COLUMN-major; vec9_to_mat3x3 reads row-major → transpose to get W
-    const rot = math.transpose_3x3_matrix(
-      math.vec9_to_mat3x3(Array.from(rotation)) as Matrix3x3,
-    )
+    const rot = math.transpose_3x3_matrix(math.vec9_to_mat3x3(Array.from(rotation)))
     unique_rotations.push(rot)
   }
 
@@ -415,7 +413,13 @@ export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): Clipp
   for (const rot of non_identity_ops) {
     const rotated = math.mat3x3_vec3_multiply(rot, ref_dir)
     const diff: Vec3 = math.subtract(rotated, ref_dir)
-    if (Math.hypot(...diff) < TOL) continue // ref_dir on a symmetry element (degenerate)
+    // ref_dir has a trivial stabilizer, so every op must move it; a zero diff would
+    // silently drop a plane and inflate the IBZ — surface it instead
+    if (Math.hypot(...diff) < TOL) {
+      throw new Error(
+        `IBZ construction: reference direction unexpectedly fixed by an operation`,
+      )
+    }
 
     const plane_normal = normalize(diff)
     // NOTE: do NOT merge antiparallel normals — n and −n select opposite half-spaces

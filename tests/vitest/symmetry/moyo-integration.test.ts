@@ -2,8 +2,8 @@
 // Uses real WASM binary to verify symmetry detection behavior
 // Note: Most symmetry tests use mocks (see index.test.ts, symmetry-utils.test.ts)
 
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { ElementSymbol } from '$lib'
+import type { Vec3 } from '$lib/math'
+import type { Crystal, ElementSymbol } from '$lib'
 import {
   analyze_structure_symmetry,
   apply_symmetry_operations,
@@ -16,6 +16,7 @@ import {
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
 import { structure_map } from '$site/structures'
+import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { space_group_type } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { init_moyo_for_tests, make_crystal } from '../setup'
@@ -29,6 +30,50 @@ function get_structure(id: string) {
 
 const analyze = (id: string, symprec = 1e-4) =>
   analyze_structure_symmetry(get_structure(id), { symprec })
+
+const analyze_crystal = (crystal: Crystal, symprec = 1e-4) =>
+  analyze_structure_symmetry(crystal, { symprec })
+
+// Shared primitive/non-conventional input cells reused across the orbit-mapping tests.
+// Each returns a fresh Crystal so tests can't cross-contaminate via shared references.
+const FCC_A = 3.61 // primitive FCC Cu: 1-atom input expands to a 4-atom conventional cell
+const prim_fcc_cu = () =>
+  make_crystal(
+    [
+      [0, FCC_A / 2, FCC_A / 2],
+      [FCC_A / 2, 0, FCC_A / 2],
+      [FCC_A / 2, FCC_A / 2, 0],
+    ],
+    [{ element: `Cu`, abc: [0, 0, 0] }],
+  )
+
+const SI_A = 5.43 // primitive diamond Si: 2-atom input expands to an 8-atom conventional cell
+const prim_diamond_si = () =>
+  make_crystal(
+    [
+      [0, SI_A / 2, SI_A / 2],
+      [SI_A / 2, 0, SI_A / 2],
+      [SI_A / 2, SI_A / 2, 0],
+    ],
+    [
+      { element: `Si`, abc: [0, 0, 0] },
+      { element: `Si`, abc: [0.25, 0.25, 0.25] },
+    ],
+  )
+
+const PO_A = 3.35 // 2x1x1 supercell of simple-cubic Po: 2-atom input reduces to a 1-atom std cell
+const supercell_po = () =>
+  make_crystal(
+    [
+      [2 * PO_A, 0, 0],
+      [0, PO_A, 0],
+      [0, 0, PO_A],
+    ],
+    [
+      { element: `Po`, abc: [0, 0, 0] },
+      { element: `Po`, abc: [0.5, 0, 0] },
+    ],
+  )
 
 describe(`moyo-wasm integration`, () => {
   beforeAll(init_moyo_for_tests)
@@ -111,16 +156,8 @@ describe(`moyo-wasm integration`, () => {
 describe(`Wyckoff rows for non-conventional input cells`, () => {
   beforeAll(init_moyo_for_tests)
 
-  const FCC_A = 3.61
-  const prim_fcc_lattice: Matrix3x3 = [
-    [0, FCC_A / 2, FCC_A / 2],
-    [FCC_A / 2, 0, FCC_A / 2],
-    [FCC_A / 2, FCC_A / 2, 0],
-  ]
-
   test(`primitive FCC Cu (1 atom input, 4 atom std cell) → single 4a row`, async () => {
-    const crystal = make_crystal(prim_fcc_lattice, [{ element: `Cu`, abc: [0, 0, 0] }])
-    const sym_data = await analyze_structure_symmetry(crystal, { symprec: 1e-4 })
+    const sym_data = await analyze_crystal(prim_fcc_cu())
     expect(sym_data.number).toBe(225)
     expect(sym_data.std_cell.positions).toHaveLength(4)
 
@@ -128,30 +165,12 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     // "1a" row plus three bogus letter-less "1" rows
     const rows = wyckoff_positions_from_moyo(sym_data)
     expect(rows).toEqual([
-      {
-        wyckoff: `4a`,
-        elem: `Cu`,
-        abc: [0, 0, 0],
-        site_indices: [0],
-        site_symmetry: `m-3m`,
-      },
+      { wyckoff: `4a`, elem: `Cu`, abc: [0, 0, 0], site_indices: [0], site_symmetry: `m-3m` },
     ])
   })
 
   test(`primitive diamond Si (2 atom input, 8 atom std cell) → single 8a row`, async () => {
-    const a_si = 5.43
-    const crystal = make_crystal(
-      [
-        [0, a_si / 2, a_si / 2],
-        [a_si / 2, 0, a_si / 2],
-        [a_si / 2, a_si / 2, 0],
-      ],
-      [
-        { element: `Si`, abc: [0, 0, 0] },
-        { element: `Si`, abc: [0.25, 0.25, 0.25] },
-      ],
-    )
-    const sym_data = await analyze_structure_symmetry(crystal, { symprec: 1e-4 })
+    const sym_data = await analyze_crystal(prim_diamond_si())
     expect(sym_data.number).toBe(227) // Fd-3m
 
     const rows = wyckoff_positions_from_moyo(sym_data)
@@ -169,19 +188,7 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
   })
 
   test(`2x1x1 supercell of simple-cubic Po (2 atom input, 1 atom std cell) → single 1a row`, async () => {
-    const a_po = 3.35
-    const crystal = make_crystal(
-      [
-        [2 * a_po, 0, 0],
-        [0, a_po, 0],
-        [0, 0, a_po],
-      ],
-      [
-        { element: `Po`, abc: [0, 0, 0] },
-        { element: `Po`, abc: [0.5, 0, 0] },
-      ],
-    )
-    const sym_data = await analyze_structure_symmetry(crystal, { symprec: 1e-4 })
+    const sym_data = await analyze_crystal(supercell_po())
     expect(sym_data.number).toBe(221) // Pm-3m
     expect(sym_data.std_cell.positions).toHaveLength(1)
 
@@ -192,24 +199,23 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
   })
 
   test(`NaCl conventional cell with Cl listed first → 4a Na and 4b Cl rows`, async () => {
-    const a_nacl = 5.64
-    const cl_sites = [
+    const cl_sites: Vec3[] = [
       [0.5, 0.5, 0.5],
       [0.5, 0, 0],
       [0, 0.5, 0],
       [0, 0, 0.5],
-    ] as Vec3[]
-    const na_sites = [
+    ]
+    const na_sites: Vec3[] = [
       [0, 0, 0],
       [0, 0.5, 0.5],
       [0.5, 0, 0.5],
       [0.5, 0.5, 0],
-    ] as Vec3[]
-    const crystal = make_crystal(a_nacl, [
+    ]
+    const crystal = make_crystal(5.64, [
       ...cl_sites.map((abc) => ({ element: `Cl` as ElementSymbol, abc })),
       ...na_sites.map((abc) => ({ element: `Na` as ElementSymbol, abc })),
     ])
-    const sym_data = await analyze_structure_symmetry(crystal, { symprec: 1e-4 })
+    const sym_data = await analyze_crystal(crystal)
     expect(sym_data.number).toBe(225)
 
     const rows = wyckoff_positions_from_moyo(sym_data)
@@ -238,7 +244,7 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
         { element: `Si`, abc: [0.8, 0.6, 0.15] },
       ],
     )
-    const sym_data = await analyze_structure_symmetry(crystal, { symprec: 1e-4 })
+    const sym_data = await analyze_crystal(crystal)
     expect(sym_data.number).toBe(1)
 
     const rows = wyckoff_positions_from_moyo(sym_data)
@@ -264,7 +270,7 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
         { element: `Cl`, abc: [0.5, 0.5, 0.5] },
       ],
     )
-    const sym_data = await analyze_structure_symmetry(crystal, { symprec: 1e-4 })
+    const sym_data = await analyze_crystal(crystal)
     expect(sym_data.number).toBe(225)
     expect(sym_data.std_cell.positions).toHaveLength(8)
 
@@ -293,46 +299,29 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
 describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   beforeAll(init_moyo_for_tests)
 
-  const FCC_A = 3.61
-  const prim_cu = () =>
-    make_crystal(
-      [
-        [0, FCC_A / 2, FCC_A / 2],
-        [FCC_A / 2, 0, FCC_A / 2],
-        [FCC_A / 2, FCC_A / 2, 0],
-      ],
-      [{ element: `Cu`, abc: [0, 0, 0] }],
-    )
+  // Analyze `orig`, then re-express its Wyckoff rows onto the `displayed` cell (whatever
+  // frame the viewer renders) and return the mapped rows.
+  const map_rows = (orig: Crystal, displayed: Crystal, sym_data: MoyoDataset) =>
+    map_wyckoff_to_all_atoms(wyckoff_positions_from_moyo(sym_data), displayed, orig, sym_data)
 
   test(`conventional-cell display: all 4 FCC copies map to the 4a row`, async () => {
-    const orig = prim_cu()
-    const sym_data = await analyze_structure_symmetry(orig, { symprec: 1e-4 })
+    const orig = prim_fcc_cu()
+    const sym_data = await analyze_crystal(orig)
     const displayed = get_conventional_cell(orig, sym_data)
     expect(displayed.sites).toHaveLength(4)
 
-    const rows = map_wyckoff_to_all_atoms(
-      wyckoff_positions_from_moyo(sym_data),
-      displayed,
-      orig,
-      sym_data,
-    )
+    const rows = map_rows(orig, displayed, sym_data)
     expect(rows).toHaveLength(1)
     expect(rows[0].site_indices).toEqual([0, 1, 2, 3])
   })
 
   test(`primitive-cell display maps correctly`, async () => {
-    const orig = prim_cu()
-    const sym_data = await analyze_structure_symmetry(orig, { symprec: 1e-4 })
+    const orig = prim_fcc_cu()
+    const sym_data = await analyze_crystal(orig)
     const displayed = get_primitive_cell(orig, sym_data)
     expect(displayed.sites).toHaveLength(1)
 
-    const rows = map_wyckoff_to_all_atoms(
-      wyckoff_positions_from_moyo(sym_data),
-      displayed,
-      orig,
-      sym_data,
-    )
-    expect(rows[0].site_indices).toEqual([0])
+    expect(map_rows(orig, displayed, sym_data)[0].site_indices).toEqual([0])
   })
 
   test(`conventional display of primitive diamond: origin shift forces conv-frame matching`, async () => {
@@ -340,55 +329,21 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
     // is rejected (positions mismatch) and matching must run in the conventional frame,
     // where the F-centering copies are only reachable via the input-lattice translation
     // check (P·d ∈ ℤ³) — all 8 conventional-cell atoms must map to the single 8a row
-    const a_si = 5.43
-    const orig = make_crystal(
-      [
-        [0, a_si / 2, a_si / 2],
-        [a_si / 2, 0, a_si / 2],
-        [a_si / 2, a_si / 2, 0],
-      ],
-      [
-        { element: `Si`, abc: [0, 0, 0] },
-        { element: `Si`, abc: [0.25, 0.25, 0.25] },
-      ],
-    )
-    const sym_data = await analyze_structure_symmetry(orig, { symprec: 1e-4 })
+    const orig = prim_diamond_si()
+    const sym_data = await analyze_crystal(orig)
     const displayed = get_conventional_cell(orig, sym_data)
     expect(displayed.sites).toHaveLength(8)
 
-    const rows = map_wyckoff_to_all_atoms(
-      wyckoff_positions_from_moyo(sym_data),
-      displayed,
-      orig,
-      sym_data,
-    )
+    const rows = map_rows(orig, displayed, sym_data)
     expect(rows).toHaveLength(1)
     expect(rows[0].site_indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
   })
 
   test(`supercell display: both copies of the original site are matched`, async () => {
-    const a_po = 3.35
-    const orig = make_crystal(a_po, [{ element: `Po`, abc: [0, 0, 0] }])
-    const sym_data = await analyze_structure_symmetry(orig, { symprec: 1e-4 })
-    // Manual 2x1x1 supercell of the original cell
-    const displayed = make_crystal(
-      [
-        [2 * a_po, 0, 0],
-        [0, a_po, 0],
-        [0, 0, a_po],
-      ],
-      [
-        { element: `Po`, abc: [0, 0, 0] },
-        { element: `Po`, abc: [0.5, 0, 0] },
-      ],
-    )
-
-    const rows = map_wyckoff_to_all_atoms(
-      wyckoff_positions_from_moyo(sym_data),
-      displayed,
-      orig,
-      sym_data,
-    )
+    const orig = make_crystal(PO_A, [{ element: `Po`, abc: [0, 0, 0] }])
+    const sym_data = await analyze_crystal(orig)
+    // displayed = 2x1x1 supercell of the original 1-atom Po cell (both copies must match)
+    const rows = map_rows(orig, supercell_po(), sym_data)
     expect(rows[0].site_indices).toEqual([0, 1])
   })
 })

@@ -48,8 +48,6 @@ export type WyckoffPos = {
   site_symmetry?: string
 }
 export type SymmetryDataset = MoyoDataset & {
-  // Legacy one-to-one standardized-index mapping.
-  orig_indices?: number[]
   // Mapping from standardized-cell site index to original structure site indices.
   orig_site_indices_by_std_idx?: number[][]
   // The merged cell that was fed to moyo's analyze_cell. IMPORTANT: moyo's per-site
@@ -350,77 +348,20 @@ const sort_wyckoff_rows = (rows: WyckoffPos[]): WyckoffPos[] => {
   return rows
 }
 
-// Generate Wyckoff table rows from symmetry data
+// Generate Wyckoff table rows from symmetry data by grouping moyo's input-cell sites into
+// crystallographic orbits. moyo's per-site arrays (wyckoffs, orbits, site_symmetry_symbols)
+// always index the input cell and analyze_structure_symmetry always attaches input_cell, so
+// the orbit grouping is the single source of truth for any input cell setting.
 export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): WyckoffPos[] {
   if (!sym_data) return []
-
-  // Preferred path: group input-cell sites by orbit (correct for any input cell setting)
   const orbit_rows = wyckoff_rows_from_input_orbits(sym_data)
-  if (orbit_rows) return sort_wyckoff_rows(orbit_rows)
-
-  // Legacy fallback for datasets without input-cell info: assumes wyckoffs is aligned
-  // with std_cell site order (only valid when the input cell matches the std cell)
-  const { positions, numbers } = sym_data.std_cell
-  const { wyckoffs, orig_indices, orig_site_indices_by_std_idx } = sym_data
-
-  // Group sites by letter-element combination and track all indices
-  const groups = new Map<
-    string,
-    {
-      letter: string
-      elem: string
-      indices: number[]
-      positions: Vec3[]
-    }
-  >()
-
-  // Process all atoms in the standardized cell. Note: moyo's wyckoffs array indexes the
-  // INPUT cell, so it may be shorter than std_cell (e.g. primitive input, conventional
-  // std_cell) — that's why the orbit-based path above is preferred whenever possible.
-  for (let idx = 0; idx < numbers.length; idx++) {
-    // Use wyckoff letter if available, otherwise mark as non-symmetric
-    const full = idx < wyckoffs.length ? wyckoffs[idx] : null
-    const letter = full?.match(/[a-z]+$/)?.[0] ?? full ?? ``
-    const atomic_num = numbers[idx]
-    const elem = ATOMIC_NUMBER_TO_SYMBOL[atomic_num] ?? `?`
-    const position = positions[idx]
-
-    const key = letter ? `${letter}|${elem}` : `nosym|${elem}|${idx}`
-    const group = groups.get(key) ?? { letter, elem, indices: [], positions: [] }
-    group.indices.push(idx)
-    group.positions.push(position)
-    groups.set(key, group)
-  }
-
-  const rows = Array.from(groups.values()).map(
-    ({ letter, elem, indices, positions: group_positions }) => {
-      const best_pos = simplest_position(group_positions)
-
-      // Map standardized cell indices back to original structure indices
-      const orig_site_indices = orig_site_indices_by_std_idx
-        ? indices.flatMap((std_idx) => orig_site_indices_by_std_idx[std_idx] ?? [])
-        : orig_indices
-          ? indices.map((std_idx) => orig_indices[std_idx]).filter((idx) => idx !== undefined)
-          : indices
-
-      const wyckoff = letter ? `${indices.length}${letter}` : `1`
-      return {
-        wyckoff,
-        elem,
-        abc: best_pos,
-        site_indices: [...new Set(orig_site_indices)].sort((idx_a, idx_b) => idx_a - idx_b),
-      }
-    },
-  )
-
-  return sort_wyckoff_rows(rows)
+  return orbit_rows ? sort_wyckoff_rows(orbit_rows) : []
 }
 
 // Apply symmetry operations to find all equivalent positions for a given fractional coordinate
 export function apply_symmetry_operations(
   position: Vec3,
   operations: MoyoDataset[`operations`],
-  _tolerance = 1e-6,
 ): Vec3[] {
   const seen = new Set<string>()
 
@@ -481,12 +422,9 @@ function candidate_display_frames(
     const basis = cell?.lattice?.basis
     const mapper = make_frac_coord_mapper(linear, shift)
     if (basis?.length !== 9 || !mapper) continue
+    // basis is row-major (each row a lattice vector); same reshape as moyo_cell_to_structure
     frames.push({
-      lattice: [
-        [basis[0], basis[1], basis[2]],
-        [basis[3], basis[4], basis[5]],
-        [basis[6], basis[7], basis[8]],
-      ],
+      lattice: math.vec9_to_mat3x3([...basis]),
       map_equiv: mapper.to_std,
       input_translation_check: mapper.linear,
     })

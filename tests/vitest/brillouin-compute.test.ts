@@ -14,7 +14,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { load_json } from './setup'
+import { col_major, load_json } from './setup'
 
 type BzReference = {
   real_lattice: number[][]
@@ -321,16 +321,16 @@ describe(`error handling`, () => {
 })
 
 // Fractional rotation matrices (row-major) for mock moyo operations
-const ROT_Z_90 = math.vec9_to_mat3x3([0, -1, 0, 1, 0, 0, 0, 0, 1]) as Matrix3x3
-const ROT_Z_180 = math.vec9_to_mat3x3([-1, 0, 0, 0, -1, 0, 0, 0, 1]) as Matrix3x3
-const ROT_Z_270 = math.vec9_to_mat3x3([0, 1, 0, -1, 0, 0, 0, 0, 1]) as Matrix3x3
-const MIRROR_Z = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 0, 0, -1]) as Matrix3x3
+const ROT_Z_90 = math.vec9_to_mat3x3([0, -1, 0, 1, 0, 0, 0, 0, 1])
+const ROT_Z_180 = math.vec9_to_mat3x3([-1, 0, 0, 0, -1, 0, 0, 0, 1])
+const ROT_Z_270 = math.vec9_to_mat3x3([0, 1, 0, -1, 0, 0, 0, 0, 1])
+const MIRROR_Z = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 0, 0, -1])
 
 // moyo-wasm serializes nalgebra Matrix3 rotations as flat 9-arrays in COLUMN-major order
 // (number[] substitutes for Float64Array in tests)
 const make_op = (rot: Matrix3x3, translation: Vec3 = [0, 0, 0]) =>
   ({
-    rotation: [0, 1, 2].flatMap((col) => rot.map((row) => row[col])),
+    rotation: col_major(rot),
     translation,
   }) as unknown as MoyoDataset[`operations`][number]
 

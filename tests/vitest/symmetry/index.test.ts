@@ -13,11 +13,11 @@ import {
 import { structures } from '$site/structures'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal, make_wyckoff_dataset } from '../setup'
 
 describe(`wyckoff_positions_from_moyo`, () => {
   const mock_data = (positions: number[][], numbers: number[], wyckoffs: (string | null)[]) =>
-    ({ std_cell: { positions, numbers }, wyckoffs }) as unknown as MoyoDataset
+    make_wyckoff_dataset(positions, numbers, wyckoffs)
 
   test(`handles various input scenarios`, () => {
     // Null input
@@ -159,6 +159,32 @@ describe(`wyckoff_positions_from_moyo`, () => {
     ])
     expect(multi_result.find((r) => r.elem === `H`)?.abc).toEqual([0, 0, 0])
     expect(multi_result.find((r) => r.elem === `O`)?.abc).toEqual([0.5, 0.5, 0.5])
+
+    // Multiplicity scales by the std/input size ratio (can't use make_wyckoff_dataset,
+    // which assumes input == std): a primitive input with one Cu site (orbit size 1) but a
+    // 4-site conventional std_cell must give 1·(n_std/n_input) = 4a, NOT raw orbit size 1.
+    // Also pins site_symmetry propagation.
+    const primitive_input = {
+      input_cell: { positions: [[0, 0, 0]], numbers: [29] }, // Cu
+      std_cell: {
+        positions: [
+          [0, 0, 0],
+          [0, 0.5, 0.5],
+          [0.5, 0, 0.5],
+          [0.5, 0.5, 0],
+        ],
+        numbers: [29, 29, 29, 29],
+      },
+      wyckoffs: [`4a`],
+      orbits: [0],
+      site_symmetry_symbols: [`m-3m`],
+      std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      std_origin_shift: [0, 0, 0],
+      orig_site_indices_by_input_idx: [[0]],
+    } as unknown as MoyoDataset
+    expect(wyckoff_positions_from_moyo(primitive_input)).toEqual([
+      { wyckoff: `4a`, elem: `Cu`, abc: [0, 0, 0], site_indices: [0], site_symmetry: `m-3m` },
+    ])
   })
 })
 
@@ -315,33 +341,15 @@ describe(`structure validation`, () => {
 
 describe(`integration tests`, () => {
   test(`wyckoff positions for mock structures`, () => {
-    const mock: MoyoDataset = {
-      std_cell: {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.25, 0.25, 0.25],
-        ],
-        numbers: [1, 8, 26],
-      },
-      wyckoffs: [`a`, `b`, `c`],
-      operations: [],
-      number: 1,
-      hm_symbol: `P1`,
-      hall_number: 1,
-      pearson_symbol: `aP3`,
-      orbits: [],
-      site_symmetry_symbols: [],
-      std_linear: [],
-      std_origin_shift: [0, 0, 0],
-      transformation_matrix: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
+    const mock = make_wyckoff_dataset(
+      [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+        [0.25, 0.25, 0.25],
       ],
-      origin_shift: [0, 0, 0],
-      volume: 1,
-    } as unknown as MoyoDataset
+      [1, 8, 26],
+      [`a`, `b`, `c`],
+    )
 
     const positions = wyckoff_positions_from_moyo(mock)
     expect(positions).toHaveLength(3)
@@ -352,19 +360,16 @@ describe(`integration tests`, () => {
 
 describe(`stable atom ordering`, () => {
   test(`wyckoff positions maintain stable ordering across multiple calls`, () => {
-    const mock_data = {
-      std_cell: {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.25, 0.25, 0.25],
-          [0.75, 0.75, 0.75],
-        ],
-        numbers: [1, 8, 1, 1],
-      },
-      wyckoffs: [`2a`, `1b`, `2a`, `2a`],
-      orig_indices: [0, 1, 2, 3],
-    } as unknown as MoyoDataset & { orig_indices?: number[] }
+    const mock_data = make_wyckoff_dataset(
+      [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+        [0.25, 0.25, 0.25],
+        [0.75, 0.75, 0.75],
+      ],
+      [1, 8, 1, 1],
+      [`2a`, `1b`, `2a`, `2a`],
+    )
 
     // Call the function multiple times to verify stable ordering
     const results = Array.from({ length: 5 }, () => wyckoff_positions_from_moyo(mock_data))
@@ -402,23 +407,18 @@ describe(`to_cell_json`, () => {
 })
 
 describe(`orig site mapping`, () => {
-  const with_orig_site_map = (
-    input: Record<string, unknown>,
-  ): MoyoDataset & { orig_site_indices_by_std_idx?: number[][] } =>
-    input as unknown as MoyoDataset & { orig_site_indices_by_std_idx?: number[][] }
-
-  test(`wyckoff table expands merged standardized indices to original sites`, () => {
-    const sym_data = with_orig_site_map({
-      std_cell: {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-        ],
-        numbers: [8, 3],
-      },
-      wyckoffs: [`2a`, `1b`],
-      orig_site_indices_by_std_idx: [[0, 1], [2]],
-    })
+  test(`wyckoff table expands merged input indices to original sites`, () => {
+    // input site 0 (O, 2a) was merged from original sites [0, 1]; input site 1 (Li, 1b)
+    // from original site [2]. orig_site_indices_by_input_idx must expand both rows.
+    const sym_data = make_wyckoff_dataset(
+      [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+      ],
+      [8, 3],
+      [`2a`, `1b`],
+      [[0, 1], [2]],
+    )
 
     const rows = wyckoff_positions_from_moyo(sym_data)
     const oxygen_row = rows.find((row) => row.elem === `O`)
@@ -455,6 +455,27 @@ describe(`orig site mapping`, () => {
       [14, 14],
       [[0], [1]],
       { std_linear: [0, 0, -1, 1, 0, 0, 0, -1, 0], std_origin_shift: [0, 0, 0] },
+    )
+    expect(mapped).toEqual([[0]])
+  })
+
+  test(`std-lattice translation check uses P⁻¹·d ∈ ℤ³, not P·d ∈ ℤ³`, () => {
+    // P scales std-x by 1/2 (col-major flat [0.5,0,0, 0,1,0, 0,0,1]). std site (0,0,0)
+    // predicts input position (0,0,0). input[0] at (0.5,0,0) differs by d=(-0.5,0,0):
+    // P⁻¹·d = (-1,0,0) ∈ ℤ³ ⇒ a standardized-lattice translation ⇒ exact match (dist 0).
+    // input[1] at (0.01,0,0) is fractionally closer but is NOT a std-lattice translation
+    // (P⁻¹·d = (-0.02,0,0)). The correct check selects input[0]; the wrong P·d check
+    // (P·(-0.5,0,0) = (-0.25,0,0) ∉ ℤ³) would fall back to distance and pick input[1].
+    const mapped = map_std_to_orig_site_indices(
+      [[0, 0, 0]],
+      [14],
+      [
+        [0.5, 0, 0],
+        [0.01, 0, 0],
+      ],
+      [14, 14],
+      [[0], [1]],
+      { std_linear: [0.5, 0, 0, 0, 1, 0, 0, 0, 1], std_origin_shift: [0, 0, 0] },
     )
     expect(mapped).toEqual([[0]])
   })
@@ -508,11 +529,11 @@ describe(`site coverage verification`, () => {
     ]
 
     for (const test_case of test_cases) {
-      const mock_data = {
-        std_cell: { positions: test_case.positions, numbers: test_case.numbers },
-        wyckoffs: test_case.wyckoffs,
-        orig_indices: test_case.expected_coverage,
-      } as unknown as MoyoDataset & { orig_indices?: number[] }
+      const mock_data = make_wyckoff_dataset(
+        test_case.positions,
+        test_case.numbers,
+        test_case.wyckoffs,
+      )
 
       const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
       const covered_indices = new Set<number>()
@@ -570,10 +591,11 @@ describe(`site coverage verification`, () => {
     ]
 
     for (const test_case of test_cases) {
-      const mock_data = {
-        std_cell: { positions: test_case.positions, numbers: test_case.numbers },
-        wyckoffs: test_case.wyckoffs,
-      } as unknown as MoyoDataset
+      const mock_data = make_wyckoff_dataset(
+        test_case.positions,
+        test_case.numbers,
+        test_case.wyckoffs,
+      )
 
       const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
       const total_multiplicity = wyckoff_positions.reduce((sum, pos) => {
@@ -586,32 +608,34 @@ describe(`site coverage verification`, () => {
   })
 
   test(`handles edge cases in Wyckoff position parsing`, () => {
-    const edge_cases = [
+    const edge_cases: {
+      positions: number[][]
+      numbers: number[]
+      wyckoffs: (string | null)[]
+      expected: WyckoffPos[]
+    }[] = [
       // Empty wyckoff letter
       {
-        mock_data: { std_cell: { positions: [[0, 0, 0]], numbers: [1] }, wyckoffs: [``] },
+        positions: [[0, 0, 0]],
+        numbers: [1],
+        wyckoffs: [``],
         expected: [{ wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
       },
       // Null wyckoff letter
       {
-        mock_data: {
-          std_cell: { positions: [[0, 0, 0]], numbers: [1] },
-          wyckoffs: [null],
-        },
+        positions: [[0, 0, 0]],
+        numbers: [1],
+        wyckoffs: [null],
         expected: [{ wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
       },
       // Mixed valid and invalid wyckoff letters
       {
-        mock_data: {
-          std_cell: {
-            positions: [
-              [0, 0, 0],
-              [0.5, 0.5, 0.5],
-            ],
-            numbers: [1, 8],
-          },
-          wyckoffs: [`a`, null],
-        },
+        positions: [
+          [0, 0, 0],
+          [0.5, 0.5, 0.5],
+        ],
+        numbers: [1, 8],
+        wyckoffs: [`a`, null],
         expected: [
           { wyckoff: `1`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
           { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
@@ -619,17 +643,13 @@ describe(`site coverage verification`, () => {
       },
       // Very large multiplicity
       {
-        mock_data: {
-          std_cell: {
-            positions: Array.from({ length: 48 }, (_, idx) => [
-              idx * 0.02,
-              idx * 0.02,
-              idx * 0.02,
-            ]),
-            numbers: Array(48).fill(1),
-          },
-          wyckoffs: Array(48).fill(`48a`),
-        },
+        positions: Array.from({ length: 48 }, (_, idx) => [
+          idx * 0.02,
+          idx * 0.02,
+          idx * 0.02,
+        ]),
+        numbers: Array(48).fill(1),
+        wyckoffs: Array(48).fill(`48a`),
         expected: [
           {
             wyckoff: `48a`,
@@ -641,24 +661,20 @@ describe(`site coverage verification`, () => {
       },
     ]
 
-    edge_cases.forEach(({ mock_data, expected }) => {
-      const result = wyckoff_positions_from_moyo(mock_data as unknown as MoyoDataset)
+    edge_cases.forEach(({ positions, numbers, wyckoffs, expected }) => {
+      const result = wyckoff_positions_from_moyo(
+        make_wyckoff_dataset(positions, numbers, wyckoffs),
+      )
       expect(result).toEqual(expected)
     })
   })
 
   test(`performance with very large structures`, () => {
-    const large_structure = {
-      std_cell: {
-        positions: Array.from({ length: 1000 }, () => [
-          Math.random(),
-          Math.random(),
-          Math.random(),
-        ]),
-        numbers: Array.from({ length: 1000 }, () => Math.floor(Math.random() * 10) + 1),
-      },
-      wyckoffs: Array.from({ length: 1000 }, (_, idx) => `${(idx % 10) + 1}a`),
-    } as unknown as MoyoDataset
+    const large_structure = make_wyckoff_dataset(
+      Array.from({ length: 1000 }, () => [Math.random(), Math.random(), Math.random()]),
+      Array.from({ length: 1000 }, () => Math.floor(Math.random() * 10) + 1),
+      Array.from({ length: 1000 }, (_, idx) => `${(idx % 10) + 1}a`),
+    )
 
     const start_time = performance.now()
     const result = wyckoff_positions_from_moyo(large_structure)
