@@ -33,9 +33,7 @@ export function extract_point_group_from_operations(
     seen.add(key)
 
     // moyo serializes rotations COLUMN-major; vec9_to_mat3x3 reads row-major → transpose to get W
-    const rot = math.transpose_3x3_matrix(
-      math.vec9_to_mat3x3(Array.from(rotation)) as Matrix3x3,
-    )
+    const rot = math.transpose_3x3_matrix(math.vec9_to_mat3x3(Array.from(rotation)))
     unique_rotations.push(rot)
   }
 
@@ -355,56 +353,85 @@ export function compute_brillouin_zone(
 // Clipping plane defined by normal and distance from origin (n·x = d)
 type ClippingPlane = { normal: Vec3; dist: number }
 
-// Test points for IBZ plane detection. These are chosen to:
-// 1. Avoid common rotation axes (2-fold, 3-fold, 4-fold, 6-fold)
-// 2. Span different directions to catch all symmetry operations
-// 3. Include a generic point [1,2,3] that lies on no special axis
-const IBZ_TEST_POINTS: Vec3[] = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1], // basis vectors (avoid 4-fold axes)
-  [1, 1, 0],
-  [1, 0, 1],
-  [0, 1, 1], // face diagonals (avoid 2-fold axes)
-  [1, 1, 1], // body diagonal (avoid 3-fold axis)
-  [1, 2, 3], // generic point on no special axis
+// Generic reference directions for the Dirichlet-domain construction. Irrational-ish
+// component ratios keep them off every rotation axis and mirror plane of crystallographic
+// point groups in practice; the later directions are fallbacks in case a pathological
+// Cartesian orientation pins the first onto a symmetry element.
+export const IBZ_REFERENCE_DIRECTIONS: Vec3[] = [
+  [1, Math.SQRT2 / 3, Math.E / 7],
+  [Math.PI / 5, 1, Math.SQRT1_2 / 4],
+  [Math.E / 9, Math.LN2, 1],
 ]
 
-// Compute clipping planes from point group operations.
-// For each non-identity rotation, we define a plane that selects one representative
-// from each equivalence class.
+// A reference direction is valid for the Dirichlet construction iff it has a trivial
+// stabilizer: no non-identity operation fixes it (R·t ≠ t for every R). Such a direction
+// always exists because the fixed-point sets (rotation axes, mirror planes) have measure
+// zero. Try the curated generic directions first, then deterministic pseudo-random ones,
+// and throw in the (mathematically unreachable) case where none qualify — rather than
+// silently using a non-generic direction, which would drop that operation's clipping
+// plane and inflate the IBZ volume above V_BZ/|G|.
+export function find_ibz_reference_direction(non_identity_ops: Matrix3x3[]): Vec3 {
+  const has_trivial_stabilizer = (dir: Vec3): boolean =>
+    non_identity_ops.every(
+      (rot) => Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, dir), dir)) > TOL,
+    )
+
+  const curated = IBZ_REFERENCE_DIRECTIONS.find(has_trivial_stabilizer)
+  if (curated) return curated
+
+  // Park-Miller minstd PRNG (safe-integer arithmetic) keeps the rare fallback
+  // reproducible across runs while sampling generic directions
+  let seed = 16807
+  const next_component = (): number => {
+    seed = (seed * 16807) % 2147483647
+    return (seed / 2147483647) * 2 - 1
+  }
+  for (let attempt = 0; attempt < 128; attempt++) {
+    const dir: Vec3 = [next_component(), next_component(), next_component()]
+    if (Math.hypot(...dir) > 0.1 && has_trivial_stabilizer(dir)) return dir
+  }
+  throw new Error(
+    `IBZ construction: no generic reference direction found for ${non_identity_ops.length} symmetry operations`,
+  )
+}
+
+// Compute clipping planes from point group operations via the Dirichlet (Voronoi)
+// fundamental-domain construction: pick ONE generic direction t with trivial stabilizer,
+// then for every non-identity operation R keep the half-space x·t ≥ x·(R·t), i.e.
+// (R·t − t)·x ≤ 0. Intersecting all half-spaces with the BZ yields an irreducible wedge
+// of exactly volume(BZ)/|G|. (Using a different reference point per operation — or
+// flipping individual planes — does NOT yield a fundamental domain in general.)
 export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): ClippingPlane[] {
+  const non_identity_ops = point_group_ops.filter((rot) => !is_identity_rotation(rot))
+  if (non_identity_ops.length === 0) return []
+
+  const ref_dir = find_ibz_reference_direction(non_identity_ops)
+
   const planes: ClippingPlane[] = []
   const seen_normals = new Set<string>()
 
-  for (const rot of point_group_ops) {
-    if (is_identity_rotation(rot)) continue
+  for (const rot of non_identity_ops) {
+    const rotated = math.mat3x3_vec3_multiply(rot, ref_dir)
+    const diff: Vec3 = math.subtract(rotated, ref_dir)
+    // ref_dir has a trivial stabilizer, so every op must move it; a zero diff would
+    // silently drop a plane and inflate the IBZ — surface it instead
+    if (Math.hypot(...diff) < TOL) {
+      throw new Error(
+        `IBZ construction: reference direction unexpectedly fixed by an operation`,
+      )
+    }
 
-    for (const test_pt of IBZ_TEST_POINTS) {
-      const rotated = math.mat3x3_vec3_multiply(rot, test_pt)
-      const diff: Vec3 = math.subtract(rotated, test_pt)
-      if (Math.hypot(...diff) < TOL) continue // point on rotation axis
-
-      const plane_normal = normalize(diff)
-      const key = plane_normal.map((val) => Math.round(val * 1000)).join(`,`)
-      const neg_key = plane_normal.map((val) => Math.round(-val * 1000)).join(`,`)
-
-      if (!seen_normals.has(key) && !seen_normals.has(neg_key)) {
-        seen_normals.add(key)
-        planes.push({ normal: plane_normal, dist: 0 })
-      }
-      break
+    const plane_normal = normalize(diff)
+    // NOTE: do NOT merge antiparallel normals — n and −n select opposite half-spaces
+    const key = plane_normal.map((val) => Math.round(val * 1e6)).join(`,`)
+    if (!seen_normals.has(key)) {
+      seen_normals.add(key)
+      planes.push({ normal: plane_normal, dist: 0 })
     }
   }
 
   return planes
 }
-
-// Flip a clipping plane to the opposite half-space
-const flip_plane = (plane: ClippingPlane): ClippingPlane => ({
-  normal: math.scale(plane.normal, -1),
-  dist: -plane.dist,
-})
 
 // Clip polyhedron vertices by a half-space, adding intersection points where edges cross
 function clip_polyhedron_by_plane(
@@ -497,21 +524,16 @@ export function compute_irreducible_bz(
   let current_faces = [...bz_data.faces]
 
   for (const plane of clipping_planes) {
-    // Try clipping with plane, then flipped plane if needed
-    let clipped_successfully = false
-    for (const try_plane of [plane, flip_plane(plane)]) {
-      const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, try_plane)
-      const hull = try_build_hull(clipped, edge_sharp_angle_deg)
-      if (hull) {
-        current_vertices = hull.vertices
-        current_faces = hull.faces
-        clipped_successfully = true
-        break
-      }
-    }
-    // If both orientations failed, vertices unchanged - continue with best effort
-    if (!clipped_successfully) {
-      console.warn(`IBZ clipping: plane orientation failed, continuing with current geometry`)
+    // Planes from the Dirichlet construction are consistently oriented (the kept side
+    // n·x ≤ 0 always contains the reference direction) so clip directly — flipping a
+    // plane would select the wrong half-space and break the fundamental-domain property
+    const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, plane)
+    const hull = try_build_hull(clipped, edge_sharp_angle_deg)
+    if (hull) {
+      current_vertices = hull.vertices
+      current_faces = hull.faces
+    } else {
+      console.warn(`IBZ clipping: degenerate clip result, skipping plane`)
     }
   }
 

@@ -28,7 +28,7 @@ export interface AtomPropertyColors {
 
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = `interpolateViridis`
-type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_std_idx?: number[][] }
+type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
 export const get_d3_color_scales = (): string[] =>
   Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`))
@@ -226,12 +226,14 @@ export function get_wyckoff_colors(
     }
   }
 
+  // moyo's wyckoffs array is indexed by INPUT cell sites (the merged moyo input cell),
+  // so map letters to original sites through orig_site_indices_by_input_idx
   const wyckoff_by_orig_idx = new Map<number, string | null>()
-  const mapping_by_std_idx = sym_data.orig_site_indices_by_std_idx
-  if (mapping_by_std_idx) {
-    for (let std_idx = 0; std_idx < sym_data.wyckoffs.length; std_idx += 1) {
-      const wyckoff = sym_data.wyckoffs[std_idx]
-      for (const orig_idx of mapping_by_std_idx[std_idx] ?? []) {
+  const mapping_by_input_idx = sym_data.orig_site_indices_by_input_idx
+  if (mapping_by_input_idx) {
+    for (let input_idx = 0; input_idx < sym_data.wyckoffs.length; input_idx += 1) {
+      const wyckoff = sym_data.wyckoffs[input_idx]
+      for (const orig_idx of mapping_by_input_idx[input_idx] ?? []) {
         if (!wyckoff_by_orig_idx.has(orig_idx)) wyckoff_by_orig_idx.set(orig_idx, wyckoff)
       }
     }

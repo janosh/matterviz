@@ -53,7 +53,7 @@ function assert_integer_translation(
 
 function validate_image_tuples(
   structure: Crystal,
-  image_atoms: [number, Vec3, Vec3][],
+  image_atoms: [number, Vec3, Vec3, boolean?][],
   opts?: { min_dist?: number; tol?: number },
 ): void {
   const { min_dist = 0.01, tol = 1e-8 } = opts ?? {}
@@ -74,7 +74,7 @@ function validate_image_tuples(
 }
 
 test(`find_image_atoms adds bond-completing images beyond the face tolerance`, () => {
-  // Ag at 0.5 Å inside the low-x face; its I neighbor sits 2.5 Å inside the
+  // Ag at 0.2 Å inside the low-x face; its I neighbor sits 2.5 Å inside the
   // high-x face (far beyond the 0.5 Å face tolerance) but its periodic image at
   // x=-2.5 is 3.0 Å from Ag - within Ag+I covalent radii + slack, so phase 2
   // must generate that image to complete the bond across the boundary
@@ -92,7 +92,7 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
     properties: {},
   })
   const structure: Crystal = {
-    sites: [make_site(`Ag`, [0.05, 0.5, 0.5]), make_site(`I`, [0.75, 0.5, 0.5])],
+    sites: [make_site(`Ag`, [0.02, 0.5, 0.5]), make_site(`I`, [0.75, 0.5, 0.5])],
     lattice: {
       matrix: lattice_matrix,
       pbc: [true, true, true],
@@ -106,6 +106,23 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
     ([site_idx, img_xyz]) => site_idx === 1 && euclidean_dist(img_xyz, [-2.5, 5, 5]) < 1e-6,
   )
   expect(completing).toBeDefined()
+  // phase-2 (bond-completing) images carry the is_completion marker…
+  expect(completing?.[3]).toBe(true)
+  // …while phase-1 boundary images do not (Ag at x=0.02 is within face tolerance)
+  const boundary = image_atoms.filter(([site_idx]) => site_idx === 0)
+  expect(boundary.length).toBeGreaterThan(0)
+  expect(boundary.every((img) => img[3] === undefined)).toBe(true)
+  // get_pbc_image_sites propagates the marker onto site properties
+  const imaged = get_pbc_image_sites(structure)
+  const completion_sites = imaged.sites.filter((site) => site.properties?.completion_image)
+  expect(completion_sites.length).toBeGreaterThan(0)
+  expect(completion_sites.every((site) => site.species[0].element === `I`)).toBe(true)
+  // original (non-image) sites never carry the marker
+  expect(
+    imaged.sites
+      .slice(0, structure.sites.length)
+      .every((site) => !site.properties?.completion_image),
+  ).toBe(true)
 
   // an isolated atom pair too far apart to bond must NOT generate phase-2 images
   const unbonded: Crystal = {
@@ -830,10 +847,11 @@ test(`find_image_atoms returns correct tuple format`, () => {
   expect(image_atoms.length).toBeGreaterThan(0)
 
   for (const tuple of image_atoms) {
-    // Should be exactly 3 elements: [orig_idx, image_xyz, image_abc]
-    expect(tuple).toHaveLength(3)
+    // Should be 3 or 4 elements: [orig_idx, image_xyz, image_abc, is_completion?]
+    expect(tuple.length).toBeGreaterThanOrEqual(3)
+    expect(tuple.length).toBeLessThanOrEqual(4)
 
-    const [orig_idx, image_xyz, image_abc] = tuple
+    const [orig_idx, image_xyz, image_abc, is_completion] = tuple
 
     // Type checks
     expect(typeof orig_idx).toBe(`number`)
@@ -841,6 +859,7 @@ test(`find_image_atoms returns correct tuple format`, () => {
     expect(Array.isArray(image_abc)).toBe(true)
     expect(image_xyz).toHaveLength(3)
     expect(image_abc).toHaveLength(3)
+    if (is_completion !== undefined) expect(typeof is_completion).toBe(`boolean`)
 
     // All coordinates should be finite numbers
     expect(image_xyz.every((coord) => Number.isFinite(coord))).toBe(true)

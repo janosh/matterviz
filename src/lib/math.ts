@@ -335,7 +335,7 @@ export function to_voigt(tensor: number[][]): number[] {
 }
 
 // Convert 6-element Voigt notation vector to 3x3 symmetric tensor
-export function from_voigt(voigt: number[]): number[][] {
+export function from_voigt(voigt: number[]): Matrix3x3 {
   if (voigt.length !== 6) {
     throw new Error(`Expected 6-element Voigt vector, got ${voigt.length} elements`)
   }
@@ -349,7 +349,7 @@ export function from_voigt(voigt: number[]): number[][] {
 }
 
 // Convert flat 9-element array to 3x3 tensor (row-major order)
-export function vec9_to_mat3x3(flat_array: number[]): number[][] {
+export function vec9_to_mat3x3(flat_array: number[]): Matrix3x3 {
   if (flat_array.length !== 9) {
     throw new Error(`Expected 9-element array, got ${flat_array.length} elements`)
   }

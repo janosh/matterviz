@@ -84,14 +84,6 @@ function get_unique_families(hkls: Hkl[]): Map<string, number> {
   return family_map
 }
 
-function compute_reciprocal_lattice_rows(structure: Crystal): number[][] {
-  // For row-wise lattice matrix A (rows are a, b, c), reciprocal rows are inv(A)^T
-  const direct = structure.lattice.matrix
-  const inv = math.matrix_inverse_3x3(direct)
-  const recip = math.transpose_3x3_matrix(inv)
-  return recip
-}
-
 function enumerate_reciprocal_points(
   recip_rows: number[][],
   direct_rows: number[][],
@@ -159,7 +151,10 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   // Option retained for API parity.
   // const symprec = options.symprec ?? 0
 
-  const recip_rows = compute_reciprocal_lattice_rows(structure)
+  // For row-wise lattice matrix A (rows are a, b, c), reciprocal rows are inv(A)^T
+  const recip_rows = math.transpose_3x3_matrix(
+    math.matrix_inverse_3x3(structure.lattice.matrix),
+  )
 
   // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda
   const two_theta_range =

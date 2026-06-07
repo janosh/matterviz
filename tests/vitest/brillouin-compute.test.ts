@@ -4,15 +4,17 @@ import {
   compute_ibz_clipping_planes,
   compute_irreducible_bz,
   extract_point_group_from_operations,
+  find_ibz_reference_direction,
   fractional_to_cartesian_rotation,
   generate_bz_vertices,
+  IBZ_REFERENCE_DIRECTIONS,
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { load_json } from './setup'
+import { col_major, load_json } from './setup'
 
 type BzReference = {
   real_lattice: number[][]
@@ -319,16 +321,16 @@ describe(`error handling`, () => {
 })
 
 // Fractional rotation matrices (row-major) for mock moyo operations
-const ROT_Z_90 = math.vec9_to_mat3x3([0, -1, 0, 1, 0, 0, 0, 0, 1]) as Matrix3x3
-const ROT_Z_180 = math.vec9_to_mat3x3([-1, 0, 0, 0, -1, 0, 0, 0, 1]) as Matrix3x3
-const ROT_Z_270 = math.vec9_to_mat3x3([0, 1, 0, -1, 0, 0, 0, 0, 1]) as Matrix3x3
-const MIRROR_Z = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 0, 0, -1]) as Matrix3x3
+const ROT_Z_90 = math.vec9_to_mat3x3([0, -1, 0, 1, 0, 0, 0, 0, 1])
+const ROT_Z_180 = math.vec9_to_mat3x3([-1, 0, 0, 0, -1, 0, 0, 0, 1])
+const ROT_Z_270 = math.vec9_to_mat3x3([0, 1, 0, -1, 0, 0, 0, 0, 1])
+const MIRROR_Z = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 0, 0, -1])
 
 // moyo-wasm serializes nalgebra Matrix3 rotations as flat 9-arrays in COLUMN-major order
 // (number[] substitutes for Float64Array in tests)
 const make_op = (rot: Matrix3x3, translation: Vec3 = [0, 0, 0]) =>
   ({
-    rotation: [0, 1, 2].flatMap((col) => rot.map((row) => row[col])),
+    rotation: col_major(rot),
     translation,
   }) as unknown as MoyoDataset[`operations`][number]
 
@@ -371,6 +373,40 @@ describe(`compute_ibz_clipping_planes`, () => {
   test(`C4 group deduplicates planes`, () => {
     const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270])
     expect(planes.length).toBeLessThanOrEqual(3)
+  })
+
+  // Regression: when every curated reference direction is fixed by some operation, the
+  // construction must fall back to a generic direction instead of silently reusing a
+  // fixed one (which dropped that op's plane and inflated the IBZ volume above V_BZ/|G|).
+  test(`finds a generic direction when all curated directions are fixed`, () => {
+    // 180° rotation about unit axis u fixes u: R = 2·u·uᵀ − I. One per curated direction
+    // fixes EVERY curated direction, forcing the random fallback path.
+    const rot180_about = (axis: Vec3): Matrix3x3 => {
+      const mag = Math.hypot(...axis)
+      const unit = axis.map((coord) => coord / mag) as Vec3
+      return [0, 1, 2].map((row) =>
+        [0, 1, 2].map((col) => 2 * unit[row] * unit[col] - (row === col ? 1 : 0)),
+      ) as Matrix3x3
+    }
+    const ops = IBZ_REFERENCE_DIRECTIONS.map(rot180_about)
+    // every curated direction is fixed by exactly one op, so .find() returns undefined
+    for (const dir of IBZ_REFERENCE_DIRECTIONS) {
+      const fixed_by = ops.filter(
+        (rot) => Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, dir), dir)) < 1e-8,
+      ).length
+      expect(fixed_by).toBe(1)
+    }
+    // each of the 3 distinct C2 axes must still contribute its own clipping plane
+    expect(compute_ibz_clipping_planes(ops)).toHaveLength(3)
+  })
+
+  // find_ibz_reference_direction returns a direction moved by every non-identity op
+  test(`find_ibz_reference_direction returns a direction with trivial stabilizer`, () => {
+    const ref = find_ibz_reference_direction([ROT_Z_90, ROT_Z_180, MIRROR_Z])
+    for (const rot of [ROT_Z_90, ROT_Z_180, MIRROR_Z]) {
+      const moved = Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, ref), ref))
+      expect(moved).toBeGreaterThan(1e-8)
+    }
   })
 })
 
@@ -428,11 +464,58 @@ describe(`compute_irreducible_bz`, () => {
     expect(ibz).not.toBeNull()
     if (!ibz) return
     expect(ibz.volume).toBeGreaterThan(0)
-    // C3 symmetry should give ~1/3 of BZ volume (geometric clipping is approximate)
-    const expected_ratio = 1 / 3
-    const actual_ratio = ibz.volume / hex_bz.volume
-    expect(actual_ratio).toBeGreaterThan(expected_ratio * 0.7) // at least 70% of expected
-    expect(actual_ratio).toBeLessThan(expected_ratio * 1.3) // at most 130% of expected
+    // The Dirichlet fundamental-domain construction is exact: V_IBZ = V_BZ / |G|
+    expect(ibz.volume / hex_bz.volume).toBeCloseTo(1 / 3, 6)
+  })
+
+  // Regression: the IBZ construction previously picked a DIFFERENT reference point per
+  // rotation, so the clipping half-spaces did not form a consistent fundamental domain
+  // and the IBZ volume deviated from V_BZ/|G| for larger point groups.
+  test(`C4 group → exactly 1/4 volume`, () => {
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 4, 6)
+  })
+
+  test(`mirror symmetry → exactly half volume`, () => {
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 2, 6)
+  })
+
+  test(`full cubic point group Oh (48 ops) → exactly 1/48 volume`, () => {
+    // All 48 signed permutation matrices (proper + improper rotations of the cube)
+    const oh_ops: Matrix3x3[] = []
+    const perms = [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ]
+    for (const perm of perms) {
+      for (let signs = 0; signs < 8; signs++) {
+        const mat: Matrix3x3 = [
+          [0, 0, 0],
+          [0, 0, 0],
+          [0, 0, 0],
+        ]
+        for (let row = 0; row < 3; row++) {
+          mat[row][perm[row]] = signs & (1 << row) ? -1 : 1
+        }
+        oh_ops.push(mat)
+      }
+    }
+    expect(oh_ops).toHaveLength(48)
+
+    const ibz = compute_irreducible_bz(bz, oh_ops)
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 48, 8)
+    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
   })
 })
 

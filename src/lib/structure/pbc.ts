@@ -31,8 +31,10 @@ export const wrap_to_unit_cell = (frac: Vec3): Vec3 => [
 export function find_image_atoms(
   structure: ParsedStructure,
   { tolerance }: { tolerance?: number } = {},
-): [number, Vec3, Vec3][] {
-  // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc] tuples.
+): [number, Vec3, Vec3, boolean?][] {
+  // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc, is_completion?]
+  // tuples; is_completion marks phase-2 images that exist only to complete bonds /
+  // coordination polyhedra at cell faces (renderers may hide them when neither shows).
   // Skips image generation for trajectory data with scattered atoms.
   if (!structure.lattice || !structure.sites || structure.sites.length === 0) return []
 
@@ -46,7 +48,7 @@ export function find_image_atoms(
   }
 
   // Check if this is a supercell to correctly identify external boundaries correctly
-  const image_sites: [number, Vec3, Vec3][] = []
+  const image_sites: [number, Vec3, Vec3, boolean?][] = []
   const lattice_vecs = structure.lattice.matrix
 
   // Scale zero-displacement threshold by lattice length scale to avoid hard-coded magic numbers
@@ -281,7 +283,7 @@ export function find_image_atoms(
             )
             if (!completes_cation_shell(img_xyz, radius, en)) continue
             seen_images.add(key)
-            image_sites.push([idx, img_xyz, img_abc])
+            image_sites.push([idx, img_xyz, img_abc, true])
           }
         }
       }
@@ -316,13 +318,18 @@ export function get_pbc_image_sites(
   const imaged_struct = { ...structure, sites: [...structure.sites] }
 
   // Add image atoms as new sites using provided (xyz, abc) from find_image_atoms
-  for (const [site_idx, img_xyz, img_abc] of image_sites) {
+  for (const [site_idx, img_xyz, img_abc, is_completion] of image_sites) {
     const orig_site = structure.sites[site_idx]
     imaged_struct.sites.push({
       ...orig_site,
       abc: img_abc,
       xyz: img_xyz,
-      properties: { ...orig_site.properties, orig_site_idx: site_idx },
+      properties: {
+        ...orig_site.properties,
+        orig_site_idx: site_idx,
+        // phase-2 images only complete bonds/polyhedra - hidden when neither renders
+        ...(is_completion ? { completion_image: true } : {}),
+      },
     })
   }
 
