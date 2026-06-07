@@ -16,10 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - run: corepack enable && pnpm install
+      - uses: ./.github/actions/setup
       - name: Unit tests
         run: pnpm exec vp test --run
 
@@ -31,10 +28,7 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - run: corepack enable && pnpm install
+      - uses: ./.github/actions/setup
       - name: Install Playwright
         run: npx playwright install chromium
       - name: E2E tests (shard ${{ matrix.shard }}/4)

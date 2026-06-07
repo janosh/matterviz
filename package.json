@@ -109,6 +109,10 @@
       "types": "./dist/plot/index.d.ts",
       "default": "./dist/plot/index.js"
     },
+    "./plot/*": {
+      "types": "./dist/plot/*/index.d.ts",
+      "default": "./dist/plot/*/index.js"
+    },
     "./rdf": {
       "types": "./dist/rdf/index.d.ts",
       "default": "./dist/rdf/index.js"
@@ -189,7 +193,7 @@
     "d3-scale-chromatic": "^3.1.0",
     "d3-shape": "^3.2.0",
     "d3-time-format": "^4.1.0",
-    "dompurify": "3.4.8",
+    "dompurify": "3.4.7",
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.2",
     "js-yaml": "^4.2.0",

@@ -75,20 +75,30 @@ const stringify_html_input = (html: unknown): string => {
   }
 }
 
+// Memoize by input: two DOMPurify passes per call are costly when a component re-sanitizes
+// many cells on every render (e.g. HeatmapTable). Sanitization is deterministic for the
+// fixed config, so caching is output-identical.
+const sanitize_cache = new Map<string, string>()
+
 // Sanitize HTML string, allowing only safe formatting tags and links.
 // Two-pass: happy-dom promotes dangerous children when a non-allowed parent is
 // stripped (e.g. <div><script>…</script></div> → <script>…</script>). The first
 // pass explicitly removes dangerous tags so they can't survive promotion.
 export function sanitize_html(html: unknown): string {
   const str = stringify_html_input(html)
+  const cached = sanitize_cache.get(str)
+  if (cached !== undefined) return cached
   const dp = get_purify()
-  if (!dp) return str
+  if (!dp) return str // no DOM (SSR): return as-is, don't cache
   // oxfmt-ignore
   const safe = dp.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
     `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `textarea`,
     `select`, `button`, `meta`, `link`, `base`, `template`, `noscript`,
   ] })
-  return dp.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS })
+  const result = dp.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS })
+  if (sanitize_cache.size >= 4096) sanitize_cache.clear() // bound memory (rarely hit)
+  sanitize_cache.set(str, result)
+  return result
 }
 
 export const compact_formula = (formula: string): string => formula.replaceAll(/\s+/g, ``)

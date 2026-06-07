@@ -10,36 +10,19 @@ jobs:
   prek:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v6
+      # install extension deps too: vscode is type-aware linted by root oxlint (needs
+      # e.g. @types/vscode), anywidget is checked by root svelte-check (needs its
+      # matterviz/* subpath imports to resolve, else TS2882)
+      - uses: ./.github/actions/setup
         with:
-          node-version: 24
-
-      - run: corepack enable && pnpm install
-
-      # vscode extension is type-aware linted by root oxlint; install its deps
-      # (e.g. @types/vscode) so module resolution succeeds in CI.
-      - run: pnpm -C extensions/vscode install
-
-      # anywidget extension is checked by root svelte-check; install its deps so
-      # its matterviz/* subpath imports resolve in CI (otherwise TS2882).
-      - run: pnpm -C extensions/anywidget install
-
+          extensions: vscode anywidget
       - uses: j178/prek-action@v2
 
   knip:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - run: corepack enable && pnpm install
-
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
       - name: Check for unused dependencies
         run: pnpm run knip
