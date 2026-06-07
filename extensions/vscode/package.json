@@ -273,7 +273,7 @@
         },
         "matterviz.structure.polyhedra_opacity": {
           "type": "number",
-          "default": 0.5,
+          "default": 0.2,
           "description": "Opacity of coordination polyhedra faces",
           "minimum": 0,
           "maximum": 1

@@ -545,7 +545,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       enum: SHOW_BONDS_ENUM,
     },
     polyhedra_opacity: {
-      value: 0.5,
+      value: 0.2,
       description: `Opacity of coordination polyhedra faces`,
       minimum: 0,
       maximum: 1,

@@ -172,11 +172,19 @@ export function find_image_atoms(
     const volume = Math.abs(
       math.dot(lattice_vecs[0], math.cross_3d(lattice_vecs[1], lattice_vecs[2])),
     )
-    const heights = [
-      volume / Math.hypot(...math.cross_3d(lattice_vecs[1], lattice_vecs[2])),
-      volume / Math.hypot(...math.cross_3d(lattice_vecs[0], lattice_vecs[2])),
-      volume / Math.hypot(...math.cross_3d(lattice_vecs[0], lattice_vecs[1])),
-    ]
+    // height = volume / opposite-face area. A zero-volume (degenerate) cell has two
+    // parallel lattice vectors and ill-defined heights; treat every axis as
+    // infinitely tall so the pad logic below adds no images (pad -> 0) instead of
+    // dividing by zero. When volume > 0 the vectors are linearly independent, so no
+    // pairwise cross product can be zero.
+    const heights =
+      volume === 0
+        ? [Infinity, Infinity, Infinity]
+        : [
+            volume / Math.hypot(...math.cross_3d(lattice_vecs[1], lattice_vecs[2])),
+            volume / Math.hypot(...math.cross_3d(lattice_vecs[0], lattice_vecs[2])),
+            volume / Math.hypot(...math.cross_3d(lattice_vecs[0], lattice_vecs[1])),
+          ]
 
     // Anchor set for the bond test: base atoms plus the phase-1 boundary images
     // (corner/edge/face copies). Anchoring on those too matches VESTA - every

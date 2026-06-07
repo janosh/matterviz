@@ -116,6 +116,11 @@ describe(`CellSelect`, () => {
       doc_query(`.cell-select`).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
+
+      // a manual toggle click must not reopen it either while suppressed
+      doc_query(`.toggle-btn`).dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
     })
 
     test.each([

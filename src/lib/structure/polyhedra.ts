@@ -4,6 +4,7 @@
 // so the whole scene renders in 1-2 draw calls regardless of supercell size.
 // Hot paths use scalar math and per-element caches to scale to large structures.
 
+import { rgb as parse_rgb } from 'd3-color'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import type { AnyStructure, BondPair } from '$lib/structure'
@@ -35,7 +36,6 @@ export interface Polyhedron {
   center_site_idx: number // index into the displayed structure's sites
   center_orig_idx: number // original unit-cell site index (color + completeness key)
   center_element: ElementSymbol
-  neighbor_site_idxs: number[] // displayed-structure sites at the polyhedron corners
   vertices: Vec3[] // hull vertex positions
   vertex_site_idxs: number[] // displayed-structure site for each hull vertex
   faces: [number, number, number][]
@@ -588,7 +588,6 @@ export function compute_polyhedra(
       center_site_idx: site_idx,
       center_orig_idx: orig_idx,
       center_element: element,
-      neighbor_site_idxs: vertex_site_idxs,
       vertices: hull.vertices,
       vertex_site_idxs: hull.input_idxs.map((input_idx) => vertex_site_idxs[input_idx]),
       faces: hull.faces,
@@ -599,28 +598,6 @@ export function compute_polyhedra(
 }
 
 // --- Merged render buffers ---
-
-// Parse hex (#rgb/#rrggbb) and rgb()/rgba() color strings to [0,1] floats.
-// Property colors from d3 scales arrive as rgb() strings, element colors as hex.
-export function parse_color_to_rgb(color: string): [number, number, number] {
-  const hex_match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color)?.[1]
-  if (hex_match) {
-    const expanded =
-      hex_match.length === 3 ? hex_match.replaceAll(/./g, (char) => char + char) : hex_match
-    return [0, 2, 4].map((off) => parseInt(expanded.slice(off, off + 2), 16) / 255) as [
-      number,
-      number,
-      number,
-    ]
-  }
-  const rgb_match = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(color)
-  if (rgb_match) {
-    return [rgb_match[1], rgb_match[2], rgb_match[3]].map(
-      (channel) => Math.min(255, parseFloat(channel)) / 255,
-    ) as [number, number, number]
-  }
-  return [0.5, 0.5, 0.5]
-}
 
 // Merge all polyhedra into single non-indexed position/color arrays (one draw call)
 // plus crease-edge segments for outlines. Edges interior to coplanar face groups
@@ -654,14 +631,16 @@ export function merge_polyhedra_buffers(
     const vert_rgb = new Float32Array(verts.length * 3)
     for (let v_idx = 0; v_idx < verts.length; v_idx++) {
       const color = get_vertex_color(poly, v_idx)
-      let rgb = rgb_cache.get(color)
-      if (!rgb) {
-        rgb = parse_color_to_rgb(color)
-        rgb_cache.set(color, rgb)
+      let channels = rgb_cache.get(color)
+      if (!channels) {
+        // d3-color handles hex, rgb()/rgba() (d3 property-color scales) and named colors
+        const { r, g, b } = parse_rgb(color)
+        channels = Number.isFinite(r) ? [r / 255, g / 255, b / 255] : [0.5, 0.5, 0.5]
+        rgb_cache.set(color, channels)
       }
-      vert_rgb[v_idx * 3] = rgb[0]
-      vert_rgb[v_idx * 3 + 1] = rgb[1]
-      vert_rgb[v_idx * 3 + 2] = rgb[2]
+      vert_rgb[v_idx * 3] = channels[0]
+      vert_rgb[v_idx * 3 + 1] = channels[1]
+      vert_rgb[v_idx * 3 + 2] = channels[2]
     }
 
     edge_normals.clear()

@@ -1192,13 +1192,19 @@
   })
 
   // Geometries with proper disposal on dependency change (same pattern as ReferencePlane)
+  const buffer_geometry = (attrs: Record<string, Float32Array>): BufferGeometry => {
+    const geo = new BufferGeometry()
+    for (const [name, array] of Object.entries(attrs)) {
+      geo.setAttribute(name, new BufferAttribute(array, 3))
+    }
+    return geo
+  }
   let polyhedra_geometry: BufferGeometry | null = $state(null)
   $effect(() => {
     let geo: BufferGeometry | null = null
     if (polyhedra_buffers && polyhedra_buffers.triangle_count > 0) {
-      geo = new BufferGeometry()
-      geo.setAttribute(`position`, new BufferAttribute(polyhedra_buffers.positions, 3))
-      geo.setAttribute(`color`, new BufferAttribute(polyhedra_buffers.colors, 3))
+      const { positions: position, colors: color } = polyhedra_buffers
+      geo = buffer_geometry({ position, color })
       geo.computeVertexNormals() // non-indexed -> per-face normals (flat shading)
     }
     polyhedra_geometry = geo
@@ -1207,11 +1213,9 @@
 
   let polyhedra_edge_geometry: BufferGeometry | null = $state(null)
   $effect(() => {
-    let geo: BufferGeometry | null = null
-    if (polyhedra_show_edges && polyhedra_buffers && polyhedra_buffers.edge_count > 0) {
-      geo = new BufferGeometry()
-      geo.setAttribute(`position`, new BufferAttribute(polyhedra_buffers.edge_positions, 3))
-    }
+    const geo = polyhedra_show_edges && polyhedra_buffers && polyhedra_buffers.edge_count > 0
+      ? buffer_geometry({ position: polyhedra_buffers.edge_positions })
+      : null
     polyhedra_edge_geometry = geo
     return () => geo?.dispose()
   })

@@ -38,16 +38,17 @@ function sync_package_config() {
       if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
       if (schema.enum) config.enum = Object.keys(schema.enum)
 
-      // Add array item type for arrays
+      // Add array item type for arrays. Empty-array defaults (e.g. the polyhedra
+      // element lists) can't be introspected, so default those to string.
       if (Array.isArray(schema.value)) {
         const first_item = schema.value[0]
         config.items = {
           type:
             typeof first_item === `boolean`
               ? `boolean`
-              : typeof first_item === `string`
-                ? `string`
-                : `number`,
+              : typeof first_item === `number`
+                ? `number`
+                : `string`,
         }
       }
 

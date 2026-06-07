@@ -101,7 +101,7 @@
 >
   <button
     type="button"
-    onclick={() => (menu_open = !menu_open)}
+    onclick={() => (menu_open = !suppress_hover && !menu_open)}
     onkeydown={handle_key_down}
     class="toggle-btn"
     class:active={menu_open}

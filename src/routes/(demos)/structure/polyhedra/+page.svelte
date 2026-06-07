@@ -131,6 +131,9 @@
     charge: 0,
     id: `SF6`,
   }
+
+  // stable reference so the bindable scene_props prop doesn't churn on every render
+  const sf6_scene_props = { show_polyhedra: `always` as const, polyhedra_opacity: 0.5 }
 </script>
 
 <h1>Coordination Polyhedra</h1>
@@ -219,7 +222,7 @@
 
 <Structure
   structure={sf6}
-  scene_props={{ show_polyhedra: `always`, polyhedra_opacity: 0.5 }}
+  scene_props={sf6_scene_props}
   style="height: 400px; max-width: 600px; margin-inline: auto"
 />
 

@@ -159,6 +159,38 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   expect(fe_images).toHaveLength(0)
 })
 
+test(`find_image_atoms handles a degenerate (zero-volume) lattice without NaN`, () => {
+  // two parallel lattice vectors -> zero volume; perpendicular heights are
+  // ill-defined and naively divide by zero, which must not crash or yield NaN
+  const degenerate_matrix: Matrix3x3 = [
+    [10, 0, 0],
+    [10, 0, 0], // parallel to the first vector
+    [0, 0, 10],
+  ]
+  const frac_to_cart = create_frac_to_cart(degenerate_matrix)
+  const make_site = (element: string, abc: Vec3) => ({
+    species: [{ element: element as `Na`, occu: 1, oxidation_state: 0 }],
+    abc,
+    xyz: frac_to_cart(abc),
+    label: element,
+    properties: {},
+  })
+  const degenerate: Crystal = {
+    sites: [make_site(`Na`, [0.05, 0.5, 0.1]), make_site(`Cl`, [0.5, 0.5, 0.6])],
+    lattice: {
+      matrix: degenerate_matrix,
+      pbc: [true, true, true],
+      ...math.calc_lattice_params(degenerate_matrix),
+    },
+  }
+
+  const images = find_image_atoms(degenerate)
+  // must terminate and produce only finite coordinates (no NaN/Infinity)
+  for (const [, img_xyz] of images) {
+    for (const coord of img_xyz) expect(Number.isFinite(coord)).toBe(true)
+  }
+})
+
 test(`find_image_atoms finds correct images for normal cell`, async () => {
   const normal_structure_extxyz = `8
 Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
