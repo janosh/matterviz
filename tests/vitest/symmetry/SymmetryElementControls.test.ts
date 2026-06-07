@@ -27,6 +27,8 @@ const make_elem = (
 const SAMPLE_ELEMENTS: SymmetryElement[] = [
   make_elem(`rotation`),
   make_elem(`rotation`, { point: [0.5, 0.5, 0] }),
+  make_elem(`screw`, { label: `2_1`, translation: [0, 0, 0.5] }),
+  make_elem(`rotoinversion`, { order: 4, label: `-4` }),
   make_elem(`mirror`),
   make_elem(`glide`, { label: `a`, translation: [0.5, 0, 0] }),
   make_elem(`inversion`),
@@ -35,11 +37,21 @@ const SAMPLE_ELEMENTS: SymmetryElement[] = [
 ]
 
 describe(`count_symmetry_elements`, () => {
-  test(`tallies per kind and omits absent kinds`, () => {
-    const counts = count_symmetry_elements(SAMPLE_ELEMENTS)
-    expect(counts).toEqual({ rotation: 2, mirror: 1, glide: 1, inversion: 3 })
-    expect(counts.screw).toBeUndefined()
-    expect(counts.rotoinversion).toBeUndefined()
+  test(`tallies per kind`, () => {
+    expect(count_symmetry_elements(SAMPLE_ELEMENTS)).toEqual({
+      rotation: 2,
+      screw: 1,
+      rotoinversion: 1,
+      mirror: 1,
+      glide: 1,
+      inversion: 3,
+    })
+  })
+
+  test(`omits absent kinds (only present keys appear)`, () => {
+    const counts = count_symmetry_elements([make_elem(`inversion`)])
+    expect(counts).toEqual({ inversion: 1 })
+    expect(`rotation` in counts).toBe(false)
   })
 
   test(`empty input gives empty record`, () => {
@@ -93,8 +105,11 @@ describe(`SymmetryElementControls`, () => {
     })
     flushSync()
     const labels = [...document.body.querySelectorAll(`label`)]
+    // display order = SYM_ELEM_KINDS: axes (rotation, screw, rotoinversion) before planes
     expect(labels.map((lbl) => lbl.textContent?.trim())).toEqual([
       `rotation axes (2)`,
+      `screw axes (1)`,
+      `rotoinversion axes (1)`,
       `mirror planes (1)`,
       `glide planes (1)`,
       `inversion centers (3)`,
@@ -109,7 +124,8 @@ describe(`SymmetryElementControls`, () => {
     })
     flushSync()
     const checked = [...document.body.querySelectorAll(`input`)].map((inp) => inp.checked)
-    expect(checked).toEqual([true, false, false, false])
+    // only the first checkbox (rotation axes) is checked by DEFAULT_SHOW_SYM_KINDS
+    expect(checked).toEqual([true, false, false, false, false, false])
   })
 
   test(`toggling a checkbox updates the bound show_kinds (reassigned, not mutated)`, () => {
@@ -129,8 +145,11 @@ describe(`SymmetryElementControls`, () => {
       },
     })
     flushSync()
-    const mirror_checkbox = [...document.body.querySelectorAll(`input`)][1]
-    mirror_checkbox.click()
+    // find the mirror checkbox by its label text (robust to display-order changes)
+    const mirror_label = [...document.body.querySelectorAll(`label`)].find((lbl) =>
+      lbl.textContent?.includes(`mirror`),
+    )
+    mirror_label?.querySelector(`input`)?.click()
     flushSync()
     expect(bound).toEqual({ rotation: true, mirror: true })
     expect(bound).not.toBe(initial) // new object so reactive parents update

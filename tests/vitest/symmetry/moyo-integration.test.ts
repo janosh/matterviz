@@ -11,7 +11,6 @@ import {
   get_primitive_cell,
   map_wyckoff_to_all_atoms,
   SPACEGROUP_SYMBOL_TO_NUM,
-  spacegroup_num_to_crystal_family,
   spacegroup_num_to_crystal_sys,
   spacegroup_num_to_lattice_system,
   wyckoff_positions_from_moyo,
@@ -398,7 +397,7 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
 describe(`space group tables vs moyo`, () => {
   beforeAll(init_moyo_for_tests)
 
-  test(`crystal system, lattice system, crystal family + HM symbols for all 230 space groups`, () => {
+  test(`crystal system, lattice system + HM symbols for all 230 space groups`, () => {
     for (let num = 1; num <= 230; num++) {
       const sg_type = space_group_type(num)
       expect(spacegroup_num_to_crystal_sys(num), `crystal system of ${num}`).toBe(
@@ -406,9 +405,6 @@ describe(`space group tables vs moyo`, () => {
       )
       expect(spacegroup_num_to_lattice_system(num), `lattice system of ${num}`).toBe(
         sg_type.lattice_system.toLowerCase(),
-      )
-      expect(spacegroup_num_to_crystal_family(num), `crystal family of ${num}`).toBe(
-        sg_type.crystal_family.toLowerCase(),
       )
       // condensed short Hermann-Mauguin symbol must round-trip through the symbol table
       const condensed_hm = sg_type.hm_short.replaceAll(/\s+/g, ``)

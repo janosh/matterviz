@@ -44,13 +44,15 @@ export type SymmetryElement = {
   translation: Vec3 | null
 }
 
-// All element kinds in display order (axes first, then planes, then point elements)
+// All element kinds in display order (axes first, then planes, then point elements).
+// Single source of truth for ordering — both the controls legend and the element list
+// returned by symmetry_elements_from_ops follow this sequence.
 export const SYM_ELEM_KINDS = [
   `rotation`,
   `screw`,
+  `rotoinversion`,
   `mirror`,
   `glide`,
-  `rotoinversion`,
   `inversion`,
 ] as const satisfies readonly SymmetryElementKind[]
 
@@ -203,8 +205,9 @@ function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
 
 const wrap_point = (pos: Vec3): Vec3 =>
   pos.map((coord) => {
-    const wrapped = coord - Math.floor(coord)
-    return wrapped > 1 - 1e-8 ? 0 : Math.abs(wrapped) < 1e-8 ? 0 : wrapped
+    const wrapped = coord - Math.floor(coord) // always in [0, 1)
+    // snap near-0 and near-1 (which wraps to near-0) onto exactly 0
+    return wrapped < 1e-8 || wrapped > 1 - 1e-8 ? 0 : wrapped
   }) as Vec3
 
 // Enumerate lattice translations invariant under W (lying along the axis / in the
@@ -514,18 +517,10 @@ export function symmetry_elements_from_ops(
       }
     }
   }
-  // Stable order: by kind, then descending order, then label, then point
-  const kind_rank: Record<SymmetryElementKind, number> = {
-    rotation: 0,
-    screw: 1,
-    rotoinversion: 2,
-    mirror: 3,
-    glide: 4,
-    inversion: 5,
-  }
+  // Stable order: by kind (SYM_ELEM_KINDS sequence), then descending order, label, point
   return [...seen.values()].sort(
     (el1, el2) =>
-      kind_rank[el1.kind] - kind_rank[el2.kind] ||
+      SYM_ELEM_KINDS.indexOf(el1.kind) - SYM_ELEM_KINDS.indexOf(el2.kind) ||
       el2.order - el1.order ||
       el1.label.localeCompare(el2.label) ||
       el1.point.join(`,`).localeCompare(el2.point.join(`,`)),

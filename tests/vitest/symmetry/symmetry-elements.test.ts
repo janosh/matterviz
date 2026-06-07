@@ -411,6 +411,11 @@ describe(`cell clipping helpers`, () => {
     for (const vert of poly) expect(vert[0] + vert[1]).toBeCloseTo(2, 10)
   })
 
+  test(`clip_plane_to_cell: plane outside the cell yields an empty polygon`, () => {
+    // z = 2 plane (point well above the unit cube) intersects no edge
+    expect(clip_plane_to_cell([0, 0, 2], [0, 0, 1], cubic_2)).toEqual([])
+  })
+
   test(`clip_plane_to_cell: hexagonal mirror polygon lies in the true Cartesian plane`, () => {
     const [a_len, c_len] = [2.5, 4]
     const hex_lattice: Matrix3x3 = [

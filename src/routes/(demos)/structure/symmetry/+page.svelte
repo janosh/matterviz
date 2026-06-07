@@ -40,13 +40,10 @@
   let show_sym_elements = $state(false)
   // Per-kind overlay visibility — starts with rotation axes only to avoid overplotting
   let show_sym_kinds = $state<ShowSymmetryKinds>({ ...DEFAULT_SHOW_SYM_KINDS })
-  // Cell type of the top example viewer (bound to its controls). moyo operations are in
-  // the input-cell (original) frame, so the overlay is only valid while that frame is
-  // rendered.
+  // Cell type of the top example viewer (bound to its controls). moyo operations live in
+  // the input-cell (original) frame, so only overlay the elements while that frame is
+  // rendered — switching cell type re-expresses the lattice and would misplace them.
   let top_ex_cell_type = $state<CellType>(`original`)
-  // Symmetry elements live in the input-cell frame; only overlay them while the viewer
-  // renders that frame — switching cell type re-expresses the lattice and would misplace
-  // the overlay (the elements would need recomputing in the new frame)
   const sym_elements = $derived(
     show_sym_elements && top_ex_cell_type === `original` && top_ex_sym_data
       ? symmetry_elements_from_ops(top_ex_sym_data.operations ?? [])
@@ -120,7 +117,7 @@
         <input type="checkbox" bind:checked={show_sym_elements} />
         Show symmetry elements
       </label>
-      {#if show_sym_elements && sym_elements.length > 0}
+      {#if sym_elements.length > 0}
         <SymmetryElementControls
           elements={sym_elements}
           bind:show_kinds={show_sym_kinds}

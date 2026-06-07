@@ -303,16 +303,16 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     return merged ? { geometry: merged, color: inversion_color } : null
   })
 
-  // Dispose merged geometries when inputs change or the component unmounts
-  $effect(() => {
-    const geometries = [
-      ...axis_groups.map((group) => group.geometry),
-      ...plane_groups.map((group) => group.geometry),
-      ...plane_edge_groups.map((group) => group.geometry),
-      ...(inversion_group ? [inversion_group.geometry] : []),
-    ]
-    return () => geometries.forEach((geo) => geo.dispose())
-  })
+  // Dispose each group's merged geometries when that group recomputes or on unmount. One
+  // $effect per group (rather than a single combined one): the deriveds recompute
+  // independently — e.g. tweaking a plane-only prop rebuilds plane_groups but not
+  // axis_groups — and a combined effect would dispose the still-mounted axis geometry.
+  const dispose_geometries = (groups: { geometry: BufferGeometry }[]) => () =>
+    groups.forEach((group) => group.geometry.dispose())
+  $effect(() => dispose_geometries(axis_groups))
+  $effect(() => dispose_geometries(plane_groups))
+  $effect(() => dispose_geometries(plane_edge_groups))
+  $effect(() => dispose_geometries(inversion_group ? [inversion_group] : []))
 
   // Dispose the (non-reactive) stripe texture on unmount
   $effect(() => () => stripe_texture.dispose())

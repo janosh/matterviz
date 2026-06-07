@@ -982,17 +982,16 @@
     (when === `crystals` && Boolean(lattice)) ||
     (when === `molecules` && !lattice)
 
-  // Declutter while a symmetry-element overlay is actually visible (elements present
-  // AND at least one kind toggled on): hide coordination polyhedra and shrink atoms so
-  // axes/planes/centers stay readable. Derived overrides only — the configured
-  // appearance returns untouched as soon as the overlay goes away.
-  // only declutter when the overlay actually draws something (an enabled kind is present);
-  // otherwise e.g. an inversion-only cell with the rotation-only default would hide
-  // polyhedra / shrink atoms with nothing rendered in their place
-  const sym_overlay_visible = $derived(
-    has_visible_symmetry_overlay(symmetry_elements, symmetry_elements_props.show_kinds),
+  // Declutter while a symmetry-element overlay actually draws something (elements present
+  // AND an enabled kind among them): hide coordination polyhedra/bonds and shrink atoms so
+  // axes/planes/centers stay readable. Gating on visibility (not just `symmetry_elements`)
+  // avoids hiding everything when nothing renders in its place — e.g. an inversion-only
+  // cell under the rotation-only default. Pure derived overrides: the configured
+  // appearance returns untouched the moment the overlay goes away.
+  const declutter_active = $derived(
+    symmetry_declutter &&
+      has_visible_symmetry_overlay(symmetry_elements, symmetry_elements_props.show_kinds),
   )
-  const declutter_active = $derived(symmetry_declutter && sym_overlay_visible)
   const effective_show_polyhedra: ShowBonds = $derived(
     declutter_active ? `never` : show_polyhedra,
   )

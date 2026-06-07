@@ -71,17 +71,6 @@ export function spacegroup_num_to_lattice_system(spacegroup: number): LatticeSys
   return RHOMBOHEDRAL_SPACEGROUPS.includes(spacegroup) ? `rhombohedral` : `hexagonal`
 }
 
-// The 6 crystal families: crystal systems with trigonal and hexagonal merged into the
-// hexagonal family
-export type CrystalFamily = Exclude<CrystalSystem, `trigonal`>
-
-// Convert space group number to crystal family (trigonal + hexagonal -> hexagonal)
-export function spacegroup_num_to_crystal_family(spacegroup: number): CrystalFamily | null {
-  const crystal_sys = spacegroup_num_to_crystal_sys(spacegroup)
-  if (crystal_sys === null) return null
-  return crystal_sys === `trigonal` ? `hexagonal` : crystal_sys
-}
-
 // Normalize space group input (number, Hermann-Mauguin symbol, or numeric string
 // like "225") to a space group number in [1, 230], or null if invalid
 export function normalize_spacegroup(spacegroup: number | string): number | null {
