@@ -126,14 +126,26 @@
     ].sort(),
   )
 
-  // Toggle an element as polyhedra center. Currently-rendered elements get
-  // excluded; non-rendered ones get force-included (which also bypasses the
-  // automatic hiding of spectator cations like Li/Na/Ba).
+  // An element counts as an enabled polyhedra center if it isn't excluded and is
+  // either force-included or currently rendered. Using configured intent (not just
+  // the transient render state) keeps the checkbox reversible: a force-included
+  // element that the CN/geometry filters can't render still shows checked, so the
+  // user can toggle it back off.
+  const is_polyhedra_center_enabled = (element: string): boolean => {
+    const excluded = scene_props.polyhedra_excluded_elements ?? []
+    const included = scene_props.polyhedra_included_elements ?? []
+    return !excluded.includes(element) &&
+      (included.includes(element) || polyhedra_rendered_elements.includes(element))
+  }
+
+  // Toggle an element as polyhedra center. Enabled elements get excluded; disabled
+  // ones get force-included (which also bypasses the automatic hiding of spectator
+  // cations like Li/Na/Ba).
   function toggle_polyhedra_element(element: string) {
     const excluded = scene_props.polyhedra_excluded_elements ?? []
     const included = scene_props.polyhedra_included_elements ?? []
-    if (polyhedra_rendered_elements.includes(element)) {
-      scene_props.polyhedra_excluded_elements = [...excluded, element]
+    if (is_polyhedra_center_enabled(element)) {
+      scene_props.polyhedra_excluded_elements = [...new Set([...excluded, element])]
       scene_props.polyhedra_included_elements = included.filter((el) => el !== element)
     } else {
       scene_props.polyhedra_excluded_elements = excluded.filter((el) => el !== element)
@@ -1407,7 +1419,7 @@
             <label style="gap: 4pt">
               <input
                 type="checkbox"
-                checked={polyhedra_rendered_elements.includes(element)}
+                checked={is_polyhedra_center_enabled(element)}
                 onchange={() => toggle_polyhedra_element(element)}
               />
               {element}
