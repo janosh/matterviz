@@ -1,0 +1,230 @@
+name: Publish
+
+# On a new vX.Y.Z tag: gate on lint + unit tests, then publish in parallel the
+# `matterviz` npm package, the `matterviz-anywidget` npm bundle, and the VS Code extension
+# to Open VSX (the VS Code Marketplace is uploaded manually -- see below). workflow_dispatch
+# (re)publishes a given version by building that version's tag -- use it to publish an
+# already-pushed tag that never reached a registry (run from the default branch so this
+# workflow file is current).
+#
+# npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
+# both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
+# The VS Code Marketplace is NOT auto-published (the publisher's Azure org can't issue a
+# publish PAT/identity): the vscode job uploads a `matterviz-vsix` artifact to upload by hand
+# at https://marketplace.visualstudio.com/manage.
+# Required repo secrets:
+#   OVSX_PAT - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to (re)publish, e.g. 0.4.0 (its tag must already be pushed unless dry_run)
+        required: true
+        type: string
+      dry_run:
+        description: Dry run -- build, package & validate everything, but do not publish
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# one publish per version, but never cancel an in-flight one (a half-published release is
+# worse). Normalize to `v<version>` so a tag push (ref_name `v0.4.0`) and a manual run
+# (input `0.4.0`) for the same release share one group.
+concurrency:
+  group: publish-${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      ref: ${{ steps.resolve.outputs.ref }} # exact commit every other job checks out
+    steps:
+      - id: resolve
+        # input via env (not ${{ }}) to avoid shell injection; validate before use
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            version="$INPUT_VERSION"
+          else
+            version="${GITHUB_REF#refs/tags/}"
+          fi
+          version="${version#v}" # strip optional leading v from tags / manual input alike
+          # plain X.Y.Z only: a prerelease would land on the npm 'latest' tag (no --tag passed)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Invalid version: $version (expected X.Y.Z)"; exit 1; }
+          # Build & publish the exact tagged commit (vX.Y.Z), so a manual run (re)publishes an
+          # already-pushed tag rather than whatever the workflow ran from. Fall back to the
+          # triggering ref for a dry run of a not-yet-tagged version.
+          tag="refs/tags/v$version"
+          if git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY" "$tag" >/dev/null 2>&1; then
+            ref="$tag"
+          elif [ "$DRY_RUN" = true ]; then
+            ref="$GITHUB_REF"
+            echo "::notice::tag $tag not found -- dry-run building $GITHUB_REF"
+          else
+            echo "::error::tag $tag does not exist -- push it first, or run with dry_run=true"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+  # === Gate: publish only if lint + unit tests pass for the published commit ===
+  lint:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      # ext deps so type-aware lint / svelte-check resolve their imports in CI
+      - uses: ./.github/actions/setup
+        with:
+          extensions: vscode anywidget
+      - uses: j178/prek-action@v2
+
+  test:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - uses: ./.github/actions/setup
+      - name: Unit tests
+        run: pnpm exec vp test --run
+
+  # === Gate: no package uploads unless the release version matches its tag ===
+  # A single job all publishers depend on, so a version/tag mismatch blocks every upload
+  # (not just the one whose own check failed). anywidget injects its version, so only the
+  # bumped manifests are checked here; gating anywidget on this still blocks it on a mismatch.
+  verify:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      # skip on dry runs: a not-yet-tagged dry run builds a ref whose version differs
+      - name: Verify package versions match the tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          EXPECTED: ${{ needs.version.outputs.version }}
+        run: |
+          for pkg in package.json extensions/vscode/package.json; do
+            actual=$(node -p "require('./$pkg').version")
+            [ "$actual" = "$EXPECTED" ] || { echo "$pkg ($actual) != release ($EXPECTED) -- bump it in the release commit"; exit 1; }
+          done
+
+  # === Publish: matterviz component library to npm ===
+  npm:
+    needs: [version, verify, lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm OIDC trusted publishing + provenance
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Build component library
+        run: pnpm package:dist
+      # OIDC trusted publishing (no token): npm >= 11.5.1 + id-token:write authenticate via
+      # the npmjs Trusted Publisher configured for this repo/workflow; provenance is automatic
+      - name: Publish to npm
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
+          if [ "$DRY_RUN" = true ]; then
+            npm publish --ignore-scripts --access public --dry-run
+          else
+            npm publish --ignore-scripts --access public
+          fi
+
+  # === Publish: VS Code extension to Open VSX (Marketplace upload is manual) ===
+  vscode:
+    needs: [version, verify, lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      # root install too: the webview build bundles ../../src/lib (three/d3/etc.)
+      - uses: ./.github/actions/setup
+        with:
+          extensions: vscode
+      - name: Build extension
+        run: pnpm -C extensions/vscode run build
+      - name: Package VSIX
+        working-directory: extensions/vscode
+        run: npx @vscode/vsce package --no-dependencies -o matterviz.vsix
+      # the Marketplace needs a publish PAT/Azure identity the publisher's org can't issue,
+      # so upload the .vsix for manual upload at https://marketplace.visualstudio.com/manage
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: matterviz-vsix
+          path: extensions/vscode/matterviz.vsix
+      # ovsx has no dry-run; the package step above exercises the build, so a dry run skips this
+      - name: Publish to Open VSX
+        if: ${{ !inputs.dry_run }}
+        working-directory: extensions/vscode
+        run: npx ovsx publish matterviz.vsix --pat "$OVSX_PAT"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+  # === Publish: prebuilt matterviz-anywidget bundle to npm ===
+  anywidget:
+    needs: [version, verify, lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm OIDC trusted publishing + provenance
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          extensions: anywidget
+      - name: 'Build component library (resolves the file: dependency)'
+        run: pnpm package:dist
+      - name: Build + size-gate bundle
+        working-directory: extensions/anywidget
+        env:
+          PUBLISH_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # version isn't bumped by the release commit, so set it here
+          npm version "$PUBLISH_VERSION" --no-git-tag-version --allow-same-version
+          pnpm run build
+          # sanity-gate before publishing (runtime coverage lives in pymatviz's tests)
+          test -s build/matterviz.js && test -s build/matterviz.css
+          js_bytes=$(wc -c < build/matterviz.js)
+          # >1MB: all components present; <5MB: h5wasm/moyo WASM didn't creep back in
+          test "$js_bytes" -gt 1000000 || { echo "bundle too small ($js_bytes B)"; exit 1; }
+          test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- WASM re-bundled?"; exit 1; }
+      # OIDC trusted publishing (needs its own Trusted Publisher config for matterviz-anywidget)
+      - name: Publish to npm
+        working-directory: extensions/anywidget
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
+          if [ "$DRY_RUN" = true ]; then
+            npm publish --ignore-scripts --access public --dry-run
+          else
+            npm publish --ignore-scripts --access public
+          fi

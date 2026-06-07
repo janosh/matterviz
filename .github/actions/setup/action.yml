@@ -1,0 +1,21 @@
+name: Setup
+description: Node 24 + pnpm, root install, and optional extension installs
+
+inputs:
+  extensions:
+    description: Space-separated extension dirs under extensions/ to also install
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 24
+    - shell: bash
+      env:
+        EXTENSIONS: ${{ inputs.extensions }}
+      run: |
+        corepack enable
+        pnpm install
+        for ext in $EXTENSIONS; do pnpm -C "extensions/$ext" install; done
