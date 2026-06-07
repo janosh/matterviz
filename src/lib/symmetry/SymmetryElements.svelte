@@ -7,11 +7,13 @@ the input-cell frame, so pass the original structure's lattice).
 Visual conventions (loosely following ITA diagram conventions: translation-carrying
 elements are dashed/striped):
 - rotation axes: solid cylinders, colored by order
-- screw axes: DOTTED lines (small spheres along the axis, same order colors)
+- screw axes: DASHED cylinders (short dashes, gaps narrower than dashes; same order
+  colors, slightly thinner)
 - mirror planes: solid translucent fills with opaque outlines
 - glide planes: STRIPED translucent fills (stripes run along the glide-translation
   direction) with opaque outlines
-- inversion centers / rotoinversion markers: spheres
+- inversion centers / rotoinversion markers: small faceted octahedra — themselves
+  centrosymmetric, and clearly distinct from the smooth spheres used for atoms
 
 For performance, geometries are merged per material group (one draw call per distinct
 color/opacity instead of one mesh per element) and disposed on change/unmount. -->
@@ -36,10 +38,10 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     DoubleSide,
     LinearFilter,
     Matrix4,
+    OctahedronGeometry,
     Quaternion,
     RepeatWrapping,
     RGBAFormat,
-    SphereGeometry,
     Vector3,
   } from 'three'
   import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
@@ -54,9 +56,10 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // hide 2-fold axes that are sub-elements of higher-order axes on the same line
     hide_redundant_axes = true,
     axis_radius = 0.04,
-    // screw axes render as DOTTED lines: small spheres along the axis
-    screw_dot_radius = 0.05,
-    screw_dot_gap = 0.12, // Å gap between consecutive dots
+    screw_radius = 0.03,
+    // [dash, gap] in Å for dashed screw axes — gap narrower than dash so the line
+    // reads as continuous-but-broken rather than sparse
+    screw_dash = [0.25, 0.1] as [number, number],
     inversion_radius = 0.12,
     plane_opacity = 0.2,
     glide_opacity = 0.15,
@@ -75,8 +78,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     show_kinds?: ShowSymmetryKinds
     hide_redundant_axes?: boolean
     axis_radius?: number
-    screw_dot_radius?: number
-    screw_dot_gap?: number
+    screw_radius?: number
+    screw_dash?: [number, number]
     inversion_radius?: number
     plane_opacity?: number
     glide_opacity?: number
@@ -177,20 +180,15 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       const dir_unit = span.clone().normalize()
       const start_vec = new Vector3(...start)
 
+      // Radius is baked into each geometry, so one merged group per color suffices
       const color = axis_colors[elem.order] ?? `#777777`
-      const group_key = `${color}|${elem.kind === `screw` ? `dot` : `solid`}`
-      const group = parts_by_group.get(group_key) ?? []
+      const group = parts_by_group.get(color) ?? []
 
       if (elem.kind === `screw`) {
-        // Dotted line: spheres spaced along the axis, touching both cell faces
-        for (
-          const dot of dash_segments(length, 2 * screw_dot_radius, screw_dot_gap)
-        ) {
-          const center = start_vec.clone().addScaledVector(dir_unit, dot.center)
-          group.push(
-            new SphereGeometry(screw_dot_radius, 10, 10)
-              .translate(center.x, center.y, center.z),
-          )
+        // Dashed cylinder: segments along the axis, touching both cell faces
+        for (const dash of dash_segments(length, screw_dash[0], screw_dash[1])) {
+          const center = start_vec.clone().addScaledVector(dir_unit, dash.center)
+          group.push(oriented_cylinder(center, dir_unit, screw_radius, dash.length))
         }
       } else {
         const center = start_vec.clone().addScaledVector(dir_unit, length / 2)
@@ -198,41 +196,57 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       }
       if (elem.kind === `rotoinversion`) {
         const [cx, cy, cz] = frac_to_cart_direction(elem.point, lattice)
-        group.push(new SphereGeometry(inversion_radius * 0.8, 16, 16).translate(cx, cy, cz))
+        group.push(new OctahedronGeometry(inversion_radius * 0.8).translate(cx, cy, cz))
       }
-      parts_by_group.set(group_key, group)
+      parts_by_group.set(color, group)
     }
 
-    return [...parts_by_group.entries()].flatMap(([group_key, geometries]) => {
+    return [...parts_by_group.entries()].flatMap(([color, geometries]) => {
       const merged = mergeGeometries(geometries)
       geometries.forEach((geo) => geo.dispose())
-      return merged ? [{ geometry: merged, color: group_key.split(`|`)[0] }] : []
+      return merged ? [{ geometry: merged, color }] : []
     })
   })
 
-  // Mirror/glide plane FILLS: triangles concatenated per color+opacity into one
-  // geometry. Glide fills carry per-vertex UVs whose U coordinate measures Cartesian
-  // distance along the glide-translation direction, so the stripe alphaMap renders
-  // stripes running along the glide direction — the pattern shows both that the plane
-  // glides and where it translates.
-  const plane_groups: MaterialGroup[] = $derived.by(() => {
-    const groups = new Map<string, { positions: number[]; uvs: number[] }>()
+  // Visible mirror/glide planes clipped to the cell — computed once, shared by the
+  // fill and outline groups below. stripe_dir is the unit Cartesian glide direction
+  // (null for mirrors and translation-less entries).
+  const visible_planes = $derived.by(() => {
+    const planes: {
+      polygon: Vec3[]
+      color: string
+      opacity: number
+      stripe_dir: Vec3 | null
+    }[] = []
     for (const elem of elements) {
       if ((elem.kind !== `mirror` && elem.kind !== `glide`) || !elem.axis) continue
       if (!show_kinds[elem.kind]) continue
       const polygon = clip_plane_to_cell(elem.point, elem.axis, lattice)
       if (polygon.length < 3) continue
-      const striped = elem.kind === `glide` && elem.translation !== null
-      const color = elem.kind === `mirror` ? mirror_color : glide_color
-      const opacity = elem.kind === `mirror` ? plane_opacity : glide_opacity
-      const group_key = `${color}|${opacity}|${striped ? 1 : 0}`
+      const is_mirror = elem.kind === `mirror`
+      planes.push({
+        polygon,
+        color: is_mirror ? mirror_color : glide_color,
+        opacity: is_mirror ? plane_opacity : glide_opacity,
+        stripe_dir: elem.translation
+          ? math.normalize_vec(frac_to_cart_direction(elem.translation, lattice))
+          : null,
+      })
+    }
+    return planes
+  })
+
+  // Plane FILLS: triangles concatenated per color+opacity into one geometry. Glide
+  // fills carry per-vertex UVs whose U coordinate measures Cartesian distance along
+  // the glide-translation direction, so the stripe alphaMap renders stripes running
+  // along the glide direction — the pattern shows both that the plane glides and
+  // where it translates.
+  const plane_groups: MaterialGroup[] = $derived.by(() => {
+    const groups = new Map<string, { positions: number[]; uvs: number[] }>()
+    for (const { polygon, color, opacity, stripe_dir } of visible_planes) {
+      const group_key = `${color}|${opacity}|${stripe_dir ? 1 : 0}`
       const group = groups.get(group_key) ?? { positions: [], uvs: [] }
       // Stripe coordinate: Cartesian distance along the glide direction / period
-      const stripe_dir = striped
-        ? math.normalize_vec(
-          frac_to_cart_direction(elem.translation as Vec3, lattice),
-        )
-        : null
       const stripe_u = (vert: Vec3): number =>
         stripe_dir ? math.dot(vert, stripe_dir) / glide_stripe_period : 0
       // Fan triangulation of the convex polygon
@@ -259,12 +273,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   const plane_edge_groups: MaterialGroup[] = $derived.by(() => {
     if (!show_plane_edges) return []
     const segments_by_color = new Map<string, number[]>()
-    for (const elem of elements) {
-      if ((elem.kind !== `mirror` && elem.kind !== `glide`) || !elem.axis) continue
-      if (!show_kinds[elem.kind]) continue
-      const polygon = clip_plane_to_cell(elem.point, elem.axis, lattice)
-      if (polygon.length < 3) continue
-      const color = elem.kind === `mirror` ? mirror_color : glide_color
+    for (const { polygon, color } of visible_planes) {
       const positions = segments_by_color.get(color) ?? []
       for (let idx = 0; idx < polygon.length; idx++) {
         positions.push(...polygon[idx], ...polygon[(idx + 1) % polygon.length])
@@ -278,18 +287,19 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     })
   })
 
-  // Inversion centers: spheres merged into a single geometry
+  // Inversion centers: faceted octahedra (centrosymmetric, unlike the smooth spheres
+  // used for atoms) merged into a single geometry
   const inversion_group: MaterialGroup | null = $derived.by(() => {
     if (!show_kinds.inversion) return null
-    const spheres = elements
+    const markers = elements
       .filter((elem) => elem.kind === `inversion`)
       .map((elem) => {
         const [cx, cy, cz] = frac_to_cart_direction(elem.point, lattice)
-        return new SphereGeometry(inversion_radius, 16, 16).translate(cx, cy, cz)
+        return new OctahedronGeometry(inversion_radius).translate(cx, cy, cz)
       })
-    if (spheres.length === 0) return null
-    const merged = mergeGeometries(spheres)
-    spheres.forEach((geo) => geo.dispose())
+    if (markers.length === 0) return null
+    const merged = mergeGeometries(markers)
+    markers.forEach((geo) => geo.dispose())
     return merged ? { geometry: merged, color: inversion_color } : null
   })
 
