@@ -6,7 +6,7 @@
   import FilePicker from '$lib/FilePicker.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
-  import type { SymmetrySettings } from '$lib/symmetry'
+  import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import {
     default_sym_settings,
     ensure_moyo_wasm_ready,
@@ -36,11 +36,16 @@
   let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)
   let stacked_sym_settings = $state<SymmetrySettings>(default_sym_settings)
   let show_sym_elements = $state(false)
-  // Symmetry elements are in the input-cell frame, matching the default 'original'
-  // cell display (switch cell type back to original for correct overlay positions)
+  // Cell type of the top example viewer (bound to its controls). moyo operations are in
+  // the input-cell (original) frame, so the overlay is only valid while that frame is
+  // rendered.
+  let top_ex_cell_type = $state<CellType>(`original`)
+  // Symmetry elements live in the input-cell frame; only overlay them while the viewer
+  // renders that frame — switching cell type re-expresses the lattice and would misplace
+  // the overlay (the elements would need recomputing in the new frame)
   const sym_elements = $derived(
-    show_sym_elements && top_ex_sym_data
-      ? symmetry_elements_from_ops(top_ex_sym_data.operations)
+    show_sym_elements && top_ex_cell_type === `original` && top_ex_sym_data
+      ? symmetry_elements_from_ops(top_ex_sym_data.operations ?? [])
       : [],
   )
 
@@ -124,6 +129,7 @@
     bind:displayed_structure
     bind:sym_data={top_ex_sym_data}
     bind:symmetry_settings={wide_example_symmetry_settings}
+    bind:cell_type={top_ex_cell_type}
     scene_props={{
       active_sites: active_wyckoff_sites,
       selected_sites: hovered_wyckoff_sites,

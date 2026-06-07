@@ -581,7 +581,7 @@ export function map_wyckoff_to_all_atoms(
       return null
     }
     const is_integer_scaling = scaling.every((row) =>
-      row.every((val) => Math.abs(val - Math.round(val)) < 1e-5),
+      row.every((val) => Math.abs(val - Math.round(val)) < tolerance),
     )
     if (!is_integer_scaling || Math.abs(math.det_3x3(scaling)) < 0.99) return null
 
