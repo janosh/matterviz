@@ -73,6 +73,92 @@ function validate_image_tuples(
   }
 }
 
+test(`find_image_atoms adds bond-completing images beyond the face tolerance`, () => {
+  // Ag at 0.5 Å inside the low-x face; its I neighbor sits 2.5 Å inside the
+  // high-x face (far beyond the 0.5 Å face tolerance) but its periodic image at
+  // x=-2.5 is 3.0 Å from Ag - within Ag+I covalent radii + slack, so phase 2
+  // must generate that image to complete the bond across the boundary
+  const lattice_matrix: Matrix3x3 = [
+    [10, 0, 0],
+    [0, 10, 0],
+    [0, 0, 10],
+  ]
+  const frac_to_cart = create_frac_to_cart(lattice_matrix)
+  const make_site = (element: string, abc: Vec3) => ({
+    species: [{ element: element as `Ag`, occu: 1, oxidation_state: 0 }],
+    abc,
+    xyz: frac_to_cart(abc),
+    label: element,
+    properties: {},
+  })
+  const structure: Crystal = {
+    sites: [make_site(`Ag`, [0.05, 0.5, 0.5]), make_site(`I`, [0.75, 0.5, 0.5])],
+    lattice: {
+      matrix: lattice_matrix,
+      pbc: [true, true, true],
+      ...math.calc_lattice_params(lattice_matrix),
+    },
+  }
+
+  const image_atoms = find_image_atoms(structure)
+  // the I image shifted by (-1, 0, 0) lands at x=-2.5, 3.0 Å from Ag
+  const completing = image_atoms.find(
+    ([site_idx, img_xyz]) => site_idx === 1 && euclidean_dist(img_xyz, [-2.5, 5, 5]) < 1e-6,
+  )
+  expect(completing).toBeDefined()
+
+  // an isolated atom pair too far apart to bond must NOT generate phase-2 images
+  const unbonded: Crystal = {
+    ...structure,
+    sites: [make_site(`Ag`, [0.05, 0.5, 0.5]), make_site(`I`, [0.55, 0.5, 0.5])],
+  }
+  // I image at (-4.5, 5, 5) would be 5 Å from Ag - beyond bonding distance
+  const unbonded_images = find_image_atoms(unbonded).filter(([idx]) => idx === 1)
+  expect(unbonded_images).toHaveLength(0)
+
+  // metal (cation) images are never added by phase 2 in compounds - anion images
+  // complete the cation shells instead. Pulled-in cation copies would protrude
+  // asymmetrically wherever the anion sublattice hugs one cell face (e.g. bare
+  // Ti images below the rutile cell but not above).
+  const metal_in_compound: Crystal = {
+    ...structure,
+    sites: [
+      make_site(`Ti`, [0.05, 0.5, 0.5]),
+      make_site(`Ti`, [0.75, 0.5, 0.5]), // image at x=-2.5 is 3.0 Å from first Ti
+      make_site(`O`, [0.8, 0.5, 0.5]), // image at x=-2 is 2.5 Å from first Ti (bonds!)
+    ],
+  }
+  const compound_images = find_image_atoms(metal_in_compound)
+  expect(compound_images.filter(([idx]) => idx === 1)).toHaveLength(0)
+  // ...while the anion gets pulled in to complete the Ti coordination
+  expect(compound_images.filter(([idx]) => idx === 2).length).toBeGreaterThan(0)
+
+  // pure metals get NO phase-2 images at all (equal electronegativity = no
+  // anion->cation pull): only the uniform phase-1 boundary copies render, so
+  // e.g. a 1-atom FCC metal cell shows just its corner copies instead of an
+  // asymmetric nearest-neighbor blob
+  const pure_metal: Crystal = {
+    ...structure,
+    sites: [make_site(`Cu`, [0.05, 0.5, 0.5]), make_site(`Cu`, [0.8, 0.5, 0.5])],
+  }
+  // Cu image at x=-2 would be 2.5 Å from first Cu (within 2*r_Cu + slack) but
+  // must still not be generated
+  const cu_images = find_image_atoms(pure_metal).filter(([idx]) => idx === 1)
+  expect(cu_images).toHaveLength(0)
+
+  // multi-metal intermetallics (e.g. Al-Fe-Ni) also get no phase-2 images even
+  // though their metals differ in electronegativity - metals can never be
+  // polyhedron vertices, so such images would complete nothing
+  const intermetallic: Crystal = {
+    ...structure,
+    sites: [make_site(`Al`, [0.05, 0.5, 0.5]), make_site(`Fe`, [0.8, 0.5, 0.5])],
+  }
+  // Fe (EN 1.83) > Al (EN 1.61) and the Fe image at x=-2 would be within bonding
+  // distance of Al, but Fe is a metal -> no image
+  const fe_images = find_image_atoms(intermetallic).filter(([idx]) => idx === 1)
+  expect(fe_images).toHaveLength(0)
+})
+
 test(`find_image_atoms finds correct images for normal cell`, async () => {
   const normal_structure_extxyz = `8
 Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
@@ -404,14 +490,14 @@ test.each([
     content: mp_2_struct,
     filename: `mp-2.json`,
     expected_min_images: 10, // Based on actual test output: 13 images found
-    expected_max_images: 20,
+    expected_max_images: 30, // bond-completing images (phase 2) add a few more
     description: `Four Pd atoms in FCC structure`,
   },
   {
     content: nacl_poscar,
     filename: `NaCl-cubic.poscar`,
     expected_min_images: 19,
-    expected_max_images: 25,
+    expected_max_images: 90, // phase 2 also completes shells of boundary-image copies
     description: `8 atoms (4 Na + 4 Cl) in cubic structure`,
   },
   {

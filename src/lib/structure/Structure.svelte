@@ -643,6 +643,10 @@
     emit_bonds(edited_bonds)
   })
 
+  // Elements currently anchoring polyhedra (written by StructureScene, read by
+  // StructureControls so per-element toggles reflect actual render state)
+  let polyhedra_rendered_elements = $state<string[]>([])
+
   // === Edit-atoms mode state ===
   let dragging_atoms = $state(false)
   let undo_stack = $state<AnyStructure[]>([])
@@ -1840,6 +1844,7 @@
             {structure}
             {supercell_loading}
             {sym_data}
+            {polyhedra_rendered_elements}
           />
         {/if}
 
@@ -1918,6 +1923,7 @@
             bind:add_element
             bind:cursor={canvas_cursor}
             bind:dragging_atoms
+            bind:polyhedra_rendered_elements
           />
         </Canvas>
       </div>

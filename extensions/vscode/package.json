@@ -260,6 +260,84 @@
             "solid_angle"
           ]
         },
+        "matterviz.structure.show_polyhedra": {
+          "type": "string",
+          "default": "crystals",
+          "description": "When to render coordination polyhedra around cation-like centers",
+          "enum": [
+            "never",
+            "always",
+            "crystals",
+            "molecules"
+          ]
+        },
+        "matterviz.structure.polyhedra_opacity": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Opacity of coordination polyhedra faces",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.structure.polyhedra_show_edges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Draw outlines along coordination polyhedra edges"
+        },
+        "matterviz.structure.polyhedra_edge_color": {
+          "type": "string",
+          "default": "#222222",
+          "description": "Color of coordination polyhedra edge lines"
+        },
+        "matterviz.structure.polyhedra_color_mode": {
+          "type": "string",
+          "default": "vertex",
+          "description": "Color polyhedra by the atoms at their corners, the center atom, or a single custom color",
+          "enum": [
+            "vertex",
+            "center",
+            "uniform"
+          ]
+        },
+        "matterviz.structure.polyhedra_color": {
+          "type": "string",
+          "default": "#4a90d9",
+          "description": "Custom polyhedra color (used when color mode is Custom Color)"
+        },
+        "matterviz.structure.polyhedra_hide_center_atoms": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide the central atom of each rendered polyhedron"
+        },
+        "matterviz.structure.polyhedra_min_neighbors": {
+          "type": "number",
+          "default": 4,
+          "description": "Minimum number of bonded neighbors (coordination number) to form a polyhedron",
+          "minimum": 3,
+          "maximum": 12
+        },
+        "matterviz.structure.polyhedra_max_neighbors": {
+          "type": "number",
+          "default": 8,
+          "description": "Maximum number of bonded neighbors for a polyhedron (skips e.g. CN-12 cuboctahedra around large A-site cations)",
+          "minimum": 4,
+          "maximum": 16
+        },
+        "matterviz.structure.polyhedra_excluded_elements": {
+          "type": "array",
+          "default": [],
+          "description": "Elements excluded from acting as polyhedra centers",
+          "items": {
+            "type": "number"
+          }
+        },
+        "matterviz.structure.polyhedra_included_elements": {
+          "type": "array",
+          "default": [],
+          "description": "Elements always allowed as polyhedra centers (overrides automatic hiding of spectator cations like alkali metals)",
+          "items": {
+            "type": "number"
+          }
+        },
         "matterviz.structure.atom_color_mode": {
           "type": "string",
           "default": "element",
