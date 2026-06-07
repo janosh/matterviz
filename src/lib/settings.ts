@@ -38,6 +38,10 @@ export interface SettingType<T = unknown> {
 
 export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
+// Shared enum labels for never|always|crystals|molecules settings (bonds, polyhedra)
+const SHOW_BONDS_ENUM = Object.fromEntries(
+  SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
+) as Readonly<Record<ShowBonds, string>>
 
 export type CameraProjection = `perspective` | `orthographic`
 
@@ -521,9 +525,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_bonds: {
       value: `always`,
       description: `When to display bonds between atoms`,
-      enum: Object.fromEntries(
-        SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
-      ) as Readonly<Record<ShowBonds, string>>,
+      enum: SHOW_BONDS_ENUM,
     },
     bond_color: {
       value: `#666666`,
@@ -540,9 +542,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_polyhedra: {
       value: `crystals`,
       description: `When to render coordination polyhedra around cation-like centers`,
-      enum: Object.fromEntries(
-        SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
-      ) as Readonly<Record<ShowBonds, string>>,
+      enum: SHOW_BONDS_ENUM,
     },
     polyhedra_opacity: {
       value: 0.5,
@@ -578,7 +578,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     polyhedra_min_neighbors: {
       value: 4,
       description: `Minimum number of bonded neighbors (coordination number) to form a polyhedron`,
-      minimum: 3,
+      minimum: 4, // hulls of <4 points are degenerate and render nothing
       maximum: 12,
     },
     polyhedra_max_neighbors: {
@@ -593,7 +593,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     polyhedra_included_elements: {
       value: [] as readonly string[],
-      description: `Elements always allowed as polyhedra centers (overrides automatic hiding of spectator cations like alkali metals)`,
+      description: `Elements always allowed as polyhedra centers (overrides automatic hiding of spectator cations like alkali metals and the max neighbors cap)`,
     },
     atom_color_mode: {
       value: `element`,

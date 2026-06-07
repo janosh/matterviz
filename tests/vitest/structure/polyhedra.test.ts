@@ -240,6 +240,19 @@ const make_nacl_cluster = () =>
 
 const octahedral_bonds = [1, 2, 3, 4, 5, 6].map((idx) => make_bond(0, idx))
 
+// Conventional rocksalt NaCl cell (4 Na + 4 Cl)
+const make_rocksalt = () =>
+  make_crystal(5.64, [
+    { element: `Na`, abc: [0, 0, 0] },
+    { element: `Na`, abc: [0.5, 0.5, 0] },
+    { element: `Na`, abc: [0.5, 0, 0.5] },
+    { element: `Na`, abc: [0, 0.5, 0.5] },
+    { element: `Cl`, abc: [0.5, 0, 0] },
+    { element: `Cl`, abc: [0, 0.5, 0] },
+    { element: `Cl`, abc: [0, 0, 0.5] },
+    { element: `Cl`, abc: [0.5, 0.5, 0.5] },
+  ])
+
 describe(`compute_polyhedra`, () => {
   test(`NaCl cluster: Na center forms octahedron, Cl does not`, () => {
     const structure = make_nacl_cluster()
@@ -328,19 +341,9 @@ describe(`compute_polyhedra`, () => {
   })
 
   test(`boundary completeness: truncated supercell copies are skipped`, () => {
-    // Rocksalt NaCl conventional cell -> real bonding -> 2x2x2 supercell without
+    // Rocksalt NaCl conventional cell -> real bonding -> 3x3x3 supercell without
     // image atoms: interior Na atoms keep CN 6, boundary copies are truncated
-    const rocksalt = make_crystal(5.64, [
-      { element: `Na`, abc: [0, 0, 0] },
-      { element: `Na`, abc: [0.5, 0.5, 0] },
-      { element: `Na`, abc: [0.5, 0, 0.5] },
-      { element: `Na`, abc: [0, 0.5, 0.5] },
-      { element: `Cl`, abc: [0.5, 0, 0] },
-      { element: `Cl`, abc: [0, 0.5, 0] },
-      { element: `Cl`, abc: [0, 0, 0.5] },
-      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
-    ])
-    const supercell = make_supercell(rocksalt, [3, 3, 3])
+    const supercell = make_supercell(make_rocksalt(), [3, 3, 3])
     const bonds = electroneg_ratio(supercell)
     const polyhedra = compute_polyhedra(supercell, bonds)
 
@@ -369,17 +372,7 @@ describe(`compute_polyhedra`, () => {
     // Bond-completing image atoms (find_image_atoms phase 2) provide every
     // boundary neighbor as a real displayed atom, so all base Na render complete
     // octahedra and every polyhedron corner coincides with a displayed site.
-    const rocksalt = make_crystal(5.64, [
-      { element: `Na`, abc: [0, 0, 0] },
-      { element: `Na`, abc: [0.5, 0.5, 0] },
-      { element: `Na`, abc: [0.5, 0, 0.5] },
-      { element: `Na`, abc: [0, 0.5, 0.5] },
-      { element: `Cl`, abc: [0.5, 0, 0] },
-      { element: `Cl`, abc: [0, 0.5, 0] },
-      { element: `Cl`, abc: [0, 0, 0.5] },
-      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
-    ])
-    const with_images = get_pbc_image_sites(rocksalt)
+    const with_images = get_pbc_image_sites(make_rocksalt())
     const bonds = electroneg_ratio(with_images)
     const polyhedra = compute_polyhedra(with_images, bonds)
 
@@ -426,17 +419,7 @@ describe(`compute_polyhedra`, () => {
   })
 
   test(`performance: 10x10x10 rocksalt supercell (8000 sites) stays fast`, () => {
-    const rocksalt = make_crystal(5.64, [
-      { element: `Na`, abc: [0, 0, 0] },
-      { element: `Na`, abc: [0.5, 0.5, 0] },
-      { element: `Na`, abc: [0.5, 0, 0.5] },
-      { element: `Na`, abc: [0, 0.5, 0.5] },
-      { element: `Cl`, abc: [0.5, 0, 0] },
-      { element: `Cl`, abc: [0, 0.5, 0] },
-      { element: `Cl`, abc: [0, 0, 0.5] },
-      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
-    ])
-    const supercell = make_supercell(rocksalt, [10, 10, 10])
+    const supercell = make_supercell(make_rocksalt(), [10, 10, 10])
     const bonds = electroneg_ratio(supercell)
 
     const detect_start = performance.now()
@@ -597,6 +580,13 @@ describe(`VESTA-style detection rules`, () => {
     })
     expect(uncapped).toHaveLength(1)
     expect(uncapped[0].neighbor_site_idxs).toHaveLength(12)
+
+    // force-include bypasses the CN cap (explicit user request beats heuristic)
+    const included = compute_polyhedra(structure, bonds, {
+      included_center_elements: [`Ba`],
+    })
+    expect(included).toHaveLength(1)
+    expect(included[0].center_element).toBe(`Ba`)
   })
 
   test(`weakly-bound centers hidden when a strong framework exists (lone-pair Bi)`, () => {

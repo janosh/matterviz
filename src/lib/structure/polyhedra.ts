@@ -16,7 +16,7 @@ export interface PolyhedraOptions {
   min_neighbors?: number // min coordination number to form a polyhedron
   max_neighbors?: number // max CN - skips e.g. CN-12 cuboctahedra around A-site cations
   excluded_center_elements?: readonly string[] // per-element off-toggles
-  included_center_elements?: readonly string[] // force-include (bypasses spectator/weak hiding)
+  included_center_elements?: readonly string[] // force-include (bypasses spectator/weak hiding + max_neighbors cap)
   electronegativity_margin?: number // vertex must be > center EN + margin
   distance_factor?: number // vertices kept within shortest-bond * (1 + factor)
   weak_bond_norm?: number // species with mean bond dist / covalent-radii sum above this
@@ -566,13 +566,15 @@ export function compute_polyhedra(
   }
 
   // Pass 4: CN cap (after completeness so capped interior copies don't let
-  // truncated boundary copies of the same site slip through), then build hulls,
-  // deduping identical center positions (base atom vs PBC image)
+  // truncated boundary copies of the same site slip through; force-included
+  // elements bypass the cap - an explicit user request beats the clutter
+  // heuristic), then build hulls, deduping identical center positions (base
+  // atom vs PBC image)
   const polyhedra: Polyhedron[] = []
   const seen_positions = new Set<string>()
   for (const { site_idx, orig_idx, element, vertex_site_idxs } of visible) {
     if (vertex_site_idxs.length !== max_cn_by_orig.get(orig_idx)) continue
-    if (vertex_site_idxs.length > max_neighbors) continue
+    if (vertex_site_idxs.length > max_neighbors && !included.has(element)) continue
 
     const [px, py, pz] = sites[site_idx].xyz
     const pos_key = `${Math.round(px * 1e3)},${Math.round(py * 1e3)},${Math.round(pz * 1e3)}`

@@ -1866,15 +1866,18 @@
       show_mode_toggle={viewer_active}
       {sym_data}
     >
-      {#if structure && `lattice` in structure}
-        <CellSelect
-          bind:supercell_scaling
-          bind:cell_type
-          {sym_data}
-          loading={supercell_loading}
-          direction="up"
-        />
-      {/if}
+      {#snippet children({ mode_menu_open })}
+        {#if structure && `lattice` in structure}
+          <CellSelect
+            bind:supercell_scaling
+            bind:cell_type
+            {sym_data}
+            loading={supercell_loading}
+            direction="up"
+            suppress_hover={mode_menu_open}
+          />
+        {/if}
+      {/snippet}
     </AtomLegend>
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->

@@ -185,7 +185,7 @@
     polyhedra_opacity = DEFAULTS.structure.polyhedra_opacity,
     polyhedra_show_edges = DEFAULTS.structure.polyhedra_show_edges,
     polyhedra_edge_color = DEFAULTS.structure.polyhedra_edge_color,
-    polyhedra_color_mode = DEFAULTS.structure.polyhedra_color_mode as PolyhedraColorMode,
+    polyhedra_color_mode = DEFAULTS.structure.polyhedra_color_mode,
     polyhedra_color = DEFAULTS.structure.polyhedra_color,
     polyhedra_hide_center_atoms = DEFAULTS.structure.polyhedra_hide_center_atoms,
     polyhedra_min_neighbors = DEFAULTS.structure.polyhedra_min_neighbors,

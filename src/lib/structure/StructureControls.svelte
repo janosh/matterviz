@@ -19,6 +19,7 @@
     VECTOR_PALETTE,
   } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -114,13 +115,13 @@
     }
   })
 
-  // Unique elements in the structure, for polyhedra center exclusion toggles
+  // Unique majority elements in the structure, for polyhedra center toggles.
+  // Majority (not all) species so the list matches what compute_polyhedra can
+  // actually use as centers - minority occupancies of disordered sites never are.
   let structure_elements = $derived(
     [
       ...new Set(
-        (structure?.sites ?? []).flatMap((site) =>
-          site.species.map((spec) => spec.element)
-        ),
+        (structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? []),
       ),
     ].sort(),
   )
@@ -1360,14 +1361,14 @@
         Min neighbors
         <input
           type="number"
-          min={3}
+          min={4}
           max={12}
           step={1}
           bind:value={scene_props.polyhedra_min_neighbors}
         />
         <input
           type="range"
-          min={3}
+          min={4}
           max={12}
           step={1}
           bind:value={scene_props.polyhedra_min_neighbors}

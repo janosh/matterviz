@@ -312,7 +312,7 @@
           "type": "number",
           "default": 4,
           "description": "Minimum number of bonded neighbors (coordination number) to form a polyhedron",
-          "minimum": 3,
+          "minimum": 4,
           "maximum": 12
         },
         "matterviz.structure.polyhedra_max_neighbors": {
@@ -327,15 +327,15 @@
           "default": [],
           "description": "Elements excluded from acting as polyhedra centers",
           "items": {
-            "type": "number"
+            "type": "string"
           }
         },
         "matterviz.structure.polyhedra_included_elements": {
           "type": "array",
           "default": [],
-          "description": "Elements always allowed as polyhedra centers (overrides automatic hiding of spectator cations like alkali metals)",
+          "description": "Elements always allowed as polyhedra centers (overrides automatic hiding of spectator cations like alkali metals and the max neighbors cap)",
           "items": {
-            "type": "number"
+            "type": "string"
           }
         },
         "matterviz.structure.atom_color_mode": {

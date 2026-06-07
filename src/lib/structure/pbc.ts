@@ -9,6 +9,9 @@ export type Pbc = readonly [boolean, boolean, boolean]
 // Distance slack added to the covalent-radii sum when deciding whether a
 // candidate image atom bonds to a base atom (VESTA-like bond search criterion)
 const BOND_SLACK = 0.4 // Å
+// Below this separation two sites are overlapping copies, not a bond (matches
+// the min_bond_dist default in bonding.ts)
+const MIN_BOND_DIST = 0.4 // Å
 
 // Wrap a single fractional coordinate to [0, 1), clamping near-1 values to 0
 // and rounding to 15 digits to suppress floating-point noise.
@@ -211,7 +214,9 @@ export function find_image_atoms(
               if (anchor_radius === null) continue
               if (anchor_electroneg === null || en <= anchor_electroneg) continue
               const dist = math.euclidean_dist(pos, anchor_positions[anchor_idx])
-              if (dist > 0.4 && dist <= radius + anchor_radius + BOND_SLACK) return true
+              if (dist > MIN_BOND_DIST && dist <= radius + anchor_radius + BOND_SLACK) {
+                return true
+              }
             }
           }
         }
