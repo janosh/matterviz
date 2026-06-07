@@ -359,11 +359,43 @@ type ClippingPlane = { normal: Vec3; dist: number }
 // component ratios keep them off every rotation axis and mirror plane of crystallographic
 // point groups in practice; the later directions are fallbacks in case a pathological
 // Cartesian orientation pins the first onto a symmetry element.
-const IBZ_REFERENCE_DIRECTIONS: Vec3[] = [
+export const IBZ_REFERENCE_DIRECTIONS: Vec3[] = [
   [1, Math.SQRT2 / 3, Math.E / 7],
   [Math.PI / 5, 1, Math.SQRT1_2 / 4],
   [Math.E / 9, Math.LN2, 1],
 ]
+
+// A reference direction is valid for the Dirichlet construction iff it has a trivial
+// stabilizer: no non-identity operation fixes it (R·t ≠ t for every R). Such a direction
+// always exists because the fixed-point sets (rotation axes, mirror planes) have measure
+// zero. Try the curated generic directions first, then deterministic pseudo-random ones,
+// and throw in the (mathematically unreachable) case where none qualify — rather than
+// silently using a non-generic direction, which would drop that operation's clipping
+// plane and inflate the IBZ volume above V_BZ/|G|.
+export function find_ibz_reference_direction(non_identity_ops: Matrix3x3[]): Vec3 {
+  const has_trivial_stabilizer = (dir: Vec3): boolean =>
+    non_identity_ops.every(
+      (rot) => Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, dir), dir)) > TOL,
+    )
+
+  const curated = IBZ_REFERENCE_DIRECTIONS.find(has_trivial_stabilizer)
+  if (curated) return curated
+
+  // Park-Miller minstd PRNG (safe-integer arithmetic) keeps the rare fallback
+  // reproducible across runs while sampling generic directions
+  let seed = 16807
+  const next_component = (): number => {
+    seed = (seed * 16807) % 2147483647
+    return (seed / 2147483647) * 2 - 1
+  }
+  for (let attempt = 0; attempt < 128; attempt++) {
+    const dir: Vec3 = [next_component(), next_component(), next_component()]
+    if (Math.hypot(...dir) > 0.1 && has_trivial_stabilizer(dir)) return dir
+  }
+  throw new Error(
+    `IBZ construction: no generic reference direction found for ${non_identity_ops.length} symmetry operations`,
+  )
+}
 
 // Compute clipping planes from point group operations via the Dirichlet (Voronoi)
 // fundamental-domain construction: pick ONE generic direction t with trivial stabilizer,
@@ -375,13 +407,7 @@ export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): Clipp
   const non_identity_ops = point_group_ops.filter((rot) => !is_identity_rotation(rot))
   if (non_identity_ops.length === 0) return []
 
-  // Pick the first reference direction not fixed by any non-identity operation
-  const ref_dir =
-    IBZ_REFERENCE_DIRECTIONS.find((dir) =>
-      non_identity_ops.every(
-        (rot) => Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, dir), dir)) > 1e-8,
-      ),
-    ) ?? IBZ_REFERENCE_DIRECTIONS[0]
+  const ref_dir = find_ibz_reference_direction(non_identity_ops)
 
   const planes: ClippingPlane[] = []
   const seen_normals = new Set<string>()
