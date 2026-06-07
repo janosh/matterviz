@@ -7,6 +7,7 @@ import {
   classify_symmetry_op,
   clip_line_to_cell,
   clip_plane_to_cell,
+  dash_segments,
   frac_to_cart_direction,
   symmetry_elements_from_ops,
 } from '$lib/symmetry'
@@ -450,5 +451,54 @@ describe(`cell clipping helpers`, () => {
     expect(poly.length).toBeGreaterThanOrEqual(3)
     // Cartesian normal: (1,-2,0)·L = a1 − 2·a2 = (0,-1.6,0) → the plane is y = 0
     for (const vert of poly) expect(vert[1]).toBeCloseTo(0, 8)
+  })
+})
+
+describe(`dash_segments`, () => {
+  test(`dashes touch both segment ends and never overlap`, () => {
+    const segs = dash_segments(10, 0.45, 0.3)
+    expect(segs.length).toBeGreaterThan(2)
+    // first dash starts at 0, last dash ends exactly at the segment length
+    expect(segs[0].center - segs[0].length / 2).toBeCloseTo(0, 10)
+    const last = segs[segs.length - 1]
+    expect(last.center + last.length / 2).toBeCloseTo(10, 10)
+    // uniform dash length, monotone centers, gaps >= requested gap
+    for (let idx = 0; idx < segs.length; idx++) {
+      expect(segs[idx].length).toBeCloseTo(0.45, 10)
+      if (idx > 0) {
+        const gap =
+          segs[idx].center -
+          segs[idx].length / 2 -
+          (segs[idx - 1].center + segs[idx - 1].length / 2)
+        expect(gap).toBeGreaterThanOrEqual(0.3 - 1e-10)
+      }
+    }
+  })
+
+  test.each([
+    { length: 0.3, label: `shorter than one dash` },
+    { length: 0.45, label: `exactly one dash` },
+  ])(`$label: single full-length segment`, ({ length }) => {
+    expect(dash_segments(length, 0.45, 0.3)).toEqual([{ center: length / 2, length }])
+  })
+
+  test(`between one and two dash periods: single centered dash`, () => {
+    const segs = dash_segments(0.9, 0.45, 0.3) // 0.9 < 2*0.45 + 0.3
+    expect(segs).toEqual([{ center: 0.45, length: 0.45 }])
+  })
+
+  test.each([
+    { length: 0, dash: 0.4, gap: 0.2 },
+    { length: -1, dash: 0.4, gap: 0.2 },
+    { length: 5, dash: 0, gap: 0.2 },
+    { length: 5, dash: 0.4, gap: -0.1 },
+  ])(`degenerate input (len=$length dash=$dash gap=$gap) gives no segments`, (args) => {
+    expect(dash_segments(args.length, args.dash, args.gap)).toEqual([])
+  })
+
+  test(`zero gap tiles the segment completely`, () => {
+    const segs = dash_segments(2, 0.5, 0)
+    const covered = segs.reduce((sum, seg) => sum + seg.length, 0)
+    expect(covered).toBeCloseTo(2, 10)
   })
 })

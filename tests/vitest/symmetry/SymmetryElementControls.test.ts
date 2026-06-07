@@ -3,6 +3,7 @@ import type { ShowSymmetryKinds, SymmetryElement } from '$lib/symmetry'
 import {
   count_symmetry_elements,
   DEFAULT_SHOW_SYM_KINDS,
+  has_visible_symmetry_overlay,
   SYM_ELEM_KIND_INFO,
   SYM_ELEM_KINDS,
   SymmetryElementControls,
@@ -43,6 +44,27 @@ describe(`count_symmetry_elements`, () => {
 
   test(`empty input gives empty record`, () => {
     expect(count_symmetry_elements([])).toEqual({})
+  })
+})
+
+describe(`has_visible_symmetry_overlay`, () => {
+  const inversion_only = [make_elem(`inversion`)]
+  test.each([
+    // [label, elements, show_kinds, expected]
+    [`no elements`, [], { rotation: true }, false],
+    [`rotation present + enabled`, SAMPLE_ELEMENTS, { rotation: true }, true],
+    // regression: enabled kind absent from elements must NOT count as visible
+    [`rotation-only default on inversion-only cell`, inversion_only, undefined, false],
+    [`inversion present + enabled`, inversion_only, { inversion: true }, true],
+    [`present kind but all toggles off`, SAMPLE_ELEMENTS, {}, false],
+    [`enabled kind not present`, inversion_only, { mirror: true }, false],
+  ] as const)(`%s`, (_label, elements, show_kinds, expected) => {
+    expect(has_visible_symmetry_overlay(elements, show_kinds)).toBe(expected)
+  })
+
+  test(`defaults to rotation-only when show_kinds omitted`, () => {
+    expect(has_visible_symmetry_overlay(SAMPLE_ELEMENTS)).toBe(true) // has rotations
+    expect(has_visible_symmetry_overlay([make_elem(`mirror`)])).toBe(false)
   })
 })
 

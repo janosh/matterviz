@@ -88,6 +88,15 @@ export function count_symmetry_elements(
   return counts
 }
 
+// Whether the overlay would actually draw something: at least one PRESENT element whose
+// kind is ENABLED in show_kinds. Used to gate declutter so callers don't hide polyhedra /
+// shrink atoms when the enabled kinds match no present element (e.g. the rotation-only
+// default on an inversion-only P-1 cell).
+export const has_visible_symmetry_overlay = (
+  elements: readonly SymmetryElement[],
+  show_kinds: ShowSymmetryKinds = DEFAULT_SHOW_SYM_KINDS,
+): boolean => elements.some((elem) => show_kinds[elem.kind] ?? false)
+
 const ELEM_TOL = 1e-6
 
 // The 12 edges of the unit cube [0,1]³ (corner pairs differing in exactly one coord)
@@ -521,6 +530,28 @@ export function symmetry_elements_from_ops(
       el1.label.localeCompare(el2.label) ||
       el1.point.join(`,`).localeCompare(el2.point.join(`,`)),
   )
+}
+
+// Evenly-spaced dash layout along a segment of given length (Å): returns dash centers
+// (distance from the segment start) and lengths. Dashes touch both segment ends so
+// dashed axes still visually span the full cell; the gap stretches as needed. Used to
+// render screw axes dashed (vs solid pure rotations) — translation-carrying elements
+// are dashed, echoing the ITA plane-group convention.
+export function dash_segments(
+  length: number,
+  dash: number,
+  gap: number,
+): { center: number; length: number }[] {
+  if (!(length > 0) || !(dash > 0) || gap < 0) return []
+  if (length <= dash) return [{ center: length / 2, length }]
+  const count = Math.floor((length + gap) / (dash + gap))
+  if (count <= 1) return [{ center: length / 2, length: dash }]
+  // count·dash + (count−1)·gap_actual = length, with gap_actual ≥ gap by construction
+  const gap_actual = (length - count * dash) / (count - 1)
+  return Array.from({ length: count }, (_, idx) => ({
+    center: idx * (dash + gap_actual) + dash / 2,
+    length: dash,
+  }))
 }
 
 // Convert a fractional direction or point to Cartesian coordinates (lattice rows are

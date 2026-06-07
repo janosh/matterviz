@@ -43,7 +43,7 @@
     get_property_colors,
   } from '$lib/structure/atom-properties'
   import type { SymmetryElement } from '$lib/symmetry'
-  import { DEFAULT_SHOW_SYM_KINDS } from '$lib/symmetry/symmetry-elements'
+  import { has_visible_symmetry_overlay } from '$lib/symmetry/symmetry-elements'
   import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
   import * as measure from '$lib/structure/measure'
   import {
@@ -316,8 +316,9 @@
     symmetry_elements?: SymmetryElement[]
     symmetry_elements_props?: Omit<ComponentProps<typeof SymmetryElements>, `elements` | `lattice`>
     // Auto-reduce visual clutter while a symmetry-element overlay is visible: hides
-    // coordination polyhedra and shrinks atoms so axes/planes/centers stay readable.
-    // Purely derived — toggling the overlay off restores the configured appearance.
+    // coordination polyhedra and calculated bonds, and shrinks atoms so axes/planes/
+    // centers stay readable. Purely derived — toggling the overlay off restores the
+    // configured appearance.
     symmetry_declutter?: boolean
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
     site_label_size?: number
@@ -985,20 +986,30 @@
   // AND at least one kind toggled on): hide coordination polyhedra and shrink atoms so
   // axes/planes/centers stay readable. Derived overrides only — the configured
   // appearance returns untouched as soon as the overlay goes away.
-  const sym_overlay_visible = $derived.by(() => {
-    if (!symmetry_elements.length) return false
-    const kinds = symmetry_elements_props.show_kinds ?? DEFAULT_SHOW_SYM_KINDS
-    return Object.values(kinds).some(Boolean)
-  })
+  // only declutter when the overlay actually draws something (an enabled kind is present);
+  // otherwise e.g. an inversion-only cell with the rotation-only default would hide
+  // polyhedra / shrink atoms with nothing rendered in their place
+  const sym_overlay_visible = $derived(
+    has_visible_symmetry_overlay(symmetry_elements, symmetry_elements_props.show_kinds),
+  )
   const declutter_active = $derived(symmetry_declutter && sym_overlay_visible)
   const effective_show_polyhedra: ShowBonds = $derived(
     declutter_active ? `never` : show_polyhedra,
   )
+  // Calculated bonds are hidden in declutter mode (only their cylinders — bond_pairs
+  // stay computed so tooltips and manually added bonds keep working)
+  const effective_show_bonds: ShowBonds = $derived(
+    declutter_active ? `never` : show_bonds,
+  )
   const effective_atom_radius = $derived(declutter_active ? atom_radius * 0.6 : atom_radius)
 
   $effect(() => {
-    // Bonds are computed when either bond rendering or polyhedra need them.
-    // Rendering of bond cylinders is gated separately on show_bonds below.
+    // Bonds are computed when either bond rendering or polyhedra need them. The
+    // raw/effective mix is deliberate: RAW show_bonds keeps bond_pairs available
+    // during symmetry declutter (cylinders hide via effective_show_bonds in
+    // bonds_to_render, but tooltips + manually added bonds still need the data),
+    // while EFFECTIVE show_polyhedra skips computing bonds whose only consumer —
+    // the polyhedra $derived below, gated on the same effective value — won't run.
     const want_bonds = applies_to_structure(show_bonds)
     const want_polyhedra = applies_to_structure(effective_show_polyhedra)
     if (structure && (want_bonds || want_polyhedra)) {
@@ -1041,6 +1052,15 @@
       if (polyhedra_hide_center_atoms && polyhedra_center_site_idxs.has(site_idx)) {
         return []
       }
+
+      // Phase-2 PBC images exist only to complete bonds/coordination polyhedra at
+      // cell faces. When neither renders (polyhedra toggled off, symmetry declutter,
+      // …) they'd float disconnected outside the cell — hide them.
+      if (
+        site.properties?.completion_image &&
+        !applies_to_structure(effective_show_bonds) &&
+        !applies_to_structure(effective_show_polyhedra)
+      ) return []
 
       // Calculate radius: same_size > site override > element override > default
       // All radii scale uniformly with atom_radius for consistent slider behavior
@@ -1158,7 +1178,7 @@
   // hidden but manually added bonds stay visible (bond_pairs may still be computed
   // for polyhedra, so this can't rely on bond_pairs being empty).
   let bonds_to_render = $derived.by(() => {
-    if (applies_to_structure(show_bonds)) return filtered_bond_pairs
+    if (applies_to_structure(effective_show_bonds)) return filtered_bond_pairs
     const added_keys = new Set(added_bonds.map(bond_key_for))
     return filtered_bond_pairs.filter((bond) => added_keys.has(bond_key_for(bond)))
   })

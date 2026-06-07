@@ -4,6 +4,15 @@ from symmetry_elements_from_ops and are expressed in fractional coordinates of t
 described by `lattice` — make sure both refer to the SAME cell (moyo operations are in
 the input-cell frame, so pass the original structure's lattice).
 
+Visual conventions (loosely following ITA diagram conventions: translation-carrying
+elements are dashed/striped):
+- rotation axes: solid cylinders, colored by order
+- screw axes: DOTTED lines (small spheres along the axis, same order colors)
+- mirror planes: solid translucent fills with opaque outlines
+- glide planes: STRIPED translucent fills (stripes run along the glide-translation
+  direction) with opaque outlines
+- inversion centers / rotoinversion markers: spheres
+
 For performance, geometries are merged per material group (one draw call per distinct
 color/opacity instead of one mesh per element) and disposed on change/unmount. -->
 <script lang="ts">
@@ -13,6 +22,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   import {
     clip_line_to_cell,
     clip_plane_to_cell,
+    dash_segments,
     DEFAULT_SHOW_SYM_KINDS,
     frac_to_cart_direction,
   } from './symmetry-elements'
@@ -20,10 +30,15 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   import {
     BufferAttribute,
     BufferGeometry,
+    ClampToEdgeWrapping,
     CylinderGeometry,
+    DataTexture,
     DoubleSide,
+    LinearFilter,
     Matrix4,
     Quaternion,
+    RepeatWrapping,
+    RGBAFormat,
     SphereGeometry,
     Vector3,
   } from 'three'
@@ -39,10 +54,17 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // hide 2-fold axes that are sub-elements of higher-order axes on the same line
     hide_redundant_axes = true,
     axis_radius = 0.04,
-    screw_radius = 0.025,
+    // screw axes render as DOTTED lines: small spheres along the axis
+    screw_dot_radius = 0.05,
+    screw_dot_gap = 0.12, // Å gap between consecutive dots
     inversion_radius = 0.12,
     plane_opacity = 0.2,
-    glide_opacity = 0.12,
+    glide_opacity = 0.15,
+    // opaque polygon outlines make overlapping translucent planes legible
+    show_plane_edges = true,
+    plane_edge_opacity = 0.9,
+    // stripe period in Å for glide-plane fills (stripes run along the glide direction)
+    glide_stripe_period = 0.7,
     axis_colors = { 2: `#e63946`, 3: `#2a9d8f`, 4: `#3a6fb0`, 6: `#9c27b0` },
     mirror_color = `#ffb703`,
     glide_color = `#8ecae6`,
@@ -53,10 +75,14 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     show_kinds?: ShowSymmetryKinds
     hide_redundant_axes?: boolean
     axis_radius?: number
-    screw_radius?: number
+    screw_dot_radius?: number
+    screw_dot_gap?: number
     inversion_radius?: number
     plane_opacity?: number
     glide_opacity?: number
+    show_plane_edges?: boolean
+    plane_edge_opacity?: number
+    glide_stripe_period?: number
     axis_colors?: Record<number, string>
     mirror_color?: string
     glide_color?: string
@@ -65,6 +91,25 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   const UP = new Vector3(0, 1, 0)
   const UNIT_SCALE = new Vector3(1, 1, 1)
+
+  // 1D stripe alpha texture for glide fills (three.js alphaMap samples the GREEN
+  // channel): ~55% full-alpha stripe, ~45% faint background so the plane stays
+  // contiguous between stripes. Repeats along U; V is constant.
+  const stripe_texture = (() => {
+    const width = 16
+    const data = new Uint8Array(width * 4)
+    for (let px = 0; px < width; px++) {
+      const val = px < 9 ? 255 : 56
+      data.set([val, val, val, 255], px * 4)
+    }
+    const tex = new DataTexture(data, width, 1, RGBAFormat)
+    tex.wrapS = RepeatWrapping
+    tex.wrapT = ClampToEdgeWrapping
+    tex.magFilter = LinearFilter
+    tex.minFilter = LinearFilter
+    tex.needsUpdate = true
+    return tex
+  })()
 
   // Key identifying the geometric line of an axis element (direction + intercept)
   const line_key = (elem: SymmetryElement): string => {
@@ -75,9 +120,32 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     return `${axis.join(`,`)}|${intercept.map((val) => val.toFixed(4)).join(`,`)}`
   }
 
-  type MaterialGroup = { geometry: BufferGeometry; color: string; opacity?: number }
+  type MaterialGroup = {
+    geometry: BufferGeometry
+    color: string
+    opacity?: number
+    striped?: boolean
+  }
 
-  // Axes (cylinders) + rotoinversion center markers (spheres), merged per color/radius
+  // Cylinder of given radius/length centered at `center` pointing along unit `dir`
+  const oriented_cylinder = (
+    center: Vector3,
+    dir_unit: Vector3,
+    radius: number,
+    length: number,
+  ): CylinderGeometry =>
+    new CylinderGeometry(radius, radius, length, 12).applyMatrix4(
+      new Matrix4().compose(
+        center,
+        new Quaternion().setFromUnitVectors(UP, dir_unit),
+        UNIT_SCALE,
+      ),
+    )
+
+  // Axes (cylinders) + rotoinversion center markers (spheres), merged per color/radius.
+  // Pure rotations render solid; screw axes render DASHED so the two are
+  // distinguishable at a glance (translation-carrying elements are dashed, as in ITA
+  // diagrams).
   const axis_groups: MaterialGroup[] = $derived.by(() => {
     const axis_elements = elements.filter(
       (elem) =>
@@ -103,20 +171,31 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       const clipped = clip_line_to_cell(elem.point, elem.axis as Vec3, lattice)
       if (!clipped) continue
       const [start, end] = clipped
-      const dir = new Vector3(...math.subtract(end, start))
-      const length = dir.length()
+      const span = new Vector3(...math.subtract(end, start))
+      const length = span.length()
       if (length < 1e-6) continue
+      const dir_unit = span.clone().normalize()
+      const start_vec = new Vector3(...start)
 
-      const radius = elem.kind === `screw` ? screw_radius : axis_radius
       const color = axis_colors[elem.order] ?? `#777777`
-      const center = new Vector3(...math.scale(math.add(start, end), 0.5))
-      const quat = new Quaternion().setFromUnitVectors(UP, dir.normalize())
-      const cylinder = new CylinderGeometry(radius, radius, length, 12).applyMatrix4(
-        new Matrix4().compose(center, quat, UNIT_SCALE),
-      )
-      const group_key = `${color}|${radius}`
+      const group_key = `${color}|${elem.kind === `screw` ? `dot` : `solid`}`
       const group = parts_by_group.get(group_key) ?? []
-      group.push(cylinder)
+
+      if (elem.kind === `screw`) {
+        // Dotted line: spheres spaced along the axis, touching both cell faces
+        for (
+          const dot of dash_segments(length, 2 * screw_dot_radius, screw_dot_gap)
+        ) {
+          const center = start_vec.clone().addScaledVector(dir_unit, dot.center)
+          group.push(
+            new SphereGeometry(screw_dot_radius, 10, 10)
+              .translate(center.x, center.y, center.z),
+          )
+        }
+      } else {
+        const center = start_vec.clone().addScaledVector(dir_unit, length / 2)
+        group.push(oriented_cylinder(center, dir_unit, axis_radius, length))
+      }
       if (elem.kind === `rotoinversion`) {
         const [cx, cy, cz] = frac_to_cart_direction(elem.point, lattice)
         group.push(new SphereGeometry(inversion_radius * 0.8, 16, 16).translate(cx, cy, cz))
@@ -131,33 +210,71 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     })
   })
 
-  // Mirror/glide planes: triangles concatenated per color+opacity into one geometry
+  // Mirror/glide plane FILLS: triangles concatenated per color+opacity into one
+  // geometry. Glide fills carry per-vertex UVs whose U coordinate measures Cartesian
+  // distance along the glide-translation direction, so the stripe alphaMap renders
+  // stripes running along the glide direction — the pattern shows both that the plane
+  // glides and where it translates.
   const plane_groups: MaterialGroup[] = $derived.by(() => {
-    const triangles_by_group = new Map<string, number[]>()
+    const groups = new Map<string, { positions: number[]; uvs: number[] }>()
+    for (const elem of elements) {
+      if ((elem.kind !== `mirror` && elem.kind !== `glide`) || !elem.axis) continue
+      if (!show_kinds[elem.kind]) continue
+      const polygon = clip_plane_to_cell(elem.point, elem.axis, lattice)
+      if (polygon.length < 3) continue
+      const striped = elem.kind === `glide` && elem.translation !== null
+      const color = elem.kind === `mirror` ? mirror_color : glide_color
+      const opacity = elem.kind === `mirror` ? plane_opacity : glide_opacity
+      const group_key = `${color}|${opacity}|${striped ? 1 : 0}`
+      const group = groups.get(group_key) ?? { positions: [], uvs: [] }
+      // Stripe coordinate: Cartesian distance along the glide direction / period
+      const stripe_dir = striped
+        ? math.normalize_vec(
+          frac_to_cart_direction(elem.translation as Vec3, lattice),
+        )
+        : null
+      const stripe_u = (vert: Vec3): number =>
+        stripe_dir ? math.dot(vert, stripe_dir) / glide_stripe_period : 0
+      // Fan triangulation of the convex polygon
+      for (let idx = 1; idx < polygon.length - 1; idx++) {
+        for (const vert of [polygon[0], polygon[idx], polygon[idx + 1]]) {
+          group.positions.push(...vert)
+          group.uvs.push(stripe_u(vert), 0.5)
+        }
+      }
+      groups.set(group_key, group)
+    }
+    return [...groups.entries()].map(([group_key, { positions, uvs }]) => {
+      const geometry = new BufferGeometry()
+      geometry.setAttribute(`position`, new BufferAttribute(new Float32Array(positions), 3))
+      geometry.setAttribute(`uv`, new BufferAttribute(new Float32Array(uvs), 2))
+      geometry.computeVertexNormals()
+      const [color, opacity, striped] = group_key.split(`|`)
+      return { geometry, color, opacity: Number(opacity), striped: striped === `1` }
+    })
+  })
+
+  // Opaque plane OUTLINES (line segments per color): crisp borders keep overlapping
+  // translucent planes individually legible instead of blending into a single wash.
+  const plane_edge_groups: MaterialGroup[] = $derived.by(() => {
+    if (!show_plane_edges) return []
+    const segments_by_color = new Map<string, number[]>()
     for (const elem of elements) {
       if ((elem.kind !== `mirror` && elem.kind !== `glide`) || !elem.axis) continue
       if (!show_kinds[elem.kind]) continue
       const polygon = clip_plane_to_cell(elem.point, elem.axis, lattice)
       if (polygon.length < 3) continue
       const color = elem.kind === `mirror` ? mirror_color : glide_color
-      const opacity = elem.kind === `mirror` ? plane_opacity : glide_opacity
-      const group_key = `${color}|${opacity}`
-      const positions = triangles_by_group.get(group_key) ?? []
-      // Fan triangulation of the convex polygon
-      for (let idx = 1; idx < polygon.length - 1; idx++) {
-        positions.push(...polygon[0], ...polygon[idx], ...polygon[idx + 1])
+      const positions = segments_by_color.get(color) ?? []
+      for (let idx = 0; idx < polygon.length; idx++) {
+        positions.push(...polygon[idx], ...polygon[(idx + 1) % polygon.length])
       }
-      triangles_by_group.set(group_key, positions)
+      segments_by_color.set(color, positions)
     }
-    return [...triangles_by_group.entries()].map(([group_key, positions]) => {
+    return [...segments_by_color.entries()].map(([color, positions]) => {
       const geometry = new BufferGeometry()
-      geometry.setAttribute(
-        `position`,
-        new BufferAttribute(new Float32Array(positions), 3),
-      )
-      geometry.computeVertexNormals()
-      const [color, opacity] = group_key.split(`|`)
-      return { geometry, color, opacity: Number(opacity) }
+      geometry.setAttribute(`position`, new BufferAttribute(new Float32Array(positions), 3))
+      return { geometry, color }
     })
   })
 
@@ -181,10 +298,14 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     const geometries = [
       ...axis_groups.map((group) => group.geometry),
       ...plane_groups.map((group) => group.geometry),
+      ...plane_edge_groups.map((group) => group.geometry),
       ...(inversion_group ? [inversion_group.geometry] : []),
     ]
     return () => geometries.forEach((geo) => geo.dispose())
   })
+
+  // Dispose the (non-reactive) stripe texture on unmount
+  $effect(() => () => stripe_texture.dispose())
 </script>
 
 {#each axis_groups as group, idx (idx)}
@@ -199,10 +320,21 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       color={group.color}
       transparent
       opacity={group.opacity}
+      alphaMap={group.striped ? stripe_texture : null}
       side={DoubleSide}
       depthWrite={false}
     />
   </T.Mesh>
+{/each}
+
+{#each plane_edge_groups as group, idx (idx)}
+  <T.LineSegments geometry={group.geometry}>
+    <T.LineBasicMaterial
+      color={group.color}
+      transparent={plane_edge_opacity < 1}
+      opacity={plane_edge_opacity}
+    />
+  </T.LineSegments>
 {/each}
 
 {#if inversion_group}
