@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { page } from '$app/state'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure, Molecule } from '$lib/structure'
@@ -8,6 +9,7 @@
   import lifepo4_cif from '$site/structures/LiFePO4.cif?raw'
   import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
   import rutile_cif from '$site/structures/TiO2.cif?raw'
+  import { onMount } from 'svelte'
 
   // Load any site structure fixture via ?file=<name> URL param (e.g.
   // /structure/polyhedra?file=LiFePO4.cif) - handy for visual testing
@@ -17,6 +19,9 @@
     import: `default`,
   })
   let url_structure = $derived.by(() => {
+    // ?file=/?supercell= are a dev-only convenience; url.searchParams is off-limits during
+    // prerender (would 500 the static build), so only read them client-side
+    if (!browser) return null
     const file_param = page.url.searchParams.get(`file`)
     if (!file_param) return null
     const entry = Object.entries(raw_structure_files).find(([path]) =>
@@ -82,17 +87,19 @@
 
   let active_id = $state(examples[0].id)
   let active = $derived(examples.find((ex) => ex.id === active_id) ?? examples[0])
-  // ?supercell=2x2x2 URL param overrides; ?file= structures default to 1x1x1
-  let supercell_scaling = $state(
-    page.url.searchParams.get(`supercell`) ??
-      (page.url.searchParams.get(`file`) ? `1x1x1` : examples[0].supercell ?? `1x1x1`),
-  )
+  let supercell_scaling = $state(examples[0].supercell ?? `1x1x1`)
+  // ?supercell=2x2x2 overrides; ?file= structures default to 1x1x1. Read client-side only
+  // (prerender forbids url.searchParams) and once on mount so it doesn't fight user changes.
+  onMount(() => {
+    const supercell = page.url.searchParams.get(`supercell`)
+    if (supercell) supercell_scaling = supercell
+    else if (page.url.searchParams.get(`file`)) supercell_scaling = `1x1x1`
+  })
   let scene_props = $state({
     show_polyhedra: `crystals` as const,
     polyhedra_opacity: DEFAULTS.structure.polyhedra_opacity,
     polyhedra_show_edges: true,
     polyhedra_hide_center_atoms: false,
-    polyhedra_max_neighbors: DEFAULTS.structure.polyhedra_max_neighbors,
     polyhedra_excluded_elements: [] as string[],
     polyhedra_included_elements: [] as string[],
   })
@@ -102,7 +109,6 @@
     supercell_scaling = example.supercell ?? `1x1x1`
     scene_props.polyhedra_excluded_elements = []
     scene_props.polyhedra_included_elements = []
-    scene_props.polyhedra_max_neighbors = DEFAULTS.structure.polyhedra_max_neighbors
   }
 
   // Octahedral SF6 molecule (S-F bond length 1.56 Å) to show polyhedra
@@ -185,8 +191,6 @@
             scene_props.polyhedra_included_elements = included.includes(`Ba`)
               ? included.filter((elem) => elem !== `Ba`)
               : [...included, `Ba`]
-            // BaO12 cuboctahedra (CN 12) also need the CN cap raised
-            scene_props.polyhedra_max_neighbors = 12
           }}
         />
         Ba polyhedra
