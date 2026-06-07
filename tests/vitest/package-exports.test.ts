@@ -18,6 +18,18 @@ function source_candidates(dist_target: string): string[] {
   const rel = dist_target.replace(/^\.\/dist\//, ``).replace(/\.d\.ts$/, ``)
   if (/\.(css|json)$/.test(rel)) return [join(lib_dir, rel)] // assets copied verbatim
   const base = rel.replace(/\.(js|mjs|cjs)$/, ``)
+  // Subpath-pattern export (e.g. plot/*/index): expand the single `*` segment against the
+  // real subdirectories so the wildcard is validated to point at >= 1 source file.
+  if (base.includes(`*`)) {
+    const [prefix, suffix] = base.split(`*`)
+    const parent = join(lib_dir, prefix)
+    if (!existsSync(parent)) return []
+    return readdirSync(parent, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .flatMap((entry) =>
+        source_extensions.map((ext) => join(lib_dir, `${prefix}${entry.name}${suffix}${ext}`))
+      )
+  }
   return source_extensions.map((ext) => join(lib_dir, `${base}${ext}`))
 }
 
