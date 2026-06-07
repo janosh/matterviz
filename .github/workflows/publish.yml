@@ -31,9 +31,11 @@ on:
 permissions:
   contents: read
 
-# one publish per version, but never cancel an in-flight one (a half-published release is worse)
+# one publish per version, but never cancel an in-flight one (a half-published release is
+# worse). Normalize to `v<version>` so a tag push (ref_name `v0.4.0`) and a manual run
+# (input `0.4.0`) for the same release share one group.
 concurrency:
-  group: publish-${{ github.event.inputs.version || github.ref }}
+  group: publish-${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
