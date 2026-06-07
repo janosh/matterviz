@@ -44,6 +44,50 @@ export type SymmetryElement = {
   translation: Vec3 | null
 }
 
+// All element kinds in display order (axes first, then planes, then point elements)
+export const SYM_ELEM_KINDS = [
+  `rotation`,
+  `screw`,
+  `mirror`,
+  `glide`,
+  `rotoinversion`,
+  `inversion`,
+] as const satisfies readonly SymmetryElementKind[]
+
+// Per-kind overlay visibility. Kinds absent from the record are hidden.
+export type ShowSymmetryKinds = Partial<Record<SymmetryElementKind, boolean>>
+
+// Default overlay visibility: a SINGLE kind (proper rotation axes). High-symmetry
+// structures easily have 100+ distinct elements which, drawn all at once, bury the
+// structure entirely. Users opt into additional kinds individually via
+// SymmetryElementControls (or the show_kinds prop).
+export const DEFAULT_SHOW_SYM_KINDS: ShowSymmetryKinds = { rotation: true }
+
+// Human-readable labels + representative legend colors per kind. mirror/glide/
+// rotoinversion/inversion match the SymmetryElements.svelte render colors exactly;
+// rotation/screw axes are colored by rotation order in-scene, so their swatch uses the
+// 2-fold color as representative.
+export const SYM_ELEM_KIND_INFO: Record<
+  SymmetryElementKind,
+  { label: string; color: string }
+> = {
+  rotation: { label: `rotation axes`, color: `#e63946` },
+  screw: { label: `screw axes`, color: `#e76f51` },
+  mirror: { label: `mirror planes`, color: `#ffb703` },
+  glide: { label: `glide planes`, color: `#8ecae6` },
+  rotoinversion: { label: `rotoinversion axes`, color: `#9c27b0` },
+  inversion: { label: `inversion centers`, color: `#555555` },
+}
+
+// Tally elements per kind (for legend labels like "mirror planes (9)")
+export function count_symmetry_elements(
+  elements: readonly SymmetryElement[],
+): Partial<Record<SymmetryElementKind, number>> {
+  const counts: Partial<Record<SymmetryElementKind, number>> = {}
+  for (const elem of elements) counts[elem.kind] = (counts[elem.kind] ?? 0) + 1
+  return counts
+}
+
 const ELEM_TOL = 1e-6
 
 // The 12 edges of the unit cube [0,1]³ (corner pairs differing in exactly one coord)

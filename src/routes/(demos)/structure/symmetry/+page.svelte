@@ -6,12 +6,14 @@
   import FilePicker from '$lib/FilePicker.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
-  import type { CellType, SymmetrySettings } from '$lib/symmetry'
+  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '$lib/symmetry'
   import {
+    DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
     ensure_moyo_wasm_ready,
     map_wyckoff_to_all_atoms,
     symmetry_elements_from_ops,
+    SymmetryElementControls,
     SymmetryStats,
     wyckoff_positions_from_moyo,
     WyckoffTable,
@@ -36,6 +38,8 @@
   let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)
   let stacked_sym_settings = $state<SymmetrySettings>(default_sym_settings)
   let show_sym_elements = $state(false)
+  // Per-kind overlay visibility — starts with rotation axes only to avoid overplotting
+  let show_sym_kinds = $state<ShowSymmetryKinds>({ ...DEFAULT_SHOW_SYM_KINDS })
   // Cell type of the top example viewer (bound to its controls). moyo operations are in
   // the input-cell (original) frame, so the overlay is only valid while that frame is
   // rendered.
@@ -114,8 +118,15 @@
       />
       <label style="display: flex; gap: 6pt; align-items: center; margin-top: 1em">
         <input type="checkbox" bind:checked={show_sym_elements} />
-        Show symmetry elements (rotation axes, mirror/glide planes, inversion centers)
+        Show symmetry elements
       </label>
+      {#if show_sym_elements && sym_elements.length > 0}
+        <SymmetryElementControls
+          elements={sym_elements}
+          bind:show_kinds={show_sym_kinds}
+          style="margin: 0.5em 0 0 1.5em"
+        />
+      {/if}
     {:else}
       <EmptyState
         message="Load a structure to analyze its symmetry"
@@ -134,6 +145,7 @@
       active_sites: active_wyckoff_sites,
       selected_sites: hovered_wyckoff_sites,
       symmetry_elements: sym_elements,
+      symmetry_elements_props: { show_kinds: show_sym_kinds },
     }}
     on_file_load={({ structure, filename = `` }) => {
       current_filename = filename

@@ -9,10 +9,11 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 <script lang="ts">
   import type { Matrix3x3, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import type { SymmetryElement } from './symmetry-elements'
+  import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     clip_line_to_cell,
     clip_plane_to_cell,
+    DEFAULT_SHOW_SYM_KINDS,
     frac_to_cart_direction,
   } from './symmetry-elements'
   import { T } from '@threlte/core'
@@ -31,9 +32,10 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   let {
     elements = [],
     lattice,
-    show_axes = true,
-    show_planes = true,
-    show_inversion_centers = true,
+    // Per-kind visibility. Defaults to rotation axes ONLY: drawing every kind at once
+    // buries the structure under overlays for high-symmetry cells. Toggle additional
+    // kinds individually (e.g. via SymmetryElementControls).
+    show_kinds = DEFAULT_SHOW_SYM_KINDS,
     // hide 2-fold axes that are sub-elements of higher-order axes on the same line
     hide_redundant_axes = true,
     axis_radius = 0.04,
@@ -48,9 +50,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   }: {
     elements?: SymmetryElement[]
     lattice: Matrix3x3
-    show_axes?: boolean
-    show_planes?: boolean
-    show_inversion_centers?: boolean
+    show_kinds?: ShowSymmetryKinds
     hide_redundant_axes?: boolean
     axis_radius?: number
     screw_radius?: number
@@ -79,12 +79,16 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   // Axes (cylinders) + rotoinversion center markers (spheres), merged per color/radius
   const axis_groups: MaterialGroup[] = $derived.by(() => {
-    if (!show_axes) return []
     const axis_elements = elements.filter(
-      (elem) => [`rotation`, `screw`, `rotoinversion`].includes(elem.kind) && elem.axis,
+      (elem) =>
+        (elem.kind === `rotation` || elem.kind === `screw` ||
+          elem.kind === `rotoinversion`) &&
+        show_kinds[elem.kind] && elem.axis,
     )
     // Drop 2-fold axes coincident with a higher-order axis (4 contains 2, 6 contains
-    // 2 and 3, -4 contains 2, …) to reduce visual clutter
+    // 2 and 3, -4 contains 2, …) to reduce visual clutter. Computed over the VISIBLE
+    // elements only, so 2-folds reappear when their enclosing higher-order kind is
+    // toggled off.
     const max_order_by_line = new Map<string, number>()
     for (const elem of axis_elements) {
       const key = line_key(elem)
@@ -129,10 +133,10 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   // Mirror/glide planes: triangles concatenated per color+opacity into one geometry
   const plane_groups: MaterialGroup[] = $derived.by(() => {
-    if (!show_planes) return []
     const triangles_by_group = new Map<string, number[]>()
     for (const elem of elements) {
       if ((elem.kind !== `mirror` && elem.kind !== `glide`) || !elem.axis) continue
+      if (!show_kinds[elem.kind]) continue
       const polygon = clip_plane_to_cell(elem.point, elem.axis, lattice)
       if (polygon.length < 3) continue
       const color = elem.kind === `mirror` ? mirror_color : glide_color
@@ -159,7 +163,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   // Inversion centers: spheres merged into a single geometry
   const inversion_group: MaterialGroup | null = $derived.by(() => {
-    if (!show_inversion_centers) return null
+    if (!show_kinds.inversion) return null
     const spheres = elements
       .filter((elem) => elem.kind === `inversion`)
       .map((elem) => {

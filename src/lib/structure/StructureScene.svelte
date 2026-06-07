@@ -43,6 +43,7 @@
     get_property_colors,
   } from '$lib/structure/atom-properties'
   import type { SymmetryElement } from '$lib/symmetry'
+  import { DEFAULT_SHOW_SYM_KINDS } from '$lib/symmetry/symmetry-elements'
   import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
   import * as measure from '$lib/structure/measure'
   import {
@@ -203,6 +204,7 @@
     lattice_props = {},
     symmetry_elements = [],
     symmetry_elements_props = {},
+    symmetry_declutter = true,
     atom_label,
     camera_is_moving = $bindable(false),
     width = 0,
@@ -313,6 +315,10 @@
     // operations are in the input-cell frame, i.e. the original untransformed cell).
     symmetry_elements?: SymmetryElement[]
     symmetry_elements_props?: Omit<ComponentProps<typeof SymmetryElements>, `elements` | `lattice`>
+    // Auto-reduce visual clutter while a symmetry-element overlay is visible: hides
+    // coordination polyhedra and shrinks atoms so axes/planes/centers stay readable.
+    // Purely derived — toggling the overlay off restores the configured appearance.
+    symmetry_declutter?: boolean
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
     site_label_size?: number
     site_label_offset?: Vec3
@@ -975,11 +981,26 @@
     (when === `crystals` && Boolean(lattice)) ||
     (when === `molecules` && !lattice)
 
+  // Declutter while a symmetry-element overlay is actually visible (elements present
+  // AND at least one kind toggled on): hide coordination polyhedra and shrink atoms so
+  // axes/planes/centers stay readable. Derived overrides only — the configured
+  // appearance returns untouched as soon as the overlay goes away.
+  const sym_overlay_visible = $derived.by(() => {
+    if (!symmetry_elements.length) return false
+    const kinds = symmetry_elements_props.show_kinds ?? DEFAULT_SHOW_SYM_KINDS
+    return Object.values(kinds).some(Boolean)
+  })
+  const declutter_active = $derived(symmetry_declutter && sym_overlay_visible)
+  const effective_show_polyhedra: ShowBonds = $derived(
+    declutter_active ? `never` : show_polyhedra,
+  )
+  const effective_atom_radius = $derived(declutter_active ? atom_radius * 0.6 : atom_radius)
+
   $effect(() => {
     // Bonds are computed when either bond rendering or polyhedra need them.
     // Rendering of bond cylinders is gated separately on show_bonds below.
     const want_bonds = applies_to_structure(show_bonds)
-    const want_polyhedra = applies_to_structure(show_polyhedra)
+    const want_polyhedra = applies_to_structure(effective_show_polyhedra)
     if (structure && (want_bonds || want_polyhedra)) {
       bond_pairs = BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
     } else bond_pairs = []
@@ -1026,7 +1047,7 @@
       const base_radius = same_size_atoms
         ? 1
         : site_radius_overrides?.get(site_idx) ?? calc_weighted_radius(site)
-      const radius = base_radius * atom_radius
+      const radius = base_radius * effective_atom_radius
 
       // Use property color if available (e.g. coordination number, Wyckoff position)
       // Otherwise, each species gets its own element color (important for disordered sites)
@@ -1152,7 +1173,8 @@
   // never recompute the hull geometry.
   let polyhedra: Polyhedron[] = $derived.by(() => {
     if (
-      !structure?.sites || dragging_atoms || !applies_to_structure(show_polyhedra) ||
+      !structure?.sites || dragging_atoms ||
+      !applies_to_structure(effective_show_polyhedra) ||
       filtered_bond_pairs.length === 0
     ) return []
     return compute_polyhedra(structure, filtered_bond_pairs, {
@@ -1329,7 +1351,7 @@
       ? site_radius_overrides?.get(site_idx)
       : undefined
     const base_radius = same_size_atoms ? 1 : override ?? calc_weighted_radius(site)
-    return base_radius * atom_radius
+    return base_radius * effective_atom_radius
   }
 
   // Interpolate between spin-down (#3498db blue) and spin-up (#e74c3c red)
