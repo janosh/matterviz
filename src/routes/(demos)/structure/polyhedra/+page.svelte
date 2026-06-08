@@ -6,7 +6,7 @@
   import { Structure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
   import type { Vec3 } from '$lib/math'
-  import { glob_text } from '$site/structures'
+  import { structure_file_text } from '$site/structures'
   import batio3_poscar from '$site/structures/BaTiO3-tetragonal.poscar?raw'
   import lifepo4_cif from '$site/structures/LiFePO4.cif?raw'
   import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
@@ -15,21 +15,13 @@
 
   // Load any site structure fixture via ?file=<name> URL param (e.g.
   // /structure/polyhedra?file=LiFePO4.cif) - handy for visual testing
-  const raw_structure_files = import.meta.glob(`$site/structures/*`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  })
   let url_structure = $derived.by(() => {
     // ?file=/?supercell= are a dev-only convenience; url.searchParams is off-limits during
     // prerender (would 500 the static build), so only read them client-side
     if (!browser) return null
     const file_param = page.url.searchParams.get(`file`)
     if (!file_param) return null
-    const entry = Object.entries(raw_structure_files).find(([path]) =>
-      path.endsWith(`/${file_param}`)
-    )
-    const text = entry && glob_text(entry[1])
+    const text = structure_file_text(file_param)
     if (!text) return null
     try {
       return parse_any_structure(text, file_param)

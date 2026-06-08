@@ -5,7 +5,7 @@ import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transfo
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, resize_element, svg_query } from '../setup'
+import { bind_props, doc_query, mount_sized, resize_element, svg_query } from '../setup'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -13,23 +13,9 @@ const basic = {
   point_style: { fill: `steelblue`, radius: 5 },
 }
 
-async function mount_sized_scatter_plot(
+const mount_sized_scatter_plot = (
   props: Partial<ComponentProps<typeof ScatterPlot>>,
-): Promise<HTMLElement> {
-  const container = document.createElement(`div`)
-  document.body.append(container)
-  mount(ScatterPlot, {
-    target: container,
-    // Object.assign (not spread) keeps bind_props accessors intact for bindable-prop tests
-    props: Object.assign(props, {
-      style: `width: 400px; height: 300px; ${props.style ?? ``}`,
-    }),
-  })
-  const plot = container.querySelector<HTMLElement>(`.scatter`)
-  if (!plot) throw new Error(`ScatterPlot root element not found`)
-  await resize_element(plot, 400, 300)
-  return plot
-}
+): Promise<HTMLElement> => mount_sized(ScatterPlot, props, { selector: `.scatter` })
 
 const visible_marker_count = (series: DataSeries[]): number =>
   series.reduce((sum, srs) => {

@@ -552,11 +552,8 @@ export function dash_segments(
 // Convert a fractional direction or point to Cartesian coordinates (lattice rows are
 // basis vectors). Valid for axis directions AND plane normals (eigenvectors of the
 // fractional operator map to eigenvectors of the orthogonal Cartesian operator).
-export const frac_to_cart_direction = (frac: Vec3, lattice: Matrix3x3): Vec3 => [
-  frac[0] * lattice[0][0] + frac[1] * lattice[1][0] + frac[2] * lattice[2][0],
-  frac[0] * lattice[0][1] + frac[1] * lattice[1][1] + frac[2] * lattice[2][1],
-  frac[0] * lattice[0][2] + frac[1] * lattice[1][2] + frac[2] * lattice[2][2],
-]
+export const frac_to_cart_direction = (frac: Vec3, lattice: Matrix3x3): Vec3 =>
+  math.create_frac_to_cart(lattice)(frac)
 
 // Clip the line (point + t·direction, fractional) to the unit cell [0,1]³ using the
 // slab method, returning the Cartesian segment endpoints (or null if the line misses

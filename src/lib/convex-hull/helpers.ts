@@ -1,4 +1,4 @@
-import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
+import { add_alpha, type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
 import type { EnergyModeInfo } from '$lib/convex-hull'
 import type { ElementSymbol } from '$lib/element'
@@ -552,34 +552,6 @@ export function compute_all_polymorph_stats(
   return stats_map
 }
 
-function apply_alpha_to_color(color: string, alpha: number): string {
-  // Handle existing rgba format
-  if (color.includes(`rgba`)) return color.replace(/[\d.]+\)$/, `${alpha})`)
-
-  if (color.includes(`rgb(`)) {
-    // Convert rgb to rgba
-    return color.replace(/rgb\(/, `rgba(`).replace(/\)$/, `, ${alpha})`)
-  }
-
-  const hex_match = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(color) // Convert hex to rgba
-  if (hex_match) {
-    let hex = hex_match[1]
-    // Expand short form (e.g. "03F") to full form (e.g. "0033FF")
-    if (hex.length === 3)
-      hex = hex
-        .split(``)
-        .map((char) => char + char)
-        .join(``)
-
-    const red = parseInt(hex.slice(0, 2), 16)
-    const green = parseInt(hex.slice(2, 4), 16)
-    const blue = parseInt(hex.slice(4, 6), 16)
-    return `rgba(${red}, ${green}, ${blue}, ${alpha})`
-  }
-
-  return color // Return unchanged if format not recognized
-}
-
 export function draw_highlight_effect(
   ctx: CanvasRenderingContext2D,
   projected: { x: number; y: number },
@@ -600,8 +572,8 @@ export function draw_highlight_effect(
     ctx.lineWidth = (1.5 + pulse_val) * container_scale
     ctx.beginPath()
     ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-    ctx.fillStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.3)
-    ctx.strokeStyle = apply_alpha_to_color(hl_color, hl_opacity)
+    ctx.fillStyle = add_alpha(hl_color, hl_opacity * 0.3)
+    ctx.strokeStyle = add_alpha(hl_color, hl_opacity)
     ctx.fill()
     ctx.stroke()
   } else if (effect === `glow`) {
@@ -611,15 +583,15 @@ export function draw_highlight_effect(
     // Outer soft glow
     ctx.beginPath()
     ctx.arc(projected.x, projected.y, hl_size * 1.3, 0, 2 * Math.PI)
-    ctx.fillStyle = apply_alpha_to_color(hl_color, opacity * 0.15)
+    ctx.fillStyle = add_alpha(hl_color, opacity * 0.15)
     ctx.fill()
 
     // Inner glow with stroke
     ctx.lineWidth = 1.5 * container_scale
     ctx.beginPath()
     ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-    ctx.fillStyle = apply_alpha_to_color(hl_color, opacity * 0.4)
-    ctx.strokeStyle = apply_alpha_to_color(hl_color, opacity * 0.8)
+    ctx.fillStyle = add_alpha(hl_color, opacity * 0.4)
+    ctx.strokeStyle = add_alpha(hl_color, opacity * 0.8)
     ctx.fill()
     ctx.stroke()
   } else if (effect === `size`) {
@@ -644,8 +616,8 @@ export function draw_selection_highlight(
   pulse_opacity: number,
 ): void {
   const highlight_size = base_size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
-  ctx.fillStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity * 0.6)
-  ctx.strokeStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity)
+  ctx.fillStyle = add_alpha(`rgba(102, 240, 255, 1)`, pulse_opacity * 0.6)
+  ctx.strokeStyle = add_alpha(`rgba(102, 240, 255, 1)`, pulse_opacity)
   ctx.lineWidth = 2 * container_scale
   ctx.beginPath()
   ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)

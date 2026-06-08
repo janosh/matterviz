@@ -4,39 +4,18 @@ import type { Crystal } from '$lib/structure'
 import { make_supercell, parse_supercell_scaling } from '$lib/structure/supercell'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
-// Create a large test structure
-function create_test_structure(num_sites: number): Crystal {
-  const lattice_matrix: Matrix3x3 = [
-    [10, 0, 0],
-    [0, 10, 0],
-    [0, 0, 10],
-  ]
-
-  const sites = Array.from({ length: num_sites }, (_, idx) => ({
-    species: [{ element: `Fe` as const, occu: 1, oxidation_state: 0 }],
-    xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
-    abc: [Math.random(), Math.random(), Math.random()] as Vec3,
-    label: `Fe${idx}`,
-    properties: {},
-  }))
-
-  return {
-    lattice: {
-      matrix: lattice_matrix,
-      a: 10,
-      b: 10,
-      c: 10,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 1000,
-      pbc: [true, true, true] as [boolean, boolean, boolean],
-    },
-    sites,
-    charge: 0,
-  } as unknown as Crystal
-}
+// Create a large test structure with random Fe sites in a 10 Å cubic lattice
+const make_perf_structure = (num_sites: number): Crystal =>
+  make_crystal(
+    10,
+    Array.from({ length: num_sites }, () => ({
+      element: `Fe`,
+      xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
+    })),
+    { charge: 0 },
+  )
 
 // Increase thresholds in CI environment
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
@@ -91,7 +70,7 @@ describe(`supercell performance profiling`, () => {
   })
 
   test(`profile supercell generation phases`, () => {
-    const structure = create_test_structure(100)
+    const structure = make_perf_structure(100)
     const scaling = `3x3x3`
     const scaling_factors = parse_supercell_scaling(scaling)
     const [nx, ny, nz] = scaling_factors
@@ -235,7 +214,7 @@ describe(`supercell performance profiling`, () => {
 
     console.warn(`\nFull supercell generation (3x3x3):`)
     for (const size of sizes) {
-      const structure = create_test_structure(size)
+      const structure = make_perf_structure(size)
       make_supercell(structure, `3x3x3`) // Warm up JIT and one-time allocations
       const time = time_fastest_run(() => make_supercell(structure, `3x3x3`))
       results.push({ sites: size, time })

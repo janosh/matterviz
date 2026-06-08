@@ -1,6 +1,6 @@
 // Data extraction functions for trajectory analysis and plotting
 import { get_density } from '$lib/structure/index'
-import { calc_force_stats } from './helpers'
+import { calc_force_stats, copy_numeric_fields } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
 
 // Common data extractor that extracts energy and structural properties
@@ -13,19 +13,13 @@ export const energy_data_extractor: TrajectoryDataExtractor = (
 
   if (frame.metadata) {
     // Extract energy-related properties
-    const energy_fields = [
+    copy_numeric_fields(data, frame.metadata, [
       `energy`,
       `energy_per_atom`,
       `potential_energy`,
       `kinetic_energy`,
       `total_energy`,
-    ]
-
-    for (const field of energy_fields) {
-      if (field in frame.metadata && typeof frame.metadata[field] === `number`) {
-        data[field] = frame.metadata[field]
-      }
-    }
+    ])
   }
 
   return data
@@ -58,12 +52,12 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
     }
 
     // Extract other stress and pressure properties (no duplicates expected)
-    const other_stress_fields = [`stress_max`, `stress_frobenius`, `stress_trace`, `pressure`]
-    for (const field of other_stress_fields) {
-      if (field in frame.metadata && typeof frame.metadata[field] === `number`) {
-        data[field] = frame.metadata[field]
-      }
-    }
+    copy_numeric_fields(data, frame.metadata, [
+      `stress_max`,
+      `stress_frobenius`,
+      `stress_trace`,
+      `pressure`,
+    ])
   }
 
   return data
@@ -91,12 +85,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
 
   if (frame.metadata) {
     // Extract other structural properties, avoiding volume duplicate
-    const structural_fields = [`temperature`]
-
-    for (const field of structural_fields) {
-      if (field in frame.metadata && typeof frame.metadata[field] === `number`)
-        data[field] = frame.metadata[field]
-    }
+    copy_numeric_fields(data, frame.metadata, [`temperature`])
 
     // Handle density separately - prefer metadata, but calculate if not available
     if (frame.metadata.density && typeof frame.metadata.density === `number`) {

@@ -6,12 +6,8 @@ import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import { parse_xyz } from '$lib/structure/parse'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
-import {
-  ext_hint,
-  FORMAT_PATTERNS,
-  is_trajectory_file,
-  strip_compression_extensions,
-} from '$lib/trajectory/format-detect'
+import { strip_compression_extensions } from '$lib/io'
+import { ext_hint, FORMAT_PATTERNS, is_trajectory_file } from '$lib/trajectory/format-detect'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import {
   calc_force_stats,

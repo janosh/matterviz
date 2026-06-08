@@ -1,8 +1,8 @@
 import { Violin } from '$lib'
 import type { BoxPlotSeries } from '$lib/plot'
-import { type ComponentProps, mount } from 'svelte'
+import type { ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { resize_element } from '../setup'
+import { mount_sized } from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -19,20 +19,8 @@ const path_coords = (path_d: string): { xs: number[]; ys: number[] } => {
   }
 }
 
-async function mount_violin(
-  props: Partial<ComponentProps<typeof Violin>>,
-): Promise<HTMLElement> {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  mount(Violin, {
-    target,
-    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
-  })
-  const plot = target.querySelector<HTMLElement>(`.box-plot`)
-  if (!plot) throw new Error(`Violin root element not found`)
-  await resize_element(plot, 400, 300)
-  return plot
-}
+const mount_violin = (props: Partial<ComponentProps<typeof Violin>>): Promise<HTMLElement> =>
+  mount_sized(Violin, props, { selector: `.box-plot` })
 
 describe(`Violin`, () => {
   const series: BoxPlotSeries[] = [

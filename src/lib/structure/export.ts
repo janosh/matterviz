@@ -2,7 +2,7 @@ import { get_electro_neg_formula } from '$lib/composition'
 import { download } from '$lib/io/fetch'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
+import type { AnyStructure, Site } from '$lib/structure'
 import type { BufferGeometry, InstancedMesh, Material, Object3D, Scene } from 'three'
 import { Color, Group, Matrix4, Mesh, MeshStandardMaterial, ShaderMaterial } from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
@@ -406,6 +406,21 @@ export function create_structure_filename(
   return `${base_name}.${extension}`
 }
 
+// First species' element of a site, or `X` when the site has no species
+const site_element = (site: Site): string => site.species?.[0]?.element || `X`
+
+// Fractional coordinates from abc, falling back to converting xyz; throws when neither
+// is available. idx (when given) is included in the error message.
+function get_frac_coords(
+  site: Site,
+  cart_to_frac: ((xyz: Vec3) => Vec3) | null,
+  idx?: number,
+): number[] {
+  if (Array.isArray(site.abc) && site.abc.length >= 3) return site.abc.slice(0, 3)
+  if (site.xyz?.length >= 3 && cart_to_frac) return cart_to_frac(site.xyz.slice(0, 3) as Vec3)
+  throw new Error(`No valid coordinates found for site${idx === undefined ? `` : ` ${idx}`}`)
+}
+
 // Generate XYZ content string without saving
 export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
@@ -442,14 +457,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
 
   // Atom lines: element symbol followed by x, y, z coordinates
   for (const site of structure.sites) {
-    // Extract element symbol from species
-    let element_symbol = `X` // default fallback
-    if (site.species && Array.isArray(site.species) && site.species.length > 0) {
-      // species is an array of Species objects with element property
-      const first_species = site.species[0]
-      if (first_species && `element` in first_species && first_species.element)
-        element_symbol = first_species.element
-    }
+    const element_symbol = site_element(site)
 
     // Get coordinates - prefer xyz; fallback to abc (converted to cartesian if lattice available)
     let coords: number[]
@@ -581,13 +589,7 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     const site = structure.sites[idx]
     if (!site) continue // Skip if site is undefined
 
-    // Get fractional coordinates
-    let frac_coords: number[]
-    if (Array.isArray(site.abc) && site.abc.length >= 3) {
-      frac_coords = site.abc.slice(0, 3)
-    } else if (site.xyz?.length >= 3 && cart_to_frac) {
-      frac_coords = cart_to_frac(site.xyz)
-    } else throw new Error(`No valid coordinates found for site ${idx}`)
+    const frac_coords = get_frac_coords(site, cart_to_frac, idx)
     const coords_str = frac_coords.map((coord) => coord.toFixed(8)).join(` `)
 
     const species_list = site.species?.length ? site.species : [{ element: `X`, occu: 1 }]
@@ -640,31 +642,20 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
     throw new Error(`No valid lattice matrix for POSCAR export`)
   }
 
-  // Count atoms by element
-  const element_counts = new Map<string, number>()
-  const element_symbols: string[] = []
-
+  // Group sites by element in one pass, preserving first-appearance element order
+  const sites_by_element = new Map<string, Site[]>()
   for (const site of structure.sites) {
-    let element_symbol = `X` // default fallback
-    if (site.species && Array.isArray(site.species) && site.species.length > 0) {
-      const first_species = site.species[0]
-      if (first_species && `element` in first_species && first_species.element) {
-        element_symbol = first_species.element
-      }
-    }
-
-    if (!element_counts.has(element_symbol)) {
-      element_counts.set(element_symbol, 0)
-      element_symbols.push(element_symbol)
-    }
-    element_counts.set(element_symbol, Number(element_counts.get(element_symbol)) + 1)
+    const element_symbol = site_element(site)
+    const group = sites_by_element.get(element_symbol)
+    if (group) group.push(site)
+    else sites_by_element.set(element_symbol, [site])
   }
 
   // Element symbols line
-  lines.push(element_symbols.join(` `))
+  lines.push([...sites_by_element.keys()].join(` `))
 
   // Atom counts line
-  lines.push(element_symbols.map((el) => element_counts.get(el)).join(` `))
+  lines.push([...sites_by_element.values()].map((group) => group.length).join(` `))
 
   // Check if any site has selective dynamics
   const has_selective_dynamics = structure.sites.some(
@@ -682,45 +673,27 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
     lattice.matrix?.length === 3 ? math.create_cart_to_frac(lattice.matrix) : null
 
   // Atom coordinates grouped by element
-  for (const element_symbol of element_symbols) {
-    for (const site of structure.sites) {
-      let site_element = `X`
-      if (site.species && Array.isArray(site.species) && site.species.length > 0) {
-        const first_species = site.species[0]
-        if (first_species && `element` in first_species && first_species.element) {
-          site_element = first_species.element
-        }
+  for (const group of sites_by_element.values()) {
+    for (const site of group) {
+      const frac_coords = get_frac_coords(site, cart_to_frac)
+
+      let selective_dynamics_str = ``
+      if (has_selective_dynamics) {
+        const sel_dyn = (site.properties?.selective_dynamics ?? [
+          true,
+          true,
+          true,
+        ]) as boolean[]
+        selective_dynamics_str = ` ${sel_dyn[0] ? `T` : `F`} ${
+          sel_dyn[1] ? `T` : `F`
+        } ${sel_dyn[2] ? `T` : `F`}`
       }
 
-      if (site_element === element_symbol) {
-        // Get fractional coordinates
-        let frac_coords: number[]
-        if (site.abc && Array.isArray(site.abc) && site.abc.length >= 3) {
-          frac_coords = site.abc.slice(0, 3)
-        } else if (site.xyz?.length >= 3 && cart_to_frac) {
-          frac_coords = cart_to_frac(site.xyz.slice(0, 3) as Vec3)
-        } else {
-          throw new Error(`No valid coordinates found for site`)
-        }
-
-        let selective_dynamics_str = ``
-        if (has_selective_dynamics) {
-          const sel_dyn = (site.properties?.selective_dynamics ?? [
-            true,
-            true,
-            true,
-          ]) as boolean[]
-          selective_dynamics_str = ` ${sel_dyn[0] ? `T` : `F`} ${
-            sel_dyn[1] ? `T` : `F`
-          } ${sel_dyn[2] ? `T` : `F`}`
-        }
-
-        lines.push(
-          `${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(8)} ${frac_coords[2].toFixed(
-            8,
-          )}${selective_dynamics_str}`,
-        )
-      }
+      lines.push(
+        `${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(8)} ${frac_coords[2].toFixed(
+          8,
+        )}${selective_dynamics_str}`,
+      )
     }
   }
 
@@ -733,50 +706,24 @@ export function structure_to_json_str(structure?: AnyStructure): string {
   return JSON.stringify(structure, null, 2)
 }
 
-// Export structure as CIF format
-export function export_structure_as_cif(structure?: AnyStructure): void {
-  try {
-    const content = structure_to_cif_str(structure)
-    const filename = create_structure_filename(structure, `cif`)
-    download(content, filename, `chemical/x-cif`)
-  } catch (error) {
-    console.error(`Failed to export CIF:`, error)
-  }
-}
+// Text export formats: serializer + file extension + MIME type per format
+export const STRUCT_TEXT_FORMATS = {
+  json: { to_str: structure_to_json_str, ext: `json`, mime: `application/json` },
+  xyz: { to_str: structure_to_xyz_str, ext: `xyz`, mime: `text/plain` },
+  cif: { to_str: structure_to_cif_str, ext: `cif`, mime: `chemical/x-cif` },
+  poscar: { to_str: structure_to_poscar_str, ext: `poscar`, mime: `text/plain` },
+} as const
 
-// Export structure as VASP POSCAR format
-export function export_structure_as_poscar(structure?: AnyStructure): void {
-  try {
-    const content = structure_to_poscar_str(structure)
-    const filename = create_structure_filename(structure, `poscar`)
-    download(content, filename, `text/plain`)
-  } catch (error) {
-    console.error(`Failed to export POSCAR:`, error)
-  }
-}
+export type StructTextFormat = keyof typeof STRUCT_TEXT_FORMATS
 
-// Export structure as XYZ format. Format specification:
-// - Line 1: Number of atoms
-// - Line 2: Comment line (structure ID, formula, etc.)
-// - Remaining lines: Element symbol followed by x, y, z coordinates (in Angstrom)
-export function export_structure_as_xyz(structure?: AnyStructure): void {
+// Serialize structure in the given text format and trigger a browser download
+export function export_structure_as(fmt: StructTextFormat, structure?: AnyStructure): void {
+  const { to_str, ext, mime } = STRUCT_TEXT_FORMATS[fmt]
   try {
-    const xyz_content = structure_to_xyz_str(structure)
-    const filename = create_structure_filename(structure, `xyz`)
-    download(xyz_content, filename, `text/plain`)
+    const content = to_str(structure)
+    download(content, create_structure_filename(structure, ext), mime)
   } catch (error) {
-    console.error(`Error exporting XYZ:`, error)
-  }
-}
-
-// Export structure in pymatgen JSON format
-export function export_structure_as_json(structure?: AnyStructure): void {
-  try {
-    const data = structure_to_json_str(structure)
-    const filename = create_structure_filename(structure, `json`)
-    download(data, filename, `application/json`)
-  } catch (error) {
-    console.error(`Error exporting JSON:`, error)
+    console.error(`Failed to export ${fmt.toUpperCase()}:`, error)
   }
 }
 

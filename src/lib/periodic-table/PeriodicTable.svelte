@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { is_color } from '$lib/colors'
+  import { get_d3_interpolator, is_color } from '$lib/colors'
   import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
   import { element_data, ElementPhoto, ElementTile } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
   import { colors } from '$lib/state.svelte'
-  import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '$lib/colors'
@@ -186,7 +185,7 @@
   }
 
   let color_scale_fn = $derived(
-    typeof color_scale === `string` ? d3_sc[color_scale] : color_scale,
+    typeof color_scale === `string` ? get_d3_interpolator(color_scale) : color_scale,
   )
 
   let cs_min = $derived(

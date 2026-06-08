@@ -181,6 +181,21 @@ export function remove_drag_listeners(
 // which arrive in either order depending on drag direction)
 export const sorted_range = (a: number, b: number): Vec2 => [Math.min(a, b), Math.max(a, b)]
 
+// Invert a drag-rect edge pair through a scale to a sorted finite data range
+// (time scales invert to Dates, coerced to epoch numbers). Returns null when
+// either bound is non-finite or the range is degenerate (zero span).
+export function invert_rect_range(
+  scale: { invert: (px: number) => number | Date },
+  a_px: number,
+  b_px: number,
+): Vec2 | null {
+  const range = sorted_range(
+    to_epoch_num(scale.invert(a_px)),
+    to_epoch_num(scale.invert(b_px)),
+  )
+  return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
+}
+
 // Strict per-bound equality of two [min, max] ranges
 export const vec2_equal = (a: Vec2, b: Vec2): boolean => a[0] === b[0] && a[1] === b[1]
 

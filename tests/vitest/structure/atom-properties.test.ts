@@ -1,70 +1,31 @@
-import type { ElementSymbol, Site } from '$lib'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { ElementSymbol } from '$lib'
+import type { Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import * as ap from '$lib/structure/atom-properties'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
 type MoyoDatasetWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
-const make_site = (xyz: Vec3, element: ElementSymbol = `C`): Site => ({
-  xyz,
-  abc: [0, 0, 0],
-  species: [{ element, occu: 1, oxidation_state: 0 }],
-  label: element,
-  properties: {},
-})
-
-const make_struct = (sites: { xyz: Vec3; element?: ElementSymbol }[]): Crystal => ({
-  sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
-  charge: 0,
-  lattice: {
-    matrix: [
-      [10, 0, 0],
-      [0, 10, 0],
-      [0, 0, 10],
-    ] satisfies Matrix3x3,
-    pbc: [true, true, true],
-    a: 10,
-    b: 10,
-    c: 10,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 1000,
-  },
-})
+const make_struct = (sites: { xyz: Vec3; element?: ElementSymbol }[]): Crystal =>
+  make_crystal(
+    10,
+    sites.map(({ xyz, element = `C` }) => ({ element, xyz, label: element })),
+    { charge: 0 },
+  )
 
 // Helper: Create cubic structure with PBC for testing
 const make_cubic_structure = (
   sites: { abc: Vec3; element?: ElementSymbol; label?: string }[],
   lattice_size: number,
   pbc: [boolean, boolean, boolean] = [true, true, true],
-): Crystal => ({
-  sites: sites.map(({ abc, element = `C`, label }) => ({
-    species: [{ element, occu: 1, oxidation_state: 0 }],
-    abc,
-    xyz: [abc[0] * lattice_size, abc[1] * lattice_size, abc[2] * lattice_size] as Vec3,
-    label: label ?? element,
-    properties: {},
-  })),
-  lattice: {
-    matrix: [
-      [lattice_size, 0, 0],
-      [0, lattice_size, 0],
-      [0, 0, lattice_size],
-    ] satisfies Matrix3x3,
-    pbc,
-    a: lattice_size,
-    b: lattice_size,
-    c: lattice_size,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: lattice_size ** 3,
-  },
-  charge: 0,
-})
+): Crystal =>
+  make_crystal(
+    lattice_size,
+    sites.map(({ abc, element = `C`, label }) => ({ element, abc, label: label ?? element })),
+    { pbc, charge: 0 },
+  )
 
 describe(`Color Scales`, () => {
   test(`d3 scales`, () => expect(ap.get_d3_color_scales()).toContain(`interpolateViridis`))

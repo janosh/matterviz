@@ -3,6 +3,7 @@ import { expect, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import {
   dispatch_cancelable_keydown,
+  drop_file,
   enter_edit_atoms_mode,
   expect_canvas_changed,
   get_canvas_timeout,
@@ -1327,18 +1328,8 @@ Direct
 0.5 0.0 0.5
 0.0 0.5 0.5`
 
-    const data_transfer = await page.evaluateHandle((content) => {
-      const dt = new DataTransfer()
-      const file = new File([content], `test.poscar`, { type: `text/plain` })
-      dt.items.add(file)
-      return dt
-    }, poscar_content)
-
     // Drop on structure wrapper with proper drag events
-    await structure_div.dispatchEvent(`dragenter`, { dataTransfer: data_transfer })
-    await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
-    await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
-    await data_transfer.dispose()
+    await drop_file(page, structure_div, poscar_content, `test.poscar`)
 
     // Wait for structure to update with polling assertion
     await expect_canvas_changed(canvas, initial_screenshot)
@@ -1371,19 +1362,8 @@ H   -1.261   -0.728   -0.890
 H    1.261    0.728    0.890
 H    1.261    0.728   -0.890`
 
-    const data_transfer = await page.evaluateHandle((content) => {
-      const dt = new DataTransfer()
-      const file = new File([content], `cyclohexane.xyz`, {
-        type: `text/plain`,
-      })
-      dt.items.add(file)
-      return dt
-    }, xyz_content)
-
     // Drop on structure wrapper
-    await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
-    await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
-    await data_transfer.dispose()
+    await drop_file(page, structure_div, xyz_content, `cyclohexane.xyz`)
 
     // Wait for canvas to be visible and structure to update with polling assertion
     await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
@@ -1437,20 +1417,8 @@ H    1.261    0.728   -0.890`
       2,
     )
 
-    // Create file and simulate drop
-    const data_transfer = await page.evaluateHandle((content) => {
-      const dt = new DataTransfer()
-      const file = new File([content], `nacl.json`, {
-        type: `application/json`,
-      })
-      dt.items.add(file)
-      return dt
-    }, json_content)
-
-    // Drop on structure wrapper
-    await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
-    await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
-    await data_transfer.dispose()
+    // Create file and simulate drop on structure wrapper
+    await drop_file(page, structure_div, json_content, `nacl.json`, `application/json`)
 
     // Wait for file load event
     await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
@@ -1497,15 +1465,7 @@ H    1.261    0.728   -0.890`
       `0.0 0.0 0.0\n0.5 0.5 0.5\n0.5 0.5 0.0\n0.5 0.0 0.5\n0.0 0.5 0.5`,
     ].join(`\n`)
     const pre_drop = await canvas.screenshot()
-    const dt = await page.evaluateHandle((content) => {
-      const transfer = new DataTransfer()
-      transfer.items.add(new File([content], `BaTiO3.poscar`, { type: `text/plain` }))
-      return transfer
-    }, poscar)
-    await structure_div.dispatchEvent(`dragenter`, { dataTransfer: dt })
-    await structure_div.dispatchEvent(`dragover`, { dataTransfer: dt })
-    await structure_div.dispatchEvent(`drop`, { dataTransfer: dt })
-    await dt.dispose()
+    await drop_file(page, structure_div, poscar, `BaTiO3.poscar`)
 
     // Wait for the new structure to load and render
     await expect_canvas_changed(canvas, pre_drop)

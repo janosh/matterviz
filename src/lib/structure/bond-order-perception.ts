@@ -2,7 +2,7 @@
 // Kim & Kim, Bull. Korean Chem. Soc. 2015, 36, 1769). Clean-room TS port.
 import type { Vec2 } from '$lib/math'
 import type { BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
-import { get_bond_key } from './bonding'
+import { get_bond_key, get_majority_element } from './bonding'
 
 export type PerceptionOptions = { total_charge?: number; max_atoms?: number }
 
@@ -13,14 +13,7 @@ export type PerceivedBond = BondPair & {
   kekule_order?: BondOrder
 }
 
-const primary_element = (site: Site): string => {
-  return (
-    site.species?.reduce(
-      (best_species, species) => (species.occu > best_species.occu ? species : best_species),
-      site.species[0],
-    )?.element ?? ``
-  )
-}
+const primary_element = (site: Site): string => get_majority_element(site) ?? ``
 
 // xyz2mol atomic_valence. Valence combinations are re-sorted by total
 // valence sum so the least-saturated solution is tried first.

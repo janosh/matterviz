@@ -3,8 +3,6 @@ import {
   barycentric_to_ternary_xy,
   barycentric_to_ternary_xyz,
   barycentric_to_tetrahedral,
-  calculate_face_centroid,
-  calculate_face_normal,
   composition_to_barycentric_3d,
   composition_to_barycentric_4d,
   composition_to_barycentric_nd,
@@ -79,7 +77,7 @@ describe(`ternary: composition and plotting`, () => {
     ).toThrow(`Ternary system requires exactly 3 elements`)
     expect(() =>
       composition_to_barycentric_3d({ Li: 0, O: 0, Na: 0 }, [`Li`, `O`, `Na`]),
-    ).toThrow(`Composition has no elements from the ternary system`)
+    ).toThrow(/Composition has no elements from the system/)
   })
 
   test(`get_ternary_3d_coordinates filters entries and projects coords`, () => {
@@ -123,34 +121,6 @@ describe(`ternary: composition and plotting`, () => {
   })
 })
 
-describe(`ternary: geometry helpers`, () => {
-  test(`face normal points upward for counter-clockwise triangle`, () => {
-    const normal = calculate_face_normal(
-      { x: 0, y: 0, z: 0 },
-      { x: 1, y: 0, z: 0 },
-      {
-        x: 0,
-        y: 1,
-        z: 0,
-      },
-    )
-    expect(normal.z).toBeCloseTo(1, 6)
-  })
-
-  test(`face centroid is arithmetic mean`, () => {
-    const centroid = calculate_face_centroid(
-      { x: 0, y: 0, z: 0 },
-      { x: 2, y: 0, z: 2 },
-      {
-        x: 0,
-        y: 2,
-        z: 4,
-      },
-    )
-    expect(centroid).toEqual({ x: 2 / 3, y: 2 / 3, z: 2 })
-  })
-})
-
 describe(`quaternary: barycentric and projection`, () => {
   test(`tetrahedron vertex count and non-degenerate`, () => {
     expect(TETRAHEDRON_VERTICES).toHaveLength(4)
@@ -170,7 +140,7 @@ describe(`quaternary: barycentric and projection`, () => {
     const bc = composition_to_barycentric_4d({ A: 2, B: 2, C: 4, D: 2 }, elems)
     expect(bc.reduce((sum, val) => sum + val, 0)).toBeCloseTo(1, 9)
     expect(() => composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems)).toThrow(
-      `Composition has no elements from the quaternary system: A-B-C-D`,
+      /Composition has no elements from the system: A-B-C-D/,
     )
   })
 

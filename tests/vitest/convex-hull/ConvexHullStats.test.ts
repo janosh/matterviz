@@ -620,8 +620,10 @@ describe(`ConvexHullStats`, () => {
       switch_to_table()
       // With only binary entries, max_n_el ≤ 2 so no min N_el filter shown
       expect(get_table_filter_select(`Min N`)).toBeNull()
-      // Export controls should still be available without filters
-      expect(document.querySelector(`.export-actions .icon-btn`)).toBeInstanceOf(HTMLElement)
+      // Export controls (HeatmapTable built-in) should still be available without filters
+      expect(
+        document.querySelector(`.table-container .dropdown-wrapper .icon-btn`),
+      ).toBeInstanceOf(HTMLElement)
     })
   })
 
@@ -637,12 +639,8 @@ describe(`ConvexHullStats`, () => {
     }
 
     test.each([
-      { format: `CSV`, ext: `csv`, mime_type: `text/csv;charset=utf-8` },
-      {
-        format: `JSON`,
-        ext: `json`,
-        mime_type: `application/json;charset=utf-8`,
-      },
+      { format: `CSV`, ext: `csv`, mime_type: `text/csv` },
+      { format: `JSON`, ext: `json`, mime_type: `application/json` },
     ])(`exports $format via dropdown and closes menu`, ({ format, ext, mime_type }) => {
       const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
       const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
@@ -652,16 +650,16 @@ describe(`ConvexHullStats`, () => {
       const append = vi.spyOn(document.body, `append`)
       try {
         mount_stats_table(export_props)
-        doc_query(`.export-actions .icon-btn`).click()
+        doc_query(`.table-container .dropdown-wrapper .icon-btn`).click()
         flushSync()
 
         const options = Array.from(
-          document.querySelectorAll<HTMLButtonElement>(`.export-dropdown .dropdown-option`),
+          document.querySelectorAll<HTMLButtonElement>(`.dropdown-pane .dropdown-option`),
         )
         options.find((el) => el.textContent?.includes(format))?.click()
         flushSync()
 
-        expect(document.querySelector(`.export-dropdown`)).toBeNull()
+        expect(document.querySelector(`.dropdown-pane`)).toBeNull()
         expect(create_url).toHaveBeenCalledTimes(1)
         expect((create_url.mock.calls[0][0] as Blob).type).toBe(mime_type)
         expect(anchor_click).toHaveBeenCalledTimes(1)

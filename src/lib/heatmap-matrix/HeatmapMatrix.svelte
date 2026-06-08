@@ -1,12 +1,11 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { is_color, pick_contrast_color } from '$lib/colors'
+  import { get_d3_interpolator, is_color, pick_contrast_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { make_change_detector } from '$lib/utils'
-  import * as d3_sc from 'd3-scale-chromatic'
   import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -314,11 +313,9 @@
   })
 
   // === Color computation ===
-  let color_scale_fn = $derived.by(() => {
-    if (typeof color_scale === `function`) return color_scale
-    const named_scale = d3_sc[color_scale]
-    return typeof named_scale === `function` ? named_scale : d3_sc.interpolateViridis
-  })
+  let color_scale_fn = $derived(
+    typeof color_scale === `function` ? color_scale : get_d3_interpolator(color_scale),
+  )
 
   function get_transformed_value(x_idx: number, y_idx: number): number | null {
     const raw_value = get_value(x_idx, y_idx)

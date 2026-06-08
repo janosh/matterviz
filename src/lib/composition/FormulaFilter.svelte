@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import { get_alphabetical_formula } from '$lib/composition/format'
-  import { ELEM_SYMBOLS } from '$lib/labels'
+  import { is_elem_symbol } from '$lib/element'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { FormulaSearchMode } from './index'
@@ -425,8 +425,7 @@
     const [element_part, constraint] = without_operator.split(`:`)
     const element = element_part.trim()
     const is_wildcard = element === `*`
-    const is_valid_element = is_wildcard ||
-      ELEM_SYMBOLS.includes(element as (typeof ELEM_SYMBOLS)[number])
+    const is_valid_element = is_wildcard || is_elem_symbol(element)
     const normalized_constraint = constraint?.trim() || null
     const is_valid = is_valid_element && (normalized_constraint === null ||
       is_valid_constraint(normalized_constraint))

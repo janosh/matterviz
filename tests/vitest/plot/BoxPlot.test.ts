@@ -2,7 +2,7 @@ import { BoxPlot, type Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, inside_clip_path, resize_element } from '../setup'
+import { bind_props, inside_clip_path, mount_sized, resize_element } from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -12,18 +12,9 @@ const dist = (count: number, center = 0, spread = 1): number[] =>
 
 const basic: BoxPlotSeries = { y: dist(80, 0, 1), label: `Box A`, color: `steelblue` }
 
-async function mount_sized_box_plot(
+const mount_sized_box_plot = (
   props: Partial<ComponentProps<typeof BoxPlot>>,
-): Promise<HTMLElement> {
-  mount(BoxPlot, {
-    target: document.body,
-    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
-  })
-  const plot = document.querySelector<HTMLElement>(`.box-plot`)
-  if (!plot) throw new Error(`BoxPlot root element not found`)
-  await resize_element(plot, 400, 300)
-  return plot
-}
+): Promise<HTMLElement> => mount_sized(BoxPlot, props, { selector: `.box-plot` })
 
 // Boxes only render when they have at least one finite value (finite median)
 const rendered_box_count = (series: BoxPlotSeries[] = []): number =>

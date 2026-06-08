@@ -1,11 +1,8 @@
 // XYZ / extxyz trajectory parsing
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
-import {
-  calc_force_stats,
-  coerce_element_symbol,
-  create_trajectory_frame,
-} from '$lib/trajectory/helpers'
+import { coerce_elem_symbol } from '$lib/element'
+import { calc_force_stats, create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 // Resolve species/pos/forces column offsets from an extxyz Properties string of
@@ -94,7 +91,7 @@ export function parse_xyz_atom_lines(
       continue
     }
     const symbol = parts[species_col]
-    const element_symbol = coerce_element_symbol(symbol)
+    const element_symbol = coerce_elem_symbol(symbol)
     if (!element_symbol) {
       console.warn(
         `Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label}`,

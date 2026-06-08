@@ -1,4 +1,5 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
+import type { VolumetricData } from '$lib/isosurface/types'
 import * as math from '$lib/math'
 import type { Crystal, LatticeParams, Pbc, Site } from '$lib/structure'
 import type { TrajectoryFrame } from '$lib/trajectory'
@@ -6,7 +7,7 @@ import init, { type MoyoDataset } from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
-import { flushSync, tick } from 'svelte'
+import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { beforeEach, expect, vi } from 'vitest'
 
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
@@ -183,6 +184,31 @@ export async function resize_element(
   await tick()
 }
 
+// Mount a component into a fresh container, find its root via `selector`, and
+// resize it so width/height-dependent rendering (SVG plots, canvases) kicks in.
+// oxlint-disable-next-line typescript-eslint/no-explicit-any
+export async function mount_sized<Comp extends Component<any>>(
+  component: Comp,
+  props: Partial<ComponentProps<Comp>>,
+  options: { selector: string; width?: number; height?: number },
+): Promise<HTMLElement> {
+  const { selector, width = 400, height = 300 } = options
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  const style = (props as { style?: string }).style ?? ``
+  // Object.assign (not spread) keeps bind_props accessors intact
+  mount(component, {
+    target,
+    props: Object.assign(props, {
+      style: `width: ${width}px; height: ${height}px; ${style}`,
+    }),
+  })
+  const root = target.querySelector<HTMLElement>(selector)
+  if (!root) throw new Error(`No element found for selector: ${selector}`)
+  await resize_element(root, width, height)
+  return root
+}
+
 export const make_grid = (
   nx: number,
   ny: number,
@@ -196,6 +222,24 @@ export const make_grid = (
       ),
     ),
   )
+
+// Minimal VolumetricData fixture with sensible defaults; grid_dims derive from grid shape
+export const make_volume = (
+  grid: number[][][],
+  overrides: Partial<VolumetricData> = {},
+): VolumetricData => ({
+  grid,
+  grid_dims: [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0],
+  lattice: [
+    [5, 0, 0],
+    [0, 5, 0],
+    [0, 0, 5],
+  ],
+  origin: [0, 0, 0],
+  data_range: { min: 0, max: 1, abs_max: 1, mean: 0.5 },
+  periodic: true,
+  ...overrides,
+})
 
 export function read_binary_test_file(
   filename: string,
@@ -222,10 +266,12 @@ export const load_json = <T = unknown>(file_path: string): T =>
   JSON.parse(read_maybe_gz(file_path)) as T
 
 // Factory for a trajectory frame with `site_count` hydrogen atoms along x.
+// Pass `lattice_params` to attach a diagonal lattice (defaults: lengths 1, angles 90, volume 1).
 export const make_trajectory_frame = (
   step: number,
   site_count = 3,
   metadata: Record<string, unknown> = {},
+  lattice_params?: Record<string, number>,
 ): TrajectoryFrame => ({
   step,
   metadata,
@@ -238,6 +284,23 @@ export const make_trajectory_frame = (
       label: `H${idx + 1}`,
       properties: {},
     })),
+    ...(lattice_params && {
+      lattice: {
+        matrix: [
+          [lattice_params.a || 1, 0, 0],
+          [0, lattice_params.b || 1, 0],
+          [0, 0, lattice_params.c || 1],
+        ] as math.Matrix3x3,
+        pbc: [true, true, true] as Pbc,
+        a: lattice_params.a || 1,
+        b: lattice_params.b || 1,
+        c: lattice_params.c || 1,
+        alpha: lattice_params.alpha || 90,
+        beta: lattice_params.beta || 90,
+        gamma: lattice_params.gamma || 90,
+        volume: lattice_params.volume || 1,
+      },
+    }),
   },
 })
 
@@ -398,8 +461,10 @@ export function make_crystal(
 
   // Use standard pymatgen convention for frac↔cart conversion:
   // xyz = transpose(lattice) · abc, abc = inv(transpose(lattice)) · xyz
+  // cart_to_frac inverts the matrix eagerly, so create it lazily to support
+  // degenerate (singular) lattices as long as all sites pass abc coords
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-  const cart_to_frac = math.create_cart_to_frac(lattice_matrix)
+  let cart_to_frac: ((vec: Vec3) => Vec3) | undefined
   const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
   const pbc = options.pbc ?? [true, true, true]
 
@@ -414,7 +479,7 @@ export function make_crystal(
       xyz = frac_to_cart(abc)
     } else if (input.xyz) {
       xyz = input.xyz
-      abc = cart_to_frac(xyz)
+      abc = (cart_to_frac ??= math.create_cart_to_frac(lattice_matrix))(xyz)
     } else {
       throw new Error(`Site ${idx} must have either abc or xyz coordinates`)
     }

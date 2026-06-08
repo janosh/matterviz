@@ -2,7 +2,8 @@ import type { ElementSymbol } from '$lib/element'
 import type { AnyStructure } from '$lib/structure'
 import type { CompositionType } from '$lib/composition'
 import { format_num } from '$lib/labels'
-import { ELEMENT_ELECTRONEGATIVITY_MAP, is_valid_element, parse_composition } from './parse'
+import { is_elem_symbol } from '$lib/element'
+import { ELEMENT_ELECTRONEGATIVITY_MAP, parse_composition } from './parse'
 
 // Extract composition from structure object
 const structure_to_composition = (structure: AnyStructure): CompositionType => {
@@ -34,7 +35,7 @@ export const format_composition_formula = (
   delim = ` `,
   amount_format = `.3~s`,
 ): string => {
-  const symbols = Object.keys(composition).filter(is_valid_element)
+  const symbols = Object.keys(composition).filter(is_elem_symbol)
 
   return sort_fn(symbols)
     .filter((el) => composition[el] && composition[el] > 0)

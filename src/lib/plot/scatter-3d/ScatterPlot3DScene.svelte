@@ -7,7 +7,6 @@
   import type {
     AxisConfig3D,
     CameraProjection3D,
-    ColorScaleConfig,
     DataSeries3D,
     DisplayConfig3D,
     InternalPoint3D,
@@ -31,11 +30,7 @@
   import { normalize_to_scene } from '$lib/plot/core/reference-line'
   import ReferenceLine3D from '$lib/plot/core/components/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/core/components/ReferencePlane.svelte'
-  import {
-    calculate_domain,
-    create_color_scale,
-    create_size_scale,
-  } from '$lib/plot/core/scales'
+  import { create_size_scale } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 
   let {
@@ -49,7 +44,7 @@
     surfaces = [],
     ref_lines = [],
     ref_planes = [],
-    color_scale = { type: `linear`, scheme: `interpolateViridis` },
+    color_scale_fn = () => get_series_color(0),
     size_scale = { type: `linear`, radius_range: [0.05, 0.2] },
     camera_position = [10, 10, 10] as Vec3,
     camera_projection = `perspective` as CameraProjection3D,
@@ -85,7 +80,8 @@
     surfaces?: Surface3DConfig[]
     ref_lines?: RefLine3D[]
     ref_planes?: RefPlane[]
-    color_scale?: ColorScaleConfig
+    // Color scale function for color_values (computed once by the ScatterPlot3D wrapper)
+    color_scale_fn?: (value: number) => string
     size_scale?: SizeScaleConfig
     camera_position?: Vec3
     camera_projection?: CameraProjection3D
@@ -252,15 +248,10 @@
   const normalize_y = (value: number) => normalize_to_scene(value, y_range, scene_y)
   const normalize_z = (value: number) => normalize_to_scene(value, z_range, scene_z)
 
-  // Color/size scales
-  let all_color_values = $derived(
-    all_points.map((pt) => pt.color_value).filter((val): val is number => val != null),
-  )
-  let auto_color_range: Vec2 = $derived(calculate_domain(all_color_values))
+  // Size scale (the color scale is computed by the wrapper and passed as a prop)
   let all_size_values = $derived(
     all_points.map((pt) => pt.size_value).filter((val): val is number => val != null),
   )
-  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
   let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
 
   // Process points with normalized positions

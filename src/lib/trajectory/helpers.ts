@@ -1,14 +1,13 @@
 // Shared utilities for trajectory parsing
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
+import { is_elem_symbol } from '$lib/element'
 import type { ElementSymbol } from '$lib/element/types'
-import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import type { Pbc } from '$lib/structure/pbc'
+import { make_site } from '$lib/structure/site'
 import type { TrajectoryFrame } from './index'
-
-const element_symbol_set = new Set<string>(ELEM_SYMBOLS)
 
 const is_valid_row = (row: unknown): boolean => {
   if (!(Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row))) return false
@@ -17,12 +16,6 @@ const is_valid_row = (row: unknown): boolean => {
 
 const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
   Array.isArray(coords) && math.is_finite_vec3_like(coords)
-
-export const is_valid_element_symbol = (symbol: string): symbol is ElementSymbol =>
-  element_symbol_set.has(symbol)
-
-export const coerce_element_symbol = (symbol: string): ElementSymbol | undefined =>
-  is_valid_element_symbol(symbol) ? symbol : undefined
 
 // Validate that data is a proper 3x3 matrix
 // Accepts both regular arrays and typed arrays (Float32Array, Float64Array, etc.)
@@ -42,7 +35,7 @@ export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
 export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
   numbers.map((num) => {
     const symbol = ATOMIC_NUMBER_TO_SYMBOL[num]
-    if (!symbol || !is_valid_element_symbol(symbol)) {
+    if (!symbol || !is_elem_symbol(symbol)) {
       throw new Error(`Unknown atomic number in trajectory data: ${num}`)
     }
     return symbol
@@ -73,13 +66,7 @@ export const create_structure = (
     const force = force_data?.[idx]
     const properties = is_valid_vec3(force) ? { force } : {}
 
-    return {
-      species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
-      abc,
-      xyz,
-      label: `${elements[idx]}${idx + 1}`,
-      properties,
-    }
+    return make_site(elements[idx], abc, xyz, `${elements[idx]}${idx + 1}`, properties)
   })
 
   return lattice_matrix
@@ -175,6 +162,17 @@ export const read_ndarray_from_view = (
       : (() => {
           throw new Error(`Unsupported shape`)
         })()
+}
+
+// Copy listed fields from source to target when they hold numbers
+export const copy_numeric_fields = (
+  target: Record<string, number>,
+  source: Record<string, unknown>,
+  fields: readonly string[],
+): void => {
+  for (const field of fields) {
+    if (field in source && typeof source[field] === `number`) target[field] = source[field]
+  }
 }
 
 // Max and RMS of per-atom force magnitudes, or null when no forces present. Loop-based

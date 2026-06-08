@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '$lib/brillouin'
-  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
+  import { AXIS_COLORS, get_d3_interpolator, NEG_AXIS_COLORS } from '$lib/colors'
   import type { Matrix4Tuple, Vec2, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import type { CameraProjection } from '$lib/settings'
@@ -8,7 +9,6 @@
   import { Arrow, Cylinder } from '$lib/structure'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three'
@@ -171,12 +171,6 @@
 
   extras.interactivity()
 
-  // Get color interpolator from d3
-  const get_interpolator = (name: string): (t: number) => string => {
-    const fn = d3_sc[name as keyof typeof d3_sc]
-    return typeof fn === `function` ? fn : d3_sc.interpolateViridis
-  }
-
   // Filter surfaces based on selected bands
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter((surface) =>
@@ -247,7 +241,7 @@
       const normalized = max_val > min_val
         ? (prop - min_val) / (max_val - min_val)
         : 0.5
-      return get_interpolator(color_scale)(normalized)
+      return get_d3_interpolator(color_scale as D3InterpolateName)(normalized)
     }
     // Spin coloring
     if (color_property === `spin` && surface.spin) {

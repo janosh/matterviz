@@ -62,6 +62,29 @@ export const set_input_value = async (input: Locator, value: string): Promise<vo
   }, value)
 }
 
+// Simulate dropping a file with the given text content onto a target element
+// via synthetic DataTransfer drag events (unreliable in headless CI - skip there)
+export async function drop_file(
+  page: Page,
+  target: Locator,
+  content: string,
+  filename: string,
+  mime = `text/plain`,
+): Promise<void> {
+  const data_transfer = await page.evaluateHandle(
+    ([text, name, type]) => {
+      const dt = new DataTransfer()
+      dt.items.add(new File([text], name, { type }))
+      return dt
+    },
+    [content, filename, mime] as const,
+  )
+  for (const event of [`dragenter`, `dragover`, `drop`]) {
+    await target.dispatchEvent(event, { dataTransfer: data_transfer })
+  }
+  await data_transfer.dispose()
+}
+
 type CancelableKeydownInit = {
   key: string
   altKey?: boolean

@@ -6,8 +6,7 @@ import type { AnyStructure, LatticeType, Site } from '$lib/structure'
 import {
   clean_geometry_for_export,
   create_structure_filename,
-  export_structure_as_json,
-  export_structure_as_xyz,
+  export_structure_as,
   extract_bond_color_for_instance,
   generate_mtl_content,
   has_color_property,
@@ -117,7 +116,7 @@ describe(`Export functionality`, () => {
       `exports $name to XYZ`,
       ({ structure, expected_xyz, formula, filename_contains }) => {
         mock_get_electro_neg_formula.mockReturnValue(formula)
-        export_structure_as_xyz(structure)
+        export_structure_as(`xyz`, structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
         const lines = (content as string).split(`\n`)
@@ -135,7 +134,7 @@ describe(`Export functionality`, () => {
       `exports $name to JSON`,
       ({ structure, expected_json, formula, filename_contains }) => {
         mock_get_electro_neg_formula.mockReturnValue(formula)
-        export_structure_as_json(structure)
+        export_structure_as(`json`, structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
         expect(JSON.parse(content as string)).toEqual(expected_json)
@@ -146,11 +145,11 @@ describe(`Export functionality`, () => {
     )
 
     it.each([
-      { func: export_structure_as_xyz, error_msg: `Error exporting XYZ:` },
-      { func: export_structure_as_json, error_msg: `Error exporting JSON:` },
-    ])(`handles undefined structure gracefully`, ({ func, error_msg }) => {
+      { fmt: `xyz`, error_msg: `Failed to export XYZ:` },
+      { fmt: `json`, error_msg: `Failed to export JSON:` },
+    ] as const)(`handles undefined structure gracefully`, ({ fmt, error_msg }) => {
       const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      func(undefined)
+      export_structure_as(fmt, undefined)
       expect(console_error).toHaveBeenCalledWith(error_msg, expect.any(Error))
       expect(mock_download).not.toHaveBeenCalled()
       console_error.mockRestore()

@@ -1064,14 +1064,11 @@ export const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
   (point_a[0] - origin[0]) * (point_b[1] - origin[1]) -
   (point_a[1] - origin[1]) * (point_b[0] - origin[0])
 
-// Full 2D convex hull via Andrew's monotone chain algorithm.
-// Returns vertices in counter-clockwise order.
-export function convex_hull_2d(points: Vec2[]): Vec2[] {
-  if (points.length < 3) return [...points]
-
+// Lower half of Andrew's monotone chain: vertices of the lower convex hull,
+// sorted by x (then y). Used standalone for lower-hull-only queries (e.g. binary
+// phase diagrams) and as the lower chain of convex_hull_2d.
+export function lower_hull_2d(points: Vec2[]): Vec2[] {
   const sorted = points.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
-
-  // Lower hull
   const lower: Vec2[] = []
   for (const pt of sorted) {
     while (
@@ -1082,6 +1079,17 @@ export function convex_hull_2d(points: Vec2[]): Vec2[] {
     }
     lower.push(pt)
   }
+  return lower
+}
+
+// Full 2D convex hull via Andrew's monotone chain algorithm.
+// Returns vertices in counter-clockwise order.
+export function convex_hull_2d(points: Vec2[]): Vec2[] {
+  if (points.length < 3) return [...points]
+
+  const sorted = points.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
+
+  const lower = lower_hull_2d(sorted)
 
   // Upper hull
   const upper: Vec2[] = []

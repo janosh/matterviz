@@ -7,6 +7,7 @@
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
+  import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
@@ -1917,15 +1918,6 @@
     formulas_to_draw_override = [hover_info.formula, ...neighbors]
   }
 
-  function download_blob(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement(`a`)
-    link.href = url
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
   let png_dpi = $state(150)
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
 
@@ -2013,7 +2005,7 @@
 
     out.toBlob((blob) => {
       if (!blob) return
-      download_blob(blob, `${export_basename}.png`)
+      download(blob, `${export_basename}.png`, `image/png`)
     }, `image/png`)
   }
 
@@ -2052,18 +2044,12 @@
       ...text_nodes,
       `</svg>`,
     ].join(``)
-    download_blob(
-      new Blob([svg], { type: `image/svg+xml` }),
-      `${export_basename}.svg`,
-    )
+    download(svg, `${export_basename}.svg`, `image/svg+xml`)
   }
 
   function export_view_json_file(): void {
     const json_text = JSON.stringify(get_view_settings(), null, 2)
-    download_blob(
-      new Blob([json_text], { type: `application/json` }),
-      `${export_basename}-view.json`,
-    )
+    download(json_text, `${export_basename}-view.json`, `application/json`)
   }
 
   function export_glb_file(): void {
@@ -2115,10 +2101,7 @@
       export_root,
       (result) => {
         if (!(result instanceof ArrayBuffer)) return
-        download_blob(
-          new Blob([result], { type: `model/gltf-binary` }),
-          `${export_basename}.glb`,
-        )
+        download(result, `${export_basename}.glb`, `model/gltf-binary`)
       },
       (err) => {
         console.error(`Failed to export GLB:`, err)
@@ -2143,10 +2126,7 @@
     )
 
   function export_json_file(): void {
-    download_blob(
-      new Blob([get_json_string()], { type: `application/json` }),
-      `${export_basename}.json`,
-    )
+    download(get_json_string(), `${export_basename}.json`, `application/json`)
   }
 
   async function copy_json(): Promise<void> {

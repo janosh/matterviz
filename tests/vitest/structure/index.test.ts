@@ -476,7 +476,6 @@ test.each([
   [`dev raw string`, `data_test`, `data_test`],
   [`prod string default`, { default: `data_test` }, `data_test`],
   [`prod parsed default re-stringified`, { default: parsed }, JSON.stringify(parsed)],
-  [`nullish`, null, ``],
 ])(`glob_text %s`, (_desc, input, expected) => {
   expect(glob_text(input)).toBe(expected)
 })

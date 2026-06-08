@@ -1,7 +1,9 @@
 <script lang="ts">
   import {
+    estimate_video_bitrate,
     export_trajectory_video,
     get_ffmpeg_conversion_command,
+    observe_canvas_presence,
   } from '$lib/io/export'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
@@ -58,7 +60,7 @@
   let file_size_mb = $derived.by(() => {
     if (!canvas) return 0
     const pixels = canvas.width * canvas.height * resolution_multiplier ** 2
-    const bitrate = Math.max(1e6, Math.min(pixels * video_fps * 0.1, 2e8))
+    const bitrate = estimate_video_bitrate(pixels, video_fps)
     return (bitrate * export_frame_count / video_fps) / 8 / 1024 / 1024
   })
 
@@ -138,17 +140,7 @@
 
   let has_canvas = $state(false)
 
-  $effect(() => {
-    if (!wrapper) {
-      has_canvas = false
-      return
-    }
-    const check = () => (has_canvas = Boolean(wrapper.querySelector(`canvas`)))
-    check()
-    const observer = new MutationObserver(check)
-    observer.observe(wrapper, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  })
+  $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
 </script>
 
 <DraggablePane

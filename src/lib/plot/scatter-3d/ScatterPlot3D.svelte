@@ -328,7 +328,7 @@
           {z_axis}
           {display}
           {styles}
-          color_scale={normalized_color_scale}
+          {color_scale_fn}
           {size_scale}
           {camera_position}
           {camera_projection}

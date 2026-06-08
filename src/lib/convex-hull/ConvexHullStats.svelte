@@ -7,6 +7,7 @@
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
+  import { escape_html } from '$lib/utils'
   import Histogram from '$lib/plot/histogram/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
@@ -52,7 +53,6 @@
   let view_mode = $state<`stats` | `table`>(`stats`)
   // Formula filter: when set, table shows only entries with this reduced formula
   let formula_filter = $state(``)
-  let show_export_dropdown = $state(false)
   const table_scroll_height =
     `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
   const table_scroll_style = $derived(layout === `side-by-side`
@@ -251,14 +251,6 @@
   const sort_span = (sort_val: number | string, display: string, attrs = ``) =>
     `<span data-sort-value="${sort_val}"${attrs ? ` ${attrs}` : ``}>${display}</span>`
 
-  // Escape HTML special chars to prevent XSS when rendering user-supplied strings via {@html}
-  const escape_html = (str: string): string =>
-    str
-      .replaceAll('&', `&amp;`)
-      .replaceAll('<', `&lt;`)
-      .replaceAll('>', `&gt;`)
-      .replaceAll('"', `&quot;`)
-      .replaceAll('\'', `&#39;`)
   const unescape_html = (str: string, max_rounds = 5): string => {
     let decoded = str
     for (let round_idx = 0; round_idx < max_rounds; round_idx++) {
@@ -430,67 +422,11 @@
     ] satisfies Label[],
   )
 
-  const html_to_text = (val: unknown): string => {
-    if (val == null) return ``
-    if (typeof val !== `string`) return String(val)
-    const temp_el = document.createElement(`div`)
-    temp_el.innerHTML = val
-    return temp_el.textContent?.trim() ?? ``
-  }
-  const csv_escape = (val: string): string =>
-    /[",\n]/.test(val) ? `"${val.replaceAll(`"`, `""`)}"` : val
-  const get_export_filename = (format: `csv` | `json`): string => {
-    const system = (phase_stats?.chemical_system ?? `convex-hull-stats`)
-      .toLowerCase()
-      .replaceAll(/\s+/g, `-`)
-    return `${system}.${format}`
-  }
-  const build_export_rows = () => {
-    const column_labels = table_columns.map((col) => col.label)
-    return table_data.map((row) =>
-      Object.fromEntries(
-        column_labels.map((label) => [html_to_text(label), html_to_text(row[label])]),
-      )
-    )
-  }
-  const download_file = (
-    content: string,
-    filename: string,
-    mime_type: string,
-  ): void => {
-    const blob = new Blob([content], { type: mime_type })
-    const object_url = URL.createObjectURL(blob)
-    const link_el = document.createElement(`a`)
-    link_el.href = object_url
-    link_el.download = filename
-    document.body.append(link_el)
-    link_el.click()
-    link_el.remove()
-    URL.revokeObjectURL(object_url)
-  }
-  function export_table(format: `csv` | `json`): void {
-    const rows = build_export_rows()
-    if (format === `json`) {
-      download_file(
-        JSON.stringify(rows, null, 2),
-        get_export_filename(`json`),
-        `application/json;charset=utf-8`,
-      )
-      return
-    }
-    const headers = rows.length > 0 ? Object.keys(rows[0]) : []
-    const csv_lines = [
-      headers.map(csv_escape).join(`,`),
-      ...rows.map((row) =>
-        headers.map((header) => csv_escape(row[header] ?? ``)).join(`,`)
-      ),
-    ]
-    download_file(
-      csv_lines.join(`\n`),
-      get_export_filename(`csv`),
-      `text/csv;charset=utf-8`,
-    )
-  }
+  // Filename for HeatmapTable's built-in CSV/JSON export
+  const export_filename = $derived(
+    phase_stats?.chemical_system?.toLowerCase().replaceAll(/\s+/g, `-`) ??
+      `convex-hull-stats`,
+  )
 </script>
 
 {#snippet stats_panel()}
@@ -617,39 +553,6 @@
       </label>
     {/if}
     <span class="filter-count">{visible_entries.length} entries</span>
-    <span class="filter-spacer"></span>
-    <div class="export-actions">
-      <button
-        class="icon-btn"
-        class:active={show_export_dropdown}
-        title="Export"
-        onclick={() => show_export_dropdown = !show_export_dropdown}
-      >
-        <Icon icon="Export" style="width: 14px" />
-      </button>
-      {#if show_export_dropdown}
-        <div class="export-dropdown">
-          <button
-            class="dropdown-option"
-            onclick={() => {
-              export_table(`csv`)
-              show_export_dropdown = false
-            }}
-          >
-            <Icon icon="Download" style="width: 12px" /> CSV
-          </button>
-          <button
-            class="dropdown-option"
-            onclick={() => {
-              export_table(`json`)
-              show_export_dropdown = false
-            }}
-          >
-            <Icon icon="Download" style="width: 12px" /> JSON
-          </button>
-        </div>
-      {/if}
-    </div>
   </div>
   <HeatmapTable
     data={table_data}
@@ -659,7 +562,7 @@
     style="width: 100%"
     root_style={table_root_style}
     onrowclick={on_entry_click ? handle_row_click : undefined}
-    export_data={false}
+    export_data={{ filename: export_filename }}
   />
 {/snippet}
 
@@ -825,64 +728,6 @@
       color: inherit;
       font-size: inherit;
     }
-  }
-  .filter-spacer {
-    flex: 1 1 auto;
-  }
-  .export-actions {
-    position: relative;
-    .icon-btn {
-      padding: 2pt 6pt;
-      border: 1px solid
-        var(--hull-stats-border-color, color-mix(in srgb, currentColor 20%, transparent));
-      border-radius: 3pt;
-      background: transparent;
-      color: inherit;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .icon-btn:hover {
-      background: color-mix(in srgb, currentColor 8%, transparent);
-    }
-    .icon-btn.active {
-      background: color-mix(in srgb, currentColor 12%, transparent);
-    }
-  }
-  .export-dropdown {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    display: flex;
-    flex-direction: column;
-    min-width: 88px;
-    padding: 3pt;
-    border: 1px solid
-      var(--hull-stats-border-color, color-mix(in srgb, currentColor 20%, transparent));
-    border-radius: 4pt;
-    background: var(--page-bg, Canvas);
-    z-index: 4;
-    box-shadow: 0 2px 8px color-mix(in srgb, black 20%, transparent);
-    .dropdown-option {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      border: none;
-      border-radius: 3pt;
-      background: transparent;
-      color: inherit;
-      cursor: pointer;
-      text-align: left;
-      padding: 3pt 6pt;
-    }
-    .dropdown-option:hover {
-      background: color-mix(in srgb, currentColor 8%, transparent);
-    }
-  }
-  .table-pane :global(.control-buttons) {
-    display: none;
-    margin: 0;
   }
   .filter-count {
     color: var(--text-color-muted, light-dark(#666, #bbb));

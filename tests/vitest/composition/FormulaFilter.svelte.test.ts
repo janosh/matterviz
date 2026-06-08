@@ -1,7 +1,7 @@
 import { FormulaFilter } from '$lib/composition'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 describe(`FormulaFilter`, () => {
   const get_input = (): HTMLInputElement => doc_query(`input`)
@@ -22,18 +22,8 @@ describe(`FormulaFilter`, () => {
     [`Li-Fe-O`, `chemical system`],
     [`LiFePO4`, `exact formula`],
   ])(`mode hint for "%s" shows "%s"`, async (input, expected_hint) => {
-    let val = $state(input)
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return val
-        },
-        set value(new_value: string) {
-          val = new_value
-        },
-      },
-    })
+    const state = $state({ value: input })
+    mount(FormulaFilter, { target: document.body, props: bind_props({}, state) })
     await tick()
     // Use includes() since clickable mode hints have an icon child
     expect(document.querySelector(`.mode-hint`)?.textContent).toContain(expected_hint)
@@ -42,19 +32,8 @@ describe(`FormulaFilter`, () => {
   test(`clicking mode hint cycles through modes and reformats input`, async () => {
     // Mode hint is always clickable and clicking it reformats the input
     const onchange = vi.fn()
-    let val = $state(`LiFePO4`)
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return val
-        },
-        set value(new_value: string) {
-          val = new_value
-        },
-        onchange,
-      },
-    })
+    const state = $state({ value: `LiFePO4` })
+    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
     await tick()
 
     const get_mode_btn = () =>
@@ -91,18 +70,10 @@ describe(`FormulaFilter`, () => {
     `reformats "$from" to "$expected" when cycling to $to_mode mode`,
     async ({ from, to_mode, expected }) => {
       const onchange = vi.fn()
-      let val = $state(from)
+      const state = $state({ value: from })
       mount(FormulaFilter, {
         target: document.body,
-        props: {
-          get value() {
-            return val
-          },
-          set value(new_value: string) {
-            val = new_value
-          },
-          onchange,
-        },
+        props: bind_props({ onchange }, state),
       })
       await tick()
 
@@ -128,19 +99,8 @@ describe(`FormulaFilter`, () => {
     [`LiFePO4`, `exact`],
   ])(`infers mode "%s" from input "%s"`, async (input, expected_mode) => {
     const onchange = vi.fn()
-    let val = $state(input)
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return val
-        },
-        set value(new_value: string) {
-          val = new_value
-        },
-        onchange,
-      },
-    })
+    const state = $state({ value: input })
+    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
     await tick()
     get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
     flushSync()
@@ -196,40 +156,22 @@ describe(`FormulaFilter`, () => {
     expect(doc_query(`.clear-btn`).getAttribute(`title`)).toBe(`Clear (Escape)`)
 
     document.body.innerHTML = ``
-    let bound: HTMLInputElement | null = null
+    const state = $state({ input_element: null as HTMLInputElement | null })
     mount(FormulaFilter, {
       target: document.body,
-      props: {
-        value: ``,
-        get input_element() {
-          return bound
-        },
-        set input_element(val) {
-          bound = val
-        },
-      },
+      props: bind_props({ value: `` }, state),
     })
     flushSync()
-    expect(bound).toBe(get_input())
+    expect(state.input_element).toBe(get_input())
   })
 
   test(`syncs external value changes`, async () => {
-    let value = $state(``)
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return value
-        },
-        set value(val: string) {
-          value = val
-        },
-      },
-    })
+    const state = $state({ value: `` })
+    mount(FormulaFilter, { target: document.body, props: bind_props({}, state) })
     await tick()
     expect(get_input().value).toBe(``)
 
-    value = `Fe,O`
+    state.value = `Fe,O`
     await tick()
     expect(get_input().value).toBe(`Fe,O`)
   })
@@ -243,52 +185,30 @@ describe(`FormulaFilter`, () => {
     async ({ initial_value, expected_mode }) => {
       // Regression test: when value is set from URL params without search_mode,
       // the component should infer the correct mode from the value format
-      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+      const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
       mount(FormulaFilter, {
         target: document.body,
-        props: {
-          value: initial_value,
-          get search_mode() {
-            return mode
-          },
-          set search_mode(val) {
-            mode = val
-          },
-        },
+        props: bind_props({ value: initial_value }, state),
       })
       await tick()
-      expect(mode).toBe(expected_mode)
+      expect(state.search_mode).toBe(expected_mode)
     },
   )
 
   test(`re-infers mode when value prop changes externally`, async () => {
     // When parent updates value prop without search_mode, mode should be re-inferred
-    let value = $state(`LiFePO4`)
-    let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return value
-        },
-        set value(val: string) {
-          value = val
-        },
-        get search_mode() {
-          return mode
-        },
-        set search_mode(val) {
-          mode = val
-        },
-      },
+    const state = $state({
+      value: `LiFePO4`,
+      search_mode: `elements` as `elements` | `chemsys` | `exact`,
     })
+    mount(FormulaFilter, { target: document.body, props: bind_props({}, state) })
     await tick()
-    expect(mode).toBe(`exact`) // Initial inference
+    expect(state.search_mode).toBe(`exact`) // Initial inference
 
     // Simulate parent updating value prop (e.g. from URL change)
-    value = `Fe,Li,O`
+    state.value = `Fe,Li,O`
     await tick()
-    expect(mode).toBe(`elements`) // Should re-infer from new value format
+    expect(state.search_mode).toBe(`elements`) // Should re-infer from new value format
   })
 
   test.each([
@@ -297,24 +217,16 @@ describe(`FormulaFilter`, () => {
     [`Li,Fe`, `elements`],
   ])(`search_mode binding updates to %s for input "%s"`, (input, expected_mode) => {
     // Verifies that the search_mode bindable prop is synchronized when user enters input
-    let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+    const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
     mount(FormulaFilter, {
       target: document.body,
-      props: {
-        value: ``,
-        get search_mode() {
-          return mode
-        },
-        set search_mode(val) {
-          mode = val
-        },
-      },
+      props: bind_props({ value: `` }, state),
     })
     get_input().value = input
     get_input().dispatchEvent(new Event(`input`, { bubbles: true }))
     get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
     flushSync()
-    expect(mode).toBe(expected_mode)
+    expect(state.search_mode).toBe(expected_mode)
   })
 
   test.each([
@@ -324,19 +236,8 @@ describe(`FormulaFilter`, () => {
     { input: `NaCl`, expected: `ClNa`, mode: `exact` },
   ])(`normalizes "$input" to "$expected" (mode=$mode)`, async ({ input, expected, mode }) => {
     const onchange = vi.fn()
-    let val = $state(input)
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return val
-        },
-        set value(new_value: string) {
-          val = new_value
-        },
-        onchange,
-      },
-    })
+    const state = $state({ value: input })
+    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
     await tick()
     get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
     flushSync()
@@ -345,19 +246,8 @@ describe(`FormulaFilter`, () => {
 
   test(`Enter key triggers normalization`, async () => {
     const onchange = vi.fn()
-    let val = $state(`Fe-Li`)
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return val
-        },
-        set value(new_value: string) {
-          val = new_value
-        },
-        onchange,
-      },
-    })
+    const state = $state({ value: `Fe-Li` })
+    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
     await tick()
     get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     flushSync()
@@ -463,18 +353,8 @@ describe(`FormulaFilter`, () => {
       [`*-*-O`, `chemical system`],
       [`*2O3`, `exact formula`],
     ])(`mode hint for wildcard input "%s" shows "%s"`, async (input, expected_hint) => {
-      let val = $state(input)
-      mount(FormulaFilter, {
-        target: document.body,
-        props: {
-          get value() {
-            return val
-          },
-          set value(new_value: string) {
-            val = new_value
-          },
-        },
-      })
+      const state = $state({ value: input })
+      mount(FormulaFilter, { target: document.body, props: bind_props({}, state) })
       await tick()
       expect(document.querySelector(`.mode-hint`)?.textContent).toContain(expected_hint)
     })
@@ -489,18 +369,10 @@ describe(`FormulaFilter`, () => {
       `normalizes wildcard input "$input" to "$expected" (mode=$mode)`,
       async ({ input, expected, mode }) => {
         const onchange = vi.fn()
-        let val = $state(input)
+        const state = $state({ value: input })
         mount(FormulaFilter, {
           target: document.body,
-          props: {
-            get value() {
-              return val
-            },
-            set value(new_value: string) {
-              val = new_value
-            },
-            onchange,
-          },
+          props: bind_props({ onchange }, state),
         })
         await tick()
         get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
@@ -511,18 +383,10 @@ describe(`FormulaFilter`, () => {
 
     test(`preserves wildcards when cycling through modes`, async () => {
       const onchange = vi.fn()
-      let val = $state(`Li-Fe-*-*`)
+      const state = $state({ value: `Li-Fe-*-*` })
       mount(FormulaFilter, {
         target: document.body,
-        props: {
-          get value() {
-            return val
-          },
-          set value(new_value: string) {
-            val = new_value
-          },
-          onchange,
-        },
+        props: bind_props({ onchange }, state),
       })
       await tick()
 
@@ -559,18 +423,10 @@ describe(`FormulaFilter`, () => {
       `reformats wildcard "$from" to "$expected" when cycling to $to_mode mode`,
       async ({ from, to_mode, expected }) => {
         const onchange = vi.fn()
-        let val = $state(from)
+        const state = $state({ value: from })
         mount(FormulaFilter, {
           target: document.body,
-          props: {
-            get value() {
-              return val
-            },
-            set value(new_value: string) {
-              val = new_value
-            },
-            onchange,
-          },
+          props: bind_props({ onchange }, state),
         })
         await tick()
 
@@ -591,28 +447,20 @@ describe(`FormulaFilter`, () => {
     )
 
     test(`placeholders show wildcard examples`, async () => {
-      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+      const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
       mount(FormulaFilter, {
         target: document.body,
-        props: {
-          value: ``,
-          get search_mode() {
-            return mode
-          },
-          set search_mode(val) {
-            mode = val
-          },
-        },
+        props: bind_props({ value: `` }, state),
       })
       await tick()
 
       expect(get_input().placeholder).toBe(`Li,Fe,O or Li,*,*`)
 
-      mode = `chemsys`
+      state.search_mode = `chemsys`
       await tick()
       expect(get_input().placeholder).toBe(`Li-Fe-O or Li-*-*`)
 
-      mode = `exact`
+      state.search_mode = `exact`
       await tick()
       expect(get_input().placeholder).toBe(`LiFePO4 or LiFe*2*`)
     })
@@ -622,37 +470,21 @@ describe(`FormulaFilter`, () => {
       [`Li,*,*`, `elements`],
       [`*2O3`, `exact`],
     ])(`infers mode=%s from wildcard URL param "%s"`, async (value, expected_mode) => {
-      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+      const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
       mount(FormulaFilter, {
         target: document.body,
-        props: {
-          value,
-          get search_mode() {
-            return mode
-          },
-          set search_mode(val) {
-            mode = val
-          },
-        },
+        props: bind_props({ value }, state),
       })
       await tick()
-      expect(mode).toBe(expected_mode)
+      expect(state.search_mode).toBe(expected_mode)
     })
 
     test(`handles multiple wildcards with varied positions`, async () => {
       const onchange = vi.fn()
-      let val = $state(`*-Li-*-O-*`)
+      const state = $state({ value: `*-Li-*-O-*` })
       mount(FormulaFilter, {
         target: document.body,
-        props: {
-          get value() {
-            return val
-          },
-          set value(new_value: string) {
-            val = new_value
-          },
-          onchange,
-        },
+        props: bind_props({ onchange }, state),
       })
       await tick()
       get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
@@ -664,18 +496,10 @@ describe(`FormulaFilter`, () => {
 
     test(`Enter key normalizes wildcard input`, async () => {
       const onchange = vi.fn()
-      let val = $state(`*,Fe,Li,*`)
+      const state = $state({ value: `*,Fe,Li,*` })
       mount(FormulaFilter, {
         target: document.body,
-        props: {
-          get value() {
-            return val
-          },
-          set value(new_value: string) {
-            val = new_value
-          },
-          onchange,
-        },
+        props: bind_props({ onchange }, state),
       })
       await tick()
       get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
@@ -975,25 +799,13 @@ describe(`FormulaFilter`, () => {
     }
 
     test(`mode lock prevents automatic mode inference`, async () => {
-      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
-      let locked = $state(true)
-      mount_filter({
-        value: `Li-Fe-O`,
-        get search_mode() {
-          return mode
-        },
-        set search_mode(val) {
-          mode = val
-        },
-        get mode_locked() {
-          return locked
-        },
-        set mode_locked(val) {
-          locked = val
-        },
+      const state = $state({
+        search_mode: `elements` as `elements` | `chemsys` | `exact`,
+        mode_locked: true,
       })
+      mount_filter(bind_props({ value: `Li-Fe-O` }, state))
       await tick()
-      expect(mode).toBe(`elements`)
+      expect(state.search_mode).toBe(`elements`)
     })
 
     test(`onparse emits structured token data`, () => {
@@ -1091,23 +903,15 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`lock button toggles mode_locked binding`, () => {
-      let mode_locked = $state(false)
-      mount_filter({
-        value: `Li,Fe`,
-        get mode_locked() {
-          return mode_locked
-        },
-        set mode_locked(next_value) {
-          mode_locked = next_value
-        },
-      })
+      const state = $state({ mode_locked: false })
+      mount_filter(bind_props({ value: `Li,Fe` }, state))
       const lock_btn = doc_query<HTMLButtonElement>(`.lock-btn`)
       lock_btn.click()
       flushSync()
-      expect(mode_locked).toBe(true)
+      expect(state.mode_locked).toBe(true)
       lock_btn.click()
       flushSync()
-      expect(mode_locked).toBe(false)
+      expect(state.mode_locked).toBe(false)
     })
 
     test(`renders removable token chips for tokenized input`, () => {

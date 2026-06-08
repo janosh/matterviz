@@ -27,7 +27,14 @@ vi.mock(`three/addons/exporters/GLTFExporter.js`, () => ({
 
 let captured_blobs: Blob[] = []
 const call_order: string[] = []
-const mock_link = { href: ``, download: ``, click: vi.fn(() => call_order.push(`click`)) }
+const mock_link = {
+  href: ``,
+  download: ``,
+  style: { display: `` },
+  addEventListener: vi.fn(),
+  click: vi.fn(() => call_order.push(`click`)),
+  remove: vi.fn(() => call_order.push(`remove`)),
+}
 const mock_scene = { type: `Scene`, children: [`mesh1`] } as unknown as Scene
 
 beforeEach(() => {
@@ -60,17 +67,14 @@ beforeEach(() => {
     revokeObjectURL: vi.fn(),
   })
   vi.spyOn(document, `createElement`).mockReturnValue(mock_link as never)
-  vi.spyOn(document.body, `appendChild`).mockImplementation(() => {
-    call_order.push(`appendChild`)
-    return mock_link as never
-  })
-  vi.spyOn(document.body, `removeChild`).mockImplementation(() => {
-    call_order.push(`removeChild`)
-    return mock_link as never
+  vi.spyOn(document.body, `append`).mockImplementation(() => {
+    call_order.push(`append`)
   })
   mock_link.href = ``
   mock_link.download = ``
-  ;[stl_spy, obj_spy, gltf_spy, mock_link.click].forEach((spy) => spy.mockClear())
+  ;[stl_spy, obj_spy, gltf_spy, mock_link.click, mock_link.remove].forEach((spy) =>
+    spy.mockClear(),
+  )
 })
 
 afterEach(() => {
@@ -105,7 +109,7 @@ describe(`export_scene`, () => {
       // Verify blob and download
       expect(captured_blobs[0].type).toBe(mime)
       expect(mock_link.download).toBe(filename)
-      expect(call_order).toEqual([`appendChild`, `click`, `removeChild`])
+      expect(call_order).toEqual([`append`, `click`, `remove`])
       expect(URL.revokeObjectURL).toHaveBeenCalledWith(`blob:mock`)
     },
   )
