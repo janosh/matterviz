@@ -1,7 +1,11 @@
 // XYZ / extxyz trajectory parsing
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
-import { coerce_element_symbol, create_trajectory_frame } from '$lib/trajectory/helpers'
+import {
+  calc_force_stats,
+  coerce_element_symbol,
+  create_trajectory_frame,
+} from '$lib/trajectory/helpers'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 // Resolve species/pos/forces column offsets from an extxyz Properties string of
@@ -105,14 +109,8 @@ export function parse_xyz_atom_lines(
     }
   }
 
-  if (forces.length === 0) return { elements, positions, force_stats: null }
-  const mags = forces.map((force) => Math.hypot(...force))
-  const force_norm = Math.sqrt(mags.reduce((sum, mag) => sum + mag ** 2, 0) / mags.length)
-  return {
-    elements,
-    positions,
-    force_stats: { forces, force_max: Math.max(...mags), force_norm },
-  }
+  const stats = calc_force_stats(forces)
+  return { elements, positions, force_stats: stats && { forces, ...stats } }
 }
 
 export function parse_xyz_trajectory(content: string): TrajectoryType {

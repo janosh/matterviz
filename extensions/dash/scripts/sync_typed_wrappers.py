@@ -582,6 +582,10 @@ def _py_type_hint(
         return "list"
     if "Float32Array" in type_str:
         return "list[float]"
+    if re.fullmatch(
+        r"Vec\d+", type_str
+    ):  # matterviz numeric tuple aliases (Vec2/Vec3/...)
+        return "list[float]"
     if type_str.startswith("[") and type_str.endswith("]"):
         return "list"
     if "|" in type_str:

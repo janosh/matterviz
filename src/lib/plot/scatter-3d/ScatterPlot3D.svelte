@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import { FullscreenToggle } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
@@ -11,6 +11,7 @@
   import type {
     AxisConfig3D,
     CameraProjection3D,
+    ColorScaleConfig,
     ControlsConfig3D,
     DataSeries3D,
     DisplayConfig3D,
@@ -20,6 +21,7 @@
     RefPlane,
     ScaleType,
     Scatter3DHandlerEvent,
+    SizeScaleConfig,
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
@@ -116,17 +118,9 @@
     z_axis?: AxisConfig3D
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
-    color_scale?: {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: Vec2
-    } | D3InterpolateName
+    color_scale?: ColorScaleConfig | D3InterpolateName
     color_bar?: ComponentProps<typeof ColorBar> & { margin?: number | Sides } | null
-    size_scale?: {
-      type?: ScaleType
-      radius_range?: Vec2
-      value_range?: Vec2
-    }
+    size_scale?: SizeScaleConfig
     legend?: LegendConfig | null
     camera_position?: Vec3
     camera_projection?: CameraProjection3D

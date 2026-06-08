@@ -5,7 +5,7 @@ import {
 } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
-import type { Point2D, Point3D, Vec2, Vec3, Vec4 } from '$lib/math'
+import type { Point2D, Point3D, Vec2, Vec3, Vec4, Vec5 } from '$lib/math'
 import {
   barycentric_to_ternary_xyz,
   barycentric_to_tetrahedral,
@@ -720,16 +720,15 @@ function make_face(
   vert_c: number,
   interior_point: Point3D,
 ): ConvexHullFace {
+  // Centroid is a plain average, hence invariant under the vertex swap below
+  const centroid = compute_centroid(points[vert_a], points[vert_b], points[vert_c])
+  let vertices: Vec3 = [vert_a, vert_b, vert_c]
   let plane = compute_plane(points[vert_a], points[vert_b], points[vert_c])
-  let centroid = compute_centroid(points[vert_a], points[vert_b], points[vert_c])
-  const dist_interior = point_plane_signed_distance(plane, interior_point)
-  if (dist_interior > 0) {
+  // Swap two vertices to flip the normal outward (away from interior)
+  if (point_plane_signed_distance(plane, interior_point) > 0) {
+    vertices = [vert_a, vert_c, vert_b]
     plane = compute_plane(points[vert_a], points[vert_c], points[vert_b])
-    centroid = compute_centroid(points[vert_a], points[vert_c], points[vert_b])
-    const vertices: Vec3 = [vert_a, vert_c, vert_b]
-    return { vertices, plane, centroid, outside_points: new Set<number>() }
   }
-  const vertices: Vec3 = [vert_a, vert_b, vert_c]
   return { vertices, plane, centroid, outside_points: new Set<number>() }
 }
 
@@ -1179,9 +1178,7 @@ function distance_point_to_line_4d(
 // Maximum sample size for initial simplex selection in 4D hulls (avoids O(n²) for large datasets)
 const INITIAL_SIMPLEX_SAMPLE_SIZE = 100
 
-function choose_initial_4_simplex(
-  points: Point4D[],
-): [number, number, number, number, number] | null {
+function choose_initial_4_simplex(points: Point4D[]): Vec5 | null {
   if (points.length < 5) return null
 
   // Find two points farthest apart across all dimensions for better numerical stability
@@ -1281,40 +1278,21 @@ function make_face_4d(
   vert_d: number,
   interior_point: Point4D,
 ): ConvexHullFace4D {
-  let plane = compute_plane_4d(points[vert_a], points[vert_b], points[vert_c], points[vert_d])
-  let centroid = compute_centroid_4d(
+  // Centroid is a plain average, hence invariant under the vertex swap below
+  const centroid = compute_centroid_4d(
     points[vert_a],
     points[vert_b],
     points[vert_c],
     points[vert_d],
   )
-
-  const dist_interior = point_plane_signed_distance_4d(plane, interior_point)
-
-  // Ensure normal points outward (away from interior)
-  if (dist_interior > 0) {
-    // Swap two vertices to flip normal
+  let vertices: Vec4 = [vert_a, vert_b, vert_c, vert_d]
+  let plane = compute_plane_4d(points[vert_a], points[vert_b], points[vert_c], points[vert_d])
+  // Swap two vertices to flip the normal outward (away from interior)
+  if (point_plane_signed_distance_4d(plane, interior_point) > 0) {
+    vertices = [vert_a, vert_c, vert_b, vert_d]
     plane = compute_plane_4d(points[vert_a], points[vert_c], points[vert_b], points[vert_d])
-    centroid = compute_centroid_4d(
-      points[vert_a],
-      points[vert_c],
-      points[vert_b],
-      points[vert_d],
-    )
-    return {
-      vertices: [vert_a, vert_c, vert_b, vert_d],
-      plane,
-      centroid,
-      outside_points: new Set<number>(),
-    }
   }
-
-  return {
-    vertices: [vert_a, vert_b, vert_c, vert_d],
-    plane,
-    centroid,
-    outside_points: new Set<number>(),
-  }
+  return { vertices, plane, centroid, outside_points: new Set<number>() }
 }
 
 function assign_outside_points_4d(

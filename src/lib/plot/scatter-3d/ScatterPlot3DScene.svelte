@@ -2,19 +2,19 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { Vec2, Vec3 } from '$lib/math'
   import type {
     AxisConfig3D,
     CameraProjection3D,
+    ColorScaleConfig,
     DataSeries3D,
     DisplayConfig3D,
     InternalPoint3D,
     RefLine3D,
     RefPlane,
-    ScaleType,
     Scatter3DHandlerEvent,
+    SizeScaleConfig,
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
@@ -81,16 +81,8 @@
     surfaces?: Surface3DConfig[]
     ref_lines?: RefLine3D[]
     ref_planes?: RefPlane[]
-    color_scale?: {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: Vec2
-    }
-    size_scale?: {
-      type?: ScaleType
-      radius_range?: Vec2
-      value_range?: Vec2
-    }
+    color_scale?: ColorScaleConfig
+    size_scale?: SizeScaleConfig
     camera_position?: Vec3
     camera_projection?: CameraProjection3D
     auto_rotate?: number

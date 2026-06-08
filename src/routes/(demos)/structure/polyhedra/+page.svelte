@@ -5,7 +5,8 @@
   import type { AnyStructure, Molecule } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
-  import type { Vec3 } from '$root/src/lib'
+  import type { Vec3 } from '$lib/math'
+  import { glob_text } from '$site/structures'
   import batio3_poscar from '$site/structures/BaTiO3-tetragonal.poscar?raw'
   import lifepo4_cif from '$site/structures/LiFePO4.cif?raw'
   import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
@@ -14,7 +15,7 @@
 
   // Load any site structure fixture via ?file=<name> URL param (e.g.
   // /structure/polyhedra?file=LiFePO4.cif) - handy for visual testing
-  const raw_structure_files = import.meta.glob<string>(`$site/structures/*`, {
+  const raw_structure_files = import.meta.glob(`$site/structures/*`, {
     eager: true,
     query: `?raw`,
     import: `default`,
@@ -28,9 +29,10 @@
     const entry = Object.entries(raw_structure_files).find(([path]) =>
       path.endsWith(`/${file_param}`)
     )
-    if (!entry || typeof entry[1] !== `string`) return null
+    const text = entry && glob_text(entry[1])
+    if (!text) return null
     try {
-      return parse_any_structure(entry[1], file_param)
+      return parse_any_structure(text, file_param)
     } catch {
       return null
     }

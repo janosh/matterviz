@@ -43,6 +43,12 @@ export const glob_text = (value: unknown): string => {
   return raw == null ? `` : JSON.stringify(raw)
 }
 
+const category_icons: Record<ReturnType<typeof detect_structure_type>, string> = {
+  crystal: `🔷`,
+  molecule: `🧬`,
+  unknown: `❓`,
+}
+
 export const structure_files: FileInfo[] = Object.entries(
   // all structure files as raw text
   import.meta.glob(`$site/structures/*`, { eager: true, query: `?raw`, import: `default` }),
@@ -50,13 +56,6 @@ export const structure_files: FileInfo[] = Object.entries(
   const filename = path.split(`/`).pop() ?? path
   const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
   const url = path.replace(`/src/site`, ``)
-
   const category = detect_structure_type(filename, glob_text(value))
-  const icon_map: Record<string, string> = {
-    crystal: `🔷`,
-    molecule: `🧬`,
-    unknown: `❓`,
-  }
-  const category_icon = icon_map[category] || `📄`
-  return { name: filename, url, type, category, category_icon }
+  return { name: filename, url, type, category, category_icon: category_icons[category] }
 })

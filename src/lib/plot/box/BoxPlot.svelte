@@ -49,6 +49,7 @@
     PINCH_ZOOM_THRESHOLD,
     remove_drag_listeners,
     resolve_axis_ranges,
+    snapshot_ranges,
     sorted_range,
     zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
@@ -693,10 +694,7 @@
       evt.preventDefault()
       pan_drag_state = {
         start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...ranges.current.x] as Vec2,
-        initial_x2_range: [...ranges.current.x2] as Vec2,
-        initial_y_range: [...ranges.current.y] as Vec2,
-        initial_y2_range: [...ranges.current.y2] as Vec2,
+        ...snapshot_ranges(ranges.current),
       }
       document.body.style.cursor = `grabbing`
       window.addEventListener(`mousemove`, on_pan_move)
@@ -732,10 +730,7 @@
     const touches = Array.from(evt.touches)
     touch_state = {
       start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...ranges.current.x] as Vec2,
-      initial_x2_range: [...ranges.current.x2] as Vec2,
-      initial_y_range: [...ranges.current.y] as Vec2,
-      initial_y2_range: [...ranges.current.y2] as Vec2,
+      ...snapshot_ranges(ranges.current),
     }
   }
   function handle_touch_move(evt: TouchEvent) {

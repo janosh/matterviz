@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
@@ -10,6 +10,7 @@
   import type {
     AxisLoadError,
     BasePlotProps,
+    ColorScaleConfig,
     ControlsConfig,
     DataLoaderFn,
     DataSeries,
@@ -26,9 +27,9 @@
     Point,
     RefLine,
     RefLineEvent,
-    ScaleType,
     ScatterHandlerEvent,
     ScatterHandlerProps,
+    SizeScaleConfig,
     StyleOverrides,
     UserContentProps,
   } from '$lib/plot'
@@ -89,6 +90,7 @@
     pan_range_by_pixels,
     PINCH_ZOOM_THRESHOLD,
     remove_drag_listeners,
+    snapshot_ranges,
     sorted_range,
     sync_y2_range,
     to_epoch_num,
@@ -193,16 +195,8 @@
     change?: (
       data: (Point<Metadata> & { series: DataSeries<Metadata> }) | null,
     ) => void
-    color_scale?: {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: Vec2
-    } | D3InterpolateName
-    size_scale?: {
-      type?: ScaleType
-      radius_range?: Vec2
-      value_range?: Vec2
-    }
+    color_scale?: ColorScaleConfig | D3InterpolateName
+    size_scale?: SizeScaleConfig
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
@@ -1240,10 +1234,7 @@
       evt.preventDefault()
       pan_drag_state = {
         start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...zoom_x_range] as Vec2,
-        initial_x2_range: [...zoom_x2_range] as Vec2,
-        initial_y_range: [...zoom_y_range] as Vec2,
-        initial_y2_range: [...zoom_y2_range] as Vec2,
+        ...snapshot_ranges({ x: zoom_x_range, x2: zoom_x2_range, y: zoom_y_range, y2: zoom_y2_range }),
       }
       document.body.style.cursor = `grabbing`
       window.addEventListener(`mousemove`, on_pan_move)
@@ -1307,10 +1298,7 @@
     const touches = Array.from(evt.touches)
     touch_state = {
       start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...zoom_x_range] as Vec2,
-      initial_x2_range: [...zoom_x2_range] as Vec2,
-      initial_y_range: [...zoom_y_range] as Vec2,
-      initial_y2_range: [...zoom_y2_range] as Vec2,
+      ...snapshot_ranges({ x: zoom_x_range, x2: zoom_x2_range, y: zoom_y_range, y2: zoom_y2_range }),
     }
   }
 

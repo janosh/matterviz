@@ -177,6 +177,22 @@ export const read_ndarray_from_view = (
         })()
 }
 
+// Max and RMS of per-atom force magnitudes, or null when no forces present. Loop-based
+// rather than Math.max(...spread) to avoid call-stack overflow on very large frames.
+export function calc_force_stats(
+  forces: number[][],
+): { force_max: number; force_norm: number } | null {
+  if (forces.length === 0) return null
+  let force_max = -Infinity
+  let sum_sq = 0
+  for (const force of forces) {
+    const magnitude = Math.hypot(...force)
+    if (magnitude > force_max) force_max = magnitude
+    sum_sq += magnitude ** 2
+  }
+  return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
+}
+
 // Unified frame counting for XYZ
 export function count_xyz_frames(data: string): number {
   if (!data || typeof data !== `string`) return 0

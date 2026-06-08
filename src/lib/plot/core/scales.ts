@@ -1,7 +1,12 @@
-import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Point, ScaleType, TimeInterval } from '$lib/plot'
+import type {
+  ColorScaleConfig,
+  Point,
+  ScaleType,
+  SizeScaleConfig,
+  TimeInterval,
+} from '$lib/plot'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
@@ -524,13 +529,7 @@ export function get_tick_label(
 
 // Create a color scale function from configuration
 export function create_color_scale(
-  color_scale_config:
-    | {
-        type?: ScaleType
-        scheme?: D3ColorSchemeName | D3InterpolateName
-        value_range?: Vec2
-      }
-    | string,
+  color_scale_config: ColorScaleConfig | string,
   auto_color_range: Vec2,
 ) {
   const scheme =
@@ -607,11 +606,7 @@ function create_arcsinh_color_scale(
 
 // Create a size scale function from configuration
 export function create_size_scale(
-  config: {
-    type?: ScaleType
-    radius_range?: Vec2
-    value_range?: Vec2
-  },
+  config: SizeScaleConfig,
   all_size_values: (number | null)[],
 ) {
   const [min_radius, max_radius] = config.radius_range ?? [2, 10]

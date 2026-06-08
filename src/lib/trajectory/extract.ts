@@ -1,5 +1,6 @@
 // Data extraction functions for trajectory analysis and plotting
 import { get_density } from '$lib/structure/index'
+import { calc_force_stats } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
 
 // Common data extractor that extracts energy and structural properties
@@ -41,16 +42,8 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
   if (frame.metadata) {
     // Calculate force properties from forces array if available (preferred)
     if (frame.metadata.forces && Array.isArray(frame.metadata.forces)) {
-      const forces = frame.metadata.forces as number[][]
-      if (forces.length > 0) {
-        const force_magnitudes = forces.map((force) => Math.hypot(...force))
-        data.force_max = Math.max(...force_magnitudes)
-        // Calculate RMS (root mean square) of force magnitudes
-        data.force_norm = Math.sqrt(
-          force_magnitudes.reduce((sum, magnitude) => sum + magnitude ** 2, 0) /
-            force_magnitudes.length,
-        )
-      }
+      // Object.assign ignores the null calc_force_stats returns for empty forces
+      Object.assign(data, calc_force_stats(frame.metadata.forces as number[][]))
     } else {
       // Fallback to metadata values if forces array not available
       if (frame.metadata.force_max && typeof frame.metadata.force_max === `number`) {

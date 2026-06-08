@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
@@ -14,6 +14,7 @@
     BarSeries,
     BarStyle,
     BasePlotProps,
+    ColorScaleConfig,
     DataLoaderFn,
     InitialRanges,
     InternalPoint,
@@ -25,7 +26,7 @@
     PlotConfig,
     RefLine,
     RefLineEvent,
-    ScaleType,
+    SizeScaleConfig,
     UserContentProps,
   } from '$lib/plot'
   import {
@@ -51,6 +52,7 @@
     PINCH_ZOOM_THRESHOLD,
     remove_drag_listeners,
     resolve_axis_ranges,
+    snapshot_ranges,
     sorted_range,
     to_epoch_num,
     zoom_range_by_factor,
@@ -177,26 +179,14 @@
       data: BarHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
     ) => void
     on_bar_hover?: (
-      data:
-        | (BarHandlerProps<Metadata> & {
-          event: MouseEvent | FocusEvent | KeyboardEvent
-        })
-        | null,
+      data: (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent }) | null,
     ) => void
     // Line marker props (matching ScatterPlot)
     // Note: For line series with markers, BOTH on_bar_* AND on_point_* events fire.
     // Use on_point_* for marker-specific data (includes `point` with InternalPoint details)
     // or on_bar_* for backward compatibility with bar-style event handling.
-    color_scale?: {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: Vec2
-    } | D3InterpolateName
-    size_scale?: {
-      type?: ScaleType
-      radius_range?: Vec2
-      value_range?: Vec2
-    }
+    color_scale?: ColorScaleConfig | D3InterpolateName
+    size_scale?: SizeScaleConfig
     point_tween?: TweenOptions<Point2D>
     on_point_click?: (
       data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
@@ -693,10 +683,7 @@
       evt.preventDefault()
       pan_drag_state = {
         start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...ranges.current.x] as Vec2,
-        initial_x2_range: [...ranges.current.x2] as Vec2,
-        initial_y_range: [...ranges.current.y] as Vec2,
-        initial_y2_range: [...ranges.current.y2] as Vec2,
+        ...snapshot_ranges(ranges.current),
       }
       document.body.style.cursor = `grabbing`
       window.addEventListener(`mousemove`, on_pan_move)
@@ -746,10 +733,7 @@
     const touches = Array.from(evt.touches)
     touch_state = {
       start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...ranges.current.x] as Vec2,
-      initial_x2_range: [...ranges.current.x2] as Vec2,
-      initial_y_range: [...ranges.current.y] as Vec2,
-      initial_y2_range: [...ranges.current.y2] as Vec2,
+      ...snapshot_ranges(ranges.current),
     }
   }
 
