@@ -50,14 +50,14 @@ describe(`rect_overlap_area`, () => {
       b: { x: 5, y: 5, w: 10, h: 20 },
       expected: 200,
     },
-  ])(`$label → $expected`, ({ a, b, expected }) => {
-    expect(rect_overlap_area(a, b)).toBe(expected)
+  ])(`$label → $expected`, ({ a: rect_a, b: rect_b, expected }) => {
+    expect(rect_overlap_area(rect_a, rect_b)).toBe(expected)
   })
 
   test(`is commutative`, () => {
-    const a = { x: 0, y: 0, w: 10, h: 10 }
-    const b = { x: 5, y: 3, w: 8, h: 12 }
-    expect(rect_overlap_area(a, b)).toBe(rect_overlap_area(b, a))
+    const rect_a = { x: 0, y: 0, w: 10, h: 10 }
+    const rect_b = { x: 5, y: 3, w: 8, h: 12 }
+    expect(rect_overlap_area(rect_a, rect_b)).toBe(rect_overlap_area(rect_b, rect_a))
   })
 })
 
@@ -84,8 +84,19 @@ describe(`segments_intersect`, () => {
     { label: `collinear non-overlapping`, a: [0, 0, 5, 0], b: [6, 0, 10, 0], expected: false },
     { label: `L-shape non-crossing`, a: [0, 0, 5, 0], b: [6, -1, 6, 5], expected: false },
     { label: `shared endpoint (strict)`, a: [0, 0, 5, 5], b: [5, 5, 10, 0], expected: false },
-  ])(`$label → $expected`, ({ a, b, expected }) => {
-    expect(segments_intersect(a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3])).toBe(expected)
+  ])(`$label → $expected`, ({ a: seg_a, b: seg_b, expected }) => {
+    expect(
+      segments_intersect(
+        seg_a[0],
+        seg_a[1],
+        seg_a[2],
+        seg_a[3],
+        seg_b[0],
+        seg_b[1],
+        seg_b[2],
+        seg_b[3],
+      ),
+    ).toBe(expected)
   })
 })
 
@@ -242,10 +253,10 @@ describe(`generate_candidates`, () => {
   test(`candidates span all compass directions`, () => {
     const half_w = label_w / 2,
       half_h = label_h / 2
-    expect(candidates.some((c) => c.x + half_w < ax)).toBe(true)
-    expect(candidates.some((c) => c.x + half_w > ax)).toBe(true)
-    expect(candidates.some((c) => c.y + half_h < ay)).toBe(true)
-    expect(candidates.some((c) => c.y + half_h > ay)).toBe(true)
+    expect(candidates.some((candidate) => candidate.x + half_w < ax)).toBe(true)
+    expect(candidates.some((candidate) => candidate.x + half_w > ax)).toBe(true)
+    expect(candidates.some((candidate) => candidate.y + half_h < ay)).toBe(true)
+    expect(candidates.some((candidate) => candidate.y + half_h > ay)).toBe(true)
   })
 })
 
@@ -542,9 +553,14 @@ describe(`compute_label_positions`, () => {
 
     const font_size = 10
     const label_rects = entries.map(([_key, pos], idx) => {
-      const w = estimate_label_width(points[idx].text, font_size)
-      const h = font_size * 1.2
-      return { x: pos.x - w / 2, y: pos.y - h / 2, w, h }
+      const label_width = estimate_label_width(points[idx].text, font_size)
+      const label_height = font_size * 1.2
+      return {
+        x: pos.x - label_width / 2,
+        y: pos.y - label_height / 2,
+        w: label_width,
+        h: label_height,
+      }
     })
 
     let total_overlap = 0

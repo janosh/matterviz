@@ -29,8 +29,8 @@ describe(`FormulaFilter`, () => {
         get value() {
           return val
         },
-        set value(v: string) {
-          val = v
+        set value(new_value: string) {
+          val = new_value
         },
       },
     })
@@ -49,8 +49,8 @@ describe(`FormulaFilter`, () => {
         get value() {
           return val
         },
-        set value(v: string) {
-          val = v
+        set value(new_value: string) {
+          val = new_value
         },
         onchange,
       },
@@ -98,8 +98,8 @@ describe(`FormulaFilter`, () => {
           get value() {
             return val
           },
-          set value(v: string) {
-            val = v
+          set value(new_value: string) {
+            val = new_value
           },
           onchange,
         },
@@ -135,8 +135,8 @@ describe(`FormulaFilter`, () => {
         get value() {
           return val
         },
-        set value(v: string) {
-          val = v
+        set value(new_value: string) {
+          val = new_value
         },
         onchange,
       },
@@ -331,8 +331,8 @@ describe(`FormulaFilter`, () => {
         get value() {
           return val
         },
-        set value(v: string) {
-          val = v
+        set value(new_value: string) {
+          val = new_value
         },
         onchange,
       },
@@ -352,8 +352,8 @@ describe(`FormulaFilter`, () => {
         get value() {
           return val
         },
-        set value(v: string) {
-          val = v
+        set value(new_value: string) {
+          val = new_value
         },
         onchange,
       },
@@ -470,8 +470,8 @@ describe(`FormulaFilter`, () => {
           get value() {
             return val
           },
-          set value(v: string) {
-            val = v
+          set value(new_value: string) {
+            val = new_value
           },
         },
       })
@@ -496,8 +496,8 @@ describe(`FormulaFilter`, () => {
             get value() {
               return val
             },
-            set value(v: string) {
-              val = v
+            set value(new_value: string) {
+              val = new_value
             },
             onchange,
           },
@@ -518,8 +518,8 @@ describe(`FormulaFilter`, () => {
           get value() {
             return val
           },
-          set value(v: string) {
-            val = v
+          set value(new_value: string) {
+            val = new_value
           },
           onchange,
         },
@@ -566,8 +566,8 @@ describe(`FormulaFilter`, () => {
             get value() {
               return val
             },
-            set value(v: string) {
-              val = v
+            set value(new_value: string) {
+              val = new_value
             },
             onchange,
           },
@@ -648,8 +648,8 @@ describe(`FormulaFilter`, () => {
           get value() {
             return val
           },
-          set value(v: string) {
-            val = v
+          set value(new_value: string) {
+            val = new_value
           },
           onchange,
         },
@@ -671,8 +671,8 @@ describe(`FormulaFilter`, () => {
           get value() {
             return val
           },
-          set value(v: string) {
-            val = v
+          set value(new_value: string) {
+            val = new_value
           },
           onchange,
         },

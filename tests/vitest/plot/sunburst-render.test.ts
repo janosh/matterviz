@@ -102,9 +102,9 @@ describe(`arc_label_transform`, () => {
       `sunburst`,
       null,
     ],
-  ] as const)(`%s`, (_name, d, text_w, shape, expected) => {
+  ] as const)(`%s`, (_name, datum, text_w, shape, expected) => {
     const rotation = shape === `sunburst` ? `radial` : `auto`
-    const transform = arc_label_transform(d, text_w, shape, rotation)
+    const transform = arc_label_transform(datum, text_w, shape, rotation)
     if (expected === null) expect(transform).toBeNull()
     else expect(transform).toMatch(expected)
   })

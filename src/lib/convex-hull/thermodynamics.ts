@@ -5,7 +5,7 @@ import {
 } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
-import type { Point2D, Point3D } from '$lib/math'
+import type { Point2D, Point3D, Vec2, Vec3, Vec4 } from '$lib/math'
 import {
   barycentric_to_ternary_xyz,
   barycentric_to_tetrahedral,
@@ -616,8 +616,8 @@ export function interpolate_hull_2d(hull: Point2D[], x: number): number | null {
     const p1 = hull[idx]
     const p2 = hull[idx + 1]
     if (x >= p1.x && x <= p2.x) {
-      const t = (x - p1.x) / Math.max(1e-12, p2.x - p1.x)
-      return p1.y * (1 - t) + p2.y * t
+      const frac = (x - p1.x) / Math.max(1e-12, p2.x - p1.x)
+      return p1.y * (1 - frac) + p2.y * frac
     }
   }
   return null
@@ -678,9 +678,7 @@ function distance_point_to_line(
   return norm(cross_prod) / line_len
 }
 
-function choose_initial_tetrahedron(
-  points: Point3D[],
-): [number, number, number, number] | null {
+function choose_initial_tetrahedron(points: Point3D[]): math.Vec4 | null {
   if (points.length < 4) return null
   let idx_min_x = 0
   let idx_max_x = 0
@@ -717,20 +715,22 @@ function choose_initial_tetrahedron(
 
 function make_face(
   points: Point3D[],
-  a: number,
-  b: number,
-  c: number,
+  vert_a: number,
+  vert_b: number,
+  vert_c: number,
   interior_point: Point3D,
 ): ConvexHullFace {
-  let plane = compute_plane(points[a], points[b], points[c])
-  let centroid = compute_centroid(points[a], points[b], points[c])
+  let plane = compute_plane(points[vert_a], points[vert_b], points[vert_c])
+  let centroid = compute_centroid(points[vert_a], points[vert_b], points[vert_c])
   const dist_interior = point_plane_signed_distance(plane, interior_point)
   if (dist_interior > 0) {
-    plane = compute_plane(points[a], points[c], points[b])
-    centroid = compute_centroid(points[a], points[c], points[b])
-    return { vertices: [a, c, b], plane, centroid, outside_points: new Set<number>() }
+    plane = compute_plane(points[vert_a], points[vert_c], points[vert_b])
+    centroid = compute_centroid(points[vert_a], points[vert_c], points[vert_b])
+    const vertices: Vec3 = [vert_a, vert_c, vert_b]
+    return { vertices, plane, centroid, outside_points: new Set<number>() }
   }
-  return { vertices: [a, b, c], plane, centroid, outside_points: new Set<number>() }
+  const vertices: Vec3 = [vert_a, vert_b, vert_c]
+  return { vertices, plane, centroid, outside_points: new Set<number>() }
 }
 
 function assign_outside_points(
@@ -768,26 +768,23 @@ function farthest_point_for_face(
   return { idx: best_idx, distance: best_distance }
 }
 
-function build_horizon(
-  faces: ConvexHullFace[],
-  visible_face_indices: Set<number>,
-): [number, number][] {
-  const edge_count = new Map<string, [number, number]>()
+function build_horizon(faces: ConvexHullFace[], visible_face_indices: Set<number>): Vec2[] {
+  const edge_count = new Map<string, Vec2>()
   for (const face_idx of visible_face_indices) {
     const face = faces[face_idx]
-    const [a, b, c] = face.vertices
-    const edges: [number, number][] = [
-      [a, b],
-      [b, c],
-      [c, a],
+    const [vert_1, vert_2, vert_3] = face.vertices
+    const edges: Vec2[] = [
+      [vert_1, vert_2],
+      [vert_2, vert_3],
+      [vert_3, vert_1],
     ]
-    for (const [u, v] of edges) {
-      const key = u < v ? `${u}|${v}` : `${v}|${u}`
-      if (!edge_count.has(key)) edge_count.set(key, [u, v])
+    for (const [vert_u, vert_v] of edges) {
+      const key = vert_u < vert_v ? `${vert_u}|${vert_v}` : `${vert_v}|${vert_u}`
+      if (!edge_count.has(key)) edge_count.set(key, [vert_u, vert_v])
       else edge_count.set(key, [Number.NaN, Number.NaN])
     }
   }
-  const horizon: [number, number][] = []
+  const horizon: Vec2[] = []
   for (const uv of edge_count.values()) {
     if (Number.isNaN(uv[0])) continue
     horizon.push(uv)
@@ -844,8 +841,8 @@ export function compute_quickhull_triangles(points: Point3D[]): ConvexHullTriang
     const candidate_points = collect_candidate_points(visible_faces.map((idx) => faces[idx]))
     for (const idx of visible_faces) faces.splice(idx, 1)
     const new_faces: ConvexHullFace[] = []
-    for (const [u, v] of horizon_edges) {
-      const new_face = make_face(points, u, v, eye_idx, interior_point)
+    for (const [vert_u, vert_v] of horizon_edges) {
+      const new_face = make_face(points, vert_u, vert_v, eye_idx, interior_point)
       new_faces.push(new_face)
     }
     for (const face of new_faces) face.outside_points.clear()
@@ -865,11 +862,15 @@ export function compute_quickhull_triangles(points: Point3D[]): ConvexHullTriang
     faces.push(...new_faces)
   }
   return faces.map((face) => {
-    const [a, b, c] = face.vertices
+    const [vert_a, vert_b, vert_c] = face.vertices
     const normal = face.plane.normal
     const centroid = face.centroid
     return {
-      vertices: [points[a], points[b], points[c]] as [Point3D, Point3D, Point3D],
+      vertices: [points[vert_a], points[vert_b], points[vert_c]] as [
+        Point3D,
+        Point3D,
+        Point3D,
+      ],
       normal,
       centroid,
     }
@@ -995,7 +996,7 @@ export interface ConvexHullTetrahedron {
 }
 
 interface ConvexHullFace4D {
-  vertices: [number, number, number, number] // indices
+  vertices: Vec4 // indices
   plane: Plane4D
   centroid: Point4D
   outside_points: Set<number>
@@ -1152,23 +1153,27 @@ function distance_point_to_hyperplane_4d(
 }
 
 // Distance from point to line in 4D
-function distance_point_to_line_4d(a: Point4D, b: Point4D, p: Point4D): number {
-  const ab = subtract_4d(b, a)
-  const ap = subtract_4d(p, a)
+function distance_point_to_line_4d(
+  line_start: Point4D,
+  line_end: Point4D,
+  point: Point4D,
+): number {
+  const line_vec = subtract_4d(line_end, line_start)
+  const to_point = subtract_4d(point, line_start)
 
-  const ab_len_sq = dot_4d(ab, ab)
-  if (ab_len_sq < EPS) return norm_4d(ap)
+  const line_len_sq = dot_4d(line_vec, line_vec)
+  if (line_len_sq < EPS) return norm_4d(to_point)
 
-  // Project ap onto ab
-  const t = dot_4d(ap, ab) / ab_len_sq
+  // Project to_point onto line_vec
+  const proj_frac = dot_4d(to_point, line_vec) / line_len_sq
   const projection = {
-    x: a.x + t * ab.x,
-    y: a.y + t * ab.y,
-    z: a.z + t * ab.z,
-    w: a.w + t * ab.w,
+    x: line_start.x + proj_frac * line_vec.x,
+    y: line_start.y + proj_frac * line_vec.y,
+    z: line_start.z + proj_frac * line_vec.z,
+    w: line_start.w + proj_frac * line_vec.w,
   }
 
-  return norm_4d(subtract_4d(p, projection))
+  return norm_4d(subtract_4d(point, projection))
 }
 
 // Maximum sample size for initial simplex selection in 4D hulls (avoids O(n²) for large datasets)
@@ -1270,26 +1275,46 @@ function choose_initial_4_simplex(
 
 function make_face_4d(
   points: Point4D[],
-  a: number,
-  b: number,
-  c: number,
-  d: number,
+  vert_a: number,
+  vert_b: number,
+  vert_c: number,
+  vert_d: number,
   interior_point: Point4D,
 ): ConvexHullFace4D {
-  let plane = compute_plane_4d(points[a], points[b], points[c], points[d])
-  let centroid = compute_centroid_4d(points[a], points[b], points[c], points[d])
+  let plane = compute_plane_4d(points[vert_a], points[vert_b], points[vert_c], points[vert_d])
+  let centroid = compute_centroid_4d(
+    points[vert_a],
+    points[vert_b],
+    points[vert_c],
+    points[vert_d],
+  )
 
   const dist_interior = point_plane_signed_distance_4d(plane, interior_point)
 
   // Ensure normal points outward (away from interior)
   if (dist_interior > 0) {
     // Swap two vertices to flip normal
-    plane = compute_plane_4d(points[a], points[c], points[b], points[d])
-    centroid = compute_centroid_4d(points[a], points[c], points[b], points[d])
-    return { vertices: [a, c, b, d], plane, centroid, outside_points: new Set<number>() }
+    plane = compute_plane_4d(points[vert_a], points[vert_c], points[vert_b], points[vert_d])
+    centroid = compute_centroid_4d(
+      points[vert_a],
+      points[vert_c],
+      points[vert_b],
+      points[vert_d],
+    )
+    return {
+      vertices: [vert_a, vert_c, vert_b, vert_d],
+      plane,
+      centroid,
+      outside_points: new Set<number>(),
+    }
   }
 
-  return { vertices: [a, b, c, d], plane, centroid, outside_points: new Set<number>() }
+  return {
+    vertices: [vert_a, vert_b, vert_c, vert_d],
+    plane,
+    centroid,
+    outside_points: new Set<number>(),
+  }
 }
 
 function assign_outside_points_4d(
@@ -1338,14 +1363,14 @@ function build_horizon_4d(
 
   for (const face_idx of visible_face_indices) {
     const face = faces[face_idx]
-    const [a, b, c, d] = face.vertices
+    const [vert_a, vert_b, vert_c, vert_d] = face.vertices
 
     // Each tetrahedron face has 4 triangular ridges
     const ridges: math.Vec3[] = [
-      [a, b, c],
-      [a, b, d],
-      [a, c, d],
-      [b, c, d],
+      [vert_a, vert_b, vert_c],
+      [vert_a, vert_b, vert_d],
+      [vert_a, vert_c, vert_d],
+      [vert_b, vert_c, vert_d],
     ]
 
     for (const ridge of ridges) {
@@ -1451,8 +1476,8 @@ export function compute_quickhull_4d(points: Point4D[]): ConvexHullTetrahedron[]
 
     // Step 5: Create new faces connecting horizon ridges to eye point
     const new_faces: ConvexHullFace4D[] = []
-    for (const [u, v, w] of horizon_ridges) {
-      const new_face = make_face_4d(points, u, v, w, eye_idx, interior_point)
+    for (const [vert_u, vert_v, vert_w] of horizon_ridges) {
+      const new_face = make_face_4d(points, vert_u, vert_v, vert_w, eye_idx, interior_point)
       new_faces.push(new_face)
     }
 
@@ -1480,9 +1505,9 @@ export function compute_quickhull_4d(points: Point4D[]): ConvexHullTetrahedron[]
   }
 
   return faces.map((face) => {
-    const [a, b, c, d] = face.vertices
+    const [vert_a, vert_b, vert_c, vert_d] = face.vertices
     return {
-      vertices: [points[a], points[b], points[c], points[d]] as [
+      vertices: [points[vert_a], points[vert_b], points[vert_c], points[vert_d]] as [
         Point4D,
         Point4D,
         Point4D,
@@ -1507,7 +1532,7 @@ function point_in_tetrahedron_3d(
   p2: Point3D,
   p3: Point3D,
   point: Point3D,
-): { inside: boolean; bary: [number, number, number, number] } {
+): { inside: boolean; bary: Vec4 } {
   // Solve for barycentric coordinates: point = l0*p0 + l1*p1 + l2*p2 + l3*p3
   // with l0 + l1 + l2 + l3 = 1
   // Build the linear system
@@ -1526,7 +1551,7 @@ function point_in_tetrahedron_3d(
   }
 
   // Compute barycentric coordinates using Cramer's rule
-  const bary: [number, number, number, number] = [0, 0, 0, 0]
+  const bary: Vec4 = [0, 0, 0, 0]
   for (let idx = 0; idx < 4; idx++) {
     const m_i = matrix.map((row) => [...row]) as math.Matrix4x4
     for (let row = 0; row < 4; row++) {
@@ -1673,8 +1698,8 @@ export interface SimplexFaceND {
 // Compute normal to hyperplane through N points in N-dimensional space
 // Uses null space computation via cofactor expansion
 function compute_hyperplane_nd(points: number[][]): HyperplaneND {
-  const n = points.length
-  if (n < 2) return { normal: [], offset: 0 }
+  const n_points = points.length
+  if (n_points < 2) return { normal: [], offset: 0 }
 
   // Build (N-1) edge vectors from points[0]
   const edges = points.slice(1).map((pt) => subtract_nd(pt, points[0]))
@@ -1714,8 +1739,8 @@ const compute_centroid_nd = (points: number[][]): number[] => {
 
 // Find N+1 points that span N dimensions (initial simplex for quickhull)
 function choose_initial_simplex_nd(points: number[][]): number[] | null {
-  const n = points[0]?.length
-  if (!n || points.length < n + 1) return null
+  const dim = points[0]?.length
+  if (!dim || points.length < dim + 1) return null
 
   const chosen: number[] = []
 
@@ -1747,7 +1772,7 @@ function choose_initial_simplex_nd(points: number[][]): number[] | null {
   const chosen_set = new Set(chosen)
 
   // Add remaining points to span higher dimensions
-  while (chosen.length < n + 1) {
+  while (chosen.length < dim + 1) {
     let [best_idx, best_distance] = [-1, -1]
     // Hoist chosen_points computation outside inner loop for O(n) instead of O(n²)
     const chosen_points = chosen.map((idx_c) => points[idx_c])
@@ -1785,8 +1810,8 @@ function distance_to_affine_hull_nd(point: number[], hull_points: number[][]): n
     const ap = subtract_nd(point, pt_a)
     const ab_len_sq = dot_nd(ab, ab)
     if (ab_len_sq < EPS) return norm_nd(ap)
-    const t = dot_nd(ap, ab) / ab_len_sq
-    const proj = pt_a.map((val, idx) => val + t * ab[idx])
+    const proj_frac = dot_nd(ap, ab) / ab_len_sq
+    const proj = pt_a.map((val, idx) => val + proj_frac * ab[idx])
     return norm_nd(subtract_nd(point, proj))
   }
 
@@ -1840,17 +1865,17 @@ function distance_to_affine_hull_nd(point: number[], hull_points: number[][]): n
 
 // Solve linear system Ax = b using Gaussian elimination with partial pivoting
 function solve_linear_system(matrix_a: number[][], vec_b: number[]): number[] | null {
-  const n = matrix_a.length
-  if (n === 0) return []
-  if (vec_b.length !== n) return null // Dimension mismatch
+  const size = matrix_a.length
+  if (size === 0) return []
+  if (vec_b.length !== size) return null // Dimension mismatch
 
   // Augmented matrix
   const aug = matrix_a.map((row, idx) => [...row, vec_b[idx]])
 
-  for (let col = 0; col < n; col++) {
+  for (let col = 0; col < size; col++) {
     // Find pivot
     let max_row = col
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < size; row++) {
       if (Math.abs(aug[row][col]) > Math.abs(aug[max_row][col])) {
         max_row = row
       }
@@ -1866,19 +1891,19 @@ function solve_linear_system(matrix_a: number[][], vec_b: number[]): number[] | 
     }
 
     // Eliminate
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < size; row++) {
       const factor = aug[row][col] / aug[col][col]
-      for (let elim_col = col; elim_col <= n; elim_col++) {
+      for (let elim_col = col; elim_col <= size; elim_col++) {
         aug[row][elim_col] -= factor * aug[col][elim_col]
       }
     }
   }
 
   // Back substitution
-  const result = Array(n).fill(0)
-  for (let row = n - 1; row >= 0; row--) {
-    let sum = aug[row][n]
-    for (let col = row + 1; col < n; col++) {
+  const result = Array(size).fill(0)
+  for (let row = size - 1; row >= 0; row--) {
+    let sum = aug[row][size]
+    for (let col = row + 1; col < size; col++) {
       sum -= aug[row][col] * result[col]
     }
     result[row] = sum / aug[row][row]
@@ -1939,10 +1964,10 @@ function build_horizon_nd(faces: SimplexFaceND[], visible_indices: Set<number>):
   for (const face_idx of visible_indices) {
     const face = faces[face_idx]
     const verts = face.vertex_indices
-    const n = verts.length
+    const n_verts = verts.length
 
-    // Each face has n ridges, each ridge omits one vertex
-    for (let skip = 0; skip < n; skip++) {
+    // Each face has n_verts ridges, each ridge omits one vertex
+    for (let skip = 0; skip < n_verts; skip++) {
       const ridge = verts.filter((_, idx) => idx !== skip)
       const sorted = [...ridge].sort((a, b) => a - b)
       const key = sorted.join(`|`)
@@ -1963,8 +1988,8 @@ function build_horizon_nd(faces: SimplexFaceND[], visible_indices: Set<number>):
 // N-dimensional quickhull algorithm
 export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
   if (points.length === 0) return []
-  const n = points[0].length
-  if (points.length < n + 1) return []
+  const dim = points[0].length
+  if (points.length < dim + 1) return []
 
   // Find initial n-simplex
   const initial = choose_initial_simplex_nd(points)
@@ -1973,9 +1998,9 @@ export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
   // Interior point for normal orientation
   const interior = compute_centroid_nd(initial.map((idx) => points[idx]))
 
-  // Create initial n+1 facets (each omits one vertex from the simplex)
+  // Create initial dim+1 facets (each omits one vertex from the simplex)
   const faces: SimplexFaceND[] = []
-  for (let skip = 0; skip <= n; skip++) {
+  for (let skip = 0; skip <= dim; skip++) {
     const verts = initial.filter((_, idx) => idx !== skip)
     faces.push(make_face_nd(points, verts, interior))
   }
@@ -2084,12 +2109,12 @@ const build_simplex_models_nd = (
 ): SimplexModelND[] =>
   faces.map((face) => {
     const vertices = face.vertex_indices.map((idx) => points[idx])
-    const n = vertices[0].length
+    const dim = vertices[0].length
     // Spatial coords are all except last (energy)
-    const vertices_spatial = vertices.map((pt) => pt.slice(0, n - 1))
+    const vertices_spatial = vertices.map((pt) => pt.slice(0, dim - 1))
 
     // Compute bounding box in spatial dimensions
-    const spatial_dim = n - 1
+    const spatial_dim = dim - 1
     const bbox_min = Array.from({ length: spatial_dim }, (_, idx) =>
       Math.min(...vertices_spatial.map((pt) => pt[idx])),
     )
@@ -2103,11 +2128,11 @@ const build_simplex_models_nd = (
 // Check if point is inside simplex and return barycentric coordinates
 // Uses linear system solution: point = sum(bary[i] * vertex[i]) with sum(bary) = 1
 function point_in_simplex_nd(point: number[], simplex_vertices: number[][]): number[] | null {
-  const n = simplex_vertices.length // Number of vertices = spatial_dim + 1
-  if (n === 0) return null
+  const n_verts = simplex_vertices.length // Number of vertices = spatial_dim + 1
+  if (n_verts === 0) return null
 
   const dim = point.length
-  if (dim !== n - 1) return null // Spatial dim should be one less than vertex count
+  if (dim !== n_verts - 1) return null // Spatial dim should be one less than vertex count
 
   // Build linear system: [v1-v0, v2-v0, ..., vn-v0] * [b1, b2, ..., bn] = point - v0
   // Then b0 = 1 - sum(b1..bn)
@@ -2142,9 +2167,9 @@ export function compute_e_above_hull_nd(
   const models = build_simplex_models_nd(hull_facets, all_points)
 
   return query_points.map((query) => {
-    const n = query.length
-    const spatial = query.slice(0, n - 1) // All but last coord
-    const energy = query[n - 1]
+    const dim = query.length
+    const spatial = query.slice(0, dim - 1) // All but last coord
+    const energy = query[dim - 1]
 
     let hull_energy: number | null = null
 
@@ -2168,7 +2193,7 @@ export function compute_e_above_hull_nd(
 
       // Interpolate energy using barycentric coords
       const e_hull = bary.reduce(
-        (sum, coeff, idx) => sum + coeff * model.vertices[idx][n - 1],
+        (sum, coeff, idx) => sum + coeff * model.vertices[idx][dim - 1],
         0,
       )
       hull_energy = hull_energy === null ? e_hull : Math.min(hull_energy, e_hull)

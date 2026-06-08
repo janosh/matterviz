@@ -4,15 +4,15 @@ import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { resize_element } from '../setup'
 
-const dist = (n: number, center = 0, spread = 1): number[] =>
+const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
-    { length: n },
+    { length: count },
     (_, idx) => center + spread * Math.sin(idx * 1.7) + (idx % 5) * 0.1,
   )
 
 // Extract alternating x,y pixel coords from a violin path ("Mx,yLx,y...Z")
-const path_coords = (d: string): { xs: number[]; ys: number[] } => {
-  const nums = (d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) ?? []).map(Number)
+const path_coords = (path_d: string): { xs: number[]; ys: number[] } => {
+  const nums = (path_d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) ?? []).map(Number)
   return {
     xs: nums.filter((_, idx) => idx % 2 === 0),
     ys: nums.filter((_, idx) => idx % 2 === 1),

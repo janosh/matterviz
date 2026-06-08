@@ -1,4 +1,5 @@
 import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Point, ScaleType, TimeInterval } from '$lib/plot'
 import {
@@ -32,10 +33,10 @@ const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].sort((a, b) =
 // Accepts both number and Date for compatibility with time-based data
 export interface ArcsinhScale {
   (value: number | Date): number
-  domain(): [number, number]
-  domain(domain: [number, number]): ArcsinhScale
-  range(): [number, number]
-  range(range: [number, number]): ArcsinhScale
+  domain(): Vec2
+  domain(domain: Vec2): ArcsinhScale
+  range(): Vec2
+  range(range: Vec2): ArcsinhScale
   invert(value: number): number
   copy(): ArcsinhScale
   ticks(count?: number): number[]
@@ -54,8 +55,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
     throw new Error(`arcsinh threshold must be a positive finite number, got ${threshold}`)
   }
 
-  let current_domain: [number, number] = [0, 1]
-  let current_range: [number, number] = [0, 1]
+  let current_domain: Vec2 = [0, 1]
+  let current_range: Vec2 = [0, 1]
 
   // Forward transform: data value → arcsinh-space
   const arcsinh_transform = (x: number): number => Math.asinh(x / threshold)
@@ -82,19 +83,19 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
 
     // Linear interpolation in transformed space
     if (t_max === t_min) return (r_min + r_max) / 2
-    const t = (t_val - t_min) / (t_max - t_min)
-    return r_min + t * (r_max - r_min)
+    const frac = (t_val - t_min) / (t_max - t_min)
+    return r_min + frac * (r_max - r_min)
   }) as ArcsinhScale
 
   // Domain getter/setter
-  scale.domain = function (domain?: [number, number]): [number, number] | ArcsinhScale {
+  scale.domain = function (domain?: Vec2): Vec2 | ArcsinhScale {
     if (domain === undefined) return current_domain
     current_domain = domain
     return scale
   } as ArcsinhScale[`domain`]
 
   // Range getter/setter
-  scale.range = function (output_range?: [number, number]): [number, number] | ArcsinhScale {
+  scale.range = function (output_range?: Vec2): Vec2 | ArcsinhScale {
     if (output_range === undefined) return current_range
     current_range = output_range
     return scale
@@ -114,8 +115,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
 
     // Inverse linear interpolation
     if (r_max === r_min) return (d_min + d_max) / 2
-    const t = (value - r_min) / (r_max - r_min)
-    const t_val = t_min + t * (t_max - t_min)
+    const frac = (value - r_min) / (r_max - r_min)
+    const t_val = t_min + frac * (t_max - t_min)
 
     // Inverse transform
     return sinh_transform(t_val)
@@ -247,8 +248,8 @@ function generate_positive_arcsinh_ticks(
 // to detect time mode and call create_time_scale() directly when needed.
 export function create_scale(
   scale_type: ScaleType,
-  domain: [number, number],
-  output_range: [number, number],
+  domain: Vec2,
+  output_range: Vec2,
 ): ScaleContinuousNumeric<number, number> | ArcsinhScale {
   const [min_val, max_val] = domain
   const type_name = get_scale_type_name(scale_type)
@@ -272,14 +273,14 @@ export function create_scale(
 }
 
 // Create a time scale for time-based data
-export const create_time_scale = (domain: [number, number], output_range: [number, number]) =>
+export const create_time_scale = (domain: Vec2, output_range: Vec2) =>
   scaleTime()
     .domain([new Date(domain[0]), new Date(domain[1])])
     .range(output_range)
 
 // Unified tick generation function
 export function generate_ticks(
-  domain: [number, number],
+  domain: Vec2,
   scale_type: ScaleType,
   ticks_option: TicksOption | undefined,
   scale_fn: PlotScaleFn, // D3 scale function with .ticks() method
@@ -322,15 +323,17 @@ export function generate_ticks(
 
     if (typeof ticks_option === `string`) {
       if (ticks_option === `month`) {
-        return ticks.filter((d: Date) => d.getDate() === 1).map((d: Date) => d.getTime())
+        return ticks
+          .filter((date: Date) => date.getDate() === 1)
+          .map((date: Date) => date.getTime())
       }
       if (ticks_option === `year`) {
         return ticks
-          .filter((d: Date) => d.getMonth() === 0 && d.getDate() === 1)
-          .map((d: Date) => d.getTime())
+          .filter((date: Date) => date.getMonth() === 0 && date.getDate() === 1)
+          .map((date: Date) => date.getTime())
       }
     }
-    return ticks.map((d: Date) => d.getTime())
+    return ticks.map((date: Date) => date.getTime())
   }
 
   const type_name = get_scale_type_name(scale_type)
@@ -362,10 +365,7 @@ export function generate_ticks(
 }
 
 // Calculate domain from array of values (simple version)
-export function calculate_domain(
-  values: number[],
-  scale_type: ScaleType = `linear`,
-): [number, number] {
+export function calculate_domain(values: number[], scale_type: ScaleType = `linear`): Vec2 {
   const [min_val, max_val] = extent(values)
   if (min_val === undefined || max_val === undefined) return [0, 1]
 
@@ -378,12 +378,12 @@ export function calculate_domain(
 // Advanced domain calculation with padding and nice boundaries (from ScatterPlot)
 export function get_nice_data_range(
   points: Point[],
-  get_value: (p: Point) => number,
+  get_value: (point: Point) => number,
   limits: [number | null, number | null],
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
-): [number, number] {
+): Vec2 {
   const [min, max] = limits
   const [min_ext, max_ext] = extent(points, get_value)
   let data_min = min ?? min_ext ?? 0
@@ -528,10 +528,10 @@ export function create_color_scale(
     | {
         type?: ScaleType
         scheme?: D3ColorSchemeName | D3InterpolateName
-        value_range?: [number, number]
+        value_range?: Vec2
       }
     | string,
-  auto_color_range: [number, number],
+  auto_color_range: Vec2,
 ) {
   const scheme =
     typeof color_scale_config === `string` ? color_scale_config : color_scale_config.scheme
@@ -567,7 +567,7 @@ export function create_color_scale(
 // Scale function reads from closure state on each call for stable identity
 function create_arcsinh_color_scale(
   interpolator: (t: number) => string,
-  initial_domain: [number, number],
+  initial_domain: Vec2,
   threshold: number,
 ) {
   // Guard against extremely small thresholds that could cause precision issues
@@ -576,8 +576,8 @@ function create_arcsinh_color_scale(
 
   type ArcsinhColorScale = ((value: number) => string) & {
     domain: {
-      (): [number, number]
-      (new_domain: [number, number]): ArcsinhColorScale
+      (): Vec2
+      (new_domain: Vec2): ArcsinhColorScale
     }
   }
 
@@ -596,7 +596,7 @@ function create_arcsinh_color_scale(
   }) as ArcsinhColorScale
 
   // Domain getter/setter for D3 compatibility - returns same scale instance
-  scale.domain = function (new_domain?: [number, number]) {
+  scale.domain = function (new_domain?: Vec2) {
     if (new_domain === undefined) return current_domain
     current_domain = new_domain
     return scale
@@ -609,8 +609,8 @@ function create_arcsinh_color_scale(
 export function create_size_scale(
   config: {
     type?: ScaleType
-    radius_range?: [number, number]
-    value_range?: [number, number]
+    radius_range?: Vec2
+    value_range?: Vec2
   },
   all_size_values: (number | null)[],
 ) {
@@ -639,8 +639,8 @@ export function create_size_scale(
       .range([min_radius, max_radius])
 
     type ClampedSizeScale = ((value: number) => number) & {
-      domain: () => [number, number]
-      range: () => [number, number]
+      domain: () => Vec2
+      range: () => Vec2
     }
 
     // Wrap with clamping

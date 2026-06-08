@@ -40,15 +40,17 @@ beforeEach(() => {
     stl_return_dataview ? new DataView(new ArrayBuffer(84)) : new ArrayBuffer(84),
   )
   obj_spy.mockImplementation(() => `# OBJ file\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n`)
-  gltf_spy.mockImplementation((_: Scene, ok: (g: object) => void, err: (e: Error) => void) => {
-    setTimeout(
-      () =>
-        gltf_should_fail
-          ? err(new Error(`GLTF export failed`))
-          : ok({ asset: { version: `2.0` }, scenes: [{}] }),
-      0,
-    )
-  })
+  gltf_spy.mockImplementation(
+    (_: Scene, ok: (gltf: object) => void, err: (error: Error) => void) => {
+      setTimeout(
+        () =>
+          gltf_should_fail
+            ? err(new Error(`GLTF export failed`))
+            : ok({ asset: { version: `2.0` }, scenes: [{}] }),
+        0,
+      )
+    },
+  )
 
   vi.stubGlobal(`URL`, {
     createObjectURL: vi.fn((blob: Blob) => {

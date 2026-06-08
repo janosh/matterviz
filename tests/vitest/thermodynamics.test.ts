@@ -13,7 +13,8 @@ describe(`calculate_e_above_hull`, () => {
     entry_id: id,
     composition,
     energy,
-    energy_per_atom: energy / Object.values(composition).reduce((a, b) => a + b, 0),
+    energy_per_atom:
+      energy / Object.values(composition).reduce((sum, count) => sum + count, 0),
     e_form_per_atom,
   })
 

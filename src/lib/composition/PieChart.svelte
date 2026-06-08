@@ -75,12 +75,12 @@
 
         // Single element: full circle with no radial stroke line, label at center
         if (fraction === 1) {
-          const r = outer_radius
+          const radius = outer_radius
           const ir = inner_radius_adjusted
           // Two semicircular arcs to form a full circle (avoids SVG 360° arc bug)
-          const outer_arc = `M ${center} ${center - r} A ${r} ${r} 0 1 1 ${center} ${
-            center + r
-          } A ${r} ${r} 0 1 1 ${center} ${center - r} Z`
+          const outer_arc = `M ${center} ${center - radius} A ${radius} ${radius} 0 1 1 ${center} ${
+            center + radius
+          } A ${radius} ${radius} 0 1 1 ${center} ${center - radius} Z`
           const path = ir > 0
             ? `${outer_arc} M ${center} ${
               center - ir
@@ -101,7 +101,7 @@
             label_x: center,
             label_y: center,
             is_outside_slice: false,
-            font_scale: get_chart_font_scale(2.6, label_text, r * 2),
+            font_scale: get_chart_font_scale(2.6, label_text, radius * 2),
             text_color: pick_contrast_color({ bg_color: color }),
           }
         }

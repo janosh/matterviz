@@ -592,7 +592,7 @@ describe(`PlotLegend`, () => {
       expect(document.querySelectorAll(`.legend-item.indented`)).toHaveLength(expects.indented)
 
       const group_labels = Array.from(document.querySelectorAll(`.legend-group-header`)).map(
-        (h) => h.querySelector(`.group-label`)?.textContent,
+        (header) => header.querySelector(`.group-label`)?.textContent,
       )
       expect(group_labels).toEqual([`Li₂O`, `NaCl`])
     })

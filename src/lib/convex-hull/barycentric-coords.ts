@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib/element'
-import type { Point3D, Vec3 } from '$lib/math'
+import type { Point3D, Vec2, Vec3 } from '$lib/math'
 import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermodynamics'
 import type { ConvexHullEntry, PhaseData } from './types'
 import { is_unary_entry } from './helpers'
@@ -31,7 +31,7 @@ export function composition_to_barycentric_3d(
 }
 
 // map barycentric coordinates to triangular 2D coordinates
-export function barycentric_to_ternary_xy(barycentric: Vec3): [number, number] {
+export function barycentric_to_ternary_xy(barycentric: Vec3): Vec2 {
   const [v0, v1, v2] = TRIANGLE_VERTICES
   const [a, b, c] = barycentric
   const x = v0[0] * a + v1[0] * b + v2[0] * c
@@ -160,9 +160,9 @@ export function composition_to_barycentric_nd(
   composition: Record<string, number>,
   elements: ElementSymbol[],
 ): number[] {
-  const n = elements.length
-  if (n < 2) {
-    throw new Error(`Barycentric coordinates require at least 2 elements, got ${n}`)
+  const n_elems = elements.length
+  if (n_elems < 2) {
+    throw new Error(`Barycentric coordinates require at least 2 elements, got ${n_elems}`)
   }
   // NaN and undefined/missing elements are treated as 0
   const amounts = elements.map((el) => {

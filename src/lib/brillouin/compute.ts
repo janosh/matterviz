@@ -468,14 +468,14 @@ function clip_polyhedron_by_plane(
       const denom = d1 - d2
       // Skip if denominator too small (tighter than TOL for numerical stability)
       if (Math.abs(denom) < 1e-12) continue
-      const t = d1 / denom
+      const frac = d1 / denom
       // Only add intersection if it's not at an endpoint (which is already kept)
-      if (t > TOL && t < 1 - TOL) {
+      if (frac > TOL && frac < 1 - TOL) {
         const [v1, v2] = [vertices[i1], vertices[i2]]
         result.push([
-          v1[0] + t * (v2[0] - v1[0]),
-          v1[1] + t * (v2[1] - v1[1]),
-          v1[2] + t * (v2[2] - v1[2]),
+          v1[0] + frac * (v2[0] - v1[0]),
+          v1[1] + frac * (v2[1] - v1[1]),
+          v1[2] + frac * (v2[2] - v1[2]),
         ])
       }
     }

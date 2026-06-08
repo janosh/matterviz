@@ -2,6 +2,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { is_color, pick_contrast_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { make_change_detector } from '$lib/utils'
@@ -127,7 +128,7 @@
     ) => number | null
     normalize?: NormalizeMode
     domain_mode?: DomainMode
-    quantile_clip?: [number, number]
+    quantile_clip?: Vec2
     show_legend?: boolean
     legend_position?: LegendPosition
     legend_label?: string
@@ -146,8 +147,8 @@
     oncontextmenu?: (cell: CellContext, event: MouseEvent) => void
     enable_brush?: boolean
     onbrush?: (payload: {
-      x_range: [number, number]
-      y_range: [number, number]
+      x_range: Vec2
+      y_range: Vec2
       cells: CellContext[]
     }) => void
     tile_size?: string

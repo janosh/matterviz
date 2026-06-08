@@ -313,7 +313,7 @@ describe(`DOS stacking with mismatched lengths`, () => {
       expected: [1.5, 3, 4.5, 1, 0.5],
     },
   ])(`stacks with $name without NaN`, ({ cumulative, current, expected }) => {
-    const stacked = current.map((d, idx) => d + (cumulative[idx] ?? 0))
+    const stacked = current.map((val, idx) => val + (cumulative[idx] ?? 0))
     expect(stacked).toEqual(expected)
     expect(stacked.every((val) => !Number.isNaN(val))).toBe(true)
   })
@@ -613,7 +613,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
     recip_lattice: { matrix: identity_lattice },
   }
 
-  const x_pos = { GAMMA_X: [0, 1.0], X_K: [1.0, 1.5] } as Record<string, [number, number]>
+  const x_pos = { GAMMA_X: [0, 1.0], X_K: [1.0, 1.5] } as Record<string, Vec2>
 
   it.each([
     { x: 0.0, expected: 0, label: `Γ` },
@@ -669,10 +669,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
       labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
       recip_lattice: { matrix: identity_lattice },
     }
-    const x_pos_repeat = { GAMMA_X: [0, 1.0], X_GAMMA: [1.0, 2.0] } as Record<
-      string,
-      [number, number]
-    >
+    const x_pos_repeat = { GAMMA_X: [0, 1.0], X_GAMMA: [1.0, 2.0] } as Record<string, Vec2>
 
     const idx_first = find_qpoint_at_rescaled_x(bs, 0.0, x_pos_repeat)
     const idx_second = find_qpoint_at_rescaled_x(bs, 2.0, x_pos_repeat)
@@ -702,10 +699,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
       },
       recip_lattice: { matrix: identity_lattice },
     }
-    const x_pos_disc = { GAMMA_X: [0, 0.5], X_K: [0.5, 0.5] } as Record<
-      string,
-      [number, number]
-    >
+    const x_pos_disc = { GAMMA_X: [0, 0.5], X_K: [0.5, 0.5] } as Record<string, Vec2>
 
     // At discontinuity, should return X (idx 1)
     expect(find_qpoint_at_rescaled_x(bs, 0.5, x_pos_disc)).toBe(1)
@@ -1685,7 +1679,7 @@ describe(`get_ribbon_config`, () => {
 })
 
 describe(`generate_ribbon_path`, () => {
-  const id = (v: number) => v
+  const id = (val: number) => val
 
   it(`generates valid SVG path with lower edge reversed`, () => {
     const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], id, id, 5)
@@ -1693,8 +1687,16 @@ describe(`generate_ribbon_path`, () => {
     // Verify polygon structure: upper edge 0→1→2, lower edge 2→1→0
     const points = path.match(/[\d.-]+,[\d.-]+/g) ?? []
     expect(points).toHaveLength(6)
-    expect(points.slice(0, 3).map((p) => p.split(`,`)[0])).toEqual([`0.00`, `1.00`, `2.00`])
-    expect(points.slice(3).map((p) => p.split(`,`)[0])).toEqual([`2.00`, `1.00`, `0.00`])
+    expect(points.slice(0, 3).map((point) => point.split(`,`)[0])).toEqual([
+      `0.00`,
+      `1.00`,
+      `2.00`,
+    ])
+    expect(points.slice(3).map((point) => point.split(`,`)[0])).toEqual([
+      `2.00`,
+      `1.00`,
+      `0.00`,
+    ])
   })
 
   it.each([
@@ -1703,8 +1705,8 @@ describe(`generate_ribbon_path`, () => {
     [`mismatched width`, [0, 1, 2], [0, 1, 2], [1, 1]],
     [`zero widths`, [0, 1, 2], [0, 1, 0], [0, 0, 0]],
     [`negative widths`, [0, 1], [0, 1], [-1, -2]],
-  ])(`returns "" for %s`, (_, x, y, w) => {
-    expect(generate_ribbon_path(x, y, w, id, id, 10)).toBe(``)
+  ])(`returns "" for %s`, (_, x, y, widths) => {
+    expect(generate_ribbon_path(x, y, widths, id, id, 10)).toBe(``)
   })
 
   it(`normalizes widths and applies scale`, () => {
@@ -1717,7 +1719,7 @@ describe(`generate_ribbon_path`, () => {
   })
 
   it(`applies custom scale functions`, () => {
-    const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], (v) => v * 2, id, 5)
+    const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], (val) => val * 2, id, 5)
     expect(path).toContain(`0.00,`)
     expect(path).toContain(`2.00,`)
     expect(path).toContain(`4.00,`) // x doubled: 0→0, 1→2, 2→4

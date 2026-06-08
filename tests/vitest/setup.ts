@@ -484,7 +484,7 @@ export const make_wyckoff_dataset = (
   return {
     std_cell: { positions, numbers },
     input_cell: { positions, numbers },
-    wyckoffs: wyckoffs.map((w) => w ?? ``),
+    wyckoffs: wyckoffs.map((wyckoff) => wyckoff ?? ``),
     orbits,
     std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
     ...(orig_site_indices_by_input_idx ? { orig_site_indices_by_input_idx } : {}),

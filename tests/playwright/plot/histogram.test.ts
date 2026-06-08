@@ -1103,7 +1103,7 @@ test.describe(`Histogram Component Tests`, () => {
     // Validate interval consistency
     if (x_ticks.ticks.length > 1) {
       const intervals = x_ticks.ticks.slice(1).map((tick, idx) => tick - x_ticks.ticks[idx])
-      const avg_interval = intervals.reduce((a, b) => a + b, 0) / intervals.length
+      const avg_interval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length
       expect(avg_interval).toBeGreaterThan(0)
     }
 

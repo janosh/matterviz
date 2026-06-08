@@ -176,7 +176,7 @@
     outlier_style?: OutlierStyle
     whisker_mode?: WhiskerMode
     whisker_range?: number
-    whisker_percentiles?: [number, number]
+    whisker_percentiles?: Vec2
     show_outliers?: boolean
     show_mean?: boolean
     show_value_labels?: boolean
@@ -882,8 +882,8 @@
 </script>
 
 {#snippet seg(
-  p1: [number, number],
-  p2: [number, number],
+  p1: Vec2,
+  p2: Vec2,
   stroke: string,
   sw: number,
   dash?: string,
@@ -1144,7 +1144,7 @@
             {@const v_wl = val_scale(stats.whisker_low)}
             {@const v_wh = val_scale(stats.whisker_high)}
             {@const v_mean = val_scale(stats.mean)}
-            {@const pt = (cross: number, val: number): [number, number] =>
+            {@const pt = (cross: number, val: number): Vec2 =>
             vertical ? [cross, val] : [val, cross]}
             {@const [q1x, q1y] = pt(c_lo, v_q1)}
             {@const [q3x, q3y] = pt(c_hi, v_q3)}

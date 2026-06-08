@@ -408,7 +408,7 @@ describe(`ConvexHullStats`, () => {
         stable_entries: [mock_entry({ energy_per_atom, reduced_formula: `X` })],
         unstable_entries: [],
       })
-      expect(get_headers().some((h) => h?.includes(`raw`))).toBe(expected)
+      expect(get_headers().some((header) => header?.includes(`raw`))).toBe(expected)
     })
 
     test(`ID column and value shown when entry_id available`, () => {

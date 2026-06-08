@@ -1,10 +1,10 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { PhaseData } from '$lib/convex-hull/types'
-import type { Point2D } from '$lib/math'
+import type { Point2D, Vec2 } from '$lib/math'
 
 // Per-element chemical potential bounds [min, max] in eV
 // Default is [-50, 0] matching pymatgen
-export type ChemPotLimits = Partial<Record<string, [number, number]>>
+export type ChemPotLimits = Partial<Record<string, Vec2>>
 
 export type ChemPotColorMode = `none` | `energy` | `formation_energy` | `arity` | `entries`
 
@@ -63,7 +63,7 @@ export interface ChemPotDiagramData {
   // Entries corresponding to hyperplanes (same order)
   hyperplane_entries: PhaseData[]
   // Axis limits array: [[min, max], ...] per element
-  lims: [number, number][]
+  lims: Vec2[]
 }
 
 export interface ChemPotHoverInfoBase {

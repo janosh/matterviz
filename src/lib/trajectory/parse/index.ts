@@ -151,7 +151,8 @@ export async function parse_trajectory_data(
                 force_magnitudes[0],
               )
               processed_properties.force_norm = Math.sqrt(
-                force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) / force_magnitudes.length,
+                force_magnitudes.reduce((sum, magnitude) => sum + magnitude ** 2, 0) /
+                  force_magnitudes.length,
               )
             }
           }

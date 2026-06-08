@@ -114,9 +114,9 @@ describe(`wyckoff_positions_from_moyo`, () => {
     )
     const result = wyckoff_positions_from_moyo(mixed)
     expect(result).toHaveLength(2)
-    expect(result.map((r) => r.wyckoff).sort()).toEqual([`1j`, `4i`])
-    expect(result.map((r) => r.elem)).toEqual([`O`, `O`])
-    result.forEach((r) => expect(mixed.std_cell.positions).toContainEqual(r.abc))
+    expect(result.map((pos) => pos.wyckoff).sort()).toEqual([`1j`, `4i`])
+    expect(result.map((pos) => pos.elem)).toEqual([`O`, `O`])
+    result.forEach((pos) => expect(mixed.std_cell.positions).toContainEqual(pos.abc))
 
     // Simplest coordinates selection
     const simple = mock_data(
@@ -151,14 +151,14 @@ describe(`wyckoff_positions_from_moyo`, () => {
     )
     const multi_result = wyckoff_positions_from_moyo(multi_elem)
     expect(multi_result).toHaveLength(4)
-    expect(multi_result.map((r) => `${r.wyckoff}-${r.elem}`).sort()).toEqual([
+    expect(multi_result.map((pos) => `${pos.wyckoff}-${pos.elem}`).sort()).toEqual([
       `1a-H`,
       `1a-O`,
       `1b-C`,
       `1b-Fe`,
     ])
-    expect(multi_result.find((r) => r.elem === `H`)?.abc).toEqual([0, 0, 0])
-    expect(multi_result.find((r) => r.elem === `O`)?.abc).toEqual([0.5, 0.5, 0.5])
+    expect(multi_result.find((pos) => pos.elem === `H`)?.abc).toEqual([0, 0, 0])
+    expect(multi_result.find((pos) => pos.elem === `O`)?.abc).toEqual([0.5, 0.5, 0.5])
 
     // Multiplicity scales by the std/input size ratio (can't use make_wyckoff_dataset,
     // which assumes input == std): a primitive input with one Cu site (orbit size 1) but a
@@ -237,13 +237,13 @@ describe(`structure validation`, () => {
       if (!site.species?.length) issues.push(`Site ${site_idx} missing species`)
       if (
         site.abc?.length !== 3 ||
-        site.abc.some((c) => typeof c !== `number` || !isFinite(c))
+        site.abc.some((coord) => typeof coord !== `number` || !isFinite(coord))
       ) {
         issues.push(`Site ${site_idx} invalid fractional coordinates`)
       }
       if (
         site.xyz?.length !== 3 ||
-        site.xyz.some((c) => typeof c !== `number` || !isFinite(c))
+        site.xyz.some((coord) => typeof coord !== `number` || !isFinite(coord))
       ) {
         issues.push(`Site ${site_idx} invalid Cartesian coordinates`)
       }
@@ -301,7 +301,7 @@ describe(`structure validation`, () => {
           }
           if (
             [`a`, `b`, `c`, `alpha`, `beta`, `gamma`, `volume`].some(
-              (p) => typeof lattice[p as keyof typeof lattice] !== `number`,
+              (param) => typeof lattice[param as keyof typeof lattice] !== `number`,
             )
           ) {
             issues.push(`Missing lattice parameters`)
@@ -332,8 +332,10 @@ describe(`structure validation`, () => {
       expect(totalOccupancy).toBeGreaterThan(0)
 
       if (`lattice` in structure && structure.lattice) {
-        const { a, b, c, volume } = structure.lattice
-        expect([a, b, c, volume]).toEqual(expect.arrayContaining([expect.any(Number)]))
+        const { a: a_len, b: b_len, c: c_len, volume } = structure.lattice
+        expect([a_len, b_len, c_len, volume]).toEqual(
+          expect.arrayContaining([expect.any(Number)]),
+        )
       }
     })
   })
@@ -353,8 +355,8 @@ describe(`integration tests`, () => {
 
     const positions = wyckoff_positions_from_moyo(mock)
     expect(positions).toHaveLength(3)
-    expect(new Set(positions.map((p) => p.elem))).toEqual(new Set([`H`, `O`, `Fe`]))
-    positions.forEach((p) => expect([`1a`, `1b`, `1c`]).toContain(p.wyckoff))
+    expect(new Set(positions.map((pos) => pos.elem))).toEqual(new Set([`H`, `O`, `Fe`]))
+    positions.forEach((pos) => expect([`1a`, `1b`, `1c`]).toContain(pos.wyckoff))
   })
 })
 
@@ -814,10 +816,10 @@ describe(`apply_symmetry_operations`, () => {
 
 describe(`map_wyckoff_to_all_atoms`, () => {
   // Helper factory using make_crystal
-  const mock_structure = (sites: { abc: Vec3; element: string }[]): Crystal =>
+  const mock_structure = (sites: { abc: Vec3; element: ElementSymbol }[]): Crystal =>
     make_crystal(
       1,
-      sites.map((site) => ({ element: site.element as ElementSymbol, abc: site.abc })),
+      sites.map(({ element, abc }) => ({ element, abc })),
     )
 
   const mock_sym_data = (): MoyoDataset =>
@@ -929,8 +931,8 @@ describe(`map_wyckoff_to_all_atoms`, () => {
 
     const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
 
-    expect(result.find((r) => r.elem === `H`)?.site_indices).toEqual([0])
-    expect(result.find((r) => r.elem === `O`)?.site_indices).toEqual([2])
+    expect(result.find((pos) => pos.elem === `H`)?.site_indices).toEqual([0])
+    expect(result.find((pos) => pos.elem === `O`)?.site_indices).toEqual([2])
   })
 
   test(`handles periodic boundary conditions`, () => {

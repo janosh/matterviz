@@ -119,13 +119,13 @@
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
+      value_range?: Vec2
     } | D3InterpolateName
     color_bar?: ComponentProps<typeof ColorBar> & { margin?: number | Sides } | null
     size_scale?: {
       type?: ScaleType
-      radius_range?: [number, number]
-      value_range?: [number, number]
+      radius_range?: Vec2
+      value_range?: Vec2
     }
     legend?: LegendConfig | null
     camera_position?: Vec3
@@ -227,7 +227,7 @@
     ),
   )
 
-  let auto_color_range = $derived.by((): [number, number] => {
+  let auto_color_range = $derived.by((): Vec2 => {
     if (all_color_values.length === 0) return [0, 1]
     let [min, max] = [Infinity, -Infinity]
     for (const val of all_color_values) {

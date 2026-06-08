@@ -62,7 +62,9 @@ describe(`PhaseDiagramExportPane`, () => {
       props: { data: mock_phase_data, wrapper: wrapper_div },
     })
 
-    const headings = Array.from(document.querySelectorAll(`h4`)).map((h) => h.textContent)
+    const headings = Array.from(document.querySelectorAll(`h4`)).map(
+      (heading) => heading.textContent,
+    )
     expect(headings).toContain(`Image`)
     expect(headings).toContain(`Data`)
   })

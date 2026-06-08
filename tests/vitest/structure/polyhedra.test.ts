@@ -34,12 +34,16 @@ const add_vec = (origin: Vec3, off: readonly number[]): Vec3 => [
   origin[2] + off[2],
 ]
 // Unit-normal of triangle (a, b, c) - not normalized (only signs/ratios are used)
-const tri_normal = ([a, b, c]: Vec3[]): Vec3 => [
-  (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
-  (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
-  (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
+const tri_normal = ([vert_a, vert_b, vert_c]: Vec3[]): Vec3 => [
+  (vert_b[1] - vert_a[1]) * (vert_c[2] - vert_a[2]) -
+    (vert_b[2] - vert_a[2]) * (vert_c[1] - vert_a[1]),
+  (vert_b[2] - vert_a[2]) * (vert_c[0] - vert_a[0]) -
+    (vert_b[0] - vert_a[0]) * (vert_c[2] - vert_a[2]),
+  (vert_b[0] - vert_a[0]) * (vert_c[1] - vert_a[1]) -
+    (vert_b[1] - vert_a[1]) * (vert_c[0] - vert_a[0]),
 ]
-const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+const dot = (vec_a: Vec3, vec_b: Vec3): number =>
+  vec_a[0] * vec_b[0] + vec_a[1] * vec_b[1] + vec_a[2] * vec_b[2]
 const face_verts = (hull: { vertices: Vec3[] }, face: number[]): Vec3[] =>
   face.map((idx) => hull.vertices[idx])
 
@@ -183,11 +187,11 @@ describe(`convex_hull_3d`, () => {
 
       // Euler: V - E + F = 2 (triangulated closed surface: E = 3F/2)
       const edges = new Set(
-        hull.faces.flatMap(([a, b, c]) =>
+        hull.faces.flatMap(([vert_a, vert_b, vert_c]) =>
           [
-            [a, b],
-            [b, c],
-            [c, a],
+            [vert_a, vert_b],
+            [vert_b, vert_c],
+            [vert_c, vert_a],
           ].map(([from, to]) => (from < to ? `${from}-${to}` : `${to}-${from}`)),
         ),
       )
@@ -195,7 +199,7 @@ describe(`convex_hull_3d`, () => {
       expect(edges.size).toBe((3 * hull.faces.length) / 2)
 
       const centroid = hull.vertices
-        .reduce<Vec3>((acc, v) => add_vec(acc, v), [0, 0, 0])
+        .reduce<Vec3>((acc, vertex) => add_vec(acc, vertex), [0, 0, 0])
         .map((coord) => coord / hull.vertices.length) as Vec3
       for (const face of hull.faces) {
         const verts = face_verts(hull, face)
@@ -206,7 +210,7 @@ describe(`convex_hull_3d`, () => {
             normal,
             add_vec(
               verts[0],
-              centroid.map((c) => -c),
+              centroid.map((coord) => -coord),
             ),
           ),
         ).toBeGreaterThan(0)
@@ -218,7 +222,7 @@ describe(`convex_hull_3d`, () => {
               normal,
               add_vec(
                 point,
-                verts[0].map((c) => -c),
+                verts[0].map((coord) => -coord),
               ),
             ) / norm_len,
           ).toBeLessThan(1e-6)
@@ -482,11 +486,11 @@ describe(`VESTA-style detection rules`, () => {
     // Ba with 12 O neighbors (cuboctahedron) - exceeds the default cap of 8
     const half = 2.85 / Math.sqrt(2)
     // 12 cuboctahedron vertices: all (±h, ±h, 0) permutations
-    const cubo_offsets = [-half, half].flatMap((u) =>
-      [-half, half].flatMap((v) => [
-        [u, v, 0],
-        [u, 0, v],
-        [0, u, v],
+    const cubo_offsets = [-half, half].flatMap((off_a) =>
+      [-half, half].flatMap((off_b) => [
+        [off_a, off_b, 0],
+        [off_a, 0, off_b],
+        [0, off_a, off_b],
       ]),
     )
     const structure = make_crystal(16, [

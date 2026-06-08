@@ -7,15 +7,15 @@ import { describe, expect, test } from 'vitest'
 
 type MoyoDatasetWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
-const make_site = (xyz: Vec3, element = `C`): Site => ({
+const make_site = (xyz: Vec3, element: ElementSymbol = `C`): Site => ({
   xyz,
   abc: [0, 0, 0],
-  species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
+  species: [{ element, occu: 1, oxidation_state: 0 }],
   label: element,
   properties: {},
 })
 
-const make_struct = (sites: { xyz: Vec3; element?: string }[]): Crystal => ({
+const make_struct = (sites: { xyz: Vec3; element?: ElementSymbol }[]): Crystal => ({
   sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
   charge: 0,
   lattice: {
@@ -37,12 +37,12 @@ const make_struct = (sites: { xyz: Vec3; element?: string }[]): Crystal => ({
 
 // Helper: Create cubic structure with PBC for testing
 const make_cubic_structure = (
-  sites: { abc: Vec3; element?: string; label?: string }[],
+  sites: { abc: Vec3; element?: ElementSymbol; label?: string }[],
   lattice_size: number,
   pbc: [boolean, boolean, boolean] = [true, true, true],
 ): Crystal => ({
   sites: sites.map(({ abc, element = `C`, label }) => ({
-    species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
+    species: [{ element, occu: 1, oxidation_state: 0 }],
     abc,
     xyz: [abc[0] * lattice_size, abc[1] * lattice_size, abc[2] * lattice_size] as Vec3,
     label: label ?? element,
@@ -128,7 +128,14 @@ describe(`Coordination`, () => {
   })
 
   describe(`PBC-aware coordination`, () => {
-    test.each([
+    test.each<{
+      name: string
+      sites: { abc: Vec3; element?: ElementSymbol }[]
+      lattice_size: number
+      pbc: [boolean, boolean, boolean]
+      expected_length: number
+      check: (vals: (number | string)[]) => boolean
+    }>([
       {
         name: `cell boundaries`,
         sites: [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.5, 0, 0] as Vec3 }],
@@ -136,7 +143,7 @@ describe(`Coordination`, () => {
         pbc: [true, true, true] as [boolean, boolean, boolean],
         expected_length: 2,
         check: (vals: (number | string)[]) =>
-          vals.every((v) => typeof v === `number` && v > 0),
+          vals.every((val) => typeof val === `number` && val > 0),
       },
       {
         name: `BCC symmetry`,
@@ -161,7 +168,7 @@ describe(`Coordination`, () => {
         pbc: [true, true, true] as [boolean, boolean, boolean],
         expected_length: 4,
         check: (vals: (number | string)[]) =>
-          vals.every((v) => typeof v === `number` && v > 0) &&
+          vals.every((val) => typeof val === `number` && val > 0) &&
           typeof vals[0] === `number` &&
           vals[0] >= 3,
       },
@@ -236,7 +243,7 @@ describe(`Coordination`, () => {
       test(`large structure with interior atoms benefits from optimization`, () => {
         // Create a 4x4x4 grid of atoms in fractional coords (64 atoms total)
         // Use denser packing so atoms can actually form bonds
-        const grid_sites: { abc: Vec3; element: string }[] = []
+        const grid_sites: { abc: Vec3; element: ElementSymbol }[] = []
         for (let x_idx = 0; x_idx < 4; x_idx++) {
           for (let y_idx = 0; y_idx < 4; y_idx++) {
             for (let z_idx = 0; z_idx < 4; z_idx++) {
@@ -358,7 +365,7 @@ describe(`Coordination`, () => {
       expect(supercell.sites).toHaveLength(16) // 2 atoms * 2³
 
       // All supercell atoms track original via orig_unit_cell_idx
-      const orig_indices = supercell.sites.map((s) => s.properties?.orig_unit_cell_idx)
+      const orig_indices = supercell.sites.map((site) => site.properties?.orig_unit_cell_idx)
       expect(orig_indices.every((idx) => idx === 0 || idx === 1)).toBe(true)
       expect(orig_indices.filter((idx) => idx === 0)).toHaveLength(8)
       expect(orig_indices.filter((idx) => idx === 1)).toHaveLength(8)
@@ -374,7 +381,7 @@ describe(`Coordination`, () => {
 
       expect(with_images.sites.length).toBeGreaterThan(1)
       const image_atoms = with_images.sites.slice(1)
-      expect(image_atoms.every((s) => s.properties?.orig_site_idx === 0)).toBe(true)
+      expect(image_atoms.every((site) => site.properties?.orig_site_idx === 0)).toBe(true)
     })
   })
 })
@@ -577,7 +584,7 @@ describe(`Performance`, () => {
     const structure = make_struct(
       Array.from({ length: 500 }, (_, idx) => ({
         xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)] as Vec3,
-        element: [`C`, `O`, `N`, `H`][idx % 4],
+        element: ([`C`, `O`, `N`, `H`] as const)[idx % 4],
       })),
     )
 
@@ -597,7 +604,7 @@ describe(`Performance`, () => {
           (Math.floor(idx / 10) % 10) * 1.5,
           Math.floor(idx / 100) * 1.5,
         ] as Vec3,
-        element: [`C`, `O`][idx % 2],
+        element: ([`C`, `O`] as const)[idx % 2],
       })),
     )
 
@@ -617,7 +624,7 @@ describe(`Performance`, () => {
         20 + ((Math.floor(idx / grid) % grid) / (grid - 1)) * 60,
         20 + ((Math.floor(idx / grid ** 2) % grid) / (grid - 1)) * 60,
       ] as Vec3,
-      element: `C`,
+      element: `C` as const,
     }))
 
     const structure = make_struct(sites)

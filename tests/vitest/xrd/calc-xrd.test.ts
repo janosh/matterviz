@@ -56,7 +56,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
     expect(file_pairs.length).toBeGreaterThan(0)
   })
 
-  test.each(file_pairs.map((p) => [p.name, p] as const))(
+  test.each(file_pairs.map((pair) => [pair.name, pair] as const))(
     `compare XRD for %s`,
     (_name, pair) => {
       const structure_json = read_maybe_gz(pair.struct_path)

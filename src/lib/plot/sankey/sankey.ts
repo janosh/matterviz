@@ -10,6 +10,7 @@ import {
   sankeyRight,
 } from 'd3-sankey'
 import type { SankeyLink as D3Link, SankeyNode as D3Node } from 'd3-sankey'
+import type { Vec2 } from '$lib/math'
 import type {
   SankeyData,
   SankeyLink,
@@ -231,7 +232,7 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
   const is_vertical = orientation === `vertical`
   // d3 lays out left->right (depth on x). For vertical we run in a transposed
   // extent (depth on what becomes screen y) then swap node boxes afterwards.
-  const extent: [[number, number], [number, number]] = is_vertical
+  const extent: [Vec2, Vec2] = is_vertical
     ? [
         [0, 0],
         [height, width],

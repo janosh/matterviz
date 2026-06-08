@@ -47,7 +47,8 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
         data.force_max = Math.max(...force_magnitudes)
         // Calculate RMS (root mean square) of force magnitudes
         data.force_norm = Math.sqrt(
-          force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) / force_magnitudes.length,
+          force_magnitudes.reduce((sum, magnitude) => sum + magnitude ** 2, 0) /
+            force_magnitudes.length,
         )
       }
     } else {

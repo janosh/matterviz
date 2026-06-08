@@ -508,9 +508,9 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
     expect(result).toHaveLength(3)
 
-    const ba = result.find((p) => p.elem === `Ba`)
-    const ti = result.find((p) => p.elem === `Ti`)
-    const oxygen = result.find((p) => p.elem === `O`)
+    const ba = result.find((pos) => pos.elem === `Ba`)
+    const ti = result.find((pos) => pos.elem === `Ti`)
+    const oxygen = result.find((pos) => pos.elem === `O`)
 
     expect(ba?.wyckoff).toBe(`1a`)
     expect(ti?.wyckoff).toBe(`1b`)

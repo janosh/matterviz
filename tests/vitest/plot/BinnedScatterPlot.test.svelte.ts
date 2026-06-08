@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import { BinnedScatterPlot, type BinnedDensityConfig } from '$lib/plot'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick } from 'svelte'
@@ -287,11 +288,8 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test.each([
-    [{ radius_range: [2, 18] as [number, number] }, [2, 18]],
-    [
-      { radius_range: [2, 18] as [number, number], value_range: [0, 64] as [number, number] },
-      [2, 10],
-    ],
+    [{ radius_range: [2, 18] as Vec2 }, [2, 18]],
+    [{ radius_range: [2, 18] as Vec2, value_range: [0, 64] as Vec2 }, [2, 10]],
   ])(`supports size_scale config %#`, async (size_scale, expected_radii) => {
     const radii: number[] = []
     const arc = vi.fn((_x: number, _y: number, radius: number) => radii.push(radius))

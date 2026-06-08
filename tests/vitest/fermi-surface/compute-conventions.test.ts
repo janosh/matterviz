@@ -24,18 +24,18 @@ const HEXAGONAL: Matrix3x3 = [
 // n³ grid of fn(frac coords); denom n−1 = endpoint-inclusive BXSF (point i ↔ i/(n−1)),
 // denom n = periodic FRMSF (i ↔ i/n, no duplicated endpoint)
 const build_grid = <Val>(
-  n: number,
+  grid_n: number,
   denom: number,
   fn: (fx: number, fy: number, fz: number) => Val,
 ) =>
-  Array.from({ length: n }, (_x, ix) =>
-    Array.from({ length: n }, (_y, iy) =>
-      Array.from({ length: n }, (_z, iz) => fn(ix / denom, iy / denom, iz / denom)),
+  Array.from({ length: grid_n }, (_x, ix) =>
+    Array.from({ length: grid_n }, (_y, iy) =>
+      Array.from({ length: grid_n }, (_z, iz) => fn(ix / denom, iy / denom, iz / denom)),
     ),
   )
 
 const make_band_data = (
-  n: number,
+  grid_n: number,
   energy_fn: (fx: number, fy: number, fz: number) => number,
   opts: {
     k_lattice?: Matrix3x3
@@ -44,12 +44,12 @@ const make_band_data = (
   } = {},
 ): BandGridData => {
   const { k_lattice = IDENTITY, periodic, velocity_fn } = opts
-  const denom = periodic ? n : n - 1
+  const denom = periodic ? grid_n : grid_n - 1
   return {
-    energies: [[build_grid(n, denom, energy_fn)]],
-    ...(velocity_fn && { velocities: [[build_grid(n, denom, velocity_fn)]] }),
+    energies: [[build_grid(grid_n, denom, energy_fn)]],
+    ...(velocity_fn && { velocities: [[build_grid(grid_n, denom, velocity_fn)]] }),
     ...(periodic && { periodic }),
-    k_grid: [n, n, n],
+    k_grid: [grid_n, grid_n, grid_n],
     k_lattice,
     fermi_energy: 0,
     n_bands: 1,
@@ -101,10 +101,12 @@ describe(`fermi-surface grid/lattice conventions`, () => {
     // [1][n][n] grid: px = 0, so unguarded resampling computes 0/0 = NaN and the
     // tricubic wrap (v % 0) indexes grid[NaN] → crash. A single x-plane has no cubes
     // to march, so the expected output is simply no surfaces.
-    const n = 6
+    const grid_n = 6
     const band_data: BandGridData = {
-      energies: [[[build_grid(n, n - 1, (_fx, fy, fz) => Math.hypot(fy - 0.5, fz - 0.5))[0]]]],
-      k_grid: [1, n, n],
+      energies: [
+        [[build_grid(grid_n, grid_n - 1, (_fx, fy, fz) => Math.hypot(fy - 0.5, fz - 0.5))[0]]],
+      ],
+      k_grid: [1, grid_n, grid_n],
       k_lattice: IDENTITY,
       fermi_energy: 0.3,
       n_bands: 1,

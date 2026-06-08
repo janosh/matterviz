@@ -147,8 +147,8 @@ export function compute_auto_hull_dist_threshold(
   const [LOW, HIGH] = [25, 100]
   if (n_entries <= LOW) return max_hull_dist_in_data
   if (n_entries >= HIGH) return static_default
-  const t = (n_entries - LOW) / (HIGH - LOW)
-  return max_hull_dist_in_data * (1 - t) + static_default * t
+  const frac = (n_entries - LOW) / (HIGH - LOW)
+  return max_hull_dist_in_data * (1 - frac) + static_default * frac
 }
 
 export function auto_threshold_reset(default_threshold: number) {

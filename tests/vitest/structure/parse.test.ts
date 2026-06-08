@@ -60,10 +60,10 @@ function expect_xyz_matches_abc(
   tol: number = TOL,
 ) {
   const lattice_T = transpose_3x3_matrix(lattice as Matrix3x3)
-  const r = mat3x3_vec3_multiply(lattice_T, site.abc as Vec3)
-  expect(r[0]).toBeCloseTo(site.xyz[0], tol)
-  expect(r[1]).toBeCloseTo(site.xyz[1], tol)
-  expect(r[2]).toBeCloseTo(site.xyz[2], tol)
+  const cart = mat3x3_vec3_multiply(lattice_T, site.abc as Vec3)
+  expect(cart[0]).toBeCloseTo(site.xyz[0], tol)
+  expect(cart[1]).toBeCloseTo(site.xyz[1], tol)
+  expect(cart[2]).toBeCloseTo(site.xyz[2], tol)
 }
 
 // Load compressed phonopy files using Node.js built-in decompression

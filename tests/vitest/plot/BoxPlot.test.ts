@@ -1,12 +1,12 @@
-import { BoxPlot } from '$lib'
+import { BoxPlot, type Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bind_props, inside_clip_path, resize_element } from '../setup'
 
-const dist = (n: number, center = 0, spread = 1): number[] =>
+const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
-    { length: n },
+    { length: count },
     (_, idx) => center + spread * Math.sin(idx * 1.7) + (idx % 5) * 0.1,
   )
 
@@ -42,7 +42,7 @@ describe(`BoxPlot`, () => {
     { series: [basic], show_mean: true },
     { series: [basic], show_outliers: false },
     { series: [basic], orientation: `horizontal` as Orientation },
-    { series: [basic], y_axis: { range: [-3, 3] as [number, number] } },
+    { series: [basic], y_axis: { range: [-3, 3] as Vec2 } },
     { series: [basic], y_axis: { format: `.2~s` } },
     { series: [basic], show_controls: false },
     { series: [basic], legend: null },
@@ -168,7 +168,7 @@ describe(`BoxPlot`, () => {
     window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 200 }))
     window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
     await tick()
-    const y2_range = state.y2_axis.range as [number, number] | undefined
+    const y2_range = state.y2_axis.range as Vec2 | undefined
     expect(y2_range?.every(Number.isFinite)).toBe(true)
     expect(state.x2_axis.range).toBeUndefined() // no phantom x2 range in vertical mode
   })

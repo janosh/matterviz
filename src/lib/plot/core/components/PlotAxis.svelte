@@ -1,5 +1,6 @@
 <script lang="ts">
   import { format_value } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
   import type { Sides } from '$lib/plot/core/layout'
   import type { AxisConfig } from '$lib/plot/core/types'
@@ -40,7 +41,7 @@
     show_baseline?: boolean // axis spine line (ScatterPlot omits it)
     tick_label?: (tick: number) => string | null | undefined // custom/categorical label
     tick_color?: (tick: number) => string | undefined // per-tick label color (else axis.color)
-    domain?: [number, number] // when set, cull off-plot ticks and hide out-of-domain labels
+    domain?: Vec2 // when set, cull off-plot ticks and hide out-of-domain labels
     unit_on_first_tick?: boolean // append axis.unit after the first tick label (ScatterPlot)
     label_x?: number
     label_y?: number

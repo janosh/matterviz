@@ -5,6 +5,7 @@
   import type { AnyStructure, Molecule } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
+  import type { Vec3 } from '$root/src/lib'
   import batio3_poscar from '$site/structures/BaTiO3-tetragonal.poscar?raw'
   import lifepo4_cif from '$site/structures/LiFePO4.cif?raw'
   import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
@@ -116,14 +117,10 @@
   const sf6: Molecule = {
     sites: [
       { species: [{ element: `S`, occu: 1, oxidation_state: 6 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `S`, properties: {} },
-      ...([[1.56, 0, 0], [-1.56, 0, 0], [0, 1.56, 0], [0, -1.56, 0], [0, 0, 1.56], [
-        0,
-        0,
-        -1.56,
-      ]] as const).map((xyz, idx) => ({
+      ...([[1.56, 0, 0], [-1.56, 0, 0], [0, 1.56, 0], [0, -1.56, 0], [0, 0, 1.56], [ 0, 0, -1.56]] as const).map((xyz, idx) => ({
         species: [{ element: `F` as const, occu: 1, oxidation_state: -1 }],
-        abc: [0, 0, 0] as [number, number, number],
-        xyz: [...xyz] as [number, number, number],
+        abc: [0, 0, 0] as Vec3,
+        xyz: [...xyz] as Vec3,
         label: `F${idx + 1}`,
         properties: {},
       })),
@@ -154,10 +151,8 @@
 <div class="bleed-1400">
   <nav>
     {#each examples as example (example.id)}
-      <button
-        class:selected={example.id === active_id}
-        onclick={() => select_example(example)}
-      >
+      {@const selected = example.id === active_id}
+      <button class:selected onclick={() => select_example(example)}>
         {example.label}
       </button>
     {/each}

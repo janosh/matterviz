@@ -273,11 +273,11 @@ The `ColorBar` now supports interactive dropdowns for switching properties and c
   async function data_loader(property_key: string) {
     const start = performance.now()
     // Simulate network delay (200-800ms)
-    await new Promise((r) => setTimeout(r, 200 + Math.random() * 600))
+    await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 600))
     last_load_time = Math.round(performance.now() - start)
     switch_count++
 
-    const opt = property_options.find((o) => o.key === property_key)
+    const opt = property_options.find((option) => option.key === property_key)
     return {
       range: property_ranges[property_key],
       title: opt ? `${opt.label} (${opt.unit})` : property_key,
@@ -334,14 +334,14 @@ Here's an example with vertical orientation and title on different sides:
   let range_right = $state(ranges.force)
 
   async function loader_left(key) {
-    await new Promise((r) => setTimeout(r, 300))
-    const opt = property_options.find((o) => o.key === key)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const opt = property_options.find((option) => option.key === key)
     return { range: ranges[key], title: opt?.label }
   }
 
   async function loader_right(key) {
-    await new Promise((r) => setTimeout(r, 300))
-    const opt = property_options.find((o) => o.key === key)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const opt = property_options.find((option) => option.key === key)
     return { range: ranges[key], title: opt?.label }
   }
 </script>

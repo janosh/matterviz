@@ -244,10 +244,14 @@ describe(`ConvexHullTooltip`, () => {
     test.each([
       {
         key: `prefix`,
-        fn: (e: PhaseData) => `ID: ${e.entry_id}`,
+        fn: (entry: PhaseData) => `ID: ${entry.entry_id}`,
         expected: `ID: mp-999`,
       },
-      { key: `suffix`, fn: (e: PhaseData) => `E: ${e.e_above_hull}`, expected: `E: 0.1` },
+      {
+        key: `suffix`,
+        fn: (entry: PhaseData) => `E: ${entry.e_above_hull}`,
+        expected: `E: 0.1`,
+      },
     ])(`renders $key as function`, ({ key, fn, expected }) => {
       mount_tooltip({ entry: mock_entry({ entry_id: `mp-999` }), tooltip: { [key]: fn } })
       expect(document.body.textContent).toContain(expected)

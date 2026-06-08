@@ -769,7 +769,7 @@
     const row_id = get_row_id(row)
     const idx = selected_rows.findIndex((selected_row) => get_row_id(selected_row) === row_id)
     if (idx !== -1) {
-      selected_rows = selected_rows.filter((_, i) => i !== idx)
+      selected_rows = selected_rows.filter((_, row_idx) => row_idx !== idx)
     } else {
       selected_rows = [...selected_rows, row]
     }

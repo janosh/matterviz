@@ -194,14 +194,14 @@
         Resolution
         <div class="resolution-buttons">
           {#each [0.5, 1, 2, 4, 8] as multiplier (multiplier)}
-            {@const w = canvas ? Math.round(canvas.width * multiplier) : 0}
-            {@const h = canvas ? Math.round(canvas.height * multiplier) : 0}
+            {@const width_px = canvas ? Math.round(canvas.width * multiplier) : 0}
+            {@const height_px = canvas ? Math.round(canvas.height * multiplier) : 0}
             <button
               type="button"
               class:active={resolution_multiplier === multiplier}
               onclick={() => (resolution_multiplier = multiplier)}
               {@attach tooltip({
-                content: canvas ? `${multiplier}x (${w}×${h})` : `${multiplier}x`,
+                content: canvas ? `${multiplier}x (${width_px}×${height_px})` : `${multiplier}x`,
               })}
             >
               {multiplier}x

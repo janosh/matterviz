@@ -5,7 +5,7 @@ import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import type {
   BandwidthOption,
   Orientation,
@@ -258,7 +258,7 @@ export interface SettingsConfig {
     // Core trajectory settings
     auto_play: SettingType<boolean>
     fps: SettingType<number>
-    fps_range: SettingType<[number, number]>
+    fps_range: SettingType<Vec2>
     display_mode: SettingType<
       `structure+scatter` | `structure` | `scatter` | `histogram` | `structure+histogram`
     >

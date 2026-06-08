@@ -48,19 +48,19 @@ describe(`ternary: constants and projections`, () => {
   })
 
   test(`barycentric to ternary 3d uses energy as z`, () => {
-    const p = barycentric_to_ternary_xyz([1, 0, 0], -0.5)
-    expect(p).toEqual({ x: 1, y: 0, z: -0.5 })
+    const point = barycentric_to_ternary_xyz([1, 0, 0], -0.5)
+    expect(point).toEqual({ x: 1, y: 0, z: -0.5 })
   })
 
   test(`triangle centroid is arithmetic mean of vertices`, () => {
-    const c = get_triangle_centroid()
+    const centroid = get_triangle_centroid()
     const avg_x =
       (TRIANGLE_VERTICES[0][0] + TRIANGLE_VERTICES[1][0] + TRIANGLE_VERTICES[2][0]) / 3
     const avg_y =
       (TRIANGLE_VERTICES[0][1] + TRIANGLE_VERTICES[1][1] + TRIANGLE_VERTICES[2][1]) / 3
-    expect(c.x).toBeCloseTo(avg_x, 6)
-    expect(c.y).toBeCloseTo(avg_y, 6)
-    expect(c.z).toBe(0)
+    expect(centroid.x).toBeCloseTo(avg_x, 6)
+    expect(centroid.y).toBeCloseTo(avg_y, 6)
+    expect(centroid.z).toBe(0)
   })
 })
 
@@ -125,7 +125,7 @@ describe(`ternary: composition and plotting`, () => {
 
 describe(`ternary: geometry helpers`, () => {
   test(`face normal points upward for counter-clockwise triangle`, () => {
-    const n = calculate_face_normal(
+    const normal = calculate_face_normal(
       { x: 0, y: 0, z: 0 },
       { x: 1, y: 0, z: 0 },
       {
@@ -134,11 +134,11 @@ describe(`ternary: geometry helpers`, () => {
         z: 0,
       },
     )
-    expect(n.z).toBeCloseTo(1, 6)
+    expect(normal.z).toBeCloseTo(1, 6)
   })
 
   test(`face centroid is arithmetic mean`, () => {
-    const c = calculate_face_centroid(
+    const centroid = calculate_face_centroid(
       { x: 0, y: 0, z: 0 },
       { x: 2, y: 0, z: 2 },
       {
@@ -147,7 +147,7 @@ describe(`ternary: geometry helpers`, () => {
         z: 4,
       },
     )
-    expect(c).toEqual({ x: 2 / 3, y: 2 / 3, z: 2 })
+    expect(centroid).toEqual({ x: 2 / 3, y: 2 / 3, z: 2 })
   })
 })
 
@@ -156,19 +156,19 @@ describe(`quaternary: barycentric and projection`, () => {
     expect(TETRAHEDRON_VERTICES).toHaveLength(4)
     // distances from vertex 3 (origin) are non-zero
     for (let idx = 0; idx < 3; idx++) {
-      const d = Math.hypot(
+      const dist = Math.hypot(
         TETRAHEDRON_VERTICES[idx][0] - TETRAHEDRON_VERTICES[3][0],
         TETRAHEDRON_VERTICES[idx][1] - TETRAHEDRON_VERTICES[3][1],
         TETRAHEDRON_VERTICES[idx][2] - TETRAHEDRON_VERTICES[3][2],
       )
-      expect(d).toBeGreaterThan(0)
+      expect(dist).toBeGreaterThan(0)
     }
   })
 
   test(`composition_to_barycentric_4d normalizes or defaults to uniform`, () => {
     const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
     const bc = composition_to_barycentric_4d({ A: 2, B: 2, C: 4, D: 2 }, elems)
-    expect(bc.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9)
+    expect(bc.reduce((sum, val) => sum + val, 0)).toBeCloseTo(1, 9)
     expect(() => composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems)).toThrow(
       `Composition has no elements from the quaternary system: A-B-C-D`,
     )

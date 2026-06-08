@@ -75,12 +75,12 @@ describe(`Element Color Schemes`, () => {
       expect(color, `Pastel scheme should have color for ${element}`).toBeDefined()
 
       // Convert hex to RGB and check lightness
-      const r = parseInt(color.slice(1, 3), 16)
-      const g = parseInt(color.slice(3, 5), 16)
-      const b = parseInt(color.slice(5, 7), 16)
+      const red = parseInt(color.slice(1, 3), 16)
+      const green = parseInt(color.slice(3, 5), 16)
+      const blue = parseInt(color.slice(5, 7), 16)
 
       // Pastel colors should generally have high lightness values
-      const lightness = (Math.max(r, g, b) + Math.min(r, g, b)) / 2
+      const lightness = (Math.max(red, green, blue) + Math.min(red, green, blue)) / 2
       expect(
         lightness,
         `${element} in Pastel scheme should have high lightness (got ${lightness})`,
@@ -283,9 +283,9 @@ describe(`get_page_background`, () => {
       `getComputedStyle`,
       () => ({ backgroundColor: `transparent` }) as CSSStyleDeclaration,
     )
-    vi.stubGlobal(`matchMedia`, (q: string) => ({
-      matches: q.includes(`dark`),
-      media: q,
+    vi.stubGlobal(`matchMedia`, (query: string) => ({
+      matches: query.includes(`dark`),
+      media: query,
     }))
     expect(get_page_background(`#000`, `#fff`)).toBe(`#000`)
     vi.unstubAllGlobals()

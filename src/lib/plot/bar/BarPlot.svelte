@@ -190,12 +190,12 @@
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
+      value_range?: Vec2
     } | D3InterpolateName
     size_scale?: {
       type?: ScaleType
-      radius_range?: [number, number]
-      value_range?: [number, number]
+      radius_range?: Vec2
+      value_range?: Vec2
     }
     point_tween?: TweenOptions<Point2D>
     on_point_click?: (
@@ -489,7 +489,7 @@
   )
 
   // Create auto color range (safely handle empty arrays or undefined extent results)
-  let auto_color_range: [number, number] = $derived.by(() => {
+  let auto_color_range: Vec2 = $derived.by(() => {
     if (all_color_values.length === 0) return [0, 1]
     const [min_val, max_val] = extent(all_color_values)
     return [min_val ?? 0, max_val ?? 1]
@@ -693,10 +693,10 @@
       evt.preventDefault()
       pan_drag_state = {
         start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...ranges.current.x] as [number, number],
-        initial_x2_range: [...ranges.current.x2] as [number, number],
-        initial_y_range: [...ranges.current.y] as [number, number],
-        initial_y2_range: [...ranges.current.y2] as [number, number],
+        initial_x_range: [...ranges.current.x] as Vec2,
+        initial_x2_range: [...ranges.current.x2] as Vec2,
+        initial_y_range: [...ranges.current.y] as Vec2,
+        initial_y2_range: [...ranges.current.y2] as Vec2,
       }
       document.body.style.cursor = `grabbing`
       window.addEventListener(`mousemove`, on_pan_move)
@@ -746,10 +746,10 @@
     const touches = Array.from(evt.touches)
     touch_state = {
       start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...ranges.current.x] as [number, number],
-      initial_x2_range: [...ranges.current.x2] as [number, number],
-      initial_y_range: [...ranges.current.y] as [number, number],
-      initial_y2_range: [...ranges.current.y2] as [number, number],
+      initial_x_range: [...ranges.current.x] as Vec2,
+      initial_x2_range: [...ranges.current.x2] as Vec2,
+      initial_y_range: [...ranges.current.y] as Vec2,
+      initial_y2_range: [...ranges.current.y2] as Vec2,
     }
   }
 
@@ -1120,10 +1120,10 @@
       onmousedown={handle_mouse_down}
       ondblclick={() => {
         // Reset zoom to initial ranges (undo any pan/zoom)
-        ranges.current.x = [...ranges.initial.x] as [number, number]
-        ranges.current.x2 = [...ranges.initial.x2] as [number, number]
-        ranges.current.y = [...ranges.initial.y] as [number, number]
-        ranges.current.y2 = [...ranges.initial.y2] as [number, number]
+        ranges.current.x = [...ranges.initial.x] as Vec2
+        ranges.current.x2 = [...ranges.initial.x2] as Vec2
+        ranges.current.y = [...ranges.initial.y] as Vec2
+        ranges.current.y2 = [...ranges.initial.y2] as Vec2
         // Also reset axis props so future data changes recalculate auto ranges
         x_axis = { ...x_axis, range: [null, null] }
         x2_axis_prop = { ...x2_axis_prop, range: [null, null] }

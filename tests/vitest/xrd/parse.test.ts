@@ -432,9 +432,9 @@ describe(`parse_bruker_raw_file`, () => {
     [
       `unrecognized magic`,
       (() => {
-        const b = new ArrayBuffer(100)
-        new Uint8Array(b).fill(0)
-        return b
+        const buffer = new ArrayBuffer(100)
+        new Uint8Array(buffer).fill(0)
+        return buffer
       })(),
     ],
     [`too small`, new ArrayBuffer(10)],
@@ -659,7 +659,10 @@ describe(`parse_brml_file`, () => {
     },
   ])(`handles Bruker $desc`, async ({ files, expected_x, expected_y }) => {
     const encoded_files = Object.fromEntries(
-      Object.entries(files).map(([k, v]) => [k, new TextEncoder().encode(v)]),
+      Object.entries(files).map(([name, content]) => [
+        name,
+        new TextEncoder().encode(content),
+      ]),
     )
     const result = await parse_brml_file(zipSync(encoded_files).buffer)
     expect(result).not.toBeNull()

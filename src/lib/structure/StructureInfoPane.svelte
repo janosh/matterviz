@@ -4,6 +4,7 @@
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
+  import type { Vec2 } from '$lib/math'
   import CopyButton from '$lib/overlays/CopyButton.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
@@ -75,7 +76,7 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     structure: AnyStructure
     pane_open?: boolean
-    atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
+    atom_count_thresholds?: Vec2 // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover

@@ -3,6 +3,7 @@ import type { LatticeParams, Pbc } from '$lib/structure/index'
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
 export type Vec4 = [number, number, number, number]
+export type Vec5 = [number, number, number, number, number]
 export type Vec9 = [number, number, number, number, number, number, number, number, number]
 export type Point2D = { x: number; y: number }
 export type Point3D = Point2D & { z: number }

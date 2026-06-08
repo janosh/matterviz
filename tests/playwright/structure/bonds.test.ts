@@ -737,13 +737,13 @@ test.describe(`Bond component`, () => {
     // Planar benzene ring (6 C in a hexagon, 1.39 Å radius), no explicit
     // bonds -> connectivity ring detected, perception flags it aromatic.
     await page.evaluate(() => {
-      const ring = Array.from({ length: 6 }, (_, k) => {
-        const angle = (k * Math.PI) / 3
+      const ring = Array.from({ length: 6 }, (_, idx) => {
+        const angle = (idx * Math.PI) / 3
         return {
           species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
           abc: [0, 0, 0],
           xyz: [Math.cos(angle) * 1.39, Math.sin(angle) * 1.39, 0],
-          label: `C${k + 1}`,
+          label: `C${idx + 1}`,
           properties: {},
         }
       })

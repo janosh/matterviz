@@ -65,7 +65,7 @@ test.describe(`ThemeControl`, () => {
     const theme_control = await get_theme_control(page)
     const html_element = page.locator(`html`)
 
-    for (const theme of themes.filter((t) => t !== `auto`)) {
+    for (const theme of themes.filter((theme_name) => theme_name !== `auto`)) {
       // select_theme retries until the applied data-theme matches `theme`
       await select_theme(page, theme_control, theme)
       await expect(html_element).toHaveAttribute(`data-theme`, theme, { timeout: 15_000 })

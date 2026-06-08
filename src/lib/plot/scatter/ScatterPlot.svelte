@@ -196,12 +196,12 @@
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
+      value_range?: Vec2
     } | D3InterpolateName
     size_scale?: {
       type?: ScaleType
-      radius_range?: [number, number]
-      value_range?: [number, number]
+      radius_range?: Vec2
+      value_range?: Vec2
     }
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
@@ -301,14 +301,14 @@
   let drag_current_coords = $state<Point2D | null>(null)
 
   // Zoom/pan state - track both initial (data-driven) and current (after pan/zoom) ranges
-  let initial_x_range = $state<[number, number]>([0, 1])
-  let initial_x2_range = $state<[number, number]>([0, 1])
-  let initial_y_range = $state<[number, number]>([0, 1])
-  let initial_y2_range = $state<[number, number]>([0, 1])
-  let zoom_x_range = $state<[number, number]>([0, 1])
-  let zoom_x2_range = $state<[number, number]>([0, 1])
-  let zoom_y_range = $state<[number, number]>([0, 1])
-  let zoom_y2_range = $state<[number, number]>([0, 1])
+  let initial_x_range = $state<Vec2>([0, 1])
+  let initial_x2_range = $state<Vec2>([0, 1])
+  let initial_y_range = $state<Vec2>([0, 1])
+  let initial_y2_range = $state<Vec2>([0, 1])
+  let zoom_x_range = $state<Vec2>([0, 1])
+  let zoom_x2_range = $state<Vec2>([0, 1])
+  let zoom_y_range = $state<Vec2>([0, 1])
+  let zoom_y2_range = $state<Vec2>([0, 1])
   const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
 
   // Y2 axis sync configuration
@@ -333,7 +333,7 @@
         zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
       } else {
         // When switching to independent mode, reset Y2 to its data range
-        zoom_y2_range = [...initial_y2_range] as [number, number]
+        zoom_y2_range = [...initial_y2_range] as Vec2
       }
       prev_sync_mode = mode
     }
@@ -1240,10 +1240,10 @@
       evt.preventDefault()
       pan_drag_state = {
         start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...zoom_x_range] as [number, number],
-        initial_x2_range: [...zoom_x2_range] as [number, number],
-        initial_y_range: [...zoom_y_range] as [number, number],
-        initial_y2_range: [...zoom_y2_range] as [number, number],
+        initial_x_range: [...zoom_x_range] as Vec2,
+        initial_x2_range: [...zoom_x2_range] as Vec2,
+        initial_y_range: [...zoom_y_range] as Vec2,
+        initial_y2_range: [...zoom_y2_range] as Vec2,
       }
       document.body.style.cursor = `grabbing`
       window.addEventListener(`mousemove`, on_pan_move)
@@ -1307,10 +1307,10 @@
     const touches = Array.from(evt.touches)
     touch_state = {
       start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...zoom_x_range] as [number, number],
-      initial_x2_range: [...zoom_x2_range] as [number, number],
-      initial_y_range: [...zoom_y_range] as [number, number],
-      initial_y2_range: [...zoom_y2_range] as [number, number],
+      initial_x_range: [...zoom_x_range] as Vec2,
+      initial_x2_range: [...zoom_x2_range] as Vec2,
+      initial_y_range: [...zoom_y_range] as Vec2,
+      initial_y2_range: [...zoom_y2_range] as Vec2,
     }
   }
 
@@ -1477,7 +1477,7 @@
     legend_manual_position = { x: constrained_x, y: constrained_y }
   }
 
-  function get_screen_coords(point: Point, data_series?: DataSeries): [number, number] {
+  function get_screen_coords(point: Point, data_series?: DataSeries): Vec2 {
     // convert data coordinates to potentially non-finite screen coordinates
     const use_x2 = data_series?.x_axis === `x2`
     const active_x_scale = use_x2 ? x2_scale_fn : x_scale_fn
@@ -1705,13 +1705,13 @@
       ondblclick={() => {
         // Reset to current auto ranges (not stale initial_*_range which may have expanded)
         // This ensures lazy expansion restarts fresh from current data bounds
-        initial_x_range = [...auto_x_range] as [number, number]
-        initial_x2_range = [...auto_x2_range] as [number, number]
-        initial_y_range = [...auto_y_range] as [number, number]
-        initial_y2_range = [...auto_y2_range] as [number, number]
-        zoom_x_range = [...auto_x_range] as [number, number]
-        zoom_x2_range = [...auto_x2_range] as [number, number]
-        zoom_y_range = [...auto_y_range] as [number, number]
+        initial_x_range = [...auto_x_range] as Vec2
+        initial_x2_range = [...auto_x2_range] as Vec2
+        initial_y_range = [...auto_y_range] as Vec2
+        initial_y2_range = [...auto_y2_range] as Vec2
+        zoom_x_range = [...auto_x_range] as Vec2
+        zoom_x2_range = [...auto_x2_range] as Vec2
+        zoom_y_range = [...auto_y_range] as Vec2
         zoom_y2_range = get_synced_y2(auto_y_range, [...auto_y2_range] as Vec2)
         // Also reset axis props so future data changes recalculate auto ranges
         x_axis = { ...x_axis, range: [null, null] }

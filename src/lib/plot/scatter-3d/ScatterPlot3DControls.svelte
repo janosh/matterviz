@@ -2,6 +2,7 @@
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import { SettingsSection } from '$lib/layout'
+  import type { Vec2 } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type {
     AxisConfig3D,
@@ -45,7 +46,7 @@
   } = $props()
 
   // Calculate auto ranges for reset
-  function calc_auto_range(values: number[]): [number, number] {
+  function calc_auto_range(values: number[]): Vec2 {
     if (values.length === 0) return [0, 1]
     let [min_val, max_val] = [values[0], values[0]]
     for (const val of values) {
@@ -97,7 +98,7 @@
   type AxisEntry = {
     name: string
     axis: AxisConfig3D
-    auto_range: [number, number]
+    auto_range: Vec2
     set: (val: AxisConfig3D) => void
   }
   const axes = $derived<AxisEntry[]>([

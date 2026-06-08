@@ -2,6 +2,7 @@
 // Parses phase diagram SVGs (matplotlib or simple/Gemini format) into DiagramInput JSON
 // for immediate rendering by IsobaricBinaryPhaseDiagram
 
+import type { Vec2, Vec4 } from '$lib/math'
 import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
 
 // Two-phase color keys to cycle through for region assignment
@@ -29,7 +30,7 @@ type SvgFormat = `matplotlib` | `simple` | `mpds`
 
 interface LinearScale {
   to_data: (px: number) => number
-  domain: [number, number] // [min_data, max_data]
+  domain: Vec2 // [min_data, max_data]
 }
 
 interface Boundary {
@@ -721,7 +722,7 @@ function flood_fill(
   n_rows: number,
   region_id: number,
 ): void {
-  const stack: [number, number][] = [[start_col, start_row]]
+  const stack: Vec2[] = [[start_col, start_row]]
 
   for (let item = stack.pop(); item; item = stack.pop()) {
     const [col, row] = item
@@ -884,8 +885,8 @@ const clean_latex = (text: string): string =>
 // Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)
 // Curves (C/S/Q/T/A) are approximated as straight lines from start to endpoint
 // After M/m, implicit coordinates are treated as L/l per SVG spec
-function parse_path_segments(path_str: string): [number, number, number, number][] {
-  const segments: [number, number, number, number][] = []
+function parse_path_segments(path_str: string): Vec4[] {
+  const segments: Vec4[] = []
   let [cursor_x, cursor_y] = [0, 0]
   let [start_x, start_y] = [0, 0]
   let last_cmd = ``
@@ -977,7 +978,7 @@ function parse_ml_path(
 
 // Parse translate(x, y) or translate(x) from a transform attribute
 // Single-arg translate uses implicit y=0 per SVG spec
-function parse_translate(el: Element | null): [number, number] | null {
+function parse_translate(el: Element | null): Vec2 | null {
   const match = /translate\(\s*([\d.eE+-]+)(?:\s*[,\s]\s*([\d.eE+-]+))?\s*\)/.exec(
     el?.getAttribute(`transform`) ?? ``,
   )

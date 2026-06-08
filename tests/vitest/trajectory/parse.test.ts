@@ -1,3 +1,4 @@
+import type { ElementSymbol } from '$lib'
 import {
   get_unsupported_format_message,
   is_trajectory_file,
@@ -585,7 +586,7 @@ ITEM: ATOMS id type x y z
 0.0 10.0\n0.0 10.0\n0.0 10.0\nITEM: ATOMS id x y z q\n1 2.84 8.17 -5.0 0.1\n2 7.1 8.17 -5.0 0.2`
 
     const traj = await parse_trajectory_data(content, `test.lammpstrj`)
-    const elems = traj.frames[0].structure.sites.map((s) => s.species[0].element)
+    const elems = traj.frames[0].structure.sites.map((site) => site.species[0].element)
     // id column used as type fallback: 1→H, 2→He
     expect(elems).toEqual([`H`, `He`])
     expect(traj.metadata?.atom_types).toEqual([1, 2])
@@ -1512,7 +1513,7 @@ const TRAJECTORY_REFERENCE_DATA: {
   file: string
   frames: number
   atoms: number
-  elements: string[]
+  elements: ElementSymbol[]
   periodic: boolean
   format: string
 }[] = [
@@ -1605,28 +1606,28 @@ describe(`Trajectory Files with Exact Reference Data`, () => {
       const is_binary = /\.(h5|hdf5|traj)$/.exec(file)
       const content = is_binary ? read_binary_test_file(file) : read_test_file(file)
 
-      const trajectory = await parse_trajectory_data(content, file)
+      const traj = await parse_trajectory_data(content, file)
 
       // Core assertions
-      expect(trajectory.frames).toHaveLength(frames)
-      expect(trajectory.frames[0].structure.sites).toHaveLength(atoms)
-      expect(trajectory.metadata?.source_format).toBe(format)
+      expect(traj.frames).toHaveLength(frames)
+      expect(traj.frames[0].structure.sites).toHaveLength(atoms)
+      expect(traj.metadata?.source_format).toBe(format)
 
       // Verify elements (skip for LAMMPS which uses type IDs)
       if (elements.length > 0) {
         const found = new Set(
-          trajectory.frames[0].structure.sites.map((s) => s.species[0]?.element),
+          traj.frames[0].structure.sites.map((site) => site.species[0]?.element),
         )
         expect([...found].sort()).toEqual(expect.arrayContaining(elements.sort()))
       }
 
       // Periodic structures should have lattice
       if (periodic) {
-        expect(`lattice` in trajectory.frames[0].structure).toBe(true)
+        expect(`lattice` in traj.frames[0].structure).toBe(true)
       }
 
       // All frames should have same atom count
-      expect(trajectory.frames.every((f) => f.structure.sites.length === atoms)).toBe(true)
+      expect(traj.frames.every((frame) => frame.structure.sites.length === atoms)).toBe(true)
     },
   )
 })

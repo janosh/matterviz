@@ -1,3 +1,4 @@
+import type { ElementSymbol } from '$lib'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { create_frac_to_cart, euclidean_dist } from '$lib/math'
@@ -84,8 +85,8 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
     [0, 0, 10],
   ]
   const frac_to_cart = create_frac_to_cart(lattice_matrix)
-  const make_site = (element: string, abc: Vec3) => ({
-    species: [{ element: element as `Ag`, occu: 1, oxidation_state: 0 }],
+  const make_site = (element: ElementSymbol, abc: Vec3) => ({
+    species: [{ element, occu: 1, oxidation_state: 0 }],
     abc,
     xyz: frac_to_cart(abc),
     label: element,
@@ -185,8 +186,8 @@ test(`find_image_atoms handles a degenerate (zero-volume) lattice without NaN`, 
     [0, 0, 10],
   ]
   const frac_to_cart = create_frac_to_cart(degenerate_matrix)
-  const make_site = (element: string, abc: Vec3) => ({
-    species: [{ element: element as `Na`, occu: 1, oxidation_state: 0 }],
+  const make_site = (element: ElementSymbol, abc: Vec3) => ({
+    species: [{ element, occu: 1, oxidation_state: 0 }],
     abc,
     xyz: frac_to_cart(abc),
     label: element,
@@ -328,13 +329,13 @@ test.each([
 
 test(`triclinic lattice image xyz must match lattice * abc`, () => {
   // Construct a triclinic lattice from cell parameters
-  const a = 4
-  const b = 5
-  const c = 6
+  const a_len = 4
+  const b_len = 5
+  const c_len = 6
   const alpha = 75
   const beta = 85
   const gamma = 65
-  const matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+  const matrix = math.cell_to_lattice_matrix(a_len, b_len, c_len, alpha, beta, gamma)
   const params = math.calc_lattice_params(matrix)
 
   const structure: Crystal = {

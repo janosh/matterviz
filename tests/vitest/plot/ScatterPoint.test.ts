@@ -132,12 +132,14 @@ describe(`ScatterPoint`, () => {
     const hover = { enabled: true, scale: 2, stroke: `white`, stroke_width: 3 }
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 100, y: 100, hover, is_hovered: true } })
-    const g = doc_query(`g`)
+    const group = doc_query(`g`)
     const path = doc_query(`path.marker`)
     expect(path.classList.contains(`is-hovered`)).toBe(true)
-    expect(g.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
-    expect(g.style.getPropertyValue(`--hover-stroke`)).toBe(hover.stroke)
-    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`${hover.stroke_width}px`)
+    expect(group.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
+    expect(group.style.getPropertyValue(`--hover-stroke`)).toBe(hover.stroke)
+    expect(group.style.getPropertyValue(`--hover-stroke-width`)).toBe(
+      `${hover.stroke_width}px`,
+    )
   })
 
   test(`applies dimmed marker state`, () => {
@@ -170,10 +172,10 @@ describe(`ScatterPoint`, () => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 100, y: 100, offset } })
 
-    const g = doc_query(`g`)
+    const group = doc_query(`g`)
     // Initial transform check, acknowledging happy-dom limitation
     // for seeing the final tweened/offset position.
-    expect(g.getAttribute(`transform`)).toBe(`translate(0 0)`)
+    expect(group.getAttribute(`transform`)).toBe(`translate(0 0)`)
   })
 
   test(`handles partial hover configuration`, () => {
@@ -181,12 +183,12 @@ describe(`ScatterPoint`, () => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 100, y: 100, hover, is_hovered: true } })
 
-    const g = doc_query(`g`)
+    const group = doc_query(`g`)
     const path = doc_query(`path.marker`)
     expect(path.classList.contains(`is-hovered`)).toBe(true)
-    expect(g.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
-    expect(g.style.getPropertyValue(`--hover-stroke`)).toBe(`white`)
-    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`0px`)
+    expect(group.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
+    expect(group.style.getPropertyValue(`--hover-stroke`)).toBe(`white`)
+    expect(group.style.getPropertyValue(`--hover-stroke-width`)).toBe(`0px`)
   })
 
   test(`handles empty label configuration`, () => {
@@ -246,8 +248,8 @@ describe(`ScatterPoint`, () => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 0, y: 0 } })
 
-    const g = doc_query(`g`)
-    expect(g.getAttribute(`transform`)).toBe(`translate(0 0)`) // Initial transform
+    const group = doc_query(`g`)
+    expect(group.getAttribute(`transform`)).toBe(`translate(0 0)`) // Initial transform
   })
 
   test.each([

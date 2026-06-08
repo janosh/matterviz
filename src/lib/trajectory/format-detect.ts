@@ -53,7 +53,7 @@ export const FORMAT_PATTERNS = {
     if (!(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
     return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every(
-      (b, idx) => signature[idx] === b,
+      (byte, idx) => signature[idx] === byte,
     )
   },
 

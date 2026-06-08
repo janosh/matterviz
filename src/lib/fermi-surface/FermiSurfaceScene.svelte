@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '$lib/brillouin'
   import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
-  import type { Matrix4Tuple, Vec3 } from '$lib/math'
+  import type { Matrix4Tuple, Vec2, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
@@ -216,7 +216,7 @@
   })
 
   // Compute property range for color scaling
-  let property_range = $derived.by((): [number, number] => {
+  let property_range = $derived.by((): Vec2 => {
     if (color_property !== `velocity` && color_property !== `custom`) {
       return [0, 1]
     }

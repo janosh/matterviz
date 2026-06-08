@@ -103,7 +103,7 @@ describe(`scales`, () => {
         scale_type: `linear`,
         is_time: false,
         padding: 0.05,
-        check: (range: [number, number]) => {
+        check: (range: Vec2) => {
           expect(range[0]).toBeLessThan(1)
           expect(range[1]).toBeGreaterThan(5)
         },
@@ -114,7 +114,7 @@ describe(`scales`, () => {
         scale_type: `linear`,
         is_time: false,
         padding: 0.05,
-        check: (range: [number, number]) => expect(range).toEqual([0, 10]),
+        check: (range: Vec2) => expect(range).toEqual([0, 10]),
       },
       {
         points: [
@@ -126,7 +126,7 @@ describe(`scales`, () => {
         scale_type: `log`,
         is_time: false,
         padding: 0.1,
-        check: (range: [number, number]) => {
+        check: (range: Vec2) => {
           expect(range[0]).toBeLessThan(1)
           expect(range[1]).toBeGreaterThan(100)
         },
@@ -143,7 +143,7 @@ describe(`scales`, () => {
         scale_type: `linear`,
         is_time: true,
         padding: 0.1,
-        check: (range: [number, number]) => {
+        check: (range: Vec2) => {
           expect(range[0]).toBeLessThan(new Date(2023, 0, 1).getTime())
           expect(range[1]).toBeGreaterThan(new Date(2023, 11, 1).getTime())
         },
@@ -154,7 +154,7 @@ describe(`scales`, () => {
         scale_type: `linear`,
         is_time: false,
         padding: 0.1,
-        check: (range: [number, number]) => {
+        check: (range: Vec2) => {
           expect(range[0]).toBeLessThan(42)
           expect(range[1]).toBeGreaterThan(42)
         },
@@ -165,7 +165,7 @@ describe(`scales`, () => {
         scale_type: `linear`,
         is_time: false,
         padding: 0.1,
-        check: (range: [number, number]) => expect(range).toEqual([0, 1]),
+        check: (range: Vec2) => expect(range).toEqual([0, 1]),
       },
       {
         points: sample_points,
@@ -173,7 +173,7 @@ describe(`scales`, () => {
         scale_type: `linear`,
         is_time: false,
         padding: 0.05,
-        check: (range: [number, number]) => {
+        check: (range: Vec2) => {
           expect(range[0]).toBeLessThan(1)
           expect(range[1]).toBe(1000)
         },
@@ -184,7 +184,7 @@ describe(`scales`, () => {
         scale_type: `linear`,
         is_time: false,
         padding: 0.05,
-        check: (range: [number, number]) => {
+        check: (range: Vec2) => {
           expect(range[0]).toBe(0)
           expect(range[1]).toBeGreaterThanOrEqual(5)
         },
@@ -194,7 +194,7 @@ describe(`scales`, () => {
       ({ points, limits, scale_type, is_time, padding, check }) => {
         const range = get_nice_data_range(
           points,
-          (p) => p.x,
+          (point) => point.x,
           limits as [number | null, number | null],
           scale_type as ScaleType,
           padding,
@@ -218,7 +218,7 @@ describe(`scales`, () => {
       expect(result.length).toBeGreaterThan(0)
       contains.forEach((val) => expect(result).toContain(val))
       // Log ticks may extend beyond the range for better tick placement
-      expect(result.some((t) => t >= min && t <= max)).toBe(true)
+      expect(result.some((tick) => tick >= min && tick <= max)).toBe(true)
     })
 
     test.each([[100], [1], [0.001]])(`single value domain %s includes that value`, (value) => {
@@ -228,7 +228,7 @@ describe(`scales`, () => {
 
     test(`negative min clamped to LOG_EPS`, () => {
       const result = generate_log_ticks(-10, 100, 5)
-      expect(result.every((t) => t >= math.LOG_EPS)).toBe(true)
+      expect(result.every((tick) => tick >= math.LOG_EPS)).toBe(true)
     })
 
     // Sub-decade domains (e.g. after zoom-drag) must not return zero ticks at default count
@@ -249,7 +249,7 @@ describe(`scales`, () => {
 
   describe(`generate_ticks`, () => {
     test(`array input - uses provided array directly`, () => {
-      const domain: [number, number] = [0, 100]
+      const domain: Vec2 = [0, 100]
       const scale = scaleLinear().domain(domain).range([0, 500])
       const custom_ticks = [10, 30, 50, 70, 90]
       expect(generate_ticks(domain, `linear`, custom_ticks, scale)).toEqual(custom_ticks)
@@ -288,7 +288,7 @@ describe(`scales`, () => {
     test(`time-based ticks with % format`, () => {
       const start_time = new Date(2023, 0, 1).getTime()
       const end_time = new Date(2023, 2, 15).getTime()
-      const domain: [number, number] = [start_time, end_time]
+      const domain: Vec2 = [start_time, end_time]
       const scale = scaleTime()
         .domain([new Date(start_time), new Date(end_time)])
         .range([0, 500])
@@ -300,7 +300,7 @@ describe(`scales`, () => {
     })
 
     test(`logarithmic ticks`, () => {
-      const domain: [number, number] = [1, 1000]
+      const domain: Vec2 = [1, 1000]
       const scale = scaleLog().domain(domain).range([0, 500])
 
       const result = generate_ticks(domain, `log`, 5, scale)
@@ -312,7 +312,7 @@ describe(`scales`, () => {
     })
 
     test(`interval ticks - negative number indicates interval`, () => {
-      const domain: [number, number] = [0, 100]
+      const domain: Vec2 = [0, 100]
       const scale = scaleLinear().domain(domain).range([0, 500])
 
       const result = generate_ticks(domain, `linear`, -10, scale) // interval of 10
@@ -339,7 +339,7 @@ describe(`scales`, () => {
     })
 
     test(`handles very small intervals`, () => {
-      const domain: [number, number] = [0, 1]
+      const domain: Vec2 = [0, 1]
       const scale = scaleLinear().domain(domain).range([0, 500])
 
       const result = generate_ticks(domain, `linear`, -0.2, scale) // interval of 0.2
@@ -358,18 +358,18 @@ describe(`scales`, () => {
         interval: `month` as const,
         start: [2022, 0, 1],
         end: [2024, 11, 31],
-        check: (d: Date) => d.getDate() === 1,
+        check: (date: Date) => date.getDate() === 1,
       },
       {
         interval: `year` as const,
         start: [2020, 5, 15],
         end: [2025, 2, 10],
-        check: (d: Date) => d.getMonth() === 0 && d.getDate() === 1,
+        check: (date: Date) => date.getMonth() === 0 && date.getDate() === 1,
       },
     ])(`time intervals - $interval filtering`, ({ interval, start, end, check }) => {
       const start_time = new Date(start[0], start[1], start[2]).getTime()
       const end_time = new Date(end[0], end[1], end[2]).getTime()
-      const domain: [number, number] = [start_time, end_time]
+      const domain: Vec2 = [start_time, end_time]
       const scale = scaleTime()
         .domain([new Date(start_time), new Date(end_time)])
         .range([0, 500])
@@ -382,14 +382,14 @@ describe(`scales`, () => {
     })
 
     test(`arcsinh ticks`, () => {
-      const domain: [number, number] = [-1000, 1000]
+      const domain: Vec2 = [-1000, 1000]
       const scale = scale_arcsinh(1).domain(domain).range([0, 500])
 
       const result = generate_ticks(domain, `arcsinh`, 10, scale)
       expect(result.length).toBeGreaterThan(0)
       expect(result).toContain(0)
-      expect(result.filter((t) => t > 0).length).toBeGreaterThan(0)
-      expect(result.filter((t) => t < 0).length).toBeGreaterThan(0)
+      expect(result.filter((tick) => tick > 0).length).toBeGreaterThan(0)
+      expect(result.filter((tick) => tick < 0).length).toBeGreaterThan(0)
     })
   })
 
@@ -473,7 +473,7 @@ describe(`scales`, () => {
 
       expect(ticks.length).toBeGreaterThan(0)
       expect(ticks).toContain(0)
-      expect(ticks.every((t) => t >= -100 && t <= 100)).toBe(true)
+      expect(ticks.every((tick) => tick >= -100 && tick <= 100)).toBe(true)
     })
 
     test.each([
@@ -497,12 +497,14 @@ describe(`scales`, () => {
     ])(`$name: [$min, $max]`, ({ min, max, threshold, count }) => {
       const ticks = generate_arcsinh_ticks(min, max, threshold, count)
       expect(ticks.length).toBeGreaterThan(0)
-      expect(ticks.every((t) => t >= min && t <= max)).toBe(true)
+      expect(ticks.every((tick) => tick >= min && tick <= max)).toBe(true)
     })
 
     test(`positive range includes powers of 10`, () => {
       const ticks = generate_arcsinh_ticks(0, 1000, 1, 10)
-      expect(ticks.some((t) => t === 1 || t === 10 || t === 100 || t === 1000)).toBe(true)
+      expect(
+        ticks.some((tick) => tick === 1 || tick === 10 || tick === 100 || tick === 1000),
+      ).toBe(true)
     })
 
     test(`emits clean round ticks for non-round domain (no raw endpoints)`, () => {
@@ -533,15 +535,15 @@ describe(`scales`, () => {
       const ticks_from_zero = generate_arcsinh_ticks(0, 1000, 1, 10)
       const ticks_from_positive = generate_arcsinh_ticks(1, 1000, 1, 10)
       expect(ticks_from_zero.length).toBeGreaterThanOrEqual(ticks_from_positive.length - 1)
-      expect(ticks_from_zero.every((t) => t >= 0)).toBe(true)
+      expect(ticks_from_zero.every((tick) => tick >= 0)).toBe(true)
       expect(ticks_from_zero[0]).toBeLessThanOrEqual(1)
     })
 
     test(`mixed range includes zero with symmetric ticks`, () => {
       const ticks = generate_arcsinh_ticks(-100, 100, 1, 10)
       expect(ticks).toContain(0)
-      expect(ticks.filter((t) => t > 0).length).toBeGreaterThan(0)
-      expect(ticks.filter((t) => t < 0).length).toBeGreaterThan(0)
+      expect(ticks.filter((tick) => tick > 0).length).toBeGreaterThan(0)
+      expect(ticks.filter((tick) => tick < 0).length).toBeGreaterThan(0)
     })
 
     test(`omits sub-threshold powers that would overlap the zero tick`, () => {
@@ -552,7 +554,7 @@ describe(`scales`, () => {
       expect(ticks).not.toContain(1)
       expect(ticks).not.toContain(-1)
       // smallest non-zero tick magnitude is at least the threshold
-      const min_nonzero = Math.min(...ticks.filter((t) => t !== 0).map(Math.abs))
+      const min_nonzero = Math.min(...ticks.filter((tick) => tick !== 0).map(Math.abs))
       expect(min_nonzero).toBeGreaterThanOrEqual(10)
     })
 
@@ -573,7 +575,7 @@ describe(`scales`, () => {
       const ticks = generate_arcsinh_ticks(min, max, 1, 8)
       const [lo, hi] = [Math.min(min, max), Math.max(min, max)]
       // All ticks within normalized range
-      expect(ticks.every((t) => t >= lo && t <= hi)).toBe(true)
+      expect(ticks.every((tick) => tick >= lo && tick <= hi)).toBe(true)
       // Reversed should equal normal order
       expect(ticks).toEqual(generate_arcsinh_ticks(lo, hi, 1, 8))
     })

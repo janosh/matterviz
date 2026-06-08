@@ -1,5 +1,5 @@
 // Type definitions for Fermi surface visualization
-import type { Matrix3x3, Point2D, Vec3 } from '$lib/math'
+import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
 // Spin channel type
@@ -95,7 +95,7 @@ export interface FermiSliceData {
 // Single isoline in a Fermi slice
 export interface Isoline {
   points: Vec3[] // 3D coordinates of points on the isoline
-  points_2d: [number, number][] // 2D coordinates in plane basis
+  points_2d: Vec2[] // 2D coordinates in plane basis
   properties?: number[] // per-point scalar values
   band_index: number
   spin: SpinChannel

@@ -934,7 +934,7 @@
     // coplanar neighbors, then assign each group to its most-common domain.
     if (n_faces > 1) {
       const tol = 1e-3
-      const round = (v: number): number => Math.round(v / tol)
+      const round = (val: number): number => Math.round(val / tol)
       const vkey = (vert_idx: number): string =>
         `${round(pos.getX(vert_idx))},${round(pos.getY(vert_idx))},${
           round(pos.getZ(vert_idx))
@@ -974,12 +974,12 @@
       }
       // Union-find for coplanar adjacent faces
       const parent = Array.from({ length: n_faces }, (_, idx) => idx)
-      const find = (x: number): number => {
-        while (parent[x] !== x) {
-          parent[x] = parent[parent[x]]
-          x = parent[x]
+      const find = (node: number): number => {
+        while (parent[node] !== node) {
+          parent[node] = parent[parent[node]]
+          node = parent[node]
         }
-        return x
+        return node
       }
       const union = (a_idx: number, b_idx: number): void => {
         const ra = find(a_idx), rb = find(b_idx)
@@ -1194,7 +1194,7 @@
 
   function get_touches_limits(
     points_3d: number[][],
-    lims: [number, number][],
+    lims: Vec2[],
   ): string[] {
     const limit_tol = 1e-3
     const touches_limits: string[] = []
@@ -1486,10 +1486,10 @@
   // Place axis label just past the outer end of the axis (the end closer to 0).
   // In isometric 3D, the end near 0 projects outward at the front edge of the
   // bounding box, while the negative end projects inward toward the center.
-  const outer_end = (range: [number, number]): number =>
+  const outer_end = (range: Vec2): number =>
     Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
   // Direction from range center toward outer end (to extend the label beyond the grid)
-  const outer_direction = (range: [number, number]): number => {
+  const outer_direction = (range: Vec2): number => {
     const end = outer_end(range)
     const mid = (range[0] + range[1]) / 2
     return end >= mid ? 1 : -1
@@ -1789,7 +1789,7 @@
       key: string
       pos: Vec3
       rot: Vec3
-      size: [number, number]
+      size: Vec2
       color: string
     }[] = []
     if (projections.xy) {

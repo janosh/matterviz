@@ -1,4 +1,5 @@
 import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+import type { Vec2 } from '$lib/math'
 import type { DenseInternalPoint } from '$lib/plot/scatter/adaptive-density'
 import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
 import type {
@@ -12,14 +13,14 @@ export type BinnedColorScaleConfig =
   | {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
+      value_range?: Vec2
     }
   | D3InterpolateName
 
 export type BinnedSizeScaleConfig = {
   type?: ScaleType
-  radius_range?: [number, number]
-  value_range?: [number, number]
+  radius_range?: Vec2
+  value_range?: Vec2
   pick_radius?: number | `auto`
 }
 

@@ -84,12 +84,12 @@
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
+      value_range?: Vec2
     }
     size_scale?: {
       type?: ScaleType
-      radius_range?: [number, number]
-      value_range?: [number, number]
+      radius_range?: Vec2
+      value_range?: Vec2
     }
     camera_position?: Vec3
     camera_projection?: CameraProjection3D
@@ -182,24 +182,28 @@
   function sample_surface(
     surface: Surface3DConfig,
   ): { x: number; y: number; z: number }[] {
-    const n = 10
+    const grid_steps = 10
     const pts: { x: number; y: number; z: number }[] = []
     if (surface.type === `grid` && surface.z_fn) {
       const [x0, x1] = surface.x_range ?? [-1, 1]
       const [y0, y1] = surface.y_range ?? [-1, 1]
-      for (let i = 0; i <= n; i++) {
-        for (let j = 0; j <= n; j++) {
-          const x = x0 + (i / n) * (x1 - x0), y = y0 + (j / n) * (y1 - y0)
+      for (let idx_x = 0; idx_x <= grid_steps; idx_x++) {
+        for (let idx_y = 0; idx_y <= grid_steps; idx_y++) {
+          const x = x0 + (idx_x / grid_steps) * (x1 - x0),
+            y = y0 + (idx_y / grid_steps) * (y1 - y0)
           pts.push({ x, y, z: surface.z_fn(x, y) })
         }
       }
     } else if (surface.type === `parametric` && surface.parametric_fn) {
       const [u0, u1] = surface.u_range ?? [0, 1]
       const [v0, v1] = surface.v_range ?? [0, 1]
-      for (let i = 0; i <= n; i++) {
-        for (let j = 0; j <= n; j++) {
+      for (let idx_u = 0; idx_u <= grid_steps; idx_u++) {
+        for (let idx_v = 0; idx_v <= grid_steps; idx_v++) {
           pts.push(
-            surface.parametric_fn(u0 + (i / n) * (u1 - u0), v0 + (j / n) * (v1 - v0)),
+            surface.parametric_fn(
+              u0 + (idx_u / grid_steps) * (u1 - u0),
+              v0 + (idx_v / grid_steps) * (v1 - v0),
+            ),
           )
         }
       }
@@ -256,7 +260,7 @@
   let all_color_values = $derived(
     all_points.map((pt) => pt.color_value).filter((val): val is number => val != null),
   )
-  let auto_color_range: [number, number] = $derived.by(() => {
+  let auto_color_range: Vec2 = $derived.by(() => {
     if (all_color_values.length === 0) return [0, 1]
     let min = all_color_values[0]
     let max = all_color_values[0]
@@ -434,7 +438,7 @@
 
   // Generate axis ticks using D3's smart tick generation
   function gen_ticks(
-    range: [number, number],
+    range: Vec2,
     ticks?: AxisConfig3D[`ticks`],
   ): number[] {
     if (Array.isArray(ticks)) return ticks

@@ -194,8 +194,8 @@ function axis_from_projector(proj: Matrix3x3, order: number): Vec3 | null {
 function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
   let current: Vec3 = [0, 0, 0]
   const sum: Vec3 = [0, 0, 0]
-  for (let k = 0; k < order; k++) {
-    if (k > 0) current = math.add(math.mat3x3_vec3_multiply(mat, current), w_loc)
+  for (let iter = 0; iter < order; iter++) {
+    if (iter > 0) current = math.add(math.mat3x3_vec3_multiply(mat, current), w_loc)
     sum[0] += current[0]
     sum[1] += current[1]
     sum[2] += current[2]

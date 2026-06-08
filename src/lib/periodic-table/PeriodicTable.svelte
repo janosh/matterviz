@@ -193,7 +193,7 @@
     color_scale_range[0] ??
       (heat_values.length > 0
         ? Math.min(
-          ...heat_values.flat().filter((v): v is number => typeof v === `number`),
+          ...heat_values.flat().filter((val): val is number => typeof val === `number`),
         )
         : 0),
   )
@@ -201,7 +201,7 @@
     color_scale_range[1] ??
       (heat_values.length > 0
         ? Math.max(
-          ...heat_values.flat().filter((v): v is number => typeof v === `number`),
+          ...heat_values.flat().filter((val): val is number => typeof val === `number`),
         )
         : 1),
   )
@@ -209,7 +209,9 @@
   // smallest positive bound for log color mapping (matches the auto ColorBar's log scale)
   let cs_min_pos = $derived.by(() => {
     if (cs_min > 0) return cs_min
-    const pos = heat_values.flat().filter((v): v is number => typeof v === `number` && v > 0)
+    const pos = heat_values.flat().filter((val): val is number =>
+      typeof val === `number` && val > 0
+    )
     return pos.length > 0 ? Math.min(...pos) : cs_max
   })
 

@@ -917,7 +917,8 @@ export function parse_cif(
     const cart_to_frac = try_create_cart_to_frac(lattice_matrix)
 
     // Create sites with coordinate conversion and symmetry operations
-    const wrap_vec3 = (v: Vec3): Vec3 => (wrap_fractional_coords ? wrap_to_unit_cell(v) : v)
+    const wrap_vec3 = (vec: Vec3): Vec3 =>
+      wrap_fractional_coords ? wrap_to_unit_cell(vec) : vec
 
     // Apply symmetry operations to generate all equivalent positions
     const all_sites: Site[] = []

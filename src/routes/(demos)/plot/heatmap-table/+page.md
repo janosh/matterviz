@@ -91,9 +91,9 @@ All 118 chemical elements with physical and chemical properties. Features column
   // Calculate statistics for selected elements
   let stats = $derived.by(() => {
     if (selected_rows.length === 0) return null
-    const nums = (key) => selected_rows.map((r) => r[key]).filter((v) => v != null)
+    const nums = (key) => selected_rows.map((row) => row[key]).filter((val) => val != null)
     const avg = (arr) =>
-      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+      arr.length ? arr.reduce((sum, val) => sum + val, 0) / arr.length : null
     return {
       count: selected_rows.length,
       avg_mass: avg(nums(`Mass (u)`))?.toFixed(2),
@@ -184,7 +184,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 {#if selected_rows.length > 0}
   <p style="margin-top: 0.5em; font-size: 0.9em; color: var(--text-muted)">
     Double-click a row to open element page. Selected: {
-      selected_rows.map((r) => r._symbol).join(`, `)
+      selected_rows.map((row) => row._symbol).join(`, `)
     }
   </p>
 {/if}

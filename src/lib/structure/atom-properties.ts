@@ -42,7 +42,8 @@ const get_interpolator = (scale: string) => {
   return interp_fn as (t: number) => string
 }
 
-const to_hex = (interp_fn: (t: number) => string, t: number) => rgb(interp_fn(t)).formatHex()
+const to_hex = (interp_fn: (t: number) => string, frac: number) =>
+  rgb(interp_fn(frac)).formatHex()
 const build_image_site = (
   site: Site,
   frac_to_cart: (v: math.Vec3) => math.Vec3,

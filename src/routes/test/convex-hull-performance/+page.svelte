@@ -55,7 +55,7 @@
       const e_form = Math.random() < 0.7
         ? -2 * Math.random() + 0.2 * Math.random()
         : -1 + Math.random() * 1.5
-      const atoms = Object.values(composition).reduce((s, v) => s + v, 0)
+      const atoms = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
 
       // Add dummy structure data to first 5 entries for testing click selection
       const structure = idx < 5
