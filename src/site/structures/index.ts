@@ -7,10 +7,7 @@ import {
 
 export const structures = Object.entries(
   // JSON structure files (OPTIMADE/pymatgen format) as JS objects
-  import.meta.glob<unknown>(`./*.json`, {
-    eager: true,
-    import: `default`,
-  }),
+  import.meta.glob<unknown>(`./*.json`, { eager: true, import: `default` }),
 )
   .map(([path, data]) => {
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
@@ -38,26 +35,28 @@ export const structures = Object.entries(
 
 export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
 
+// dev yields strings; the Rolldown prod build yields the module namespace (text
+// under `.default`, JSON parsed) — unwrap and re-stringify objects back to text
+export const glob_text = (value: unknown): string => {
+  const raw = typeof value === `string` ? value : (value as { default?: unknown })?.default
+  if (typeof raw === `string`) return raw
+  return raw == null ? `` : JSON.stringify(raw)
+}
+
 export const structure_files: FileInfo[] = Object.entries(
   // all structure files as raw text
-  import.meta.glob<string>(`$site/structures/*`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  }),
-)
-  .filter(([, content]) => typeof content === `string`)
-  .map(([path, content]) => {
-    const filename = path.split(`/`).pop() ?? path
-    const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
-    const url = path.replace(`/src/site`, ``)
+  import.meta.glob(`$site/structures/*`, { eager: true, query: `?raw`, import: `default` }),
+).map(([path, value]) => {
+  const filename = path.split(`/`).pop() ?? path
+  const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
+  const url = path.replace(`/src/site`, ``)
 
-    const category = detect_structure_type(filename, content)
-    const icon_map: Record<string, string> = {
-      crystal: `🔷`,
-      molecule: `🧬`,
-      unknown: `❓`,
-    }
-    const category_icon = icon_map[category] || `📄`
-    return { name: filename, url, type, category, category_icon }
-  })
+  const category = detect_structure_type(filename, glob_text(value))
+  const icon_map: Record<string, string> = {
+    crystal: `🔷`,
+    molecule: `🧬`,
+    unknown: `❓`,
+  }
+  const category_icon = icon_map[category] || `📄`
+  return { name: filename, url, type, category, category_icon }
+})
