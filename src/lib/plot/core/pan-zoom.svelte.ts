@@ -68,7 +68,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (typeof window !== `undefined`) {
       window.removeEventListener(`mousemove`, on_window_mouse_move)
       window.removeEventListener(`mouseup`, on_window_mouse_up)
-      document.body.style.cursor = `default`
+      document.body.style.cursor = ``
     }
   }
 

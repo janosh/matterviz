@@ -1458,8 +1458,10 @@ function build_optimade_sites(
   const sites: Site[] = []
   for (let idx = 0; idx < positions.length; idx++) {
     const species_name = species_at_sites[idx]
-    if (!species_name && opts.on_invalid === `throw`) {
-      throw new Error(`Missing species for site ${idx}`)
+    if (!species_name) {
+      if (opts.on_invalid === `throw`) throw new Error(`Missing species for site ${idx}`)
+      console.warn(`Missing species for site ${idx}, skipping`)
+      continue
     }
 
     let xyz: Vec3

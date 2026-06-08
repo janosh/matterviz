@@ -2398,6 +2398,8 @@ describe(`OPTIMADE JSON parser`, () => {
     [[{ name: `A`, chemical_symbols: [`Fe`, `Ni`], concentration: [1, 3] }], [`A`], [`Ni`]],
     [[{ name: `v`, chemical_symbols: [`vacancy`, `O`], concentration: [9, 1] }], [`v`], [`O`]],
     [undefined, [`Fe`, `O`], [`Fe`, `O`]],
+    // null entry (missing species) is skipped in skip mode, not crashed on (was a null.replace throw)
+    [undefined, [`Fe`, null], [`Fe`]],
   ])(`should resolve species_at_sites %#`, (species, species_at_sites, expected) => {
     const result = parse_optimade_json(
       JSON.stringify({

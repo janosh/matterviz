@@ -473,9 +473,11 @@ export function process_hull_for_stats(
 // --- 2D Convex Hull (Binary Phase Diagrams) ---
 
 export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
-  // Andrew's monotone chain for lower hull (Point2D adapter over math.lower_hull_2d)
-  const lower = math.lower_hull_2d(points.map((pt): Vec2 => [pt.x, pt.y]))
-  return lower.map(([x, y]) => ({ x, y }))
+  // Andrew's monotone chain lower hull (Point2D adapter over math.monotone_chain)
+  const sorted = points
+    .map((pt): Vec2 => [pt.x, pt.y])
+    .toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
+  return math.monotone_chain(sorted).map(([x, y]) => ({ x, y }))
 }
 
 export function interpolate_hull_2d(hull: Point2D[], x: number): number | null {

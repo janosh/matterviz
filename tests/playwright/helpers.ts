@@ -79,10 +79,13 @@ export async function drop_file(
     },
     [content, filename, mime] as const,
   )
-  for (const event of [`dragenter`, `dragover`, `drop`]) {
-    await target.dispatchEvent(event, { dataTransfer: data_transfer })
+  try {
+    for (const event of [`dragenter`, `dragover`, `drop`]) {
+      await target.dispatchEvent(event, { dataTransfer: data_transfer })
+    }
+  } finally {
+    await data_transfer.dispose()
   }
-  await data_transfer.dispose()
 }
 
 type CancelableKeydownInit = {
