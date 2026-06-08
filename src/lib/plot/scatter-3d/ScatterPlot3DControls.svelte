@@ -11,6 +11,7 @@
     DisplayConfig3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
+  import { calculate_domain } from '$lib/plot/core/scales'
   import { unique_id } from '$lib/plot/core/utils'
   import type { ComponentProps, Snippet } from 'svelte'
 
@@ -45,14 +46,10 @@
     children?: Snippet
   } = $props()
 
-  // Calculate auto ranges for reset
+  // Calculate auto ranges for reset (5% padding, 0.5 when all values coincide)
   function calc_auto_range(values: number[]): Vec2 {
     if (values.length === 0) return [0, 1]
-    let [min_val, max_val] = [values[0], values[0]]
-    for (const val of values) {
-      if (val < min_val) min_val = val
-      else if (val > max_val) max_val = val
-    }
+    const [min_val, max_val] = calculate_domain(values)
     const padding = (max_val - min_val) * 0.05 || 0.5
     return [min_val - padding, max_val + padding]
   }

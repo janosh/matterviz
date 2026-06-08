@@ -5,7 +5,8 @@ import {
 } from '$lib/structure/bond-order-perception'
 import type { BondPair, Site, StructureBond } from '$lib/structure'
 import type { PerceivedBond } from '$lib/structure/bond-order-perception'
-import type { ElementSymbol, Vec2, Vec3 } from '$root/src/lib'
+import type { ElementSymbol } from '$lib/element'
+import type { Vec2, Vec3 } from '$lib/math'
 
 function make_input(
   elements: ElementSymbol[],

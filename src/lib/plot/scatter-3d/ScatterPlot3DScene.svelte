@@ -31,7 +31,11 @@
   import { normalize_to_scene } from '$lib/plot/core/reference-line'
   import ReferenceLine3D from '$lib/plot/core/components/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/core/components/ReferencePlane.svelte'
-  import { create_color_scale, create_size_scale } from '$lib/plot/core/scales'
+  import {
+    calculate_domain,
+    create_color_scale,
+    create_size_scale,
+  } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 
   let {
@@ -252,16 +256,7 @@
   let all_color_values = $derived(
     all_points.map((pt) => pt.color_value).filter((val): val is number => val != null),
   )
-  let auto_color_range: Vec2 = $derived.by(() => {
-    if (all_color_values.length === 0) return [0, 1]
-    let min = all_color_values[0]
-    let max = all_color_values[0]
-    for (const val of all_color_values) {
-      if (val < min) min = val
-      else if (val > max) max = val
-    }
-    return [min, max]
-  })
+  let auto_color_range: Vec2 = $derived(calculate_domain(all_color_values))
   let all_size_values = $derived(
     all_points.map((pt) => pt.size_value).filter((val): val is number => val != null),
   )

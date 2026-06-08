@@ -32,7 +32,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three'
-  import { create_color_scale } from '$lib/plot/core/scales'
+  import { calculate_domain, create_color_scale } from '$lib/plot/core/scales'
   import ScatterPlot3DControls from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 
@@ -221,15 +221,7 @@
     ),
   )
 
-  let auto_color_range = $derived.by((): Vec2 => {
-    if (all_color_values.length === 0) return [0, 1]
-    let [min, max] = [Infinity, -Infinity]
-    for (const val of all_color_values) {
-      if (val < min) min = val
-      if (val > max) max = val
-    }
-    return [min, max]
-  })
+  let auto_color_range = $derived(calculate_domain(all_color_values))
 
   let color_scale_fn = $derived(
     create_color_scale(normalized_color_scale, auto_color_range),
