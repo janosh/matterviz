@@ -1,5 +1,4 @@
 import type { CompositionType } from '$lib/composition'
-import type { ShowControlsProp } from '$lib/controls'
 import type { ElementSymbol } from '$lib/element'
 import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
 import type { Rect, Sides } from '$lib/plot/core/layout'
@@ -111,7 +110,6 @@ export interface ConvexHullConfig {
 // Legend configuration
 export interface ConvexHullControlsType {
   title?: string
-  show?: ShowControlsProp
   position?: `top-left` | `top-right` | `bottom-left` | `bottom-right`
   width?: number
   show_counts?: boolean

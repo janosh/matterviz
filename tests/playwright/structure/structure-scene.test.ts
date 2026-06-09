@@ -4,8 +4,8 @@ import {
   enter_edit_atoms_mode,
   expect_canvas_changed,
   get_canvas_timeout,
+  goto_structure_test,
   IS_CI,
-  wait_for_3d_canvas,
 } from '../helpers'
 
 const is_mac = process.platform === `darwin`
@@ -84,38 +84,78 @@ function setup_console_monitoring(page: Page): string[] {
   return console_errors
 }
 
-async function load_single_centered_atom_scene(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    const structure = {
-      sites: [
-        {
-          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `C1`,
-          properties: {},
-        },
-      ],
-      properties: {},
-    }
-    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
-    window.dispatchEvent(
-      new CustomEvent(`set-scene-props`, {
-        detail: {
-          atom_radius: 2.5,
-          camera_position: [0, 0, 8],
-          camera_target: [0, 0, 0],
-          show_bonds: `never`,
-          show_site_indices: false,
-          show_site_labels: false,
-        },
-      }),
-    )
-    for (let frame_idx = 0; frame_idx < 3; frame_idx++) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    }
-  })
+// Dispatch a `set-lattice-props` event with the given lattice props.
+const set_lattice_props = (page: Page, detail: Record<string, unknown>): Promise<void> =>
+  page.evaluate((props) => {
+    globalThis.dispatchEvent(new CustomEvent(`set-lattice-props`, { detail: props }))
+  }, detail)
+
+// Screenshot the canvas and assert it rendered non-trivial pixel data.
+const expect_canvas_renders = async (canvas: Locator): Promise<Buffer> => {
+  const screenshot = await canvas.screenshot()
+  expect(screenshot.length).toBeGreaterThan(1000)
+  return screenshot
 }
+
+// Load a centered scene from species (element + occupancy) placed at one
+// position. Multiple species at the same spot model a disordered site (stored as
+// separate split sites). Optional rotation tips the wedge axis toward the camera.
+async function load_centered_scene(
+  page: Page,
+  species: { element: string; occu: number }[],
+  rotation?: [number, number, number],
+): Promise<void> {
+  await page.evaluate(
+    async ({ specs, rot }) => {
+      const structure = {
+        sites: specs.map(({ element, occu }) => ({
+          species: [{ element, occu, oxidation_state: 0 }],
+          abc: [0.25, 0.25, 0.5],
+          xyz: [0, 0, 0],
+          label: element,
+          properties: {},
+        })),
+        properties: {},
+      }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, {
+          detail: {
+            atom_radius: 2.5,
+            camera_position: [0, 0, 8],
+            camera_target: [0, 0, 0],
+            ...(rot ? { rotation: rot } : {}),
+            show_bonds: `never`,
+            show_site_indices: false,
+            show_site_labels: false,
+          },
+        }),
+      )
+      for (let frame_idx = 0; frame_idx < 5; frame_idx++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      }
+    },
+    { specs: species, rot: rotation },
+  )
+}
+
+const load_single_centered_atom_scene = (page: Page): Promise<void> =>
+  load_centered_scene(page, [{ element: `C`, occu: 1 }])
+
+// Disordered tsumcorite M2 site: Zn+Fe+Pb at a single position.
+const load_disordered_site_scene = (
+  page: Page,
+  rotation?: [number, number, number],
+): Promise<void> =>
+  load_centered_scene(
+    page,
+    [
+      { element: `Zn`, occu: 0.645 },
+      { element: `Fe`, occu: 0.345 },
+      { element: `Pb`, occu: 0.01 },
+    ],
+    rotation,
+  )
 
 const get_canvas_purple_pixel_ratio = (canvas: Locator): Promise<number> =>
   canvas.evaluate(async (canvas_element) => {
@@ -153,9 +193,7 @@ test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // Skip in CI - 3D canvas and camera control tests are unreliable
     test.skip(IS_CI, `3D scene tests are flaky in CI`)
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    // wait_for_3d_canvas ensures canvas is visible and has non-zero dimensions
-    await wait_for_3d_canvas(page, `#test-structure`)
+    await goto_structure_test(page)
   })
 
   // Combined basic functionality and rendering test
@@ -167,8 +205,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await expect(canvas).toHaveAttribute(`width`)
     await expect(canvas).toHaveAttribute(`height`)
 
-    const screenshot = await canvas.screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000) // Non-empty, lit scene
+    await expect_canvas_renders(canvas) // Non-empty, lit scene
 
     // Try to find hoverable atom for tooltip verification
     const atom_position = await find_hoverable_atom(page)
@@ -286,6 +323,71 @@ test.describe(`StructureScene Component Tests`, () => {
         () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
       )
       expect(await tooltip.isVisible()).toBe(true)
+    }
+  })
+
+  test(`tooltip lists all elements on disordered split sites`, async ({ page }) => {
+    // Disordered sites (e.g. tsumcorite M2: Zn+Fe+Pb) are stored as separate
+    // single-species sites at the same position. The tooltip must show every
+    // element, not just the majority one (regression guard).
+    await load_disordered_site_scene(page)
+
+    const canvas = page.locator(`#test-structure canvas`)
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error(`canvas has no bounding box`)
+
+    await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 }, force: true })
+    const tooltip = page.locator(`[role="tooltip"]:has(.coordinates)`)
+    const elements = tooltip.locator(`.elements`)
+    await expect(elements).toBeVisible({ timeout: get_canvas_timeout() })
+    for (const element of [`Zn`, `Fe`, `Pb`]) {
+      await expect(elements.locator(`strong`).filter({ hasText: element })).toBeVisible()
+    }
+    // tooltip must respect its max-width (wrap) rather than grow unbounded
+    const { width, max_width, line_count } = await elements.evaluate((el) => {
+      const tip = el.closest(`[role="tooltip"]`) as HTMLElement
+      const species = el.querySelector(`.species`) as HTMLElement
+      return {
+        width: tip.getBoundingClientRect().width,
+        max_width: parseFloat(getComputedStyle(tip).maxWidth),
+        // rows = total height / single species (one-line) height
+        line_count: Math.round(el.clientHeight / species.clientHeight),
+      }
+    })
+    expect(max_width).toBeGreaterThan(0)
+    expect(width).toBeLessThanOrEqual(max_width + 1)
+    // three long species exceed the cap, so the line wraps to >= 2 rows
+    expect(line_count).toBeGreaterThanOrEqual(2)
+  })
+
+  test(`disordered atom is hoverable across its whole area`, async ({ page }) => {
+    // Disordered sites render as wedge (lune) meshes that converge to a point at
+    // the sphere poles. Viewed pole-on, the ball center had a non-hoverable band.
+    // The invisible full-sphere hit target must make the whole ball hoverable.
+    // Rotation tips the wedge (Y) axis toward the camera so the weak pole faces us.
+    await load_disordered_site_scene(page, [-Math.PI / 2, 0, 0])
+
+    const canvas = page.locator(`#test-structure canvas`)
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error(`canvas has no bounding box`)
+    const tooltip = page.locator(`[role="tooltip"]:has(.coordinates)`)
+    const cx = box.width / 2
+    const cy = box.height / 2
+
+    // Points along the formerly-dead equatorial band through the ball center.
+    for (const [dx, dy] of [
+      [0, 0],
+      [-24, 0],
+      [24, 0],
+      [-12, 0],
+      [12, 0],
+    ]) {
+      await canvas.hover({ position: { x: 4, y: 4 }, force: true })
+      await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
+      await canvas.hover({ position: { x: cx + dx, y: cy + dy }, force: true })
+      await expect(tooltip, `point (${dx}, ${dy}) should be hoverable`).toBeVisible({
+        timeout: get_canvas_timeout(),
+      })
     }
   })
 
@@ -416,8 +518,7 @@ test.describe(`StructureScene Component Tests`, () => {
           // Test partial sphere capping (closing partial spheres with flat circles) for sites with occupancy < 1
           if (occupancy_text && parseFloat(occupancy_text) < 1) {
             // Verify scene renders correctly with partial spheres (no errors)
-            const partial_screenshot = await canvas.screenshot()
-            expect(partial_screenshot.length).toBeGreaterThan(1000)
+            await expect_canvas_renders(canvas)
           }
         }
 
@@ -460,8 +561,7 @@ test.describe(`StructureScene Component Tests`, () => {
     }
 
     // Verify scene is still functional
-    const screenshot = await canvas.screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000)
+    await expect_canvas_renders(canvas)
     expect(console_errors).toHaveLength(0)
   })
 
@@ -471,12 +571,10 @@ test.describe(`StructureScene Component Tests`, () => {
     const console_errors = setup_console_monitoring(page)
 
     // Enable site labels via URL parameter for easier testing
-    await page.goto(`/test/structure?show_site_labels=true`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, `#test-structure`)
+    await goto_structure_test(page, `/test/structure?show_site_labels=true`)
 
     // Take screenshot to verify labels are rendered
-    const labeled_screenshot = await canvas.screenshot()
-    expect(labeled_screenshot.length).toBeGreaterThan(1000)
+    await expect_canvas_renders(canvas)
 
     // Also assert at least one label is present
     const labels = page.locator(`.atom-label`)
@@ -491,14 +589,10 @@ test.describe(`StructureScene Component Tests`, () => {
     const console_errors = setup_console_monitoring(page)
 
     // Enable site indices via URL parameter
-    await page.goto(`/test/structure?show_site_indices=true`, {
-      waitUntil: `networkidle`,
-    })
-    await wait_for_3d_canvas(page, `#test-structure`)
+    await goto_structure_test(page, `/test/structure?show_site_indices=true`)
 
     // Take screenshot to verify indices are rendered
-    const indexed_screenshot = await canvas.screenshot()
-    expect(indexed_screenshot.length).toBeGreaterThan(1000)
+    await expect_canvas_renders(canvas)
 
     // No console errors during index rendering
     expect(console_errors).toHaveLength(0)
@@ -514,14 +608,13 @@ test.describe(`StructureScene Component Tests`, () => {
     const console_errors = setup_console_monitoring(page)
 
     // Enable both site labels and indices via URL parameters
-    await page.goto(`/test/structure?show_site_labels=true&show_site_indices=true`, {
-      waitUntil: `networkidle`,
-    })
-    await wait_for_3d_canvas(page, `#test-structure`)
+    await goto_structure_test(
+      page,
+      `/test/structure?show_site_labels=true&show_site_indices=true`,
+    )
 
     // Take screenshot to verify combined labels are rendered
-    const combined_screenshot = await canvas.screenshot()
-    expect(combined_screenshot.length).toBeGreaterThan(1000)
+    await expect_canvas_renders(canvas)
 
     // No console errors during combined label rendering
     expect(console_errors).toHaveLength(0)
@@ -536,8 +629,7 @@ test.describe(`StructureScene Component Tests`, () => {
     const console_errors = setup_console_monitoring(page)
 
     // Enable site labels to test disordered site formatting
-    await page.goto(`/test/structure?show_site_labels=true`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, `#test-structure`)
+    await goto_structure_test(page, `/test/structure?show_site_labels=true`)
 
     // Look for sites with partial occupancy by searching positions
     const positions = [
@@ -574,8 +666,7 @@ test.describe(`StructureScene Component Tests`, () => {
     }
 
     // Take screenshot regardless of whether we found disordered sites
-    const screenshot = await canvas.screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000)
+    await expect_canvas_renders(canvas)
 
     // No console errors during disordered site rendering
     expect(console_errors).toHaveLength(0)
@@ -587,48 +678,27 @@ test.describe(`StructureScene Component Tests`, () => {
   }) => {
     const console_errors = setup_console_monitoring(page)
 
-    // Use page.evaluate to set lattice properties directly on the Structure component
-    await page.evaluate(() => {
-      // Access the Structure component's lattice_props to set custom values
-      const structureElement = document.querySelector(`[data-testid="structure-component"]`)
-      if (!structureElement) {
-        // If no test ID exists, we'll set the properties through controls
-        const event = new CustomEvent(`set-lattice-props`, {
-          detail: {
-            cell_edge_color: `#ff0000`,
-            cell_surface_color: `#ff0000`,
-            cell_edge_opacity: 0.8,
-            cell_surface_opacity: 0.1,
-            cell_edge_width: 2,
-          },
-        })
-        globalThis.dispatchEvent(event)
-      }
+    await set_lattice_props(page, {
+      cell_edge_color: `#ff0000`,
+      cell_surface_color: `#ff0000`,
+      cell_edge_opacity: 0.8,
+      cell_surface_opacity: 0.1,
+      cell_edge_width: 2,
     })
 
     const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
 
     // Take screenshots to verify visual changes
-    const with_custom_props = await canvas.screenshot()
-    expect(with_custom_props.length).toBeGreaterThan(1000)
+    const with_custom_props = await expect_canvas_renders(canvas)
 
     // Test different cell colors by checking rendered output
     const test_colors = [`#00ff00`, `#0000ff`, `#ffff00`]
 
     for (const color of test_colors) {
-      await page.evaluate((test_color) => {
-        const event = new CustomEvent(`set-lattice-props`, {
-          detail: {
-            cell_edge_color: test_color,
-            cell_surface_color: test_color,
-          },
-        })
-        globalThis.dispatchEvent(event)
-      }, color)
+      await set_lattice_props(page, { cell_edge_color: color, cell_surface_color: color })
 
-      const color_screenshot = await canvas.screenshot()
-      expect(color_screenshot.length).toBeGreaterThan(1000)
+      const color_screenshot = await expect_canvas_renders(canvas)
 
       // Verify the screenshot changed (different color)
       expect(with_custom_props.equals(color_screenshot)).toBe(false)
@@ -638,18 +708,12 @@ test.describe(`StructureScene Component Tests`, () => {
     const test_opacities = [0.2, 0.5, 1.0]
 
     for (const opacity of test_opacities) {
-      await page.evaluate((test_opacity) => {
-        const event = new CustomEvent(`set-lattice-props`, {
-          detail: {
-            cell_edge_opacity: test_opacity,
-            cell_surface_opacity: test_opacity * 0.2,
-          },
-        })
-        globalThis.dispatchEvent(event)
-      }, opacity)
+      await set_lattice_props(page, {
+        cell_edge_opacity: opacity,
+        cell_surface_opacity: opacity * 0.2,
+      })
 
-      const opacity_screenshot = await canvas.screenshot()
-      expect(opacity_screenshot.length).toBeGreaterThan(1000)
+      await expect_canvas_renders(canvas)
     }
 
     expect(console_errors).toHaveLength(0)
@@ -663,58 +727,38 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#test-structure canvas`)
 
     // Test edges only (surface opacity = 0)
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0.8,
-          cell_surface_opacity: 0,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0.8,
+      cell_surface_opacity: 0,
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
     })
     const edges_only_screenshot = await canvas.screenshot()
 
     // Test surfaces only (edge opacity = 0)
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0,
-          cell_surface_opacity: 0.4,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0,
+      cell_surface_opacity: 0.4,
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
     })
     const surfaces_only_screenshot = await canvas.screenshot()
 
     // Test both visible with different opacities
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0.6,
-          cell_surface_opacity: 0.3,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0.6,
+      cell_surface_opacity: 0.3,
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
     })
     const both_visible_screenshot = await canvas.screenshot()
 
     // Test neither visible (both opacity = 0)
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0,
-          cell_surface_opacity: 0,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0,
+      cell_surface_opacity: 0,
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
     })
     const neither_visible_screenshot = await canvas.screenshot()
 
@@ -735,22 +779,16 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#test-structure canvas`)
 
     // Set wireframe mode with high opacity and contrast for visibility
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-          cell_edge_opacity: 1.0,
-          cell_surface_opacity: 0,
-          cell_edge_width: 3,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
+      cell_edge_opacity: 1.0,
+      cell_surface_opacity: 0,
+      cell_edge_width: 3,
     })
 
     // Take a screenshot and verify it renders
-    const wireframe_screenshot = await canvas.screenshot()
-    expect(wireframe_screenshot.length).toBeGreaterThan(1000)
+    const wireframe_screenshot = await expect_canvas_renders(canvas)
 
     // Test that the wireframe still renders when changing view angles
     const box = await canvas.boundingBox()
@@ -763,8 +801,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
       // Poll for canvas change after rotation (GPU timing variations)
       await expect_canvas_changed(canvas, wireframe_screenshot)
-      const rotated_screenshot = await canvas.screenshot()
-      expect(rotated_screenshot.length).toBeGreaterThan(1000)
+      await expect_canvas_renders(canvas)
     }
 
     expect(console_errors).toHaveLength(0)
@@ -779,21 +816,15 @@ test.describe(`StructureScene Component Tests`, () => {
     const line_widths = [1, 2, 5, 10]
 
     for (const width of line_widths) {
-      await page.evaluate((test_width) => {
-        const event = new CustomEvent(`set-lattice-props`, {
-          detail: {
-            cell_edge_color: `#ffffff`,
-            cell_surface_color: `#ffffff`,
-            cell_edge_opacity: 1.0,
-            cell_surface_opacity: 0,
-            cell_edge_width: test_width,
-          },
-        })
-        globalThis.dispatchEvent(event)
-      }, width)
+      await set_lattice_props(page, {
+        cell_edge_color: `#ffffff`,
+        cell_surface_color: `#ffffff`,
+        cell_edge_opacity: 1.0,
+        cell_surface_opacity: 0,
+        cell_edge_width: width,
+      })
 
-      const width_screenshot = await canvas.screenshot()
-      expect(width_screenshot.length).toBeGreaterThan(1000)
+      await expect_canvas_renders(canvas)
     }
 
     // Verify no errors occurred even if visual changes are limited by WebGL
@@ -809,20 +840,14 @@ test.describe(`StructureScene Component Tests`, () => {
     const test_values = [-0.5, 0, 0.5, 1, 1.5]
 
     for (const opacity of test_values) {
-      await page.evaluate((test_opacity) => {
-        const event = new CustomEvent(`set-lattice-props`, {
-          detail: {
-            cell_edge_opacity: test_opacity,
-            cell_surface_opacity: test_opacity,
-            cell_edge_color: `#ffffff`,
-            cell_surface_color: `#ffffff`,
-          },
-        })
-        globalThis.dispatchEvent(event)
-      }, opacity)
+      await set_lattice_props(page, {
+        cell_edge_opacity: opacity,
+        cell_surface_opacity: opacity,
+        cell_edge_color: `#ffffff`,
+        cell_surface_color: `#ffffff`,
+      })
 
-      const opacity_screenshot = await canvas.screenshot()
-      expect(opacity_screenshot.length).toBeGreaterThan(1000)
+      await expect_canvas_renders(canvas)
     }
 
     expect(console_errors).toHaveLength(0)
@@ -836,44 +861,29 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#test-structure canvas`)
 
     // Test low edge opacity, no surfaces
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0.2,
-          cell_surface_opacity: 0,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0.2,
+      cell_surface_opacity: 0,
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
     })
     const low_edge_screenshot = await canvas.screenshot()
 
     // Test high edge opacity, no surfaces
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0.9,
-          cell_surface_opacity: 0,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0.9,
+      cell_surface_opacity: 0,
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
     })
     const high_edge_screenshot = await canvas.screenshot()
 
     // Test no edges, low surface opacity
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0,
-          cell_surface_opacity: 0.2,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0,
+      cell_surface_opacity: 0.2,
+      cell_edge_color: `#ffffff`,
+      cell_surface_color: `#ffffff`,
     })
     const low_surface_screenshot = await canvas.screenshot()
 
@@ -970,8 +980,7 @@ test.describe(`StructureScene Component Tests`, () => {
       // Poll for canvas change after rotation (GPU timing variations)
       await expect_canvas_changed(canvas, initial_screenshot)
       // Verify structure remains visible (not moved off-canvas)
-      const rotated_screenshot = await canvas.screenshot()
-      expect(rotated_screenshot.length).toBeGreaterThan(1000)
+      await expect_canvas_renders(canvas)
     }
 
     expect(console_errors).toHaveLength(0)
@@ -983,8 +992,7 @@ test.describe(`StructureScene Component Tests`, () => {
 test.describe(`Edit Atoms Scene`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     test.skip(IS_CI, `Edit atoms scene tests require WebGL, skip in CI`)
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, `#test-structure`)
+    await goto_structure_test(page)
     await enter_edit_atoms_mode(page)
   })
 
@@ -1073,8 +1081,7 @@ test.describe(`Edit Atoms Scene`, () => {
     await page.keyboard.press(is_mac ? `Meta+y` : `Control+y`)
 
     // Canvas should still render
-    const screenshot = await canvas.screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000)
+    await expect_canvas_renders(canvas)
     expect(console_errors).toHaveLength(0)
   })
 })

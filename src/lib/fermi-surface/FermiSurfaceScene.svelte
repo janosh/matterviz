@@ -1,17 +1,22 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '$lib/brillouin'
+  import {
+    cartesian_to_fractional,
+    k_lattice_inverse,
+    polyhedron_geometry,
+    ReciprocalVectors,
+  } from '$lib/brillouin'
   import type { D3InterpolateName } from '$lib/colors'
-  import { AXIS_COLORS, get_d3_interpolator, NEG_AXIS_COLORS } from '$lib/colors'
+  import { get_d3_interpolator } from '$lib/colors'
   import type { Matrix4Tuple, Vec2, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import type { CameraProjection } from '$lib/settings'
+  import { bind_renderer, build_orbit_props, SceneCamera } from '$lib/scene'
+  import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
-  import { Arrow, Cylinder } from '$lib/structure'
-  import { T, useThrelte } from '@threlte/core'
+  import { Cylinder } from '$lib/structure'
+  import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Camera, Scene } from 'three'
   import {
     BackSide,
     BufferAttribute,
@@ -32,9 +37,6 @@
     Isosurface,
     RepresentationMode,
   } from './types'
-
-  // Threlte pointer event type for mesh interactions
-  type ThreltePointerEvent = { point: Vector3; nativeEvent: PointerEvent }
 
   let {
     fermi_data = $bindable(),
@@ -79,11 +81,10 @@
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
-  }: {
+  }: SceneControlProps & {
     fermi_data?: FermiSurfaceData
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
-    camera_projection?: CameraProjection
     color_property?: ColorProperty
     color_scale?: string
     representation?: RepresentationMode
@@ -101,26 +102,17 @@
     clip_position?: number
     clip_flip?: boolean
     vector_scale?: number
-    rotation_damping?: number
-    max_zoom?: number
-    min_zoom?: number
-    rotate_speed?: number
-    zoom_speed?: number
-    pan_speed?: number
-    zoom_to_cursor?: boolean
-    fov?: number
-    initial_zoom?: number
-    ambient_light?: number
-    directional_light?: number
-    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
-    auto_rotate?: number
-    camera_is_moving?: boolean
-    scene?: Scene
-    camera?: Camera
     hover_data?: FermiHoverData | null
   } = $props()
 
-  const threlte = useThrelte()
+  const threlte = bind_renderer(
+    (threlte_scene, threlte_camera) => {
+      scene = threlte_scene
+      camera = threlte_camera
+    },
+    // Enable object sorting for proper depth ordering of transparent surfaces
+    (renderer) => (renderer.sortObjects = true),
+  )
 
   // Compute scene size for clipping (also used for camera positioning later)
   function get_scene_size(): number {
@@ -156,16 +148,6 @@
     } else {
       threlte.renderer.clippingPlanes = []
       threlte.renderer.localClippingEnabled = false
-    }
-  })
-
-  $effect(() => {
-    scene = threlte.scene
-    camera = threlte.camera.current
-    if (threlte.renderer) {
-      // Enable object sorting for proper depth ordering of transparent surfaces
-      threlte.renderer.sortObjects = true
-      Object.assign(threlte.renderer.domElement, { __renderer: threlte.renderer })
     }
   })
 
@@ -393,86 +375,24 @@
       ) as Vec3),
   )
 
-  const gizmo_props = $derived({
-    background: { enabled: false },
-    className: `responsive-gizmo`,
-    ...Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
-        axis,
-        {
-          color,
-          labelColor: `#111`,
-          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
-          hover: {
-            color: hover,
-            labelColor: `#222`,
-            opacity: axis.startsWith(`n`) ? 1 : 0.9,
-          },
-        },
-      ]),
-    ),
-    ...(typeof gizmo === `object` ? gizmo : {}),
-    offset: { left: 5, bottom: 5 },
-  })
-
-  const is_ortho = $derived(camera_projection === `orthographic`)
-  const orbit_controls_props = $derived({
-    position: [0, 0, 0],
+  const orbit_controls_props = $derived(build_orbit_props({
+    camera_projection,
     target: rotation_target,
-    enableRotate: rotate_speed > 0,
-    rotateSpeed: rotate_speed,
-    enableZoom: zoom_speed > 0,
-    zoomSpeed: is_ortho ? zoom_speed * 2 : zoom_speed,
-    zoomToCursor: zoom_to_cursor,
-    enablePan: pan_speed > 0,
-    panSpeed: pan_speed,
-    maxZoom: max_zoom,
-    minZoom: min_zoom,
-    autoRotate: Boolean(auto_rotate),
-    autoRotateSpeed: auto_rotate,
-    enableDamping: Boolean(rotation_damping),
-    dampingFactor: rotation_damping,
-    onstart: () => (camera_is_moving = true),
-    onend: () => (camera_is_moving = false),
-  })
-
-  const vector_colors = [`red`, `green`, `blue`]
-  const vector_labels = [`b₁`, `b₂`, `b₃`]
+    rotate_speed,
+    zoom_speed,
+    zoom_to_cursor,
+    pan_speed,
+    max_zoom,
+    min_zoom,
+    auto_rotate,
+    rotation_damping,
+    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+  }))
 
   // Create BZ geometry
-  const bz_geometry = $derived.by(() => {
-    if (!bz_data || bz_data.faces.length === 0) return null
-
-    const positions: number[] = []
-    const normals: number[] = []
-
-    for (const face of bz_data.faces) {
-      if (face.length < 3) continue
-
-      for (let face_idx = 1; face_idx < face.length - 1; face_idx++) {
-        const indices = [face[0], face[face_idx], face[face_idx + 1]]
-        if (indices.some((idx) => idx < 0 || idx >= bz_data.vertices.length)) continue
-        const [v0, v1, v2] = indices.map((idx) => bz_data.vertices[idx])
-        positions.push(...v0, ...v1, ...v2)
-
-        const e1: Vec3 = math.subtract(v1, v0)
-        const e2: Vec3 = math.subtract(v2, v0)
-        const normal_vec = math.cross_3d(e1, e2)
-        const len = Math.hypot(...normal_vec)
-        const norm = len > 1e-10 ? normal_vec.map((coord) => coord / len) : [0, 0, 0]
-        normals.push(...norm, ...norm, ...norm)
-      }
-    }
-
-    const geometry = new BufferGeometry()
-    geometry.setAttribute(
-      `position`,
-      new BufferAttribute(new Float32Array(positions), 3),
-    )
-    geometry.setAttribute(`normal`, new BufferAttribute(new Float32Array(normals), 3))
-    geometry.computeBoundingSphere()
-    return geometry
-  })
+  const bz_geometry = $derived(
+    bz_data ? polyhedron_geometry(bz_data.vertices, bz_data.faces) : null,
+  )
 
   $effect(() => {
     const prev_geometry = bz_geometry
@@ -510,25 +430,11 @@
     return { ...base, color: surface_color }
   }
 
-  // Compute inverse of k_lattice for Cartesian->fractional conversion (cached)
-  const k_lattice_inv = $derived.by(() => {
-    if (!fermi_data?.k_lattice) return null
-    try {
-      return math.matrix_inverse_3x3(fermi_data.k_lattice)
-    } catch {
-      return null
-    }
-  })
+  // Inverse of k_lattice for Cartesian->fractional conversion (cached)
+  const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))
 
   // Throttle state for pointer move events to avoid O(n) vertex lookups causing jank
   let last_hover_time = 0
-
-  // Convert Cartesian k-coordinates to fractional (reciprocal lattice units)
-  // Returns null if k_lattice is unavailable or inversion failed
-  function cartesian_to_fractional(cart: Vec3): Vec3 | null {
-    if (!k_lattice_inv) return null
-    return math.mat3x3_vec3_multiply(k_lattice_inv, cart)
-  }
 
   // Find index of nearest vertex to a point in a surface
   function find_nearest_vertex(surface: Isosurface, point: Vec3): number {
@@ -558,7 +464,7 @@
   ): FermiHoverData {
     // event.point is in world space (after sym_matrix transformation)
     const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
-    const position_fractional = cartesian_to_fractional(position_cartesian)
+    const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
 
     // Transform world-space point to local space for nearest-vertex lookup
     // surface.vertices are in local space (raw geometry before sym_matrix)
@@ -606,24 +512,14 @@
   }
 </script>
 
-{#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault position={computed_camera_position} {fov}>
-    <extras.OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.PerspectiveCamera>
-{:else}
-  <T.OrthographicCamera
-    makeDefault
-    position={computed_camera_position}
-    zoom={initial_zoom}
-    near={-100}
-  >
-    <extras.OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.OrthographicCamera>
-{/if}
+<SceneCamera
+  {camera_projection}
+  position={computed_camera_position}
+  {fov}
+  zoom={initial_zoom}
+  orbit_props={orbit_controls_props}
+  {gizmo}
+/>
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.DirectionalLight position={[-3, -5, -10]} intensity={directional_light * 0.5} />
@@ -651,24 +547,11 @@
 
   <!-- Reciprocal lattice vectors -->
   {#if show_vectors && fermi_data?.k_lattice}
-    {#each fermi_data.k_lattice as vec, idx (idx)}
-      {@const scaled_vec = vec.map((coord) => coord * vector_scale) as Vec3}
-      {@const label_position = scaled_vec.map((coord) => coord * 1.15) as Vec3}
-      <Arrow
-        position={[0, 0, 0]}
-        vector={scaled_vec}
-        color={vector_colors[idx]}
-        scale={1}
-        shaft_radius={scene_size * 0.008}
-        arrow_head_radius={scene_size * 0.028}
-        arrow_head_length={-0.1}
-      />
-      <extras.HTML center position={label_position}>
-        <span style:color={vector_colors[idx]} style:font-size="1.2em">
-          {vector_labels[idx]}
-        </span>
-      </extras.HTML>
-    {/each}
+    <ReciprocalVectors
+      k_lattice={fermi_data.k_lattice}
+      {vector_scale}
+      size={scene_size}
+    />
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->

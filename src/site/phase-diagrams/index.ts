@@ -25,7 +25,7 @@ for (const [path, input] of Object.entries(diagram_modules)) {
 
 // Convert to FileInfo array for binary phase diagrams
 // These are now built-in (no URL needed), but we keep the API compatible
-export const binary_phase_diagram_files: FileInfo[] = Array.from(built_diagrams.keys()).map(
+const binary_phase_diagram_files: FileInfo[] = Array.from(built_diagrams.keys()).map(
   (name) => ({
     name: `${name}.json`,
     url: `builtin:${name}`, // Special marker for built-in diagrams
@@ -36,7 +36,7 @@ export const binary_phase_diagram_files: FileInfo[] = Array.from(built_diagrams.
 )
 
 // Convert glob results to FileInfo array for TDB files
-export const tdb_files: FileInfo[] = Object.keys(tdb_modules).map((path) => {
+const tdb_files: FileInfo[] = Object.keys(tdb_modules).map((path) => {
   const name = path.split(`/`).pop() ?? path
   const url = path.replace(`/src/site`, ``) // e.g. /phase-diagrams/tdb/Al-Fe.tdb
   return { name, url, type: `tdb`, category: `TDB`, category_icon: `📄` }
@@ -57,7 +57,7 @@ const precomputed_map = new Map(
 )
 
 // Find precomputed phase diagram by system name (handles any format: "Al-Cu", "AlCu", "al_cu")
-export const find_precomputed_diagram = (system: string): PhaseDiagramData | undefined =>
+const find_precomputed_diagram = (system: string): PhaseDiagramData | undefined =>
   precomputed_map.get(normalize_system_name(system))?.data
 
 // Backward compatibility: find precomputed URL by system name
@@ -66,10 +66,6 @@ export function find_precomputed_url(system: string): string | undefined {
   const entry = precomputed_map.get(normalize_system_name(system))
   return entry ? `builtin:${entry.name}` : undefined
 }
-
-// Get diagram by exact name
-export const get_diagram = (name: string): PhaseDiagramData | undefined =>
-  built_diagrams.get(name)
 
 // For backward compatibility - load binary phase diagram
 export async function load_binary_phase_diagram(
@@ -102,7 +98,3 @@ export async function load_binary_phase_diagram(
     return null
   }
 }
-
-// Export the build function for users who want to create custom diagrams
-export { build_diagram } from '$lib/phase-diagram/build-diagram'
-export type { DiagramInput } from '$lib/phase-diagram/diagram-input'

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { AXIS_COLORS, get_d3_interpolator, NEG_AXIS_COLORS } from '$lib/colors'
+  import { get_d3_interpolator } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -9,12 +9,9 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import type {
-    CameraProjection,
-    ShowBonds,
-    VectorColorMode,
-    VectorLayerConfig,
-  } from '$lib/settings'
+  import { bind_renderer, build_orbit_props, SceneCamera } from '$lib/scene'
+  import type { SceneControlProps } from '$lib/scene'
+  import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import { colors } from '$lib/state.svelte'
@@ -52,21 +49,12 @@
     PARTIAL_OCCUPANCY_CAP_ARC,
   } from '$lib/structure/partial-occupancy'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import { T, useThrelte } from '@threlte/core'
+  import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import {
-    BufferAttribute,
-    BufferGeometry,
-    type Camera,
-    Color,
-    DoubleSide,
-    type Mesh,
-    type Object3D,
-    type Scene,
-    Vector3,
-  } from 'three'
+  import { BufferAttribute, BufferGeometry, Color, DoubleSide, Vector3 } from 'three'
+  import type { Mesh, Object3D } from 'three'
   import Bond from './Bond.svelte'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
@@ -91,7 +79,7 @@
     choose_site_label_offset,
     LABEL_OFFSET_EPS,
     make_label_position_calculator,
-  } from './label-placement'
+  } from './atom-label-placement'
   import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
   import { compute_polyhedra, merge_polyhedra_buffers } from './polyhedra'
 
@@ -249,7 +237,7 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
-  }: {
+  }: SceneControlProps & {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
     atom_radius?: number // scale factor for atomic radii
@@ -257,15 +245,6 @@
     // determined by the atomic radius of the element
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
     camera_target?: Vec3 // external orbit-controls target for pan synchronization
-    camera_projection?: CameraProjection // camera projection type
-    rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
-    // zoom level of the camera
-    max_zoom?: number
-    min_zoom?: number
-    rotate_speed?: number // rotation speed. set to 0 to disable rotation.
-    zoom_speed?: number // zoom speed. set to 0 to disable zooming.
-    pan_speed?: number // pan speed. set to 0 to disable panning.
-    zoom_to_cursor?: boolean // zoom toward cursor position instead of scene center
     show_atoms?: boolean
     show_bonds?: ShowBonds
     show_site_labels?: boolean
@@ -281,12 +260,9 @@
     vector_shaft_radius?: number
     vector_arrow_head_radius?: number
     vector_arrow_head_length?: number
-    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
     hovered_idx?: number | null
     hovered_site?: Site | null
     float_fmt?: string
-    auto_rotate?: number
-    initial_zoom?: number
     bond_thickness?: number
     bond_color?: string
     bonding_strategy?: BondingStrategy
@@ -305,9 +281,6 @@
     polyhedra_excluded_elements?: readonly string[] // elements never used as polyhedra centers
     polyhedra_included_elements?: readonly string[] // force-include (bypasses spectator hiding)
     polyhedra_rendered_elements?: string[] // (output) elements that currently have polyhedra
-    fov?: number
-    ambient_light?: number
-    directional_light?: number
     sphere_segments?: number
     lattice_props?: ComponentProps<typeof Lattice>
     // Symmetry elements (from symmetry_elements_from_ops) to overlay on the structure.
@@ -326,7 +299,6 @@
     site_label_bg_color?: string
     site_label_color?: string
     site_label_padding?: number
-    camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -344,9 +316,6 @@
     active_sites?: number[]
     active_highlight_color?: string
     rotation?: Vec3 // rotation control prop
-    // Expose scene and camera for external use (e.g. export pane)
-    scene?: Scene
-    camera?: Camera
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`] // OrbitControls instance
     rotation_target_ref?: Vec3 // Expose rotation target for reset
     initial_computed_zoom?: number // Expose initial zoom for reset
@@ -375,13 +344,9 @@
   )
   let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
 
-  const threlte = useThrelte()
-  $effect(() => {
-    scene = threlte.scene
-    camera = threlte.camera.current
-    if (threlte.renderer) {
-      Object.assign(threlte.renderer.domElement, { __renderer: threlte.renderer })
-    }
+  bind_renderer((threlte_scene, threlte_camera) => {
+    scene = threlte_scene
+    camera = threlte_camera
   })
 
   // Expose rotation target for external reset
@@ -790,6 +755,27 @@
     return true
   }
 
+  // Pointer props (hover + select) shared by instanced atoms and partial-occupancy
+  // hit targets. is_edit_image disables interaction for ghosted PBC image atoms.
+  const atom_pointer_props = (site_idx: number, is_edit_image: boolean) => ({
+    ...atom_hover_props(site_idx, is_edit_image),
+    onpointerdown(event: PointerEvent) {
+      if (is_edit_image || measure_mode !== `edit-bonds` || bond_edit_mode !== `add`) return
+      select_edit_bonds_site(site_idx, event)
+    },
+    onclick(event: MouseEvent) {
+      if (is_edit_image) return
+      if (measure_mode === `edit-bonds`) {
+        if (bond_edit_mode !== `add`) return
+        if (skip_duplicate_edit_bonds_click(site_idx)) {
+          event.stopPropagation()
+          return
+        }
+      }
+      toggle_selection(site_idx, event)
+    },
+  })
+
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
     const event_with_native = evt as Event & { nativeEvent?: unknown } | undefined
@@ -1037,9 +1023,16 @@
     return total_occu > 0 ? weighted_sum / total_occu : 1
   }
 
+  // Disordered sites are often stored as separate split sites (one species each)
+  // at the same position; merge_split_partial_sites groups them into one render
+  // site whose `species` holds every element. Shared by atom rendering and the
+  // hover tooltip so it lists all elements, not just the majority one.
+  let render_sites = $derived(
+    structure?.sites ? merge_split_partial_sites(structure.sites, hidden_elements) : [],
+  )
+
   let atom_data = $derived.by(() => {
-    if (!show_atoms || !structure?.sites) return []
-    const render_sites = merge_split_partial_sites(structure.sites, hidden_elements)
+    if (!show_atoms) return []
     return render_sites.flatMap(({ site_idx, site, is_image_atom }) => {
       const orig_idx = get_orig_site_idx(site, site_idx)
 
@@ -1341,6 +1334,24 @@
     return map
   })
 
+  // Partial-occupancy atoms render as separate wedge (lune) meshes that converge
+  // to a point at the sphere's poles, leaving the ball hard to hover from some
+  // angles. Give each such site one invisible full-sphere hit target so it's as
+  // reliably hoverable as an ordered atom (single solid sphere). One per site.
+  let partial_hit_targets = $derived.by(() => {
+    const targets = new SvelteMap<number, EditableAtomHitTarget & { is_image_atom: boolean }>()
+    for (const atom of atom_data) {
+      if (!atom.has_partial_occupancy || targets.has(atom.site_idx)) continue
+      targets.set(atom.site_idx, {
+        site_idx: atom.site_idx,
+        position: atom.position,
+        radius: atom.radius,
+        is_image_atom: atom.is_image_atom,
+      })
+    }
+    return [...targets.values()]
+  })
+
   let editable_atom_hit_targets = $derived.by(() => {
     if (
       measure_mode !== `edit-bonds` ||
@@ -1551,57 +1562,25 @@
     ),
   )
 
-  let gizmo_props = $derived.by(() => {
-    const axis_options = Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover_color]) => [
-        axis,
-        {
-          color,
-          labelColor: `#111`,
-          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
-          hover: {
-            color: hover_color,
-            labelColor: `#222222`,
-            opacity: axis.startsWith(`n`) ? 1 : 0.9,
-          },
-        },
-      ]),
-    )
-    return {
-      background: { enabled: false },
-      className: `responsive-gizmo`,
-      ...axis_options,
-      ...(typeof gizmo === `boolean` ? {} : gizmo),
-      offset: { left: 5, bottom: 5 },
-    }
-  })
-
-  let orbit_controls_props = $derived({
-    position: [0, 0, 0],
-    enableRotate: rotate_speed > 0,
-    rotateSpeed: rotate_speed,
-    enableZoom: zoom_speed > 0,
-    zoomSpeed: camera_projection === `orthographic` ? zoom_speed * 2 : zoom_speed,
-    zoomToCursor: zoom_to_cursor,
-    enablePan: pan_speed > 0,
-    panSpeed: pan_speed,
+  let orbit_controls_props = $derived(build_orbit_props({
+    camera_projection,
     target: camera_target ?? rotation_target,
-    maxZoom: max_zoom,
-    minZoom: min_zoom,
-    autoRotate: Boolean(auto_rotate),
-    autoRotateSpeed: auto_rotate,
-    enableDamping: Boolean(rotation_damping),
-    dampingFactor: rotation_damping,
-    onstart: () => {
-      camera_is_moving = true
+    rotate_speed,
+    zoom_speed,
+    zoom_to_cursor,
+    pan_speed,
+    max_zoom,
+    min_zoom,
+    auto_rotate,
+    rotation_damping,
+    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+    // Close hover tooltips + bond context menu while the camera moves
+    onstart_extra: () => {
       cancel_atom_hover_clear()
       hovered_idx = null
       bond_context_menu = null
     },
-    onend: () => {
-      camera_is_moving = false
-    },
-  })
+  }))
 
   let measure_line_color = $derived.by(() => {
     if (typeof window === `undefined`) return
@@ -1678,31 +1657,17 @@
   </extras.HTML>
 {/snippet}
 
-{#if camera_projection === `perspective`}
-  <T.PerspectiveCamera
-    makeDefault
-    position={camera_position}
-    {fov}
-    near={camera_near}
-    far={camera_far}
-  >
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.PerspectiveCamera>
-{:else}
-  <T.OrthographicCamera
-    makeDefault
-    position={camera_position}
-    zoom={computed_zoom}
-    near={-100}
-    far={camera_far}
-  >
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.OrthographicCamera>
-{/if}
+<SceneCamera
+  {camera_projection}
+  position={camera_position}
+  {fov}
+  zoom={computed_zoom}
+  near={camera_near}
+  far={camera_far}
+  orbit_props={orbit_controls_props}
+  {gizmo}
+  bind:orbit_controls
+/>
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />
@@ -1732,28 +1697,7 @@
               <extras.Instance
                 position={atom.position}
                 scale={atom.radius}
-                {...atom_hover_props(atom.site_idx, edit_mode_image)}
-                onpointerdown={(event: PointerEvent) => {
-                  if (
-                    edit_mode_image ||
-                    measure_mode !== `edit-bonds` ||
-                    bond_edit_mode !== `add`
-                  ) {
-                    return
-                  }
-                  select_edit_bonds_site(atom.site_idx, event)
-                }}
-                onclick={(event: MouseEvent) => {
-                  if (edit_mode_image) return
-                  if (measure_mode === `edit-bonds`) {
-                    if (bond_edit_mode !== `add`) return
-                    if (skip_duplicate_edit_bonds_click(atom.site_idx)) {
-                      event.stopPropagation()
-                      return
-                    }
-                  }
-                  toggle_selection(atom.site_idx, event)
-                }}
+                {...atom_pointer_props(atom.site_idx, edit_mode_image)}
               />
             {/each}
           </extras.InstancedMesh>
@@ -1766,32 +1710,9 @@
         }
           {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
           {@const ghost_opacity = partial_edit_image ? 0.5 : 1}
-          <T.Group
-            position={atom.position}
-            scale={atom.radius}
-            {...atom_hover_props(atom.site_idx, partial_edit_image)}
-            onpointerdown={(event: PointerEvent) => {
-              if (
-                partial_edit_image ||
-                measure_mode !== `edit-bonds` ||
-                bond_edit_mode !== `add`
-              ) {
-                return
-              }
-              select_edit_bonds_site(atom.site_idx, event)
-            }}
-            onclick={(event: MouseEvent) => {
-              if (partial_edit_image) return
-              if (measure_mode === `edit-bonds`) {
-                if (bond_edit_mode !== `add`) return
-                if (skip_duplicate_edit_bonds_click(atom.site_idx)) {
-                  event.stopPropagation()
-                  return
-                }
-              }
-              toggle_selection(atom.site_idx, event)
-            }}
-          >
+          <!-- Visual only: pointer interaction handled by the invisible full-sphere
+            hit targets below (wedge meshes leave gaps at the poles). -->
+          <T.Group position={atom.position} scale={atom.radius}>
             {@const partial_color = partial_edit_image
             ? desaturate(atom.color)
             : atom.color}
@@ -1812,7 +1733,7 @@
               />
             </T.Mesh>
 
-            {#if atom.has_partial_occupancy && atom.render_start_cap}
+            {#if atom.render_start_cap}
               <T.Mesh rotation={[0, atom.start_phi, 0]}>
                 <T.CircleGeometry
                   args={[
@@ -1830,7 +1751,7 @@
                 />
               </T.Mesh>
             {/if}
-            {#if atom.has_partial_occupancy && atom.render_end_cap}
+            {#if atom.render_end_cap}
               <T.Mesh rotation={[0, atom.end_phi, 0]}>
                 <T.CircleGeometry
                   args={[
@@ -1855,6 +1776,20 @@
           atom.element === structure!.sites[atom.site_idx].species[0].element}
             {@render site_label_snippet(atom.position, atom.site_idx)}
           {/if}
+        {/each}
+
+        <!-- Invisible full-sphere hit targets for partial-occupancy sites so the
+          whole ball is hoverable/clickable (wedge meshes leave gaps at the poles). -->
+        {#each partial_hit_targets as hit (hit.site_idx)}
+          {@const hit_edit_image = measure_mode === `edit-atoms` && hit.is_image_atom}
+          <T.Mesh
+            position={hit.position}
+            scale={hit.radius}
+            {...atom_pointer_props(hit.site_idx, hit_edit_image)}
+          >
+            <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
+            <T.MeshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </T.Mesh>
         {/each}
 
         <!-- Site labels/indices for instanced atoms -->
@@ -2165,10 +2100,13 @@
             .map(([elem, count]) => `${elem}: ${count}`)
           return ` (${parts.join(`, `)})`
         })()}
+        {@const tooltip_species =
+          render_sites.find((rs) => rs.site_idx === hovered_idx)?.site.species ??
+          hovered_site.species ?? []}
         <CanvasTooltip position={hovered_site.xyz}>
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements">
-            {#each hovered_site.species ?? [] as
+            {#each tooltip_species as
               { element, occu, oxidation_state: oxi_state },
               idx
               (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)
@@ -2177,16 +2115,17 @@
               elem.symbol === element
             )?.name ??
               ``}
-              {#if idx > 0}&thinsp;{/if}
-              {#if occu !== 1}<span class="occupancy">{
-                  format_num(occu, `.3~f`)
-                }</span>{/if}
-              <strong>
-                {element}{#if oxi_state != null && oxi_state !== 0}<sup>{Math.abs(
-                    oxi_state,
-                  )}{oxi_state > 0 ? `+` : `−`}</sup>{/if}
-              </strong>
-              {#if element_name}<span class="elem-name">{element_name}</span>{/if}
+              <span class="species">
+                {#if occu !== 1}<span class="occupancy">{
+                    format_num(occu, `.3~f`)
+                  }</span>{/if}
+                <strong>
+                  {element}{#if oxi_state != null && oxi_state !== 0}<sup>{Math.abs(
+                      oxi_state,
+                    )}{oxi_state > 0 ? `+` : `−`}</sup>{/if}
+                </strong>
+                {#if element_name}<span class="elem-name">{element_name}</span>{/if}
+              </span>
             {/each}
           </div>
           <div class="coordinates fractional">abc: ({abc})</div>
@@ -2399,6 +2338,13 @@
   }
   .elements {
     margin-bottom: var(--canvas-tooltip-elements-margin);
+  }
+  .species {
+    display: inline-block;
+    white-space: nowrap;
+    &:not(:first-child) {
+      margin-left: var(--canvas-tooltip-species-gap, 0.5em);
+    }
   }
   .occupancy {
     font-size: var(--canvas-tooltip-occu-font-size);

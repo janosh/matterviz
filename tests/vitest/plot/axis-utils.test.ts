@@ -66,7 +66,7 @@ describe(`merge_series_state`, () => {
 })
 
 describe(`create_axis_change_handler`, () => {
-  /** Create a mock state object for testing. */
+  // Create a mock state object for testing.
   function create_mock_state(initial_key: string = `energy`) {
     let axis_config: AxisConfig = { selected_key: initial_key }
     let series: DataSeries[] = []

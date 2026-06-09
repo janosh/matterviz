@@ -110,7 +110,7 @@ export const dispatch_cancelable_keydown = (
   }, init)
 
 // Open a draggable pane via checkbox or toggle button
-export async function open_draggable_pane(
+async function open_draggable_pane(
   page: Page,
   options: {
     pane_selector: string
@@ -149,20 +149,6 @@ export const open_structure_export_pane = (page: Page) =>
     parent_selector: `#test-structure`,
     toggle_selector: `.structure-export-toggle`,
   })
-
-// Open controls pane for scatter/histogram plots
-export async function open_plot_controls_pane(
-  plot: Locator,
-  timeout = 5000,
-): Promise<Locator> {
-  await plot.hover()
-  const toggle = plot.locator(`button.pane-toggle`)
-  await expect(toggle).toBeVisible({ timeout })
-  await toggle.click()
-  const pane = plot.locator(`.draggable-pane`)
-  await expect(pane).toBeVisible({ timeout })
-  return pane
-}
 
 // Get range inputs for axis controls
 export function get_axis_range_inputs(pane: Locator, axis_label: string) {

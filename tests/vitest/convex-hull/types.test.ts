@@ -1,10 +1,6 @@
 import { normalize_show_controls } from '$lib/controls'
 import { default_controls } from '$lib/convex-hull'
-import type {
-  ConvexHullControlsType,
-  HullFaceColorMode,
-  PhaseData,
-} from '$lib/convex-hull/types'
+import type { HullFaceColorMode, PhaseData } from '$lib/convex-hull/types'
 import {
   compute_hull_stability,
   get_arity,
@@ -105,20 +101,24 @@ describe(`compute_hull_stability`, () => {
   )
 })
 
-describe(`ConvexHullControlsType.show`, () => {
-  test(`default_controls.show is hover and supports hidden array`, () => {
-    // Verify default is 'hover'
-    expect(default_controls.show).toBe(`hover`)
+describe(`show_controls`, () => {
+  test(`defaults to hover and supports hidden array`, () => {
+    // Verify default (undefined show_controls prop) normalizes to 'hover'
+    expect(normalize_show_controls(undefined).mode).toBe(`hover`)
 
-    // Verify type accepts full ShowControlsProp with hidden controls
-    const controls: ConvexHullControlsType = {
-      show: { mode: `hover`, hidden: [`reset`, `fullscreen`] },
-    }
-    const config = normalize_show_controls(controls.show)
+    // Verify full ShowControlsProp form with hidden controls
+    const config = normalize_show_controls({
+      mode: `hover`,
+      hidden: [`reset`, `fullscreen`],
+    })
     expect(config.mode).toBe(`hover`)
     expect(config.class).toBe(`hover-visible`)
     expect(config.visible(`reset`)).toBe(false)
     expect(config.visible(`info-pane`)).toBe(true)
+  })
+
+  test(`default_controls no longer carries a show key (moved to top-level show_controls prop)`, () => {
+    expect(`show` in default_controls).toBe(false)
   })
 })
 

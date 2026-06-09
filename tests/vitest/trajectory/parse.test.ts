@@ -1238,6 +1238,21 @@ describe(`JSON Formats`, () => {
     expect(trajectory.frames.length).toBeGreaterThan(0)
   })
 
+  // malformed fields are present-but-wrong-shape so they pass the routing gate, then hit
+  // the shape validation -> clear error instead of a cryptic `.map` throw
+  it.each<[string, Record<string, unknown>, RegExp]>([
+    [`species`, { species: { element: `Si` }, coords: [[[0, 0, 0]]] }, /species/],
+    [`coords`, { species: [{ element: `Si` }], coords: { a: 1 } }, /coords/],
+  ])(`throws a clear error on malformed pymatgen %s`, async (_label, fields, pattern) => {
+    const lattice = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+    const content = JSON.stringify({ '@class': `Trajectory`, lattice, ...fields })
+    await expect(parse_trajectory_data(content, `test.json`)).rejects.toThrow(pattern)
+  })
+
   it(`should parse pymatgen trajectory with forces and stress`, async () => {
     const content = read_test_file(`pymatgen-LiMnO2-chgnet-relax.json.gz`)
     const trajectory = await parse_trajectory_data(content, `test.json.gz`)

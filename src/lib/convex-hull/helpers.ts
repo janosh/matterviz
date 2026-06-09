@@ -255,6 +255,13 @@ export function find_hull_entry_at_mouse<
   return null
 }
 
+// Shared CSS custom-property block for hull wrapper styling (2D/3D/4D)
+export const hull_style_css = (colors: ConvexHullConfig[`colors`] | undefined): string =>
+  `--hull-stable-color: ${colors?.stable ?? `#0072B2`};
+    --hull-unstable-color: ${colors?.unstable ?? `#E69F00`};
+    --hull-edge-color: ${colors?.edge ?? `var(--text-color, #212121)`};
+    --hull-text-color: ${colors?.annotation ?? `var(--text-color, #212121)`}`
+
 // Calculate which side of the viewport has more space for modal placement
 export function calculate_modal_side(wrapper: HTMLDivElement | undefined): boolean {
   if (!wrapper) return true

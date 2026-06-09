@@ -574,6 +574,8 @@ describe(`Auto-detection & Error Handling`, () => {
   it.each([
     // Parser-specific errors
     { parser: parse_poscar, content: `Too short` },
+    // negative scale = target volume; singular (zero-volume) lattice -> infinite scale factor
+    { parser: parse_poscar, content: `Test\n-27.0\n3 0 0\n3 0 0\n0 0 3\nH\n1\nDirect\n0 0 0` },
     { parser: parse_xyz, content: `` },
     {
       parser: parse_poscar,
@@ -611,8 +613,10 @@ describe(`Auto-detection & Error Handling`, () => {
       content: `2\nTest\nC abc def ghi\nH 1.0 1.0 1.0`,
     },
   ])(`should handle errors gracefully`, ({ parser, content }) => {
-    const result = parser(content)
-    expect(result).toBeNull()
+    // Top-level entry points throw aggregated reasons; format parsers return null
+    if (parser === parse_structure_file) {
+      expect(() => parser(content)).toThrow(`Failed to parse structure`)
+    } else expect(parser(content)).toBeNull()
   })
 })
 
@@ -1752,7 +1756,7 @@ describe(`parse_structure_file`, () => {
   test(`still trusts conflicting extension over content`, () => {
     // CIF content explicitly named .json must not be sniffed as CIF
     const content = read_maybe_gz(`./src/site/structures/Li10GeP2S12.cif`)
-    expect(parse_structure_file(content, `data.json`)).toBeNull()
+    expect(() => parse_structure_file(content, `data.json`)).toThrow(/Error parsing JSON file/)
   })
 
   test(`parses nested JSON structure correctly`, () => {
@@ -1852,16 +1856,16 @@ describe(`parse_structure_file`, () => {
     expect(result?.lattice?.volume).toBe(8)
   })
 
-  test(`returns null for invalid JSON structure`, () => {
+  test(`throws for invalid JSON structure`, () => {
     const invalid_structure = {
       not_a_structure: `this is not a structure`,
       some_data: [1, 2, 3],
     }
 
     const content = JSON.stringify(invalid_structure)
-    const result = parse_structure_file(content, `invalid.json`)
-
-    expect(result).toBeNull()
+    expect(() => parse_structure_file(content, `invalid.json`)).toThrow(
+      /JSON file does not contain a valid structure format/,
+    )
   })
 
   test(`handles array with structure at different positions`, () => {
@@ -1962,11 +1966,11 @@ describe(`parse_structure_file`, () => {
       [`malformed species`, { sites: [{ species: `not_array`, abc: [0, 0, 0] }] }],
       [`missing coordinates`, { sites: [{ species: [{ element: `H` }] }] }],
       [`array of invalid objects`, [{ no_structure: true }, { also_invalid: true }]],
-    ])(`returns null for %s`, (_description, invalid_data) => {
+    ])(`throws for %s`, (_description, invalid_data) => {
       const content = JSON.stringify(invalid_data)
-      const result = parse_structure_file(content, `invalid.json`)
-
-      expect(result).toBeNull()
+      expect(() => parse_structure_file(content, `invalid.json`)).toThrow(
+        /JSON file does not contain a valid structure format/,
+      )
     })
 
     test.each([
@@ -2142,8 +2146,9 @@ describe(`parse_structure_file`, () => {
       [`empty string`, ``],
       [`only whitespace`, `   \n\t   `],
     ])(`handles invalid input gracefully: %s`, (_description, invalid_content) => {
-      const result = parse_any_structure(invalid_content, `test.json`)
-      expect(result).toBeNull()
+      expect(() => parse_any_structure(invalid_content, `test.json`)).toThrow(
+        `Failed to parse structure from 'test.json'`,
+      )
     })
 
     test(`preserves all structure properties during transformation`, () => {

@@ -614,10 +614,11 @@ describe(`parse_volumetric_file`, () => {
   })
 
   test(`VASP filename takes priority over content-based detection`, () => {
-    // .cube content with CHGCAR filename: parse_chgcar is called (fails on .cube content)
+    // .cube content with CHGCAR filename: parse_chgcar is called (throws on .cube content)
     // rather than falling through to content-based .cube detection
-    const result = parse_volumetric_file(minimal_cube, `CHGCAR`)
-    expect(result).toBeNull()
+    expect(() => parse_volumetric_file(minimal_cube, `CHGCAR`)).toThrow(
+      /Failed to parse VASP volumetric \(CHGCAR-like\) file 'CHGCAR'/,
+    )
   })
 
   // === Compression suffix stripping ===

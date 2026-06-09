@@ -1,4 +1,5 @@
 import type { D3InterpolateName } from '$lib/colors'
+import type { ShowControlsProp } from '$lib/controls'
 import type { TooltipConfig } from '$lib/tooltip'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
@@ -28,6 +29,7 @@ export * from './demo-temperature'
 export * from './gas-thermodynamics'
 export { default as GasPressureControls } from './GasPressureControls.svelte'
 export * from './helpers'
+export * from './hull-state.svelte'
 export { default as TemperatureSlider } from './TemperatureSlider.svelte'
 export * from './thermodynamics'
 export * from './types'
@@ -59,10 +61,19 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   entries: PhaseData[]
   controls?: Partial<ConvexHullControlsType>
   config?: Partial<ConvexHullConfig>
+  // Controls visibility configuration.
+  // - 'always': controls always visible
+  // - 'hover': controls visible on component hover (default)
+  // - 'never': controls never visible
+  // - object: { mode, hidden, style } for fine-grained control
+  //
+  // Control names: 'info-pane', 'fullscreen', 'controls'
+  show_controls?: ShowControlsProp
   on_point_click?: (entry: AnyDimEntry) => void
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
-  fullscreen?: boolean
-  enable_fullscreen?: boolean
+  fullscreen?: boolean // bindable fullscreen state
+  // show/hide the fullscreen button (or custom snippet to render it)
+  fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
   enable_info_pane?: boolean
   wrapper?: HTMLDivElement
   // Smart label defaults - hide labels if more than this many entries
@@ -73,8 +84,8 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   color_mode?: `stability` | `energy`
   color_scale?: D3InterpolateName
   info_pane_open?: boolean
-  // Legend pane visibility
-  legend_pane_open?: boolean
+  // Controls (legend) pane open state
+  controls_open?: boolean
   // Energy threshold for showing unstable entries (eV/atom above hull)
   max_hull_dist_show_phases?: number
   max_hull_dist_show_labels?: number
@@ -160,7 +171,6 @@ export interface EnergyModeInfo {
 // Default legend configuration shared by 3D and 4D diagrams
 export const default_controls: ConvexHullControlsType = {
   title: ``,
-  show: `hover`,
   position: `top-right`,
   width: 280,
   show_counts: true,
@@ -168,7 +178,12 @@ export const default_controls: ConvexHullControlsType = {
   show_label_controls: true,
 }
 
-// Convex hull defaults shared by 2D, 3D, and 4D
+// Convex hull defaults shared by 2D, 3D, and 4D.
+// NOTE: deliberately disjoint from DEFAULTS.convex_hull in [[src/lib/settings.ts]],
+// which holds per-arity (binary/ternary/quaternary) camera + phase-visibility
+// settings. This object holds render styling (colors, fonts, sizes) not exposed via
+// the settings schema. Keep it that way: don't add keys here that exist in
+// DEFAULTS.convex_hull (read those via DEFAULTS instead) or the two will drift.
 export const default_hull_config: ConvexHullConfig = {
   width: 600,
   height: 600,

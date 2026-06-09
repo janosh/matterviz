@@ -19,6 +19,7 @@
 <style>
   div {
     width: max-content;
+    max-width: var(--canvas-tooltip-max-width, 16em);
     box-sizing: border-box;
     text-align: var(--canvas-tooltip-text-align, left);
     border-radius: var(--canvas-tooltip-border-radius, var(--border-radius, 3pt));

@@ -62,24 +62,22 @@
   }
 
   function parse_and_apply(text: string, filename: string) {
-    const vol_result = parse_volumetric_file(text, filename)
-    if (vol_result) {
-      structure = vol_result.structure as AnyStructure
-      volumetric_data = vol_result.volumes
-      active_volume_idx = 0
-      const vol = vol_result.volumes[0]
-      if (vol) isosurface_settings = auto_isosurface_settings(vol.data_range)
-      return
-    }
+    try {
+      const vol_result = parse_volumetric_file(text, filename)
+      if (vol_result) {
+        structure = vol_result.structure as AnyStructure
+        volumetric_data = vol_result.volumes
+        active_volume_idx = 0
+        const vol = vol_result.volumes[0]
+        if (vol) isosurface_settings = auto_isosurface_settings(vol.data_range)
+        return
+      }
 
-    const parsed = parse_any_structure(text, filename)
-    if (parsed) {
-      structure = parsed
+      structure = parse_any_structure(text, filename)
       volumetric_data = undefined
-      return
+    } catch (exc) {
+      error_msg = `Failed to parse ${filename}: ${exc instanceof Error ? exc.message : exc}`
     }
-
-    error_msg = `Failed to parse ${filename}`
   }
 
   function update_url() {

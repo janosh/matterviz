@@ -4,23 +4,9 @@ import { create_structure_filename } from '$lib/structure/export'
 import { to_error } from '$lib/utils'
 import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 
-function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
-  if (typeof value !== `object` || !value) return false
-  const renderer_obj = value as Record<string, unknown>
-  return (
-    typeof renderer_obj.render === `function` &&
-    typeof renderer_obj.getPixelRatio === `function` &&
-    typeof renderer_obj.setPixelRatio === `function` &&
-    typeof renderer_obj.getSize === `function` &&
-    typeof renderer_obj.setSize === `function`
-  )
-}
-
-function get_canvas_renderer(canvas: HTMLCanvasElement): WebGLRenderer | undefined {
-  // oxlint-disable-next-line no-underscore-dangle -- three.js stores its renderer here
-  const renderer_val = (canvas as unknown as Record<string, unknown>).__renderer
-  return is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
-}
+// Maps a Threlte canvas to its WebGLRenderer so PNG export can look up the renderer for a
+// given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
+export const renderer_registry = new WeakMap<HTMLCanvasElement, WebGLRenderer>()
 
 // Capture a WebGL canvas as a PNG Blob at the given DPI.
 // Temporarily adjusts renderer pixel ratio for high-res capture, then restores.
@@ -34,7 +20,7 @@ export function canvas_to_png_blob(
   camera: Camera | null = null,
 ): Promise<Blob> {
   const resolution_multiplier = Math.min(png_dpi / 72, 10)
-  const renderer = get_canvas_renderer(canvas)
+  const renderer = renderer_registry.get(canvas)
 
   if (resolution_multiplier <= 1.1 || !renderer) {
     if (renderer && scene && camera) renderer.render(scene, camera)
@@ -320,7 +306,7 @@ export async function export_trajectory_video(
   )
     throw new Error(`WebM video recording not supported in this browser`)
 
-  const renderer = get_canvas_renderer(canvas)
+  const renderer = renderer_registry.get(canvas)
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined

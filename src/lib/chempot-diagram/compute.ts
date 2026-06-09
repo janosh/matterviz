@@ -104,7 +104,9 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
 }
 
 // Compute formation energy per atom against elemental references.
-export function compute_form_energy_per_atom(
+// NOTE: diverges from convex-hull's compute_e_form_per_atom (which returns null on
+// missing refs); kept module-private so the divergent variant can't leak into public API.
+function compute_form_energy_per_atom(
   entry: PhaseData,
   el_refs: Record<string, PhaseData>,
 ): number {

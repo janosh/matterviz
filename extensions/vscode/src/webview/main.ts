@@ -327,7 +327,7 @@ function request_large_file_content(
 }
 
 // Parse file content and determine if it's a structure or trajectory
-const parse_file_content = async (
+export const parse_file_content = async (
   content: string,
   filename: string,
   is_compressed: boolean = false,
@@ -401,9 +401,8 @@ const parse_file_content = async (
   // Use basename for regex matching in case filename retains a directory prefix
   const basename = filename.split(`/`).pop() ?? filename
   if (FERMI_FILE_RE.test(basename)) {
-    const data = parse_fermi_file(content, filename)
-    if (data) return { type: `fermi_surface`, data, filename }
-    throw new Error(`Failed to parse Fermi surface file: ${filename}`)
+    // parse_fermi_file throws a descriptive error when parsing fails
+    return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
   }
 
   // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG)
@@ -422,13 +421,16 @@ const parse_file_content = async (
       if (detected) {
         // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.)
         if (detected === `structure`) {
-          const structure = parse_structure_file(content, filename)
-          if (structure?.sites) {
+          try {
+            const structure = parse_structure_file(content, filename)
             return {
               type: `structure`,
               data: { ...structure, id: filename.replace(/\.[^/.]+$/, ``) },
               filename,
             }
+          } catch {
+            // Detailed parse failed despite structure-like shape — fall through to
+            // generic JSON handling below
           }
         }
         // Volumetric JSON needs wrapping in { structure, volumes } for the isosurface renderer
@@ -453,12 +455,11 @@ const parse_file_content = async (
     }
   }
 
-  // Parse as structure (CIF, POSCAR, XYZ, etc.)
+  // Parse as structure (CIF, POSCAR, XYZ, etc.) — throws descriptive reasons on failure
   const structure = parse_structure_file(content, filename)
-  if (!structure?.sites) {
-    throw new Error(`Failed to parse file or no atoms found`)
-  }
-
+  // parse_structure_file throws on parse failure but can still return zero atoms (e.g. a
+  // CIF with cell params but no _atom_site records), which is invalid downstream
+  if (!structure.sites?.length) throw new Error(`No atoms found in ${filename}`)
   const data = { ...structure, id: filename.replace(/\.[^/.]+$/, ``) }
   return { type: `structure`, data, filename }
 }

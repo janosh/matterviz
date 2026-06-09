@@ -169,11 +169,14 @@
         id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
       }
     }
+    // Prefix classes stay disjoint: `idx:` keys have `x` at index 2 where `id:` keys
+    // have `:`, and `dup:` keys differ in first char. Within a class, idx is unique
+    // and bare ids are only used when they occur exactly once.
     return series.map((srs, idx) => {
-      if (srs?.id === undefined || srs.id === ``) return JSON.stringify([`idx`, idx])
-      return id_counts.get(srs.id) === 1
-        ? JSON.stringify([`id`, srs.id])
-        : JSON.stringify([`duplicate-id`, idx, srs.id])
+      if (srs?.id === undefined || srs.id === ``) return `idx:${idx}`
+      // include typeof so numeric/string ids (1 vs "1") don't collide on the same key
+      const id_key = `${typeof srs.id}:${String(srs.id)}`
+      return id_counts.get(srs.id) === 1 ? `id:${id_key}` : `dup:${idx}:${id_key}`
     })
   })
 
