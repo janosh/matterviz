@@ -337,7 +337,7 @@ function find_polygon_intersections(
 function pick_bracketing_intersection_pair(
   intersections: number[],
   position: number,
-): [number, number] | null {
+): Vec2 | null {
   if (intersections.length < 2) return null
 
   const unique_intersections: number[] = []

@@ -1,6 +1,5 @@
 // Format detection for trajectory files
 import {
-  COMPRESSION_EXTENSIONS_REGEX,
   CONFIG_DIRS_REGEX,
   MD_SIM_EXCLUDE_REGEX,
   TRAJ_EXTENSIONS_REGEX,
@@ -8,15 +7,8 @@ import {
   TRAJ_KEYWORDS_SIMPLE_REGEX,
   XDATCAR_REGEX,
 } from '$lib/constants'
+import { strip_compression_extensions } from '$lib/io'
 import { count_xyz_frames } from './helpers'
-
-export function strip_compression_extensions(filename: string): string {
-  let base_name = filename.toLowerCase()
-  while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
-    base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-  }
-  return base_name
-}
 
 // Extensions that explicitly identify a format — when present, format detection trusts
 // the extension instead of sniffing content
@@ -53,7 +45,7 @@ export const FORMAT_PATTERNS = {
     if (!(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
     return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every(
-      (b, idx) => signature[idx] === b,
+      (byte, idx) => signature[idx] === byte,
     )
   },
 

@@ -73,7 +73,7 @@
   })
 
   let hovered_band_point = $state<InternalPoint | null>(null)
-  let bands_x_positions = $state<Record<string, [number, number]>>({})
+  let bands_x_positions = $state<Record<string, Vec2>>({})
   let hovered_qpoint_index = $derived(
     hovered_band_point && first_band_struct &&
       Object.keys(bands_x_positions).length > 0
@@ -199,11 +199,11 @@
     style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; height: 100%"
     {structure}
     {k_path_points}
-    k_path_labels={first_band_struct?.qpoints?.flatMap((q, idx) =>
+    k_path_labels={first_band_struct?.qpoints?.flatMap((qpoint, idx) =>
       k_path_points[idx]
         ? [{
           position: k_path_points[idx],
-          label: q.label ? helpers.pretty_sym_point(q.label) : null,
+          label: qpoint.label ? helpers.pretty_sym_point(qpoint.label) : null,
         }]
         : []
     ) ?? []}

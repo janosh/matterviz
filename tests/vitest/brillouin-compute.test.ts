@@ -57,11 +57,11 @@ const C3_HEX_SQ: Matrix3x3 = [
 
 // Helpers
 const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
-  vertices.some((v) => v.every((c, idx) => Math.abs(c - target[idx]) < tol))
+  vertices.some((vertex) => vertex.every((coord, idx) => Math.abs(coord - target[idx]) < tol))
 
 const edge_key = (v1: Vec3, v2: Vec3) =>
   [v1, v2]
-    .map((v) => v.map((c) => c.toFixed(8)).join(`,`))
+    .map((vertex) => vertex.map((coord) => coord.toFixed(8)).join(`,`))
     .sort()
     .join(`|`)
 
@@ -204,7 +204,9 @@ describe(`generate_bz_vertices`, () => {
     const vertices = generate_bz_vertices(k_lattice, 1)
     expect(vertices).toHaveLength(8)
     const k_max = Math.PI / 5
-    vertices.forEach((v) => v.forEach((c) => expect(Math.abs(c)).toBeCloseTo(k_max, 5)))
+    vertices.forEach((vertex) =>
+      vertex.forEach((coord) => expect(Math.abs(coord)).toBeCloseTo(k_max, 5)),
+    )
   })
 
   test(`max_planes_by_order parameter`, () => {
@@ -257,14 +259,14 @@ describe(`compute_convex_hull`, () => {
 })
 
 describe(`BZ volume`, () => {
-  test.each([5.0, 3.0])(`cubic a=%d → volume ≈ (2π)³/a³`, (a) => {
+  test.each([5.0, 3.0])(`cubic a=%d → volume ≈ (2π)³/a³`, (a_len) => {
     const real: Matrix3x3 = [
-      [a, 0, 0],
-      [0, a, 0],
-      [0, 0, a],
+      [a_len, 0, 0],
+      [0, a_len, 0],
+      [0, 0, a_len],
     ]
     const bz = compute_brillouin_zone(reciprocal_lattice(real), 1)
-    expect(bz.volume).toBeCloseTo((2 * Math.PI) ** 3 / a ** 3, 4)
+    expect(bz.volume).toBeCloseTo((2 * Math.PI) ** 3 / a_len ** 3, 4)
   })
 
   test(`volume = |b1 · (b2 × b3)|`, () => {
@@ -280,7 +282,10 @@ describe(`BZ volume`, () => {
       b2[2] * b3[0] - b2[0] * b3[2],
       b2[0] * b3[1] - b2[1] * b3[0],
     ]
-    expect(bz.volume).toBeCloseTo(Math.abs(b1.reduce((s, v, idx) => s + v * cross[idx], 0)), 6)
+    expect(bz.volume).toBeCloseTo(
+      Math.abs(b1.reduce((sum, val, idx) => sum + val * cross[idx], 0)),
+      6,
+    )
   })
 })
 
@@ -345,7 +350,7 @@ describe(`extract_point_group_from_operations`, () => {
     [`with inversion/mirror`, [IDENTITY_MAT, INVERSION_MAT, MIRROR_Z], 3],
     [`empty input`, [], 0],
   ] as [string, Matrix3x3[], number][])(`%s → %d unique rotations`, (_, rots, expected) => {
-    expect(extract_point_group_from_operations(rots.map((r) => make_op(r)))).toHaveLength(
+    expect(extract_point_group_from_operations(rots.map((rot) => make_op(rot)))).toHaveLength(
       expected,
     )
   })
@@ -367,7 +372,7 @@ describe(`compute_ibz_clipping_planes`, () => {
   test(`non-trivial symmetry → planes through origin`, () => {
     const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_Z_90])
     expect(planes.length).toBeGreaterThan(0)
-    planes.forEach((p) => expect(p.dist).toBe(0))
+    planes.forEach((plane) => expect(plane.dist).toBe(0))
   })
 
   test(`C4 group deduplicates planes`, () => {
@@ -569,7 +574,10 @@ describe(`fractional_to_cartesian_rotation`, () => {
   test.each([
     [`singular W`, singular_w, k_lattice],
     [`singular k_lattice`, IDENTITY_MAT, zero_mat],
-  ] as [string, Matrix3x3, Matrix3x3][])(`returns identity matrix for %s`, (_, W, k) => {
-    expect(fractional_to_cartesian_rotation(W, k)).toEqual(IDENTITY_MAT)
-  })
+  ] as [string, Matrix3x3, Matrix3x3][])(
+    `returns identity matrix for %s`,
+    (_, w_matrix, k_matrix) => {
+      expect(fractional_to_cartesian_rotation(w_matrix, k_matrix)).toEqual(IDENTITY_MAT)
+    },
+  )
 })

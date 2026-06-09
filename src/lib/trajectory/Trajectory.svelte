@@ -8,6 +8,7 @@
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { format_num, trajectory_property_config } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import { sanitize_html } from '$lib/sanitize'
   import { toggle_fullscreen } from '$lib/layout'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
@@ -177,7 +178,7 @@
       c?: string
       [key: string]: string | undefined
     }
-    fps_range?: [number, number] // allowed FPS range [min_fps, max_fps]
+    fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
     fps?: number // frame rate for playback
     // Loading options for large files
     loading_options?: LoadingOptions

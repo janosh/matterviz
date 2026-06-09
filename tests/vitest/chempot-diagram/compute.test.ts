@@ -80,12 +80,13 @@ const pmg_to_ours: Record<string, string> = {
 
 // Helper: make a PhaseData entry from composition and energy_per_atom
 function make_entry(composition: Record<string, number>, energy_per_atom: number): PhaseData {
-  const atoms = Object.values(composition).reduce((s, v) => s + v, 0)
+  const atoms = Object.values(composition).reduce((sum, count) => sum + count, 0)
   return { composition, energy: energy_per_atom * atoms, energy_per_atom }
 }
 
 // Reorder pymatgen [Li, Fe, O] columns to our [Fe, Li, O]
-const reorder_cols = (pts: number[][]): number[][] => pts.map(([li, fe, o]) => [fe, li, o])
+const reorder_cols = (pts: number[][]): number[][] =>
+  pts.map(([li, fe, oxygen]) => [fe, li, oxygen])
 
 const sort_rows = (pts: number[][]): number[][] =>
   [...pts]
@@ -141,7 +142,7 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
       [0, 0, -1, -25],
       [0, 0, 1, 0],
     ]
-    const lims: [number, number][] = [
+    const lims: Vec2[] = [
       [-25, 0],
       [-25, 0],
       [-25, 0],
@@ -334,7 +335,7 @@ describe(`physical invariants`, () => {
       const unique = dedup_vertices(pts)
       if (unique.length < 2) continue
       const centroid = unique[0].map(
-        (_, col) => unique.reduce((s, p) => s + p[col], 0) / unique.length,
+        (_, col) => unique.reduce((sum, row) => sum + row[col], 0) / unique.length,
       )
       let best_energy = Infinity
       for (const hs of cpd_ternary.hyperplanes) {
@@ -719,7 +720,7 @@ describe(`solve_linear_system`, () => {
     const result = solve_linear_system(mat, rhs)
     if (!result) throw new Error(`expected non-null solution`)
     for (let row = 0; row < 4; row++) {
-      const val = mat[row].reduce((s, v, col) => s + v * result[col], 0)
+      const val = mat[row].reduce((sum, cell, col) => sum + cell * result[col], 0)
       expect(val).toBeCloseTo(rhs[row], 6)
     }
   })
@@ -866,7 +867,7 @@ describe(`simple_pca`, () => {
     ]
     const { scores } = simple_pca(data, 2)
     for (let col = 0; col < 2; col++) {
-      const mean = scores.reduce((s, row) => s + row[col], 0) / scores.length
+      const mean = scores.reduce((sum, row) => sum + row[col], 0) / scores.length
       expect(mean).toBeCloseTo(0, 8)
     }
   })
@@ -900,7 +901,10 @@ describe(`simple_pca`, () => {
     ]
     const { eigenvectors } = simple_pca(data, 2)
     if (eigenvectors.length >= 2) {
-      const dot = eigenvectors[0].reduce((s, v, idx) => s + v * eigenvectors[1][idx], 0)
+      const dot = eigenvectors[0].reduce(
+        (sum, val, idx) => sum + val * eigenvectors[1][idx],
+        0,
+      )
       expect(Math.abs(dot)).toBeLessThan(1e-6)
     }
   })
@@ -978,24 +982,24 @@ describe(`orthonormal_2d`, () => {
 
 describe(`polygon_centroid`, () => {
   test(`unit square centroid is (0.5, 0.5)`, () => {
-    const c = polygon_centroid([
+    const centroid = polygon_centroid([
       [0, 0],
       [1, 0],
       [1, 1],
       [0, 1],
     ])
-    expect(c[0]).toBeCloseTo(0.5, 8)
-    expect(c[1]).toBeCloseTo(0.5, 8)
+    expect(centroid[0]).toBeCloseTo(0.5, 8)
+    expect(centroid[1]).toBeCloseTo(0.5, 8)
   })
 
   test(`equilateral triangle centroid`, () => {
-    const c = polygon_centroid([
+    const centroid = polygon_centroid([
       [0, 0],
       [1, 0],
       [0.5, Math.sqrt(3) / 2],
     ])
-    expect(c[0]).toBeCloseTo(0.5, 6)
-    expect(c[1]).toBeCloseTo(Math.sqrt(3) / 6, 6)
+    expect(centroid[0]).toBeCloseTo(0.5, 6)
+    expect(centroid[1]).toBeCloseTo(Math.sqrt(3) / 6, 6)
   })
 
   test(`single point returns that point`, () => {
@@ -1003,12 +1007,12 @@ describe(`polygon_centroid`, () => {
   })
 
   test(`two points returns midpoint`, () => {
-    const c = polygon_centroid([
+    const centroid = polygon_centroid([
       [0, 0],
       [4, 6],
     ])
-    expect(c[0]).toBeCloseTo(2, 8)
-    expect(c[1]).toBeCloseTo(3, 8)
+    expect(centroid[0]).toBeCloseTo(2, 8)
+    expect(centroid[1]).toBeCloseTo(3, 8)
   })
 
   test(`empty returns origin`, () => {
@@ -1701,7 +1705,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
 describe(`formation energy from elemental refs`, () => {
   // Reproduce the compute_e_form logic using exported helpers
   function compute_e_form(entry: PhaseData, el_refs: Record<string, PhaseData>): number {
-    const atoms = Object.values(entry.composition).reduce((s, v) => s + v, 0)
+    const atoms = Object.values(entry.composition).reduce((sum, count) => sum + count, 0)
     const epa = get_energy_per_atom(entry)
     let ref_energy = 0
     for (const [el, amt] of Object.entries(entry.composition)) {
@@ -1931,11 +1935,11 @@ describe(`get_ternary_combinations`, () => {
 
 describe(`make_nd_cache_key`, () => {
   const li: PhaseData = { composition: { Li: 1 }, energy: -3 }
-  const o: PhaseData = { composition: { O: 1 }, energy: -5 }
-  const base_key = () => make_nd_cache_key([li, o], true, -50, undefined)
+  const oxygen: PhaseData = { composition: { O: 1 }, energy: -5 }
+  const base_key = () => make_nd_cache_key([li, oxygen], true, -50, undefined)
 
   test(`same entries in different order produce same key`, () => {
-    expect(make_nd_cache_key([o, li], true, -50, undefined)).toBe(base_key())
+    expect(make_nd_cache_key([oxygen, li], true, -50, undefined)).toBe(base_key())
   })
 
   test.each([
@@ -1980,11 +1984,11 @@ describe(`make_nd_cache_key`, () => {
     },
     {
       label: `different formal_chempots`,
-      key: () => make_nd_cache_key([li, o], false, -50, undefined),
+      key: () => make_nd_cache_key([li, oxygen], false, -50, undefined),
     },
     {
       label: `different limits`,
-      key: () => make_nd_cache_key([li, o], true, -50, { Li: [-10, 0] }),
+      key: () => make_nd_cache_key([li, oxygen], true, -50, { Li: [-10, 0] }),
     },
   ])(`$label → different key`, ({ key }) => {
     expect(key()).not.toBe(base_key())

@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { InfoItem } from '$lib/layout'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
   import type { Crystal } from '$lib/structure'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -112,35 +112,11 @@
     toggle_props={{ class: `bz-info-toggle`, title: `Brillouin zone info` }}
     pane_props={{ ...pane_props, class: `bz-info-pane ${pane_props?.class ?? ``}` }}
   >
-    {#each pane_data as section, sec_idx (section.title)}
-      {#if sec_idx > 0}<hr />{/if}
-      <section>
-        <h4>{section.title}</h4>
-        {#each section.items as item (item.key ?? item.label)}
-          <div class="info-item">
-            <span>{item.label}</span>
-            <span>{@html sanitize_html(item.value)}</span>
-          </div>
-        {/each}
-      </section>
-    {/each}
+    <InfoPaneCards
+      cards={pane_data.map(({ title, items }) => ({ title, rows: items }))}
+      show_filter={false}
+      filter_placeholder="Filter Brillouin zone info"
+      empty_label="Brillouin zone info"
+    />
   </DraggablePane>
 {/if}
-
-<style>
-  section div.info-item {
-    display: flex;
-    justify-content: space-between;
-    gap: 6pt;
-    padding: 1pt;
-    line-height: 1.5;
-  }
-  h4 {
-    margin: 0.5em 0;
-  }
-  hr {
-    border: none;
-    border-top: 1px solid var(--divider-color, rgba(128, 128, 128, 0.2));
-    margin: 0.5em 0;
-  }
-</style>

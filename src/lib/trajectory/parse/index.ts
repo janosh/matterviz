@@ -6,14 +6,11 @@ import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import { parse_xyz } from '$lib/structure/parse'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
-import {
-  ext_hint,
-  FORMAT_PATTERNS,
-  is_trajectory_file,
-  strip_compression_extensions,
-} from '$lib/trajectory/format-detect'
+import { strip_compression_extensions } from '$lib/io'
+import { ext_hint, FORMAT_PATTERNS, is_trajectory_file } from '$lib/trajectory/format-detect'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import {
+  calc_force_stats,
   count_xyz_frames,
   create_trajectory_frame,
   validate_3x3_matrix,
@@ -143,17 +140,8 @@ export async function parse_trajectory_data(
 
           // Calculate force statistics for forces
           if (key === `forces` && Array.isArray(array_obj.data)) {
-            const forces = array_obj.data as number[][]
-            const force_magnitudes = forces.map((force) => Math.hypot(...force))
-            if (force_magnitudes.length > 0) {
-              processed_properties.force_max = force_magnitudes.reduce(
-                (max_val, magnitude) => (magnitude > max_val ? magnitude : max_val),
-                force_magnitudes[0],
-              )
-              processed_properties.force_norm = Math.sqrt(
-                force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) / force_magnitudes.length,
-              )
-            }
+            // Object.assign ignores the null calc_force_stats returns for empty forces
+            Object.assign(processed_properties, calc_force_stats(array_obj.data as number[][]))
           }
 
           // Calculate stress statistics for stress tensor

@@ -9,13 +9,13 @@ import type {
 } from './index'
 import { MAX_METADATA_SIZE } from './constants'
 import {
-  convert_atomic_numbers,
+  copy_numeric_fields,
   count_xyz_frames,
   create_trajectory_frame,
-  read_ndarray_from_view,
   validate_3x3_matrix,
 } from './helpers'
-import { strip_compression_extensions } from './format-detect'
+import { strip_compression_extensions } from '$lib/io'
+import { decode_ase_frame, read_ase_header } from './parse/ase'
 import {
   parse_extxyz_lattice,
   parse_xyz_atom_lines,
@@ -37,8 +37,7 @@ export class TrajFrameReader implements FrameLoader {
       return count_xyz_frames(data)
     }
     if (!(data instanceof ArrayBuffer)) throw new Error(`ASE loader requires binary data`)
-    const view = new DataView(data)
-    return Number(view.getBigInt64(32, true))
+    return read_ase_header(new DataView(data)).n_items
   }
 
   async build_frame_index(
@@ -104,7 +103,7 @@ export class TrajFrameReader implements FrameLoader {
       }
     } else {
       const view = new DataView(data as ArrayBuffer)
-      const offsets_pos = Number(view.getBigInt64(40, true))
+      const { offsets_pos } = read_ase_header(view)
 
       for (let idx = 0; idx < total_frames; idx += sample_rate) {
         const frame_offset = Number(view.getBigInt64(offsets_pos + idx * 8, true))
@@ -211,8 +210,7 @@ export class TrajFrameReader implements FrameLoader {
       }
     } else if (this.format === `ase`) {
       const view = new DataView(data as ArrayBuffer)
-      const n_items = Number(view.getBigInt64(32, true))
-      const offsets_pos = Number(view.getBigInt64(40, true))
+      const { n_items, offsets_pos } = read_ase_header(view)
 
       for (let idx = 0; idx < n_items; idx += sample_rate) {
         try {
@@ -305,54 +303,20 @@ export class TrajFrameReader implements FrameLoader {
   private load_ase_frame(data: ArrayBuffer, frame_number: number): TrajectoryFrame | null {
     try {
       const view = new DataView(data)
-      const n_items = Number(view.getBigInt64(32, true))
-      const offsets_pos = Number(view.getBigInt64(40, true))
+      const { n_items, offsets_pos } = read_ase_header(view)
 
       if (frame_number >= n_items) return null
 
       const frame_offset = Number(view.getBigInt64(offsets_pos + frame_number * 8, true))
-      const json_length = Number(view.getBigInt64(frame_offset, true))
-
-      const frame_data = JSON.parse(
-        new TextDecoder().decode(new Uint8Array(data, frame_offset + 8, json_length)),
-      )
-
-      const positions_ref = frame_data[`positions.`] ?? frame_data.positions
-      const positions = positions_ref?.ndarray
-        ? read_ndarray_from_view(view, positions_ref)
-        : (positions_ref as number[][])
-
-      const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? this.global_numbers
-      const numbers: number[] = numbers_ref?.ndarray
-        ? read_ndarray_from_view(view, numbers_ref).flat()
-        : (numbers_ref as number[])
-
-      if (numbers) this.global_numbers = numbers
-      if (!numbers || !positions) throw new Error(`Missing atomic numbers or positions`)
-
-      const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
-      const metadata: Record<string, unknown> = {
-        step: frame_number,
-        ...frame_data.calculator,
-        ...frame_data.info,
-      }
-
-      if (cell) {
-        try {
-          metadata.volume = Math.abs(math.det_3x3(cell))
-        } catch (error) {
-          console.warn(`Failed to calculate volume for frame ${frame_number}:`, error)
-        }
-      }
-
-      return create_trajectory_frame(
-        positions,
-        convert_atomic_numbers(numbers),
-        cell,
-        frame_data.pbc ?? [true, true, true],
+      const { frame, numbers } = decode_ase_frame(
+        view,
+        data,
+        frame_offset,
         frame_number,
-        metadata,
+        this.global_numbers,
       )
+      this.global_numbers = numbers
+      return frame
     } catch (error) {
       console.warn(`Failed to load ASE frame ${frame_number}:`, error)
       return null
@@ -372,32 +336,23 @@ export class TrajFrameReader implements FrameLoader {
     const step = frame_number
 
     if (frame_data.calculator && typeof frame_data.calculator === `object`) {
-      const calculator = frame_data.calculator as Record<string, unknown>
-      const calc_properties = [`energy`, `potential_energy`, `kinetic_energy`, `total_energy`]
-
-      for (const prop of calc_properties) {
-        if (prop in calculator && typeof calculator[prop] === `number`) {
-          properties[prop] = calculator[prop]
-        }
-      }
+      copy_numeric_fields(properties, frame_data.calculator as Record<string, unknown>, [
+        `energy`,
+        `potential_energy`,
+        `kinetic_energy`,
+        `total_energy`,
+      ])
     }
 
     if (frame_data.info && typeof frame_data.info === `object`) {
-      const info = frame_data.info as Record<string, unknown>
-      const info_properties = [
+      copy_numeric_fields(properties, frame_data.info as Record<string, unknown>, [
         `force_max`,
         `force_norm`,
         `stress_max`,
         `stress_frobenius`,
         `pressure`,
         `temperature`,
-      ]
-
-      for (const prop of info_properties) {
-        if (prop in info && typeof info[prop] === `number`) {
-          properties[prop] = info[prop]
-        }
-      }
+      ])
     }
 
     if (frame_data.cell && Array.isArray(frame_data.cell)) {

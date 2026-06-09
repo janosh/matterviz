@@ -1,5 +1,5 @@
 import type { CompositionType } from '$lib/composition'
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import type { RadiationKey } from './calc-xrd'
 
 export * from './broadening'
@@ -25,7 +25,7 @@ export type XrdOptions = {
   debye_waller_factors?: CompositionType
   scaled?: boolean
   // When null, treat as unbounded up to 2/λ (Bragg maximum); when omitted, default [0, 180]
-  two_theta_range?: [number, number] | null
+  two_theta_range?: Vec2 | null
   // Merge tolerance for peaks in degrees (default = TWO_THETA_TOL)
   peak_merge_tol?: number
   // Scaled intensity threshold (% of max) to include a peak (default = SCALED_INTENSITY_TOL)

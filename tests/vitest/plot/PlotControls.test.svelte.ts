@@ -160,7 +160,9 @@ describe(`PlotControls`, () => {
       document.querySelectorAll<HTMLInputElement>(`input[type="number"]`),
     ).filter((input) => input.parentElement?.textContent?.toLowerCase().includes(`axis`))
 
-    const x_tick = tick_inputs.find((i) => i.parentElement?.textContent?.includes(`X-axis`))
+    const x_tick = tick_inputs.find((input) =>
+      input.parentElement?.textContent?.includes(`X-axis`),
+    )
     if (x_tick) {
       x_tick.value = `10`
       x_tick.dispatchEvent(new Event(`input`, { bubbles: true }))

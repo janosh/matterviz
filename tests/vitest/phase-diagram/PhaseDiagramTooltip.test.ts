@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import type {
   CompUnit,
   LeverRuleResult,
@@ -201,7 +202,7 @@ describe(`PhaseDiagramTooltip`, () => {
     const two_phase = {
       id: `two_phase`,
       name: `α + L`,
-      vertices: [] as [number, number][],
+      vertices: [] as Vec2[],
     }
 
     test(`displays vertical label, phase fractions, and temperatures`, () => {

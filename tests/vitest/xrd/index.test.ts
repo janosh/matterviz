@@ -3,15 +3,15 @@ import type { Crystal } from '$lib/structure'
 import { compute_xrd_pattern, type XrdPattern } from '$lib/xrd'
 import { describe, expect, test } from 'vitest'
 import { create_test_structure } from '../setup'
+import type { ElementSymbol } from '$lib/element/types'
 
-function make_simple_cubic(a_len: number, element_symbol: string = `H`): Crystal {
-  const a = a_len
+function make_simple_cubic(a_len: number, element_symbol: ElementSymbol = `H`): Crystal {
   const lattice: Matrix3x3 = [
-    [a, 0, 0],
-    [0, a, 0],
-    [0, 0, a],
+    [a_len, 0, 0],
+    [0, a_len, 0],
+    [0, 0, a_len],
   ]
-  return create_test_structure(lattice, [element_symbol as never], [[0, 0, 0]])
+  return create_test_structure(lattice, [element_symbol], [[0, 0, 0]])
 }
 
 describe(`@xrd/ api and compute_xrd_pattern options`, () => {
@@ -51,6 +51,7 @@ describe(`@xrd/ api and compute_xrd_pattern options`, () => {
   })
 
   test(`unknown element symbol throws`, () => {
+    // @ts-expect-error unknown element symbol
     const structure = make_simple_cubic(2, `Xx`)
     expect(() => compute_xrd_pattern(structure, { wavelength: `CuKa` })).toThrow(
       /Unknown atomic number/i,

@@ -736,14 +736,14 @@
     triangles.sort((a, b) => a.avg_depth - b.avg_depth)
 
     // Lazy computation for uniform mode: normalize alpha by formation energy
-    let norm_alpha: ((w: number) => number) | null = null
+    let norm_alpha: ((energy: number) => number) | null = null
     if (hull_face_color_mode === `uniform`) {
       norm_alpha = (energy: number) => {
-        const t = Math.max(
+        const frac = Math.max(
           0,
           Math.min(1, (0 - energy) / Math.max(1e-6, 0 - formation_energy_min)),
         )
-        return t * hull_face_opacity
+        return frac * hull_face_opacity
       }
     }
 

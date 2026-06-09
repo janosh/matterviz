@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import { FullscreenToggle } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
@@ -11,6 +11,7 @@
   import type {
     AxisConfig3D,
     CameraProjection3D,
+    ColorScaleConfig,
     ControlsConfig3D,
     DataSeries3D,
     DisplayConfig3D,
@@ -20,6 +21,7 @@
     RefPlane,
     ScaleType,
     Scatter3DHandlerEvent,
+    SizeScaleConfig,
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
@@ -30,7 +32,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three'
-  import { create_color_scale } from '$lib/plot/core/scales'
+  import { calculate_domain, create_color_scale } from '$lib/plot/core/scales'
   import ScatterPlot3DControls from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 
@@ -116,17 +118,9 @@
     z_axis?: AxisConfig3D
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
-    color_scale?: {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
-    } | D3InterpolateName
+    color_scale?: ColorScaleConfig | D3InterpolateName
     color_bar?: ComponentProps<typeof ColorBar> & { margin?: number | Sides } | null
-    size_scale?: {
-      type?: ScaleType
-      radius_range?: [number, number]
-      value_range?: [number, number]
-    }
+    size_scale?: SizeScaleConfig
     legend?: LegendConfig | null
     camera_position?: Vec3
     camera_projection?: CameraProjection3D
@@ -227,15 +221,7 @@
     ),
   )
 
-  let auto_color_range = $derived.by((): [number, number] => {
-    if (all_color_values.length === 0) return [0, 1]
-    let [min, max] = [Infinity, -Infinity]
-    for (const val of all_color_values) {
-      if (val < min) min = val
-      if (val > max) max = val
-    }
-    return [min, max]
-  })
+  let auto_color_range = $derived(calculate_domain(all_color_values))
 
   let color_scale_fn = $derived(
     create_color_scale(normalized_color_scale, auto_color_range),
@@ -342,7 +328,7 @@
           {z_axis}
           {display}
           {styles}
-          color_scale={normalized_color_scale}
+          {color_scale_fn}
           {size_scale}
           {camera_position}
           {camera_projection}

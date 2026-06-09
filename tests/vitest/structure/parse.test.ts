@@ -60,10 +60,10 @@ function expect_xyz_matches_abc(
   tol: number = TOL,
 ) {
   const lattice_T = transpose_3x3_matrix(lattice as Matrix3x3)
-  const r = mat3x3_vec3_multiply(lattice_T, site.abc as Vec3)
-  expect(r[0]).toBeCloseTo(site.xyz[0], tol)
-  expect(r[1]).toBeCloseTo(site.xyz[1], tol)
-  expect(r[2]).toBeCloseTo(site.xyz[2], tol)
+  const cart = mat3x3_vec3_multiply(lattice_T, site.abc as Vec3)
+  expect(cart[0]).toBeCloseTo(site.xyz[0], tol)
+  expect(cart[1]).toBeCloseTo(site.xyz[1], tol)
+  expect(cart[2]).toBeCloseTo(site.xyz[2], tol)
 }
 
 // Load compressed phonopy files using Node.js built-in decompression
@@ -2398,6 +2398,8 @@ describe(`OPTIMADE JSON parser`, () => {
     [[{ name: `A`, chemical_symbols: [`Fe`, `Ni`], concentration: [1, 3] }], [`A`], [`Ni`]],
     [[{ name: `v`, chemical_symbols: [`vacancy`, `O`], concentration: [9, 1] }], [`v`], [`O`]],
     [undefined, [`Fe`, `O`], [`Fe`, `O`]],
+    // null entry (missing species) is skipped in skip mode, not crashed on (was a null.replace throw)
+    [undefined, [`Fe`, null], [`Fe`]],
   ])(`should resolve species_at_sites %#`, (species, species_at_sites, expected) => {
     const result = parse_optimade_json(
       JSON.stringify({

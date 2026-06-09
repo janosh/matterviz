@@ -64,7 +64,7 @@ describe(`AtomLegend Component`, () => {
     const labels = document.querySelectorAll(`label`)
     expect(labels).toHaveLength(expected_count)
 
-    const label_texts = Array.from(labels).map((l) => l.textContent?.trim())
+    const label_texts = Array.from(labels).map((label) => label.textContent?.trim())
     expect(label_texts).toEqual(expected_labels)
 
     if (check_styling) {
@@ -159,8 +159,8 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const label_texts = Array.from(document.querySelectorAll(`label`)).map((l) =>
-        l.textContent?.trim(),
+      const label_texts = Array.from(document.querySelectorAll(`label`)).map((label) =>
+        label.textContent?.trim(),
       )
       expect(label_texts).toEqual(expected)
 
@@ -566,7 +566,7 @@ describe(`AtomLegend Component`, () => {
       expect(items).toHaveLength(3) // Unique values only
 
       const labels = document.querySelectorAll(`.category-label`)
-      const label_texts = Array.from(labels).map((l) => l.textContent?.trim())
+      const label_texts = Array.from(labels).map((label) => label.textContent?.trim())
       expect(label_texts).toEqual([`2`, `4`, `6`])
     })
 
@@ -584,7 +584,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const labels = document.querySelectorAll(`.category-label`)
-      const label_texts = Array.from(labels).map((l) => l.textContent?.trim())
+      const label_texts = Array.from(labels).map((label) => label.textContent?.trim())
 
       // Format: Element:count+wyckoff (e.g. Fe:24e, O:12a)
       expect(label_texts).toContain(`Fe:24e`)
@@ -637,7 +637,7 @@ describe(`AtomLegend Component`, () => {
 
       const labels = Array.from(document.querySelectorAll<HTMLElement>(`.category-label`))
       const color_map = new Map(
-        labels.map((l) => [l.textContent?.trim(), l.style.backgroundColor]),
+        labels.map((label) => [label.textContent?.trim(), label.style.backgroundColor]),
       )
 
       expect(color_map.get(`10`)).toBe(`rgb(255, 0, 0)`)
@@ -750,8 +750,8 @@ describe(`AtomLegend Component`, () => {
         target: document.body,
         props: { elements: { H: 2, He: 3 }, element_mapping: { H: `Na`, He: `Cl` } },
       })
-      const labels = Array.from(document.querySelectorAll(`label`)).map((l) =>
-        l.textContent?.trim(),
+      const labels = Array.from(document.querySelectorAll(`label`)).map((label) =>
+        label.textContent?.trim(),
       )
       expect(labels).toEqual([`Na 2`, `Cl 3`])
     })
@@ -996,14 +996,17 @@ describe(`Disordered Site Color Assignment`, () => {
       color: site_property_color ?? colors.element?.[element],
     }))
 
-  const create_species = (element: string, occu: number): Species => ({
-    element: element as ElementSymbol,
+  const create_species = (element: ElementSymbol, occu: number): Species => ({
+    element,
     occu,
     oxidation_state: 0,
   })
 
-  const get_color = (result: ReturnType<typeof compute_atom_colors>, element: string) => {
-    const item = result.find((a) => a.element === element)
+  const get_color = (
+    result: ReturnType<typeof compute_atom_colors>,
+    element: ElementSymbol,
+  ) => {
+    const item = result.find((atom) => atom.element === element)
     if (!item) throw new Error(`Element ${element} not found`)
     return item.color
   }
@@ -1021,7 +1024,7 @@ describe(`Disordered Site Color Assignment`, () => {
       [create_species(`Bi`, 0.5), create_species(`Zr`, 0.5)],
       `#ff0000`,
     )
-    expect(result.every((a) => a.color === `#ff0000`)).toBe(true)
+    expect(result.every((atom) => atom.color === `#ff0000`)).toBe(true)
   })
 
   test(`species order does not affect coloring`, () => {

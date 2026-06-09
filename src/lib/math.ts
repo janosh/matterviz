@@ -3,6 +3,7 @@ import type { LatticeParams, Pbc } from '$lib/structure/index'
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
 export type Vec4 = [number, number, number, number]
+export type Vec5 = [number, number, number, number, number]
 export type Vec9 = [number, number, number, number, number, number, number, number, number]
 export type Point2D = { x: number; y: number }
 export type Point3D = Point2D & { z: number }
@@ -1063,37 +1064,30 @@ export const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
   (point_a[0] - origin[0]) * (point_b[1] - origin[1]) -
   (point_a[1] - origin[1]) * (point_b[0] - origin[0])
 
+// One half of Andrew's monotone chain built from x-then-y *pre-sorted* points
+// (lower chain; pass reversed input for the upper chain).
+export const monotone_chain = (sorted: Vec2[]): Vec2[] => {
+  const chain: Vec2[] = []
+  for (const pt of sorted) {
+    while (
+      chain.length >= 2 &&
+      cross_2d(chain[chain.length - 2], chain[chain.length - 1], pt) <= 0
+    ) {
+      chain.pop()
+    }
+    chain.push(pt)
+  }
+  return chain
+}
+
 // Full 2D convex hull via Andrew's monotone chain algorithm.
 // Returns vertices in counter-clockwise order.
 export function convex_hull_2d(points: Vec2[]): Vec2[] {
   if (points.length < 3) return [...points]
 
   const sorted = points.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
-
-  // Lower hull
-  const lower: Vec2[] = []
-  for (const pt of sorted) {
-    while (
-      lower.length >= 2 &&
-      cross_2d(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0
-    ) {
-      lower.pop()
-    }
-    lower.push(pt)
-  }
-
-  // Upper hull
-  const upper: Vec2[] = []
-  for (let idx = sorted.length - 1; idx >= 0; idx--) {
-    const pt = sorted[idx]
-    while (
-      upper.length >= 2 &&
-      cross_2d(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0
-    ) {
-      upper.pop()
-    }
-    upper.push(pt)
-  }
+  const lower = monotone_chain(sorted)
+  const upper = monotone_chain(sorted.toReversed())
 
   // Remove last point of each half (it's the first point of the other)
   lower.pop()

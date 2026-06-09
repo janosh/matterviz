@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Vec2 } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
@@ -19,8 +20,8 @@
     line_dash = DEFAULTS.scatter.line.dash,
     ...rest
   }: Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> & {
-    points: readonly [number, number][]
-    origin: [number, number]
+    points: readonly Vec2[]
+    origin: Vec2
     line_color?: string
     line_width?: number
     area_color?: string

@@ -1,4 +1,4 @@
-import { Line } from '$lib'
+import { Line, type Vec2 } from '$lib'
 import { resolve_line_tween } from '$lib/plot/core/utils'
 import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
@@ -81,12 +81,12 @@ describe(`Line`, () => {
       },
     },
   ])(`renders with $name`, ({ props, expected_line, expected_area }) => {
-    const points: [number, number][] = [
+    const points: Vec2[] = [
       [10, 10],
       [50, 50],
       [100, 20],
     ]
-    const origin: [number, number] = [0, 200]
+    const origin: Vec2 = [0, 200]
 
     mount(Line, { target: document.body, props: { points, origin, ...props } })
 
@@ -110,10 +110,10 @@ describe(`Line`, () => {
   })
 
   test(`calculates line path correctly for 2 and 3 points`, () => {
-    const origin: [number, number] = [0, 100]
+    const origin: Vec2 = [0, 100]
 
     // Test with 3 points (expects curve 'C')
-    const points_3: [number, number][] = [
+    const points_3: Vec2[] = [
       [0, 100],
       [100, 0],
       [200, 100],
@@ -130,7 +130,7 @@ describe(`Line`, () => {
     document.body.innerHTML = ``
 
     // Test with 2 points (expects line 'L')
-    const points_2: [number, number][] = [
+    const points_2: Vec2[] = [
       [0, 100],
       [100, 0],
     ]
@@ -144,11 +144,11 @@ describe(`Line`, () => {
   })
 
   test(`calculates area path correctly with 2 points`, () => {
-    const points: [number, number][] = [
+    const points: Vec2[] = [
       [0, 50],
       [100, 0],
     ]
-    const origin: [number, number] = [0, 100] // Y origin at 100
+    const origin: Vec2 = [0, 100] // Y origin at 100
 
     mount(Line, {
       target: document.body,
@@ -162,7 +162,7 @@ describe(`Line`, () => {
   test.each([`transparent`, `none`])(
     `skips area path when area_color=%s (still renders line + 2 paths)`,
     (area_color) => {
-      const points: [number, number][] = [
+      const points: Vec2[] = [
         [0, 50],
         [100, 0],
       ]
@@ -178,8 +178,8 @@ describe(`Line`, () => {
   )
 
   test(`handles empty points array`, () => {
-    const points: [number, number][] = []
-    const origin: [number, number] = [0, 100]
+    const points: Vec2[] = []
+    const origin: Vec2 = [0, 100]
 
     mount(Line, {
       target: document.body,
@@ -193,8 +193,8 @@ describe(`Line`, () => {
   })
 
   test(`handles single point array`, () => {
-    const points: [number, number][] = [[50, 50]]
-    const origin: [number, number] = [0, 100]
+    const points: Vec2[] = [[50, 50]]
+    const origin: Vec2 = [0, 100]
 
     mount(Line, {
       target: document.body,
@@ -208,11 +208,11 @@ describe(`Line`, () => {
   })
 
   test(`applies custom tween options (easing, interpolate)`, () => {
-    const points: [number, number][] = [
+    const points: Vec2[] = [
       [10, 10],
       [50, 50],
     ]
-    const origin: [number, number] = [0, 100]
+    const origin: Vec2 = [0, 100]
 
     const custom_tween = {
       duration: 500,
@@ -232,11 +232,11 @@ describe(`Line`, () => {
   })
 
   test(`passes additional props to path elements`, () => {
-    const points: [number, number][] = [
+    const points: Vec2[] = [
       [10, 10],
       [50, 50],
     ]
-    const origin: [number, number] = [0, 100]
+    const origin: Vec2 = [0, 100]
     const rest = {
       'data-testid': `custom-line`,
       'aria-label': `line chart element`,

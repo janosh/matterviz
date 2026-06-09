@@ -24,17 +24,12 @@
     create_dimension_tracker,
     create_hover_lock,
   } from '$lib/plot/core/hover-lock.svelte'
+  import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
-    get_relative_coords,
-    MIN_TOUCH_DISTANCE_PIXELS,
-    pan_range_by_pixels,
-    PINCH_ZOOM_THRESHOLD,
-    remove_drag_listeners,
+    invert_rect_range,
     resolve_axis_ranges,
-    sorted_range,
     vec2_equal,
-    zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
@@ -61,7 +56,6 @@
   import type {
     BasePlotProps,
     DataSeries,
-    InitialRanges,
     LegendConfig,
     PlotConfig,
     ScaleType,
@@ -208,21 +202,6 @@
   // Compute ref_lines with index and group by z-index (using shared utilities)
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
   let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
-  let drag_state = $state<{
-    start: { x: number; y: number } | null
-    current: { x: number; y: number } | null
-    bounds: DOMRect | null
-  }>({ start: null, current: null, bounds: null })
-
-  // Pan state
-  let is_focused = $state(false)
-  let shift_held = $state(false)
-  let pan_drag_state = $state<
-    InitialRanges & { start: { x: number; y: number } } | null
-  >(null)
-  let touch_state = $state<
-    InitialRanges & { start_touches: { x: number; y: number }[] } | null
-  >(null)
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -677,216 +656,50 @@
     }
   })
 
-  // Event handlers
-  const handle_zoom = () => {
-    if (!drag_state.start || !drag_state.current) return
-    const start_x = scales.x.invert(drag_state.start.x)
-    const end_x = scales.x.invert(drag_state.current.x)
-    const start_x2 = scales.x2.invert(drag_state.start.x)
-    const end_x2 = scales.x2.invert(drag_state.current.x)
-    const start_y = scales.y.invert(drag_state.start.y)
-    const end_y = scales.y.invert(drag_state.current.y)
-    const start_y2 = scales.y2.invert(drag_state.start.y)
-    const end_y2 = scales.y2.invert(drag_state.current.y)
-
-    if (typeof start_x === `number` && typeof end_x === `number`) {
-      const dx = Math.abs(drag_state.start.x - drag_state.current.x)
-      const dy = Math.abs(drag_state.start.y - drag_state.current.y)
-      if (dx > 5 && dy > 5) {
-        // Update axis ranges to trigger reactivity and prevent effect from overriding
-        x_axis = { ...x_axis, range: sorted_range(start_x, end_x) }
-        if (x2_series.length > 0) {
-          x2_axis = { ...x2_axis, range: sorted_range(start_x2, end_x2) }
-        }
-        y_axis = { ...y_axis, range: sorted_range(start_y, end_y) }
-        // gate on y2 series presence (like x2): the y2 scale is a [0, 1] sentinel
-        // otherwise, so inverting would store a phantom range in the bindable prop
-        if (y2_series.length > 0) {
-          y2_axis = { ...y2_axis, range: sorted_range(start_y2, end_y2) }
-        }
-      }
-    }
-  }
-
-  const on_window_mouse_move = (evt: MouseEvent) => {
-    if (!drag_state.start || !drag_state.bounds) return
-    drag_state.current = {
-      x: evt.clientX - drag_state.bounds.left,
-      y: evt.clientY - drag_state.bounds.top,
-    }
-  }
-
-  const on_window_mouse_up = () => {
-    handle_zoom()
-    drag_state = { start: null, current: null, bounds: null }
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    document.body.style.cursor = `default`
-  }
-
-  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
-  // scale's transform space (log axes pan by a constant factor, linear by a shift).
-  // Plot dims clamped to 1px so degenerate containers can't produce Infinity deltas.
-  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
-    const plot_width = Math.max(1, width - pad.l - pad.r)
-    const plot_height = Math.max(1, height - pad.t - pad.b)
-    ranges.current.x = pan_range_by_pixels(init.initial_x_range, dx_px, plot_width, final_x_axis.scale_type)
-    ranges.current.x2 = pan_range_by_pixels(init.initial_x2_range, dx_px, plot_width, final_x2_axis.scale_type)
-    ranges.current.y = pan_range_by_pixels(init.initial_y_range, dy_px, plot_height, final_y_axis.scale_type)
-    ranges.current.y2 = pan_range_by_pixels(init.initial_y2_range, dy_px, plot_height, final_y2_axis.scale_type)
-  }
-  const zoom_all_axes = (init: InitialRanges, factor: number) => {
-    ranges.current.x = zoom_range_by_factor(init.initial_x_range, factor, final_x_axis.scale_type)
-    ranges.current.x2 = zoom_range_by_factor(init.initial_x2_range, factor, final_x2_axis.scale_type)
-    ranges.current.y = zoom_range_by_factor(init.initial_y_range, factor, final_y_axis.scale_type)
-    ranges.current.y2 = zoom_range_by_factor(init.initial_y2_range, factor, final_y2_axis.scale_type)
-  }
-
-  // Pan drag handler (drag direction inverted on x for natural pan feel)
-  const on_pan_move = (evt: MouseEvent) => {
-    if (!pan_drag_state) return
-    const sensitivity = pan?.drag_sensitivity ?? 1
-    pan_all_axes(
-      pan_drag_state,
-      -(evt.clientX - pan_drag_state.start.x) * sensitivity,
-      (evt.clientY - pan_drag_state.start.y) * sensitivity,
-    )
-  }
-
-  const on_pan_end = () => {
-    pan_drag_state = null
-    document.body.style.cursor = ``
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
-  }
-
-  // Tear down any window listeners + cursor override if the component unmounts mid-drag
-  // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
-  // onDestroy also runs during SSR teardown, where window/document don't exist.
-  onDestroy(() => {
-    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
-    drag_state = { start: null, current: null, bounds: null }
-    pan_drag_state = null
-  })
-
-  function handle_mouse_down(evt: MouseEvent) {
-    const coords = get_relative_coords(evt)
-    if (!coords || !svg_element) return
-
-    // Check if pan is enabled and shift is held for pan mode
-    const pan_enabled = pan?.enabled !== false
-    if (pan_enabled && evt.shiftKey) {
-      evt.preventDefault()
-      pan_drag_state = {
-        start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...ranges.current.x] as [number, number],
-        initial_x2_range: [...ranges.current.x2] as [number, number],
-        initial_y_range: [...ranges.current.y] as [number, number],
-        initial_y2_range: [...ranges.current.y2] as [number, number],
-      }
-      document.body.style.cursor = `grabbing`
-      window.addEventListener(`mousemove`, on_pan_move)
-      window.addEventListener(`mouseup`, on_pan_end)
-      return
-    }
-
-    drag_state = {
-      start: coords,
-      current: coords,
-      bounds: svg_element.getBoundingClientRect(),
-    }
-    window.addEventListener(`mousemove`, on_window_mouse_move)
-    window.addEventListener(`mouseup`, on_window_mouse_up)
-    evt.preventDefault()
-  }
-
-  // Wheel handler for pan (requires focus and shift)
-  function handle_wheel(evt: WheelEvent) {
-    const pan_enabled = pan?.enabled !== false
-    // Only capture wheel when focused AND Shift is held
-    // Use shift_held state (tracked via keydown/keyup) for compatibility with synthetic events
-    if (!pan_enabled || !is_focused || !shift_held) return
-
-    evt.preventDefault()
-
+  // Shared pan/zoom/touch/drag-rect interaction controller
+  const pan_zoom = create_pan_zoom({
+    ranges: () => ranges.current,
+    scale_type: (axis) =>
+      ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis })[axis]
+        .scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    const plot_width = Math.max(1, width - pad.l - pad.r)
-    const plot_height = Math.max(1, height - pad.t - pad.b)
-    const sensitivity = pan?.wheel_sensitivity ?? 1
-
-    // Pan along the dominant wheel direction
-    if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      const dx = evt.deltaX * sensitivity
-      ranges.current.x = pan_range_by_pixels(ranges.current.x, dx, plot_width, final_x_axis.scale_type)
-      ranges.current.x2 = pan_range_by_pixels(ranges.current.x2, dx, plot_width, final_x2_axis.scale_type)
-    } else {
-      const dy = evt.deltaY * sensitivity
-      ranges.current.y = pan_range_by_pixels(ranges.current.y, dy, plot_height, final_y_axis.scale_type)
-      ranges.current.y2 = pan_range_by_pixels(ranges.current.y2, dy, plot_height, final_y2_axis.scale_type)
-    }
-  }
-
-  // Touch handlers for pinch-zoom and two-finger pan
-  function handle_touch_start(evt: TouchEvent) {
-    const touch_enabled = pan?.enabled !== false && pan?.touch_enabled !== false
-    if (!touch_enabled || evt.touches.length !== 2) return
-
-    evt.preventDefault()
-    const touches = Array.from(evt.touches)
-    touch_state = {
-      start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...ranges.current.x] as [number, number],
-      initial_x2_range: [...ranges.current.x2] as [number, number],
-      initial_y_range: [...ranges.current.y] as [number, number],
-      initial_y2_range: [...ranges.current.y2] as [number, number],
-    }
-  }
-
-  function handle_touch_move(evt: TouchEvent) {
-    if (!touch_state || evt.touches.length !== 2) return
-    evt.preventDefault()
-
-    const [t1, t2] = Array.from(evt.touches)
-    const [s1, s2] = touch_state.start_touches
-
-    // Calculate center movement for pan
-    const start_center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 }
-    const curr_center = {
-      x: (t1.clientX + t2.clientX) / 2,
-      y: (t1.clientY + t2.clientY) / 2,
-    }
-    const dx = curr_center.x - start_center.x
-    const dy = curr_center.y - start_center.y
-
-    // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
-    const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
-    // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
-    if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
-    const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
-    const scale = curr_dist / start_dist
-
-    // Pinch zoom about the view center (spread = zoom in, pinch = zoom out)
-    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      zoom_all_axes(touch_state, scale)
-    } else pan_all_axes(touch_state, -dx, dy)
-  }
-
-  function handle_touch_end() {
-    touch_state = null
-  }
-
-  function handle_double_click() {
-    // Reset zoom to initial ranges (undo any pan/zoom)
-    ranges.current.x = [...ranges.initial.x] as [number, number]
-    ranges.current.x2 = [...ranges.initial.x2] as [number, number]
-    ranges.current.y = [...ranges.initial.y] as [number, number]
-    ranges.current.y2 = [...ranges.initial.y2] as [number, number]
-    // Also reset axis props so future data changes recalculate auto ranges
-    x_axis = { ...x_axis, range: [null, null] }
-    x2_axis = { ...x2_axis, range: [null, null] }
-    y_axis = { ...y_axis, range: [null, null] }
-    y2_axis = { ...y2_axis, range: [null, null] }
-  }
+    plot_dims: () => ({
+      width: Math.max(1, width - pad.l - pad.r),
+      height: Math.max(1, height - pad.t - pad.b),
+    }),
+    pan: () => pan,
+    set_range: (axis, range) => (ranges.current[axis] = range),
+    svg: () => svg_element,
+    on_rect_zoom: (start, current) => {
+      // Update axis ranges to trigger reactivity and prevent effect from overriding
+      const next_x = invert_rect_range(scales.x, start.x, current.x)
+      if (!next_x) return
+      x_axis = { ...x_axis, range: next_x }
+      // gate x2/y2 on series presence: their scales are [0, 1] sentinels otherwise,
+      // so inverting would store a phantom range in the bindable prop
+      const next_x2 = x2_series.length > 0 ? invert_rect_range(scales.x2, start.x, current.x) : null
+      if (next_x2) x2_axis = { ...x2_axis, range: next_x2 }
+      const next_y = invert_rect_range(scales.y, start.y, current.y)
+      if (next_y) y_axis = { ...y_axis, range: next_y }
+      const next_y2 = y2_series.length > 0 ? invert_rect_range(scales.y2, start.y, current.y) : null
+      if (next_y2) y2_axis = { ...y2_axis, range: next_y2 }
+    },
+    on_reset: () => {
+      // Reset zoom to initial ranges (undo any pan/zoom)
+      ranges.current = {
+        x: [...ranges.initial.x] as Vec2,
+        x2: [...ranges.initial.x2] as Vec2,
+        y: [...ranges.initial.y] as Vec2,
+        y2: [...ranges.initial.y2] as Vec2,
+      }
+      // Also reset axis props so future data changes recalculate auto ranges
+      x_axis = { ...x_axis, range: [null, null] }
+      x2_axis = { ...x2_axis, range: [null, null] }
+      y_axis = { ...y_axis, range: [null, null] }
+      y2_axis = { ...y2_axis, range: [null, null] }
+    },
+  })
+  onDestroy(() => pan_zoom.destroy())
 
   function handle_mouse_move(
     evt: MouseEvent,
@@ -988,11 +801,9 @@
       evt.preventDefault()
       fullscreen = false
     }
-    if (evt.key === `Shift`) shift_held = true
+    pan_zoom.on_window_key_down(evt)
   }}
-  onkeyup={(evt) => {
-    if (evt.key === `Shift`) shift_held = false
-  }}
+  onkeyup={pan_zoom.on_window_key_up}
 />
 
 <div
@@ -1020,35 +831,23 @@
     ([final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
       `Histogram`)}
     tabindex="0"
-    onfocusin={() => (is_focused = true)}
-    onfocusout={() => (is_focused = false)}
+    onfocusin={() => pan_zoom.set_focused(true)}
+    onfocusout={() => pan_zoom.set_focused(false)}
     onmouseenter={() => (hovered = true)}
-    onmousedown={handle_mouse_down}
+    onmousedown={pan_zoom.on_mouse_down}
     onmouseleave={() => {
       hovered = false
       hover_info = null
       on_bar_hover?.(null)
     }}
-    ondblclick={handle_double_click}
-    onwheel={handle_wheel}
-    ontouchstart={handle_touch_start}
-    ontouchmove={handle_touch_move}
-    ontouchend={handle_touch_end}
-    ontouchcancel={handle_touch_end}
-    style:cursor={pan_drag_state
-    ? `grabbing`
-    : shift_held && pan?.enabled !== false
-    ? `grab`
-    : `crosshair`}
-    onkeydown={(event) => {
-      if (event.key === `Escape` && drag_state.start) {
-        drag_state = { start: null, current: null, bounds: null }
-      }
-      if ([`Enter`, ` `].includes(event.key)) {
-        event.preventDefault()
-        handle_double_click()
-      }
-    }}
+    ondblclick={pan_zoom.reset_view}
+    onwheel={pan_zoom.on_wheel}
+    ontouchstart={pan_zoom.on_touch_start}
+    ontouchmove={pan_zoom.on_touch_move}
+    ontouchend={pan_zoom.on_touch_end}
+    ontouchcancel={pan_zoom.on_touch_end}
+    style:cursor={pan_zoom.cursor}
+    onkeydown={pan_zoom.on_key_down}
   >
     <!-- Define clip path for chart area -->
     <defs>
@@ -1065,7 +864,7 @@
     <!-- Reference lines: below grid (must render first to appear behind grid) -->
     {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-    <ZoomRect start={drag_state.start} current={drag_state.current} />
+    <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
     <ZeroLines
       {display}

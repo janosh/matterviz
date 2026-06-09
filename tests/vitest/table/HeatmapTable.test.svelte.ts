@@ -32,7 +32,7 @@ describe(`HeatmapTable`, () => {
     const headers = document.querySelectorAll(`th`)
     expect(headers).toHaveLength(3)
     expect(
-      Array.from(headers).map((h) => h.textContent?.replaceAll(/\s+/g, ` `).trim()),
+      Array.from(headers).map((header) => header.textContent?.replaceAll(/\s+/g, ` `).trim()),
     ).toEqual([`Model`, `Score`, `Value`])
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
@@ -330,7 +330,7 @@ describe(`HeatmapTable`, () => {
       const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
 
       // All cells should have --cell-bg custom property set (match with colon to avoid partial matches)
-      expect(style_attrs.every((s) => s.includes(`--cell-bg:`))).toBe(true)
+      expect(style_attrs.every((style) => style.includes(`--cell-bg:`))).toBe(true)
       // Styles should be different for different values (different d3 colors)
       expect(new Set(style_attrs).size).toBeGreaterThan(1)
     })
@@ -351,7 +351,7 @@ describe(`HeatmapTable`, () => {
       const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
 
       // No --cell-bg should be set for non-numeric strings
-      expect(style_attrs.every((s) => !s.includes(`--cell-bg:`))).toBe(true)
+      expect(style_attrs.every((style) => !style.includes(`--cell-bg:`))).toBe(true)
     })
 
     it(`does not apply heatmap colors to non-numeric values mixed with numeric`, () => {
@@ -441,8 +441,8 @@ describe(`HeatmapTable`, () => {
     const log_styles = Array.from(log_cells).map((cell) => cell.getAttribute(`style`) ?? ``)
 
     // Both types should have --cell-bg set
-    expect(linear_styles.every((s) => s.includes(`--cell-bg:`))).toBe(true)
-    expect(log_styles.every((s) => s.includes(`--cell-bg:`))).toBe(true)
+    expect(linear_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
+    expect(log_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
 
     // The color distribution should be different between linear and log scale
     // In linear scale, 10->100->1000 should have increasingly spaced colors
@@ -683,7 +683,9 @@ describe(`HeatmapTable`, () => {
 
       // Column headers should have duplicate label names (Value 1, Value 2) rendered for each group
       expect(
-        Array.from(col_headers).map((h) => h.textContent?.trim().replaceAll(/\s+|[↑↓]/g, ``)),
+        Array.from(col_headers).map((header) =>
+          header.textContent?.trim().replaceAll(/\s+|[↑↓]/g, ``),
+        ),
       ).toEqual([`Name`, `Value1`, `Value2`, `Metric1`, `Metric2`, `Value1`, `Value2`])
     })
 
@@ -714,8 +716,8 @@ describe(`HeatmapTable`, () => {
       expect(group_cells).toHaveLength(4)
 
       // The Grouped cell should have colspan=2
-      const grouped_header = Array.from(group_cells).find((c) =>
-        c.textContent?.includes(`Grouped`),
+      const grouped_header = Array.from(group_cells).find((cell) =>
+        cell.textContent?.includes(`Grouped`),
       )
       expect(grouped_header?.getAttribute(`colspan`)).toBe(`2`)
     })

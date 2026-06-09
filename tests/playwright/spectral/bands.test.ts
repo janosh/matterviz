@@ -26,7 +26,7 @@ test.describe(`Bands Component Tests`, () => {
 
     // Verify y-axis has tick values
     const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
-    expect(y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
+    expect(y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
   })
 
   test(`renders multiple band structures with toggleable legend`, async ({ page }) => {

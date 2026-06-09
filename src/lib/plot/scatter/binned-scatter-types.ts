@@ -1,27 +1,17 @@
-import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+import type { D3InterpolateName } from '$lib/colors'
 import type { DenseInternalPoint } from '$lib/plot/scatter/adaptive-density'
 import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
 import type {
+  ColorScaleConfig,
   LabelPlacementConfig,
-  ScaleType,
   ScatterHandlerProps,
+  SizeScaleConfig,
 } from '$lib/plot/core/types'
 import type { ComponentProps, Snippet } from 'svelte'
 
-export type BinnedColorScaleConfig =
-  | {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
-    }
-  | D3InterpolateName
+export type BinnedColorScaleConfig = ColorScaleConfig | D3InterpolateName
 
-export type BinnedSizeScaleConfig = {
-  type?: ScaleType
-  radius_range?: [number, number]
-  value_range?: [number, number]
-  pick_radius?: number | `auto`
-}
+export type BinnedSizeScaleConfig = SizeScaleConfig & { pick_radius?: number | `auto` }
 
 export type BinnedDensityConfig = {
   bin_px?: number

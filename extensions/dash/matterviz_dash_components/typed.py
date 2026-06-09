@@ -337,7 +337,7 @@ class Trajectory(MatterViz):
         data_url: str | None = None,
         display_mode: Any | None = None,
         fps: float | None = None,
-        fps_range: list | None = None,
+        fps_range: tuple[float, float] | None = None,
         histogram_props: dict | None = None,
         hovered: bool | None = None,
         layout: Any | None = None,
@@ -443,13 +443,13 @@ class BrillouinZone(MatterViz):
         fullscreen: bool | None = None,
         height: float | None = None,
         hovered: bool | None = None,
-        hovered_k_point: Any | None = None,
+        hovered_k_point: list[float] | None = None,
         hovered_qpoint_index: int | None = None,
         ibz_color: str | None = None,
         ibz_data: Any | None = None,
         ibz_opacity: float | None = None,
         info_pane_open: bool | None = None,
-        k_path_points: list | None = None,
+        k_path_points: list[list[float]] | None = None,
         loading: bool | None = None,
         png_dpi: float | None = None,
         show_ibz: bool | None = None,
@@ -1190,6 +1190,7 @@ class Bands(MatterViz):
         band_spin_mode: Any | None = None,
         band_structs: dict | None = None,
         band_type: Any | None = None,
+        color_scale: Any | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
@@ -1218,6 +1219,7 @@ class Bands(MatterViz):
         show_path_mode_control: bool | None = None,
         show_spin_control: bool | None = None,
         show_units_control: bool | None = None,
+        size_scale: Any | None = None,
         styles: Any | None = None,
         tooltip_point: Any | None = None,
         units: Any | None = None,
@@ -1241,6 +1243,8 @@ class Bands(MatterViz):
             mv_props["band_structs"] = band_structs
         if band_type is not None:
             mv_props["band_type"] = band_type
+        if color_scale is not None:
+            mv_props["color_scale"] = color_scale
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
@@ -1297,6 +1301,8 @@ class Bands(MatterViz):
             mv_props["show_spin_control"] = show_spin_control
         if show_units_control is not None:
             mv_props["show_units_control"] = show_units_control
+        if size_scale is not None:
+            mv_props["size_scale"] = size_scale
         if styles is not None:
             mv_props["styles"] = styles
         if tooltip_point is not None:
@@ -1336,6 +1342,7 @@ class Dos(MatterViz):
     def __init__(
         self,
         id=None,
+        color_scale: Any | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
@@ -1364,7 +1371,8 @@ class Dos(MatterViz):
         show_sigma_control: bool | None = None,
         show_units_control: bool | None = None,
         sigma: float | None = None,
-        sigma_range: list | None = None,
+        sigma_range: tuple[float, float] | None = None,
+        size_scale: Any | None = None,
         spin_mode: Any | None = None,
         stack: bool | None = None,
         styles: Any | None = None,
@@ -1383,6 +1391,8 @@ class Dos(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
+        if color_scale is not None:
+            mv_props["color_scale"] = color_scale
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
@@ -1441,6 +1451,8 @@ class Dos(MatterViz):
             mv_props["sigma"] = sigma
         if sigma_range is not None:
             mv_props["sigma_range"] = sigma_range
+        if size_scale is not None:
+            mv_props["size_scale"] = size_scale
         if spin_mode is not None:
             mv_props["spin_mode"] = spin_mode
         if stack is not None:
@@ -1482,6 +1494,7 @@ class ScatterPlot(MatterViz):
     def __init__(
         self,
         id=None,
+        color_scale: Any | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
@@ -1496,14 +1509,13 @@ class ScatterPlot(MatterViz):
         ref_lines: list | None = None,
         selected_series_idx: int | None = None,
         series: list | None = None,
+        size_scale: Any | None = None,
         styles: Any | None = None,
         tooltip_point: Any | None = None,
         x_axis: Any | None = None,
         y_axis: Any | None = None,
         height: Any | None = None,
         width: Any | None = None,
-        color_scale: Any | None = None,
-        size_scale: Any | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -1515,6 +1527,8 @@ class ScatterPlot(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
+        if color_scale is not None:
+            mv_props["color_scale"] = color_scale
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
@@ -1543,6 +1557,8 @@ class ScatterPlot(MatterViz):
             mv_props["selected_series_idx"] = selected_series_idx
         if series is not None:
             mv_props["series"] = series
+        if size_scale is not None:
+            mv_props["size_scale"] = size_scale
         if styles is not None:
             mv_props["styles"] = styles
         if tooltip_point is not None:
@@ -1555,10 +1571,6 @@ class ScatterPlot(MatterViz):
             mv_props["height"] = height
         if width is not None:
             mv_props["width"] = width
-        if color_scale is not None:
-            mv_props["color_scale"] = color_scale
-        if size_scale is not None:
-            mv_props["size_scale"] = size_scale
 
         super().__init__(
             id=id,

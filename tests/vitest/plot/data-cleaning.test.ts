@@ -64,7 +64,7 @@ describe(`compute_local_variance`, () => {
   })
 
   it(`returns zero for constant values`, () => {
-    expect(compute_local_variance([5, 5, 5, 5, 5], 3).every((v) => v === 0)).toBe(true)
+    expect(compute_local_variance([5, 5, 5, 5, 5], 3).every((val) => val === 0)).toBe(true)
   })
 
   it(`computes higher variance for oscillating vs stable data`, () => {
@@ -76,7 +76,7 @@ describe(`compute_local_variance`, () => {
   it(`handles NaN values gracefully`, () => {
     const result = compute_local_variance([1, 2, NaN, 4, 5], 3)
     expect(result).toHaveLength(5)
-    expect(result.every((v) => Number.isFinite(v))).toBe(true)
+    expect(result.every((val) => Number.isFinite(val))).toBe(true)
   })
 
   it(`handles different window sizes`, () => {
@@ -328,7 +328,7 @@ describe(`handle_invalid_values`, () => {
       expect(result.cleaned).toHaveLength(expectedLen)
       expect(result.invalid_count).toBe(invalidCount)
       if (mode === `remove`) {
-        expect(result.cleaned.every((v) => Number.isFinite(v))).toBe(true)
+        expect(result.cleaned.every((val) => Number.isFinite(val))).toBe(true)
       }
       if (mode === `propagate`) expect(result.removed_indices).toEqual([])
     },
@@ -387,14 +387,14 @@ describe(`apply_bounds`, () => {
 
   it(`supports x-dependent bounds`, () => {
     const result_max = apply_bounds(x, [0, 2, 4, 6, 8], {
-      max: (v) => v * 1.5,
+      max: (x_val) => x_val * 1.5,
       mode: `clamp`,
     })
     expect(result_max.y[1]).toBe(1.5)
     expect(result_max.y[2]).toBe(3)
 
     const result_min = apply_bounds(x, [0, 0, 0, 0, 0], {
-      min: (v) => v * 0.5,
+      min: (x_val) => x_val * 0.5,
       mode: `clamp`,
     })
     expect(result_min.y[1]).toBe(0.5)
@@ -441,8 +441,10 @@ describe(`smooth_savitzky_golay`, () => {
 
     const oscillating = [0, 2, 0, 2, 0, 2, 0, 2, 0]
     const smoothed_osc = smooth_savitzky_golay(oscillating, 5, 2)
-    const orig_var = oscillating.reduce((s, v) => s + (v - 1) ** 2, 0) / oscillating.length
-    const smooth_var = smoothed_osc.reduce((s, v) => s + (v - 1) ** 2, 0) / smoothed_osc.length
+    const orig_var =
+      oscillating.reduce((sum, val) => sum + (val - 1) ** 2, 0) / oscillating.length
+    const smooth_var =
+      smoothed_osc.reduce((sum, val) => sum + (val - 1) ** 2, 0) / smoothed_osc.length
     expect(smooth_var).toBeLessThan(orig_var)
   })
 
@@ -541,11 +543,11 @@ describe(`clean_series`, () => {
     { smooth: { type: `gaussian` as const, sigma: 1 } },
   ])(`applies $smooth.type smoothing`, ({ smooth }) => {
     const y = [0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10]
-    const series: DataSeries = { x: y.map((_, i) => i), y }
+    const series: DataSeries = { x: y.map((_, idx) => idx), y }
     const result = clean_series(series, { smooth, in_place: false })
-    const orig_var = y.reduce((s, v) => s + (v - 5) ** 2, 0) / y.length
+    const orig_var = y.reduce((sum, val) => sum + (val - 5) ** 2, 0) / y.length
     const smooth_var =
-      result.series.y.reduce((s, v) => s + (v - 5) ** 2, 0) / result.series.y.length
+      result.series.y.reduce((sum, val) => sum + (val - 5) ** 2, 0) / result.series.y.length
     expect(smooth_var).toBeLessThan(orig_var)
   })
 
@@ -659,7 +661,7 @@ describe(`clean_series`, () => {
     expect(result.series.color_values?.length).toBe(result.series.x.length)
     expect(result.series.size_values?.length).toBe(result.series.x.length)
     // Metadata should not contain id=50 (the outlier)
-    const ids = (result.series.metadata as { id: number }[]).map((m) => m.id)
+    const ids = (result.series.metadata as { id: number }[]).map((meta) => meta.id)
     expect(ids).not.toContain(50)
   })
 })
@@ -845,12 +847,14 @@ describe(`clean_xyz`, () => {
     expect(result.x).toEqual(x_input)
 
     // y and z should be smoothed (variance reduced)
-    const y_orig_var = y_input.reduce((s, v) => s + (v - 5) ** 2, 0) / y_input.length
-    const y_smooth_var = result.y.reduce((s, v) => s + (v - 5) ** 2, 0) / result.y.length
+    const y_orig_var = y_input.reduce((sum, val) => sum + (val - 5) ** 2, 0) / y_input.length
+    const y_smooth_var =
+      result.y.reduce((sum, val) => sum + (val - 5) ** 2, 0) / result.y.length
     expect(y_smooth_var).toBeLessThan(y_orig_var)
 
-    const z_orig_var = z_input.reduce((s, v) => s + (v - 5) ** 2, 0) / z_input.length
-    const z_smooth_var = result.z.reduce((s, v) => s + (v - 5) ** 2, 0) / result.z.length
+    const z_orig_var = z_input.reduce((sum, val) => sum + (val - 5) ** 2, 0) / z_input.length
+    const z_smooth_var =
+      result.z.reduce((sum, val) => sum + (val - 5) ** 2, 0) / result.z.length
     expect(z_smooth_var).toBeLessThan(z_orig_var)
   })
 
@@ -1130,8 +1134,8 @@ describe(`Edge Cases`, () => {
 
   it(`handles very large datasets without stack overflow`, () => {
     const length = 50000
-    const x = Array.from({ length }, (_, i) => i)
-    const y = x.map((v) => Math.sin(v / 100) * 10)
+    const x = Array.from({ length }, (_, idx) => idx)
+    const y = x.map((val) => Math.sin(val / 100) * 10)
     const result = clean_series(
       { x, y },
       {

@@ -1,22 +1,10 @@
-import type { ElementSymbol, Vec3 } from '$lib'
 import { Trajectory } from '$lib/trajectory'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { resize_element } from '../setup'
+import { make_trajectory_frame, resize_element } from '../setup'
 
-const site = {
-  species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
-  abc: [0, 0, 0] as Vec3,
-  xyz: [0, 0, 0] as Vec3,
-  label: `H1`,
-  properties: {},
-}
 const make_traj = (metadatas: Record<string, number>[]) => ({
-  frames: metadatas.map((metadata, idx) => ({
-    structure: { sites: [site], charge: 0 },
-    step: idx,
-    metadata,
-  })),
+  frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
   metadata: {},
 })
 

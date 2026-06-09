@@ -1,5 +1,6 @@
 <script lang="ts">
   import { format_num, format_value } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import type { BarHandlerProps, BarSeries, TickConfig } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import type { CrystalSystem } from '$lib/symmetry'
@@ -123,7 +124,7 @@
   })
 
   // Always show full space group range (1-230)
-  const x_range: [number, number] = [0.5, MAX_SPACEGROUP + 0.5]
+  const x_range: Vec2 = [0.5, MAX_SPACEGROUP + 0.5]
 
   // Calculate crystal system region boundaries using full theoretical ranges
   const crystal_system_regions = $derived.by(() => {

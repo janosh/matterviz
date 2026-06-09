@@ -1,4 +1,4 @@
-import { Dos } from '$lib'
+import { Dos, type Vec2 } from '$lib'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   clear_smearing_cache,
@@ -178,7 +178,7 @@ describe(`Dos component`, () => {
       'DOS 1': spin_polarized_dos,
       'DOS 2': {
         ...spin_polarized_dos,
-        densities: spin_polarized_dos.densities.map((d) => d * 0.5),
+        densities: spin_polarized_dos.densities.map((density) => density * 0.5),
       },
     }
     mount(Dos, {
@@ -445,7 +445,7 @@ describe(`validate_sigma_range`, () => {
     expect(validate_sigma_range([-5, 5])).toEqual([-5, 5])
   })
 
-  it.each<{ input: [number, number] }>([
+  it.each<{ input: Vec2 }>([
     { input: [1, 0] }, // min > max
     { input: [0, 0] }, // equal values
     { input: [NaN, 1] }, // NaN

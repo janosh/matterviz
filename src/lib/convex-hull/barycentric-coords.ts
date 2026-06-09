@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib/element'
-import type { Point3D, Vec3 } from '$lib/math'
+import type { Point3D, Vec2, Vec3 } from '$lib/math'
 import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermodynamics'
 import type { ConvexHullEntry, PhaseData } from './types'
 import { is_unary_entry } from './helpers'
@@ -19,19 +19,11 @@ export function composition_to_barycentric_3d(
   if (elements.length !== 3) {
     throw new Error(`Ternary system requires exactly 3 elements, got ${elements.length}`)
   }
-  const amounts = elements.map((el) => composition[el] || 0)
-  const total = amounts.reduce((sum, amt) => sum + amt, 0)
-  if (total === 0) {
-    throw new Error(
-      `Composition has no elements from the ternary system: ${elements.join(`-`)}`,
-    )
-  }
-  const normalized = amounts.map((amount) => amount / total)
-  return [normalized[0], normalized[1], normalized[2]]
+  return composition_to_barycentric_nd(composition, elements) as Vec3
 }
 
 // map barycentric coordinates to triangular 2D coordinates
-export function barycentric_to_ternary_xy(barycentric: Vec3): [number, number] {
+export function barycentric_to_ternary_xy(barycentric: Vec3): Vec2 {
   const [v0, v1, v2] = TRIANGLE_VERTICES
   const [a, b, c] = barycentric
   const x = v0[0] * a + v1[0] * b + v2[0] * c
@@ -54,23 +46,6 @@ export function get_triangle_centroid(): Point3D {
   const centroid_y = (v0[1] + v1[1] + v2[1]) / 3
   return { x: centroid_x, y: centroid_y, z: 0 }
 }
-
-export function calculate_face_normal(p1: Point3D, p2: Point3D, p3: Point3D): Point3D {
-  const edge1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z }
-  const edge2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z }
-  const nx = edge1.y * edge2.z - edge1.z * edge2.y
-  const ny = edge1.z * edge2.x - edge1.x * edge2.z
-  const nz = edge1.x * edge2.y - edge1.y * edge2.x
-  const magnitude = Math.hypot(nx, ny, nz)
-  if (magnitude === 0) return { x: 0, y: 0, z: 1 }
-  return { x: nx / magnitude, y: ny / magnitude, z: nz / magnitude }
-}
-
-export const calculate_face_centroid = (p1: Point3D, p2: Point3D, p3: Point3D): Point3D => ({
-  x: (p1.x + p2.x + p3.x) / 3,
-  y: (p1.y + p2.y + p3.y) / 3,
-  z: (p1.z + p2.z + p3.z) / 3,
-})
 
 export function get_ternary_3d_coordinates(
   entries: PhaseData[],
@@ -151,7 +126,7 @@ export function get_triangle_vertical_edges(
   ])
 }
 
-// --- N-dimensional barycentric coordinates (for 5+ element systems) ---
+// --- N-dimensional barycentric coordinates (the 3D/4D converters wrap this) ---
 
 // Convert composition to N-dimensional barycentric coordinates
 // Returns array of length N where coords sum to 1 (all N coords are explicit)
@@ -160,9 +135,9 @@ export function composition_to_barycentric_nd(
   composition: Record<string, number>,
   elements: ElementSymbol[],
 ): number[] {
-  const n = elements.length
-  if (n < 2) {
-    throw new Error(`Barycentric coordinates require at least 2 elements, got ${n}`)
+  const n_elems = elements.length
+  if (n_elems < 2) {
+    throw new Error(`Barycentric coordinates require at least 2 elements, got ${n_elems}`)
   }
   // NaN and undefined/missing elements are treated as 0
   const amounts = elements.map((el) => {
@@ -199,14 +174,7 @@ export function composition_to_barycentric_4d(
   if (elements.length !== 4) {
     throw new Error(`Quaternary barycentric coordinates require exactly 4 elements`)
   }
-  const amounts = elements.map((el) => composition[el] || 0)
-  const total = amounts.reduce((sum, amount) => sum + amount, 0)
-  if (total === 0) {
-    throw new Error(
-      `Composition has no elements from the quaternary system: ${elements.join(`-`)}`,
-    )
-  }
-  return amounts.map((amount) => amount / total)
+  return composition_to_barycentric_nd(composition, elements)
 }
 
 // map barycentric coordinates to tetrahedral 3D coordinates

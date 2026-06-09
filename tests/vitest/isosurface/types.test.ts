@@ -12,7 +12,7 @@ import {
 } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
-import { make_grid } from '../setup'
+import { make_grid, make_volume as make_volume_fixture } from '../setup'
 
 describe(`grid_data_range`, () => {
   test.each([
@@ -388,28 +388,22 @@ describe(`pad_periodic_grid`, () => {
 })
 
 // Helper to build a minimal VolumetricData from a grid for tile tests
-function make_volume(
+const make_volume = (
   nx: number,
   ny: number,
   nz: number,
   fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
   periodic: boolean = true,
-): VolumetricData {
-  const grid = make_grid(nx, ny, nz, fill)
-  return {
-    grid,
-    grid_dims: [nx, ny, nz],
+): VolumetricData =>
+  make_volume_fixture(make_grid(nx, ny, nz, fill), {
     lattice: [
       [3, 0, 0],
       [0, 4, 0],
       [0, 0, 5],
     ],
-    origin: [0, 0, 0],
-    data_range: { min: 0, max: 1, abs_max: 1, mean: 0.5 },
     periodic,
     label: `test`,
-  }
-}
+  })
 
 describe(`tile_volumetric_data`, () => {
   test(`[1,1,1] returns the same object reference`, () => {

@@ -8,7 +8,7 @@
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { sample_hkl_slice } from '$lib/isosurface/slice'
   import { format_num } from '$lib/labels'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { ColorBar } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -43,7 +43,7 @@
   )
   let effective_resolution = $derived(slice_resolution || max_grid_dim)
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
-  let slice_range = $state<[number, number]>([0, 1])
+  let slice_range = $state<Vec2>([0, 1])
   let slice_canvas_height = $state(200)
 
   // Use precomputed data_range from the active volume

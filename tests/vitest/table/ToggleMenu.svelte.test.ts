@@ -156,12 +156,12 @@ describe(`ToggleMenu`, () => {
       mount_menu(two_groups, { column_panel_open: true })
 
       // All expanded by default
-      document.querySelectorAll(`.section`).forEach((s) => {
-        expect(s.querySelector(`.section-items`)).not.toBeNull()
+      document.querySelectorAll(`.section`).forEach((section) => {
+        expect(section.querySelector(`.section-items`)).not.toBeNull()
       })
-      document.querySelectorAll(`.section-header`).forEach((h) => {
-        expect(h.textContent).toContain(`▼`)
-        expect(h.getAttribute(`aria-expanded`)).toBe(`true`)
+      document.querySelectorAll(`.section-header`).forEach((header) => {
+        expect(header.textContent).toContain(`▼`)
+        expect(header.getAttribute(`aria-expanded`)).toBe(`true`)
       })
 
       // Click to collapse first section

@@ -1,5 +1,11 @@
 import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
-import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+import type {
+  AxisRanges,
+  InitialRanges,
+  ScaleType,
+  Y2SyncConfig,
+  Y2SyncMode,
+} from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
 // Get coordinates of a mouse event relative to an element (the event's
@@ -110,6 +116,14 @@ function axis_transform(scale_type: ScaleType | undefined): {
   return { to: (val) => val, from: (val) => val }
 }
 
+// Snapshot the four axis ranges as fresh tuples at pan/zoom/touch interaction start
+export const snapshot_ranges = ({ x, x2, y, y2 }: AxisRanges): InitialRanges => ({
+  initial_x_range: [...x],
+  initial_x2_range: [...x2],
+  initial_y_range: [...y],
+  initial_y2_range: [...y2],
+})
+
 // Pan a range by a pixel delta, uniformly in screen space: linear axes shift by a
 // constant amount, log axes by a constant factor (which also can't cross zero).
 // `pixel_span` is the plot's pixel extent along the axis.
@@ -166,6 +180,21 @@ export function remove_drag_listeners(
 // Sorted [min, max] from two scalar bounds (rect-zoom inverts drag start/end,
 // which arrive in either order depending on drag direction)
 export const sorted_range = (a: number, b: number): Vec2 => [Math.min(a, b), Math.max(a, b)]
+
+// Invert a drag-rect edge pair through a scale to a sorted finite data range
+// (time scales invert to Dates, coerced to epoch numbers). Returns null when
+// either bound is non-finite or the range is degenerate (zero span).
+export function invert_rect_range(
+  scale: { invert: (px: number) => number | Date },
+  a_px: number,
+  b_px: number,
+): Vec2 | null {
+  const range = sorted_range(
+    to_epoch_num(scale.invert(a_px)),
+    to_epoch_num(scale.invert(b_px)),
+  )
+  return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
+}
 
 // Strict per-bound equality of two [min, max] ranges
 export const vec2_equal = (a: Vec2, b: Vec2): boolean => a[0] === b[0] && a[1] === b[1]

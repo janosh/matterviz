@@ -2,6 +2,7 @@ import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import * as math from '$lib/math'
+import type { Vec2 } from '$lib/math'
 import type { Crystal } from '$lib/structure/index'
 import { parse_any_structure } from '$lib/structure/parse'
 import { is_crystal } from '$lib/structure/validation'
@@ -162,7 +163,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   const [min_radius, max_radius] =
     two_theta_range === null
       ? [0, 2 / wavelength]
-      : (([t_min, t_max]: [number, number]) => {
+      : (([t_min, t_max]: Vec2) => {
           const r_min = (2 * Math.sin((t_min / 2) * (Math.PI / 180))) / wavelength
           const r_max = (2 * Math.sin((t_max / 2) * (Math.PI / 180))) / wavelength
           return [r_min, r_max]
@@ -235,7 +236,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
     // Atomic scattering factors (vectorized style)
     const f_scattering: number[] = coeffs.map((coeff_entry) => {
-      const { a: a_arr, b: b_arr, z } = coeff_entry
+      const { a: a_arr, b: b_arr, z: atomic_number } = coeff_entry
       const num_terms = Math.min(a_arr.length, b_arr.length)
       const sum_terms = a_arr
         .slice(0, num_terms)
@@ -245,7 +246,9 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
           0,
         )
       // pymatgen-style fitted params: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²)
-      if (z !== undefined) return z - 41.78214 * sin_theta_over_lambda_sq * sum_terms
+      if (atomic_number !== undefined) {
+        return atomic_number - 41.78214 * sin_theta_over_lambda_sq * sum_terms
+      }
       return sum_terms + (coeff_entry.c ?? 0)
     })
 

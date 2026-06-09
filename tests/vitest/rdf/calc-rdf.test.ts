@@ -1,3 +1,4 @@
+import type { ElementSymbol } from '$lib'
 import * as math from '$lib/math'
 import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
@@ -16,7 +17,7 @@ if (!lu_al_structure || !pd_structure || !bi2zr2o8_structure) {
 }
 
 // Cartesian-site shorthand for create_test_structure
-const make_site = (element: string, xyz: number[]) => ({
+const make_site = (element: ElementSymbol, xyz: number[]) => ({
   species: [{ element, occu: 1, oxidation_state: 0 }],
   xyz,
 })
@@ -32,7 +33,7 @@ function check_basic_rdf_properties(
   expect(g_r).toHaveLength(n_bins)
   expect(g_r.every((val) => val >= 0)).toBe(true)
   expect(g_r[0]).toBe(0)
-  expect(radii.every((r, idx) => idx === 0 || r > radii[idx - 1])).toBe(true)
+  expect(radii.every((radius, idx) => idx === 0 || radius > radii[idx - 1])).toBe(true)
 }
 
 describe(`calculate_rdf`, () => {
@@ -524,7 +525,7 @@ describe(`calculate_all_pair_rdfs`, () => {
     }
 
     // Sums should be similar (within 20% of each other)
-    const sums = results.map((r) => r.g_r.reduce((sum, val) => sum + val, 0))
+    const sums = results.map((result) => result.g_r.reduce((sum, val) => sum + val, 0))
     const avg_sum = sums.reduce((sum, val) => sum + val, 0) / sums.length
     for (const sum of sums) {
       expect(Math.abs(sum - avg_sum) / avg_sum).toBeLessThan(0.2)
@@ -556,7 +557,9 @@ describe(`calculate_all_pair_rdfs`, () => {
     const full_rdf_wrong = {
       r: partial_rdfs[0]?.r ?? [],
       g_r: partial_rdfs[0].r.map(
-        (_, idx) => partial_rdfs.reduce((sum, p) => sum + p.g_r[idx], 0) / partial_rdfs.length,
+        (_, idx) =>
+          partial_rdfs.reduce((sum, partial) => sum + partial.g_r[idx], 0) /
+          partial_rdfs.length,
       ),
     }
 

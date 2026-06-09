@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
@@ -10,6 +10,7 @@
   import type {
     AxisLoadError,
     BasePlotProps,
+    ColorScaleConfig,
     ControlsConfig,
     DataLoaderFn,
     DataSeries,
@@ -17,7 +18,6 @@
     FillHandlerEvent,
     FillRegion,
     HoverConfig,
-    InitialRanges,
     InternalPoint,
     LabelPlacementConfig,
     LegendConfig,
@@ -26,9 +26,9 @@
     Point,
     RefLine,
     RefLineEvent,
-    ScaleType,
     ScatterHandlerEvent,
     ScatterHandlerProps,
+    SizeScaleConfig,
     StyleOverrides,
     UserContentProps,
   } from '$lib/plot'
@@ -84,16 +84,11 @@
   import {
     expand_range_if_needed,
     get_relative_coords,
-    MIN_TOUCH_DISTANCE_PIXELS,
+    invert_rect_range,
     normalize_y2_sync,
-    pan_range_by_pixels,
-    PINCH_ZOOM_THRESHOLD,
-    remove_drag_listeners,
-    sorted_range,
     sync_y2_range,
-    to_epoch_num,
-    zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
+  import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     calc_auto_padding,
@@ -193,16 +188,8 @@
     change?: (
       data: (Point<Metadata> & { series: DataSeries<Metadata> }) | null,
     ) => void
-    color_scale?: {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
-    } | D3InterpolateName
-    size_scale?: {
-      type?: ScaleType
-      radius_range?: [number, number]
-      value_range?: [number, number]
-    }
+    color_scale?: ColorScaleConfig | D3InterpolateName
+    size_scale?: SizeScaleConfig
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
@@ -277,7 +264,6 @@
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
-  let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
   // Track which specific control properties user has modified
   let touched = new SvelteSet<string>()
@@ -296,19 +282,14 @@
     }),
   )
 
-  // State for rectangle zoom selection
-  let drag_start_coords = $state<Point2D | null>(null)
-  let drag_current_coords = $state<Point2D | null>(null)
-
   // Zoom/pan state - track both initial (data-driven) and current (after pan/zoom) ranges
-  let initial_x_range = $state<[number, number]>([0, 1])
-  let initial_x2_range = $state<[number, number]>([0, 1])
-  let initial_y_range = $state<[number, number]>([0, 1])
-  let initial_y2_range = $state<[number, number]>([0, 1])
-  let zoom_x_range = $state<[number, number]>([0, 1])
-  let zoom_x2_range = $state<[number, number]>([0, 1])
-  let zoom_y_range = $state<[number, number]>([0, 1])
-  let zoom_y2_range = $state<[number, number]>([0, 1])
+  let ranges = $state<{
+    initial: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
+    current: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
+  }>({
+    initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
+    current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
+  })
   const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
 
   // Y2 axis sync configuration
@@ -319,7 +300,7 @@
   // Helper to compute synced y2 range or return fallback when sync disabled
   const get_synced_y2 = (y1_range: Vec2, fallback: Vec2): Vec2 =>
     y2_sync_config.mode !== `none`
-      ? sync_y2_range(y1_range, initial_y2_range, y2_sync_config)
+      ? sync_y2_range(y1_range, ranges.initial.y2, y2_sync_config)
       : fallback
 
   // Effect to update y2 range when sync mode changes - use $effect.pre to capture
@@ -330,24 +311,14 @@
     if (mode !== prev_sync_mode) {
       // When sync mode becomes enabled (or changes), apply sync immediately
       if (mode !== `none`) {
-        zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
+        ranges.current.y2 = sync_y2_range(ranges.current.y, ranges.initial.y2, y2_sync_config)
       } else {
         // When switching to independent mode, reset Y2 to its data range
-        zoom_y2_range = [...initial_y2_range] as [number, number]
+        ranges.current.y2 = [...ranges.initial.y2] as Vec2
       }
       prev_sync_mode = mode
     }
   })
-
-  // Pan state
-  let is_focused = $state(false)
-  let shift_held = $state(false)
-  let pan_drag_state = $state<
-    InitialRanges & { start: { x: number; y: number } } | null
-  >(null)
-  let touch_state = $state<
-    InitialRanges & { start_touches: { x: number; y: number }[] } | null
-  >(null)
 
   // Fill region hover state
   let hovered_fill_key = $state<string | null>(null)
@@ -596,67 +567,52 @@
       return { explicit, range }
     }
 
-    const x = get_range(final_x_axis, auto_x_range)
-    const x2 = get_range(final_x2_axis, auto_x2_range)
-    const y = get_range(final_y_axis, auto_y_range)
-    const y2 = get_range(final_y2_axis, auto_y2_range)
-
-    // X axis: explicit → direct, auto → lazy expand
-    if (x.explicit) {
-      zoom_x_range = x.range
-    } else {
-      const result = expand_range_if_needed(initial_x_range, x.range)
-      if (result.changed) {
-        ;[initial_x_range, zoom_x_range] = [result.range, result.range]
-      }
+    const resolved = {
+      x: get_range(final_x_axis, auto_x_range),
+      x2: get_range(final_x2_axis, auto_x2_range),
+      y: get_range(final_y_axis, auto_y_range),
+      y2: get_range(final_y2_axis, auto_y2_range),
     }
 
-    // X2 axis: explicit → direct, auto → lazy expand
-    if (x2.explicit) {
-      zoom_x2_range = x2.range
-    } else {
-      const result = expand_range_if_needed(initial_x2_range, x2.range)
-      if (result.changed) {
-        ;[initial_x2_range, zoom_x2_range] = [result.range, result.range]
-      }
-    }
-
-    // Y axis: explicit → direct, auto → lazy expand
-    if (y.explicit) {
-      zoom_y_range = y.range
-    } else {
-      const result = expand_range_if_needed(initial_y_range, y.range)
-      if (result.changed) {
-        ;[initial_y_range, zoom_y_range] = [result.range, result.range]
+    // untrack reads of `ranges`: this effect also writes it, and tracked reads of the
+    // deep proxy would re-trigger the effect on every current/initial write
+    for (const axis of [`x`, `x2`, `y`] as const) {
+      const { explicit, range } = resolved[axis]
+      if (explicit) {
+        ranges.current[axis] = range
+      } else {
+        const result = expand_range_if_needed(untrack(() => ranges.initial[axis]), range)
+        if (result.changed) {
+          ranges.initial[axis] = result.range
+          ranges.current[axis] = result.range
+        }
       }
     }
 
     // Y2 axis: explicit → direct, else expand initial range then optionally sync
-    if (y2.explicit) {
-      zoom_y2_range = y2.range
+    if (resolved.y2.explicit) {
+      ranges.current.y2 = resolved.y2.range
     } else {
-      const result = expand_range_if_needed(initial_y2_range, y2.range)
-      if (result.changed) initial_y2_range = result.range
+      const result = expand_range_if_needed(untrack(() => ranges.initial.y2), resolved.y2.range)
+      if (result.changed) ranges.initial.y2 = result.range
       // Apply sync if enabled, otherwise use expanded range (or keep current if unchanged)
       if (y2_sync_config.mode !== `none`) {
-        // untrack the read of zoom_y_range: this effect also writes it (fresh array per
-        // run when y.explicit), so a tracked read would loop until
-        // effect_update_depth_exceeded. Pan/zoom handlers sync y2 themselves.
-        zoom_y2_range = sync_y2_range(
-          untrack(() => zoom_y_range),
-          initial_y2_range,
+        // Pan/zoom handlers sync y2 themselves.
+        ranges.current.y2 = sync_y2_range(
+          untrack(() => ranges.current.y),
+          untrack(() => ranges.initial.y2),
           y2_sync_config,
         )
       } else if (result.changed) {
-        zoom_y2_range = result.range
+        ranges.current.y2 = result.range
       }
     }
   })
 
-  let [x_min, x_max] = $derived(zoom_x_range)
-  let [x2_min, x2_max] = $derived(zoom_x2_range)
-  let [y_min, y_max] = $derived(zoom_y_range)
-  let [y2_min, y2_max] = $derived(zoom_y2_range)
+  let [x_min, x_max] = $derived(ranges.current.x)
+  let [x2_min, x2_max] = $derived(ranges.current.x2)
+  let [y_min, y_max] = $derived(ranges.current.y)
+  let [y2_min, y2_max] = $derived(ranges.current.y2)
 
   // Create auto color range
   let auto_color_range = $derived(
@@ -1102,250 +1058,76 @@
     y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format ?? ``),
   })
 
-  // Define global handlers reference for adding/removing listeners
-  const on_window_mouse_move = (evt: MouseEvent) => {
-    if (!drag_start_coords || !svg_bounding_box) return // Exit if not dragging or no bounds
-
-    // Calculate mouse position relative to the stored SVG bounding box
-    const current_x = evt.clientX - svg_bounding_box.left
-    const current_y = evt.clientY - svg_bounding_box.top
-    drag_current_coords = { x: current_x, y: current_y }
-
-    // Optional: update tooltip only if inside SVG bounds
-    const is_inside_svg = current_x >= 0 &&
-      current_x <= svg_bounding_box.width &&
-      current_y >= 0 &&
-      current_y <= svg_bounding_box.height
-
-    if (is_inside_svg) {
-      // Use the already calculated relative coordinates
-      update_tooltip_point(current_x, current_y)
-    } else tooltip_point = null // Clear tooltip if outside
-  }
-
-  const on_window_mouse_up = (_evt: MouseEvent) => {
-    if (drag_start_coords && drag_current_coords) {
-      // Use current scales to invert screen coords to data coords
-      const start_data_x_val = x_scale_fn.invert(drag_start_coords.x)
-      const end_data_x_val = x_scale_fn.invert(drag_current_coords.x)
-      const start_data_y_val = y_scale_fn.invert(drag_start_coords.y)
-      const end_data_y_val = y_scale_fn.invert(drag_current_coords.y)
-
-      // Same scale inverts both coords, so both are numbers or both are Dates
-      const [x1, x2] = [to_epoch_num(start_data_x_val), to_epoch_num(end_data_x_val)]
-      const next_x_range = sorted_range(x1, x2)
-      // Y axis is always number
-      const next_y_range = sorted_range(start_data_y_val, end_data_y_val)
-
-      // Check for minuscule zoom box (e.g. accidental click)
-      const min_zoom_size = 5 // Minimum pixels to trigger zoom
-      const dx = Math.abs(drag_start_coords.x - drag_current_coords.x)
-      const dy = Math.abs(drag_start_coords.y - drag_current_coords.y)
-
-      if (
-        dx > min_zoom_size &&
-        dy > min_zoom_size &&
-        next_x_range[0] !== next_x_range[1] &&
-        next_y_range[0] !== next_y_range[1]
-      ) {
-        // Update axis ranges to trigger reactivity (like BarPlot/Histogram do)
-        x_axis = { ...x_axis, range: next_x_range }
-        y_axis = { ...y_axis, range: next_y_range }
-
-        // X2 axis: invert screen coords using x2 scale
-        if (x2_points.length > 0) {
-          const x2_a = to_epoch_num(x2_scale_fn.invert(drag_start_coords.x))
-          const x2_b = to_epoch_num(x2_scale_fn.invert(drag_current_coords.x))
-          x2_axis = { ...x2_axis, range: sorted_range(x2_a, x2_b) }
-        }
-
-        // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
-        // y2 must zoom from the rect directly (parity with BarPlot/Histogram/BoxPlot)
-        if (y2_points.length > 0 && y2_sync_config.mode === `none`) {
-          const y2_a = y2_scale_fn.invert(drag_start_coords.y)
-          const y2_b = y2_scale_fn.invert(drag_current_coords.y)
-          y2_axis = { ...y2_axis, range: sorted_range(y2_a, y2_b) }
-        }
-      }
-    }
-
-    // Reset states and remove listeners
-    drag_start_coords = null
-    drag_current_coords = null
-    svg_bounding_box = null
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    document.body.style.cursor = `default`
-  }
-
-  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
-  // scale's transform space (log axes pan by a constant factor, linear by a shift).
-  // Plot dims clamped to 1px so degenerate containers can't produce Infinity deltas.
-  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
-    const plot_width = Math.max(1, width - pad.l - pad.r)
-    const plot_height = Math.max(1, height - pad.t - pad.b)
-    zoom_x_range = pan_range_by_pixels(init.initial_x_range, dx_px, plot_width, final_x_axis.scale_type)
-    zoom_x2_range = pan_range_by_pixels(init.initial_x2_range, dx_px, plot_width, final_x2_axis.scale_type)
-    zoom_y_range = pan_range_by_pixels(init.initial_y_range, dy_px, plot_height, final_y_axis.scale_type)
-    zoom_y2_range = get_synced_y2(
-      zoom_y_range,
-      pan_range_by_pixels(init.initial_y2_range, dy_px, plot_height, final_y2_axis.scale_type),
-    )
-  }
-  const zoom_all_axes = (init: InitialRanges, factor: number) => {
-    zoom_x_range = zoom_range_by_factor(init.initial_x_range, factor, final_x_axis.scale_type)
-    zoom_x2_range = zoom_range_by_factor(init.initial_x2_range, factor, final_x2_axis.scale_type)
-    zoom_y_range = zoom_range_by_factor(init.initial_y_range, factor, final_y_axis.scale_type)
-    zoom_y2_range = get_synced_y2(
-      zoom_y_range,
-      zoom_range_by_factor(init.initial_y2_range, factor, final_y2_axis.scale_type),
-    )
-  }
-
-  // Pan drag handler (drag direction inverted on x for natural pan feel)
-  const on_pan_move = (evt: MouseEvent) => {
-    if (!pan_drag_state) return
-    const sensitivity = pan?.drag_sensitivity ?? 1
-    pan_all_axes(
-      pan_drag_state,
-      -(evt.clientX - pan_drag_state.start.x) * sensitivity,
-      (evt.clientY - pan_drag_state.start.y) * sensitivity,
-    )
-  }
-
-  const on_pan_end = () => {
-    pan_drag_state = null
-    document.body.style.cursor = ``
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
-  }
-
-  // Tear down any window listeners + cursor override if the component unmounts mid-drag
-  // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
-  // onDestroy also runs during SSR teardown, where window/document don't exist.
-  onDestroy(() => {
-    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
-    drag_start_coords = null
-    drag_current_coords = null
-    svg_bounding_box = null
-    pan_drag_state = null
-  })
-
-  function handle_mouse_down(evt: MouseEvent) {
-    if (!svg_element) return
-
-    // Check if pan is enabled and shift is held for pan mode
-    const pan_enabled = pan?.enabled !== false
-    if (pan_enabled && evt.shiftKey) {
-      evt.preventDefault()
-      pan_drag_state = {
-        start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...zoom_x_range] as [number, number],
-        initial_x2_range: [...zoom_x2_range] as [number, number],
-        initial_y_range: [...zoom_y_range] as [number, number],
-        initial_y2_range: [...zoom_y2_range] as [number, number],
-      }
-      document.body.style.cursor = `grabbing`
-      window.addEventListener(`mousemove`, on_pan_move)
-      window.addEventListener(`mouseup`, on_pan_end)
-      return
-    }
-
-    // Store bounding box first, then calculate coords using it
-    svg_bounding_box = svg_element.getBoundingClientRect()
-
-    // Calculate initial coords using the same bounding box that will be used during drag
-    const initial_x = evt.clientX - svg_bounding_box.left
-    const initial_y = evt.clientY - svg_bounding_box.top
-    const coords = { x: initial_x, y: initial_y }
-
-    drag_start_coords = coords
-    drag_current_coords = coords
-
-    window.addEventListener(`mousemove`, on_window_mouse_move)
-    window.addEventListener(`mouseup`, on_window_mouse_up)
-    document.body.style.cursor = `crosshair`
-    evt.preventDefault()
-  }
-
-  // Wheel handler for pan (requires focus and shift)
-  function handle_wheel(evt: WheelEvent) {
-    const pan_enabled = pan?.enabled !== false
-    // Only capture wheel when focused AND Shift is held
-    // Use shift_held state (tracked via keydown/keyup) for compatibility with synthetic events
-    if (!pan_enabled || !is_focused || !shift_held) return
-
-    evt.preventDefault()
-
+  // Shared pan/zoom/touch/drag-rect interaction controller. set_range routes y2
+  // writes through get_synced_y2 (write-order contract: y is written before y2, so
+  // the sync reads the just-updated y range).
+  const pan_zoom = create_pan_zoom({
+    ranges: () => ranges.current,
+    scale_type: (axis) =>
+      ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis })[axis]
+        .scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    const plot_width = Math.max(1, width - pad.l - pad.r)
-    const plot_height = Math.max(1, height - pad.t - pad.b)
-    const sensitivity = pan?.wheel_sensitivity ?? 1
+    plot_dims: () => ({
+      width: Math.max(1, width - pad.l - pad.r),
+      height: Math.max(1, height - pad.t - pad.b),
+    }),
+    pan: () => pan,
+    set_range: (axis, range) => {
+      if (axis === `y2`) ranges.current.y2 = get_synced_y2(ranges.current.y, range)
+      else ranges.current[axis] = range
+    },
+    svg: () => svg_element,
+    on_rect_zoom: (start, current) => {
+      // Update axis ranges to trigger reactivity; both x and y must invert to valid
+      // (finite, non-degenerate) ranges or the rect zoom is discarded entirely
+      const next_x = invert_rect_range(x_scale_fn, start.x, current.x)
+      const next_y = invert_rect_range(y_scale_fn, start.y, current.y)
+      if (!next_x || !next_y) return
+      x_axis = { ...x_axis, range: next_x }
+      y_axis = { ...y_axis, range: next_y }
 
-    // Pan along the dominant wheel direction
-    // (deltaX for horizontal scroll on trackpads, deltaY for vertical)
-    if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      const dx = evt.deltaX * sensitivity
-      zoom_x_range = pan_range_by_pixels(zoom_x_range, dx, plot_width, final_x_axis.scale_type)
-      zoom_x2_range = pan_range_by_pixels(zoom_x2_range, dx, plot_width, final_x2_axis.scale_type)
-    } else {
-      const dy = evt.deltaY * sensitivity
-      zoom_y_range = pan_range_by_pixels(zoom_y_range, dy, plot_height, final_y_axis.scale_type)
-      zoom_y2_range = get_synced_y2(
-        zoom_y_range,
-        pan_range_by_pixels(zoom_y2_range, dy, plot_height, final_y2_axis.scale_type),
-      )
-    }
-  }
+      // X2 axis: invert screen coords using x2 scale
+      const next_x2 = x2_points.length > 0
+        ? invert_rect_range(x2_scale_fn, start.x, current.x)
+        : null
+      if (next_x2) x2_axis = { ...x2_axis, range: next_x2 }
 
-  // Touch handlers for pinch-zoom and two-finger pan
-  function handle_touch_start(evt: TouchEvent) {
-    const touch_enabled = pan?.enabled !== false && pan?.touch_enabled !== false
-    if (!touch_enabled || evt.touches.length !== 2) return
-
-    evt.preventDefault()
-    const touches = Array.from(evt.touches)
-    touch_state = {
-      start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...zoom_x_range] as [number, number],
-      initial_x2_range: [...zoom_x2_range] as [number, number],
-      initial_y_range: [...zoom_y_range] as [number, number],
-      initial_y2_range: [...zoom_y2_range] as [number, number],
-    }
-  }
-
-  function handle_touch_move(evt: TouchEvent) {
-    if (!touch_state || evt.touches.length !== 2) return
-    evt.preventDefault()
-
-    const [t1, t2] = Array.from(evt.touches)
-    const [s1, s2] = touch_state.start_touches
-
-    // Calculate center movement for pan
-    const start_center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 }
-    const curr_center = {
-      x: (t1.clientX + t2.clientX) / 2,
-      y: (t1.clientY + t2.clientY) / 2,
-    }
-    const dx = curr_center.x - start_center.x
-    const dy = curr_center.y - start_center.y
-
-    // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
-    const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
-    // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
-    if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
-    const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
-    const scale = curr_dist / start_dist
-
-    // Pinch zoom about the view center (spread = zoom in, pinch = zoom out)
-    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      zoom_all_axes(touch_state, scale)
-    } else pan_all_axes(touch_state, -dx, dy)
-  }
-
-  function handle_touch_end() {
-    touch_state = null
-  }
+      // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
+      // y2 must zoom from the rect directly (parity with BarPlot/Histogram/BoxPlot)
+      const next_y2 = y2_points.length > 0 && y2_sync_config.mode === `none`
+        ? invert_rect_range(y2_scale_fn, start.y, current.y)
+        : null
+      if (next_y2) y2_axis = { ...y2_axis, range: next_y2 }
+    },
+    on_reset: () => {
+      // Reset to current auto ranges (not stale initial ranges which may have expanded)
+      // This ensures lazy expansion restarts fresh from current data bounds
+      ranges.initial = {
+        x: [...auto_x_range] as Vec2,
+        x2: [...auto_x2_range] as Vec2,
+        y: [...auto_y_range] as Vec2,
+        y2: [...auto_y2_range] as Vec2,
+      }
+      ranges.current = {
+        x: [...auto_x_range] as Vec2,
+        x2: [...auto_x2_range] as Vec2,
+        y: [...auto_y_range] as Vec2,
+        y2: get_synced_y2(auto_y_range, [...auto_y2_range] as Vec2),
+      }
+      // Also reset axis props so future data changes recalculate auto ranges
+      x_axis = { ...x_axis, range: [null, null] }
+      x2_axis = { ...x2_axis, range: [null, null] }
+      y_axis = { ...y_axis, range: [null, null] }
+      y2_axis = { ...y2_axis, range: [null, null] }
+    },
+    // Live tooltip while rect-dragging: update for the closest point inside the
+    // plot bounds, clear when the cursor leaves the svg
+    on_drag_move: (coords, inside_svg) => {
+      if (inside_svg) update_tooltip_point(coords.x, coords.y)
+      else tooltip_point = null
+    },
+  })
+  onDestroy(() => pan_zoom.destroy())
 
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
@@ -1477,7 +1259,7 @@
     legend_manual_position = { x: constrained_x, y: constrained_y }
   }
 
-  function get_screen_coords(point: Point, data_series?: DataSeries): [number, number] {
+  function get_screen_coords(point: Point, data_series?: DataSeries): Vec2 {
     // convert data coordinates to potentially non-finite screen coordinates
     const use_x2 = data_series?.x_axis === `x2`
     const active_x_scale = use_x2 ? x2_scale_fn : x_scale_fn
@@ -1658,11 +1440,9 @@
       evt.preventDefault()
       fullscreen = false
     }
-    if (evt.key === `Shift`) shift_held = true
+    pan_zoom.on_window_key_down(evt)
   }}
-  onkeyup={(evt) => {
-    if (evt.key === `Shift`) shift_held = false
-  }}
+  onkeyup={pan_zoom.on_window_key_up}
 />
 
 <div
@@ -1689,46 +1469,27 @@
       ([final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
         `Scatter plot`)}
       tabindex="0"
-      onfocusin={() => (is_focused = true)}
-      onfocusout={() => (is_focused = false)}
+      onfocusin={() => pan_zoom.set_focused(true)}
+      onfocusout={() => pan_zoom.set_focused(false)}
       onmouseenter={() => (hovered = true)}
-      onmousedown={handle_mouse_down}
+      onmousedown={pan_zoom.on_mouse_down}
       onmousemove={(evt: MouseEvent) => {
         // Only find closest point if not actively dragging
-        if (!drag_start_coords && !pan_drag_state) on_mouse_move(evt)
+        if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) on_mouse_move(evt)
       }}
       onmouseleave={() => {
         hovered = false
         tooltip_point = null
         on_point_hover?.(null)
       }}
-      ondblclick={() => {
-        // Reset to current auto ranges (not stale initial_*_range which may have expanded)
-        // This ensures lazy expansion restarts fresh from current data bounds
-        initial_x_range = [...auto_x_range] as [number, number]
-        initial_x2_range = [...auto_x2_range] as [number, number]
-        initial_y_range = [...auto_y_range] as [number, number]
-        initial_y2_range = [...auto_y2_range] as [number, number]
-        zoom_x_range = [...auto_x_range] as [number, number]
-        zoom_x2_range = [...auto_x2_range] as [number, number]
-        zoom_y_range = [...auto_y_range] as [number, number]
-        zoom_y2_range = get_synced_y2(auto_y_range, [...auto_y2_range] as Vec2)
-        // Also reset axis props so future data changes recalculate auto ranges
-        x_axis = { ...x_axis, range: [null, null] }
-        x2_axis = { ...x2_axis, range: [null, null] }
-        y_axis = { ...y_axis, range: [null, null] }
-        y2_axis = { ...y2_axis, range: [null, null] }
-      }}
-      onwheel={handle_wheel}
-      ontouchstart={handle_touch_start}
-      ontouchmove={handle_touch_move}
-      ontouchend={handle_touch_end}
-      ontouchcancel={handle_touch_end}
-      style:cursor={pan_drag_state
-      ? `grabbing`
-      : shift_held && pan?.enabled !== false
-      ? `grab`
-      : `crosshair`}
+      ondblclick={pan_zoom.reset_view}
+      onkeydown={pan_zoom.on_key_down}
+      onwheel={pan_zoom.on_wheel}
+      ontouchstart={pan_zoom.on_touch_start}
+      ontouchmove={pan_zoom.on_touch_move}
+      ontouchend={pan_zoom.on_touch_end}
+      ontouchcancel={pan_zoom.on_touch_end}
+      style:cursor={pan_zoom.cursor}
     >
       {@render user_content?.({
         height,
@@ -1859,7 +1620,7 @@
 
       <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
 
-      <ZoomRect start={drag_start_coords} current={drag_current_coords} />
+      <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
       <ZeroLines
         display={final_display}
@@ -1867,10 +1628,10 @@
         {x2_scale_fn}
         {y_scale_fn}
         {y2_scale_fn}
-        x_range={zoom_x_range}
-        x2_range={zoom_x2_range}
-        y_range={zoom_y_range}
-        y2_range={zoom_y2_range}
+        x_range={ranges.current.x}
+        x2_range={ranges.current.x2}
+        y_range={ranges.current.y}
+        y2_range={ranges.current.y2}
         x_scale_type={final_x_axis.scale_type}
         x2_scale_type={final_x2_axis.scale_type}
         y_scale_type={final_y_axis.scale_type}

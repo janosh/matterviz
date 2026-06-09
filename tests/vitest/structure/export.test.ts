@@ -1,3 +1,4 @@
+import type { ElementSymbol } from '$lib'
 import { download } from '$lib/io/fetch'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -5,8 +6,7 @@ import type { AnyStructure, LatticeType, Site } from '$lib/structure'
 import {
   clean_geometry_for_export,
   create_structure_filename,
-  export_structure_as_json,
-  export_structure_as_xyz,
+  export_structure_as,
   extract_bond_color_for_instance,
   generate_mtl_content,
   has_color_property,
@@ -116,7 +116,7 @@ describe(`Export functionality`, () => {
       `exports $name to XYZ`,
       ({ structure, expected_xyz, formula, filename_contains }) => {
         mock_get_electro_neg_formula.mockReturnValue(formula)
-        export_structure_as_xyz(structure)
+        export_structure_as(`xyz`, structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
         const lines = (content as string).split(`\n`)
@@ -134,7 +134,7 @@ describe(`Export functionality`, () => {
       `exports $name to JSON`,
       ({ structure, expected_json, formula, filename_contains }) => {
         mock_get_electro_neg_formula.mockReturnValue(formula)
-        export_structure_as_json(structure)
+        export_structure_as(`json`, structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
         expect(JSON.parse(content as string)).toEqual(expected_json)
@@ -145,11 +145,11 @@ describe(`Export functionality`, () => {
     )
 
     it.each([
-      { func: export_structure_as_xyz, error_msg: `Error exporting XYZ:` },
-      { func: export_structure_as_json, error_msg: `Error exporting JSON:` },
-    ])(`handles undefined structure gracefully`, ({ func, error_msg }) => {
+      { fmt: `xyz`, error_msg: `Failed to export XYZ:` },
+      { fmt: `json`, error_msg: `Failed to export JSON:` },
+    ] as const)(`handles undefined structure gracefully`, ({ fmt, error_msg }) => {
       const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      func(undefined)
+      export_structure_as(fmt, undefined)
       expect(console_error).toHaveBeenCalledWith(error_msg, expect.any(Error))
       expect(mock_download).not.toHaveBeenCalled()
       console_error.mockRestore()
@@ -232,15 +232,15 @@ describe(`Export functionality`, () => {
       const reparsed = parse_structure_file(exported)
       assert(reparsed?.lattice, `failed to reparse`)
       expect(reparsed.sites).toHaveLength(parsed.sites.length)
-      const L = reparsed.lattice.matrix
+      const lattice_matrix = reparsed.lattice.matrix
       reparsed.sites.forEach((site, idx) => {
         expect(site.abc[0]).toBeCloseTo(parsed.sites[idx].abc[0], TOL)
         expect(site.abc[1]).toBeCloseTo(parsed.sites[idx].abc[1], TOL)
         expect(site.abc[2]).toBeCloseTo(parsed.sites[idx].abc[2], TOL)
-        const r = reconstruct(site.abc, L)
-        expect(r[0]).toBeCloseTo(site.xyz[0], TOL)
-        expect(r[1]).toBeCloseTo(site.xyz[1], TOL)
-        expect(r[2]).toBeCloseTo(site.xyz[2], TOL)
+        const recon = reconstruct(site.abc, lattice_matrix)
+        expect(recon[0]).toBeCloseTo(site.xyz[0], TOL)
+        expect(recon[1]).toBeCloseTo(site.xyz[1], TOL)
+        expect(recon[2]).toBeCloseTo(site.xyz[2], TOL)
       })
     })
   })
@@ -777,7 +777,7 @@ describe(`Export functionality`, () => {
 
       // Verify counts align with grouped coordinates
       const counts = lines[6].trim().split(/\s+/).map(Number)
-      const total = counts.reduce((a, b) => a + b, 0)
+      const total = counts.reduce((sum, count) => sum + count, 0)
       const coords_section = lines.slice(8).filter((line) => line.trim().length > 0)
       expect(coords_section.length).toBeGreaterThanOrEqual(total)
     })
@@ -903,7 +903,7 @@ describe(`Export functionality`, () => {
 
       // each element's row carries the site coords and its OWN occupancy (col order:
       // label element x y z occupancy) — distinct occupancies catch a swapped assignment
-      const cif_occ = (element: string): number => {
+      const cif_occ = (element: ElementSymbol): number => {
         const row = atom_rows.find((line) => line.trim().split(/\s+/)[1] === element)
         if (!row) throw new Error(`missing CIF row for ${element}`)
         const cols = row.trim().split(/\s+/)
@@ -1244,9 +1244,9 @@ const sort_sites = (sites: AnyStructure[`sites`]): AnyStructure[`sites`] =>
       return elem_a.localeCompare(elem_b)
     }
     // Sort by fractional coordinates if elements are the same
-    for (let i = 0; i < 3; i++) {
-      if (Math.abs(site_a.abc[i] - site_b.abc[i]) > 1e-4) {
-        return site_a.abc[i] - site_b.abc[i]
+    for (let idx = 0; idx < 3; idx++) {
+      if (Math.abs(site_a.abc[idx] - site_b.abc[idx]) > 1e-4) {
+        return site_a.abc[idx] - site_b.abc[idx]
       }
     }
     return 0
@@ -1265,10 +1265,11 @@ function assert_structures_equal(
   // Compare lattice for structures that have one
   if (`lattice` in struct1 && struct1.lattice && `lattice` in struct2 && struct2.lattice) {
     const params = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
-    for (const p of params) {
-      expect(struct2.lattice[p], `Lattice param '${p}' mismatch in ${filename}`).toBeCloseTo(
-        struct1.lattice[p],
-      )
+    for (const param of params) {
+      expect(
+        struct2.lattice[param],
+        `Lattice param '${param}' mismatch in ${filename}`,
+      ).toBeCloseTo(struct1.lattice[param])
     }
   } else {
     expect(`lattice` in struct1).toBe(`lattice` in struct2)
@@ -1286,11 +1287,11 @@ function assert_structures_equal(
     )
 
     // Compare fractional coordinates
-    for (const j of [0, 1, 2]) {
+    for (const comp_idx of [0, 1, 2]) {
       expect(
-        site2.abc[j],
-        `Coord mismatch for site ${idx}, component ${j} in ${filename}`,
-      ).toBeCloseTo(site1.abc[j], 4)
+        site2.abc[comp_idx],
+        `Coord mismatch for site ${idx}, component ${comp_idx} in ${filename}`,
+      ).toBeCloseTo(site1.abc[comp_idx], 4)
     }
 
     // POSCAR files can have selective_dynamics

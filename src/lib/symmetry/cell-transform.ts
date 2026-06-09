@@ -4,6 +4,7 @@ import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import * as math from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import { make_site } from '$lib/structure/site'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 export type CellType = `original` | `conventional` | `primitive`
@@ -47,8 +48,7 @@ export function moyo_cell_to_structure(
     // Oxidation state is set to 0 (unknown) because moyo-wasm only provides atomic numbers.
     // transformed cell may have different/reordered sites, making it non-trivial to
     // map oxidation states from original structure.
-    const species = [{ element, occu: 1, oxidation_state: 0 }]
-    return { species, abc: wrapped_abc, xyz, label: element, properties: {} }
+    return make_site(element, wrapped_abc, xyz, element)
   })
 
   const lattice = {

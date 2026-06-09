@@ -147,12 +147,12 @@ describe(`FermiSurfaceTooltip`, () => {
     test.each([
       {
         key: `prefix`,
-        fn: (d: FermiHoverData) => `Band: ${d.band_index}`,
+        fn: (data: FermiHoverData) => `Band: ${data.band_index}`,
         expected: `Band: 5`,
       },
       {
         key: `suffix`,
-        fn: (d: FermiHoverData) => `Spin: ${d.spin}`,
+        fn: (data: FermiHoverData) => `Spin: ${data.spin}`,
         expected: `Spin: up`,
       },
     ])(`renders $key as function`, ({ key, fn, expected }) => {

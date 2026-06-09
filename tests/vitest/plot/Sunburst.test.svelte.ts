@@ -3,7 +3,7 @@ import type { PositionedArc, SunburstNode, SunburstNodeHandlerProps } from '$lib
 import { DEFAULT_SERIES_COLORS } from '$lib/plot'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { mount_sized, resize_element } from '../setup'
 
 // A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
 const tree: SunburstNode[] = [
@@ -34,25 +34,19 @@ const deep: SunburstNode[] = [
   },
 ]
 
-async function mount_sized_sunburst(
+// duration 0 makes zoom transitions synchronous for assertions
+const mount_sized_sunburst = (
   props: Partial<ComponentProps<typeof Sunburst>>,
-): Promise<HTMLElement> {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  mount(Sunburst, {
-    target,
-    // duration 0 makes zoom transitions synchronous for assertions
-    props: {
-      tween: { duration: 0 },
-      ...props,
-      style: `width: 500px; height: 360px; ${props.style ?? ``}`,
+): Promise<HTMLElement> =>
+  mount_sized(
+    Sunburst,
+    { tween: { duration: 0 }, ...props },
+    {
+      selector: `.sunburst`,
+      width: 500,
+      height: 360,
     },
-  })
-  const plot = target.querySelector<HTMLElement>(`.sunburst`)
-  if (!plot) throw new Error(`Sunburst root element not found`)
-  await resize_element(plot, 500, 360)
-  return plot
-}
+  )
 
 // Pre-order node indices for the `tree` fixture (root=0)
 const IDX = { A: 1, A1: 2, A2: 3, B: 4 } as const

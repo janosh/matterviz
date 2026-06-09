@@ -505,8 +505,8 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Verify indices start at 1 (and not 0)
     const texts = await page.locator(`.atom-label`).allTextContents()
-    expect(texts.some((t) => /^\s*1\s*$/.test(t))).toBe(true)
-    expect(texts.some((t) => /^\s*0\s*$/.test(t))).toBe(false)
+    expect(texts.some((text) => /^\s*1\s*$/.test(text))).toBe(true)
+    expect(texts.some((text) => /^\s*0\s*$/.test(text))).toBe(false)
   })
 
   test(`combined site labels and indices display correctly`, async ({ page }) => {
@@ -528,7 +528,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Spot-check that at least one label matches "X-<n>"
     const texts = await page.locator(`.atom-label`).allTextContents()
-    expect(texts.some((t) => /[A-Z][a-z]?\s*-\s*\d+/.test(t))).toBe(true)
+    expect(texts.some((text) => /[A-Z][a-z]?\s*-\s*\d+/.test(text))).toBe(true)
   })
 
   test(`disordered sites show combined element-occupancy format`, async ({ page }) => {

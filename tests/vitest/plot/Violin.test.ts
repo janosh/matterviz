@@ -1,38 +1,26 @@
 import { Violin } from '$lib'
 import type { BoxPlotSeries } from '$lib/plot'
-import { type ComponentProps, mount } from 'svelte'
+import type { ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { resize_element } from '../setup'
+import { mount_sized } from '../setup'
 
-const dist = (n: number, center = 0, spread = 1): number[] =>
+const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
-    { length: n },
+    { length: count },
     (_, idx) => center + spread * Math.sin(idx * 1.7) + (idx % 5) * 0.1,
   )
 
 // Extract alternating x,y pixel coords from a violin path ("Mx,yLx,y...Z")
-const path_coords = (d: string): { xs: number[]; ys: number[] } => {
-  const nums = (d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) ?? []).map(Number)
+const path_coords = (path_d: string): { xs: number[]; ys: number[] } => {
+  const nums = (path_d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) ?? []).map(Number)
   return {
     xs: nums.filter((_, idx) => idx % 2 === 0),
     ys: nums.filter((_, idx) => idx % 2 === 1),
   }
 }
 
-async function mount_violin(
-  props: Partial<ComponentProps<typeof Violin>>,
-): Promise<HTMLElement> {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  mount(Violin, {
-    target,
-    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
-  })
-  const plot = target.querySelector<HTMLElement>(`.box-plot`)
-  if (!plot) throw new Error(`Violin root element not found`)
-  await resize_element(plot, 400, 300)
-  return plot
-}
+const mount_violin = (props: Partial<ComponentProps<typeof Violin>>): Promise<HTMLElement> =>
+  mount_sized(Violin, props, { selector: `.box-plot` })
 
 describe(`Violin`, () => {
   const series: BoxPlotSeries[] = [

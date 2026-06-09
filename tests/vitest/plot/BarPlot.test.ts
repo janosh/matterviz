@@ -2,7 +2,7 @@ import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { inside_clip_path, resize_element } from '../setup'
+import { inside_clip_path, mount_sized } from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -11,18 +11,9 @@ const basic: BarSeries = {
   color: `steelblue`,
 }
 
-async function mount_sized_bar_plot(
+const mount_sized_bar_plot = (
   props: Partial<ComponentProps<typeof BarPlot>>,
-): Promise<HTMLElement> {
-  mount(BarPlot, {
-    target: document.body,
-    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
-  })
-  const plot = document.querySelector<HTMLElement>(`.bar-plot`)
-  if (!plot) throw new Error(`BarPlot root element not found`)
-  await resize_element(plot, 400, 300)
-  return plot
-}
+): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot` })
 
 const visible_bar_count = (series: BarSeries[] = []): number =>
   series

@@ -21,7 +21,7 @@
     setup_fullscreen_effect,
     toggle_fullscreen,
   } from '$lib/layout'
-  import { to_radians, type Point3D, type Vec3 } from '$lib/math'
+  import { to_radians, type Point3D, type Vec2, type Vec3 } from '$lib/math'
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { centered_rect, pad_rect, rects_overlap, rect_within_rect } from '$lib/plot/core/layout'
   import type { Rect } from '$lib/plot/core/layout'
@@ -962,7 +962,7 @@
   }
 
   // Formation energy color bar helpers
-  const e_form_range = $derived.by((): [number, number] => {
+  const e_form_range = $derived.by((): Vec2 => {
     const min_fe = plot_entries.length > 0 ? energy_range.min : -1
     return [min_fe, 0]
   })
@@ -1332,12 +1332,12 @@
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
     const rect = container?.getBoundingClientRect()
-    const [w, h] = rect ? [rect.width, rect.height] : [400, 400]
+    const [width, height] = rect ? [rect.width, rect.height] : [400, 400]
 
     // Only update canvas dimensions if they actually changed
     // (assigning canvas.width/height clears the canvas even if values are the same)
-    const new_width = Math.max(0, Math.round(w * dpr))
-    const new_height = Math.max(0, Math.round(h * dpr))
+    const new_width = Math.max(0, Math.round(width * dpr))
+    const new_height = Math.max(0, Math.round(height * dpr))
     if (!ctx || canvas.width !== new_width || canvas.height !== new_height) {
       canvas.width = new_width
       canvas.height = new_height
@@ -1348,7 +1348,7 @@
         ctx.imageSmoothingQuality = `high`
       }
     }
-    canvas_dims = { width: w, height: h, scale: Math.min(w, h) / 600 }
+    canvas_dims = { width, height, scale: Math.min(width, height) / 600 }
     render_once()
   }
 

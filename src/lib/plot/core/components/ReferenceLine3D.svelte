@@ -1,7 +1,7 @@
 <script lang="ts">
   // ReferenceLine3D: 3D reference lines for axis-parallel, segments, and extended lines
   // Uses Line2 for proper variable-width lines (WebGL ignores linewidth on basic lines)
-  import type { Point3D, Vec3 } from '$lib/math'
+  import type { Point3D, Vec2, Vec3 } from '$lib/math'
   import { T, useThrelte } from '@threlte/core'
   import * as THREE from 'three'
   import { Line2 } from 'three/examples/jsm/lines/Line2.js'
@@ -13,7 +13,7 @@
   let { ref_line, scene_size = [10, 10, 5], ranges }: {
     ref_line: RefLine3D
     scene_size?: Vec3
-    ranges: { x: [number, number]; y: [number, number]; z: [number, number] }
+    ranges: { x: Vec2; y: Vec2; z: Vec2 }
   } = $props()
 
   const { size } = useThrelte()

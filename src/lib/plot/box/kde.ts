@@ -1,6 +1,7 @@
 // 1-D Gaussian kernel density estimation for violin plots.
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
+import type { Vec2 } from '$lib/math'
 import { quantile_sorted, quantile_unordered } from '$lib/plot/box/quantile'
 
 export interface KdeResult {
@@ -14,7 +15,7 @@ export interface KdeOptions {
   n_points?: number // grid resolution (default 100, min 2)
   cut?: number // extend grid by cut*bandwidth beyond data extremes (default 2)
   clip?: [number | null, number | null] // hard bounds for the grid (e.g. [0, null] for RMSD)
-  range?: [number, number] // explicit eval range (overrides data extent + cut)
+  range?: Vec2 // explicit eval range (overrides data extent + cut)
   // Cap on samples used for the O(n*m) density sum. Bandwidth is always computed from the
   // full sample; only the per-grid-point evaluation subsamples (deterministic stride).
   max_samples?: number
@@ -79,8 +80,8 @@ function exact_density(
     const g_val = grid[grid_idx]
     let sum = 0
     for (const sample of eval_samples) {
-      const u = (g_val - sample) / band
-      sum += Math.exp(-0.5 * u * u)
+      const z_score = (g_val - sample) / band
+      sum += Math.exp(-0.5 * z_score * z_score)
     }
     density[grid_idx] = sum * norm
   }
@@ -128,8 +129,8 @@ function binned_density(
     for (let bin_idx = start; bin_idx <= stop; bin_idx++) {
       const count = counts[bin_idx]
       if (count === 0) continue
-      const u = (g_val - centers[bin_idx]) / band
-      sum += count * Math.exp(-0.5 * u * u)
+      const z_score = (g_val - centers[bin_idx]) / band
+      sum += count * Math.exp(-0.5 * z_score * z_score)
     }
     density[grid_idx] = sum * norm
   }

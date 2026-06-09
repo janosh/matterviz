@@ -213,7 +213,7 @@ export function build_hyperplanes(
 
 // Build border hyperplanes from per-element limits.
 // For each axis with limits [lo, hi], creates two halfspace rows.
-export function build_border_hyperplanes(lims: [number, number][]): number[][] {
+export function build_border_hyperplanes(lims: Vec2[]): number[][] {
   const dim = lims.length
   const borders: number[][] = []
   for (let idx = 0; idx < dim; idx++) {
@@ -587,10 +587,10 @@ export function simple_pca(
 }
 
 // Compute orthonormal vector to a 2D line segment (for label offset in 2D diagrams)
-export function orthonormal_2d(line_pts: number[][]): [number, number] {
+export function orthonormal_2d(line_pts: number[][]): Vec2 {
   const dx = line_pts[1][0] - line_pts[0][0]
   const dy = line_pts[1][1] - line_pts[0][1]
-  const perp: [number, number] = [-dy, dx]
+  const perp: Vec2 = [-dy, dx]
   const len = Math.hypot(perp[0], perp[1])
   if (len < EPS) return [0, 1]
   return [perp[0] / len, perp[1] / len]
@@ -830,7 +830,7 @@ interface FullNDResult {
   min_entries: PhaseData[]
   hyperplanes: number[][]
   hyperplane_entries: PhaseData[]
-  compute_lims: [number, number][]
+  compute_lims: Vec2[]
 }
 
 let nd_cache: {
@@ -950,7 +950,7 @@ export function compute_chempot_diagram(
     }
 
     // Build limits array for computation elements
-    const compute_lims: [number, number][] = compute_elements.map((el) => {
+    const compute_lims: Vec2[] = compute_elements.map((el) => {
       if (limits?.[el]) return limits[el]
       return [default_min_limit, 0]
     })

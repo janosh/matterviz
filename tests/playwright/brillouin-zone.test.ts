@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { IS_CI, wait_for_3d_canvas } from './helpers'
+import { drop_file, IS_CI, wait_for_3d_canvas } from './helpers'
 
 const BZ_SELECTOR = `#test-brillouin-zone`
 // IBZ computation requires moyo-wasm symmetry analysis which can be slow,
@@ -145,16 +145,7 @@ Si
 Direct
 0.0 0.0 0.0`
 
-    const data_transfer = await page.evaluateHandle((content) => {
-      const dt = new DataTransfer()
-      dt.items.add(new File([content], `test.poscar`, { type: `text/plain` }))
-      return dt
-    }, poscar)
-
-    const bz = page.locator(BZ_SELECTOR)
-    await bz.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
-    await bz.dispatchEvent(`drop`, { dataTransfer: data_transfer })
-    await data_transfer.dispose()
+    await drop_file(page, page.locator(BZ_SELECTOR), poscar, `test.poscar`)
     // Wait for canvas to be ready after file drop
     await expect(page.locator(`${BZ_SELECTOR} canvas`)).toBeVisible()
   })

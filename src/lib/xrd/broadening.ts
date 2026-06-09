@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import type { XrdPattern } from './index'
 
 const LOG_2 = Math.log(2)
@@ -72,7 +73,7 @@ export function pseudo_voigt(
 export function compute_broadened_pattern(
   pattern: XrdPattern, // Discrete XRD pattern (peaks)
   params: BroadeningParams, // Broadening parameters (U, V, W, shape_factor)
-  range: [number, number], // Angular range [min, max] in degrees
+  range: Vec2, // Angular range [min, max] in degrees
   step_size: number = 0.02, // Step size in degrees (default 0.02)
 ): XrdPattern {
   // Continuous broadened pattern

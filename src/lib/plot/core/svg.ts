@@ -1,5 +1,7 @@
 // SVG path and rendering utilities for plot components.
 
+import type { Vec2 } from '$lib/math'
+
 // Build a closed SVG path for a violin (KDE density) shape.
 // `grid_px` are value-axis pixel positions, `half_offsets_px` the category-axis half-widths
 // (>= 0) at each grid point, `center` the category-axis center pixel. `orient(cross, val)`
@@ -11,11 +13,11 @@ export function violin_path(
   half_offsets_px: readonly number[],
   center: number,
   side: `both` | `positive` | `negative`,
-  orient: (cross: number, val: number) => [number, number],
+  orient: (cross: number, val: number) => Vec2,
 ): string {
   const n_pts = grid_px.length
   if (n_pts === 0) return ``
-  const pts: [number, number][] = []
+  const pts: Vec2[] = []
   if (side === `both`) {
     for (let idx = 0; idx < n_pts; idx++) {
       pts.push(orient(center + half_offsets_px[idx], grid_px[idx]))

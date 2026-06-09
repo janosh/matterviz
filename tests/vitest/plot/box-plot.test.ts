@@ -170,9 +170,9 @@ describe(`compute_box_stats`, () => {
     const rand = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
     let worst_quartile = 0
     for (let trial = 0; trial < 400; trial++) {
-      const n = 4 + Math.floor(rand() * 60)
+      const sample_count = 4 + Math.floor(rand() * 60)
       const mode = trial % 3
-      const arr = Array.from({ length: n }, () =>
+      const arr = Array.from({ length: sample_count }, () =>
         mode === 0
           ? Math.floor(rand() * 5) // heavy duplicates
           : mode === 1

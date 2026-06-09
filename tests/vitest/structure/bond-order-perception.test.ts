@@ -5,27 +5,29 @@ import {
 } from '$lib/structure/bond-order-perception'
 import type { BondPair, Site, StructureBond } from '$lib/structure'
 import type { PerceivedBond } from '$lib/structure/bond-order-perception'
+import type { ElementSymbol } from '$lib/element'
+import type { Vec2, Vec3 } from '$lib/math'
 
 function make_input(
-  elements: string[],
+  elements: ElementSymbol[],
   coords: [number, number, number][],
-  edges: [number, number][],
+  edges: Vec2[],
 ) {
-  const sites = elements.map((el, idx) => ({
-    species: [{ element: el, occu: 1, oxidation_state: 0 }],
+  const sites = elements.map((element, idx) => ({
+    species: [{ element, occu: 1, oxidation_state: 0 }],
     xyz: coords[idx],
     abc: [0, 0, 0],
-    label: `${el}${idx}`,
+    label: `${element}${idx}`,
   })) as unknown as Site[]
-  const bonds: BondPair[] = edges.map(([i, j]) => ({
-    pos_1: coords[i],
-    pos_2: coords[j],
-    site_idx_1: i,
-    site_idx_2: j,
+  const bonds: BondPair[] = edges.map(([idx_1, idx_2]) => ({
+    pos_1: coords[idx_1],
+    pos_2: coords[idx_2],
+    site_idx_1: idx_1,
+    site_idx_2: idx_2,
     bond_length: Math.hypot(
-      coords[i][0] - coords[j][0],
-      coords[i][1] - coords[j][1],
-      coords[i][2] - coords[j][2],
+      coords[idx_1][0] - coords[idx_2][0],
+      coords[idx_1][1] - coords[idx_2][1],
+      coords[idx_1][2] - coords[idx_2][2],
     ),
     strength: 1,
     transform_matrix: new Float32Array(16),
@@ -87,11 +89,13 @@ describe(`valence-maximization core (neutral)`, () => {
         [0, 2],
       ],
     )
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
     expect(
-      r.map((b) => b.bond_order).sort((left, right) => Number(left) - Number(right)),
+      result
+        .map((bond) => bond.bond_order)
+        .sort((left, right) => Number(left) - Number(right)),
     ).toEqual([2, 2])
-    expect(r.every((b) => b.perceived)).toBe(true)
+    expect(result.every((bond) => bond.perceived)).toBe(true)
   })
 
   test(`HCN: one single + one triple`, () => {
@@ -107,10 +111,12 @@ describe(`valence-maximization core (neutral)`, () => {
         [1, 2],
       ],
     )
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    const orders = r.map((b) => [b.site_idx_1, b.site_idx_2, b.bond_order] as const)
-    expect(orders.find(([i, j]) => i === 0 && j === 1)?.[2]).toBe(1)
-    expect(orders.find(([i, j]) => i === 1 && j === 2)?.[2]).toBe(3)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    const orders = result.map(
+      (bond) => [bond.site_idx_1, bond.site_idx_2, bond.bond_order] as const,
+    )
+    expect(orders.find(([idx_1, idx_2]) => idx_1 === 0 && idx_2 === 1)?.[2]).toBe(1)
+    expect(orders.find(([idx_1, idx_2]) => idx_1 === 1 && idx_2 === 2)?.[2]).toBe(3)
   })
 
   test(`methane: all single`, () => {
@@ -130,25 +136,22 @@ describe(`valence-maximization core (neutral)`, () => {
         [0, 4],
       ],
     )
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r.every((b) => b.bond_order === 1)).toBe(true)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(result.every((bond) => bond.bond_order === 1)).toBe(true)
   })
 })
 
 describe(`combination-count bound`, () => {
   test(`catenated S20 chain degrades to single bonds without enumerating 3^20`, () => {
-    const n = 20
-    const elements = Array.from({ length: n }, () => `S`)
-    const coords = Array.from(
-      { length: n },
-      (_, i) => [i * 2, 0, 0] as [number, number, number],
-    )
-    const edges = Array.from({ length: n - 1 }, (_, i) => [i, i + 1] as [number, number])
+    const n_atoms = 20
+    const elements = Array.from({ length: n_atoms }, (): ElementSymbol => `S`)
+    const coords = Array.from({ length: n_atoms }, (_, idx) => [idx * 2, 0, 0] as Vec3)
+    const edges = Array.from({ length: n_atoms - 1 }, (_, idx) => [idx, idx + 1] as Vec2)
     const { sites, bonds } = make_input(elements, coords, edges)
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r).toHaveLength(n - 1)
-    expect(r.every((b) => b.bond_order === 1)).toBe(true)
-    expect(r.every((b) => !b.perceived)).toBe(true)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(result).toHaveLength(n_atoms - 1)
+    expect(result.every((bond) => bond.bond_order === 1)).toBe(true)
+    expect(result.every((bond) => !bond.perceived)).toBe(true)
   })
 })
 
@@ -168,22 +171,31 @@ describe(`charge support`, () => {
         [0, 3],
       ],
     )
-    const r = perceive_bond_orders(sites, bonds, { total_charge: -2 })
+    const result = perceive_bond_orders(sites, bonds, { total_charge: -2 })
     expect(
-      r.map((b) => b.bond_order).sort((left, right) => Number(left) - Number(right)),
+      result
+        .map((bond) => bond.bond_order)
+        .sort((left, right) => Number(left) - Number(right)),
     ).toEqual([1, 1, 2])
-    expect(r.every((b) => b.perceived)).toBe(true)
+    expect(result.every((bond) => bond.perceived)).toBe(true)
   })
 })
 
 describe(`aromaticity`, () => {
   test(`benzene: all 6 ring bonds flagged aromatic`, () => {
-    const a = (k: number): [number, number, number] => [
-      Math.cos((k * Math.PI) / 3) * 1.39,
-      Math.sin((k * Math.PI) / 3) * 1.39,
+    const ring_pos = (vertex_idx: number): [number, number, number] => [
+      Math.cos((vertex_idx * Math.PI) / 3) * 1.39,
+      Math.sin((vertex_idx * Math.PI) / 3) * 1.39,
       0,
     ]
-    const coords = [a(0), a(1), a(2), a(3), a(4), a(5)]
+    const coords = [
+      ring_pos(0),
+      ring_pos(1),
+      ring_pos(2),
+      ring_pos(3),
+      ring_pos(4),
+      ring_pos(5),
+    ]
     const { sites, bonds } = make_input([`C`, `C`, `C`, `C`, `C`, `C`], coords, [
       [0, 1],
       [1, 2],
@@ -192,14 +204,14 @@ describe(`aromaticity`, () => {
       [4, 5],
       [5, 0],
     ])
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r.every((b) => b.aromatic_ring !== undefined)).toBe(true)
-    expect(r.every((b) => b.bond_order === `aromatic`)).toBe(true)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(result.every((bond) => bond.aromatic_ring !== undefined)).toBe(true)
+    expect(result.every((bond) => bond.bond_order === `aromatic`)).toBe(true)
   })
 
   const make_saturated_six_ring = (
-    ring_elements: string[],
-    substituent: string,
+    ring_elements: ElementSymbol[],
+    substituent: ElementSymbol,
     substituent_counts: number[],
   ) => {
     const ring_coords: [number, number, number][] = Array.from(
@@ -225,11 +237,11 @@ describe(`aromaticity`, () => {
         )
       },
     )
-    const ring_edges: [number, number][] = Array.from(
+    const ring_edges: Vec2[] = Array.from(
       { length: 6 },
-      (_, ring_idx): [number, number] => [ring_idx, (ring_idx + 1) % 6],
+      (_, ring_idx): Vec2 => [ring_idx, (ring_idx + 1) % 6],
     )
-    const substituent_edges: [number, number][] = []
+    const substituent_edges: Vec2[] = []
     let substituent_site_idx = 6
     for (const [ring_idx, substituent_count] of substituent_counts.entries()) {
       for (let count_idx = 0; count_idx < substituent_count; count_idx++) {
@@ -249,7 +261,13 @@ describe(`aromaticity`, () => {
   const ring_bonds_from = (result: PerceivedBond[]) =>
     result.filter(({ site_idx_1, site_idx_2 }) => site_idx_1 < 6 && site_idx_2 < 6)
 
-  test.each([
+  test.each<{
+    description: string
+    ring_elements: ElementSymbol[]
+    substituent: ElementSymbol
+    substituent_counts: number[]
+    has_double_bond: boolean
+  }>([
     {
       description: `planar saturated cyclohexane with explicit H substituents`,
       ring_elements: Array.from({ length: 6 }, () => `C`),
@@ -266,14 +284,14 @@ describe(`aromaticity`, () => {
     },
     {
       description: `planar saturated piperidine`,
-      ring_elements: [`N`, ...Array.from({ length: 5 }, () => `C`)],
+      ring_elements: [`N`, ...Array.from({ length: 5 }, (): ElementSymbol => `C`)],
       substituent: `H`,
       substituent_counts: [1, 2, 2, 2, 2, 2],
       has_double_bond: false,
     },
     {
       description: `partially conjugated six-membered heterocycle`,
-      ring_elements: [`N`, ...Array.from({ length: 5 }, () => `C`)],
+      ring_elements: [`N`, ...Array.from({ length: 5 }, (): ElementSymbol => `C`)],
       substituent: `H`,
       substituent_counts: [1, 1, 1, 1, 1, 2],
       has_double_bond: true,
@@ -310,7 +328,7 @@ describe(`aromaticity`, () => {
       [-2.42, -0.7, 0],
       [-1.21, -1.4, 0],
     ]
-    const edges: [number, number][] = [
+    const edges: Vec2[] = [
       [0, 2],
       [2, 3],
       [3, 4],
@@ -324,20 +342,22 @@ describe(`aromaticity`, () => {
       [9, 1], // ring 2 (shares edge 0-1)
     ]
     const { sites, bonds } = make_input(
-      Array.from({ length: 10 }, () => `C`),
+      Array.from({ length: 10 }, (): ElementSymbol => `C`),
       coords,
       edges,
     )
 
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r.every((b) => b.bond_order === `aromatic`)).toBe(true)
-    expect(r.every((b) => b.aromatic_ring !== undefined)).toBe(true)
-    expect(new Set(r.map((b) => b.aromatic_ring)).size).toBeGreaterThanOrEqual(2)
-    expect(r.every((b) => b.kekule_order === 1 || b.kekule_order === 2)).toBe(true)
-    const shared = r.find(
-      (b) =>
-        (b.site_idx_1 === 1 && b.site_idx_2 === 0) ||
-        (b.site_idx_1 === 0 && b.site_idx_2 === 1),
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(result.every((bond) => bond.bond_order === `aromatic`)).toBe(true)
+    expect(result.every((bond) => bond.aromatic_ring !== undefined)).toBe(true)
+    expect(new Set(result.map((bond) => bond.aromatic_ring)).size).toBeGreaterThanOrEqual(2)
+    expect(result.every((bond) => bond.kekule_order === 1 || bond.kekule_order === 2)).toBe(
+      true,
+    )
+    const shared = result.find(
+      (bond) =>
+        (bond.site_idx_1 === 1 && bond.site_idx_2 === 0) ||
+        (bond.site_idx_1 === 0 && bond.site_idx_2 === 1),
     )
     expect(shared).toBeDefined()
     expect(shared?.kekule_order).toBe(1)
@@ -349,23 +369,20 @@ describe(`aromaticity`, () => {
   ])(`$name is not flagged aromatic`, ({ n_atoms, radius }) => {
     const coords: [number, number, number][] = Array.from(
       { length: n_atoms },
-      (_, k): [number, number, number] => [
-        Math.cos((k * 2 * Math.PI) / n_atoms) * radius,
-        Math.sin((k * 2 * Math.PI) / n_atoms) * radius,
+      (_, vertex_idx): [number, number, number] => [
+        Math.cos((vertex_idx * 2 * Math.PI) / n_atoms) * radius,
+        Math.sin((vertex_idx * 2 * Math.PI) / n_atoms) * radius,
         0,
       ],
     )
     const { sites, bonds } = make_input(
-      Array.from({ length: n_atoms }, () => `C`),
+      Array.from({ length: n_atoms }, (): ElementSymbol => `C`),
       coords,
-      Array.from({ length: n_atoms }, (_, idx): [number, number] => [
-        idx,
-        (idx + 1) % n_atoms,
-      ]),
+      Array.from({ length: n_atoms }, (_, idx): Vec2 => [idx, (idx + 1) % n_atoms]),
     )
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r.every((b) => b.bond_order !== `aromatic`)).toBe(true)
-    expect(r.every((b) => b.aromatic_ring === undefined)).toBe(true)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(result.every((bond) => bond.bond_order !== `aromatic`)).toBe(true)
+    expect(result.every((bond) => bond.aromatic_ring === undefined)).toBe(true)
   })
 })
 
@@ -394,9 +411,9 @@ describe(`T2 graceful fallback`, () => {
         [5, 1],
       ],
     )
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r.every((b) => b.bond_order === 1)).toBe(true)
-    expect(r.every((b) => !b.perceived)).toBe(true)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(result.every((bond) => bond.bond_order === 1)).toBe(true)
+    expect(result.every((bond) => !bond.perceived)).toBe(true)
   })
 
   test(`NaCl pair (no bonds list) → empty result`, () => {
@@ -424,23 +441,23 @@ describe(`T2 graceful fallback`, () => {
         [0, 2],
       ],
     )
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r.every((b) => b.bond_order === 1 && b.perceived)).toBe(true)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(result.every((bond) => bond.bond_order === 1 && bond.perceived)).toBe(true)
   })
 })
 
 describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () => {
   const pb = (
-    i: number,
-    j: number,
+    idx_1: number,
+    idx_2: number,
     order: PerceivedBond[`bond_order`],
     kekule?: PerceivedBond[`kekule_order`],
     cell_shift?: PerceivedBond[`cell_shift`],
   ): PerceivedBond => ({
     pos_1: [0, 0, 0],
     pos_2: [1, 0, 0],
-    site_idx_1: i,
-    site_idx_2: j,
+    site_idx_1: idx_1,
+    site_idx_2: idx_2,
     bond_length: 1,
     strength: 1,
     transform_matrix: new Float32Array(16),
@@ -450,13 +467,13 @@ describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () =
     ...(cell_shift === undefined ? {} : { cell_shift }),
   })
   const expl = (
-    i: number,
-    j: number,
+    idx_1: number,
+    idx_2: number,
     order: StructureBond[`order`],
     cell_shift?: StructureBond[`cell_shift`],
   ): StructureBond => ({
-    site_idx_1: i,
-    site_idx_2: j,
+    site_idx_1: idx_1,
+    site_idx_2: idx_2,
     order,
     ...(cell_shift === undefined ? {} : { cell_shift }),
   })

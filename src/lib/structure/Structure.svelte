@@ -3,7 +3,7 @@
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import type { ShowControlsProp } from '$lib/controls'
   import { normalize_show_controls } from '$lib/controls'
-  import type { ElementSymbol } from '$lib/element'
+  import { coerce_elem_symbol, type ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
@@ -16,7 +16,6 @@
     DEFAULT_ISOSURFACE_SETTINGS,
     tile_volumetric_data,
   } from '$lib/isosurface/types'
-  import { ELEM_SYMBOLS } from '$lib/labels'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
@@ -686,9 +685,8 @@
 
   // Normalize and validate element symbol (e.g. "fe" → "Fe", "Xx" → null)
   function normalize_element(input: string): ElementSymbol | null {
-    const normalized = (input.charAt(0).toUpperCase() +
-      input.slice(1).toLowerCase()) as ElementSymbol
-    return ELEM_SYMBOLS.includes(normalized) ? normalized : null
+    const normalized = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase()
+    return coerce_elem_symbol(normalized) ?? null
   }
 
   function clear_selection() {

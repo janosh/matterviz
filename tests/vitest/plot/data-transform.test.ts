@@ -249,7 +249,7 @@ describe(`data-transform utility functions`, () => {
           { x: [3, 4], y: [30, 40], label: `remove` },
           { x: [5, 6], y: [50, 60], label: `keep` },
         ],
-        filter_fn: (s: DataSeries) => s.label === `keep`,
+        filter_fn: (series: DataSeries) => series.label === `keep`,
         expected: [
           { x: 1, y: 10 },
           { x: 2, y: 20 },
