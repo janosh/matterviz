@@ -10,7 +10,8 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
+  import { SettingsSection, toggle_fullscreen } from '$lib/layout'
+  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec2, Vec3 } from '$lib/math'
   import {
     convex_hull_2d,
@@ -1779,8 +1780,12 @@
     schedule_label_occlusion_update()
   })
 
-  $effect(() => {
-    set_fullscreen_bg(wrapper, fullscreen, `--chempot-3d-bg-fullscreen`)
+  // Drive the browser Fullscreen API from the bindable `fullscreen` prop (parent-controllable), keep it in sync with Esc/external exits
+  sync_fullscreen({
+    get_wrapper: () => wrapper,
+    get_fullscreen: () => fullscreen,
+    set_fullscreen: (val) => (fullscreen = val),
+    bg_css_var: `--chempot-3d-bg-fullscreen`,
   })
 
   $effect(() => {
@@ -2065,12 +2070,6 @@
     color_mode_override = color_modes[(idx + 1) % color_modes.length]
   }
 </script>
-
-<svelte:document
-  onfullscreenchange={() => {
-    fullscreen = document.fullscreenElement === wrapper
-  }}
-/>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
