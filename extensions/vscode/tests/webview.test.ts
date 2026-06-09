@@ -1,5 +1,11 @@
+import { parse_structure_file } from '$lib/structure/parse'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { base64_to_array_buffer } from '../src/webview/main'
+import { base64_to_array_buffer, parse_file_content } from '../src/webview/main'
+
+// parse_structure_file throws on parse failure but can still return a structure with
+// zero atoms (e.g. a CIF with cell params but no _atom_site records). Mock it to that
+// shape to exercise parse_file_content's no-atoms guard.
+vi.mock('$lib/structure/parse', () => ({ parse_structure_file: vi.fn() }))
 
 declare global {
   // download function added by VSCode integration
@@ -91,6 +97,21 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
     expect(new TextDecoder().decode(result_array.slice(8, 24)).replaceAll(`\0`, ``)).toBe(
       `ASE-Trajectory`,
     )
+  })
+})
+
+describe(`parse_file_content structure guard`, () => {
+  // parse_structure_file is mocked above; vary its return to exercise the no-atoms guard.
+  // error=string asserts a throw, error=null asserts a successful structure result.
+  test.each([
+    [`empty cell-only CIF`, { sites: [] }, `empty.cif`, `No atoms found in empty.cif`],
+    [`missing sites property`, {}, `empty.cif`, `No atoms found in empty.cif`],
+    [`valid structure`, { sites: [{ species: [] }] }, `ok.cif`, null],
+  ])(`%s`, async (_label, parsed, filename, error) => {
+    vi.mocked(parse_structure_file).mockReturnValueOnce(parsed as never)
+    const promise = parse_file_content(`data_test`, filename)
+    if (error) await expect(promise).rejects.toThrow(error)
+    else expect(await promise).toMatchObject({ type: `structure`, filename })
   })
 })
 

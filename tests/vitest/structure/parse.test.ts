@@ -574,6 +574,8 @@ describe(`Auto-detection & Error Handling`, () => {
   it.each([
     // Parser-specific errors
     { parser: parse_poscar, content: `Too short` },
+    // negative scale = target volume; singular (zero-volume) lattice -> infinite scale factor
+    { parser: parse_poscar, content: `Test\n-27.0\n3 0 0\n3 0 0\n0 0 3\nH\n1\nDirect\n0 0 0` },
     { parser: parse_xyz, content: `` },
     {
       parser: parse_poscar,

@@ -327,7 +327,7 @@ function request_large_file_content(
 }
 
 // Parse file content and determine if it's a structure or trajectory
-const parse_file_content = async (
+export const parse_file_content = async (
   content: string,
   filename: string,
   is_compressed: boolean = false,
@@ -457,6 +457,9 @@ const parse_file_content = async (
 
   // Parse as structure (CIF, POSCAR, XYZ, etc.) — throws descriptive reasons on failure
   const structure = parse_structure_file(content, filename)
+  // parse_structure_file throws on parse failure but can still return zero atoms (e.g. a
+  // CIF with cell params but no _atom_site records), which is invalid downstream
+  if (!structure.sites?.length) throw new Error(`No atoms found in ${filename}`)
   const data = { ...structure, id: filename.replace(/\.[^/.]+$/, ``) }
   return { type: `structure`, data, filename }
 }

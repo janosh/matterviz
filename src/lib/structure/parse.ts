@@ -287,6 +287,10 @@ export function parse_poscar(content: string): ParsedStructure | null {
     // Handle negative scale factor (volume-based scaling, single-factor form only)
     if (!per_axis_scale && scale_factor < 0) {
       const volume = Math.abs(math.det_3x3(lattice_vecs))
+      if (volume < math.EPS) {
+        diag_error(`POSCAR target-volume scaling requires a non-singular lattice`)
+        return null
+      }
       scale_factor = (-scale_factor / volume) ** (1 / 3)
     }
 

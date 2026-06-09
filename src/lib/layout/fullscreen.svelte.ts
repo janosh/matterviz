@@ -21,7 +21,9 @@ export function sync_fullscreen(opts: {
         console.error(err)
         opts.on_request_error?.(err)
       })
-    } else if (!fullscreen && fs_el === wrapper) void document.exitFullscreen()
+    } else if (!fullscreen && fs_el === wrapper) {
+      document.exitFullscreen().catch(console.error)
+    }
     set_fullscreen_bg(wrapper, fullscreen, opts.bg_css_var)
   })
 
