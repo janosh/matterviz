@@ -1,6 +1,6 @@
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Crystal, Pbc } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { add_xrd_pattern, compute_xrd_pattern, WAVELENGTHS, type XrdPattern } from '$lib/xrd'
 import fs from 'node:fs'
@@ -8,30 +8,13 @@ import path from 'node:path'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
 import { fixture_id, xrd_patterns } from '../fixtures/xrd'
-import { read_maybe_gz } from '../setup'
+import { make_crystal, read_maybe_gz } from '../setup'
 
 const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 
 // Shared helper for test suites
-function make_simple_cubic_structure(a_len: number): Crystal {
-  const matrix: Matrix3x3 = [
-    [a_len, 0, 0],
-    [0, a_len, 0],
-    [0, 0, a_len],
-  ]
-  const volume = a_len * a_len * a_len
-  const pbc: Pbc = [true, true, true]
-  const lattice_params = { a: a_len, b: a_len, c: a_len, alpha: 90, beta: 90, gamma: 90 }
-  const lattice = { matrix, pbc, ...lattice_params, volume }
-  const site = {
-    species: [{ element: `H` as const, occu: 1, oxidation_state: 0 }],
-    abc: [0, 0, 0] satisfies Vec3,
-    xyz: [0, 0, 0] satisfies Vec3,
-    label: `H1`,
-    properties: {},
-  }
-  return { lattice, sites: [site] }
-}
+const make_simple_cubic_structure = (a_len: number): Crystal =>
+  make_crystal(a_len, [{ element: `H`, abc: [0, 0, 0], label: `H1` }])
 
 // Pair each structure file with its precomputed XRD pattern from ../fixtures/xrd
 function list_matching_pairs() {
@@ -56,7 +39,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
     expect(file_pairs.length).toBeGreaterThan(0)
   })
 
-  test.each(file_pairs.map((p) => [p.name, p] as const))(
+  test.each(file_pairs.map((pair) => [pair.name, pair] as const))(
     `compare XRD for %s`,
     (_name, pair) => {
       const structure_json = read_maybe_gz(pair.struct_path)

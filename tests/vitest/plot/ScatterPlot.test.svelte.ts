@@ -5,7 +5,7 @@ import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transfo
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, resize_element, svg_query } from '../setup'
+import { bind_props, doc_query, mount_sized, resize_element, svg_query } from '../setup'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -13,23 +13,9 @@ const basic = {
   point_style: { fill: `steelblue`, radius: 5 },
 }
 
-async function mount_sized_scatter_plot(
+const mount_sized_scatter_plot = (
   props: Partial<ComponentProps<typeof ScatterPlot>>,
-): Promise<HTMLElement> {
-  const container = document.createElement(`div`)
-  document.body.append(container)
-  mount(ScatterPlot, {
-    target: container,
-    // Object.assign (not spread) keeps bind_props accessors intact for bindable-prop tests
-    props: Object.assign(props, {
-      style: `width: 400px; height: 300px; ${props.style ?? ``}`,
-    }),
-  })
-  const plot = container.querySelector<HTMLElement>(`.scatter`)
-  if (!plot) throw new Error(`ScatterPlot root element not found`)
-  await resize_element(plot, 400, 300)
-  return plot
-}
+): Promise<HTMLElement> => mount_sized(ScatterPlot, props, { selector: `.scatter` })
 
 const visible_marker_count = (series: DataSeries[]): number =>
   series.reduce((sum, srs) => {
@@ -59,13 +45,13 @@ describe(`ScatterPlot`, () => {
     {
       series: [{ ...basic, y: [5, 3, 20, 2, 7] }],
       x_axis: { range: [null, null] as [null, null] },
-      y_axis: { range: [0, 10] as [number, number] },
+      y_axis: { range: [0, 10] as Vec2 },
       markers: `line`,
       expected_markers: 4,
     },
     {
       series: [{ ...basic, x: [0, 1, 2, 3, 10] }],
-      x_axis: { range: [0, 5] as [number, number] },
+      x_axis: { range: [0, 5] as Vec2 },
       y_axis: { range: [null, null] as [null, null] },
       markers: `line+points`,
       expected_markers: 4,
@@ -645,11 +631,11 @@ describe(`ScatterPlot`, () => {
     let last_d = ``
     const settled_d = await vi.waitFor(
       () => {
-        const d = doc_query(`.fill-region path`).getAttribute(`d`) ?? ``
-        const settled = d !== `` && d === last_d
-        last_d = d
+        const path_d = doc_query(`.fill-region path`).getAttribute(`d`) ?? ``
+        const settled = path_d !== `` && path_d === last_d
+        last_d = path_d
         if (!settled) throw new Error(`fill path not settled`)
-        return d
+        return path_d
       },
       { timeout: 2000 },
     )
@@ -660,13 +646,13 @@ describe(`ScatterPlot`, () => {
   })
 
   // Dense grid covering the whole plot so no decoration can avoid overlapping data
-  const dense_grid = (n: number): { x: number[]; y: number[] } => {
+  const dense_grid = (grid_n: number): { x: number[]; y: number[] } => {
     const x: number[] = []
     const y: number[] = []
-    for (let row = 0; row < n; row++) {
-      for (let col = 0; col < n; col++) {
-        x.push((row / (n - 1)) * 100)
-        y.push((col / (n - 1)) * 100)
+    for (let row = 0; row < grid_n; row++) {
+      for (let col = 0; col < grid_n; col++) {
+        x.push((row / (grid_n - 1)) * 100)
+        y.push((col / (grid_n - 1)) * 100)
       }
     }
     return { x, y }
@@ -713,7 +699,7 @@ describe(`ScatterPlot`, () => {
     window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 200 }))
     window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
     await tick()
-    const y2_range = state.y2_axis.range as [number, number] | undefined
+    const y2_range = state.y2_axis.range as Vec2 | undefined
     if (!y2_range) throw new Error(`y2_axis.range not set by rect-zoom`)
     expect(y2_range.every(Number.isFinite)).toBe(true)
     expect(y2_range[0]).toBeLessThan(y2_range[1])

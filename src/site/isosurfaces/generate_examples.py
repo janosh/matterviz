@@ -75,7 +75,7 @@ def write_cube(
     origin = [-box_size / 2] * 3
     voxel = box_size / max(nx, ny, nz)
     voxel_bohr = voxel * ANG_TO_BOHR
-    origin_bohr = [c * ANG_TO_BOHR for c in origin]
+    origin_bohr = [coord * ANG_TO_BOHR for coord in origin]
 
     lines = [title, "Generated for matterviz isosurface demo"]
     n_sign = -len(atoms) if orbital else len(atoms)
@@ -372,7 +372,7 @@ def generate_hbn_chgcar() -> str:
     def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
         return (fx * lat_a + fy * a2_x, fy * a2_y, fz * lat_c)
 
-    atom_cart = [frac_to_cart(*f) for f in bn_frac]
+    atom_cart = [frac_to_cart(*frac) for frac in bn_frac]
     bond_cart = [frac_to_cart(1 / 6, 1 / 3, 0.0), frac_to_cart(1 / 6, 1 / 3, 0.5)]
 
     def density(
@@ -417,7 +417,7 @@ def generate_al_slab_locpot() -> str:
     def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
         return (fx * a_surf + fy * a2_x, fy * a2_y, fz * c_slab)
 
-    atom_cart = [frac_to_cart(*f) for f in al_frac]
+    atom_cart = [frac_to_cart(*frac) for frac in al_frac]
 
     def density(
         x: float, y: float, z: float, _fx: float, _fy: float, fz: float

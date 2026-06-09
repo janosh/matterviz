@@ -73,14 +73,14 @@ describe(`Trajectory Streaming`, () => {
 
     // Write frame offsets
     let current_offset = 48 + num_frames * 8
-    for (let i = 0; i < num_frames; i++) {
-      view.setBigInt64(48 + i * 8, BigInt(current_offset), true)
+    for (let idx = 0; idx < num_frames; idx++) {
+      view.setBigInt64(48 + idx * 8, BigInt(current_offset), true)
       current_offset += 8 + frame_data.length // 8 bytes for length + data
     }
 
     // Write frame data
     current_offset = 48 + num_frames * 8
-    for (let i = 0; i < num_frames; i++) {
+    for (let idx = 0; idx < num_frames; idx++) {
       view.setBigInt64(current_offset, BigInt(frame_data.length), true)
       new Uint8Array(buffer, current_offset + 8, frame_data.length).set(
         new TextEncoder().encode(frame_data),
@@ -263,7 +263,7 @@ describe(`Trajectory Streaming`, () => {
       })
 
       expect(progress_calls.length).toBeGreaterThan(0)
-      expect(progress_calls.some((p) => p.stage.includes(`Extracting`))).toBe(true)
+      expect(progress_calls.some((call) => call.stage.includes(`Extracting`))).toBe(true)
     })
   })
 

@@ -310,9 +310,9 @@ const get_bond_neighbors = (
   sites: { species: { element: string }[] }[],
 ): string[] =>
   bond_pairs
-    .filter((b) => b.site_idx_1 === hovered_idx || b.site_idx_2 === hovered_idx)
-    .map((b) => {
-      const neighbor_idx = b.site_idx_1 === hovered_idx ? b.site_idx_2 : b.site_idx_1
+    .filter((bond) => bond.site_idx_1 === hovered_idx || bond.site_idx_2 === hovered_idx)
+    .map((bond) => {
+      const neighbor_idx = bond.site_idx_1 === hovered_idx ? bond.site_idx_2 : bond.site_idx_1
       return sites[neighbor_idx]?.species[0]?.element ?? `?`
     })
 
@@ -414,7 +414,7 @@ describe(`edit-atoms: change element`, () => {
   test(`changes multiple atoms and normalizes case`, () => {
     const struct = get_dummy_structure(`H`, 4)
     const result = change_element_on_structure(struct, new Set([0, 2, 3]), `o`)
-    const elements = result?.sites.map((s) => s.species[0].element)
+    const elements = result?.sites.map((site) => site.species[0].element)
     expect(elements).toEqual([`O`, `H`, `O`, `O`])
   })
 

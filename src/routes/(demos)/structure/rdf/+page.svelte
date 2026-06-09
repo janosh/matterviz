@@ -34,7 +34,7 @@
     }
 
     const comp = { Si: 1, O: 2, Al: 0.5, Fe: 0.3 }
-    const total = Object.values(comp).reduce((s, v) => s + v, 0)
+    const total = Object.values(comp).reduce((sum, count) => sum + count, 0)
     const sites: Crystal[`sites`] = []
 
     for (const [el, frac] of Object.entries(comp)) {

@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import type { Surface3DConfig } from '$lib/plot/core/types'
 import { describe, expect, test } from 'vitest'
 
@@ -244,8 +245,8 @@ describe(`Surface3D configuration logic`, () => {
 
   describe(`resolution configuration`, () => {
     test.each<{
-      resolution: number | [number, number] | undefined
-      expected: [number, number]
+      resolution: number | Vec2 | undefined
+      expected: Vec2
     }>([
       { resolution: 10, expected: [10, 10] },
       { resolution: [20, 15], expected: [20, 15] },

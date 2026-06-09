@@ -29,10 +29,10 @@ title: JsonTree
     band_gap: 2.1,
     is_stable: true,
     elements: ["Fe", "O"],
-    sites: Array.from({ length: 10 }, (_, i) => ({
-      species: i < 4 ? "Fe" : "O",
+    sites: Array.from({ length: 10 }, (_, idx) => ({
+      species: idx < 4 ? "Fe" : "O",
       coords: [Math.random().toFixed(4), Math.random().toFixed(4), Math.random().toFixed(4)],
-      properties: { charge: i < 4 ? 3.0 : -2.0, magmom: i < 4 ? 4.2 : 0.0 }
+      properties: { charge: idx < 4 ? 3.0 : -2.0, magmom: idx < 4 ? 4.2 : 0.0 }
     })),
     symmetry: {
       crystal_system: "trigonal",
@@ -114,12 +114,12 @@ title: JsonTree
   // Large dataset for performance
   const large_dataset = {
     metadata: { generated: new Date().toISOString(), count: 100 },
-    items: Array.from({ length: 100 }, (_, i) => ({
-      id: i + 1,
-      name: `Item ${i + 1}`,
+    items: Array.from({ length: 100 }, (_, idx) => ({
+      id: idx + 1,
+      name: `Item ${idx + 1}`,
       value: Math.round(Math.random() * 1000),
       active: Math.random() > 0.3,
-      tags: [`tag${i % 5}`, `category${i % 3}`]
+      tags: [`tag${idx % 5}`, `category${idx % 3}`]
     }))
   }
 

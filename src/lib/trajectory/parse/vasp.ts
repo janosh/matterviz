@@ -4,11 +4,8 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
-import {
-  create_trajectory_frame,
-  is_valid_element_symbol,
-  validate_3x3_matrix,
-} from '$lib/trajectory/helpers'
+import { is_elem_symbol } from '$lib/element'
+import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
 
 // Parse the 7-line XDATCAR header at lines[start]: title, scale factor, 3 lattice rows
 // (multiplied by scale), element names, element counts
@@ -48,7 +45,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
       `XDATCAR contains invalid element counts: expected finite positive integers`,
     )
   }
-  const bad_element = element_names.find((name) => !is_valid_element_symbol(name))
+  const bad_element = element_names.find((name) => !is_elem_symbol(name))
   if (bad_element) throw new Error(`Invalid element symbol in XDATCAR: ${bad_element}`)
   let elements: ElementSymbol[] = element_names.flatMap((name, idx) =>
     Array(element_counts[idx]).fill(name),
@@ -75,7 +72,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
         frac_to_cart = math.create_frac_to_cart(lattice_matrix)
         if (
           hdr.names.length === hdr.counts.length &&
-          hdr.names.every(is_valid_element_symbol) &&
+          hdr.names.every(is_elem_symbol) &&
           hdr.counts.every((count) => Number.isInteger(count) && count > 0)
         ) {
           elements = hdr.names.flatMap((name, idx) => Array(hdr.counts[idx]).fill(name))

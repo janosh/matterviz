@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Vec2 } from '$lib/math'
   import { BinnedScatterPlot, type DensePointSeries } from '$lib/plot'
   import { onMount } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -24,7 +25,7 @@
     auto_point_mode: { max_points: unbounded, max_points_per_px: unbounded },
   })
   const make_axis = (label: string) =>
-    mode === `singleton` ? { range: [0, 1] as [number, number], label } : { label }
+    mode === `singleton` ? { range: [0, 1] as Vec2, label } : { label }
   const x_axis = $derived(make_axis(`x`))
   const y_axis = $derived(make_axis(`y`))
 

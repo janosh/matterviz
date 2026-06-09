@@ -103,9 +103,9 @@ export const PLOT_COLORS = [
 
 // calculate human-perceived brightness from RGB color
 export function luminance(clr: string) {
-  const { r, g, b } = rgb(clr)
+  const { r: red, g: green, b: blue } = rgb(clr)
 
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 // https://stackoverflow.com/a/596243
+  return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 // https://stackoverflow.com/a/596243
 }
 
 // get background color of passed DOM node, or recurse up the DOM tree if current node is transparent

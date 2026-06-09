@@ -2,6 +2,7 @@
 // Parses CALPHAD TDB files to extract metadata about elements, phases, and parameters
 
 import { ELEM_SYMBOLS } from '$lib/labels'
+import type { Vec2 } from '$lib/math'
 import { to_error } from '$lib/utils'
 
 // Default temperature bounds for TDB parsing (in Kelvin)
@@ -57,7 +58,7 @@ export interface TdbParseResult {
   // Derived properties for convenience
   binary_system?: [string, string]
   available_phases?: string[]
-  temperature_range?: [number, number]
+  temperature_range?: Vec2
 }
 
 // Parse a TDB file content string

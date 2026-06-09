@@ -19,15 +19,15 @@ function create_synthetic_pattern(
   peaks: number[] = [2, 4],
   heights: number[] = [2, 1.5],
 ): RdfPattern {
-  const r = Array.from({ length: n_points }, (_, idx) => (idx + 1) * 0.2)
-  const g_r = r.map((r_val) => {
+  const radii = Array.from({ length: n_points }, (_, idx) => (idx + 1) * 0.2)
+  const g_r = radii.map((r_val) => {
     let g_val = 1 - Math.exp(-r_val / 2)
     for (let idx = 0; idx < peaks.length; idx++) {
       g_val += heights[idx] * Math.exp(-((r_val - peaks[idx]) ** 2) / 0.3)
     }
     return g_val
   })
-  return { r, g_r, element_pair: [`Li`, `O`] }
+  return { r: radii, g_r, element_pair: [`Li`, `O`] }
 }
 
 async function mount_sized_rdf_plot(

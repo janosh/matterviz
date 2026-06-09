@@ -11,7 +11,7 @@
   let heatmap_values = $derived(
     Object.values(data_name == `WBM` ? wbm_elem_counts : mp_elem_counts),
   )
-  let total = $derived(heatmap_values.reduce((a, b) => a + b, 0))
+  let total = $derived(heatmap_values.reduce((sum, val) => sum + val, 0))
   let nice_range = $state([])
 </script>
 

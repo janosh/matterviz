@@ -1,4 +1,4 @@
-import { ColorBar } from '$lib'
+import { ColorBar, type Vec2 } from '$lib'
 import { luminance } from '$lib/colors'
 import type { AxisOption, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
@@ -260,7 +260,7 @@ describe(`ColorBar title_side Default Logic`, () => {
 
 describe(`ColorBar Date/Time Formatting`, () => {
   test(`formats ticks correctly using tick_format`, () => {
-    const date_range: [number, number] = [
+    const date_range: Vec2 = [
       new Date(2024, 0, 1).getTime(), // Jan 1, 2024
       new Date(2024, 11, 31).getTime(), // Dec 31, 2024
     ]
@@ -283,7 +283,7 @@ describe(`ColorBar Date/Time Formatting`, () => {
   })
 
   test(`formats ticks with different format string`, () => {
-    const date_range: [number, number] = [
+    const date_range: Vec2 = [
       new Date(2024, 0, 1, 0, 0, 0).getTime(), // Start of day
       new Date(2024, 0, 1, 23, 59, 59).getTime(), // End of day
     ]
@@ -351,8 +351,8 @@ describe(`ColorBar Numeric Formatting`, () => {
   })
 
   test.each([
-    { range: [0.1234, 5.6789] as [number, number], expected: [`0.123`, `2.9`, `5.68`] },
-    { range: [1000, 5000] as [number, number], expected: [`1k`, `5k`] },
+    { range: [0.1234, 5.6789] as Vec2, expected: [`0.123`, `2.9`, `5.68`] },
+    { range: [1000, 5000] as Vec2, expected: [`1k`, `5k`] },
   ])(
     `falls back to format_num for range $range when tick_format undefined`,
     ({ range, expected }) => {
@@ -426,7 +426,7 @@ describe(`ColorBar Other Features`, () => {
   })
 
   test(`accepts a function for color_scale`, () => {
-    const custom_scale = vi.fn((t: number): string => `rgb(${t * 255}, 0, 0)`) // Mock scale
+    const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`) // Mock scale
     mount(ColorBar, {
       target: document.body,
       props: { color_scale: custom_scale, range: [0, 1] }, // Use default steps=50

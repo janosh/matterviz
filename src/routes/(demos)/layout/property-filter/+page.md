@@ -29,8 +29,8 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
   }
 
   const filtered_count = $derived(
-    bandgaps.filter((v) =>
-      (min === undefined || v >= min) && (max === undefined || v <= max)
+    bandgaps.filter((bandgap) =>
+      (min === undefined || bandgap >= min) && (max === undefined || bandgap <= max)
     ).length,
   )
 </script>

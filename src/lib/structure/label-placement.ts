@@ -1,4 +1,4 @@
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Camera, Object3D } from 'three'
 import { Vector3 } from 'three'
@@ -70,7 +70,7 @@ const project_to_screen = (
   position: Vec3,
   label_camera: Camera,
   size: { width: number; height: number },
-): [number, number] => {
+): Vec2 => {
   const projected = new Vector3(...position).project(label_camera)
   return [
     (projected.x * size.width) / 2 + size.width / 2,
@@ -85,7 +85,7 @@ export const label_screen_position = (
   label_screen_margin: number,
   label_camera: Camera,
   size: { width: number; height: number },
-): [number, number] => {
+): Vec2 => {
   const atom_screen = project_to_screen(atom_position, label_camera, size)
   const offset_screen = project_to_screen(
     math.add(atom_position, label_offset),

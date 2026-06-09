@@ -21,13 +21,13 @@ function make_chgcar({
   const lines = [
     comment,
     `   ${scale}`,
-    ...(lattice as string[]).map((l) => `     ${l}`),
+    ...(lattice as string[]).map((line) => `     ${line}`),
     `   ${elements}`,
     `   ${counts}`,
   ]
   if (selective_dynamics) lines.push(`Selective dynamics`)
   lines.push(coord_mode as string)
-  lines.push(...(positions as string[]).map((p) => `  ${p}`))
+  lines.push(...(positions as string[]).map((pos) => `  ${pos}`))
   lines.push(``)
   lines.push(`   ${grid_dims}`)
   lines.push(data as string)
@@ -325,17 +325,19 @@ function make_cube({
 }: Record<string, unknown> = {}): string {
   const lines = [
     ...(titles as string[]),
-    `    ${n_atoms}   ${(origin as number[]).map((v) => v.toFixed(6)).join(`   `)}`,
+    `    ${n_atoms}   ${(origin as number[]).map((val) => val.toFixed(6)).join(`   `)}`,
   ]
   for (let idx = 0; idx < 3; idx++) {
     const vox = (voxels as number[][])[idx]
-    lines.push(`   ${(grid_n as number[])[idx]}   ${vox.map((v) => v.toFixed(6)).join(`   `)}`)
+    lines.push(
+      `   ${(grid_n as number[])[idx]}   ${vox.map((val) => val.toFixed(6)).join(`   `)}`,
+    )
   }
   for (const atom of atoms as number[][]) {
     lines.push(
       `    ${atom[0]}   ${atom
         .slice(1)
-        .map((v) => v.toFixed(6))
+        .map((val) => val.toFixed(6))
         .join(`   `)}`,
     )
   }

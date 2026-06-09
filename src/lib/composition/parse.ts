@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '$lib/element'
 import type { CompositionType } from '$lib/composition'
-import { element_data } from '$lib/element'
+import { element_data, is_elem_symbol } from '$lib/element'
 import { ELEM_SYMBOLS } from '$lib/labels'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access
@@ -20,10 +20,6 @@ for (const element of element_data) {
   ELEM_NAME_TO_SYMBOL[element.name] = element.symbol
   ELEM_SYMBOL_TO_NAME[element.symbol] = element.name
 }
-
-// Type guard: check if a string is a valid element symbol
-export const is_valid_element = (sym: string): sym is ElementSymbol =>
-  (ELEM_SYMBOLS as readonly string[]).includes(sym)
 
 // Check if object has atomic numbers as keys (1-118)
 const is_atomic_number_composition = (obj: Record<string | number, number>): boolean => {
@@ -67,7 +63,7 @@ export const atomic_symbol_to_num = (
 ): Record<number, number> => {
   const atomic_composition: Record<number, number> = {}
   for (const [symbol, amount] of Object.entries(symbol_composition)) {
-    if (!is_valid_element(symbol)) throw new Error(`Invalid element symbol: ${symbol}`)
+    if (!is_elem_symbol(symbol)) throw new Error(`Invalid element symbol: ${symbol}`)
     const atomic_num = SYMBOL_TO_ATOMIC_NUMBER[symbol]
     if (!atomic_num) throw new Error(`Invalid element symbol: ${symbol}`)
     if (amount > 0) {
@@ -116,7 +112,7 @@ export const parse_formula = (formula: string): CompositionType => {
     const expanded = expand_parentheses(segment.slice(coeff?.length ?? 0))
     for (const match of expanded.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
       const [, element, count] = match
-      if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
+      if (!is_elem_symbol(element)) throw new Error(`Invalid element symbol: ${element}`)
       composition[element] = (composition[element] ?? 0) + parse_count(count) * multiplier
     }
   }
@@ -133,7 +129,7 @@ export const normalize_composition = (
 
   const normalized: CompositionType = {}
   for (const [element, amount] of Object.entries(composition)) {
-    if (typeof amount === `number` && amount > 0 && is_valid_element(element)) {
+    if (typeof amount === `number` && amount > 0 && is_elem_symbol(element)) {
       normalized[element] = amount
     }
   }
@@ -153,7 +149,7 @@ export const sanitize_composition_keys = (
   for (const [key, amount] of Object.entries(composition)) {
     if (typeof amount !== `number` || amount <= 0) continue
     // Extract first valid element symbol from key (e.g. "B0." -> "B", "Fe2+" -> "Fe")
-    const elem = (key.match(/[A-Z][a-z]?/g) ?? []).find(is_valid_element)
+    const elem = (key.match(/[A-Z][a-z]?/g) ?? []).find(is_elem_symbol)
     if (elem) sanitized[elem] = (sanitized[elem] || 0) + amount
   }
   const result = normalize_composition(sanitized)
@@ -176,7 +172,7 @@ export const fractional_composition = (
   if (by_weight) {
     const element_weights = Object.fromEntries(
       Object.entries(filtered).map(([element, amount]) => {
-        if (!is_valid_element(element)) throw new Error(`Unknown element: ${element}`)
+        if (!is_elem_symbol(element)) throw new Error(`Unknown element: ${element}`)
         const atomic_mass = ATOMIC_WEIGHTS.get(element)
         if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
         return [element, amount * atomic_mass]
@@ -235,7 +231,7 @@ export const get_reduced_formula = (composition: CompositionType): CompositionTy
   if (divisor <= 1) return composition
   const reduced: CompositionType = {}
   for (const [elem, amt] of Object.entries(composition)) {
-    if (is_valid_element(elem)) reduced[elem] = amt / divisor
+    if (is_elem_symbol(elem)) reduced[elem] = amt / divisor
   }
   return reduced
 }
@@ -243,7 +239,7 @@ export const get_reduced_formula = (composition: CompositionType): CompositionTy
 // Calculate molecular weight (sum of atomic masses * amounts)
 export const get_molecular_weight = (composition: CompositionType): number =>
   Object.entries(composition).reduce((total, [elem, amount]) => {
-    const mass = is_valid_element(elem) ? (ATOMIC_WEIGHTS.get(elem) ?? 0) : 0
+    const mass = is_elem_symbol(elem) ? (ATOMIC_WEIGHTS.get(elem) ?? 0) : 0
     return total + mass * amount
   }, 0)
 
@@ -310,7 +306,7 @@ export const parse_formula_with_oxidation = (
     const count_str = match[4] || match[5]
     const count = parse_count(count_str)
 
-    if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
+    if (!is_elem_symbol(element)) throw new Error(`Invalid element symbol: ${element}`)
 
     const oxidation_state = oxidation_str ? parse_oxidation_state(oxidation_str) : undefined
 
@@ -347,7 +343,7 @@ export const oxi_composition_to_elements = (
   composition: OxiComposition,
 ): ElementWithOxidation[] =>
   Object.entries(composition).flatMap(([element, { amount, oxidation_state }], idx) =>
-    is_valid_element(element) ? [{ element, amount, oxidation_state, orig_idx: idx }] : [],
+    is_elem_symbol(element) ? [{ element, amount, oxidation_state, orig_idx: idx }] : [],
   )
 
 // Extract element symbols from a chemical formula.
@@ -366,11 +362,11 @@ export function extract_formula_elements(
     const matches = formula.match(/[A-Z][a-z]?/g) ?? []
     const elements: ElementSymbol[] = []
     for (const match of matches) {
-      if (is_valid_element(match)) elements.push(match)
+      if (is_elem_symbol(match)) elements.push(match)
     }
     return elements
   }
-  const symbols = Object.keys(parse_formula(formula)).filter(is_valid_element)
+  const symbols = Object.keys(parse_formula(formula)).filter(is_elem_symbol)
   return sorted ? symbols.sort() : symbols
 }
 
@@ -387,13 +383,13 @@ export function generate_chem_sys_subspaces(
   else if (Array.isArray(input)) {
     const uniq = [...new Set(input)]
     for (const elem of uniq) {
-      if (!is_valid_element(elem)) throw new Error(`Invalid element symbol: ${elem}`)
+      if (!is_elem_symbol(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
     elements = uniq
   } else {
     elements = []
     for (const elem of Object.keys(input)) {
-      if (!is_valid_element(elem)) throw new Error(`Invalid element symbol: ${elem}`)
+      if (!is_elem_symbol(elem)) throw new Error(`Invalid element symbol: ${elem}`)
       elements.push(elem)
     }
   }
@@ -466,7 +462,7 @@ export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcard
   for (const token of tokens) {
     if (token === `*`) {
       wildcard_count++
-    } else if (is_valid_element(token)) {
+    } else if (is_elem_symbol(token)) {
       elements.push(token)
     } else {
       throw new Error(`Invalid element symbol or wildcard: ${token}`)
@@ -519,7 +515,7 @@ export function parse_formula_with_wildcards(formula: string): WildcardFormulaTo
       const element = match[1]
       const count = parse_count(match[2])
 
-      if (!is_valid_element(element)) {
+      if (!is_elem_symbol(element)) {
         throw new Error(`Invalid element symbol: ${element}`)
       }
       tokens.push({ element, count })
@@ -547,7 +543,7 @@ export function matches_chemsys_wildcard(
     // Must contain all explicit elements
     const formula_set = new Set(formula_elements)
     for (const elem of explicit_elements) {
-      if (!is_valid_element(elem) || !formula_set.has(elem)) return false
+      if (!is_elem_symbol(elem) || !formula_set.has(elem)) return false
     }
 
     return true

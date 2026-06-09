@@ -93,8 +93,8 @@ def get_brillouin_zone_data(structure: Structure) -> dict[str, Any]:
         },
         # High-symmetry points
         "kpoints": {
-            k: v.tolist() if isinstance(v, np.ndarray) else v
-            for k, v in result.get("point_coords", {}).items()
+            key: val.tolist() if isinstance(val, np.ndarray) else val
+            for key, val in result.get("point_coords", {}).items()
         },
         # Primitive cell
         "primitive_lattice": np.array(result["primitive_lattice"]).tolist(),

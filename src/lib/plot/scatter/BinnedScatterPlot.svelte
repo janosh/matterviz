@@ -75,7 +75,7 @@
     scheme: `interpolateViridis`,
   } satisfies Exclude<BinnedColorScaleConfig, string>
   const default_pad = { l: 64, r: 24, t: 24, b: 56 }
-  const default_point_radius_range: [number, number] = [4, 12]
+  const default_point_radius_range: Vec2 = [4, 12]
   const default_pick_radius = default_point_radius_range[1]
   const default_size_scale = {
     type: `linear`,

@@ -317,7 +317,7 @@ def _resolve_component_props_ref(
 
     candidates = glob(f"{dist_dir}/**/{component_file}", recursive=True)
     if subdir:
-        candidates = [p for p in candidates if subdir in p] or candidates
+        candidates = [path for path in candidates if subdir in path] or candidates
     if not candidates:
         return {}
 
@@ -493,7 +493,7 @@ def parse_svelte_dts_with_includes(
     props, callback_props, snippet_props, dom_props = parse_svelte_dts(
         dts_path, dist_dir
     )
-    existing = {p.js_name for p in props}
+    existing = {prop.js_name for prop in props}
 
     for include_spec in include_from:
         include_props, aliases = _parse_external_type_with_aliases(
@@ -521,7 +521,7 @@ def add_extra_props(
     props: list[Prop], extra_props: dict[str, str], callback_props: list[str]
 ) -> None:
     """Add manually-specified extra props to the props list."""
-    existing = {p.js_name for p in props}
+    existing = {prop.js_name for prop in props}
     for js_name, ts_type in extra_props.items():
         if js_name in existing:
             continue
@@ -543,7 +543,7 @@ def find_component_dts(dist_dir: str, key: str) -> str:
     if not matches:
         raise FileNotFoundError(f"No match for {key!r} under {dist_dir}")
     if len(matches) > 1:
-        rel = ", ".join(p.replace(f"{dist_dir}/", "") for p in matches)
+        rel = ", ".join(match.replace(f"{dist_dir}/", "") for match in matches)
         raise RuntimeError(f"Ambiguous key={key!r}. Matches: {rel}. Use a path key.")
     return matches[0]
 
@@ -565,28 +565,34 @@ def _py_type_hint(
     if type_hints and prop_name in type_hints:
         return type_hints[prop_name]
 
-    t = ts_type.strip()
+    type_str = ts_type.strip()
 
-    if t == "string":
+    if type_str == "string":
         return "str"
-    if t == "number":
+    if type_str == "number":
         return "int" if any(kw in prop_name for kw in _INT_KEYWORDS) else "float"
-    if t == "boolean":
+    if type_str == "boolean":
         return "bool"
-    if t.endswith("[]"):
-        inner = _py_type_hint(t[:-2].strip(), prop_name, type_hints)
+    if type_str.endswith("[]"):
+        inner = _py_type_hint(type_str[:-2].strip(), prop_name, type_hints)
         return f"list[{inner}]" if inner != "Any" else "list"
-    if "Record" in t or "Partial" in t or "ComponentProps" in t:
+    if "Record" in type_str or "Partial" in type_str or "ComponentProps" in type_str:
         return "dict"
-    if "Set" in t:
+    if "Set" in type_str:
         return "list"
-    if "Float32Array" in t:
+    if "Float32Array" in type_str:
         return "list[float]"
-    if t.startswith("[") and t.endswith("]"):
+    if re.fullmatch(
+        r"Vec\d+", type_str
+    ):  # matterviz numeric tuple aliases (Vec2/Vec3/...)
+        return "list[float]"
+    if type_str.startswith("[") and type_str.endswith("]"):
         return "list"
-    if "|" in t:
+    if "|" in type_str:
         parts = [
-            p.strip() for p in t.split("|") if p.strip() not in ("null", "undefined")
+            part.strip()
+            for part in type_str.split("|")
+            if part.strip() not in ("null", "undefined")
         ]
         if parts:
             return _py_type_hint(parts[0], prop_name, type_hints)
@@ -638,17 +644,19 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         # re-emitted as component-specific params.
         reserved_base_args = {"id", "className", "style"}
         value_props = [
-            p
-            for p in props
-            if p.kind == "value"
-            and p.js_name not in dom_props
-            and p.js_name not in reserved_base_args
-            and p.js_name != "children"
+            prop
+            for prop in props
+            if prop.kind == "value"
+            and prop.js_name not in dom_props
+            and prop.js_name not in reserved_base_args
+            and prop.js_name != "children"
         ]
 
         # Auto-detect conversion defaults
-        auto_set = [p.js_name for p in value_props if "Set" in p.ts_type]
-        auto_float32 = [p.js_name for p in value_props if "Float32Array" in p.ts_type]
+        auto_set = [prop.js_name for prop in value_props if "Set" in prop.ts_type]
+        auto_float32 = [
+            prop.js_name for prop in value_props if "Float32Array" in prop.ts_type
+        ]
 
         default_set_props = spec.get("set_props", auto_set)
         default_float32_props = spec.get("float32_props", auto_float32)
@@ -658,8 +666,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         # Build python->js mapping with unique identifiers
         py_to_js: dict[str, str] = {}
         used_py: set[str] = set()
-        for p in value_props:
-            py, js = p.py_name, alias_overrides.get(p.py_name, p.js_name)
+        for prop in value_props:
+            py, js = prop.py_name, alias_overrides.get(prop.py_name, prop.js_name)
             base = py
             suffix = 2
             while py in used_py:
@@ -683,15 +691,15 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         # Build signature
         sig = ["self", "id=None"]
-        js_to_prop = {p.js_name: p for p in value_props}
+        js_to_prop = {prop.js_name: prop for prop in value_props}
         for py, js in py_to_js.items():
-            p = js_to_prop.get(js)
-            if p is None:
+            prop = js_to_prop.get(js)
+            if prop is None:
                 raise ValueError(
                     f"[{class_name}] alias '{py}' maps to unknown JS prop '{js}'. "
                     f"Valid props: {list(js_to_prop.keys())}"
                 )
-            py_type = _py_type_hint(p.ts_type, py, type_hints)
+            py_type = _py_type_hint(prop.ts_type, py, type_hints)
             # Avoid duplicate None when type hint already includes it
             if "None" not in py_type:
                 py_type += " | None"
@@ -716,11 +724,13 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             lines.append(f'            mv_props["{js}"] = {py}')
         if default_set_props:
             lines.append("        if set_props is None:")
-            formatted = "[" + ", ".join(f'"{s}"' for s in default_set_props) + "]"
+            formatted = "[" + ", ".join(f'"{name}"' for name in default_set_props) + "]"
             lines.append(f"            set_props = {formatted}")
         if default_float32_props:
             lines.append("        if float32_props is None:")
-            formatted = "[" + ", ".join(f'"{s}"' for s in default_float32_props) + "]"
+            formatted = (
+                "[" + ", ".join(f'"{name}"' for name in default_float32_props) + "]"
+            )
             lines.append(f"            float32_props = {formatted}")
         lines.append("")
         lines.append("        super().__init__(")

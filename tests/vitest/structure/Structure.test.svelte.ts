@@ -317,12 +317,14 @@ describe(`Structure`, () => {
       { format, action: `Copy` },
     ]),
   )(`$format $action button works`, async ({ format, action }) => {
-    // Mount component and open controls
-    const export_fn_name =
+    // Mount component and open controls. Downloads dispatch through export_structure_as;
+    // copies call the format's to_str from the STRUCT_TEXT_FORMATS map.
+    const fmt = format.toLowerCase() as keyof typeof exports.STRUCT_TEXT_FORMATS
+    const export_spy =
       action === `Download`
-        ? `export_structure_as_${format.toLowerCase()}`
-        : `structure_to_${format.toLowerCase()}_str`
-    const export_spy = vi.spyOn(exports, export_fn_name as keyof typeof exports)
+        ? vi.spyOn(exports, `export_structure_as`)
+        : vi.spyOn(exports.STRUCT_TEXT_FORMATS[fmt], `to_str`)
+    export_spy.mockClear() // spies are shared across test.each runs
 
     mount(Structure, {
       target: document.body,

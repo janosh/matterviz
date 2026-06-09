@@ -1,4 +1,4 @@
-import type { Matrix3x3, Point2D, Vec3 } from '$lib/math'
+import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
@@ -47,5 +47,5 @@ export type BrillouinZoneProps = {
 }
 
 export type ConvexHullData = Pick<BZMeshData, `vertices` | `faces`> & {
-  edges: [number, number][] // pairs of vertex indices
+  edges: Vec2[] // pairs of vertex indices
 }

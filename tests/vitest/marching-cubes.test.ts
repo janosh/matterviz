@@ -89,7 +89,8 @@ describe(`marching_cubes`, () => {
 
     expect(centered.faces).toHaveLength(uncentered.faces.length)
     // Centered vertices have lower mean position (shifted by -0.5)
-    const mean_x = (verts: Vec3[]) => verts.reduce((s, v) => s + v[0], 0) / verts.length
+    const mean_x = (verts: Vec3[]) =>
+      verts.reduce((sum, vertex) => sum + vertex[0], 0) / verts.length
     expect(mean_x(centered.vertices)).toBeLessThan(mean_x(uncentered.vertices))
   })
 
@@ -121,7 +122,11 @@ describe(`marching_cubes`, () => {
     const edge_len = (i1: number, i2: number) =>
       Math.hypot(...vertices[i1].map((coord, axis) => coord - vertices[i2][axis]))
     const max_edge = Math.max(
-      ...faces.flatMap(([a, b, c]) => [edge_len(a, b), edge_len(b, c), edge_len(c, a)]),
+      ...faces.flatMap(([vert_a, vert_b, vert_c]) => [
+        edge_len(vert_a, vert_b),
+        edge_len(vert_b, vert_c),
+        edge_len(vert_c, vert_a),
+      ]),
     )
     // No triangle edge should span more than half the unit cell
     expect(max_edge).toBeLessThan(0.5)
@@ -159,7 +164,7 @@ describe(`marching_cubes`, () => {
 
     expect(scaled.vertices).toHaveLength(unit.vertices.length)
     // Guard: unit result has non-zero y-coordinates
-    expect(unit.vertices.some((v) => Math.abs(v[1]) > 1e-6)).toBe(true)
+    expect(unit.vertices.some((vertex) => Math.abs(vertex[1]) > 1e-6)).toBe(true)
     // Scaled vertices should be 10x unit vertices
     for (let idx = 0; idx < unit.vertices.length; idx++) {
       for (let dim = 0; dim < 3; dim++) {
@@ -180,7 +185,7 @@ describe(`marching_cubes`, () => {
 
     expect(result.vertices.length).toBeGreaterThan(0)
     const any_different = result.vertices.some(
-      (v, idx) => Math.abs(v[1] - identity.vertices[idx][1]) > 1e-6,
+      (vertex, idx) => Math.abs(vertex[1] - identity.vertices[idx][1]) > 1e-6,
     )
     expect(any_different).toBe(true)
   })

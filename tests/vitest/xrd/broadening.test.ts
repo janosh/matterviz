@@ -25,7 +25,7 @@ describe(`compute_broadened_pattern`, () => {
     test(`generates correct grid based on range and step_size`, () => {
       // range [10, 12], step 0.5 -> n_steps = 4 (10, 10.5, 11, 11.5)
       // The grid is [min, max) unless (max-min) is not a multiple of step
-      const range: [number, number] = [10, 12]
+      const range: Vec2 = [10, 12]
       const step = 0.5
       const pattern = { x: [], y: [] }
       const result = compute_broadened_pattern(pattern, DEFAULT_BROADENING, range, step)

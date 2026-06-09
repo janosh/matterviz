@@ -2,6 +2,7 @@
   import { PLOT_COLORS } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { SettingsSection } from '$lib/layout'
+  import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import type { ComponentProps } from 'svelte'
@@ -78,7 +79,7 @@
     show_sigma_control?: boolean // Show sigma/smearing control
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)
-    sigma_range?: [number, number] // Min/max range for sigma slider (auto-detected if not provided)
+    sigma_range?: Vec2 // Min/max range for sigma slider (auto-detected if not provided)
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -307,7 +308,7 @@
     effective_spin_mode === `mirror` && has_spin_polarized,
   )
 
-  let x_range = $derived.by((): [number, number] | undefined => {
+  let x_range = $derived.by((): Vec2 | undefined => {
     if (series_data.length === 0) return undefined
     const all_x = series_data.flatMap((srs) => srs.x)
     const min_x = Math.min(...all_x), max_x = Math.max(...all_x)
@@ -317,7 +318,7 @@
     return [min_x, max_x]
   })
 
-  let y_range = $derived.by((): [number, number] | undefined => {
+  let y_range = $derived.by((): Vec2 | undefined => {
     if (series_data.length === 0) return undefined
     const all_y = series_data.flatMap((srs) => srs.y)
     const min_y = Math.min(...all_y), max_y = Math.max(...all_y)
@@ -377,7 +378,7 @@
   let has_valid_data = $derived(series_data.length > 0)
 
   // Auto-detect sigma range based on frequency/energy range
-  let effective_sigma_range = $derived.by((): [number, number] => {
+  let effective_sigma_range = $derived.by((): Vec2 => {
     if (sigma_range) return sigma_range
     if (all_freqs.length === 0) return [0, 1]
     const freq_range = Math.max(...all_freqs) - Math.min(...all_freqs)

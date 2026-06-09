@@ -7,7 +7,7 @@
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
-  import { DEG_TO_RAD } from '$lib/math'
+  import { DEG_TO_RAD, type Vec2 } from '$lib/math'
   import type {
     BasePlotProps,
     LegendConfig,
@@ -118,7 +118,7 @@
     // inheritance; return null to keep an arc's categorical color
     color_values?: (arc: PositionedArc<Metadata>) => number | null
     color_scale?: D3InterpolateName
-    color_range?: [number, number] // defaults to the metric's [min, max]
+    color_range?: Vec2 // defaults to the metric's [min, max]
     colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
     export_buttons?: boolean // SVG/PNG download buttons in the controls pane
     export_filename?: string
@@ -266,10 +266,10 @@
 
   let arc_gen = $derived(
     d3_arc<ScreenArc>()
-      .startAngle((d) => d.a0)
-      .endAngle((d) => d.a1)
-      .innerRadius((d) => d.r0)
-      .outerRadius((d) => d.r1)
+      .startAngle((screen) => screen.a0)
+      .endAngle((screen) => screen.a1)
+      .innerRadius((screen) => screen.r0)
+      .outerRadius((screen) => screen.r1)
       .padAngle(pad_angle * DEG_TO_RAD)
       .padRadius(radius || 1),
   )
@@ -287,19 +287,19 @@
   )
 
   // Arc centroid in container (pad-offset) pixel space, for tooltip + legend placement
-  const arc_center = (d: ScreenArc): { x: number; y: number } => {
+  const arc_center = (screen: ScreenArc): { x: number; y: number } => {
     if (shape === `icicle`) {
-      return { x: pad.l + (d.a0 + d.a1) / 2, y: pad.t + (d.r0 + d.r1) / 2 }
+      return { x: pad.l + (screen.a0 + screen.a1) / 2, y: pad.t + (screen.r0 + screen.r1) / 2 }
     }
-    const mid_a = (d.a0 + d.a1) / 2
-    const mid_r = (d.r0 + d.r1) / 2
+    const mid_a = (screen.a0 + screen.a1) / 2
+    const mid_r = (screen.r0 + screen.r1) / 2
     return { x: cx + Math.sin(mid_a) * mid_r, y: cy - Math.cos(mid_a) * mid_r }
   }
 
   // Continuous metric coloring: when color_values is given, arcs are colored by their
   // metric on a d3 colormap (arcs returning null keep their categorical color).
   // The user accessor runs exactly once per arc.
-  let metric = $derived.by<{ range: [number, number]; colors: string[] } | null>(() => {
+  let metric = $derived.by<{ range: Vec2; colors: string[] } | null>(() => {
     if (!color_values) return null
     const vals = layout.arcs.map((arc) => {
       const val = arc.depth === 0 ? null : color_values(arc)
@@ -574,10 +574,10 @@
   )
 
   // Label text + placement transform for an arc; null = doesn't fit, hide the label
-  function label_attrs(d: ScreenArc): { transform: string; text: string } | null {
-    const { text, width: text_w } = arc_info[d.arc.node_idx]
+  function label_attrs(screen: ScreenArc): { transform: string; text: string } | null {
+    const { text, width: text_w } = arc_info[screen.arc.node_idx]
     if (!text) return null
-    const transform = arc_label_transform(d, text_w, shape, label_rotation)
+    const transform = arc_label_transform(screen, text_w, shape, label_rotation)
     return transform ? { transform, text } : null
   }
 

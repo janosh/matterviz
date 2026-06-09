@@ -401,9 +401,9 @@ function normalize_to_hex(color: string): string {
   if (color.startsWith(`#`)) return color.toLowerCase()
   const match = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(color)
   if (!match) return color
-  const [, r, g, b] = match
-  const to_hex = (n: string) => parseInt(n, 10).toString(16).padStart(2, `0`)
-  return `#${to_hex(r)}${to_hex(g)}${to_hex(b)}`
+  const [, red, green, blue] = match
+  const to_hex = (num_str: string) => parseInt(num_str, 10).toString(16).padStart(2, `0`)
+  return `#${to_hex(red)}${to_hex(green)}${to_hex(blue)}`
 }
 
 test.each([`Vesta`, `Jmol`] as const)(
@@ -459,9 +459,9 @@ function simulate_copy(
   const event = new ClipboardEvent(`copy`, { bubbles: true, cancelable: true })
   Object.defineProperty(event, `clipboardData`, {
     value: {
-      setData: (t: string, d: string) => {
-        type = t
-        text = d
+      setData: (format: string, data: string) => {
+        type = format
+        text = data
       },
     },
   })

@@ -472,7 +472,7 @@
     const onclose =
       panel_id !== undefined
         ? () => {
-            const idx = panels.findIndex((p) => p.id === panel_id)
+            const idx = panels.findIndex((panel) => panel.id === panel_id)
             if (idx === -1) return
             if (panels.length > 1) close_panel(idx)
             else close_all_panels()

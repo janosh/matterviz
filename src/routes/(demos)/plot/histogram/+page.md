@@ -711,8 +711,8 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   // Comparison data
   const sample_a = generate_normal(800, 45, 10)
   const sample_b = generate_normal(800, 55, 8)
-  const mean_a = sample_a.reduce((s, v) => s + v, 0) / sample_a.length
-  const mean_b = sample_b.reduce((s, v) => s + v, 0) / sample_b.length
+  const mean_a = sample_a.reduce((sum, val) => sum + val, 0) / sample_a.length
+  const mean_b = sample_b.reduce((sum, val) => sum + val, 0) / sample_b.length
 
   let series = $derived(
     comparison_mode
@@ -967,7 +967,7 @@ This demo stress-tests histograms with interactive property switching:
       seed += 17
       // Shift each class slightly for variety
       return generate_distribution(config.type, n_points, seed + idx * 1000)
-        .map((v) => v + idx * 0.5)
+        .map((val) => val + idx * 0.5)
     })
   }
 
@@ -996,7 +996,7 @@ This demo stress-tests histograms with interactive property switching:
     property_key: PropKey,
   ): Promise<{ series: DataSeries[]; axis_label: string }> {
     load_start = performance.now()
-    await new Promise((r) => setTimeout(r, 100 + Math.random() * 400))
+    await new Promise((resolve) => setTimeout(resolve, 100 + Math.random() * 400))
     const config = property_configs[property_key]
     return {
       series: build_series(property_key),
@@ -1020,7 +1020,7 @@ This demo stress-tests histograms with interactive property switching:
 
   let avg_load = $derived(
     load_times.length > 0
-      ? Math.round(load_times.reduce((a, b) => a + b, 0) / load_times.length)
+      ? Math.round(load_times.reduce((sum, val) => sum + val, 0) / load_times.length)
       : 0,
   )
 

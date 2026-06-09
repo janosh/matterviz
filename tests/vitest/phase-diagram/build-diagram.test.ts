@@ -139,15 +139,15 @@ describe(`build_diagram`, () => {
 
   test(`infers boundary types from curve names`, () => {
     const result = build_diagram(minimal_input)
-    const liquidus = result.boundaries.find((b) => b.id === `liquidus`)
-    const solidus = result.boundaries.find((b) => b.id === `solidus`)
+    const liquidus = result.boundaries.find((boundary) => boundary.id === `liquidus`)
+    const solidus = result.boundaries.find((boundary) => boundary.id === `solidus`)
     expect(liquidus?.type).toBe(`liquidus`)
     expect(solidus?.type).toBe(`solidus`)
   })
 
   test(`applies default boundary styles based on type`, () => {
     const result = build_diagram(minimal_input)
-    const liquidus = result.boundaries.find((b) => b.id === `liquidus`)
+    const liquidus = result.boundaries.find((boundary) => boundary.id === `liquidus`)
     expect(liquidus?.style?.color).toBe(`#1565c0`)
     expect(liquidus?.style?.width).toBe(2.5)
   })

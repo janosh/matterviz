@@ -59,7 +59,7 @@
     wrapper_style?: string
     tick_labels?: (string | number)[] | number
     tick_format?: string
-    range?: [number, number]
+    range?: Vec2
     // tick_side determines tick placement relative to orientation:
     // 'primary'   = bottom (horizontal) / right (vertical), outside bar
     // 'secondary' = top (horizontal) / left (vertical), outside bar
@@ -72,18 +72,18 @@
     steps?: number
     // computed "nice" range resulting from snapping ticks
     // https://github.com/d3/d3-scale/issues/86
-    nice_range?: [number, number]
+    nice_range?: Vec2
     // type of scale to use for ticks and potentially color (if color_scale_fn not provided)
     scale_type?: ScaleType
     // Optional pre-configured d3 color scale function
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
-    color_scale_domain?: [number, number]
+    color_scale_domain?: Vec2
     // Property selection options (makes title interactive)
     property_options?: AxisOption[]
     selected_property_key?: string
     data_loader?: ColorBarDataLoaderFn
-    on_property_change?: (key: string, range: [number, number]) => void
+    on_property_change?: (key: string, range: Vec2) => void
     // Color scale selection options
     color_scale_options?: ColorScaleOption[]
     selected_color_scale_key?: string
@@ -301,7 +301,7 @@
     // Use potentially adjusted min/max for domain (ascending)
     const lo = Math.min(min_val, max_val)
     const hi = Math.max(min_val, max_val)
-    const domain_for_scale: [number, number] = [lo, hi]
+    const domain_for_scale: Vec2 = [lo, hi]
 
     // For arcsinh, create a custom color scale
     if (type_name === `arcsinh`) {

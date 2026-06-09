@@ -1,10 +1,11 @@
 // Space group to crystal system mappings and utilities
 
+import type { Vec2 } from '$lib/math'
 // type-only import (erased at runtime, so no import cycle with $lib/plot)
 import type { SunburstNode } from '$lib/plot/core/types'
 
 // Crystal system ranges: [min, max] space group numbers (inclusive)
-export const CRYSTAL_SYSTEM_RANGES: Record<CrystalSystem, [number, number]> = {
+export const CRYSTAL_SYSTEM_RANGES: Record<CrystalSystem, Vec2> = {
   triclinic: [1, 2],
   monoclinic: [3, 15],
   orthorhombic: [16, 74],

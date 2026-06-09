@@ -1,18 +1,19 @@
 <script lang="ts">
   import { ColorBar } from '$lib'
+  import type { Vec2 } from '$lib/math'
   import { scaleSequentialLog } from 'd3-scale'
   import { interpolateCool } from 'd3-scale-chromatic'
 
   let horizontal_primary_ticks: (string | number)[] = [0, 25, 50, 75, 100]
-  let vertical_secondary_range: [number, number] = [-10, 10]
-  let horizontal_inside_range: [number, number] = [0, 1]
-  let vertical_log_range: [number, number] = [1, 1000]
-  let horizontal_date_range: [number, number] = [
+  let vertical_secondary_range: Vec2 = [-10, 10]
+  let horizontal_inside_range: Vec2 = [0, 1]
+  let vertical_log_range: Vec2 = [1, 1000]
+  let horizontal_date_range: Vec2 = [
     new Date(2023, 0, 1).getTime(),
     new Date(2023, 11, 31).getTime(),
   ]
-  let vertical_no_snap_range: [number, number] = [0.1, 0.9]
-  let nice_range_output: [number, number] = [0, 1]
+  let vertical_no_snap_range: Vec2 = [0.1, 0.9]
+  let nice_range_output: Vec2 = [0, 1]
 
   // Custom color scale function
   const custom_color_scale = scaleSequentialLog(interpolateCool).domain([0.1, 10])

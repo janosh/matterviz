@@ -140,7 +140,7 @@ _FALLBACK_XRD = "synthetic-quartz-xrd"
 
 # Exclude "A-B" (generic test file) and use real phase diagrams
 _all_phase_diagrams = _discover_files(_SITE_DIR / "phase-diagrams" / "binary")
-AVAILABLE_PHASE_DIAGRAMS = [p for p in _all_phase_diagrams if p != "A-B"] or [
+AVAILABLE_PHASE_DIAGRAMS = [name for name in _all_phase_diagrams if name != "A-B"] or [
     _FALLBACK_PHASE_DIAGRAM
 ]
 AVAILABLE_STRUCTURES = _discover_files(_SITE_DIR / "structures") or [
@@ -288,7 +288,7 @@ def layout() -> html.Div:
 
     # Second structure: pick first one that differs from the primary
     initial_structure_key_2 = _safe_first(
-        [s for s in AVAILABLE_STRUCTURES if s != initial_structure_key],
+        [name for name in AVAILABLE_STRUCTURES if name != initial_structure_key],
         initial_structure_key,
     )
     initial_structure_2 = get_cached(initial_structure_key_2, load_structure)
@@ -393,8 +393,8 @@ def layout() -> html.Div:
                                 id=sel_id,
                                 clearable=False,
                                 options=[
-                                    {"label": s, "value": s}
-                                    for s in AVAILABLE_STRUCTURES
+                                    {"label": name, "value": name}
+                                    for name in AVAILABLE_STRUCTURES
                                 ],
                                 value=val,
                                 style={"width": "200px", "marginBottom": "8px"},
@@ -486,8 +486,8 @@ def layout() -> html.Div:
                             dcc.Dropdown(
                                 id="phase-diagram-selector",
                                 options=[
-                                    {"label": k, "value": k}
-                                    for k in AVAILABLE_PHASE_DIAGRAMS
+                                    {"label": name, "value": name}
+                                    for name in AVAILABLE_PHASE_DIAGRAMS
                                 ],
                                 value=initial_phase_key,
                                 clearable=False,
@@ -516,8 +516,8 @@ def layout() -> html.Div:
                             dcc.Dropdown(
                                 id="phonon-selector",
                                 options=[
-                                    {"label": s.replace("-pbe", ""), "value": s}
-                                    for s in AVAILABLE_PHONONS
+                                    {"label": name.replace("-pbe", ""), "value": name}
+                                    for name in AVAILABLE_PHONONS
                                 ],
                                 value=initial_phonon_key,
                                 clearable=False,
@@ -542,7 +542,8 @@ def layout() -> html.Div:
                             dcc.Dropdown(
                                 id="dos-selector",
                                 options=[
-                                    {"label": s, "value": s} for s in AVAILABLE_DOS
+                                    {"label": name, "value": name}
+                                    for name in AVAILABLE_DOS
                                 ],
                                 value=initial_dos_key,
                                 clearable=False,
@@ -573,7 +574,8 @@ def layout() -> html.Div:
                             dcc.Dropdown(
                                 id="bands-selector",
                                 options=[
-                                    {"label": s, "value": s} for s in AVAILABLE_BANDS
+                                    {"label": name, "value": name}
+                                    for name in AVAILABLE_BANDS
                                 ],
                                 value=initial_bands_key,
                                 clearable=False,
@@ -598,7 +600,8 @@ def layout() -> html.Div:
                             dcc.Dropdown(
                                 id="xrd-selector",
                                 options=[
-                                    {"label": s, "value": s} for s in AVAILABLE_XRD
+                                    {"label": name, "value": name}
+                                    for name in AVAILABLE_XRD
                                 ],
                                 value=initial_xrd_key,
                                 clearable=False,
@@ -931,7 +934,7 @@ def create_app() -> dash.Dash:
             load_structure,
             AVAILABLE_STRUCTURES,
             _FALLBACK_STRUCTURE,
-            lambda d: {"structure": d, "show_controls": True},
+            lambda data: {"structure": data, "show_controls": True},
         ),
         (
             "structure-selector-2",
@@ -939,7 +942,7 @@ def create_app() -> dash.Dash:
             load_structure,
             AVAILABLE_STRUCTURES,
             _FALLBACK_STRUCTURE,
-            lambda d: {"structure": d, "show_controls": True},
+            lambda data: {"structure": data, "show_controls": True},
         ),
         (
             "phase-diagram-selector",
@@ -947,7 +950,7 @@ def create_app() -> dash.Dash:
             load_phase_diagram,
             AVAILABLE_PHASE_DIAGRAMS,
             _FALLBACK_PHASE_DIAGRAM,
-            lambda d: {"data": d or _EMPTY_PHASE},
+            lambda data: {"data": data or _EMPTY_PHASE},
         ),
         (
             "phonon-selector",
@@ -955,7 +958,7 @@ def create_app() -> dash.Dash:
             load_phonon_bands,
             AVAILABLE_PHONONS,
             _FALLBACK_PHONON,
-            lambda d: {"band_structs": d},
+            lambda data: {"band_structs": data},
         ),
         (
             "dos-selector",
@@ -963,7 +966,7 @@ def create_app() -> dash.Dash:
             load_electronic_dos,
             AVAILABLE_DOS,
             _FALLBACK_DOS,
-            lambda d: {"doses": d},
+            lambda data: {"doses": data},
         ),
         (
             "bands-selector",
@@ -971,7 +974,7 @@ def create_app() -> dash.Dash:
             load_electronic_bands,
             AVAILABLE_BANDS,
             _FALLBACK_BANDS,
-            lambda d: {"band_structs": d},
+            lambda data: {"band_structs": data},
         ),
         (
             "xrd-selector",
@@ -979,8 +982,8 @@ def create_app() -> dash.Dash:
             load_xrd_pattern,
             AVAILABLE_XRD,
             _FALLBACK_XRD,
-            lambda d: {
-                "patterns": d or {"x": [20, 30, 40], "y": [100, 50, 25]},
+            lambda data: {
+                "patterns": data or {"x": [20, 30, 40], "y": [100, 50, 25]},
                 "peak_width": 0.5,
                 "annotate_peaks": 5,
             },

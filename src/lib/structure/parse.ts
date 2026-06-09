@@ -10,12 +10,14 @@ import {
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
-import { ELEM_SYMBOLS } from '$lib/labels'
+import { FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element'
+import { strip_compression_extensions } from '$lib/io'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Site, StructureProperties } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import { make_site } from '$lib/structure/site'
 import { normalize_scientific_notation } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
 
@@ -41,9 +43,6 @@ const cif_site_key = (element: string, abc: Vec3, label: string): string =>
   `${element}|${label}|${cif_coords_key(abc)}`
 const clone_structure_properties = (properties: StructureProperties): StructureProperties =>
   structuredClone(properties)
-const FALLBACK_ELEMENTS = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`] as const
-const is_known_element_symbol = (symbol: string): symbol is ElementSymbol =>
-  (ELEM_SYMBOLS as readonly string[]).includes(symbol)
 const vec3_from_values = (values: readonly unknown[] | undefined, context: string): Vec3 => {
   if (values?.length !== 3) {
     throw new Error(`Invalid ${context}: expected 3 coordinates, got ${values?.length ?? 0}`)
@@ -129,7 +128,7 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   // Clean symbol (remove suffixes like _pv, /hash)
   const clean_symbol = symbol.split(/[_/]/)[0]
 
-  if (is_known_element_symbol(clean_symbol)) return clean_symbol
+  if (is_elem_symbol(clean_symbol)) return clean_symbol
 
   // Fallback to default elements by atomic number
   const fallback = FALLBACK_ELEMENTS[index % FALLBACK_ELEMENTS.length] ?? `H`
@@ -150,7 +149,7 @@ function resolve_optimade_element(
   const spec = species_list?.find((entry) => entry.name === species_name)
   let best: { symbol: ElementSymbol; conc: number; sym_idx: number } | undefined
   for (const [sym_idx, symbol] of (spec?.chemical_symbols ?? []).entries()) {
-    if (!is_known_element_symbol(symbol)) continue
+    if (!is_elem_symbol(symbol)) continue
     const conc = spec?.concentration?.[sym_idx] ?? 0
     if (!best || conc > best.conc) best = { symbol, conc, sym_idx }
   }
@@ -158,7 +157,7 @@ function resolve_optimade_element(
   // Fallback: the name may be an element with a trailing atom index (e.g. 'O1');
   // element symbols never contain digits, so stripping them is safe
   const stripped = species_name.replace(/\d+$/, ``)
-  if (is_known_element_symbol(stripped)) return { symbol: stripped, sym_idx: -1 }
+  if (is_elem_symbol(stripped)) return { symbol: stripped, sym_idx: -1 }
   return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
 }
 
@@ -177,6 +176,32 @@ const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
   Math.abs(axis_lengths[1]) > math.EPS ? xyz[1] / axis_lengths[1] : 0,
   Math.abs(axis_lengths[2]) > math.EPS ? xyz[2] / axis_lengths[2] : 0,
 ]
+
+// Build a 3x3 matrix from 3 row vectors; error context is suffixed with the 1-based row index
+const matrix3x3_from_rows = (
+  rows: readonly (readonly unknown[] | undefined)[],
+  context: string,
+): math.Matrix3x3 => [
+  vec3_from_values(rows[0], `${context} 1`),
+  vec3_from_values(rows[1], `${context} 2`),
+  vec3_from_values(rows[2], `${context} 3`),
+]
+
+// cart→frac converter that falls back to per-axis-length division for singular lattices.
+// axis_lengths defaults to the row norms of the lattice matrix.
+const cart_to_frac_with_fallback = (
+  matrix: math.Matrix3x3,
+  axis_lengths?: Vec3,
+): { convert: (xyz: Vec3) => Vec3; exact: boolean } => {
+  const exact_converter = try_create_cart_to_frac(matrix)
+  if (exact_converter) return { convert: exact_converter, exact: true }
+  const lengths: Vec3 = axis_lengths ?? [
+    Math.hypot(...matrix[0]),
+    Math.hypot(...matrix[1]),
+    Math.hypot(...matrix[2]),
+  ]
+  return { convert: (xyz: Vec3) => approximate_cart_to_frac(xyz, lengths), exact: false }
+}
 
 // Parse VASP POSCAR file format
 export function parse_poscar(content: string): ParsedStructure | null {
@@ -308,14 +333,9 @@ export function parse_poscar(content: string): ParsedStructure | null {
       }
 
       // Parse atomic positions
-      const poscar_axis_lengths: Vec3 = [
-        Math.hypot(...scaled_lattice[0]),
-        Math.hypot(...scaled_lattice[1]),
-        Math.hypot(...scaled_lattice[2]),
-      ]
       const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
-      const poscar_cart_to_frac = try_create_cart_to_frac(scaled_lattice)
-      if (!is_direct && !poscar_cart_to_frac) {
+      const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
+      if (!is_direct && !poscar_cart_to_frac.exact) {
         console.warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
       }
       const sites: Site[] = []
@@ -349,22 +369,19 @@ export function parse_poscar(content: string): ParsedStructure | null {
           // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
           // both stay consistent (singular Cartesian keeps the scaled input as xyz)
           const cart = is_direct ? null : apply_axis_scale(coords)
-          const raw_abc = cart
-            ? (poscar_cart_to_frac?.(cart) ??
-              approximate_cart_to_frac(cart, poscar_axis_lengths))
-            : coords
+          const raw_abc = cart ? poscar_cart_to_frac.convert(cart) : coords
           const abc = wrap_to_unit_cell(raw_abc)
-          const xyz = cart && !poscar_cart_to_frac ? cart : poscar_frac_to_cart(abc)
+          const xyz = cart && !poscar_cart_to_frac.exact ? cart : poscar_frac_to_cart(abc)
 
-          const site: Site = {
-            species: [{ element, occu: 1, oxidation_state: 0 }],
-            abc,
-            xyz,
-            label: `${element}${atom_index + atom_count_idx + 1}`,
-            properties: selective_dynamics ? { selective_dynamics } : {},
-          }
-
-          sites.push(site)
+          sites.push(
+            make_site(
+              element,
+              abc,
+              xyz,
+              `${element}${atom_index + atom_count_idx + 1}`,
+              selective_dynamics ? { selective_dynamics } : {},
+            ),
+          )
         }
 
         atom_index += count
@@ -441,11 +458,10 @@ export function parse_xyz(content: string): ParsedStructure | null {
     if (lattice_match) {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
-        const lattice_vectors: math.Matrix3x3 = [
-          vec3_from_values(lattice_values.slice(0, 3), `XYZ lattice vector 1`),
-          vec3_from_values(lattice_values.slice(3, 6), `XYZ lattice vector 2`),
-          vec3_from_values(lattice_values.slice(6, 9), `XYZ lattice vector 3`),
-        ]
+        const lattice_vectors = matrix3x3_from_rows(
+          [lattice_values.slice(0, 3), lattice_values.slice(3, 6), lattice_values.slice(6, 9)],
+          `XYZ lattice vector`,
+        )
 
         const lattice_params = math.calc_lattice_params(lattice_vectors)
         lattice = { matrix: lattice_vectors, ...lattice_params }
@@ -453,12 +469,15 @@ export function parse_xyz(content: string): ParsedStructure | null {
     }
 
     // Parse atomic coordinates (starting from line 3)
-    const xyz_axis_lengths = lattice ? ([lattice.a, lattice.b, lattice.c] as Vec3) : null
     let xyz_frac_to_cart: ((v: Vec3) => Vec3) | null = null
     let xyz_cart_to_frac: ((v: Vec3) => Vec3) | null = null
     if (lattice) {
       xyz_frac_to_cart = math.create_frac_to_cart(lattice.matrix)
-      xyz_cart_to_frac = try_create_cart_to_frac(lattice.matrix)
+      xyz_cart_to_frac = cart_to_frac_with_fallback(lattice.matrix, [
+        lattice.a,
+        lattice.b,
+        lattice.c,
+      ]).convert
     }
     const sites: Site[] = []
 
@@ -483,13 +502,9 @@ export function parse_xyz(content: string): ParsedStructure | null {
 
       // Calculate fractional coordinates if lattice is available
       let abc: Vec3 = [0, 0, 0]
-      if (lattice && xyz_frac_to_cart && xyz_axis_lengths) {
-        abc = xyz_cart_to_frac
-          ? xyz_cart_to_frac(xyz)
-          : approximate_cart_to_frac(xyz, xyz_axis_lengths)
-
+      if (lattice && xyz_frac_to_cart && xyz_cart_to_frac) {
         // Ensure fractional coordinates are wrapped into [0, 1) for consistency
-        abc = wrap_to_unit_cell(abc)
+        abc = wrap_to_unit_cell(xyz_cart_to_frac(xyz))
 
         // Keep rendered atoms inside primary unit cell by recomputing xyz
         const wrapped_xyz = xyz_frac_to_cart(abc)
@@ -498,11 +513,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
         xyz[2] = wrapped_xyz[2]
       }
 
-      const species = [{ element, occu: 1, oxidation_state: 0 }]
-      const label = `${element}${atom_idx + 1}`
-      const site: Site = { species, abc, xyz, label, properties: {} }
-
-      sites.push(site)
+      sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
     }
 
     const structure: ParsedStructure = { sites, ...(lattice && { lattice }) }
@@ -914,10 +925,11 @@ export function parse_cif(
     const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
     const lattice_params = math.calc_lattice_params(lattice_matrix)
     const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-    const cart_to_frac = try_create_cart_to_frac(lattice_matrix)
+    const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, [a, b, c]).convert
 
     // Create sites with coordinate conversion and symmetry operations
-    const wrap_vec3 = (v: Vec3): Vec3 => (wrap_fractional_coords ? wrap_to_unit_cell(v) : v)
+    const wrap_vec3 = (vec: Vec3): Vec3 =>
+      wrap_fractional_coords ? wrap_to_unit_cell(vec) : vec
 
     // Apply symmetry operations to generate all equivalent positions
     const all_sites: Site[] = []
@@ -1003,11 +1015,7 @@ export function parse_cif(
         }
       } else {
         const xyz_base: Vec3 = [atom.coords[0], atom.coords[1], atom.coords[2]]
-        const atom_abc = wrap_vec3(
-          cart_to_frac
-            ? cart_to_frac(xyz_base)
-            : approximate_cart_to_frac(xyz_base, [a, b, c]),
-        )
+        const atom_abc = wrap_vec3(cart_to_frac(xyz_base))
         fractional_atom = { ...atom, coords: atom_abc, coords_type: `fract` }
       }
 
@@ -1030,13 +1038,7 @@ export function parse_cif(
           if (seen_site_keys.has(key)) continue
           seen_site_keys.add(key)
           const xyz = frac_to_cart(abc)
-          all_sites.push({
-            species: [{ element, occu: equiv_atom.occupancy, oxidation_state: 0 }],
-            abc,
-            xyz,
-            label: equiv_atom.id,
-            properties: {},
-          })
+          all_sites.push(make_site(element, abc, xyz, equiv_atom.id, {}, equiv_atom.occupancy))
         }
       }
     }
@@ -1053,11 +1055,7 @@ export function parse_cif(
 function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   const sites: Site[] = []
   // Phonopy stores lattice vectors as rows, use them directly
-  const lattice_matrix: math.Matrix3x3 = [
-    vec3_from_values(cell.lattice[0], `phonopy lattice vector 1`),
-    vec3_from_values(cell.lattice[1], `phonopy lattice vector 2`),
-    vec3_from_values(cell.lattice[2], `phonopy lattice vector 3`),
-  ]
+  const lattice_matrix = matrix3x3_from_rows(cell.lattice, `phonopy lattice vector`)
 
   // Process each atomic site
   const phonopy_frac_to_cart = math.create_frac_to_cart(lattice_matrix)
@@ -1071,9 +1069,7 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
       mass: point.mass,
       ...(point.reduced_to !== undefined && { reduced_to: point.reduced_to }),
     }
-    const species = [{ element, occu: 1.0, oxidation_state: 0 }]
-    const site: Site = { species, abc, xyz, label: point.symbol, properties }
-    sites.push(site)
+    sites.push(make_site(element, abc, xyz, point.symbol, properties))
   }
 
   // Calculate lattice parameters
@@ -1273,10 +1269,7 @@ export function parse_structure_file(
   // If a filename is provided, try to detect format by file extension first
   if (filename) {
     // Handle compressed files by removing compression extensions
-    let base_filename = filename.toLowerCase()
-    while (COMPRESSION_EXTENSIONS_REGEX.test(base_filename)) {
-      base_filename = base_filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    }
+    const base_filename = strip_compression_extensions(filename)
 
     const ext = base_filename.split(`.`).pop()
 
@@ -1428,6 +1421,89 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
   }
 }
 
+// Build sites + lattice shared by parse_optimade_from_raw and optimade_to_crystal.
+// on_invalid controls whether invalid positions are skipped with a warning or throw;
+// site_props extracts per-site mass/concentration from the species list.
+function build_optimade_sites(
+  attrs: OptimadeStructure[`attributes`],
+  opts: { on_invalid: `skip` | `throw`; site_props?: boolean },
+): {
+  sites: Site[]
+  lattice_matrix?: math.Matrix3x3
+  lattice_params: ReturnType<typeof math.calc_lattice_params> | null
+} {
+  const positions = attrs.cartesian_site_positions ?? []
+  const species_at_sites = attrs.species_at_sites ?? []
+  const species_list = Array.isArray(attrs.species) ? attrs.species : undefined
+
+  // OPTIMADE stores lattice vectors as rows, so use as-is
+  const lattice_matrix = attrs.lattice_vectors
+    ? matrix3x3_from_rows(attrs.lattice_vectors, `OPTIMADE lattice vector`)
+    : undefined
+  const lattice_params = lattice_matrix ? math.calc_lattice_params(lattice_matrix) : null
+
+  let cart_to_frac: ((xyz: Vec3) => Vec3) | null = null
+  if (lattice_matrix && lattice_params) {
+    const converter = cart_to_frac_with_fallback(lattice_matrix, [
+      lattice_params.a,
+      lattice_params.b,
+      lattice_params.c,
+    ])
+    if (!converter.exact) {
+      console.warn(`Failed to create exact coordinate converter for OPTIMADE structure`)
+    }
+    cart_to_frac = converter.convert
+  }
+
+  const sites: Site[] = []
+  for (let idx = 0; idx < positions.length; idx++) {
+    const species_name = species_at_sites[idx]
+    if (!species_name) {
+      if (opts.on_invalid === `throw`) throw new Error(`Missing species for site ${idx}`)
+      console.warn(`Missing species for site ${idx}, skipping`)
+      continue
+    }
+
+    let xyz: Vec3
+    try {
+      xyz = vec3_from_values(positions[idx], `OPTIMADE atom position ${idx + 1}`)
+    } catch (error) {
+      if (opts.on_invalid === `throw`) throw error
+      console.warn(`Invalid position data at site ${idx}: ${error}`)
+      continue
+    }
+
+    const { symbol: element, sym_idx } = resolve_optimade_element(
+      species_name,
+      species_list,
+      idx,
+    )
+
+    // Calculate fractional coordinates if lattice is available
+    const abc: Vec3 = cart_to_frac ? cart_to_frac(xyz) : [0, 0, 0]
+
+    const site_props: Record<string, unknown> = {}
+    if (opts.site_props) {
+      // Extract mass/concentration for the chosen element. sym_idx indexes the (parallel)
+      // chemical_symbols/mass/concentration arrays; -1 (name resolved directly, no
+      // chemical_symbols) falls back to index 0 — the single-element entry.
+      const spec = species_list?.find((entry) => entry.name === species_name)
+      const spec_idx = Math.max(sym_idx, 0)
+      if (spec?.mass?.[spec_idx] !== undefined) site_props.mass = spec.mass[spec_idx]
+      if (
+        spec?.concentration?.[spec_idx] !== undefined &&
+        spec.concentration[spec_idx] !== 1
+      ) {
+        site_props.concentration = spec.concentration[spec_idx]
+      }
+    }
+
+    sites.push(make_site(element, abc, xyz, `${element}${idx + 1}`, site_props))
+  }
+
+  return { sites, lattice_matrix, lattice_params }
+}
+
 // Parse OPTIMADE from already-parsed JSON
 export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
   try {
@@ -1449,89 +1525,21 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
       console.error(`OPTIMADE JSON position/species count mismatch`)
       return null
     }
-    const positions = positions_raw
-    const species = species_raw
 
-    // Optimade stores lattice vectors as rows, so use as is
-    const lattice_matrix = attrs.lattice_vectors
-      ? ([
-          vec3_from_values(attrs.lattice_vectors[0], `OPTIMADE lattice vector 1`),
-          vec3_from_values(attrs.lattice_vectors[1], `OPTIMADE lattice vector 2`),
-          vec3_from_values(attrs.lattice_vectors[2], `OPTIMADE lattice vector 3`),
-        ] satisfies math.Matrix3x3)
-      : undefined
-    const optimade_lattice_params = lattice_matrix
-      ? math.calc_lattice_params(lattice_matrix)
-      : null
-
-    // Parse atomic sites
-    const optimade_exact_cart_to_frac = lattice_matrix
-      ? try_create_cart_to_frac(lattice_matrix)
-      : null
-    const optimade_cart_to_frac =
-      lattice_matrix && optimade_lattice_params
-        ? (optimade_exact_cart_to_frac ??
-          ((xyz: Vec3): Vec3 =>
-            approximate_cart_to_frac(xyz, [
-              optimade_lattice_params.a,
-              optimade_lattice_params.b,
-              optimade_lattice_params.c,
-            ])))
-        : null
-    if (lattice_matrix && !optimade_exact_cart_to_frac) {
-      console.warn(`Failed to create exact coordinate converter for OPTIMADE structure`)
-    }
-    const optimade_species = Array.isArray(attrs.species) ? attrs.species : undefined
-    const sites: Site[] = []
-    for (let idx = 0; idx < positions.length; idx++) {
-      const pos = positions[idx]
-      const element_symbol = species[idx]
-
-      let xyz: Vec3
-      try {
-        xyz = vec3_from_values(pos, `OPTIMADE site ${idx} position`)
-      } catch (error) {
-        console.warn(`Invalid position data at site ${idx}: ${error}`)
-        continue
-      }
-
-      const { symbol: element } = resolve_optimade_element(
-        element_symbol,
-        optimade_species,
-        idx,
-      )
-
-      // Calculate fractional coordinates if lattice is available
-      const abc: Vec3 = optimade_cart_to_frac ? optimade_cart_to_frac(xyz) : [0, 0, 0]
-
-      const site: Site = {
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz,
-        label: `${element}${idx + 1}`,
-        properties: {},
-      }
-
-      sites.push(site)
-    }
+    const { sites, lattice_matrix, lattice_params } = build_optimade_sites(attrs, {
+      on_invalid: `skip`,
+    })
 
     if (sites.length === 0) {
       console.error(`No valid sites found in OPTIMADE JSON`)
       return null
     }
 
-    // Create structure object
-    let lattice: ParsedStructure[`lattice`] | undefined
-    if (lattice_matrix && optimade_lattice_params) {
-      lattice = { matrix: lattice_matrix, ...optimade_lattice_params }
-    }
-
-    const structure_result: ParsedStructure = {
+    return {
       sites,
-      ...(lattice && { lattice }),
+      ...(lattice_matrix &&
+        lattice_params && { lattice: { matrix: lattice_matrix, ...lattice_params } }),
     }
-
-    return structure_result
   } catch (error) {
     console.error(`Error parsing OPTIMADE JSON:`, error)
     return null
@@ -1585,7 +1593,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
     lattice_vectors,
     cartesian_site_positions,
     species_at_sites,
-    species,
+    species: _species, // excluded from the properties rest
     ...properties
   } = optimade_structure.attributes
 
@@ -1595,51 +1603,14 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
   }
 
   try {
-    const lattice_matrix: math.Matrix3x3 = [
-      vec3_from_values(lattice_vectors[0], `OPTIMADE lattice vector 1`),
-      vec3_from_values(lattice_vectors[1], `OPTIMADE lattice vector 2`),
-      vec3_from_values(lattice_vectors[2], `OPTIMADE lattice vector 3`),
-    ]
-    const lattice_params = math.calc_lattice_params(lattice_matrix)
-
-    const crystal_cart_to_frac =
-      try_create_cart_to_frac(lattice_matrix) ??
-      ((xyz: Vec3): Vec3 =>
-        approximate_cart_to_frac(xyz, [lattice_params.a, lattice_params.b, lattice_params.c]))
-
-    const sites = cartesian_site_positions.map((pos, idx) => {
-      const element_symbol = species_at_sites[idx]
-      if (!element_symbol) throw new Error(`Missing species for site ${idx}`)
-      const { symbol: element, sym_idx } = resolve_optimade_element(
-        element_symbol,
-        species,
-        idx,
-      )
-
-      const xyz = vec3_from_values(pos, `OPTIMADE atom position ${idx + 1}`)
-      const abc: Vec3 = crystal_cart_to_frac ? crystal_cart_to_frac(xyz) : [0, 0, 0]
-
-      // Extract mass/concentration for the chosen element. sym_idx indexes the (parallel)
-      // chemical_symbols/mass/concentration arrays; -1 (name resolved directly, no
-      // chemical_symbols) falls back to index 0 — the single-element entry.
-      const spec = species?.find((entry) => entry.name === element_symbol)
-      const spec_idx = Math.max(sym_idx, 0)
-      const site_props: Record<string, unknown> = {}
-      if (spec?.mass?.[spec_idx] !== undefined) site_props.mass = spec.mass[spec_idx]
-      if (
-        spec?.concentration?.[spec_idx] !== undefined &&
-        spec.concentration[spec_idx] !== 1
-      ) {
-        site_props.concentration = spec.concentration[spec_idx]
-      }
-      return {
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz,
-        label: `${element}${idx + 1}`,
-        properties: site_props,
-      }
-    })
+    const { sites, lattice_matrix, lattice_params } = build_optimade_sites(
+      optimade_structure.attributes,
+      { on_invalid: `throw`, site_props: true },
+    )
+    if (!lattice_matrix || !lattice_params) {
+      console.error(`Missing required OPTIMADE structure data`)
+      return null
+    }
 
     return {
       sites,
@@ -1691,13 +1662,8 @@ export const detect_structure_type = (
   filename: string,
   content: string,
 ): `crystal` | `molecule` | `unknown` => {
-  const lower_filename = filename.toLowerCase()
-
   // Normalize compressed suffixes (gz, gzip, zip, xz, bz2) for detection parity
-  let name_to_check = lower_filename
-  while (COMPRESSION_EXTENSIONS_REGEX.test(name_to_check)) {
-    name_to_check = name_to_check.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-  }
+  const name_to_check = strip_compression_extensions(filename)
 
   if (name_to_check.endsWith(`.json`)) {
     try {

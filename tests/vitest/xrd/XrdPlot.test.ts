@@ -315,7 +315,7 @@ describe(`XrdPlot`, () => {
 
     // Should have filtered out nearby peaks, keeping only highest
     // The 45.8x cluster should only show ONE label (45.82° - the highest)
-    const labels_in_45_range = label_texts.filter((t) => t?.includes(`45.8`))
+    const labels_in_45_range = label_texts.filter((text) => text?.includes(`45.8`))
     expect(labels_in_45_range.length).toBeLessThanOrEqual(1)
 
     // But the 45.82° peak (highest in cluster) should be labeled

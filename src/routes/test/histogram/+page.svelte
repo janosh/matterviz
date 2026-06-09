@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Vec2 } from '$lib/math'
   import type { DataSeries, ScaleType } from '$lib/plot'
   import { Histogram } from '$lib/plot'
   import { generate_normal } from '$site/plot-utils'
@@ -20,8 +21,8 @@
   let bin_count_100 = $state(100)
   let x_tick_count = $state(10)
   let y_tick_count = $state(8)
-  let x_range = $state<[number, number] | undefined>(undefined)
-  let y_range = $state<[number, number] | undefined>(undefined)
+  let x_range = $state<Vec2 | undefined>(undefined)
+  let y_range = $state<Vec2 | undefined>(undefined)
   let is_plot_hovered = $state(false)
 
   let basic_data = $derived.by(() => {

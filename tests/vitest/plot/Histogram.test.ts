@@ -1,4 +1,4 @@
-import { Histogram } from '$lib'
+import { Histogram, type Vec2 } from '$lib'
 import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -20,7 +20,9 @@ function mount_histogram(props: Record<string, unknown>) {
 
 function get_tick_numbers(axis: `x` | `y`): number[] {
   const nodes = Array.from(document.querySelectorAll(`g.${axis}-axis .tick text`))
-  return nodes.map((n) => Number((n.textContent || ``).trim())).filter((v) => !Number.isNaN(v))
+  return nodes
+    .map((node) => Number((node.textContent || ``).trim()))
+    .filter((val) => !Number.isNaN(val))
 }
 
 const get_y_tick_numbers = (): number[] => get_tick_numbers(`y`)
@@ -33,7 +35,7 @@ const get_svg = () => {
 
 // happy-dom lacks Touch/TouchEvent constructors, so dispatch plain events
 // carrying a touches array (the handlers only read touches[*].clientX/Y)
-const touch_event = (type: string, touches: readonly (readonly [number, number])[]) => {
+const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
   const evt = new Event(type, { bubbles: true, cancelable: true })
   Object.defineProperty(evt, `touches`, {
     value: touches.map(([clientX, clientY]) => ({ clientX, clientY })),
@@ -184,7 +186,7 @@ describe(`Histogram`, () => {
     const ticks_full = get_y_tick_numbers()
     const full_max = Math.max(...ticks_full)
     const full_hist = bin().thresholds(5)(series[0].y)
-    const full_expected = d3max(full_hist, (b) => b.length) ?? 0
+    const full_expected = d3max(full_hist, (histogram_bin) => histogram_bin.length) ?? 0
     expect(full_max).toBeGreaterThanOrEqual(full_expected)
 
     mount_histogram({ series, bins: 5, x_axis: { range: [0, 3] } })
@@ -192,7 +194,7 @@ describe(`Histogram`, () => {
     const ticks_zoom = get_y_tick_numbers()
     const zoom_max = Math.max(...ticks_zoom)
     const zoom_hist = bin().domain([0, 3]).thresholds(5)(series[0].y)
-    const zoom_expected = d3max(zoom_hist, (b) => b.length) ?? 0
+    const zoom_expected = d3max(zoom_hist, (histogram_bin) => histogram_bin.length) ?? 0
     expect(zoom_max).toBeGreaterThanOrEqual(zoom_expected)
   })
 

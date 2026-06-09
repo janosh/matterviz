@@ -329,8 +329,8 @@
   // Function to generate points within a specific quadrant for the demo
   const make_quadrant_points = (
     count: number,
-    x_range: [number, number],
-    y_range: [number, number],
+    x_range: Vec2,
+    y_range: Vec2,
   ) => {
     const points = []
     for (let idx = 0; idx < count; idx++) {

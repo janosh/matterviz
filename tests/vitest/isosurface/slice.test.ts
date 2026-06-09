@@ -1,32 +1,8 @@
 // Tests for HKL plane slicing and trilinear interpolation
 import { sample_hkl_slice, trilinear_interpolate } from '$lib/isosurface/slice'
-import type { VolumetricData } from '$lib/isosurface/types'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
-import { make_grid } from '../setup'
-
-// Helper: create a minimal VolumetricData for testing
-function make_volume(
-  grid: number[][][],
-  lattice: Matrix3x3 = [
-    [5, 0, 0],
-    [0, 5, 0],
-    [0, 0, 5],
-  ],
-  periodic = true,
-): VolumetricData {
-  const nx = grid.length
-  const ny = grid[0]?.length ?? 0
-  const nz = grid[0]?.[0]?.length ?? 0
-  return {
-    grid,
-    grid_dims: [nx, ny, nz],
-    lattice,
-    origin: [0, 0, 0],
-    data_range: { min: 0, max: 1, abs_max: 1, mean: 0.5 },
-    periodic,
-  }
-}
+import { make_grid, make_volume } from '../setup'
 
 // Helper: assert result is non-null and return narrowed type
 function expect_slice(result: ReturnType<typeof sample_hkl_slice>) {
@@ -154,7 +130,7 @@ describe(`sample_hkl_slice`, () => {
     ]
     const vol = make_volume(
       make_grid(4, 4, 4, (ix) => ix),
-      hex_lattice,
+      { lattice: hex_lattice },
     )
     const result = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))
     expect(result.data).toHaveLength(result.width * result.height)
@@ -163,12 +139,7 @@ describe(`sample_hkl_slice`, () => {
   test(`non-periodic volume with out-of-bounds plane returns zeros at edges`, () => {
     const vol = make_volume(
       make_grid(4, 4, 4, () => 5),
-      [
-        [5, 0, 0],
-        [0, 5, 0],
-        [0, 0, 5],
-      ],
-      false,
+      { periodic: false },
     )
     const result = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))
     // Interior should have value 5, edges may have 0 if they extend beyond [0,1]

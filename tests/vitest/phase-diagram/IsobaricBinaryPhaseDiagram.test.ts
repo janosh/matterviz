@@ -1,8 +1,8 @@
 import { format_hover_info_text, IsobaricBinaryPhaseDiagram } from '$lib/phase-diagram'
 import type { LeverRuleResult, PhaseDiagramData } from '$lib/phase-diagram/types'
-import { mount, tick } from 'svelte'
+import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { mount_sized } from '../setup'
 import { create_hover_info } from './fixtures/test-data'
 
 // Simple eutectic-style system: Liquid on top, two-phase field below. With a 500x400
@@ -53,18 +53,18 @@ const to_client = (composition: number, temperature: number) => ({
   clientY: bottom - (temperature / 1000) * (bottom - top),
 })
 
-async function mount_diagram(props: Record<string, unknown> = {}): Promise<HTMLElement> {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  mount(IsobaricBinaryPhaseDiagram, {
-    target,
-    props: { data: eutectic, style: `width: ${width}px; height: ${height}px;`, ...props },
-  })
-  const wrapper = target.querySelector<HTMLElement>(`.binary-phase-diagram`)
-  if (!wrapper) throw new Error(`phase diagram root not found`)
-  await resize_element(wrapper, width, height)
-  return wrapper
-}
+const mount_diagram = (
+  props: Partial<ComponentProps<typeof IsobaricBinaryPhaseDiagram>> = {},
+): Promise<HTMLElement> =>
+  mount_sized(
+    IsobaricBinaryPhaseDiagram,
+    { data: eutectic, ...props },
+    {
+      selector: `.binary-phase-diagram`,
+      width,
+      height,
+    },
+  )
 
 const diagram_svg = (wrapper: HTMLElement): SVGElement => {
   const svg = wrapper.querySelector<SVGElement>(`svg[role="application"]`)

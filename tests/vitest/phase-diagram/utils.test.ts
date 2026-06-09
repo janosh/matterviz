@@ -354,7 +354,7 @@ describe(`get_multi_phase_gradient`, () => {
   test(`returns 4 evenly-spaced stops for four-phase regions`, () => {
     const result = get_multi_phase_gradient(`α + β + γ + δ`)
     expect(result).toHaveLength(4)
-    expect(result?.map((s) => s.offset)).toEqual([0, 1 / 3, 2 / 3, 1])
+    expect(result?.map((stop) => stop.offset)).toEqual([0, 1 / 3, 2 / 3, 1])
   })
 
   test(`handles all extended phase colors (δ through λ)`, () => {
@@ -373,11 +373,9 @@ describe(`get_multi_phase_gradient`, () => {
   })
 
   test(`handles whitespace and empty phase names`, () => {
-    expect(get_multi_phase_gradient(`  α   +   β   +   γ  `)?.map((s) => s.color)).toEqual([
-      PHASE_COLOR_HEX.alpha,
-      PHASE_COLOR_HEX.beta,
-      PHASE_COLOR_HEX.gamma,
-    ])
+    expect(
+      get_multi_phase_gradient(`  α   +   β   +   γ  `)?.map((stop) => stop.color),
+    ).toEqual([PHASE_COLOR_HEX.alpha, PHASE_COLOR_HEX.beta, PHASE_COLOR_HEX.gamma])
     // "α + + β" filters the empty middle, leaving 2 phases
     expect(get_multi_phase_gradient(`α + + β`)).toEqual([
       { offset: 0, color: PHASE_COLOR_HEX.alpha },
@@ -394,7 +392,7 @@ describe(`get_multi_phase_gradient`, () => {
   })
 
   test(`Liquid + FCC + BCC → liquid + alpha + beta colors`, () => {
-    expect(get_multi_phase_gradient(`Liquid + FCC + BCC`)?.map((s) => s.color)).toEqual([
+    expect(get_multi_phase_gradient(`Liquid + FCC + BCC`)?.map((stop) => stop.color)).toEqual([
       PHASE_COLOR_HEX.liquid,
       PHASE_COLOR_HEX.alpha,
       PHASE_COLOR_HEX.beta,
@@ -525,8 +523,8 @@ const split_region_vertical: PhaseRegion = {
   ],
 }
 const split_region_boundary_cases = [
-  { position: 0.35, expected_bounds: [0.1, 0.4] as [number, number] },
-  { position: 0.65, expected_bounds: [0.6, 0.9] as [number, number] },
+  { position: 0.35, expected_bounds: [0.1, 0.4] as Vec2 },
+  { position: 0.65, expected_bounds: [0.6, 0.9] as Vec2 },
 ]
 
 // Shared null-case inputs for both lever rule functions
@@ -1206,7 +1204,7 @@ describe(`compute_x_domain`, () => {
 
   test.each([
     {
-      range: [0.2, 0.8] as [number, number],
+      range: [0.2, 0.8] as Vec2,
       data: null,
       expected: [0.2, 0.8],
       desc: `explicit range returned as-is`,

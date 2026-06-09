@@ -307,7 +307,7 @@ test.describe(`BarPlot Component Tests`, () => {
     ).filter(is_present)
     const widths = boxes.map((bb) => bb.width)
     // Expect at least two distinct widths
-    const distinct = new Set(widths.map((w) => Math.round(w)))
+    const distinct = new Set(widths.map((width) => Math.round(width)))
     expect(distinct.size).toBeGreaterThan(1)
   })
 

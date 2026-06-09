@@ -8,20 +8,30 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, simple_structure } from '../setup'
 
 // Mock the export functions
-vi.mock(`$lib/structure/export`, () => ({
-  export_structure_as_json: vi.fn(),
-  export_structure_as_xyz: vi.fn(),
-  export_structure_as_cif: vi.fn(),
-  export_structure_as_poscar: vi.fn(),
-  export_structure_as_glb: vi.fn(),
-  export_structure_as_obj: vi.fn(),
-  structure_to_json_str: vi.fn(() => `{"test": "json"}`),
-  structure_to_xyz_str: vi.fn(() => `3\ntest\nH 0 0 0`),
-  structure_to_cif_str: vi.fn(() => `data_test\n_cell_length_a 1.0`),
-  structure_to_poscar_str: vi.fn(() => `test\n1.0\n1 0 0`),
-}))
+vi.mock(`$lib/structure/export`, () => {
+  const structure_to_json_str = vi.fn(() => `{"test": "json"}`)
+  const structure_to_xyz_str = vi.fn(() => `3\ntest\nH 0 0 0`)
+  const structure_to_cif_str = vi.fn(() => `data_test\n_cell_length_a 1.0`)
+  const structure_to_poscar_str = vi.fn(() => `test\n1.0\n1 0 0`)
+  return {
+    export_structure_as: vi.fn(),
+    export_structure_as_glb: vi.fn(),
+    export_structure_as_obj: vi.fn(),
+    structure_to_json_str,
+    structure_to_xyz_str,
+    structure_to_cif_str,
+    structure_to_poscar_str,
+    STRUCT_TEXT_FORMATS: {
+      json: { to_str: structure_to_json_str, ext: `json`, mime: `application/json` },
+      xyz: { to_str: structure_to_xyz_str, ext: `xyz`, mime: `text/plain` },
+      cif: { to_str: structure_to_cif_str, ext: `cif`, mime: `chemical/x-cif` },
+      poscar: { to_str: structure_to_poscar_str, ext: `poscar`, mime: `text/plain` },
+    },
+  }
+})
 
-vi.mock(`$lib/io/export`, () => ({
+vi.mock(`$lib/io/export`, async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   export_canvas_as_png: vi.fn(),
 }))
 
@@ -70,24 +80,26 @@ describe(`StructureExportPane`, () => {
   })
 
   test.each([
-    { format: `json`, label: `JSON`, fn_name: `export_structure_as_json` },
-    { format: `xyz`, label: `XYZ`, fn_name: `export_structure_as_xyz` },
-    { format: `cif`, label: `CIF`, fn_name: `export_structure_as_cif` },
-    { format: `poscar`, label: `POSCAR`, fn_name: `export_structure_as_poscar` },
-  ])(`calls correct export function for $label download`, async ({ label, fn_name }) => {
+    { format: `json`, label: `JSON` },
+    { format: `xyz`, label: `XYZ` },
+    { format: `cif`, label: `CIF` },
+    { format: `poscar`, label: `POSCAR` },
+  ])(`calls correct export function for $label download`, async ({ format, label }) => {
+    vi.mocked(export_funcs.export_structure_as).mockClear() // shared across test.each runs
     mount(StructureExportPane, {
       target: document.body,
       props: { structure: simple_structure },
     })
 
-    const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
-    expect(export_fn).not.toHaveBeenCalled()
+    expect(export_funcs.export_structure_as).not.toHaveBeenCalled()
 
     const download_btn = get_button(`Download ${label}`)
     expect(download_btn).toBeDefined()
 
     download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-    await vi.waitFor(() => expect(export_fn).toHaveBeenCalledWith(simple_structure))
+    await vi.waitFor(() =>
+      expect(export_funcs.export_structure_as).toHaveBeenCalledWith(format, simple_structure),
+    )
   })
 
   test.each([

@@ -1,12 +1,15 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
-import { COMPRESSION_EXTENSIONS_REGEX, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
+import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
+import { VASP_VOLUMETRIC_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
-import { ELEM_SYMBOLS } from '$lib/labels'
+import { coerce_elem_symbol, FALLBACK_ELEMENTS } from '$lib/element'
+import { strip_compression_extensions } from '$lib/io'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { ParsedStructure } from '$lib/structure/parse'
+import { make_site } from '$lib/structure/site'
 import type { DataRange, VolumetricData, VolumetricFileData } from './types'
 
 // Bohr radius in Angstroms (for Gaussian .cube unit conversion)
@@ -250,9 +253,8 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     atom_counts = cur.line.trim().split(/\s+/).map(Number)
   } else {
     atom_counts = cur.line.trim().split(/\s+/).map(Number)
-    const fallback_elements = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`]
     element_symbols = atom_counts.map(
-      (_count, idx) => fallback_elements[idx % fallback_elements.length],
+      (_count, idx) => FALLBACK_ELEMENTS[idx % FALLBACK_ELEMENTS.length],
     )
   }
   pos = cur.next
@@ -292,9 +294,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
   for (let elem_idx = 0; elem_idx < element_symbols.length; elem_idx++) {
     const symbol = element_symbols[elem_idx].split(/[_/]/)[0]
-    const element = (
-      ELEM_SYMBOLS.includes(symbol as ElementSymbol) ? symbol : `H`
-    ) as ElementSymbol
+    const element = coerce_elem_symbol(symbol) ?? `H`
     const count = atom_counts[elem_idx]
 
     for (let count_idx = 0; count_idx < count; count_idx++) {
@@ -318,13 +318,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
         abc = wrap_to_unit_cell(raw)
       }
 
-      sites.push({
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz,
-        label: `${element}${atom_idx + count_idx + 1}`,
-        properties: {},
-      })
+      sites.push(make_site(element, abc, xyz, `${element}${atom_idx + count_idx + 1}`))
     }
     atom_idx += count
   }
@@ -501,7 +495,7 @@ export function parse_cube(
     cube_cart_to_frac = math.create_cart_to_frac(lattice)
   } catch {
     // Non-periodic system (molecule), use identity
-    cube_cart_to_frac = (v: Vec3): Vec3 => [v[0], v[1], v[2]]
+    cube_cart_to_frac = (vec: Vec3): Vec3 => [vec[0], vec[1], vec[2]]
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
@@ -529,13 +523,7 @@ export function parse_cube(
     const abc = cube_cart_to_frac(xyz)
 
     const element = atomic_number_to_symbol(atom_line[0])
-    sites.push({
-      species: [{ element, occu: 1, oxidation_state: 0 }],
-      abc,
-      xyz,
-      label: `${element}${atom_idx + 1}`,
-      properties: {},
-    })
+    sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
   }
 
   // Build structure
@@ -592,12 +580,9 @@ export function parse_cube(
   return { structure, volumes }
 }
 
-// Convert atomic number to element symbol using ELEM_SYMBOLS (1-indexed: H=1, He=2, ...)
-function atomic_number_to_symbol(atomic_number: number): ElementSymbol {
-  // ELEM_SYMBOLS is 0-indexed (H at index 0), atomic numbers are 1-indexed
-  const idx = atomic_number - 1
-  return idx >= 0 && idx < ELEM_SYMBOLS.length ? ELEM_SYMBOLS[idx] : `H`
-}
+// Convert atomic number to element symbol (falls back to H for unknown numbers)
+const atomic_number_to_symbol = (atomic_number: number): ElementSymbol =>
+  ATOMIC_NUMBER_TO_SYMBOL[atomic_number] ?? `H`
 
 // Auto-detect and parse volumetric file format based on filename and content
 export function parse_volumetric_file(
@@ -605,7 +590,7 @@ export function parse_volumetric_file(
   filename?: string,
 ): VolumetricFileData | null {
   // Strip compression suffixes so "CHGCAR.gz" and "molecule.cube.bz2" match correctly
-  const lower_name = (filename ?? ``).toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  const lower_name = strip_compression_extensions(filename ?? ``)
 
   // Extension-based detection
   if (lower_name.endsWith(`.cube`)) return parse_cube(content)

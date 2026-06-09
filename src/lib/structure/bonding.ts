@@ -2,7 +2,7 @@
 
 import { element_data } from '$lib/element'
 import type { ElementSymbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 
@@ -572,7 +572,7 @@ export function get_bond_render_matrices(
   const gap = bond_thickness * 1.8
   // Parallel cylinder [offset, radius_scale] pairs per bond order; empty → a single
   // full-width bond (handled by the fallback below)
-  let offsets_and_scales: [number, number][] = []
+  let offsets_and_scales: Vec2[] = []
   if (order === 2)
     offsets_and_scales = [
       [-gap / 2, 0.65],

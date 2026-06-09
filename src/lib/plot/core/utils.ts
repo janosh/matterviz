@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import type { TweenOptions } from 'svelte/motion'
 
 // Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Returns a
@@ -21,7 +22,7 @@ export const resolve_line_tween = (
     ? { duration: 0 }
     : undefined)
 
-export function calc_auto_range(values: number[]): [number, number] {
+export function calc_auto_range(values: number[]): Vec2 {
   const finite_values = values.filter(Number.isFinite)
   if (finite_values.length === 0) return [0, 1]
   let [min_value, max_value] = [finite_values[0], finite_values[0]]

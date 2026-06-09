@@ -5,7 +5,8 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
-import { coerce_element_symbol, create_trajectory_frame } from '$lib/trajectory/helpers'
+import { coerce_elem_symbol } from '$lib/element'
+import { create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
@@ -148,7 +149,7 @@ export function parse_lammps_trajectory(
       } else if (element_col !== undefined) {
         const raw_symbol = parts[element_col]
         if (!raw_symbol) continue
-        element_symbol = coerce_element_symbol(raw_symbol)
+        element_symbol = coerce_elem_symbol(raw_symbol)
         if (!element_symbol) {
           console.warn(
             `Skipping LAMMPS atom with unknown element symbol "${raw_symbol}" at timestep ${timestep}`,

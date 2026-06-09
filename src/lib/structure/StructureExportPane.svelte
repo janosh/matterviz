@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib/structure'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
-  import { export_canvas_as_png } from '$lib/io/export'
+  import { export_canvas_as_png, observe_canvas_presence } from '$lib/io/export'
   import { sanitize_html } from '$lib/sanitize'
   import * as exports from '$lib/structure/export'
+  import type { StructTextFormat } from '$lib/structure/export'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { Camera, Scene } from 'three'
@@ -80,32 +81,20 @@
   ] as const
 
   // Helper function to export structure to file
-  function export_structure(format: `json` | `xyz` | `cif` | `poscar`) {
+  function export_structure(format: StructTextFormat) {
     if (!structure) return
-    const export_fns = {
-      json: exports.export_structure_as_json,
-      xyz: exports.export_structure_as_xyz,
-      cif: exports.export_structure_as_cif,
-      poscar: exports.export_structure_as_poscar,
-    } as const
-    export_fns[format](structure)
+    exports.export_structure_as(format, structure)
   }
 
   // Handle clipboard copy with user feedback
-  async function handle_copy(format: `json` | `xyz` | `cif` | `poscar`) {
+  async function handle_copy(format: StructTextFormat) {
     if (!structure) {
       console.warn(`No structure available for copying`)
       return
     }
 
     try {
-      let content: string
-      if (format === `json`) content = exports.structure_to_json_str(structure)
-      else if (format === `xyz`) content = exports.structure_to_xyz_str(structure)
-      else if (format === `cif`) content = exports.structure_to_cif_str(structure)
-      else if (format === `poscar`) {
-        content = exports.structure_to_poscar_str(structure)
-      } else throw new Error(`Invalid format: ${format}`)
+      const content = exports.STRUCT_TEXT_FORMATS[format].to_str(structure)
 
       await navigator.clipboard.writeText(content)
 
@@ -135,17 +124,7 @@
 
   let has_canvas = $state(false)
 
-  $effect(() => {
-    if (!wrapper) {
-      has_canvas = false
-      return
-    }
-    const check = () => (has_canvas = Boolean(wrapper.querySelector(`canvas`)))
-    check()
-    const observer = new MutationObserver(check)
-    observer.observe(wrapper, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  })
+  $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
 </script>
 
 <DraggablePane

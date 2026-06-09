@@ -4,6 +4,7 @@
 // Hull points use reduced barycentric coords ((N-1) spatial + 1 energy): full barycentric
 // coords sum to 1 and would confine all points to an affine subspace (degenerate hull).
 
+import type { ElementSymbol } from '$lib'
 import { calculate_e_above_hull } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
@@ -18,7 +19,7 @@ interface PymatgenEntry {
 }
 
 interface PymatgenReference {
-  elements: string[]
+  elements: ElementSymbol[]
   entries: PymatgenEntry[]
   n_stable: number
   n_unstable: number
@@ -28,7 +29,7 @@ const reference = pymatgen_reference as PymatgenReference
 
 // Convert pymatgen entry to PhaseData format
 function to_phase_data(entry: PymatgenEntry): PhaseData {
-  const n_atoms = Object.values(entry.composition).reduce((sum, n) => sum + n, 0)
+  const n_atoms = Object.values(entry.composition).reduce((sum, count) => sum + count, 0)
   return {
     composition: entry.composition,
     e_form_per_atom: entry.e_form_per_atom,

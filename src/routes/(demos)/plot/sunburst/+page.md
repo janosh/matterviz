@@ -269,12 +269,12 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 
 ```svelte example
 <script lang="ts">
-  import { spacegroup_sunburst_data, Sunburst } from 'matterviz'
+  import { spacegroup_sunburst_data, Sunburst, type Vec2 } from 'matterviz'
 
   let min_fraction = $state(0.02)
 
   // synthetic MP-like spacegroup distribution: [spacegroup, structure count]
-  const distribution: [number, number][] = [
+  const distribution: Vec2[] = [
     [225, 380], // Fm-3m
     [221, 160], // Pm-3m
     [227, 140], // Fd-3m

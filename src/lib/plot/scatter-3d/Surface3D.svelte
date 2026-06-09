@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Vec2 } from '$lib/math'
   import type { Surface3DConfig } from '$lib/plot/core/types'
   import { T } from '@threlte/core'
   import * as THREE from 'three'
@@ -13,9 +14,9 @@
     scene_z = 5,
   }: {
     config: Surface3DConfig
-    x_range?: [number, number]
-    y_range?: [number, number]
-    z_range?: [number, number]
+    x_range?: Vec2
+    y_range?: Vec2
+    z_range?: Vec2
     scene_x?: number
     scene_y?: number
     scene_z?: number
@@ -24,7 +25,7 @@
   // Normalize value to scene coordinates (centered around 0)
   const normalize = (
     value: number,
-    [min_val, max_val]: [number, number],
+    [min_val, max_val]: Vec2,
     scene_size: number,
   ): number => ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
 
@@ -96,7 +97,7 @@
   }
 
   // Parse resolution config into [res_a, res_b]
-  const get_resolution = (): [number, number] =>
+  const get_resolution = (): Vec2 =>
     Array.isArray(config.resolution)
       ? config.resolution
       : [config.resolution ?? 20, config.resolution ?? 20]

@@ -78,27 +78,10 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   // high-x face (far beyond the 0.5 Å face tolerance) but its periodic image at
   // x=-2.5 is 3.0 Å from Ag - within Ag+I covalent radii + slack, so phase 2
   // must generate that image to complete the bond across the boundary
-  const lattice_matrix: Matrix3x3 = [
-    [10, 0, 0],
-    [0, 10, 0],
-    [0, 0, 10],
-  ]
-  const frac_to_cart = create_frac_to_cart(lattice_matrix)
-  const make_site = (element: string, abc: Vec3) => ({
-    species: [{ element: element as `Ag`, occu: 1, oxidation_state: 0 }],
-    abc,
-    xyz: frac_to_cart(abc),
-    label: element,
-    properties: {},
-  })
-  const structure: Crystal = {
-    sites: [make_site(`Ag`, [0.02, 0.5, 0.5]), make_site(`I`, [0.75, 0.5, 0.5])],
-    lattice: {
-      matrix: lattice_matrix,
-      pbc: [true, true, true],
-      ...math.calc_lattice_params(lattice_matrix),
-    },
-  }
+  const structure = make_crystal(10, [
+    [`Ag`, [0.02, 0.5, 0.5]],
+    [`I`, [0.75, 0.5, 0.5]],
+  ])
 
   const image_atoms = find_image_atoms(structure)
   // the I image shifted by (-1, 0, 0) lands at x=-2.5, 3.0 Å from Ag
@@ -125,10 +108,10 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   ).toBe(true)
 
   // an isolated atom pair too far apart to bond must NOT generate phase-2 images
-  const unbonded: Crystal = {
-    ...structure,
-    sites: [make_site(`Ag`, [0.05, 0.5, 0.5]), make_site(`I`, [0.55, 0.5, 0.5])],
-  }
+  const unbonded = make_crystal(10, [
+    [`Ag`, [0.05, 0.5, 0.5]],
+    [`I`, [0.55, 0.5, 0.5]],
+  ])
   // I image at (-4.5, 5, 5) would be 5 Å from Ag - beyond bonding distance
   const unbonded_images = find_image_atoms(unbonded).filter(([idx]) => idx === 1)
   expect(unbonded_images).toHaveLength(0)
@@ -137,14 +120,11 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   // complete the cation shells instead. Pulled-in cation copies would protrude
   // asymmetrically wherever the anion sublattice hugs one cell face (e.g. bare
   // Ti images below the rutile cell but not above).
-  const metal_in_compound: Crystal = {
-    ...structure,
-    sites: [
-      make_site(`Ti`, [0.05, 0.5, 0.5]),
-      make_site(`Ti`, [0.75, 0.5, 0.5]), // image at x=-2.5 is 3.0 Å from first Ti
-      make_site(`O`, [0.8, 0.5, 0.5]), // image at x=-2 is 2.5 Å from first Ti (bonds!)
-    ],
-  }
+  const metal_in_compound = make_crystal(10, [
+    [`Ti`, [0.05, 0.5, 0.5]],
+    [`Ti`, [0.75, 0.5, 0.5]], // image at x=-2.5 is 3.0 Å from first Ti
+    [`O`, [0.8, 0.5, 0.5]], // image at x=-2 is 2.5 Å from first Ti (bonds!)
+  ])
   const compound_images = find_image_atoms(metal_in_compound)
   expect(compound_images.filter(([idx]) => idx === 1)).toHaveLength(0)
   // ...while the anion gets pulled in to complete the Ti coordination
@@ -154,10 +134,10 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   // anion->cation pull): only the uniform phase-1 boundary copies render, so
   // e.g. a 1-atom FCC metal cell shows just its corner copies instead of an
   // asymmetric nearest-neighbor blob
-  const pure_metal: Crystal = {
-    ...structure,
-    sites: [make_site(`Cu`, [0.05, 0.5, 0.5]), make_site(`Cu`, [0.8, 0.5, 0.5])],
-  }
+  const pure_metal = make_crystal(10, [
+    [`Cu`, [0.05, 0.5, 0.5]],
+    [`Cu`, [0.8, 0.5, 0.5]],
+  ])
   // Cu image at x=-2 would be 2.5 Å from first Cu (within 2*r_Cu + slack) but
   // must still not be generated
   const cu_images = find_image_atoms(pure_metal).filter(([idx]) => idx === 1)
@@ -166,10 +146,10 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   // multi-metal intermetallics (e.g. Al-Fe-Ni) also get no phase-2 images even
   // though their metals differ in electronegativity - metals can never be
   // polyhedron vertices, so such images would complete nothing
-  const intermetallic: Crystal = {
-    ...structure,
-    sites: [make_site(`Al`, [0.05, 0.5, 0.5]), make_site(`Fe`, [0.8, 0.5, 0.5])],
-  }
+  const intermetallic = make_crystal(10, [
+    [`Al`, [0.05, 0.5, 0.5]],
+    [`Fe`, [0.8, 0.5, 0.5]],
+  ])
   // Fe (EN 1.83) > Al (EN 1.61) and the Fe image at x=-2 would be within bonding
   // distance of Al, but Fe is a metal -> no image
   const fe_images = find_image_atoms(intermetallic).filter(([idx]) => idx === 1)
@@ -184,22 +164,10 @@ test(`find_image_atoms handles a degenerate (zero-volume) lattice without NaN`, 
     [10, 0, 0], // parallel to the first vector
     [0, 0, 10],
   ]
-  const frac_to_cart = create_frac_to_cart(degenerate_matrix)
-  const make_site = (element: string, abc: Vec3) => ({
-    species: [{ element: element as `Na`, occu: 1, oxidation_state: 0 }],
-    abc,
-    xyz: frac_to_cart(abc),
-    label: element,
-    properties: {},
-  })
-  const degenerate: Crystal = {
-    sites: [make_site(`Na`, [0.05, 0.5, 0.1]), make_site(`Cl`, [0.5, 0.5, 0.6])],
-    lattice: {
-      matrix: degenerate_matrix,
-      pbc: [true, true, true],
-      ...math.calc_lattice_params(degenerate_matrix),
-    },
-  }
+  const degenerate = make_crystal(degenerate_matrix, [
+    [`Na`, [0.05, 0.5, 0.1]],
+    [`Cl`, [0.5, 0.5, 0.6]],
+  ])
 
   const images = find_image_atoms(degenerate)
   // must terminate and produce only finite coordinates (no NaN/Infinity)
@@ -328,13 +296,13 @@ test.each([
 
 test(`triclinic lattice image xyz must match lattice * abc`, () => {
   // Construct a triclinic lattice from cell parameters
-  const a = 4
-  const b = 5
-  const c = 6
+  const a_len = 4
+  const b_len = 5
+  const c_len = 6
   const alpha = 75
   const beta = 85
   const gamma = 65
-  const matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+  const matrix = math.cell_to_lattice_matrix(a_len, b_len, c_len, alpha, beta, gamma)
   const params = math.calc_lattice_params(matrix)
 
   const structure: Crystal = {

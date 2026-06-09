@@ -1340,8 +1340,8 @@ describe(`double-click recursive expand/collapse`, () => {
       target: document.body,
       props: { value: { foo: { bar: 1 } }, show_header: false, default_fold_level: 5 },
     })
-    const paths = Array.from(document.querySelectorAll(`.json-node[data-path]`)).map((n) =>
-      n.getAttribute(`data-path`),
+    const paths = Array.from(document.querySelectorAll(`.json-node[data-path]`)).map((node) =>
+      node.getAttribute(`data-path`),
     )
     expect(paths).toContain(`foo`)
     expect(paths).toContain(`foo.bar`)

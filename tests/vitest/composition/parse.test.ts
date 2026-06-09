@@ -1,4 +1,5 @@
 import type { CompositionType, ElementSymbol } from '$lib'
+import { is_elem_symbol } from '$lib/element'
 import {
   atomic_num_to_symbols,
   ATOMIC_NUMBER_TO_SYMBOL,
@@ -10,7 +11,6 @@ import {
   get_molecular_weight,
   get_reduced_formula,
   has_wildcards,
-  is_valid_element,
   matches_chemsys_wildcard,
   matches_formula_wildcard,
   normalize_composition,
@@ -551,7 +551,7 @@ describe(`normalize_element_symbols`, () => {
   })
 })
 
-describe(`is_valid_element`, () => {
+describe(`is_elem_symbol`, () => {
   test.each([
     [`Fe`, true],
     [`O`, true],
@@ -562,7 +562,7 @@ describe(`is_valid_element`, () => {
     [``, false],
     [`fe`, false],
   ])(`%s -> %s`, (input, expected) => {
-    expect(is_valid_element(input)).toBe(expected)
+    expect(is_elem_symbol(input)).toBe(expected)
   })
 })
 

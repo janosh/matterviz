@@ -14,7 +14,9 @@ function get_dos(pattern: string): PymatgenCompleteDos {
   const entry = entries.find(([path]) => path.includes(pattern))
   if (!entry) {
     throw new Error(
-      `DOS file matching "${pattern}" not found in ${entries.map(([p]) => p).join(`, `)}`,
+      `DOS file matching "${pattern}" not found in ${entries
+        .map(([path]) => path)
+        .join(`, `)}`,
     )
   }
   return entry[1]

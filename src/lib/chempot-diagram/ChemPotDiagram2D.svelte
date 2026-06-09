@@ -340,8 +340,8 @@
     const result: { formula: string; data_x: number; data_y: number }[] = []
     for (const [formula, pts] of Object.entries(draw_domains)) {
       if (pts.length === 0) continue
-      const center_x = pts.reduce((s, p) => s + p[0], 0) / pts.length
-      const center_y = pts.reduce((s, p) => s + p[1], 0) / pts.length
+      const center_x = pts.reduce((sum, point) => sum + point[0], 0) / pts.length
+      const center_y = pts.reduce((sum, point) => sum + point[1], 0) / pts.length
       let offset_x = 0
       let offset_y = 0
       if (pts.length >= 2) {

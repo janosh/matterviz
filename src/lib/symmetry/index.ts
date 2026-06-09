@@ -455,10 +455,10 @@ class WrappedPositionIndex {
   }
 
   private cell_key(pos: Vec3, dx: number, dy: number, dz: number): string {
-    const n = this.n_cells
+    const n_cells = this.n_cells
     const cell = (coord: number, offset: number) => {
       const wrapped = coord - Math.floor(coord)
-      return (((Math.floor(wrapped * n) + offset) % n) + n) % n
+      return (((Math.floor(wrapped * n_cells) + offset) % n_cells) + n_cells) % n_cells
     }
     return `${cell(pos[0], dx)},${cell(pos[1], dy)},${cell(pos[2], dz)}`
   }

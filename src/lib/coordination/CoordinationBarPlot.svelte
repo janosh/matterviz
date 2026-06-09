@@ -3,6 +3,7 @@
   import { StatusMessage } from '$lib/feedback'
   import { create_file_drop_handler } from '$lib/io'
   import { format_value } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import { BarPlot } from '$lib/plot'
   import type {
     AxisConfig,
@@ -99,7 +100,7 @@
     for (const entry of entries_with_data) {
       for (const [cn] of entry.data.cn_histogram) max_cn = Math.max(max_cn, cn)
     }
-    const cn_range: [number, number] = [-0.5, max_cn + 0.5]
+    const cn_range: Vec2 = [-0.5, max_cn + 0.5]
 
     return { count: [0, null] as [number, null], cn: cn_range } // Count axis should always start at 0
   })

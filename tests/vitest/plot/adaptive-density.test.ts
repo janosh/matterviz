@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import {
   build_pick_index,
   bin_points,
@@ -62,8 +63,8 @@ describe(`adaptive density utilities`, () => {
   })
 
   const pick_options = {
-    x_range: [0, 2] as [number, number],
-    y_range: [0, 2] as [number, number],
+    x_range: [0, 2] as Vec2,
+    y_range: [0, 2] as Vec2,
     x_scale: (x: number) => x * 100,
     y_scale: (y: number) => y * 100,
     radius_px: 20,
@@ -178,7 +179,7 @@ describe(`adaptive density utilities`, () => {
 
   describe(`log-scale binning`, () => {
     const log_xy = { x: scale_bin_transform(`log`), y: scale_bin_transform(`log`) }
-    const range: [number, number] = [1, 100]
+    const range: Vec2 = [1, 100]
 
     it(`bins log-scale data in transformed space`, () => {
       const log_series: DensePointSeries[] = [{ x: [10], y: [10] }]

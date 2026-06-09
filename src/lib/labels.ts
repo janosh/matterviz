@@ -26,7 +26,7 @@ export const symbol_names = [
   ...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke]),
 ]
   .map(name_for_symbol)
-  .filter((n): n is D3SymbolName => n !== null)
+  .filter((name): name is D3SymbolName => name !== null)
 
 export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.fromEntries(
   // Symbol lookup from d3-shape

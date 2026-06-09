@@ -40,17 +40,12 @@
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_dimension_tracker, create_hover_lock } from '$lib/plot/core/hover-lock.svelte'
+  import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
     axis_ranges_equal,
-    get_relative_coords,
-    MIN_TOUCH_DISTANCE_PIXELS,
-    pan_range_by_pixels,
-    PINCH_ZOOM_THRESHOLD,
-    remove_drag_listeners,
+    invert_rect_range,
     resolve_axis_ranges,
-    sorted_range,
-    zoom_range_by_factor,
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
@@ -68,7 +63,6 @@
     get_nice_data_range,
     get_tick_label,
   } from '$lib/plot/core/scales'
-  import type { InitialRanges } from '$lib/plot/core/types'
   import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
   import { unique_id } from '$lib/plot/core/utils'
   import { DEFAULTS } from '$lib/settings'
@@ -176,7 +170,7 @@
     outlier_style?: OutlierStyle
     whisker_mode?: WhiskerMode
     whisker_range?: number
-    whisker_percentiles?: [number, number]
+    whisker_percentiles?: Vec2
     show_outliers?: boolean
     show_mean?: boolean
     show_value_labels?: boolean
@@ -586,178 +580,46 @@
     x2_max: measure_max_tick_width(ticks.x2, x2_axis.format ?? ``),
   })
 
-  // === Interaction state (pan / zoom / touch) ===
-  let drag_state = $state<{
-    start: { x: number; y: number } | null
-    current: { x: number; y: number } | null
-    bounds: DOMRect | null
-  }>({ start: null, current: null, bounds: null })
-  let is_focused = $state(false)
-  let shift_held = $state(false)
-  let pan_drag_state = $state<InitialRanges & { start: { x: number; y: number } } | null>(null)
-  let touch_state = $state<InitialRanges & { start_touches: { x: number; y: number }[] } | null>(
-    null,
-  )
-
-  const on_window_mouse_move = (evt: MouseEvent) => {
-    if (!drag_state.start || !drag_state.bounds) return
-    drag_state.current = {
-      x: evt.clientX - drag_state.bounds.left,
-      y: evt.clientY - drag_state.bounds.top,
-    }
-  }
-  const on_window_mouse_up = () => {
-    if (drag_state.start && drag_state.current) {
-      const x1 = scales.x.invert(drag_state.start.x) as number
-      const x2 = scales.x.invert(drag_state.current.x) as number
-      const y1 = scales.y.invert(drag_state.start.y)
-      const y2 = scales.y.invert(drag_state.current.y)
-      const y2_1 = scales.y2.invert(drag_state.start.y)
-      const y2_2 = scales.y2.invert(drag_state.current.y)
-      const x2_1 = scales.x2.invert(drag_state.start.x) as number
-      const x2_2 = scales.x2.invert(drag_state.current.x) as number
-      const dx = Math.abs(drag_state.start.x - drag_state.current.x)
-      const dy = Math.abs(drag_state.start.y - drag_state.current.y)
-      if (dx > 5 && dy > 5 && Number.isFinite(x1) && Number.isFinite(x2)) {
-        x_axis = { ...x_axis, range: sorted_range(x1, x2) }
-        // the secondary value axis is x2 only in horizontal mode, y2 only in vertical
-        // (is_secondary keys off orientation); writing the off-orientation axis would
-        // store a phantom range from its [0, 1] sentinel scale into the bound prop
-        if (
-          has_secondary && orientation === `horizontal` &&
-          Number.isFinite(x2_1) && Number.isFinite(x2_2)
-        ) {
-          x2_axis_prop = { ...x2_axis_prop, range: sorted_range(x2_1, x2_2) }
-        }
-        y_axis = { ...y_axis, range: sorted_range(y1, y2) }
-        if (
-          has_secondary && orientation === `vertical` &&
-          Number.isFinite(y2_1) && Number.isFinite(y2_2)
-        ) {
-          y2_axis_prop = { ...y2_axis_prop, range: sorted_range(y2_1, y2_2) }
-        }
+  // Shared pan/zoom/touch/drag-rect interaction controller
+  const pan_zoom = create_pan_zoom({
+    ranges: () => ranges.current,
+    scale_type: (axis) => ({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })[axis].scale_type,
+    plot_dims: () => ({ width: chart_width, height: chart_height }),
+    pan: () => pan,
+    set_range: (axis, range) => (ranges.current[axis] = range),
+    svg: () => svg_element,
+    on_rect_zoom: (start, current) => {
+      const next_x = invert_rect_range(scales.x, start.x, current.x)
+      if (!next_x) return
+      x_axis = { ...x_axis, range: next_x }
+      // the secondary value axis is x2 only in horizontal mode, y2 only in vertical
+      // (is_secondary keys off orientation); writing the off-orientation axis would
+      // store a phantom range from its [0, 1] sentinel scale into the bound prop
+      const next_x2 = has_secondary && orientation === `horizontal`
+        ? invert_rect_range(scales.x2, start.x, current.x)
+        : null
+      if (next_x2) x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
+      const next_y = invert_rect_range(scales.y, start.y, current.y)
+      if (next_y) y_axis = { ...y_axis, range: next_y }
+      const next_y2 = has_secondary && orientation === `vertical`
+        ? invert_rect_range(scales.y2, start.y, current.y)
+        : null
+      if (next_y2) y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
+    },
+    on_reset: () => {
+      ranges.current = {
+        x: [...ranges.initial.x] as Vec2,
+        x2: [...ranges.initial.x2] as Vec2,
+        y: [...ranges.initial.y] as Vec2,
+        y2: [...ranges.initial.y2] as Vec2,
       }
-    }
-    drag_state = { start: null, current: null, bounds: null }
-    window.removeEventListener(`mousemove`, on_window_mouse_move)
-    window.removeEventListener(`mouseup`, on_window_mouse_up)
-    document.body.style.cursor = `default`
-  }
-
-  // Pan/zoom all four axes from an interaction-start snapshot, each in its own
-  // scale's transform space (log axes pan by a constant factor, linear by a shift)
-  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
-    ranges.current.x = pan_range_by_pixels(init.initial_x_range, dx_px, chart_width, x_axis.scale_type)
-    ranges.current.x2 = pan_range_by_pixels(init.initial_x2_range, dx_px, chart_width, x2_axis.scale_type)
-    ranges.current.y = pan_range_by_pixels(init.initial_y_range, dy_px, chart_height, y_axis.scale_type)
-    ranges.current.y2 = pan_range_by_pixels(init.initial_y2_range, dy_px, chart_height, y2_axis.scale_type)
-  }
-  const zoom_all_axes = (init: InitialRanges, factor: number) => {
-    ranges.current.x = zoom_range_by_factor(init.initial_x_range, factor, x_axis.scale_type)
-    ranges.current.x2 = zoom_range_by_factor(init.initial_x2_range, factor, x2_axis.scale_type)
-    ranges.current.y = zoom_range_by_factor(init.initial_y_range, factor, y_axis.scale_type)
-    ranges.current.y2 = zoom_range_by_factor(init.initial_y2_range, factor, y2_axis.scale_type)
-  }
-
-  // Pan drag handler (drag direction inverted on x for natural pan feel)
-  const on_pan_move = (evt: MouseEvent) => {
-    if (!pan_drag_state) return
-    const sensitivity = pan?.drag_sensitivity ?? 1
-    pan_all_axes(
-      pan_drag_state,
-      -(evt.clientX - pan_drag_state.start.x) * sensitivity,
-      (evt.clientY - pan_drag_state.start.y) * sensitivity,
-    )
-  }
-  const on_pan_end = () => {
-    pan_drag_state = null
-    document.body.style.cursor = ``
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
-  }
-
-  // Tear down any window listeners + cursor override if the component unmounts mid-drag
-  // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
-  // onDestroy also runs during SSR teardown, where window/document don't exist.
-  onDestroy(() => {
-    remove_drag_listeners([on_window_mouse_move, on_pan_move], [on_window_mouse_up, on_pan_end])
-    drag_state = { start: null, current: null, bounds: null }
-    pan_drag_state = null
+      x_axis = { ...x_axis, range: [null, null] }
+      x2_axis_prop = { ...x2_axis_prop, range: [null, null] }
+      y_axis = { ...y_axis, range: [null, null] }
+      y2_axis_prop = { ...y2_axis_prop, range: [null, null] }
+    },
   })
-
-  function handle_mouse_down(evt: MouseEvent) {
-    const coords = get_relative_coords(evt)
-    if (!coords || !svg_element) return
-    const pan_enabled = pan?.enabled !== false
-    if (pan_enabled && evt.shiftKey) {
-      evt.preventDefault()
-      pan_drag_state = {
-        start: { x: evt.clientX, y: evt.clientY },
-        initial_x_range: [...ranges.current.x] as Vec2,
-        initial_x2_range: [...ranges.current.x2] as Vec2,
-        initial_y_range: [...ranges.current.y] as Vec2,
-        initial_y2_range: [...ranges.current.y2] as Vec2,
-      }
-      document.body.style.cursor = `grabbing`
-      window.addEventListener(`mousemove`, on_pan_move)
-      window.addEventListener(`mouseup`, on_pan_end)
-      return
-    }
-    drag_state = { start: coords, current: coords, bounds: svg_element.getBoundingClientRect() }
-    window.addEventListener(`mousemove`, on_window_mouse_move)
-    window.addEventListener(`mouseup`, on_window_mouse_up)
-    evt.preventDefault()
-  }
-
-  function handle_wheel(evt: WheelEvent) {
-    const pan_enabled = pan?.enabled !== false
-    if (!pan_enabled || !is_focused || !shift_held) return
-    evt.preventDefault()
-    const sensitivity = pan?.wheel_sensitivity ?? 1
-    if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
-      const dx = evt.deltaX * sensitivity
-      ranges.current.x = pan_range_by_pixels(ranges.current.x, dx, chart_width, x_axis.scale_type)
-      ranges.current.x2 = pan_range_by_pixels(ranges.current.x2, dx, chart_width, x2_axis.scale_type)
-    } else {
-      const dy = evt.deltaY * sensitivity
-      ranges.current.y = pan_range_by_pixels(ranges.current.y, dy, chart_height, y_axis.scale_type)
-      ranges.current.y2 = pan_range_by_pixels(ranges.current.y2, dy, chart_height, y2_axis.scale_type)
-    }
-  }
-
-  function handle_touch_start(evt: TouchEvent) {
-    const touch_enabled = pan?.enabled !== false && pan?.touch_enabled !== false
-    if (!touch_enabled || evt.touches.length !== 2) return
-    evt.preventDefault()
-    const touches = Array.from(evt.touches)
-    touch_state = {
-      start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
-      initial_x_range: [...ranges.current.x] as Vec2,
-      initial_x2_range: [...ranges.current.x2] as Vec2,
-      initial_y_range: [...ranges.current.y] as Vec2,
-      initial_y2_range: [...ranges.current.y2] as Vec2,
-    }
-  }
-  function handle_touch_move(evt: TouchEvent) {
-    if (!touch_state || evt.touches.length !== 2) return
-    evt.preventDefault()
-    const [t1, t2] = Array.from(evt.touches)
-    const [s1, s2] = touch_state.start_touches
-    const start_center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 }
-    const curr_center = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 }
-    const dx = curr_center.x - start_center.x
-    const dy = curr_center.y - start_center.y
-    const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
-    // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
-    if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
-    const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
-    const scale = curr_dist / start_dist
-    // Pinch zoom about the view center (spread = zoom in, pinch = zoom out)
-    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      zoom_all_axes(touch_state, scale)
-    } else pan_all_axes(touch_state, -dx, dy)
-  }
-  const handle_touch_end = () => (touch_state = null)
+  onDestroy(() => pan_zoom.destroy())
 
   // === Legend ===
   let legend_data = $derived<LegendItem[]>(
@@ -882,8 +744,8 @@
 </script>
 
 {#snippet seg(
-  p1: [number, number],
-  p2: [number, number],
+  p1: Vec2,
+  p2: Vec2,
   stroke: string,
   sw: number,
   dash?: string,
@@ -933,11 +795,9 @@
       evt.preventDefault()
       fullscreen = false
     }
-    if (evt.key === `Shift`) shift_held = true
+    pan_zoom.on_window_key_down(evt)
   }}
-  onkeyup={(evt) => {
-    if (evt.key === `Shift`) shift_held = false
-  }}
+  onkeyup={pan_zoom.on_window_key_up}
 />
 
 <div
@@ -963,37 +823,25 @@
       aria-label={rest[`aria-label`] ??
       ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Box plot`)}
       tabindex="0"
-      onfocusin={() => (is_focused = true)}
-      onfocusout={() => (is_focused = false)}
-      onmousedown={handle_mouse_down}
-      ondblclick={() => {
-        ranges.current.x = [...ranges.initial.x] as Vec2
-        ranges.current.x2 = [...ranges.initial.x2] as Vec2
-        ranges.current.y = [...ranges.initial.y] as Vec2
-        ranges.current.y2 = [...ranges.initial.y2] as Vec2
-        x_axis = { ...x_axis, range: [null, null] }
-        x2_axis_prop = { ...x2_axis_prop, range: [null, null] }
-        y_axis = { ...y_axis, range: [null, null] }
-        y2_axis_prop = { ...y2_axis_prop, range: [null, null] }
-      }}
+      onfocusin={() => pan_zoom.set_focused(true)}
+      onfocusout={() => pan_zoom.set_focused(false)}
+      onmousedown={pan_zoom.on_mouse_down}
+      ondblclick={pan_zoom.reset_view}
+      onkeydown={pan_zoom.on_key_down}
       onmouseleave={() => {
         hovered = false
         hover_info = null
         change(null)
         on_box_hover?.(null)
       }}
-      onwheel={handle_wheel}
-      ontouchstart={handle_touch_start}
-      ontouchmove={handle_touch_move}
-      ontouchend={handle_touch_end}
-      ontouchcancel={handle_touch_end}
-      style:cursor={pan_drag_state
-      ? `grabbing`
-      : shift_held && pan?.enabled !== false
-      ? `grab`
-      : `crosshair`}
+      onwheel={pan_zoom.on_wheel}
+      ontouchstart={pan_zoom.on_touch_start}
+      ontouchmove={pan_zoom.on_touch_move}
+      ontouchend={pan_zoom.on_touch_end}
+      ontouchcancel={pan_zoom.on_touch_end}
+      style:cursor={pan_zoom.cursor}
     >
-      <ZoomRect start={drag_state.start} current={drag_state.current} />
+      <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
       {@render user_content?.({
         height,
@@ -1144,7 +992,7 @@
             {@const v_wl = val_scale(stats.whisker_low)}
             {@const v_wh = val_scale(stats.whisker_high)}
             {@const v_mean = val_scale(stats.mean)}
-            {@const pt = (cross: number, val: number): [number, number] =>
+            {@const pt = (cross: number, val: number): Vec2 =>
             vertical ? [cross, val] : [val, cross]}
             {@const [q1x, q1y] = pt(c_lo, v_q1)}
             {@const [q3x, q3y] = pt(c_hi, v_q3)}

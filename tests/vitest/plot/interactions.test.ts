@@ -296,7 +296,7 @@ describe(`resolve_axis_ranges`, () => {
 
   it(`returns null when any resolved bound is non-finite`, () => {
     expect(resolve_axis_ranges(no_overrides, { ...auto, y: [0, NaN] })).toBeNull()
-    const inf = { ...no_overrides, x: { range: [0, Infinity] as [number, number] } }
+    const inf = { ...no_overrides, x: { range: [0, Infinity] as Vec2 } }
     expect(resolve_axis_ranges(inf, auto)).toBeNull()
   })
 })

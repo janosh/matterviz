@@ -263,6 +263,29 @@ export function export_svg_as_png(
     .catch((error) => console.error(`Error exporting PNG:`, error))
 }
 
+// Watch a wrapper element for <canvas> insertion/removal: calls set(bool) immediately
+// and on every DOM mutation. Returns a cleanup that disconnects the observer (or
+// undefined when no wrapper is given). Used by export panes to enable canvas exports.
+export function observe_canvas_presence(
+  wrapper: HTMLElement | undefined,
+  set: (has_canvas: boolean) => void,
+): (() => void) | undefined {
+  if (!wrapper) {
+    set(false)
+    return undefined
+  }
+  const check = () => set(Boolean(wrapper.querySelector(`canvas`)))
+  check()
+  const observer = new MutationObserver(check)
+  observer.observe(wrapper, { childList: true, subtree: true })
+  return () => observer.disconnect()
+}
+
+// Estimate VP9 video bitrate (bits/s) from pixel count and frame rate.
+// VP9 needs ~0.1 bits per pixel per frame for good quality; clamped to [1, 200] Mbps.
+export const estimate_video_bitrate = (pixel_count: number, fps: number): number =>
+  Math.max(1_000_000, Math.min(pixel_count * fps * 0.1, 200_000_000))
+
 // Generate FFmpeg command for WebM to MP4 conversion
 export function get_ffmpeg_conversion_command(input_filename: string): string {
   const output = input_filename.replace(/\.webm$/i, `.mp4`)
@@ -312,13 +335,8 @@ export async function export_trajectory_video(
   }
 
   // Calculate bitrate based on actual video dimensions
-  // VP9 typically needs 0.08-0.12 bits per pixel per frame for good quality
-  // canvas dimensions include device pixel ratio and any resolution_multiplier
-  const pixels_per_frame = canvas.width * canvas.height
-  const bits_per_pixel_per_frame = 0.1 // Good quality for VP9
-  // Clamp bitrate to reasonable bounds (1 Mbps min, 200 Mbps max)
-  const calculated_bitrate = pixels_per_frame * fps * bits_per_pixel_per_frame
-  const bitrate = Math.max(1_000_000, Math.min(calculated_bitrate, 200_000_000))
+  // (canvas dimensions include device pixel ratio and any resolution_multiplier)
+  const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
 
   const stream = canvas.captureStream(0)
   const chunks: Blob[] = []

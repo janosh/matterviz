@@ -96,9 +96,15 @@ export function estimate_label_size(text: string, font_size_str?: string): Label
 
 // === Geometry helpers ===
 
-export function rect_overlap_area(a: Rect, b: Rect): number {
-  const ox = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x))
-  const oy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
+export function rect_overlap_area(rect_a: Rect, rect_b: Rect): number {
+  const ox = Math.max(
+    0,
+    Math.min(rect_a.x + rect_a.w, rect_b.x + rect_b.w) - Math.max(rect_a.x, rect_b.x),
+  )
+  const oy = Math.max(
+    0,
+    Math.min(rect_a.y + rect_a.h, rect_b.y + rect_b.h) - Math.max(rect_a.y, rect_b.y),
+  )
   return ox * oy
 }
 

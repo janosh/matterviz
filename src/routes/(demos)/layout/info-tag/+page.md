@@ -70,7 +70,7 @@ Removable tags, custom click handlers, and custom copy values:
     <InfoTag
       {...filter}
       removable
-      onremove={() => (filters = filters.filter((x) => x.id !== filter.id))}
+      onremove={() => (filters = filters.filter((item) => item.id !== filter.id))}
       {disabled}
     />
   {:else}

@@ -1,32 +1,13 @@
-import type { ElementSymbol, Vec3 } from '$lib'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
 import { describe, expect, it } from 'vitest'
-
-// Helper to create a basic site
-const create_site = (element: ElementSymbol, abc: Vec3, xyz: Vec3, label: string) => ({
-  species: [{ element, occu: 1, oxidation_state: 0 }],
-  abc,
-  xyz,
-  label,
-  properties: {},
-})
-
-// Helper to create a basic frame
-const create_frame = (
-  step: number,
-  sites: ReturnType<typeof create_site>[],
-  metadata: Record<string, unknown> = {},
-) => ({ structure: { sites, charge: 0 }, step, metadata })
+import { make_trajectory_frame } from '../setup'
 
 describe(`Trajectory Validation`, () => {
   it.each([
     {
       name: `validate correct trajectory`,
-      trajectory: {
-        frames: [create_frame(0, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)])],
-        metadata: {},
-      },
+      trajectory: { frames: [make_trajectory_frame(0, 1)], metadata: {} },
       expected_errors: [],
     },
     {
@@ -45,7 +26,7 @@ describe(`Trajectory Validation`, () => {
     },
     {
       name: `detect empty sites`,
-      trajectory: { frames: [create_frame(0, [])], metadata: {} },
+      trajectory: { frames: [make_trajectory_frame(0, 0)], metadata: {} },
       expected_errors: [`Frame 0 missing structure or sites`],
     },
     {
@@ -54,7 +35,7 @@ describe(`Trajectory Validation`, () => {
       trajectory: {
         frames: [
           {
-            structure: { sites: [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)], charge: 0 },
+            structure: make_trajectory_frame(0, 1).structure,
             step: `invalid`,
             metadata: {},
           },
@@ -70,7 +51,7 @@ describe(`Trajectory Validation`, () => {
 })
 
 describe(`Trajectory Streaming Validation`, () => {
-  const base_frame = create_frame(0, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)])
+  const base_frame = make_trajectory_frame(0, 1)
   const valid_idx = { frame_number: 0, byte_offset: 0, estimated_size: 100 }
   const valid_meta = { frame_number: 0, step: 0, properties: { energy: -1.0 } }
 
@@ -227,18 +208,9 @@ describe(`Trajectory Statistics`, () => {
       name: `calculate correct statistics for simple trajectory`,
       trajectory: {
         frames: [
-          create_frame(1, [
-            create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
-            create_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1], `O1`),
-          ]),
-          create_frame(2, [
-            create_site(`H`, [0.1, 0, 0], [0.1, 0, 0], `H1`),
-            create_site(`O`, [0.6, 0.5, 0.5], [1.1, 1, 1], `O1`),
-          ]),
-          create_frame(5, [
-            create_site(`H`, [0.2, 0, 0], [0.2, 0, 0], `H1`),
-            create_site(`O`, [0.7, 0.5, 0.5], [1.2, 1, 1], `O1`),
-          ]),
+          make_trajectory_frame(1, 2),
+          make_trajectory_frame(2, 2),
+          make_trajectory_frame(5, 2),
         ],
         metadata: {},
       },
@@ -255,16 +227,9 @@ describe(`Trajectory Statistics`, () => {
       name: `handle variable atom counts`,
       trajectory: {
         frames: [
-          create_frame(0, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)]),
-          create_frame(1, [
-            create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
-            create_site(`H`, [0.5, 0.5, 0.5], [1, 1, 1], `H2`),
-          ]),
-          create_frame(2, [
-            create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
-            create_site(`H`, [0.3, 0.3, 0.3], [0.6, 0.6, 0.6], `H2`),
-            create_site(`O`, [0.7, 0.7, 0.7], [1.4, 1.4, 1.4], `O1`),
-          ]),
+          make_trajectory_frame(0, 1),
+          make_trajectory_frame(1, 2),
+          make_trajectory_frame(2, 3),
         ],
         metadata: {},
       },
@@ -279,10 +244,7 @@ describe(`Trajectory Statistics`, () => {
     },
     {
       name: `handle single frame trajectory`,
-      trajectory: {
-        frames: [create_frame(42, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)])],
-        metadata: {},
-      },
+      trajectory: { frames: [make_trajectory_frame(42, 1)], metadata: {} },
       expected: {
         frame_count: 1,
         steps: [42],
@@ -321,12 +283,7 @@ describe(`Trajectory Statistics Optimization`, () => {
     // Create a large trajectory with constant atom count
     const large_frames: TrajectoryFrame[] = []
     for (let idx = 0; idx < 1000; idx++) {
-      large_frames.push(
-        create_frame(idx, [
-          create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
-          create_site(`H`, [1, 0, 0], [1, 0, 0], `H2`),
-        ]),
-      )
+      large_frames.push(make_trajectory_frame(idx, 2))
     }
 
     const large_trajectory: TrajectoryType = { frames: large_frames }
@@ -339,23 +296,10 @@ describe(`Trajectory Statistics Optimization`, () => {
   })
 
   it(`should detect variable atom counts efficiently in large trajectories`, () => {
-    // Create large trajectory with varying atom counts
+    // Create large trajectory with varying atom counts (every 100th frame has 1 atom)
     const large_frames: TrajectoryFrame[] = []
     for (let idx = 0; idx < 1000; idx++) {
-      // Every 100th frame has different atom count
-      const sites =
-        idx % 100 === 0
-          ? [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)] // 1 atom
-          : [
-              create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
-              create_site(`H`, [1, 0, 0], [1, 0, 0], `H2`),
-            ] // 2 atoms
-
-      large_frames.push({
-        structure: { sites, charge: 0 },
-        step: idx,
-        metadata: {},
-      })
+      large_frames.push(make_trajectory_frame(idx, idx % 100 === 0 ? 1 : 2))
     }
 
     const large_trajectory: TrajectoryType = { frames: large_frames }

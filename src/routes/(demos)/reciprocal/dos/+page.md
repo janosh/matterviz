@@ -75,9 +75,9 @@ Multiple DOS curves can be stacked as filled areas. Gaussian smearing (σ) smoot
 
   const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
   const doses = {
-    'Mode A': { ...dos, densities: dos.densities.map((d) => d * 0.45) },
-    'Mode B': { ...dos, densities: dos.densities.map((d) => d * 0.35) },
-    'Mode C': { ...dos, densities: dos.densities.map((d) => d * 0.2) },
+    'Mode A': { ...dos, densities: dos.densities.map((density) => density * 0.45) },
+    'Mode B': { ...dos, densities: dos.densities.map((density) => density * 0.35) },
+    'Mode C': { ...dos, densities: dos.densities.map((density) => density * 0.2) },
   }
 </script>
 
@@ -119,9 +119,9 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
   let active_file = $state(files[0].name)
   let pdos_type = $state(null)
 
-  const current_dos = $derived(files.find((f) => f.name === active_file)?.data)
+  const current_dos = $derived(files.find((file) => file.name === active_file)?.data)
   const is_electronic = $derived(
-    files.find((f) => f.name === active_file)?.category === 'Electronic',
+    files.find((file) => file.name === active_file)?.category === 'Electronic',
   )
 </script>
 
@@ -129,10 +129,10 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
   style="display: flex; gap: 1em; margin-bottom: 0.5em; align-items: center; flex-wrap: wrap"
 >
   <FilePicker
-    files={files.map((f) => ({
-      name: f.name,
-      category: f.category,
-      category_icon: f.category_icon,
+    files={files.map((file) => ({
+      name: file.name,
+      category: file.category,
+      category_icon: file.category_icon,
     }))}
     active_files={[active_file]}
     show_category_filters

@@ -2,6 +2,7 @@
 // Enables atmosphere-controlled phase diagram analysis
 
 import { count_atoms_in_composition } from '$lib/composition'
+import type { Vec2 } from '$lib/math'
 import type {
   GasAnalysis,
   GasSpecies,
@@ -145,7 +146,7 @@ export const create_default_gas_provider = (): GasThermodynamicsProvider => ({
     return [...GAS_SPECIES]
   },
 
-  get_temperature_range(): [number, number] {
+  get_temperature_range(): Vec2 {
     return [0, 2000]
   },
 })

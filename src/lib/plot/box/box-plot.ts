@@ -2,6 +2,7 @@
 // Single source of truth for the quantile math used by BoxPlot.svelte.
 
 import { ascending } from 'd3-array'
+import type { Vec2 } from '$lib/math'
 import { quantile_unordered } from '$lib/plot/box/quantile'
 import type { HandlerProps } from '$lib/plot/core/types'
 
@@ -34,7 +35,7 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   // Per-series whisker overrides (else fall back to component-level props)
   whisker_mode?: WhiskerMode
   whisker_range?: number
-  whisker_percentiles?: [number, number]
+  whisker_percentiles?: Vec2
   // Violin overrides (else fall back to component-level props)
   kind?: ViolinKind // 'box' (default), 'violin', or 'violin+box'
   side?: ViolinSide // 'both' (default), 'positive', or 'negative'
@@ -74,7 +75,7 @@ export interface BoxStats {
 export interface BoxStatsOptions {
   whisker_mode?: WhiskerMode // default 'tukey'
   whisker_range?: number // tukey IQR multiple / std multiple (default 1.5)
-  whisker_percentiles?: [number, number] // for 'percentile' mode (default [5, 95])
+  whisker_percentiles?: Vec2 // for 'percentile' mode (default [5, 95])
   // Skips materializing outlier arrays when the caller only needs quartiles/whiskers.
   collect_outliers?: boolean
 }
@@ -167,7 +168,7 @@ export function compute_box_stats(
   }
   const mean = sum / n_vals
 
-  const qtl = (p: number): number => quantile_unordered(vals, p)
+  const qtl = (prob: number): number => quantile_unordered(vals, prob)
   const collect_beyond = (lo: number, hi: number): number[] =>
     collect_outliers_by_scan(vals, lo, hi, collect_outliers)
 

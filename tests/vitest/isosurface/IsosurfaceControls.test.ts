@@ -4,31 +4,17 @@ import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, make_grid, make_volume as make_volume_fixture } from '../setup'
 
-// Minimal VolumetricData fixture for testing controls
-const make_volume = (overrides?: Partial<VolumetricData>): VolumetricData => ({
-  grid: [
-    [
-      [1, 2],
-      [3, 4],
-    ],
-    [
-      [5, 6],
-      [7, 8],
-    ],
-  ],
-  grid_dims: [2, 2, 2],
-  lattice: [
-    [5, 0, 0],
-    [0, 5, 0],
-    [0, 0, 5],
-  ],
-  origin: [0, 0, 0],
-  data_range: { min: 1, max: 8, abs_max: 8, mean: 4.5 },
-  periodic: true,
-  ...overrides,
-})
+// Minimal VolumetricData fixture for testing controls (2x2x2 grid with values 1..8)
+const make_volume = (overrides?: Partial<VolumetricData>): VolumetricData =>
+  make_volume_fixture(
+    make_grid(2, 2, 2, (ix, iy, iz) => ix * 4 + iy * 2 + iz + 1),
+    {
+      data_range: { min: 1, max: 8, abs_max: 8, mean: 4.5 },
+      ...overrides,
+    },
+  )
 
 const mount_controls = (
   props?: Partial<{

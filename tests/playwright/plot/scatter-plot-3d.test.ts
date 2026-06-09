@@ -65,7 +65,8 @@ test.describe(`ScatterPlot3D`, () => {
       await expect(el).toBeVisible({ timeout: get_canvas_timeout() })
 
       const value = await el.evaluate(
-        (node, p) => globalThis.getComputedStyle(node)[p as keyof CSSStyleDeclaration],
+        (node, css_prop) =>
+          globalThis.getComputedStyle(node)[css_prop as keyof CSSStyleDeclaration],
         prop,
       )
       if (compare === `gte`) {

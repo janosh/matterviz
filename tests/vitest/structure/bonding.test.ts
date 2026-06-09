@@ -1,4 +1,4 @@
-import type { BondOrder, BondPair, Vec3 } from '$lib'
+import type { BondOrder, BondPair, ElementSymbol, Vec2, Vec3 } from '$lib'
 import type { Crystal, StructureBond } from '$lib/structure'
 import type { BondEditState, BondingAlgo, BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
@@ -15,7 +15,7 @@ const measure_performance = (func: () => void): number => {
 }
 
 // Simple helper for tests that only need xyz coordinates
-const get_test_structure = (sites: { xyz: Vec3; element?: string }[]): Crystal =>
+const get_test_structure = (sites: { xyz: Vec3; element?: ElementSymbol }[]): Crystal =>
   make_crystal(
     1, // 1x1x1 cubic lattice
     sites.map(({ xyz, element = `C` }) => ({ element, xyz })),
@@ -33,7 +33,7 @@ const make_random_structure = (n_atoms: number): Crystal => {
 }
 
 describe(`Bonding Algorithms`, () => {
-  const algorithms: [BondingAlgo, BondingStrategy, [number, number][]][] = [
+  const algorithms: [BondingAlgo, BondingStrategy, Vec2[]][] = [
     [
       bonding.electroneg_ratio,
       `electroneg_ratio`,
@@ -62,7 +62,7 @@ describe(`Bonding Algorithms`, () => {
       const measurements = Array.from({ length: 3 }, () =>
         measure_performance(() => func(structure)),
       )
-      const avg_time = measurements.reduce((a, b) => a + b, 0) / measurements.length
+      const avg_time = measurements.reduce((sum, val) => sum + val, 0) / measurements.length
       const is_ci =
         typeof process !== `undefined` && [`true`, `1`].includes(process.env?.CI ?? ``)
       const max_allowed = max_time * (is_ci ? 5 : 2)
@@ -110,7 +110,9 @@ describe(`Bonding Algorithms`, () => {
     expect(
       func(
         get_test_structure([
+          // @ts-expect-error unknown element symbol
           { xyz: [0, 0, 0], element: `Xx` },
+          // @ts-expect-error unknown element symbol
           { xyz: [1, 0, 0], element: `Yy` },
         ]),
       ),
@@ -697,7 +699,9 @@ describe(`Crystal Structure Bonding`, () => {
     )
     const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 3 })
     expect(bonds.length).toBeGreaterThan(0)
-    expect(bonds.filter((b) => b.site_idx_1 !== b.site_idx_2).length).toBeGreaterThan(0)
+    expect(bonds.filter((bond) => bond.site_idx_1 !== bond.site_idx_2).length).toBeGreaterThan(
+      0,
+    )
   })
 
   test(`diamond structure`, () => {
@@ -939,8 +943,8 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
 
   const bonds = bonding.electroneg_ratio(structure, options)
 
-  const bonds_orig = bonds.filter((b) => b.site_idx_1 === 0 || b.site_idx_2 === 0)
-  const bonds_img = bonds.filter((b) => b.site_idx_1 === 3 || b.site_idx_2 === 3)
+  const bonds_orig = bonds.filter((bond) => bond.site_idx_1 === 0 || bond.site_idx_2 === 0)
+  const bonds_img = bonds.filter((bond) => bond.site_idx_1 === 3 || bond.site_idx_2 === 3)
 
   // If bug exists:
   // Orig will have 2 bonds (Short + Long, because Long processed first)
@@ -1031,12 +1035,14 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
 
   // We expect C1-H1 and C1-C2.
   const c_h = bonds.find(
-    (b) =>
-      (b.site_idx_1 === 0 && b.site_idx_2 === 1) || (b.site_idx_1 === 1 && b.site_idx_2 === 0),
+    (bond) =>
+      (bond.site_idx_1 === 0 && bond.site_idx_2 === 1) ||
+      (bond.site_idx_1 === 1 && bond.site_idx_2 === 0),
   )
   const c_c = bonds.find(
-    (b) =>
-      (b.site_idx_1 === 0 && b.site_idx_2 === 2) || (b.site_idx_1 === 2 && b.site_idx_2 === 0),
+    (bond) =>
+      (bond.site_idx_1 === 0 && bond.site_idx_2 === 2) ||
+      (bond.site_idx_1 === 2 && bond.site_idx_2 === 0),
   )
 
   expect(c_h).toBeDefined()
@@ -1056,7 +1062,7 @@ test(`bonding logic treats original and image atoms consistently`, () => {
   const with_images = get_pbc_image_sites(structure, { tolerance: 0.3 })
 
   const c1_img_idx = with_images.sites.findIndex(
-    (s, i) => i > 2 && Math.abs(s.xyz[0] - 11.0) < 0.1,
+    (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 11.0) < 0.1,
   )
   expect(c1_img_idx).toBeGreaterThan(2)
 
@@ -1079,7 +1085,7 @@ test(`bonding logic treats original and image atoms consistently`, () => {
   expect(c1_img_bonds).toBe(c1_bonds)
 
   const h_img_idx = with_images.sites.findIndex(
-    (s, i) => i > 2 && Math.abs(s.xyz[0] - 10.0) < 0.1,
+    (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 10.0) < 0.1,
   )
   if (h_img_idx !== -1) {
     const h_bonds = bond_counts.get(2) ?? 0
@@ -1144,12 +1150,14 @@ test(`electroneg_ratio ignores weak bonds for closest neighbor penalty`, () => {
   })
 
   const na_na = bonds.find(
-    (b) =>
-      (b.site_idx_1 === 0 && b.site_idx_2 === 1) || (b.site_idx_1 === 1 && b.site_idx_2 === 0),
+    (bond) =>
+      (bond.site_idx_1 === 0 && bond.site_idx_2 === 1) ||
+      (bond.site_idx_1 === 1 && bond.site_idx_2 === 0),
   )
   const na_cl = bonds.find(
-    (b) =>
-      (b.site_idx_1 === 0 && b.site_idx_2 === 2) || (b.site_idx_1 === 2 && b.site_idx_2 === 0),
+    (bond) =>
+      (bond.site_idx_1 === 0 && bond.site_idx_2 === 2) ||
+      (bond.site_idx_1 === 2 && bond.site_idx_2 === 0),
   )
 
   expect(na_na).toBeUndefined()

@@ -71,7 +71,7 @@ PHASE FCC_A1 %A 2 1 1 !`
   test(`parses parameters`, () => {
     const result = parse_tdb(SAMPLE_TDB_CONTENT)
     expect(result.data?.parameters.length).toBeGreaterThanOrEqual(1)
-    const l_param = result.data?.parameters.find((p) => p.type === `L`)
+    const l_param = result.data?.parameters.find((param) => param.type === `L`)
     expect(l_param?.constituents).toContain(`AL`)
     expect(l_param?.constituents).toContain(`ZN`)
   })

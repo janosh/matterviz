@@ -1,7 +1,7 @@
 import type { CompositionType } from '$lib/composition'
 import type { ShowControlsProp } from '$lib/controls'
 import type { ElementSymbol } from '$lib/element'
-import type { Point2D, Point3D, Vec3 } from '$lib/math'
+import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
 import type { Rect, Sides } from '$lib/plot/core/layout'
 import type { AnyStructure } from '$lib/structure'
 
@@ -227,7 +227,7 @@ export interface GasThermodynamicsProvider {
   get_supported_gases(): GasSpecies[]
 
   // Get valid temperature range [T_min, T_max] in Kelvin
-  get_temperature_range(): [number, number]
+  get_temperature_range(): Vec2
 }
 
 // Configuration for gas thermodynamics in convex hull calculations

@@ -2,10 +2,10 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import { angle_between_vectors, displacement_pbc, distance_pbc } from '$lib/structure/measure'
 import { describe, expect, test } from 'vitest'
 
-const cubic = (a: number): Matrix3x3 => [
-  [a, 0, 0],
-  [0, a, 0],
-  [0, 0, a],
+const cubic = (a_len: number): Matrix3x3 => [
+  [a_len, 0, 0],
+  [0, a_len, 0],
+  [0, 0, a_len],
 ]
 
 describe(`measure: distances`, () => {

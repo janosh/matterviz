@@ -3,7 +3,8 @@
 
 // type-only import (erased at runtime, so no import cycle with $lib/plot)
 import type { SunburstNode } from '$lib/plot/core/types'
-import { is_valid_element, parse_formula } from './parse'
+import { is_elem_symbol } from '$lib/element'
+import { parse_formula } from './parse'
 
 export interface ChemSysSunburstMetadata {
   chem_sys: string // alphabetically sorted element string, e.g. "Fe-Li-O"
@@ -43,7 +44,7 @@ export function chem_sys_sunburst_data(
     let elements: string[]
     if (entry.includes(`-`)) {
       elements = entry.split(`-`).map((el) => el.trim())
-      if (!elements.every(is_valid_element)) return null
+      if (!elements.every(is_elem_symbol)) return null
     } else {
       try {
         elements = Object.keys(parse_formula(entry))

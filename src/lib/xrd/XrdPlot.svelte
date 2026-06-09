@@ -31,12 +31,12 @@
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
     if (!obj || typeof obj !== `object`) return false
     const pattern_obj = obj as { x?: unknown; y?: unknown }
-    const x = pattern_obj.x
-    const y = pattern_obj.y
+    const x_vals = pattern_obj.x
+    const y_vals = pattern_obj.y
     return (
-      Array.isArray(x) &&
-      Array.isArray(y) &&
-      x.length === y.length
+      Array.isArray(x_vals) &&
+      Array.isArray(y_vals) &&
+      x_vals.length === y_vals.length
     )
   }
 
@@ -138,7 +138,7 @@
   const global_max_intensity = $derived.by(() => {
     let max_val = 0
     for (const entry of pattern_entries) {
-      for (const y of entry.pattern.y) if (y > max_val) max_val = y
+      for (const intensity of entry.pattern.y) if (intensity > max_val) max_val = intensity
     }
     return max_val || 1
   })
@@ -159,7 +159,7 @@
   })
 
   // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels
-  const intensity_range: [number, number] = [0, 110]
+  const intensity_range: Vec2 = [0, 110]
 
   // Build BarPlot series from entries (for Discrete/Stick view)
   const bar_series = $derived.by<BarSeries[]>(() => {
@@ -168,7 +168,7 @@
     const include_name = pattern_entries.length > 1
     // Add transparency when multiple series overlap
     const alpha = pattern_entries.length > 1 ? 0.6 : 1
-    const scale = (y: number) => (y / global_max_intensity) * 100
+    const scale = (y_val: number) => (y_val / global_max_intensity) * 100
     return pattern_entries.map((entry, entry_idx) => {
       const xs = entry.pattern.x
       const ys = entry.pattern.y.map((val) => scale(val || 0))
@@ -280,7 +280,7 @@
         const all_ys = all_processed.flatMap((processed) => processed.broadened.y)
         const max_y = Math.max(...all_ys, 1) // Avoid div by zero
 
-        const scale = (y: number) => (y / max_y) * 100
+        const scale = (y_val: number) => (y_val / max_y) * 100
         const base_color = entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length]
         // Add transparency when multiple series overlap
         const alpha = all_processed.length > 1 ? 0.6 : 1
@@ -496,11 +496,11 @@
         {@const angle_text = `${format_value(info.x, `.2f`)}°`}
         {@const intensity_text = `${format_value(info.y, `.1f`)}`}
         {@const hkls = info.metadata?.hkls}
-        {@const d = info.metadata?.d}
+        {@const d_spacing = info.metadata?.d}
         {@const hkl_text = hkls && hkl_format
       ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
       : ``}
-        {@const d_text = d != null ? `${format_value(d, `.3f`)} Å` : ``}
+        {@const d_text = d_spacing != null ? `${format_value(d_spacing, `.3f`)} Å` : ``}
         {@html sanitize_html(info.metadata?.label ?? ``)}<br />
         2θ: {angle_text}<br />
         Intensity: {intensity_text}

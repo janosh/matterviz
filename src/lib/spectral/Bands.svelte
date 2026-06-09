@@ -56,7 +56,7 @@
     path_mode?: PathMode
     band_type?: BandStructureType
     show_legend?: boolean
-    x_positions?: Record<string, [number, number]>
+    x_positions?: Record<string, Vec2>
     reference_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
@@ -287,7 +287,7 @@
       x_positions = {}
       return
     }
-    const positions: Record<string, [number, number]> = {}
+    const positions: Record<string, Vec2> = {}
     let current_x = 0
 
     // Preserve physical path order using the first available structure

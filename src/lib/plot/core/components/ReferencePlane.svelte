@@ -1,6 +1,6 @@
 <script lang="ts">
   // ReferencePlane: 3D reference planes (axis-aligned, normal-defined, or point-defined)
-  import type { Vec3 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import { cross_3d, normalize_vec } from '$lib/math'
   import { T } from '@threlte/core'
   import * as THREE from 'three'
@@ -10,7 +10,7 @@
   let { ref_plane, scene_size = [10, 10, 5], ranges }: {
     ref_plane: RefPlane
     scene_size?: Vec3
-    ranges: { x: [number, number]; y: [number, number]; z: [number, number] }
+    ranges: { x: Vec2; y: Vec2; z: Vec2 }
   } = $props()
 
   let [scene_x, scene_y, scene_z] = $derived(scene_size)

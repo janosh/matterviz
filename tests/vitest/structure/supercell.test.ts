@@ -467,17 +467,17 @@ describe(`oblique cell bug tests`, () => {
       )
 
       // Check xyz consistency (within numerical precision)
-      for (let i = 0; i < 3; i++) {
-        expect(Math.abs(site.xyz[i] - recalc_xyz[i])).toBeLessThan(1e-10)
+      for (let idx = 0; idx < 3; idx++) {
+        expect(Math.abs(site.xyz[idx] - recalc_xyz[idx])).toBeLessThan(1e-10)
       }
 
       // Check abc consistency after wrapping
-      for (let i = 0; i < 3; i++) {
-        let wrapped_recalc = recalc_abc[i] % 1
+      for (let idx = 0; idx < 3; idx++) {
+        let wrapped_recalc = recalc_abc[idx] % 1
         if (wrapped_recalc < 0) wrapped_recalc += 1
         // Handle floating point precision: if very close to 1, set to 0
         if (Math.abs(wrapped_recalc - 1) < 1e-10) wrapped_recalc = 0
-        expect(Math.abs(site.abc[i] - wrapped_recalc)).toBeLessThan(1e-10)
+        expect(Math.abs(site.abc[idx] - wrapped_recalc)).toBeLessThan(1e-10)
       }
     }
   })
@@ -536,8 +536,8 @@ describe(`oblique cell bug tests`, () => {
           site.abc,
         )
 
-        for (let i = 0; i < 3; i++) {
-          expect(Math.abs(site.xyz[i] - recalc_xyz[i])).toBeLessThan(1e-10)
+        for (let idx = 0; idx < 3; idx++) {
+          expect(Math.abs(site.xyz[idx] - recalc_xyz[idx])).toBeLessThan(1e-10)
         }
       }
     }

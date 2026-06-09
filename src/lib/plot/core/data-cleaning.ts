@@ -441,7 +441,7 @@ export function smooth_savitzky_golay(
   const half = Math.floor(actual_window / 2)
   const result: number[] = Array(values.length)
   // Cache coefficient sum to avoid O(n × window) redundant reductions in loop
-  const coeffs_sum = coeffs.reduce((a, b) => a + b, 0)
+  const coeffs_sum = coeffs.reduce((sum, coeff) => sum + coeff, 0)
 
   for (let idx = 0; idx < values.length; idx++) {
     let [sum, weight_sum] = [0, 0]
@@ -658,8 +658,8 @@ export function handle_invalid_values(
 
       if (left_idx >= 0 && right_idx < cleaned.length) {
         // Linear interpolation
-        const t = (idx - left_idx) / (right_idx - left_idx)
-        cleaned[idx] = cleaned[left_idx] + t * (cleaned[right_idx] - cleaned[left_idx])
+        const frac = (idx - left_idx) / (right_idx - left_idx)
+        cleaned[idx] = cleaned[left_idx] + frac * (cleaned[right_idx] - cleaned[left_idx])
       } else if (left_idx >= 0) {
         cleaned[idx] = cleaned[left_idx]
       } else if (right_idx < cleaned.length) {
@@ -1086,17 +1086,17 @@ function transpose(matrix: number[][]): number[][] {
   return result
 }
 
-function multiply_matrices(a: number[][], b: number[][]): number[][] {
-  const rows_a = a.length
-  const cols_a = a[0]?.length ?? 0
-  const cols_b = b[0]?.length ?? 0
+function multiply_matrices(matrix_a: number[][], matrix_b: number[][]): number[][] {
+  const rows_a = matrix_a.length
+  const cols_a = matrix_a[0]?.length ?? 0
+  const cols_b = matrix_b[0]?.length ?? 0
 
   const result: number[][] = Array.from({ length: rows_a }, () => Array(cols_b).fill(0))
 
   for (let row = 0; row < rows_a; row++) {
     for (let col = 0; col < cols_b; col++) {
-      for (let k = 0; k < cols_a; k++) {
-        result[row][col] += a[row][k] * b[k][col]
+      for (let idx_k = 0; idx_k < cols_a; idx_k++) {
+        result[row][col] += matrix_a[row][idx_k] * matrix_b[idx_k][col]
       }
     }
   }
@@ -1105,20 +1105,20 @@ function multiply_matrices(a: number[][], b: number[][]): number[][] {
 }
 
 function invert_matrix(matrix: number[][]): number[][] | null {
-  const n = matrix.length
-  if (n === 0 || matrix[0].length !== n) return null
+  const size = matrix.length
+  if (size === 0 || matrix[0].length !== size) return null
 
   // Create augmented matrix [A | I]
   const aug: number[][] = matrix.map((row, idx) => [
     ...row,
-    ...Array.from({ length: n }, (_, jdx) => (idx === jdx ? 1 : 0)),
+    ...Array.from({ length: size }, (_, jdx) => (idx === jdx ? 1 : 0)),
   ])
 
   // Gaussian elimination with partial pivoting
-  for (let col = 0; col < n; col++) {
+  for (let col = 0; col < size; col++) {
     // Find pivot
     let max_row = col
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < size; row++) {
       if (Math.abs(aug[row][col]) > Math.abs(aug[max_row][col])) {
         max_row = row
       }
@@ -1132,14 +1132,14 @@ function invert_matrix(matrix: number[][]): number[][] | null {
 
     // Eliminate column
     const pivot = aug[col][col]
-    for (let jdx = 0; jdx < 2 * n; jdx++) {
+    for (let jdx = 0; jdx < 2 * size; jdx++) {
       aug[col][jdx] /= pivot
     }
 
-    for (let row = 0; row < n; row++) {
+    for (let row = 0; row < size; row++) {
       if (row !== col) {
         const factor = aug[row][col]
-        for (let jdx = 0; jdx < 2 * n; jdx++) {
+        for (let jdx = 0; jdx < 2 * size; jdx++) {
           aug[row][jdx] -= factor * aug[col][jdx]
         }
       }
@@ -1147,5 +1147,5 @@ function invert_matrix(matrix: number[][]): number[][] | null {
   }
 
   // Extract inverse
-  return aug.map((row) => row.slice(n))
+  return aug.map((row) => row.slice(size))
 }

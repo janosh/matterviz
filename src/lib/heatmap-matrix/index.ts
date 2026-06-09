@@ -1,5 +1,6 @@
 import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
+import type { Vec2 } from '$lib/math'
 import type { Snippet } from 'svelte'
 
 export { COLOR_OVERRIDE_KEY_SEPARATOR, make_color_override_key } from './shared'
@@ -63,8 +64,8 @@ export type HeatmapTooltipProp = Snippet<[CellContext]> | boolean
 export type HeatmapSelection = { x_idx: number; y_idx: number }
 export type HeatmapExportFormat = `csv` | `json`
 export type HeatmapBrushPayload = {
-  x_range: [number, number]
-  y_range: [number, number]
+  x_range: Vec2
+  y_range: Vec2
   cells: CellContext[]
 }
 

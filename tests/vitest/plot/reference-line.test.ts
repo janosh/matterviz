@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
@@ -59,7 +60,7 @@ describe(`normalize_point`, () => {
 })
 
 describe(`span_or`, () => {
-  test.each<[[number | null, number | null] | undefined, [number, number], [number, number]]>([
+  test.each<[[number | null, number | null] | undefined, Vec2, Vec2]>([
     [undefined, [0, 100], [0, 100]],
     [
       [20, 80],
@@ -118,26 +119,26 @@ describe(`resolve_line_endpoints`, () => {
   test.each([
     {
       desc: `horizontal crossing x bounds`,
-      p1: [-50, 50] as [number, number],
-      p2: [150, 50] as [number, number],
+      p1: [-50, 50] as Vec2,
+      p2: [150, 50] as Vec2,
       expected: [0, 50, 100, 50],
     },
     {
       desc: `diagonal crossing x bound (angle preserved)`,
-      p1: [-10, 0] as [number, number],
-      p2: [50, 100] as [number, number],
+      p1: [-10, 0] as Vec2,
+      p2: [50, 100] as Vec2,
       expected: [0, 50 / 3, 50, 100],
     },
     {
       desc: `diagonal crossing all 4 bounds`,
-      p1: [-50, -50] as [number, number],
-      p2: [150, 150] as [number, number],
+      p1: [-50, -50] as Vec2,
+      p2: [150, 150] as Vec2,
       expected: [0, 0, 100, 100],
     },
     {
       desc: `crossing only y bounds`,
-      p1: [25, -25] as [number, number],
-      p2: [75, 125] as [number, number],
+      p1: [25, -25] as Vec2,
+      p2: [75, 125] as Vec2,
       expected: [25 + 25 / 3, 0, 25 + 125 / 3, 100],
     },
   ])(`segment clipping: $desc`, ({ p1, p2, expected }) => {

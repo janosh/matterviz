@@ -4,6 +4,7 @@
 // edge is clipped (x_range / partial overlap), the inserted endpoint shifts the neighboring
 // monotone tangent, so the clipped edge can deviate sub-pixel from the full series line.
 
+import type { Vec2 } from '$lib/math'
 import type { CurveFactory } from 'd3-shape'
 import {
   curveBasis,
@@ -145,9 +146,14 @@ export function monotone_interpolate(
   const p1 = ys[lo] + dx * tang[lo]
   const p2 = ys[lo + 1] - dx * tang[lo + 1]
   const p3 = ys[lo + 1]
-  const u = (x - x0) / span
-  const mu = 1 - u
-  return mu * mu * mu * p0 + 3 * mu * mu * u * p1 + 3 * mu * u * u * p2 + u * u * u * p3
+  const frac = (x - x0) / span
+  const mu = 1 - frac
+  return (
+    mu * mu * mu * p0 +
+    3 * mu * mu * frac * p1 +
+    3 * mu * frac * frac * p2 +
+    frac * frac * frac * p3
+  )
 }
 
 // Curve types whose interior follows a (near-)monotone cubic; evaluated via monotone_interpolate.
@@ -217,9 +223,9 @@ const finite_points = (xs: readonly number[], ys: readonly number[]): Pt[] =>
   )
 
 interface DomainContext {
-  x_domain: [number, number]
-  y_domain: [number, number]
-  y2_domain?: [number, number]
+  x_domain: Vec2
+  y_domain: Vec2
+  y2_domain?: Vec2
 }
 
 // Resolve a boundary to native points + curve in data coordinates. `companion` supplies x
@@ -335,7 +341,7 @@ function where_intervals(
   xa: number,
   xb: number,
   where: FillRegion[`where`],
-): [number, number][] {
+): Vec2[] {
   if (!where) return [[xa, xb]]
   // detection grid: native x of both boundaries within the overlap, plus the endpoints
   const grid = [
@@ -346,7 +352,7 @@ function where_intervals(
     ),
   ].sort((a, b) => a - b)
 
-  const intervals: [number, number][] = []
+  const intervals: Vec2[] = []
   let seg_start: number | null = null
 
   // carry the previous grid sample so each point's two evals + where() run once, not twice

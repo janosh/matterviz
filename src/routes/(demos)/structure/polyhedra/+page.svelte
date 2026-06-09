@@ -5,6 +5,8 @@
   import type { AnyStructure, Molecule } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
+  import type { Vec3 } from '$lib/math'
+  import { structure_file_text } from '$site/structures'
   import batio3_poscar from '$site/structures/BaTiO3-tetragonal.poscar?raw'
   import lifepo4_cif from '$site/structures/LiFePO4.cif?raw'
   import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
@@ -13,23 +15,16 @@
 
   // Load any site structure fixture via ?file=<name> URL param (e.g.
   // /structure/polyhedra?file=LiFePO4.cif) - handy for visual testing
-  const raw_structure_files = import.meta.glob<string>(`$site/structures/*`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  })
   let url_structure = $derived.by(() => {
     // ?file=/?supercell= are a dev-only convenience; url.searchParams is off-limits during
     // prerender (would 500 the static build), so only read them client-side
     if (!browser) return null
     const file_param = page.url.searchParams.get(`file`)
     if (!file_param) return null
-    const entry = Object.entries(raw_structure_files).find(([path]) =>
-      path.endsWith(`/${file_param}`)
-    )
-    if (!entry || typeof entry[1] !== `string`) return null
+    const text = structure_file_text(file_param)
+    if (!text) return null
     try {
-      return parse_any_structure(entry[1], file_param)
+      return parse_any_structure(text, file_param)
     } catch {
       return null
     }
@@ -116,14 +111,10 @@
   const sf6: Molecule = {
     sites: [
       { species: [{ element: `S`, occu: 1, oxidation_state: 6 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `S`, properties: {} },
-      ...([[1.56, 0, 0], [-1.56, 0, 0], [0, 1.56, 0], [0, -1.56, 0], [0, 0, 1.56], [
-        0,
-        0,
-        -1.56,
-      ]] as const).map((xyz, idx) => ({
+      ...([[1.56, 0, 0], [-1.56, 0, 0], [0, 1.56, 0], [0, -1.56, 0], [0, 0, 1.56], [ 0, 0, -1.56]] as const).map((xyz, idx) => ({
         species: [{ element: `F` as const, occu: 1, oxidation_state: -1 }],
-        abc: [0, 0, 0] as [number, number, number],
-        xyz: [...xyz] as [number, number, number],
+        abc: [0, 0, 0] as Vec3,
+        xyz: [...xyz] as Vec3,
         label: `F${idx + 1}`,
         properties: {},
       })),
@@ -154,10 +145,8 @@
 <div class="bleed-1400">
   <nav>
     {#each examples as example (example.id)}
-      <button
-        class:selected={example.id === active_id}
-        onclick={() => select_example(example)}
-      >
+      {@const selected = example.id === active_id}
+      <button class:selected onclick={() => select_example(example)}>
         {example.label}
       </button>
     {/each}

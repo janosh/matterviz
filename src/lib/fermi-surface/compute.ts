@@ -1,6 +1,7 @@
 // Fermi surface computation and analysis functions
 import * as math from '$lib/math'
-import { EPS, type Matrix3x3, type Vec3 } from '$lib/math'
+import { EPS } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3, Vec4 } from '$lib/math'
 import {
   CLOSED_CONTOUR_TOLERANCE,
   IRREDUCIBLE_BZ_MIN_VERTICES,
@@ -25,7 +26,7 @@ const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
 // Precompute Catmull-Rom coefficients for a given t value
 // Returns [c0, c1, c2, c3] where result = c0*p0 + c1*p1 + c2*p2 + c3*p3
-function catmull_rom_coeffs(t: number): [number, number, number, number] {
+function catmull_rom_coeffs(t: number): Vec4 {
   const t2 = t * t
   const t3 = t2 * t
   const c1 = 0.5 * (-t + 2 * t2 - t3)
@@ -60,8 +61,8 @@ function tricubic_interpolate(
   // Wrapped stencil indices (modulo hoisted out of the inner loop); a zero period
   // (single-point axis) has no neighbours, so collapse the stencil onto index 0
   const stencil = (idx: number, period: number) =>
-    [idx - 1, idx, idx + 1, idx + 2].map((v) =>
-      period > 0 ? ((v % period) + period) % period : 0,
+    [idx - 1, idx, idx + 1, idx + 2].map((stencil_idx) =>
+      period > 0 ? ((stencil_idx % period) + period) % period : 0,
     )
   const [wx, wy, wz] = [stencil(ix, px), stencil(iy, py), stencil(iz, pz)]
 
@@ -97,8 +98,10 @@ function upsample_grid(grid: number[][][], factor: number, periodic = false): nu
   // period (count of unique points) doubles as the resampling span numerator
   const endpoint = periodic ? 0 : 1
   const dims = [grid.length, grid[0]?.length || 0, grid[0]?.[0]?.length || 0]
-  const [px, py, pz] = dims.map((n) => n - endpoint)
-  const [new_nx, new_ny, new_nz] = [px, py, pz].map((p) => Math.round(p * factor) + endpoint)
+  const [px, py, pz] = dims.map((dim) => dim - endpoint)
+  const [new_nx, new_ny, new_nz] = [px, py, pz].map(
+    (period) => Math.round(period * factor) + endpoint,
+  )
 
   // Map new index → source coordinate; a single-point axis (span 0) pins its lone
   // output to source 0 to avoid 0/0 = NaN
@@ -213,7 +216,8 @@ export function extract_fermi_surface(
           periodic,
         )
         isosurface.avg_velocity =
-          isosurface.properties.reduce((s, v) => s + v, 0) / isosurface.properties.length
+          isosurface.properties.reduce((sum, velocity) => sum + velocity, 0) /
+          isosurface.properties.length
       }
 
       // Compute dimensionality if requested
@@ -494,21 +498,21 @@ function compute_edge_intersection(
   // Edge must cross the plane (opposite signs)
   if (d0 * d1 >= 0) return null
 
-  const t = d0 / (d0 - d1)
+  const frac = d0 / (d0 - d1)
   const v0 = surface.vertices[v0_idx]
   const v1 = surface.vertices[v1_idx]
 
   const point: Vec3 = [
-    v0[0] + t * (v1[0] - v0[0]),
-    v0[1] + t * (v1[1] - v0[1]),
-    v0[2] + t * (v1[2] - v0[2]),
+    v0[0] + frac * (v1[0] - v0[0]),
+    v0[1] + frac * (v1[1] - v0[1]),
+    v0[2] + frac * (v1[2] - v0[2]),
   ]
 
   let property: number | undefined
   if (surface.properties) {
     property =
       surface.properties[v0_idx] +
-      t * (surface.properties[v1_idx] - surface.properties[v0_idx])
+      frac * (surface.properties[v1_idx] - surface.properties[v0_idx])
   }
 
   return { point, property }
@@ -536,7 +540,7 @@ function slice_surface_with_plane(
     face_idx: number
     edge_keys: [string, string]
     points: [Vec3, Vec3]
-    properties?: [number, number]
+    properties?: Vec2
   }
 
   const face_segments: FaceSegment[] = []
@@ -685,7 +689,7 @@ function slice_surface_with_plane(
     const is_closed = math.euclidean_dist(first, last) < CLOSED_CONTOUR_TOLERANCE
 
     // Project to 2D (inlined dot product for speed)
-    const points_2d: [number, number][] = Array(contour_points.length)
+    const points_2d: Vec2[] = Array(contour_points.length)
     for (let idx = 0; idx < contour_points.length; idx++) {
       const point = contour_points[idx]
       points_2d[idx] = [

@@ -115,7 +115,8 @@
               {shell_idx + 1}.{elec_idx + 1}
               <!-- {:else if [`sequential`, true].includes(number_electrons)} -->
             {:else}
-              {@const nth_electron = shells.slice(0, shell_idx).reduce((a, b) => a + b, 0) +
+              {@const nth_electron =
+          shells.slice(0, shell_idx).reduce((sum, count) => sum + count, 0) +
           elec_idx + 1}
               {nth_electron}
             {/if}

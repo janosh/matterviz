@@ -1,5 +1,5 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { scale_lattice_matrix } from '$lib/math'
 import type { ParsedStructure } from '$lib/structure/parse'
 
@@ -95,7 +95,7 @@ export function grid_data_range(grid: number[][][]): DataRange {
 const wrap_grid_idx = (val: number, size: number) => ((val % size) + size) % size
 const clamp_dim = (src: number, fac: number) =>
   Math.min(src, Math.max(2, Math.ceil(src / fac)))
-const partition_ranges = (n_out: number, n_src: number): [number, number][] =>
+const partition_ranges = (n_out: number, n_src: number): Vec2[] =>
   Array.from({ length: n_out }, (_, idx) => [
     Math.round((idx * n_src) / n_out),
     Math.round(((idx + 1) * n_src) / n_out),

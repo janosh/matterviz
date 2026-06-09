@@ -1,3 +1,4 @@
+import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
 import type { D3SymbolName } from '$lib/labels'
 import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
@@ -262,6 +263,18 @@ export interface ArcsinhScaleConfig {
 
 // Scale type can be a simple string or arcsinh config object
 export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConfig
+
+// Color/size mapping configs shared by scatter, scatter-3d and binned-scatter plots
+export type ColorScaleConfig = {
+  type?: ScaleType
+  scheme?: D3ColorSchemeName | D3InterpolateName
+  value_range?: Vec2
+}
+export type SizeScaleConfig = {
+  type?: ScaleType
+  radius_range?: Vec2
+  value_range?: Vec2
+}
 
 // Type guard for select value narrowing (avoids unsafe casts)
 const SCALE_TYPE_NAMES = new Set<string>([`linear`, `log`, `arcsinh`, `time`])

@@ -1,6 +1,7 @@
 // Utility functions for computing atom properties and applying color scales
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
+import { get_d3_interpolator } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination'
 import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
@@ -33,16 +34,8 @@ type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: 
 export const get_d3_color_scales = (): string[] =>
   Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`))
 
-const get_interpolator = (scale: string) => {
-  const interp_fn = d3_sc[scale as keyof typeof d3_sc]
-  if (typeof interp_fn !== `function`) {
-    console.warn(`Unknown D3 scale: ${scale}, using ${DEFAULT_COLOR_SCALE}`)
-    return d3_sc.interpolateViridis
-  }
-  return interp_fn as (t: number) => string
-}
-
-const to_hex = (interp_fn: (t: number) => string, t: number) => rgb(interp_fn(t)).formatHex()
+const to_hex = (interp_fn: (t: number) => string, frac: number) =>
+  rgb(interp_fn(frac)).formatHex()
 const build_image_site = (
   site: Site,
   frac_to_cart: (v: math.Vec3) => math.Vec3,
@@ -80,7 +73,7 @@ const make_categorical = <T>(
   scale: string,
   sort_fn?: (a: T, b: T) => number,
 ): { colors: string[]; unique_values: T[] } => {
-  const interp_fn = get_interpolator(scale)
+  const interp_fn = get_d3_interpolator(scale as D3InterpolateName)
   const uniq = sort_fn
     ? [...new Set(vals)].sort(sort_fn)
     : [...new Set(vals)].sort((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
@@ -117,7 +110,7 @@ export function apply_color_scale(
     return { colors: result.colors, unique_values: result.unique_values }
   }
 
-  const interp_fn = get_interpolator(scale)
+  const interp_fn = get_d3_interpolator(scale as D3InterpolateName)
   // Compute min/max in single pass to avoid spreading large arrays
   let [min, max] = [vals[0], vals[0]]
   for (const val of vals) {

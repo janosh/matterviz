@@ -294,10 +294,10 @@ describe(`first_ionization`, () => {
 })
 
 describe(`atomic_mass`, () => {
-  const to_key = (a: string, b: string) => `${a}-${b}`
+  const to_key = (elem_a: ElementSymbol, elem_b: ElementSymbol) => `${elem_a}-${elem_b}`
   const known_anomalies = new Set([
-    ...ATOMIC_MASS_INVERSIONS.map(([a, b]) => to_key(a, b)),
-    ...EQUAL_MASS_PAIRS.map(([a, b]) => to_key(a, b)),
+    ...ATOMIC_MASS_INVERSIONS.map(([elem_a, elem_b]) => to_key(elem_a, elem_b)),
+    ...EQUAL_MASS_PAIRS.map(([elem_a, elem_b]) => to_key(elem_a, elem_b)),
   ])
 
   test(`anomalies match known set (detects data changes)`, () => {

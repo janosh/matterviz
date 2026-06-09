@@ -1568,7 +1568,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Verify tick spacing is roughly uniform (proper linear scale)
     if (x_values.length >= 3) {
       const x_spacings = x_values.slice(1).map((val, idx) => val - x_values[idx])
-      const avg_spacing = x_spacings.reduce((a, b) => a + b, 0) / x_spacings.length
+      const avg_spacing = x_spacings.reduce((sum, val) => sum + val, 0) / x_spacings.length
       // All spacings should be within 50% of the average (accounting for rounding)
       const uniform = x_spacings.every(
         (spacing) => Math.abs(spacing - avg_spacing) < avg_spacing * 0.6,
@@ -1759,7 +1759,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     )
 
     // Filter to markers with valid bounding boxes
-    const valid_markers = marker_data.filter((m) => m.bbox !== null)
+    const valid_markers = marker_data.filter((marker) => marker.bbox !== null)
     if (valid_markers.length < 2) return
 
     const plot_box = await plot_locator.boundingBox()
@@ -2186,8 +2186,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     )
 
     // Filter for sparse and dense labels
-    const sparse_label_data = label_data.filter((d) => d.text?.startsWith(`Sparse-`))
-    const dense_label_data = label_data.filter((d) => d.text?.startsWith(`Dense-`))
+    const sparse_label_data = label_data.filter((datum) => datum.text?.startsWith(`Sparse-`))
+    const dense_label_data = label_data.filter((datum) => datum.text?.startsWith(`Dense-`))
 
     expect(sparse_label_data.length).toBeGreaterThan(0)
     expect(dense_label_data.length).toBeGreaterThan(1)

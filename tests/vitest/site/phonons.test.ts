@@ -289,7 +289,9 @@ describe(`Phonon Module Tests`, () => {
       ).toBeGreaterThan(0)
 
       // Verify labeled points count matches labels_dict entries
-      const labeled_count = band_struct.qpoints.filter((q) => q.label !== null).length
+      const labeled_count = band_struct.qpoints.filter(
+        (qpoint) => qpoint.label !== null,
+      ).length
       expect(
         labeled_count,
         `${id}: labeled qpoints should match labels_dict`,

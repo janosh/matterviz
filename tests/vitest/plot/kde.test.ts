@@ -7,8 +7,8 @@ const ref_density = (samples: number[], grid: number[], bandwidth: number): numb
   return grid.map(
     (g_val) =>
       samples.reduce((sum, sample) => {
-        const u = (g_val - sample) / bandwidth
-        return sum + Math.exp(-0.5 * u * u)
+        const std_dist = (g_val - sample) / bandwidth
+        return sum + Math.exp(-0.5 * std_dist * std_dist)
       }, 0) * norm,
   )
 }
@@ -26,9 +26,9 @@ const np_rng = (seed: number) => {
   let state = seed
   return () => (state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
 }
-const normal_samples = (n: number, seed = 1): number[] => {
+const normal_samples = (count: number, seed = 1): number[] => {
   const rand = np_rng(seed)
-  return Array.from({ length: n }, () => {
+  return Array.from({ length: count }, () => {
     const u1 = Math.max(rand(), 1e-12)
     return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rand())
   })

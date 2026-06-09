@@ -9,6 +9,7 @@
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
   import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
+  import type { Vec2 } from '$lib/math'
   import type {
     AxisConfig,
     PointStyle,
@@ -333,8 +334,8 @@
   })
 
   // Axis mapping helpers ------------------------------------------------------
-  const x_domain = $derived<[number, number]>([0, 1])
-  const y_domain = $derived.by((): [number, number] => {
+  const x_domain = $derived<Vec2>([0, 1])
+  const y_domain = $derived.by((): Vec2 => {
     const ys = plot_entries.map((entry) => entry.y)
     if (ys.length === 0) return [-1, 0]
     const min_y_data = Math.min(...ys)

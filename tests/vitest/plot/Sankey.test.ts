@@ -1,8 +1,8 @@
 import { Sankey } from '$lib'
 import type { SankeyData, SankeyLinkHandlerProps, SankeyNodeHandlerProps } from '$lib/plot'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { mount_sized } from '../setup'
 
 const data: SankeyData = {
   nodes: [
@@ -18,20 +18,10 @@ const data: SankeyData = {
   ],
 }
 
-async function mount_sized_sankey(
+const mount_sized_sankey = (
   props: Partial<ComponentProps<typeof Sankey>>,
-): Promise<HTMLElement> {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  mount(Sankey, {
-    target,
-    props: { ...props, style: `width: 500px; height: 360px; ${props.style ?? ``}` },
-  })
-  const plot = target.querySelector<HTMLElement>(`.sankey`)
-  if (!plot) throw new Error(`Sankey root element not found`)
-  await resize_element(plot, 500, 360)
-  return plot
-}
+): Promise<HTMLElement> =>
+  mount_sized(Sankey, props, { selector: `.sankey`, width: 500, height: 360 })
 
 describe(`Sankey`, () => {
   test.each([`horizontal`, `vertical`] as const)(

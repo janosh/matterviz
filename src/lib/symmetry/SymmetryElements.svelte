@@ -18,7 +18,7 @@ elements are dashed/striped):
 For performance, geometries are merged per material group (one draw call per distinct
 color/opacity instead of one mesh per element) and disposed on change/unmount. -->
 <script lang="ts">
-  import type { Matrix3x3, Vec3 } from '$lib/math'
+  import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
@@ -59,7 +59,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     screw_radius = 0.03,
     // [dash, gap] in Å for dashed screw axes — gap narrower than dash so the line
     // reads as continuous-but-broken rather than sparse
-    screw_dash = [0.25, 0.1] as [number, number],
+    screw_dash = [0.25, 0.1] as Vec2,
     inversion_radius = 0.12,
     plane_opacity = 0.2,
     glide_opacity = 0.15,
@@ -79,7 +79,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     hide_redundant_axes?: boolean
     axis_radius?: number
     screw_radius?: number
-    screw_dash?: [number, number]
+    screw_dash?: Vec2
     inversion_radius?: number
     plane_opacity?: number
     glide_opacity?: number

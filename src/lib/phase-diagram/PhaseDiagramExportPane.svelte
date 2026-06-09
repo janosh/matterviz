@@ -1,5 +1,6 @@
 <script lang="ts">
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+  import { download } from '$lib/io/fetch'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps } from 'svelte'
   import { CopyButton } from 'svelte-multiselect'
@@ -53,17 +54,11 @@
 
   function download_json() {
     if (!json_export_data) return
-
-    const json_string = JSON.stringify(json_export_data, null, 2)
-    const blob = new Blob([json_string], { type: `application/json` })
-    const url = URL.createObjectURL(blob)
-
-    const link = document.createElement(`a`)
-    link.href = url
-    link.download = `${full_filename}.json`
-    link.click()
-
-    URL.revokeObjectURL(url)
+    download(
+      JSON.stringify(json_export_data, null, 2),
+      `${full_filename}.json`,
+      `application/json`,
+    )
   }
 
   const json_string = $derived(

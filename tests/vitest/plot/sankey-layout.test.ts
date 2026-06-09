@@ -270,13 +270,13 @@ describe(`sankey_from_links`, () => {
 
   test(`handles very large index arrays without an argument-count overflow`, () => {
     // single-pass max scan must not spread huge arrays into Math.max(...)
-    const n = 200_000
-    const source = Array.from({ length: n }, (_, idx) => idx)
-    const target = Array.from({ length: n }, () => n)
-    const value = Array.from({ length: n }, () => 1)
+    const count = 200_000
+    const source = Array.from({ length: count }, (_, idx) => idx)
+    const target = Array.from({ length: count }, () => count)
+    const value = Array.from({ length: count }, () => 1)
     const data = sankey_from_links(source, target, value)
-    expect(data.nodes).toHaveLength(n + 1) // indices 0..n
-    expect(data.links).toHaveLength(n)
+    expect(data.nodes).toHaveLength(count + 1) // indices 0..count
+    expect(data.links).toHaveLength(count)
   })
 })
 

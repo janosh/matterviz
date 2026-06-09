@@ -1,4 +1,3 @@
-import type { Matrix3x3 } from '$lib/math'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
   energy_data_extractor,
@@ -24,37 +23,7 @@ const create_frame_with_lattice = (
   step: number,
   lattice_params: Record<string, number>,
   metadata: Record<string, unknown> = {},
-): TrajectoryFrame => ({
-  structure: {
-    sites: [
-      {
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `H1`,
-        properties: {},
-      },
-    ],
-    charge: 0,
-    lattice: {
-      matrix: [
-        [lattice_params.a || 1, 0, 0],
-        [0, lattice_params.b || 1, 0],
-        [0, 0, lattice_params.c || 1],
-      ] satisfies Matrix3x3,
-      pbc: [true, true, true],
-      a: lattice_params.a || 1,
-      b: lattice_params.b || 1,
-      c: lattice_params.c || 1,
-      alpha: lattice_params.alpha || 90,
-      beta: lattice_params.beta || 90,
-      gamma: lattice_params.gamma || 90,
-      volume: lattice_params.volume || 1,
-    },
-  },
-  step,
-  metadata,
-})
+): TrajectoryFrame => make_trajectory_frame(step, 1, metadata, lattice_params)
 
 describe(`Energy Data Extractor`, () => {
   it.each([

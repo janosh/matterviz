@@ -988,8 +988,8 @@ describe(`tensor conversion utilities`, () => {
       const reconstructed = math.from_voigt(voigt)
 
       for (let idx = 0; idx < 3; idx++) {
-        for (let j = 0; j < 3; j++) {
-          expect(reconstructed[idx][j]).toBeCloseTo(tensor[idx][j], 10)
+        for (let col = 0; col < 3; col++) {
+          expect(reconstructed[idx][col]).toBeCloseTo(tensor[idx][col], 10)
         }
       }
     })
@@ -1302,8 +1302,8 @@ describe(`tensor conversion utilities`, () => {
 
       // Check each element with appropriate precision
       for (let idx = 0; idx < 3; idx++) {
-        for (let j = 0; j < 3; j++) {
-          expect(inverse[idx][j]).toBeCloseTo(expected[idx][j], 5)
+        for (let col = 0; col < 3; col++) {
+          expect(inverse[idx][col]).toBeCloseTo(expected[idx][col], 5)
         }
       }
     })
@@ -1455,8 +1455,8 @@ describe(`tensor conversion utilities`, () => {
         const voigt = math.to_voigt(tensor)
         const reconstructed = math.from_voigt(voigt)
         for (let idx = 0; idx < 3; idx++) {
-          for (let j = 0; j < 3; j++) {
-            expect(reconstructed[idx][j]).toBeCloseTo(tensor[idx][j], 10)
+          for (let col = 0; col < 3; col++) {
+            expect(reconstructed[idx][col]).toBeCloseTo(tensor[idx][col], 10)
           }
         }
       })
@@ -1854,24 +1854,24 @@ describe(`det_nxn`, () => {
   })
 
   // Test higher-dimensional matrices (5x5 and 6x6 for N-element convex hulls)
-  const make_identity = (n: number) =>
-    Array.from({ length: n }, (_row, idx) =>
-      Array.from({ length: n }, (_col, jdx) => (idx === jdx ? 1 : 0)),
+  const make_identity = (size: number) =>
+    Array.from({ length: size }, (_row, idx) =>
+      Array.from({ length: size }, (_col, jdx) => (idx === jdx ? 1 : 0)),
     )
 
-  const make_diagonal = (n: number) =>
-    Array.from({ length: n }, (_row, idx) =>
-      Array.from({ length: n }, (_col, jdx) => (idx === jdx ? idx + 1 : 0)),
+  const make_diagonal = (size: number) =>
+    Array.from({ length: size }, (_row, idx) =>
+      Array.from({ length: size }, (_col, jdx) => (idx === jdx ? idx + 1 : 0)),
     )
 
-  const factorial = (n: number): number => (n <= 1 ? 1 : n * factorial(n - 1))
+  const factorial = (num: number): number => (num <= 1 ? 1 : num * factorial(num - 1))
 
-  test.each([5, 6])(`%dx%d identity matrix → det=1`, (n) => {
-    expect(math.det_nxn(make_identity(n))).toBeCloseTo(1, 10)
+  test.each([5, 6])(`%dx%d identity matrix → det=1`, (size) => {
+    expect(math.det_nxn(make_identity(size))).toBeCloseTo(1, 10)
   })
 
-  test.each([5, 6])(`%dx%d diagonal matrix → det=n!`, (n) => {
-    expect(math.det_nxn(make_diagonal(n))).toBeCloseTo(factorial(n), 10)
+  test.each([5, 6])(`%dx%d diagonal matrix → det=n!`, (size) => {
+    expect(math.det_nxn(make_diagonal(size))).toBeCloseTo(factorial(size), 10)
   })
 
   test(`5x5 singular matrix → det=0`, () => {
@@ -1966,33 +1966,37 @@ describe(`cross_3d`, () => {
   })
 
   test(`mathematical properties`, () => {
-    const a: Vec3 = [2, 3, 4]
-    const b: Vec3 = [5, 6, 7]
-    const c: Vec3 = [1, 2, 3]
-    const cross_ab = math.cross_3d(a, b)
-    const cross_ba = math.cross_3d(b, a)
+    const vec_a: Vec3 = [2, 3, 4]
+    const vec_b: Vec3 = [5, 6, 7]
+    const vec_c: Vec3 = [1, 2, 3]
+    const cross_ab = math.cross_3d(vec_a, vec_b)
+    const cross_ba = math.cross_3d(vec_b, vec_a)
 
     // Anti-commutative: a × b = -(b × a)
-    expect(cross_ab).toEqual(cross_ba.map((v) => expect.closeTo(-v, 10)))
+    expect(cross_ab).toEqual(cross_ba.map((val) => expect.closeTo(-val, 10)))
 
     // Orthogonality: (a × b) ⊥ a and (a × b) ⊥ b
-    expect(cross_ab[0] * a[0] + cross_ab[1] * a[1] + cross_ab[2] * a[2]).toBeCloseTo(0, 10)
-    expect(cross_ab[0] * b[0] + cross_ab[1] * b[1] + cross_ab[2] * b[2]).toBeCloseTo(0, 10)
+    expect(
+      cross_ab[0] * vec_a[0] + cross_ab[1] * vec_a[1] + cross_ab[2] * vec_a[2],
+    ).toBeCloseTo(0, 10)
+    expect(
+      cross_ab[0] * vec_b[0] + cross_ab[1] * vec_b[1] + cross_ab[2] * vec_b[2],
+    ).toBeCloseTo(0, 10)
 
     // Magnitude for orthogonal vectors: |a × b| = |a| * |b|
     const orth_cross = math.cross_3d([3, 0, 0], [0, 4, 0])
     expect(Math.hypot(...orth_cross)).toBeCloseTo(12, 10)
 
     // Distributive: a × (b + c) = a × b + a × c
-    const b_plus_c: Vec3 = [b[0] + c[0], b[1] + c[1], b[2] + c[2]]
-    const left = math.cross_3d(a, b_plus_c)
-    const cross_ac = math.cross_3d(a, c)
+    const b_plus_c: Vec3 = [vec_b[0] + vec_c[0], vec_b[1] + vec_c[1], vec_b[2] + vec_c[2]]
+    const left = math.cross_3d(vec_a, b_plus_c)
+    const cross_ac = math.cross_3d(vec_a, vec_c)
     const right: Vec3 = [
       cross_ab[0] + cross_ac[0],
       cross_ab[1] + cross_ac[1],
       cross_ab[2] + cross_ac[2],
     ]
-    expect(left).toEqual(right.map((v) => expect.closeTo(v, 10)))
+    expect(left).toEqual(right.map((val) => expect.closeTo(val, 10)))
 
     // Triangle normal (convex hull use case)
     const normal = math.cross_3d([1, 0, 0], [0, 1, 0])

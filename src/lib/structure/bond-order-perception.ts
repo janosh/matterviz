@@ -1,7 +1,8 @@
 // Bond-order perception adapted from jensengroup/xyz2mol (MIT,
 // Kim & Kim, Bull. Korean Chem. Soc. 2015, 36, 1769). Clean-room TS port.
+import type { Vec2 } from '$lib/math'
 import type { BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
-import { get_bond_key } from './bonding'
+import { get_bond_key, get_majority_element } from './bonding'
 
 export type PerceptionOptions = { total_charge?: number; max_atoms?: number }
 
@@ -12,14 +13,7 @@ export type PerceivedBond = BondPair & {
   kekule_order?: BondOrder
 }
 
-const primary_element = (site: Site): string => {
-  return (
-    site.species?.reduce(
-      (best_species, species) => (species.occu > best_species.occu ? species : best_species),
-      site.species[0],
-    )?.element ?? ``
-  )
-}
+const primary_element = (site: Site): string => get_majority_element(site) ?? ``
 
 // xyz2mol atomic_valence. Valence combinations are re-sorted by total
 // valence sum so the least-saturated solution is tried first.
@@ -74,7 +68,7 @@ const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 // Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains).
 const MAX_VALENCE_COMBOS = 4096
 
-function split_fragments(n_atoms: number, edges: [number, number][]): number[][] {
+function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
   const adjacency = Array.from({ length: n_atoms }, () => [] as number[])
   for (const [atom_idx_1, atom_idx_2] of edges) {
     if (adjacency[atom_idx_1] === undefined || adjacency[atom_idx_2] === undefined) {
@@ -165,7 +159,7 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
 }
 
 // Spanning-tree cycle basis, deduplicated by sorted vertex set.
-function find_rings(n_atoms: number, edges: [number, number][]): number[][] {
+function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
   const adjacency = Array.from({ length: n_atoms }, () => new Set<number>())
   for (const [atom_idx_1, atom_idx_2] of edges) {
     if (adjacency[atom_idx_1] === undefined || adjacency[atom_idx_2] === undefined) {
@@ -306,7 +300,7 @@ export function perceive_bond_orders(
 
   const frags = split_fragments(
     sites.length,
-    edges.map((edge) => [edge.from, edge.to] as [number, number]),
+    edges.map((edge) => [edge.from, edge.to] as Vec2),
   )
   let ring_id = 0
   for (const frag of frags) {
@@ -355,7 +349,7 @@ export function perceive_bond_orders(
     // Hückel aromatic post-pass, retaining Kekulé orders for display toggles.
     const rings = find_rings(
       frag.length,
-      local_edges.map((edge) => [edge.from, edge.to] as [number, number]),
+      local_edges.map((edge) => [edge.from, edge.to] as Vec2),
     )
     for (const ring of rings) {
       const global_ring = ring.map((local_atom_idx) => frag[local_atom_idx])

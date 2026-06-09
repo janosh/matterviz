@@ -129,7 +129,7 @@ describe(`Utility Functions`, () => {
       await lib.toggle_fullscreen(mock_wrapper)
 
       expect(document.exitFullscreen).toHaveBeenCalledOnce()
-      await new Promise((r) => setTimeout(r, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
       expect(mock_wrapper.requestFullscreen).toHaveBeenCalledOnce()
     })
 

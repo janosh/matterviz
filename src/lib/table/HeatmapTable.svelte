@@ -1,6 +1,7 @@
 <script lang="ts">
   import { luminance, watch_dark_mode } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
+  import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import ContextMenu from '$lib/overlays/ContextMenu.svelte'
@@ -769,7 +770,7 @@
     const row_id = get_row_id(row)
     const idx = selected_rows.findIndex((selected_row) => get_row_id(selected_row) === row_id)
     if (idx !== -1) {
-      selected_rows = selected_rows.filter((_, i) => i !== idx)
+      selected_rows = selected_rows.filter((_, row_idx) => row_idx !== idx)
     } else {
       selected_rows = [...selected_rows, row]
     }
@@ -823,7 +824,7 @@
   }
 
   function export_csv(filename = `table-export`) {
-    download_file(serialize_table(`,`, true), `${filename}.csv`, `text/csv`)
+    download(serialize_table(`,`, true), `${filename}.csv`, `text/csv`)
   }
 
   function export_json(filename = `table-export`) {
@@ -838,23 +839,11 @@
       }
       return clean_row
     })
-    download_file(
+    download(
       JSON.stringify(rows, null, 2),
       `${filename}.json`,
       `application/json`,
     )
-  }
-
-  function download_file(content: string, filename: string, mime_type: string) {
-    const blob = new Blob([content], { type: mime_type })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement(`a`)
-    link.href = url
-    link.download = filename
-    document.body.append(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
   }
 
   function copy_to_clipboard() {

@@ -7,6 +7,7 @@ import {
   toggle_series_visibility,
 } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
+import { make_trajectory_frame } from '../setup'
 
 // Test data and configuration constants
 const DEFAULT_PROPERTY_CONFIG = {
@@ -36,22 +37,7 @@ const COMMON_TRAJECTORIES = {
 
 // Helper functions
 const create_trajectory = (property_frames: Record<string, number>[]): TrajectoryType => ({
-  frames: property_frames.map((props, step) => ({
-    structure: {
-      sites: [
-        {
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        },
-      ],
-      charge: 0,
-    },
-    step,
-    metadata: props,
-  })),
+  frames: property_frames.map((props, step) => make_trajectory_frame(step, 1, props)),
 })
 
 function test_extractor(frame: TrajectoryFrame): Record<string, number> {

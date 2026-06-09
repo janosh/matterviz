@@ -32,7 +32,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const bands_x_ticks = await plots.first().locator(`g.x-axis text`).allTextContents()
     const dos_x_ticks = await plots.nth(1).locator(`g.x-axis text`).allTextContents()
     expect(bands_x_ticks.join(``)).toMatch(/[ΓXM]/)
-    expect(dos_x_ticks.some((t) => !isNaN(parseFloat(t)))).toBe(true)
+    expect(dos_x_ticks.some((tick) => !isNaN(parseFloat(tick)))).toBe(true)
   })
 
   test(`shares y-axis and uses grid layout`, async ({ page }) => {
@@ -100,13 +100,13 @@ test.describe(`BandsAndDos Component Tests`, () => {
     expect(dos_y_ticks.length).toBeGreaterThan(0)
 
     // Y-axis ranges should be completely different (high_freq_dos has frequencies 10-30)
-    const bands_max = Math.max(...bands_y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
-    const dos_max = Math.max(...dos_y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
+    const bands_max = Math.max(...bands_y_ticks.map(parseFloat).filter((num) => !isNaN(num)))
+    const dos_max = Math.max(...dos_y_ticks.map(parseFloat).filter((num) => !isNaN(num)))
     expect(Math.abs(bands_max - dos_max)).toBeGreaterThan(5) // Should differ significantly
 
     // Both should have numeric y-ticks
-    expect(bands_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
-    expect(dos_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
+    expect(bands_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
+    expect(dos_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
   })
 
   test(`maintains responsive layout`, async ({ page }) => {

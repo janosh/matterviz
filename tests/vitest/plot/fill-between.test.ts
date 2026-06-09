@@ -79,9 +79,10 @@ describe(`monotone_interpolate`, () => {
     expect(c1x).toBeCloseTo(x0 + (x1 - x0) / 3, 2)
     expect(c2x).toBeCloseTo(x1 - (x1 - x0) / 3, 2)
     for (const x of [2.5, 5, 7.5]) {
-      const u = (x - x0) / (x1 - x0)
-      const mu = 1 - u
-      const d3_y = mu ** 3 * y0 + 3 * mu ** 2 * u * c1y + 3 * mu * u ** 2 * c2y + u ** 3 * y1
+      const frac = (x - x0) / (x1 - x0)
+      const mu = 1 - frac
+      const d3_y =
+        mu ** 3 * y0 + 3 * mu ** 2 * frac * c1y + 3 * mu * frac ** 2 * c2y + frac ** 3 * y1
       expect(monotone_interpolate(xs, ys, x)).toBeCloseTo(d3_y, 2)
     }
   })

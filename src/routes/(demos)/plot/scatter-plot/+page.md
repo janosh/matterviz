@@ -426,18 +426,18 @@ This example shows categorized data with color coding, custom tick intervals, an
 
   // Group data by category to create series
   const series_data = categories.map((category, idx) => {
-    const points = sample_data.filter(d => d.category === category)
+    const points = sample_data.filter((point) => point.category === category)
 
     return {
-      x: points.map(p => p.x),
-      y: points.map(p => p.y),
+      x: points.map((point) => point.x),
+      y: points.map((point) => point.y),
       point_style: {
         fill: category_colors[idx],
         radius: 6 - idx, // Size varies by category
         stroke: 'black',
         stroke_width: 0.5
       },
-      metadata: points.map(p => ({ category: p.category, color: p.color })),
+      metadata: points.map((point) => ({ category: point.category, color: point.color })),
       label: category
     }
   })
@@ -956,9 +956,9 @@ The configurable `threshold` parameter controls the transition point: smaller va
   }
 
   // Data compatibility checks for log scale warnings
-  const x_has_non_positive = x_vals.some((v) => v <= 0)
-  const y_has_non_positive = y_vals.some((v) => v <= 0)
-  const color_has_non_positive = color_vals.some((v) => v <= 0)
+  const x_has_non_positive = x_vals.some((val) => val <= 0)
+  const y_has_non_positive = y_vals.some((val) => val <= 0)
+  const color_has_non_positive = color_vals.some((val) => val <= 0)
 
   // Build scale configs with threshold
   let x_scale = $derived(
@@ -1350,11 +1350,11 @@ This example demonstrates how the color bar automatically positions itself in on
     const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points]
 
     return [{
-      x: all_points.map((p) => p.x),
-      y: all_points.map((p) => p.y),
-      color_values: all_points.map((p) => p.color_value),
-      point_label: all_points.map((p) => ({
-        text: p.label,
+      x: all_points.map((point) => point.x),
+      y: all_points.map((point) => point.y),
+      color_values: all_points.map((point) => point.color_value),
+      point_label: all_points.map((point) => ({
+        text: point.label,
         auto_placement: true, // repel labels off each other and their markers
         font_size: '12px',
       })),
@@ -2800,8 +2800,8 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
     for (const [material, color] of Object.entries(colors)) {
       const mat_data = all_data[material]
       series_list.push({
-        x: mat_data.map((d) => d[x_prop]),
-        y: mat_data.map((d) => d[y_prop]),
+        x: mat_data.map((row) => row[x_prop]),
+        y: mat_data.map((row) => row[y_prop]),
         label: material.charAt(0).toUpperCase() + material.slice(1),
         point_style: { fill: color, radius: 4, fill_opacity: 0.7 },
         markers: `points`,
@@ -2997,10 +2997,10 @@ All changes trigger lazy data loading with simulated network delays.
 
   // Build series with color values
   function build_series(x_key, y_key, color_key) {
-    const color_vals = all_data.map((d) => d[color_key])
+    const color_vals = all_data.map((row) => row[color_key])
     return [{
-      x: all_data.map((d) => d[x_key]),
-      y: all_data.map((d) => d[y_key]),
+      x: all_data.map((row) => row[x_key]),
+      y: all_data.map((row) => row[y_key]),
       color_values: color_vals,
       point_style: {
         radius: 5,
@@ -3009,16 +3009,16 @@ All changes trigger lazy data loading with simulated network delays.
         stroke_width: 0.5,
       },
       markers: `points`,
-      metadata: all_data.map((d, idx) => ({
+      metadata: all_data.map((row, idx) => ({
         idx,
-        ...Object.fromEntries(Object.keys(properties).map((k) => [k, d[k]])),
+        ...Object.fromEntries(Object.keys(properties).map((key) => [key, row[key]])),
       })),
     }]
   }
 
   // Get range for a property
   function get_range(key) {
-    const vals = all_data.map((d) => d[key])
+    const vals = all_data.map((row) => row[key])
     return [Math.min(...vals), Math.max(...vals)]
   }
 
@@ -3043,7 +3043,7 @@ All changes trigger lazy data loading with simulated network delays.
 
   // Axis data loader - side-effect free, returns data only
   async function axis_data_loader(axis, property_key, current_series) {
-    await new Promise((r) => setTimeout(r, 200 + Math.random() * 400))
+    await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 400))
     const new_x = axis === `x` ? property_key : x_key
     const new_y = axis === `y` ? property_key : y_key
     const prop = properties[property_key]
@@ -3063,7 +3063,7 @@ All changes trigger lazy data loading with simulated network delays.
 
   // Returns ColorBar-specific data. Series update handled in on_property_change.
   async function colorbar_data_loader(property_key) {
-    await new Promise((r) => setTimeout(r, 200 + Math.random() * 400))
+    await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 400))
     const prop = properties[property_key]
     const range = get_range(property_key)
     const title = `${prop.label} (${prop.unit})`
@@ -3110,7 +3110,7 @@ All changes trigger lazy data loading with simulated network delays.
   data_loader={axis_data_loader}
   on_axis_change={handle_axis_change}
   color_scale={{
-    scheme: color_scale_options.find((o) => o.key === color_scale_key)?.scale ??
+    scheme: color_scale_options.find((option) => option.key === color_scale_key)?.scale ??
       `interpolateViridis`,
   }}
   color_bar={{

@@ -286,14 +286,14 @@ export function normalize_densities(
     if (max_val === 0) return normalized
     return normalized.map((dens) => dens / max_val)
   } else if (mode === `sum`) {
-    const sum = normalized.reduce((acc, d) => acc + d, 0)
+    const sum = normalized.reduce((acc, dens) => acc + dens, 0)
     if (sum === 0) return normalized
     return normalized.map((dens) => dens / sum)
   } else if (mode === `integral`) {
     if (freqs_or_energies.length < 2) return normalized
     const bin_width = freqs_or_energies[1] - freqs_or_energies[0]
     if (bin_width === 0) return normalized
-    const sum = normalized.reduce((acc, d) => acc + d, 0)
+    const sum = normalized.reduce((acc, dens) => acc + dens, 0)
     if (sum === 0) return normalized
     return normalized.map((dens) => dens / (sum * bin_width))
   }
@@ -341,7 +341,7 @@ function apply_gaussian_smearing_core(
   densities: number[],
   sigma: number,
 ): number[] {
-  const orig_sum = densities.reduce((acc, d) => acc + d, 0)
+  const orig_sum = densities.reduce((acc, dens) => acc + dens, 0)
   if (sigma <= 0 || orig_sum === 0) return densities
 
   const smeared = Array(densities.length).fill(0)
@@ -364,7 +364,7 @@ function apply_gaussian_smearing_core(
   }
 
   // Normalize to preserve integral
-  const smeared_sum = smeared.reduce((acc, d) => acc + d, 0)
+  const smeared_sum = smeared.reduce((acc, dens) => acc + dens, 0)
   if (smeared_sum === 0) return densities
   const normalization = orig_sum / smeared_sum
   return smeared.map((dens) => dens * normalization)
@@ -847,7 +847,7 @@ export function find_qpoint_at_distance(
 export function qpoint_x_position(
   band_struct: types.BaseBandStructure,
   qpoint_index: number,
-  x_positions: Record<string, [number, number]>,
+  x_positions: Record<string, Vec2>,
 ): number | null {
   if (!band_struct?.branches?.length || !x_positions) return null
 
@@ -873,7 +873,7 @@ export function qpoint_x_position(
 export function find_qpoint_at_rescaled_x(
   band_struct: types.BaseBandStructure,
   rescaled_x: number,
-  x_positions: Record<string, [number, number]>,
+  x_positions: Record<string, Vec2>,
 ): number | null {
   if (!band_struct?.branches?.length || !x_positions) return null
 
@@ -1196,7 +1196,7 @@ export function compute_frequency_range(
   band_structs: unknown,
   doses: unknown,
   padding_factor = 0.02,
-): [number, number] | undefined {
+): Vec2 | undefined {
   let [min_val, max_val, is_phonon] = [Infinity, -Infinity, false]
   const all_freqs: number[] = []
 
@@ -1356,11 +1356,11 @@ export function format_sigma(val: number): string {
 }
 
 // Validate sigma_range: ensures min < max, returns [0, 1] if invalid
-export const validate_sigma_range = ([min, max]: [number, number]): [number, number] =>
+export const validate_sigma_range = ([min, max]: Vec2): Vec2 =>
   Number.isFinite(min) && Number.isFinite(max) && min < max ? [min, max] : [0, 1]
 
 // Calculate slider step: 1/100th of range, or 0.01 fallback
-export function calculate_sigma_step(range: [number, number]): number {
+export function calculate_sigma_step(range: Vec2): number {
   const [min, max] = validate_sigma_range(range)
   return (max - min) / 100 || 0.01
 }

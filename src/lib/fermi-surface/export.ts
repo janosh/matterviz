@@ -1,19 +1,7 @@
 // Export Fermi surface to various 3D formats
 import type { Scene } from 'three'
+import { download } from '$lib/io/fetch'
 import { to_error } from '$lib/utils'
-
-// Helper to trigger file download
-function download_file(content: string | ArrayBuffer, filename: string, mime_type: string) {
-  const blob = new Blob([content], { type: mime_type })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement(`a`)
-  link.href = url
-  link.download = filename
-  document.body.append(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
 
 // Export scene to STL format (good for 3D printing)
 export async function export_to_stl(scene: Scene, filename: string): Promise<void> {
@@ -22,7 +10,7 @@ export async function export_to_stl(scene: Scene, filename: string): Promise<voi
   const result = exporter.parse(scene, { binary: true })
   // Binary STL returns DataView, convert to ArrayBuffer for Blob
   const buffer = result instanceof DataView ? result.buffer : result
-  download_file(buffer, `${filename}.stl`, `application/octet-stream`)
+  download(buffer, `${filename}.stl`, `application/octet-stream`)
 }
 
 // Export scene to OBJ format (widely compatible)
@@ -30,7 +18,7 @@ export async function export_to_obj(scene: Scene, filename: string): Promise<voi
   const { OBJExporter } = await import(`three/addons/exporters/OBJExporter.js`)
   const exporter = new OBJExporter()
   const result = exporter.parse(scene)
-  download_file(result, `${filename}.obj`, `text/plain`)
+  download(result, `${filename}.obj`, `text/plain`)
 }
 
 // Export scene to GLTF format (modern web/AR standard)
@@ -43,7 +31,7 @@ export async function export_to_gltf(scene: Scene, filename: string): Promise<vo
       scene,
       (gltf) => {
         const output = JSON.stringify(gltf, null, 2)
-        download_file(output, `${filename}.gltf`, `application/json`)
+        download(output, `${filename}.gltf`, `application/json`)
         resolve()
       },
       (error) => reject(to_error(error)),

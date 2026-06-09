@@ -173,8 +173,8 @@ Add `band_widths` to your band structure data - a 2D array matching the shape of
   // Simulate electron-phonon coupling: only certain bands couple strongly
   const coupled_bands = [1, 4, 7] // bands with significant coupling
   const band_widths = base_bs.bands.map((band, idx) =>
-    band.map((_, q) => {
-      const pos = q / band.length
+    band.map((_, q_idx) => {
+      const pos = q_idx / band.length
       const envelope = Math.sin(pos * Math.PI) ** 0.5 // smooth peak at zone boundary
       return coupled_bands.includes(idx) ? envelope * (0.6 + 0.4 * Math.cos(idx)) : 0
     })
@@ -199,8 +199,8 @@ Customize the ribbon appearance with `ribbon_config`. You can set color, opacity
 
   // Simulate d-orbital character: peaks at specific k-points for select bands
   const band_widths = base_bs.bands.map((band, idx) =>
-    band.map((_, q) => {
-      const pos = q / band.length
+    band.map((_, q_idx) => {
+      const pos = q_idx / band.length
       if (idx === 2) return Math.exp(-8 * (pos - 0.3) ** 2) // Gaussian peak near Γ
       if (idx === 5) return Math.exp(-8 * (pos - 0.7) ** 2) // Peak near zone edge
       if (idx === 8) return 0.5 * Math.sin(pos * Math.PI) ** 2 // Weaker, broad
@@ -234,9 +234,9 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
     Math.exp(-((pos - center) ** 2) / width)
   const make_widths = (active_bands: number[], centers: number[]) =>
     base_bs.bands.map((band, idx) =>
-      band.map((_, q) =>
+      band.map((_, q_idx) =>
         active_bands.includes(idx)
-          ? gauss(q / band.length, centers[idx % centers.length], 0.08)
+          ? gauss(q_idx / band.length, centers[idx % centers.length], 0.08)
           : 0
       )
     )
@@ -245,7 +245,7 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
     DFT: { ...base_bs, band_widths: make_widths([1, 3, 6], [0.3, 0.5, 0.7]) },
     'ML model': {
       ...base_bs,
-      bands: base_bs.bands.map((b) => b.map((f) => f * 1.015)),
+      bands: base_bs.bands.map((band) => band.map((freq) => freq * 1.015)),
       band_widths: make_widths([2, 5, 8], [0.4, 0.6, 0.8]),
     },
   }

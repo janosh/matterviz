@@ -106,7 +106,7 @@
   const rotation_target = $derived.by((): Vec3 => {
     if (!bz_data?.vertices || bz_data.vertices.length === 0) return [0, 0, 0]
     const sum = bz_data.vertices.reduce(
-      (acc, v) => math.add(acc, v),
+      (acc, vertex) => math.add(acc, vertex),
       [0, 0, 0] as Vec3,
     )
     return math.scale(sum, 1 / bz_data.vertices.length)
@@ -370,7 +370,7 @@
     {#if bz_geometry}
       <T.Mesh
         geometry={bz_geometry}
-        onpointermove={(e: ThreltePointerEvent) => handle_hover(e, false)}
+        onpointermove={(event: ThreltePointerEvent) => handle_hover(event, false)}
         onpointerleave={() => handle_leave(false)}
       >
         <T.MeshStandardMaterial
@@ -393,7 +393,7 @@
     {#if show_ibz && ibz_geometry}
       <T.Mesh
         geometry={ibz_geometry}
-        onpointermove={(e: ThreltePointerEvent) => handle_hover(e, true)}
+        onpointermove={(event: ThreltePointerEvent) => handle_hover(event, true)}
         onpointerleave={() => handle_leave(true)}
       >
         <T.MeshStandardMaterial

@@ -1,4 +1,5 @@
 // Reference line utilities: helper functions and coordinate resolution
+import type { Vec2, Vec4 } from '$lib/math'
 import type { LayerZIndex, RefLine, RefLineValue } from '$lib/plot/core/types'
 
 export type IndexedRefLine = RefLine & { idx: number }
@@ -29,7 +30,7 @@ const apply_span = (
   start_val: number,
   end_val: number,
   span?: [number | null, number | null],
-): [number, number] => {
+): Vec2 => {
   if (!span) return [start_val, end_val]
   return [
     span[0] !== null ? Math.max(start_val, span[0]) : start_val,
@@ -72,7 +73,7 @@ export function normalize_value(value: RefLineValue): number {
 }
 
 // Normalize a point tuple
-export const normalize_point = (point: [RefLineValue, RefLineValue]): [number, number] => [
+export const normalize_point = (point: [RefLineValue, RefLineValue]): Vec2 => [
   normalize_value(point[0]),
   normalize_value(point[1]),
 ]
@@ -88,7 +89,7 @@ function clip_segment_to_rect(
   x_max: number,
   y_min: number,
   y_max: number,
-): [number, number, number, number] | null {
+): Vec4 | null {
   const dx = p2x - p1x
   const dy = p2y - p1y
 
@@ -121,29 +122,16 @@ function clip_segment_to_rect(
 // Returns [x1, y1, x2, y2] in pixel coordinates, or null if line is not visible
 export function resolve_line_endpoints(
   ref_line: RefLine,
-  {
-    x_min,
-    x_max,
-    y_min,
-    y_max,
-  }: {
-    x_min: number
-    x_max: number
-    y_min: number
-    y_max: number
-  },
-  {
-    x_scale,
-    x2_scale,
-    y_scale,
-    y2_scale,
-  }: {
+  bounds: { x_min: number; x_max: number; y_min: number; y_max: number },
+  scales: {
     x_scale: (val: number) => number
     x2_scale?: (val: number) => number
     y_scale: (val: number) => number
     y2_scale?: (val: number) => number
   },
-): [number, number, number, number] | null {
+): Vec4 | null {
+  const { x_min, x_max, y_min, y_max } = bounds
+  const { x_scale, x2_scale, y_scale, y2_scale } = scales
   // Determine which scales to use based on axis assignment
   const active_x_scale = ref_line.x_axis === `x2` && x2_scale ? x2_scale : x_scale
   const active_y_scale = ref_line.y_axis === `y2` && y2_scale ? y2_scale : y_scale
@@ -160,10 +148,8 @@ export function resolve_line_endpoints(
   const to_data_x = (rel: number): number => x_min + rel * (x_max - x_min)
   const to_data_y = (rel: number): number => y_min + rel * (y_max - y_min)
 
-  let x1_data = 0
-  let y1_data = 0
-  let x2_data = 0
-  let y2_data = 0
+  let [x1_data, x2_data] = [0, 0]
+  let [y1_data, y2_data] = [0, 0]
 
   const line_type = ref_line.type
 
@@ -373,21 +359,21 @@ export interface Scene3DParams {
   scene_x: number
   scene_y: number
   scene_z: number
-  x_range: [number, number]
-  y_range: [number, number]
-  z_range: [number, number]
+  x_range: Vec2
+  y_range: Vec2
+  z_range: Vec2
 }
 
 /** Apply span constraints or use full range as fallback */
 export const span_or = (
   span: [number | null, number | null] | undefined,
-  range: [number, number],
-): [number, number] => [span?.[0] ?? range[0], span?.[1] ?? range[1]]
+  range: Vec2,
+): Vec2 => [span?.[0] ?? range[0], span?.[1] ?? range[1]]
 
 // Normalize a data value to scene coordinates (centered around 0)
 export function normalize_to_scene(
   value: number,
-  [min_val, max_val]: [number, number],
+  [min_val, max_val]: Vec2,
   scene_size: number,
 ): number {
   const range = max_val - min_val
