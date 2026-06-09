@@ -18,8 +18,7 @@ export interface ExportItem {
   on_download?: () => void
   // Tooltip for the download button (defaults to `Download {label}`)
   download_title?: string
-  // Lazy clipboard content for the 📋 copy button (omit to hide the button).
-  // Only evaluated on click; return null/empty string to no-op. Must not throw.
+  // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return null/empty to no-op, must not throw
   copy_text?: () => string | null
   // Disables only the copy button (falls back to `disabled`)
   copy_disabled?: boolean

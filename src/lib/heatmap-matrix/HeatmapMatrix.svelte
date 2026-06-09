@@ -289,14 +289,15 @@
 
     const col_has_data = Array(x_items.length).fill(false)
     const row_has_data = Array(y_items.length).fill(false)
-    // Early-exit pass: skip cells whose row+col are already known non-empty and stop
-    // once everything is resolved (dense matrices touch ~n+m cells instead of n*m)
+    // Early-exit: skip cells whose row+col are already non-empty, stop once all resolved (dense matrices touch ~n+m cells, not n*m)
     let unknown_cols = x_items.length
     let unknown_rows = y_items.length
     for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
       if (unknown_cols === 0 && unknown_rows === 0) break
       for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
         if (row_has_data[y_idx] && col_has_data[x_idx]) continue
+        // ignore cells hidden by symmetric rendering so emptiness reflects only visible cells
+        if (is_hidden_cell(x_idx, y_idx)) continue
         if (get_value(x_idx, y_idx) === null) continue
         if (!col_has_data[x_idx]) {
           col_has_data[x_idx] = true
@@ -341,8 +342,7 @@
     return transformed_value
   }
 
-  // Interpolated quantile via quickselect (O(n) average instead of a full sort).
-  // Reorders `scratch_values` in place, so callers must pass a copy they own.
+  // Interpolated quantile via quickselect (O(n) avg vs full sort); reorders `scratch_values` in place so callers must pass a copy they own
   function get_quantile(scratch_values: number[], quantile: number): number {
     if (scratch_values.length === 0) return 0
     const clipped_quantile = Math.max(0, Math.min(1, quantile))
@@ -357,10 +357,9 @@
     return low_val * low_weight + high_val * high_weight
   }
 
-  // Single pass over the matrix collecting the transformed numeric values together
-  // with min/max (avoids spreading large arrays into Math.min/max). min_pos is the
-  // log-mode lower bound when the domain min is <= 0 (the old Number.MIN_VALUE floor
-  // gave log_min ~ -744, squashing all colors to the top)
+  // Single pass collecting transformed values + min/max (avoids spreading large arrays into
+  // Math.min/max). min_pos is the log-mode lower bound when domain min <= 0 (the old
+  // Number.MIN_VALUE floor gave log_min ~ -744, squashing all colors to the top)
   let { valid_numeric_values, auto_min, auto_max, min_pos } = $derived.by(() => {
     const numeric_values: number[] = []
     let [min, max, pos] = [Infinity, -Infinity, Infinity]
@@ -1099,8 +1098,7 @@
 
   // Tooltip state: only used for custom tooltip snippets (function tooltips)
   let tooltip_cell: CellContext | null = $state(null)
-  // Reset interactions when axis keys change. Element-wise compare with early exit
-  // beats JSON.stringify-ing every key whenever x_items/y_items update.
+  // Reset interactions when axis keys change; element-wise compare beats JSON.stringify-ing every key on each x_items/y_items update
   const keys_equal = (keys_a: string[], keys_b: string[]): boolean =>
     keys_a.length === keys_b.length && keys_a.every((key, idx) => key === keys_b[idx])
   let prev_axis_keys: { x: string[]; y: string[] } | null = null

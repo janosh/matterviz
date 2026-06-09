@@ -1,6 +1,5 @@
 <script lang="ts">
-  // Dual perspective/orthographic camera with OrbitControls + axis Gizmo, shared by
-  // BrillouinZoneScene, FermiSurfaceScene and StructureScene.
+  // Dual perspective/orthographic camera with OrbitControls + axis Gizmo, shared by BrillouinZoneScene, FermiSurfaceScene and StructureScene
   import type { Vec3 } from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
@@ -41,18 +40,19 @@
   const ortho_far = $derived(far !== undefined ? { far } : {})
 </script>
 
+{#snippet camera_contents()}
+  <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props}>
+    {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
+  </extras.OrbitControls>
+  {@render children?.()}
+{/snippet}
+
 {#if camera_projection === `perspective`}
   <T.PerspectiveCamera makeDefault {position} {fov} {...persp_planes}>
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-    {@render children?.()}
+    {@render camera_contents()}
   </T.PerspectiveCamera>
 {:else}
   <T.OrthographicCamera makeDefault {position} {zoom} near={-100} {...ortho_far}>
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-    {@render children?.()}
+    {@render camera_contents()}
   </T.OrthographicCamera>
 {/if}

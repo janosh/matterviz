@@ -38,8 +38,7 @@ export interface ParseDiagnostic {
 
 let parse_diagnostics: ParseDiagnostic[] = []
 
-// @internal debugging aid, not part of the public API.
-// Diagnostics recorded since the last top-level parse call (read-only snapshot).
+// @internal debugging aid (not public API): diagnostics since the last top-level parse call
 export const get_parse_diagnostics = (): ParseDiagnostic[] => [...parse_diagnostics]
 const reset_parse_diagnostics = (): void => {
   parse_diagnostics = []
@@ -252,9 +251,7 @@ const cart_to_frac_with_fallback = (
   return { convert: (xyz: Vec3) => approximate_cart_to_frac(xyz, lengths), exact: false }
 }
 
-// @internal format-specific parser exported for tests - use parse_structure_file /
-// parse_any_structure as the public entry points.
-// Parse VASP POSCAR file format.
+// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse VASP POSCAR.
 export function parse_poscar(content: string): ParsedStructure | null {
   try {
     // Strip only horizontal whitespace: a blank first (comment) line is valid POSCAR
@@ -450,10 +447,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
   }
 }
 
-// @internal format-specific parser exported for tests and the trajectory parser -
-// use parse_structure_file / parse_any_structure as the public entry points.
-// Parse XYZ file format. Supports both standard XYZ and extended XYZ formats with
-// multi-frame support.
+// @internal parser exported for tests + trajectory parser; public entry points: parse_structure_file/parse_any_structure. Parse standard/extended XYZ (multi-frame).
 export function parse_xyz(content: string): ParsedStructure | null {
   try {
     const normalized_content = content.trim()
@@ -815,9 +809,7 @@ const parse_cif_atom_data = (
   }
 }
 
-// @internal format-specific parser exported for tests - use parse_structure_file /
-// parse_any_structure as the public entry points.
-// Parse CIF (Crystallographic Information File) format.
+// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse CIF (Crystallographic Information File).
 export function parse_cif(
   content: string,
   wrap_fractional_coords: boolean = true,
@@ -1126,10 +1118,7 @@ const get_phonopy_cell = (
   return is_phonopy_cell(cell) ? cell : undefined
 }
 
-// @internal format-specific parser exported for tests - use parse_structure_file /
-// parse_any_structure as the public entry points.
-// Parse phonopy YAML file and return the requested cell type (or preferred single
-// structure).
+// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse phonopy YAML, returns requested cell type (or preferred single structure).
 export function parse_phonopy_yaml(
   content: string,
   cell_type?: CellType,
@@ -1288,8 +1277,7 @@ const detect_json_structure = (content: string): ParsedStructure | null => {
   return structure ? normalize_fractional_coords(structure) : null
 }
 
-// Auto-detect file format and parse accordingly. Internal: returns null on failure after
-// recording reasons in the diagnostics collector (see parse error contract at top of file)
+// Internal: auto-detect file format, returns null on failure after recording reasons (see parse error contract at top)
 function parse_structure_file_impl(
   content: string,
   filename?: string,
@@ -1410,8 +1398,7 @@ function parse_structure_file_impl(
   return null
 }
 
-// Auto-detect file format and parse accordingly.
-// Throws a descriptive Error (aggregating per-format failure reasons) when nothing parses.
+// Auto-detect file format and parse; throws an Error aggregating per-format failure reasons when nothing parses
 export function parse_structure_file(content: string, filename?: string): ParsedStructure {
   reset_parse_diagnostics()
   const structure = parse_structure_file_impl(content, filename)
@@ -1419,8 +1406,7 @@ export function parse_structure_file(content: string, filename?: string): Parsed
   throw aggregate_parse_error(filename)
 }
 
-// Universal parser that handles JSON and structure files.
-// Throws a descriptive Error (aggregating per-format failure reasons) when nothing parses.
+// Universal parser for JSON and structure files; throws an Error aggregating per-format failure reasons when nothing parses
 export function parse_any_structure(content: string, filename: string): AnyStructure {
   reset_parse_diagnostics()
   const finalize_structure = (structure: ParsedStructure): AnyStructure => ({

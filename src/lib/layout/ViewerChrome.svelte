@@ -1,8 +1,5 @@
 <script lang="ts">
-  // Shared control-buttons row for viewer components (BrillouinZone, FermiSurface,
-  // Structure): optional filename chip + fullscreen toggle + component-specific
-  // buttons/panes via snippets. Themable through neutral --viewer-* CSS vars;
-  // components pass their legacy --bz-*/--fermi-*/--struct-* vars as fallbacks.
+  // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) for BrillouinZone/FermiSurface/Structure viewers; themed via neutral --viewer-* CSS vars
   // TODO Trajectory.svelte still has its own control-buttons variant — migrate it here.
   import type { normalize_show_controls } from '$lib/controls'
   import Icon from '$lib/Icon.svelte'

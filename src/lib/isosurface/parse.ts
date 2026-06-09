@@ -16,11 +16,10 @@ import type { DataRange, VolumetricData, VolumetricFileData } from './types'
 const BOHR_TO_ANGSTROM = 0.529177249
 
 // === Parse error contract ===
-// parse_chgcar/parse_cube return null on failure and record reasons here (mirrored to
-// console.error). parse_volumetric_file resets the collector per call and throws a
-// descriptive Error when the FILENAME identifies a volumetric format that fails to parse.
-// It still returns null when the content merely doesn't look volumetric, since callers
-// use it as a format probe before falling back to structure parsing.
+// parse_chgcar/parse_cube return null and record reasons here (mirrored to console.error).
+// parse_volumetric_file resets per call and throws when the FILENAME identifies a volumetric
+// format that fails to parse, but returns null when content doesn't look volumetric at all
+// (probe semantics — callers then fall back to structure parsing).
 let vol_parse_errors: string[] = []
 const vol_error = (message: string): void => {
   vol_parse_errors.push(message)
@@ -596,10 +595,7 @@ export function parse_cube(
 const atomic_number_to_symbol = (atomic_number: number): ElementSymbol =>
   ATOMIC_NUMBER_TO_SYMBOL[atomic_number] ?? `H`
 
-// Auto-detect and parse volumetric file format based on filename and content.
-// Throws a descriptive Error when the filename identifies a volumetric format whose
-// content fails to parse; returns null when the content doesn't look volumetric at all
-// (probe semantics — callers fall back to structure parsing on null).
+// Auto-detect and parse volumetric file by filename + content (see parse error contract at top)
 export function parse_volumetric_file(
   content: string,
   filename?: string,

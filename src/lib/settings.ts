@@ -439,25 +439,7 @@ const DISPLAY_CONFIG = {
   },
 } as const
 
-// Complete settings configuration with values, descriptions, and constraints.
-//
-// Table of contents (top-level sections, in literal order):
-//   color_scheme / background_color / background_opacity - general display
-//   symmetry    - spacegroup analysis (symprec, algo)
-//   structure   - 3D structure viewer (atoms, bonds, polyhedra, coloring, camera,
-//                 labels, lighting, site vectors, cell, fullscreen)
-//   trajectory  - trajectory player (playback, file handling, formatting, UI/UX,
-//                 playback behavior, performance)
-//   histogram   - histogram plots (mode, bins, bar style, display)
-//   bar         - bar plots (display, bar/line style)
-//   box         - box/violin plots (whiskers, violin, per-glyph styles, display)
-//   sankey      - sankey diagrams (orientation, node layout, links)
-//   sunburst    - sunburst/icicle charts (shape, values, labels, zoom)
-//   composition - composition rendering (display mode, color scheme)
-//   scatter     - scatter plots (symbols, legend, point/line style, display)
-//   plot        - general plot settings (zoom, grids, axis formats, scale types)
-//   convex_hull - phase-diagram hulls: per-arity binary/ternary/quaternary camera,
-//                 coloring, phase visibility, hull faces, panes
+// Complete settings configuration with values, descriptions, and constraints
 export const SETTINGS_CONFIG: SettingsConfig = {
   // General display settings
   color_scheme: {

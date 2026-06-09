@@ -10,12 +10,25 @@ import {
 import type { TrajectoryType } from '$lib/trajectory/index'
 import { traj_warn } from './diagnostics'
 
-// Parse an already-JSON-parsed pymatgen Trajectory object
-// (detected via @class === 'Trajectory' with species/coords/lattice present)
+// Parse an already-JSON-parsed pymatgen Trajectory object (detected via @class === 'Trajectory' with species/coords/lattice present)
 export function parse_pymatgen_trajectory(
   obj: Record<string, unknown>,
   filename?: string,
 ): TrajectoryType {
+  // Validate shape before casting so malformed input fails with a clear message
+  // (callers gate only on truthiness, not structure) rather than a cryptic `.map` error
+  if (
+    !Array.isArray(obj.species) ||
+    obj.species.length === 0 ||
+    !obj.species.every((sp) => sp != null && typeof sp === `object` && `element` in sp)
+  ) {
+    throw new TypeError(
+      `Invalid pymatgen Trajectory: 'species' must be a non-empty array of { element } objects`,
+    )
+  }
+  if (!Array.isArray(obj.coords)) {
+    throw new TypeError(`Invalid pymatgen Trajectory: 'coords' must be an array of frames`)
+  }
   const species = obj.species as { element: ElementSymbol }[]
   const frame_elements = species.map((specie) => specie.element)
   const coords = obj.coords as number[][][]
@@ -36,17 +49,14 @@ export function parse_pymatgen_trajectory(
         typeof value === `object` &&
         (value as Record<string, unknown>)[`@class`] === `array`
       ) {
-        // Extract numpy array data
         const array_obj = value as Record<string, unknown>
         processed_properties[key] = array_obj.data
 
-        // Calculate force statistics for forces
         if (key === `forces` && Array.isArray(array_obj.data)) {
           // Object.assign ignores the null calc_force_stats returns for empty forces
           Object.assign(processed_properties, calc_force_stats(array_obj.data as number[][]))
         }
 
-        // Calculate stress statistics for stress tensor
         if (key === `stress` && Array.isArray(array_obj.data)) {
           const stress_tensor = array_obj.data
           if (!math.is_square_matrix(stress_tensor, 3)) {
@@ -83,7 +93,7 @@ export function parse_pymatgen_trajectory(
     filename,
     source_format: `pymatgen_trajectory`,
     frame_count: frames.length,
-    species_list: [...new Set(species.map((specie) => specie.element))],
+    species_list: [...new Set(frame_elements)],
     periodic_boundary_conditions: [true, true, true],
   }
   return { frames, metadata }

@@ -532,8 +532,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   }
 }
 
-// Auto-detect file format and parse accordingly.
-// Throws a descriptive Error (aggregating per-format failure reasons) when nothing parses.
+// Auto-detect file format and parse; throws an Error aggregating per-format failure reasons when nothing parses
 export function parse_fermi_file(
   content: string,
   filename?: string,

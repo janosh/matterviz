@@ -4,11 +4,11 @@ import type { CameraProjection } from '$lib/settings'
 import type { Gizmo } from '@threlte/extras'
 import type { ComponentProps } from 'svelte'
 
-// TODO adopt build_gizmo_props/build_orbit_props in plot/scatter-3d ScatterPlot3DScene
-// (owned by another agent at time of extraction)
+// ScatterPlot3DScene keeps its own gizmo/orbit props on purpose: its gizmo offset is
+// ColorBar-aware (build_gizmo_props' fixed offset would clobber it) and its orbit controls
+// differ by design (no zoom-to-cursor / ortho zoom-doubling / camera-moving tracking).
 
-// Shared Gizmo config: colored +/- axis handles, transparent background, responsive
-// sizing. When `gizmo` is an object, its entries override the per-axis defaults.
+// Shared Gizmo config: colored +/- axis handles, transparent background, responsive sizing. An object `gizmo` overrides the per-axis defaults.
 export function build_gizmo_props(gizmo: boolean | ComponentProps<typeof Gizmo>) {
   return {
     background: { enabled: false },
@@ -33,8 +33,7 @@ export function build_gizmo_props(gizmo: boolean | ComponentProps<typeof Gizmo>)
   }
 }
 
-// Shared OrbitControls config. `onstart_extra` lets callers run extra cleanup when
-// the camera starts moving (e.g. StructureScene closes hover tooltips/context menus).
+// Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving (e.g. StructureScene closes hover tooltips/context menus)
 export function build_orbit_props(opts: {
   camera_projection: CameraProjection
   target: Vec3

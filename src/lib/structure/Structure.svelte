@@ -1564,7 +1564,7 @@
       fullscreen_btn_style="padding: 0 3px"
       {wrapper}
       before={reset_camera_btn}
-      style="--viewer-buttons-top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex)); --viewer-buttons-right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex)); --viewer-buttons-z-index: var(--struct-buttons-z-index, var(--z-index-overlay-controls, 100000000)); --viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch"
+      style="--viewer-buttons-top: var(--ctrl-btn-top, 1ex); --viewer-buttons-right: var(--ctrl-btn-right, 1ex); --viewer-buttons-z-index: var(--z-index-overlay-controls, 100000000); --viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch"
     >
       {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
         <div

@@ -1,8 +1,4 @@
-// Shared canvas-interaction scaffold for ConvexHull3D/4D.
-// Runes-in-closure factory (precedent: src/lib/effects.svelte.ts) owning mouse/keyboard
-// handlers, hover/drag/copy-feedback/popup state, canvas sizing, and the render scheduler.
-// Component-specific behavior (rotation math, keydown actions map, projection, drawing)
-// is injected via callbacks. All reactive inputs are getter thunks.
+// Shared canvas-interaction scaffold (runes-in-closure factory) for ConvexHull3D/4D.
 import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
 import type { AnyStructure } from '$lib/structure'
 import * as helpers from './helpers'
@@ -67,8 +63,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       inputs.selected_entry(),
       inputs.plot_entries(),
     )
-    const stale_selection = inputs.selected_entry() && !current_selection
-    if (stale_selection) inputs.set_selected_entry(null)
+    if (inputs.selected_entry() && !current_selection) inputs.set_selected_entry(null)
     else if (
       current_selection &&
       !helpers.same_entry(current_selection, inputs.selected_entry())
@@ -111,8 +106,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     const target = event.target
     if (target instanceof HTMLElement && /INPUT|TEXTAREA/.test(target.tagName)) return
 
-    // Stop propagation if event came from canvas to prevent wrapper's handler
-    // from running again (both have onkeydown, causing duplicate handling)
+    // Stop canvas-originated keydown re-running on wrapper (both have onkeydown)
     if (target === inputs.canvas()) event.stopPropagation()
 
     if (event.key === `Escape` && modal_open) {
@@ -137,15 +131,12 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (data) inputs.on_file_drop()?.(data)
   }
 
-  const handle_drag_over = (event: DragEvent) => {
+  const set_drag_over = (over: boolean) => (event: DragEvent) => {
     event.preventDefault()
-    drag_over = true
+    drag_over = over
   }
-
-  const handle_drag_leave = (event: DragEvent) => {
-    event.preventDefault()
-    drag_over = false
-  }
+  const handle_drag_over = set_drag_over(true)
+  const handle_drag_leave = set_drag_over(false)
 
   async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
@@ -176,8 +167,9 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   }
 
   const handle_mouse_up = () => {
+    // leave drag_started set so the trailing click can detect a concluded drag;
+    // handle_click reads then clears it, and handle_mouse_down resets it next interaction
     is_dragging = false
-    drag_started = false
   }
 
   const handle_wheel = (event: WheelEvent) => {
@@ -199,16 +191,12 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       inputs.canvas(),
       event,
       inputs.visible_entries(),
-      (x: number, y: number, z: number) => {
-        const projected = inputs.project_point(x, y, z)
-        return { x: projected.x, y: projected.y }
-      },
+      inputs.project_point,
     )
 
   const handle_click = (event: MouseEvent) => {
     event.stopPropagation()
-    // Check if this was a drag operation (any mouse movement during drag)
-    const was_drag = drag_started
+    const was_drag = drag_started // Check if this was a drag operation (any mouse movement during drag)
     drag_started = false // Reset for next interaction
     if (was_drag) return // Don't trigger click if this was a drag
 
@@ -228,18 +216,15 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   const handle_double_click = (event: MouseEvent) => {
     const entry = find_entry_at_mouse(event)
-    if (entry) {
-      void copy_entry_data(entry, { x: event.clientX, y: event.clientY })
-    }
+    if (entry) void copy_entry_data(entry, { x: event.clientX, y: event.clientY })
   }
 
   function render_once() {
-    if (!frame_id) {
-      frame_id = requestAnimationFrame(() => {
-        inputs.render_frame()
-        frame_id = 0
-      })
-    }
+    if (frame_id) return
+    frame_id = requestAnimationFrame(() => {
+      inputs.render_frame()
+      frame_id = 0
+    })
   }
 
   function update_canvas_size() {
@@ -273,8 +258,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     const canvas = inputs.canvas()
     if (!canvas) return undefined
 
-    // Initial setup
-    update_canvas_size()
+    update_canvas_size() // Initial setup
 
     // Watch for resize events - only update canvas, don't reset camera
     const resize_observer = new ResizeObserver(update_canvas_size)
@@ -283,9 +267,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (container) resize_observer.observe(container)
 
     return () => {
-      // Cleanup on unmount
       if (frame_id) cancelAnimationFrame(frame_id)
-      resize_observer.disconnect()
+      resize_observer.disconnect() // Cleanup on unmount
     }
   })
 

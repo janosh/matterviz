@@ -354,7 +354,7 @@
       {fullscreen}
       {fullscreen_toggle}
       {wrapper}
-      style="--viewer-buttons-top: var(--bz-buttons-top, var(--ctrl-btn-top, 1ex)); --viewer-buttons-right: var(--bz-buttons-right, var(--ctrl-btn-right, 1ex)); --viewer-buttons-z-index: var(--bz-buttons-z-index, var(--z-index-overlay-controls, 100000000))"
+      style="--viewer-buttons-top: var(--ctrl-btn-top, 1ex); --viewer-buttons-right: var(--ctrl-btn-right, 1ex); --viewer-buttons-z-index: var(--z-index-overlay-controls, 100000000)"
     >
       {#if controls_config.visible(`info-pane`)}
         <BrillouinZoneInfoPane {structure} {bz_data} bind:pane_open={info_pane_open} />
@@ -423,7 +423,7 @@
             y={hover_data.screen_position.y}
             bg_color={hover_data.is_ibz ? ibz_color : surface_color}
             fixed
-            style="z-index: calc(var(--bz-buttons-z-index, var(--z-index-overlay-controls, 100000000)) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+            style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
           >
             <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
           </PlotTooltip>

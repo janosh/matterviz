@@ -10,6 +10,11 @@ import {
   IBZ_REFERENCE_DIRECTIONS,
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
+import {
+  cartesian_to_fractional,
+  k_lattice_inverse,
+  polyhedron_geometry,
+} from '$lib/brillouin'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -580,4 +585,70 @@ describe(`fractional_to_cartesian_rotation`, () => {
       expect(fractional_to_cartesian_rotation(w_matrix, k_matrix)).toEqual(IDENTITY_MAT)
     },
   )
+})
+
+const cube_vertices: Vec3[] = [
+  [0, 0, 0],
+  [1, 0, 0],
+  [1, 1, 0],
+  [0, 1, 0],
+]
+
+describe(`polyhedron_geometry`, () => {
+  // faces -> expected position-attribute count; null when no valid triangle remains
+  // (degenerate <3-vertex faces and out-of-bounds indices are skipped; quads fan-triangulate)
+  test.each<[string, number[][], number | null]>([
+    [`empty faces`, [], null],
+    [`degenerate face (<3 vertices)`, [[0, 1]], null],
+    [`out-of-bounds vertex index`, [[0, 1, 99]], null],
+    [`quad fan-triangulates into 2 triangles`, [[0, 1, 2, 3]], 6],
+    [
+      `keeps valid triangle, drops invalid faces`,
+      [
+        [0, 1],
+        [0, 1, 99],
+        [0, 1, 2],
+      ],
+      3,
+    ],
+  ])(`%s`, (_label, faces, expected_count) => {
+    const geometry = polyhedron_geometry(cube_vertices, faces)
+    if (expected_count === null) expect(geometry).toBeNull()
+    else expect(geometry?.getAttribute(`position`).count).toBe(expected_count)
+    geometry?.dispose()
+  })
+
+  test(`computes +z per-face normals and a bounding sphere for a CCW xy-plane quad`, () => {
+    const geometry = polyhedron_geometry(cube_vertices, [[0, 1, 2, 3]])
+    const normals = geometry?.getAttribute(`normal`)
+    expect([normals?.getX(0), normals?.getY(0), normals?.getZ(5)]).toEqual([0, 0, 1])
+    expect(geometry?.boundingSphere).not.toBeNull()
+    geometry?.dispose()
+  })
+})
+
+describe(`k_lattice_inverse + cartesian_to_fractional`, () => {
+  const k_lattice: Matrix3x3 = [
+    [2, 0, 0],
+    [0, 4, 0],
+    [0, 0, 8],
+  ]
+
+  test(`round-trips Cartesian to fractional coordinates`, () => {
+    const inv = k_lattice_inverse(k_lattice)
+    expect(cartesian_to_fractional(inv, [2, 4, 8])).toEqual([1, 1, 1])
+    expect(cartesian_to_fractional(inv, [1, 1, 1])).toEqual([0.5, 0.25, 0.125])
+  })
+
+  test(`returns null for missing or singular lattice`, () => {
+    expect(k_lattice_inverse(undefined)).toBeNull()
+    expect(
+      k_lattice_inverse([
+        [1, 0, 0],
+        [2, 0, 0],
+        [0, 0, 1],
+      ]),
+    ).toBeNull()
+    expect(cartesian_to_fractional(null, [1, 2, 3])).toBeNull()
+  })
 })

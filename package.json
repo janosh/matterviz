@@ -252,7 +252,7 @@
   "knip": {
     "entry": [
       "svelte.config.ts",
-      "src/routes/**/+{page,server,page.server,error,layout,layout.server}{,@*}.{js,ts,svelte}"
+      "src/site/**/*.{js,ts,svelte}"
     ],
     "ignore": [
       "extensions/**"

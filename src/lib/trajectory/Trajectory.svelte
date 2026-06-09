@@ -207,8 +207,7 @@
   let dragover = $state(false)
   let loading = $state(false)
   let error_msg = $state<string | null>(null)
-  // Non-fatal parse warnings surfaced from the trajectory metadata (set by the parser
-  // via attach_parse_warnings). Reset whenever a new trajectory loads; dismissible.
+  // Non-fatal parse warnings from trajectory metadata (set by parser via attach_parse_warnings); dismissible
   let parse_warning_msg = $state<string | undefined>(undefined)
   $effect(() => {
     const warnings = trajectory?.metadata?.parse_warnings

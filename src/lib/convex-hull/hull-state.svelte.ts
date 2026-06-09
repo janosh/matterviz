@@ -1,8 +1,4 @@
-// Shared reactive data pipeline for ConvexHull2D/3D/4D.
-// Runes-in-closure factory (precedent: src/lib/effects.svelte.ts). All reactive
-// inputs are individual getter thunks so each internal derived/effect only tracks
-// the props it actually reads; bindable props written by pipeline effects go
-// through setter callbacks.
+// Shared reactive data pipeline (runes-in-closure factory) for ConvexHull2D/3D/4D.
 import { DEFAULTS } from '$lib/settings'
 import * as helpers from './helpers'
 import * as thermo from './thermodynamics'
@@ -67,7 +63,7 @@ export function create_hull_data_pipeline<Entry extends PhaseData>(
   })
 
   // Gas-dependent chemical potential support (corrections based on T, P)
-  // Default to DEFAULT_GAS_TEMP (room temperature) when no temperature specified
+  // defaults to DEFAULT_GAS_TEMP (room temp) when no temperature
   const gas_result = $derived(
     helpers.get_gas_corrected_entries(
       temp_filtered_entries,
@@ -128,8 +124,12 @@ export function create_hull_data_pipeline<Entry extends PhaseData>(
   const next_auto_threshold = helpers.auto_threshold_reset(default_threshold)
   $effect(() => {
     const current = inputs.max_hull_dist_show_phases()
+    // Key the reset on the enriched (post-processing) entries, not raw entries(), so the
+    // auto threshold re-derives when temperature/gas/energy-mode change the hull. The
+    // user_changed guard inside auto_threshold_reset still preserves manual adjustments.
     inputs.set_max_hull_dist_show_phases(
-      next_auto_threshold(inputs.entries(), current, auto_default_threshold) ?? current,
+      next_auto_threshold(inputs.all_enriched_entries(), current, auto_default_threshold) ??
+        current,
     )
   })
 
@@ -143,16 +143,11 @@ export function create_hull_data_pipeline<Entry extends PhaseData>(
     helpers.visible_entries(plot_entries, inputs.show_stable(), inputs.show_unstable()),
   )
 
-  // Update bindable stable/unstable entry arrays when plot_entries change (single pass)
+  // Update bindable stable/unstable entry arrays when plot_entries change
   $effect(() => {
-    const stable: Entry[] = []
-    const unstable: Entry[] = []
-    for (const entry of plot_entries) {
-      if (helpers.entry_is_stable(entry)) stable.push(entry)
-      else unstable.push(entry)
-    }
-    inputs.set_stable_entries(stable)
-    inputs.set_unstable_entries(unstable)
+    const is_stable = (entry: Entry) => helpers.entry_is_stable(entry)
+    inputs.set_stable_entries(plot_entries.filter(is_stable))
+    inputs.set_unstable_entries(plot_entries.filter((entry) => !is_stable(entry)))
   })
 
   return {

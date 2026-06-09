@@ -525,7 +525,8 @@
 
 <svelte:document
   onfullscreenchange={() => {
-    fullscreen = Boolean(document.fullscreenElement)
+    // tie fullscreen state to this component's own wrapper, not any fullscreen element
+    fullscreen = document.fullscreenElement === wrapper
   }}
 />
 

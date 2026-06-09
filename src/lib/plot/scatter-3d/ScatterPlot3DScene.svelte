@@ -109,8 +109,7 @@
     height?: number
   } = $props()
 
-  // Mirrors scene/camera into bindable props and tags the canvas with the renderer
-  // so export_canvas_as_png can re-render at export DPI
+  // Mirrors scene/camera into bindable props and tags the canvas so export_canvas_as_png can re-render at export DPI
   bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera
@@ -207,8 +206,7 @@
     return pts.filter((pt) => isFinite(pt.x) && isFinite(pt.y) && isFinite(pt.z))
   }
 
-  // Compute axis range with D3's nice() for clean boundaries.
-  // data_min/data_max are the finite data extent (Infinity/-Infinity when empty).
+  // Compute axis range with D3's nice(); data_min/data_max are the finite extent (Infinity/-Infinity when empty)
   function compute_range(
     [data_min, data_max]: Vec2,
     range?: [number | null, number | null],
@@ -332,9 +330,8 @@
     material: LineMaterial
   }
 
-  // Per-series inputs the fat-line geometries actually depend on: ordered point
-  // positions plus the resolved stroke style. Computed as a derived so the effect
-  // below can diff against previous lines and only rebuild what changed.
+  // Per-series fat-line inputs (ordered positions + resolved stroke style) as a derived so
+  // the effect below can diff against previous lines and only rebuild what changed
   let line_inputs = $derived.by((): SeriesLineInput[] => {
     const eligible: SeriesLineInput[] = []
     const positions_by_series = new Map<number, number[]>()
@@ -358,8 +355,7 @@
         dashed: Boolean(line_style.line_dash),
       })
     }
-    // processed_points are emitted in (series_idx, point_idx) order, so a single
-    // ordered pass replaces the old per-series filter + sort
+    // processed_points are emitted in (series_idx, point_idx) order, so one ordered pass replaces the old per-series filter + sort
     for (const pt of processed_points) {
       positions_by_series.get(pt.series_idx)?.push(pt.x, pt.y, pt.z)
     }

@@ -5,13 +5,24 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
 export const get_json_string = (payload: unknown): string => JSON.stringify(payload, null, 2)
 
+const download_json = (payload: unknown, filename: string): void =>
+  download(get_json_string(payload), filename, `application/json`)
+
 export const export_json_file = (payload: unknown, basename: string): void =>
-  download(get_json_string(payload), `${basename}.json`, `application/json`)
+  download_json(payload, `${basename}.json`)
 
 interface XYZ {
   x: number
   y: number
   z: number
+}
+
+const xyz_tuple = (point?: XYZ | null): number[] | null =>
+  point ? [point.x, point.y, point.z] : null
+
+const get_gl_canvas = (wrapper: HTMLElement | undefined): HTMLCanvasElement | null => {
+  const canvas = wrapper?.querySelector(`canvas`)
+  return canvas instanceof HTMLCanvasElement ? canvas : null
 }
 
 // Serializable snapshot of the current 3D view (embedded in SVG/JSON exports)
@@ -28,18 +39,15 @@ export function get_view_settings(opts: {
   const { camera_position, camera_target, ...settings } = opts
   return {
     ...settings,
-    camera_position: camera_position
-      ? [camera_position.x, camera_position.y, camera_position.z]
-      : null,
-    camera_target: camera_target ? [camera_target.x, camera_target.y, camera_target.z] : null,
+    camera_position: xyz_tuple(camera_position),
+    camera_target: xyz_tuple(camera_target),
   }
 }
 
 export const export_view_json_file = (
   view_settings: Record<string, unknown>,
   basename: string,
-): void =>
-  download(get_json_string(view_settings), `${basename}-view.json`, `application/json`)
+): void => download_json(view_settings, `${basename}-view.json`)
 
 export interface OverlayTextItem {
   x: number
@@ -83,9 +91,8 @@ export function export_png_file(
   basename: string,
   png_dpi: number,
 ): void {
-  if (!wrapper) return
-  const gl_canvas = wrapper.querySelector(`canvas`)
-  if (!(gl_canvas instanceof HTMLCanvasElement)) return
+  const gl_canvas = get_gl_canvas(wrapper)
+  if (!gl_canvas || !wrapper) return
 
   const rect = gl_canvas.getBoundingClientRect()
   const scale = Math.min(png_dpi / 72, 10)
@@ -96,10 +103,8 @@ export function export_png_file(
   if (!ctx) return
   ctx.scale(scale, scale)
 
-  // Draw the WebGL canvas as background
   ctx.drawImage(gl_canvas, 0, 0, rect.width, rect.height)
 
-  // Draw all HTML overlay text (tick labels, axis labels, domain labels)
   for (const text_item of get_overlay_text_items(wrapper, rect)) {
     ctx.font = text_item.font
     ctx.fillStyle = text_item.color
@@ -128,9 +133,8 @@ export function export_svg_file(
   basename: string,
   view_settings: Record<string, unknown>,
 ): void {
-  if (!wrapper) return
-  const gl_canvas = wrapper.querySelector(`canvas`)
-  if (!(gl_canvas instanceof HTMLCanvasElement)) return
+  const gl_canvas = get_gl_canvas(wrapper)
+  if (!gl_canvas || !wrapper) return
   const canvas_rect = gl_canvas.getBoundingClientRect()
   if (canvas_rect.width === 0 || canvas_rect.height === 0) return
   const png_data_url = gl_canvas.toDataURL(`image/png`)
@@ -177,45 +181,28 @@ export function export_glb_file(parts: ChemPotGlbParts, basename: string): void 
   } = parts
   const gltf_exporter = new GLTFExporter()
   const export_root = new THREE.Group()
-  if (hull_geometry) {
+  const add_mesh = (
+    geometry: THREE.BufferGeometry,
+    material: THREE.MeshBasicMaterialParameters,
+  ): void => {
+    const opts = { transparent: true, side: THREE.DoubleSide, ...material }
+    export_root.add(new THREE.Mesh(geometry.clone(), new THREE.MeshBasicMaterial(opts)))
+  }
+  const add_lines = (
+    geometry: THREE.BufferGeometry,
+    color: THREE.ColorRepresentation,
+  ): void => {
     export_root.add(
-      new THREE.Mesh(
-        hull_geometry.clone(),
-        new THREE.MeshBasicMaterial({
-          vertexColors: true,
-          transparent: true,
-          opacity: hull_opacity,
-          side: THREE.DoubleSide,
-        }),
-      ),
+      new THREE.LineSegments(geometry.clone(), new THREE.LineBasicMaterial({ color })),
     )
   }
-  export_root.add(
-    new THREE.LineSegments(
-      edge_geometry.clone(),
-      new THREE.LineBasicMaterial({ color: 0x333333 }),
-    ),
-  )
+  if (hull_geometry) add_mesh(hull_geometry, { vertexColors: true, opacity: hull_opacity })
+  add_lines(edge_geometry, 0x333333)
   for (const { geometry, color } of formula_meshes) {
-    export_root.add(
-      new THREE.Mesh(
-        geometry.clone(),
-        new THREE.MeshBasicMaterial({
-          color: new THREE.Color(color),
-          transparent: true,
-          opacity: 0.13,
-          side: THREE.DoubleSide,
-        }),
-      ),
-    )
+    add_mesh(geometry, { color: new THREE.Color(color), opacity: 0.13 })
   }
   for (const { geometry, color } of formula_edges) {
-    export_root.add(
-      new THREE.LineSegments(
-        geometry.clone(),
-        new THREE.LineBasicMaterial({ color: new THREE.Color(color) }),
-      ),
-    )
+    add_lines(geometry, new THREE.Color(color))
   }
   gltf_exporter.parse(
     export_root,
@@ -223,9 +210,7 @@ export function export_glb_file(parts: ChemPotGlbParts, basename: string): void 
       if (!(result instanceof ArrayBuffer)) return
       download(result, `${basename}.glb`, `model/gltf-binary`)
     },
-    (err) => {
-      console.error(`Failed to export GLB:`, err)
-    },
+    (err) => console.error(`Failed to export GLB:`, err),
     { binary: true, onlyVisible: false },
   )
 }

@@ -685,8 +685,7 @@ export function normalize_band_structure(bs: unknown): types.BaseBandStructure |
   )
     return null
 
-  // Fill defaults for required fields not covered by the shape checks above so the
-  // cast below is sound (recip_lattice/labels_dict/nb_bands are required downstream)
+  // Fill required defaults (recip_lattice/labels_dict/nb_bands) not covered above so the cast below is sound
   const recip_lattice = band_struct.recip_lattice as { matrix?: unknown } | undefined
   const normalized = {
     ...band_struct,

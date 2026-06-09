@@ -403,7 +403,7 @@
       {fullscreen}
       {fullscreen_toggle}
       {wrapper}
-      style="--viewer-buttons-top: var(--fermi-buttons-top, var(--ctrl-btn-top, 1ex)); --viewer-buttons-right: var(--fermi-buttons-right, var(--ctrl-btn-right, 1ex)); --viewer-buttons-z-index: var(--fermi-buttons-z-index, var(--z-index-overlay-controls, 100000000))"
+      style="--viewer-buttons-top: var(--ctrl-btn-top, 1ex); --viewer-buttons-right: var(--ctrl-btn-right, 1ex); --viewer-buttons-z-index: var(--z-index-overlay-controls, 100000000)"
     >
       {#if controls_config.visible(`controls`)}
         <FermiSurfaceControls

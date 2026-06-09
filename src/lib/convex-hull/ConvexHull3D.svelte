@@ -1125,7 +1125,8 @@
 
 <svelte:document
   onfullscreenchange={() => {
-    fullscreen = Boolean(document.fullscreenElement)
+    // tie fullscreen state to this component's own wrapper, not any fullscreen element
+    fullscreen = document.fullscreenElement === wrapper
   }}
   onmousemove={handle_mouse_move}
   onmouseup={handle_mouse_up}

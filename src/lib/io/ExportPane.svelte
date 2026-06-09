@@ -33,16 +33,14 @@
     children?: Snippet
   } = $props()
 
-  // Clamp DPI into dpi_range when the input commits a value. The input's change
-  // event fires on blur, so the clamped value is in place before any download click.
+  // Clamp DPI into dpi_range on input change (fires on blur, before any download click)
   function clamp_dpi(): void {
     const [min_dpi, max_dpi] = dpi_range
     if (typeof png_dpi !== `number` || !Number.isFinite(png_dpi)) png_dpi = 150
     else png_dpi = Math.round(Math.min(max_dpi, Math.max(min_dpi, png_dpi)))
   }
 
-  // Shared copy-to-clipboard handling with temporary ✅ feedback. copy_text is only
-  // evaluated on click so expensive serializers don't run on every render.
+  // Copy-to-clipboard with temporary ✅ feedback; copy_text runs only on click
   let copied_key = $state<string | null>(null)
   let copied_timeout: ReturnType<typeof setTimeout> | undefined
   async function handle_copy(item: ExportItem, key: string): Promise<void> {
@@ -75,21 +73,16 @@
 >
   {#each sections as section, sec_idx (section.title ?? sec_idx)}
     {#if section.title}
-      {#if section.tooltip}
-        <h4
-          {@attach tooltip({ allow_html: true, content: sanitize_html(section.tooltip) })}
-        >
-          {section.title}
-        </h4>
-      {:else}
-        <h4>{section.title}</h4>
-      {/if}
+      <h4
+        {@attach section.tooltip
+          ? tooltip({ allow_html: true, content: sanitize_html(section.tooltip) })
+          : () => {}}
+      >{section.title}</h4>
     {/if}
     <div class="export-grid">
       {#each section.items as item, item_idx (item.label)}
         {@const copy_key = `${sec_idx}-${item_idx}`}
-        <!-- not a <label>: wrapping multiple buttons in a label would forward clicks
-        on the label text to the first (download) button -->
+        <!-- not a <label>: it would forward label-text clicks to the first (download) button -->
         <span class="export-item">
           {#if item.hint}
             <span

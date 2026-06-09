@@ -10,7 +10,8 @@ const imports = import.meta.glob<PymatgenCompleteDos>([`./*.json`, `./*.json.gz`
 // Extract files by pattern matching
 const entries = Object.entries(imports)
 
-function get_dos(pattern: string): PymatgenCompleteDos {
+// Exported so single-use demo datasets (e.g. lobster) load inline at the call site
+export function get_dos(pattern: string): PymatgenCompleteDos {
   const entry = entries.find(([path]) => path.includes(pattern))
   if (!entry) {
     throw new Error(

@@ -174,7 +174,9 @@
     // and bare ids are only used when they occur exactly once.
     return series.map((srs, idx) => {
       if (srs?.id === undefined || srs.id === ``) return `idx:${idx}`
-      return id_counts.get(srs.id) === 1 ? `id:${srs.id}` : `dup:${idx}:${srs.id}`
+      // include typeof so numeric/string ids (1 vs "1") don't collide on the same key
+      const id_key = `${typeof srs.id}:${String(srs.id)}`
+      return id_counts.get(srs.id) === 1 ? `id:${id_key}` : `dup:${idx}:${id_key}`
     })
   })
 
