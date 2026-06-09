@@ -2,7 +2,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { BufferAttribute, BufferGeometry } from 'three'
 
-// Build a renderable mesh from polyhedron vertices + polygonal faces via fan triangulation with flat per-face normals. Shared by BrillouinZoneScene (BZ + IBZ meshes) and FermiSurfaceScene (BZ overlay). Caller owns disposal.
+// Build a renderable mesh from polyhedron vertices + polygonal faces via fan triangulation with flat per-face normals. Assumes convex faces (true for BZ/IBZ polyhedra); non-convex faces would triangulate incorrectly. Shared by BrillouinZoneScene (BZ + IBZ meshes) and FermiSurfaceScene (BZ overlay). Caller owns disposal.
 export function polyhedron_geometry(
   vertices: Vec3[],
   faces: number[][],

@@ -26,6 +26,15 @@ import { parse_xyz_trajectory } from './xyz'
 // Silently swallow expected parse fallbacks — the caller throws if ALL formats fail
 const log_parse_debug = (_message: string, _error: unknown): void => {}
 
+// Throw on a trajectory frame whose structure isn't a valid parsed structure (non-empty sites with species + coords)
+const assert_frame_structure = (structure: unknown, idx: number): void => {
+  if (!is_parsed_structure(structure)) {
+    throw new Error(
+      `Invalid structure in trajectory frame ${idx}: expected non-empty 'sites' array with species and coordinates`,
+    )
+  }
+}
+
 // Re-export constants and types for consumers
 export {
   LARGE_FILE_THRESHOLD,
@@ -94,11 +103,7 @@ export async function parse_trajectory_data(
       const frame_obj = frame_data as Record<string, unknown>
       const frame_step = frame_obj.step
       const structure = frame_obj.structure ?? frame_obj
-      if (!is_parsed_structure(structure)) {
-        throw new Error(
-          `Invalid structure in trajectory frame ${idx}: expected non-empty 'sites' array with species and coordinates`,
-        )
-      }
+      assert_frame_structure(structure, idx)
       return {
         structure: structure as AnyStructure,
         step: typeof frame_step === `number` ? frame_step : idx,
@@ -119,6 +124,7 @@ export async function parse_trajectory_data(
   if (Array.isArray(obj.frames)) {
     const metadata = (obj.metadata ?? {}) as Record<string, unknown>
     const frames = obj.frames as TrajectoryFrame[]
+    frames.forEach((frame, idx) => assert_frame_structure(frame?.structure, idx))
     return { frames, metadata: { ...metadata, source_format: `object_with_frames` } }
   }
 
