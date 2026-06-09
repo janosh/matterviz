@@ -23,6 +23,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
       - uses: ./.github/actions/setup
+
       - name: Check for unused dependencies
         run: pnpm run knip
+
+      - name: Check for unused exports
+        run: pnpm run knip:exports
+
+  publint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup
+
+      - name: Lint published package (exports/types)
+        run: pnpm run publint

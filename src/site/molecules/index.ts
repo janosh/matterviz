@@ -1,7 +1,7 @@
 import type { FileInfo, Molecule } from '$lib'
 
 // Array of molecules
-export const molecules = Object.entries(
+const molecules = Object.entries(
   import.meta.glob<Molecule>(`./*.json`, {
     eager: true,
     import: `default`,

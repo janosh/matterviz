@@ -4,7 +4,7 @@ import {
   choose_site_label_offset,
   label_screen_position,
   make_label_position_calculator,
-} from '$lib/structure/label-placement'
+} from '$lib/structure/atom-label-placement'
 import { Object3D, OrthographicCamera } from 'three'
 import { describe, expect, test } from 'vitest'
 

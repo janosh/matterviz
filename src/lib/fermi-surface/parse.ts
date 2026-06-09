@@ -309,6 +309,26 @@ function is_valid_fermi_surface_data(obj: unknown): obj is FermiSurfaceData {
   return true
 }
 
+// Validate BandGridData shape: non-empty energies grid, 3 k-grid dims, 3x3 k-lattice
+function is_valid_band_grid_data(obj: unknown): obj is BandGridData {
+  if (!obj || typeof obj !== `object`) return false
+  const { energies, k_grid, k_lattice } = obj as Record<string, unknown>
+  if (!Array.isArray(energies) || energies.length === 0) return false
+  if (
+    !Array.isArray(k_grid) ||
+    k_grid.length !== 3 ||
+    !k_grid.every((dim) => Number.isFinite(dim) && dim > 0)
+  )
+    return false
+  if (
+    !Array.isArray(k_lattice) ||
+    k_lattice.length !== 3 ||
+    !k_lattice.every((row) => Array.isArray(row) && row.length === 3)
+  )
+    return false
+  return true
+}
+
 // Parse Matterviz/IFermi JSON format for Fermi surface data
 // Throws on invalid input; returns parsed data on success
 function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
@@ -335,26 +355,27 @@ function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
 
   // Check if it's BandGridData (raw grid data)
   if (data.energies && data.k_grid && data.k_lattice) {
-    // Minimal validation of required fields
-    if (
-      !Array.isArray(data.energies) ||
-      !Array.isArray(data.k_grid) ||
-      data.k_grid.length !== 3 ||
-      !Array.isArray(data.k_lattice) ||
-      data.k_lattice.length !== 3
-    )
-      throw new Error(`Invalid BandGridData JSON: malformed required fields`)
-    return data as BandGridData
+    if (!is_valid_band_grid_data(data)) {
+      throw new Error(
+        `Invalid BandGridData JSON: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
+      )
+    }
+    return data
   }
 
   // Try to extract from nested structure (e.g. IFermi output)
   if (data.fermi_surface) {
-    return data.fermi_surface as FermiSurfaceData
+    if (!is_valid_fermi_surface_data(data.fermi_surface)) {
+      throw new Error(
+        `Invalid nested 'fermi_surface' JSON: expected isosurfaces array, 3x3 k_lattice, numeric fermi_energy, reciprocal_cell, and metadata`,
+      )
+    }
+    return data.fermi_surface
   }
 
   if (data.band_structure?.energies || data.bands?.energies) {
     const bs = data.band_structure ?? data.bands
-    return {
+    const grid_data = {
       energies: bs.energies,
       k_grid: bs.k_grid ?? bs.kgrid,
       k_lattice: bs.k_lattice ?? bs.reciprocal_lattice,
@@ -363,7 +384,13 @@ function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
       n_bands: (bs.n_bands ?? bs.nbands) || bs.energies[0]?.length || 0,
       // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- numeric fallback chain (0 falls through)
       n_spins: (bs.n_spins ?? bs.nspins) || bs.energies.length || 1,
-    } as BandGridData
+    }
+    if (!is_valid_band_grid_data(grid_data)) {
+      throw new Error(
+        `Invalid band_structure JSON: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
+      )
+    }
+    return grid_data
   }
 
   // Check for pymatgen BandStructure format (k-path, not k-grid)
@@ -505,39 +532,40 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   }
 }
 
-// Auto-detect file format and parse accordingly
+// Auto-detect file format and parse; throws an Error aggregating per-format failure reasons when nothing parses
 export function parse_fermi_file(
   content: string,
   filename?: string,
-): BandGridData | FermiSurfaceData | null {
+): BandGridData | FermiSurfaceData {
   const lower_name = filename?.toLowerCase() ?? ``
-
-  // Detect by filename extension
-  if (lower_name.endsWith(`.bxsf`) || lower_name.endsWith(`.bxsf.gz`)) {
+  const errors: string[] = []
+  const attempt = <T>(format: string, parse: () => T): T | null => {
     try {
-      return parse_bxsf(content)
+      return parse()
     } catch (error) {
-      console.error(`BXSF parse error:`, error)
+      errors.push(`${format}: ${error instanceof Error ? error.message : String(error)}`)
+      console.error(`${format} parse error:`, error)
       return null
     }
+  }
+  const fail = (): never => {
+    const detail = errors.length ? `: ${errors.join(`; `)}` : `: unrecognized format`
+    throw new Error(
+      `Failed to parse Fermi surface file${filename ? ` '${filename}'` : ``}${detail}`,
+    )
+  }
+
+  // Detect by filename extension (authoritative: parse failure throws immediately)
+  if (lower_name.endsWith(`.bxsf`) || lower_name.endsWith(`.bxsf.gz`)) {
+    return attempt(`BXSF`, () => parse_bxsf(content)) ?? fail()
   }
 
   if (lower_name.endsWith(`.frmsf`) || lower_name.endsWith(`.frmsf.gz`)) {
-    try {
-      return parse_frmsf(content)
-    } catch (error) {
-      console.error(`FRMSF parse error:`, error)
-      return null
-    }
+    return attempt(`FRMSF`, () => parse_frmsf(content)) ?? fail()
   }
 
   if (lower_name.endsWith(`.json`) || lower_name.endsWith(`.json.gz`)) {
-    try {
-      return parse_fermi_json(content)
-    } catch (error) {
-      console.error(`JSON parse error:`, error)
-      return null
-    }
+    return attempt(`JSON`, () => parse_fermi_json(content)) ?? fail()
   }
 
   // Try auto-detection based on content
@@ -545,33 +573,23 @@ export function parse_fermi_file(
 
   // BXSF format detection
   if (trimmed.includes(`BEGIN_BLOCK_BANDGRID_3D`) || trimmed.includes(`BEGIN_BANDGRID_3D`)) {
-    try {
-      return parse_bxsf(content)
-    } catch (error) {
-      console.error(`BXSF auto-detect parse error:`, error)
-    }
+    const result = attempt(`BXSF`, () => parse_bxsf(content))
+    if (result) return result
   }
 
   // JSON format detection
   if (trimmed.startsWith(`{`) || trimmed.startsWith(`[`)) {
-    try {
-      return parse_fermi_json(content)
-    } catch (error) {
-      console.error(`JSON auto-detect parse error:`, error)
-    }
+    const result = attempt(`JSON`, () => parse_fermi_json(content))
+    if (result) return result
   }
 
   // FRMSF format detection (starts with grid dimensions)
   const first_line = trimmed.split(/\r?\n/)[0]
   const first_tokens = first_line.split(/\s+/).filter(Boolean)
   if (first_tokens.length === 3 && first_tokens.every((token) => /^\d+$/.test(token))) {
-    try {
-      return parse_frmsf(content)
-    } catch (error) {
-      console.error(`FRMSF auto-detect parse error:`, error)
-    }
+    const result = attempt(`FRMSF`, () => parse_frmsf(content))
+    if (result) return result
   }
 
-  console.warn(`Could not detect Fermi surface file format for: ${filename}`)
-  return null
+  return fail()
 }

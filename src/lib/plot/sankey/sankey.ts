@@ -18,6 +18,7 @@ import type {
   SankeyNodeAlign,
   SankeyOrientation,
 } from '$lib/plot/core/types'
+import { DEFAULTS } from '$lib/settings'
 
 // User-carried node props that survive the d3-sankey layout pass
 interface NodeExtra {
@@ -156,14 +157,15 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
   data: SankeyData<Metadata>,
   opts: SankeyLayoutOptions,
 ): SankeyLayoutResult {
+  // Fallbacks derive from DEFAULTS.sankey so component and helper defaults can't drift
   const {
     width,
     height,
-    node_width = 24,
-    node_padding = 12,
-    node_align = `justify`,
-    orientation = `horizontal`,
-    iterations = 6,
+    node_width = DEFAULTS.sankey.node_width,
+    node_padding = DEFAULTS.sankey.node_padding,
+    node_align = DEFAULTS.sankey.node_align,
+    orientation = DEFAULTS.sankey.orientation,
+    iterations = DEFAULTS.sankey.iterations,
   } = opts
 
   // All-zero link values would make d3-sankey divide by zero (NaN ribbon paths)

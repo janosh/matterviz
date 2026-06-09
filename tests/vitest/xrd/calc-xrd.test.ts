@@ -230,7 +230,7 @@ describe(`add_xrd_pattern`, () => {
   })
 
   test(`returns error for structure without lattice`, async () => {
-    const structure = { sites: [] } // no lattice
+    const { lattice: _lattice, ...structure } = make_simple_cubic_structure(3) // strip lattice
     const json = JSON.stringify(structure)
     const result = await add_xrd_pattern(json, `test.json`, null)
     expect(result.error).toMatch(/must have a lattice/)

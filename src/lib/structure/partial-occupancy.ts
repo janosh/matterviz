@@ -1,7 +1,7 @@
 import type { Vec3 } from '$lib/math'
 import type { Site } from '$lib/structure'
 
-export const PARTIAL_OCCUPANCY_SLICE_GAP_RAD = 1e-3
+const PARTIAL_OCCUPANCY_SLICE_GAP_RAD = 1e-3
 const OCCUPANCY_EPS = 1e-6
 const MIN_PHI_LENGTH = 1e-4
 const MERGE_DISTANCE_TOLERANCE = 1e-8

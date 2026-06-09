@@ -5,14 +5,13 @@
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
+  import type { ExportSection } from '$lib/io'
+  import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-  import { download } from '$lib/io/fetch'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot } from '$lib/plot'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { DataSeries, UserContentProps } from '$lib/plot/core/types'
   import { sanitize_html } from '$lib/sanitize'
-  import { onDestroy } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import { compute_chempot_async } from './async-compute.svelte'
   import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
@@ -26,6 +25,7 @@
     orthonormal_2d,
     pad_domain_points,
   } from './compute'
+  import { export_json_file, get_json_string } from './export'
   import { with_hover_pointer } from './pointer'
   import { get_temp_filter_payload, get_valid_temperature } from './temperature'
   import type {
@@ -47,6 +47,9 @@
     max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     render_local_tooltip = true,
+    wrapper = $bindable(),
+    fullscreen = $bindable(false),
+    export_pane_open = $bindable(false),
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -57,6 +60,12 @@
     max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
     render_local_tooltip?: boolean
+    // bindable: plot wrapper element (used for export and pointer hit-testing)
+    wrapper?: HTMLDivElement
+    // bindable: fullscreen state (managed by the internal ScatterPlot)
+    fullscreen?: boolean
+    // bindable: whether the export pane is currently open
+    export_pane_open?: boolean
   } = $props()
   let container_width = $state(0)
   const base_aspect_ratio = $derived(height > 0 && width > 0 ? height / width : 1)
@@ -366,7 +375,7 @@
     pts: number[][],
     event: MouseEvent,
   ): void {
-    const bounds = scatter_wrapper?.getBoundingClientRect()
+    const bounds = wrapper?.getBoundingClientRect()
     hover_info = with_hover_pointer<ChemPotHoverInfo>(
       {
         formula,
@@ -426,51 +435,45 @@
   })
 
   // === Export ===
-  let scatter_wrapper = $state<HTMLDivElement>()
-  let export_pane_open = $state(false)
-  let copy_status = $state(false)
-  let copy_timeout_id: ReturnType<typeof setTimeout> | null = null
-
   const get_svg_element = (): SVGSVGElement | null =>
-    scatter_wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
+    wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
 
-  const get_json_string = (): string =>
-    JSON.stringify(
-      {
-        elements: diagram_data?.elements ?? [],
-        domains: draw_domains,
-        lims: diagram_data?.lims ?? [],
-      },
-      null,
-      2,
-    )
-
-  function export_json_file(): void {
-    download(
-      get_json_string(),
-      `chempot-${plot_elements.join(`-`)}.json`,
-      `application/json`,
-    )
-  }
-
-  async function copy_json(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(get_json_string())
-      copy_status = true
-    } catch (err) {
-      copy_status = false
-      console.error(`Failed to copy JSON to clipboard:`, err)
-    }
-    if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
-    copy_timeout_id = setTimeout(() => {
-      copy_status = false
-      copy_timeout_id = null
-    }, 1000)
-  }
-
-  onDestroy(() => {
-    if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
+  const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
+  const json_payload = $derived({
+    elements: diagram_data?.elements ?? [],
+    domains: draw_domains,
+    lims: diagram_data?.lims ?? [],
   })
+
+  const export_sections = $derived<ExportSection[]>([
+    {
+      title: `Export Image`,
+      items: [
+        {
+          label: `SVG`,
+          on_download: () => {
+            const svg = get_svg_element()
+            if (svg) export_svg_as_svg(svg, `${export_basename}.svg`)
+          },
+        },
+        {
+          label: `PNG`,
+          on_download: () => {
+            const svg = get_svg_element()
+            if (svg) export_svg_as_png(svg, `${export_basename}.png`)
+          },
+        },
+      ],
+    },
+    {
+      title: `Export Data`,
+      items: [{
+        label: `JSON`,
+        on_download: () => export_json_file(json_payload, export_basename),
+        copy_text: () => get_json_string(json_payload),
+      }],
+    },
+  ])
 </script>
 
 {#snippet domain_labels(props: UserContentProps)}
@@ -487,10 +490,9 @@
 {/snippet}
 
 {#snippet export_toggle()}
-  <DraggablePane
-    bind:show={export_pane_open}
-    open_icon="Cross"
-    closed_icon="Export"
+  <ExportPane
+    bind:export_pane_open
+    sections={export_sections}
     pane_props={{ class: `chempot-export-pane` }}
     toggle_props={{
       class: `chempot-export-toggle`,
@@ -498,57 +500,7 @@
       style:
         `position: absolute; top: var(--ctrl-btn-top, 5pt); right: 36px; z-index: 10`,
     }}
-  >
-    <h4>Export Image</h4>
-    <div class="export-row">
-      <label>
-        SVG
-        <button
-          type="button"
-          onclick={() => {
-            const svg = get_svg_element()
-            if (svg) {
-              export_svg_as_svg(svg, `chempot-${plot_elements.join(`-`)}.svg`)
-            }
-          }}
-          aria-label="Download SVG"
-        >
-          ⬇
-        </button>
-      </label>
-      <label>
-        PNG
-        <button
-          type="button"
-          onclick={() => {
-            const svg = get_svg_element()
-            if (svg) {
-              export_svg_as_png(svg, `chempot-${plot_elements.join(`-`)}.png`)
-            }
-          }}
-          aria-label="Download PNG"
-        >
-          ⬇
-        </button>
-      </label>
-    </div>
-    <h4>Export Data</h4>
-    <div class="export-row">
-      <label>
-        JSON
-        <button type="button" onclick={export_json_file} aria-label="Download JSON">
-          ⬇
-        </button>
-        <button
-          type="button"
-          onclick={copy_json}
-          aria-label="Copy JSON to clipboard"
-        >
-          {copy_status ? `✅` : `📋`}
-        </button>
-      </label>
-    </div>
-  </DraggablePane>
+  />
 {/snippet}
 
 {#snippet chempot_controls(_props: unknown)}
@@ -672,7 +624,7 @@
     onpointerdown={(event) => {
       const target = event.target
       if (!locked_hover_formula) return
-      const is_background_click = target === scatter_wrapper ||
+      const is_background_click = target === wrapper ||
         (target instanceof SVGElement &&
           target.closest(`g[data-series-id]`) === null)
       if (is_background_click) {
@@ -682,7 +634,8 @@
   >
     {@render export_toggle()}
     <ScatterPlot
-      bind:wrapper={scatter_wrapper}
+      bind:wrapper
+      bind:fullscreen
       {series}
       bind:x_axis
       bind:y_axis
@@ -764,15 +717,6 @@
     gap: 6pt;
     margin: 4pt 0;
     font-size: 0.95em;
-  }
-  .chempot-diagram-2d :global(.export-row) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4pt 10pt;
-    margin: 0 0 4pt;
-  }
-  .chempot-diagram-2d :global(.export-row > label) {
-    margin: 0;
   }
   .chempot-diagram-2d :global(.chempot-temp-slider) {
     top: var(--chempot-temp-slider-top, calc(1ex + 108px));

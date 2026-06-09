@@ -2,8 +2,8 @@ import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import { scaleSequential } from 'd3-scale'
 
-/** Resolve D3 interpolator with optional reverse for chempot color scales. */
-export function get_chempot_interpolator(
+// Resolve D3 interpolator with optional reverse for chempot color scales.
+function get_chempot_interpolator(
   name: D3InterpolateName,
   reverse: boolean,
 ): (frac: number) => string {
@@ -11,7 +11,7 @@ export function get_chempot_interpolator(
   return reverse ? (frac: number) => raw(1 - frac) : raw
 }
 
-/** Build sequential color scale from values and D3 interpolator name. */
+// Build sequential color scale from values and D3 interpolator name.
 export function make_chempot_color_scale(
   values: number[],
   interpolator_name: D3InterpolateName,
@@ -31,7 +31,7 @@ export function make_chempot_color_scale(
   ])
 }
 
-/** Resolve color bar props for chempot diagrams (interpolator + domain). */
+// Resolve color bar props for chempot diagrams (interpolator + domain).
 export function get_chempot_color_bar_config(
   color_scale: D3InterpolateName,
   reverse: boolean,

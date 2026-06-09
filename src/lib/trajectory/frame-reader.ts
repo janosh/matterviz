@@ -12,6 +12,7 @@ import {
   copy_numeric_fields,
   count_xyz_frames,
   create_trajectory_frame,
+  iter_xyz_frames,
   validate_3x3_matrix,
 } from './helpers'
 import { strip_compression_extensions } from '$lib/io'
@@ -54,40 +55,26 @@ export class TrajFrameReader implements FrameLoader {
       const encoder = new TextEncoder()
       const newline_sequence = data_str.includes(`\r\n`) ? `\r\n` : `\n`
       const newline_byte_len = encoder.encode(newline_sequence).length
+      const line_bytes = (idx: number): number =>
+        encoder.encode(lines[idx]).length + newline_byte_len
 
-      let [current_frame, line_idx, byte_offset] = [0, 0, 0]
+      // cursor = next line whose bytes haven't been added to byte_offset yet
+      let [current_frame, cursor, byte_offset] = [0, 0, 0]
 
-      while (line_idx < lines.length && current_frame < total_frames) {
-        if (!lines[line_idx]?.trim()) {
-          byte_offset += encoder.encode(lines[line_idx]).length + newline_byte_len
-          line_idx++
-          continue
-        }
+      for (const { start, num_atoms } of iter_xyz_frames(lines)) {
+        if (current_frame >= total_frames) break
 
-        const num_atoms = parseInt(lines[line_idx].trim(), 10)
-        if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
-          byte_offset += encoder.encode(lines[line_idx]).length + newline_byte_len
-          line_idx++
-          continue
-        }
+        // Accumulate bytes of blank/invalid lines skipped before this frame
+        for (; cursor < start; cursor++) byte_offset += line_bytes(cursor)
+        let frame_size = 0
+        for (; cursor < start + num_atoms + 2; cursor++) frame_size += line_bytes(cursor)
 
         if (current_frame % sample_rate === 0) {
           frame_index.push({
             frame_number: current_frame,
             byte_offset,
-            estimated_size: 0,
+            estimated_size: frame_size,
           })
-        }
-
-        const frame_start = line_idx
-        line_idx += 2 + num_atoms
-        let frame_size = 0
-        for (let idx = frame_start; idx < line_idx; idx++) {
-          frame_size += encoder.encode(lines[idx]).length + newline_byte_len
-        }
-
-        if (current_frame % sample_rate === 0) {
-          frame_index[frame_index.length - 1].estimated_size = frame_size
         }
 
         byte_offset += frame_size
@@ -159,28 +146,18 @@ export class TrajFrameReader implements FrameLoader {
 
     if (this.format === `xyz`) {
       const lines = (data as string).trim().split(/\r?\n/)
-      let [current_frame, line_idx] = [0, 0]
+      let current_frame = 0
 
-      while (line_idx < lines.length && current_frame < total_frames) {
-        if (!lines[line_idx]?.trim()) {
-          line_idx++
-          continue
-        }
-
-        const num_atoms = parseInt(lines[line_idx].trim(), 10)
-        if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
-          line_idx++
-          continue
-        }
+      for (const { start, comment } of iter_xyz_frames(lines)) {
+        if (current_frame >= total_frames) break
 
         if (current_frame % sample_rate === 0) {
-          const comment = lines[line_idx + 1] || ``
           let frame_metadata: TrajectoryMetadata | null = null
           try {
             frame_metadata = this.parse_xyz_metadata(comment, current_frame)
           } catch (error) {
             console.warn(
-              `Failed to parse XYZ metadata for frame ${current_frame} at line ${line_idx + 1}:`,
+              `Failed to parse XYZ metadata for frame ${current_frame} at line ${start + 1}:`,
               error,
             )
           }
@@ -197,7 +174,6 @@ export class TrajFrameReader implements FrameLoader {
           if (frame_metadata) metadata_list.push(frame_metadata)
         }
 
-        line_idx += 2 + num_atoms
         current_frame++
 
         if (on_progress && current_frame % 5000 === 0) {
@@ -261,43 +237,33 @@ export class TrajFrameReader implements FrameLoader {
 
   private load_xyz_frame(data: string, frame_number: number): TrajectoryFrame | null {
     const lines = data.trim().split(/\r?\n/)
-    let [current_frame, line_idx] = [0, 0]
+    let current_frame = 0
 
-    while (line_idx < lines.length && current_frame < frame_number) {
-      const skip_atoms = parseInt(lines[line_idx].trim(), 10)
-      if (isNaN(skip_atoms) || skip_atoms <= 0) {
-        line_idx++ // skip blank/invalid lines until the next frame's atom-count line
-        continue
-      }
-      line_idx += 2 + skip_atoms
-      current_frame++
+    for (const { start, num_atoms, comment } of iter_xyz_frames(lines)) {
+      if (current_frame++ < frame_number) continue // skip frames before the target
+
+      const lattice_matrix = parse_extxyz_lattice(comment)
+      const { elements, positions, force_stats } = parse_xyz_atom_lines(
+        lines,
+        start + 2,
+        num_atoms,
+        comment,
+        `indexed frame ${frame_number}`,
+      )
+      const { step, properties } = this.parse_xyz_metadata(comment, frame_number)
+      const metadata: Record<string, unknown> = { ...properties, ...force_stats }
+      // Derive volume from the lattice (parity with the eager parse_xyz_trajectory parser)
+      if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
+      return create_trajectory_frame(
+        positions,
+        elements,
+        lattice_matrix,
+        lattice_matrix ? [true, true, true] : undefined,
+        step,
+        metadata,
+      )
     }
-
-    if (line_idx >= lines.length) return null
-    const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || line_idx + num_atoms + 1 >= lines.length) return null
-
-    const comment = lines[line_idx + 1] || ``
-    const lattice_matrix = parse_extxyz_lattice(comment)
-    const { elements, positions, force_stats } = parse_xyz_atom_lines(
-      lines,
-      line_idx + 2,
-      num_atoms,
-      comment,
-      `indexed frame ${frame_number}`,
-    )
-    const { step, properties } = this.parse_xyz_metadata(comment, frame_number)
-    const metadata: Record<string, unknown> = { ...properties, ...force_stats }
-    // Derive volume from the lattice (parity with the eager parse_xyz_trajectory parser)
-    if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
-    return create_trajectory_frame(
-      positions,
-      elements,
-      lattice_matrix,
-      lattice_matrix ? [true, true, true] : undefined,
-      step,
-      metadata,
-    )
+    return null
   }
 
   private load_ase_frame(data: ArrayBuffer, frame_number: number): TrajectoryFrame | null {

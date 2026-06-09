@@ -2,13 +2,18 @@
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import { coerce_elem_symbol } from '$lib/element'
-import { calc_force_stats, create_trajectory_frame } from '$lib/trajectory/helpers'
+import {
+  calc_force_stats,
+  create_trajectory_frame,
+  iter_xyz_frames,
+} from '$lib/trajectory/helpers'
+import { traj_warn } from './diagnostics'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 // Resolve species/pos/forces column offsets from an extxyz Properties string of
 // name:type:ncols triples (e.g. "species:S:1:pos:R:3:forces:R:3"), falling back
 // to the conventional "symbol x y z" layout when absent or malformed
-export function parse_extxyz_columns(comment: string) {
+function parse_extxyz_columns(comment: string) {
   const fields = /Properties\s*=\s*"?([^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
   // Well-formed Properties is name:type:ncols triples; a non-multiple of 3 is malformed,
   // so bail to the conventional default rather than trusting a partial layout
@@ -83,7 +88,7 @@ export function parse_xyz_atom_lines(
     if (parts.length < min_cols) continue
     const pos = parts.slice(pos_col, pos_col + 3).map(parseFloat)
     if (!pos.every(Number.isFinite)) {
-      console.warn(
+      traj_warn(
         `Skipping XYZ atom with invalid coordinates in ${frame_label} at line ${
           start + idx + 1
         }`,
@@ -93,9 +98,7 @@ export function parse_xyz_atom_lines(
     const symbol = parts[species_col]
     const element_symbol = coerce_elem_symbol(symbol)
     if (!element_symbol) {
-      console.warn(
-        `Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label}`,
-      )
+      traj_warn(`Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label}`)
       continue
     }
     elements.push(element_symbol)
@@ -113,16 +116,8 @@ export function parse_xyz_atom_lines(
 export function parse_xyz_trajectory(content: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
-  let line_idx = 0
 
-  while (line_idx < lines.length) {
-    const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
-      line_idx++ // skip blank/invalid lines until the next frame's atom-count line
-      continue
-    }
-
-    const comment = lines[line_idx + 1] || ``
+  for (const { start, num_atoms, comment } of iter_xyz_frames(lines)) {
     const { step, properties } = parse_xyz_comment_metadata(comment)
     const metadata: Record<string, unknown> = { ...properties }
 
@@ -131,7 +126,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
 
     const { elements, positions, force_stats } = parse_xyz_atom_lines(
       lines,
-      line_idx + 2,
+      start + 2,
       num_atoms,
       comment,
       `frame ${frames.length}`,
@@ -147,7 +142,6 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
         metadata,
       ),
     )
-    line_idx += num_atoms + 2
   }
 
   return {

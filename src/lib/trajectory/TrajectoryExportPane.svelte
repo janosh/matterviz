@@ -5,8 +5,8 @@
     get_ffmpeg_conversion_command,
     observe_canvas_presence,
   } from '$lib/io/export'
+  import ExportPane from '$lib/io/ExportPane.svelte'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { TrajectoryType } from '$lib/trajectory'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -38,8 +38,8 @@
     // Function to change trajectory step during export
     on_step_change?: (step_idx: number) => Promise<void> | void
     // Pane customization
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof ExportPane>[`pane_props`]
+    toggle_props?: ComponentProps<typeof ExportPane>[`toggle_props`]
   } = $props()
 
   let is_exporting = $state(false)
@@ -143,11 +143,9 @@
   $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
 </script>
 
-<DraggablePane
-  bind:show={export_pane_open}
-  open_icon="Cross"
-  closed_icon="Export"
-  pane_props={{ ...pane_props, class: `export-pane ${pane_props?.class ?? ``}` }}
+<ExportPane
+  bind:export_pane_open
+  {pane_props}
   toggle_props={{
     title: export_pane_open ? `` : `Export Trajectory`,
     ...toggle_props,
@@ -284,7 +282,7 @@
       <div class="warning">Waiting for canvas...</div>
     {/if}
   {/if}
-</DraggablePane>
+</ExportPane>
 
 <style>
   .field-label {

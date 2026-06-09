@@ -92,7 +92,7 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
 <script lang="ts">
   import { Dos, FilePicker } from 'matterviz'
   import { shift_to_fermi } from '$lib/spectral/helpers'
-  import { dos_spin_polarization, lobster_complete_dos } from '$site/electronic/dos'
+  import { dos_spin_polarization, get_dos } from '$site/electronic/dos'
   import { phonon_dos } from '$site/phonons'
 
   const files = [
@@ -104,7 +104,7 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
     },
     {
       name: 'KF Lobster',
-      data: lobster_complete_dos,
+      data: get_dos('lobster'),
       category: 'Electronic',
       category_icon: '⚡',
     },

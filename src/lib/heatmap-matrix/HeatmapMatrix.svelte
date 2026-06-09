@@ -5,7 +5,7 @@
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import { make_change_detector } from '$lib/utils'
+  import { quickselect } from '$lib/plot/box/quantile'
   import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -213,7 +213,6 @@
   // === Value resolution ===
   let x_keys = $derived(x_items.map((item) => item.key ?? item.label))
   let y_keys = $derived(y_items.map((item) => item.key ?? item.label))
-  let interaction_axis_signature = $derived(JSON.stringify([x_keys, y_keys]))
   let highlight_x_key_set = $derived(new SvelteSet(highlight_x_keys))
   let highlight_y_key_set = $derived(new SvelteSet(highlight_y_keys))
   let search_query_norm = $derived(search_query.trim().toLowerCase())
@@ -290,11 +289,23 @@
 
     const col_has_data = Array(x_items.length).fill(false)
     const row_has_data = Array(y_items.length).fill(false)
+    // Early-exit: skip cells whose row+col are already non-empty, stop once all resolved (dense matrices touch ~n+m cells, not n*m)
+    let unknown_cols = x_items.length
+    let unknown_rows = y_items.length
     for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
+      if (unknown_cols === 0 && unknown_rows === 0) break
       for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
-        if (get_value(x_idx, y_idx) !== null) {
+        if (row_has_data[y_idx] && col_has_data[x_idx]) continue
+        // ignore cells hidden by symmetric rendering so emptiness reflects only visible cells
+        if (is_hidden_cell(x_idx, y_idx)) continue
+        if (get_value(x_idx, y_idx) === null) continue
+        if (!col_has_data[x_idx]) {
           col_has_data[x_idx] = true
+          unknown_cols--
+        }
+        if (!row_has_data[y_idx]) {
           row_has_data[y_idx] = true
+          unknown_rows--
         }
       }
     }
@@ -331,53 +342,53 @@
     return transformed_value
   }
 
-  function get_quantile(sorted_values: number[], quantile: number): number {
-    if (sorted_values.length === 0) return 0
+  // Interpolated quantile via quickselect (O(n) avg vs full sort); reorders `scratch_values` in place so callers must pass a copy they own
+  function get_quantile(scratch_values: number[], quantile: number): number {
+    if (scratch_values.length === 0) return 0
     const clipped_quantile = Math.max(0, Math.min(1, quantile))
-    const float_idx = (sorted_values.length - 1) * clipped_quantile
+    const float_idx = (scratch_values.length - 1) * clipped_quantile
     const low_idx = Math.floor(float_idx)
     const high_idx = Math.ceil(float_idx)
-    if (low_idx === high_idx) return sorted_values[low_idx]
+    const low_val = quickselect(scratch_values, low_idx)
+    if (low_idx === high_idx) return low_val
+    const high_val = quickselect(scratch_values, high_idx)
     const low_weight = high_idx - float_idx
     const high_weight = float_idx - low_idx
-    return sorted_values[low_idx] * low_weight + sorted_values[high_idx] * high_weight
+    return low_val * low_weight + high_val * high_weight
   }
 
-  let valid_numeric_values = $derived.by(() => {
+  // Single pass collecting transformed values + min/max (avoids spreading large arrays into
+  // Math.min/max). min_pos is the log-mode lower bound when domain min <= 0 (the old
+  // Number.MIN_VALUE floor gave log_min ~ -744, squashing all colors to the top)
+  let { valid_numeric_values, auto_min, auto_max, min_pos } = $derived.by(() => {
     const numeric_values: number[] = []
+    let [min, max, pos] = [Infinity, -Infinity, Infinity]
     for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
       for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
         if (is_hidden_cell(x_idx, y_idx)) continue
         const value = get_transformed_value(x_idx, y_idx)
         if (value === null) continue
         numeric_values.push(value)
+        if (value < min) min = value
+        if (value > max) max = value
+        if (value > 0 && value < pos) pos = value
       }
     }
-    return numeric_values
-  })
-
-  // Single-pass min/max to avoid spreading large arrays into Math.min/max. min_pos is
-  // the log-mode lower bound when the domain min is <= 0 (the old Number.MIN_VALUE
-  // floor gave log_min ~ -744, squashing all colors to the top)
-  let [auto_min, auto_max, min_pos] = $derived.by(() => {
-    let [min, max, pos] = [Infinity, -Infinity, Infinity]
-    for (const value of valid_numeric_values) {
-      if (value < min) min = value
-      if (value > max) max = value
-      if (value > 0 && value < pos) pos = value
+    return {
+      valid_numeric_values: numeric_values,
+      auto_min: min <= max ? min : 0,
+      auto_max: min <= max ? max : 1,
+      min_pos: Number.isFinite(pos) ? pos : null,
     }
-    const min_pos_val = Number.isFinite(pos) ? pos : null
-    return min <= max ? [min, max, min_pos_val] as const : [0, 1, min_pos_val] as const
   })
 
+  // Lazy derived: only evaluated while domain_mode === 'robust' reads it
   let [robust_min, robust_max] = $derived.by(() => {
     if (valid_numeric_values.length === 0) return [0, 1] as const
-    const sorted_values = valid_numeric_values.toSorted((value_a, value_b) =>
-      value_a - value_b
-    )
+    const scratch = [...valid_numeric_values]
     const [q_low, q_high] = quantile_clip
-    const clipped_min = get_quantile(sorted_values, q_low)
-    const clipped_max = get_quantile(sorted_values, q_high)
+    const clipped_min = get_quantile(scratch, q_low)
+    const clipped_max = get_quantile(scratch, q_high)
     return clipped_min <= clipped_max
       ? [clipped_min, clipped_max] as const
       : [clipped_max, clipped_min] as const
@@ -1087,9 +1098,15 @@
 
   // Tooltip state: only used for custom tooltip snippets (function tooltips)
   let tooltip_cell: CellContext | null = $state(null)
-  const axis_changed = make_change_detector()
+  // Reset interactions when axis keys change; element-wise compare beats JSON.stringify-ing every key on each x_items/y_items update
+  const keys_equal = (keys_a: string[], keys_b: string[]): boolean =>
+    keys_a.length === keys_b.length && keys_a.every((key, idx) => key === keys_b[idx])
+  let prev_axis_keys: { x: string[]; y: string[] } | null = null
   $effect(() => {
-    if (!axis_changed(interaction_axis_signature)) return
+    const changed = prev_axis_keys !== null &&
+      !(keys_equal(x_keys, prev_axis_keys.x) && keys_equal(y_keys, prev_axis_keys.y))
+    prev_axis_keys = { x: x_keys, y: y_keys }
+    if (!changed) return
     cancel_raf(active_cell_raf)
     // Cancel delayed clicks before old cell coordinates can fire on new axes.
     clear_pending_click()

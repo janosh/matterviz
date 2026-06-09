@@ -94,7 +94,7 @@ export const inside_clip_path = (el: Element | null | undefined): boolean => {
   return false
 }
 
-export function set_element_size(element: HTMLElement, width: number, height: number): void {
+function set_element_size(element: HTMLElement, width: number, height: number): void {
   Object.defineProperty(element, `clientWidth`, { value: width, configurable: true })
   Object.defineProperty(element, `clientHeight`, { value: height, configurable: true })
 }
@@ -421,7 +421,7 @@ export function create_test_structure(
 
 // Simplified site input for make_crystal helper
 // Object notation: { element: `Li`, abc: [0, 0, 0], oxidation_state: 1 }
-export type SimpleSiteObject = {
+type SimpleSiteObject = {
   element: string // usually ElementSymbol but any string is allowed
   abc?: Vec3
   xyz?: Vec3

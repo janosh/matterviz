@@ -1,7 +1,6 @@
 import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from './colors'
-import type { Tooltip } from './plot'
 import { is_valid_theme_mode, type ThemeMode, type ThemeType } from './theme'
 
 export const selected = $state<{
@@ -22,14 +21,6 @@ export const colors = $state<{
 }>({
   category: { ...DEFAULT_CATEGORY_COLORS },
   element: { ...default_element_colors },
-})
-
-export const tooltip = $state<Tooltip>({ show: false, x: 0, y: 0, title: ``, items: [] })
-
-export const periodic_table_state = $state({
-  show_bonding_info: false,
-  show_oxidation_state: false,
-  highlighted_elements: [] as string[],
 })
 
 // Theme state with safe initialization

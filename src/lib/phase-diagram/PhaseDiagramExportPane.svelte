@@ -1,10 +1,9 @@
 <script lang="ts">
+  import type { ExportSection } from '$lib/io/ExportPane.svelte'
+  import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps } from 'svelte'
-  import { CopyButton } from 'svelte-multiselect'
-  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
 
@@ -30,11 +29,8 @@
     filename?: string
     png_dpi?: number
     icon_style?: string
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    toggle_props?: ComponentProps<typeof ExportPane>[`toggle_props`]
   } = $props()
-
-  let json_copy_state = $state<ComponentProps<typeof CopyButton>[`state`]>(`ready`)
-  let svg_copy_state = $state<ComponentProps<typeof CopyButton>[`state`]>(`ready`)
 
   // Generate filename with components if available (requires exactly 2 components)
   const full_filename = $derived(
@@ -49,131 +45,54 @@
   )
 
   const json_export_data = $derived(json_payload ?? data)
+  const json_string = (): string | null =>
+    json_export_data ? JSON.stringify(json_export_data, null, 2) : null
 
-  const svg_string = $derived(svg ? new XMLSerializer().serializeToString(svg) : null)
-
-  function download_json() {
-    if (!json_export_data) return
-    download(
-      JSON.stringify(json_export_data, null, 2),
-      `${full_filename}.json`,
-      `application/json`,
-    )
-  }
-
-  const json_string = $derived(
-    json_export_data ? JSON.stringify(json_export_data, null, 2) : null,
-  )
+  const sections = $derived<ExportSection[]>([
+    {
+      title: `Image`,
+      tooltip: `Download or copy the phase diagram`,
+      items: [
+        {
+          label: `SVG`,
+          disabled: !svg,
+          on_download: () => svg && export_svg_as_svg(svg, `${full_filename}.svg`),
+          copy_text: () => (svg ? new XMLSerializer().serializeToString(svg) : null),
+        },
+        {
+          label: `PNG`,
+          disabled: !svg,
+          show_dpi: true,
+          on_download: () =>
+            svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi),
+        },
+      ],
+    },
+    {
+      title: `Data`,
+      tooltip: `Export phase diagram data as JSON`,
+      items: [{
+        label: `JSON`,
+        disabled: !json_export_data,
+        on_download: () => {
+          const content = json_string()
+          if (content) download(content, `${full_filename}.json`, `application/json`)
+        },
+        copy_text: json_string,
+      }],
+    },
+  ])
 </script>
 
-<DraggablePane
-  bind:show={export_pane_open}
-  open_icon="Cross"
-  closed_icon="Export"
-  pane_props={{ ...rest, class: `export-pane ${rest.class ?? ``}` }}
+<ExportPane
+  bind:export_pane_open
+  bind:png_dpi
+  {sections}
   {icon_style}
   toggle_props={{
     class: `pd-export-toggle`,
     title: export_pane_open ? `` : `Export phase diagram`,
     ...caller_toggle_props,
   }}
->
-  <div class="export-grid">
-    <h4 {@attach tooltip({ content: `Download or copy the phase diagram` })}>
-      Image
-    </h4>
-    <label>
-      SVG
-      <button
-        type="button"
-        onclick={() => svg && export_svg_as_svg(svg, `${full_filename}.svg`)}
-        disabled={!svg}
-        title="Download SVG"
-      >
-        ⬇
-      </button>
-      <CopyButton
-        content={svg_string ?? ``}
-        title="Copy SVG to clipboard"
-        bind:state={svg_copy_state}
-        disabled={!svg_string}
-      />
-    </label>
-    <label>
-      PNG
-      <button
-        type="button"
-        onclick={() => svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi)}
-        disabled={!svg}
-        title={`Download PNG (${png_dpi} DPI)`}
-      >
-        ⬇
-      </button>
-      <span class="dpi-input"
-      >(DPI: <input
-          type="number"
-          min={50}
-          max={600}
-          bind:value={png_dpi}
-          title="Export resolution in dots per inch"
-        />)</span>
-    </label>
-
-    <h4 {@attach tooltip({ content: `Export phase diagram data as JSON` })}>
-      Data
-    </h4>
-    <label>
-      JSON
-      <button
-        type="button"
-        onclick={download_json}
-        disabled={!json_export_data}
-        title="Download JSON"
-      >
-        ⬇
-      </button>
-      <CopyButton
-        content={json_string ?? ``}
-        title="Copy JSON to clipboard"
-        bind:state={json_copy_state}
-        disabled={!json_string}
-      />
-    </label>
-  </div>
-</DraggablePane>
-
-<style>
-  .export-grid {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4pt 10pt;
-  }
-  .export-grid h4 {
-    display: inline-flex;
-    align-items: center;
-    margin: 0;
-  }
-  label {
-    display: flex;
-    align-items: center;
-    gap: 8pt;
-    font-size: 0.95em;
-    white-space: nowrap;
-  }
-  .dpi-input {
-    display: inline-flex;
-    align-items: center;
-    gap: 2pt;
-    white-space: nowrap;
-  }
-  button {
-    width: 1.9em;
-    height: 1.6em;
-    padding: 0 6pt;
-    box-sizing: border-box;
-  }
-  input {
-    width: 3.5em;
-  }
-</style>
+  {...rest}
+/>

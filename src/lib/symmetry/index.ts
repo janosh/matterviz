@@ -69,7 +69,14 @@ const symmetry_position_key = (pos: Vec3) =>
 const is_near_integer_vec = (vec: Vec3, tol: number) =>
   vec.every((coord) => Math.abs(coord - Math.round(coord)) < tol)
 
-// Wrap fractional coordinates into [0, 1), snapping values within 1e-9 of 1 back to 0
+// Wrap fractional coordinates into [0, 1), snapping values within 1e-9 of 1 back to 0.
+// NOTE on epsilon: 1e-9 is deliberately looser than wrap_frac_coord @1e-10
+// [[src/lib/structure/pbc.ts:26]] because inputs here passed through moyo
+// standardization plus a P⁻¹(x − p) matrix transform (make_frac_coord_mapper),
+// accumulating more float error than freshly parsed coords. It is tighter than
+// wrap_point @1e-8 [[src/lib/symmetry/symmetry-elements.ts:214]], which must
+// keep dedup keys stable for fixed points solved from linear systems. Do not
+// unify: each epsilon matches the noise level of its inputs.
 const wrap_frac = (pos: Vec3): Vec3 =>
   pos.map((coord) => {
     const wrapped = coord - Math.floor(coord)

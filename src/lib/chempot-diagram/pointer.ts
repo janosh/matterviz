@@ -4,9 +4,7 @@ const is_pointer_like_event = (event_val: unknown): event_val is PointerEvent | 
   (typeof PointerEvent !== `undefined` && event_val instanceof PointerEvent) ||
   (typeof MouseEvent !== `undefined` && event_val instanceof MouseEvent)
 
-export function get_pointer_coords(
-  raw_event: unknown,
-): { clientX: number; clientY: number } | null {
+function get_pointer_coords(raw_event: unknown): { clientX: number; clientY: number } | null {
   if (is_pointer_like_event(raw_event)) {
     return raw_event
   }
@@ -31,8 +29,8 @@ export function get_pointer_coords(
   return null
 }
 
-/** Convert pointer event to container-relative coords for tooltip placement. */
-export function get_hover_pointer(
+// Convert pointer event to container-relative coords for tooltip placement.
+function get_hover_pointer(
   raw_event: unknown,
   container_rect: DOMRect | null | undefined,
 ): { x: number; y: number } | null {
@@ -45,7 +43,7 @@ export function get_hover_pointer(
   return { x, y }
 }
 
-/** Add hover pointer to an info object for tooltip placement. */
+// Add hover pointer to an info object for tooltip placement.
 export function with_hover_pointer<T extends { pointer?: { x: number; y: number } }>(
   info: Omit<T, `pointer`>,
   raw_event: unknown,

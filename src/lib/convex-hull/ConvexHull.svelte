@@ -35,7 +35,7 @@
     color_mode = $bindable(`energy`),
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
-    legend_pane_open = $bindable(false),
+    controls_open = $bindable(false),
     max_hull_dist_show_phases = $bindable(0.1),
     max_hull_dist_show_labels = $bindable(0.1),
     show_stable_labels = $bindable(true),
@@ -109,7 +109,7 @@
     bind:color_mode
     bind:color_scale
     bind:info_pane_open
-    bind:legend_pane_open
+    bind:controls_open
     bind:max_hull_dist_show_phases
     bind:max_hull_dist_show_labels
     bind:show_stable_labels

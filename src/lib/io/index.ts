@@ -1,5 +1,6 @@
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 
+export { default as ExportPane } from './ExportPane.svelte'
 export * from './decompress'
 export * from './export'
 export * from './fetch'

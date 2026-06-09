@@ -1584,7 +1584,7 @@ test.describe(`Export Button Tests`, () => {
     const { pane_div: export_pane } = await open_structure_export_pane(page)
 
     // The export pane has three sections: text, image, 3D model
-    const export_containers = export_pane.locator(`.export-buttons`)
+    const export_containers = export_pane.locator(`.export-grid`)
     const container_count = await export_containers.count()
     expect(container_count).toBe(3) // text, image, 3D model sections
 
@@ -1623,7 +1623,7 @@ test.describe(`Export Button Tests`, () => {
     // Test DPI input attributes
     await expect(dpi_input).toHaveAttribute(`type`, `number`)
     await expect(dpi_input).toHaveAttribute(`min`, `50`)
-    await expect(dpi_input).toHaveAttribute(`max`, `500`)
+    await expect(dpi_input).toHaveAttribute(`max`, `600`)
     // Note: DPI input doesn't have a step attribute
 
     // Test changing DPI value

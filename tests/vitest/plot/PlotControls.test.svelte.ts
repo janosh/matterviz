@@ -120,7 +120,7 @@ describe(`PlotControls`, () => {
   })
 
   describe(`display controls`, () => {
-    /** Helper to find checkboxes within a control group by data-label attribute. */
+    // Helper to find checkboxes within a control group by data-label attribute.
     const get_checkboxes_in_group = (label: string) => {
       const group = document.querySelector(`.control-group[data-label="${label}"]`)
       return group

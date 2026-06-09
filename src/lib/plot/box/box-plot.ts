@@ -5,6 +5,7 @@ import { ascending } from 'd3-array'
 import type { Vec2 } from '$lib/math'
 import { quantile_unordered } from '$lib/plot/box/quantile'
 import type { HandlerProps } from '$lib/plot/core/types'
+import { DEFAULTS } from '$lib/settings'
 
 // === Box plot types ===
 // How box plot whiskers are computed from a raw distribution
@@ -148,7 +149,8 @@ export function compute_box_stats(
   opts: BoxStatsOptions = {},
 ): BoxStats {
   const {
-    whisker_mode = `tukey`,
+    // Fallback derives from DEFAULTS.box so component and helper defaults can't drift
+    whisker_mode = DEFAULTS.box.whisker_mode,
     whisker_range = 1.5,
     whisker_percentiles = [5, 95],
     collect_outliers = true,

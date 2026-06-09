@@ -29,12 +29,8 @@
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { create_color_scale } from '$lib/plot/core/scales'
-  import {
-    arc_label_transform,
-    arrow_nav_target,
-    project_arcs,
-    type ScreenArc as ScreenArcOf,
-  } from '$lib/plot/sunburst/render'
+  import { arc_label_transform, arrow_nav_target, project_arcs } from '$lib/plot/sunburst/render'
+  import type { ScreenArc as ScreenArcOf } from '$lib/plot/sunburst/render'
   import { compute_sunburst_layout, type PositionedArc } from '$lib/plot/sunburst/sunburst'
   import { DEFAULTS } from '$lib/settings'
   import { arc as d3_arc } from 'd3-shape'

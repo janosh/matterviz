@@ -1,19 +1,15 @@
 <script lang="ts">
-  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import { type CameraProjection, DEFAULTS } from '$lib/settings'
-  import Arrow from '$lib/structure/Arrow.svelte'
+  import { bind_renderer, build_orbit_props, SceneCamera } from '$lib/scene'
+  import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
+  import { DEFAULTS } from '$lib/settings'
   import Cylinder from '$lib/structure/Cylinder.svelte'
-  import { T, useThrelte } from '@threlte/core'
+  import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import type { ComponentProps } from 'svelte'
-  import type { Camera, Scene } from 'three'
-  import { BufferAttribute, BufferGeometry, Vector3 } from 'three'
+  import { cartesian_to_fractional, k_lattice_inverse, polyhedron_geometry } from './geometry'
+  import ReciprocalVectors from './ReciprocalVectors.svelte'
   import type { BrillouinZoneData, BZHoverData, IrreducibleBZData } from './types'
-
-  // Threlte pointer event type for mesh interactions
-  type ThreltePointerEvent = { point: Vector3; nativeEvent: PointerEvent }
 
   let {
     bz_data = $bindable(),
@@ -52,10 +48,9 @@
     hovered_qpoint_index = null,
     hover_data = $bindable<BZHoverData | null>(null),
     on_kpath_hover,
-  }: {
+  }: SceneControlProps & {
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
-    camera_projection?: CameraProjection
     surface_color?: string
     surface_opacity?: number
     edge_color?: string
@@ -67,22 +62,6 @@
     ibz_data?: IrreducibleBZData | null
     ibz_color?: string
     ibz_opacity?: number
-    rotation_damping?: number
-    max_zoom?: number
-    min_zoom?: number
-    rotate_speed?: number
-    zoom_speed?: number
-    pan_speed?: number
-    zoom_to_cursor?: boolean
-    fov?: number
-    initial_zoom?: number
-    ambient_light?: number
-    directional_light?: number
-    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
-    auto_rotate?: number
-    camera_is_moving?: boolean
-    scene?: Scene
-    camera?: Camera
     k_path_points?: Vec3[]
     k_path_labels?: { position: Vec3; label: string | null }[]
     hovered_k_point?: Vec3 | null
@@ -91,13 +70,9 @@
     on_kpath_hover?: (qpoint_index: number | null) => void
   } = $props()
 
-  const threlte = useThrelte()
-  $effect(() => {
-    scene = threlte.scene
-    camera = threlte.camera.current
-    if (threlte.renderer) {
-      Object.assign(threlte.renderer.domElement, { __renderer: threlte.renderer })
-    }
+  bind_renderer((threlte_scene, threlte_camera) => {
+    scene = threlte_scene
+    camera = threlte_camera
   })
 
   extras.interactivity()
@@ -123,51 +98,19 @@
     camera_position || ([10, 3, 8].map((coord) => coord * Math.max(1, bz_size)) as Vec3)
   )
 
-  const gizmo_props = $derived({
-    background: { enabled: false },
-    className: `responsive-gizmo`,
-    ...Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
-        axis,
-        {
-          color,
-          labelColor: `#111`,
-          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
-          hover: {
-            color: hover,
-            labelColor: `#222`,
-            opacity: axis.startsWith(`n`) ? 1 : 0.9,
-          },
-        },
-      ]),
-    ),
-    ...(typeof gizmo === `object` ? gizmo : {}),
-    offset: { left: 5, bottom: 5 },
-  })
-
-  const is_ortho = $derived(camera_projection === `orthographic`)
-  const orbit_controls_props = $derived({
-    position: [0, 0, 0],
+  const orbit_controls_props = $derived(build_orbit_props({
+    camera_projection,
     target: rotation_target,
-    enableRotate: rotate_speed > 0,
-    rotateSpeed: rotate_speed,
-    enableZoom: zoom_speed > 0,
-    zoomSpeed: is_ortho ? zoom_speed * 2 : zoom_speed,
-    zoomToCursor: zoom_to_cursor,
-    enablePan: pan_speed > 0,
-    panSpeed: pan_speed,
-    maxZoom: max_zoom,
-    minZoom: min_zoom,
-    autoRotate: Boolean(auto_rotate),
-    autoRotateSpeed: auto_rotate,
-    enableDamping: Boolean(rotation_damping),
-    dampingFactor: rotation_damping,
-    onstart: () => (camera_is_moving = true),
-    onend: () => (camera_is_moving = false),
-  })
-
-  const vector_colors = [`red`, `green`, `blue`]
-  const vector_labels = [`b₁`, `b₂`, `b₃`]
+    rotate_speed,
+    zoom_speed,
+    zoom_to_cursor,
+    pan_speed,
+    max_zoom,
+    min_zoom,
+    auto_rotate,
+    rotation_damping,
+    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+  }))
 
   // K-path styling. The invisible hover proxy is twice the visible thickness so the cursor
   // snaps to the path even when it isn't directly over the thin visible segment.
@@ -186,49 +129,12 @@
     return lens[Math.floor(lens.length / 2)] * 10
   })
 
-  // Create mesh geometry from faces with fan triangulation
-  function create_mesh_geometry(
-    vertices: Vec3[],
-    faces: number[][],
-  ): BufferGeometry | null {
-    if (faces.length === 0) return null
-
-    const positions: number[] = []
-    const normals: number[] = []
-
-    for (const face of faces) {
-      if (face.length < 3) continue
-      for (let face_idx = 1; face_idx < face.length - 1; face_idx++) {
-        const indices = [face[0], face[face_idx], face[face_idx + 1]]
-        if (indices.some((idx) => idx < 0 || idx >= vertices.length)) continue
-        const [v0, v1, v2] = indices.map((idx) => vertices[idx])
-        positions.push(...v0, ...v1, ...v2)
-
-        const e1: Vec3 = math.subtract(v1, v0)
-        const e2: Vec3 = math.subtract(v2, v0)
-        const normal_vec = math.cross_3d(e1, e2)
-        const len = Math.hypot(...normal_vec)
-        const norm = len > 1e-10 ? normal_vec.map((coord) => coord / len) : [0, 0, 0]
-        normals.push(...norm, ...norm, ...norm)
-      }
-    }
-
-    const geometry = new BufferGeometry()
-    geometry.setAttribute(
-      `position`,
-      new BufferAttribute(new Float32Array(positions), 3),
-    )
-    geometry.setAttribute(`normal`, new BufferAttribute(new Float32Array(normals), 3))
-    geometry.computeBoundingSphere()
-    return geometry
-  }
-
   const bz_geometry = $derived(
-    bz_data ? create_mesh_geometry(bz_data.vertices, bz_data.faces) : null,
+    bz_data ? polyhedron_geometry(bz_data.vertices, bz_data.faces) : null,
   )
   const ibz_geometry = $derived(
     show_ibz && ibz_data
-      ? create_mesh_geometry(ibz_data.vertices, ibz_data.faces)
+      ? polyhedron_geometry(ibz_data.vertices, ibz_data.faces)
       : null,
   )
 
@@ -242,21 +148,8 @@
     return () => prev?.dispose()
   })
 
-  // Compute inverse of k_lattice for Cartesian->fractional conversion
-  const k_lattice_inv = $derived.by(() => {
-    if (!bz_data?.k_lattice) return null
-    try {
-      return math.matrix_inverse_3x3(bz_data.k_lattice)
-    } catch {
-      return null
-    }
-  })
-
-  // Convert Cartesian k-coordinates to fractional (reciprocal lattice units)
-  function cartesian_to_fractional(cart: Vec3): Vec3 | null {
-    if (!k_lattice_inv) return null
-    return math.mat3x3_vec3_multiply(k_lattice_inv, cart)
-  }
+  // Inverse of k_lattice for Cartesian->fractional conversion
+  const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
 
   // Throttle state for pointer move events
   let last_hover_time = 0
@@ -289,7 +182,7 @@
     if (!bz_data) return null
 
     const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
-    const position_fractional = cartesian_to_fractional(position_cartesian)
+    const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
 
     const { clientX, clientY } = event.nativeEvent
     const ibz_vol = ibz_data?.volume ?? null
@@ -342,24 +235,14 @@
   }
 </script>
 
-{#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault position={computed_camera_position} {fov}>
-    <extras.OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.PerspectiveCamera>
-{:else}
-  <T.OrthographicCamera
-    makeDefault
-    position={computed_camera_position}
-    zoom={initial_zoom}
-    near={-100}
-  >
-    <extras.OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.OrthographicCamera>
-{/if}
+<SceneCamera
+  {camera_projection}
+  position={computed_camera_position}
+  {fov}
+  zoom={initial_zoom}
+  orbit_props={orbit_controls_props}
+  {gizmo}
+/>
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />
@@ -416,28 +299,7 @@
 
     <!-- Reciprocal lattice vectors -->
     {#if show_vectors && bz_data.k_lattice}
-      {#each bz_data.k_lattice as vec, idx (idx)}
-        {@const scaled_vec = vec.map((coord) => coord * vector_scale) as Vec3}
-        {@const label_position = scaled_vec.map((coord) => coord * 1.15) as Vec3}
-        <Arrow
-          position={[0, 0, 0]}
-          vector={scaled_vec}
-          color={vector_colors[idx]}
-          scale={1}
-          shaft_radius={bz_size * 0.008}
-          arrow_head_radius={bz_size * 0.028}
-          arrow_head_length={-0.1}
-        />
-        <!-- Vector label beyond tip -->
-        <extras.HTML center position={label_position}>
-          <span
-            style:color={vector_colors[idx]}
-            style:font-size="1.2em"
-          >
-            {vector_labels[idx]}
-          </span>
-        </extras.HTML>
-      {/each}
+      <ReciprocalVectors k_lattice={bz_data.k_lattice} {vector_scale} size={bz_size} />
     {/if}
 
     <!-- K-path visualization -->

@@ -5,6 +5,7 @@ import {
   export_svg_as_svg,
   export_trajectory_video,
   get_ffmpeg_conversion_command,
+  renderer_registry,
   svg_to_png_blob,
   svg_to_svg_string,
 } from '$lib/io/export'
@@ -39,9 +40,8 @@ function make_canvas_with_renderer(toBlob_impl?: (cb: BlobCallback) => void): {
   renderer: Partial<WebGLRenderer>
 } {
   const renderer = make_mock_renderer()
-  const canvas = Object.assign(make_mock_canvas(toBlob_impl), {
-    __renderer: renderer as WebGLRenderer,
-  }) as unknown as HTMLCanvasElement
+  const canvas = make_mock_canvas(toBlob_impl)
+  renderer_registry.set(canvas, renderer as WebGLRenderer)
   return { canvas, renderer }
 }
 

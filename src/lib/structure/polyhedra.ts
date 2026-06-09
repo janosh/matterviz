@@ -7,6 +7,7 @@
 import { rgb as parse_rgb } from 'd3-color'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
+import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
 import { get_orig_site_idx } from './atom-properties'
 import { element_lookup, get_majority_element } from './bonding'
@@ -400,8 +401,10 @@ export function compute_polyhedra(
   options: PolyhedraOptions = {},
 ): Polyhedron[] {
   const {
-    min_neighbors = 4,
-    max_neighbors = 8,
+    // Neighbor-count fallbacks derive from DEFAULTS.structure so they can't drift
+    // from the polyhedra_min/max_neighbors settings defaults
+    min_neighbors = DEFAULTS.structure.polyhedra_min_neighbors,
+    max_neighbors = DEFAULTS.structure.polyhedra_max_neighbors,
     excluded_center_elements = [],
     included_center_elements = [],
     electronegativity_margin = 0,

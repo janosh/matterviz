@@ -102,14 +102,17 @@ test.describe(`StructureExportPane Tests`, () => {
     await expect(dpi_input).toBeVisible()
     await expect(dpi_input).toHaveValue(`150`)
     await expect(dpi_input).toHaveAttribute(`min`, `50`)
-    await expect(dpi_input).toHaveAttribute(`max`, `500`)
+    await expect(dpi_input).toHaveAttribute(`max`, `600`)
 
     // Test changing DPI
     await dpi_input.fill(`300`)
     await expect(dpi_input).toHaveValue(`300`)
 
     // PNG button should be enabled
-    const png_button = pane_div.locator(`label:has-text("PNG")`).locator(`button`).first()
+    const png_button = pane_div
+      .locator(`.export-item:has-text("PNG")`)
+      .locator(`button`)
+      .first()
     await expect(png_button).toBeEnabled()
   })
 

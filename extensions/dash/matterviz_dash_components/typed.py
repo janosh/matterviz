@@ -54,6 +54,7 @@ class Structure(MatterViz):
         reset_text: str | None = None,
         scene_props: dict | None = None,
         selected_sites: list[int] | None = None,
+        show_controls: Any | None = None,
         site_radius_overrides: Any | None = None,
         spinner_props: dict | None = None,
         structure: Any | None = None,
@@ -137,6 +138,8 @@ class Structure(MatterViz):
             mv_props["scene_props"] = scene_props
         if selected_sites is not None:
             mv_props["selected_sites"] = selected_sites
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
         if site_radius_overrides is not None:
             mv_props["site_radius_overrides"] = site_radius_overrides
         if spinner_props is not None:
@@ -332,14 +335,17 @@ class Trajectory(MatterViz):
         allow_file_drop: bool | None = None,
         atom_type_mapping: Any | None = None,
         auto_play: bool | None = None,
+        controls_open: bool | None = None,
         current_step_idx: int | None = None,
         data_extractor: Any | None = None,
         data_url: str | None = None,
         display_mode: Any | None = None,
         fps: float | None = None,
         fps_range: tuple[float, float] | None = None,
+        fullscreen: bool | None = None,
         histogram_props: dict | None = None,
         hovered: bool | None = None,
+        info_pane_open: bool | None = None,
         layout: Any | None = None,
         loading_options: Any | None = None,
         plot_skimming: bool | None = None,
@@ -369,6 +375,8 @@ class Trajectory(MatterViz):
             mv_props["atom_type_mapping"] = atom_type_mapping
         if auto_play is not None:
             mv_props["auto_play"] = auto_play
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
         if current_step_idx is not None:
             mv_props["current_step_idx"] = current_step_idx
         if data_extractor is not None:
@@ -381,10 +389,14 @@ class Trajectory(MatterViz):
             mv_props["fps"] = fps
         if fps_range is not None:
             mv_props["fps_range"] = fps_range
+        if fullscreen is not None:
+            mv_props["fullscreen"] = fullscreen
         if histogram_props is not None:
             mv_props["histogram_props"] = histogram_props
         if hovered is not None:
             mv_props["hovered"] = hovered
+        if info_pane_open is not None:
+            mv_props["info_pane_open"] = info_pane_open
         if layout is not None:
             mv_props["layout"] = layout
         if loading_options is not None:
@@ -424,7 +436,7 @@ class BrillouinZone(MatterViz):
 
     Component key: ``brillouin/BrillouinZone``
 
-    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover, on_kpath_hover
+    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_kpath_hover, on_point_hover
     """
 
     def __init__(
@@ -452,6 +464,7 @@ class BrillouinZone(MatterViz):
         k_path_points: list[list[float]] | None = None,
         loading: bool | None = None,
         png_dpi: float | None = None,
+        show_controls: Any | None = None,
         show_ibz: bool | None = None,
         show_vectors: bool | None = None,
         spinner_props: dict | None = None,
@@ -517,6 +530,8 @@ class BrillouinZone(MatterViz):
             mv_props["loading"] = loading
         if png_dpi is not None:
             mv_props["png_dpi"] = png_dpi
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
         if show_ibz is not None:
             mv_props["show_ibz"] = show_ibz
         if show_vectors is not None:
@@ -570,8 +585,8 @@ class ConvexHull2D(MatterViz):
         entries: list | None = None,
         controls: dict | None = None,
         config: dict | None = None,
+        show_controls: Any | None = None,
         fullscreen: bool | None = None,
-        enable_fullscreen: bool | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -579,7 +594,7 @@ class ConvexHull2D(MatterViz):
         color_mode: Any | None = None,
         color_scale: Any | None = None,
         info_pane_open: bool | None = None,
-        legend_pane_open: bool | None = None,
+        controls_open: bool | None = None,
         max_hull_dist_show_phases: float | None = None,
         max_hull_dist_show_labels: float | None = None,
         show_stable_labels: bool | None = None,
@@ -621,10 +636,10 @@ class ConvexHull2D(MatterViz):
             mv_props["controls"] = controls
         if config is not None:
             mv_props["config"] = config
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
-        if enable_fullscreen is not None:
-            mv_props["enable_fullscreen"] = enable_fullscreen
         if enable_info_pane is not None:
             mv_props["enable_info_pane"] = enable_info_pane
         if label_threshold is not None:
@@ -639,8 +654,8 @@ class ConvexHull2D(MatterViz):
             mv_props["color_scale"] = color_scale
         if info_pane_open is not None:
             mv_props["info_pane_open"] = info_pane_open
-        if legend_pane_open is not None:
-            mv_props["legend_pane_open"] = legend_pane_open
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
         if max_hull_dist_show_phases is not None:
             mv_props["max_hull_dist_show_phases"] = max_hull_dist_show_phases
         if max_hull_dist_show_labels is not None:
@@ -708,8 +723,8 @@ class ConvexHull3D(MatterViz):
         entries: list | None = None,
         controls: dict | None = None,
         config: dict | None = None,
+        show_controls: Any | None = None,
         fullscreen: bool | None = None,
-        enable_fullscreen: bool | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -717,7 +732,7 @@ class ConvexHull3D(MatterViz):
         color_mode: Any | None = None,
         color_scale: Any | None = None,
         info_pane_open: bool | None = None,
-        legend_pane_open: bool | None = None,
+        controls_open: bool | None = None,
         max_hull_dist_show_phases: float | None = None,
         max_hull_dist_show_labels: float | None = None,
         show_stable_labels: bool | None = None,
@@ -760,10 +775,10 @@ class ConvexHull3D(MatterViz):
             mv_props["controls"] = controls
         if config is not None:
             mv_props["config"] = config
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
-        if enable_fullscreen is not None:
-            mv_props["enable_fullscreen"] = enable_fullscreen
         if enable_info_pane is not None:
             mv_props["enable_info_pane"] = enable_info_pane
         if label_threshold is not None:
@@ -778,8 +793,8 @@ class ConvexHull3D(MatterViz):
             mv_props["color_scale"] = color_scale
         if info_pane_open is not None:
             mv_props["info_pane_open"] = info_pane_open
-        if legend_pane_open is not None:
-            mv_props["legend_pane_open"] = legend_pane_open
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
         if max_hull_dist_show_phases is not None:
             mv_props["max_hull_dist_show_phases"] = max_hull_dist_show_phases
         if max_hull_dist_show_labels is not None:
@@ -857,8 +872,8 @@ class ConvexHull4D(MatterViz):
         entries: list | None = None,
         controls: dict | None = None,
         config: dict | None = None,
+        show_controls: Any | None = None,
         fullscreen: bool | None = None,
-        enable_fullscreen: bool | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -866,7 +881,7 @@ class ConvexHull4D(MatterViz):
         color_mode: Any | None = None,
         color_scale: Any | None = None,
         info_pane_open: bool | None = None,
-        legend_pane_open: bool | None = None,
+        controls_open: bool | None = None,
         max_hull_dist_show_phases: float | None = None,
         max_hull_dist_show_labels: float | None = None,
         show_stable_labels: bool | None = None,
@@ -909,10 +924,10 @@ class ConvexHull4D(MatterViz):
             mv_props["controls"] = controls
         if config is not None:
             mv_props["config"] = config
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
-        if enable_fullscreen is not None:
-            mv_props["enable_fullscreen"] = enable_fullscreen
         if enable_info_pane is not None:
             mv_props["enable_info_pane"] = enable_info_pane
         if label_threshold is not None:
@@ -927,8 +942,8 @@ class ConvexHull4D(MatterViz):
             mv_props["color_scale"] = color_scale
         if info_pane_open is not None:
             mv_props["info_pane_open"] = info_pane_open
-        if legend_pane_open is not None:
-            mv_props["legend_pane_open"] = legend_pane_open
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
         if max_hull_dist_show_phases is not None:
             mv_props["max_hull_dist_show_phases"] = max_hull_dist_show_phases
         if max_hull_dist_show_labels is not None:

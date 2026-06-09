@@ -28,18 +28,16 @@
     scale_bin_transform,
     series_extents,
     should_render_points,
-    type DensityBin,
-    type DenseInternalPoint,
-    type DensePointSeries,
   } from '$lib/plot/scatter/adaptive-density'
+  import type { DensityBin, DenseInternalPoint, DensePointSeries } from '$lib/plot/scatter/adaptive-density'
   import { create_color_scale, create_scale, create_size_scale, generate_ticks } from '$lib/plot/core/scales'
   import type { AxisConfig, DataSeries, InternalPoint, ScatterHandlerProps } from '$lib/plot/core/types'
   import {
     compute_label_positions,
     estimate_label_size,
     label_leader_segment,
-    type LabelSize,
   } from '$lib/plot/core/utils/label-placement'
+  import type { LabelSize } from '$lib/plot/core/utils/label-placement'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onMount, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

@@ -72,9 +72,10 @@ END_BLOCK_BANDGRID_3D
       expect(band_data.fermi_energy).toBe(7.0)
     })
 
-    test(`returns null on invalid BXSF file`, () => {
-      const result = parse_fermi_file(`invalid content`, `test.bxsf`)
-      expect(result).toBeNull()
+    test(`throws on invalid BXSF file`, () => {
+      expect(() => parse_fermi_file(`invalid content`, `test.bxsf`)).toThrow(
+        /Failed to parse Fermi surface file 'test.bxsf': BXSF/,
+      )
     })
 
     test(`handles empty/comment lines before END_BANDGRID marker`, () => {
@@ -187,9 +188,10 @@ END_BLOCK_BANDGRID_3D`
       expect(band_data.energies[0][0][0][0][0]).toBeCloseTo(0.1 * 27.2114, 3)
     })
 
-    test(`returns null on invalid FRMSF file`, () => {
-      const result = parse_fermi_file(`invalid`, `test.frmsf`)
-      expect(result).toBeNull()
+    test(`throws on invalid FRMSF file`, () => {
+      expect(() => parse_fermi_file(`invalid`, `test.frmsf`)).toThrow(
+        /Failed to parse Fermi surface file 'test.frmsf': FRMSF/,
+      )
     })
   })
 
@@ -376,9 +378,10 @@ END_BLOCK_BANDGRID_3D`
   })
 
   describe(`format detection`, () => {
-    test(`returns null for unrecognized format`, () => {
-      const result = parse_fermi_file(`random gibberish`, `unknown.txt`)
-      expect(result).toBeNull()
+    test(`throws for unrecognized format`, () => {
+      expect(() => parse_fermi_file(`random gibberish`, `unknown.txt`)).toThrow(
+        /Failed to parse Fermi surface file 'unknown.txt': unrecognized format/,
+      )
     })
   })
 })

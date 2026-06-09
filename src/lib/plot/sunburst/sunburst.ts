@@ -9,6 +9,7 @@ import { hsl } from 'd3-color'
 import type { HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
 import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
+import { DEFAULTS } from '$lib/settings'
 
 // === Sunburst chart types ===
 // How node values are interpreted (plotly `branchvalues` semantics):
@@ -110,10 +111,11 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   opts: SunburstLayoutOptions = {},
 ): SunburstLayoutResult<Metadata> {
   const {
-    value_mode = `leaf-sum`,
+    // value_mode/min_fraction fallbacks derive from DEFAULTS.sunburst to prevent drift
+    value_mode = DEFAULTS.sunburst.value_mode,
     sort = `none`,
     level_lighten = 0,
-    min_fraction = 0,
+    min_fraction = DEFAULTS.sunburst.min_fraction,
     other_label = `Other`,
   } = opts
   // Fresh object each call (not a shared constant) so callers can't corrupt each other

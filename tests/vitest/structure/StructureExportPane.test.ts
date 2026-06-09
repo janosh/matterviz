@@ -164,8 +164,8 @@ describe(`StructureExportPane`, () => {
     vi.useRealTimers()
   })
 
-  test(`handles missing structure gracefully for text exports`, async () => {
-    const console_warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  test(`text export buttons are disabled and copy no-ops without structure`, async () => {
+    vi.mocked(navigator.clipboard.writeText).mockClear()
 
     mount(StructureExportPane, {
       target: document.body,
@@ -173,14 +173,15 @@ describe(`StructureExportPane`, () => {
     })
 
     const copy_btn = get_button(`Copy JSON`)
+    const download_btn = get_button(`Download JSON`)
+    expect(copy_btn.disabled).toBe(true)
+    expect(download_btn.disabled).toBe(true)
+
     copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    await vi.waitFor(() => {
-      expect(console_warn_spy).toHaveBeenCalledWith(
-        expect.stringContaining(`No structure available for copying`),
-      )
-    })
-    console_warn_spy.mockRestore()
+    // Flush microtasks then verify clipboard was not called
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 
   test(`PNG export section renders with default DPI`, () => {
@@ -198,7 +199,7 @@ describe(`StructureExportPane`, () => {
     )
     expect(dpi_input.value).toBe(`150`)
     expect(dpi_input.min).toBe(`50`)
-    expect(dpi_input.max).toBe(`500`)
+    expect(dpi_input.max).toBe(`600`)
   })
 
   test(`PNG export button is enabled with canvas`, async () => {
