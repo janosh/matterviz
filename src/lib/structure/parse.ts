@@ -18,8 +18,57 @@ import type { AnyStructure, Crystal, Site, StructureProperties } from '$lib/stru
 import type { Pbc } from '$lib/structure/pbc'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
+import { iter_xyz_frames } from '$lib/trajectory/helpers'
 import { normalize_scientific_notation } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
+
+// === Parse error contract ===
+// Individual format parsers (parse_poscar, parse_cif, parse_xyz, parse_phonopy_yaml,
+// parse_optimade_json, ...) return `T | null` on failure and record failure reasons and
+// warnings in a module-level diagnostics collector (mirrored to the console).
+// The top-level entry points parse_structure_file and parse_any_structure reset the
+// collector on entry and THROW a descriptive Error aggregating the recorded reasons when
+// nothing parses, so failure causes can reach the UI (callers surface error.message).
+// Warnings (element-symbol fallbacks, skipped atoms, ...) never fail a parse; inspect
+// them after any parse call via get_parse_diagnostics().
+export interface ParseDiagnostic {
+  level: `error` | `warn`
+  message: string
+}
+
+let parse_diagnostics: ParseDiagnostic[] = []
+
+// @internal debugging aid, not part of the public API.
+// Diagnostics recorded since the last top-level parse call (read-only snapshot).
+export const get_parse_diagnostics = (): ParseDiagnostic[] => [...parse_diagnostics]
+const reset_parse_diagnostics = (): void => {
+  parse_diagnostics = []
+}
+const stringify_error = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+// Record a failure reason; with `error` present, logs in `console.error('msg:', error)` form
+const diag_error = (message: string, error?: unknown): void => {
+  const detail = error === undefined ? `` : `: ${stringify_error(error)}`
+  parse_diagnostics.push({ level: `error`, message: `${message}${detail}` })
+  if (error === undefined) console.error(message)
+  else console.error(`${message}:`, error)
+}
+const diag_warn = (message: string): void => {
+  parse_diagnostics.push({ level: `warn`, message })
+  console.warn(message)
+}
+// Aggregate recorded failure reasons into the Error thrown by top-level entry points
+const aggregate_parse_error = (filename?: string): Error => {
+  const reasons = [
+    ...new Set(
+      parse_diagnostics.filter((diag) => diag.level === `error`).map((diag) => diag.message),
+    ),
+  ]
+  const detail = reasons.length ? `: ${reasons.join(`; `)}` : ``
+  return new Error(
+    `Failed to parse structure${filename ? ` from '${filename}'` : ``}${detail}`,
+  )
+}
 
 export interface ParsedStructure {
   sites: Site[]
@@ -132,7 +181,7 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
 
   // Fallback to default elements by atomic number
   const fallback = FALLBACK_ELEMENTS[index % FALLBACK_ELEMENTS.length] ?? `H`
-  console.warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
+  diag_warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
   return fallback
 }
 
@@ -203,14 +252,16 @@ const cart_to_frac_with_fallback = (
   return { convert: (xyz: Vec3) => approximate_cart_to_frac(xyz, lengths), exact: false }
 }
 
-// Parse VASP POSCAR file format
+// @internal format-specific parser exported for tests - use parse_structure_file /
+// parse_any_structure as the public entry points.
+// Parse VASP POSCAR file format.
 export function parse_poscar(content: string): ParsedStructure | null {
   try {
     // Strip only horizontal whitespace: a blank first (comment) line is valid POSCAR
     const lines = content.replace(/^[ \t]+/, ``).split(/\r?\n/)
 
     if (lines.length < 8) {
-      console.error(`POSCAR file too short`)
+      diag_error(`POSCAR file too short`)
       return null
     }
 
@@ -218,7 +269,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
     const scale_tokens = lines[1].trim().split(/\s+/).map(parseFloat)
     let scale_factor = scale_tokens[0]
     if (isNaN(scale_factor)) {
-      console.error(`Invalid scaling factor in POSCAR`)
+      diag_error(`Invalid scaling factor in POSCAR`)
       return null
     }
     const scale_vec = scale_tokens.slice(0, 3) as Vec3
@@ -303,149 +354,133 @@ export function parse_poscar(content: string): ParsedStructure | null {
     }
 
     if (element_symbols.length !== atom_counts.length) {
-      console.error(`Mismatch between element symbols and atom counts`)
+      diag_error(`Mismatch between element symbols and atom counts`)
+      return null
+    }
+
+    if (line_index >= lines.length) {
+      diag_error(`Missing coordinate mode line in POSCAR`)
       return null
     }
 
     // Check for selective dynamics
     let has_selective_dynamics = false
-    if (line_index < lines.length) {
-      let coordinate_mode = lines[line_index].trim().toUpperCase()
+    let coordinate_mode = lines[line_index].trim().toUpperCase()
 
-      if (coordinate_mode.startsWith(`S`)) {
-        has_selective_dynamics = true
-        line_index += 1
-        if (line_index < lines.length) {
-          coordinate_mode = lines[line_index].trim().toUpperCase()
-        } else {
-          console.error(`Missing coordinate mode after selective dynamics`)
-          return null
-        }
-      }
-
-      // Determine coordinate mode
-      const is_direct = coordinate_mode.startsWith(`D`)
-      const is_cartesian = coordinate_mode.startsWith(`C`) || coordinate_mode.startsWith(`K`)
-
-      if (!is_direct && !is_cartesian) {
-        console.error(`Unknown coordinate mode in POSCAR: ${coordinate_mode}`)
+    if (coordinate_mode.startsWith(`S`)) {
+      has_selective_dynamics = true
+      line_index += 1
+      if (line_index < lines.length) {
+        coordinate_mode = lines[line_index].trim().toUpperCase()
+      } else {
+        diag_error(`Missing coordinate mode after selective dynamics`)
         return null
       }
+    }
 
-      // Parse atomic positions
-      const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
-      const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
-      if (!is_direct && !poscar_cart_to_frac.exact) {
-        console.warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
-      }
-      const sites: Site[] = []
-      let atom_index = 0
+    // Determine coordinate mode
+    const is_direct = coordinate_mode.startsWith(`D`)
+    const is_cartesian = coordinate_mode.startsWith(`C`) || coordinate_mode.startsWith(`K`)
 
-      for (let elem_idx = 0; elem_idx < element_symbols.length; elem_idx++) {
-        const element = validate_element_symbol(element_symbols[elem_idx], elem_idx)
-        const count = atom_counts[elem_idx]
+    if (!is_direct && !is_cartesian) {
+      diag_error(`Unknown coordinate mode in POSCAR: ${coordinate_mode}`)
+      return null
+    }
 
-        for (let atom_count_idx = 0; atom_count_idx < count; atom_count_idx++) {
-          const coord_line_idx = line_index + 1 + atom_index + atom_count_idx
-          if (coord_line_idx >= lines.length) {
-            console.error(`Not enough coordinate lines in POSCAR`)
-            return null
-          }
+    // Parse atomic positions
+    const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
+    const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
+    if (!is_direct && !poscar_cart_to_frac.exact) {
+      diag_warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
+    }
+    const sites: Site[] = []
+    let atom_index = 0
 
-          const coords = vec3_from_values(
-            parse_coordinate_line(lines[coord_line_idx]),
-            `POSCAR atom coordinates on line ${coord_line_idx + 1}`,
-          )
+    for (let elem_idx = 0; elem_idx < element_symbols.length; elem_idx++) {
+      const element = validate_element_symbol(element_symbols[elem_idx], elem_idx)
+      const count = atom_counts[elem_idx]
 
-          // Parse selective dynamics if present
-          let selective_dynamics: [boolean, boolean, boolean] | undefined
-          if (has_selective_dynamics) {
-            const tokens = lines[coord_line_idx].trim().split(/\s+/)
-            if (tokens.length >= 6) {
-              selective_dynamics = [tokens[3] === `T`, tokens[4] === `T`, tokens[5] === `T`]
-            }
-          }
-          // Cartesian input is scaled then converted to fractional (axis-length fallback
-          // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
-          // both stay consistent (singular Cartesian keeps the scaled input as xyz)
-          const cart = is_direct ? null : apply_axis_scale(coords)
-          const raw_abc = cart ? poscar_cart_to_frac.convert(cart) : coords
-          const abc = wrap_to_unit_cell(raw_abc)
-          const xyz = cart && !poscar_cart_to_frac.exact ? cart : poscar_frac_to_cart(abc)
-
-          sites.push(
-            make_site(
-              element,
-              abc,
-              xyz,
-              `${element}${atom_index + atom_count_idx + 1}`,
-              selective_dynamics ? { selective_dynamics } : {},
-            ),
-          )
+      for (let atom_count_idx = 0; atom_count_idx < count; atom_count_idx++) {
+        const coord_line_idx = line_index + 1 + atom_index + atom_count_idx
+        if (coord_line_idx >= lines.length) {
+          diag_error(`Not enough coordinate lines in POSCAR`)
+          return null
         }
 
-        atom_index += count
+        const coords = vec3_from_values(
+          parse_coordinate_line(lines[coord_line_idx]),
+          `POSCAR atom coordinates on line ${coord_line_idx + 1}`,
+        )
+
+        // Parse selective dynamics if present
+        let selective_dynamics: [boolean, boolean, boolean] | undefined
+        if (has_selective_dynamics) {
+          const tokens = lines[coord_line_idx].trim().split(/\s+/)
+          if (tokens.length >= 6) {
+            selective_dynamics = [tokens[3] === `T`, tokens[4] === `T`, tokens[5] === `T`]
+          }
+        }
+        // Cartesian input is scaled then converted to fractional (axis-length fallback
+        // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
+        // both stay consistent (singular Cartesian keeps the scaled input as xyz)
+        const cart = is_direct ? null : apply_axis_scale(coords)
+        const raw_abc = cart ? poscar_cart_to_frac.convert(cart) : coords
+        const abc = wrap_to_unit_cell(raw_abc)
+        const xyz = cart && !poscar_cart_to_frac.exact ? cart : poscar_frac_to_cart(abc)
+
+        sites.push(
+          make_site(
+            element,
+            abc,
+            xyz,
+            `${element}${atom_index + atom_count_idx + 1}`,
+            selective_dynamics ? { selective_dynamics } : {},
+          ),
+        )
       }
 
-      const lattice_params = math.calc_lattice_params(scaled_lattice)
-      const structure: ParsedStructure = {
-        sites,
-        lattice: { matrix: scaled_lattice, ...lattice_params },
-      }
-
-      return structure
+      atom_index += count
     }
-    console.error(`Missing coordinate mode line in POSCAR`)
-    return null
+
+    const lattice_params = math.calc_lattice_params(scaled_lattice)
+    return { sites, lattice: { matrix: scaled_lattice, ...lattice_params } }
   } catch (error) {
-    console.error(`Error parsing POSCAR file:`, error)
+    diag_error(`Error parsing POSCAR file`, error)
     return null
   }
 }
 
-// Parse XYZ file format. Supports both standard XYZ and extended XYZ formats with multi-frame support
+// @internal format-specific parser exported for tests and the trajectory parser -
+// use parse_structure_file / parse_any_structure as the public entry points.
+// Parse XYZ file format. Supports both standard XYZ and extended XYZ formats with
+// multi-frame support.
 export function parse_xyz(content: string): ParsedStructure | null {
   try {
     const normalized_content = content.trim()
     if (!normalized_content) {
-      console.error(`Empty XYZ file`)
+      diag_error(`Empty XYZ file`)
       return null
     }
 
-    // Split into frames by reading the atom count and slicing lines
+    // Walk frames by reading atom counts; multi-frame XYZ parses only the last frame
     const all_lines = normalized_content.split(/\r?\n/)
-    const frames: string[] = []
-    let frame_line_idx = 0
+    let last_frame: { start: number; num_atoms: number } | null = null
+    for (const frame of iter_xyz_frames(all_lines)) last_frame = frame
 
-    while (frame_line_idx < all_lines.length) {
-      const numAtoms = parseInt(all_lines[frame_line_idx].trim(), 10)
-      if (
-        !isNaN(numAtoms) &&
-        numAtoms > 0 &&
-        frame_line_idx + numAtoms + 1 < all_lines.length
-      ) {
-        const frameLines = all_lines.slice(frame_line_idx, frame_line_idx + numAtoms + 2)
-        frames.push(frameLines.join(`\n`))
-        frame_line_idx += numAtoms + 2
-      } else frame_line_idx++
-    }
-
-    // If no frames found, try simple parsing
-    if (frames.length === 0) frames.push(normalized_content)
-
-    // Parse the last frame (or only frame)
-    const frame_content = frames.at(-1) ?? ``
-    const lines = frame_content.trim().split(/\r?\n/)
+    // If no complete frame found, fall back to parsing the whole content as one frame
+    const lines = last_frame
+      ? all_lines.slice(last_frame.start, last_frame.start + last_frame.num_atoms + 2)
+      : all_lines
 
     if (lines.length < 2) {
-      console.error(`XYZ frame too short`)
+      diag_error(`XYZ frame too short`)
       return null
     }
 
     // Parse number of atoms (line 1)
     const num_atoms = parseInt(lines[0].trim(), 10)
     if (isNaN(num_atoms) || num_atoms <= 0) {
-      console.error(`Invalid number of atoms in XYZ file`)
+      diag_error(`Invalid number of atoms in XYZ file`)
       return null
     }
 
@@ -484,13 +519,13 @@ export function parse_xyz(content: string): ParsedStructure | null {
     for (let atom_idx = 0; atom_idx < num_atoms; atom_idx++) {
       const line_idx = atom_idx + 2
       if (line_idx >= lines.length) {
-        console.error(`Not enough coordinate lines in XYZ file`)
+        diag_error(`Not enough coordinate lines in XYZ file`)
         return null
       }
 
       const parts = lines[line_idx].trim().split(/\s+/)
       if (parts.length < 4) {
-        console.error(`Invalid coordinate line in XYZ file`)
+        diag_error(`Invalid coordinate line in XYZ file`)
         return null
       }
 
@@ -520,7 +555,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
 
     return structure
   } catch (error) {
-    console.error(`Error parsing XYZ file:`, error)
+    diag_error(`Error parsing XYZ file`, error)
     return null
   }
 }
@@ -709,6 +744,29 @@ type CifAtom = {
   occupancy: number
 }
 
+// Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line
+function* iter_cif_loops(
+  lines: string[],
+): Generator<{ headers: string[]; data_start: number }> {
+  for (let idx = 0; idx < lines.length; idx++) {
+    if (lines[idx].trim() !== `loop_`) continue
+    const headers: string[] = []
+    let jj = idx + 1
+    while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
+      headers.push(lines[jj].trim())
+      jj++
+    }
+    yield { headers, data_start: jj }
+  }
+}
+
+// Split a CIF data line into whitespace-separated tokens, keeping quoted multi-word
+// values as single tokens and stripping the quotes
+const split_cif_tokens = (line: string): string[] =>
+  (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []).map((token) =>
+    token.replaceAll(/['"]/g, ``),
+  )
+
 // Parse atom data from CIF with robust error handling
 const parse_cif_atom_data = (
   raw_data: string[],
@@ -757,7 +815,9 @@ const parse_cif_atom_data = (
   }
 }
 
-// Parse CIF (Crystallographic Information File) format
+// @internal format-specific parser exported for tests - use parse_structure_file /
+// parse_any_structure as the public entry points.
+// Parse CIF (Crystallographic Information File) format.
 export function parse_cif(
   content: string,
   wrap_fractional_coords: boolean = true,
@@ -766,7 +826,7 @@ export function parse_cif(
   try {
     const text = content.trim()
     if (!text) {
-      console.error(`CIF file is empty`)
+      diag_error(`CIF file is empty`)
       return null
     }
 
@@ -776,17 +836,8 @@ export function parse_cif(
     const atom_data_lines: string[] = []
     const symmetry_ops: string[] = []
 
-    for (let ii = 0; ii < lines.length; ii++) {
-      if (lines[ii].trim() !== `loop_`) continue
-
-      let jj = ii + 1
-      const headers: string[] = []
-
-      // Collect headers for this loop
-      while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
-        headers.push(lines[jj].trim())
-        jj++
-      }
+    for (const { headers, data_start } of iter_cif_loops(lines)) {
+      let jj = data_start
 
       // Check if this is a symmetry operations loop
       if (
@@ -821,10 +872,7 @@ export function parse_cif(
           indices_preview.cart_y !== undefined &&
           indices_preview.cart_z !== undefined)
 
-      if (!has_coords) {
-        ii = jj - 1
-        continue
-      }
+      if (!has_coords) continue
 
       // This is the desired atom-site loop with coordinates: collect data lines
       atom_headers = headers
@@ -850,7 +898,7 @@ export function parse_cif(
     }
 
     if (atom_headers.length === 0 || atom_data_lines.length === 0) {
-      console.error(`No valid atom site loop found in CIF file`)
+      diag_error(`No valid atom site loop found in CIF file`)
       return null
     }
 
@@ -870,7 +918,7 @@ export function parse_cif(
           : null
 
     if (!coords_type) {
-      console.error(`CIF atom site loop missing coordinates (fract or Cartn)`)
+      diag_error(`CIF atom site loop missing coordinates (fract or Cartn)`)
       return null
     }
 
@@ -881,12 +929,7 @@ export function parse_cif(
         : [header_indices.cart_x, header_indices.cart_y, header_indices.cart_z]
 
     const atoms = atom_data_lines
-      .map((line) => {
-        // Handle quoted multi-word values by splitting only on whitespace
-        // that is not inside quotes.
-        const tokens = line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []
-        return tokens.map((token) => token.replaceAll(/['"]/g, ``))
-      })
+      .map(split_cif_tokens)
       .filter((tokens) => {
         const { disorder } = header_indices
         const max_required_idx = Math.max(...required_indices)
@@ -899,14 +942,14 @@ export function parse_cif(
         try {
           return parse_cif_atom_data(tokens, header_indices, coords_type)
         } catch (error) {
-          console.warn(`Skipping invalid atom data: ${error}`)
+          diag_warn(`Skipping invalid atom data: ${error}`)
           return null
         }
       })
       .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
 
     if (atoms.length === 0) {
-      console.error(`No valid atoms found in CIF file`)
+      diag_error(`No valid atoms found in CIF file`)
       return null
     }
 
@@ -915,7 +958,7 @@ export function parse_cif(
     const angles = extract_cif_cell_parameters(text, `cell_angle`, strict)
 
     if (lengths.length < 3 || angles.length < 3) {
-      console.error(`Insufficient cell parameters in CIF file`)
+      diag_error(`Insufficient cell parameters in CIF file`)
       return null
     }
 
@@ -945,46 +988,27 @@ export function parse_cif(
     const centering_vectors: Vec3[] = [[0, 0, 0]]
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
-    const atom_type_counts: Record<string, number> = (() => {
-      const map: Record<string, number> = {}
-      const text_lines = text.split(`\n`)
-      for (let li = 0; li < text_lines.length; li++) {
-        if (text_lines[li].trim() !== `loop_`) {
-          continue
-        }
-        let lj = li + 1
-        const hdrs: string[] = []
-        while (lj < text_lines.length && text_lines[lj].trim().startsWith(`_`)) {
-          hdrs.push(text_lines[lj].trim().toLowerCase())
-          lj++
-        }
-        const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
-        const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
-        if (sym_idx !== -1 && num_idx !== -1) {
-          while (lj < text_lines.length) {
-            const line = text_lines[lj].trim()
-            if (!line || line === `loop_` || line.startsWith(`data_`)) break
-            if (line.startsWith(`#`)) {
-              lj++
-              continue
-            }
-            const toks = (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []).map((tok) =>
-              tok.replaceAll(/['"]/g, ``),
-            )
-            if (toks.length > Math.max(sym_idx, num_idx)) {
-              // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
-              const match = /^([A-Z][a-z]*)/.exec(toks[sym_idx])
-              const sym = match ? match[1] : toks[sym_idx]
-              const num = parseInt(toks[num_idx], 10)
-              if (sym && !Number.isNaN(num)) map[sym] = num
-            }
-            lj++
-          }
-          break
+    const atom_type_counts: Record<string, number> = {}
+    for (const { headers, data_start } of iter_cif_loops(lines)) {
+      const hdrs = headers.map((hdr) => hdr.toLowerCase())
+      const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
+      const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
+      if (sym_idx === -1 || num_idx === -1) continue
+      for (let lj = data_start; lj < lines.length; lj++) {
+        const line = lines[lj].trim()
+        if (!line || line === `loop_` || line.startsWith(`data_`)) break
+        if (line.startsWith(`#`)) continue
+        const toks = split_cif_tokens(line)
+        if (toks.length > Math.max(sym_idx, num_idx)) {
+          // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
+          const match = /^([A-Z][a-z]*)/.exec(toks[sym_idx])
+          const sym = match ? match[1] : toks[sym_idx]
+          const num = parseInt(toks[num_idx], 10)
+          if (sym && !Number.isNaN(num)) atom_type_counts[sym] = num
         }
       }
-      return map
-    })()
+      break
+    }
 
     const observed_counts: Record<string, number> = {}
     for (const atom of atoms) {
@@ -1046,7 +1070,7 @@ export function parse_cif(
     const sites = all_sites
     return { sites, lattice: { matrix: lattice_matrix, ...lattice_params } }
   } catch (error) {
-    console.error(`Error parsing CIF file:`, error)
+    diag_error(`Error parsing CIF file`, error)
     return null
   }
 }
@@ -1102,7 +1126,10 @@ const get_phonopy_cell = (
   return is_phonopy_cell(cell) ? cell : undefined
 }
 
-// Parse phonopy YAML file and return the requested cell type (or preferred single structure)
+// @internal format-specific parser exported for tests - use parse_structure_file /
+// parse_any_structure as the public entry points.
+// Parse phonopy YAML file and return the requested cell type (or preferred single
+// structure).
 export function parse_phonopy_yaml(
   content: string,
   cell_type?: CellType,
@@ -1135,7 +1162,7 @@ export function parse_phonopy_yaml(
     const data = yaml_load(filtered_content)
 
     if (!data) {
-      console.error(`Failed to parse phonopy YAML`)
+      diag_error(`Failed to parse phonopy YAML`)
       return null
     }
 
@@ -1144,7 +1171,7 @@ export function parse_phonopy_yaml(
       const cell = get_phonopy_cell(data, cell_type)
       if (cell) return convert_phonopy_cell(cell)
 
-      console.error(`Requested cell type '${cell_type}' not found in phonopy YAML`)
+      diag_error(`Requested cell type '${cell_type}' not found in phonopy YAML`)
       return null
     }
 
@@ -1163,10 +1190,10 @@ export function parse_phonopy_yaml(
       get_phonopy_cell(data, `primitive_cell`)
     if (auto_cell) return convert_phonopy_cell(auto_cell)
 
-    console.error(`No valid cells found in phonopy YAML`)
+    diag_error(`No valid cells found in phonopy YAML`)
     return null
   } catch (error) {
-    console.error(`Error parsing phonopy YAML:`, error)
+    diag_error(`Error parsing phonopy YAML`, error)
     return null
   }
 }
@@ -1205,8 +1232,8 @@ function find_structure_in_json(
   return null
 }
 
-// Type guard to validate structure-like objects
-function is_parsed_structure(obj: unknown): obj is ParsedStructure {
+// Type guard to validate structure-like objects (sites array with species + coordinates)
+export function is_parsed_structure(obj: unknown): obj is ParsedStructure {
   if (!obj || typeof obj !== `object`) return false
   const sites = `sites` in obj ? obj.sites : undefined
   if (!Array.isArray(sites) || sites.length === 0) return false
@@ -1261,8 +1288,9 @@ const detect_json_structure = (content: string): ParsedStructure | null => {
   return structure ? normalize_fractional_coords(structure) : null
 }
 
-// Auto-detect file format and parse accordingly
-export function parse_structure_file(
+// Auto-detect file format and parse accordingly. Internal: returns null on failure after
+// recording reasons in the diagnostics collector (see parse error contract at top of file)
+function parse_structure_file_impl(
   content: string,
   filename?: string,
 ): ParsedStructure | null {
@@ -1284,9 +1312,9 @@ export function parse_structure_file(
       try {
         const result = detect_json_structure(content)
         if (result) return result
-        console.error(`JSON file does not contain a valid structure format`)
+        diag_error(`JSON file does not contain a valid structure format`)
       } catch (error) {
-        console.error(`Error parsing JSON file:`, error)
+        diag_error(`Error parsing JSON file`, error)
       }
       return null
     }
@@ -1303,17 +1331,22 @@ export function parse_structure_file(
   // Try to auto-detect based on content.
   // JSON detection must come before the line-count guard: minified JSON
   // (e.g. fetched via extensionless blob: object URLs) is a single line.
+  const content_start = content.trimStart()
+  const looks_like_json = content_start.startsWith(`{`) || content_start.startsWith(`[`)
   try {
     const result = detect_json_structure(content)
     if (result) return result
-  } catch {
-    // Not JSON, continue with other format detection
+    if (looks_like_json) diag_error(`JSON content does not contain a valid structure format`)
+  } catch (error) {
+    // Only swallow silently when content doesn't even look like JSON; otherwise the
+    // syntax error is the most useful failure reason and must be surfaced
+    if (looks_like_json) diag_error(`Invalid JSON`, error)
   }
 
   const lines = content.trim().split(/\r?\n/)
 
   if (lines.length < 2) {
-    console.error(`File too short to determine format`)
+    diag_error(`File too short to determine format`)
     return null
   }
 
@@ -1373,12 +1406,23 @@ export function parse_structure_file(
   )
   if (has_phonopy_keywords) return parse_phonopy_yaml(content)
 
-  console.error(`Unable to determine file format`)
+  diag_error(`Unable to determine file format`)
   return null
 }
 
-// Universal parser that handles JSON and structure files
-export function parse_any_structure(content: string, filename: string): AnyStructure | null {
+// Auto-detect file format and parse accordingly.
+// Throws a descriptive Error (aggregating per-format failure reasons) when nothing parses.
+export function parse_structure_file(content: string, filename?: string): ParsedStructure {
+  reset_parse_diagnostics()
+  const structure = parse_structure_file_impl(content, filename)
+  if (structure) return structure
+  throw aggregate_parse_error(filename)
+}
+
+// Universal parser that handles JSON and structure files.
+// Throws a descriptive Error (aggregating per-format failure reasons) when nothing parses.
+export function parse_any_structure(content: string, filename: string): AnyStructure {
+  reset_parse_diagnostics()
   const finalize_structure = (structure: ParsedStructure): AnyStructure => ({
     sites: structure.sites,
     charge: 0,
@@ -1390,24 +1434,20 @@ export function parse_any_structure(content: string, filename: string): AnyStruc
     }),
   })
 
-  // Try JSON first, but handle nested structures properly
+  // Fast path: content is already a serialized structure object
   try {
     const parsed = JSON.parse(content)
-
-    // Check if it's already a valid structure using proper type guard
     if (is_parsed_structure(parsed)) {
       // Normalize coordinates (wrap fractional to [0,1) and recompute Cartesian)
       return finalize_structure(normalize_fractional_coords(parsed))
     }
-    // If not, use parse_structure_file to find nested structures
-    const structure = parse_structure_file(content, filename)
-
-    return structure ? finalize_structure(structure) : null
   } catch {
-    // Try structure file formats
-    const parsed = parse_structure_file(content, filename)
-    return parsed ? finalize_structure(parsed) : null
+    // Not plain JSON — fall through to format detection, which records failure reasons
   }
+
+  const structure = parse_structure_file_impl(content, filename)
+  if (structure) return finalize_structure(structure)
+  throw aggregate_parse_error(filename)
 }
 
 // Parse OPTIMADE JSON format
@@ -1416,7 +1456,7 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
     const raw = JSON.parse(content) as unknown
     return parse_optimade_from_raw(raw)
   } catch (error) {
-    console.error(`Error parsing OPTIMADE JSON:`, error)
+    diag_error(`Error parsing OPTIMADE JSON`, error)
     return null
   }
 }
@@ -1450,7 +1490,7 @@ function build_optimade_sites(
       lattice_params.c,
     ])
     if (!converter.exact) {
-      console.warn(`Failed to create exact coordinate converter for OPTIMADE structure`)
+      diag_warn(`Failed to create exact coordinate converter for OPTIMADE structure`)
     }
     cart_to_frac = converter.convert
   }
@@ -1460,7 +1500,7 @@ function build_optimade_sites(
     const species_name = species_at_sites[idx]
     if (!species_name) {
       if (opts.on_invalid === `throw`) throw new Error(`Missing species for site ${idx}`)
-      console.warn(`Missing species for site ${idx}, skipping`)
+      diag_warn(`Missing species for site ${idx}, skipping`)
       continue
     }
 
@@ -1469,7 +1509,7 @@ function build_optimade_sites(
       xyz = vec3_from_values(positions[idx], `OPTIMADE atom position ${idx + 1}`)
     } catch (error) {
       if (opts.on_invalid === `throw`) throw error
-      console.warn(`Invalid position data at site ${idx}: ${error}`)
+      diag_warn(`Invalid position data at site ${idx}: ${error}`)
       continue
     }
 
@@ -1509,7 +1549,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
   try {
     const structure = extract_optimade_structure_from_raw(raw)
     if (!structure) {
-      console.error(`No valid OPTIMADE structure found in JSON`)
+      diag_error(`No valid OPTIMADE structure found in JSON`)
       return null
     }
     const attrs = structure.attributes
@@ -1518,11 +1558,11 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     const positions_raw = attrs.cartesian_site_positions
     const species_raw = attrs.species_at_sites
     if (!(Array.isArray(positions_raw) && Array.isArray(species_raw))) {
-      console.error(`OPTIMADE JSON missing required position or species data`)
+      diag_error(`OPTIMADE JSON missing required position or species data`)
       return null
     }
     if (positions_raw.length !== species_raw.length) {
-      console.error(`OPTIMADE JSON position/species count mismatch`)
+      diag_error(`OPTIMADE JSON position/species count mismatch`)
       return null
     }
 
@@ -1531,7 +1571,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     })
 
     if (sites.length === 0) {
-      console.error(`No valid sites found in OPTIMADE JSON`)
+      diag_error(`No valid sites found in OPTIMADE JSON`)
       return null
     }
 
@@ -1541,7 +1581,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
         lattice_params && { lattice: { matrix: lattice_matrix, ...lattice_params } }),
     }
   } catch (error) {
-    console.error(`Error parsing OPTIMADE JSON:`, error)
+    diag_error(`Error parsing OPTIMADE JSON`, error)
     return null
   }
 }
@@ -1598,7 +1638,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
   } = optimade_structure.attributes
 
   if (!lattice_vectors || !cartesian_site_positions || !species_at_sites) {
-    console.error(`Missing required OPTIMADE structure data`)
+    diag_error(`Missing required OPTIMADE structure data`)
     return null
   }
 
@@ -1608,7 +1648,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
       { on_invalid: `throw`, site_props: true },
     )
     if (!lattice_matrix || !lattice_params) {
-      console.error(`Missing required OPTIMADE structure data`)
+      diag_error(`Missing required OPTIMADE structure data`)
       return null
     }
 
@@ -1619,7 +1659,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
       properties,
     }
   } catch (err) {
-    console.error(`Error converting OPTIMADE to Crystal format:`, err)
+    diag_error(`Error converting OPTIMADE to Crystal format`, err)
     return null
   }
 }

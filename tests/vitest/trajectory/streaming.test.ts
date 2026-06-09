@@ -91,6 +91,26 @@ describe(`Trajectory Streaming`, () => {
     return buffer
   }
 
+  it(`surfaces non-fatal parse warnings via trajectory metadata`, async () => {
+    // Two-frame XYZ where one atom per frame has an unrecognized element symbol.
+    // Those atoms are skipped with non-fatal warnings that must reach the UI via
+    // metadata.parse_warnings (collected by the diagnostics module during parsing).
+    const xyz = [
+      `2`,
+      `frame 0`,
+      `H 0 0 0`,
+      `Zz 1 1 1`,
+      `2`,
+      `frame 1`,
+      `H 0 0 0`,
+      `Zz 1 1 1`,
+    ].join(`\n`)
+    const traj = await parse_trajectory_async(xyz, `warn.xyz`)
+    const warnings = traj.metadata?.parse_warnings as string[] | undefined
+    expect(warnings?.length).toBeGreaterThan(0)
+    expect(warnings?.every((msg) => msg.includes(`unknown element symbol`))).toBe(true)
+  })
+
   it(`ignores stale out-of-order frame loads`, async () => {
     mount(TrajectoryRaceHarness, { target: document.body })
     const settle_frame_load = async () => {
@@ -417,12 +437,14 @@ describe(`Trajectory Streaming`, () => {
       expect(total_frames).toBe(9) // One less due to corruption
 
       const frame_4 = await loader.load_frame(data, 4)
-      const frame_5 = await loader.load_frame(data, 5) // Try to load the corrupted frame
-      const frame_6 = await loader.load_frame(data, 6) // Skip the corrupted frame
+      const frame_5 = await loader.load_frame(data, 5)
+      const frame_6 = await loader.load_frame(data, 6)
 
-      expect(frame_4).not.toBeNull()
-      expect(frame_5).toBeNull() // Corrupted frame should return null
-      expect(frame_6).not.toBeNull()
+      // Corrupted physical frame 5 is skipped entirely, so loaded indices stay
+      // consistent with get_total_frames: index 5 maps to physical frame 6, etc.
+      expect(frame_4?.metadata?.energy).toBe(-10.4)
+      expect(frame_5?.metadata?.energy).toBe(-10.6)
+      expect(frame_6?.metadata?.energy).toBe(-10.7)
     })
 
     it(`should handle empty or invalid trajectory data`, async () => {
@@ -552,6 +574,8 @@ describe(`Trajectory Streaming`, () => {
       expect(result.frames).toHaveLength(5)
       expect(result.metadata?.source_format).toBe(`xyz_trajectory`)
       expect(result.frames[0].structure.sites).toHaveLength(3)
+      // clean input must not attach a parse_warnings array (only set when warnings occur)
+      expect(result.metadata?.parse_warnings).toBeUndefined()
     })
 
     it(`should preserve all frame metadata during streaming`, async () => {

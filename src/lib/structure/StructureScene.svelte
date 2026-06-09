@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { AXIS_COLORS, get_d3_interpolator, NEG_AXIS_COLORS } from '$lib/colors'
+  import { get_d3_interpolator } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -9,12 +9,9 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import type {
-    CameraProjection,
-    ShowBonds,
-    VectorColorMode,
-    VectorLayerConfig,
-  } from '$lib/settings'
+  import { bind_renderer, build_orbit_props, SceneCamera } from '$lib/scene'
+  import type { SceneControlProps } from '$lib/scene'
+  import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import { colors } from '$lib/state.svelte'
@@ -52,21 +49,12 @@
     PARTIAL_OCCUPANCY_CAP_ARC,
   } from '$lib/structure/partial-occupancy'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import { T, useThrelte } from '@threlte/core'
+  import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import {
-    BufferAttribute,
-    BufferGeometry,
-    type Camera,
-    Color,
-    DoubleSide,
-    type Mesh,
-    type Object3D,
-    type Scene,
-    Vector3,
-  } from 'three'
+  import { BufferAttribute, BufferGeometry, Color, DoubleSide, Vector3 } from 'three'
+  import type { Mesh, Object3D } from 'three'
   import Bond from './Bond.svelte'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
@@ -91,7 +79,7 @@
     choose_site_label_offset,
     LABEL_OFFSET_EPS,
     make_label_position_calculator,
-  } from './label-placement'
+  } from './atom-label-placement'
   import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
   import { compute_polyhedra, merge_polyhedra_buffers } from './polyhedra'
 
@@ -249,7 +237,7 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
-  }: {
+  }: SceneControlProps & {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
     atom_radius?: number // scale factor for atomic radii
@@ -257,15 +245,6 @@
     // determined by the atomic radius of the element
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
     camera_target?: Vec3 // external orbit-controls target for pan synchronization
-    camera_projection?: CameraProjection // camera projection type
-    rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
-    // zoom level of the camera
-    max_zoom?: number
-    min_zoom?: number
-    rotate_speed?: number // rotation speed. set to 0 to disable rotation.
-    zoom_speed?: number // zoom speed. set to 0 to disable zooming.
-    pan_speed?: number // pan speed. set to 0 to disable panning.
-    zoom_to_cursor?: boolean // zoom toward cursor position instead of scene center
     show_atoms?: boolean
     show_bonds?: ShowBonds
     show_site_labels?: boolean
@@ -281,12 +260,9 @@
     vector_shaft_radius?: number
     vector_arrow_head_radius?: number
     vector_arrow_head_length?: number
-    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
     hovered_idx?: number | null
     hovered_site?: Site | null
     float_fmt?: string
-    auto_rotate?: number
-    initial_zoom?: number
     bond_thickness?: number
     bond_color?: string
     bonding_strategy?: BondingStrategy
@@ -305,9 +281,6 @@
     polyhedra_excluded_elements?: readonly string[] // elements never used as polyhedra centers
     polyhedra_included_elements?: readonly string[] // force-include (bypasses spectator hiding)
     polyhedra_rendered_elements?: string[] // (output) elements that currently have polyhedra
-    fov?: number
-    ambient_light?: number
-    directional_light?: number
     sphere_segments?: number
     lattice_props?: ComponentProps<typeof Lattice>
     // Symmetry elements (from symmetry_elements_from_ops) to overlay on the structure.
@@ -326,7 +299,6 @@
     site_label_bg_color?: string
     site_label_color?: string
     site_label_padding?: number
-    camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -344,9 +316,6 @@
     active_sites?: number[]
     active_highlight_color?: string
     rotation?: Vec3 // rotation control prop
-    // Expose scene and camera for external use (e.g. export pane)
-    scene?: Scene
-    camera?: Camera
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`] // OrbitControls instance
     rotation_target_ref?: Vec3 // Expose rotation target for reset
     initial_computed_zoom?: number // Expose initial zoom for reset
@@ -375,13 +344,9 @@
   )
   let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
 
-  const threlte = useThrelte()
-  $effect(() => {
-    scene = threlte.scene
-    camera = threlte.camera.current
-    if (threlte.renderer) {
-      Object.assign(threlte.renderer.domElement, { __renderer: threlte.renderer })
-    }
+  bind_renderer((threlte_scene, threlte_camera) => {
+    scene = threlte_scene
+    camera = threlte_camera
   })
 
   // Expose rotation target for external reset
@@ -1551,57 +1516,25 @@
     ),
   )
 
-  let gizmo_props = $derived.by(() => {
-    const axis_options = Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover_color]) => [
-        axis,
-        {
-          color,
-          labelColor: `#111`,
-          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
-          hover: {
-            color: hover_color,
-            labelColor: `#222222`,
-            opacity: axis.startsWith(`n`) ? 1 : 0.9,
-          },
-        },
-      ]),
-    )
-    return {
-      background: { enabled: false },
-      className: `responsive-gizmo`,
-      ...axis_options,
-      ...(typeof gizmo === `boolean` ? {} : gizmo),
-      offset: { left: 5, bottom: 5 },
-    }
-  })
-
-  let orbit_controls_props = $derived({
-    position: [0, 0, 0],
-    enableRotate: rotate_speed > 0,
-    rotateSpeed: rotate_speed,
-    enableZoom: zoom_speed > 0,
-    zoomSpeed: camera_projection === `orthographic` ? zoom_speed * 2 : zoom_speed,
-    zoomToCursor: zoom_to_cursor,
-    enablePan: pan_speed > 0,
-    panSpeed: pan_speed,
+  let orbit_controls_props = $derived(build_orbit_props({
+    camera_projection,
     target: camera_target ?? rotation_target,
-    maxZoom: max_zoom,
-    minZoom: min_zoom,
-    autoRotate: Boolean(auto_rotate),
-    autoRotateSpeed: auto_rotate,
-    enableDamping: Boolean(rotation_damping),
-    dampingFactor: rotation_damping,
-    onstart: () => {
-      camera_is_moving = true
+    rotate_speed,
+    zoom_speed,
+    zoom_to_cursor,
+    pan_speed,
+    max_zoom,
+    min_zoom,
+    auto_rotate,
+    rotation_damping,
+    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+    // Close hover tooltips + bond context menu while the camera moves
+    onstart_extra: () => {
       cancel_atom_hover_clear()
       hovered_idx = null
       bond_context_menu = null
     },
-    onend: () => {
-      camera_is_moving = false
-    },
-  })
+  }))
 
   let measure_line_color = $derived.by(() => {
     if (typeof window === `undefined`) return
@@ -1678,31 +1611,17 @@
   </extras.HTML>
 {/snippet}
 
-{#if camera_projection === `perspective`}
-  <T.PerspectiveCamera
-    makeDefault
-    position={camera_position}
-    {fov}
-    near={camera_near}
-    far={camera_far}
-  >
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.PerspectiveCamera>
-{:else}
-  <T.OrthographicCamera
-    makeDefault
-    position={camera_position}
-    zoom={computed_zoom}
-    near={-100}
-    far={camera_far}
-  >
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.OrthographicCamera>
-{/if}
+<SceneCamera
+  {camera_projection}
+  position={camera_position}
+  {fov}
+  zoom={computed_zoom}
+  near={camera_near}
+  far={camera_far}
+  orbit_props={orbit_controls_props}
+  {gizmo}
+  bind:orbit_controls
+/>
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />

@@ -8,8 +8,8 @@
   import Icon from '$lib/Icon.svelte'
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
-  import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { set_fullscreen_bg, setup_fullscreen_effect, toggle_fullscreen } from '$lib/layout'
+  import type { Point2D, Vec2 } from '$lib/math'
   import type {
     AxisConfig,
     PointStyle,
@@ -26,6 +26,7 @@
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import GasPressureControls from './GasPressureControls.svelte'
   import * as helpers from './helpers'
+  import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
   import StructurePopup from './StructurePopup.svelte'
@@ -44,9 +45,11 @@
     entries = [],
     controls = {},
     config = {},
+    show_controls,
     on_point_click,
     on_point_hover,
     fullscreen = $bindable(DEFAULTS.convex_hull.binary.fullscreen),
+    fullscreen_toggle = true,
     enable_info_pane = true,
     wrapper = $bindable(),
     label_threshold = 50,
@@ -57,7 +60,7 @@
       DEFAULTS.convex_hull.binary.color_scale as D3InterpolateName,
     ),
     info_pane_open = $bindable(DEFAULTS.convex_hull.binary.info_pane_open),
-    legend_pane_open = $bindable(DEFAULTS.convex_hull.binary.legend_pane_open),
+    controls_open = $bindable(DEFAULTS.convex_hull.binary.legend_pane_open),
     max_hull_dist_show_phases = $bindable(
       DEFAULTS.convex_hull.binary.max_hull_dist_show_phases,
     ),
@@ -96,7 +99,7 @@
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
-  const controls_config = $derived(normalize_show_controls(merged_controls.show))
+  const controls_config = $derived(normalize_show_controls(show_controls))
   const merged_config = $derived({
     ...default_hull_config,
     point_size: 6, // Binary diagrams use slightly smaller points
@@ -104,6 +107,12 @@
     colors: { ...default_hull_config.colors, ...config.colors },
     margin: { t: 40, r: 40, b: 60, l: 60, ...config.margin },
   })
+
+  // Narrow deriveds to primitive fields so heavy downstream deriveds (scatter series,
+  // hull segments) don't recompute whenever the broad merged_config object is recreated.
+  const stable_color = $derived(merged_config.colors?.stable)
+  const unstable_color = $derived(merged_config.colors?.unstable)
+  const show_hull_line = $derived(merged_config.show_hull)
 
   // Merge highlight style with defaults (consistent with 3D/4D)
   const merged_highlight_style = $derived(
@@ -114,86 +123,43 @@
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
     helpers.is_entry_highlighted(entry, highlighted_entries)
 
-  // Temperature-dependent free energy support
-  const { has_temp_data, available_temperatures } = $derived(
-    helpers.analyze_temperature_data(entries),
-  )
-
-  // Initialize or reset temperature when it's undefined or no longer valid
-  $effect(() => {
-    if (
-      has_temp_data &&
-      available_temperatures.length > 0 &&
-      (temperature === undefined || !available_temperatures.includes(temperature))
-    ) temperature = available_temperatures[0]
+  // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
+  // Explicit generic breaks the circular type inference through the all_enriched_entries thunk
+  const hull_data = create_hull_data_pipeline<ConvexHullEntry>({
+    dim: 2,
+    entries: () => entries,
+    temperature: () => temperature,
+    interpolate_temperature: () => interpolate_temperature,
+    max_interpolation_gap: () => max_interpolation_gap,
+    gas_config: () => gas_config,
+    gas_pressures: () => gas_pressures,
+    energy_source_mode: () => energy_source_mode,
+    all_enriched_entries: () => all_enriched_entries,
+    max_hull_dist_show_phases: () => max_hull_dist_show_phases,
+    show_stable: () => show_stable,
+    show_unstable: () => show_unstable,
+    keep_plot_entry: (entry, max_dist) =>
+      helpers.entry_is_stable(entry) || (entry.e_above_hull ?? 0) <= max_dist,
+    set_temperature: (next_temp) => temperature = next_temp,
+    set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
+    set_stable_entries: (value) => stable_entries = value,
+    set_unstable_entries: (value) => unstable_entries = value,
   })
-
-  // Filter entries by temperature when in temperature mode
-  const temp_filtered_entries = $derived(
-    has_temp_data && temperature !== undefined
-      ? helpers.filter_entries_at_temperature(entries, temperature, {
-        interpolate: interpolate_temperature,
-        max_interpolation_gap,
-      })
-      : entries,
-  )
-
-  // Gas-dependent chemical potential support (corrections based on T, P)
-  const {
-    entries: gas_corrected_entries,
-    analysis: gas_analysis,
-    merged_config: merged_gas_config,
-  } = $derived(
-    helpers.get_gas_corrected_entries(
-      temp_filtered_entries,
-      gas_config,
-      gas_pressures,
-      temperature ?? helpers.DEFAULT_GAS_TEMP,
-    ),
-  )
-
-  let { // Compute energy mode information
-    has_precomputed_e_form,
-    has_precomputed_hull,
-    can_compute_e_form,
-    can_compute_hull,
-    energy_mode,
-    unary_refs,
-  } = $derived(
-    helpers.compute_energy_mode_info(
-      gas_corrected_entries,
-      thermo.find_lowest_energy_unary_refs,
-      energy_source_mode,
-    ),
-  )
-
-  const effective_entries = $derived(
-    helpers.get_effective_entries(
-      gas_corrected_entries,
-      energy_mode,
-      unary_refs,
-      thermo.compute_e_form_per_atom,
-    ),
-  )
-
-  // Process data and element set
-  const pd_data = $derived(thermo.process_hull_entries(effective_entries))
-
-  const polymorph_stats_map = $derived(
-    helpers.compute_all_polymorph_stats(effective_entries),
-  ) // Pre-compute polymorph stats once for O(1) tooltip lookups
-
-  const elements = $derived.by(() => {
-    if (pd_data.elements.length > 2) {
-      console.error(
-        `ConvexHull2D: Dataset contains ${pd_data.elements.length} elements, but binary diagrams require exactly 2. Found: [${
-          pd_data.elements.join(`, `)
-        }]`,
-      )
-      return []
-    }
-    return pd_data.elements
-  })
+  const has_temp_data = $derived(hull_data.has_temp_data)
+  const available_temperatures = $derived(hull_data.available_temperatures)
+  const gas_analysis = $derived(hull_data.gas_analysis)
+  const merged_gas_config = $derived(hull_data.merged_gas_config)
+  const has_precomputed_e_form = $derived(hull_data.has_precomputed_e_form)
+  const has_precomputed_hull = $derived(hull_data.has_precomputed_hull)
+  const can_compute_e_form = $derived(hull_data.can_compute_e_form)
+  const can_compute_hull = $derived(hull_data.can_compute_hull)
+  const pd_data = $derived(hull_data.pd_data)
+  const polymorph_stats_map = $derived(hull_data.polymorph_stats_map)
+  const elements = $derived(hull_data.elements)
+  const max_hull_dist_in_data = $derived(hull_data.max_hull_dist_in_data)
+  const auto_default_threshold = $derived(hull_data.auto_default_threshold)
+  const plot_entries = $derived(hull_data.plot_entries)
+  const visible_entries = $derived(hull_data.visible_entries)
 
   // Coordinate computation ----------------------------------------------------
   function compute_binary_coordinates(
@@ -243,10 +209,12 @@
   })
 
   // Compute hull and enrich entries with e_above_hull (before filtering)
-  const { all_enriched_entries, hull_points } = $derived.by(() => {
-    if (coords_entries.length === 0) {
-      return { all_enriched_entries: [], hull_points: [] }
-    }
+  // Explicit return type breaks circular type inference with the hull_data pipeline
+  const { all_enriched_entries, hull_points } = $derived.by(
+    (): { all_enriched_entries: ConvexHullEntry[]; hull_points: Point2D[] } => {
+      if (coords_entries.length === 0) {
+        return { all_enriched_entries: [], hull_points: [] }
+      }
 
     // Build lower hull input: one minimum-energy point per composition x.
     // Excluded entries don't participate in hull construction.
@@ -271,47 +239,6 @@
       return { ...entry, ...compute_hull_stability(raw_dist, entry.exclude_from_hull) }
     })
     return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
-  })
-
-  // Auto threshold: show all for few entries, use default for many, interpolate between
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(all_enriched_entries),
-  )
-  const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
-    all_enriched_entries.length,
-    max_hull_dist_in_data,
-    DEFAULTS.convex_hull.binary.max_hull_dist_show_phases,
-  ))
-
-  const next_auto_threshold = helpers.auto_threshold_reset(
-    DEFAULTS.convex_hull.binary.max_hull_dist_show_phases,
-  )
-  $effect(() => {
-    max_hull_dist_show_phases = next_auto_threshold(
-      entries,
-      max_hull_dist_show_phases,
-      auto_default_threshold,
-    ) ?? max_hull_dist_show_phases
-  })
-
-  // Filter by threshold; visibility is a view predicate, not entry state.
-  const plot_entries = $derived(
-    all_enriched_entries.filter((entry) =>
-      helpers.entry_is_stable(entry) ||
-      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
-    ),
-  )
-
-  // Update bindable entries arrays when plot_entries change (single pass)
-  $effect(() => {
-    const stable: ConvexHullEntry[] = []
-    const unstable: ConvexHullEntry[] = []
-    for (const entry of plot_entries) {
-      if (helpers.entry_is_stable(entry)) stable.push(entry)
-      else unstable.push(entry)
-    }
-    stable_entries = stable
-    unstable_entries = unstable
   })
 
   let reset_counter = $state(0)
@@ -354,13 +281,6 @@
     return name in symbol_map ? (name as D3SymbolName) : undefined
   }
 
-  // Pre-compute visible entries to avoid redundant filtering
-  const visible_entries = $derived(helpers.visible_entries(
-    plot_entries,
-    show_stable,
-    show_unstable,
-  ))
-
   const scatter_points_series = $derived.by(() => {
     const is_energy_mode = color_mode === `energy`
     const count = visible_entries.length
@@ -386,7 +306,7 @@
           ? hl?.color
           : is_energy_mode
           ? undefined
-          : merged_config.colors?.[is_stable ? `stable` : `unstable`],
+          : (is_stable ? stable_color : unstable_color),
         stroke: is_stable ? `#ffffff` : `#000000`,
         radius: hl?.effect === `size` || hl?.effect === `both`
           ? base_radius * (hl?.size_multiplier ?? 1)
@@ -401,7 +321,9 @@
     return {
       x: x_vals,
       y: y_vals,
-      metadata: visible_entries,
+      // ConvexHullEntry is an interface (no implicit index signature), so cast for
+      // ScatterPlot's Metadata extends Record<string, unknown> constraint
+      metadata: visible_entries as (ConvexHullEntry & Record<string, unknown>)[],
       markers: `points` as const,
       point_style,
       ...(is_energy_mode ? { color_values } : {}),
@@ -409,7 +331,7 @@
   })
 
   const hull_segments_series = $derived.by(() => {
-    if (!merged_config.show_hull || hull_points.length < 2) return []
+    if (!show_hull_line || hull_points.length < 2) return []
     const segments = []
     for (let idx = 0; idx < hull_points.length - 1; idx++) {
       const p1 = hull_points[idx]
@@ -459,7 +381,7 @@
   function reset_all() {
     fullscreen = DEFAULTS.convex_hull.binary.fullscreen
     info_pane_open = DEFAULTS.convex_hull.binary.info_pane_open
-    legend_pane_open = DEFAULTS.convex_hull.binary.legend_pane_open
+    controls_open = DEFAULTS.convex_hull.binary.legend_pane_open
     color_mode = DEFAULTS.convex_hull.binary.color_mode
     color_scale = DEFAULTS.convex_hull.binary.color_scale as D3InterpolateName
     show_stable = DEFAULTS.convex_hull.binary.show_stable
@@ -478,7 +400,7 @@
   const has_changes_to_reset = $derived(
     fullscreen !== DEFAULTS.convex_hull.binary.fullscreen ||
       info_pane_open !== DEFAULTS.convex_hull.binary.info_pane_open ||
-      legend_pane_open !== DEFAULTS.convex_hull.binary.legend_pane_open ||
+      controls_open !== DEFAULTS.convex_hull.binary.legend_pane_open ||
       color_mode !== DEFAULTS.convex_hull.binary.color_mode ||
       color_scale !== DEFAULTS.convex_hull.binary.color_scale ||
       show_stable !== DEFAULTS.convex_hull.binary.show_stable ||
@@ -598,14 +520,7 @@
     set_fullscreen_bg(wrapper, fullscreen, `--hull-2d-bg-fullscreen`)
   })
 
-  let style = $derived(
-    `--hull-stable-color:${merged_config.colors?.stable || `#0072B2`};
-    --hull-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
-    --hull-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --hull-text-color:${
-      merged_config.colors?.annotation || `var(--text-color, #212121)`
-    };`,
-  )
+  let style = $derived(helpers.hull_style_css(merged_config.colors))
 </script>
 
 <svelte:document
@@ -658,9 +573,24 @@
       />
     {/if}
 
+    {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
+      <button
+        type="button"
+        onclick={() => toggle_fullscreen(wrapper)}
+        title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+        class="control-btn fullscreen-btn"
+      >
+        {#if typeof fullscreen_toggle === `function`}
+          {@render fullscreen_toggle({ fullscreen })}
+        {:else}
+          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+        {/if}
+      </button>
+    {/if}
+
     {#if controls_config.visible(`controls`)}
       <ConvexHullControls
-        bind:controls_open={legend_pane_open}
+        bind:controls_open
         bind:color_mode
         bind:color_scale
         bind:show_stable
@@ -721,6 +651,7 @@
     series={scatter_series}
     bind:display
     controls={{ show: false }}
+    fullscreen_toggle={false}
     x_axis={{
       label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
       range: x_domain,

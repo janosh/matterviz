@@ -4,9 +4,9 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
   import { create_file_drop_handler, load_from_url } from '$lib/io'
-  import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
+  import { toggle_fullscreen, ViewerChrome } from '$lib/layout'
+  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
@@ -16,7 +16,6 @@
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
   import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
@@ -90,7 +89,7 @@
     on_file_load,
     on_error,
     on_fullscreen_change,
-    on_hover,
+    on_point_hover,
     ...rest
   }:
     & {
@@ -111,15 +110,13 @@
       ibz_color?: string
       ibz_opacity?: number
       ibz_data?: IrreducibleBZData | null
-      /**
-       * Controls visibility configuration.
-       * - 'always': controls always visible
-       * - 'hover': controls visible on component hover (default)
-       * - 'never': controls never visible
-       * - object: { mode, hidden, style } for fine-grained control
-       *
-       * Control names: 'filename', 'fullscreen', 'info-pane', 'export-pane', 'controls'
-       */
+      // Controls visibility configuration.
+      // - 'always': controls always visible
+      // - 'hover': controls visible on component hover (default)
+      // - 'never': controls never visible
+      // - object: { mode, hidden, style } for fine-grained control
+      //
+      // Control names: 'filename', 'fullscreen', 'info-pane', 'export-pane', 'controls'
       show_controls?: ShowControlsProp
       fullscreen?: boolean
       width?: number
@@ -155,7 +152,7 @@
       on_file_load?: (data: BZHandlerData) => void
       on_error?: (data: BZHandlerData) => void
       on_fullscreen_change?: (data: BZHandlerData) => void
-      on_hover?: (data: BZHoverData | null) => void
+      on_point_hover?: (data: BZHoverData | null) => void
     }
     & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -165,9 +162,9 @@
   let current_filename = $state<string | undefined>(undefined)
   let hover_data = $state<BZHoverData | null>(null)
 
-  // Call on_hover callback when hover_data changes
+  // Call on_point_hover callback when hover_data changes
   $effect(() => {
-    on_hover?.(hover_data)
+    on_point_hover?.(hover_data)
   })
 
   // Normalize show_controls prop into consistent config
@@ -311,22 +308,15 @@
     }
   }
 
-  $effect(() => { // fullscreen and background
-    if (typeof window === `undefined`) return
-    const fs_el = document.fullscreenElement
-    if (fullscreen && fs_el !== wrapper && wrapper) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else if (!fullscreen && fs_el === wrapper) document.exitFullscreen()
-    set_fullscreen_bg(wrapper, fullscreen, `--bz-bg-fullscreen`)
+  sync_fullscreen({
+    get_wrapper: () => wrapper,
+    get_fullscreen: () => fullscreen,
+    set_fullscreen: (val) => (fullscreen = val),
+    bg_css_var: `--bz-bg-fullscreen`,
+    on_change: (val) =>
+      on_fullscreen_change?.({ structure, bz_data, bz_order, fullscreen: val }),
   })
 </script>
-
-<svelte:document
-  onfullscreenchange={() => {
-    fullscreen = Boolean(document.fullscreenElement)
-    on_fullscreen_change?.({ structure, bz_data, bz_order, fullscreen })
-  }}
-/>
 
 <div
   class:dragover
@@ -358,65 +348,46 @@
   {:else if error_msg}
     <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if structure && `lattice` in structure}
-    <section
-      class="control-buttons {controls_config.class}"
-      style={controls_config.style}
+    <ViewerChrome
+      {controls_config}
+      filename={current_filename}
+      {fullscreen}
+      {fullscreen_toggle}
+      {wrapper}
+      style="--viewer-buttons-top: var(--bz-buttons-top, var(--ctrl-btn-top, 1ex)); --viewer-buttons-right: var(--bz-buttons-right, var(--ctrl-btn-right, 1ex)); --viewer-buttons-z-index: var(--bz-buttons-z-index, var(--z-index-overlay-controls, 100000000))"
     >
-      {#if controls_config.mode !== `never`}
-        {#if current_filename && controls_config.visible(`filename`)}
-          <span class="filename">{current_filename}</span>
-        {/if}
-
-        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-          <button
-            type="button"
-            onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
-            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-            aria-pressed={fullscreen}
-            class="fullscreen-toggle"
-            {@attach tooltip()}
-          >
-            {#if typeof fullscreen_toggle === `function`}
-              {@render fullscreen_toggle({ fullscreen })}
-            {:else}
-              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-            {/if}
-          </button>
-        {/if}
-
-        {#if controls_config.visible(`info-pane`)}
-          <BrillouinZoneInfoPane {structure} {bz_data} bind:pane_open={info_pane_open} />
-        {/if}
-
-        {#if controls_config.visible(`export-pane`)}
-          <BrillouinZoneExportPane
-            bind:export_pane_open
-            {bz_data}
-            {wrapper}
-            {scene}
-            {camera}
-            bind:png_dpi
-            filename={current_filename || `brillouin-zone`}
-          />
-        {/if}
-
-        {#if controls_config.visible(`controls`)}
-          <BrillouinZoneControls
-            bind:controls_open
-            bind:bz_order
-            bind:surface_color
-            bind:surface_opacity
-            bind:edge_color
-            bind:edge_width
-            bind:show_vectors
-            bind:camera_projection
-            bind:show_ibz
-            bind:ibz_color
-            bind:ibz_opacity
-          />
-        {/if}
+      {#if controls_config.visible(`info-pane`)}
+        <BrillouinZoneInfoPane {structure} {bz_data} bind:pane_open={info_pane_open} />
       {/if}
-    </section>
+
+      {#if controls_config.visible(`export-pane`)}
+        <BrillouinZoneExportPane
+          bind:export_pane_open
+          {bz_data}
+          {wrapper}
+          {scene}
+          {camera}
+          bind:png_dpi
+          filename={current_filename || `brillouin-zone`}
+        />
+      {/if}
+
+      {#if controls_config.visible(`controls`)}
+        <BrillouinZoneControls
+          bind:controls_open
+          bind:bz_order
+          bind:surface_color
+          bind:surface_opacity
+          bind:edge_color
+          bind:edge_width
+          bind:show_vectors
+          bind:camera_projection
+          bind:show_ibz
+          bind:ibz_color
+          bind:ibz_opacity
+        />
+      {/if}
+    </ViewerChrome>
 
     {#if typeof WebGLRenderingContext !== `undefined`}
       <div style="overflow: hidden; height: 100%">
@@ -498,54 +469,6 @@
   }
   .brillouin-zone :global(canvas) {
     user-select: none;
-  }
-  section.control-buttons {
-    position: absolute;
-    display: flex;
-    top: var(--bz-buttons-top, var(--ctrl-btn-top, 1ex));
-    right: var(--bz-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: clamp(6pt, 1cqmin, 9pt);
-    z-index: var(
-      --bz-buttons-z-index,
-      var(--z-index-overlay-controls, 100000000)
-    );
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-    align-items: center;
-  }
-  /* Mode: always - controls always visible */
-  section.control-buttons.always-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: hover - controls visible on component hover */
-  .brillouin-zone:hover section.control-buttons.hover-visible,
-  .brillouin-zone:focus-within section.control-buttons.hover-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: never - stays hidden (default state, no additional CSS needed) */
-  section.control-buttons > :global(button) {
-    background-color: transparent;
-    display: flex;
-    padding: 4px;
-    border-radius: var(--border-radius, 3pt);
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
-  }
-  section.control-buttons :global(button:hover) {
-    background-color: color-mix(in srgb, currentColor 8%, transparent);
-  }
-  .filename {
-    font-family: monospace;
-    font-size: 0.9em;
-    background: var(--code-bg, rgba(0, 0, 0, 0.1));
-    padding: 3pt 6pt;
-    border-radius: 3pt;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   p.warn {
     text-align: center;

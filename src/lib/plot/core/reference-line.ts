@@ -364,7 +364,7 @@ export interface Scene3DParams {
   z_range: Vec2
 }
 
-/** Apply span constraints or use full range as fallback */
+// Apply span constraints or use full range as fallback
 export const span_or = (
   span: [number | null, number | null] | undefined,
   range: Vec2,

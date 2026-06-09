@@ -7,7 +7,8 @@
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { download } from '$lib/io/fetch'
+  import type { ExportSection } from '$lib/io'
+  import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
@@ -33,15 +34,24 @@
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
+  import type { Snippet } from 'svelte'
   import { onDestroy, onMount, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-  import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
+  import {
+    export_glb_file,
+    export_json_file,
+    export_png_file,
+    export_svg_file,
+    export_view_json_file,
+    get_json_string,
+    get_view_settings,
+  } from './export'
   import {
     apply_element_padding,
     bbox_diagonal,
@@ -86,6 +96,11 @@
     max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     render_local_tooltip = true,
+    wrapper = $bindable(),
+    fullscreen = $bindable(false),
+    fullscreen_toggle = true,
+    controls_open = $bindable(false),
+    export_pane_open = $bindable(false),
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -96,6 +111,16 @@
     max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
     render_local_tooltip?: boolean
+    // bindable: top-level wrapper element
+    wrapper?: HTMLDivElement
+    // bindable: fullscreen state
+    fullscreen?: boolean
+    // show/hide the fullscreen button (or custom snippet to render it)
+    fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+    // bindable: whether the controls pane is currently open
+    controls_open?: boolean
+    // bindable: whether the export pane is currently open
+    export_pane_open?: boolean
   } = $props()
 
   let formal_chempots_override = $state<boolean | null>(null)
@@ -168,11 +193,7 @@
     return deduped
   }
 
-  let wrapper = $state<HTMLDivElement>()
-  let fullscreen = $state(false)
-  let export_pane_open = $state(false)
   let formula_picker_open = $state(false)
-  let controls_open = $state(false)
 
   // Mutual exclusion: only one pane open at a time.
   // Separate effects so each reacts to its own pane opening independently —
@@ -181,8 +202,6 @@
   $effect(() => { if (export_pane_open) { formula_picker_open = false; controls_open = false } })
   $effect(() => { if (formula_picker_open) { export_pane_open = false; controls_open = false } })
   $effect(() => { if (controls_open) { export_pane_open = false; formula_picker_open = false } })
-  let copy_status = $state(false)
-  let copy_timeout_id: ReturnType<typeof setTimeout> | null = null
   let container_width = $state(0)
   let container_height = $state(0)
   const base_aspect_ratio = $derived(height > 0 && width > 0 ? height / width : 1)
@@ -1921,231 +1940,73 @@
   let png_dpi = $state(150)
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
 
-  function get_view_settings(): Record<string, unknown> {
-    const view_camera_position = orbit_controls_ref?.object?.position
-    const view_camera_target = orbit_controls_ref?.target
-    return {
+  const current_view_settings = (): Record<string, unknown> =>
+    get_view_settings({
       elements: plot_elements,
       camera_projection,
       auto_rotate,
       color_mode,
       color_scale,
       reverse_color_scale,
-      camera_position: view_camera_position
-        ? [view_camera_position.x, view_camera_position.y, view_camera_position.z]
-        : null,
-      camera_target: view_camera_target
-        ? [view_camera_target.x, view_camera_target.y, view_camera_target.z]
-        : null,
-    }
-  }
+      camera_position: orbit_controls_ref?.object?.position ?? null,
+      camera_target: orbit_controls_ref?.target ?? null,
+    })
 
-  interface OverlayTextItem {
-    x: number
-    y: number
-    text: string
-    font: string
-    font_size: string
-    font_family: string
-    font_weight: string
-    color: string
-  }
-  function get_overlay_text_items(canvas_rect: DOMRect): OverlayTextItem[] {
-    if (!wrapper) return []
-    const text_items: OverlayTextItem[] = []
-    for (
-      const element of wrapper.querySelectorAll(
-        `.tick-label, .axis-label, .domain-label`,
-      )
-    ) {
-      const html_element = element as HTMLElement
-      const style = getComputedStyle(html_element)
-      if (style.display === `none` || style.visibility === `hidden`) continue
-      const element_rect = html_element.getBoundingClientRect()
-      text_items.push({
-        x: element_rect.left + element_rect.width / 2 - canvas_rect.left,
-        y: element_rect.top + element_rect.height / 2 - canvas_rect.top,
-        text: html_element.textContent ?? ``,
-        font: style.font || `${style.fontSize} ${style.fontFamily}`,
-        font_size: style.fontSize || `11px`,
-        font_family: style.fontFamily || `sans-serif`,
-        font_weight: style.fontWeight || `400`,
-        color: style.color || `#333`,
-      })
-    }
-    return text_items
-  }
+  const export_json_payload = (): Record<string, unknown> => ({
+    elements: diagram_data?.elements ?? [],
+    domains: render_domains.map((domain) => ({
+      formula: domain.formula,
+      points_3d: domain.points_3d,
+    })),
+    lims: diagram_data?.lims ?? [],
+    view: current_view_settings(),
+  })
 
-  function export_png_file(): void {
-    if (!wrapper) return
-    const gl_canvas = wrapper.querySelector(`canvas`)
-    if (!(gl_canvas instanceof HTMLCanvasElement)) return
-
-    // Composite WebGL canvas + HTML overlay labels into a single image
-    const rect = gl_canvas.getBoundingClientRect()
-    const scale = Math.min(png_dpi / 72, 10)
-    const out = document.createElement(`canvas`)
-    out.width = Math.round(rect.width * scale)
-    out.height = Math.round(rect.height * scale)
-    const ctx = out.getContext(`2d`)
-    if (!ctx) return
-    ctx.scale(scale, scale)
-
-    // Draw the WebGL canvas as background
-    ctx.drawImage(gl_canvas, 0, 0, rect.width, rect.height)
-
-    // Draw all HTML overlay text (tick labels, axis labels, domain labels)
-    for (const text_item of get_overlay_text_items(rect)) {
-      ctx.font = text_item.font
-      ctx.fillStyle = text_item.color
-      ctx.textAlign = `center`
-      ctx.textBaseline = `middle`
-      ctx.fillText(text_item.text, text_item.x, text_item.y)
-    }
-
-    out.toBlob((blob) => {
-      if (!blob) return
-      download(blob, `${export_basename}.png`, `image/png`)
-    }, `image/png`)
-  }
-
-  const xml_escape = (text: string): string =>
-    text
-      .replaceAll(`&`, `&amp;`)
-      .replaceAll(`<`, `&lt;`)
-      .replaceAll(`>`, `&gt;`)
-      .replaceAll(`"`, `&quot;`)
-      .replaceAll(`'`, `&#39;`)
-
-  function export_svg_file(): void {
-    if (!wrapper) return
-    const gl_canvas = wrapper.querySelector(`canvas`)
-    if (!(gl_canvas instanceof HTMLCanvasElement)) return
-    const canvas_rect = gl_canvas.getBoundingClientRect()
-    if (canvas_rect.width === 0 || canvas_rect.height === 0) return
-    const png_data_url = gl_canvas.toDataURL(`image/png`)
-    const text_nodes = get_overlay_text_items(canvas_rect).map((text_item) =>
-      `<text x="${text_item.x.toFixed(2)}" y="${
-        text_item.y.toFixed(2)
-      }" text-anchor="middle" dominant-baseline="central" fill="${
-        xml_escape(text_item.color)
-      }" font-size="${xml_escape(text_item.font_size)}" font-family="${
-        xml_escape(text_item.font_family)
-      }" font-weight="${xml_escape(text_item.font_weight)}">${
-        xml_escape(text_item.text)
-      }</text>`
-    )
-    const metadata = xml_escape(JSON.stringify(get_view_settings()))
-    const svg = [
-      `<?xml version="1.0" encoding="UTF-8"?>`,
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas_rect.width}" height="${canvas_rect.height}" viewBox="0 0 ${canvas_rect.width} ${canvas_rect.height}">`,
-      `<metadata>${metadata}</metadata>`,
-      `<image href="${png_data_url}" x="0" y="0" width="${canvas_rect.width}" height="${canvas_rect.height}" />`,
-      ...text_nodes,
-      `</svg>`,
-    ].join(``)
-    download(svg, `${export_basename}.svg`, `image/svg+xml`)
-  }
-
-  function export_view_json_file(): void {
-    const json_text = JSON.stringify(get_view_settings(), null, 2)
-    download(json_text, `${export_basename}-view.json`, `application/json`)
-  }
-
-  function export_glb_file(): void {
-    const gltf_exporter = new GLTFExporter()
-    const export_root = new THREE.Group()
-    if (colored_hull_geometry) {
-      export_root.add(
-        new THREE.Mesh(
-          colored_hull_geometry.clone(),
-          new THREE.MeshBasicMaterial({
-            vertexColors: true,
-            transparent: true,
-            opacity: color_mode === `none` ? 0.25 : 0.4,
-            side: THREE.DoubleSide,
-          }),
-        ),
-      )
-    }
-    export_root.add(
-      new THREE.LineSegments(
-        edge_geometry.clone(),
-        new THREE.LineBasicMaterial({ color: 0x333333 }),
-      ),
-    )
-    for (const { geometry, color } of formula_mesh_data) {
-      export_root.add(
-        new THREE.Mesh(
-          geometry.clone(),
-          new THREE.MeshBasicMaterial({
-            color: new THREE.Color(color),
-            transparent: true,
-            opacity: 0.13,
-            side: THREE.DoubleSide,
-          }),
-        ),
-      )
-    }
-    if (draw_formula_lines) {
-      for (const { geometry, color } of formula_edge_data) {
-        export_root.add(
-          new THREE.LineSegments(
-            geometry.clone(),
-            new THREE.LineBasicMaterial({ color: new THREE.Color(color) }),
-          ),
-        )
-      }
-    }
-    gltf_exporter.parse(
-      export_root,
-      (result) => {
-        if (!(result instanceof ArrayBuffer)) return
-        download(result, `${export_basename}.glb`, `model/gltf-binary`)
-      },
-      (err) => {
-        console.error(`Failed to export GLB:`, err)
-      },
-      { binary: true, onlyVisible: false },
-    )
-  }
-
-  const get_json_string = (): string =>
-    JSON.stringify(
-      {
-        elements: diagram_data?.elements ?? [],
-        domains: render_domains.map((domain) => ({
-          formula: domain.formula,
-          points_3d: domain.points_3d,
-        })),
-        lims: diagram_data?.lims ?? [],
-        view: get_view_settings(),
-      },
-      null,
-      2,
-    )
-
-  function export_json_file(): void {
-    download(get_json_string(), `${export_basename}.json`, `application/json`)
-  }
-
-  async function copy_json(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(get_json_string())
-      copy_status = true
-    } catch (err) {
-      copy_status = false
-      console.error(`Failed to copy JSON to clipboard:`, err)
-    }
-    if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
-    copy_timeout_id = setTimeout(() => {
-      copy_status = false
-      copy_timeout_id = null
-    }, 1000)
-  }
+  const export_sections = $derived<ExportSection[]>([
+    {
+      title: `Export Image`,
+      items: [
+        {
+          label: `SVG`,
+          on_download: () =>
+            export_svg_file(wrapper, export_basename, current_view_settings()),
+        },
+        {
+          label: `PNG`,
+          show_dpi: true,
+          on_download: () => export_png_file(wrapper, export_basename, png_dpi),
+        },
+      ],
+    },
+    {
+      title: `Export Data`,
+      items: [
+        {
+          label: `JSON`,
+          on_download: () => export_json_file(export_json_payload(), export_basename),
+          copy_text: () => get_json_string(export_json_payload()),
+        },
+        {
+          label: `View`,
+          on_download: () =>
+            export_view_json_file(current_view_settings(), export_basename),
+        },
+        {
+          label: `GLB`,
+          on_download: () =>
+            export_glb_file({
+              hull_geometry: colored_hull_geometry,
+              hull_opacity: color_mode === `none` ? 0.25 : 0.4,
+              edge_geometry,
+              formula_meshes: formula_mesh_data,
+              formula_edges: draw_formula_lines ? formula_edge_data : [],
+            }, export_basename),
+        },
+      ],
+    },
+  ])
 
   onDestroy(() => {
-    if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
     if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
   })
 
@@ -2230,7 +2091,7 @@
     ) return
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
-    else if (event.key === `f`) toggle_fullscreen(wrapper)
+    else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
   }}
   onpointerdown={(event) => {
     const target = event.target
@@ -2243,72 +2104,16 @@
   }}
 >
   <section>
-    <DraggablePane
-      bind:show={export_pane_open}
-      open_icon="Cross"
-      closed_icon="Export"
+    <ExportPane
+      bind:export_pane_open
+      bind:png_dpi
+      sections={export_sections}
       pane_props={{ class: `chempot-export-pane` }}
       toggle_props={{
         class: `chempot-export-toggle`,
         title: `Export chemical potential diagram`,
       }}
-    >
-      <h4>Export Image</h4>
-      <div class="export-row">
-        <label>
-          SVG
-          <button type="button" onclick={export_svg_file} title="SVG snapshot export">
-            ⬇
-          </button>
-        </label>
-        <label>
-          PNG
-          <button type="button" onclick={export_png_file} title="PNG ({png_dpi} DPI)">
-            ⬇
-          </button>
-          &nbsp;(DPI: <input
-            type="number"
-            min={50}
-            max={500}
-            bind:value={png_dpi}
-            title="Export resolution in dots per inch"
-            style="margin: 0 0 0 2pt"
-          />)
-        </label>
-      </div>
-      <h4>Export Data</h4>
-      <div class="export-row">
-        <label>
-          JSON
-          <button type="button" onclick={export_json_file} aria-label="Download JSON">
-            ⬇
-          </button>
-          <button
-            type="button"
-            onclick={copy_json}
-            aria-label="Copy JSON to clipboard"
-          >
-            {copy_status ? `✅` : `📋`}
-          </button>
-        </label>
-        <label>
-          View
-          <button
-            type="button"
-            onclick={export_view_json_file}
-            aria-label="Download view JSON"
-          >
-            ⬇
-          </button>
-        </label>
-        <label>
-          GLB
-          <button type="button" onclick={export_glb_file} aria-label="Download GLB">
-            ⬇
-          </button>
-        </label>
-      </div>
-    </DraggablePane>
+    />
     <DraggablePane
       bind:show={formula_picker_open}
       open_icon="Cross"
@@ -2556,13 +2361,19 @@
       </SettingsSection>
     </ScatterPlot3DControls>
 
-    <button
-      type="button"
-      onclick={() => toggle_fullscreen(wrapper)}
-      title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-    >
-      <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-    </button>
+    {#if fullscreen_toggle}
+      <button
+        type="button"
+        onclick={() => toggle_fullscreen(wrapper)}
+        title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+      >
+        {#if typeof fullscreen_toggle === `function`}
+          {@render fullscreen_toggle({ fullscreen })}
+        {:else}
+          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+        {/if}
+      </button>
+    {/if}
   </section>
   {#if show_temperature_slider && temperature !== undefined}
     <TemperatureSlider
@@ -2942,23 +2753,6 @@
     align-items: center;
     gap: 4pt;
     font-size: 0.9em;
-  }
-  .chempot-diagram-3d :global(.export-row) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4pt 10pt;
-    margin: 0 0 4pt;
-  }
-  .chempot-diagram-3d :global(.export-row > label) {
-    margin: 0;
-  }
-  .chempot-diagram-3d :global(.export-row button) {
-    width: 1.4em;
-    height: 1.4em;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
   }
   .chempot-diagram-3d :global(.chempot-checks) {
     display: flex;

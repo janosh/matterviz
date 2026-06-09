@@ -148,8 +148,12 @@
       const text = content instanceof ArrayBuffer
         ? new TextDecoder().decode(content)
         : content
-      const parsed = parse_any_structure(text, filename)
-      if (parsed && `lattice` in parsed) dropped_structure = parsed
+      try {
+        const parsed = parse_any_structure(text, filename)
+        if (`lattice` in parsed) dropped_structure = parsed
+      } catch (exc) {
+        console.error(`Failed to parse dropped file ${filename}:`, exc)
+      }
     }}
     style="height: 450px"
   />

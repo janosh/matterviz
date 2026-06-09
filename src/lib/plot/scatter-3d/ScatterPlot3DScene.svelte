@@ -17,7 +17,8 @@
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
-  import { T, useTask, useThrelte } from '@threlte/core'
+  import { bind_renderer } from '$lib/scene'
+  import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
   import { type ComponentProps, onDestroy, type Snippet, untrack } from 'svelte'
@@ -108,10 +109,11 @@
     height?: number
   } = $props()
 
-  const threlte = useThrelte()
-  $effect(() => {
-    scene = threlte.scene
-    camera = threlte.camera.current
+  // Mirrors scene/camera into bindable props and tags the canvas with the renderer
+  // so export_canvas_as_png can re-render at export DPI
+  bind_renderer((threlte_scene, threlte_camera) => {
+    scene = threlte_scene
+    camera = threlte_camera
   })
 
   extras.interactivity()
@@ -205,15 +207,15 @@
     return pts.filter((pt) => isFinite(pt.x) && isFinite(pt.y) && isFinite(pt.z))
   }
 
-  // Compute axis range with D3's nice() for clean boundaries
+  // Compute axis range with D3's nice() for clean boundaries.
+  // data_min/data_max are the finite data extent (Infinity/-Infinity when empty).
   function compute_range(
-    values: number[],
+    [data_min, data_max]: Vec2,
     range?: [number | null, number | null],
   ): Vec2 {
     if (range?.[0] != null && range?.[1] != null) return range as Vec2
-    const valid = values.filter(isFinite)
-    if (valid.length === 0) return [0, 1]
-    let [min, max] = [Math.min(...valid), Math.max(...valid)]
+    if (data_min > data_max) return [0, 1] // no finite values
+    let [min, max] = [data_min, data_max]
     const pad = min === max
       ? (min === 0 ? 1 : Math.abs(min * 0.1))
       : (max - min) * 0.05
@@ -223,26 +225,30 @@
       .domain() as Vec2
   }
 
-  // Collect xyz values from points and surfaces
+  // Collect xyz extents from points and surfaces in one pass (no intermediate arrays)
   let surface_samples = $derived(surfaces.flatMap(sample_surface))
-  let x_range = $derived(
-    compute_range([
-      ...all_points.map((point) => point.x),
-      ...surface_samples.map((point) => point.x),
-    ], x_axis.range),
-  )
-  let y_range = $derived(
-    compute_range([
-      ...all_points.map((point) => point.y),
-      ...surface_samples.map((point) => point.y),
-    ], y_axis.range),
-  )
-  let z_range = $derived(
-    compute_range([
-      ...all_points.map((point) => point.z),
-      ...surface_samples.map((point) => point.z),
-    ], z_axis.range),
-  )
+  let data_extents = $derived.by(() => {
+    const extents = {
+      x: [Infinity, -Infinity] as Vec2,
+      y: [Infinity, -Infinity] as Vec2,
+      z: [Infinity, -Infinity] as Vec2,
+    }
+    for (const points of [all_points, surface_samples]) {
+      for (const pt of points) {
+        for (const axis of [`x`, `y`, `z`] as const) {
+          const val = pt[axis]
+          if (!isFinite(val)) continue
+          const extent = extents[axis]
+          if (val < extent[0]) extent[0] = val
+          if (val > extent[1]) extent[1] = val
+        }
+      }
+    }
+    return extents
+  })
+  let x_range = $derived(compute_range(data_extents.x, x_axis.range))
+  let y_range = $derived(compute_range(data_extents.y, y_axis.range))
+  let z_range = $derived(compute_range(data_extents.z, z_axis.range))
 
   const normalize_x = (value: number) => normalize_to_scene(value, x_range, scene_x)
   const normalize_y = (value: number) => normalize_to_scene(value, y_range, scene_y)
@@ -313,83 +319,100 @@
   )
 
   // Series line data for connecting points
-  type SeriesLineData = {
+  type SeriesLineInput = {
     series_idx: number
+    positions: number[]
     color: string
     width: number
     dashed: boolean
+  }
+  type SeriesLineData = SeriesLineInput & {
     line2: Line2
     geometry: LineGeometry
     material: LineMaterial
   }
 
-  // Track previous lines for cleanup
-  let series_lines: SeriesLineData[] = $state([])
-
-  $effect(() => {
-    // Dispose old lines before creating new ones
-    for (const line_data of untrack(() => series_lines)) {
-      line_data.geometry.dispose()
-      line_data.material.dispose()
-    }
-
-    const lines: SeriesLineData[] = []
+  // Per-series inputs the fat-line geometries actually depend on: ordered point
+  // positions plus the resolved stroke style. Computed as a derived so the effect
+  // below can diff against previous lines and only rebuild what changed.
+  let line_inputs = $derived.by((): SeriesLineInput[] => {
+    const eligible: SeriesLineInput[] = []
+    const positions_by_series = new Map<number, number[]>()
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
-      if (!srs?.line_style) continue
+      const line_style = srs?.line_style
+      if (!line_style) continue
       if (!(series_visibility[series_idx] ?? srs.visible ?? true)) continue
-
-      // Get points for this series in order
-      const series_points = processed_points
-        .filter((pt) => pt.series_idx === series_idx)
-        .sort((a, b) => a.point_idx - b.point_idx)
-
-      if (series_points.length < 2) continue
-
-      // Create fat line geometry (LineGeometry for Line2)
       const positions: number[] = []
-      for (const pt of series_points) {
-        positions.push(pt.x, pt.y, pt.z)
-      }
-      const geometry = new LineGeometry()
-      geometry.setPositions(positions)
-
-      // Determine line style
-      const line_style = srs.line_style
+      positions_by_series.set(series_idx, positions)
       const color = line_style.stroke ??
         (Array.isArray(srs.point_style)
           ? srs.point_style[0]?.fill
           : srs.point_style?.fill) ??
         get_series_color(series_idx)
-      const line_width = line_style.stroke_width ?? 2
-      const dashed = Boolean(line_style.line_dash)
-
-      // Create LineMaterial for fat lines (linewidth is in pixels when resolution is set)
-      // Use placeholder resolution; the separate resolution effect updates it
-      const material = new LineMaterial({
-        color: new THREE.Color(color).getHex(),
-        linewidth: line_width, // Width in pixels
-        dashed,
-        dashScale: dashed ? 2 : 1,
-        dashSize: 0.1,
-        gapSize: 0.05,
-        resolution: new THREE.Vector2(1, 1),
-      })
-
-      const line2 = new Line2(geometry, material)
-      line2.computeLineDistances()
-
-      lines.push({
+      eligible.push({
         series_idx,
+        positions,
         color,
-        width: line_width,
-        dashed,
-        line2,
-        geometry,
-        material,
+        width: line_style.stroke_width ?? 2,
+        dashed: Boolean(line_style.line_dash),
       })
     }
-    series_lines = lines
+    // processed_points are emitted in (series_idx, point_idx) order, so a single
+    // ordered pass replaces the old per-series filter + sort
+    for (const pt of processed_points) {
+      positions_by_series.get(pt.series_idx)?.push(pt.x, pt.y, pt.z)
+    }
+    return eligible.filter((input) => input.positions.length >= 6) // >= 2 points
+  })
+
+  const same_line_input = (prev: SeriesLineData, next: SeriesLineInput): boolean =>
+    prev.color === next.color && prev.width === next.width &&
+    prev.dashed === next.dashed &&
+    prev.positions.length === next.positions.length &&
+    prev.positions.every((coord, idx) => coord === next.positions[idx])
+
+  // Track previous lines for reuse/cleanup
+  let series_lines: SeriesLineData[] = $state([])
+
+  $effect(() => {
+    const inputs = line_inputs
+    untrack(() => {
+      const prev_by_idx = new Map(series_lines.map((line) => [line.series_idx, line]))
+      const next_lines = inputs.map((input): SeriesLineData => {
+        const prev = prev_by_idx.get(input.series_idx)
+        if (prev && same_line_input(prev, input)) {
+          prev_by_idx.delete(input.series_idx) // reused - don't dispose below
+          return prev
+        }
+        // Create fat line geometry (LineGeometry for Line2)
+        const geometry = new LineGeometry()
+        geometry.setPositions(input.positions)
+        // Create LineMaterial for fat lines (linewidth is in pixels when resolution
+        // is set). Use placeholder resolution; the separate resolution effect updates it
+        const material = new LineMaterial({
+          color: new THREE.Color(input.color).getHex(),
+          linewidth: input.width, // Width in pixels
+          dashed: input.dashed,
+          dashScale: input.dashed ? 2 : 1,
+          dashSize: 0.1,
+          gapSize: 0.05,
+          resolution: new THREE.Vector2(1, 1),
+        })
+        const line2 = new Line2(geometry, material)
+        line2.computeLineDistances()
+        return { ...input, line2, geometry, material }
+      })
+      // Dispose lines that were replaced or removed
+      for (const stale of prev_by_idx.values()) {
+        stale.geometry.dispose()
+        stale.material.dispose()
+      }
+      // Skip reassignment when every line was reused to avoid invalidating consumers
+      const unchanged = next_lines.length === series_lines.length &&
+        next_lines.every((line, idx) => line === series_lines[idx])
+      if (!unchanged) series_lines = next_lines
+    })
   })
 
   // Update LineMaterial resolution when canvas size changes

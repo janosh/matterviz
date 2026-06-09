@@ -1,20 +1,12 @@
 // Parsing functions for trajectory data from various formats
-import type { ElementSymbol } from '$lib/element/types'
 import { is_binary } from '$lib/io/is-binary'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
-import { parse_xyz } from '$lib/structure/parse'
+import { is_parsed_structure, parse_xyz } from '$lib/structure/parse'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
 import { strip_compression_extensions } from '$lib/io'
 import { ext_hint, FORMAT_PATTERNS, is_trajectory_file } from '$lib/trajectory/format-detect'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
-import {
-  calc_force_stats,
-  count_xyz_frames,
-  create_trajectory_frame,
-  validate_3x3_matrix,
-} from '$lib/trajectory/helpers'
+import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type {
   FrameLoader,
   ParseProgress,
@@ -24,8 +16,10 @@ import type {
 } from '$lib/trajectory/index'
 import type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
 import { parse_ase_trajectory } from './ase'
+import { get_traj_parse_warnings, reset_traj_parse_warnings, traj_warn } from './diagnostics'
 import { parse_torch_sim_hdf5 } from './hdf5'
 import { parse_lammps_trajectory } from './lammps'
+import { parse_pymatgen_trajectory } from './pymatgen'
 import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
 
@@ -34,11 +28,8 @@ const log_parse_debug = (_message: string, _error: unknown): void => {}
 
 // Re-export constants and types for consumers
 export {
-  INDEX_SAMPLE_RATE,
   LARGE_FILE_THRESHOLD,
   MAX_BIN_FILE_SIZE,
-  MAX_METADATA_SIZE,
-  MAX_SAFE_STRING_LENGTH,
   MAX_TEXT_FILE_SIZE,
 } from '$lib/trajectory/constants'
 export type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
@@ -49,6 +40,7 @@ export async function parse_trajectory_data(
   filename?: string,
   atom_type_mapping?: AtomTypeMapping,
 ): Promise<TrajectoryType> {
+  reset_traj_parse_warnings()
   if (data instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
     if (FORMAT_PATTERNS.hdf5(data, filename)) return parse_torch_sim_hdf5(data, filename)
@@ -101,8 +93,14 @@ export async function parse_trajectory_data(
     const frames = data.map((frame_data, idx) => {
       const frame_obj = frame_data as Record<string, unknown>
       const frame_step = frame_obj.step
+      const structure = frame_obj.structure ?? frame_obj
+      if (!is_parsed_structure(structure)) {
+        throw new Error(
+          `Invalid structure in trajectory frame ${idx}: expected non-empty 'sites' array with species and coordinates`,
+        )
+      }
       return {
-        structure: (frame_obj.structure ?? frame_obj) as AnyStructure,
+        structure: structure as AnyStructure,
         step: typeof frame_step === `number` ? frame_step : idx,
         metadata: (frame_obj.metadata as Record<string, unknown>) || {},
       }
@@ -114,96 +112,26 @@ export async function parse_trajectory_data(
 
   // Pymatgen format
   if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
-    const species = obj.species as { element: ElementSymbol }[]
-    const frame_elements = species.map((specie) => specie.element)
-    const coords = obj.coords as number[][][]
-    const matrix = validate_3x3_matrix(obj.lattice)
-    const frame_properties = (obj.frame_properties as Record<string, unknown>[]) || []
-    const frac_to_cart = math.create_frac_to_cart(matrix)
-
-    const frames = coords.map((frame_coords, idx) => {
-      const positions = frame_coords.map((abc) => frac_to_cart(abc as Vec3))
-
-      // Process frame properties to extract numpy arrays
-      const raw_properties = frame_properties[idx] || {}
-      const processed_properties: Record<string, unknown> = {}
-
-      Object.entries(raw_properties).forEach(([key, value]) => {
-        if (
-          value &&
-          typeof value === `object` &&
-          (value as Record<string, unknown>)[`@class`] === `array`
-        ) {
-          // Extract numpy array data
-          const array_obj = value as Record<string, unknown>
-          processed_properties[key] = array_obj.data
-
-          // Calculate force statistics for forces
-          if (key === `forces` && Array.isArray(array_obj.data)) {
-            // Object.assign ignores the null calc_force_stats returns for empty forces
-            Object.assign(processed_properties, calc_force_stats(array_obj.data as number[][]))
-          }
-
-          // Calculate stress statistics for stress tensor
-          if (key === `stress` && Array.isArray(array_obj.data)) {
-            const stress_tensor = array_obj.data
-            if (!math.is_square_matrix(stress_tensor, 3)) {
-              console.warn(`Invalid stress tensor structure in frame ${idx}`)
-            } else {
-              // Calculate stress components (diagonal elements represent normal stresses)
-              const normal_stresses = [
-                stress_tensor[0][0],
-                stress_tensor[1][1],
-                stress_tensor[2][2],
-              ]
-              processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
-              // Calculate hydrostatic pressure (negative of mean normal stress)
-              processed_properties.pressure =
-                -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3
-            }
-          }
-        } else {
-          processed_properties[key] = value
-        }
-      })
-
-      return create_trajectory_frame(
-        positions,
-        frame_elements,
-        matrix,
-        [true, true, true],
-        idx,
-        processed_properties,
-      )
-    })
-
-    return {
-      frames,
-      metadata: {
-        filename,
-        source_format: `pymatgen_trajectory`,
-        frame_count: frames.length,
-        species_list: [...new Set(species.map((specie) => specie.element))],
-        periodic_boundary_conditions: [true, true, true],
-      },
-    }
+    return parse_pymatgen_trajectory(obj, filename)
   }
 
   // Object with frames
   if (Array.isArray(obj.frames)) {
     const metadata = (obj.metadata ?? {}) as Record<string, unknown>
-    return {
-      frames: obj.frames as TrajectoryFrame[],
-      metadata: { ...metadata, source_format: `object_with_frames` },
-    }
+    const frames = obj.frames as TrajectoryFrame[]
+    return { frames, metadata: { ...metadata, source_format: `object_with_frames` } }
   }
 
   // Single structure
   if (obj.sites) {
-    return {
-      frames: [{ structure: obj as AnyStructure, step: 0, metadata: {} }],
-      metadata: { source_format: `single_structure`, frame_count: 1 },
+    if (!is_parsed_structure(obj)) {
+      throw new Error(
+        `Invalid structure: 'sites' must be a non-empty array of sites with species and coordinates`,
+      )
     }
+    const frames = [{ structure: obj as AnyStructure, step: 0, metadata: {} }]
+    const metadata = { source_format: `single_structure`, frame_count: 1 }
+    return { frames, metadata }
   }
 
   throw new Error(`Unrecognized trajectory format`)
@@ -246,6 +174,15 @@ export function get_unsupported_format_message(
     : null
 }
 
+// Attach non-fatal parse warnings (skipped atoms, dropped frames, plot-metadata
+// extraction failures, ...) collected during parsing to the trajectory metadata so
+// the UI can surface them instead of leaving them in the console only.
+function attach_parse_warnings(trajectory: TrajectoryType): TrajectoryType {
+  const parse_warnings = get_traj_parse_warnings()
+  if (parse_warnings.length === 0) return trajectory
+  return { ...trajectory, metadata: { ...trajectory.metadata, parse_warnings } }
+}
+
 // Unified async parser with streaming support
 export async function parse_trajectory_async(
   data: ArrayBuffer | string,
@@ -263,6 +200,7 @@ export async function parse_trajectory_async(
   const update_progress = (current: number, stage: string) =>
     on_progress?.({ current, total: 100, stage })
 
+  reset_traj_parse_warnings()
   try {
     update_progress(0, `Detecting format...`)
 
@@ -285,14 +223,13 @@ export async function parse_trajectory_async(
         ext_hint(filename, /\.(xyz|extxyz)$/) === null &&
         count_xyz_frames(data.slice(0, 2 ** 20)) >= 1)
     if (should_use_indexing && can_index) {
-      return await parse_with_unified_loader(
-        data,
-        filename,
-        {
-          index_sample_rate,
-          extract_plot_metadata,
-        },
-        on_progress,
+      return attach_parse_warnings(
+        await parse_with_unified_loader(
+          data,
+          filename,
+          { index_sample_rate, extract_plot_metadata },
+          on_progress,
+        ),
       )
     }
 
@@ -301,7 +238,7 @@ export async function parse_trajectory_async(
     const result = await parse_trajectory_data(data, filename, atom_type_mapping)
 
     update_progress(100, `Complete`)
-    return result
+    return attach_parse_warnings(result)
   } catch (error) {
     const error_message = error instanceof Error ? error.message : `Unknown error`
     update_progress(100, `Error: ${error_message}`)
@@ -357,7 +294,7 @@ async function parse_with_unified_loader(
         },
       )
     } catch (error) {
-      console.warn(`Failed to extract plot metadata:`, error)
+      traj_warn(`Failed to extract plot metadata`, error)
     }
   }
 

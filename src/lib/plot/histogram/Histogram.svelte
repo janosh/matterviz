@@ -20,10 +20,7 @@
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/core/data-transform'
-  import {
-    create_dimension_tracker,
-    create_hover_lock,
-  } from '$lib/plot/core/hover-lock.svelte'
+  import { create_placed_tween } from '$lib/plot/core/hover-lock.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
@@ -68,7 +65,6 @@
   import type { Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween } from 'svelte/motion'
   import type { Vec2 } from '$lib/math'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
@@ -206,12 +202,6 @@
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
   let hovered_legend_series_idx = $state<number | null>(null)
-  const legend_hover = create_hover_lock()
-  const dim_tracker = create_dimension_tracker()
-  let has_initial_legend_placement = $state(false)
-
-  // Clear pending hover lock timeout on unmount
-  $effect(() => () => legend_hover.cleanup())
 
   // Derived data
   type IndexedSeries = { series_data: DataSeries; series_idx: number }
@@ -623,37 +613,13 @@
     return result
   })
 
-  // Tweened legend coordinates for smooth animation - create once, update target via effect
-  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
-  const tweened_legend_coords = new Tween(
-    { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...legend?.tween })),
-  )
-
-  // Update legend position with stability checks
-  $effect(() => {
-    if (!width || !height || !legend_placement) return
-
-    // Track dimensions for resize detection
-    const dims_changed = dim_tracker.has_changed(width, height)
-    if (dims_changed) dim_tracker.update(width, height)
-
-    // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not yet initially placed))
-    const is_responsive = legend?.responsive ?? false
-    const should_update = dims_changed || (!legend_hover.is_locked.current &&
-      (is_responsive || !has_initial_legend_placement))
-
-    if (should_update) {
-      tweened_legend_coords.set(
-        { x: legend_placement.x, y: legend_placement.y },
-        // Skip animation on initial placement to avoid jump from (0, 0)
-        has_initial_legend_placement ? undefined : { duration: 0 },
-      )
-      // Only lock position after we have actual measured size
-      if (legend_element) {
-        has_initial_legend_placement = true
-      }
-    }
+  // Tweened legend coordinates with shared placement stability gating
+  const legend_tween = create_placed_tween({
+    placement: () => legend_placement,
+    dims: () => ({ width, height }),
+    responsive: () => legend?.responsive ?? false,
+    element: () => legend_element,
+    tween: () => ({ duration: 400, ...legend?.tween }),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -1102,12 +1068,12 @@
     {@const legend_left = legend_auto_outside
     ? legend_outside_x
     : legend_placement
-    ? tweened_legend_coords.current.x
+    ? legend_tween.coords.current.x
     : pad.l + 10}
     {@const legend_top = legend_auto_outside
     ? legend_outside_y
     : legend_placement
-    ? tweened_legend_coords.current.y
+    ? legend_tween.coords.current.y
     : pad.t + 10}
     <PlotLegend
       bind:root_element={legend_element}
@@ -1119,7 +1085,7 @@
         on_series_toggle(series_idx)
       })}
       on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
-      on_hover_change={legend_hover.set_locked}
+      on_hover_change={legend_tween.set_locked}
       on_item_hover={(item) =>
         (hovered_legend_series_idx = item != null && item.series_idx >= 0
           ? item.series_idx

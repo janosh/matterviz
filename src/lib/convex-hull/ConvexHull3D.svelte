@@ -16,11 +16,7 @@
   import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
-  import {
-    set_fullscreen_bg,
-    setup_fullscreen_effect,
-    toggle_fullscreen,
-  } from '$lib/layout'
+  import { toggle_fullscreen } from '$lib/layout'
   import { to_radians, type Point3D, type Vec2, type Vec3 } from '$lib/math'
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { centered_rect, pad_rect, rects_overlap, rect_within_rect } from '$lib/plot/core/layout'
@@ -40,11 +36,13 @@
     get_triangle_vertical_edges,
     TRIANGLE_VERTICES,
   } from './barycentric-coords'
+  import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import GasPressureControls from './GasPressureControls.svelte'
   import * as helpers from './helpers'
+  import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
   import StructurePopup from './StructurePopup.svelte'
@@ -54,7 +52,6 @@
     ConvexHullEntry,
     ConvexHullTriangle,
     HighlightStyle,
-    HoverData3D,
     HullFaceColorMode,
     LabelPlacement,
   } from './types'
@@ -64,10 +61,11 @@
     entries = [],
     controls = {},
     config = {},
+    show_controls,
     on_point_click,
     on_point_hover,
     fullscreen = $bindable(DEFAULTS.convex_hull.ternary.fullscreen),
-    enable_fullscreen = true,
+    fullscreen_toggle = true,
     enable_info_pane = true,
     wrapper = $bindable(),
     label_threshold = 50,
@@ -84,7 +82,7 @@
       DEFAULTS.convex_hull.ternary.color_scale as D3InterpolateName,
     ),
     info_pane_open = $bindable(DEFAULTS.convex_hull.ternary.info_pane_open),
-    legend_pane_open = $bindable(DEFAULTS.convex_hull.ternary.legend_pane_open),
+    controls_open = $bindable(DEFAULTS.convex_hull.ternary.legend_pane_open),
     max_hull_dist_show_phases = $bindable(
       DEFAULTS.convex_hull.ternary.max_hull_dist_show_phases,
     ),
@@ -119,7 +117,7 @@
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
-  const controls_config = $derived(normalize_show_controls(merged_controls.show))
+  const controls_config = $derived(normalize_show_controls(show_controls))
   const merged_config = $derived({
     ...default_hull_config,
     ...config,
@@ -127,89 +125,43 @@
     margin: { t: 40, r: 40, b: 60, l: 60, ...config.margin },
   })
 
-  // Temperature-dependent free energy support
-  const { has_temp_data, available_temperatures } = $derived(
-    helpers.analyze_temperature_data(entries),
-  )
-
-  // Initialize or reset temperature when it's undefined or no longer valid
-  $effect(() => {
-    if (
-      has_temp_data &&
-      available_temperatures.length > 0 &&
-      (temperature === undefined || !available_temperatures.includes(temperature))
-    ) temperature = available_temperatures[0]
+  // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
+  // Explicit generic breaks the circular type inference through the all_enriched_entries thunk
+  const hull_data = create_hull_data_pipeline<ConvexHullEntry>({
+    dim: 3,
+    entries: () => entries,
+    temperature: () => temperature,
+    interpolate_temperature: () => interpolate_temperature,
+    max_interpolation_gap: () => max_interpolation_gap,
+    gas_config: () => gas_config,
+    gas_pressures: () => gas_pressures,
+    energy_source_mode: () => energy_source_mode,
+    all_enriched_entries: () => all_enriched_entries,
+    max_hull_dist_show_phases: () => max_hull_dist_show_phases,
+    show_stable: () => show_stable,
+    show_unstable: () => show_unstable,
+    keep_plot_entry: (entry, max_dist) => (entry.e_above_hull ?? 0) <= max_dist,
+    set_temperature: (next_temp) => temperature = next_temp,
+    set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
+    set_stable_entries: (value) => stable_entries = value,
+    set_unstable_entries: (value) => unstable_entries = value,
   })
-
-  // Filter entries by temperature when in temperature mode
-  const temp_filtered_entries = $derived(
-    has_temp_data && temperature !== undefined
-      ? helpers.filter_entries_at_temperature(entries, temperature, {
-        interpolate: interpolate_temperature,
-        max_interpolation_gap,
-      })
-      : entries,
-  )
-
-  // Gas-dependent chemical potential support (corrections based on T, P)
-  // Default to DEFAULT_GAS_TEMP (room temperature) when no temperature specified
-  const {
-    entries: gas_corrected_entries,
-    analysis: gas_analysis,
-    merged_config: merged_gas_config,
-  } = $derived(
-    helpers.get_gas_corrected_entries(
-      temp_filtered_entries,
-      gas_config,
-      gas_pressures,
-      temperature ?? helpers.DEFAULT_GAS_TEMP,
-    ),
-  )
-
-  let { // Compute energy mode information
-    has_precomputed_e_form,
-    has_precomputed_hull,
-    can_compute_e_form,
-    can_compute_hull,
-    energy_mode,
-    unary_refs,
-  } = $derived(
-    helpers.compute_energy_mode_info(
-      gas_corrected_entries,
-      thermo.find_lowest_energy_unary_refs,
-      energy_source_mode,
-    ),
-  )
-
-  const effective_entries = $derived(
-    helpers.get_effective_entries(
-      gas_corrected_entries,
-      energy_mode,
-      unary_refs,
-      thermo.compute_e_form_per_atom,
-    ),
-  )
-
-  // Process convex hull data with unified PhaseData interface using effective entries
-  const pd_data = $derived(thermo.process_hull_entries(effective_entries))
-
-  // Pre-compute polymorph stats once for O(1) tooltip lookups
-  const polymorph_stats_map = $derived(
-    helpers.compute_all_polymorph_stats(effective_entries),
-  )
-
-  const elements = $derived.by(() => {
-    if (pd_data.elements.length > 3) {
-      console.error(
-        `ConvexHull3D: Dataset contains ${pd_data.elements.length} elements, but ternary diagrams require exactly 3. Found: [${
-          pd_data.elements.join(`, `)
-        }]`,
-      )
-      return []
-    }
-
-    return pd_data.elements
-  })
+  const has_temp_data = $derived(hull_data.has_temp_data)
+  const available_temperatures = $derived(hull_data.available_temperatures)
+  const gas_analysis = $derived(hull_data.gas_analysis)
+  const merged_gas_config = $derived(hull_data.merged_gas_config)
+  const has_precomputed_e_form = $derived(hull_data.has_precomputed_e_form)
+  const has_precomputed_hull = $derived(hull_data.has_precomputed_hull)
+  const can_compute_e_form = $derived(hull_data.can_compute_e_form)
+  const can_compute_hull = $derived(hull_data.can_compute_hull)
+  const energy_mode = $derived(hull_data.energy_mode)
+  const pd_data = $derived(hull_data.pd_data)
+  const polymorph_stats_map = $derived(hull_data.polymorph_stats_map)
+  const elements = $derived(hull_data.elements)
+  const max_hull_dist_in_data = $derived(hull_data.max_hull_dist_in_data)
+  const auto_default_threshold = $derived(hull_data.auto_default_threshold)
+  const plot_entries = $derived(hull_data.plot_entries)
+  const visible_entries = $derived(hull_data.visible_entries)
 
   // 1) Raw 3D coordinates (formation-energy z), independent of hull state
   const coords_entries = $derived.by(() => {
@@ -258,50 +210,9 @@
     }))
   })
 
-  // Auto threshold: show all for few entries, use default for many, interpolate between
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(all_enriched_entries),
-  )
-  const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
-    all_enriched_entries.length,
-    max_hull_dist_in_data,
-    DEFAULTS.convex_hull.ternary.max_hull_dist_show_phases,
-  ))
-
-  const next_auto_threshold = helpers.auto_threshold_reset(
-    DEFAULTS.convex_hull.ternary.max_hull_dist_show_phases,
-  )
-  $effect(() => {
-    max_hull_dist_show_phases = next_auto_threshold(
-      entries,
-      max_hull_dist_show_phases,
-      auto_default_threshold,
-    ) ?? max_hull_dist_show_phases
-  })
-
-  // Filter by threshold; visibility is a view predicate, not entry state.
-  const plot_entries = $derived(
-    all_enriched_entries.filter((entry) =>
-      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
-    ),
-  )
-  const visible_entries = $derived(helpers.visible_entries(
-    plot_entries,
-    show_stable,
-    show_unstable,
-  ))
-
-  $effect(() => {
-    stable_entries = plot_entries.filter(helpers.entry_is_stable)
-    unstable_entries = plot_entries.filter(helpers.entry_is_unstable)
-  })
-
   // Canvas rendering
   let canvas: HTMLCanvasElement | undefined = undefined
   let ctx: CanvasRenderingContext2D | null = null
-
-  // Performance optimization
-  let frame_id = 0
 
   const camera_default = {
     elevation: DEFAULTS.convex_hull.ternary.camera_elevation,
@@ -418,43 +329,84 @@
     }
   })
 
-  // Interaction state
-  let is_dragging = $state(false)
-  let drag_started = $state(false)
-  let last_mouse = $state({ x: 0, y: 0 })
-  let hover_data = $state.raw<HoverData3D<ConvexHullEntry> | null>(null)
-  let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
-
-  // Drag and drop state
-  let drag_over = $state(false)
-
-  // Structure popup state
-  let modal_open = $state(false)
-  let selected_structure = $state<AnyStructure | null>(null)
-  let modal_place_right = $state(true)
-  $effect(() => {
-    const current_selection = helpers.current_entry(selected_entry, plot_entries)
-    const stale_selection = selected_entry && !current_selection
-    if (stale_selection) selected_entry = null
-    else if (current_selection && !helpers.same_entry(current_selection, selected_entry)) {
-      selected_entry = current_selection
-    }
-    const current_hover = helpers.current_entry(hover_data?.entry, plot_entries)
-    if (hover_data?.entry && !current_hover) {
-      hover_data = null
-      on_point_hover?.(null)
-    } else if (hover_data && current_hover && current_hover !== hover_data.entry) {
-      hover_data = { ...hover_data, entry: current_hover }
-    }
-    if (modal_open) {
-      const structure = current_selection && extract_structure_from_entry(current_selection)
-      if (structure) selected_structure = structure
-      else {
-        modal_open = false
-        selected_structure = null
+  // Shared canvas-interaction scaffold (mouse/keyboard handlers, hover/drag/popup
+  // state, canvas sizing, render scheduler). Rotation math + keydown actions stay local.
+  const interactions = create_canvas_interactions({
+    wheel_clamp: [0.5, 10],
+    fullscreen_bg_var: `--hull-3d-bg-fullscreen`,
+    canvas: () => canvas,
+    wrapper: () => wrapper,
+    ctx: () => ctx,
+    set_ctx: (context) => ctx = context,
+    set_canvas_dims: (dims) => canvas_dims = dims,
+    visible_entries: () => visible_entries,
+    plot_entries: () => plot_entries,
+    selected_entry: () => selected_entry,
+    set_selected_entry: (entry) => selected_entry = entry,
+    fullscreen: () => fullscreen,
+    enable_click_selection: () => enable_click_selection,
+    enable_structure_preview: () => enable_structure_preview,
+    on_point_click: () => on_point_click,
+    on_point_hover: () => on_point_hover,
+    on_file_drop: () => on_file_drop,
+    zoom: () => camera.zoom,
+    set_zoom: (zoom) => camera.zoom = zoom,
+    project_point: project_3d_point,
+    extract_structure: extract_structure_from_entry,
+    render_frame,
+    on_drag: (dx, dy, panning) => {
+      if (panning) {
+        camera.center_x += dx
+        camera.center_y += dy
+      } else {
+        // Horizontal drag -> azimuth rotation around z-axis
+        camera.azimuth += dx * 0.3 // Positive dx (drag right) rotates clockwise
+        // Vertical drag -> elevation angle (full range)
+        camera.elevation -= dy * 0.3 // Positive dy (drag down) tilts view down
       }
-    }
+    },
+    // Reset pan center when entering/exiting fullscreen
+    on_fullscreen_change: () => {
+      camera.center_x = 0
+      camera.center_y = -50
+    },
+    actions: () => ({
+      r: reset_camera,
+      t: () => {
+        camera.elevation = 0
+        camera.azimuth = 0
+        center_camera(0)
+      },
+      b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
+      s: () => show_stable = !show_stable,
+      u: () => show_unstable = !show_unstable,
+      h: () => show_hull_faces = !show_hull_faces,
+      l: () => show_stable_labels = !show_stable_labels,
+    }),
   })
+  const {
+    handle_keydown,
+    handle_file_drop,
+    handle_drag_over,
+    handle_drag_leave,
+    handle_mouse_down,
+    handle_mouse_move,
+    handle_mouse_up,
+    handle_wheel,
+    handle_hover,
+    handle_click,
+    handle_double_click,
+    close_structure_popup,
+    render_once,
+    copy_feedback,
+  } = interactions
+  const is_dragging = $derived(interactions.is_dragging)
+  const hover_data = $derived(interactions.hover_data)
+  const drag_over = $derived(interactions.drag_over)
+  const modal_open = $derived(interactions.modal_open)
+  const selected_structure = $derived(interactions.selected_structure)
+  const modal_place_right = $derived(interactions.modal_place_right)
+  const sorted_points_cache = $derived(interactions.sorted_points_cache)
 
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
@@ -496,7 +448,7 @@
     reset_camera()
     fullscreen = DEFAULTS.convex_hull.ternary.fullscreen
     info_pane_open = DEFAULTS.convex_hull.ternary.info_pane_open
-    legend_pane_open = DEFAULTS.convex_hull.ternary.legend_pane_open
+    controls_open = DEFAULTS.convex_hull.ternary.legend_pane_open
     color_mode = DEFAULTS.convex_hull.ternary.color_mode
     color_scale = DEFAULTS.convex_hull.ternary.color_scale as D3InterpolateName
     show_stable = DEFAULTS.convex_hull.ternary.show_stable
@@ -511,75 +463,6 @@
     hull_face_opacity = DEFAULTS.convex_hull.ternary.hull_face_opacity
     hull_face_color_mode = DEFAULTS.convex_hull.ternary
       .hull_face_color_mode as HullFaceColorMode
-  }
-
-  const handle_keydown = (event: KeyboardEvent) => {
-    const target = event.target
-    if (target instanceof HTMLElement && target.tagName.match(/INPUT|TEXTAREA/)) return
-
-    // Stop propagation if event came from canvas to prevent wrapper's handler
-    // from running again (both have onkeydown, causing duplicate handling)
-    if (target === canvas) {
-      event.stopPropagation()
-    }
-
-    if (event.key === `Escape` && modal_open) {
-      close_structure_popup()
-      return
-    }
-
-    // Handle Enter for keyboard accessibility - select hovered entry
-    if (event.key === `Enter`) {
-      const entry = hover_data?.entry
-      if (entry) {
-        on_point_click?.(entry)
-        if (enable_click_selection) {
-          selected_entry = entry
-          if (enable_structure_preview) {
-            const structure = extract_structure_from_entry(entry)
-            if (structure) {
-              selected_structure = structure
-              modal_place_right = helpers.calculate_modal_side(wrapper)
-              modal_open = true
-            }
-          }
-        }
-      } else if (modal_open) {
-        close_structure_popup()
-      }
-      return
-    }
-
-    const actions: Record<string, () => void> = {
-      r: reset_camera,
-      t: () => {
-        camera.elevation = 0
-        camera.azimuth = 0
-        center_camera(0)
-      },
-      b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
-      s: () => show_stable = !show_stable,
-      u: () => show_unstable = !show_unstable,
-      h: () => show_hull_faces = !show_hull_faces,
-      l: () => show_stable_labels = !show_stable_labels,
-    }
-    actions[event.key.toLowerCase()]?.()
-  }
-
-  async function handle_file_drop(event: DragEvent): Promise<void> {
-    drag_over = false
-    const data = await helpers.parse_hull_entries_from_drop(event)
-    if (data) on_file_drop?.(data)
-  }
-
-  async function copy_entry_data(
-    entry: ConvexHullEntry,
-    position: { x: number; y: number },
-  ) {
-    await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
-      copy_feedback.visible = visible
-      copy_feedback.position = pos
-    })
   }
 
   const get_point_color = (entry: ConvexHullEntry): string =>
@@ -841,12 +724,14 @@
         return energy_face_scale?.(avg_e_form - min_face_e_form) ?? hull_face_color
       }
       if (hull_face_color_mode === `dominant_element`) {
-        // Find element vertex closest to face centroid in 2D ternary space
+        // Find element vertex closest to face centroid in 2D ternary space (single-pass argmin)
         const { x: cx, y: cy } = tri.centroid
-        const dists = TRIANGLE_VERTICES.map(([tx, ty]) =>
-          Math.hypot(cx - tx, cy - ty)
-        )
-        const el = elements[dists.indexOf(Math.min(...dists))]
+        let [closest_idx, min_dist] = [0, Infinity]
+        for (const [idx, [tx, ty]] of TRIANGLE_VERTICES.entries()) {
+          const dist = Math.hypot(cx - tx, cy - ty)
+          if (dist < min_dist) [closest_idx, min_dist] = [idx, dist]
+        }
+        const el = elements[closest_idx]
         return element_colors[el] ?? `#888888`
       }
       if (hull_face_color_mode === `facet_index`) {
@@ -1216,179 +1101,10 @@
     draw_element_labels()
   }
 
-  function handle_mouse_down(event: MouseEvent) {
-    is_dragging = true
-    drag_started = false
-    hover_data = null
-    on_point_hover?.(null)
-    last_mouse = { x: event.clientX, y: event.clientY }
-  }
-
-  const handle_mouse_move = (event: MouseEvent) => {
-    if (!is_dragging) return
-    const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
-
-    // Mark as drag if any movement occurred
-    if (dx !== 0 || dy !== 0) drag_started = true
-
-    // With Cmd/Ctrl held: pan the view instead of rotating
-    if (event.metaKey || event.ctrlKey) {
-      camera.center_x += dx
-      camera.center_y += dy
-    } else {
-      // Horizontal drag -> azimuth rotation around z-axis
-      camera.azimuth += dx * 0.3 // Positive dx (drag right) rotates clockwise
-
-      // Vertical drag -> elevation angle (full range)
-      camera.elevation -= dy * 0.3 // Positive dy (drag down) tilts view down
-    }
-
-    last_mouse = { x: event.clientX, y: event.clientY }
-  }
-
-  const handle_wheel = (event: WheelEvent) => {
-    event.preventDefault()
-    camera.zoom = Math.max(
-      0.5,
-      Math.min(10, camera.zoom * (event.deltaY > 0 ? 0.98 : 1.02)),
-    )
-  }
-
-  const handle_hover = (event: MouseEvent) => {
-    if (is_dragging) return
-    const entry = find_entry_at_mouse(event)
-    hover_data = entry
-      ? { entry, position: { x: event.clientX, y: event.clientY } }
-      : null
-    on_point_hover?.(hover_data)
-  }
-
-  const find_entry_at_mouse = (event: MouseEvent): ConvexHullEntry | null =>
-    helpers.find_hull_entry_at_mouse(
-      canvas,
-      event,
-      visible_entries,
-      (x: number, y: number, z: number) => {
-        const pt = project_3d_point(x, y, z)
-        return { x: pt.x, y: pt.y }
-      },
-    )
-
-  const handle_click = (event: MouseEvent) => {
-    event.stopPropagation()
-    // Check if this was a drag operation (any mouse movement during drag)
-    const was_drag = drag_started
-    drag_started = false // Reset for next interaction
-    if (was_drag) return // Don't trigger click if this was a drag
-
-    const entry = find_entry_at_mouse(event)
-    if (!entry) {
-      if (modal_open) close_structure_popup()
-      return
-    }
-
-    on_point_click?.(entry)
-
-    if (enable_click_selection) {
-      selected_entry = entry
-      if (enable_structure_preview) {
-        const structure = extract_structure_from_entry(entry)
-        if (structure) {
-          selected_structure = structure
-          modal_place_right = helpers.calculate_modal_side(wrapper)
-          modal_open = true
-        }
-      }
-    }
-  }
-
-  function close_structure_popup() {
-    modal_open = false
-    selected_structure = null
-    selected_entry = null
-  }
-
-  const handle_double_click = (event: MouseEvent) => {
-    const entry = find_entry_at_mouse(event)
-    if (entry) {
-      copy_entry_data(entry, {
-        x: event.clientX,
-        y: event.clientY,
-      })
-    }
-  }
-
-  function render_once() {
-    if (!frame_id) {
-      frame_id = requestAnimationFrame(() => {
-        render_frame()
-        frame_id = 0
-      })
-    }
-  }
-
-  function update_canvas_size() {
-    if (!canvas) return
-    const dpr = globalThis.devicePixelRatio || 1
-    const container = canvas.parentElement
-    const rect = container?.getBoundingClientRect()
-    const [width, height] = rect ? [rect.width, rect.height] : [400, 400]
-
-    // Only update canvas dimensions if they actually changed
-    // (assigning canvas.width/height clears the canvas even if values are the same)
-    const new_width = Math.max(0, Math.round(width * dpr))
-    const new_height = Math.max(0, Math.round(height * dpr))
-    if (!ctx || canvas.width !== new_width || canvas.height !== new_height) {
-      canvas.width = new_width
-      canvas.height = new_height
-      ctx = canvas.getContext(`2d`)
-      if (ctx) {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = `high`
-      }
-    }
-    canvas_dims = { width, height, scale: Math.min(width, height) / 600 }
-    render_once()
-  }
-
   // Reactive dark mode detection for canvas text color
   let dark_mode = $state(is_dark_mode())
   $effect(() => watch_dark_mode((dark) => dark_mode = dark))
   const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
-
-  $effect(() => {
-    if (!canvas) return
-
-    // Initial setup
-    update_canvas_size()
-
-    // Watch for resize events - only update canvas, don't reset camera
-    const resize_observer = new ResizeObserver(update_canvas_size)
-
-    const container = canvas.parentElement
-    if (container) {
-      resize_observer.observe(container)
-    }
-
-    return () => { // Cleanup on unmount
-      if (frame_id) cancelAnimationFrame(frame_id)
-      resize_observer.disconnect()
-    }
-  })
-
-  // Fullscreen handling with camera reset
-  let was_fullscreen = $state(fullscreen)
-  $effect(() => {
-    setup_fullscreen_effect(fullscreen, wrapper, (entering_fullscreen) => {
-      if (entering_fullscreen !== was_fullscreen) {
-        camera.center_x = 0
-        camera.center_y = -50
-        was_fullscreen = entering_fullscreen
-      }
-    })
-    set_fullscreen_bg(wrapper, fullscreen, `--hull-3d-bg-fullscreen`)
-  })
 
   // Performance: Cache canvas dimensions and formation energy range
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
@@ -1404,25 +1120,7 @@
     return { min, max, center: (min + max) / 2, z_scale }
   })
 
-  // Performance: Pre-compute and cache all point projections + depth sorting
-  const sorted_points_cache = $derived.by(() => {
-    if (!canvas || visible_entries.length === 0) return []
-    return visible_entries
-      .map((entry) => ({
-        entry,
-        projected: project_3d_point(entry.x, entry.y, entry.z),
-      }))
-      .sort((left, right) => left.projected.depth - right.projected.depth)
-  })
-
-  let style = $derived(
-    `--hull-stable-color:${merged_config.colors?.stable || `#0072B2`};
-    --hull-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
-    --hull-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --hull-text-color:${
-      merged_config.colors?.annotation || `var(--text-color, #212121)`
-    }`,
-  )
+  let style = $derived(helpers.hull_style_css(merged_config.colors))
 </script>
 
 <svelte:document
@@ -1430,7 +1128,7 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={() => ([is_dragging, drag_started] = [false, false])}
+  onmouseup={handle_mouse_up}
 />
 
 <div
@@ -1446,14 +1144,8 @@
   tabindex="-1"
   onkeydown={handle_keydown}
   ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    drag_over = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    drag_over = false
-  }}
+  ondragover={handle_drag_over}
+  ondragleave={handle_drag_leave}
   aria-label="Ternary convex hull visualization"
 >
   {@render children?.({
@@ -1546,21 +1238,25 @@
         />
       {/if}
 
-      {#if enable_fullscreen && controls_config.visible(`fullscreen`)}
+      {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
         <button
           type="button"
           onclick={() => toggle_fullscreen(wrapper)}
           title="{fullscreen ? `Exit` : `Enter`} fullscreen"
           class="fullscreen-btn"
         >
-          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+          {#if typeof fullscreen_toggle === `function`}
+            {@render fullscreen_toggle({ fullscreen })}
+          {:else}
+            <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+          {/if}
         </button>
       {/if}
 
       <!-- Legend controls pane -->
       {#if controls_config.visible(`controls`)}
         <ConvexHullControls
-          bind:controls_open={legend_pane_open}
+          bind:controls_open
           bind:color_mode
           bind:color_scale
           bind:show_stable

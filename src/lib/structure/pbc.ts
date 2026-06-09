@@ -15,6 +15,14 @@ const MIN_BOND_DIST = 0.4 // Å
 
 // Wrap a single fractional coordinate to [0, 1), clamping near-1 values to 0
 // and rounding to 15 digits to suppress floating-point noise.
+// NOTE on epsilon: this is the tightest of three intentionally different wrap
+// helpers. Coordinates here come almost straight from file parsing, so float
+// error is tiny and a 1e-10 snap + toFixed(15) preserves maximal precision.
+// Compare wrap_frac @1e-9 [[src/lib/symmetry/index.ts:80]] (post moyo
+// standardization + matrix transforms) and wrap_point @1e-8
+// [[src/lib/symmetry/symmetry-elements.ts:214]] (feeds symmetry-element dedup
+// keys). Do not unify: loosening this epsilon changes snapping near cell
+// boundaries for parsed structures.
 export const wrap_frac_coord = (coord: number): number => {
   const wrapped = coord - Math.floor(coord)
   if (wrapped >= 1 - 1e-10) return 0

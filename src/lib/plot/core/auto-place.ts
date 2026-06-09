@@ -7,7 +7,7 @@ import type { Sides } from '$lib/plot/core/layout'
 // Shared "move a decoration (legend/colorbar) outside the plot when interior overlap is
 // unavoidable" logic, reused by every 2D plot (ScatterPlot/BarPlot/Histogram/BinnedScatterPlot).
 
-export const DECOR_GAP = 8 // px gap between an outside decoration and the plot edge
+const DECOR_GAP = 8 // px gap between an outside decoration and the plot edge
 
 type Pt = { x: number; y: number }
 type Size = { width: number; height: number }

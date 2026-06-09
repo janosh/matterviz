@@ -6,9 +6,9 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
   import { create_file_drop_handler, load_from_url } from '$lib/io'
-  import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
+  import { toggle_fullscreen, ViewerChrome } from '$lib/layout'
+  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import { PlotTooltip } from '$lib/plot'
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
@@ -16,7 +16,6 @@
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three'
   import { detect_irreducible_bz, extract_fermi_surface } from './compute'
@@ -91,7 +90,7 @@
     on_error,
     on_fullscreen_change,
     on_mu_change,
-    on_hover,
+    on_point_hover,
     ...rest
   }: {
     fermi_data?: FermiSurfaceData
@@ -117,15 +116,13 @@
     clip_flip?: boolean
     interpolation_factor?: number
     camera_projection?: CameraProjection
-    /**
-     * Controls visibility configuration.
-     * - 'always': controls always visible
-     * - 'hover': controls visible on component hover (default)
-     * - 'never': controls never visible
-     * - object: { mode, hidden, style } for fine-grained control
-     *
-     * Control names: 'filename', 'fullscreen', 'controls'
-     */
+    // Controls visibility configuration.
+    // - 'always': controls always visible
+    // - 'hover': controls visible on component hover (default)
+    // - 'never': controls never visible
+    // - object: { mode, hidden, style } for fine-grained control
+    //
+    // Control names: 'filename', 'fullscreen', 'controls'
     show_controls?: ShowControlsProp
     fullscreen?: boolean
     width?: number
@@ -148,7 +145,7 @@
     on_fullscreen_change?: (data: FermiHandlerData) => void
     on_mu_change?: (mu: number) => void
     tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
-    on_hover?: (data: FermiHoverData | null) => void
+    on_point_hover?: (data: FermiHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let scene = $state<Scene | undefined>(undefined)
@@ -157,9 +154,9 @@
   let recompute_job_id = 0 // monotonic counter to track latest recompute call
   let hover_data = $state<FermiHoverData | null>(null)
 
-  // Call on_hover callback when hover_data changes
+  // Call on_point_hover callback when hover_data changes
   $effect(() => {
-    on_hover?.(hover_data)
+    on_point_hover?.(hover_data)
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
@@ -179,8 +176,8 @@
       ? new TextDecoder().decode(content)
       : content
 
+    // parse_fermi_file throws a descriptive error when parsing fails
     const parsed = parse_fermi_file(text, filename)
-    if (!parsed) throw new Error(`Failed to parse Fermi surface from ${filename}`)
 
     const file_size = new Blob([content]).size
     current_filename = filename
@@ -349,27 +346,18 @@
     else if (event.key === `Escape`) controls_open = false
   }
 
-  $effect(() => {
-    if (typeof window === `undefined`) return
-    const fs_el = document.fullscreenElement
-    if (fullscreen && fs_el !== wrapper && wrapper) {
-      wrapper.requestFullscreen().catch((err) => {
-        console.error(err)
-        fullscreen = false
-      })
-    } else if (!fullscreen && fs_el === wrapper) document.exitFullscreen()
-    set_fullscreen_bg(wrapper, fullscreen, `--fermi-bg-fullscreen`)
+  sync_fullscreen({
+    get_wrapper: () => wrapper,
+    get_fullscreen: () => fullscreen,
+    set_fullscreen: (val) => (fullscreen = val),
+    bg_css_var: `--fermi-bg-fullscreen`,
+    on_request_error: () => (fullscreen = false),
+    on_change: (val) =>
+      on_fullscreen_change?.({ fermi_data, bz_data, fullscreen: val }),
   })
 </script>
 
 <svelte:window onkeydown={handle_keydown} />
-
-<svelte:document
-  onfullscreenchange={() => {
-    fullscreen = Boolean(document.fullscreenElement)
-    on_fullscreen_change?.({ fermi_data, bz_data, fullscreen })
-  }}
-/>
 
 <div
   class:dragover
@@ -409,61 +397,42 @@
       style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; text-align: center"
     />
   {:else if fermi_data || band_data}
-    <section
-      class="control-buttons {controls_config.class}"
-      style={controls_config.style}
+    <ViewerChrome
+      {controls_config}
+      filename={current_filename}
+      {fullscreen}
+      {fullscreen_toggle}
+      {wrapper}
+      style="--viewer-buttons-top: var(--fermi-buttons-top, var(--ctrl-btn-top, 1ex)); --viewer-buttons-right: var(--fermi-buttons-right, var(--ctrl-btn-right, 1ex)); --viewer-buttons-z-index: var(--fermi-buttons-z-index, var(--z-index-overlay-controls, 100000000))"
     >
-      {#if controls_config.mode !== `never`}
-        {#if current_filename && controls_config.visible(`filename`)}
-          <span class="filename">{current_filename}</span>
-        {/if}
-
-        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-          <button
-            type="button"
-            onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
-            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-            aria-pressed={fullscreen}
-            class="fullscreen-toggle"
-            {@attach tooltip()}
-          >
-            {#if typeof fullscreen_toggle === `function`}
-              {@render fullscreen_toggle({ fullscreen })}
-            {:else}
-              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-            {/if}
-          </button>
-        {/if}
-
-        {#if controls_config.visible(`controls`)}
-          <FermiSurfaceControls
-            bind:controls_open
-            {fermi_data}
-            {band_data}
-            bind:mu
-            bind:color_property
-            bind:color_scale
-            {custom_property_label}
-            bind:representation
-            bind:surface_opacity
-            bind:selected_bands
-            bind:show_bz
-            bind:bz_opacity
-            bind:show_vectors
-            bind:tile_bz
-            bind:clip_enabled
-            bind:clip_axis
-            bind:clip_position
-            bind:clip_flip
-            bind:interpolation_factor
-            bind:camera_projection
-            on_mu_change={handle_mu_change}
-            on_interpolation_change={handle_interpolation_change}
-            on_export={handle_export}
-          />
-        {/if}
+      {#if controls_config.visible(`controls`)}
+        <FermiSurfaceControls
+          bind:controls_open
+          {fermi_data}
+          {band_data}
+          bind:mu
+          bind:color_property
+          bind:color_scale
+          {custom_property_label}
+          bind:representation
+          bind:surface_opacity
+          bind:selected_bands
+          bind:show_bz
+          bind:bz_opacity
+          bind:show_vectors
+          bind:tile_bz
+          bind:clip_enabled
+          bind:clip_axis
+          bind:clip_position
+          bind:clip_flip
+          bind:interpolation_factor
+          bind:camera_projection
+          on_mu_change={handle_mu_change}
+          on_interpolation_change={handle_interpolation_change}
+          on_export={handle_export}
+        />
       {/if}
-    </section>
+    </ViewerChrome>
 
     {#if typeof WebGLRenderingContext !== `undefined`}
       <Canvas renderMode="on-demand" dpr={Math.min(2, window.devicePixelRatio)}>
@@ -554,53 +523,5 @@
   }
   .fermi-surface :global(canvas) {
     user-select: none;
-  }
-  section.control-buttons {
-    position: absolute;
-    display: flex;
-    top: var(--fermi-buttons-top, var(--ctrl-btn-top, 1ex));
-    right: var(--fermi-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: clamp(6pt, 1cqmin, 9pt);
-    z-index: var(
-      --fermi-buttons-z-index,
-      var(--z-index-overlay-controls, 100000000)
-    );
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-    align-items: center;
-  }
-  /* Mode: always - controls always visible */
-  section.control-buttons.always-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: hover - controls visible on component hover */
-  .fermi-surface:hover section.control-buttons.hover-visible,
-  .fermi-surface:focus-within section.control-buttons.hover-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: never - stays hidden (default state, no additional CSS needed) */
-  section.control-buttons > :global(button) {
-    background-color: transparent;
-    display: flex;
-    padding: 4px;
-    border-radius: var(--border-radius, 3pt);
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
-  }
-  section.control-buttons :global(button:hover) {
-    background-color: color-mix(in srgb, currentColor 8%, transparent);
-  }
-  .filename {
-    font-family: monospace;
-    font-size: 0.9em;
-    background: var(--code-bg, rgba(0, 0, 0, 0.1));
-    padding: 3pt 6pt;
-    border-radius: 3pt;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 </style>

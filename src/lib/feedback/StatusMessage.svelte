@@ -26,7 +26,11 @@
 
 <style>
   .status-message {
+    display: flex;
+    align-items: center;
+    gap: 1em;
     border-radius: var(--border-radius, 3pt);
+    backdrop-filter: blur(8px);
     &.info {
       border: 2px dashed var(--text-color-muted, #ccc);
       background: transparent;
@@ -47,11 +51,17 @@
     }
   }
   button {
-    margin-left: 1em;
-    padding: 0.2em 0.5em;
+    flex: none;
+    display: grid;
+    place-items: center;
+    margin-left: auto;
+    box-sizing: border-box;
+    width: 1.6em;
+    height: 1.6em;
+    padding: 0;
     background: var(--btn-bg, #ddd);
     border: 1px solid var(--border-color, #bbb);
-    border-radius: var(--border-radius, 3pt);
+    border-radius: 50%;
     cursor: pointer;
     &:hover {
       background: var(--btn-bg-hover, #ccc);

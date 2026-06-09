@@ -55,7 +55,7 @@ const expect_download_suffix = async (
   expect(download.suggestedFilename().endsWith(expected_suffix)).toBe(true)
 }
 const get_export_button = (export_pane: Locator, label_text: string): Locator =>
-  export_pane.locator(`label:has-text("${label_text}") button`).first()
+  export_pane.locator(`.export-item:has-text("${label_text}") button`).first()
 
 const count_checked = (checkboxes: Locator): Promise<number> =>
   checkboxes.evaluateAll(

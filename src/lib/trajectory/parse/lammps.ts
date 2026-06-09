@@ -8,16 +8,14 @@ import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { coerce_elem_symbol } from '$lib/element'
 import { create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
+import { traj_warn } from './diagnostics'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
 
 // Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
 // Lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
-export function parse_lammps_box(
-  box_lines: string[],
-  is_triclinic: boolean,
-): math.Matrix3x3 | null {
+function parse_lammps_box(box_lines: string[], is_triclinic: boolean): math.Matrix3x3 | null {
   if (box_lines.length !== 3) return null
   const bounds = box_lines.map((line) => line.split(/\s+/).map(Number))
   const min_cols = is_triclinic ? 3 : 2
@@ -121,7 +119,7 @@ export function parse_lammps_trajectory(
 
     if (pos_cols.some((col_idx) => col_idx === undefined)) continue
     if (type_col === undefined && element_col === undefined && id_col === undefined) {
-      console.warn(
+      traj_warn(
         `Skipping LAMMPS frame at timestep ${timestep}: missing type/element/id column`,
       )
       continue
@@ -151,7 +149,7 @@ export function parse_lammps_trajectory(
         if (!raw_symbol) continue
         element_symbol = coerce_elem_symbol(raw_symbol)
         if (!element_symbol) {
-          console.warn(
+          traj_warn(
             `Skipping LAMMPS atom with unknown element symbol "${raw_symbol}" at timestep ${timestep}`,
           )
           continue
@@ -160,7 +158,7 @@ export function parse_lammps_trajectory(
         const atom_id = parseInt(parts[id_col], 10) || 1
         atom_types_found.add(atom_id)
         if (!id_fallback_warning_emitted) {
-          console.warn(
+          traj_warn(
             `LAMMPS parser fallback: mapping atom IDs to elements from ID column; this may be incorrect for large or sequential IDs. Prefer a TYPE column when available.`,
           )
           id_fallback_warning_emitted = true

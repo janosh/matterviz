@@ -16,7 +16,8 @@
     DEFAULT_ISOSURFACE_SETTINGS,
     tile_volumetric_data,
   } from '$lib/isosurface/types'
-  import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
+  import { toggle_fullscreen, ViewerChrome } from '$lib/layout'
+  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
@@ -188,15 +189,13 @@
       structure?: AnyStructure
       bonds?: StructureBond[]
       scene_props?: ComponentProps<typeof StructureScene>
-      /**
-       * Controls visibility configuration.
-       * - 'always': controls always visible
-       * - 'hover': controls visible on component hover (default)
-       * - 'never': controls never visible
-       * - object: { mode, hidden, style } for fine-grained control
-       *
-       * Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
-       */
+      // Controls visibility configuration.
+      // - 'always': controls always visible
+      // - 'hover': controls visible on component hover (default)
+      // - 'never': controls never visible
+      // - object: { mode, hidden, style } for fine-grained control
+      //
+      // Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
       show_controls?: ShowControlsProp
       fullscreen?: boolean
       // bindable width of the canvas
@@ -1481,24 +1480,14 @@
     }
   })
 
-  $effect(() => { // fullscreen and background
-    if (typeof window !== `undefined`) {
-      if (fullscreen && !document.fullscreenElement && wrapper) {
-        wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) {
-        document.exitFullscreen()
-      }
-    }
-    set_fullscreen_bg(wrapper, fullscreen, `--struct-bg-fullscreen`)
+  sync_fullscreen({
+    get_wrapper: () => wrapper,
+    get_fullscreen: () => fullscreen,
+    set_fullscreen: (val) => (fullscreen = val),
+    bg_css_var: `--struct-bg-fullscreen`,
+    on_change: (val) => on_fullscreen_change?.({ structure, fullscreen: val }),
   })
 </script>
-
-<svelte:document
-  onfullscreenchange={() => {
-    fullscreen = Boolean(document.fullscreenElement)
-    on_fullscreen_change?.({ structure, fullscreen })
-  }}
-/>
 
 <!-- Forward shortcuts to the hovered viewer when focus is on <body> (see
   forward_window_keydown). Edit modes are excluded so destructive keys
@@ -1560,295 +1549,282 @@
   {:else if error_msg}
     <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if (structure?.sites?.length ?? 0) > 0}
-    <section
-      class="control-buttons {controls_config.class}"
-      style={controls_config.style}
-    >
-      {#if controls_config.mode !== `never`}
-        {#if camera_has_moved && controls_config.visible(`reset-camera`)}
-          <button class="reset-camera" onclick={reset_camera} title={reset_text}>
-            <!-- Target/Focus icon for reset camera -->
-            <Icon icon="Reset" />
-          </button>
-        {/if}
-        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-          <button
-            type="button"
-            onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
-            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-            aria-pressed={fullscreen}
-            class="fullscreen-toggle"
-            style="padding: 0 3px"
-            {@attach tooltip()}
-          >
-            {#if typeof fullscreen_toggle === `function`}
-              {@render fullscreen_toggle({ fullscreen })}
-            {:else}
-              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-            {/if}
-          </button>
-        {/if}
-
-        {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
-          <div
-            class="measure-mode-dropdown"
-            {@attach click_outside({ callback: () => measure_menu_open = false })}
-          >
-            <button
-              onclick={() => (measure_menu_open = !measure_menu_open)}
-              title="Measure / Edit"
-              class="view-mode-button"
-              class:active={measure_menu_open}
-              aria-expanded={measure_menu_open}
-              style="transform: scale(1.2)"
-            >
-              {#if show_measure_selection_limit}
-                <span class="selection-limit-text">
-                  {measured_sites.length}/{MAX_SELECTED_SITES}
-                </span>
-              {:else}
-                <Icon
-                  icon={({
-                    distance: `Ruler`,
-                    angle: `Angle`,
-                    'edit-bonds': `Link`,
-                    'edit-atoms': `Edit`,
-                  } as const)[measure_mode]}
-                />
-              {/if}
-              <Icon
-                icon="Arrow{measure_menu_open ? `Up` : `Down`}"
-                style="margin-left: -2px"
-              />
-            </button>
-            {#if show_selection_reset}
-              <button
-                type="button"
-                aria-label="Reset selection and bond edits"
-                onclick={() => {
-                  clear_selection()
-                  clear_bond_edits()
-                }}
-              >
-                <Icon icon="Reset" style="margin-left: -4px" />
-              </button>
-            {/if}
-            {#if measure_menu_open}
-              <div class="view-mode-dropdown">
-                {#each [
-            { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
-            { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
-            { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
-            { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 },
-          ] as const as { mode, icon, label, scale } (mode)}
-                  <button
-                    class="view-mode-option"
-                    class:selected={measure_mode === mode}
-                    disabled={mode === `edit-bonds` && !bond_edits_enabled}
-                    title={mode === `edit-bonds` && !bond_edits_enabled
-                      ? `Bond editing is only available for the original 1x1x1 cell`
-                      : label}
-                    onclick={() => {
-                      if (mode === `edit-bonds` && !bond_edits_enabled) return
-                      ;[measure_mode, measure_menu_open] = [mode, false]
-                    }}
-                  >
-                    <Icon {icon} style="transform: scale({scale})" />
-                    <span>{label}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
-
-          <!-- Undo/redo buttons (only in edit-atoms mode) -->
-          {#if measure_mode === `edit-atoms`}
-            <div class="undo-redo-container">
-              <button
-                type="button"
-                aria-label="Undo (Cmd/Ctrl+Z)"
-                disabled={undo_stack.length === 0}
-                onclick={undo}
-                title="Undo (Cmd/Ctrl+Z)"
-                class="undo-redo-btn"
-              >
-                <Icon icon="Undo" />
-                {#if undo_stack.length > 0}
-                  <span class="history-count">{undo_stack.length}</span>
-                {/if}
-              </button>
-              <button
-                type="button"
-                aria-label="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-                disabled={redo_stack.length === 0}
-                onclick={redo}
-                title="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-                class="undo-redo-btn"
-              >
-                <Icon icon="Redo" />
-                {#if redo_stack.length > 0}
-                  <span class="history-count">{redo_stack.length}</span>
-                {/if}
-              </button>
-            </div>
-          {/if}
-
-          {#if measure_mode === `edit-bonds`}
-            <div class="bond-edit-toolbar" aria-label="Bond editing controls">
-              {#if bond_edit_mode === `add`}
-                <label>
-                  <span>Bond order</span>
-                  <select bind:value={bond_edit_order}>
-                    {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-                      <option value={order}>{label}</option>
-                    {/each}
-                  </select>
-                </label>
-              {/if}
-              <div class="bond-edit-mode-toggle">
-                {#each [
-                  { mode: `add`, label: `Add`, title: `Add: click two atoms` },
-                  { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
-                ] as const as { mode, label, title } (mode)}
-                  <button
-                    type="button"
-                    class:selected={bond_edit_mode === mode}
-                    aria-pressed={bond_edit_mode === mode}
-                    title="{title} ({label[0]})"
-                    onclick={() => (bond_edit_mode = mode)}
-                  >
-                    {label}
-                  </button>
-                {/each}
-              </div>
-            </div>
-            <div class="undo-redo-container">
-              <button
-                type="button"
-                aria-label="Undo bond edit (Cmd/Ctrl+Z)"
-                disabled={bond_undo_stack.length === 0}
-                onclick={undo_bond_edit}
-                title="Undo bond edit (Cmd/Ctrl+Z)"
-                class="undo-redo-btn"
-              >
-                <Icon icon="Undo" />
-                {#if bond_undo_stack.length > 0}
-                  <span class="history-count">{bond_undo_stack.length}</span>
-                {/if}
-              </button>
-              <button
-                type="button"
-                aria-label="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-                disabled={bond_redo_stack.length === 0}
-                onclick={redo_bond_edit}
-                title="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-                class="undo-redo-btn"
-              >
-                <Icon icon="Redo" />
-                {#if bond_redo_stack.length > 0}
-                  <span class="history-count">{bond_redo_stack.length}</span>
-                {/if}
-              </button>
-            </div>
-          {/if}
-
-          <!-- Add-atom element input (shown when add_atom_mode is active) -->
-          {#if measure_mode === `edit-atoms` && add_atom_mode}
-            <div class="add-atom-input">
-              <label>
-                <span>Element:</span>
-                <input
-                  type="text"
-                  bind:value={add_element}
-                  maxlength="2"
-                  placeholder="C"
-                  style="width: 3em; text-align: center"
-                />
-              </label>
-              <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
-            </div>
-          {/if}
-
-          <!-- Change-element input (shown when 'e' pressed with selection) -->
-          {#if measure_mode === `edit-atoms` && change_element_mode &&
-        selected_sites.length > 0}
-            <div class="add-atom-input">
-              <label>
-                <span>New element:</span>
-                <input
-                  type="text"
-                  bind:value={change_element_value}
-                  maxlength="2"
-                  placeholder="Fe"
-                  style="width: 3em; text-align: center"
-                  onkeydown={(event: KeyboardEvent) => {
-                    if (event.key === `Enter`) {
-                      handle_change_element(change_element_value)
-                    } else if (event.key === `Escape`) {
-                      change_element_mode = false
-                    }
-                    event.stopPropagation()
-                  }}
-                  {@attach (node: HTMLInputElement) => {
-                    node.focus()
-                  }}
-                />
-              </label>
-              <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
-            </div>
-          {/if}
-        {/if}
-
-        {#if enable_info_pane && normalized_structure &&
-        controls_config.visible(`info-pane`)}
-          <StructureInfoPane
-            structure={normalized_structure}
-            bind:pane_open={info_pane_open}
-            bind:highlighted_sites
-            bind:hovered_site_idx
-            bind:selected_sites
-            {sym_data}
-            {@attach tooltip({ content: `Structure info pane` })}
-          />
-        {/if}
-
-        {#if controls_config.visible(`export-pane`)}
-          <StructureExportPane
-            bind:export_pane_open
-            structure={normalized_structure}
-            {wrapper}
-            {scene}
-            {camera}
-            bind:png_dpi
-            pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
-          />
-        {/if}
-
-        {#if controls_config.visible(`controls`)}
-          <StructureControls
-            bind:controls_open
-            bind:scene_props
-            bind:lattice_props
-            bind:show_image_atoms
-            bind:supercell_scaling
-            bind:background_color
-            bind:background_opacity
-            bind:color_scheme
-            bind:atom_color_config
-            bind:cell_type
-            bind:volumetric_data
-            bind:isosurface_settings
-            bind:active_volume_idx
-            {structure}
-            {supercell_loading}
-            {sym_data}
-            {polyhedra_rendered_elements}
-          />
-        {/if}
-
-        {@render top_right_controls?.()}
+    {#snippet reset_camera_btn()}
+      {#if camera_has_moved && controls_config.visible(`reset-camera`)}
+        <button class="reset-camera" onclick={reset_camera} title={reset_text}>
+          <!-- Target/Focus icon for reset camera -->
+          <Icon icon="Reset" />
+        </button>
       {/if}
-    </section>
+    {/snippet}
+    <ViewerChrome
+      {controls_config}
+      {fullscreen}
+      {fullscreen_toggle}
+      fullscreen_btn_style="padding: 0 3px"
+      {wrapper}
+      before={reset_camera_btn}
+      style="--viewer-buttons-top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex)); --viewer-buttons-right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex)); --viewer-buttons-z-index: var(--struct-buttons-z-index, var(--z-index-overlay-controls, 100000000)); --viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch"
+    >
+      {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
+        <div
+          class="measure-mode-dropdown"
+          {@attach click_outside({ callback: () => measure_menu_open = false })}
+        >
+          <button
+            onclick={() => (measure_menu_open = !measure_menu_open)}
+            title="Measure / Edit"
+            class="view-mode-button"
+            class:active={measure_menu_open}
+            aria-expanded={measure_menu_open}
+            style="transform: scale(1.2)"
+          >
+            {#if show_measure_selection_limit}
+              <span class="selection-limit-text">
+                {measured_sites.length}/{MAX_SELECTED_SITES}
+              </span>
+            {:else}
+              <Icon
+                icon={({
+                  distance: `Ruler`,
+                  angle: `Angle`,
+                  'edit-bonds': `Link`,
+                  'edit-atoms': `Edit`,
+                } as const)[measure_mode]}
+              />
+            {/if}
+            <Icon
+              icon="Arrow{measure_menu_open ? `Up` : `Down`}"
+              style="margin-left: -2px"
+            />
+          </button>
+          {#if show_selection_reset}
+            <button
+              type="button"
+              aria-label="Reset selection and bond edits"
+              onclick={() => {
+                clear_selection()
+                clear_bond_edits()
+              }}
+            >
+              <Icon icon="Reset" style="margin-left: -4px" />
+            </button>
+          {/if}
+          {#if measure_menu_open}
+            <div class="view-mode-dropdown">
+              {#each [
+          { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
+          { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
+          { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
+          { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 },
+        ] as const as { mode, icon, label, scale } (mode)}
+                <button
+                  class="view-mode-option"
+                  class:selected={measure_mode === mode}
+                  disabled={mode === `edit-bonds` && !bond_edits_enabled}
+                  title={mode === `edit-bonds` && !bond_edits_enabled
+                    ? `Bond editing is only available for the original 1x1x1 cell`
+                    : label}
+                  onclick={() => {
+                    if (mode === `edit-bonds` && !bond_edits_enabled) return
+                    ;[measure_mode, measure_menu_open] = [mode, false]
+                  }}
+                >
+                  <Icon {icon} style="transform: scale({scale})" />
+                  <span>{label}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <!-- Undo/redo buttons (only in edit-atoms mode) -->
+        {#if measure_mode === `edit-atoms`}
+          <div class="undo-redo-container">
+            <button
+              type="button"
+              aria-label="Undo (Cmd/Ctrl+Z)"
+              disabled={undo_stack.length === 0}
+              onclick={undo}
+              title="Undo (Cmd/Ctrl+Z)"
+              class="undo-redo-btn"
+            >
+              <Icon icon="Undo" />
+              {#if undo_stack.length > 0}
+                <span class="history-count">{undo_stack.length}</span>
+              {/if}
+            </button>
+            <button
+              type="button"
+              aria-label="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
+              disabled={redo_stack.length === 0}
+              onclick={redo}
+              title="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
+              class="undo-redo-btn"
+            >
+              <Icon icon="Redo" />
+              {#if redo_stack.length > 0}
+                <span class="history-count">{redo_stack.length}</span>
+              {/if}
+            </button>
+          </div>
+        {/if}
+
+        {#if measure_mode === `edit-bonds`}
+          <div class="bond-edit-toolbar" aria-label="Bond editing controls">
+            {#if bond_edit_mode === `add`}
+              <label>
+                <span>Bond order</span>
+                <select bind:value={bond_edit_order}>
+                  {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+                    <option value={order}>{label}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            <div class="bond-edit-mode-toggle">
+              {#each [
+                { mode: `add`, label: `Add`, title: `Add: click two atoms` },
+                { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
+              ] as const as { mode, label, title } (mode)}
+                <button
+                  type="button"
+                  class:selected={bond_edit_mode === mode}
+                  aria-pressed={bond_edit_mode === mode}
+                  title="{title} ({label[0]})"
+                  onclick={() => (bond_edit_mode = mode)}
+                >
+                  {label}
+                </button>
+              {/each}
+            </div>
+          </div>
+          <div class="undo-redo-container">
+            <button
+              type="button"
+              aria-label="Undo bond edit (Cmd/Ctrl+Z)"
+              disabled={bond_undo_stack.length === 0}
+              onclick={undo_bond_edit}
+              title="Undo bond edit (Cmd/Ctrl+Z)"
+              class="undo-redo-btn"
+            >
+              <Icon icon="Undo" />
+              {#if bond_undo_stack.length > 0}
+                <span class="history-count">{bond_undo_stack.length}</span>
+              {/if}
+            </button>
+            <button
+              type="button"
+              aria-label="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
+              disabled={bond_redo_stack.length === 0}
+              onclick={redo_bond_edit}
+              title="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
+              class="undo-redo-btn"
+            >
+              <Icon icon="Redo" />
+              {#if bond_redo_stack.length > 0}
+                <span class="history-count">{bond_redo_stack.length}</span>
+              {/if}
+            </button>
+          </div>
+        {/if}
+
+        <!-- Add-atom element input (shown when add_atom_mode is active) -->
+        {#if measure_mode === `edit-atoms` && add_atom_mode}
+          <div class="add-atom-input">
+            <label>
+              <span>Element:</span>
+              <input
+                type="text"
+                bind:value={add_element}
+                maxlength="2"
+                placeholder="C"
+                style="width: 3em; text-align: center"
+              />
+            </label>
+            <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
+          </div>
+        {/if}
+
+        <!-- Change-element input (shown when 'e' pressed with selection) -->
+        {#if measure_mode === `edit-atoms` && change_element_mode &&
+      selected_sites.length > 0}
+          <div class="add-atom-input">
+            <label>
+              <span>New element:</span>
+              <input
+                type="text"
+                bind:value={change_element_value}
+                maxlength="2"
+                placeholder="Fe"
+                style="width: 3em; text-align: center"
+                onkeydown={(event: KeyboardEvent) => {
+                  if (event.key === `Enter`) {
+                    handle_change_element(change_element_value)
+                  } else if (event.key === `Escape`) {
+                    change_element_mode = false
+                  }
+                  event.stopPropagation()
+                }}
+                {@attach (node: HTMLInputElement) => {
+                  node.focus()
+                }}
+              />
+            </label>
+            <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
+          </div>
+        {/if}
+      {/if}
+
+      {#if enable_info_pane && normalized_structure &&
+      controls_config.visible(`info-pane`)}
+        <StructureInfoPane
+          structure={normalized_structure}
+          bind:pane_open={info_pane_open}
+          bind:highlighted_sites
+          bind:hovered_site_idx
+          bind:selected_sites
+          {sym_data}
+          {@attach tooltip({ content: `Structure info pane` })}
+        />
+      {/if}
+
+      {#if controls_config.visible(`export-pane`)}
+        <StructureExportPane
+          bind:export_pane_open
+          structure={normalized_structure}
+          {wrapper}
+          {scene}
+          {camera}
+          bind:png_dpi
+          pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
+        />
+      {/if}
+
+      {#if controls_config.visible(`controls`)}
+        <StructureControls
+          bind:controls_open
+          bind:scene_props
+          bind:lattice_props
+          bind:show_image_atoms
+          bind:supercell_scaling
+          bind:background_color
+          bind:background_opacity
+          bind:color_scheme
+          bind:atom_color_config
+          bind:cell_type
+          bind:volumetric_data
+          bind:isosurface_settings
+          bind:active_volume_idx
+          {structure}
+          {supercell_loading}
+          {sym_data}
+          {polyhedra_rendered_elements}
+        />
+      {/if}
+
+      {@render top_right_controls?.()}
+    </ViewerChrome>
 
     <AtomLegend
       bind:atom_color_config
@@ -1993,7 +1969,7 @@
   }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),
-  .structure section.control-buttons,
+  .structure :global(section.control-buttons),
   .structure .bottom-left {
     user-select: none;
   }
@@ -2003,44 +1979,6 @@
     left: 0;
     font-size: var(--struct-bottom-left-font-size, 1.2em);
     padding: var(--struct-bottom-left-padding, 1pt 5pt);
-  }
-  section.control-buttons {
-    position: absolute;
-    display: flex;
-    top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
-    right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: 4pt;
-    /* buttons need higher z-index than AtomLegend to make info/controls panes occlude legend */
-    /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
-    z-index: var(
-      --struct-buttons-z-index,
-      var(--z-index-overlay-controls, 100000000)
-    );
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-  /* Mode: always - controls always visible */
-  section.control-buttons.always-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: hover - controls visible on component hover */
-  .structure:hover section.control-buttons.hover-visible,
-  .structure:focus-within section.control-buttons.hover-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: never - stays hidden (default state, no additional CSS needed) */
-  section.control-buttons > :global(button) {
-    background-color: transparent;
-    display: flex;
-    padding: 1px 6px;
-    border-radius: var(--border-radius, 3pt);
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
-  }
-  section.control-buttons :global(button:hover) {
-    background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
   /* Match Trajectory dropdown UI */
   .view-mode-dropdown {

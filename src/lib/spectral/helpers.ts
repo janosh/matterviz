@@ -685,7 +685,24 @@ export function normalize_band_structure(bs: unknown): types.BaseBandStructure |
   )
     return null
 
-  return band_struct as unknown as types.BaseBandStructure
+  // Fill defaults for required fields not covered by the shape checks above so the
+  // cast below is sound (recip_lattice/labels_dict/nb_bands are required downstream)
+  const recip_lattice = band_struct.recip_lattice as { matrix?: unknown } | undefined
+  const normalized = {
+    ...band_struct,
+    nb_bands: typeof band_struct.nb_bands === `number` ? band_struct.nb_bands : bands.length,
+    labels_dict: band_struct.labels_dict ?? {},
+    recip_lattice: Array.isArray(recip_lattice?.matrix)
+      ? recip_lattice
+      : {
+          matrix: [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ],
+        },
+  }
+  return normalized as unknown as types.BaseBandStructure
 }
 
 // Validate and normalize a DOS object.

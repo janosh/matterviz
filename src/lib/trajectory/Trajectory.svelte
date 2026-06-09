@@ -3,6 +3,7 @@
   import { normalize_show_controls } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import EmptyState from '$lib/EmptyState.svelte'
+  import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import { handle_url_drop, load_from_url } from '$lib/io'
@@ -11,6 +12,7 @@
   import type { Vec2 } from '$lib/math'
   import { sanitize_html } from '$lib/sanitize'
   import { toggle_fullscreen } from '$lib/layout'
+  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
@@ -100,6 +102,10 @@
     atom_type_mapping,
     plot_skimming = true,
     hovered = $bindable(false),
+    controls_open = $bindable(false),
+    info_pane_open = $bindable(false),
+    wrapper = $bindable(),
+    fullscreen = $bindable(false),
     ...rest
   }: EventHandlers & HTMLAttributes<HTMLDivElement> & {
     // trajectory data - can be provided directly or loaded from file
@@ -188,11 +194,30 @@
     plot_skimming?: boolean
     // bindable: true while the pointer is over the viewer (drives hover-scoped shortcuts)
     hovered?: boolean
+    // bindable: whether the (structure) controls pane is currently open
+    controls_open?: boolean
+    // bindable: whether the trajectory info pane is currently open
+    info_pane_open?: boolean
+    // bindable: top-level wrapper element
+    wrapper?: HTMLDivElement
+    // bindable: fullscreen state
+    fullscreen?: boolean
   } = $props()
 
   let dragover = $state(false)
   let loading = $state(false)
   let error_msg = $state<string | null>(null)
+  // Non-fatal parse warnings surfaced from the trajectory metadata (set by the parser
+  // via attach_parse_warnings). Reset whenever a new trajectory loads; dismissible.
+  let parse_warning_msg = $state<string | undefined>(undefined)
+  $effect(() => {
+    const warnings = trajectory?.metadata?.parse_warnings
+    parse_warning_msg = Array.isArray(warnings) && warnings.length > 0
+      ? `${warnings.length} parse warning${warnings.length > 1 ? `s` : ``}: ${
+        warnings.join(`; `)
+      }`
+      : undefined
+  })
   let is_playing = $state(false)
   let play_interval: ReturnType<typeof setInterval> | undefined = $state(undefined)
 
@@ -208,8 +233,6 @@
   let current_file_path = $state<string | null>(null)
   let file_size = $state<number | undefined>(undefined)
   let file_object = $state<File | null>(null)
-  let wrapper = $state<HTMLDivElement | undefined>(undefined)
-  let info_pane_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
   let element_size = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
@@ -869,24 +892,23 @@
 
   // Separate state variables for each pane to match component prop types
   let structure_info_open = $state(false)
-  let structure_controls_open = $state(false)
   let scatter_controls = $state<ControlsConfig>({ open: false })
   let trajectory_export_open = $state(false)
-  let fullscreen = $state(false)
-</script>
 
-<svelte:document
-  onfullscreenchange={() => {
-    fullscreen = !!document.fullscreenElement
-    on_fullscreen_change?.({ trajectory, fullscreen })
-  }}
-/>
+  sync_fullscreen({
+    get_wrapper: () => wrapper,
+    get_fullscreen: () => fullscreen,
+    set_fullscreen: (val) => (fullscreen = val),
+    bg_css_var: `--traj-bg-fullscreen`,
+    on_change: (val) => on_fullscreen_change?.({ trajectory, fullscreen: val }),
+  })
+</script>
 
 <svelte:window onkeydown={forward_window_keydown(() => hovered, onkeydown)} />
 
 <div
   class:dragover
-  class:active={is_playing || structure_info_open || structure_controls_open ||
+  class:active={is_playing || structure_info_open || controls_open ||
   scatter_controls.open || trajectory_export_open || info_pane_open}
   bind:this={wrapper}
   bind:clientWidth={element_size.width}
@@ -929,6 +951,14 @@
       {error_snippet}
     />
   {:else if trajectory}
+    {#if parse_warning_msg}
+      <StatusMessage
+        bind:message={parse_warning_msg}
+        type="warning"
+        dismissible
+        style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 2; font-size: 0.85em"
+      />
+    {/if}
     <!-- Trajectory Controls -->
     {#if controls_config.mode !== `never`}
       <div
@@ -1190,7 +1220,7 @@
             show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
             ...structure_props,
           }}
-          bind:controls_open={structure_controls_open}
+          bind:controls_open
           bind:info_pane_open={structure_info_open}
           bind:hidden_elements
         />
@@ -1317,7 +1347,7 @@
       height: 100vh !important;
       width: 100vw !important;
       border-radius: 0 !important;
-      background: var(--surface-bg);
+      background: var(--traj-bg-fullscreen, var(--surface-bg));
       overflow: hidden;
     }
     &.horizontal .content-area {

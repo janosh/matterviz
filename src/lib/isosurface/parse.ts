@@ -15,6 +15,18 @@ import type { DataRange, VolumetricData, VolumetricFileData } from './types'
 // Bohr radius in Angstroms (for Gaussian .cube unit conversion)
 const BOHR_TO_ANGSTROM = 0.529177249
 
+// === Parse error contract ===
+// parse_chgcar/parse_cube return null on failure and record reasons here (mirrored to
+// console.error). parse_volumetric_file resets the collector per call and throws a
+// descriptive Error when the FILENAME identifies a volumetric format that fails to parse.
+// It still returns null when the content merely doesn't look volumetric, since callers
+// use it as a format probe before falling back to structure parsing.
+let vol_parse_errors: string[] = []
+const vol_error = (message: string): void => {
+  vol_parse_errors.push(message)
+  console.error(message)
+}
+
 // === Fast number parsing utilities ===
 
 // Parse whitespace-separated numbers directly from a string, starting at `pos`.
@@ -211,7 +223,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   cur = read_line(content, pos)
   const scale_factor = parseFloat(cur.line)
   if (isNaN(scale_factor)) {
-    console.error(`Invalid scaling factor in CHGCAR`)
+    vol_error(`Invalid scaling factor in CHGCAR`)
     return null
   }
   pos = cur.next
@@ -234,7 +246,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
   cur = read_line(content, pos)
   if (pos >= content.length) {
-    console.error(`CHGCAR: file ends before element/count lines`)
+    vol_error(`CHGCAR: file ends before element/count lines`)
     return null
   }
 
@@ -247,7 +259,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     pos = cur.next
     cur = read_line(content, pos)
     if (pos >= content.length) {
-      console.error(`CHGCAR: file ends before atom counts line`)
+      vol_error(`CHGCAR: file ends before atom counts line`)
       return null
     }
     atom_counts = cur.line.trim().split(/\s+/).map(Number)
@@ -260,7 +272,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   pos = cur.next
 
   if (pos >= content.length) {
-    console.error(`CHGCAR: file ends before coordinate mode line`)
+    vol_error(`CHGCAR: file ends before coordinate mode line`)
     return null
   }
 
@@ -272,7 +284,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   }
 
   if (pos >= content.length) {
-    console.error(`CHGCAR: file ends before coordinate mode line`)
+    vol_error(`CHGCAR: file ends before coordinate mode line`)
     return null
   }
 
@@ -286,7 +298,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   try {
     ;({ cart_to_frac, frac_to_cart } = math.create_lattice_converters(lattice))
   } catch {
-    console.error(`CHGCAR: lattice matrix is singular; cannot convert coordinates`)
+    vol_error(`CHGCAR: lattice matrix is singular; cannot convert coordinates`)
     return null
   }
   const sites: Site[] = []
@@ -299,7 +311,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
     for (let count_idx = 0; count_idx < count; count_idx++) {
       if (pos >= content.length) {
-        console.error(`CHGCAR: file ends before all atom coordinates are read`)
+        vol_error(`CHGCAR: file ends before all atom coordinates are read`)
         return null
       }
       cur = read_line(content, pos)
@@ -404,7 +416,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   }
 
   if (volumes.length === 0) {
-    console.error(`No volumetric data found in CHGCAR`)
+    vol_error(`No volumetric data found in CHGCAR`)
     return null
   }
 
@@ -426,7 +438,7 @@ export function parse_cube(
     if (content.charCodeAt(idx) === 10) line_count++
   }
   if (line_count < 6) {
-    console.error(`.cube file too short`)
+    vol_error(`.cube file too short`)
     return null
   }
 
@@ -439,7 +451,7 @@ export function parse_cube(
   // (negative n_atoms indicates orbital data with extra header line)
   const line2 = header.lines[2].split(/\s+/).map(Number)
   if (line2.length < 4 || line2.some(isNaN)) {
-    console.error(`.cube header line 3 malformed: expected 4 numbers`)
+    vol_error(`.cube header line 3 malformed: expected 4 numbers`)
     return null
   }
   const n_atoms = Math.abs(line2[0])
@@ -454,7 +466,7 @@ export function parse_cube(
     header.lines[5].split(/\s+/).map(Number),
   ]
   if (voxel_lines.some((line) => line.length < 4 || line.some(isNaN))) {
-    console.error(`.cube voxel lines malformed: expected 4 numbers per line`)
+    vol_error(`.cube voxel lines malformed: expected 4 numbers per line`)
     return null
   }
 
@@ -551,7 +563,7 @@ export function parse_cube(
   if (parsed_count < total_points) {
     console.warn(`.cube: expected ${total_points} data values, got ${parsed_count}`)
     if (parsed_count === 0) {
-      console.error(`No volumetric data found in .cube file`)
+      vol_error(`No volumetric data found in .cube file`)
       return null
     }
   }
@@ -584,19 +596,31 @@ export function parse_cube(
 const atomic_number_to_symbol = (atomic_number: number): ElementSymbol =>
   ATOMIC_NUMBER_TO_SYMBOL[atomic_number] ?? `H`
 
-// Auto-detect and parse volumetric file format based on filename and content
+// Auto-detect and parse volumetric file format based on filename and content.
+// Throws a descriptive Error when the filename identifies a volumetric format whose
+// content fails to parse; returns null when the content doesn't look volumetric at all
+// (probe semantics — callers fall back to structure parsing on null).
 export function parse_volumetric_file(
   content: string,
   filename?: string,
 ): VolumetricFileData | null {
+  vol_parse_errors = []
+  const fail = (format: string): never => {
+    const detail = vol_parse_errors.length ? `: ${vol_parse_errors.join(`; `)}` : ``
+    throw new Error(
+      `Failed to parse ${format} file${filename ? ` '${filename}'` : ``}${detail}`,
+    )
+  }
   // Strip compression suffixes so "CHGCAR.gz" and "molecule.cube.bz2" match correctly
   const lower_name = strip_compression_extensions(filename ?? ``)
 
-  // Extension-based detection
-  if (lower_name.endsWith(`.cube`)) return parse_cube(content)
+  // Extension-based detection (filename is authoritative: parse failure throws)
+  if (lower_name.endsWith(`.cube`)) return parse_cube(content) ?? fail(`.cube`)
 
   // VASP volumetric file detection by filename
-  if (VASP_VOLUMETRIC_REGEX.test(lower_name)) return parse_chgcar(content)
+  if (VASP_VOLUMETRIC_REGEX.test(lower_name)) {
+    return parse_chgcar(content) ?? fail(`VASP volumetric (CHGCAR-like)`)
+  }
 
   // Content-based detection (only parse first few lines, not the whole file)
   // Find enough lines for detection without splitting the entire string

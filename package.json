@@ -33,7 +33,6 @@
       "default": "./dist/element/data.js"
     },
     "./app.css": {
-      "types": "./dist/app.css.d.ts",
       "default": "./dist/app.css"
     },
     "./brillouin": {
@@ -120,6 +119,10 @@
       "types": "./dist/rdf/index.d.ts",
       "default": "./dist/rdf/index.js"
     },
+    "./scene": {
+      "types": "./dist/scene/index.d.ts",
+      "default": "./dist/scene/index.js"
+    },
     "./spectral": {
       "types": "./dist/spectral/index.d.ts",
       "default": "./dist/spectral/index.js"
@@ -145,7 +148,6 @@
       "default": "./dist/theme/index.js"
     },
     "./theme/themes": {
-      "types": "./dist/theme/themes.d.ts",
       "default": "./dist/theme/themes.mjs"
     },
     "./tooltip": {
@@ -176,6 +178,8 @@
   "scripts": {
     "test": "vp test --run && playwright test",
     "knip": "knip --include dependencies,devDependencies",
+    "knip:exports": "knip --include exports,types,nsExports",
+    "publint": "publint",
     "package-dist-assets": "node scripts/package-dist-assets.ts",
     "package:dist": "svelte-package && pnpm run package-dist-assets",
     "prepare": "svelte-kit sync && pnpm run package:dist",
@@ -228,6 +232,7 @@
     "happy-dom": "^20.10.1",
     "knip": "^6.16.0",
     "mdsvex": "^0.12.7",
+    "publint": "^0.3.21",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
     "svelte": "^5.56.2",
@@ -246,7 +251,8 @@
   "packageManager": "pnpm@11.5.0",
   "knip": {
     "entry": [
-      "svelte.config.ts"
+      "svelte.config.ts",
+      "src/routes/**/+{page,server,page.server,error,layout,layout.server}{,@*}.{js,ts,svelte}"
     ],
     "ignore": [
       "extensions/**"

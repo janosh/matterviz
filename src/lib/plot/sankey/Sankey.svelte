@@ -20,11 +20,8 @@
   import { closest_data_idx } from '$lib/plot/core/interactions'
   import { compute_element_placement, constrain_tooltip_position, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
-  import {
-    compute_sankey_layout,
-    type PositionedLink,
-    type PositionedNode,
-  } from '$lib/plot/sankey/sankey'
+  import { compute_sankey_layout } from '$lib/plot/sankey/sankey'
+  import type { PositionedLink, PositionedNode} from '$lib/plot/sankey/sankey'
   import { unique_id } from '$lib/plot/core/utils'
   import { DEFAULTS } from '$lib/settings'
   import { type Snippet, untrack } from 'svelte'

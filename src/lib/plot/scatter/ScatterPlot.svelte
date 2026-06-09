@@ -56,10 +56,7 @@
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
-  import {
-    create_dimension_tracker,
-    create_hover_lock,
-  } from '$lib/plot/core/hover-lock.svelte'
+  import { create_placed_tween } from '$lib/plot/core/hover-lock.svelte'
   import {
     DEFAULT_MARKERS,
     get_scale_type_name,
@@ -73,7 +70,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween, type TweenOptions } from 'svelte/motion'
+  import type { TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Pt } from '$lib/plot/core/fill-utils'
   import {
@@ -341,17 +338,6 @@
   // State for legend/colorbar placement stability
   let legend_element = $state<HTMLDivElement | undefined>()
   let colorbar_element = $state<HTMLDivElement | undefined>()
-  const legend_hover = create_hover_lock()
-  const colorbar_hover = create_hover_lock()
-  const dim_tracker = create_dimension_tracker()
-  let has_initial_legend_placement = $state(false)
-  let has_initial_colorbar_placement = $state(false)
-
-  // Clear pending hover lock timeouts on unmount
-  $effect(() => () => {
-    legend_hover.cleanup()
-    colorbar_hover.cleanup()
-  })
 
   // Module-level constants to avoid repeated allocations
   // Create and categorize points in a single pass (instead of 3 separate iterations)
@@ -939,60 +925,23 @@
     return legend_placement
   })
 
-  // Initialize tweened values for color bar position - create once, update target via effect
-  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
-  const tweened_colorbar_coords = new Tween(
-    { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...color_bar?.tween })),
-  )
-  // Initialize tweened values for legend position - create once, update target via effect
-  const tweened_legend_coords = new Tween(
-    { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...legend?.tween })),
-  )
-
-  // Update placement positions (with animation and stability checks)
-  $effect(() => {
-    if (!width || !height) return
-
-    // Track dimensions for resize detection
-    const dims_changed = dim_tracker.has_changed(width, height)
-    if (dims_changed) dim_tracker.update(width, height)
-
-    // Update colorbar position (stable after initial placement unless responsive)
-    if (color_bar_placement) {
-      const is_responsive = color_bar?.responsive ?? false
-      const should_update = dims_changed || (!colorbar_hover.is_locked.current &&
-        (is_responsive || !has_initial_colorbar_placement))
-
-      if (should_update) {
-        tweened_colorbar_coords.set(
-          { x: color_bar_placement.x, y: color_bar_placement.y },
-          has_initial_colorbar_placement ? undefined : { duration: 0 },
-        )
-        if (colorbar_element && !has_initial_colorbar_placement) {
-          has_initial_colorbar_placement = true
-        }
-      }
-    }
-
-    // Update legend position (stable after initial placement unless responsive)
-    if (legend_manual_position && !legend_is_dragging) {
-      // Immediate update (no animation) for manually dragged positions
-      tweened_legend_coords.set(legend_manual_position, { duration: 0 })
-    } else if (active_legend_placement && !legend_is_dragging) {
-      const is_responsive = legend?.responsive ?? false
-      const should_update = dims_changed || (!legend_hover.is_locked.current &&
-        (is_responsive || !has_initial_legend_placement))
-
-      if (should_update) {
-        tweened_legend_coords.set(
-          { x: active_legend_placement.x, y: active_legend_placement.y },
-          has_initial_legend_placement ? undefined : { duration: 0 },
-        )
-        if (legend_element) has_initial_legend_placement = true
-      }
-    }
+  // Tweened colorbar/legend coordinates with shared placement stability gating
+  const colorbar_tween = create_placed_tween({
+    placement: () => color_bar_placement,
+    dims: () => ({ width, height }),
+    responsive: () => color_bar?.responsive ?? false,
+    element: () => colorbar_element,
+    tween: () => ({ duration: 400, ...color_bar?.tween }),
+  })
+  const legend_tween = create_placed_tween({
+    placement: () => active_legend_placement,
+    dims: () => ({ width, height }),
+    responsive: () => legend?.responsive ?? false,
+    element: () => legend_element,
+    tween: () => ({ duration: 400, ...legend?.tween }),
+    // Leave coords alone mid-drag; once dragged, the manual position wins permanently
+    suspended: () => legend_is_dragging,
+    manual_position: () => legend_manual_position,
   })
 
   // Generate axis ticks - consolidated into single derived for efficiency
@@ -1899,15 +1848,15 @@
     ] as Vec2}
       <div
         bind:this={colorbar_element}
-        onmouseenter={() => colorbar_hover.set_locked(true)}
-        onmouseleave={() => colorbar_hover.set_locked(false)}
+        onmouseenter={() => colorbar_tween.set_locked(true)}
+        onmouseleave={() => colorbar_tween.set_locked(false)}
         class="colorbar-wrapper"
         role="img"
         aria-label="Color scale legend"
         style={`${
         // explicit wrapper_style or auto-outside places the colorbar; else auto-placement coords
         effective_cbar_wrapper_style ??
-          `position: absolute; left: ${tweened_colorbar_coords.current.x}px; top: ${tweened_colorbar_coords.current.y}px`}; pointer-events: auto;`}
+          `position: absolute; left: ${colorbar_tween.coords.current.x}px; top: ${colorbar_tween.coords.current.y}px`}; pointer-events: auto;`}
       >
         <ColorBar
           tick_labels={4}
@@ -1934,14 +1883,14 @@
       : legend_auto_outside
       ? legend_outside_x
       : legend_placement
-      ? tweened_legend_coords.current.x
+      ? legend_tween.coords.current.x
       : default_x}
       {@const current_y = legend_is_dragging && legend_manual_position
       ? legend_manual_position.y
       : legend_auto_outside
       ? legend_outside_y
       : legend_placement
-      ? tweened_legend_coords.current.y
+      ? legend_tween.coords.current.y
       : default_y}
       <PlotLegend
         bind:root_element={legend_element}
@@ -1949,7 +1898,7 @@
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
         on_drag_end={() => (legend_is_dragging = false)}
-        on_hover_change={legend_hover.set_locked}
+        on_hover_change={legend_tween.set_locked}
         on_item_hover={(item) => {
           if (item?.item_type === `fill`) {
             // highlight the matching fill in the plot (same state plot fill-hover uses), but skip
