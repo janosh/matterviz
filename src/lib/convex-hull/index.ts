@@ -1,3 +1,4 @@
+import type { FullscreenToggleProp } from '$lib/layout'
 import type { D3InterpolateName } from '$lib/colors'
 import type { ShowControlsProp } from '$lib/controls'
 import type { TooltipConfig } from '$lib/tooltip'
@@ -73,7 +74,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean // bindable fullscreen state
   // show/hide the fullscreen button (or custom snippet to render it)
-  fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+  fullscreen_toggle?: FullscreenToggleProp
   enable_info_pane?: boolean
   wrapper?: HTMLDivElement
   // Smart label defaults - hide labels if more than this many entries
@@ -150,12 +151,6 @@ export type ConvexHullGizmoOptions = Record<string, unknown> & {
   placement?: GizmoPlacement
   size?: number
   background?: { enabled?: boolean; color?: number; opacity?: number }
-}
-
-// Configuration result from merging user controls with defaults
-export interface MergedCHConfig {
-  controls: ConvexHullControlsType
-  config: ConvexHullConfig
 }
 
 // Energy source mode determination result

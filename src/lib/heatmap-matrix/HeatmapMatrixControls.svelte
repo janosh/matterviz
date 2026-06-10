@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import {
@@ -46,8 +47,8 @@
     export_formats?: HeatmapExportFormat[]
     onexport?: (format: HeatmapExportFormat) => void
     show_pane?: boolean
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: PaneProps
+    toggle_props?: PaneToggleProps
     children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
 

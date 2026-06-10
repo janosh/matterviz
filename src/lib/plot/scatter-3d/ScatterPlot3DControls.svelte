@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import { SettingsSection } from '$lib/layout'
@@ -41,8 +42,8 @@
     auto_rotate?: number
     series?: DataSeries3D[]
     surfaces?: Surface3DConfig[]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: PaneToggleProps
+    pane_props?: PaneProps
     children?: Snippet
   } = $props()
 

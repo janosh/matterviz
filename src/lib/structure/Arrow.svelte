@@ -42,11 +42,9 @@
     arrow_head_radius < 0 ? shaft_len * -arrow_head_radius : arrow_head_radius,
   )
 
-  const shaft_pos = $derived(
-    math.add(position, math.scale(dir, shaft_len * 0.5)) as Vec3,
-  )
+  const shaft_pos = $derived(math.add(position, math.scale(dir, shaft_len * 0.5)))
   const head_pos = $derived(
-    math.add(position, math.scale(dir, shaft_len + head_len * 0.5)) as Vec3,
+    math.add(position, math.scale(dir, shaft_len + head_len * 0.5)),
   )
 
   const rotation = $derived.by((): Vec3 => {

@@ -157,7 +157,7 @@ function invariant_projector(mat: Matrix3x3): { proj: Matrix3x3; order: number }
   for (let order = 1; order <= 6; order++) {
     if (is_identity(power)) return { proj: mat_scale(sum, 1 / order), order }
     sum = mat_add(sum, power)
-    power = mat_round(math.dot(power, mat) as Matrix3x3)
+    power = mat_round(math.dot(power, mat))
   }
   throw new Error(`Matrix is not of finite crystallographic order`)
 }

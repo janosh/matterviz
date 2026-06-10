@@ -7,7 +7,14 @@
   import Cylinder from '$lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { cartesian_to_fractional, k_lattice_inverse, polyhedron_geometry } from './geometry'
+  import {
+    cartesian_to_fractional,
+    default_camera_position,
+    k_lattice_inverse,
+    k_space_size,
+    polyhedron_centroid,
+    polyhedron_geometry,
+  } from './geometry'
   import ReciprocalVectors from './ReciprocalVectors.svelte'
   import type { BrillouinZoneData, BZHoverData, IrreducibleBZData } from './types'
 
@@ -39,7 +46,6 @@
     directional_light = DEFAULTS.structure.directional_light,
     gizmo = DEFAULTS.structure.show_gizmo,
     auto_rotate = DEFAULTS.structure.auto_rotate,
-    camera_is_moving = $bindable(false),
     scene = $bindable(),
     camera = $bindable(),
     k_path_points = [],
@@ -77,25 +83,11 @@
 
   extras.interactivity()
 
-  // Compute centroid of BZ vertices for proper rotation center
-  const rotation_target = $derived.by((): Vec3 => {
-    if (!bz_data?.vertices || bz_data.vertices.length === 0) return [0, 0, 0]
-    const sum = bz_data.vertices.reduce(
-      (acc, vertex) => math.add(acc, vertex),
-      [0, 0, 0] as Vec3,
-    )
-    return math.scale(sum, 1 / bz_data.vertices.length)
-  })
-
-  // BZ size for camera positioning: average magnitude of k-vectors
-  const bz_size = $derived.by(() => {
-    if (!bz_data?.k_lattice) return 10
-    const mags = bz_data.k_lattice.map((vec) => Math.hypot(...vec))
-    return mags.reduce((sum, mag) => sum + mag, 0) / 3
-  })
-
-  const computed_camera_position = $derived.by(() =>
-    camera_position || ([10, 3, 8].map((coord) => coord * Math.max(1, bz_size)) as Vec3)
+  // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
+  const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
+  const bz_size = $derived(k_space_size(bz_data?.k_lattice))
+  const computed_camera_position = $derived(
+    camera_position || default_camera_position(bz_size),
   )
 
   const orbit_controls_props = $derived(build_orbit_props({
@@ -109,7 +101,6 @@
     min_zoom,
     auto_rotate,
     rotation_damping,
-    set_camera_is_moving: (moving) => (camera_is_moving = moving),
   }))
 
   // K-path styling. The invisible hover proxy is twice the visible thickness so the cursor
@@ -375,10 +366,3 @@
     {/if}
   {/if}
 </T.Group>
-
-<style>
-  :global(.brillouin-zone .responsive-gizmo) {
-    width: clamp(70px, 18cqmin, 100px) !important;
-    height: clamp(70px, 18cqmin, 100px) !important;
-  }
-</style>

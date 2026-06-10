@@ -4,7 +4,6 @@ import {
   generate_axis_labels,
   generate_plot_series,
   should_hide_plot,
-  toggle_series_visibility,
 } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame } from '../setup'
@@ -244,120 +243,6 @@ describe(`generate_plot_series`, () => {
       const force_series = find_series_by_label(series, `f`)
       expect(energy_series?.visible).toBe(true)
       expect(force_series?.visible).toBe(true)
-    })
-  })
-})
-
-describe(`toggle_series_visibility`, () => {
-  const create_test_series = () => [
-    create_series([1, 2, 3], true, `Energy`, `eV`),
-    create_series([0.1, 0.2, 0.3], true, `Force`, `eV/Å`),
-    create_series([100, 101, 102], false, `Volume`, `Å³`),
-  ]
-
-  it(`should toggle visibility while respecting unit group constraints`, () => {
-    const initial_series = create_test_series()
-    const updated_series = toggle_series_visibility(initial_series, 2) // Toggle Volume
-
-    // Volume shown, Force hidden (smart replacement), Energy kept (highest priority)
-    expect(updated_series[0].visible).toBe(true) // Energy
-    expect(updated_series[1].visible).toBe(false) // Force (hidden to make room)
-    expect(updated_series[2].visible).toBe(true) // Volume (newly shown)
-
-    const visible_units = new Set(
-      updated_series.filter((srs) => srs.visible).map((srs) => srs.unit),
-    )
-    expect(visible_units.size).toBe(2)
-    expect(visible_units).toEqual(new Set([`eV`, `Å³`]))
-  })
-
-  it.each([
-    { name: `negative index`, index: -1 },
-    { name: `out-of-bounds index`, index: 10 },
-    { name: `empty series array`, series: [], index: 0 },
-  ])(`should handle invalid input: $name`, ({ series = create_test_series(), index }) => {
-    const result = toggle_series_visibility(series, index)
-    expect(result).toEqual(series)
-  })
-
-  it(`should handle single series toggle`, () => {
-    const single_series = [create_series([1, 2, 3], true, `Energy`, `eV`)]
-
-    const hidden_result = toggle_series_visibility(single_series, 0)
-    expect(hidden_result[0].visible).toBe(false)
-
-    const visible_result = toggle_series_visibility(hidden_result, 0)
-    expect(visible_result[0].visible).toBe(true)
-  })
-
-  it(`should not hide series with same unit when toggling (regression test)`, () => {
-    const initial_series = [
-      create_series([5.0, 5.1, 5.2], true, `A`, `Å`, `y2`),
-      create_series([5.2, 5.3, 5.4], false, `B`, `Å`, `y2`), // Same unit as A
-      create_series([1.0, 2.0, 3.0], true, `Energy`, `eV`, `y1`),
-    ]
-
-    const updated_series = toggle_series_visibility(initial_series, 1)
-
-    // A should NOT be hidden when B is shown (same unit group)
-    expect(find_series_by_label(updated_series, `A`)?.visible).toBe(true)
-    expect(find_series_by_label(updated_series, `B`)?.visible).toBe(true)
-    expect(find_series_by_label(updated_series, `Energy`)?.visible).toBe(true)
-
-    const visible_units = new Set(
-      updated_series.filter((srs) => srs.visible).map((srs) => srs.unit),
-    )
-    expect(visible_units).toEqual(new Set([`Å`, `eV`]))
-  })
-
-  describe(`smart unit group replacement`, () => {
-    const create_replacement_test_series = () => [
-      create_series([1.0, 2.0], true, `Energy`, `eV`, `y1`),
-      create_series([5.0, 5.1], true, `A`, `Å`, `y2`),
-      create_series([5.1, 5.2], false, `B`, `Å`, `y2`), // Same unit as A
-      create_series([100, 101], false, `Volume`, `Å³`, `y1`),
-    ]
-
-    it(`should not trigger replacement when showing series with same unit`, () => {
-      const initial_series = create_replacement_test_series()
-      const updated = toggle_series_visibility(initial_series, 2) // Show B (same unit as A)
-
-      expect(find_series_by_label(updated, `Energy`)?.visible).toBe(true)
-      expect(find_series_by_label(updated, `A`)?.visible).toBe(true)
-      expect(find_series_by_label(updated, `B`)?.visible).toBe(true)
-      expect(find_series_by_label(updated, `Volume`)?.visible).toBe(false)
-
-      const visible_units = new Set(
-        updated.filter((srs) => srs.visible).map((srs) => srs.unit),
-      )
-      expect(visible_units).toEqual(new Set([`eV`, `Å`]))
-    })
-
-    it(`should trigger smart replacement when showing series with new unit`, () => {
-      const initial_series = create_replacement_test_series()
-      // First show B to have both A and B visible (same unit)
-      let updated = toggle_series_visibility(initial_series, 2)
-      // Then show Volume (new unit) - should trigger smart replacement
-      updated = toggle_series_visibility(updated, 3)
-
-      expect(find_series_by_label(updated, `Energy`)?.visible).toBe(true)
-      expect(find_series_by_label(updated, `Volume`)?.visible).toBe(true)
-      expect(find_series_by_label(updated, `A`)?.visible).toBe(false)
-      expect(find_series_by_label(updated, `B`)?.visible).toBe(false)
-
-      const visible_units = new Set(
-        updated.filter((srs) => srs.visible).map((srs) => srs.unit),
-      )
-      expect(visible_units).toEqual(new Set([`eV`, `Å³`]))
-    })
-
-    it(`should maintain 2-unit-group constraint during replacement`, () => {
-      const initial_series = create_replacement_test_series()
-      let updated = toggle_series_visibility(initial_series, 2) // Show B
-      updated = toggle_series_visibility(updated, 3) // Show Volume
-
-      assert_unit_group_constraints(updated)
-      expect(updated.filter((srs) => srs.visible).length).toBeGreaterThan(0)
     })
   })
 })

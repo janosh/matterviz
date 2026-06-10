@@ -5,7 +5,15 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import type { SymmetrySettings } from './index'
-  import { default_sym_settings, wyckoff_positions_from_moyo } from './index'
+  import {
+    count_structure_free_params,
+    default_sym_settings,
+    enrich_wyckoff_rows,
+    spacegroup_settings,
+    spacegroup_wyckoff_positions,
+    wyckoff_positions_from_moyo,
+    wyckoff_sequence,
+  } from './index'
   import * as spg from './spacegroups'
 
   type SymmetrySnippet = Snippet<
@@ -29,9 +37,22 @@
     header?: SymmetrySnippet
   } = $props()
 
-  const wyckoff_count = $derived(
-    sym_data ? wyckoff_positions_from_moyo(sym_data).length : 0,
+  // Space-group Wyckoff database + all settings (empty when WASM is not initialized,
+  // e.g. SSR or unit tests — the stats below degrade gracefully)
+  const wyckoff_db = $derived(
+    sym_data ? spacegroup_wyckoff_positions(sym_data.hall_number) : [],
   )
+  const settings_entries = $derived(sym_data ? spacegroup_settings(sym_data.number) : [])
+  const current_setting = $derived(
+    settings_entries.find((entry) => entry.hall_number === sym_data?.hall_number),
+  )
+  const occupied_rows = $derived(
+    sym_data ? enrich_wyckoff_rows(wyckoff_positions_from_moyo(sym_data), wyckoff_db) : [],
+  )
+  const wyckoff_count = $derived(occupied_rows.length)
+  const wyckoff_seq = $derived(wyckoff_sequence(occupied_rows))
+  // Internal degrees of freedom (null when ITA coordinates are unavailable)
+  const free_params = $derived(count_structure_free_params(occupied_rows))
   const display_hm_symbol = $derived(sym_data?.hm_symbol?.replaceAll(/\s+/g, ``) ?? `?`)
   // Crystal system, plus the lattice system in parens when it differs (e.g. trigonal
   // space groups split into rhombohedral R-centered and hexagonal P lattices)
@@ -86,6 +107,12 @@
       `Total symmetry operations that map the crystal structure onto itself. Includes rotations, translations, and combinations.`,
     distinct_orbits:
       `Number of unique Wyckoff positions (symmetry-equivalent atomic sites) in the crystal structure.`,
+    wyckoff_sequence:
+      `Wyckoff sequence: letters of all occupied Wyckoff positions in descending alphabetical order, with superscript counts for letters occupied by multiple orbits. A standard structure-type fingerprint (complements the Pearson symbol).`,
+    free_params:
+      `Internal degrees of freedom: number of free fractional-coordinate parameters (x, y, z in the ITA representative coordinates) summed over occupied Wyckoff orbits. 0 means all atomic positions are fully fixed by symmetry.`,
+    settings:
+      `All settings of this space group in the International Tables (origin choices, unique axes, cell choices, hexagonal vs rhombohedral axes). The setting detected for this structure is highlighted.`,
     translations: `Number of translations in the crystal structure.`,
     rotations: `Number of rotations in the crystal structure.`,
     roto_translations: `Number of roto-translations in the crystal structure.`,
@@ -166,7 +193,11 @@
         Crystal System <strong>{crystal_system_label}</strong>
       </div>
       <div title={tooltips?.hall_number} {@attach tooltip()}>
-        Hall Number <strong>{sym_data.hall_number}</strong>
+        Hall Number <strong>
+          {sym_data.hall_number}{
+            current_setting ? ` (${current_setting.hall_symbol})` : ``
+          }
+        </strong>
       </div>
       <div title={tooltips?.pearson_symbol} {@attach tooltip()}>
         Pearson <strong>{sym_data.pearson_symbol}</strong>
@@ -174,6 +205,16 @@
       <div title={tooltips?.distinct_orbits} {@attach tooltip()}>
         Wyckoff Positions <strong>{wyckoff_count}</strong>
       </div>
+      {#if wyckoff_seq}
+        <div title={tooltips?.wyckoff_sequence} {@attach tooltip()}>
+          Wyckoff Sequence <strong>{wyckoff_seq}</strong>
+        </div>
+      {/if}
+      {#if free_params !== null}
+        <div title={tooltips?.free_params} {@attach tooltip()}>
+          Free Parameters <strong>{free_params}</strong>
+        </div>
+      {/if}
       <div
         class="sym-ops-summary"
         title="{sym_ops_counts.translations} translations + {sym_ops_counts.rotations} rotations + {sym_ops_counts.roto_translations} roto-translations"
@@ -185,6 +226,39 @@
         }RT)
       </div>
     </div>
+    {#if settings_entries.length > 1}
+      <details class="settings-explorer">
+        <summary title={tooltips?.settings} {@attach tooltip()}>
+          {settings_entries.length} settings of space group {sym_data.number}
+        </summary>
+        <table>
+          <thead>
+            <tr>
+              <th>Hall #</th>
+              <th>H-M full</th>
+              <th>Hall symbol</th>
+              <th>Setting</th>
+              <th>Centering</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each settings_entries as entry (entry.hall_number)}
+              {@const is_current = entry.hall_number === sym_data.hall_number}
+              <tr
+                class:current={is_current}
+                title={is_current ? `Setting detected for this structure` : null}
+              >
+                <td>{entry.hall_number}</td>
+                <td>{entry.hm_full}</td>
+                <td>{entry.hall_symbol}</td>
+                <td>{entry.setting || `—`}</td>
+                <td>{entry.centering}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </details>
+    {/if}
   {:else}
     <div class="no-data">
       <p>No symmetry data available</p>
@@ -221,6 +295,25 @@
   }
   .stats-grid strong {
     margin: var(--sym-stats-strong-margin, 0 0 0 3pt);
+  }
+  .settings-explorer {
+    margin-block: var(--sym-stats-grid-margin-block, 1ex);
+  }
+  .settings-explorer summary {
+    cursor: pointer;
+    color: var(--text-muted, #666);
+  }
+  .settings-explorer table {
+    margin-top: 1ex;
+    border-collapse: collapse;
+  }
+  .settings-explorer :is(th, td) {
+    padding: 1px 8px;
+    text-align: left;
+  }
+  .settings-explorer tr.current {
+    background: color-mix(in srgb, var(--accent-color, #0066cc) 18%, transparent);
+    font-weight: bold;
   }
   .no-data {
     display: flex;

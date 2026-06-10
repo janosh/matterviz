@@ -101,11 +101,9 @@ export function transform_cell(
   if (cell_type === `conventional`) {
     return get_conventional_cell(structure, sym_data)
   }
-
   if (cell_type === `primitive`) {
     return get_primitive_cell(structure, sym_data)
   }
-
-  // Fallback to original (should never reach here with proper typing)
+  // Unknown cell_type at runtime (e.g. from stale persisted settings): leave unchanged
   return structure
 }

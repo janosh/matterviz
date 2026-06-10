@@ -753,6 +753,47 @@ describe(`normalize_band_structure`, () => {
     )
 
     it.each([
+      [`empty matrix`, []],
+      [`wrong row count`, [[1, 0, 0]]],
+      [
+        `short rows`,
+        [
+          [1, 0],
+          [0, 1],
+          [0, 0],
+        ],
+      ],
+      [
+        `non-finite entries`,
+        [
+          [1, 0, 0],
+          [0, NaN, 0],
+          [0, 0, 1],
+        ],
+      ],
+      [
+        `non-numeric entries`,
+        [
+          [1, 0, 0],
+          [0, `a`, 0],
+          [0, 0, 1],
+        ],
+      ],
+    ])(`falls back to identity recip_lattice for %s`, (_desc, matrix) => {
+      const result = normalize_band_structure({
+        qpoints: [
+          { label: `GAMMA`, frac_coords: [0, 0, 0] },
+          { label: `X`, frac_coords: [0.5, 0, 0] },
+        ],
+        branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
+        bands: [[0, 1]],
+        distance: [0, 1.0],
+        recip_lattice: { matrix },
+      })
+      expect(result?.recip_lattice.matrix).toEqual(ident)
+    })
+
+    it.each([
       {
         desc: `mismatched lengths`,
         input: {

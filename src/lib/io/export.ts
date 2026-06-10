@@ -8,6 +8,11 @@ import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
 export const renderer_registry = new WeakMap<HTMLCanvasElement, WebGLRenderer>()
 
+// PNG DPI -> render scale relative to the 72 DPI baseline, capped at 10x. DPI floors
+// at 1 (non-finite -> 72) so bad inputs can't yield 0x0 canvases or NaN pixel ratios.
+export const dpi_to_scale = (png_dpi: number): number =>
+  Math.min(Math.max(1, Number.isFinite(png_dpi) ? png_dpi : 72) / 72, 10)
+
 // Capture a WebGL canvas as a PNG Blob at the given DPI.
 // Temporarily adjusts renderer pixel ratio for high-res capture, then restores.
 // Returns data directly (no browser download), suitable for programmatic capture
@@ -19,7 +24,7 @@ export function canvas_to_png_blob(
   scene: Scene | null = null,
   camera: Camera | null = null,
 ): Promise<Blob> {
-  const resolution_multiplier = Math.min(png_dpi / 72, 10)
+  const resolution_multiplier = dpi_to_scale(png_dpi)
   const renderer = renderer_registry.get(canvas)
 
   if (resolution_multiplier <= 1.1 || !renderer) {
@@ -190,9 +195,10 @@ export function svg_to_png_blob(
     return Promise.reject(new Error(`Invalid PNG DPI for export`))
   }
 
-  const resolution_multiplier = Math.min(png_dpi / 72, 10)
-  const pixel_width = Math.round(width * resolution_multiplier)
-  const pixel_height = Math.round(height * resolution_multiplier)
+  const resolution_multiplier = dpi_to_scale(png_dpi)
+  // Floor at 1px: small viewBoxes at low DPI round to 0 and make toBlob fail confusingly
+  const pixel_width = Math.max(1, Math.round(width * resolution_multiplier))
+  const pixel_height = Math.max(1, Math.round(height * resolution_multiplier))
 
   const canvas = document.createElement(`canvas`)
   const ctx = canvas.getContext(`2d`)

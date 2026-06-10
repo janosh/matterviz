@@ -1,11 +1,12 @@
 <script lang="ts">
+  import type { FullscreenToggleProp } from './fullscreen'
+  import type { ShowControlsState } from '$lib/controls'
   // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) for BrillouinZone/FermiSurface/Structure viewers; themed via neutral --viewer-* CSS vars
   // TODO Trajectory.svelte still has its own control-buttons variant — migrate it here.
-  import type { normalize_show_controls } from '$lib/controls'
-  import Icon from '$lib/Icon.svelte'
-  import { toggle_fullscreen } from '$lib/layout'
   import type { Snippet } from 'svelte'
+  import { createAttachmentKey } from 'svelte/attachments'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import FullscreenButton from './FullscreenButton.svelte'
 
   let {
     controls_config,
@@ -18,16 +19,19 @@
     before = undefined,
     children = undefined,
   }: {
-    controls_config: ReturnType<typeof normalize_show_controls>
+    controls_config: ShowControlsState
     filename?: string
     fullscreen?: boolean
-    fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+    fullscreen_toggle?: FullscreenToggleProp
     fullscreen_btn_style?: string
     wrapper?: HTMLDivElement
     style?: string // extra styles/CSS vars for the section (user config style wins)
     before?: Snippet // rendered before filename/fullscreen (e.g. reset-camera button)
     children?: Snippet // rendered after the fullscreen toggle (panes, controls, ...)
   } = $props()
+
+  // Styled tooltip (reads the button's title attr), forwarded as a spreadable attachment
+  const tooltip_attachment = { [createAttachmentKey()]: tooltip() }
 </script>
 
 <section
@@ -42,21 +46,14 @@
     {/if}
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <button
-        type="button"
-        onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
-        title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-        aria-pressed={fullscreen}
+      <FullscreenButton
+        {fullscreen}
+        toggle={fullscreen_toggle}
+        {wrapper}
         class="fullscreen-toggle"
         style={fullscreen_btn_style}
-        {@attach tooltip()}
-      >
-        {#if typeof fullscreen_toggle === `function`}
-          {@render fullscreen_toggle({ fullscreen })}
-        {:else}
-          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-        {/if}
-      </button>
+        {...tooltip_attachment}
+      />
     {/if}
 
     {@render children?.()}
@@ -85,8 +82,12 @@
     pointer-events: auto;
   }
   /* Mode: hover - controls visible while the parent viewer is hovered/focused */
-  :global(:hover) > section.control-buttons.hover-visible,
-  :global(:focus-within) > section.control-buttons.hover-visible {
+  :global(.structure:hover) > section.control-buttons.hover-visible,
+  :global(.structure:focus-within) > section.control-buttons.hover-visible,
+  :global(.brillouin-zone:hover) > section.control-buttons.hover-visible,
+  :global(.brillouin-zone:focus-within) > section.control-buttons.hover-visible,
+  :global(.fermi-surface:hover) > section.control-buttons.hover-visible,
+  :global(.fermi-surface:focus-within) > section.control-buttons.hover-visible {
     opacity: 1;
     pointer-events: auto;
   }

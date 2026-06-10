@@ -8,17 +8,13 @@
   import ConvexHull3D from './ConvexHull3D.svelte'
   import ConvexHull4D from './ConvexHull4D.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
-  import type { GasSpecies, GasThermodynamicsConfig } from './types'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
   // each specific component will only use its relevant props from this super set
+  // (gas_config/gas_pressures already come from BaseConvexHullProps)
   type ConvexHullProps = BaseConvexHullProps & Hull3DProps & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
-    // Gas thermodynamics config - enables atmosphere-controlled phase diagrams
-    gas_config?: GasThermodynamicsConfig
-    // Gas pressure binding - enables two-way binding for atmosphere control
-    gas_pressures?: Partial<Record<GasSpecies, number>>
   }
 
   let {
@@ -87,9 +83,9 @@
     hull_face_opacity_prop = hull_face_opacity
   })
 
-  // Map element count to corresponding component
-  // Note: Type assertion needed because TypeScript can't infer that all components
-  // accept a compatible superset of props (BaseConvexHullProps + dimension-specific)
+  // Map element count to component. Deliberate cast: the wrapper passes the prop superset
+  // while each component declares only its dimension's props (2D lacks Hull3DProps, 3D/4D
+  // lack x/y_axis), so a constructor union wouldn't compile. Svelte ignores extra props.
   const ConvexHullComponent = $derived(
     { 2: ConvexHull2D, 3: ConvexHull3D, 4: ConvexHull4D }[element_count] ??
       null,

@@ -22,7 +22,6 @@ export type SceneControlProps = {
   directional_light?: number
   gizmo?: boolean | ComponentProps<typeof Gizmo>
   auto_rotate?: number // speed; 0 disables auto-rotation
-  camera_is_moving?: boolean // bindable: true while orbit controls are active
   scene?: Scene // bindable: Threlte scene for external use (e.g. export pane)
   camera?: Camera // bindable: active camera for external use
 }

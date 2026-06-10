@@ -3,31 +3,16 @@ import * as math from '$lib/math'
 import { describe, expect, it, test } from 'vitest'
 
 describe(`combinations`, () => {
+  // oxfmt-ignore
   test.each([
     [[], 0, [[]]],
     [[`a`, `b`, `c`], 0, [[]]],
     [[], 1, []],
     [[`a`], 2, []],
     [[`La`, `Ni`, `O`], 3, [[`La`, `Ni`, `O`]]],
-    [
-      [`A`, `B`, `C`],
-      2,
-      [
-        [`A`, `B`],
-        [`A`, `C`],
-        [`B`, `C`],
-      ],
-    ],
+    [[`A`, `B`, `C`], 2, [[`A`, `B`], [`A`, `C`], [`B`, `C`]]],
     [[`A`, `B`, `C`, `D`], 1, [[`A`], [`B`], [`C`], [`D`]]],
-    [
-      [1, 2, 3],
-      2,
-      [
-        [1, 2],
-        [1, 3],
-        [2, 3],
-      ],
-    ],
+    [[1, 2, 3], 2, [[1, 2], [1, 3], [2, 3]]],
   ])(`C(%j, %i) -> %j`, (arr, k, expected) => {
     expect(math.combinations(arr as unknown[], k)).toEqual(expected)
   })
@@ -48,6 +33,7 @@ test(`scale vector`, () => {
 })
 
 describe(`centered_frac`, () => {
+  // oxfmt-ignore
   it.each([
     // Already in range [-0.5, 0.5)
     { input: 0, expected: 0 },
@@ -149,22 +135,11 @@ describe(`euclidean_dist`, () => {
   })
 })
 
+// oxfmt-ignore
 test.each([
-  [
-    [1, 2],
-    [3, 4],
-    [4, 6],
-  ],
-  [
-    [1, 2, 3],
-    [4, 5, 6],
-    [5, 7, 9],
-  ],
-  [
-    [1, 2, 3, 4, 5, 6],
-    [7, 8, 9, 10, 11, 12],
-    [8, 10, 12, 14, 16, 18],
-  ],
+  [[1, 2], [3, 4], [4, 6]],
+  [[1, 2, 3], [4, 5, 6], [5, 7, 9]],
+  [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [8, 10, 12, 14, 16, 18]],
 ])(`add vectors`, (vec1, vec2, expected) => {
   expect(math.add(vec1, vec2)).toEqual(expected)
   expect(Math.hypot(...math.subtract(math.add(vec1, vec2), expected))).toBe(0)
@@ -181,32 +156,13 @@ test(`add function comprehensive`, () => {
   expect(() => math.add([1, 2, 3], [4, 5], [6, 7, 8])).toThrow(/same\s+length/i)
 })
 
+// oxfmt-ignore
 test.each([
-  [
-    [5, 7, 9],
-    [2, 3, 4],
-    [3, 4, 5],
-  ],
-  [
-    [10, 20],
-    [3, 7],
-    [7, 13],
-  ],
-  [
-    [0, 0, 0],
-    [1, 2, 3],
-    [-1, -2, -3],
-  ],
-  [
-    [5, 5, 5],
-    [5, 5, 5],
-    [0, 0, 0],
-  ],
-  [
-    [-1, -2, -3],
-    [-4, -5, -6],
-    [3, 3, 3],
-  ],
+  [[5, 7, 9], [2, 3, 4], [3, 4, 5]],
+  [[10, 20], [3, 7], [7, 13]],
+  [[0, 0, 0], [1, 2, 3], [-1, -2, -3]],
+  [[5, 5, 5], [5, 5, 5], [0, 0, 0]],
+  [[-1, -2, -3], [-4, -5, -6], [3, 3, 3]],
 ])(`subtract vectors`, (vec1, vec2, expected) => {
   expect(math.subtract(vec1, vec2)).toEqual(expected)
   expect(math.add(math.subtract(vec1, vec2), vec2)).toEqual(vec1)
@@ -277,77 +233,22 @@ test(`dot function comprehensive`, () => {
   )
 })
 
+// oxfmt-ignore
 test.each([
   // Identity matrix - should return the same vector
-  [
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-    [3, 4, 5],
-    [3, 4, 5],
-  ],
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [3, 4, 5], [3, 4, 5]],
   // Zero matrix - should return zero vector
-  [
-    [
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 0],
-    ],
-    [1, 2, 3],
-    [0, 0, 0],
-  ],
+  [[[0, 0, 0], [0, 0, 0], [0, 0, 0]], [1, 2, 3], [0, 0, 0]],
   // Zero vector - should return zero vector
-  [
-    [
-      [1, 2, 3],
-      [4, 5, 6],
-      [7, 8, 9],
-    ],
-    [0, 0, 0],
-    [0, 0, 0],
-  ],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [0, 0, 0], [0, 0, 0]],
   // Basic multiplication
-  [
-    [
-      [1, 2, 3],
-      [4, 5, 6],
-      [7, 8, 9],
-    ],
-    [1, 2, 3],
-    [14, 32, 50],
-  ],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [1, 2, 3], [14, 32, 50]],
   // Scaling matrix
-  [
-    [
-      [2, 0, 0],
-      [0, 3, 0],
-      [0, 0, 4],
-    ],
-    [1, 2, 3],
-    [2, 6, 12],
-  ],
+  [[[2, 0, 0], [0, 3, 0], [0, 0, 4]], [1, 2, 3], [2, 6, 12]],
   // Rotation around z-axis (90 degrees)
-  [
-    [
-      [0, -1, 0],
-      [1, 0, 0],
-      [0, 0, 1],
-    ],
-    [1, 0, 0],
-    [0, 1, 0],
-  ],
+  [[[0, -1, 0], [1, 0, 0], [0, 0, 1]], [1, 0, 0], [0, 1, 0]],
   // Complex example
-  [
-    [
-      [1, 2, 3],
-      [0, 1, 4],
-      [5, 6, 0],
-    ],
-    [2, 3, 1],
-    [11, 7, 28],
-  ],
+  [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], [2, 3, 1], [11, 7, 28]],
 ])(`mat3x3_vec3_multiply`, (matrix, vector, expected) => {
   expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as Vec3)).toEqual(expected)
 })
@@ -376,14 +277,11 @@ test(`dot matrix operations`, () => {
   ])
 })
 
+// oxfmt-ignore
 test.each([
   // Cubic lattices
   [
-    [
-      [5, 0, 0],
-      [0, 5, 0],
-      [0, 0, 5],
-    ],
+    [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
     {
       a: 5,
       b: 5,
@@ -395,11 +293,7 @@ test.each([
     },
   ],
   [
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
     {
       a: 1,
       b: 1,
@@ -412,11 +306,7 @@ test.each([
   ],
   // Tetragonal
   [
-    [
-      [3, 0, 0],
-      [0, 3, 0],
-      [0, 0, 6],
-    ],
+    [[3, 0, 0], [0, 3, 0], [0, 0, 6]],
     {
       a: 3,
       b: 3,
@@ -429,11 +319,7 @@ test.each([
   ],
   // Orthorhombic
   [
-    [
-      [4, 0, 0],
-      [0, 5, 0],
-      [0, 0, 6],
-    ],
+    [[4, 0, 0], [0, 5, 0], [0, 0, 6]],
     {
       a: 4,
       b: 5,
@@ -463,11 +349,7 @@ test.each([
   ],
   // Triclinic
   [
-    [
-      [3, 0, 0],
-      [1, 2, 0],
-      [0.5, 1, 2],
-    ],
+    [[3, 0, 0], [1, 2, 0], [0.5, 1, 2]],
     {
       a: 3,
       b: Math.sqrt(5),
@@ -860,74 +742,27 @@ describe(`tensor conversion utilities`, () => {
   ]
 
   describe(`to_voigt`, () => {
+    // oxfmt-ignore
     it.each([
       [`symmetric tensor`, symmetric_tensor, expected_voigt],
-      [
-        `identity`,
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-        [1, 1, 1, 0, 0, 0],
-      ],
-      [
-        `diagonal`,
-        [
-          [2, 0, 0],
-          [0, 3, 0],
-          [0, 0, 4],
-        ],
-        [2, 3, 4, 0, 0, 0],
-      ],
-      [
-        `zero`,
-        [
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ],
-        [0, 0, 0, 0, 0, 0],
-      ],
+      [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 1, 1, 0, 0, 0]],
+      [`diagonal`, [[2, 0, 0], [0, 3, 0], [0, 0, 4]], [2, 3, 4, 0, 0, 0]],
+      [`zero`, [[0, 0, 0], [0, 0, 0], [0, 0, 0]], [0, 0, 0, 0, 0, 0]],
       [
         `negative`,
-        [
-          [-1, -0.5, -0.3],
-          [-0.5, -2, -0.2],
-          [-0.3, -0.2, -3],
-        ],
+        [[-1, -0.5, -0.3], [-0.5, -2, -0.2], [-0.3, -0.2, -3]],
         [-1, -2, -3, -0.2, -0.3, -0.5],
       ],
     ])(`converts %s to Voigt notation`, (_, tensor, expected) => {
       expect(math.to_voigt(tensor)).toEqual(expected)
     })
 
+    // oxfmt-ignore
     it.each([
-      [
-        `2x2`,
-        [
-          [1, 2],
-          [3, 4],
-        ],
-      ],
-      [
-        `4x4`,
-        [
-          [1, 2, 3, 4],
-          [5, 6, 7, 8],
-          [9, 10, 11, 12],
-          [13, 14, 15, 16],
-        ],
-      ],
+      [`2x2`, [[1, 2], [3, 4]]],
+      [`4x4`, [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]],
       [`empty`, []],
-      [
-        `inconsistent rows`,
-        [
-          [1, 2],
-          [3, 4, 5],
-          [6, 7, 8],
-        ],
-      ],
+      [`inconsistent rows`, [[1, 2], [3, 4, 5], [6, 7, 8]]],
     ])(`throws for %s matrix`, (_, invalid_tensor) => {
       expect(() => math.to_voigt(invalid_tensor)).toThrow(`Expected 3x3 tensor`)
     })
@@ -945,35 +780,12 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`from_voigt`, () => {
+    // oxfmt-ignore
     it.each([
       [`symmetric tensor`, expected_voigt, symmetric_tensor],
-      [
-        `identity`,
-        [1, 1, 1, 0, 0, 0],
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-      ],
-      [
-        `diagonal`,
-        [2, 3, 4, 0, 0, 0],
-        [
-          [2, 0, 0],
-          [0, 3, 0],
-          [0, 0, 4],
-        ],
-      ],
-      [
-        `zero`,
-        [0, 0, 0, 0, 0, 0],
-        [
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ],
-      ],
+      [`identity`, [1, 1, 1, 0, 0, 0], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
+      [`diagonal`, [2, 3, 4, 0, 0, 0], [[2, 0, 0], [0, 3, 0], [0, 0, 4]]],
+      [`zero`, [0, 0, 0, 0, 0, 0], [[0, 0, 0], [0, 0, 0], [0, 0, 0]]],
     ])(`converts %s from Voigt notation`, (_, voigt, expected) => {
       expect(math.from_voigt(voigt)).toEqual(expected)
     })
@@ -1011,34 +823,19 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`vec9_to_mat3x3`, () => {
+    // oxfmt-ignore
     it.each([
       [`sequential array`, flat_array, tensor_3x3],
-      [
-        `identity`,
-        [1, 0, 0, 0, 1, 0, 0, 0, 1],
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-      ],
+      [`identity`, [1, 0, 0, 0, 1, 0, 0, 0, 1], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
       [
         `negative`,
         [-1, -2, -3, -4, -5, -6, -7, -8, -9],
-        [
-          [-1, -2, -3],
-          [-4, -5, -6],
-          [-7, -8, -9],
-        ],
+        [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]],
       ],
       [
         `float`,
         [1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9],
-        [
-          [1.1, 2.2, 3.3],
-          [4.4, 5.5, 6.6],
-          [7.7, 8.8, 9.9],
-        ],
+        [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6], [7.7, 8.8, 9.9]],
       ],
     ])(`converts %s to 3x3 tensor`, (_, input, expected) => {
       expect(math.vec9_to_mat3x3(input)).toEqual(expected)
@@ -1062,33 +859,14 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`tensor_to_flat_array`, () => {
+    // oxfmt-ignore
     it.each([
       [`sequential tensor`, tensor_3x3, flat_array],
-      [
-        `identity`,
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-        [1, 0, 0, 0, 1, 0, 0, 0, 1],
-      ],
-      [
-        `symmetric`,
-        [
-          [1, 2, 3],
-          [2, 4, 5],
-          [3, 5, 6],
-        ],
-        [1, 2, 3, 2, 4, 5, 3, 5, 6],
-      ],
+      [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 0, 0, 0, 1, 0, 0, 0, 1]],
+      [`symmetric`, [[1, 2, 3], [2, 4, 5], [3, 5, 6]], [1, 2, 3, 2, 4, 5, 3, 5, 6]],
       [
         `negative`,
-        [
-          [-1, -2, -3],
-          [-4, -5, -6],
-          [-7, -8, -9],
-        ],
+        [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]],
         [-1, -2, -3, -4, -5, -6, -7, -8, -9],
       ],
     ])(`converts %s to flat array`, (_, tensor, expected) => {
@@ -1101,77 +879,26 @@ describe(`tensor conversion utilities`, () => {
       expect(math.tensor_to_flat_array(tensor)).toEqual(original)
     })
 
+    // oxfmt-ignore
     it.each([
-      [
-        `2x2`,
-        [
-          [1, 2],
-          [3, 4],
-        ],
-      ],
-      [
-        `4x4`,
-        [
-          [1, 2, 3, 4],
-          [5, 6, 7, 8],
-          [9, 10, 11, 12],
-          [13, 14, 15, 16],
-        ],
-      ],
+      [`2x2`, [[1, 2], [3, 4]]],
+      [`4x4`, [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]],
       [`empty`, []],
-      [
-        `inconsistent`,
-        [
-          [1, 2, 3],
-          [4, 5],
-          [6, 7, 8],
-        ],
-      ],
+      [`inconsistent`, [[1, 2, 3], [4, 5], [6, 7, 8]]],
     ])(`throws for %s matrix`, (_, invalid_tensor) => {
       expect(() => math.tensor_to_flat_array(invalid_tensor)).toThrow(`Expected 3x3 tensor`)
     })
   })
 
   describe(`transpose_matrix`, () => {
+    // oxfmt-ignore
     it.each([
-      [
-        `basic`,
-        [
-          [1, 2, 3],
-          [4, 5, 6],
-          [7, 8, 9],
-        ],
-        [
-          [1, 4, 7],
-          [2, 5, 8],
-          [3, 6, 9],
-        ],
-      ],
-      [
-        `identity`,
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-      ],
+      [`basic`, [[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[1, 4, 7], [2, 5, 8], [3, 6, 9]]],
+      [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
       [
         `negative`,
-        [
-          [-1, 2, -3],
-          [4, -5, 6],
-          [-7, 8, -9],
-        ],
-        [
-          [-1, 4, -7],
-          [2, -5, 8],
-          [-3, 6, -9],
-        ],
+        [[-1, 2, -3], [4, -5, 6], [-7, 8, -9]],
+        [[-1, 4, -7], [2, -5, 8], [-3, 6, -9]],
       ],
     ])(`%s matrix`, (_, input, expected) => {
       expect(math.transpose_3x3_matrix(input as math.Matrix3x3)).toEqual(expected)
@@ -1244,53 +971,26 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`matrix_inverse_3x3`, () => {
+    // oxfmt-ignore
     it.each([
       [
         `identity matrix`,
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
-        [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
       ],
       [
         `diagonal matrix`,
-        [
-          [2, 0, 0],
-          [0, 3, 0],
-          [0, 0, 4],
-        ],
-        [
-          [0.5, 0, 0],
-          [0, 0.333333, 0],
-          [0, 0, 0.25],
-        ],
+        [[2, 0, 0], [0, 3, 0], [0, 0, 4]],
+        [[0.5, 0, 0], [0, 0.333333, 0], [0, 0, 0.25]],
       ],
       [
         `simple matrix`,
-        [
-          [1, 2, 3],
-          [0, 1, 4],
-          [5, 6, 0],
-        ],
-        [
-          [-24, 18, 5],
-          [20, -15, -4],
-          [-5, 4, 1],
-        ],
+        [[1, 2, 3], [0, 1, 4], [5, 6, 0]],
+        [[-24, 18, 5], [20, -15, -4], [-5, 4, 1]],
       ],
       [
         `symmetric matrix`,
-        [
-          [4, 2, 1],
-          [2, 5, 3],
-          [1, 3, 6],
-        ],
+        [[4, 2, 1], [2, 5, 3], [1, 3, 6]],
         [
           [0.313433, -0.134328, 0.014925],
           [-0.134328, 0.343284, -0.149254],
@@ -1508,39 +1208,12 @@ describe(`tensor conversion utilities`, () => {
       ).toBeCloseTo(50, 5)
     })
 
+    // oxfmt-ignore
     it.each([
-      [
-        `large numbers`,
-        [
-          [1e10, 1e9, 1e8],
-          [1e9, 1e11, 1e7],
-          [1e8, 1e7, 1e12],
-        ],
-      ],
-      [
-        `small numbers`,
-        [
-          [1e-10, 1e-11, 1e-12],
-          [1e-11, 1e-9, 1e-13],
-          [1e-12, 1e-13, 1e-8],
-        ],
-      ],
-      [
-        `NaN values`,
-        [
-          [NaN, 1, 2],
-          [1, NaN, 3],
-          [2, 3, NaN],
-        ],
-      ],
-      [
-        `Infinity values`,
-        [
-          [Infinity, 1, 2],
-          [1, -Infinity, 3],
-          [2, 3, Infinity],
-        ],
-      ],
+      [`large numbers`, [[1e10, 1e9, 1e8], [1e9, 1e11, 1e7], [1e8, 1e7, 1e12]]],
+      [`small numbers`, [[1e-10, 1e-11, 1e-12], [1e-11, 1e-9, 1e-13], [1e-12, 1e-13, 1e-8]]],
+      [`NaN values`, [[NaN, 1, 2], [1, NaN, 3], [2, 3, NaN]]],
+      [`Infinity values`, [[Infinity, 1, 2], [1, -Infinity, 3], [2, 3, Infinity]]],
     ])(`handles %s`, (_, tensor) => {
       const voigt = math.to_voigt(tensor)
       const reconstructed = math.from_voigt(voigt)
@@ -1557,200 +1230,41 @@ describe(`tensor conversion utilities`, () => {
   })
 })
 
+// oxfmt-ignore
 test.each([
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 2, 3], [1, 2, 3], `identity matrix`],
+  [[[2, 0, 0], [0, 2, 0], [0, 0, 2]], [1, 2, 3], [2, 4, 6], `scaling matrix`],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [1, 0, 0], [1, 4, 7], `general matrix with unit vector`],
   [
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-    [1, 2, 3],
-    [1, 2, 3],
-    `identity matrix`,
-  ],
-  [
-    [
-      [2, 0, 0],
-      [0, 2, 0],
-      [0, 0, 2],
-    ],
-    [1, 2, 3],
-    [2, 4, 6],
-    `scaling matrix`,
-  ],
-  [
-    [
-      [1, 2, 3],
-      [4, 5, 6],
-      [7, 8, 9],
-    ],
-    [1, 0, 0],
-    [1, 4, 7],
-    `general matrix with unit vector`,
-  ],
-  [
-    [
-      [0, -1, 0],
-      [1, 0, 0],
-      [0, 0, 1],
-    ],
+    [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
     [1, 0, 0],
     [0, 1, 0],
     `rotation matrix (90° around z-axis)`,
   ],
-  [
-    [
-      [1, 2, 3],
-      [4, 5, 6],
-      [7, 8, 9],
-    ],
-    [0, 0, 0],
-    [0, 0, 0],
-    `zero vector`,
-  ],
-  [
-    [
-      [-1, 0, 0],
-      [0, -1, 0],
-      [0, 0, -1],
-    ],
-    [1, 2, 3],
-    [-1, -2, -3],
-    `negative values`,
-  ],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [0, 0, 0], [0, 0, 0], `zero vector`],
+  [[[-1, 0, 0], [0, -1, 0], [0, 0, -1]], [1, 2, 3], [-1, -2, -3], `negative values`],
 ])(`mat3x3_vec3_multiply: %s`, (matrix, vector, expected) => {
   expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as math.Vec3)).toEqual(
     expected,
   )
 })
 
+// oxfmt-ignore
 test.each([
-  [
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-    1,
-    `identity`,
-  ],
-  [
-    [
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 0],
-    ],
-    0,
-    `zero`,
-  ],
-  [
-    [
-      [1, 2, 3],
-      [2, 4, 6],
-      [3, 6, 9],
-    ],
-    0,
-    `singular`,
-  ],
-  [
-    [
-      [2, 0, 0],
-      [0, 3, 0],
-      [0, 0, 4],
-    ],
-    24,
-    `diagonal`,
-  ],
-  [
-    [
-      [1, 2, 3],
-      [0, 4, 5],
-      [0, 0, 6],
-    ],
-    24,
-    `upper triangular`,
-  ],
-  [
-    [
-      [1, 0, 0],
-      [2, 3, 0],
-      [4, 5, 6],
-    ],
-    18,
-    `lower triangular`,
-  ],
-  [
-    [
-      [0, -1, 0],
-      [1, 0, 0],
-      [0, 0, 1],
-    ],
-    1,
-    `rotation`,
-  ],
-  [
-    [
-      [2, 0, 0],
-      [0, 2, 0],
-      [0, 0, 2],
-    ],
-    8,
-    `scaling`,
-  ],
-  [
-    [
-      [1, 2, 3],
-      [4, 5, 6],
-      [7, 8, 9],
-    ],
-    0,
-    `zero det`,
-  ],
-  [
-    [
-      [1, 2, 3],
-      [0, 1, 4],
-      [5, 6, 0],
-    ],
-    1,
-    `positive det`,
-  ],
-  [
-    [
-      [2, 1, 1],
-      [1, 3, 2],
-      [1, 0, 0],
-    ],
-    -1,
-    `negative det`,
-  ],
-  [
-    [
-      [1.5, 2.5, 3.5],
-      [4.5, 5.5, 6.5],
-      [7.5, 8.5, 9.5],
-    ],
-    0,
-    `decimals`,
-  ],
-  [
-    [
-      [1000, 2000, 3000],
-      [4000, 5000, 6000],
-      [7000, 8000, 9000],
-    ],
-    0,
-    `large nums`,
-  ],
-  [
-    [
-      [0.001, 0.002, 0.003],
-      [0.004, 0.005, 0.006],
-      [0.007, 0.008, 0.009],
-    ],
-    0,
-    `small nums`,
-  ],
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], 1, `identity`],
+  [[[0, 0, 0], [0, 0, 0], [0, 0, 0]], 0, `zero`],
+  [[[1, 2, 3], [2, 4, 6], [3, 6, 9]], 0, `singular`],
+  [[[2, 0, 0], [0, 3, 0], [0, 0, 4]], 24, `diagonal`],
+  [[[1, 2, 3], [0, 4, 5], [0, 0, 6]], 24, `upper triangular`],
+  [[[1, 0, 0], [2, 3, 0], [4, 5, 6]], 18, `lower triangular`],
+  [[[0, -1, 0], [1, 0, 0], [0, 0, 1]], 1, `rotation`],
+  [[[2, 0, 0], [0, 2, 0], [0, 0, 2]], 8, `scaling`],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 0, `zero det`],
+  [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], 1, `positive det`],
+  [[[2, 1, 1], [1, 3, 2], [1, 0, 0]], -1, `negative det`],
+  [[[1.5, 2.5, 3.5], [4.5, 5.5, 6.5], [7.5, 8.5, 9.5]], 0, `decimals`],
+  [[[1000, 2000, 3000], [4000, 5000, 6000], [7000, 8000, 9000]], 0, `large nums`],
+  [[[0.001, 0.002, 0.003], [0.004, 0.005, 0.006], [0.007, 0.008, 0.009]], 0, `small nums`],
 ])(`det_3x3 $3`, (matrix, expected) => {
   expect(math.det_3x3(matrix as math.Matrix3x3)).toBeCloseTo(expected, 10)
 })
@@ -2019,92 +1533,23 @@ describe(`cross_2d`, () => {
 })
 
 describe(`is_square_matrix`, () => {
+  // oxfmt-ignore
   test.each([
     // Valid square matrices
     [[[1]], 1, true],
-    [
-      [
-        [1, 2],
-        [3, 4],
-      ],
-      2,
-      true,
-    ],
-    [
-      [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-      ],
-      3,
-      true,
-    ],
-    [
-      [
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [0, 0, 1, 0],
-        [0, 0, 0, 1],
-      ],
-      4,
-      true,
-    ],
+    [[[1, 2], [3, 4]], 2, true],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 3, true],
+    [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], 4, true],
     [Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 1)), 5, true],
     // Non-square matrices
-    [
-      [
-        [1, 2, 3],
-        [4, 5, 6],
-      ],
-      2,
-      false,
-    ],
-    [
-      [
-        [1, 2],
-        [3, 4],
-        [5, 6],
-      ],
-      3,
-      false,
-    ],
+    [[[1, 2, 3], [4, 5, 6]], 2, false],
+    [[[1, 2], [3, 4], [5, 6]], 3, false],
     // Wrong dimension checks
-    [
-      [
-        [1, 2],
-        [3, 4],
-      ],
-      3,
-      false,
-    ],
-    [
-      [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-      ],
-      2,
-      false,
-    ],
+    [[[1, 2], [3, 4]], 3, false],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 2, false],
     // Jagged arrays
-    [
-      [
-        [1, 2, 3],
-        [4, 5],
-        [7, 8, 9],
-      ],
-      3,
-      false,
-    ],
-    [
-      [
-        [1, 2, 3],
-        [4, 5, 6, 7],
-        [8, 9, 10],
-      ],
-      3,
-      false,
-    ],
+    [[[1, 2, 3], [4, 5], [7, 8, 9]], 3, false],
+    [[[1, 2, 3], [4, 5, 6, 7], [8, 9, 10]], 3, false],
     // Edge cases
     [[], 0, true],
     [[[]], 1, false],
@@ -2116,6 +1561,12 @@ describe(`is_square_matrix`, () => {
     [undefined, 3, false],
     [[1, 2, 3], 3, false],
     [[[1, 2, 3], `not an array`, [7, 8, 9]], 3, false],
+    // Non-numeric entries (predicate claims number[][], so entries must be numbers)
+    [[[1, 2, `3`], [4, 5, 6], [7, 8, 9]], 3, false],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, null]], 3, false],
+    // Non-finite entries rejected (NaN/Infinity pass typeof but break consumers)
+    [[[1, 2, 3], [4, NaN, 6], [7, 8, 9]], 3, false],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, Infinity]], 3, false],
   ])(`dim=%i expected=%s`, (matrix, dim, expected) => {
     expect(math.is_square_matrix(matrix, dim)).toBe(expected)
   })

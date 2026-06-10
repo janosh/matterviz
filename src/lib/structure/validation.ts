@@ -1,11 +1,11 @@
+import { is_plain_object } from '$lib/utils'
 import type { Crystal } from './index'
 
 export function is_crystal(obj: unknown): obj is Crystal {
-  if (obj === null || typeof obj !== `object`) return false
-  const structure_obj = obj as { sites?: unknown; lattice?: unknown }
-  const sites = structure_obj.sites
-  const lattice = structure_obj.lattice
-  const has_sites = Array.isArray(sites) && sites.length > 0
-  const has_lattice = lattice !== undefined && lattice !== null && typeof lattice === `object`
+  if (!is_plain_object(obj)) return false
+  const has_sites = Array.isArray(obj.sites) && obj.sites.length > 0
+  // lattice may be an object or (in some raw formats) a 3x3 array, so only reject nullish
+  const has_lattice =
+    obj.lattice !== undefined && obj.lattice !== null && typeof obj.lattice === `object`
   return has_sites && has_lattice
 }

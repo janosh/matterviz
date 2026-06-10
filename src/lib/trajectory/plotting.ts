@@ -67,16 +67,7 @@ function extract_property_statistics(
     is_energy: boolean
   }
 > {
-  const property_stats = new Map<
-    string,
-    {
-      values: number[]
-      sum: number
-      sum_squares: number
-      min: number
-      max: number
-    }
-  >()
+  const property_stats = new Map<string, { values: number[] }>()
 
   // Extract all data in single pass
   trajectory.frames.forEach((frame) => {
@@ -87,19 +78,9 @@ function extract_property_statistics(
         return
       }
 
-      if (!property_stats.has(key)) {
-        const stats = { values: [], sum: 0, sum_squares: 0, min: value, max: value }
-        property_stats.set(key, stats)
-      }
-
-      const stat = property_stats.get(key)
-      if (stat) {
-        stat.values.push(value)
-        stat.sum += value
-        stat.sum_squares += value * value
-        stat.min = Math.min(stat.min, value)
-        stat.max = Math.max(stat.max, value)
-      }
+      const stat = property_stats.get(key) ?? { values: [] }
+      property_stats.set(key, stat)
+      stat.values.push(value)
     })
   })
 
@@ -299,122 +280,6 @@ const is_default_visible = (
     if (normalize_property_key(prop) === normalized_key) return true
   }
   return false
-}
-
-// Optimized series visibility toggling
-export function toggle_series_visibility(
-  series: DataSeries[],
-  target_series_idx: number,
-): DataSeries[] {
-  if (target_series_idx < 0 || target_series_idx >= series.length) return series
-
-  const target_series = series[target_series_idx]
-  const new_visibility = !target_series.visible
-
-  // Create unit groups from current state
-  const unit_groups = create_unit_groups_from_series(series)
-  const target_group = unit_groups.find((group) => group.series.includes(target_series))
-  if (!target_group) return series
-
-  // Start with updating the target series visibility
-  const updated_series = series.map((srs) =>
-    srs === target_series ? { ...srs, visible: new_visibility } : { ...srs },
-  )
-
-  // Handle smart group replacement for new groups
-  if (new_visibility && !target_group.is_visible) {
-    const visible_groups = unit_groups.filter((group) => group.is_visible)
-    if (visible_groups.length >= 2) {
-      // Hide lowest priority group (highest priority number)
-      const lowest_priority_group = visible_groups
-        .sort((g1, g2) => g1.priority - g2.priority)
-        .pop() // Get the last (lowest priority) group
-      if (lowest_priority_group) {
-        lowest_priority_group.is_visible = false
-        // Also hide the actual series in this group
-        lowest_priority_group.series.forEach((srs1) => {
-          const series_idx = updated_series.findIndex(
-            (srs2) => srs2.label === srs1.label && srs2.unit === srs1.unit,
-          )
-          if (series_idx !== -1) {
-            updated_series[series_idx] = { ...updated_series[series_idx], visible: false }
-          }
-        })
-      }
-    }
-    target_group.is_visible = true
-  }
-
-  // Recalculate group visibility and reassign axes
-  update_group_visibility_and_axes(updated_series, unit_groups)
-
-  return updated_series
-}
-
-function create_unit_groups_from_series(series: DataSeries[]): UnitGroup[] {
-  const unit_map = new Map<string, DataSeries[]>()
-  for (const srs of series) {
-    const unit = srs.unit ?? `dimensionless`
-    const group = unit_map.get(unit) ?? []
-    group.push(srs)
-    unit_map.set(unit, group)
-  }
-
-  return Array.from(unit_map.entries())
-    .map(([unit, group_series]) => ({
-      unit,
-      series: group_series,
-      priority: calculate_priority(unit, group_series),
-      is_visible: group_series.some((srs) => srs.visible),
-    }))
-    .sort((a, b) => a.priority - b.priority)
-}
-
-function update_group_visibility_and_axes(
-  series: DataSeries[],
-  unit_groups: UnitGroup[],
-): void {
-  // Update group visibility based on series
-  for (const group of unit_groups) {
-    group.is_visible = group.series.some(
-      (srs1) =>
-        series.find((srs2) => srs2.label === srs1.label && srs2.unit === srs1.unit)?.visible,
-    )
-  }
-
-  // Apply 2-group limit
-  if (unit_groups.filter((unit_group) => unit_group.is_visible).length > 2) {
-    for (const group of unit_groups.filter((unit_group) => unit_group.is_visible).slice(2)) {
-      group.is_visible = false
-      for (const srs1 of group.series) {
-        const idx = series.findIndex(
-          (srs2) => srs2.label === srs1.label && srs2.unit === srs1.unit,
-        )
-        if (idx !== -1) series[idx] = { ...series[idx], visible: false }
-      }
-    }
-  }
-
-  // Assign axes
-  const final_visible = unit_groups
-    .filter((group) => group.is_visible)
-    .sort((g1, g2) => g1.priority - g2.priority)
-
-  const axis_map = new Map<UnitGroup, `y1` | `y2`>()
-  if (final_visible.length > 0) axis_map.set(final_visible[0], `y1`)
-  if (final_visible.length === 2) axis_map.set(final_visible[1], `y2`)
-
-  // Apply to series
-  for (const [idx, srs] of series.entries()) {
-    const group = unit_groups.find((unit_group) =>
-      unit_group.series.some(
-        (member) => member.label === srs.label && member.unit === srs.unit,
-      ),
-    )
-    if (group && axis_map.has(group)) {
-      series[idx] = { ...srs, y_axis: axis_map.get(group) }
-    }
-  }
 }
 
 // Utility functions

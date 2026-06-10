@@ -2,6 +2,7 @@ import { add_alpha, type D3InterpolateName, get_d3_interpolator } from '$lib/col
 import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
 import type { EnergyModeInfo } from '$lib/convex-hull'
 import type { ElementSymbol } from '$lib/element'
+import type { AnyStructure } from '$lib/structure'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import { symbol } from 'd3-shape'
@@ -37,6 +38,25 @@ export function compute_hull_stability(
 }
 
 type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
+
+// Look up the original (un-projected) entry by id and return its structure if any.
+// Shared by ConvexHull2D/3D/4D for the click-to-preview structure popup.
+export const extract_structure_from_entry = (
+  entries: PhaseData[],
+  entry: { entry_id?: string },
+): AnyStructure | null => {
+  if (!entry.entry_id) return null
+  const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
+  return (orig_entry?.structure as AnyStructure) || null
+}
+
+// [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1)
+export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
+  const dists = entries
+    .map((entry) => entry.e_above_hull)
+    .filter((val): val is number => typeof val === `number`)
+  return dists.length > 0 ? [Math.min(...dists), Math.max(...dists, 0.1)] : [0, 0.1]
+}
 
 export const entry_is_stable = (
   entry: StabilityEntry,
@@ -647,6 +667,77 @@ export function get_canvas_text_color(
   return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
 }
 
+// Draw depth-sorted hull points with shadow, selection/highlight effects and marker
+// symbols. Shared by the ConvexHull3D/4D canvas renderers (which differ only in
+// shadow_factor and in how labels are drawn afterwards).
+export function draw_hull_points<
+  Entry extends PhaseData & { z: number; size?: number; marker?: MarkerSymbol },
+>(
+  ctx: CanvasRenderingContext2D,
+  sorted_points: { entry: Entry; projected: { x: number; y: number } }[],
+  opts: {
+    scale: number // canvas container scale factor
+    shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
+    selected_entry: Entry | null
+    is_highlighted: (entry: Entry) => boolean
+    get_point_color: (entry: Entry) => string
+    highlight_style: Required<HighlightStyle>
+    pulse_time: number
+    pulse_opacity: number
+  },
+): void {
+  const {
+    scale,
+    shadow_factor,
+    selected_entry,
+    highlight_style,
+    is_highlighted,
+    get_point_color,
+    pulse_time,
+    pulse_opacity,
+  } = opts
+  for (const { entry, projected } of sorted_points) {
+    const is_stable = entry_is_stable(entry)
+    const entry_highlighted = is_highlighted(entry)
+    const color = get_point_color(entry)
+    // `||` (not ??) on purpose: size=0 / empty marker fall back to defaults
+    // oxlint-disable-next-line typescript/prefer-nullish-coalescing
+    const size = (entry.size || (is_stable ? 6 : 4)) * scale
+    // oxlint-disable-next-line typescript/prefer-nullish-coalescing
+    const marker = entry.marker || `circle`
+
+    // Shadow
+    const shadow_offset = Math.abs(entry.z) * shadow_factor * scale
+    ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
+    const shadow_path = create_marker_path(size * 0.8, marker)
+    ctx.save()
+    ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
+    ctx.fill(shadow_path)
+    ctx.restore()
+
+    // Highlights (same_entry, not raw entry_id comparison: undefined === undefined
+    // would mark EVERY id-less point as selected)
+    if (same_entry(selected_entry, entry)) {
+      draw_selection_highlight(ctx, projected, size, scale, pulse_time, pulse_opacity)
+    }
+    if (entry_highlighted) {
+      draw_highlight_effect(ctx, projected, size, scale, pulse_time, highlight_style)
+    }
+
+    // Main point with marker symbol
+    ctx.fillStyle =
+      entry_highlighted && highlight_style.effect === `color` ? highlight_style.color : color
+    ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
+    ctx.lineWidth = 0.5 * scale
+    const marker_path = create_marker_path(size, marker)
+    ctx.save()
+    ctx.translate(projected.x, projected.y)
+    ctx.fill(marker_path)
+    ctx.stroke(marker_path)
+    ctx.restore()
+  }
+}
+
 // Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
 export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
   const safe_size = Number.isFinite(size) ? size : 0
@@ -827,36 +918,6 @@ export function filter_entries_at_temperature(
     // Exclude entry (has temp data but can't get energy at T)
     return []
   })
-}
-
-// Gas-dependent chemical potential helpers
-
-// Analyze entries for gas-dependent elements (safe wrapper with optional config)
-// Returns information about which gases are relevant for the chemical system.
-export function safe_analyze_gas_data(
-  entries: PhaseData[],
-  config?: GasThermodynamicsConfig,
-): GasAnalysis {
-  if (!config?.enabled_gases?.length) {
-    return {
-      has_gas_dependent_elements: false,
-      gas_elements: [],
-      relevant_gases: [],
-    }
-  }
-  return _analyze_gas_data(entries, config)
-}
-
-// Apply gas chemical potential corrections to entries (safe wrapper with optional config)
-// This adjusts formation energies based on gas atmosphere conditions (T, P).
-// Should be applied after temperature filtering.
-export function safe_apply_gas_corrections(
-  entries: PhaseData[],
-  config: GasThermodynamicsConfig | undefined,
-  T: number,
-): PhaseData[] {
-  if (!config?.enabled_gases?.length) return entries
-  return _apply_gas_corrections(entries, config, T)
 }
 
 // Get gas-corrected entries in one call (consolidates analysis + correction)

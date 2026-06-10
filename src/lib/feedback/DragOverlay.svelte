@@ -4,14 +4,16 @@
   let {
     visible = false,
     message = `Drop JSON file to load phase diagram data`,
+    style = undefined,
   }: {
     visible?: boolean
     message?: string
+    style?: string
   } = $props()
 </script>
 
 {#if visible}
-  <div class="drag-overlay">
+  <div class="drag-overlay" {style}>
     <div class="drag-message">
       <Icon icon="Info" />
       <span>{message}</span>

@@ -1,17 +1,16 @@
 <script lang="ts">
-  import type { ShowControlsProp } from '$lib/controls'
-  import { normalize_show_controls } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { handle_url_drop, load_from_url } from '$lib/io'
+  import { drag_over_handlers, handle_url_drop, load_from_url } from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { sanitize_html } from '$lib/sanitize'
-  import { toggle_fullscreen } from '$lib/layout'
+  import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
@@ -141,7 +140,7 @@
     // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'view-mode', 'fullscreen'
     show_controls?: ShowControlsProp
     // show/hide the fullscreen button
-    fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+    fullscreen_toggle?: FullscreenToggleProp
     // automatically start playing when trajectory data is loaded
     auto_play?: boolean
     // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
@@ -918,15 +917,7 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    if (!allow_file_drop) return
-    dragover = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    dragover = false
-  }}
+  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   onclick={handle_click_outside}
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
@@ -1180,22 +1171,14 @@
               </div>
             {/if}
             <!-- Fullscreen button - rightmost position -->
-            {#if fullscreen_toggle &&
-          controls_config.visible(`fullscreen`)}
-              <button
-                type="button"
-                onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
-                title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+            {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
+              <FullscreenButton
+                {fullscreen}
+                toggle={fullscreen_toggle}
+                {wrapper}
                 aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
-                aria-pressed={fullscreen}
                 class="fullscreen-button"
-              >
-                {#if typeof fullscreen_toggle === `function`}
-                  {@render fullscreen_toggle({ fullscreen })}
-                {:else}
-                  <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-                {/if}
-              </button>
+              />
             {/if}
           </div>
         {/if}
@@ -1488,7 +1471,8 @@
       opacity: 0;
     }
   }
-  .fullscreen-button {
+  /* :global pierces into FullscreenButton's markup (anchored on local .info-section) */
+  .info-section :global(.fullscreen-button) {
     background: transparent !important;
     padding: 0;
     &:hover:not(:disabled) {

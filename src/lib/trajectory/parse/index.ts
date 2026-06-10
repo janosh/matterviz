@@ -1,5 +1,6 @@
 // Parsing functions for trajectory data from various formats
 import { is_binary } from '$lib/io/is-binary'
+import { is_plain_object } from '$lib/utils'
 import type { AnyStructure } from '$lib/structure/index'
 import { is_parsed_structure, parse_xyz } from '$lib/structure/parse'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
@@ -23,14 +24,12 @@ import { parse_pymatgen_trajectory } from './pymatgen'
 import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
 
-// Silently swallow expected parse fallbacks — the caller throws if ALL formats fail
-const log_parse_debug = (_message: string, _error: unknown): void => {}
-
 // Throw on a trajectory frame whose structure isn't a valid parsed structure (non-empty sites with species + coords)
-const assert_frame_structure = (structure: unknown, idx: number): void => {
+const assert_frame_structure = (structure: unknown, label: string | number): void => {
   if (!is_parsed_structure(structure)) {
+    const context = typeof label === `number` ? `trajectory frame ${label}` : label
     throw new Error(
-      `Invalid structure in trajectory frame ${idx}: expected non-empty 'sites' array with species and coordinates`,
+      `Invalid structure in ${context}: expected non-empty 'sites' array with species and coordinates`,
     )
   }
 }
@@ -78,24 +77,17 @@ export async function parse_trajectory_data(
             metadata: { source_format: `single_xyz`, frame_count: 1 },
           }
         }
-      } catch (error) {
+      } catch {
         // Single-frame XYZ parsing failed, continue to JSON parsing.
-        log_parse_debug(
-          `Single XYZ parse fallback failed for ${filename ?? `unknown file`}:`,
-          error,
-        )
       }
     }
 
     try {
       data = JSON.parse(content)
     } catch (error) {
-      log_parse_debug(`JSON parse failed for ${filename ?? `unknown file`}:`, error)
       throw new Error(`Unsupported text format`, { cause: error })
     }
   }
-
-  if (!data || typeof data !== `object`) throw new Error(`Invalid data format`)
 
   // Handle JSON formats
   if (Array.isArray(data)) {
@@ -113,29 +105,25 @@ export async function parse_trajectory_data(
     return { frames, metadata: { source_format: `array`, frame_count: frames.length } }
   }
 
-  const obj = data as Record<string, unknown>
+  if (!is_plain_object(data)) throw new Error(`Invalid data format`)
 
   // Pymatgen format
-  if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
-    return parse_pymatgen_trajectory(obj, filename)
+  if (data[`@class`] === `Trajectory` && data.species && data.coords && data.lattice) {
+    return parse_pymatgen_trajectory(data, filename)
   }
 
   // Object with frames
-  if (Array.isArray(obj.frames)) {
-    const metadata = (obj.metadata ?? {}) as Record<string, unknown>
-    const frames = obj.frames as TrajectoryFrame[]
+  if (Array.isArray(data.frames)) {
+    const metadata = (data.metadata ?? {}) as Record<string, unknown>
+    const frames = data.frames as TrajectoryFrame[]
     frames.forEach((frame, idx) => assert_frame_structure(frame?.structure, idx))
     return { frames, metadata: { ...metadata, source_format: `object_with_frames` } }
   }
 
-  // Single structure
-  if (obj.sites) {
-    if (!is_parsed_structure(obj)) {
-      throw new Error(
-        `Invalid structure: 'sites' must be a non-empty array of sites with species and coordinates`,
-      )
-    }
-    const frames = [{ structure: obj as AnyStructure, step: 0, metadata: {} }]
+  // Single structure (treated as a 1-frame trajectory)
+  if (data.sites) {
+    assert_frame_structure(data, `single structure`)
+    const frames = [{ structure: data as AnyStructure, step: 0, metadata: {} }]
     const metadata = { source_format: `single_structure`, frame_count: 1 }
     return { frames, metadata }
   }
@@ -150,12 +138,11 @@ export function get_unsupported_format_message(
   const lower = filename.toLowerCase()
 
   // Check for unsupported compression formats first
-  const unsupported_compression = [
-    { ext: `.bz2`, name: `BZ2` },
-    { ext: `.xz`, name: `XZ` },
-    { ext: `.zip`, name: `ZIP` },
-  ]
-  for (const { ext, name } of unsupported_compression) {
+  for (const [ext, name] of [
+    [`.bz2`, `BZ2`],
+    [`.xz`, `XZ`],
+    [`.zip`, `ZIP`],
+  ]) {
     if (lower.endsWith(ext)) {
       return `🚫 ${name} compression not supported in browser\nPlease decompress the file first`
     }

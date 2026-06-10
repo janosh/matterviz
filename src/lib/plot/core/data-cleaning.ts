@@ -834,11 +834,11 @@ export function clean_series<T extends DataSeries>(
 
   // Build result series
   const result_series = in_place ? series : { ...series }
-  ;(result_series as DataSeries).x = x_arr
-  ;(result_series as DataSeries).y = y_arr
-  if (metadata !== undefined) (result_series as DataSeries).metadata = metadata
-  if (color_values) (result_series as DataSeries).color_values = color_values
-  if (size_values) (result_series as DataSeries).size_values = size_values
+  result_series.x = x_arr
+  result_series.y = y_arr
+  if (metadata !== undefined) result_series.metadata = metadata
+  if (color_values) result_series.color_values = color_values
+  if (size_values) result_series.size_values = size_values
 
   return { series: result_series, quality }
 }

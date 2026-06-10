@@ -1,13 +1,12 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-  import type { ShowControlsProp } from '$lib/controls'
-  import { normalize_show_controls } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import { coerce_elem_symbol, type ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { create_file_drop_handler, load_from_url } from '$lib/io'
+  import { create_file_drop_handler, drag_over_handlers, load_from_url } from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
@@ -16,7 +15,7 @@
     DEFAULT_ISOSURFACE_SETTINGS,
     tile_volumetric_data,
   } from '$lib/isosurface/types'
-  import { toggle_fullscreen, ViewerChrome } from '$lib/layout'
+  import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
@@ -216,7 +215,7 @@
       bond_edit_mode?: BondEditMode
       bond_edit_order?: BondOrder
       info_pane_open?: boolean
-      fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+      fullscreen_toggle?: FullscreenToggleProp
       bottom_left?: Snippet<[{ structure?: AnyStructure }]>
       top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
       data_url?: string // URL to load structure from (alternative to providing structure directly)
@@ -1526,15 +1525,7 @@
     reset_camera()
   }}
   ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    if (!allow_file_drop) return
-    dragover = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    dragover = false
-  }}
+  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class="structure {rest.class ?? ``}"
@@ -1564,7 +1555,7 @@
       fullscreen_btn_style="padding: 0 3px"
       {wrapper}
       before={reset_camera_btn}
-      style="--viewer-buttons-top: var(--ctrl-btn-top, 1ex); --viewer-buttons-right: var(--ctrl-btn-right, 1ex); --viewer-buttons-z-index: var(--z-index-overlay-controls, 100000000); --viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch"
+      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch"
     >
       {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
         <div

@@ -319,17 +319,25 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       return sorted_points_cache
     },
     copy_feedback, // stable $state proxy; mutated in place for ClickFeedback binding
-    handle_keydown,
-    handle_file_drop,
-    handle_drag_over,
-    handle_drag_leave,
-    handle_mouse_down,
+    // Event handler groups, spread onto their target elements by ConvexHull3D/4D
+    canvas_handlers: {
+      onmousedown: handle_mouse_down,
+      onmousemove: handle_hover,
+      onclick: handle_click,
+      onkeydown: handle_keydown,
+      ondblclick: handle_double_click,
+      onwheel: handle_wheel,
+    },
+    wrapper_handlers: {
+      onkeydown: handle_keydown,
+      ondrop: handle_file_drop,
+      ondragover: handle_drag_over,
+      ondragleave: handle_drag_leave,
+    },
+    // document-level so drags continue outside the canvas; attached individually
+    // since <svelte:document> rejects spread attributes
     handle_mouse_move,
     handle_mouse_up,
-    handle_wheel,
-    handle_hover,
-    handle_click,
-    handle_double_click,
     close_structure_popup,
     render_once,
   }
