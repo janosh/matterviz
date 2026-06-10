@@ -13,8 +13,14 @@
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { ConvexHullEntry, PhaseArityField, PhaseStats } from './types'
-  import { get_arity, is_on_hull } from './helpers'
+  import type {
+    ConvexHullEntry,
+    EntryCategoryConfig,
+    PhaseArityField,
+    PhaseStats,
+  } from './types'
+  import { MAGNETIC_ORDERING_CATEGORY } from './types'
+  import { get_arity, is_on_hull, visible_entries as filter_visible } from './helpers'
 
   let {
     phase_stats,
@@ -22,6 +28,8 @@
     unstable_entries,
     show_stable = true,
     show_unstable = true,
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
+    hidden_categories = [],
     layout = `toggle`,
     on_entry_click,
     highlighted_entry_id,
@@ -36,6 +44,9 @@
       unstable_entries: ConvexHullEntry[]
       show_stable?: boolean
       show_unstable?: boolean
+      // Categorical classification + hidden values (excluded from shown counts/table)
+      entry_category?: EntryCategoryConfig | null
+      hidden_categories?: string[]
       // 'toggle' shows stats/table with toggle buttons (default)
       // 'side-by-side' shows both stats and table next to each other without toggle
       layout?: `toggle` | `side-by-side`
@@ -86,10 +97,15 @@
 
   // Shared concatenation of stable + unstable for histograms
   let all_entries = $derived([...stable_entries, ...unstable_entries])
-  let shown_entries = $derived([
-    ...(show_stable ? stable_entries : []),
-    ...(show_unstable ? unstable_entries : []),
-  ])
+  // show_stable/show_unstable respect the caller's partition; pass show flags as true
+  // so filter_visible only applies the category filter on top
+  let shown_entries = $derived(filter_visible(
+    [...(show_stable ? stable_entries : []), ...(show_unstable ? unstable_entries : [])],
+    true,
+    true,
+    entry_category,
+    hidden_categories,
+  ))
 
   // Static arity labels for phase breakdown display
   const arity_types: [string, PhaseArityField, number][] = [

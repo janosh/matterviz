@@ -2,7 +2,12 @@
 import { DEFAULTS } from '$lib/settings'
 import * as helpers from './helpers'
 import * as thermo from './thermodynamics'
-import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from './types'
+import type {
+  EntryCategoryConfig,
+  GasSpecies,
+  GasThermodynamicsConfig,
+  PhaseData,
+} from './types'
 
 const DIM_TO_KIND = { 2: `binary`, 3: `ternary`, 4: `quaternary` } as const
 
@@ -21,6 +26,10 @@ export interface HullDataPipelineInputs<Entry extends PhaseData> {
   max_hull_dist_show_phases: () => number
   show_stable: () => boolean
   show_unstable: () => boolean
+  // Categorical classification (marker shapes + filter toggles), null to disable
+  entry_category: () => EntryCategoryConfig | null
+  // Category values whose entries are hidden from the plot (view predicate)
+  hidden_categories: () => readonly string[]
   // Which entries pass the e_above_hull threshold (predicate differs per dimension)
   keep_plot_entry: (entry: Entry, max_hull_dist: number) => boolean
   // Setters for bindable props written by pipeline effects
@@ -82,12 +91,16 @@ export function create_hull_data_pipeline<Entry extends PhaseData>(
     ),
   )
 
+  // Assign category marker shapes (no-op when entries lack category data)
   const effective_entries = $derived(
-    helpers.get_effective_entries(
-      gas_result.entries,
-      energy_info.energy_mode,
-      energy_info.unary_refs,
-      thermo.compute_e_form_per_atom,
+    helpers.apply_category_markers(
+      helpers.get_effective_entries(
+        gas_result.entries,
+        energy_info.energy_mode,
+        energy_info.unary_refs,
+        thermo.compute_e_form_per_atom,
+      ),
+      inputs.entry_category(),
     ),
   )
 
@@ -140,7 +153,13 @@ export function create_hull_data_pipeline<Entry extends PhaseData>(
       .filter((entry) => inputs.keep_plot_entry(entry, inputs.max_hull_dist_show_phases())),
   )
   const visible_entries = $derived(
-    helpers.visible_entries(plot_entries, inputs.show_stable(), inputs.show_unstable()),
+    helpers.visible_entries(
+      plot_entries,
+      inputs.show_stable(),
+      inputs.show_unstable(),
+      inputs.entry_category(),
+      inputs.hidden_categories(),
+    ),
   )
 
   // Update bindable stable/unstable entry arrays when plot_entries change
