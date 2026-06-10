@@ -38,6 +38,7 @@ class Structure(MatterViz):
         enable_measure_mode: bool | None = None,
         error_msg: str | None = None,
         fullscreen: bool | None = None,
+        fullscreen_toggle: Any | None = None,
         height: float | None = None,
         hidden_elements: list | None = None,
         hidden_prop_vals: list | None = None,
@@ -106,6 +107,8 @@ class Structure(MatterViz):
             mv_props["error_msg"] = error_msg
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
+        if fullscreen_toggle is not None:
+            mv_props["fullscreen_toggle"] = fullscreen_toggle
         if height is not None:
             mv_props["height"] = height
         if hidden_elements is not None:
@@ -343,6 +346,7 @@ class Trajectory(MatterViz):
         fps: float | None = None,
         fps_range: tuple[float, float] | None = None,
         fullscreen: bool | None = None,
+        fullscreen_toggle: Any | None = None,
         histogram_props: dict | None = None,
         hovered: bool | None = None,
         info_pane_open: bool | None = None,
@@ -391,6 +395,8 @@ class Trajectory(MatterViz):
             mv_props["fps_range"] = fps_range
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
+        if fullscreen_toggle is not None:
+            mv_props["fullscreen_toggle"] = fullscreen_toggle
         if histogram_props is not None:
             mv_props["histogram_props"] = histogram_props
         if hovered is not None:
@@ -436,7 +442,7 @@ class BrillouinZone(MatterViz):
 
     Component key: ``brillouin/BrillouinZone``
 
-    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_kpath_hover, on_point_hover
+    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover, on_kpath_hover, on_point_hover
     """
 
     def __init__(
@@ -453,6 +459,7 @@ class BrillouinZone(MatterViz):
         edge_width: float | None = None,
         error_msg: str | None = None,
         fullscreen: bool | None = None,
+        fullscreen_toggle: Any | None = None,
         height: float | None = None,
         hovered: bool | None = None,
         hovered_k_point: list[float] | None = None,
@@ -508,6 +515,8 @@ class BrillouinZone(MatterViz):
             mv_props["error_msg"] = error_msg
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
+        if fullscreen_toggle is not None:
+            mv_props["fullscreen_toggle"] = fullscreen_toggle
         if height is not None:
             mv_props["height"] = height
         if hovered is not None:
@@ -587,6 +596,7 @@ class ConvexHull2D(MatterViz):
         config: dict | None = None,
         show_controls: Any | None = None,
         fullscreen: bool | None = None,
+        fullscreen_toggle: Any | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -640,6 +650,8 @@ class ConvexHull2D(MatterViz):
             mv_props["show_controls"] = show_controls
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
+        if fullscreen_toggle is not None:
+            mv_props["fullscreen_toggle"] = fullscreen_toggle
         if enable_info_pane is not None:
             mv_props["enable_info_pane"] = enable_info_pane
         if label_threshold is not None:
@@ -725,6 +737,7 @@ class ConvexHull3D(MatterViz):
         config: dict | None = None,
         show_controls: Any | None = None,
         fullscreen: bool | None = None,
+        fullscreen_toggle: Any | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -779,6 +792,8 @@ class ConvexHull3D(MatterViz):
             mv_props["show_controls"] = show_controls
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
+        if fullscreen_toggle is not None:
+            mv_props["fullscreen_toggle"] = fullscreen_toggle
         if enable_info_pane is not None:
             mv_props["enable_info_pane"] = enable_info_pane
         if label_threshold is not None:
@@ -874,6 +889,7 @@ class ConvexHull4D(MatterViz):
         config: dict | None = None,
         show_controls: Any | None = None,
         fullscreen: bool | None = None,
+        fullscreen_toggle: Any | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -928,6 +944,8 @@ class ConvexHull4D(MatterViz):
             mv_props["show_controls"] = show_controls
         if fullscreen is not None:
             mv_props["fullscreen"] = fullscreen
+        if fullscreen_toggle is not None:
+            mv_props["fullscreen_toggle"] = fullscreen_toggle
         if enable_info_pane is not None:
             mv_props["enable_info_pane"] = enable_info_pane
         if label_threshold is not None:
