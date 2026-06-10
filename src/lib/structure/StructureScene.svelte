@@ -1575,12 +1575,15 @@
     auto_rotate,
     rotation_damping,
     set_camera_is_moving: (moving) => (camera_is_moving = moving),
-    // Close hover tooltips + bond context menu while the camera moves
+    // Close hover tooltips + bond context menu while the camera moves. Only hide the
+    // VISIBLE menu (not bond_context_target): clicking a menu button fires this
+    // orbit-controls start handler before the button's own handler runs, which still
+    // needs the target bond to apply the edit (see bond_context_target comment).
     onstart_extra: () => {
       cancel_atom_hover_clear()
       hovered_idx = null
       hovered_bond_key = null
-      close_bond_context_menu()
+      bond_context_menu = null
     },
   }))
 
