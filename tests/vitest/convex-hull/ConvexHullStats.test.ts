@@ -40,6 +40,7 @@ type Props = {
   unstable_entries: ConvexHullEntry[]
   show_stable?: boolean
   show_unstable?: boolean
+  hidden_categories?: string[]
   layout?: `toggle` | `side-by-side`
   on_entry_click?: (entry: ConvexHullEntry) => void
   highlighted_entry_id?: string
@@ -390,6 +391,28 @@ describe(`ConvexHullStats`, () => {
         td.textContent?.trim(),
       )
       expect(cells).not.toContain(`Zr`)
+    })
+
+    test(`table excludes entries with hidden magnetic orderings`, () => {
+      mount_stats_table({
+        stable_entries: [
+          mock_entry({ magnetic_ordering: `FM`, entry_id: `id-fm`, reduced_formula: `FeO` }),
+          mock_entry({
+            magnetic_ordering: `AFM`,
+            entry_id: `id-afm`,
+            reduced_formula: `Fe2O3`,
+          }),
+        ],
+        // no ordering -> unaffected by category filter
+        unstable_entries: [mock_entry({ entry_id: `id-plain`, reduced_formula: `Fe3O4` })],
+        hidden_categories: [`FM`],
+      })
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
+      const table_text = doc_query(`tbody`).textContent ?? ``
+      expect(table_text).not.toContain(`id-fm`)
+      expect(table_text).toContain(`id-afm`)
+      expect(table_text).toContain(`id-plain`)
+      expect(doc_query(`.filter-count`).textContent).toContain(`2 entries`)
     })
 
     test.each([

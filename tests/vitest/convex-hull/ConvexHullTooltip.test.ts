@@ -114,6 +114,32 @@ describe(`ConvexHullTooltip`, () => {
     )
   })
 
+  describe(`magnetic properties`, () => {
+    test.each([
+      { magnetic_ordering: `FM`, expected: `Magnetic: FM`, label: `Ferromagnetic` },
+      {
+        magnetic_ordering: `antiferromagnetic`,
+        expected: `Magnetic: AFM`,
+        label: `Antiferromagnetic`,
+      },
+    ])(
+      `shows normalized ordering for $magnetic_ordering`,
+      ({ magnetic_ordering, expected, label }) => {
+        mount_tooltip({ entry: mock_entry({ magnetic_ordering }) })
+        expect(document.body.textContent).toContain(expected)
+        expect(document.querySelector(`[title="${label}"]`)).not.toBeNull()
+      },
+    )
+
+    test.each([
+      { entry: mock_entry(), desc: `no magnetic fields` },
+      { entry: mock_entry({ magnetic_ordering: `Unknown` }), desc: `unrecognized ordering` },
+    ])(`omits magnetic line for $desc`, ({ entry }) => {
+      mount_tooltip({ entry })
+      expect(document.body.textContent).not.toContain(`Magnetic:`)
+    })
+  })
+
   describe(`highlight badge`, () => {
     test(`shows badge with color when highlight_style provided`, () => {
       mount_tooltip({ highlight_style: { color: `#00ff00` } })
