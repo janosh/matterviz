@@ -8,10 +8,12 @@ import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import init, { analyze_cell } from '@spglib/moyo-wasm'
 import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
 import { mat3_from_flat_col_major } from './symmetry-elements'
+import { wyckoff_letter } from './wyckoff-db'
 
 export * from './cell-transform'
 export * from './spacegroups'
 export * from './symmetry-elements'
+export * from './wyckoff-db'
 export { default as SymmetryElementControls } from './SymmetryElementControls.svelte'
 export { default as SymmetryElements } from './SymmetryElements.svelte'
 export { default as SymmetryStats } from './SymmetryStats.svelte'
@@ -46,6 +48,9 @@ export type WyckoffPos = {
   site_indices?: number[]
   // Site symmetry symbol of the orbit (e.g. "m-3m", "4mm"), when available from moyo
   site_symmetry?: string
+  // ITA representative coordinate triplet (e.g. "x,1/4,0") from the space-group
+  // Wyckoff database, attached by enrich_wyckoff_rows
+  coordinates?: string
 }
 export type SymmetryDataset = MoyoDataset & {
   // Mapping from standardized-cell site index to original structure site indices.
@@ -323,7 +328,7 @@ function wyckoff_rows_from_input_orbits(sym_data: SymmetryDataset): WyckoffPos[]
 
   const n_std = std_cell?.positions.length ?? n_input
   return [...orbit_members.entries()].map(([rep, members]) => {
-    const letter = /[a-z]+$/.exec(wyckoffs[rep] ?? ``)?.[0] ?? ``
+    const letter = wyckoff_letter(wyckoffs[rep] ?? ``)
     const elem = ATOMIC_NUMBER_TO_SYMBOL[input_cell.numbers[rep]] ?? `?`
     const multiplicity = Math.round((members.length * n_std) / n_input)
 
