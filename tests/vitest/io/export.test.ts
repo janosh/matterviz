@@ -1,5 +1,6 @@
 import {
   canvas_to_png_blob,
+  dpi_to_scale,
   export_canvas_as_png,
   export_svg_as_png,
   export_svg_as_svg,
@@ -52,6 +53,21 @@ function make_svg(viewBox?: string): SVGElement {
 }
 
 // === Tests ===
+
+describe(`dpi_to_scale`, () => {
+  test.each([
+    [72, 1], // baseline
+    [150, 150 / 72],
+    [1440, 10], // capped at 10x
+    [0.01, 1 / 72], // tiny positives floored at 1 DPI (no 0x0 canvases)
+    [0, 1 / 72],
+    [-50, 1 / 72],
+    [NaN, 1], // non-finite (incl. Infinity) falls back to the 72 DPI baseline
+    [Infinity, 1],
+  ])(`dpi=%s -> scale=%s`, (png_dpi, expected) => {
+    expect(dpi_to_scale(png_dpi)).toBeCloseTo(expected, 12)
+  })
+})
 
 describe(`get_ffmpeg_conversion_command`, () => {
   test.each([
@@ -258,6 +274,13 @@ describe(`svg_to_png_blob`, () => {
     void svg_to_png_blob(svg, dpi)
     expect(mock_canvas_element.width).toBe(expected_size)
     expect(mock_canvas_element.height).toBe(expected_size)
+  })
+
+  test(`clamps canvas to >=1px for tiny viewBox at minimum DPI`, () => {
+    // 10 viewBox units at the 1 DPI floor would round to 0 without the clamp
+    void svg_to_png_blob(make_svg(`0 0 10 10`), 1)
+    expect(mock_canvas_element.width).toBe(1)
+    expect(mock_canvas_element.height).toBe(1)
   })
 
   test(`serializes cloned SVG as blob for image loading`, () => {

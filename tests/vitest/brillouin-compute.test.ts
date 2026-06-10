@@ -12,7 +12,10 @@ import {
 } from '$lib/brillouin/compute'
 import {
   cartesian_to_fractional,
+  default_camera_position,
   k_lattice_inverse,
+  k_space_size,
+  polyhedron_centroid,
   polyhedron_geometry,
 } from '$lib/brillouin'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -650,5 +653,28 @@ describe(`k_lattice_inverse + cartesian_to_fractional`, () => {
       ]),
     ).toBeNull()
     expect(cartesian_to_fractional(null, [1, 2, 3])).toBeNull()
+  })
+})
+
+describe(`scene sizing helpers`, () => {
+  test(`polyhedron_centroid averages vertices, falls back to origin`, () => {
+    expect(polyhedron_centroid(cube_vertices)).toEqual([0.5, 0.5, 0])
+    expect(polyhedron_centroid(undefined)).toEqual([0, 0, 0])
+    expect(polyhedron_centroid([])).toEqual([0, 0, 0])
+  })
+
+  test(`k_space_size is the mean k-vector magnitude, 10 when missing`, () => {
+    const k_lattice: Matrix3x3 = [
+      [3, 0, 0],
+      [0, 6, 0],
+      [0, 0, 9],
+    ]
+    expect(k_space_size(k_lattice)).toBe(6)
+    expect(k_space_size(undefined)).toBe(10)
+  })
+
+  test(`default_camera_position scales [10, 3, 8] by max(1, size)`, () => {
+    expect(default_camera_position(2)).toEqual([20, 6, 16])
+    expect(default_camera_position(0.5)).toEqual([10, 3, 8])
   })
 })

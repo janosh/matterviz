@@ -36,10 +36,11 @@
     has_explicit_position,
     measured_footprint,
     place_decorations,
+    placed_coords,
   } from '$lib/plot/core/auto-place'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
-  import { create_placed_tween } from '$lib/plot/core/hover-lock.svelte'
+  import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import {
@@ -667,7 +668,7 @@
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
-    tween: () => ({ duration: 400, ...legend?.tween }),
+    tween: () => legend?.tween,
   })
 
   // === Tooltip / hover ===
@@ -1122,16 +1123,13 @@
     </svg>
 
     {#if legend && should_show_legend}
-      {@const legend_left = legend_auto_outside
-      ? legend_outside_x
-      : legend_placement
-      ? legend_tween.coords.current.x
-      : pad.l + 10}
-      {@const legend_top = legend_auto_outside
-      ? legend_outside_y
-      : legend_placement
-      ? legend_tween.coords.current.y
-      : pad.t + 10}
+      {@const legend_pos = placed_coords(
+      legend_auto_outside,
+      { x: legend_outside_x, y: legend_outside_y },
+      legend_placement,
+      legend_tween.coords.current,
+      { x: pad.l + 10, y: pad.t + 10 },
+    )}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
@@ -1145,7 +1143,7 @@
             ? item.series_idx
             : null)}
         active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
-        style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
+        style={`position: absolute; left: ${legend_pos.x}px; top: ${legend_pos.y}px; pointer-events: auto; ${
           legend?.style || ``
         }`}
       />

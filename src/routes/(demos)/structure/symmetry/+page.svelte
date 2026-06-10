@@ -12,6 +12,7 @@
     default_sym_settings,
     ensure_moyo_wasm_ready,
     map_wyckoff_to_all_atoms,
+    spacegroup_wyckoff_positions,
     symmetry_elements_from_ops,
     SymmetryElementControls,
     SymmetryStats,
@@ -38,6 +39,8 @@
   let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)
   let stacked_sym_settings = $state<SymmetrySettings>(default_sym_settings)
   let show_sym_elements = $state(false)
+  // List unoccupied Wyckoff positions of the space group in the table
+  let show_unoccupied_wyckoff = $state(false)
   // Per-kind overlay visibility — starts with rotation axes only to avoid overplotting
   let show_sym_kinds = $state<ShowSymmetryKinds>({ ...DEFAULT_SHOW_SYM_KINDS })
   // Cell type of the top example viewer (bound to its controls). moyo operations live in
@@ -66,6 +69,13 @@
   // Derived values for wyckoff positions
   const base_wyckoff_positions = $derived(
     wyckoff_positions_from_moyo(top_ex_sym_data ?? null),
+  )
+  // Full Wyckoff-position database of the detected space-group setting (moyo 0.11):
+  // adds ITA representative coordinates and lets the table list unoccupied positions
+  const wyckoff_db = $derived(
+    wasm_ready && top_ex_sym_data
+      ? spacegroup_wyckoff_positions(top_ex_sym_data.hall_number)
+      : [],
   )
   const wyckoff_positions = $derived.by(() => {
     if (
@@ -110,9 +120,17 @@
       />
       <WyckoffTable
         {wyckoff_positions}
+        db_positions={wyckoff_db}
+        show_unoccupied={show_unoccupied_wyckoff}
         on_hover={(site_indices) => hovered_wyckoff_sites = site_indices ?? []}
         on_click={(site_indices) => active_wyckoff_sites = site_indices ?? []}
       />
+      {#if wyckoff_db.length > 0}
+        <label style="display: flex; gap: 6pt; align-items: center; margin-top: 1em">
+          <input type="checkbox" bind:checked={show_unoccupied_wyckoff} />
+          Show unoccupied Wyckoff positions
+        </label>
+      {/if}
       <label style="display: flex; gap: 6pt; align-items: center; margin-top: 1em">
         <input type="checkbox" bind:checked={show_sym_elements} />
         Show symmetry elements

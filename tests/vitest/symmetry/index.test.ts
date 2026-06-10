@@ -711,6 +711,7 @@ describe(`apply_symmetry_operations`, () => {
     },
   }
 
+  // oxfmt-ignore
   test.each([
     [
       `identity operation`,
@@ -723,20 +724,14 @@ describe(`apply_symmetry_operations`, () => {
       `inversion operation`,
       [0.25, 0.25, 0.25] as Vec3,
       [operations.identity, operations.inversion],
-      [
-        [0.25, 0.25, 0.25],
-        [0.75, 0.75, 0.75],
-      ],
+      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
       2,
     ],
     [
       `translation operation`,
       [0.25, 0.25, 0.25] as Vec3,
       [operations.identity, operations.translation],
-      [
-        [0.25, 0.25, 0.25],
-        [0.75, 0.75, 0.75],
-      ],
+      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
       2,
     ],
     [
@@ -764,10 +759,7 @@ describe(`apply_symmetry_operations`, () => {
       `multiple operations with deduplication`,
       [0.5, 0.5, 0.5] as Vec3,
       [operations.identity, operations.inversion, operations.translation],
-      [
-        [0.5, 0.5, 0.5],
-        [0, 0, 0],
-      ],
+      [[0.5, 0.5, 0.5], [0, 0, 0]],
       2,
     ],
   ])(`handles %s`, (_, position, ops, expected_positions, expected_length) => {

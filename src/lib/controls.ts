@@ -13,6 +13,9 @@ export type ShowControlsConfig = {
 export type ShowControlsProp = ControlsVisibility | ShowControlsConfig | boolean
 
 // Normalize show_controls prop into consistent config with helper methods
+// Normalized result of a ShowControlsProp, passed to viewer chrome components
+export type ShowControlsState = ReturnType<typeof normalize_show_controls>
+
 export function normalize_show_controls(prop: ShowControlsProp | undefined) {
   // Extract mode, hidden, style from various prop forms
   let mode: ControlsVisibility = `hover`

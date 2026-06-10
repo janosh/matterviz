@@ -12,6 +12,16 @@ const DECOR_GAP = 8 // px gap between an outside decoration and the plot edge
 type Pt = { x: number; y: number }
 type Size = { width: number; height: number }
 
+// Final on-screen position for an auto-placed decoration: explicit outside placement
+// wins, then the tweened auto placement, else a static padding fallback
+export const placed_coords = (
+  auto_outside: boolean,
+  outside: Pt,
+  placement: Pt | null,
+  tweened: Pt,
+  fallback: Pt,
+): Pt => (auto_outside ? outside : placement ? tweened : fallback)
+
 // True when the user pinned a decoration via its style (an edge property or position:absolute),
 // in which case auto-placement must leave it alone.
 export const has_explicit_position = (style?: string | null): boolean =>

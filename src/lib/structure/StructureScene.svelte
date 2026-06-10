@@ -299,6 +299,7 @@
     site_label_bg_color?: string
     site_label_color?: string
     site_label_padding?: number
+    camera_is_moving?: boolean // bindable: true while orbit controls are active
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -891,7 +892,7 @@
 
   let rotation_target = $derived(
     lattice
-      ? (math.scale(math.add(...lattice.matrix), 0.5) as Vec3)
+      ? math.scale(math.add(...lattice.matrix), 0.5)
       : structure
       ? get_center_of_mass(structure)
       : [0, 0, 0] as Vec3,
@@ -1457,9 +1458,9 @@
         const offsets = new SvelteMap<string, Vec3>()
         for (const [idx, key] of site_keys.entries()) {
           const angle = (2 * Math.PI * idx) / n_keys
-          const dx = math.scale(u_vec, gap_abs * Math.cos(angle)) as Vec3
-          const dy = math.scale(v_vec, gap_abs * Math.sin(angle)) as Vec3
-          offsets.set(key, math.add(dx, dy) as Vec3)
+          const dx = math.scale(u_vec, gap_abs * Math.cos(angle))
+          const dy = math.scale(v_vec, gap_abs * Math.sin(angle))
+          offsets.set(key, math.add(dx, dy))
         }
         return offsets
       })
@@ -1513,7 +1514,7 @@
           }
 
           const offset = site_offsets?.[site_idx]?.get(key)
-          const position = offset ? math.add(site.xyz, offset) as Vec3 : site.xyz
+          const position = offset ? math.add(site.xyz, offset) : site.xyz
           const arrow_vec = vector_normalize ? math.normalize_vec(vec) : vec
 
           return {
@@ -1574,10 +1575,14 @@
     auto_rotate,
     rotation_damping,
     set_camera_is_moving: (moving) => (camera_is_moving = moving),
-    // Close hover tooltips + bond context menu while the camera moves
+    // Close hover tooltips + bond context menu while the camera moves. Only hide the
+    // VISIBLE menu (not bond_context_target): clicking a menu button fires this
+    // orbit-controls start handler before the button's own handler runs, which still
+    // needs the target bond to apply the edit (see bond_context_target comment).
     onstart_extra: () => {
       cancel_atom_hover_clear()
       hovered_idx = null
+      hovered_bond_key = null
       bond_context_menu = null
     },
   }))
@@ -2058,8 +2063,8 @@
           {@const site = structure.sites[site_index]}
           {#if site}
             <!-- shift selected site labels down to avoid overlapping regular site labels-->
-            {@const selection_offset = math.add(site_label_offset, [0, -0.5, 0])}
-            {@const pos = math.add(site.xyz, selection_offset) as Vec3}
+            {@const selection_offset = math.add<Vec3>(site_label_offset, [0, -0.5, 0])}
+            {@const pos = math.add(site.xyz, selection_offset)}
             <extras.HTML center position={pos}>
               <span class="selection-label">{loop_idx + 1}</span>
             </extras.HTML>
@@ -2322,10 +2327,6 @@
 </T.Group>
 
 <style>
-  :global(.structure .responsive-gizmo) {
-    width: clamp(70px, 18cqmin, 100px) !important;
-    height: clamp(70px, 18cqmin, 100px) !important;
-  }
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border: 0;

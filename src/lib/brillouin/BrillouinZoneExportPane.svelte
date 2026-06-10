@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ExportSection } from '$lib/io/ExportPane.svelte'
+  import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_canvas_as_png } from '$lib/io/export'
   import { download } from '$lib/io/fetch'

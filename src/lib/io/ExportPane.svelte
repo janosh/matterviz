@@ -1,9 +1,5 @@
-<script lang="ts" module>
-  // Item/section types live in ./types (plain .ts so type-aware lint can resolve them)
-  export type { ExportItem, ExportSection } from './types'
-</script>
-
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
@@ -27,8 +23,8 @@
     png_dpi?: number
     dpi_range?: readonly [number, number]
     icon_style?: string
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: PaneToggleProps
+    pane_props?: PaneProps
     // Pane-specific extras rendered below the sections (e.g. video export controls)
     children?: Snippet
   } = $props()
@@ -44,7 +40,7 @@
   let copied_key = $state<string | null>(null)
   let copied_timeout: ReturnType<typeof setTimeout> | undefined
   async function handle_copy(item: ExportItem, key: string): Promise<void> {
-    if (item.copy_disabled ?? item.disabled) return
+    if (item.disabled) return
     const text = item.copy_text?.()
     if (!text) return
     try {
@@ -97,8 +93,7 @@
               onclick={item.on_download}
               disabled={item.disabled ?? false}
               aria-label={`Download ${item.label}`}
-              title={item.download_title ??
-              `Download ${item.label}${item.show_dpi ? ` (${png_dpi} DPI)` : ``}`}
+              title={`Download ${item.label}${item.show_dpi ? ` (${png_dpi} DPI)` : ``}`}
             >
               ⬇
             </button>
@@ -107,7 +102,7 @@
             <button
               type="button"
               onclick={() => handle_copy(item, copy_key)}
-              disabled={item.copy_disabled ?? item.disabled ?? false}
+              disabled={item.disabled ?? false}
               aria-label="Copy {item.label} to clipboard"
               title="Copy {item.label} to clipboard"
             >

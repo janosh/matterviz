@@ -3,6 +3,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
+  import { is_plain_object } from '$lib/utils'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
@@ -104,12 +105,12 @@
       }
     }
 
-    if (typeof line_kwargs === `object` && line_kwargs !== null) {
+    if (is_plain_object(line_kwargs)) {
       const mode_key = is_acoustic ? `acoustic` : `optical`
-      const mode_kwargs = (line_kwargs as Record<string, unknown>)[mode_key] as
-        | Record<string, unknown>
-        | undefined
-      const source = (mode_kwargs ?? line_kwargs) as Record<string, unknown>
+      const mode_kwargs = line_kwargs[mode_key]
+      const source: Record<string, unknown> = is_plain_object(mode_kwargs)
+        ? mode_kwargs
+        : line_kwargs
       return {
         stroke: (source.stroke as string) ?? defaults.stroke,
         stroke_width: (source.stroke_width as number) ?? defaults.stroke_width,

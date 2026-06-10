@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
@@ -105,8 +106,8 @@
     merged_controls: ConvexHullControlsType
     // Pane state
     controls_open?: boolean
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: PaneToggleProps
+    pane_props?: PaneProps
   } = $props()
 
   // Focus the multiselect input next to the "Color scale" label

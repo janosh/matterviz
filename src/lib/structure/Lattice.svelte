@@ -146,7 +146,7 @@
         {#each matrix as vec, idx (vec)}
           {@const shaft_length = Math.hypot(...vec) * 0.85}
           <!-- Shaft goes to 85% of vector length -->
-          {@const tip_start_position = math.scale(vec, 0.85) as Vec3}
+          {@const tip_start_position = math.scale(vec, 0.85)}
           <!-- Calculate rotation to align with vector direction -->
           {@const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0), // Default up direction for cylinder/cone
@@ -157,7 +157,7 @@
       .toArray()
       .slice(0, 3) as Vec3}
           <!-- Arrow shaft - position at center of shaft length -->
-          {@const shaft_center = math.scale(vec, 0.425) as Vec3}
+          {@const shaft_center = math.scale(vec, 0.425)}
           <!-- Center at 42.5% = half of 85% -->
           <T.Mesh
             position={shaft_center}

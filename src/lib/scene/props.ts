@@ -45,7 +45,7 @@ export function build_orbit_props(opts: {
   min_zoom: number | undefined
   auto_rotate: number
   rotation_damping: number
-  set_camera_is_moving: (moving: boolean) => void
+  set_camera_is_moving?: (moving: boolean) => void
   onstart_extra?: () => void
 }) {
   const is_ortho = opts.camera_projection === `orthographic`
@@ -66,9 +66,9 @@ export function build_orbit_props(opts: {
     enableDamping: Boolean(opts.rotation_damping),
     dampingFactor: opts.rotation_damping,
     onstart: () => {
-      opts.set_camera_is_moving(true)
+      opts.set_camera_is_moving?.(true)
       opts.onstart_extra?.()
     },
-    onend: () => opts.set_camera_is_moving(false),
+    onend: () => opts.set_camera_is_moving?.(false),
   }
 }

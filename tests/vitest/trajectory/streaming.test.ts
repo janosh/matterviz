@@ -1,9 +1,12 @@
 // Streaming trajectory loader tests - clever testing without large files
 import { trajectory_property_config } from '$lib/labels'
 import type { ParseProgress } from '$lib/trajectory'
+import { DEFAULTS } from '$lib/settings'
 import {
   create_frame_loader,
   LARGE_FILE_THRESHOLD,
+  MAX_BIN_FILE_SIZE,
+  MAX_TEXT_FILE_SIZE,
   parse_trajectory_async,
   TrajFrameReader,
 } from '$lib/trajectory/parse'
@@ -15,6 +18,13 @@ import TrajectoryRaceHarness from './TrajectoryRaceHarness.svelte'
 
 // CI environments have higher timing variability
 const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
+
+it(`large-file fallback thresholds stay in sync with the settings schema`, () => {
+  // Plain component usage (no loading_options) and settings-driven contexts (VSCode
+  // extension) must agree on when large-file/indexed loading kicks in
+  expect(MAX_BIN_FILE_SIZE).toBe(DEFAULTS.trajectory.bin_file_threshold)
+  expect(MAX_TEXT_FILE_SIZE).toBe(DEFAULTS.trajectory.text_file_threshold)
+})
 
 describe(`Trajectory Streaming`, () => {
   // Helper to create synthetic multi-frame XYZ data

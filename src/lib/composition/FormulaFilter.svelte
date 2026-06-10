@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import { get_alphabetical_formula } from '$lib/composition/format'
-  import { is_elem_symbol } from '$lib/element'
+  import { is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { FormulaSearchMode } from './index'
@@ -356,8 +356,10 @@
     try {
       const tokens = parse_formula_with_wildcards(sanitized_input)
       const explicit = tokens
-        .filter((token) => token.element !== null)
-        .map((token) => ({ element: token.element as string, count: token.count }))
+        .filter((token): token is { element: ElementSymbol; count: number } =>
+          token.element !== null
+        )
+        .map((token) => ({ element: token.element, count: token.count }))
       const wildcard_tokens = tokens.filter((token) => token.element === null)
 
       // Merge explicit element counts before sorting.

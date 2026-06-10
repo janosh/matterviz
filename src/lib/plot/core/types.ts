@@ -1,7 +1,7 @@
+import type { PaneProps, PaneToggleProps } from '$lib/overlays'
 import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
 import type { D3SymbolName } from '$lib/labels'
 import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
-import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
@@ -582,8 +582,8 @@ export interface PlotConfig {
 export interface ControlsConfig {
   show?: boolean
   open?: boolean
-  toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  toggle_props?: PaneToggleProps
+  pane_props?: PaneProps
 }
 
 // Pan configuration for 2D plot components
@@ -619,8 +619,8 @@ export interface PlotControlsProps extends PlotConfig {
   // Component props
   controls_title?: string
   controls_class?: string
-  toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  toggle_props?: PaneToggleProps
+  pane_props?: PaneProps
 }
 
 // Base props shared across plot components (non-bindable props only)
@@ -633,8 +633,8 @@ export interface BasePlotProps {
   // Controls
   show_controls?: boolean
   controls_open?: boolean
-  controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  controls_toggle_props?: PaneToggleProps
+  controls_pane_props?: PaneProps
   // Fullscreen
   fullscreen?: boolean
   fullscreen_toggle?: boolean // default: true

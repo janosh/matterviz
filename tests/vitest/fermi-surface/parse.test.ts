@@ -214,8 +214,25 @@ END_BLOCK_BANDGRID_3D`
       expect(`isosurfaces` in (result ?? {})).toBe(true)
     })
 
-    test(`accepts isosurfaces with empty face arrays`, () => {
-      const json_content = JSON.stringify({
+    test.each([
+      [
+        `accepts`,
+        [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
+      ],
+      [
+        `rejects`,
+        [
+          [1, 0, 0],
+          [0, null, 0],
+          [0, 0, 1],
+        ],
+      ],
+    ])(`%s isosurfaces with empty face arrays and k_lattice`, (expectation, k_lattice) => {
+      const content = JSON.stringify({
         isosurfaces: [
           {
             vertices: [[0, 0, 0]],
@@ -225,19 +242,49 @@ END_BLOCK_BANDGRID_3D`
             spin: null,
           },
         ],
-        k_lattice: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
+        k_lattice,
         fermi_energy: 5.0,
         reciprocal_cell: `wigner_seitz`,
         metadata: { n_bands: 1, n_surfaces: 1, total_area: 0 },
       })
 
-      const result = parse_fermi_file(json_content, `test.json`)
+      if (expectation === `rejects`) {
+        expect(() => parse_fermi_file(content, `test.json`)).toThrow(
+          /Invalid FermiSurfaceData/,
+        )
+        return
+      }
+
+      const result = parse_fermi_file(content, `test.json`)
       expect(result).not.toBeNull()
       expect(`isosurfaces` in (result ?? {})).toBe(true)
+    })
+
+    test.each([
+      [`non-integer k_grid dim`, { k_grid: [2, 2.5, 2] }],
+      [`zero k_grid dim`, { k_grid: [2, 0, 2] }],
+      [
+        `non-finite k_lattice entry`,
+        {
+          k_lattice: [
+            [1, 0, 0],
+            [0, null, 0],
+            [0, 0, 1],
+          ],
+        },
+      ],
+    ])(`rejects BandGridData JSON with %s`, (_label, overrides) => {
+      const base = {
+        energies: [[[[1]]]],
+        k_grid: [1, 1, 1],
+        k_lattice: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
+      }
+      const content = JSON.stringify({ ...base, ...overrides })
+      expect(() => parse_fermi_file(content, `test.json`)).toThrow(/Invalid BandGridData/)
     })
 
     test(`parses IFermi JSON format`, () => {

@@ -23,6 +23,7 @@ const sample_structure = make_crystal(
 )
 
 describe(`parse_supercell_scaling`, () => {
+  // oxfmt-ignore
   test.each([
     [`2x2x2`, [2, 2, 2]],
     [`3×1×2`, [3, 1, 2]],
@@ -31,14 +32,8 @@ describe(`parse_supercell_scaling`, () => {
     [`2 3 1`, [2, 3, 1]],
     [`5`, [5, 5, 5]],
     [2, [2, 2, 2]],
-    [
-      [2, 2, 2],
-      [2, 2, 2],
-    ],
-    [
-      [3, 1, 2],
-      [3, 1, 2],
-    ],
+    [[2, 2, 2], [2, 2, 2]],
+    [[3, 1, 2], [3, 1, 2]],
   ])(`parses %s to %s`, (input, expected) => {
     expect(parse_supercell_scaling(input as string | number | Vec3)).toEqual(expected)
   })
@@ -74,36 +69,14 @@ describe(`parse_supercell_scaling`, () => {
 })
 
 describe(`generate_lattice_points`, () => {
+  // oxfmt-ignore
   test.each([
     [[1, 1, 1], [[0, 0, 0]]],
-    [
-      [2, 1, 1],
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-      ],
-    ],
-    [
-      [2, 2, 1],
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-        [1, 1, 0],
-      ],
-    ],
+    [[2, 1, 1], [[0, 0, 0], [1, 0, 0]]],
+    [[2, 2, 1], [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]]],
     [
       [2, 2, 2],
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-        [1, 1, 0],
-        [0, 0, 1],
-        [1, 0, 1],
-        [0, 1, 1],
-        [1, 1, 1],
-      ],
+      [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]],
     ],
   ])(`generates correct lattice points for %s`, (scaling, expected) => {
     const result = generate_lattice_points(scaling as Vec3)
@@ -124,46 +97,20 @@ describe(`scale_lattice_matrix`, () => {
     [1.0, 0.5, 4.0],
   ]
 
+  // oxfmt-ignore
   test.each([
     [[1, 1, 1], diagonal_matrix],
-    [
-      [2, 1, 1],
-      [
-        [4.0, 0.0, 0.0],
-        [0.0, 3.0, 0.0],
-        [0.0, 0.0, 4.0],
-      ],
-    ],
-    [
-      [2, 2, 2],
-      [
-        [4.0, 0.0, 0.0],
-        [0.0, 6.0, 0.0],
-        [0.0, 0.0, 8.0],
-      ],
-    ],
+    [[2, 1, 1], [[4.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]]],
+    [[2, 2, 2], [[4.0, 0.0, 0.0], [0.0, 6.0, 0.0], [0.0, 0.0, 8.0]]],
   ])(`scales diagonal matrix correctly for %s`, (scaling, expected) => {
     expect(scale_lattice_matrix(diagonal_matrix, scaling as Vec3)).toEqual(expected)
   })
 
+  // oxfmt-ignore
   test.each([
     [[1, 1, 1], non_diagonal_matrix],
-    [
-      [2, 1, 1],
-      [
-        [4.0, 3.0, 1.0],
-        [0.5, 3.0, 1.0],
-        [1.0, 0.5, 4.0],
-      ],
-    ],
-    [
-      [2, 2, 2],
-      [
-        [4.0, 3.0, 1.0],
-        [1.0, 6.0, 2.0],
-        [2.0, 1.0, 8.0],
-      ],
-    ],
+    [[2, 1, 1], [[4.0, 3.0, 1.0], [0.5, 3.0, 1.0], [1.0, 0.5, 4.0]]],
+    [[2, 2, 2], [[4.0, 3.0, 1.0], [1.0, 6.0, 2.0], [2.0, 1.0, 8.0]]],
   ])(`scales non-diagonal matrix correctly for %s`, (scaling, expected) => {
     expect(scale_lattice_matrix(non_diagonal_matrix, scaling as Vec3)).toEqual(expected)
   })

@@ -138,6 +138,16 @@ describe(`Structural Data Extractor`, () => {
         volume: 2.5,
       },
     },
+    {
+      name: `preserve metadata density of exactly 0`,
+      step: 6,
+      lattice_params: null,
+      metadata: { density: 0 },
+      expected: {
+        Step: 6,
+        density: 0,
+      },
+    },
   ])(`should $name`, ({ step, lattice_params, metadata, expected }) => {
     const frame = lattice_params
       ? create_frame_with_lattice(step, lattice_params, metadata)

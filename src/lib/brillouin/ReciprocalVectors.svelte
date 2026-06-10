@@ -8,15 +8,14 @@
     k_lattice,
     vector_scale = 1.0,
     size = 1,
-    vector_colors = [`red`, `green`, `blue`],
-    vector_labels = [`b₁`, `b₂`, `b₃`],
   }: {
     k_lattice: Matrix3x3
     vector_scale?: number
     size?: number // characteristic scene size used to scale arrow proportions
-    vector_colors?: readonly [string, string, string]
-    vector_labels?: readonly [string, string, string]
   } = $props()
+
+  const vector_colors = [`red`, `green`, `blue`]
+  const vector_labels = [`b₁`, `b₂`, `b₃`]
 </script>
 
 {#each k_lattice as vec, idx (idx)}

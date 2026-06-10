@@ -54,3 +54,22 @@ export const cartesian_to_fractional = (
   k_lattice_inv: Matrix3x3 | null,
   cart: Vec3,
 ): Vec3 | null => k_lattice_inv && math.mat3x3_vec3_multiply(k_lattice_inv, cart)
+
+// Centroid of polyhedron vertices, used as orbit/rotation target by BZ + Fermi scenes
+export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
+  vertices?.length
+    ? math.scale(
+        vertices.reduce<Vec3>((acc, vert) => math.add(acc, vert), [0, 0, 0]),
+        1 / vertices.length,
+      )
+    : [0, 0, 0]
+
+// Mean reciprocal-lattice vector magnitude: characteristic scene size for camera placement
+// and arrow scaling. Fallback 10 (upper end of typical |b_i| ~ 2pi/a in 1/A) keeps the
+// camera at a sensible distance while no data is loaded.
+export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
+  k_lattice ? k_lattice.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 3 : 10
+
+// Default camera position scaled to the scene size
+export const default_camera_position = (size: number): Vec3 =>
+  [10, 3, 8].map((coord) => coord * Math.max(1, size)) as Vec3

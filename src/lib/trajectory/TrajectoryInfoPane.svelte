@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
@@ -28,8 +29,8 @@
     file_size?: number | null
     file_object?: File | null
     pane_open?: boolean
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: PaneToggleProps
+    pane_props?: PaneProps
   } = $props()
 
   // Helper functions

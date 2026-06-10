@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneToggleProps } from '$lib/overlays'
   import { JsonTree } from '$lib/layout/json-tree'
   import { set_at_path } from '$lib/layout/json-tree/utils'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
@@ -21,7 +22,7 @@
     data?: PhaseDiagramData | null
     ondata?: (data: PhaseDiagramData) => void
     icon_style?: string
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    toggle_props?: PaneToggleProps
   } = $props()
 
   // The source object currently displayed (DiagramInput or PhaseDiagramData)

@@ -1,5 +1,5 @@
 // Check if value is a plain object (not array, null, or other types)
-const is_plain_object = (val: unknown): val is Record<string, unknown> =>
+export const is_plain_object = (val: unknown): val is Record<string, unknown> =>
   typeof val === `object` && val !== null && !Array.isArray(val)
 
 // Merge nested objects (1 level deep).

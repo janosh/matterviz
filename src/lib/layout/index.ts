@@ -1,5 +1,6 @@
 export * from './fullscreen'
 export * from './fullscreen.svelte'
+export { default as FullscreenButton } from './FullscreenButton.svelte'
 export { default as FullscreenToggle } from './FullscreenToggle.svelte'
 export { default as InfoCard } from './InfoCard.svelte'
 export { default as InfoTag } from './InfoTag.svelte'

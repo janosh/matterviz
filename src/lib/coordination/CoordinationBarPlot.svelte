@@ -1,7 +1,7 @@
 <script lang="ts">
   import { PLOT_COLORS } from '$lib/colors'
   import { StatusMessage } from '$lib/feedback'
-  import { create_file_drop_handler } from '$lib/io'
+  import { create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_value } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { BarPlot } from '$lib/plot'
@@ -298,15 +298,7 @@
     bind:display
     {tooltip}
     ondrop={handle_file_drop}
-    ondragover={(event) => {
-      event.preventDefault()
-      if (!allow_file_drop) return
-      dragover = true
-    }}
-    ondragleave={(event) => {
-      event.preventDefault()
-      dragover = false
-    }}
+    {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
     class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
   />
 {/if}

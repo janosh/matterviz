@@ -44,6 +44,42 @@ describe(`label placement`, () => {
     expect(math.dot(math.normalize_vec(offset), [0, 1, 0])).toBeLessThan(0.5)
   })
 
+  test(`view-axis label offsets keep full screen clearance from the atom`, () => {
+    const atom_position: Vec3 = [0, 0, 0]
+    const visual_radius = 0.5
+    const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
+    camera.position.set(0, 0, 5)
+    camera.lookAt(0, 0, 0)
+    camera.updateMatrixWorld()
+    camera.updateProjectionMatrix()
+    const size = { width: 100, height: 100 }
+    // camera frustum spans 2 world units over 100 px, so radius 0.5 projects to 25 px
+    const projected_radius = 25
+
+    // in-plane offset: clearance = projected radius + margin
+    const [, y_pos] = label_screen_position(
+      atom_position,
+      [0, 0.5, 0],
+      visual_radius,
+      4,
+      camera,
+      size,
+    )
+    expect(Math.abs(y_pos - 50)).toBeCloseTo(projected_radius + 4)
+
+    // offset along the view axis must yield the SAME clearance (regression: the radius
+    // used to be measured along the 3D offset, collapsing to ~0 for view-axis offsets)
+    const [, y_pos_view_axis] = label_screen_position(
+      atom_position,
+      [0, 0, 0.5],
+      visual_radius,
+      4,
+      camera,
+      size,
+    )
+    expect(Math.abs(y_pos_view_axis - 50)).toBeCloseTo(projected_radius + 4)
+  })
+
   test(`label position calculator reads updated label offset`, () => {
     const atom_position: Vec3 = [0, 0, 0]
     let label_offset: Vec3 = [0, 0.5, 0]

@@ -1,5 +1,5 @@
 // Tests for marching cubes via fermi-surface re-export (backward compatibility)
-import { marching_cubes } from '$lib/fermi-surface/marching-cubes'
+import { marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { make_grid } from '../setup'
@@ -43,7 +43,7 @@ const create_spherical_grid = (size: number): number[][][] => {
 // Note: compute_vertex_normals tests are in tests/vitest/marching-cubes.test.ts
 // (fermi-surface re-exports from the same module)
 
-describe(`marching_cubes (fermi-surface re-export)`, () => {
+describe(`marching_cubes (fermi-surface usage)`, () => {
   const identity_lattice: Matrix3x3 = [
     [1, 0, 0],
     [0, 1, 0],

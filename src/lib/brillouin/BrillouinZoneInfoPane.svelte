@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
@@ -18,7 +19,7 @@
     pane_open?: boolean
     structure?: Crystal
     bz_data?: BrillouinZoneData
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    pane_props?: PaneProps
   } = $props()
 
   let sym_data = $state<MoyoDataset | null>(null)

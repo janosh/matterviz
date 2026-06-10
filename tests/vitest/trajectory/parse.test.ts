@@ -1242,6 +1242,8 @@ describe(`JSON Formats`, () => {
   // the shape validation -> clear error instead of a cryptic `.map` throw
   it.each<[string, Record<string, unknown>, RegExp]>([
     [`species`, { species: { element: `Si` }, coords: [[[0, 0, 0]]] }, /species/],
+    [`null element`, { species: [{ element: null }], coords: [[[0, 0, 0]]] }, /species/],
+    [`empty element`, { species: [{ element: `  ` }], coords: [[[0, 0, 0]]] }, /species/],
     [`coords`, { species: [{ element: `Si` }], coords: { a: 1 } }, /coords/],
   ])(`throws a clear error on malformed pymatgen %s`, async (_label, fields, pattern) => {
     const lattice = [

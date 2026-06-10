@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import {
     estimate_video_bitrate,
     export_trajectory_video,
@@ -38,8 +39,8 @@
     // Function to change trajectory step during export
     on_step_change?: (step_idx: number) => Promise<void> | void
     // Pane customization
-    pane_props?: ComponentProps<typeof ExportPane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof ExportPane>[`toggle_props`]
+    pane_props?: PaneProps
+    toggle_props?: PaneToggleProps
   } = $props()
 
   let is_exporting = $state(false)

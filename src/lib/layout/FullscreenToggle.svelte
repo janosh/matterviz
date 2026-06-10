@@ -1,4 +1,6 @@
 <script lang="ts">
+  // Toggles a bindable `fullscreen` flag (plot components manage browser fullscreen
+  // themselves). For chromes that call the browser API directly, use FullscreenButton.
   import Icon from '$lib/Icon.svelte'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 

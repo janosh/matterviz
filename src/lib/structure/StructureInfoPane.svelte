@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_data, type ElementSymbol } from '$lib/element'
   import Icon from '$lib/Icon.svelte'
@@ -77,8 +78,8 @@
     structure: AnyStructure
     pane_open?: boolean
     atom_count_thresholds?: Vec2 // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: PaneToggleProps
+    pane_props?: PaneProps
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
     hovered_site_idx?: number | null // Site hovered in this pane or in the 3D scene
     selected_sites?: number[] // Sites selected from Wyckoff table click

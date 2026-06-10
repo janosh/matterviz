@@ -2,7 +2,10 @@
   import type { BrillouinZoneData } from '$lib/brillouin'
   import {
     cartesian_to_fractional,
+    default_camera_position,
     k_lattice_inverse,
+    k_space_size,
+    polyhedron_centroid,
     polyhedron_geometry,
     ReciprocalVectors,
   } from '$lib/brillouin'
@@ -77,7 +80,6 @@
     directional_light = DEFAULTS.structure.directional_light,
     gizmo = DEFAULTS.structure.show_gizmo,
     auto_rotate = DEFAULTS.structure.auto_rotate,
-    camera_is_moving = $bindable(false),
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
@@ -114,12 +116,8 @@
     (renderer) => (renderer.sortObjects = true),
   )
 
-  // Compute scene size for clipping (also used for camera positioning later)
-  function get_scene_size(): number {
-    if (!fermi_data?.k_lattice) return 10
-    const mags = fermi_data.k_lattice.map((vec) => Math.hypot(...vec))
-    return mags.reduce((sum, mag) => sum + mag, 0) / 3
-  }
+  // Characteristic scene size, used for clipping and camera positioning
+  const scene_size = $derived(k_space_size(fermi_data?.k_lattice))
 
   // Compute clipping plane based on axis and position
   // Plane equation: dot(normal, point) + constant >= 0 means point is visible
@@ -130,7 +128,7 @@
     const normal_arr: Vec3 = [0, 0, 0]
     normal_arr[axis_idx] = clip_flip ? -1 : 1
 
-    const scaled_position = clip_position * get_scene_size()
+    const scaled_position = clip_position * scene_size
     // constant = -position for normal case (keep points >= position)
     // constant = +position for flipped case (keep points <= position)
     const constant = clip_flip ? scaled_position : -scaled_position
@@ -353,26 +351,11 @@
     }
   })
 
-  // Compute rotation target from surfaces or BZ
-  const rotation_target = $derived.by((): Vec3 => {
-    if (bz_data?.vertices && bz_data.vertices.length > 0) {
-      const sum = bz_data.vertices.reduce(
-        (acc, vert) => math.add(acc, vert),
-        [0, 0, 0] as Vec3,
-      )
-      return math.scale(sum, 1 / bz_data.vertices.length)
-    }
-    return [0, 0, 0]
-  })
+  // BZ centroid as rotation center
+  const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
 
-  // Scene size for camera positioning (uses helper function defined earlier)
-  const scene_size = $derived(get_scene_size())
-
-  const computed_camera_position = $derived.by(
-    () =>
-      camera_position || ([10, 3, 8].map((coord) =>
-        coord * Math.max(1, scene_size)
-      ) as Vec3),
+  const computed_camera_position = $derived(
+    camera_position || default_camera_position(scene_size),
   )
 
   const orbit_controls_props = $derived(build_orbit_props({
@@ -386,7 +369,6 @@
     min_zoom,
     auto_rotate,
     rotation_damping,
-    set_camera_is_moving: (moving) => (camera_is_moving = moving),
   }))
 
   // Create BZ geometry
@@ -510,6 +492,10 @@
     last_hover_time = now
     hover_data = create_hover_data(event, surface, surface_color, sym_idx, sym_matrix)
   }
+
+  const clear_hover = () => {
+    hover_data = null
+  }
 </script>
 
 <SceneCamera
@@ -577,9 +563,7 @@
             {renderOrder}
             onpointermove={(event: ThreltePointerEvent) =>
             handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={() => {
-              hover_data = null
-            }}
+            onpointerleave={clear_hover}
           >
             <T.MeshBasicMaterial
               color={surface_color}
@@ -600,9 +584,7 @@
             renderOrder={renderOrder * 2}
             onpointermove={(event: ThreltePointerEvent) =>
             handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={() => {
-              hover_data = null
-            }}
+            onpointerleave={clear_hover}
           >
             <T.MeshStandardMaterial
               {...get_material_props(surface_color, use_vertex_colors, surface_idx, `back`)}
@@ -619,9 +601,7 @@
             renderOrder={renderOrder * 2 + 1}
             onpointermove={(event: ThreltePointerEvent) =>
             handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={() => {
-              hover_data = null
-            }}
+            onpointerleave={clear_hover}
           >
             <T.MeshStandardMaterial
               {...get_material_props(
@@ -644,9 +624,7 @@
             {renderOrder}
             onpointermove={(event: ThreltePointerEvent) =>
             handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={() => {
-              hover_data = null
-            }}
+            onpointerleave={clear_hover}
           >
             <T.MeshStandardMaterial
               {...get_material_props(
@@ -665,10 +643,3 @@
     {/if}
   {/each}
 </T.Group>
-
-<style>
-  :global(.fermi-surface .responsive-gizmo) {
-    width: clamp(70px, 18cqmin, 100px) !important;
-    height: clamp(70px, 18cqmin, 100px) !important;
-  }
-</style>

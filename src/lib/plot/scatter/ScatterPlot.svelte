@@ -56,7 +56,7 @@
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
-  import { create_placed_tween } from '$lib/plot/core/hover-lock.svelte'
+  import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     DEFAULT_MARKERS,
     get_scale_type_name,
@@ -931,14 +931,14 @@
     dims: () => ({ width, height }),
     responsive: () => color_bar?.responsive ?? false,
     element: () => colorbar_element,
-    tween: () => ({ duration: 400, ...color_bar?.tween }),
+    tween: () => color_bar?.tween,
   })
   const legend_tween = create_placed_tween({
     placement: () => active_legend_placement,
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
-    tween: () => ({ duration: 400, ...legend?.tween }),
+    tween: () => legend?.tween,
     // Leave coords alone mid-drag; once dragged, the manual position wins permanently
     suspended: () => legend_is_dragging,
     manual_position: () => legend_manual_position,

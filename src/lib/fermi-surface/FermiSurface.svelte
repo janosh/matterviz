@@ -1,13 +1,12 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '$lib/brillouin'
   import { compute_brillouin_zone, reciprocal_lattice } from '$lib/brillouin'
-  import type { ShowControlsProp } from '$lib/controls'
-  import { normalize_show_controls } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { create_file_drop_handler, load_from_url } from '$lib/io'
-  import { toggle_fullscreen, ViewerChrome } from '$lib/layout'
+  import { create_file_drop_handler, drag_over_handlers, load_from_url } from '$lib/io'
+  import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import { PlotTooltip } from '$lib/plot'
   import type { CameraProjection } from '$lib/settings'
@@ -91,6 +90,7 @@
     on_fullscreen_change,
     on_mu_change,
     on_point_hover,
+    on_hover,
     ...rest
   }: {
     fermi_data?: FermiSurfaceData
@@ -131,7 +131,7 @@
     hovered?: boolean
     dragover?: boolean
     allow_file_drop?: boolean
-    fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+    fullscreen_toggle?: FullscreenToggleProp
     data_url?: string
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
@@ -146,6 +146,8 @@
     on_mu_change?: (mu: number) => void
     tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
     on_point_hover?: (data: FermiHoverData | null) => void
+    // Deprecated alias for on_point_hover (honored when on_point_hover is unset)
+    on_hover?: (data: FermiHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let scene = $state<Scene | undefined>(undefined)
@@ -154,9 +156,16 @@
   let recompute_job_id = 0 // monotonic counter to track latest recompute call
   let hover_data = $state<FermiHoverData | null>(null)
 
-  // Call on_point_hover callback when hover_data changes
+  // Call on_point_hover callback when hover_data changes (on_hover is a deprecated alias)
+  let warned_deprecated_on_hover = false
   $effect(() => {
-    on_point_hover?.(hover_data)
+    if (on_hover && !on_point_hover && !warned_deprecated_on_hover) {
+      warned_deprecated_on_hover = true
+      console.warn(
+        `FermiSurface: the on_hover prop was renamed to on_point_hover; the alias will be removed in a future release`,
+      )
+    }
+    ;(on_point_hover ?? on_hover)?.(hover_data)
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
@@ -370,15 +379,7 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    if (!allow_file_drop) return
-    dragover = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    dragover = false
-  }}
+  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   {...rest}
   class="fermi-surface {rest.class ?? ``}"
 >
@@ -403,7 +404,6 @@
       {fullscreen}
       {fullscreen_toggle}
       {wrapper}
-      style="--viewer-buttons-top: var(--ctrl-btn-top, 1ex); --viewer-buttons-right: var(--ctrl-btn-right, 1ex); --viewer-buttons-z-index: var(--z-index-overlay-controls, 100000000)"
     >
       {#if controls_config.visible(`controls`)}
         <FermiSurfaceControls

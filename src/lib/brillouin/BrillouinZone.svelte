@@ -1,11 +1,10 @@
 <script lang="ts">
-  import type { ShowControlsProp } from '$lib/controls'
-  import { normalize_show_controls } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { create_file_drop_handler, load_from_url } from '$lib/io'
-  import { toggle_fullscreen, ViewerChrome } from '$lib/layout'
+  import { create_file_drop_handler, drag_over_handlers, load_from_url } from '$lib/io'
+  import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
@@ -90,6 +89,7 @@
     on_error,
     on_fullscreen_change,
     on_point_hover,
+    on_hover,
     ...rest
   }:
     & {
@@ -126,7 +126,7 @@
       hovered?: boolean
       dragover?: boolean
       allow_file_drop?: boolean
-      fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+      fullscreen_toggle?: FullscreenToggleProp
       data_url?: string
       on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
       spinner_props?: ComponentProps<typeof Spinner>
@@ -153,6 +153,8 @@
       on_error?: (data: BZHandlerData) => void
       on_fullscreen_change?: (data: BZHandlerData) => void
       on_point_hover?: (data: BZHoverData | null) => void
+      // Deprecated alias for on_point_hover (honored when on_point_hover is unset)
+      on_hover?: (data: BZHoverData | null) => void
     }
     & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -162,9 +164,16 @@
   let current_filename = $state<string | undefined>(undefined)
   let hover_data = $state<BZHoverData | null>(null)
 
-  // Call on_point_hover callback when hover_data changes
+  // Call on_point_hover callback when hover_data changes (on_hover is a deprecated alias)
+  let warned_deprecated_on_hover = false
   $effect(() => {
-    on_point_hover?.(hover_data)
+    if (on_hover && !on_point_hover && !warned_deprecated_on_hover) {
+      warned_deprecated_on_hover = true
+      console.warn(
+        `BrillouinZone: the on_hover prop was renamed to on_point_hover; the alias will be removed in a future release`,
+      )
+    }
+    ;(on_point_hover ?? on_hover)?.(hover_data)
   })
 
   // Normalize show_controls prop into consistent config
@@ -329,15 +338,7 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    if (!allow_file_drop) return
-    dragover = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    dragover = false
-  }}
+  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   {onkeydown}
   {...rest}
   class="brillouin-zone {rest.class ?? ``}"
@@ -354,7 +355,6 @@
       {fullscreen}
       {fullscreen_toggle}
       {wrapper}
-      style="--viewer-buttons-top: var(--ctrl-btn-top, 1ex); --viewer-buttons-right: var(--ctrl-btn-right, 1ex); --viewer-buttons-z-index: var(--z-index-overlay-controls, 100000000)"
     >
       {#if controls_config.visible(`info-pane`)}
         <BrillouinZoneInfoPane {structure} {bz_data} bind:pane_open={info_pane_open} />

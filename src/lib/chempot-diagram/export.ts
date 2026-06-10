@@ -1,4 +1,5 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
+import { dpi_to_scale } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
@@ -95,10 +96,18 @@ export function export_png_file(
   if (!gl_canvas || !wrapper) return
 
   const rect = gl_canvas.getBoundingClientRect()
-  const scale = Math.min(png_dpi / 72, 10)
+  // A degenerate rect means the canvas is hidden/unrendered: nothing to capture
+  if (!(rect.width > 0) || !(rect.height > 0)) {
+    console.error(
+      `Cannot export PNG: canvas has zero size (width=${rect.width}, height=${rect.height})`,
+    )
+    return
+  }
+  const scale = dpi_to_scale(png_dpi)
   const out = document.createElement(`canvas`)
-  out.width = Math.round(rect.width * scale)
-  out.height = Math.round(rect.height * scale)
+  // Floor at 1px so tiny rect x min-DPI rounding can't yield an invalid 0x0 canvas
+  out.width = Math.max(1, Math.round(rect.width * scale))
+  out.height = Math.max(1, Math.round(rect.height * scale))
   const ctx = out.getContext(`2d`)
   if (!ctx) return
   ctx.scale(scale, scale)

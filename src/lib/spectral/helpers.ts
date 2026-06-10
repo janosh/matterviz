@@ -1,6 +1,7 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import { euclidean_dist } from '$lib/math'
+import { is_plain_object } from '$lib/utils'
+import { euclidean_dist, is_square_matrix } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { AxisConfig } from '$lib/plot/core/types'
 import type * as types from './types'
@@ -648,10 +649,10 @@ function convert_pymatgen_band_structure(
   }
 }
 
-export function normalize_band_structure(bs: unknown): types.BaseBandStructure | null {
-  if (!bs || typeof bs !== `object`) return null
-
-  const band_struct = bs as Record<string, unknown>
+export function normalize_band_structure(
+  band_struct: unknown,
+): types.BaseBandStructure | null {
+  if (!is_plain_object(band_struct)) return null
 
   // Check if this is pymatgen format and convert if so
   if (is_pymatgen_format(band_struct)) {
@@ -691,7 +692,7 @@ export function normalize_band_structure(bs: unknown): types.BaseBandStructure |
     ...band_struct,
     nb_bands: typeof band_struct.nb_bands === `number` ? band_struct.nb_bands : bands.length,
     labels_dict: band_struct.labels_dict ?? {},
-    recip_lattice: Array.isArray(recip_lattice?.matrix)
+    recip_lattice: is_square_matrix(recip_lattice?.matrix, 3)
       ? recip_lattice
       : {
           matrix: [
@@ -712,25 +713,22 @@ export function normalize_dos(
   options: { auto_convert_units?: boolean } = {},
 ): types.DosData | null {
   const { auto_convert_units = true } = options
-  if (!dos || typeof dos !== `object`) return null
-
-  const dos_obj = dos as Record<string, unknown>
+  if (!is_plain_object(dos)) return null
 
   // Check for pymatgen format (has @class or @module)
-  const is_pymatgen =
-    typeof dos_obj[`@class`] === `string` || typeof dos_obj[`@module`] === `string`
+  const is_pymatgen = typeof dos[`@class`] === `string` || typeof dos[`@module`] === `string`
 
-  const { frequencies, energies, spin_polarized } = dos_obj
+  const { frequencies, energies, spin_polarized } = dos
 
   // Handle densities as either array or dict with spin keys (pymatgen format)
   // Pymatgen stores densities as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
-  const spin_channels = extract_spin_channels<number[]>(dos_obj.densities)
+  const spin_channels = extract_spin_channels<number[]>(dos.densities)
   if (!spin_channels) return null
 
   const densities = spin_channels.up
   // Use extracted spin-down or fallback to explicit field (for already-normalized DosData)
   const spin_down_densities =
-    spin_channels.down ?? (dos_obj.spin_down_densities as number[] | undefined) ?? null
+    spin_channels.down ?? (dos.spin_down_densities as number[] | undefined) ?? null
 
   if (!Array.isArray(densities)) return null
 
@@ -1011,15 +1009,13 @@ export function extract_pdos(
   pdos_type: types.PdosType,
   filter_keys?: string[],
 ): Record<string, types.ElectronicDos> | null {
-  if (!dos || typeof dos !== `object`) return null
-
-  const dos_obj = dos as Record<string, unknown>
+  if (!is_plain_object(dos)) return null
 
   // Get the appropriate projected DOS dict
   const pdos_dict =
     pdos_type === `atom`
-      ? (dos_obj.atom_dos as Record<string, PymatgenDos> | undefined)
-      : (dos_obj.spd_dos as Record<string, PymatgenDos> | undefined)
+      ? (dos.atom_dos as Record<string, PymatgenDos> | undefined)
+      : (dos.spd_dos as Record<string, PymatgenDos> | undefined)
 
   if (!pdos_dict || typeof pdos_dict !== `object`) return null
 
@@ -1156,22 +1152,16 @@ export function generate_ribbon_path(
 // Handles both single objects with an efermi field and dicts of objects.
 // Returns undefined if no valid efermi is found or if the source is empty.
 export function extract_efermi(data: unknown): number | undefined {
-  if (!data || typeof data !== `object`) return undefined
-  const obj = data as Record<string, unknown>
+  if (!is_plain_object(data)) return undefined
 
   // Direct efermi field on the object
-  if (`efermi` in obj && typeof obj.efermi === `number`) return obj.efermi
+  if (typeof data.efermi === `number`) return data.efermi
 
   // Dict of objects - try to get efermi from first value
-  const values = Object.values(obj)
-  if (values.length === 0) return undefined
-
-  const first_val = values[0]
-  if (first_val && typeof first_val === `object`) {
-    const efermi = (first_val as Record<string, unknown>).efermi
-    if (typeof efermi === `number`) return efermi
+  const first_val: unknown = Object.values(data)[0]
+  if (is_plain_object(first_val) && typeof first_val.efermi === `number`) {
+    return first_val.efermi
   }
-
   return undefined
 }
 
@@ -1190,16 +1180,13 @@ export function negative_fraction(values: number[]): number {
 // Check if raw band structure input has electronic markers (efermi, kpoints, or electronic @class).
 // Must be called on raw input before normalization since these fields aren't preserved.
 function is_electronic_band_struct(bs: unknown): boolean {
-  if (!bs || typeof bs !== `object`) return false
-  const obj = bs as Record<string, unknown>
+  if (!is_plain_object(bs)) return false
   // Electronic band structures have efermi field
-  if (`efermi` in obj && typeof obj.efermi === `number`) return true
+  if (typeof bs.efermi === `number`) return true
   // Pymatgen electronic format uses kpoints (not qpoints)
-  if (`kpoints` in obj && Array.isArray(obj.kpoints) && obj.kpoints.length > 0) {
-    return true
-  }
+  if (Array.isArray(bs.kpoints) && bs.kpoints.length > 0) return true
   // Pymatgen @class: BandStructure* but not Phonon*
-  const raw_class = obj[`@class`]
+  const raw_class = bs[`@class`]
   const py_class_name = typeof raw_class === `string` ? raw_class : ``
   if (py_class_name.startsWith(`BandStructure`) && !py_class_name.includes(`Phonon`)) {
     return true

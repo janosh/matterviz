@@ -3,6 +3,7 @@ import { download } from '$lib/io/fetch'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
+import { is_plain_object } from '$lib/utils'
 import type { BufferGeometry, InstancedMesh, Material, Object3D, Scene } from 'three'
 import { Color, Group, Matrix4, Mesh, MeshStandardMaterial, ShaderMaterial } from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
@@ -444,8 +445,9 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // Include extended XYZ lattice information when available so round-trips preserve lattice
   if (`lattice` in structure && structure.lattice?.matrix?.length === 3) {
     const lattice_values = structure.lattice.matrix
-      .flat()
-      .map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8))
+      .flatMap((row) =>
+        row.map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8)),
+      )
       .join(` `)
     comment_parts.push(`Lattice="${lattice_values}"`)
   }
@@ -550,13 +552,8 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   }
 
   // Space group information
-  if (
-    `symmetry` in structure &&
-    structure.symmetry &&
-    typeof structure.symmetry === `object`
-  ) {
-    const symmetry = structure.symmetry as Record<string, unknown>
-    const { space_group_number, space_group_symbol } = symmetry
+  if (`symmetry` in structure && is_plain_object(structure.symmetry)) {
+    const { space_group_number, space_group_symbol } = structure.symmetry
     if (typeof space_group_symbol === `string` && space_group_symbol) {
       // Quote H-M symbols: their spaces (e.g. 'F m -3 m') would break CIF tokenization
       lines.push(`_space_group_name_H-M_alt '${space_group_symbol}'`)
