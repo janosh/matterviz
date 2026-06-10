@@ -82,8 +82,12 @@
     pointer-events: auto;
   }
   /* Mode: hover - controls visible while the parent viewer is hovered/focused */
-  :global(:hover) > section.control-buttons.hover-visible,
-  :global(:focus-within) > section.control-buttons.hover-visible {
+  :global(.structure:hover) > section.control-buttons.hover-visible,
+  :global(.structure:focus-within) > section.control-buttons.hover-visible,
+  :global(.brillouin-zone:hover) > section.control-buttons.hover-visible,
+  :global(.brillouin-zone:focus-within) > section.control-buttons.hover-visible,
+  :global(.fermi-surface:hover) > section.control-buttons.hover-visible,
+  :global(.fermi-surface:focus-within) > section.control-buttons.hover-visible {
     opacity: 1;
     pointer-events: auto;
   }

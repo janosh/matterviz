@@ -74,31 +74,29 @@
     if (result !== undefined) synced_zoom_range = result
   })
 
-  // Propagate synced range to bands y-axis (untrack current to avoid overwriting child zoom)
-  $effect(() => {
+  // Propagate the synced range to a child y-axis (untrack current to avoid overwriting
+  // child zoom). Skips when the current range already matches base, or is valid but
+  // differs (child zoom in progress).
+  const propagate_synced_range = (
+    current_range: Vec2 | undefined,
+    apply: (base_range: Vec2 | undefined) => void,
+  ) => {
     const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_range = untrack(() => bands_y_axis.range) as Vec2 | undefined
-    // Skip if current range already matches base, or is valid but differs (child zoom in progress)
-    if (ranges_equal(current_range, base_range)) return
-    if (is_valid_range(current_range) && !ranges_equal(current_range, base_range)) {
-      return
-    }
-    // Only include range if it's valid (don't override child's auto-range with undefined)
-    bands_y_axis = bands_default_axis(base_range)
-  })
-
-  // Propagate synced range to DOS y-axis (untrack current to avoid overwriting child zoom)
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_range = untrack(() => dos_y_axis.range) as Vec2 | undefined
-    // Skip if current range already matches base, or is valid but differs (child zoom in progress)
-    if (ranges_equal(current_range, base_range)) return
-    if (is_valid_range(current_range) && !ranges_equal(current_range, base_range)) {
-      return
-    }
-    // Only include range if it's valid (don't override child's auto-range with undefined)
-    dos_y_axis = dos_default_axis(base_range)
-  })
+    if (ranges_equal(current_range, base_range) || is_valid_range(current_range)) return
+    apply(base_range)
+  }
+  $effect(() =>
+    propagate_synced_range(
+      untrack(() => bands_y_axis.range) as Vec2 | undefined,
+      (base_range) => bands_y_axis = bands_default_axis(base_range),
+    )
+  )
+  $effect(() =>
+    propagate_synced_range(
+      untrack(() => dos_y_axis.range) as Vec2 | undefined,
+      (base_range) => dos_y_axis = dos_default_axis(base_range),
+    )
+  )
 
   let hovered_frequency = $state<number | null>(null)
 

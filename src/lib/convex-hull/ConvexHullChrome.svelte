@@ -227,8 +227,10 @@
     opacity: 0;
     pointer-events: none;
   }
-  :global(:hover) > section.control-buttons.hover-visible,
-  :global(:focus-within) > section.control-buttons.hover-visible {
+  :global(.convex-hull-3d:hover) > .control-buttons.hover-visible,
+  :global(.convex-hull-3d:focus-within) > .control-buttons.hover-visible,
+  :global(.convex-hull-4d:hover) > .control-buttons.hover-visible,
+  :global(.convex-hull-4d:focus-within) > .control-buttons.hover-visible {
     opacity: 1;
     pointer-events: auto;
   }

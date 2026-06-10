@@ -892,7 +892,7 @@
 
   let rotation_target = $derived(
     lattice
-      ? (math.scale(math.add(...lattice.matrix), 0.5) as Vec3)
+      ? math.scale(math.add(...lattice.matrix), 0.5)
       : structure
       ? get_center_of_mass(structure)
       : [0, 0, 0] as Vec3,
@@ -1458,9 +1458,9 @@
         const offsets = new SvelteMap<string, Vec3>()
         for (const [idx, key] of site_keys.entries()) {
           const angle = (2 * Math.PI * idx) / n_keys
-          const dx = math.scale(u_vec, gap_abs * Math.cos(angle)) as Vec3
-          const dy = math.scale(v_vec, gap_abs * Math.sin(angle)) as Vec3
-          offsets.set(key, math.add(dx, dy) as Vec3)
+          const dx = math.scale(u_vec, gap_abs * Math.cos(angle))
+          const dy = math.scale(v_vec, gap_abs * Math.sin(angle))
+          offsets.set(key, math.add(dx, dy))
         }
         return offsets
       })
@@ -1514,7 +1514,7 @@
           }
 
           const offset = site_offsets?.[site_idx]?.get(key)
-          const position = offset ? math.add(site.xyz, offset) as Vec3 : site.xyz
+          const position = offset ? math.add(site.xyz, offset) : site.xyz
           const arrow_vec = vector_normalize ? math.normalize_vec(vec) : vec
 
           return {
@@ -2063,8 +2063,8 @@
           {@const site = structure.sites[site_index]}
           {#if site}
             <!-- shift selected site labels down to avoid overlapping regular site labels-->
-            {@const selection_offset = math.add(site_label_offset, [0, -0.5, 0])}
-            {@const pos = math.add(site.xyz, selection_offset) as Vec3}
+            {@const selection_offset = math.add<Vec3>(site_label_offset, [0, -0.5, 0])}
+            {@const pos = math.add(site.xyz, selection_offset)}
             <extras.HTML center position={pos}>
               <span class="selection-label">{loop_idx + 1}</span>
             </extras.HTML>

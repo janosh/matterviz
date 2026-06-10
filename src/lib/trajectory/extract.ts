@@ -87,15 +87,9 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     // Extract other structural properties, avoiding volume duplicate
     copy_numeric_fields(data, frame.metadata, [`temperature`])
 
-    // Handle density separately - prefer metadata, but calculate if not available
+    // Prefer metadata density (fall back to calculating from structure below)
     if (frame.metadata.density && typeof frame.metadata.density === `number`) {
       data.density = frame.metadata.density
-    } else if (`lattice` in frame.structure) {
-      try {
-        data.density = get_density(frame.structure)
-      } catch (error) {
-        console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
-      }
     }
 
     // Only use metadata volume if lattice volume is not available
@@ -104,8 +98,9 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     }
 
     // Note: pressure is handled by force_stress_data_extractor to avoid duplication
-  } else if (`lattice` in frame.structure) {
-    // Calculate density even when no metadata is available
+  }
+
+  if (data.density === undefined && `lattice` in frame.structure) {
     try {
       data.density = get_density(frame.structure)
     } catch (error) {

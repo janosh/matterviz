@@ -964,7 +964,6 @@ export function parse_cif(
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
     // TODO: Support conventional cells with centering by discovering centering from space group metadata
     // when present (e.g. P, I, F, C, R centering types)
-    const centering_vectors: Vec3[] = [[0, 0, 0]]
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
     const atom_type_counts: Record<string, number> = {}
@@ -1029,20 +1028,13 @@ export function parse_cif(
         wrap_fractional_coords,
       )
 
-      // Then apply lattice centering shifts to each equivalent position
       for (const equiv_atom of equiv_atoms) {
-        for (const cv of centering_vectors) {
-          const abc = wrap_vec3([
-            equiv_atom.coords[0] + cv[0],
-            equiv_atom.coords[1] + cv[1],
-            equiv_atom.coords[2] + cv[2],
-          ] as Vec3)
-          const key = cif_site_key(element, abc, equiv_atom.id)
-          if (seen_site_keys.has(key)) continue
-          seen_site_keys.add(key)
-          const xyz = frac_to_cart(abc)
-          all_sites.push(make_site(element, abc, xyz, equiv_atom.id, {}, equiv_atom.occupancy))
-        }
+        const abc = wrap_vec3(equiv_atom.coords)
+        const key = cif_site_key(element, abc, equiv_atom.id)
+        if (seen_site_keys.has(key)) continue
+        seen_site_keys.add(key)
+        const xyz = frac_to_cart(abc)
+        all_sites.push(make_site(element, abc, xyz, equiv_atom.id, {}, equiv_atom.occupancy))
       }
     }
 

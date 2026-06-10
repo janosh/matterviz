@@ -8,7 +8,7 @@ import {
   IRREDUCIBLE_BZ_TOLERANCE,
   SPANNING_THRESHOLD,
 } from './constants'
-import { marching_cubes } from './marching-cubes'
+import { marching_cubes } from '$lib/marching-cubes'
 import type {
   BandGridData,
   FermiSliceData,

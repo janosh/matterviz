@@ -715,8 +715,9 @@ export function draw_hull_points<
     ctx.fill(shadow_path)
     ctx.restore()
 
-    // Highlights
-    if (selected_entry && entry.entry_id === selected_entry.entry_id) {
+    // Highlights (same_entry, not raw entry_id comparison: undefined === undefined
+    // would mark EVERY id-less point as selected)
+    if (same_entry(selected_entry, entry)) {
       draw_selection_highlight(ctx, projected, size, scale, pulse_time, pulse_opacity)
     }
     if (entry_highlighted) {

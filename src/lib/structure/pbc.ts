@@ -36,6 +36,23 @@ export const wrap_to_unit_cell = (frac: Vec3): Vec3 => [
   wrap_frac_coord(frac[2]),
 ]
 
+// Trajectory-like data: >10% of atoms far outside the unit cell. Image-atom
+// generation is skipped for such structures.
+const is_scattered_trajectory = (sites: ParsedStructure[`sites`]): boolean => {
+  const atoms_outside_cell = sites.filter(({ abc }) =>
+    abc.some((coord) => coord < -0.1 || coord > 1.1),
+  )
+  return atoms_outside_cell.length > sites.length * 0.1
+}
+
+// Cartesian position of fractional coords abc in the given lattice (rows = lattice vectors)
+const frac_to_cart_pos = (abc: Vec3, lattice_vecs: readonly Vec3[]): Vec3 =>
+  math.add(
+    math.scale(lattice_vecs[0], abc[0]),
+    math.scale(lattice_vecs[1], abc[1]),
+    math.scale(lattice_vecs[2], abc[2]),
+  )
+
 export function find_image_atoms(
   structure: ParsedStructure,
   { tolerance }: { tolerance?: number } = {},
@@ -46,14 +63,7 @@ export function find_image_atoms(
   // Skips image generation for trajectory data with scattered atoms.
   if (!structure.lattice || !structure.sites || structure.sites.length === 0) return []
 
-  // Skip trajectory data (>10% atoms outside cell)
-  const atoms_outside_cell = structure.sites.filter(({ abc }) =>
-    abc.some((coord) => coord < -0.1 || coord > 1.1),
-  )
-  // Skip image generation for trajectory data (>10% atoms outside cell)
-  if (atoms_outside_cell.length > structure.sites.length * 0.1) {
-    return []
-  }
+  if (is_scattered_trajectory(structure.sites)) return []
 
   // Check if this is a supercell to correctly identify external boundaries correctly
   const image_sites: [number, Vec3, Vec3, boolean?][] = []
@@ -129,11 +139,7 @@ export function find_image_atoms(
         continue
 
       // Compute xyz from img_abc to ensure consistency
-      const img_xyz = math.add(
-        math.scale(lattice_vecs[0], img_abc[0]),
-        math.scale(lattice_vecs[1], img_abc[1]),
-        math.scale(lattice_vecs[2], img_abc[2]),
-      )
+      const img_xyz = frac_to_cart_pos(img_abc, lattice_vecs)
 
       // Skip zero-displacement images (should not happen, guards against FP edge cases)
       const displacement = math.subtract(img_xyz, site.xyz)
@@ -284,11 +290,7 @@ export function find_image_atoms(
               site.abc[1] + shift_b,
               site.abc[2] + shift_c,
             ]
-            const img_xyz = math.add(
-              math.scale(lattice_vecs[0], img_abc[0]),
-              math.scale(lattice_vecs[1], img_abc[1]),
-              math.scale(lattice_vecs[2], img_abc[2]),
-            )
+            const img_xyz = frac_to_cart_pos(img_abc, lattice_vecs)
             if (!completes_cation_shell(img_xyz, radius, en)) continue
             seen_images.add(key)
             image_sites.push([idx, img_xyz, img_abc, true])
@@ -311,15 +313,8 @@ export function get_pbc_image_sites(
     return structure
   }
 
-  // Check for trajectory data
-  const atoms_outside_cell = structure.sites.filter((site) =>
-    site.abc.some((coord) => coord < -0.1 || coord > 1.1),
-  )
-
   // Return trajectory data unchanged
-  if (atoms_outside_cell.length > structure.sites.length * 0.1) {
-    return structure
-  }
+  if (is_scattered_trajectory(structure.sites)) return structure
 
   // Add image atoms to regular crystal structures
   const image_sites = find_image_atoms(...args)

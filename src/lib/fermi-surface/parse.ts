@@ -1,8 +1,9 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import { is_plain_object } from '$lib/utils'
 import * as constants from './constants'
-import { compute_vertex_normals } from './marching-cubes'
+import { compute_vertex_normals } from '$lib/marching-cubes'
 import type {
   BandGridData,
   EnergyGrid5D,
@@ -308,13 +309,16 @@ function is_valid_band_grid_data(obj: unknown): obj is BandGridData {
   if (
     !Array.isArray(k_grid) ||
     k_grid.length !== 3 ||
-    !k_grid.every((dim) => Number.isFinite(dim) && dim > 0)
+    !k_grid.every((dim) => Number.isInteger(dim) && dim > 0)
   )
     return false
   if (
     !Array.isArray(k_lattice) ||
     k_lattice.length !== 3 ||
-    !k_lattice.every((row) => Array.isArray(row) && row.length === 3)
+    !k_lattice.every(
+      (row) =>
+        Array.isArray(row) && row.length === 3 && row.every((val) => Number.isFinite(val)),
+    )
   )
     return false
   return true
@@ -479,14 +483,8 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
         for (let fan_idx = 1; fan_idx < face.length - 1; fan_idx++) {
           const v1 = vertices[face[fan_idx]]
           const v2 = vertices[face[fan_idx + 1]]
-          const e1: Vec3 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]]
-          const e2: Vec3 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]]
-          const cross: Vec3 = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-          ]
-          area += 0.5 * Math.hypot(cross[0], cross[1], cross[2])
+          const cross = math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0))
+          area += 0.5 * Math.hypot(...cross)
         }
       }
 

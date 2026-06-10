@@ -159,7 +159,8 @@ export function make_supercell(
   for (let kk = 0; kk < scale_z; kk++) {
     for (let jj = 0; jj < scale_y; jj++) {
       for (let ii = 0; ii < scale_x; ii++) {
-        const label_suffix = total_cells > 1 ? `_${ii}${jj}${kk}` : ``
+        // 1x1x1 short-circuits above, so every site gets a cell-index suffix
+        const label_suffix = `_${ii}${jj}${kk}`
 
         // Translation = ii * vec_a + jj * vec_b + kk * vec_c (inlined for performance)
         const tx = ii * ax + jj * bx + kk * cx
@@ -184,7 +185,7 @@ export function make_supercell(
             species: site.species,
             xyz: [site.xyz[0] + tx, site.xyz[1] + ty, site.xyz[2] + tz],
             abc: [new_a, new_b, new_c],
-            label: label_suffix ? `${site.label}${label_suffix}` : site.label,
+            label: `${site.label}${label_suffix}`,
             properties: { ...site.properties, orig_unit_cell_idx: site_idx },
           }
         }

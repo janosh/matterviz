@@ -33,6 +33,7 @@
     ConvexHullEntry,
     HighlightStyle,
     HullFaceColorMode,
+    PhaseData,
   } from './types'
   import { compute_hull_stability } from './helpers'
 
@@ -303,15 +304,14 @@
 
   // Visibility toggles are now bindable props
 
-  // Smart label defaults - hide labels if too many entries
+  // Smart label defaults: hide labels for large datasets. Applied once per dataset
+  // (keyed on the entries prop) so later entry-count changes from temperature/gas
+  // filtering don't clobber the user's label toggles.
+  let label_defaults_applied_for: PhaseData[] | null = null
   $effect(() => {
-    const total_entries = hull_data.effective_entries.length
-    if (total_entries > label_threshold) {
-      show_stable_labels = false
-    } else {
-      // For smaller datasets, show stable labels by default
-      show_stable_labels = true
-    }
+    if (label_defaults_applied_for === entries) return
+    label_defaults_applied_for = entries
+    show_stable_labels = hull_data.effective_entries.length <= label_threshold
     show_unstable_labels = false
   })
 
@@ -810,7 +810,7 @@
     {hull_data}
     {controls_config}
     {reset_all}
-    reset_title="Reset camera view (R key)"
+    reset_title="Reset view and settings"
     {enable_info_pane}
     {phase_stats}
     {label_threshold}

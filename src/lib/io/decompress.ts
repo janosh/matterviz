@@ -5,6 +5,9 @@ import { to_error } from '$lib/utils'
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
 
+// Formats with no DecompressionStream support in browsers
+const BROWSER_UNSUPPORTED_FORMATS = new Set<CompressionFormat>([`zip`, `xz`, `bz2`])
+
 export function detect_compression_format(filename: string): CompressionFormat | null {
   const lower = filename.toLowerCase()
   for (const [format, extensions] of Object.entries(COMPRESSION_FORMATS)) {
@@ -29,7 +32,7 @@ export async function decompress_data_binary(
 ): Promise<ArrayBuffer> {
   try {
     // Handle unsupported formats
-    if (format === `zip` || format === `xz` || format === `bz2`) {
+    if (BROWSER_UNSUPPORTED_FORMATS.has(format)) {
       throw new Error(
         `${format.toUpperCase()} decompression is not supported in the browser. ` +
           `Please extract the ${format.toUpperCase()} file first.`,
@@ -55,7 +58,7 @@ export async function decompress_data_binary(
 
 export function decompress_file(file: File): Promise<{ content: string; filename: string }> {
   const format = detect_compression_format(file.name)
-  const is_supported = Boolean(format && ![`zip`, `xz`, `bz2`].includes(format))
+  const is_supported = Boolean(format && !BROWSER_UNSUPPORTED_FORMATS.has(format))
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

@@ -352,39 +352,12 @@ describe(`XYZ Parser`, () => {
     expect(result.sites[3].xyz[0]).toBeCloseTo(-0.4440892098501)
   })
 
+  // oxfmt-ignore
   it.each([
-    [
-      `orthorhombic`,
-      [
-        [5, 0, 0],
-        [0, 6, 0],
-        [0, 0, 7],
-      ],
-    ],
-    [
-      `hexagonal`,
-      [
-        [4.5, 0, 0],
-        [4.5 / 2, (4.5 * Math.sqrt(3)) / 2, 0],
-        [0, 0, 5.2],
-      ],
-    ],
-    [
-      `monoclinic`,
-      [
-        [5, 0, 0],
-        [0.8, 4.7, 0],
-        [0, 0.7, 6.2],
-      ],
-    ],
-    [
-      `triclinic`,
-      [
-        [5.0, 0.0, 0.0],
-        [2.5, 4.33, 0.0],
-        [1.0, 1.0, 4.0],
-      ],
-    ],
+    [`orthorhombic`, [[5, 0, 0], [0, 6, 0], [0, 0, 7]]],
+    [`hexagonal`, [[4.5, 0, 0], [4.5 / 2, (4.5 * Math.sqrt(3)) / 2, 0], [0, 0, 5.2]]],
+    [`monoclinic`, [[5, 0, 0], [0.8, 4.7, 0], [0, 0.7, 6.2]]],
+    [`triclinic`, [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]]],
   ])(
     `handles non-orthogonal lattices (%s) with wrapping and reconstruction`,
     (_name, latt) => {

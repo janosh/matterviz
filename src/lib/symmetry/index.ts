@@ -351,23 +351,19 @@ function wyckoff_rows_from_input_orbits(sym_data: SymmetryDataset): WyckoffPos[]
   })
 }
 
-const sort_wyckoff_rows = (rows: WyckoffPos[]): WyckoffPos[] => {
-  rows.sort((w1, w2) => {
-    const [w1_mult, w2_mult] = [parseInt(w1.wyckoff, 10), parseInt(w2.wyckoff, 10)]
-    if (w1_mult !== w2_mult) return w1_mult - w2_mult
-    return w1.wyckoff.localeCompare(w2.wyckoff)
-  })
-  return rows
-}
-
 // Generate Wyckoff table rows from symmetry data by grouping moyo's input-cell sites into
 // crystallographic orbits. moyo's per-site arrays (wyckoffs, orbits, site_symmetry_symbols)
 // always index the input cell and analyze_structure_symmetry always attaches input_cell, so
 // the orbit grouping is the single source of truth for any input cell setting.
+// Rows sort by ascending multiplicity, then Wyckoff label.
 export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): WyckoffPos[] {
   if (!sym_data) return []
   const orbit_rows = wyckoff_rows_from_input_orbits(sym_data)
-  return orbit_rows ? sort_wyckoff_rows(orbit_rows) : []
+  return (orbit_rows ?? []).sort((w1, w2) => {
+    const [w1_mult, w2_mult] = [parseInt(w1.wyckoff, 10), parseInt(w2.wyckoff, 10)]
+    if (w1_mult !== w2_mult) return w1_mult - w2_mult
+    return w1.wyckoff.localeCompare(w2.wyckoff)
+  })
 }
 
 // Apply symmetry operations to find all equivalent positions for a given fractional coordinate
@@ -527,7 +523,7 @@ export function map_wyckoff_to_all_atoms(
       scaling = math.dot(
         displayed_structure.lattice.matrix,
         math.matrix_inverse_3x3(frame.lattice),
-      ) as Matrix3x3
+      )
     } catch {
       return null
     }

@@ -9,11 +9,6 @@ import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './typ
 
 const TOL = 1e-8
 
-const normalize = (vec: Vec3): Vec3 => {
-  const mag = Math.hypot(...vec)
-  return mag < 1e-10 ? [0, 0, 0] : [vec[0] / mag, vec[1] / mag, vec[2] / mag]
-}
-
 // Check if rotation matrix is identity
 const is_identity_rotation = (rot: Matrix3x3): boolean =>
   rot.every((row, idx) => row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL))
@@ -40,21 +35,6 @@ export function extract_point_group_from_operations(
   return unique_rotations
 }
 
-// Multiply two 3x3 matrices: C = A · B
-function mat3x3_multiply(A: Matrix3x3, B: Matrix3x3): Matrix3x3 {
-  const result: Matrix3x3 = [
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0],
-  ]
-  for (let row = 0; row < 3; row++) {
-    for (let col = 0; col < 3; col++) {
-      result[row][col] = A[row][0] * B[0][col] + A[row][1] * B[1][col] + A[row][2] * B[2][col]
-    }
-  }
-  return result
-}
-
 // Convert fractional rotation W to Cartesian k-space rotation. k_lattice stores reciprocal
 // vectors as ROWS (k_cart = Bᵀ·q) and reciprocal fractional rotation is q' = W^{-T}·q, so
 // R_cart = Bᵀ·W^{-T}·B^{-T}. For non-orthogonal lattices W^{-1} ≠ Wᵀ, so the transpose matters.
@@ -66,7 +46,7 @@ export function fractional_to_cartesian_rotation(
     const B_T = math.transpose_3x3_matrix(k_lattice)
     const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(W))
     // R_cart = Bᵀ · W^{-T} · B^{-T}
-    return mat3x3_multiply(mat3x3_multiply(B_T, W_inv_T), math.matrix_inverse_3x3(B_T))
+    return math.dot(math.dot(B_T, W_inv_T), math.matrix_inverse_3x3(B_T))
   } catch {
     // Fallback to identity if inversion fails (shouldn't happen for valid rotations)
     return [
@@ -180,7 +160,11 @@ export function generate_bz_vertices(
     .map((pt, idx) => {
       if (idx === center_idx) return null
       const dist_sq = pt[0] ** 2 + pt[1] ** 2 + pt[2] ** 2
-      return { normal: normalize(pt), dist: Math.sqrt(dist_sq) / 2, dist_sq }
+      return {
+        normal: math.normalize_vec(pt, [0, 0, 0]),
+        dist: Math.sqrt(dist_sq) / 2,
+        dist_sq,
+      }
     })
     .filter((plane): plane is NonNullable<typeof plane> => plane !== null)
     .sort((a, b) => a.dist_sq - b.dist_sq)
@@ -293,7 +277,10 @@ export function compute_convex_hull(
   // Compute face normals and build edge-to-face adjacency
   const face_normals = faces.map((face) => {
     const [v0, v1, v2] = face.slice(0, 3).map((vertex_idx) => unique_verts[vertex_idx])
-    return normalize(math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)))
+    return math.normalize_vec(
+      math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
+      [0, 0, 0],
+    )
   })
 
   const edge_to_faces = new Map<string, number[]>()
@@ -421,7 +408,7 @@ export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): Clipp
       )
     }
 
-    const plane_normal = normalize(diff)
+    const plane_normal = math.normalize_vec(diff, [0, 0, 0])
     // NOTE: do NOT merge antiparallel normals — n and −n select opposite half-spaces
     const key = plane_normal.map((val) => Math.round(val * 1e6)).join(`,`)
     if (!seen_normals.has(key)) {

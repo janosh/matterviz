@@ -11,11 +11,19 @@ import type { TrajectoryType } from '$lib/trajectory/index'
 import { is_plain_object } from '$lib/utils'
 import { traj_warn } from './diagnostics'
 
-// Non-empty array of pymatgen Species-like objects (predicate so callers get narrowing)
+// Non-empty array of pymatgen Species-like objects with non-empty string element
+// symbols (predicate so callers get narrowing; rejects e.g. { element: null })
 const is_species_array = (val: unknown): val is { element: ElementSymbol }[] =>
   Array.isArray(val) &&
   val.length > 0 &&
-  val.every((sp) => sp != null && typeof sp === `object` && `element` in sp)
+  val.every(
+    (sp) =>
+      sp != null &&
+      typeof sp === `object` &&
+      `element` in sp &&
+      typeof sp.element === `string` &&
+      sp.element.trim().length > 0,
+  )
 
 // Parse an already-JSON-parsed pymatgen Trajectory object (detected via @class === 'Trajectory' with species/coords/lattice present)
 export function parse_pymatgen_trajectory(

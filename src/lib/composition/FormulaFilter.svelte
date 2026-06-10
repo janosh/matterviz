@@ -357,7 +357,7 @@
       const tokens = parse_formula_with_wildcards(sanitized_input)
       const explicit = tokens
         .filter((token) => token.element !== null)
-        .map((token) => ({ element: token.element as string, count: token.count }))
+        .map((token) => ({ element: token.element, count: token.count }))
       const wildcard_tokens = tokens.filter((token) => token.element === null)
 
       // Merge explicit element counts before sorting.

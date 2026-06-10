@@ -799,7 +799,7 @@
       for (const [pa, pb] of get_domain_edges(swizzled)) {
         const ka = pa.map((coord) => coord.toFixed(4)).join(`,`)
         const kb = pb.map((coord) => coord.toFixed(4)).join(`,`)
-        const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
+        const key = edge_key(ka, kb)
         if (seen.has(key)) continue
         seen.add(key)
         positions.push(pa[0], pa[1], pa[2], pb[0], pb[1], pb[2])

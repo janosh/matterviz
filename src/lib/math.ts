@@ -273,6 +273,9 @@ function validate_matrix(mat: number[][], name: string): number {
   return cols
 }
 
+// Tuple-preserving overloads first: 3x3 inputs keep their Matrix3x3/Vec3 shape
+export function dot(vec1: Matrix3x3, vec2: Matrix3x3): Matrix3x3
+export function dot(vec1: Matrix3x3, vec2: Vec3): Vec3
 export function dot(vec1: NdVector, vec2: NdVector): number
 export function dot(vec1: NdVector[], vec2: NdVector): number[]
 export function dot(vec1: NdVector[], vec2: NdVector[]): number[][]
@@ -891,14 +894,14 @@ export function compute_bounding_box(vertices: Vec3[]): { min: Vec3; max: Vec3 }
   return { min, max }
 }
 
-// Check if a matrix is a numeric square matrix of dimension NxN (type predicate so
-// callers get number[][] narrowing without assertions)
+// Check if a matrix is a finite-numeric square matrix of dimension NxN (type predicate
+// so callers get number[][] narrowing without assertions). Rejects NaN/Infinity entries.
 export function is_square_matrix(matrix: unknown, dim: number): matrix is number[][] {
   if (!Array.isArray(matrix)) return false
   if (matrix.length !== dim) return false
   return matrix.every(
     (row) =>
-      Array.isArray(row) && row.length === dim && row.every((val) => typeof val === `number`),
+      Array.isArray(row) && row.length === dim && row.every((val) => Number.isFinite(val)),
   )
 }
 
@@ -1007,7 +1010,7 @@ export function solve_linear_system(
     const det = det_3x3(A as Matrix3x3)
     if (Math.abs(det) < EPS) return null
     const inv = matrix_inverse_3x3(A as Matrix3x3)
-    return mat3x3_vec3_multiply(inv, b as Vec3) as number[]
+    return mat3x3_vec3_multiply(inv, b as Vec3)
   }
 
   // General NxN: LU decomposition with partial pivoting + forward/back substitution

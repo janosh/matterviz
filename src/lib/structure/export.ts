@@ -445,8 +445,9 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // Include extended XYZ lattice information when available so round-trips preserve lattice
   if (`lattice` in structure && structure.lattice?.matrix?.length === 3) {
     const lattice_values = structure.lattice.matrix
-      .flat()
-      .map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8))
+      .flatMap((row) =>
+        row.map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8)),
+      )
       .join(` `)
     comment_parts.push(`Lattice="${lattice_values}"`)
   }

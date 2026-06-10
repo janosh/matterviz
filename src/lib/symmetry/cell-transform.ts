@@ -102,10 +102,5 @@ export function transform_cell(
     return get_conventional_cell(structure, sym_data)
   }
 
-  if (cell_type === `primitive`) {
-    return get_primitive_cell(structure, sym_data)
-  }
-
-  // Fallback to original (should never reach here with proper typing)
-  return structure
+  return get_primitive_cell(structure, sym_data)
 }

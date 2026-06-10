@@ -225,7 +225,7 @@
       }
 
       // If it's already a color string, return it directly
-      if (is_color(value)) return value as string
+      if (is_color(value)) return value
 
       // Return missing color for zero/invalid values or when no heatmap data
       if (
@@ -265,7 +265,7 @@
 
       return value.map((val) => {
         // If it's already a color string, return it directly
-        if (is_color(val)) return val as string
+        if (is_color(val)) return val
         // Otherwise, map it through the color scale
         return bg_color(val as number, element)
       })

@@ -1,7 +1,7 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
-import { euclidean_dist } from '$lib/math'
+import { euclidean_dist, is_square_matrix } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { AxisConfig } from '$lib/plot/core/types'
 import type * as types from './types'
@@ -649,17 +649,6 @@ function convert_pymatgen_band_structure(
   }
 }
 
-// True when matrix is a proper 3x3 array of finite numbers (Matrix3x3 shape)
-const is_matrix_3x3 = (matrix: unknown): matrix is Matrix3x3 =>
-  Array.isArray(matrix) &&
-  matrix.length === 3 &&
-  matrix.every(
-    (row) =>
-      Array.isArray(row) &&
-      row.length === 3 &&
-      row.every((val) => typeof val === `number` && Number.isFinite(val)),
-  )
-
 export function normalize_band_structure(
   band_struct: unknown,
 ): types.BaseBandStructure | null {
@@ -703,7 +692,7 @@ export function normalize_band_structure(
     ...band_struct,
     nb_bands: typeof band_struct.nb_bands === `number` ? band_struct.nb_bands : bands.length,
     labels_dict: band_struct.labels_dict ?? {},
-    recip_lattice: is_matrix_3x3(recip_lattice?.matrix)
+    recip_lattice: is_square_matrix(recip_lattice?.matrix, 3)
       ? recip_lattice
       : {
           matrix: [
