@@ -1,4 +1,5 @@
 import type { Vec3 } from '$lib/math'
+import type { CellType } from '$lib/symmetry'
 import {
   get_conventional_cell,
   get_primitive_cell,
@@ -279,13 +280,12 @@ describe(`transform_cell`, () => {
   const prim_cell = make_moyo_cell([3, 0, 0, 0, 3, 0, 0, 0, 3], [[0, 0, 0]], [11])
   const sym_data = make_mock_sym_data(std_cell, prim_cell)
 
-  test(`returns original structure when cell_type is original`, () => {
-    const result = transform_cell(original, `original`, sym_data)
-    expect(result).toBe(original)
-  })
-
-  test(`returns original structure when sym_data is null`, () => {
-    const result = transform_cell(original, `conventional`, null)
+  test.each<[string, CellType, MoyoDataset | null]>([
+    [`original cell_type`, `original`, sym_data],
+    [`null sym_data`, `conventional`, null],
+    [`unknown runtime cell_type`, `bogus` as CellType, sym_data],
+  ])(`returns original structure for %s`, (_label, cell_type, sym_data_arg) => {
+    const result = transform_cell(original, cell_type, sym_data_arg)
     expect(result).toBe(original)
   })
 

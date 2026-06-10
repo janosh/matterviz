@@ -87,8 +87,12 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     // Extract other structural properties, avoiding volume duplicate
     copy_numeric_fields(data, frame.metadata, [`temperature`])
 
-    // Prefer metadata density (fall back to calculating from structure below)
-    if (frame.metadata.density && typeof frame.metadata.density === `number`) {
+    // Prefer metadata density (fall back to calculating from structure below).
+    // Finite-number check (not truthiness) so a legitimate density of 0 is kept.
+    if (
+      typeof frame.metadata.density === `number` &&
+      Number.isFinite(frame.metadata.density)
+    ) {
       data.density = frame.metadata.density
     }
 

@@ -7,6 +7,7 @@ export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
 
 // Formats with no DecompressionStream support in browsers
 const BROWSER_UNSUPPORTED_FORMATS = new Set<CompressionFormat>([`zip`, `xz`, `bz2`])
+type BrowserDecompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
 
 export function detect_compression_format(filename: string): CompressionFormat | null {
   const lower = filename.toLowerCase()
@@ -49,7 +50,7 @@ export async function decompress_data_binary(
           })
         : data
     if (!stream) throw new Error(`Invalid data stream`)
-    const unzip = new DecompressionStream(format)
+    const unzip = new DecompressionStream(format as BrowserDecompressionFormat)
     return await new Response(stream.pipeThrough(unzip)).arrayBuffer()
   } catch (error) {
     throw new Error(`Failed to decompress ${format} file: ${error}`, { cause: error })

@@ -290,7 +290,7 @@ function is_valid_fermi_surface_data(obj: unknown): obj is FermiSurfaceData {
 
   // Check required fields
   if (!Array.isArray(obj.isosurfaces)) return false
-  if (!Array.isArray(obj.k_lattice) || obj.k_lattice.length !== 3) return false
+  if (!math.is_square_matrix(obj.k_lattice, 3)) return false
   if (typeof obj.fermi_energy !== `number`) return false
   if (obj.reciprocal_cell !== `wigner_seitz` && obj.reciprocal_cell !== `parallelepiped`) {
     return false
@@ -312,16 +312,7 @@ function is_valid_band_grid_data(obj: unknown): obj is BandGridData {
     !k_grid.every((dim) => Number.isInteger(dim) && dim > 0)
   )
     return false
-  if (
-    !Array.isArray(k_lattice) ||
-    k_lattice.length !== 3 ||
-    !k_lattice.every(
-      (row) =>
-        Array.isArray(row) && row.length === 3 && row.every((val) => Number.isFinite(val)),
-    )
-  )
-    return false
-  return true
+  return math.is_square_matrix(k_lattice, 3)
 }
 
 // Parse Matterviz/IFermi JSON format for Fermi surface data
