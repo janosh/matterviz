@@ -18,6 +18,7 @@
   let max_hull_dist = $state(0.5)
   let color_mode = $state<`stability` | `energy`>(`energy`)
   let enable_click_selection = $state(true)
+  let magnetic_orderings = $state(false)
   let render_start = $state(0)
   let render_time_ms = $state(0)
   let custom_title = $state<string | undefined>(undefined)
@@ -28,7 +29,7 @@
     '4d': [`Li`, `Co`, `Ni`, `O`],
   }
 
-  function generate_entries(count: number, dim: Dimension): PhaseData[] {
+  function generate_entries(count: number, dim: Dimension, magnetic: boolean): PhaseData[] {
     const elements = ELEMENTS[dim]
     const entries: PhaseData[] = elements.map((el) => ({
       composition: { [el]: 1 } as Partial<Record<ElementSymbol, number>>,
@@ -75,6 +76,10 @@
         e_form_per_atom: e_form,
         reduced_formula: formula.join(``),
         structure,
+        // Deterministic round-robin orderings for testing magnetic filters/markers
+        ...(magnetic
+          ? { magnetic_ordering: ([`FM`, `FiM`, `AFM`, `NM`] as const)[idx % 4] }
+          : {}),
       })
     }
     return entries
@@ -85,7 +90,7 @@
     render_start = performance.now()
     await tick()
     const start = performance.now()
-    generated_entries = generate_entries(entry_count, dimension)
+    generated_entries = generate_entries(entry_count, dimension, magnetic_orderings)
     generation_time_ms = performance.now() - start
     is_generating = false
   }
@@ -113,6 +118,7 @@
     if (!isNaN(hull) && hull >= 0) max_hull_dist = hull
     const click_sel = params.get(`click_selection`)
     if (click_sel !== null) enable_click_selection = click_sel !== `false`
+    magnetic_orderings = params.get(`magnetic`) === `true`
     const title_param = params.get(`title`)
     if (title_param !== null) custom_title = title_param
     // Initial generation after URL params are loaded

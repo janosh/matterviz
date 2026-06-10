@@ -3,9 +3,10 @@
   import type { ElementSymbol } from '$lib'
   import type {
     ConvexHullEntry,
+    EntryCategoryConfig,
     GasSpecies,
     GasThermodynamicsConfig,
-    MarkerSymbol,
+    MagneticOrdering,
     PhaseData,
     PhaseStats,
   } from '$lib/convex-hull'
@@ -49,7 +50,7 @@
   let side_unstable = $state<ConvexHullEntry[]>([])
   let clicked_entry_id = $state<string | undefined>(undefined)
   let selected_quinary_path = $state<string>(``)
-  const deferred_sections = [`stats`, `highlight`, `markers`, `temperature`, `gas`, `quinary`] as const
+  const deferred_sections = [`stats`, `highlight`, `magnetic`, `temperature`, `gas`, `quinary`] as const
   type DemoSection = typeof deferred_sections[number]
   let mounted_demo_count = $state(0)
   const section_mounted = (section: DemoSection): boolean =>
@@ -157,28 +158,6 @@
     ),
   )
 
-  // Helper to assign marker based on entry properties
-  const get_marker = (
-    entry: PhaseData,
-    selected_id?: string,
-    stable_marker: MarkerSymbol = `diamond`,
-  ): MarkerSymbol => {
-    if (entry.entry_id === selected_id) return `star`
-    if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) return stable_marker
-    if ((entry.e_above_hull ?? 0) > 0.3) return `triangle`
-    if ((entry.e_above_hull ?? 0) > 0.1) return `cross`
-    return `circle`
-  }
-
-  // Marker symbol demo state
-  let selected_marker_entry = $state<ConvexHullEntry | null>(null)
-  const marker_demo_entries = $derived(
-    na_fe_o_entries.map((entry) => ({
-      ...entry,
-      marker: get_marker(entry, selected_marker_entry?.entry_id),
-    })),
-  )
-
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
     const na_fe_p_o = loaded_data.get(
@@ -206,26 +185,53 @@
     ),
   )
 
-  // Binary marker demo
-  let selected_binary_entry = $state<ConvexHullEntry | null>(null)
-  const binary_marker_entries = $derived(
-    (binary_examples[0]?.entries ?? []).map((entry) => ({
+  // === Magnetic states demo ===
+  // Assign synthetic magnetic orderings deterministically by entry-ID hash (real data
+  // would carry magnetic_ordering from DFT, e.g. Materials Project's `ordering` field)
+  const magnetic_ternary_entries = $derived(
+    na_fe_o_entries.map((entry) => {
+      const has_magnetic_elem = [`Fe`, `Co`, `Ni`].some(
+        (elem) => (entry.composition[elem as ElementSymbol] ?? 0) > 0,
+      )
+      const id_hash = [...(entry.entry_id ?? ``)]
+        .reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      const magnetic_ordering: MagneticOrdering = has_magnetic_elem
+        ? ([`FM`, `FiM`, `AFM`] as const)[id_hash % 3]
+        : `NM`
+      return { ...entry, magnetic_ordering }
+    }),
+  )
+  let hidden_orderings = $state<string[]>([])
+  const magnetic_marker_legend = [
+    `△ FM (ferromagnetic)`,
+    `◆ FiM (ferrimagnetic)`,
+    `■ AFM (antiferromagnetic)`,
+    `● NM (non-magnetic)`,
+  ]
+
+  // Custom category demo: synthetic crystallinity labels on the Co-O binary show the
+  // generic entry_category API — the magnetic preset uses the exact same machinery
+  const crystallinity_category: EntryCategoryConfig = {
+    label: `Structure`,
+    property: `crystallinity`,
+    markers: { crystalline: `circle`, amorphous: `cross`, glass: `star` },
+  }
+  const crystallinity_entries = $derived(
+    (binary_examples[2]?.entries ?? []).map((entry, idx) => ({
       ...entry,
-      marker: get_marker(entry, selected_binary_entry?.entry_id, `square`),
+      crystallinity: [`crystalline`, `amorphous`, `glass`][idx % 3],
     })),
   )
+  const crystallinity_marker_legend = [
+    `● crystalline`,
+    `✚ amorphous`,
+    `★ glass`,
+  ]
+
   const ternary_examples = $derived([
     { title: `Na-Fe-O`, entries: na_fe_o_entries },
     { title: `Li-Co-O`, entries: li_co_ni_o_data },
   ])
-  const marker_legend_primary = [
-    `★ Selected`,
-    `◆ Stable`,
-    `△ High E<sub>hull</sub>`,
-    `+ Medium E<sub>hull</sub>`,
-    `● Default`,
-  ]
-  const marker_legend_binary = [`★ Selected`, `■ Stable`, `● Default`]
   const get_entry_href = (entry: ConvexHullEntry): string | null =>
     entry.entry_id ? `#${entry.entry_id}` : null
   const ternary_features = [
@@ -257,9 +263,11 @@
     `<b>Tooltip badge</b> — hover to see "★ Highlighted" on marked entries`,
     `<b>Cross-dimensional</b> — works on 2D, 3D, and 4D diagrams`,
   ]
-  const marker_features = [
-    `<b>Custom shapes</b> — assign per-entry marker symbols (★ ◆ △ + ■ ●)`,
-    `<b>Click to select</b> — selected entry shown as ★, updates dynamically`,
+  const magnetic_features = [
+    `<b>Shape-coded orderings</b> — entries with <code>magnetic_ordering</code> render as △ FM, ◆ FiM, ■ AFM, ● NM (built-in default <code>entry_category</code>)`,
+    `<b>Filter toggles</b> — show/hide magnetic subsets via the controls pane (bindable <code>hidden_categories</code>)`,
+    `<b>Generic API</b> — pass a custom <code>EntryCategoryConfig</code> to shape-code any classification (right plot: crystallinity; works equally for metal/semiconductor/insulator, defect types, ...)`,
+    `<b>Manual override</b> — a per-entry <code>marker</code> field always takes precedence over category shapes`,
   ]
   const temp_features = [
     `<b>Temperature slider</b> — appears when entries include <code>temperatures</code> + <code>free_energies</code> arrays`,
@@ -548,42 +556,43 @@
     </section>
   {/if}
 
-  {#if section_mounted(`markers`)}
+  {#if section_mounted(`magnetic`)}
     <section class="demo-section">
-    <h2>Marker Symbols</h2>
-    {@render feature_list(marker_features)}
+    <h2>Magnetic States & Custom Categories</h2>
+    {@render feature_list(magnetic_features)}
+    <p class="section-note">
+      Currently hidden orderings: {
+        hidden_orderings.length > 0 ? hidden_orderings.join(`, `) : `none`
+      } (synthetic demo data — categories assigned by entry ID hash. Missing pure element
+      references are automatically added with E<sub>form</sub> = 0 eV/atom.)
+    </p>
     <div class="ternary-grid">
       <div>
         <div class="marker-legend">
-          {#each marker_legend_primary as legend_item (legend_item)}
-            <span>{@html sanitize_html(legend_item)}</span>
+          {#each magnetic_marker_legend as legend_item (legend_item)}
+            <span>{legend_item}</span>
           {/each}
         </div>
         <ConvexHull3D
-          entries={marker_demo_entries}
-          controls={{ title: `Na-Fe-O with Markers` }}
-          bind:selected_entry={selected_marker_entry}
+          entries={magnetic_ternary_entries}
+          controls={{ title: `Na-Fe-O Magnetic Orderings` }}
+          bind:hidden_categories={hidden_orderings}
         />
       </div>
       <div>
         <div class="marker-legend">
-          {#each marker_legend_binary as legend_item (legend_item)}
-            <span>{@html sanitize_html(legend_item)}</span>
+          {#each crystallinity_marker_legend as legend_item (legend_item)}
+            <span>{legend_item}</span>
           {/each}
         </div>
         <ConvexHull2D
-          entries={binary_marker_entries}
-          controls={{ title: `Na-O with Markers` }}
-          bind:selected_entry={selected_binary_entry}
+          entries={crystallinity_entries}
+          entry_category={crystallinity_category}
+          controls={{ title: `Co-O Crystallinity (custom entry_category)` }}
           style="height: 100%"
         />
       </div>
     </div>
-
-    <p class="section-note">
-      <strong>Note:</strong> Missing pure element references are automatically added with
-      E<sub>form</sub> = 0 eV/atom.
-    </p>
     </section>
   {/if}
 
