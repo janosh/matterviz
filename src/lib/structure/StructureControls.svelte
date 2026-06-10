@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
@@ -77,8 +78,8 @@
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Active volume index
     polyhedra_rendered_elements?: string[] // elements currently anchoring polyhedra
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: PaneProps
+    toggle_props?: PaneToggleProps
   } = $props()
 
   // Color scheme selection state

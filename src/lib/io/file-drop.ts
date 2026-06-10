@@ -10,6 +10,22 @@ export interface FileDropOptions {
   set_loading?: (loading: boolean) => void
 }
 
+// Drag-over visual-state handlers for file-drop zones; spread onto the drop target
+// alongside `ondrop` from create_file_drop_handler
+export const drag_over_handlers = (opts: {
+  allow?: () => boolean
+  set_dragover: (over: boolean) => void
+}) => ({
+  // preventDefault on dragover marks the element as a valid drop target; dragleave
+  // has no default action to cancel, so it only clears the visual state
+  ondragover: (event: DragEvent) => {
+    event.preventDefault()
+    if (opts.allow && !opts.allow()) return
+    opts.set_dragover(true)
+  },
+  ondragleave: () => opts.set_dragover(false),
+})
+
 // Handles URL drops (from FilePicker), direct file drops with decompression,
 // loading state, and error reporting.
 export const create_file_drop_handler =

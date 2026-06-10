@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ExportSection } from '$lib/io/ExportPane.svelte'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_canvas_as_png, observe_canvas_presence } from '$lib/io/export'
   import type { AnyStructure } from '$lib/structure'
@@ -25,8 +26,8 @@
     scene?: Scene
     camera?: Camera
     png_dpi?: number
-    pane_props?: ComponentProps<typeof ExportPane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof ExportPane>[`toggle_props`]
+    pane_props?: PaneProps
+    toggle_props?: PaneToggleProps
   } = $props()
 
   const text_export_formats = [

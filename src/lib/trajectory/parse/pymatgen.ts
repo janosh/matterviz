@@ -8,20 +8,23 @@ import {
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryType } from '$lib/trajectory/index'
+import { is_plain_object } from '$lib/utils'
 import { traj_warn } from './diagnostics'
+
+// Non-empty array of pymatgen Species-like objects (predicate so callers get narrowing)
+const is_species_array = (val: unknown): val is { element: ElementSymbol }[] =>
+  Array.isArray(val) &&
+  val.length > 0 &&
+  val.every((sp) => sp != null && typeof sp === `object` && `element` in sp)
 
 // Parse an already-JSON-parsed pymatgen Trajectory object (detected via @class === 'Trajectory' with species/coords/lattice present)
 export function parse_pymatgen_trajectory(
   obj: Record<string, unknown>,
   filename?: string,
 ): TrajectoryType {
-  // Validate shape before casting so malformed input fails with a clear message
+  // Validate shape upfront so malformed input fails with a clear message
   // (callers gate only on truthiness, not structure) rather than a cryptic `.map` error
-  if (
-    !Array.isArray(obj.species) ||
-    obj.species.length === 0 ||
-    !obj.species.every((sp) => sp != null && typeof sp === `object` && `element` in sp)
-  ) {
+  if (!is_species_array(obj.species)) {
     throw new TypeError(
       `Invalid pymatgen Trajectory: 'species' must be a non-empty array of { element } objects`,
     )
@@ -29,8 +32,7 @@ export function parse_pymatgen_trajectory(
   if (!Array.isArray(obj.coords)) {
     throw new TypeError(`Invalid pymatgen Trajectory: 'coords' must be an array of frames`)
   }
-  const species = obj.species as { element: ElementSymbol }[]
-  const frame_elements = species.map((specie) => specie.element)
+  const frame_elements = obj.species.map((specie) => specie.element)
   const coords = obj.coords as number[][][]
   const matrix = validate_3x3_matrix(obj.lattice)
   const frame_properties = (obj.frame_properties as Record<string, unknown>[]) || []
@@ -44,21 +46,16 @@ export function parse_pymatgen_trajectory(
     const processed_properties: Record<string, unknown> = {}
 
     Object.entries(raw_properties).forEach(([key, value]) => {
-      if (
-        value &&
-        typeof value === `object` &&
-        (value as Record<string, unknown>)[`@class`] === `array`
-      ) {
-        const array_obj = value as Record<string, unknown>
-        processed_properties[key] = array_obj.data
+      if (is_plain_object(value) && value[`@class`] === `array`) {
+        processed_properties[key] = value.data
 
-        if (key === `forces` && Array.isArray(array_obj.data)) {
+        if (key === `forces` && Array.isArray(value.data)) {
           // Object.assign ignores the null calc_force_stats returns for empty forces
-          Object.assign(processed_properties, calc_force_stats(array_obj.data as number[][]))
+          Object.assign(processed_properties, calc_force_stats(value.data as number[][]))
         }
 
-        if (key === `stress` && Array.isArray(array_obj.data)) {
-          const stress_tensor = array_obj.data
+        if (key === `stress` && Array.isArray(value.data)) {
+          const stress_tensor = value.data
           if (!math.is_square_matrix(stress_tensor, 3)) {
             traj_warn(`Invalid stress tensor structure in frame ${idx}`)
           } else {

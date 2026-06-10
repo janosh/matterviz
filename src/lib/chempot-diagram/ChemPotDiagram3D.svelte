@@ -6,11 +6,10 @@
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import { SettingsSection, toggle_fullscreen } from '$lib/layout'
+  import { FullscreenButton, type FullscreenToggleProp, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec2, Vec3 } from '$lib/math'
   import {
@@ -44,6 +43,11 @@
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
+  import {
+    CHEMPOT_COLOR_MODE_OPTIONS,
+    CHEMPOT_COLOR_SCALE_OPTIONS,
+    create_chempot_overrides,
+  } from './controls-state.svelte'
   import {
     export_glb_file,
     export_json_file,
@@ -117,59 +121,36 @@
     // bindable: fullscreen state
     fullscreen?: boolean
     // show/hide the fullscreen button (or custom snippet to render it)
-    fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
+    fullscreen_toggle?: FullscreenToggleProp
     // bindable: whether the controls pane is currently open
     controls_open?: boolean
     // bindable: whether the export pane is currently open
     export_pane_open?: boolean
   } = $props()
 
-  let formal_chempots_override = $state<boolean | null>(null)
-  let label_stable_override = $state<boolean | null>(null)
-  let element_padding_override = $state<number | null>(null)
-  let default_min_limit_override = $state<number | null>(null)
-  let draw_formula_meshes_override = $state<boolean | null>(null)
-  let draw_formula_lines_override = $state<boolean | null>(null)
-  const formal_chempots = $derived(
-    formal_chempots_override ??
-      (config.formal_chempots ?? CHEMPOT_DEFAULTS.formal_chempots),
-  )
-  const label_stable = $derived(
-    label_stable_override ?? (config.label_stable ?? CHEMPOT_DEFAULTS.label_stable),
-  )
-  const element_padding = $derived(
-    element_padding_override ??
-      (config.element_padding ?? CHEMPOT_DEFAULTS.element_padding),
-  )
-  const default_min_limit = $derived(
-    default_min_limit_override ??
-      (config.default_min_limit ?? CHEMPOT_DEFAULTS.default_min_limit),
-  )
-  let formulas_to_draw_override = $state<string[] | null>(null)
-  const formulas_to_draw = $derived(
-    formulas_to_draw_override ?? (config.formulas_to_draw ?? []),
-  )
-  const draw_formula_meshes = $derived(
-    draw_formula_meshes_override ??
-      (config.draw_formula_meshes ?? CHEMPOT_DEFAULTS.draw_formula_meshes),
-  )
-  const draw_formula_lines = $derived(
-    draw_formula_lines_override ??
-      (config.draw_formula_lines ?? CHEMPOT_DEFAULTS.draw_formula_lines),
-  )
-  let color_mode_override = $state<ChemPotColorMode | null>(null)
-  let color_scale_override = $state<D3InterpolateName | null>(null)
-  let reverse_color_scale_override = $state<boolean | null>(null)
-  const color_mode = $derived(
-    color_mode_override ?? (config.color_mode ?? `arity`),
-  )
-  const color_scale = $derived(
-    color_scale_override ?? (config.color_scale ?? CHEMPOT_DEFAULTS.color_scale),
-  )
-  const reverse_color_scale = $derived(
-    reverse_color_scale_override ??
-      (config.reverse_color_scale ?? CHEMPOT_DEFAULTS.reverse_color_scale),
-  )
+  // Control overrides (override ?? config ?? default, cleared by Reset)
+  const overrides = create_chempot_overrides(() => config, [
+    `formal_chempots`,
+    `label_stable`,
+    `element_padding`,
+    `default_min_limit`,
+    `formulas_to_draw`,
+    `draw_formula_meshes`,
+    `draw_formula_lines`,
+    `color_mode`,
+    `color_scale`,
+    `reverse_color_scale`,
+  ], { color_mode: `arity`, formulas_to_draw: [] })
+  const formal_chempots = $derived(overrides.resolve(`formal_chempots`))
+  const label_stable = $derived(overrides.resolve(`label_stable`))
+  const element_padding = $derived(overrides.resolve(`element_padding`))
+  const default_min_limit = $derived(overrides.resolve(`default_min_limit`))
+  const formulas_to_draw = $derived(overrides.resolve(`formulas_to_draw`))
+  const draw_formula_meshes = $derived(overrides.resolve(`draw_formula_meshes`))
+  const draw_formula_lines = $derived(overrides.resolve(`draw_formula_lines`))
+  const color_mode = $derived(overrides.resolve(`color_mode`))
+  const color_scale = $derived(overrides.resolve(`color_scale`))
+  const reverse_color_scale = $derived(overrides.resolve(`reverse_color_scale`))
   const show_tooltip = $derived(config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip)
   const tooltip_detail_level = $derived(
     config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level,
@@ -1885,17 +1866,8 @@
   })
 
   function reset_controls(): void {
-    formal_chempots_override = null
-    label_stable_override = null
-    element_padding_override = null
-    default_min_limit_override = null
-    draw_formula_meshes_override = null
-    draw_formula_lines_override = null
-    color_mode_override = null
-    color_scale_override = null
-    reverse_color_scale_override = null
+    overrides.reset()
     projection_elements_override = null
-    formulas_to_draw_override = null
     formula_filter_query = ``
   }
 
@@ -1927,19 +1899,22 @@
     const selected_formulas = new SvelteSet(formulas_to_draw)
     if (selected_formulas.has(formula)) selected_formulas.delete(formula)
     else selected_formulas.add(formula)
-    formulas_to_draw_override = [...selected_formulas]
+    overrides.set(`formulas_to_draw`, [...selected_formulas])
   }
 
   function select_surface_formulas(): void {
-    formulas_to_draw_override = render_domains
-      .filter((domain) => surface_formulas.has(domain.formula))
-      .map((domain) => domain.formula)
+    overrides.set(
+      `formulas_to_draw`,
+      render_domains
+        .filter((domain) => surface_formulas.has(domain.formula))
+        .map((domain) => domain.formula),
+    )
   }
 
   function select_neighbor_formulas(): void {
     if (hover_info?.view !== `3d`) return
     const neighbors = domain_neighbors.get(hover_info.formula) ?? []
-    formulas_to_draw_override = [hover_info.formula, ...neighbors]
+    overrides.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
   }
 
   let png_dpi = $state(150)
@@ -2058,16 +2033,10 @@
   }
 
   // Color mode cycling (keyboard shortcut 'c')
-  const color_modes: ChemPotColorMode[] = [
-    `none`,
-    `energy`,
-    `formation_energy`,
-    `arity`,
-    `entries`,
-  ]
+  const color_modes = CHEMPOT_COLOR_MODE_OPTIONS.map(([value]) => value)
   function cycle_color_mode(): void {
     const idx = color_modes.indexOf(color_mode)
-    color_mode_override = color_modes[(idx + 1) % color_modes.length]
+    overrides.set(`color_mode`, color_modes[(idx + 1) % color_modes.length])
   }
 </script>
 
@@ -2125,7 +2094,7 @@
     >
       <h4>Formula Overlays</h4>
       <div class="overlay-actions">
-        <button type="button" onclick={() => formulas_to_draw_override = []}>
+        <button type="button" onclick={() => overrides.set(`formulas_to_draw`, [])}>
           Clear
         </button>
         <button type="button" onclick={select_surface_formulas}>Surface</button>
@@ -2248,36 +2217,29 @@
             <input
               type="checkbox"
               checked={formal_chempots}
-              onchange={() => {
-                formal_chempots_override = !formal_chempots
-              }}
+              onchange={() => overrides.set(`formal_chempots`, !formal_chempots)}
             /> Formal
           </label>
           <label>
             <input
               type="checkbox"
               checked={label_stable}
-              onchange={() => {
-                label_stable_override = !label_stable
-              }}
+              onchange={() => overrides.set(`label_stable`, !label_stable)}
             /> Labels
           </label>
           <label>
             <input
               type="checkbox"
               checked={draw_formula_meshes}
-              onchange={() => {
-                draw_formula_meshes_override = !draw_formula_meshes
-              }}
+              onchange={() =>
+              overrides.set(`draw_formula_meshes`, !draw_formula_meshes)}
             /> Meshes
           </label>
           <label>
             <input
               type="checkbox"
               checked={draw_formula_lines}
-              onchange={() => {
-                draw_formula_lines_override = !draw_formula_lines
-              }}
+              onchange={() => overrides.set(`draw_formula_lines`, !draw_formula_lines)}
             /> Lines
           </label>
         </div>
@@ -2289,9 +2251,8 @@
               min="0"
               step="0.1"
               value={element_padding}
-              oninput={(event) => {
-                element_padding_override = Number(event.currentTarget.value)
-              }}
+              oninput={(event) =>
+              overrides.set(`element_padding`, Number(event.currentTarget.value))}
             />
           </label>
           <label>
@@ -2301,11 +2262,8 @@
               max="0"
               step="1"
               value={default_min_limit}
-              oninput={(event) => {
-                default_min_limit_override = Number(
-                  event.currentTarget.value,
-                )
-              }}
+              oninput={(event) =>
+              overrides.set(`default_min_limit`, Number(event.currentTarget.value))}
             />
           </label>
         </div>
@@ -2314,16 +2272,12 @@
           <select
             id="chempot-color-mode"
             value={color_mode}
-            onchange={(event) => {
-              color_mode_override = event.currentTarget
-                .value as ChemPotColorMode
-            }}
+            onchange={(event) =>
+            overrides.set(`color_mode`, event.currentTarget.value as ChemPotColorMode)}
           >
-            <option value="none">None</option>
-            <option value="energy">Energy/atom</option>
-            <option value="formation_energy">Formation energy</option>
-            <option value="arity">Element count</option>
-            <option value="entries">Entry count</option>
+            {#each CHEMPOT_COLOR_MODE_OPTIONS as [value, label] (value)}
+              <option {value}>{label}</option>
+            {/each}
           </select>
         </div>
         {#if color_mode !== `none` && color_mode !== `arity`}
@@ -2332,27 +2286,22 @@
             <select
               id="chempot-color-scale"
               value={color_scale}
-              onchange={(event) => {
-                color_scale_override = event.currentTarget
-                  .value as D3InterpolateName
-              }}
+              onchange={(event) =>
+              overrides.set(
+                `color_scale`,
+                event.currentTarget.value as D3InterpolateName,
+              )}
             >
-              <option value="interpolateViridis">Viridis</option>
-              <option value="interpolatePlasma">Plasma</option>
-              <option value="interpolateInferno">Inferno</option>
-              <option value="interpolateMagma">Magma</option>
-              <option value="interpolateCividis">Cividis</option>
-              <option value="interpolateTurbo">Turbo</option>
-              <option value="interpolateRdYlBu">RdYlBu</option>
-              <option value="interpolateSpectral">Spectral</option>
+              {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
+                <option {value}>{label}</option>
+              {/each}
             </select>
             <label>
               <input
                 type="checkbox"
                 checked={reverse_color_scale}
-                onchange={() => {
-                  reverse_color_scale_override = !reverse_color_scale
-                }}
+                onchange={() =>
+                overrides.set(`reverse_color_scale`, !reverse_color_scale)}
               /> Rev
             </label>
           </div>
@@ -2361,17 +2310,7 @@
     </ScatterPlot3DControls>
 
     {#if fullscreen_toggle}
-      <button
-        type="button"
-        onclick={() => toggle_fullscreen(wrapper)}
-        title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-      >
-        {#if typeof fullscreen_toggle === `function`}
-          {@render fullscreen_toggle({ fullscreen })}
-        {:else}
-          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-        {/if}
-      </button>
+      <FullscreenButton {fullscreen} toggle={fullscreen_toggle} {wrapper} />
     {/if}
   </section>
   {#if show_temperature_slider && temperature !== undefined}

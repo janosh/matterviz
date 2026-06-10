@@ -6,6 +6,7 @@
     decompress_data_binary,
     decompress_file,
     detect_compression_format,
+    drag_over_handlers,
     handle_url_drop,
   } from '$lib/io'
   import { format_value } from '$lib/labels'
@@ -474,15 +475,7 @@
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        ondragover={(event) => {
-          event.preventDefault()
-          if (!allow_file_drop) return
-          dragover = true
-        }}
-        ondragleave={(event) => {
-          event.preventDefault()
-          dragover = false
-        }}
+        {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
         class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
         style={`overflow: visible; ${rest.style ?? ``}`}
         {controls}
@@ -533,15 +526,7 @@
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        ondragover={(event) => {
-          event.preventDefault()
-          if (!allow_file_drop) return
-          dragover = true
-        }}
-        ondragleave={(event) => {
-          event.preventDefault()
-          dragover = false
-        }}
+        {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
         class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
         style={`overflow: visible; ${rest.style ?? ``}`}
         show_controls={controls.show}

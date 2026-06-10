@@ -98,8 +98,18 @@ export const label_screen_position = (
   const direction_x = offset_length > LABEL_OFFSET_EPS ? offset_x / offset_length : 0
   const direction_y =
     offset_length > LABEL_OFFSET_EPS ? offset_y / offset_length : label_offset[1] >= 0 ? -1 : 1
-  const radius_direction = math.normalize_vec(label_offset, [0, 1, 0])
-  const radius_edge = math.add(atom_position, math.scale(radius_direction, visual_radius))
+  // Measure the atom's projected radius along the camera's right axis (always
+  // view-perpendicular). Measuring along label_offset would collapse the clearance
+  // to ~zero for offsets near the view axis, letting the label overlap the atom.
+  const radius_dir = new Vector3()
+    .setFromMatrixColumn(label_camera.matrixWorld, 0)
+    .normalize()
+    .multiplyScalar(visual_radius)
+  const radius_edge = math.add(atom_position, [
+    radius_dir.x,
+    radius_dir.y,
+    radius_dir.z,
+  ] as Vec3)
   const radius_screen = project_to_screen(radius_edge, label_camera, size)
   const atom_screen_radius = Math.hypot(
     radius_screen[0] - atom_screen[0],

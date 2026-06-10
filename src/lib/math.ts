@@ -891,11 +891,15 @@ export function compute_bounding_box(vertices: Vec3[]): { min: Vec3; max: Vec3 }
   return { min, max }
 }
 
-// Check if a matrix is square with dimension NxN
-export function is_square_matrix(matrix: unknown, dim: number): boolean {
+// Check if a matrix is a numeric square matrix of dimension NxN (type predicate so
+// callers get number[][] narrowing without assertions)
+export function is_square_matrix(matrix: unknown, dim: number): matrix is number[][] {
   if (!Array.isArray(matrix)) return false
   if (matrix.length !== dim) return false
-  return matrix.every((row) => Array.isArray(row) && row.length === dim)
+  return matrix.every(
+    (row) =>
+      Array.isArray(row) && row.length === dim && row.every((val) => typeof val === `number`),
+  )
 }
 
 // --- 2D Geometry Utilities ---

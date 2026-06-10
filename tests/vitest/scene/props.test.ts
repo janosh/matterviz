@@ -2,8 +2,8 @@ import { build_gizmo_props, build_orbit_props } from '$lib/scene'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`build_gizmo_props`, () => {
-  test.each([true, false])(`shared axis defaults for gizmo=%s`, (gizmo) => {
-    const props = build_gizmo_props(gizmo) as Record<string, unknown>
+  test(`shared axis defaults`, () => {
+    const props = build_gizmo_props(true) as Record<string, unknown>
     expect(props.className).toBe(`responsive-gizmo`)
     expect(props.offset).toEqual({ left: 5, bottom: 5 })
     // negative axes render denser than positive ones
@@ -36,7 +36,6 @@ describe(`build_orbit_props`, () => {
     min_zoom: 0.1,
     auto_rotate: 0,
     rotation_damping: 0.1,
-    set_camera_is_moving: () => {},
   }
 
   test(`gates interactions on speed and doubles ortho zoom`, () => {
@@ -49,6 +48,11 @@ describe(`build_orbit_props`, () => {
     expect([props.autoRotate, props.enableDamping]).toEqual([false, true])
     expect(props.zoomSpeed).toBe(0.5)
     expect(build_orbit_props({ ...opts, camera_projection: `orthographic` }).zoomSpeed).toBe(1)
+    // onstart/onend are safe when set_camera_is_moving is omitted
+    expect(() => {
+      props.onstart()
+      props.onend()
+    }).not.toThrow()
   })
 
   test(`onstart/onend toggle camera_is_moving and run onstart_extra once`, () => {

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ExportSection } from '$lib/io/ExportPane.svelte'
+  import type { PaneToggleProps } from '$lib/overlays'
+  import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
@@ -29,7 +30,7 @@
     filename?: string
     png_dpi?: number
     icon_style?: string
-    toggle_props?: ComponentProps<typeof ExportPane>[`toggle_props`]
+    toggle_props?: PaneToggleProps
   } = $props()
 
   // Generate filename with components if available (requires exactly 2 components)

@@ -1,4 +1,9 @@
 import { get_page_background } from '$lib/colors'
+import type { Snippet } from 'svelte'
+
+// Fullscreen-toggle button prop shared by viewer chromes: hide (false), default icon
+// button (true), or a custom snippet rendering the button content
+export type FullscreenToggleProp = Snippet<[{ fullscreen: boolean }]> | boolean
 
 // A key-value pair for displaying structured info in cards and panes
 export type InfoItem = Readonly<{

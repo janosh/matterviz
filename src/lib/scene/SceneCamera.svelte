@@ -4,7 +4,7 @@
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { ComponentProps } from 'svelte'
   import { build_gizmo_props, build_orbit_props } from './props'
 
   let {
@@ -17,7 +17,6 @@
     orbit_props,
     gizmo = false,
     orbit_controls = $bindable(undefined),
-    children,
   }: {
     camera_projection?: CameraProjection
     position: Vec3 // camera position
@@ -28,7 +27,6 @@
     orbit_props: ReturnType<typeof build_orbit_props>
     gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
-    children?: Snippet // extra content rendered inside the active camera
   } = $props()
 
   const gizmo_props = $derived(build_gizmo_props(gizmo))
@@ -44,7 +42,6 @@
   <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props}>
     {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
   </extras.OrbitControls>
-  {@render children?.()}
 {/snippet}
 
 {#if camera_projection === `perspective`}
@@ -56,3 +53,10 @@
     {@render camera_contents()}
   </T.OrthographicCamera>
 {/if}
+
+<style>
+  :global(.responsive-gizmo) {
+    width: clamp(70px, 18cqmin, 100px) !important;
+    height: clamp(70px, 18cqmin, 100px) !important;
+  }
+</style>

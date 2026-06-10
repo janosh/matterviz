@@ -2116,6 +2116,25 @@ describe(`is_square_matrix`, () => {
     [undefined, 3, false],
     [[1, 2, 3], 3, false],
     [[[1, 2, 3], `not an array`, [7, 8, 9]], 3, false],
+    // Non-numeric entries (predicate claims number[][], so entries must be numbers)
+    [
+      [
+        [1, 2, `3`],
+        [4, 5, 6],
+        [7, 8, 9],
+      ],
+      3,
+      false,
+    ],
+    [
+      [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, null],
+      ],
+      3,
+      false,
+    ],
   ])(`dim=%i expected=%s`, (matrix, dim, expected) => {
     expect(math.is_square_matrix(matrix, dim)).toBe(expected)
   })

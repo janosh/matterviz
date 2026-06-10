@@ -11,17 +11,20 @@ import { MAX_METADATA_SIZE } from './constants'
 import {
   copy_numeric_fields,
   count_xyz_frames,
-  create_trajectory_frame,
   iter_xyz_frames,
   validate_3x3_matrix,
 } from './helpers'
 import { strip_compression_extensions } from '$lib/io'
 import { decode_ase_frame, read_ase_header } from './parse/ase'
-import {
-  parse_extxyz_lattice,
-  parse_xyz_atom_lines,
-  parse_xyz_comment_metadata,
-} from './parse/xyz'
+import { build_xyz_frame, parse_xyz_comment_metadata } from './parse/xyz'
+
+// Restrict frame metadata to the requested property keys (no-op when unset)
+const filter_properties = (metadata: TrajectoryMetadata, properties?: string[]): void => {
+  if (!properties) return
+  metadata.properties = Object.fromEntries(
+    Object.entries(metadata.properties).filter(([key]) => properties.includes(key)),
+  )
+}
 
 export class TrajFrameReader implements FrameLoader {
   private readonly format: `xyz` | `ase`
@@ -154,7 +157,12 @@ export class TrajFrameReader implements FrameLoader {
         if (current_frame % sample_rate === 0) {
           let frame_metadata: TrajectoryMetadata | null = null
           try {
-            frame_metadata = this.parse_xyz_metadata(comment, current_frame)
+            const { step, properties: props } = parse_xyz_comment_metadata(comment)
+            frame_metadata = {
+              frame_number: current_frame,
+              step: step ?? current_frame,
+              properties: props,
+            }
           } catch (error) {
             console.warn(
               `Failed to parse XYZ metadata for frame ${current_frame} at line ${start + 1}:`,
@@ -162,16 +170,10 @@ export class TrajFrameReader implements FrameLoader {
             )
           }
 
-          if (frame_metadata && properties) {
-            const filtered = Object.fromEntries(
-              Object.entries(frame_metadata.properties).filter(([key]) =>
-                properties.includes(key),
-              ),
-            )
-            frame_metadata.properties = filtered
+          if (frame_metadata) {
+            filter_properties(frame_metadata, properties)
+            metadata_list.push(frame_metadata)
           }
-
-          if (frame_metadata) metadata_list.push(frame_metadata)
         }
 
         current_frame++
@@ -207,16 +209,7 @@ export class TrajFrameReader implements FrameLoader {
           )
 
           const frame_metadata = this.parse_ase_metadata(frame_data, idx)
-
-          if (properties) {
-            const filtered = Object.fromEntries(
-              Object.entries(frame_metadata.properties).filter(([key]) =>
-                properties.includes(key),
-              ),
-            )
-            frame_metadata.properties = filtered
-          }
-
+          filter_properties(frame_metadata, properties)
           metadata_list.push(frame_metadata)
 
           if (on_progress && idx % 5000 === 0) {
@@ -239,29 +232,12 @@ export class TrajFrameReader implements FrameLoader {
     const lines = data.trim().split(/\r?\n/)
     let current_frame = 0
 
-    for (const { start, num_atoms, comment } of iter_xyz_frames(lines)) {
+    for (const frame of iter_xyz_frames(lines)) {
       if (current_frame++ < frame_number) continue // skip frames before the target
-
-      const lattice_matrix = parse_extxyz_lattice(comment)
-      const { elements, positions, force_stats } = parse_xyz_atom_lines(
-        lines,
-        start + 2,
-        num_atoms,
-        comment,
-        `indexed frame ${frame_number}`,
-      )
-      const { step, properties } = this.parse_xyz_metadata(comment, frame_number)
-      const metadata: Record<string, unknown> = { ...properties, ...force_stats }
-      // Derive volume from the lattice (parity with the eager parse_xyz_trajectory parser)
-      if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
-      return create_trajectory_frame(
-        positions,
-        elements,
-        lattice_matrix,
-        lattice_matrix ? [true, true, true] : undefined,
-        step,
-        metadata,
-      )
+      return build_xyz_frame(lines, frame, {
+        frame_label: `indexed frame ${frame_number}`,
+        default_step: frame_number,
+      })
     }
     return null
   }
@@ -287,11 +263,6 @@ export class TrajFrameReader implements FrameLoader {
       console.warn(`Failed to load ASE frame ${frame_number}:`, error)
       return null
     }
-  }
-
-  private parse_xyz_metadata(comment: string, frame_number: number): TrajectoryMetadata {
-    const { step, properties } = parse_xyz_comment_metadata(comment)
-    return { frame_number, step: step ?? frame_number, properties }
   }
 
   private parse_ase_metadata(

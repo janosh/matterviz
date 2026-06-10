@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
@@ -58,8 +59,8 @@
     enable_export?: boolean
     png_dpi?: number
     // Pane customization
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: PaneProps
+    toggle_props?: PaneToggleProps
     // Custom content snippets
     children?: Snippet<[{ controls_open: boolean }]>
     post_children?: Snippet<[{ controls_open: boolean }]>

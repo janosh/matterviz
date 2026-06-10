@@ -1,5 +1,5 @@
 import type { FileDropOptions } from '$lib/io/file-drop'
-import { create_file_drop_handler } from '$lib/io/file-drop'
+import { create_file_drop_handler, drag_over_handlers } from '$lib/io/file-drop'
 import { decompress_file } from '$lib/io/decompress'
 import { handle_url_drop } from '$lib/io/url-drop'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -112,5 +112,27 @@ describe(`create_file_drop_handler`, () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
     await run({ on_error: undefined, set_loading: undefined }, [new File([`ok`], `f.cif`)])
     expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`)
+  })
+})
+
+describe(`drag_over_handlers`, () => {
+  test.each([
+    { desc: `sets dragover when allowed`, allow: () => true, expected: [true] },
+    { desc: `respects allow guard`, allow: () => false, expected: [] },
+    { desc: `defaults to allowed when no guard given`, allow: undefined, expected: [true] },
+  ])(`ondragover $desc`, ({ allow, expected }) => {
+    const set_dragover = vi.fn()
+    const handlers = drag_over_handlers({ allow, set_dragover })
+    const event = make_event()
+    handlers.ondragover(event)
+    expect(event.preventDefault).toHaveBeenCalledOnce() // always, even when not allowed
+    expect(set_dragover.mock.calls.map(([over]) => over)).toEqual(expected)
+  })
+
+  test(`ondragleave always clears dragover state`, () => {
+    const set_dragover = vi.fn()
+    const handlers = drag_over_handlers({ allow: () => false, set_dragover })
+    handlers.ondragleave()
+    expect(set_dragover).toHaveBeenCalledWith(false)
   })
 })

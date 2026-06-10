@@ -8,7 +8,7 @@
   import Icon from '$lib/Icon.svelte'
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
-  import { set_fullscreen_bg, setup_fullscreen_effect, toggle_fullscreen } from '$lib/layout'
+  import { FullscreenButton, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -38,7 +38,6 @@
     HoverData3D,
     PhaseData,
   } from './types'
-  import { compute_hull_stability, is_unary_entry } from './helpers'
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
@@ -145,18 +144,8 @@
     set_stable_entries: (value) => stable_entries = value,
     set_unstable_entries: (value) => unstable_entries = value,
   })
-  const has_temp_data = $derived(hull_data.has_temp_data)
-  const available_temperatures = $derived(hull_data.available_temperatures)
-  const gas_analysis = $derived(hull_data.gas_analysis)
   const merged_gas_config = $derived(hull_data.merged_gas_config)
-  const has_precomputed_e_form = $derived(hull_data.has_precomputed_e_form)
-  const has_precomputed_hull = $derived(hull_data.has_precomputed_hull)
-  const can_compute_e_form = $derived(hull_data.can_compute_e_form)
-  const can_compute_hull = $derived(hull_data.can_compute_hull)
-  const pd_data = $derived(hull_data.pd_data)
-  const polymorph_stats_map = $derived(hull_data.polymorph_stats_map)
   const elements = $derived(hull_data.elements)
-  const max_hull_dist_in_data = $derived(hull_data.max_hull_dist_in_data)
   const auto_default_threshold = $derived(hull_data.auto_default_threshold)
   const plot_entries = $derived(hull_data.plot_entries)
   const visible_entries = $derived(hull_data.visible_entries)
@@ -176,7 +165,7 @@
       const total = Object.values(entry.composition).reduce((sum, amount) => sum + amount, 0)
       if (total <= 0) continue
       const frac_b = (entry.composition[el2] || 0) / total
-      const is_element = is_unary_entry(entry)
+      const is_element = helpers.is_unary_entry(entry)
       coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
@@ -201,7 +190,7 @@
   const coords_entries = $derived.by(() => {
     if (elements.length !== 2) return []
     try {
-      return compute_binary_coordinates(pd_data.entries, elements)
+      return compute_binary_coordinates(hull_data.pd_data.entries, elements)
     } catch (error) {
       console.error(`Error computing binary coordinates:`, error)
       return []
@@ -236,7 +225,7 @@
     const enriched_entries = coords_entries.map((entry) => {
       const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
       const raw_dist = y_hull == null ? 0 : entry.y - y_hull
-      return { ...entry, ...compute_hull_stability(raw_dist, entry.exclude_from_hull) }
+      return { ...entry, ...helpers.compute_hull_stability(raw_dist, entry.exclude_from_hull) }
     })
     return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
   })
@@ -370,13 +359,8 @@
     phase_stats = thermo.get_convex_hull_stats(plot_entries, elements, 3)
   })
 
-  function extract_structure_from_entry(
-    entry: ConvexHullEntry,
-  ): AnyStructure | null {
-    if (!entry.entry_id) return null
-    const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
-    return orig_entry?.structure as AnyStructure || null
-  }
+  const extract_structure_from_entry = (entry: ConvexHullEntry): AnyStructure | null =>
+    helpers.extract_structure_from_entry(entries, entry)
 
   function reset_all() {
     fullscreen = DEFAULTS.convex_hull.binary.fullscreen
@@ -539,7 +523,7 @@
   {#if entry}
     <ConvexHullTooltip
       {entry}
-      {polymorph_stats_map}
+      polymorph_stats_map={hull_data.polymorph_stats_map}
       highlight_style={entry_highlight}
       tooltip={custom_tooltip}
     />
@@ -575,18 +559,7 @@
     {/if}
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <button
-        type="button"
-        onclick={() => toggle_fullscreen(wrapper)}
-        title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-        class="control-btn fullscreen-btn"
-      >
-        {#if typeof fullscreen_toggle === `function`}
-          {@render fullscreen_toggle({ fullscreen })}
-        {:else}
-          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-        {/if}
-      </button>
+      <FullscreenButton {fullscreen} toggle={fullscreen_toggle} {wrapper} />
     {/if}
 
     {#if controls_config.visible(`controls`)}
@@ -600,16 +573,16 @@
         bind:show_unstable_labels
         bind:max_hull_dist_show_phases
         bind:max_hull_dist_show_labels
-        {max_hull_dist_in_data}
+        max_hull_dist_in_data={hull_data.max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
         {merged_controls}
         toggle_props={{ class: `control-btn legend-controls-btn` }}
         bind:energy_source_mode
-        {has_precomputed_e_form}
-        {can_compute_e_form}
-        {has_precomputed_hull}
-        {can_compute_hull}
+        has_precomputed_e_form={hull_data.has_precomputed_e_form}
+        can_compute_e_form={hull_data.can_compute_e_form}
+        has_precomputed_hull={hull_data.has_precomputed_hull}
+        can_compute_hull={hull_data.can_compute_hull}
       />
     {/if}
   {/if}
@@ -706,11 +679,11 @@
     />
     <DragOverlay visible={drag_over} />
 
-    {#if has_temp_data && temperature !== undefined}
-      <TemperatureSlider {available_temperatures} bind:temperature />
+    {#if hull_data.has_temp_data && temperature !== undefined}
+      <TemperatureSlider available_temperatures={hull_data.available_temperatures} bind:temperature />
     {/if}
 
-    {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
+    {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
       <GasPressureControls
         config={merged_gas_config}
         bind:pressures={gas_pressures}
@@ -742,8 +715,9 @@
   :global(.convex-hull-2d.dragover) {
     border: 2px dashed var(--accent-color, #1976d2) !important;
   }
-  /* Styles for control buttons rendered via header_controls snippet */
-  :global(.convex-hull-2d .control-btn) {
+  /* Styles for control buttons rendered via header_controls snippet
+     (.fullscreen-btn is FullscreenButton's built-in class) */
+  :global(.convex-hull-2d :is(.control-btn, .fullscreen-btn)) {
     background: transparent;
     border: none;
     padding: 4px;
@@ -754,7 +728,7 @@
     display: flex;
     font-size: clamp(0.85em, 2cqmin, 1.3em);
   }
-  :global(.convex-hull-2d .control-btn:hover) {
+  :global(.convex-hull-2d :is(.control-btn, .fullscreen-btn):hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
 </style>

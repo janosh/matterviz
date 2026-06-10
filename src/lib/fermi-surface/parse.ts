@@ -1,5 +1,6 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import { is_plain_object } from '$lib/utils'
 import * as constants from './constants'
 import { compute_vertex_normals } from './marching-cubes'
 import type {
@@ -270,13 +271,8 @@ function parse_frmsf(content: string): BandGridData {
 
 // Validate that an object has the required Isosurface shape
 function is_valid_isosurface(obj: unknown): obj is Isosurface {
-  if (!obj || typeof obj !== `object`) return false
-  const isosurface_obj = obj as Record<string, unknown>
-  const vertices = isosurface_obj.vertices
-  const faces = isosurface_obj.faces
-  const normals = isosurface_obj.normals
-  const band_index = isosurface_obj.band_index
-  const spin = isosurface_obj.spin
+  if (!is_plain_object(obj)) return false
+  const { vertices, faces, normals, band_index, spin } = obj
 
   if (!Array.isArray(vertices) || vertices.length === 0) return false
   if (!Array.isArray(faces)) return false
@@ -289,30 +285,25 @@ function is_valid_isosurface(obj: unknown): obj is Isosurface {
 
 // Validate FermiSurfaceData shape
 function is_valid_fermi_surface_data(obj: unknown): obj is FermiSurfaceData {
-  if (!obj || typeof obj !== `object`) return false
-  const data = obj as Record<string, unknown>
+  if (!is_plain_object(obj)) return false
 
   // Check required fields
-  if (!Array.isArray(data.isosurfaces)) return false
-  if (!Array.isArray(data.k_lattice) || data.k_lattice.length !== 3) return false
-  if (typeof data.fermi_energy !== `number`) return false
-  if (data.reciprocal_cell !== `wigner_seitz` && data.reciprocal_cell !== `parallelepiped`) {
+  if (!Array.isArray(obj.isosurfaces)) return false
+  if (!Array.isArray(obj.k_lattice) || obj.k_lattice.length !== 3) return false
+  if (typeof obj.fermi_energy !== `number`) return false
+  if (obj.reciprocal_cell !== `wigner_seitz` && obj.reciprocal_cell !== `parallelepiped`) {
     return false
   }
-  if (!data.metadata || typeof data.metadata !== `object`) return false
+  if (!obj.metadata || typeof obj.metadata !== `object`) return false
 
   // Validate each isosurface
-  for (const iso of data.isosurfaces) {
-    if (!is_valid_isosurface(iso)) return false
-  }
-
-  return true
+  return obj.isosurfaces.every(is_valid_isosurface)
 }
 
 // Validate BandGridData shape: non-empty energies grid, 3 k-grid dims, 3x3 k-lattice
 function is_valid_band_grid_data(obj: unknown): obj is BandGridData {
-  if (!obj || typeof obj !== `object`) return false
-  const { energies, k_grid, k_lattice } = obj as Record<string, unknown>
+  if (!is_plain_object(obj)) return false
+  const { energies, k_grid, k_lattice } = obj
   if (!Array.isArray(energies) || energies.length === 0) return false
   if (
     !Array.isArray(k_grid) ||

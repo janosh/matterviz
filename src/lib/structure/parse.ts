@@ -19,50 +19,33 @@ import type { Pbc } from '$lib/structure/pbc'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import { iter_xyz_frames } from '$lib/trajectory/helpers'
-import { normalize_scientific_notation } from '$lib/utils'
+import { normalize_scientific_notation, to_error } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
 
 // === Parse error contract ===
 // Individual format parsers (parse_poscar, parse_cif, parse_xyz, parse_phonopy_yaml,
-// parse_optimade_json, ...) return `T | null` on failure and record failure reasons and
-// warnings in a module-level diagnostics collector (mirrored to the console).
-// The top-level entry points parse_structure_file and parse_any_structure reset the
-// collector on entry and THROW a descriptive Error aggregating the recorded reasons when
-// nothing parses, so failure causes can reach the UI (callers surface error.message).
-// Warnings (element-symbol fallbacks, skipped atoms, ...) never fail a parse; inspect
-// them after any parse call via get_parse_diagnostics().
-export interface ParseDiagnostic {
-  level: `error` | `warn`
-  message: string
-}
+// parse_optimade_json, ...) return `T | null` on failure and record failure reasons in a
+// module-level collector (mirrored to the console). The top-level entry points
+// parse_structure_file and parse_any_structure reset the collector on entry and THROW a
+// descriptive Error aggregating the recorded reasons when nothing parses, so failure
+// causes can reach the UI (callers surface error.message). Warnings (element-symbol
+// fallbacks, skipped atoms, ...) never fail a parse and only go to the console.
+let parse_errors: string[] = []
 
-let parse_diagnostics: ParseDiagnostic[] = []
-
-// @internal debugging aid (not public API): diagnostics since the last top-level parse call
-export const get_parse_diagnostics = (): ParseDiagnostic[] => [...parse_diagnostics]
 const reset_parse_diagnostics = (): void => {
-  parse_diagnostics = []
+  parse_errors = []
 }
-const stringify_error = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 // Record a failure reason; with `error` present, logs in `console.error('msg:', error)` form
 const diag_error = (message: string, error?: unknown): void => {
-  const detail = error === undefined ? `` : `: ${stringify_error(error)}`
-  parse_diagnostics.push({ level: `error`, message: `${message}${detail}` })
+  const detail = error === undefined ? `` : `: ${to_error(error).message}`
+  parse_errors.push(`${message}${detail}`)
   if (error === undefined) console.error(message)
   else console.error(`${message}:`, error)
 }
-const diag_warn = (message: string): void => {
-  parse_diagnostics.push({ level: `warn`, message })
-  console.warn(message)
-}
+const diag_warn = (message: string): void => console.warn(message)
 // Aggregate recorded failure reasons into the Error thrown by top-level entry points
 const aggregate_parse_error = (filename?: string): Error => {
-  const reasons = [
-    ...new Set(
-      parse_diagnostics.filter((diag) => diag.level === `error`).map((diag) => diag.message),
-    ),
-  ]
+  const reasons = [...new Set(parse_errors)]
   const detail = reasons.length ? `: ${reasons.join(`; `)}` : ``
   return new Error(
     `Failed to parse structure${filename ? ` from '${filename}'` : ``}${detail}`,
@@ -1598,9 +1581,7 @@ function extract_optimade_structure_from_raw(raw: unknown): OptimadeStructure | 
 }
 
 const unwrap_data = (value: unknown): unknown =>
-  value && typeof value === `object` && `data` in value
-    ? (value as { data?: unknown }).data
-    : value
+  value && typeof value === `object` && `data` in value ? value.data : value
 
 // Type guard: verify minimal OPTIMADE structure shape
 function is_optimade_structure_object(value: unknown): value is OptimadeStructure {

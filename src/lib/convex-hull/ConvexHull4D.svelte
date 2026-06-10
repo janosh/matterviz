@@ -9,10 +9,8 @@
   } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
   import { sanitize_html } from '$lib/sanitize'
-  import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
-  import Icon from '$lib/Icon.svelte'
-  import { toggle_fullscreen } from '$lib/layout'
-  import { ColorBar, PlotTooltip } from '$lib/plot'
+  import { Spinner } from '$lib/feedback'
+  import { ColorBar } from '$lib/plot'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
@@ -22,15 +20,12 @@
     TETRAHEDRON_VERTICES,
   } from './barycentric-coords'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
-  import ConvexHullControls from './ConvexHullControls.svelte'
-  import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
-  import ConvexHullTooltip from './ConvexHullTooltip.svelte'
+  import ConvexHullChrome from './ConvexHullChrome.svelte'
   import GasPressureControls from './GasPressureControls.svelte'
   import * as helpers from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
-  import StructurePopup from './StructurePopup.svelte'
   import TemperatureSlider from './TemperatureSlider.svelte'
   import type { Point4D } from './thermodynamics'
   import * as thermo from './thermodynamics'
@@ -139,23 +134,10 @@
     set_stable_entries: (value) => stable_entries = value,
     set_unstable_entries: (value) => unstable_entries = value,
   })
-  const has_temp_data = $derived(hull_data.has_temp_data)
-  const available_temperatures = $derived(hull_data.available_temperatures)
-  const gas_analysis = $derived(hull_data.gas_analysis)
   const merged_gas_config = $derived(hull_data.merged_gas_config)
-  const has_precomputed_e_form = $derived(hull_data.has_precomputed_e_form)
-  const has_precomputed_hull = $derived(hull_data.has_precomputed_hull)
-  const can_compute_e_form = $derived(hull_data.can_compute_e_form)
-  const can_compute_hull = $derived(hull_data.can_compute_hull)
-  const energy_mode = $derived(hull_data.energy_mode)
-  const effective_entries = $derived(hull_data.effective_entries)
   const pd_data = $derived(hull_data.pd_data)
-  const polymorph_stats_map = $derived(hull_data.polymorph_stats_map)
   const elements = $derived(hull_data.elements)
-  const max_hull_dist_in_data = $derived(hull_data.max_hull_dist_in_data)
-  const auto_default_threshold = $derived(hull_data.auto_default_threshold)
   const plot_entries = $derived(hull_data.plot_entries)
-  const visible_entries = $derived(hull_data.visible_entries)
 
   // Compute 4D hull for visualization (always compute when we have formation energies)
   const hull_4d = $derived.by(() => {
@@ -197,7 +179,7 @@
     if (elements.length !== 4) return []
     try {
       const coords = compute_4d_coords(pd_data.entries, elements)
-      if (energy_mode !== `on-the-fly` || hull_4d.length === 0) return coords
+      if (hull_data.energy_mode !== `on-the-fly` || hull_4d.length === 0) return coords
 
       // Build 4D points, tracking original indices for mapping hull distances back
       const valid = coords.flatMap((entry, idx) => {
@@ -248,7 +230,7 @@
     ctx: () => ctx,
     set_ctx: (context) => ctx = context,
     set_canvas_dims: (dims) => canvas_dims = dims,
-    visible_entries: () => visible_entries,
+    visible_entries: () => hull_data.visible_entries,
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
     set_selected_entry: (entry) => selected_entry = entry,
@@ -289,28 +271,7 @@
       l: () => show_stable_labels = !show_stable_labels,
     }),
   })
-  const {
-    handle_keydown,
-    handle_file_drop,
-    handle_drag_over,
-    handle_drag_leave,
-    handle_mouse_down,
-    handle_mouse_move,
-    handle_mouse_up,
-    handle_wheel,
-    handle_hover,
-    handle_click,
-    handle_double_click,
-    close_structure_popup,
-    render_once,
-    copy_feedback,
-  } = interactions
-  const is_dragging = $derived(interactions.is_dragging)
-  const hover_data = $derived(interactions.hover_data)
-  const drag_over = $derived(interactions.drag_over)
-  const modal_open = $derived(interactions.modal_open)
-  const selected_structure = $derived(interactions.selected_structure)
-  const modal_place_right = $derived(interactions.modal_place_right)
+  const { render_once } = interactions
   const sorted_points_cache = $derived(interactions.sorted_points_cache)
 
   // Hull face color (customizable via controls)
@@ -344,7 +305,7 @@
 
   // Smart label defaults - hide labels if too many entries
   $effect(() => {
-    const total_entries = effective_entries.length
+    const total_entries = hull_data.effective_entries.length
     if (total_entries > label_threshold) {
       show_stable_labels = false
     } else {
@@ -354,12 +315,9 @@
     show_unstable_labels = false
   })
 
-  // Function to extract structure data from a convex hull entry
-  function extract_structure_from_entry(
-    entry: ConvexHullEntry,
-  ): AnyStructure | null {
-    const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
-    return orig_entry?.structure as AnyStructure || null
+  // function (not const) so the create_canvas_interactions options above can reference it
+  function extract_structure_from_entry(entry: ConvexHullEntry): AnyStructure | null {
+    return helpers.extract_structure_from_entry(entries, entry)
   }
 
   const reset_camera = () => {
@@ -381,7 +339,7 @@
     show_stable_labels = DEFAULTS.convex_hull.quaternary.show_stable_labels
     show_unstable_labels = DEFAULTS.convex_hull.quaternary.show_unstable_labels
     // Use auto-computed threshold based on entry count instead of static default
-    max_hull_dist_show_phases = auto_default_threshold
+    max_hull_dist_show_phases = hull_data.auto_default_threshold
     max_hull_dist_show_labels =
       DEFAULTS.convex_hull.quaternary.max_hull_dist_show_labels
     show_hull_faces = DEFAULTS.convex_hull.quaternary.show_hull_faces
@@ -699,59 +657,16 @@
 
   function draw_data_points(): void {
     if (!ctx || sorted_points_cache.length === 0) return
-
-    for (const { entry, projected } of sorted_points_cache) {
-      const is_stable = helpers.entry_is_stable(entry)
-      const is_entry_highlighted = is_highlighted(entry)
-      const color = get_point_color(entry)
-      const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
-      const marker = entry.marker || `circle`
-
-      // Shadow
-      const shadow_offset = Math.abs(entry.z) * 2 * canvas_dims.scale
-      ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
-      const shadow_path = helpers.create_marker_path(size * 0.8, marker)
-      ctx.save()
-      ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
-      ctx.fill(shadow_path)
-      ctx.restore()
-
-      // Highlights
-      if (selected_entry && entry.entry_id === selected_entry.entry_id) {
-        helpers.draw_selection_highlight(
-          ctx,
-          projected,
-          size,
-          canvas_dims.scale,
-          pulse.time,
-          pulse_opacity,
-        )
-      }
-      if (is_entry_highlighted) {
-        helpers.draw_highlight_effect(
-          ctx,
-          projected,
-          size,
-          canvas_dims.scale,
-          pulse.time,
-          merged_highlight_style,
-        )
-      }
-
-      // Main point with marker symbol
-      ctx.fillStyle =
-        is_entry_highlighted && merged_highlight_style.effect === `color`
-          ? merged_highlight_style.color
-          : color
-      ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
-      ctx.lineWidth = 0.5 * canvas_dims.scale
-      const marker_path = helpers.create_marker_path(size, marker)
-      ctx.save()
-      ctx.translate(projected.x, projected.y)
-      ctx.fill(marker_path)
-      ctx.stroke(marker_path)
-      ctx.restore()
-    }
+    helpers.draw_hull_points(ctx, sorted_points_cache, {
+      scale: canvas_dims.scale,
+      shadow_factor: 2,
+      selected_entry,
+      is_highlighted,
+      get_point_color,
+      highlight_style: merged_highlight_style,
+      pulse_time: pulse.time,
+      pulse_opacity,
+    })
 
     if (!merged_config.show_labels) return
 
@@ -833,27 +748,24 @@
     // tie fullscreen state to this component's own wrapper, not any fullscreen element
     fullscreen = document.fullscreenElement === wrapper
   }}
-  onmousemove={handle_mouse_move}
-  onmouseup={handle_mouse_up}
+  onmousemove={interactions.handle_mouse_move}
+  onmouseup={interactions.handle_mouse_up}
 />
 
 <div
   {...rest}
   class="convex-hull-4d {rest.class ?? ``}"
-  class:dragover={drag_over}
+  class:dragover={interactions.drag_over}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
-  data-has-hover={hover_data !== null}
-  data-is-dragging={is_dragging}
+  data-has-hover={interactions.hover_data !== null}
+  data-is-dragging={interactions.is_dragging}
   data-rotation-x={camera.rotation_x.toFixed(4)}
   data-rotation-y={camera.rotation_y.toFixed(4)}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
-  onkeydown={handle_keydown}
-  ondrop={handle_file_drop}
-  ondragover={handle_drag_over}
-  ondragleave={handle_drag_leave}
+  {...interactions.wrapper_handlers}
   aria-label="Convex hull visualization"
 >
   {@render children?.({
@@ -870,12 +782,7 @@
     bind:this={canvas}
     tabindex="0"
     aria-label={merged_controls.title || phase_stats?.chemical_system || `4D Convex Hull`}
-    onmousedown={handle_mouse_down}
-    onmousemove={handle_hover}
-    onclick={handle_click}
-    onkeydown={handle_keydown}
-    ondblclick={handle_double_click}
-    onwheel={handle_wheel}
+    {...interactions.canvas_handlers}
   ></canvas>
 
   {#if entries.length === 0}
@@ -887,14 +794,9 @@
 
   <!-- Energy above hull Color Bar -->
   {#if color_mode === `energy` && plot_entries.length > 0}
-    {@const hull_distances = plot_entries
-      .map((entry) => entry.e_above_hull)
-      .filter((val): val is number => typeof val === `number`)}
-    {@const min_energy = hull_distances.length > 0 ? Math.min(...hull_distances) : 0}
-    {@const max_energy = hull_distances.length > 0 ? Math.max(...hull_distances, 0.1) : 0.1}
     <ColorBar
       title="Energy above hull (eV/atom)"
-      range={[min_energy, max_energy]}
+      range={helpers.hull_distance_range(plot_entries)}
       {color_scale}
       wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
       bar_style="height: 12px;"
@@ -902,92 +804,50 @@
     />
   {/if}
 
-  <!-- Control buttons (top-right corner like Structure.svelte) -->
-  {#if controls_config.mode !== `never`}
-    <section class="control-buttons {controls_config.class}">
-      {#if controls_config.visible(`reset`)}
-        <button
-          type="button"
-          onclick={reset_all}
-          title="Reset camera view (R key)"
-          class="reset-camera-btn"
-        >
-          <Icon icon="Reset" />
-        </button>
-      {/if}
+  <!-- Toolbar + tooltip/copy-feedback/drag/structure-popup chrome -->
+  <ConvexHullChrome
+    {interactions}
+    {hull_data}
+    {controls_config}
+    {reset_all}
+    reset_title="Reset camera view (R key)"
+    {enable_info_pane}
+    {phase_stats}
+    {label_threshold}
+    {fullscreen}
+    {fullscreen_toggle}
+    {wrapper}
+    {camera}
+    {merged_controls}
+    {stable_entries}
+    {unstable_entries}
+    {get_point_color}
+    {merged_highlight_style}
+    {is_highlighted}
+    {tooltip}
+    {selected_entry}
+    bind:show_hull_faces
+    bind:hull_face_color
+    bind:hull_face_opacity
+    bind:hull_face_color_mode
+    bind:info_pane_open
+    bind:controls_open
+    bind:color_mode
+    bind:color_scale
+    bind:show_stable
+    bind:show_unstable
+    bind:show_stable_labels
+    bind:show_unstable_labels
+    bind:max_hull_dist_show_phases
+    bind:max_hull_dist_show_labels
+    bind:energy_source_mode
+  />
 
-      {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
-        <ConvexHullInfoPane
-          bind:pane_open={info_pane_open}
-          {phase_stats}
-          {stable_entries}
-          {unstable_entries}
-          {show_stable}
-          {show_unstable}
-          {max_hull_dist_show_phases}
-          {max_hull_dist_show_labels}
-          {label_threshold}
-          toggle_props={{ class: `info-btn` }}
-        />
-      {/if}
-
-      {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-        <button
-          type="button"
-          onclick={() => toggle_fullscreen(wrapper)}
-          title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-          class="fullscreen-btn"
-        >
-          {#if typeof fullscreen_toggle === `function`}
-            {@render fullscreen_toggle({ fullscreen })}
-          {:else}
-            <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-          {/if}
-        </button>
-      {/if}
-
-      <!-- Legend controls pane -->
-      {#if controls_config.visible(`controls`)}
-        <ConvexHullControls
-          bind:controls_open
-          bind:color_mode
-          bind:color_scale
-          bind:show_stable
-          bind:show_unstable
-          bind:show_stable_labels
-          bind:show_unstable_labels
-          bind:max_hull_dist_show_phases
-          bind:max_hull_dist_show_labels
-          {max_hull_dist_in_data}
-          {stable_entries}
-          {unstable_entries}
-          {camera}
-          {merged_controls}
-          toggle_props={{ class: `legend-controls-btn` }}
-          {show_hull_faces}
-          on_hull_faces_change={(value: boolean) => show_hull_faces = value}
-          {hull_face_color}
-          on_hull_face_color_change={(value: string) => hull_face_color = value}
-          {hull_face_opacity}
-          on_hull_face_opacity_change={(value: number) => hull_face_opacity = value}
-          {hull_face_color_mode}
-          on_hull_face_color_mode_change={(value: HullFaceColorMode) =>
-            hull_face_color_mode = value}
-          bind:energy_source_mode
-          {has_precomputed_e_form}
-          {can_compute_e_form}
-          {has_precomputed_hull}
-          {can_compute_hull}
-        />
-      {/if}
-    </section>
+  {#if hull_data.has_temp_data && temperature !== undefined}
+    <TemperatureSlider available_temperatures={hull_data.available_temperatures} bind:temperature />
   {/if}
 
-  {#if has_temp_data && temperature !== undefined}
-    <TemperatureSlider {available_temperatures} bind:temperature />
-  {/if}
-
-  {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
+  {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
     <GasPressureControls
       config={merged_gas_config}
       bind:pressures={gas_pressures}
@@ -995,48 +855,6 @@
     />
   {/if}
 
-  <!-- Hover tooltip -->
-  {#if hover_data}
-    {@const { entry, position } = hover_data}
-    {@const entry_highlight = is_highlighted(entry) ? merged_highlight_style : undefined}
-    {@const tooltip_style =
-      `z-index: ${CONVEX_HULL_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);`}
-    <PlotTooltip
-      x={position.x}
-      y={position.y}
-      offset={{ x: 10, y: -10 }}
-      bg_color={get_point_color(entry)}
-      fixed
-      style={tooltip_style}
-    >
-      <ConvexHullTooltip
-        {entry}
-        {polymorph_stats_map}
-        highlight_style={entry_highlight}
-        {tooltip}
-      />
-    </PlotTooltip>
-  {/if}
-
-  <!-- Copy-to-clipboard feedback (double-click on point) -->
-  <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
-
-  <!-- Drag over overlay -->
-  <DragOverlay visible={drag_over} />
-
-  {#if modal_open && selected_structure}
-    <StructurePopup
-      structure={selected_structure}
-      place_right={modal_place_right}
-      stats={{
-        id: selected_entry?.entry_id,
-        e_above_hull: selected_entry?.e_above_hull,
-        e_form: selected_entry?.e_form_per_atom,
-      }}
-      onclose={close_structure_popup}
-    />
-  {/if}
 </div>
 
 <style>
@@ -1063,43 +881,5 @@
   }
   canvas:active {
     cursor: grabbing;
-  }
-  .control-buttons {
-    position: absolute;
-    top: 1ex;
-    right: 1ex;
-    display: flex;
-    gap: 8px;
-    transition: opacity 0.2s ease-in-out;
-  }
-  .control-buttons.hover-visible {
-    opacity: 0;
-    pointer-events: none;
-  }
-  .convex-hull-4d:hover .control-buttons.hover-visible,
-  .convex-hull-4d:focus-within .control-buttons.hover-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .control-buttons.always-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .control-buttons :global(.draggable-pane) {
-    z-index: 1001 !important;
-  }
-  .control-buttons :global(button) {
-    background: transparent;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    border-radius: 3px;
-    color: var(--text-color, currentColor);
-    transition: background-color 0.2s;
-    display: flex;
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
-  }
-  .control-buttons :global(button):hover {
-    background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
 </style>

@@ -299,6 +299,7 @@
     site_label_bg_color?: string
     site_label_color?: string
     site_label_padding?: number
+    camera_is_moving?: boolean // bindable: true while orbit controls are active
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -1578,7 +1579,8 @@
     onstart_extra: () => {
       cancel_atom_hover_clear()
       hovered_idx = null
-      bond_context_menu = null
+      hovered_bond_key = null
+      close_bond_context_menu()
     },
   }))
 
@@ -2322,10 +2324,6 @@
 </T.Group>
 
 <style>
-  :global(.structure .responsive-gizmo) {
-    width: clamp(70px, 18cqmin, 100px) !important;
-    height: clamp(70px, 18cqmin, 100px) !important;
-  }
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border: 0;
