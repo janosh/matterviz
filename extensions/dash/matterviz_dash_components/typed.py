@@ -585,6 +585,8 @@ class ConvexHull2D(MatterViz):
     Events: on_point_click, on_point_hover, on_file_drop
 
     Unsupported snippets: children
+
+    Explicit None for entry_category is forwarded as JS null (omit the kwarg to keep the JS-side default)
     """
 
     def __init__(
@@ -734,6 +736,8 @@ class ConvexHull3D(MatterViz):
     Events: on_point_click, on_point_hover, on_file_drop
 
     Unsupported snippets: children
+
+    Explicit None for entry_category is forwarded as JS null (omit the kwarg to keep the JS-side default)
     """
 
     def __init__(
@@ -892,6 +896,8 @@ class ConvexHull4D(MatterViz):
     Events: on_point_click, on_point_hover, on_file_drop
 
     Unsupported snippets: children
+
+    Explicit None for entry_category is forwarded as JS null (omit the kwarg to keep the JS-side default)
     """
 
     def __init__(

@@ -94,10 +94,11 @@ function normalize_category_value(raw: unknown, config: EntryCategoryConfig): st
   return alias && alias in config.markers ? alias : null
 }
 
-// Resolve an entry's category: first *recognized* value wins, checking each config
-// property top-level, then in the pymatgen `data` and Materials Project `attributes`
-// dicts. Unrecognized values (e.g. MP's ordering='Unknown') fall through to later
-// sources; returns null when none resolve.
+// Resolve an entry's category: first *recognized* value wins. Properties are checked in
+// config order (property-major), each looked up top-level, then in the pymatgen `data`
+// and Materials Project `attributes` dicts — so a `magnetic_ordering` in any source
+// beats a generic `ordering`. Unrecognized values (e.g. MP's ordering='Unknown') fall
+// through; returns null when none resolve.
 export function get_entry_category(
   entry: CategorySource,
   config: EntryCategoryConfig | null | undefined,

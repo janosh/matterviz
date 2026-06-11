@@ -689,6 +689,11 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             lines.append(f"\n    Events: {', '.join(callback_props)}")
         if snippet_props:
             lines.append(f"\n    Unsupported snippets: {', '.join(snippet_props)}")
+        if forward_none_props:
+            lines.append(
+                f"\n    Explicit None for {', '.join(sorted(forward_none_props))} is "
+                "forwarded as JS null (omit the kwarg to keep the JS-side default)"
+            )
         lines.append('    """')
         lines.append("")
 
