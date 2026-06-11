@@ -51,6 +51,7 @@
     LabelPlacement,
   } from './types'
   import { compute_hull_stability } from './helpers'
+  import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   let {
     entries = [],
@@ -66,6 +67,8 @@
     label_threshold = 50,
     show_stable = $bindable(DEFAULTS.convex_hull.ternary.show_stable),
     show_unstable = $bindable(DEFAULTS.convex_hull.ternary.show_unstable),
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
+    hidden_categories = $bindable([]),
     show_hull_faces = $bindable(DEFAULTS.convex_hull.ternary.show_hull_faces),
     hull_face_opacity = $bindable(DEFAULTS.convex_hull.ternary.hull_face_opacity),
     hull_face_color_mode = $bindable(
@@ -135,6 +138,8 @@
     max_hull_dist_show_phases: () => max_hull_dist_show_phases,
     show_stable: () => show_stable,
     show_unstable: () => show_unstable,
+    entry_category: () => entry_category,
+    hidden_categories: () => hidden_categories,
     keep_plot_entry: (entry, max_dist) => (entry.e_above_hull ?? 0) <= max_dist,
     set_temperature: (next_temp) => temperature = next_temp,
     set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
@@ -335,6 +340,7 @@
     on_point_click: () => on_point_click,
     on_point_hover: () => on_point_hover,
     on_file_drop: () => on_file_drop,
+    entry_category: () => entry_category,
     zoom: () => camera.zoom,
     set_zoom: (zoom) => camera.zoom = zoom,
     project_point: project_3d_point,
@@ -395,7 +401,7 @@
   // Re-render when important state changes
   $effect(() => {
     // oxfmt-ignore
-    void [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, text_color] // track reactively
+    void [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, text_color] // track reactively
 
     render_once()
   })
@@ -415,6 +421,7 @@
     color_scale = DEFAULTS.convex_hull.ternary.color_scale as D3InterpolateName
     show_stable = DEFAULTS.convex_hull.ternary.show_stable
     show_unstable = DEFAULTS.convex_hull.ternary.show_unstable
+    hidden_categories = []
     show_stable_labels = DEFAULTS.convex_hull.ternary.show_stable_labels
     show_unstable_labels = DEFAULTS.convex_hull.ternary.show_unstable_labels
     max_hull_dist_show_labels = DEFAULTS.convex_hull.ternary.max_hull_dist_show_labels
@@ -1148,6 +1155,8 @@
     bind:color_scale
     bind:show_stable
     bind:show_unstable
+    {entry_category}
+    bind:hidden_categories
     bind:show_stable_labels
     bind:show_unstable_labels
     bind:max_hull_dist_show_phases

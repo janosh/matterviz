@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { IS_CI } from '../helpers'
 import { dom_click, get_canvas_hash, open_controls_pane, open_info_pane } from './utils'
 
@@ -61,6 +62,63 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
       }
       await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     }
+  })
+
+  test(`magnetic category toggle re-renders canvas (hide + restore)`, async ({ page }) => {
+    // Isolated perf page: synthetic magnetic data, single hull, fast + deterministic.
+    // Guards the visible_entries dep in the 3D re-render effect — without it the canvas
+    // silently freezes when category (or stable/unstable) visibility toggles change.
+    test.setTimeout(45000)
+    await page.goto(`/test/convex-hull-performance?dim=3d&count=60&magnetic=true`, {
+      waitUntil: `networkidle`,
+      timeout: 15000,
+    })
+    const diagram = page.locator(`.convex-hull-3d`)
+    const canvas = diagram.locator(`canvas`).first()
+    await expect(canvas).toBeVisible()
+
+    // Wait until the canvas bitmap is stable for 3 consecutive samples (late label/
+    // font/resize passes drift pixels for a few seconds after first paint)
+    const wait_for_stable_canvas = async (): Promise<string> => {
+      let [hash, consecutive_equal] = [await get_canvas_hash(canvas), 0]
+      await expect
+        .poll(
+          async () => {
+            const next_hash = await get_canvas_hash(canvas)
+            consecutive_equal = next_hash === hash ? consecutive_equal + 1 : 0
+            hash = next_hash
+            return consecutive_equal
+          },
+          { timeout: 20000, intervals: [500] },
+        )
+        .toBeGreaterThanOrEqual(3)
+      return hash
+    }
+    await wait_for_stable_canvas()
+
+    const controls = await open_controls_pane(page, diagram)
+    await expect(controls.getByText(`Magnetic`, { exact: true })).toBeVisible()
+    const toggles = controls.locator(`.category-filters .legend-item`)
+    await expect(toggles).toHaveCount(Object.keys(MAGNETIC_ORDERING_CATEGORY.markers).length)
+    const fm_toggle = toggles.filter({ hasText: /\bFM \(/ }).first()
+
+    // Warm-up toggle cycle: the very first re-render can differ from the initial paint
+    // (font/text settling), so flush it before capturing the comparison baseline
+    await dom_click(fm_toggle)
+    await dom_click(fm_toggle)
+    await expect(fm_toggle).toHaveAttribute(`aria-pressed`, `true`)
+    const hash_before = await wait_for_stable_canvas()
+
+    // Hide FM -> canvas must redraw with fewer points. get_canvas_hash reads the canvas
+    // bitmap directly, so the opened controls pane overlay cannot pollute the comparison.
+    await dom_click(fm_toggle)
+    await expect(fm_toggle).toHaveAttribute(`aria-pressed`, `false`)
+    await expect.poll(() => get_canvas_hash(canvas), { timeout: 10000 }).not.toBe(hash_before)
+
+    // Re-show FM -> canvas restored to the exact original pixels
+    await dom_click(fm_toggle)
+    await expect(fm_toggle).toHaveAttribute(`aria-pressed`, `true`)
+    await expect.poll(() => get_canvas_hash(canvas), { timeout: 10000 }).toBe(hash_before)
   })
 
   test(`renders ternary diagram canvas and toggles hull faces`, async ({ page }) => {

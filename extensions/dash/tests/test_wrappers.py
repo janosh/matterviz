@@ -26,6 +26,11 @@ class TestMatterVizBase:
         assert comp.id == "test"
         assert comp.component == "Structure"
 
+    def test_instantiation_without_id(self) -> None:
+        """MatterViz omits absent id instead of forwarding id=None."""
+        comp = MatterViz(component="Structure")
+        assert comp.component == "Structure"
+
     def test_mv_props_forwarded(self) -> None:
         """mv_props dict is forwarded correctly."""
         comp = MatterViz(
@@ -114,6 +119,25 @@ class TestComponentInstantiation:
         comp = MatterViz(id="test", component=component, mv_props=mv_props)
         assert comp.component == component
         assert comp.mv_props == mv_props
+
+    @pytest.mark.parametrize(
+        "wrapper",
+        [mvc.ConvexHull2D, mvc.ConvexHull3D, mvc.ConvexHull4D],
+    )
+    def test_convex_hull_category_props_forwarded(self, wrapper: type) -> None:
+        """Typed convex hull wrappers forward category props."""
+        omitted = wrapper(entries=[])
+        assert "entry_category" not in omitted.mv_props
+        assert "hidden_categories" not in omitted.mv_props
+
+        configured = wrapper(
+            entries=[], entry_category=None, hidden_categories=["FM", "NM"]
+        )
+        assert configured.mv_props["entry_category"] is None
+        assert configured.mv_props["hidden_categories"] == ["FM", "NM"]
+
+        empty_hidden = wrapper(entries=[], hidden_categories=[])
+        assert empty_hidden.mv_props["hidden_categories"] == []
 
 
 class TestModuleExports:

@@ -71,21 +71,20 @@ class MatterViz(Component):
     @_explicitize_args
     def __init__(
         self,
-        id=None,
-        component=None,
-        mv_props=None,
-        set_props=None,
-        float32_props=None,
-        event_props=None,
-        last_event=None,
-        className=None,
-        style=None,
-        _explicit_args=None,
-        **kwargs,
-    ):
+        id: str | dict[str, str | int | float | bool] | None = None,
+        component: str | None = None,
+        mv_props: dict[str, object] | None = None,
+        set_props: list[str] | None = None,
+        float32_props: list[str] | None = None,
+        event_props: list[str] | None = None,
+        last_event: dict[str, object] | None = None,
+        className: str | None = None,
+        style: dict[str, object] | None = None,
+        _explicit_args: list[str] | None = None,
+        **kwargs: object,
+    ) -> None:
         # _explicit_args is injected by @_explicitize_args decorator and captured above.
-        super().__init__(
-            id=id,
+        props = dict(
             component=component,
             mv_props=mv_props,
             set_props=set_props,
@@ -96,3 +95,6 @@ class MatterViz(Component):
             style=style,
             **kwargs,
         )
+        if id is not None:
+            props["id"] = id
+        super().__init__(**props)

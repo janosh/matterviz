@@ -6,7 +6,9 @@
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import ConvexHullStats from './ConvexHullStats.svelte'
-  import type { ConvexHullEntry, PhaseStats } from './types'
+  import { visible_entries as filter_visible } from './helpers'
+  import type { ConvexHullEntry, EntryCategoryConfig, PhaseStats } from './types'
+  import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   const usage_tips = [
     { label: `Single click`, value: `Select point`, key: `tip-click` },
@@ -26,6 +28,8 @@
     unstable_entries,
     show_stable = true,
     show_unstable = true,
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
+    hidden_categories = [],
     max_hull_dist_show_phases,
     max_hull_dist_show_labels,
     label_threshold,
@@ -39,6 +43,8 @@
     unstable_entries: ConvexHullEntry[]
     show_stable?: boolean
     show_unstable?: boolean
+    entry_category?: EntryCategoryConfig | null
+    hidden_categories?: string[]
     max_hull_dist_show_phases: number
     max_hull_dist_show_labels: number
     label_threshold: number
@@ -47,15 +53,19 @@
     pane_props?: PaneProps
   } = $props()
 
+  // Show flags true: filter_visible only applies the category filter here
+  const count_visible = (entries: ConvexHullEntry[], shown: boolean): number =>
+    shown ? filter_visible(entries, true, true, entry_category, hidden_categories).length : 0
+
   let settings_rows = $derived([
     {
       label: `Visible stable`,
-      value: `${show_stable ? stable_entries.length : 0} / ${stable_entries.length}`,
+      value: `${count_visible(stable_entries, show_stable)} / ${stable_entries.length}`,
       key: `hull-visible-stable`,
     },
     {
       label: `Visible unstable`,
-      value: `${show_unstable ? unstable_entries.length : 0} / ${unstable_entries.length}`,
+      value: `${count_visible(unstable_entries, show_unstable)} / ${unstable_entries.length}`,
       key: `hull-visible-unstable`,
     },
     {
@@ -112,6 +122,8 @@
     {unstable_entries}
     {show_stable}
     {show_unstable}
+    {entry_category}
+    {hidden_categories}
     style="padding: 3pt; background: var(--pane-bg); --hull-stats-table-height: 30rem"
   />
 

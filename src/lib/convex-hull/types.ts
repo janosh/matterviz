@@ -48,6 +48,45 @@ export interface PhaseData {
 
   // Materials Project-specific fields (optional)
   attributes?: Record<string, unknown>
+
+  // Magnetic ordering (optional). Free-form strings (e.g. 'ferromagnetic') are
+  // normalized via MAGNETIC_ORDERING_CATEGORY aliases; unrecognized values are ignored.
+  magnetic_ordering?: MagneticOrdering | (string & {})
+}
+
+// === Entry categories (generic categorical classification) ===
+
+// Categorical classification of hull entries, rendered as distinct marker shapes with
+// show/hide filter toggles in the controls pane. Works for any categorical property:
+// magnetic orderings (see MAGNETIC_ORDERING_CATEGORY, the default), electronic classes,
+// crystallinity, defect types, etc.
+export interface EntryCategoryConfig {
+  label: string // controls-pane row + tooltip label, e.g. 'Magnetic', 'Electronic', 'Structure'
+  // Entry properties holding the category value, checked in order. Each property is
+  // looked up top-level, then in the pymatgen `data` and MP `attributes` dicts.
+  property: string | string[]
+  // Category value -> marker shape. Key order defines toggle display order. Raw values
+  // match case-insensitively; unrecognized values are ignored (default marker, never
+  // filtered). Explicit entry.marker values take precedence over this mapping.
+  markers: Record<string, MarkerSymbol>
+  labels?: Record<string, string> // optional long names for toggle/tooltip hints
+  aliases?: Record<string, string> // lowercase alias -> canonical value, e.g. { ferromagnetic: 'FM' }
+}
+
+// Magnetic ordering classifications (matching Materials Project conventions)
+export type MagneticOrdering = `FM` | `FiM` | `AFM` | `NM`
+
+// Built-in preset for magnetic orderings (MP/pymatgen conventions) and the default
+// entry_category of all convex hull components: entries carrying magnetic_ordering
+// (or an MP-style `ordering` field) auto-render as shape-coded points with filter toggles
+export const MAGNETIC_ORDERING_CATEGORY: EntryCategoryConfig = {
+  label: `Magnetic`,
+  property: [`magnetic_ordering`, `ordering`],
+  markers: { FM: `triangle`, FiM: `diamond`, AFM: `square`, NM: `circle` },
+  // oxfmt-ignore
+  labels: { FM: `Ferromagnetic`, FiM: `Ferrimagnetic`, AFM: `Antiferromagnetic`, NM: `Non-magnetic` },
+  // oxfmt-ignore
+  aliases: { ferromagnetic: `FM`, ferrimagnetic: `FiM`, antiferromagnetic: `AFM`, 'non-magnetic': `NM`, nonmagnetic: `NM`, diamagnetic: `NM` },
 }
 
 // Processed phase data for convex hull calculations

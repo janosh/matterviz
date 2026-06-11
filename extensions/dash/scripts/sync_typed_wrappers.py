@@ -8,10 +8,9 @@ This script adds *typed* Python wrappers (subclasses of MatterViz) for IDE disco
 
 How props are discovered
 ------------------------
-The MatterViz npm package ships TypeScript declaration files next to its compiled Svelte
-components:
+MatterViz ships TypeScript declaration files next to its compiled Svelte components:
 
-  node_modules/matterviz/dist/**/<Component>.svelte.d.ts
+  <matterviz-dist>/**/<Component>.svelte.d.ts
 
 These contain a `type $$ComponentProps = ...` (often) or a `type Props = ...` plus a Svelte
 component declaration like:
@@ -29,7 +28,7 @@ Usage
 -----
   python scripts/sync_typed_wrappers.py \
       --manifest component_manifest.toml \
-      --matterviz-dist node_modules/matterviz/dist \
+      --matterviz-dist ../../dist \
       --out matterviz_dash_components/typed.py
 """
 
@@ -617,6 +616,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         "",
         "from .MatterViz import MatterViz",
         "",
+        "_UNSET = object()",
+        "",
     ]
 
     for class_name, spec in components.items():
@@ -662,6 +663,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         default_float32_props = spec.get("float32_props", auto_float32)
         alias_overrides = spec.get("aliases", {}) or {}
         type_hints = spec.get("type_hints", {}) or {}
+        forward_none_props = set(spec.get("forward_none_props", []))
 
         # Build python->js mapping with unique identifiers
         py_to_js: dict[str, str] = {}
@@ -686,6 +688,11 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             lines.append(f"\n    Events: {', '.join(callback_props)}")
         if snippet_props:
             lines.append(f"\n    Unsupported snippets: {', '.join(snippet_props)}")
+        if forward_none_props:
+            lines.append(
+                f"\n    Explicit None for {', '.join(sorted(forward_none_props))} is "
+                "forwarded as JS null (omit the kwarg to keep the JS-side default)"
+            )
         lines.append('    """')
         lines.append("")
 
@@ -703,7 +710,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             # Avoid duplicate None when type hint already includes it
             if "None" not in py_type:
                 py_type += " | None"
-            sig.append(f"{py}: {py_type} = None")
+            default = "_UNSET" if js in forward_none_props else "None"
+            sig.append(f"{py}: {py_type} = {default}")
         sig += [
             "mv_props: dict | None = None",
             "set_props: list[str] | None = None",
@@ -720,7 +728,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         lines.append("        if mv_props is None:")
         lines.append("            mv_props = {}")
         for py, js in py_to_js.items():
-            lines.append(f"        if {py} is not None:")
+            sentinel = "_UNSET" if js in forward_none_props else "None"
+            lines.append(f"        if {py} is not {sentinel}:")
             lines.append(f'            mv_props["{js}"] = {py}')
         if default_set_props:
             lines.append("        if set_props is None:")
@@ -752,14 +761,17 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
 def main() -> None:
     """CLI entry point for generating typed wrappers."""
-    # Path to extensions/dash/ directory (parent of scripts/)
-    dash_root = os.path.dirname(os.path.dirname(__file__))
+    # Path to extensions/dash/ directory (parent of scripts/). abspath keeps the derived
+    # defaults cwd-independent even where __file__ is relative (e.g. some import modes).
+    dash_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", default=f"{dash_root}/component_manifest.toml")
-    ap.add_argument(
-        "--matterviz-dist", default=f"{dash_root}/node_modules/matterviz/dist"
-    )
+    # Default to the repo's own build output (what CI uses), NOT the copy under
+    # extensions/dash/node_modules: pnpm snapshots the `file:../..` dependency at
+    # install time, so that copy silently goes stale as repo components evolve.
+    repo_root = os.path.dirname(os.path.dirname(dash_root))
+    ap.add_argument("--matterviz-dist", default=f"{repo_root}/dist")
     ap.add_argument("--out", default=f"{dash_root}/matterviz_dash_components/typed.py")
     ap.add_argument(
         "--check",
@@ -776,7 +788,9 @@ def main() -> None:
         raise SystemExit(f"Manifest not found: {manifest_path}")
     if not os.path.isdir(dist_dir):
         raise SystemExit(
-            f"MatterViz dist not found: {dist_dir}\nRun `pnpm install` first."
+            f"MatterViz dist not found: {dist_dir}\n"
+            "Build it with `pnpm package:dist` at the repo root (or pass "
+            "--matterviz-dist pointing at a built matterviz dist directory)."
         )
 
     with open(manifest_path, encoding="utf-8") as fh:

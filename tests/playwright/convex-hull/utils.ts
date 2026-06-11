@@ -10,9 +10,9 @@ export async function ensure_pane_visible(pane: Locator, opener_btn: Locator): P
   }
 }
 
-// Robustly open a DraggablePane via direct DOM manipulation.
-// (Svelte 5's event delegation prevents programmatic .click() from toggling state,
-// so we bypass Svelte and set display + class directly.)
+// Open a DraggablePane by mirroring the DOM state it has after a successful toggle.
+// Programmatic clicks can miss delegated Svelte handlers in these tests, so direct DOM
+// updates avoid flaky pane-opening setup.
 async function open_pane(
   page: Page,
   diagram: Locator,
@@ -22,7 +22,7 @@ async function open_pane(
   const pane = diagram.locator(`.draggable-pane.${pane_selector}`)
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    // Force-open via DOM: set display and add class, matching DraggablePane's show=true state
+    // Match DraggablePane's open state closely enough for visibility checks.
     await diagram.evaluate(
       (el, { sel, toggle_sel }) => {
         const pane_el = el.querySelector(`.${sel}`) as HTMLElement
@@ -70,23 +70,24 @@ export async function open_info_and_controls(
   return { info, controls }
 }
 
-// Simple pixel hash of a canvas — sum of every 100th pixel's red channel
+// Position-sensitive rolling hash over every 4th canvas pixel. The previous
+// sum-of-every-100th-pixel hash only sampled 8 fixed columns (stride 100 pixels in
+// row-major order), so small marker changes between those columns went undetected.
 export const get_canvas_hash = (canvas: Locator): Promise<string> =>
   canvas.evaluate((el) => {
     const ctx = (el as HTMLCanvasElement).getContext(`2d`)
     if (!ctx) return ``
     const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
     let hash = 0
-    for (let idx = 0; idx < data.length; idx += 400) hash += data[idx]
+    // Math.imul wraps to 32 bits, keeping the rolling hash in safe-integer range
+    for (let idx = 0; idx < data.length; idx += 16) {
+      hash = Math.imul(hash, 31) + data[idx]
+    }
     return hash.toString()
   })
 
-export async function dom_click(target: Locator): Promise<void> {
-  const handle = await target.elementHandle()
-  if (handle) {
-    await handle.evaluate((btn) => (btn as HTMLButtonElement).click())
-    await handle.dispose()
-  } else {
-    await target.click({ force: true })
-  }
-}
+// Single protocol round-trip (locator.evaluate auto-waits for the element). The previous
+// elementHandle -> evaluate -> dispose dance took 3 round-trips, which stalled for 80+ s
+// on main-thread-saturated pages (10+ canvases with rAF pulse loops on the demo page).
+export const dom_click = (target: Locator): Promise<void> =>
+  target.evaluate((el) => (el as HTMLElement).click())

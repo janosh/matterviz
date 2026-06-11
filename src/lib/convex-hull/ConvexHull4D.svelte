@@ -35,6 +35,7 @@
     HullFaceColorMode,
     PhaseData,
   } from './types'
+  import { MAGNETIC_ORDERING_CATEGORY } from './types'
   import { compute_hull_stability } from './helpers'
 
   let {
@@ -51,6 +52,8 @@
     label_threshold = 50,
     show_stable = $bindable(DEFAULTS.convex_hull.quaternary.show_stable),
     show_unstable = $bindable(DEFAULTS.convex_hull.quaternary.show_unstable),
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
+    hidden_categories = $bindable([]),
     show_hull_faces = $bindable(DEFAULTS.convex_hull.quaternary.show_hull_faces),
     hull_face_opacity = $bindable(DEFAULTS.convex_hull.quaternary.hull_face_opacity),
     hull_face_color_mode = $bindable(
@@ -126,6 +129,8 @@
     max_hull_dist_show_phases: () => max_hull_dist_show_phases,
     show_stable: () => show_stable,
     show_unstable: () => show_unstable,
+    entry_category: () => entry_category,
+    hidden_categories: () => hidden_categories,
     // Always include stable entries and elemental reference points
     keep_plot_entry: (entry, max_dist) =>
       helpers.entry_is_stable(entry) ||
@@ -241,6 +246,7 @@
     on_point_click: () => on_point_click,
     on_point_hover: () => on_point_hover,
     on_file_drop: () => on_file_drop,
+    entry_category: () => entry_category,
     zoom: () => camera.zoom,
     set_zoom: (zoom) => camera.zoom = zoom,
     project_point: project_3d_point,
@@ -297,7 +303,7 @@
   // Re-render when important state changes
   $effect(() => {
     // oxfmt-ignore
-    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, elements] // track reactively
+    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, elements] // track reactively
 
     render_once()
   })
@@ -336,6 +342,7 @@
     color_scale = DEFAULTS.convex_hull.quaternary.color_scale as D3InterpolateName
     show_stable = DEFAULTS.convex_hull.quaternary.show_stable
     show_unstable = DEFAULTS.convex_hull.quaternary.show_unstable
+    hidden_categories = []
     show_stable_labels = DEFAULTS.convex_hull.quaternary.show_stable_labels
     show_unstable_labels = DEFAULTS.convex_hull.quaternary.show_unstable_labels
     // Use auto-computed threshold based on entry count instead of static default
@@ -836,6 +843,8 @@
     bind:color_scale
     bind:show_stable
     bind:show_unstable
+    {entry_category}
+    bind:hidden_categories
     bind:show_stable_labels
     bind:show_unstable_labels
     bind:max_hull_dist_show_phases

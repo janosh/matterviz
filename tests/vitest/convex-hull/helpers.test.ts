@@ -3,6 +3,7 @@ import type { D3InterpolateName } from '$lib/colors'
 import * as helpers from '$lib/convex-hull/helpers'
 import { get_convex_hull_stats } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
+import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 class MockPath2D {
@@ -997,5 +998,119 @@ describe(`helpers: temperature interpolation`, () => {
       const with_order = helpers.get_entry_label(entry, [`Li`, `Fe`, `O`])
       expect(with_order).toBe(`Li2FeO3`)
     })
+  })
+})
+
+describe(`helpers: entry categories (magnetic preset)`, () => {
+  const mag_entry = (overrides: Partial<PhaseData> = {}): PhaseData => ({
+    composition: { Fe: 1, O: 1 },
+    energy: -1,
+    ...overrides,
+  })
+  const magnetic = MAGNETIC_ORDERING_CATEGORY
+  const cat = (entry: PhaseData) => helpers.get_entry_category(entry, magnetic)
+
+  // oxfmt-ignore
+  test.each([
+    [`FM`, `FM`], [`fm`, `FM`], [` Ferromagnetic `, `FM`], [`FiM`, `FiM`],
+    [`ferrimagnetic`, `FiM`], [`AFM`, `AFM`], [`Antiferromagnetic`, `AFM`], [`NM`, `NM`],
+    [`non-magnetic`, `NM`], [`nonmagnetic`, `NM`], [`diamagnetic`, `NM`],
+    [`Unknown`, null], [``, null],
+  ] as const)(`magnetic preset normalizes '%s' to %s`, (raw, expected) => {
+    expect(cat(mag_entry({ magnetic_ordering: raw }))).toBe(expected)
+  })
+
+  // oxfmt-ignore
+  test.each([
+    [`no magnetic fields`, mag_entry(), null],
+    [`non-string field`, mag_entry({ data: { ordering: 42 } }), null],
+    [`data.magnetic_ordering`, mag_entry({ data: { magnetic_ordering: `AFM` } }), `AFM`],
+    [`data.ordering (MP convention)`, mag_entry({ data: { ordering: `FiM` } }), `FiM`],
+    [`attributes.magnetic_ordering`, mag_entry({ attributes: { magnetic_ordering: `NM` } }), `NM`],
+    [`attributes.ordering`, mag_entry({ attributes: { ordering: `fm` } }), `FM`],
+    [`top-level field winning over data dict`, mag_entry({ magnetic_ordering: `FM`, data: { ordering: `AFM` } }), `FM`],
+    [`unrecognized top-level falling through to data`, mag_entry({ magnetic_ordering: `Unknown`, data: { ordering: `AFM` } }), `AFM`],
+    [`property order beats source order`, mag_entry({ ordering: `FM`, data: { magnetic_ordering: `AFM` } } as Partial<PhaseData>), `AFM`],
+  ] as [string, PhaseData, string | null][])(
+    `get_entry_category reads %s`,
+    (_desc, entry, expected) => expect(cat(entry)).toBe(expected),
+  )
+
+  test(`apply_category_markers assigns shapes by ordering, respects explicit markers`, () => {
+    const entries = [
+      mag_entry({ magnetic_ordering: `FM` }),
+      mag_entry({ magnetic_ordering: `FiM` }),
+      mag_entry({ magnetic_ordering: `AFM` }),
+      mag_entry({ magnetic_ordering: `NM` }),
+      { ...mag_entry({ magnetic_ordering: `FM` }), marker: `star` as const },
+      mag_entry(), // no ordering -> no marker assigned
+    ]
+    const markers = helpers.apply_category_markers(entries, magnetic).map((ent) => ent.marker)
+    expect(markers).toEqual([`triangle`, `diamond`, `square`, `circle`, `star`, undefined])
+  })
+
+  test.each([
+    [`no magnetic data`, [mag_entry(), mag_entry({ composition: { Li: 1 } })], magnetic],
+    [`null config`, [mag_entry({ magnetic_ordering: `FM` })], null],
+  ] as [string, PhaseData[], typeof magnetic | null][])(
+    `apply_category_markers returns input array identity-unchanged with %s`,
+    (_desc, entries, config) =>
+      expect(helpers.apply_category_markers(entries, config)).toBe(entries),
+  )
+
+  test(`visible_entries filters by hidden category values`, () => {
+    const entries = [
+      mag_entry({ magnetic_ordering: `FM`, is_stable: true }),
+      mag_entry({ magnetic_ordering: `AFM`, is_stable: true }),
+      mag_entry({ magnetic_ordering: `AFM`, is_stable: false, e_above_hull: 0.1 }),
+      mag_entry({ is_stable: true }), // no ordering -> unaffected by category filters
+    ]
+    const visible = (...args: [boolean, boolean, typeof magnetic | null, string[]]) =>
+      helpers.visible_entries(entries, ...args)
+    expect(visible(true, true, magnetic, [`AFM`])).toEqual([entries[0], entries[3]])
+    // Stability filter still applies on top of the category filter
+    expect(visible(false, true, magnetic, [`FM`])).toEqual([entries[2]])
+    // No hidden values or no category config -> all visible
+    expect(visible(true, true, magnetic, [])).toEqual(entries)
+    expect(visible(true, true, null, [`AFM`])).toEqual(entries)
+  })
+
+  test(`custom category config resolves values, markers and filtering`, () => {
+    const electronic = {
+      label: `Electronic`,
+      property: `electronic_class`,
+      markers: { metal: `circle`, semiconductor: `diamond`, insulator: `square` },
+      aliases: { 'semi-conductor': `semiconductor` },
+    } as const
+    const entry = (electronic_class?: string) =>
+      ({ composition: { Si: 1 }, energy: -1, electronic_class }) as PhaseData
+    // Case-insensitive canonical match + alias normalization + data dict fallback
+    expect(helpers.get_entry_category(entry(`Metal`), electronic)).toBe(`metal`)
+    expect(helpers.get_entry_category(entry(`semi-conductor`), electronic)).toBe(
+      `semiconductor`,
+    )
+    expect(helpers.get_entry_category(entry(`half-metal`), electronic)).toBeNull()
+    expect(
+      helpers.get_entry_category(
+        { ...entry(), data: { electronic_class: `insulator` } },
+        electronic,
+      ),
+    ).toBe(`insulator`)
+    // Marker assignment + filtering use the same config
+    const entries = [entry(`metal`), entry(`insulator`), entry()]
+    expect(
+      helpers.apply_category_markers(entries, electronic).map((ent) => ent.marker),
+    ).toEqual([`circle`, `square`, undefined])
+    expect(helpers.visible_entries(entries, true, true, electronic, [`metal`])).toEqual([
+      entries[1],
+      entries[2],
+    ])
+  })
+
+  test(`build_entry_tooltip_text includes magnetic ordering when present`, () => {
+    expect(
+      helpers.build_entry_tooltip_text(mag_entry({ magnetic_ordering: `FiM` })),
+    ).toContain(`Magnetic: FiM`)
+    expect(helpers.build_entry_tooltip_text(mag_entry())).not.toContain(`Magnetic`)
   })
 })

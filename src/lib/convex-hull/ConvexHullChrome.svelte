@@ -17,6 +17,7 @@
   import { CONVEX_HULL_STYLE } from './index'
   import StructurePopup from './StructurePopup.svelte'
   import type { ConvexHullEntry, HighlightStyle, HullFaceColorMode } from './types'
+  import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   type ControlsProps = ComponentProps<typeof ConvexHullControls>
 
@@ -51,6 +52,8 @@
     color_scale = $bindable(`interpolateViridis`),
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
+    hidden_categories = $bindable([]),
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
     max_hull_dist_show_phases = $bindable(0),
@@ -67,6 +70,8 @@
       | `color_scale`
       | `show_stable`
       | `show_unstable`
+      | `entry_category`
+      | `hidden_categories`
       | `show_stable_labels`
       | `show_unstable_labels`
       | `max_hull_dist_show_phases`
@@ -120,6 +125,8 @@
         {unstable_entries}
         {show_stable}
         {show_unstable}
+        {entry_category}
+        {hidden_categories}
         {max_hull_dist_show_phases}
         {max_hull_dist_show_labels}
         {label_threshold}
@@ -139,6 +146,8 @@
         bind:color_scale
         bind:show_stable
         bind:show_unstable
+        {entry_category}
+        bind:hidden_categories
         bind:show_stable_labels
         bind:show_unstable_labels
         bind:max_hull_dist_show_phases
@@ -187,6 +196,7 @@
       {entry}
       polymorph_stats_map={hull_data.polymorph_stats_map}
       highlight_style={entry_highlight}
+      {entry_category}
       {tooltip}
     />
   </PlotTooltip>

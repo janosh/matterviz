@@ -1,10 +1,14 @@
 import { expect, test } from '@playwright/test'
+import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { IS_CI } from '../helpers'
 import { dom_click, open_info_and_controls } from './utils'
 
 test.describe(`ConvexHull2D (Binary)`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ConvexHull2D tests timeout in CI`)
+    // Extend the default 30s test timeout: it would kill the 50s data-load wait below
+    // before it can succeed when parallel workers load this heavy page simultaneously
+    test.setTimeout(90_000)
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to load - the binary-grid only renders after loaded_data.size > 0
     // The 50s timeout accounts for downloading ~2MB of gzipped JSON files that decompress
@@ -118,6 +122,44 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     const count_after = await markers.count()
     expect(count_after).toBeGreaterThan(0)
     expect(count_after).toBeLessThanOrEqual(count_before)
+  })
+
+  test(`magnetic ordering filter toggle hides and restores shaped markers`, async ({
+    page,
+  }) => {
+    // Use the isolated performance test page (synthetic data, single hull, no rAF pulse
+    // loops) instead of the heavy demo page, which starves protocol calls under load
+    test.setTimeout(30000)
+    await page.goto(`/test/convex-hull-performance?dim=2d&count=40&magnetic=true`, {
+      waitUntil: `networkidle`,
+      timeout: 15000,
+    })
+    const pd2d = page.locator(`.scatter.convex-hull-2d`)
+    await expect(pd2d).toBeVisible()
+
+    const markers = pd2d.locator(`path.marker`)
+    await expect.poll(() => markers.count(), { timeout: 15000 }).toBeGreaterThan(0)
+    const count_before = await markers.count()
+
+    await dom_click(pd2d.locator(`.legend-controls-btn`))
+    const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
+    await expect(controls.getByText(`Magnetic`, { exact: true })).toBeVisible()
+
+    // One toggle per ordering present in data; swatch rendering is covered by
+    // ConvexHullControls vitest.
+    const toggles = controls.locator(`.category-filters .legend-item`)
+    await expect(toggles).toHaveCount(Object.keys(MAGNETIC_ORDERING_CATEGORY.markers).length)
+
+    // Hide FM entries -> fewer markers in the scatter plot
+    const fm_toggle = toggles.filter({ hasText: /\bFM \(/ }).first()
+    await dom_click(fm_toggle)
+    await expect(fm_toggle).toHaveAttribute(`aria-pressed`, `false`)
+    await expect.poll(() => markers.count(), { timeout: 15000 }).toBeLessThan(count_before)
+
+    // Re-show FM -> marker count restored
+    await dom_click(fm_toggle)
+    await expect(fm_toggle).toHaveAttribute(`aria-pressed`, `true`)
+    await expect.poll(() => markers.count(), { timeout: 15000 }).toBe(count_before)
   })
 
   test(`stability mode 'Above hull' toggle hides unstable points (info pane)`, async ({

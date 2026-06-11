@@ -24,6 +24,7 @@
     wrapper = $bindable(),
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
+    hidden_categories = $bindable([]),
     show_hull_faces = $bindable(true),
     hull_face_opacity: hull_face_opacity_prop = $bindable(
       undefined as number | undefined,
@@ -100,6 +101,7 @@
     bind:wrapper
     bind:show_stable
     bind:show_unstable
+    bind:hidden_categories
     bind:show_hull_faces
     bind:hull_face_opacity
     bind:color_mode

@@ -38,6 +38,7 @@
     HoverData3D,
     PhaseData,
   } from './types'
+  import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
@@ -54,6 +55,8 @@
     label_threshold = 50,
     show_stable = $bindable(DEFAULTS.convex_hull.binary.show_stable),
     show_unstable = $bindable(DEFAULTS.convex_hull.binary.show_unstable),
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
+    hidden_categories = $bindable([]),
     color_mode = $bindable(DEFAULTS.convex_hull.binary.color_mode),
     color_scale = $bindable(
       DEFAULTS.convex_hull.binary.color_scale as D3InterpolateName,
@@ -137,6 +140,8 @@
     max_hull_dist_show_phases: () => max_hull_dist_show_phases,
     show_stable: () => show_stable,
     show_unstable: () => show_unstable,
+    entry_category: () => entry_category,
+    hidden_categories: () => hidden_categories,
     keep_plot_entry: (entry, max_dist) =>
       helpers.entry_is_stable(entry) || (entry.e_above_hull ?? 0) <= max_dist,
     set_temperature: (next_temp) => temperature = next_temp,
@@ -370,6 +375,7 @@
     color_scale = DEFAULTS.convex_hull.binary.color_scale as D3InterpolateName
     show_stable = DEFAULTS.convex_hull.binary.show_stable
     show_unstable = DEFAULTS.convex_hull.binary.show_unstable
+    hidden_categories = []
     show_stable_labels = DEFAULTS.convex_hull.binary.show_stable_labels
     show_unstable_labels = DEFAULTS.convex_hull.binary.show_unstable_labels
     // Use auto-computed threshold based on entry count instead of static default
@@ -389,6 +395,7 @@
       color_scale !== DEFAULTS.convex_hull.binary.color_scale ||
       show_stable !== DEFAULTS.convex_hull.binary.show_stable ||
       show_unstable !== DEFAULTS.convex_hull.binary.show_unstable ||
+      hidden_categories.length > 0 ||
       show_stable_labels !== DEFAULTS.convex_hull.binary.show_stable_labels ||
       show_unstable_labels !== DEFAULTS.convex_hull.binary.show_unstable_labels ||
       // Compare with auto-computed threshold, with small tolerance for floating point
@@ -448,7 +455,7 @@
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
       copy_feedback.visible = visible
       copy_feedback.position = pos
-    })
+    }, entry_category)
   }
 
   function close_structure_popup() {
@@ -525,6 +532,7 @@
       {entry}
       polymorph_stats_map={hull_data.polymorph_stats_map}
       highlight_style={entry_highlight}
+      {entry_category}
       tooltip={custom_tooltip}
     />
   {/if}
@@ -551,6 +559,8 @@
         {unstable_entries}
         {show_stable}
         {show_unstable}
+        {entry_category}
+        {hidden_categories}
         {max_hull_dist_show_phases}
         {max_hull_dist_show_labels}
         {label_threshold}
@@ -569,6 +579,8 @@
         bind:color_scale
         bind:show_stable
         bind:show_unstable
+        {entry_category}
+        bind:hidden_categories
         bind:show_stable_labels
         bind:show_unstable_labels
         bind:max_hull_dist_show_phases

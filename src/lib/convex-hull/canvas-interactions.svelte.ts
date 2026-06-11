@@ -2,7 +2,7 @@
 import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
 import type { AnyStructure } from '$lib/structure'
 import * as helpers from './helpers'
-import type { ConvexHullEntry, HoverData3D, PhaseData } from './types'
+import type { ConvexHullEntry, EntryCategoryConfig, HoverData3D, PhaseData } from './types'
 
 export interface CanvasInteractionInputs {
   // Static config
@@ -25,6 +25,8 @@ export interface CanvasInteractionInputs {
   on_point_click: () => ((entry: ConvexHullEntry) => void) | undefined
   on_point_hover: () => ((data: HoverData3D | null) => void) | undefined
   on_file_drop: () => ((entries: PhaseData[]) => void) | undefined
+  // Categorical classification config (for category line in copied entry text)
+  entry_category: () => EntryCategoryConfig | null
   zoom: () => number
   set_zoom: (zoom: number) => void
   // Component-specific behavior
@@ -139,10 +141,15 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   const handle_drag_leave = set_drag_over(false)
 
   async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
-    await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
-      copy_feedback.visible = visible
-      copy_feedback.position = pos
-    })
+    await helpers.copy_entry_to_clipboard(
+      entry,
+      position,
+      (visible, pos) => {
+        copy_feedback.visible = visible
+        copy_feedback.position = pos
+      },
+      inputs.entry_category(),
+    )
   }
 
   function handle_mouse_down(event: MouseEvent) {
