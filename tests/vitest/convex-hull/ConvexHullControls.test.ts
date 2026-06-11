@@ -61,9 +61,11 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     })
     const toggles = magnetic_toggles()
     expect(toggles.map((toggle) => toggle.textContent?.trim())).toEqual([`FM (2)`, `AFM (1)`])
-    // Each toggle renders a non-empty SVG marker shape swatch
+    // Each toggle renders a non-empty SVG marker shape swatch (d3 paths start with M).
+    // NB: don't assert via toBeTruthy() -- oxlint auto-rewrites it to toBe(true), which
+    // always fails against getAttribute's string|null return
     for (const toggle of toggles) {
-      expect(toggle.querySelector(`svg path`)?.getAttribute(`d`)).toBe(true)
+      expect(toggle.querySelector(`svg path`)?.getAttribute(`d`)).toMatch(/^M/)
     }
     // FiM/NM absent from data -> no toggles
     expect(document.body.textContent).not.toContain(`FiM`)

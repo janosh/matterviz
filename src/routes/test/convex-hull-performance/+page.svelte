@@ -132,6 +132,7 @@
     params.set(`count`, String(entry_count))
     params.set(`hull_dist`, String(max_hull_dist))
     if (!enable_click_selection) params.set(`click_selection`, `false`)
+    if (magnetic_orderings) params.set(`magnetic`, `true`)
     if (custom_title) params.set(`title`, custom_title)
     replaceState(`?${params.toString()}`, {})
   }
