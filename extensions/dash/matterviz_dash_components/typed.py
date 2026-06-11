@@ -9,6 +9,8 @@ from typing import Any
 
 from .MatterViz import MatterViz
 
+_UNSET = object()
+
 class Structure(MatterViz):
     """3D crystal structure / molecule viewer.
 
@@ -583,6 +585,8 @@ class ConvexHull2D(MatterViz):
     Events: on_point_click, on_point_hover, on_file_drop
 
     Unsupported snippets: children
+
+    Explicit None for entry_category is forwarded as JS null (omit the kwarg to keep the JS-side default)
     """
 
     def __init__(
@@ -601,6 +605,8 @@ class ConvexHull2D(MatterViz):
         label_threshold: float | None = None,
         show_stable: bool | None = None,
         show_unstable: bool | None = None,
+        entry_category: Any | None = _UNSET,
+        hidden_categories: list[str] | None = None,
         color_mode: Any | None = None,
         color_scale: Any | None = None,
         info_pane_open: bool | None = None,
@@ -660,6 +666,10 @@ class ConvexHull2D(MatterViz):
             mv_props["show_stable"] = show_stable
         if show_unstable is not None:
             mv_props["show_unstable"] = show_unstable
+        if entry_category is not _UNSET:
+            mv_props["entry_category"] = entry_category
+        if hidden_categories is not None:
+            mv_props["hidden_categories"] = hidden_categories
         if color_mode is not None:
             mv_props["color_mode"] = color_mode
         if color_scale is not None:
@@ -726,6 +736,8 @@ class ConvexHull3D(MatterViz):
     Events: on_point_click, on_point_hover, on_file_drop
 
     Unsupported snippets: children
+
+    Explicit None for entry_category is forwarded as JS null (omit the kwarg to keep the JS-side default)
     """
 
     def __init__(
@@ -742,6 +754,8 @@ class ConvexHull3D(MatterViz):
         label_threshold: float | None = None,
         show_stable: bool | None = None,
         show_unstable: bool | None = None,
+        entry_category: Any | None = _UNSET,
+        hidden_categories: list[str] | None = None,
         color_mode: Any | None = None,
         color_scale: Any | None = None,
         info_pane_open: bool | None = None,
@@ -802,6 +816,10 @@ class ConvexHull3D(MatterViz):
             mv_props["show_stable"] = show_stable
         if show_unstable is not None:
             mv_props["show_unstable"] = show_unstable
+        if entry_category is not _UNSET:
+            mv_props["entry_category"] = entry_category
+        if hidden_categories is not None:
+            mv_props["hidden_categories"] = hidden_categories
         if color_mode is not None:
             mv_props["color_mode"] = color_mode
         if color_scale is not None:
@@ -878,6 +896,8 @@ class ConvexHull4D(MatterViz):
     Events: on_point_click, on_point_hover, on_file_drop
 
     Unsupported snippets: children
+
+    Explicit None for entry_category is forwarded as JS null (omit the kwarg to keep the JS-side default)
     """
 
     def __init__(
@@ -894,6 +914,8 @@ class ConvexHull4D(MatterViz):
         label_threshold: float | None = None,
         show_stable: bool | None = None,
         show_unstable: bool | None = None,
+        entry_category: Any | None = _UNSET,
+        hidden_categories: list[str] | None = None,
         color_mode: Any | None = None,
         color_scale: Any | None = None,
         info_pane_open: bool | None = None,
@@ -954,6 +976,10 @@ class ConvexHull4D(MatterViz):
             mv_props["show_stable"] = show_stable
         if show_unstable is not None:
             mv_props["show_unstable"] = show_unstable
+        if entry_category is not _UNSET:
+            mv_props["entry_category"] = entry_category
+        if hidden_categories is not None:
+            mv_props["hidden_categories"] = hidden_categories
         if color_mode is not None:
             mv_props["color_mode"] = color_mode
         if color_scale is not None:

@@ -12,13 +12,14 @@ import {
 } from './gas-thermodynamics'
 import type {
   ConvexHullConfig,
+  EntryCategoryConfig,
   GasAnalysis,
   GasThermodynamicsConfig,
   HighlightStyle,
   MarkerSymbol,
   PhaseData,
 } from './types'
-import { DEFAULT_GAS_TEMP } from './types'
+import { DEFAULT_GAS_TEMP, MAGNETIC_ORDERING_CATEGORY } from './types'
 
 export { DEFAULT_GAS_TEMP }
 
@@ -76,17 +77,85 @@ export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
 
 export const entry_is_unstable = (entry: StabilityEntry): boolean => !entry_is_stable(entry)
 
+// === Entry category helpers (generic categorical classification) ===
+
+// Loose entry shape for category resolution (any PhaseData-like object qualifies)
+type CategorySource = Pick<PhaseData, `data` | `attributes`>
+
+// Normalize a raw value to a canonical category value: case-insensitive match against
+// config.markers keys, then config.aliases. Returns null for unrecognized values.
+function normalize_category_value(raw: unknown, config: EntryCategoryConfig): string | null {
+  if (typeof raw !== `string`) return null
+  const lower = raw.trim().toLowerCase()
+  if (!lower) return null
+  const canonical = Object.keys(config.markers).find((value) => value.toLowerCase() === lower)
+  if (canonical) return canonical
+  const alias = config.aliases?.[lower]
+  return alias && alias in config.markers ? alias : null
+}
+
+// Resolve an entry's category: first *recognized* value wins. Properties are checked in
+// config order (property-major), each looked up top-level, then in the pymatgen `data`
+// and Materials Project `attributes` dicts — so a `magnetic_ordering` in any source
+// beats a generic `ordering`. Unrecognized values (e.g. MP's ordering='Unknown') fall
+// through; returns null when none resolve.
+export function get_entry_category(
+  entry: CategorySource,
+  config: EntryCategoryConfig | null | undefined,
+): string | null {
+  if (!config) return null
+  const props = Array.isArray(config.property) ? config.property : [config.property]
+  for (const prop of props) {
+    for (const source of [entry as Record<string, unknown>, entry.data, entry.attributes]) {
+      if (!source) continue
+      const value = normalize_category_value(source[prop], config)
+      if (value) return value
+    }
+  }
+  return null
+}
+
+// Assign default marker shapes by category (per config.markers). Explicit entry.marker
+// values win. Returns the input array unchanged when no marker was assigned (e.g. when
+// config is null or entries lack category data).
+export function apply_category_markers(
+  entries: (PhaseData & { marker?: MarkerSymbol })[],
+  config: EntryCategoryConfig | null | undefined,
+): (PhaseData & { marker?: MarkerSymbol })[] {
+  if (!config) return entries
+  let any_assigned = false
+  const result = entries.map((entry) => {
+    const value = entry.marker ? null : get_entry_category(entry, config)
+    if (!value) return entry
+    any_assigned = true
+    return { ...entry, marker: config.markers[value] }
+  })
+  return any_assigned ? result : entries
+}
+
 export const entry_is_visible = (
-  entry: StabilityEntry,
+  entry: StabilityEntry & CategorySource,
   show_stable: boolean,
   show_unstable: boolean,
-): boolean => (entry_is_stable(entry) ? show_stable : show_unstable)
+  category: EntryCategoryConfig | null = null,
+  hidden_categories: readonly string[] = [],
+): boolean => {
+  if (!(entry_is_stable(entry) ? show_stable : show_unstable)) return false
+  if (!category || hidden_categories.length === 0) return true
+  const value = get_entry_category(entry, category)
+  return value === null || !hidden_categories.includes(value)
+}
 
-export const visible_entries = <Entry extends StabilityEntry>(
+export const visible_entries = <Entry extends StabilityEntry & CategorySource>(
   entries: readonly Entry[],
   show_stable: boolean,
   show_unstable: boolean,
-): Entry[] => entries.filter((entry) => entry_is_visible(entry, show_stable, show_unstable))
+  category: EntryCategoryConfig | null = null,
+  hidden_categories: readonly string[] = [],
+): Entry[] =>
+  entries.filter((entry) =>
+    entry_is_visible(entry, show_stable, show_unstable, category, hidden_categories),
+  )
 
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
@@ -209,7 +278,10 @@ export function same_entry<Entry extends { entry_id?: string }>(
 }
 
 // Build a tooltip text for any phase entry (shared)
-export function build_entry_tooltip_text(entry: PhaseData): string {
+export function build_entry_tooltip_text(
+  entry: PhaseData,
+  category: EntryCategoryConfig | null = MAGNETIC_ORDERING_CATEGORY,
+): string {
   const is_element = is_unary_entry(entry)
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
@@ -241,6 +313,8 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
     const e_form_str = format_num(e_form_display, `.3~`)
     text += `E<sub>form</sub>: ${e_form_str} eV/atom`
   }
+  const category_value = get_entry_category(entry, category)
+  if (category && category_value) text += `\n${category.label}: ${category_value}`
   if (entry.entry_id) text += `\nID: ${entry.entry_id}`
   return text
 }
@@ -365,8 +439,9 @@ export async function copy_entry_to_clipboard(
   entry: PhaseData,
   position: { x: number; y: number },
   on_feedback: (visible: boolean, pos: { x: number; y: number }) => void,
+  category: EntryCategoryConfig | null = MAGNETIC_ORDERING_CATEGORY,
 ): Promise<void> {
-  const text = build_entry_tooltip_text(entry)
+  const text = build_entry_tooltip_text(entry, category)
   await navigator.clipboard.writeText(text)
   on_feedback(true, position)
   setTimeout(() => on_feedback(false, position), 1500)
@@ -738,22 +813,26 @@ export function draw_hull_points<
   }
 }
 
-// Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
-export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
-  const safe_size = Number.isFinite(size) ? size : 0
-  const rounded_size = Math.max(0, Number(safe_size.toFixed(3)))
-
+// SVG path data for a marker symbol of given radius, or null for unknown marker names.
+// Uses d3-shape for consistent rendering with ScatterPlot.
+export function marker_path_data(radius: number, marker: MarkerSymbol): string | null {
   // Capitalize first letter to get D3 symbol name (e.g. 'circle' -> 'Circle')
   const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
   const symbol_type = symbol_map[d3_name as keyof typeof symbol_map]
-  const symbol_area = Math.PI * rounded_size * rounded_size
-  const path_data = symbol_type ? symbol().type(symbol_type).size(symbol_area)() : null
+  return symbol_type
+    ? symbol()
+        .type(symbol_type)
+        .size(Math.PI * radius * radius)()
+    : null
+}
+
+// Create a Path2D for a marker symbol (canvas rendering in ConvexHull3D/4D)
+export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
+  const safe_size = Number.isFinite(size) ? size : 0
+  const rounded_size = Math.max(0, Number(safe_size.toFixed(3)))
+  const path_data = marker_path_data(rounded_size, marker)
   const path = new Path2D(path_data ?? undefined)
-
-  if (!path_data) {
-    path.arc(0, 0, rounded_size, 0, 2 * Math.PI)
-  }
-
+  if (!path_data) path.arc(0, 0, rounded_size, 0, 2 * Math.PI)
   return path
 }
 

@@ -7,19 +7,22 @@
   import { TooltipContent } from '$lib/tooltip'
   import type { PolymorphStats } from './helpers'
   import type { ConvexHullTooltipProp, TooltipSnippetProps } from './index'
-  import type { HighlightStyle, PhaseData } from './types'
-  import { is_unary_entry } from './helpers'
+  import type { EntryCategoryConfig, HighlightStyle, PhaseData } from './types'
+  import { MAGNETIC_ORDERING_CATEGORY } from './types'
+  import { get_entry_category, is_unary_entry } from './helpers'
 
   let {
     entry,
     polymorph_stats_map,
     highlight_style,
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
     tooltip,
     show_fractional = true,
   }: {
     entry: EntryT
     polymorph_stats_map?: Map<string, PolymorphStats>
     highlight_style?: HighlightStyle
+    entry_category?: EntryCategoryConfig | null
     tooltip?: ConvexHullTooltipProp<EntryT>
     show_fractional?: boolean
   } = $props()
@@ -36,6 +39,7 @@
       ? polymorph_stats_map.get(entry.entry_id)
       : null,
   )
+  const category_value = $derived(get_entry_category(entry, entry_category))
 </script>
 
 <TooltipContent
@@ -68,6 +72,11 @@
     {/if}
     {#if entry.e_form_per_atom != null}
       <div>E<sub>form</sub>: {format_num(entry.e_form_per_atom, `.3~`)} eV/atom</div>
+    {/if}
+    {#if entry_category && category_value}
+      <div title={entry_category.labels?.[category_value]}>
+        {entry_category.label}: {category_value}
+      </div>
     {/if}
 
     {#if show_fractional && !is_element}

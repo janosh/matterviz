@@ -7,6 +7,7 @@ import type { HTMLAttributes } from 'svelte/elements'
 import type {
   ConvexHullConfig,
   ConvexHullControlsType,
+  EntryCategoryConfig,
   GasSpecies,
   GasThermodynamicsConfig,
   HighlightStyle,
@@ -82,6 +83,13 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   // Visibility
   show_stable?: boolean
   show_unstable?: boolean
+  // Categorical classification rendered as marker shapes + controls-pane filter toggles.
+  // Defaults to MAGNETIC_ORDERING_CATEGORY (entries with FM/FiM/AFM/NM data light up
+  // automatically); pass a custom EntryCategoryConfig for other classifications
+  // (metal/semiconductor/insulator, crystalline/amorphous/glass, ...) or null to disable
+  entry_category?: EntryCategoryConfig | null
+  // Category values (e.g. ['FM', 'NM']) whose entries are hidden from the plot (bindable)
+  hidden_categories?: string[]
   color_mode?: `stability` | `energy`
   color_scale?: D3InterpolateName
   info_pane_open?: boolean

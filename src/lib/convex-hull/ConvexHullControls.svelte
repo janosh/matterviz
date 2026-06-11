@@ -8,12 +8,14 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { get_entry_category, marker_path_data } from './helpers'
   import type {
     ConvexHullControlsType,
     ConvexHullEntry,
+    EntryCategoryConfig,
     HullFaceColorMode,
   } from './types'
-  import { HULL_FACE_COLOR_MODES } from './types'
+  import { HULL_FACE_COLOR_MODES, MAGNETIC_ORDERING_CATEGORY } from './types'
 
   interface CameraState {
     elevation?: number // Elevation angle in degrees (for ternary)
@@ -45,6 +47,8 @@
     color_scale = $bindable(`interpolateViridis`),
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
+    entry_category = MAGNETIC_ORDERING_CATEGORY,
+    hidden_categories = $bindable([]),
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
     show_hull_faces = undefined,
@@ -77,6 +81,9 @@
     color_scale?: D3InterpolateName
     show_stable?: boolean
     show_unstable?: boolean
+    // Categorical classification rendered as filter toggles (null disables the row)
+    entry_category?: EntryCategoryConfig | null
+    hidden_categories?: string[]
     show_stable_labels?: boolean
     show_unstable_labels?: boolean
     // 3D specific controls
@@ -115,6 +122,33 @@
     evt: Event & { currentTarget: HTMLElement },
   ): void {
     evt.currentTarget.nextElementSibling?.querySelector<HTMLInputElement>(`input`)?.focus()
+  }
+
+  // Category filters: only show category values present in the (threshold-filtered) data
+  const category_counts = $derived.by(() => {
+    const counts: Record<string, number> = {}
+    for (const entry of [...stable_entries, ...unstable_entries]) {
+      const value = get_entry_category(entry, entry_category)
+      if (value) counts[value] = (counts[value] ?? 0) + 1
+    }
+    return counts
+  })
+  const category_values_in_data = $derived(
+    Object.keys(entry_category?.markers ?? {}).filter(
+      (value) => (category_counts[value] ?? 0) > 0,
+    ),
+  )
+  const toggle_category = (value: string) => {
+    hidden_categories = hidden_categories.includes(value)
+      ? hidden_categories.filter((hidden) => hidden !== value)
+      : [...hidden_categories, value]
+  }
+  const SWATCH_RADIUS = 4.4 // marker swatch radius, sized to fit the 12x12 viewBox
+  // Keyboard activation for legend toggles (preventDefault stops Space scrolling the page)
+  const legend_keydown = (action: () => void) => (evt: KeyboardEvent) => {
+    if (![`Enter`, ` `].includes(evt.key)) return
+    evt.preventDefault()
+    action()
   }
 </script>
 
@@ -220,10 +254,10 @@
         <div
           class="legend-item clickable {show_stable ? `active` : `inactive`}"
           onclick={() => show_stable = !show_stable}
-          onkeydown={(evt) =>
-          [`Enter`, ` `].includes(evt.key) && (show_stable = !show_stable)}
+          onkeydown={legend_keydown(() => show_stable = !show_stable)}
           role="button"
           tabindex="0"
+          aria-pressed={show_stable}
           {@attach tooltip({ content: `Toggle visibility of stable points` })}
         >
           <div class="marker stable"></div>
@@ -234,10 +268,10 @@
         <div
           class="legend-item clickable {show_unstable ? `active` : `inactive`}"
           onclick={() => show_unstable = !show_unstable}
-          onkeydown={(evt) =>
-          [`Enter`, ` `].includes(evt.key) && (show_unstable = !show_unstable)}
+          onkeydown={legend_keydown(() => show_unstable = !show_unstable)}
           role="button"
           tabindex="0"
+          aria-pressed={show_unstable}
           {@attach tooltip({ content: `Toggle visibility of above-hull points` })}
         >
           <div class="marker unstable"></div>
@@ -268,6 +302,43 @@
         placeholder="Select color scale"
         {@attach tooltip({ content: `Set interpolator for energy colors` })}
       />
+    </div>
+  {/if}
+
+  <!-- Category filters (only when entries carry recognized category data,
+    e.g. magnetic orderings with the default MAGNETIC_ORDERING_CATEGORY) -->
+  {#if entry_category && category_values_in_data.length > 0}
+    <div class="control-row">
+      <span class="control-label">{entry_category.label}</span>
+      <div class="legend-items-container category-filters">
+        {#each category_values_in_data as value (value)}
+          {@const hidden = hidden_categories.includes(value)}
+          {@const count = category_counts[value] ?? 0}
+          {@const long_name = entry_category.labels?.[value]}
+          <div
+            class="legend-item clickable {hidden ? `inactive` : `active`}"
+            onclick={() => toggle_category(value)}
+            onkeydown={legend_keydown(() => toggle_category(value))}
+            role="button"
+            tabindex="0"
+            aria-pressed={!hidden}
+            {@attach tooltip({
+              content: `Toggle visibility of ${
+                long_name ? `${long_name.toLowerCase()} (${value})` : value
+              } entries`,
+            })}
+          >
+            <svg viewBox="-6 -6 12 12" width="12" height="12" aria-hidden="true">
+              <path d={marker_path_data(SWATCH_RADIUS, entry_category.markers[value]) ?? ``} />
+            </svg>
+            <span>{value}{
+                merged_controls.show_counts
+                ? ` (${hidden ? `0/${count}` : count})`
+                : ``
+              }</span>
+          </div>
+        {/each}
+      </div>
     </div>
   {/if}
 
@@ -490,6 +561,15 @@
   }
   .legend-item.inactive {
     opacity: 0.5;
+  }
+  .category-filters {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .legend-item svg {
+    margin-right: 4px;
+    flex-shrink: 0;
+    fill: currentColor;
   }
   .marker {
     width: 12px;
