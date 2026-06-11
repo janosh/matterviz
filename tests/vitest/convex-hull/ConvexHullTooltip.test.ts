@@ -116,28 +116,22 @@ describe(`ConvexHullTooltip`, () => {
 
   describe(`magnetic properties`, () => {
     test.each([
-      { magnetic_ordering: `FM`, expected: `Magnetic: FM`, label: `Ferromagnetic` },
-      {
-        magnetic_ordering: `antiferromagnetic`,
-        expected: `Magnetic: AFM`,
-        label: `Antiferromagnetic`,
-      },
-    ])(
-      `shows normalized ordering for $magnetic_ordering`,
-      ({ magnetic_ordering, expected, label }) => {
-        mount_tooltip({ entry: mock_entry({ magnetic_ordering }) })
-        expect(document.body.textContent).toContain(expected)
-        expect(document.querySelector(`[title="${label}"]`)).not.toBeNull()
+      [`FM`, `Magnetic: FM`, `Ferromagnetic`],
+      [`antiferromagnetic`, `Magnetic: AFM`, `Antiferromagnetic`],
+    ])(`shows normalized ordering for %s`, (magnetic_ordering, expected, label) => {
+      mount_tooltip({ entry: mock_entry({ magnetic_ordering }) })
+      expect(document.body.textContent).toContain(expected)
+      expect(document.querySelector(`[title="${label}"]`)).not.toBeNull()
+    })
+
+    // entries without magnetic fields or with unrecognized orderings get no line
+    test.each([mock_entry(), mock_entry({ magnetic_ordering: `Unknown` })])(
+      `omits magnetic line for %o`,
+      (entry) => {
+        mount_tooltip({ entry })
+        expect(document.body.textContent).not.toContain(`Magnetic:`)
       },
     )
-
-    test.each([
-      { entry: mock_entry(), desc: `no magnetic fields` },
-      { entry: mock_entry({ magnetic_ordering: `Unknown` }), desc: `unrecognized ordering` },
-    ])(`omits magnetic line for $desc`, ({ entry }) => {
-      mount_tooltip({ entry })
-      expect(document.body.textContent).not.toContain(`Magnetic:`)
-    })
   })
 
   describe(`highlight badge`, () => {

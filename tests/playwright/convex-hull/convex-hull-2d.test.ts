@@ -144,10 +144,10 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls.getByText(`Magnetic`, { exact: true })).toBeVisible()
 
-    // One toggle per ordering present in data (round-robin FM/FiM/AFM/NM), with swatches
+    // One toggle per ordering present in data (round-robin FM/FiM/AFM/NM); swatch
+    // rendering is covered by ConvexHullControls vitest
     const toggles = controls.locator(`.category-filters .legend-item`)
     await expect(toggles).toHaveCount(4)
-    await expect(toggles.first().locator(`svg path`)).toHaveAttribute(`d`, /.+/)
 
     // Hide FM entries -> fewer markers in the scatter plot
     const fm_toggle = toggles.filter({ hasText: /\bFM \(/ }).first()

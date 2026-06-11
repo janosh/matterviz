@@ -8,7 +8,7 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { count_entry_categories, marker_path_data } from './helpers'
+  import { get_entry_category, marker_path_data } from './helpers'
   import type {
     ConvexHullControlsType,
     ConvexHullEntry,
@@ -125,9 +125,14 @@
   }
 
   // Category filters: only show category values present in the (threshold-filtered) data
-  const category_counts = $derived(
-    count_entry_categories([...stable_entries, ...unstable_entries], entry_category),
-  )
+  const category_counts = $derived.by(() => {
+    const counts: Record<string, number> = {}
+    for (const entry of [...stable_entries, ...unstable_entries]) {
+      const value = get_entry_category(entry, entry_category)
+      if (value) counts[value] = (counts[value] ?? 0) + 1
+    }
+    return counts
+  })
   const category_values_in_data = $derived(
     Object.keys(entry_category?.markers ?? {}).filter(
       (value) => (category_counts[value] ?? 0) > 0,
@@ -138,8 +143,7 @@
       ? hidden_categories.filter((hidden) => hidden !== value)
       : [...hidden_categories, value]
   }
-  // Radius of the marker shape swatch SVGs (sized to fit their 12x12 viewBox)
-  const SWATCH_RADIUS = 4.4
+  const SWATCH_RADIUS = 4.4 // marker swatch radius, sized to fit the 12x12 viewBox
   // Keyboard activation for legend toggles (preventDefault stops Space scrolling the page)
   const legend_keydown = (action: () => void) => (evt: KeyboardEvent) => {
     if (![`Enter`, ` `].includes(evt.key)) return

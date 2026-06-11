@@ -202,12 +202,8 @@
     }),
   )
   let hidden_orderings = $state<string[]>([])
-  const magnetic_marker_legend = [
-    `△ FM (ferromagnetic)`,
-    `◆ FiM (ferrimagnetic)`,
-    `■ AFM (antiferromagnetic)`,
-    `● NM (non-magnetic)`,
-  ]
+  // oxfmt-ignore
+  const magnetic_marker_legend = [`△ FM (ferromagnetic)`, `◆ FiM (ferrimagnetic)`, `■ AFM (antiferromagnetic)`, `● NM (non-magnetic)`]
 
   // Custom category demo: synthetic crystallinity labels on the Co-O binary show the
   // generic entry_category API — the magnetic preset uses the exact same machinery
@@ -222,11 +218,7 @@
       crystallinity: [`crystalline`, `amorphous`, `glass`][idx % 3],
     })),
   )
-  const crystallinity_marker_legend = [
-    `● crystalline`,
-    `✚ amorphous`,
-    `★ glass`,
-  ]
+  const crystallinity_marker_legend = [`● crystalline`, `✚ amorphous`, `★ glass`]
 
   const ternary_examples = $derived([
     { title: `Na-Fe-O`, entries: na_fe_o_entries },
@@ -569,9 +561,7 @@
     <div class="ternary-grid">
       <div>
         <div class="marker-legend">
-          {#each magnetic_marker_legend as legend_item (legend_item)}
-            <span>{legend_item}</span>
-          {/each}
+          {#each magnetic_marker_legend as item (item)}<span>{item}</span>{/each}
         </div>
         <ConvexHull3D
           entries={magnetic_ternary_entries}
@@ -581,9 +571,7 @@
       </div>
       <div>
         <div class="marker-legend">
-          {#each crystallinity_marker_legend as legend_item (legend_item)}
-            <span>{legend_item}</span>
-          {/each}
+          {#each crystallinity_marker_legend as item (item)}<span>{item}</span>{/each}
         </div>
         <ConvexHull2D
           entries={crystallinity_entries}

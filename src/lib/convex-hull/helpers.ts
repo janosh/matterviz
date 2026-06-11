@@ -132,20 +132,6 @@ export function apply_category_markers(
   return any_assigned ? result : entries
 }
 
-// Count entries per category value (values absent from data are omitted)
-export function count_entry_categories(
-  entries: readonly CategorySource[],
-  config: EntryCategoryConfig | null | undefined,
-): Record<string, number> {
-  const counts: Record<string, number> = {}
-  if (!config) return counts
-  for (const entry of entries) {
-    const value = get_entry_category(entry, config)
-    if (value) counts[value] = (counts[value] ?? 0) + 1
-  }
-  return counts
-}
-
 export const entry_is_visible = (
   entry: StabilityEntry & CategorySource,
   show_stable: boolean,

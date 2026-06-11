@@ -397,11 +397,8 @@ describe(`ConvexHullStats`, () => {
       mount_stats_table({
         stable_entries: [
           mock_entry({ magnetic_ordering: `FM`, entry_id: `id-fm`, reduced_formula: `FeO` }),
-          mock_entry({
-            magnetic_ordering: `AFM`,
-            entry_id: `id-afm`,
-            reduced_formula: `Fe2O3`,
-          }),
+          // oxfmt-ignore
+          mock_entry({ magnetic_ordering: `AFM`, entry_id: `id-afm`, reduced_formula: `Fe2O3` }),
         ],
         // no ordering -> unaffected by category filter
         unstable_entries: [mock_entry({ entry_id: `id-plain`, reduced_formula: `Fe3O4` })],

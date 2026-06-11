@@ -58,9 +58,8 @@ export interface PhaseData {
 
 // Categorical classification of hull entries, rendered as distinct marker shapes with
 // show/hide filter toggles in the controls pane. Works for any categorical property:
-// magnetic orderings (see MAGNETIC_ORDERING_CATEGORY, the default), electronic classes
-// (metal/semimetal/semiconductor/insulator), crystallinity (crystalline/amorphous/glass),
-// defect types, etc.
+// magnetic orderings (see MAGNETIC_ORDERING_CATEGORY, the default), electronic classes,
+// crystallinity, defect types, etc.
 export interface EntryCategoryConfig {
   label: string // controls-pane row + tooltip label, e.g. 'Magnetic', 'Electronic', 'Structure'
   // Entry properties holding the category value, checked in order. Each property is
@@ -77,28 +76,17 @@ export interface EntryCategoryConfig {
 // Magnetic ordering classifications (matching Materials Project conventions)
 export type MagneticOrdering = `FM` | `FiM` | `AFM` | `NM`
 
-// Built-in preset for magnetic orderings (MP/pymatgen conventions). This is the default
-// entry_category of all convex hull components, so entries carrying magnetic_ordering
-// (or an MP-style `ordering` field) automatically render as shape-coded points with
-// FM/FiM/AFM/NM filter toggles.
+// Built-in preset for magnetic orderings (MP/pymatgen conventions) and the default
+// entry_category of all convex hull components: entries carrying magnetic_ordering
+// (or an MP-style `ordering` field) auto-render as shape-coded points with filter toggles
 export const MAGNETIC_ORDERING_CATEGORY: EntryCategoryConfig = {
   label: `Magnetic`,
   property: [`magnetic_ordering`, `ordering`],
   markers: { FM: `triangle`, FiM: `diamond`, AFM: `square`, NM: `circle` },
-  labels: {
-    FM: `Ferromagnetic`,
-    FiM: `Ferrimagnetic`,
-    AFM: `Antiferromagnetic`,
-    NM: `Non-magnetic`,
-  },
-  aliases: {
-    ferromagnetic: `FM`,
-    ferrimagnetic: `FiM`,
-    antiferromagnetic: `AFM`,
-    'non-magnetic': `NM`,
-    nonmagnetic: `NM`,
-    diamagnetic: `NM`,
-  },
+  // oxfmt-ignore
+  labels: { FM: `Ferromagnetic`, FiM: `Ferrimagnetic`, AFM: `Antiferromagnetic`, NM: `Non-magnetic` },
+  // oxfmt-ignore
+  aliases: { ferromagnetic: `FM`, ferrimagnetic: `FiM`, antiferromagnetic: `AFM`, 'non-magnetic': `NM`, nonmagnetic: `NM`, diamagnetic: `NM` },
 }
 
 // Processed phase data for convex hull calculations

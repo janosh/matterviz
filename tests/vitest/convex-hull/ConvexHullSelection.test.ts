@@ -137,14 +137,14 @@ describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
     compound({ Li: 1, O: 2 }, `plain-1`, 0.1),
   ]
 
+  // ordering-less entries are unaffected by category filters
   test.each([
-    { hidden: [] as string[], expected_markers: 5 },
-    { hidden: [`FM`], expected_markers: 4 },
-    // ordering-less entries are unaffected by category filters
-    { hidden: [`FM`, `AFM`], expected_markers: 3 },
-  ])(
-    `renders $expected_markers markers with hidden=$hidden`,
-    async ({ hidden, expected_markers }) => {
+    [[], 5],
+    [[`FM`], 4],
+    [[`FM`, `AFM`], 3],
+  ] as [string[], number][])(
+    `hidden=%s renders %i markers`,
+    async (hidden, expected_markers) => {
       const plot = await mount_sized(
         ConvexHull2D,
         { entries: magnetic_entries, hidden_categories: hidden },
