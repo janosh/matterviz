@@ -8,10 +8,9 @@ This script adds *typed* Python wrappers (subclasses of MatterViz) for IDE disco
 
 How props are discovered
 ------------------------
-The MatterViz npm package ships TypeScript declaration files next to its compiled Svelte
-components:
+MatterViz ships TypeScript declaration files next to its compiled Svelte components:
 
-  node_modules/matterviz/dist/**/<Component>.svelte.d.ts
+  <matterviz-dist>/**/<Component>.svelte.d.ts
 
 These contain a `type $$ComponentProps = ...` (often) or a `type Props = ...` plus a Svelte
 component declaration like:
@@ -29,7 +28,7 @@ Usage
 -----
   python scripts/sync_typed_wrappers.py \
       --manifest component_manifest.toml \
-      --matterviz-dist node_modules/matterviz/dist \
+      --matterviz-dist ../../dist \
       --out matterviz_dash_components/typed.py
 """
 
@@ -767,9 +766,11 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", default=f"{dash_root}/component_manifest.toml")
-    ap.add_argument(
-        "--matterviz-dist", default=f"{dash_root}/node_modules/matterviz/dist"
-    )
+    # Default to the repo's own build output (what CI uses), NOT the copy under
+    # extensions/dash/node_modules: pnpm snapshots the `file:../..` dependency at
+    # install time, so that copy silently goes stale as repo components evolve.
+    repo_root = os.path.dirname(os.path.dirname(dash_root))
+    ap.add_argument("--matterviz-dist", default=f"{repo_root}/dist")
     ap.add_argument("--out", default=f"{dash_root}/matterviz_dash_components/typed.py")
     ap.add_argument(
         "--check",
@@ -786,7 +787,9 @@ def main() -> None:
         raise SystemExit(f"Manifest not found: {manifest_path}")
     if not os.path.isdir(dist_dir):
         raise SystemExit(
-            f"MatterViz dist not found: {dist_dir}\nRun `pnpm install` first."
+            f"MatterViz dist not found: {dist_dir}\n"
+            "Build it with `pnpm package:dist` at the repo root (or pass "
+            "--matterviz-dist pointing at a built matterviz dist directory)."
         )
 
     with open(manifest_path, encoding="utf-8") as fh:
