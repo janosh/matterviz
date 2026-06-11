@@ -104,9 +104,9 @@ export function get_entry_category(
 ): string | null {
   if (!config) return null
   const props = Array.isArray(config.property) ? config.property : [config.property]
-  for (const source of [entry as Record<string, unknown>, entry.data, entry.attributes]) {
-    if (!source) continue
-    for (const prop of props) {
+  for (const prop of props) {
+    for (const source of [entry as Record<string, unknown>, entry.data, entry.attributes]) {
+      if (!source) continue
       const value = normalize_category_value(source[prop], config)
       if (value) return value
     }

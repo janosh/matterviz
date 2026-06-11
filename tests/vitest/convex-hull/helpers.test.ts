@@ -1030,6 +1030,7 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
     [`attributes.ordering`, mag_entry({ attributes: { ordering: `fm` } }), `FM`],
     [`top-level field winning over data dict`, mag_entry({ magnetic_ordering: `FM`, data: { ordering: `AFM` } }), `FM`],
     [`unrecognized top-level falling through to data`, mag_entry({ magnetic_ordering: `Unknown`, data: { ordering: `AFM` } }), `AFM`],
+    [`property order beats source order`, mag_entry({ ordering: `FM`, data: { magnetic_ordering: `AFM` } } as Partial<PhaseData>), `AFM`],
   ] as [string, PhaseData, string | null][])(
     `get_entry_category reads %s`,
     (_desc, entry, expected) => expect(cat(entry)).toBe(expected),

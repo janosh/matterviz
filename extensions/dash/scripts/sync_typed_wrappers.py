@@ -617,6 +617,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         "",
         "from .MatterViz import MatterViz",
         "",
+        "_UNSET = object()",
+        "",
     ]
 
     for class_name, spec in components.items():
@@ -662,6 +664,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         default_float32_props = spec.get("float32_props", auto_float32)
         alias_overrides = spec.get("aliases", {}) or {}
         type_hints = spec.get("type_hints", {}) or {}
+        forward_none_props = set(spec.get("forward_none_props", []))
 
         # Build python->js mapping with unique identifiers
         py_to_js: dict[str, str] = {}
@@ -703,7 +706,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             # Avoid duplicate None when type hint already includes it
             if "None" not in py_type:
                 py_type += " | None"
-            sig.append(f"{py}: {py_type} = None")
+            default = "_UNSET" if js in forward_none_props else "None"
+            sig.append(f"{py}: {py_type} = {default}")
         sig += [
             "mv_props: dict | None = None",
             "set_props: list[str] | None = None",
@@ -720,7 +724,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         lines.append("        if mv_props is None:")
         lines.append("            mv_props = {}")
         for py, js in py_to_js.items():
-            lines.append(f"        if {py} is not None:")
+            sentinel = "_UNSET" if js in forward_none_props else "None"
+            lines.append(f"        if {py} is not {sentinel}:")
             lines.append(f'            mv_props["{js}"] = {py}')
         if default_set_props:
             lines.append("        if set_props is None:")

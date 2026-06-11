@@ -115,6 +115,20 @@ class TestComponentInstantiation:
         assert comp.component == component
         assert comp.mv_props == mv_props
 
+    @pytest.mark.parametrize(
+        "wrapper",
+        [mvc.ConvexHull2D, mvc.ConvexHull3D, mvc.ConvexHull4D],
+    )
+    def test_convex_hull_entry_category_none_disables_default(
+        self, wrapper: type
+    ) -> None:
+        """Typed convex hull wrappers forward explicit entry_category=None."""
+        omitted = wrapper(entries=[])
+        assert "entry_category" not in omitted.mv_props
+
+        disabled = wrapper(entries=[], entry_category=None)
+        assert disabled.mv_props["entry_category"] is None
+
 
 class TestModuleExports:
     """Tests for module-level exports."""
