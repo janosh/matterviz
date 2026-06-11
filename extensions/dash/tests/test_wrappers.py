@@ -26,6 +26,11 @@ class TestMatterVizBase:
         assert comp.id == "test"
         assert comp.component == "Structure"
 
+    def test_instantiation_without_id(self) -> None:
+        """MatterViz omits absent id instead of forwarding id=None."""
+        comp = MatterViz(component="Structure")
+        assert comp.component == "Structure"
+
     def test_mv_props_forwarded(self) -> None:
         """mv_props dict is forwarded correctly."""
         comp = MatterViz(
