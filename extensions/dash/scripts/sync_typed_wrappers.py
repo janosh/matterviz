@@ -761,8 +761,9 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
 def main() -> None:
     """CLI entry point for generating typed wrappers."""
-    # Path to extensions/dash/ directory (parent of scripts/)
-    dash_root = os.path.dirname(os.path.dirname(__file__))
+    # Path to extensions/dash/ directory (parent of scripts/). abspath keeps the derived
+    # defaults cwd-independent even where __file__ is relative (e.g. some import modes).
+    dash_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", default=f"{dash_root}/component_manifest.toml")
