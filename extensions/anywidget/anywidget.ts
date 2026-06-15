@@ -201,6 +201,7 @@ const mount_reactive = (
   opts: {
     drive_keys: readonly string[]
     writeback_keys?: readonly string[]
+    writeback_defaults?: Record<string, unknown>
     extra?: Record<string, unknown>
     // extra teardown (e.g. cancel a throttled callback) run before dispose()
     cleanup?: () => void
@@ -214,6 +215,7 @@ const mount_reactive = (
     [`show_controls`, `style`, ...opts.drive_keys],
     opts.writeback_keys ?? [],
     { allow_file_drop: false, ...(opts.extra ?? {}) },
+    opts.writeback_defaults ?? {},
   )
   reactive_disposers.set(el, () => {
     opts.cleanup?.()
@@ -330,6 +332,7 @@ const render_structure: Render = ({ model, el }) => {
       `hovered_site_idx`,
     ],
     writeback_keys: [`selected_sites`, `hovered_site_idx`],
+    writeback_defaults: { selected_sites: [] },
     extra: {
       // scene_props/lattice_props are fire-once: the atom_radius/show_bonds/cell_*
       // traits they wrap aren't reactive to Python updates (unlike drive_keys above).
@@ -355,9 +358,10 @@ const render_trajectory: Render = ({ model, el }) => {
     ],
     // current_step_idx links widgets; display_mode changes from the view-mode menu.
     writeback_keys: [`current_step_idx`, `display_mode`],
+    writeback_defaults: { current_step_idx: 0, display_mode: `structure+scatter` },
     extra: {
       // structure_props (incl. scene_props/lattice_props) is fire-once: its nested
-      // structure-rendering traits aren't reactive (out of scope for now) to Python updates (unlike drive_keys above).
+      // structure-rendering traits aren't reactive to Python updates (unlike drive_keys; out of scope).
       structure_props: {
         scene_props: get_scene_props(model),
         lattice_props: get_lattice_props(model),

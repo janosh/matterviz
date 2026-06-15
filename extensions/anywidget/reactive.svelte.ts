@@ -114,8 +114,11 @@ export function reactive_widget(
   drive_keys: readonly string[],
   writeback_keys: readonly string[] = [],
   extra: Record<string, unknown> = {},
+  writeback_defaults: Record<string, unknown> = {},
 ): ReactiveWidget {
   const writeback_set = new Set(writeback_keys)
+  const writeback_default = (key: string): unknown =>
+    Object.hasOwn(writeback_defaults, key) ? writeback_defaults[key] : null
 
   // Seed props. Omit undefined so the component uses its fallback: passing undefined
   // for a $bindable-with-fallback via a $state props object trips props_invalid_value.
@@ -125,12 +128,10 @@ export function reactive_widget(
     if (value !== undefined) initial[key] = value
   }
   // Writeback keys must be present + defined at mount to establish the binding;
-  // null is fine (only undefined is rejected). An absent/None trait seeds null, so
-  // array-typed writeback keys MUST be non-nullable Python-side (e.g. List(default=[])),
-  // else the component gets null and crashes on .length/.includes.
+  // use explicit component fallback values where null would break the component.
   for (const key of writeback_keys) {
     const value = get_prop(model, key)
-    initial[key] = value === undefined ? null : value
+    initial[key] = value === undefined ? writeback_default(key) : value
   }
   const props = $state(initial)
 
@@ -144,8 +145,9 @@ export function reactive_widget(
       if (next !== undefined) {
         if (!equal(props[key], next)) props[key] = next
       } else if (writeback_set.has(key)) {
-        // trait cleared (None): writeback keys stay bound, reverting to null
-        if (props[key] !== null) props[key] = null
+        // trait cleared (None): writeback keys stay bound, reverting to fallback
+        const fallback = writeback_default(key)
+        if (!equal(props[key], fallback)) props[key] = fallback
       } else if (key in props) {
         // trait cleared (None): drop drive-only keys so the component falls back
         delete props[key]

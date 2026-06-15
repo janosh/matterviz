@@ -167,6 +167,32 @@ describe(`render_trajectory wiring`, () => {
   })
 })
 
+// A missing/None writeback trait must seed (and revert to) the component's own
+// fallback, not null -- null would crash components that call .length/.includes
+// or do arithmetic on these props (see reactive_widget writeback_defaults).
+describe(`writeback fallback defaults`, () => {
+  test.each([
+    [`structure`, `selected_sites`, [], [1, 2]],
+    [`trajectory`, `current_step_idx`, 0, 3],
+    [`trajectory`, `display_mode`, `structure+scatter`, `scatter`],
+  ] as const)(
+    `%s %s falls back to its default when missing/cleared`,
+    (widget_type, key, default_value, driven_value) => {
+      const model = new MockModel({ widget_type }) // omit trait -> bridge seeds default
+      const stub = run_renderer(widget_type, model)
+      expect(stub.read()[key]).toEqual(default_value)
+
+      model.push_from_python(key, driven_value) // Python -> component (drive)
+      flushSync()
+      expect(stub.read()[key]).toEqual(driven_value)
+
+      model.push_from_python(key, null) // cleared -> revert to default
+      flushSync()
+      expect(stub.read()[key]).toEqual(default_value)
+    },
+  )
+})
+
 describe(`render() lifecycle`, () => {
   // Drive through the real entry point (not renderers[...] directly) so this also
   // covers cleanup_element + reactive_disposers wiring: the returned disposer must

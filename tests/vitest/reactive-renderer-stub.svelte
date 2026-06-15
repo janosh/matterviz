@@ -1,13 +1,10 @@
 <script lang="ts">
-  // Recording stub standing in for the real matterviz components, so a test can
-  // assert the exact drive/writeback wiring of the anywidget renderers (key-name
-  // typos, drive-vs-writeback mistakes, scatter callbacks/event_id) without
-  // mounting the real WebGL/SVG components. Declares the interaction $bindables
-  // used across the reactive renderers so the test can mutate them (simulating
-  // component-side interaction) and assert the value flows back to the model.
-  // $bindable() has no fallback, so an absent key (e.g. these on the scatter
-  // renderer) stays undefined without tripping Svelte's props_invalid_value.
-  // Everything else lands in `rest` (drive props + extra callbacks).
+  // Recording stub for real matterviz components: verifies exact anywidget
+  // renderer wiring (drive/writeback keys, scatter callbacks/event_id) without
+  // mounting WebGL/SVG components. Declares interaction $bindables so tests can
+  // simulate component-side mutations and assert model writeback. $bindable() has
+  // no fallback, so absent keys (e.g. on scatter) remain undefined without
+  // Svelte props_invalid_value; all other props land in rest (drive props + callbacks).
   import { register_stub } from './reactive-renderer-registry'
 
   let {
