@@ -166,23 +166,6 @@
     // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
     // - merged with built-in trajectory_property_config
     ELEM_PROPERTY_LABELS?: Record<string, string>
-    // units configuration - developers can override these (deprecated - use ELEM_PROPERTY_LABELS instead)
-    units?: {
-      energy?: string
-      energy_per_atom?: string
-      force_max?: string
-      force_norm?: string
-      stress_max?: string
-      volume?: string
-      density?: string
-      temperature?: string
-      pressure?: string
-      length?: string
-      a?: string
-      b?: string
-      c?: string
-      [key: string]: string | undefined
-    }
     fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
     fps?: number // frame rate for playback
     // Loading options for large files
