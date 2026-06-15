@@ -110,11 +110,12 @@ describe(`render_scatter_plot wiring`, () => {
 })
 
 describe(`render_structure wiring`, () => {
-  test(`selected_sites + hovered_site_idx are two-way (writeback + drive)`, () => {
+  test(`selected_sites + hovered_site_idx are two-way; highlighted_sites is drive-only`, () => {
     const model = new MockModel({
       widget_type: `structure`,
       selected_sites: [],
       hovered_site_idx: null,
+      highlighted_sites: [],
     })
     const stub = run_renderer(`structure`, model)
     expect(model.save_count).toBe(0) // initial writeback effects are no-ops
@@ -136,16 +137,7 @@ describe(`render_structure wiring`, () => {
     model.push_from_python(`hovered_site_idx`, 9)
     flushSync()
     expect(stub.read().hovered_site_idx).toBe(9)
-  })
 
-  test(`highlighted_sites is driven into the view`, () => {
-    const model = new MockModel({
-      widget_type: `structure`,
-      selected_sites: [],
-      hovered_site_idx: null,
-      highlighted_sites: [],
-    })
-    const stub = run_renderer(`structure`, model)
     model.push_from_python(`highlighted_sites`, [1, 4])
     flushSync()
     expect(stub.read().highlighted_sites).toEqual([1, 4])
@@ -153,20 +145,25 @@ describe(`render_structure wiring`, () => {
 })
 
 describe(`render_trajectory wiring`, () => {
-  test(`current_step_idx is two-way (writeback + drive)`, () => {
-    const model = new MockModel({ widget_type: `trajectory`, current_step_idx: 0 })
+  test.each([
+    [`current_step_idx`, 7, 3],
+    [`display_mode`, `scatter`, `structure`],
+  ] as const)(`%s is two-way (writeback + drive)`, (key, local_value, python_value) => {
+    const model = new MockModel({
+      widget_type: `trajectory`,
+      current_step_idx: 0,
+      display_mode: `structure+scatter`,
+    })
     const stub = run_renderer(`trajectory`, model)
     expect(model.save_count).toBe(0)
 
-    // component steps forward -> writeback to model
-    stub.write(`current_step_idx`, 7)
+    stub.write(key, local_value)
     flushSync()
-    expect(model.state.current_step_idx).toBe(7)
+    expect(model.state[key]).toBe(local_value)
 
-    // Python drives the step -> reaches the component
-    model.push_from_python(`current_step_idx`, 3)
+    model.push_from_python(key, python_value)
     flushSync()
-    expect(stub.read().current_step_idx).toBe(3)
+    expect(stub.read()[key]).toBe(python_value)
   })
 })
 

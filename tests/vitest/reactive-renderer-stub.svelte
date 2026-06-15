@@ -14,6 +14,7 @@
     selected_sites = $bindable(),
     hovered_site_idx = $bindable(),
     current_step_idx = $bindable(),
+    display_mode = $bindable(),
     ...rest
   }: Record<string, unknown> = $props()
 
@@ -21,6 +22,7 @@
     if (key === `selected_sites`) selected_sites = value
     else if (key === `hovered_site_idx`) hovered_site_idx = value
     else if (key === `current_step_idx`) current_step_idx = value
+    else if (key === `display_mode`) display_mode = value
     else throw new Error(`reactive-renderer-stub has no $bindable for '${key}'`)
   }
   const read = (): Record<string, unknown> => ({
@@ -28,6 +30,7 @@
     selected_sites,
     hovered_site_idx,
     current_step_idx,
+    display_mode,
   })
   register_stub({ read, write })
 </script>

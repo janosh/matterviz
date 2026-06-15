@@ -39,6 +39,6 @@
     background-color: color-mix(in srgb, currentColor 8%, transparent);
     opacity: var(--fullscreen-btn-hover-opacity, 1);
   }
-  /* Note: Parent component should add styles to show on parent hover */
-  /* Example: .parent:hover :global(.fullscreen-toggle) { opacity: 1; } */
+  /* Note: Parent component should add styles to show on parent hover
+  Example: .parent:hover :global(.fullscreen-toggle) { opacity: 1; } */
 </style>

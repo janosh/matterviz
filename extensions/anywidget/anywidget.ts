@@ -353,8 +353,8 @@ const render_trajectory: Render = ({ model, el }) => {
       `property_labels`,
       `units`,
     ],
-    // current_step_idx is the cross-widget linking primitive (e.g. step <-> scatter point)
-    writeback_keys: [`current_step_idx`],
+    // current_step_idx links widgets; display_mode changes from the view-mode menu.
+    writeback_keys: [`current_step_idx`, `display_mode`],
     extra: {
       // structure_props (incl. scene_props/lattice_props) is fire-once: its nested
       // structure-rendering traits aren't reactive (out of scope for now) to Python updates (unlike drive_keys above).
