@@ -345,7 +345,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `fullscreen_toggle`,
         `auto_play`,
         `step_labels`,
-        `units`,
       ]),
       // pymatviz trait `property_labels` is consumed by the component as ELEM_PROPERTY_LABELS
       rename_prop(`property_labels`, `ELEM_PROPERTY_LABELS`),
