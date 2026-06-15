@@ -26,6 +26,13 @@ import {
 import app_css from 'matterviz/app.css?raw'
 import type { ThemeType } from 'matterviz/theme'
 import { mount, unmount } from 'svelte'
+import {
+  get_prop,
+  next_event_id,
+  reactive_widget,
+  set_model,
+  throttle,
+} from './reactive.svelte'
 import { detect_parent_theme, get_theme_css, watch_theme } from './theme-detection'
 
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
@@ -82,24 +89,22 @@ function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): v
 
 const instances = new WeakMap<HTMLElement, ReturnType<typeof mount>>()
 const theme_unsubs = new WeakMap<HTMLElement, () => void>()
+// Disposers that unregister model listeners + stop writeback effects for
+// reactive widgets (see mount_reactive). Kept separate from theme_unsubs so a
+// single element can carry both.
+const reactive_disposers = new WeakMap<HTMLElement, () => void>()
 
 const cleanup_element = (element: HTMLElement): void => {
   theme_unsubs.get(element)?.()
   theme_unsubs.delete(element)
 
+  reactive_disposers.get(element)?.()
+  reactive_disposers.delete(element)
+
   const instance = instances.get(element)
   if (instance) {
     void unmount(instance)
     instances.delete(element)
-  }
-}
-
-const get_prop = (model: AnyModel, key: string) => {
-  try {
-    return model.get(key) ?? void 0
-  } catch {
-    // Missing trait values are omitted from the frontend props object.
-    return void 0
   }
 }
 
@@ -185,6 +190,52 @@ const mount_widget = (
   )
 }
 
+// Mount a component with two-way reactive props (see reactive_widget). Unlike
+// mount_widget (one-shot), Python trait changes propagate into the live view and
+// the component's interaction state is written back to the model. `style` and
+// `show_controls` are always driven; `allow_file_drop` defaults off (notebooks).
+const mount_reactive = (
+  model: AnyModel,
+  el: HTMLElement,
+  component: unknown,
+  opts: {
+    drive_keys: readonly string[]
+    writeback_keys?: readonly string[]
+    extra?: Record<string, unknown>
+    // extra teardown (e.g. cancel a throttled callback) run before dispose()
+    cleanup?: () => void
+  },
+) => {
+  el.style.boxSizing = `border-box`
+  el.style.maxWidth = `100%`
+  el.style.marginRight = `2em` // avoid overflow in vscode-interactive cell container
+  const { props, dispose } = reactive_widget(
+    model,
+    [`show_controls`, `style`, ...opts.drive_keys],
+    opts.writeback_keys ?? [],
+    { allow_file_drop: false, ...(opts.extra ?? {}) },
+  )
+  reactive_disposers.set(el, () => {
+    opts.cleanup?.()
+    dispose()
+  })
+  instances.set(el, mount(component as Parameters<typeof mount>[0], { target: el, props }))
+}
+
+// Shape pushed back to Python for scatter point click/hover interactions.
+type ScatterPointEvent = {
+  point?: { series_idx?: number; point_idx?: number; x?: number; y?: number }
+} | null
+const scatter_point_payload = (data: ScatterPointEvent) =>
+  data?.point
+    ? {
+        series_idx: data.point.series_idx,
+        point_idx: data.point.point_idx,
+        x: data.point.x,
+        y: data.point.y,
+      }
+    : null
+
 // Build scene/lattice props shared by structure and trajectory renderers
 const get_scene_props = (model: AnyModel) => ({
   ...pick_props(model, [
@@ -253,8 +304,8 @@ const render_composition: Render = ({ model, el }) => {
 }
 
 const render_structure: Render = ({ model, el }) => {
-  mount_widget(model, el, Structure, {
-    ...pick_props(model, [
+  mount_reactive(model, el, Structure, {
+    drive_keys: [
       `structure`,
       `structure_string`,
       `data_url`,
@@ -269,15 +320,28 @@ const render_structure: Render = ({ model, el }) => {
       `png_dpi`,
       `isosurface_settings`,
       `volumetric_data`,
-    ]),
-    scene_props: get_scene_props(model),
-    lattice_props: get_lattice_props(model),
+      // selected_sites + hovered_site_idx are two-way (also in writeback_keys).
+      // highlighted_sites stays drive-only: the component sets it from info-pane
+      // hover (high frequency), so writeback would flood the comm -- trade-off is a
+      // component-side clear (on structure change) isn't pushed back, so re-driving
+      // the same value won't restore the highlight.
+      `selected_sites`,
+      `highlighted_sites`,
+      `hovered_site_idx`,
+    ],
+    writeback_keys: [`selected_sites`, `hovered_site_idx`],
+    extra: {
+      // scene_props/lattice_props are fire-once: the atom_radius/show_bonds/cell_*
+      // traits they wrap aren't reactive to Python updates (unlike drive_keys above).
+      scene_props: get_scene_props(model),
+      lattice_props: get_lattice_props(model),
+    },
   })
 }
 
 const render_trajectory: Render = ({ model, el }) => {
-  mount_widget(model, el, Trajectory, {
-    ...pick_props(model, [
+  mount_reactive(model, el, Trajectory, {
+    drive_keys: [
       `trajectory`,
       `data_url`,
       `current_step_idx`,
@@ -288,25 +352,55 @@ const render_trajectory: Render = ({ model, el }) => {
       `step_labels`,
       `property_labels`,
       `units`,
-    ]),
-    structure_props: {
-      scene_props: get_scene_props(model),
-      lattice_props: get_lattice_props(model),
-      ...pick_props(model, [
-        `show_site_labels`,
-        `show_site_indices`,
-        `show_image_atoms`,
-        `color_scheme`,
-        `background_color`,
-        `background_opacity`,
-      ]),
-      fullscreen_toggle: false,
+    ],
+    // current_step_idx is the cross-widget linking primitive (e.g. step <-> scatter point)
+    writeback_keys: [`current_step_idx`],
+    extra: {
+      // structure_props (incl. scene_props/lattice_props) is fire-once: its nested
+      // structure-rendering traits aren't reactive (out of scope for now) to Python updates (unlike drive_keys above).
+      structure_props: {
+        scene_props: get_scene_props(model),
+        lattice_props: get_lattice_props(model),
+        ...pick_props(model, [
+          `show_site_labels`,
+          `show_site_indices`,
+          `show_image_atoms`,
+          `color_scheme`,
+          `background_color`,
+          `background_opacity`,
+        ]),
+        fullscreen_toggle: false,
+      },
     },
   })
 }
 
 const render_scatter_plot: Render = ({ model, el }) => {
-  mount_widget(model, el, ScatterPlot, pick_props(model, scatter_plot_prop_keys))
+  // throttle hover writeback (fires per mousemove) to spare the Jupyter comm
+  const on_point_hover = throttle(
+    (data: ScatterPointEvent) =>
+      set_model(model, `hovered_point`, scatter_point_payload(data)),
+    80,
+  )
+  mount_reactive(model, el, ScatterPlot, {
+    // selected_point drives the highlight from Python; active_point/hovered_point
+    // are written back on user interaction via the callbacks below.
+    drive_keys: [...scatter_plot_prop_keys, `selected_point`],
+    cleanup: on_point_hover.cancel,
+    extra: {
+      on_point_click: (data: ScatterPointEvent) => {
+        // tag each click with a monotonic event_id so re-clicking the same point
+        // is a distinct trait value (traitlets/the bridge skip equal reassigns)
+        const payload = scatter_point_payload(data)
+        set_model(
+          model,
+          `active_point`,
+          payload && { ...payload, event_id: next_event_id(model, `active_point`) },
+        )
+      },
+      on_point_hover,
+    },
+  })
 }
 
 const render_bar_plot: Render = ({ model, el }) => {
@@ -521,8 +615,9 @@ const render_chem_pot_diagram: Render = ({ model, el }) => {
   )
 }
 
-// Static dispatch table — referenced by render() at call time (after module init)
-const renderers: Record<string, Render> = {
+// Static dispatch table — referenced by render() at call time (after module init).
+// Exported so tests can exercise individual renderers' drive/writeback wiring.
+export const renderers: Record<string, Render> = {
   structure: render_structure,
   trajectory: render_trajectory,
   scatter_plot: render_scatter_plot,

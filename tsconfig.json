@@ -14,5 +14,10 @@
     "allowArbitraryExtensions": true,
     "skipLibCheck": true
   },
-  "exclude": ["src/scripts", "extensions"]
+  // anywidget-renderers.test.ts imports the built `matterviz` package (dist) via
+  // anywidget.ts; svelte-check would then resolve dist alongside src, creating a
+  // duplicate Svelte `Snippet` identity that cascades false errors across src/lib.
+  // vi.mock handles the import at runtime (vitest still runs the file), so excluding
+  // it from type-checking is safe.
+  "exclude": ["src/scripts", "extensions", "tests/vitest/anywidget-renderers.test.ts"]
 }

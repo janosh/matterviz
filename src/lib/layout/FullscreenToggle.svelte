@@ -4,27 +4,19 @@
   import Icon from '$lib/Icon.svelte'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
-  let {
-    fullscreen = $bindable(false),
-    class: className,
-    ...rest
-  }: HTMLButtonAttributes & {
+  let { fullscreen = $bindable(false), ...rest }: HTMLButtonAttributes & {
     fullscreen?: boolean
   } = $props()
 </script>
 
 <button
-  class="fullscreen-toggle {className ?? ``}"
+  class="fullscreen-toggle {rest.class ?? ``}"
   onclick={() => (fullscreen = !fullscreen)}
   aria-label={fullscreen ? `Exit fullscreen` : `Enter fullscreen`}
   type="button"
   {...rest}
 >
-  <Icon
-    icon={fullscreen ? `ExitFullscreen` : `Fullscreen`}
-    width="18"
-    height="18"
-  />
+  <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" width="18" height="18" />
 </button>
 
 <style>
