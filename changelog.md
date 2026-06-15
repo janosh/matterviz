@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.4.1](https://github.com/janosh/matterviz/compare/v0.4.0...v0.4.1)
+
+> 15 June 2026
+
+### 🚀 New Features
+
+- Render coordination polyhedra around cation-like centers in the 3D structure viewer — `compute_polyhedra` derives them from perceived bonds with PBC-aware neighbor expansion (closing correctly across cell boundaries), with `show_polyhedra`/opacity/edge/color-mode settings wired into `StructureControls` plus a demo page https://github.com/janosh/matterviz/pull/358
+- Make the anywidget bridge two-way reactive instead of fire-once: Python trait changes (incl. ipywidgets `link`) drive the live `Structure`/`Trajectory`/`ScatterPlot` view and component interaction writes back to Python, enabling coordinated multi-widget views https://github.com/janosh/matterviz/pull/365
+- Add generic categorical entry classification for convex-hull diagrams (2D/3D/4D) — shape-code entries by any categorical property (electronic class, crystallinity, magnetic ordering, ...) with a filter row of shape swatches, per-value counts, and show/hide toggles, plus a built-in magnetic-ordering preset https://github.com/janosh/matterviz/pull/363
+- Add symmetry-element overlays classifying operations into rotation/screw axes, mirror/glide planes, inversion centers, and rotoinversion axes (rendered by `SymmetryElements.svelte`) https://github.com/janosh/matterviz/pull/359
+
+### 🐛 Bug Fixes
+
+- Fix moyo Wyckoff tables for non-conventional input cells: moyo's per-site arrays index the input cell (not `std_cell`), so sites are now grouped into crystallographic orbits with correct conventional-cell multiplicity (primitive FCC Cu now shows one `4a` instead of `1a` + 3 bogus letter-less rows) https://github.com/janosh/matterviz/pull/359
+- Fix the homepage file picker dropping all crystal structures in production — the Rolldown build ignores `import: 'default'` in eager `import.meta.glob`, so a new `glob_text` helper normalizes module-namespace/parsed values back to raw text https://github.com/janosh/matterviz/pull/360
+
+### 💡 Refactoring
+
+- Codebase-wide type-safety + naming cleanup (single-letter → snake_case, `[number, number]` → `Vec2`/`VecN`) and DRY extraction of shared plot/science helpers — net ~2,200 fewer lines across 247 files https://github.com/janosh/matterviz/pull/360
+- Extract shared 3D-scene (`SceneCamera`/`bind_renderer`), export-pane (`io/ExportPane.svelte`), and viewer-chrome (`layout/ViewerChrome.svelte`) modules across the Structure/Brillouin/FermiSurface/ChemPot/Trajectory viewers, plus parser hardening (106 files) https://github.com/janosh/matterviz/pull/361
+- Follow-up dedup pass: `ConvexHullChrome.svelte` and `FullscreenButton.svelte` collapse copy-pasted toolbar/fullscreen code and a `create_chempot_overrides` factory dedupes the ChemPot control panes (~600 lines removed across 86 files) https://github.com/janosh/matterviz/pull/362
+- Add tag-triggered publish CI: on a `v*.*.*` tag, gate on lint + tests + a version-match check, then publish `matterviz` and `matterviz-anywidget` to npm via OIDC trusted publishing and the VS Code extension to Open VSX (plus a `.vsix` artifact for the Marketplace) https://github.com/janosh/matterviz/pull/357
+
 ## [v0.4.0](https://github.com/janosh/matterviz/compare/v0.3.6...v0.4.0)
 
 > 6 June 2026

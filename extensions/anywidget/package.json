@@ -1,6 +1,6 @@
 {
   "name": "matterviz-anywidget",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Prebuilt anywidget bundle for MatterViz: renders MatterViz components (structures, trajectories, plots, periodic tables, ...) in Jupyter/marimo/VS Code via a single self-contained ESM file. Consumed by pymatviz and other Python wrappers, and served over CDNs (jsDelivr/unpkg) for HTML export.",
   "homepage": "https://github.com/janosh/matterviz",
   "license": "MIT",
@@ -23,13 +23,13 @@
   },
   "devDependencies": {
     "@janosh/vite-config": "github:janosh/dotfiles",
-    "@spglib/moyo-wasm": "^0.10.0",
-    "@sveltejs/vite-plugin-svelte": "^7.0.0",
-    "@types/node": "^25.6.0",
+    "@spglib/moyo-wasm": "^0.12.0",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@types/node": "^25.9.3",
     "anywidget": "^0.11.0",
     "matterviz": "file:../..",
-    "svelte": "^5.55.5",
-    "svelte-multiselect": "^11.7.1",
+    "svelte": "^5.56.3",
+    "svelte-multiselect": "^11.7.2",
     "vite": "^8.0.16",
     "vite-plus": "latest"
   },
