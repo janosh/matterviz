@@ -2,10 +2,15 @@
 import { flushSync, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import {
+  derived_prop,
+  drive_prop,
+  drive_props,
   next_event_id,
   reactive_widget,
+  rename_prop,
   set_model,
   throttle,
+  writeback_prop,
 } from '../../extensions/anywidget/reactive.svelte'
 import { MockModel } from './anywidget-mock-model'
 import Harness from './reactive-mount-harness.svelte'
@@ -70,10 +75,12 @@ describe(`next_event_id`, () => {
 })
 
 describe(`reactive_widget`, () => {
-  test(`seeds props from model traits + merges extra`, () => {
+  test(`seeds props from driven specs + merges extra`, () => {
     const model = new MockModel({ a: 1, b: `x` })
     const cb = () => {}
-    const { props } = reactive_widget(as_model(model), [`a`, `b`], [], { on_click: cb })
+    const { props } = reactive_widget(as_model(model), drive_props([`a`, `b`]), {
+      on_click: cb,
+    })
     expect(props.a).toBe(1)
     expect(props.b).toBe(`x`)
     expect(props.on_click).toBe(cb)
@@ -81,55 +88,77 @@ describe(`reactive_widget`, () => {
 
   test(`drive: Python trait change propagates into props`, () => {
     const model = new MockModel({ current_step_idx: 0 })
-    const { props } = reactive_widget(as_model(model), [`current_step_idx`])
+    const { props } = reactive_widget(as_model(model), [drive_prop(`current_step_idx`)])
     model.push_from_python(`current_step_idx`, 7)
     expect(props.current_step_idx).toBe(7)
+  })
+
+  test(`rename: a trait drives a differently-named component prop`, () => {
+    const model = new MockModel({ band_structure: 1 })
+    const { props } = reactive_widget(as_model(model), [
+      rename_prop(`band_structure`, `band_structs`),
+    ])
+    expect(props.band_structs).toBe(1)
+    expect(`band_structure` in props).toBe(false) // surfaced only under the new name
+    model.push_from_python(`band_structure`, 2)
+    expect(props.band_structs).toBe(2)
+  })
+
+  test(`derived: recomputes when any dep trait changes`, () => {
+    const model = new MockModel({ a: 1, b: 2 })
+    const { props } = reactive_widget(as_model(model), [
+      derived_prop(`combo`, [`a`, `b`], (mdl) => ({ a: mdl.get(`a`), b: mdl.get(`b`) })),
+    ])
+    expect(props.combo).toEqual({ a: 1, b: 2 })
+    model.push_from_python(`b`, 9)
+    expect(props.combo).toEqual({ a: 1, b: 9 })
   })
 
   test(`omits undefined drive keys at mount (component uses fallback)`, () => {
     // null/missing traits must be omitted, else Svelte's props_invalid_value
     // fires for $bindable-with-fallback props passed undefined via $state.
     const model = new MockModel({ defined: 1, missing: null })
-    const { props } = reactive_widget(as_model(model), [`defined`, `missing`])
+    const { props } = reactive_widget(as_model(model), drive_props([`defined`, `missing`]))
     expect(props.defined).toBe(1)
     expect(`missing` in props).toBe(false)
   })
 
   test(`drive: clearing a trait deletes the key to revert to fallback`, () => {
     const model = new MockModel({ x_axis: { label: `E` } })
-    const { props } = reactive_widget(as_model(model), [`x_axis`])
+    const { props } = reactive_widget(as_model(model), [drive_prop(`x_axis`)])
     expect(props.x_axis).toEqual({ label: `E` })
     model.push_from_python(`x_axis`, null)
     expect(`x_axis` in props).toBe(false) // reverted to component fallback
   })
 
-  test(`writeback keys are seeded (undefined -> null) so binding is established`, () => {
-    const model = new MockModel({ hovered_site_idx: null })
-    const { props } = reactive_widget(
-      as_model(model),
-      [`hovered_site_idx`],
-      [`hovered_site_idx`],
-    )
-    expect(`hovered_site_idx` in props).toBe(true)
-    expect(props.hovered_site_idx).toBeNull()
+  test(`writeback prop is seeded with its fallback so the binding is established`, () => {
+    const model = new MockModel({ selected_sites: null })
+    const { props } = reactive_widget(as_model(model), [writeback_prop(`selected_sites`, [])])
+    expect(`selected_sites` in props).toBe(true)
+    expect(props.selected_sites).toEqual([]) // fallback, not null (would crash .length)
   })
 
-  test(`drive: clearing a writeback key keeps it bound (reverts to null)`, () => {
+  test(`fallback-backed writeback prop with a missing trait does not save on mount`, () => {
+    const model = new MockModel({}) // selected_sites absent -> seeded with [] fallback
+    reactive_widget(as_model(model), [writeback_prop(`selected_sites`, [])])
+    flushSync()
+    // the seeded fallback equals the model-derived value, so no write before interaction
+    expect(model.set_count).toBe(0)
+    expect(model.save_count).toBe(0)
+  })
+
+  test(`drive: clearing a writeback prop keeps it bound (reverts to fallback)`, () => {
     const model = new MockModel({ hovered_site_idx: 4 })
-    const { props } = reactive_widget(
-      as_model(model),
-      [`hovered_site_idx`],
-      [`hovered_site_idx`],
-    )
+    const { props } = reactive_widget(as_model(model), [writeback_prop(`hovered_site_idx`)])
     expect(props.hovered_site_idx).toBe(4)
     model.push_from_python(`hovered_site_idx`, null)
     expect(`hovered_site_idx` in props).toBe(true) // still bound
-    expect(props.hovered_site_idx).toBeNull()
+    expect(props.hovered_site_idx).toBeNull() // no fallback given -> null
   })
 
   test(`writeback: mutating props pushes to model + saves`, () => {
     const model = new MockModel({ selected_sites: [] })
-    const { props } = reactive_widget(as_model(model), [`selected_sites`], [`selected_sites`])
+    const { props } = reactive_widget(as_model(model), [writeback_prop(`selected_sites`, [])])
     flushSync() // initial writeback effect: value equals model -> no write
     expect(model.save_count).toBe(0)
 
@@ -141,11 +170,7 @@ describe(`reactive_widget`, () => {
 
   test(`two-way sync does not loop (Python -> JS -> Python echo absorbed)`, () => {
     const model = new MockModel({ current_step_idx: 0 })
-    const { props } = reactive_widget(
-      as_model(model),
-      [`current_step_idx`],
-      [`current_step_idx`],
-    )
+    const { props } = reactive_widget(as_model(model), [writeback_prop(`current_step_idx`, 0)])
     flushSync()
     const baseline_saves = model.save_count
 
@@ -164,10 +189,23 @@ describe(`reactive_widget`, () => {
 
   test(`dispose unregisters drive listeners`, () => {
     const model = new MockModel({ a: 0 })
-    const { props, dispose } = reactive_widget(as_model(model), [`a`])
+    const { props, dispose } = reactive_widget(as_model(model), [drive_prop(`a`)])
     dispose()
     model.push_from_python(`a`, 42)
     expect(props.a).toBe(0) // listener removed -> no update
+  })
+
+  test(`dispose stops writeback effects (post-dispose mutation does not reach model)`, () => {
+    const model = new MockModel({ current_step_idx: 0 })
+    const { props, dispose } = reactive_widget(as_model(model), [
+      writeback_prop(`current_step_idx`, 0),
+    ])
+    flushSync()
+    dispose() // stops the $effect.root
+    props.current_step_idx = 9
+    flushSync()
+    expect(model.state.current_step_idx).toBe(0) // effect stopped -> no writeback
+    expect(model.save_count).toBe(0)
   })
 
   // Exercises the real path the whole feature relies on: reactive_widget().props
@@ -175,11 +213,7 @@ describe(`reactive_widget`, () => {
   // the model, and a Python push flowing into the component.
   test(`real mount(): $bindable writeback -> model, and drive -> component`, () => {
     const model = new MockModel({ current_step_idx: 0 })
-    const reactive = reactive_widget(
-      as_model(model),
-      [`current_step_idx`],
-      [`current_step_idx`],
-    )
+    const reactive = reactive_widget(as_model(model), [writeback_prop(`current_step_idx`, 0)])
     const target = document.createElement(`div`)
     document.body.append(target)
     const inst = mount(Harness, { target, props: reactive.props }) as unknown as {
@@ -207,7 +241,7 @@ describe(`reactive_widget`, () => {
   // checks). This is the headless-render crash the omit/delete logic prevents.
   test(`real mount(): clearing a drive-only trait reverts the component to its fallback`, () => {
     const model = new MockModel({ current_step_idx: 5 })
-    const reactive = reactive_widget(as_model(model), [`current_step_idx`]) // drive-only
+    const reactive = reactive_widget(as_model(model), [drive_prop(`current_step_idx`)]) // drive-only
     const target = document.createElement(`div`)
     document.body.append(target)
     mount(Harness, { target, props: reactive.props })

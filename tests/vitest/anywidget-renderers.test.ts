@@ -5,10 +5,10 @@ import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
 // Replace the heavy matterviz components with a recording stub so we can exercise
-// the real anywidget renderer wiring (drive vs writeback key names, scatter
-// click/hover callbacks + event_id) without mounting WebGL/SVG components or
+// the real anywidget widget wiring (drive / rename / derived / writeback key names,
+// scatter click/hover callbacks + event_id) without mounting WebGL/SVG components or
 // pulling the built dist bundle. The theme/css imports are stubbed for the same
-// reason (the renderers under test never call into them directly).
+// reason (mount_spec never calls into them directly).
 vi.mock(`matterviz`, async () => {
   const Stub = (await import(`./reactive-renderer-stub.svelte`)).default
   const component_names = [
@@ -41,27 +41,73 @@ vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 vi.mock(`matterviz/theme/themes`, () => ({}))
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
-const { renderers } = anywidget_module
+const { WIDGETS, mount_spec } = anywidget_module
 
-type RenderArgs = Parameters<(typeof renderers)[string]>[0]
-// Derive AnyModel from the renderer arg type rather than importing anywidget/types
-const as_model = (mock: MockModel) => mock as unknown as RenderArgs[`model`]
+type ModelArg = Parameters<typeof mount_spec>[0]
+type RenderArg = Parameters<typeof anywidget_module.default.render>[0]
+// Cast the mock to the bridge's model type rather than importing anywidget/types.
+const as_model = (mock: MockModel) => mock as unknown as ModelArg
 
-// Run a renderer against a mock model + fresh DOM target, returning the stub the
-// renderer mounted so the test can read driven props / drive $bindable writeback.
-const run_renderer = (widget_type: string, model: MockModel) => {
+// Mount one widget's spec against a mock model + fresh DOM target, returning the
+// stub it mounted so the test can read driven props / drive $bindable writeback.
+const run_widget = (widget_type: string, model: MockModel) => {
   reset_stub() // clear any prior stub so a failed mount throws instead of returning stale
   const el = document.createElement(`div`)
   document.body.append(el)
-  void renderers[widget_type]({ model: as_model(model), el } as unknown as RenderArgs)
+  mount_spec(as_model(model), el, WIDGETS[widget_type])
   flushSync() // settle the initial writeback effects (all no-ops)
   return latest_stub()
 }
 
-describe(`render_scatter_plot wiring`, () => {
+// A model seeded with a unique sentinel for every trait any driven prop depends on,
+// so each prop computes to a distinct, defined value.
+const seeded_model = (widget_type: string, spec: (typeof WIDGETS)[string]): MockModel => {
+  const state: Record<string, unknown> = { widget_type }
+  for (const dep of new Set(spec.drive.flatMap((dp) => dp.deps))) state[dep] = `seed:${dep}`
+  return new MockModel(state)
+}
+
+const widget_entries = Object.entries(WIDGETS)
+
+// Generic engine coverage across every registered widget: uses each spec's own
+// compute as the oracle, so it verifies drive seeding + rename + derived recompute
+// flow through mount_spec -> reactive_widget -> the mounted component for all widgets.
+describe(`drive wiring (all widgets)`, () => {
+  test.each(widget_entries)(
+    `%s seeds every non-writeback prop from the model`,
+    (widget_type, spec) => {
+      const model = seeded_model(widget_type, spec)
+      const stub = run_widget(widget_type, model)
+      for (const dp of spec.drive) {
+        if (dp.writeback) continue // covered by writeback round-trip tests below
+        expect(stub.read()[dp.prop]).toEqual(dp.compute(as_model(model)))
+      }
+    },
+  )
+
+  test.each(widget_entries)(
+    `%s re-drives its props when any dep trait changes`,
+    (widget_type, spec) => {
+      const model = seeded_model(widget_type, spec)
+      const stub = run_widget(widget_type, model)
+      for (const dp of spec.drive) {
+        if (dp.writeback) continue
+        // bump every dep (not just the first) so a missing listener on a multi-dep
+        // derived prop is caught, not only deps[0]
+        for (const dep of dp.deps) {
+          model.push_from_python(dep, `bumped:${dep}`)
+          flushSync()
+          expect(stub.read()[dp.prop]).toEqual(dp.compute(as_model(model)))
+        }
+      }
+    },
+  )
+})
+
+describe(`scatter_plot wiring`, () => {
   test(`on_point_click writes active_point with a monotonic event_id`, () => {
     const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
-    const stub = run_renderer(`scatter_plot`, model)
+    const stub = run_widget(`scatter_plot`, model)
     const on_point_click = stub.read().on_point_click as (data: unknown) => void
     expect(typeof on_point_click).toBe(`function`)
 
@@ -81,17 +127,12 @@ describe(`render_scatter_plot wiring`, () => {
 
   test(`on_point_hover writes hovered_point (no event_id, leading-edge)`, () => {
     const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
-    const stub = run_renderer(`scatter_plot`, model)
+    const stub = run_widget(`scatter_plot`, model)
     const on_point_hover = stub.read().on_point_hover as (data: unknown) => void
     expect(typeof on_point_hover).toBe(`function`)
 
     on_point_hover({ point: { series_idx: 1, point_idx: 4, x: 2, y: 6 } })
-    expect(model.state.hovered_point).toEqual({
-      series_idx: 1,
-      point_idx: 4,
-      x: 2,
-      y: 6,
-    })
+    expect(model.state.hovered_point).toEqual({ series_idx: 1, point_idx: 4, x: 2, y: 6 })
   })
 
   test(`selected_point is a drive key (Python -> view)`, () => {
@@ -100,7 +141,7 @@ describe(`render_scatter_plot wiring`, () => {
       series: [],
       selected_point: { series_idx: 0, point_idx: 0 },
     })
-    const stub = run_renderer(`scatter_plot`, model)
+    const stub = run_widget(`scatter_plot`, model)
     expect(stub.read().selected_point).toEqual({ series_idx: 0, point_idx: 0 })
 
     model.push_from_python(`selected_point`, { series_idx: 0, point_idx: 3 })
@@ -109,7 +150,7 @@ describe(`render_scatter_plot wiring`, () => {
   })
 })
 
-describe(`render_structure wiring`, () => {
+describe(`structure wiring`, () => {
   test(`selected_sites + hovered_site_idx are two-way; highlighted_sites is drive-only`, () => {
     const model = new MockModel({
       widget_type: `structure`,
@@ -117,7 +158,7 @@ describe(`render_structure wiring`, () => {
       hovered_site_idx: null,
       highlighted_sites: [],
     })
-    const stub = run_renderer(`structure`, model)
+    const stub = run_widget(`structure`, model)
     expect(model.save_count).toBe(0) // initial writeback effects are no-ops
 
     // component interaction -> model (writeback)
@@ -142,9 +183,36 @@ describe(`render_structure wiring`, () => {
     flushSync()
     expect(stub.read().highlighted_sites).toEqual([1, 4])
   })
+
+  test(`scene_props recomputes reactively when a constituent trait changes`, () => {
+    const model = new MockModel({ widget_type: `structure`, atom_radius: 0.5 })
+    const stub = run_widget(`structure`, model)
+    expect((stub.read().scene_props as { atom_radius: number }).atom_radius).toBe(0.5)
+
+    model.push_from_python(`atom_radius`, 1.2)
+    flushSync()
+    expect((stub.read().scene_props as { atom_radius: number }).atom_radius).toBe(1.2)
+
+    // cleared -> subkey becomes undefined; the component re-defaults it downstream
+    // (StructureScene $bindable defaults + Structure ?? guards)
+    model.push_from_python(`atom_radius`, null)
+    flushSync()
+    expect((stub.read().scene_props as { atom_radius?: number }).atom_radius).toBeUndefined()
+  })
+
+  test(`show_site_labels rides in scene_props, not a dead top-level prop`, () => {
+    // Structure forwards label settings to StructureScene via {...scene_props}; it has
+    // no top-level show_site_labels prop, so a top-level drive key would be dropped.
+    const model = new MockModel({ widget_type: `structure`, show_site_labels: true })
+    const stub = run_widget(`structure`, model)
+    expect((stub.read().scene_props as { show_site_labels?: boolean }).show_site_labels).toBe(
+      true,
+    )
+    expect(`show_site_labels` in stub.read()).toBe(false)
+  })
 })
 
-describe(`render_trajectory wiring`, () => {
+describe(`trajectory wiring`, () => {
   test.each([
     [`current_step_idx`, 7, 3],
     [`display_mode`, `scatter`, `structure`],
@@ -154,7 +222,7 @@ describe(`render_trajectory wiring`, () => {
       current_step_idx: 0,
       display_mode: `structure+scatter`,
     })
-    const stub = run_renderer(`trajectory`, model)
+    const stub = run_widget(`trajectory`, model)
     expect(model.save_count).toBe(0)
 
     stub.write(key, local_value)
@@ -165,11 +233,20 @@ describe(`render_trajectory wiring`, () => {
     flushSync()
     expect(stub.read()[key]).toBe(python_value)
   })
+
+  test(`property_labels trait is delivered to the component as ELEM_PROPERTY_LABELS`, () => {
+    // Trajectory.svelte consumes ELEM_PROPERTY_LABELS, not property_labels.
+    const labels = { energy: `Energy (eV)` }
+    const model = new MockModel({ widget_type: `trajectory`, property_labels: labels })
+    const stub = run_widget(`trajectory`, model)
+    expect(stub.read().ELEM_PROPERTY_LABELS).toEqual(labels)
+    expect(`property_labels` in stub.read()).toBe(false) // renamed, not passed raw
+  })
 })
 
 // A missing/None writeback trait must seed (and revert to) the component's own
 // fallback, not null -- null would crash components that call .length/.includes
-// or do arithmetic on these props (see reactive_widget writeback_defaults).
+// or do arithmetic on these props (see reactive_widget writeback_prop fallback).
 describe(`writeback fallback defaults`, () => {
   test.each([
     [`structure`, `selected_sites`, [], [1, 2]],
@@ -179,7 +256,7 @@ describe(`writeback fallback defaults`, () => {
     `%s %s falls back to its default when missing/cleared`,
     (widget_type, key, default_value, driven_value) => {
       const model = new MockModel({ widget_type }) // omit trait -> bridge seeds default
-      const stub = run_renderer(widget_type, model)
+      const stub = run_widget(widget_type, model)
       expect(stub.read()[key]).toEqual(default_value)
 
       model.push_from_python(key, driven_value) // Python -> component (drive)
@@ -194,8 +271,8 @@ describe(`writeback fallback defaults`, () => {
 })
 
 describe(`render() lifecycle`, () => {
-  // Drive through the real entry point (not renderers[...] directly) so this also
-  // covers cleanup_element + reactive_disposers wiring: the returned disposer must
+  // Drive through the real entry point (not mount_spec directly) so this also covers
+  // cleanup_element + reactive_disposers wiring: the returned disposer must
   // unregister every model listener, else re-rendering an element leaks them.
   test(`the render() disposer unregisters all model listeners`, () => {
     const model = new MockModel({
@@ -211,7 +288,7 @@ describe(`render() lifecycle`, () => {
     const dispose = anywidget_module.default.render({
       model: as_model(model),
       el,
-    } as unknown as RenderArgs) as () => void
+    } as unknown as RenderArg) as () => void
     flushSync()
     expect(listener_count()).toBeGreaterThan(0) // drive listeners registered
 

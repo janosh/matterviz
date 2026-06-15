@@ -26,12 +26,18 @@ import {
 import app_css from 'matterviz/app.css?raw'
 import type { ThemeType } from 'matterviz/theme'
 import { mount, unmount } from 'svelte'
+import type { DrivenProp } from './reactive.svelte'
 import {
+  derived_prop,
+  drive_prop,
+  drive_props,
   get_prop,
   next_event_id,
   reactive_widget,
+  rename_prop,
   set_model,
   throttle,
+  writeback_prop,
 } from './reactive.svelte'
 import { detect_parent_theme, get_theme_css, watch_theme } from './theme-detection'
 
@@ -89,9 +95,9 @@ function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): v
 
 const instances = new WeakMap<HTMLElement, ReturnType<typeof mount>>()
 const theme_unsubs = new WeakMap<HTMLElement, () => void>()
-// Disposers that unregister model listeners + stop writeback effects for
-// reactive widgets (see mount_reactive). Kept separate from theme_unsubs so a
-// single element can carry both.
+// Disposers that unregister model listeners + stop writeback effects for each
+// mounted widget (see mount_spec). Kept separate from theme_unsubs so a single
+// element can carry both.
 const reactive_disposers = new WeakMap<HTMLElement, () => void>()
 
 const cleanup_element = (element: HTMLElement): void => {
@@ -165,64 +171,65 @@ const histogram_prop_keys = [
   `bar`,
 ] as const
 
-// Mount a Svelte component with base props (notebook context, show_controls, style)
-const mount_widget = (
-  model: AnyModel,
-  el: HTMLElement,
-  component: unknown,
-  props: Record<string, unknown>,
-) => {
-  // Prevent widget overflow in notebook cell outputs
-  el.style.boxSizing = `border-box`
-  el.style.maxWidth = `100%`
-  el.style.marginRight = `2em` // In vscode-interactive window, content overflows cell container div without this
-  const base_props = {
-    allow_file_drop: false,
-    show_controls: get_prop(model, `show_controls`),
-    style: get_prop(model, `style`),
-  }
-  instances.set(
-    el,
-    mount(component as Parameters<typeof mount>[0], {
-      target: el,
-      props: { ...base_props, ...props },
-    }),
-  )
-}
+// Scene traits forwarded verbatim into scene_props via pick_props.
+const scene_pick_keys = [
+  `atom_radius`,
+  `show_atoms`,
+  `same_size_atoms`,
+  `show_bonds`,
+  `bond_thickness`,
+  `bond_color`,
+  `bonding_strategy`,
+  `vector_configs`,
+  `vector_scale`,
+  `vector_color`,
+  `vector_normalize`,
+  `vector_uniform_thickness`,
+  `vector_origin_gap`,
+  // label settings live in scene_props: Structure forwards them to StructureScene
+  // via {...scene_props}, not as top-level Structure props
+  `show_site_labels`,
+  `show_site_indices`,
+] as const
+// All scene traits (deps for the reactive scene_props derived prop); auto_rotate
+// and show_gizmo get explicit defaults in get_scene_props rather than pick_props.
+const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `show_gizmo`] as const
 
-// Mount a component with two-way reactive props (see reactive_widget). Unlike
-// mount_widget (one-shot), Python trait changes propagate into the live view and
-// the component's interaction state is written back to the model. `style` and
-// `show_controls` are always driven; `allow_file_drop` defaults off (notebooks).
-const mount_reactive = (
-  model: AnyModel,
-  el: HTMLElement,
-  component: unknown,
-  opts: {
-    drive_keys: readonly string[]
-    writeback_keys?: readonly string[]
-    writeback_defaults?: Record<string, unknown>
-    extra?: Record<string, unknown>
-    // extra teardown (e.g. cancel a throttled callback) run before dispose()
-    cleanup?: () => void
-  },
-) => {
-  el.style.boxSizing = `border-box`
-  el.style.maxWidth = `100%`
-  el.style.marginRight = `2em` // avoid overflow in vscode-interactive cell container
-  const { props, dispose } = reactive_widget(
-    model,
-    [`show_controls`, `style`, ...opts.drive_keys],
-    opts.writeback_keys ?? [],
-    { allow_file_drop: false, ...(opts.extra ?? {}) },
-    opts.writeback_defaults ?? {},
-  )
-  reactive_disposers.set(el, () => {
-    opts.cleanup?.()
-    dispose()
-  })
-  instances.set(el, mount(component as Parameters<typeof mount>[0], { target: el, props }))
-}
+const lattice_prop_keys = [
+  `cell_edge_opacity`,
+  `cell_surface_opacity`,
+  `cell_edge_color`,
+  `cell_surface_color`,
+  `cell_edge_width`,
+  `show_cell_vectors`,
+] as const
+
+// Top-level Structure traits the trajectory forwards into its nested structure_props
+// (show_site_labels/show_site_indices are NOT here -- they ride inside scene_props).
+const traj_structure_prop_keys = [
+  `show_image_atoms`,
+  `color_scheme`,
+  `background_color`,
+  `background_opacity`,
+] as const
+
+// Build scene/lattice props shared by structure and trajectory renderers
+const get_scene_props = (model: AnyModel) => ({
+  ...pick_props(model, scene_pick_keys),
+  // defaults mirror the Structure component's own auto_rotate/gizmo defaults
+  auto_rotate: get_prop(model, `auto_rotate`) ?? 0.2,
+  gizmo: get_prop(model, `show_gizmo`) ?? true,
+})
+
+const get_lattice_props = (model: AnyModel) => pick_props(model, lattice_prop_keys)
+
+// Trajectory forwards a fixed config object to its embedded Structure view.
+const get_structure_props = (model: AnyModel) => ({
+  scene_props: get_scene_props(model),
+  lattice_props: get_lattice_props(model),
+  ...pick_props(model, traj_structure_prop_keys),
+  fullscreen_toggle: false,
+})
 
 // Shape pushed back to Python for scatter point click/hover interactions.
 type ScatterPointEvent = {
@@ -238,163 +245,19 @@ const scatter_point_payload = (data: ScatterPointEvent) =>
       }
     : null
 
-// Build scene/lattice props shared by structure and trajectory renderers
-const get_scene_props = (model: AnyModel) => ({
-  ...pick_props(model, [
-    `atom_radius`,
-    `show_atoms`,
-    `same_size_atoms`,
-    `show_bonds`,
-    `bond_thickness`,
-    `bond_color`,
-    `bonding_strategy`,
-    `vector_configs`,
-    `vector_scale`,
-    `vector_color`,
-    `vector_normalize`,
-    `vector_uniform_thickness`,
-    `vector_origin_gap`,
-  ]),
-  // defaults mirror the Structure component's own auto_rotate/gizmo defaults
-  auto_rotate: get_prop(model, `auto_rotate`) ?? 0.2,
-  gizmo: get_prop(model, `show_gizmo`) ?? true,
-})
-
-const get_lattice_props = (model: AnyModel) =>
-  pick_props(model, [
-    `cell_edge_opacity`,
-    `cell_surface_opacity`,
-    `cell_edge_color`,
-    `cell_surface_color`,
-    `cell_edge_width`,
-    `show_cell_vectors`,
-  ])
-
-// Detect widget type and render
-const render: Render = (props) => {
-  const { model, el } = props
-  const widget_type = get_prop(model, `widget_type`) as string | undefined
-  // guard with Object.hasOwn so prototype keys (toString, constructor, ...) don't
-  // resolve as renderers and silently bypass the unknown-widget_type error
-  const renderer =
-    widget_type && Object.hasOwn(renderers, widget_type) ? renderers[widget_type] : undefined
-  if (!renderer) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
-
-  cleanup_element(el)
-  inject_app_css(undefined, el)
-
-  // Watch this element's theme and re-inject CSS on change. The returned disposer
-  // (invoked by cleanup_element) unregisters this widget and tears down the shared
-  // DOM/media observers once the last widget is gone.
-  theme_unsubs.set(
-    el,
-    watch_theme(el, () => inject_app_css(undefined, el)),
-  )
-  void renderer(props)
-  return () => cleanup_element(el)
-}
-
-// === Widget renderers ===
-
-const render_composition: Render = ({ model, el }) => {
-  mount_widget(
-    model,
-    el,
-    Composition,
-    pick_props(model, [`composition`, `mode`, `show_percentages`, `color_scheme`]),
-  )
-}
-
-const render_structure: Render = ({ model, el }) => {
-  mount_reactive(model, el, Structure, {
-    drive_keys: [
-      `structure`,
-      `structure_string`,
-      `data_url`,
-      `show_site_labels`,
-      `show_site_indices`,
-      `show_image_atoms`,
-      `color_scheme`,
-      `background_color`,
-      `background_opacity`,
-      `enable_info_pane`,
-      `fullscreen_toggle`,
-      `png_dpi`,
-      `isosurface_settings`,
-      `volumetric_data`,
-      // selected_sites + hovered_site_idx are two-way (also in writeback_keys).
-      // highlighted_sites stays drive-only: the component sets it from info-pane
-      // hover (high frequency), so writeback would flood the comm -- trade-off is a
-      // component-side clear (on structure change) isn't pushed back, so re-driving
-      // the same value won't restore the highlight.
-      `selected_sites`,
-      `highlighted_sites`,
-      `hovered_site_idx`,
-    ],
-    writeback_keys: [`selected_sites`, `hovered_site_idx`],
-    writeback_defaults: { selected_sites: [] },
-    extra: {
-      // scene_props/lattice_props are fire-once: the atom_radius/show_bonds/cell_*
-      // traits they wrap aren't reactive to Python updates (unlike drive_keys above).
-      scene_props: get_scene_props(model),
-      lattice_props: get_lattice_props(model),
-    },
-  })
-}
-
-const render_trajectory: Render = ({ model, el }) => {
-  mount_reactive(model, el, Trajectory, {
-    drive_keys: [
-      `trajectory`,
-      `data_url`,
-      `current_step_idx`,
-      `layout`,
-      `display_mode`,
-      `fullscreen_toggle`,
-      `auto_play`,
-      `step_labels`,
-      `property_labels`,
-      `units`,
-    ],
-    // current_step_idx links widgets; display_mode changes from the view-mode menu.
-    writeback_keys: [`current_step_idx`, `display_mode`],
-    writeback_defaults: { current_step_idx: 0, display_mode: `structure+scatter` },
-    extra: {
-      // structure_props (incl. scene_props/lattice_props) is fire-once: its nested
-      // structure-rendering traits aren't reactive to Python updates (unlike drive_keys; out of scope).
-      structure_props: {
-        scene_props: get_scene_props(model),
-        lattice_props: get_lattice_props(model),
-        ...pick_props(model, [
-          `show_site_labels`,
-          `show_site_indices`,
-          `show_image_atoms`,
-          `color_scheme`,
-          `background_color`,
-          `background_opacity`,
-        ]),
-        fullscreen_toggle: false,
-      },
-    },
-  })
-}
-
-const render_scatter_plot: Render = ({ model, el }) => {
-  // throttle hover writeback (fires per mousemove) to spare the Jupyter comm
+// Scatter click/hover callbacks: click writes active_point with a monotonic
+// event_id (so re-clicking the same point still notifies Python, since traitlets
+// skip equal reassignments); hover writes hovered_point throttled (fires per
+// mousemove) and the throttle is cancelled on widget cleanup.
+const scatter_interactions = (model: AnyModel) => {
   const on_point_hover = throttle(
     (data: ScatterPointEvent) =>
       set_model(model, `hovered_point`, scatter_point_payload(data)),
     80,
   )
-  mount_reactive(model, el, ScatterPlot, {
-    // selected_point drives the highlight from Python; active_point/hovered_point
-    // are written back on user interaction via the callbacks below.
-    drive_keys: [...scatter_plot_prop_keys, `selected_point`],
-    cleanup: on_point_hover.cancel,
-    extra: {
+  return {
+    props: {
       on_point_click: (data: ScatterPointEvent) => {
-        // tag each click with a monotonic event_id so re-clicking the same point
-        // is a distinct trait value (traitlets/the bridge skip equal reassigns)
         const payload = scatter_point_payload(data)
         set_model(
           model,
@@ -404,158 +267,108 @@ const render_scatter_plot: Render = ({ model, el }) => {
       },
       on_point_hover,
     },
+    cleanup: on_point_hover.cancel,
+  }
+}
+
+// Declarative description of one widget: the component, its reactive props (drive /
+// rename / derived / writeback), and optional interaction callbacks + teardown.
+type WidgetSpec = {
+  component: unknown
+  drive: readonly DrivenProp[]
+  interactions?: (model: AnyModel) => { props: Record<string, unknown>; cleanup?: () => void }
+}
+
+// show_controls/style are driven for every widget; allow_file_drop stays off in notebooks.
+const base_drive: readonly DrivenProp[] = [drive_prop(`show_controls`), drive_prop(`style`)]
+
+// Mount a widget from its spec: build a two-way reactive $state props object (Python
+// trait changes -> live view, component interaction -> model) and wire teardown.
+// Exported so tests can mount a single widget's wiring directly.
+export const mount_spec = (model: AnyModel, el: HTMLElement, spec: WidgetSpec): void => {
+  el.style.boxSizing = `border-box`
+  el.style.maxWidth = `100%`
+  el.style.marginRight = `2em` // avoid overflow in vscode-interactive cell container
+  const interaction = spec.interactions?.(model)
+  const { props, dispose } = reactive_widget(model, [...base_drive, ...spec.drive], {
+    allow_file_drop: false,
+    ...(interaction?.props ?? {}),
   })
-}
-
-const render_bar_plot: Render = ({ model, el }) => {
-  mount_widget(model, el, BarPlot, pick_props(model, bar_plot_prop_keys))
-}
-
-const render_histogram: Render = ({ model, el }) => {
-  mount_widget(model, el, Histogram, pick_props(model, histogram_prop_keys))
-}
-
-const render_convex_hull: Render = ({ model, el }) => {
-  mount_widget(
-    model,
+  reactive_disposers.set(el, () => {
+    interaction?.cleanup?.()
+    dispose()
+  })
+  instances.set(
     el,
-    ConvexHull,
-    pick_props(model, [
-      `entries`,
-      `show_stable`,
-      `show_unstable`,
-      `show_hull_faces`,
-      `hull_face_opacity`,
-      `show_stable_labels`,
-      `show_unstable_labels`,
-      `max_hull_dist_show_labels`,
-      `max_hull_dist_show_phases`,
-      `temperature`,
-    ]),
+    mount(spec.component as Parameters<typeof mount>[0], { target: el, props }),
   )
 }
 
-const render_band_structure: Render = ({ model, el }) => {
-  mount_widget(model, el, Bands, {
-    band_structs: get_prop(model, `band_structure`), // Renamed traitlet
-    ...pick_props(model, [`band_type`, `show_legend`, `fermi_level`, `reference_frequency`]),
-  })
-}
-
-const render_dos: Render = ({ model, el }) => {
-  mount_widget(model, el, Dos, {
-    doses: get_prop(model, `dos`), // Renamed traitlet
-    ...pick_props(model, [
-      `stack`,
-      `sigma`,
-      `normalize`,
-      `orientation`,
-      `show_legend`,
-      `spin_mode`,
-    ]),
-  })
-}
-
-const render_bands_and_dos: Render = ({ model, el }) => {
-  // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
-  // It internally controls fermi_level, reference_frequency and dos orientation,
-  // so those traits are intentionally not forwarded here (they'd be overridden).
-  mount_widget(model, el, BandsAndDos, {
-    band_structs: get_prop(model, `band_structure`), // Renamed traitlet
-    doses: get_prop(model, `dos`), // Renamed traitlet
-    bands_props: pick_props(model, [`band_type`, `show_legend`]),
-    dos_props: pick_props(model, [`stack`, `sigma`, `normalize`, `show_legend`, `spin_mode`]),
-  })
-}
-
-const render_fermi_surface: Render = ({ model, el }) => {
-  mount_widget(
-    model,
-    el,
-    FermiSurface,
-    pick_props(model, [
-      `fermi_data`,
-      `band_data`,
-      `mu`,
-      `representation`,
-      `surface_opacity`,
-      `show_bz`,
-      `bz_opacity`,
-      `show_vectors`,
-      `camera_projection`,
-    ]),
-  )
-}
-
-const render_brillouin_zone: Render = ({ model, el }) => {
-  mount_widget(
-    model,
-    el,
-    BrillouinZone,
-    pick_props(model, [
-      `structure`,
-      `bz_data`,
-      `surface_color`,
-      `surface_opacity`,
-      `edge_color`,
-      `edge_width`,
-      `show_vectors`,
-      `show_ibz`,
-      `ibz_color`,
-      `ibz_opacity`,
-      `camera_projection`,
-    ]),
-  )
-}
-
-const render_phase_diagram: Render = ({ model, el }) => {
-  mount_widget(model, el, IsobaricBinaryPhaseDiagram, pick_props(model, [`data`]))
-}
-
-const render_xrd: Render = ({ model, el }) => {
-  mount_widget(model, el, XrdPlot, pick_props(model, [`patterns`]))
-}
-
-const render_periodic_table: Render = ({ model, el }) => {
-  mount_widget(model, el, PeriodicTable, {
-    ...pick_props(model, [
-      `heatmap_values`,
-      `color_scale`,
-      `color_scale_range`,
-      `color_overrides`,
-      `labels`,
-      `show_color_bar`,
-      `gap`,
-      `missing_color`,
-    ]),
-    log: get_prop(model, `log_scale`),
-  })
-}
-
-const render_rdf_plot: Render = ({ model, el }) => {
-  mount_widget(
-    model,
-    el,
-    RdfPlot,
-    pick_props(model, [
-      `patterns`,
-      `structures`,
-      `mode`,
-      `show_reference_line`,
-      `cutoff`,
-      `n_bins`,
-      `x_axis`,
-      `y_axis`,
-    ]),
-  )
-}
-
-const render_scatter_plot_3d: Render = ({ model, el }) => {
-  mount_widget(
-    model,
-    el,
-    ScatterPlot3D,
-    pick_props(model, [
+// === Widget registry ===
+// Exported so tests can exercise each widget's drive/writeback/derived wiring.
+export const WIDGETS: Record<string, WidgetSpec> = {
+  structure: {
+    component: Structure,
+    drive: [
+      ...drive_props([
+        `structure`,
+        `structure_string`,
+        `data_url`,
+        // show_site_labels/show_site_indices are delivered via scene_props (see
+        // scene_pick_keys), not as top-level Structure props.
+        `show_image_atoms`,
+        `color_scheme`,
+        `background_color`,
+        `background_opacity`,
+        `enable_info_pane`,
+        `fullscreen_toggle`,
+        `png_dpi`,
+        `isosurface_settings`,
+        `volumetric_data`,
+        // highlighted_sites stays drive-only: the component sets it from info-pane
+        // hover (high frequency), so writeback would flood the comm channel.
+        `highlighted_sites`,
+      ]),
+      writeback_prop(`selected_sites`, []),
+      writeback_prop(`hovered_site_idx`),
+      derived_prop(`scene_props`, scene_prop_keys, get_scene_props),
+      derived_prop(`lattice_props`, lattice_prop_keys, get_lattice_props),
+    ],
+  },
+  trajectory: {
+    component: Trajectory,
+    drive: [
+      ...drive_props([
+        `trajectory`,
+        `data_url`,
+        `layout`,
+        `fullscreen_toggle`,
+        `auto_play`,
+        `step_labels`,
+        `units`,
+      ]),
+      // pymatviz trait `property_labels` is consumed by the component as ELEM_PROPERTY_LABELS
+      rename_prop(`property_labels`, `ELEM_PROPERTY_LABELS`),
+      // current_step_idx links widgets; display_mode changes from the view-mode menu.
+      writeback_prop(`current_step_idx`, 0),
+      writeback_prop(`display_mode`, `structure+scatter`),
+      derived_prop(
+        `structure_props`,
+        [...scene_prop_keys, ...lattice_prop_keys, ...traj_structure_prop_keys],
+        get_structure_props,
+      ),
+    ],
+  },
+  scatter_plot: {
+    component: ScatterPlot,
+    // selected_point drives the highlight from Python; active_point/hovered_point are
+    // written back via the interaction callbacks.
+    drive: drive_props([...scatter_plot_prop_keys, `selected_point`]),
+    interactions: scatter_interactions,
+  },
+  scatter_plot_3d: {
+    component: ScatterPlot3D,
+    drive: drive_props([
       `series`,
       `surfaces`,
       `ref_lines`,
@@ -571,35 +384,152 @@ const render_scatter_plot_3d: Render = ({ model, el }) => {
       `controls`,
       `camera_projection`,
     ]),
-  )
-}
-
-const render_heatmap_matrix: Render = ({ model, el }) => {
-  mount_widget(model, el, HeatmapMatrix, {
-    ...pick_props(model, [
-      `x_items`,
-      `y_items`,
-      `values`,
-      `color_scale`,
-      `color_scale_range`,
-      `missing_color`,
+  },
+  bar_plot: { component: BarPlot, drive: drive_props(bar_plot_prop_keys) },
+  histogram: { component: Histogram, drive: drive_props(histogram_prop_keys) },
+  composition: {
+    component: Composition,
+    drive: drive_props([`composition`, `mode`, `show_percentages`, `color_scheme`]),
+  },
+  convex_hull: {
+    component: ConvexHull,
+    drive: drive_props([
+      `entries`,
+      `show_stable`,
+      `show_unstable`,
+      `show_hull_faces`,
+      `hull_face_opacity`,
+      `show_stable_labels`,
+      `show_unstable_labels`,
+      `max_hull_dist_show_labels`,
+      `max_hull_dist_show_phases`,
+      `temperature`,
+    ]),
+  },
+  band_structure: {
+    component: Bands,
+    drive: [
+      rename_prop(`band_structure`, `band_structs`), // Renamed traitlet
+      ...drive_props([`band_type`, `show_legend`, `fermi_level`, `reference_frequency`]),
+    ],
+  },
+  dos: {
+    component: Dos,
+    drive: [
+      rename_prop(`dos`, `doses`), // Renamed traitlet
+      ...drive_props([
+        `stack`,
+        `sigma`,
+        `normalize`,
+        `orientation`,
+        `show_legend`,
+        `spin_mode`,
+      ]),
+    ],
+  },
+  bands_and_dos: {
+    // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
+    // It internally controls fermi_level, reference_frequency and dos orientation,
+    // so those traits are intentionally not forwarded here (they'd be overridden).
+    component: BandsAndDos,
+    drive: [
+      rename_prop(`band_structure`, `band_structs`), // Renamed traitlet
+      rename_prop(`dos`, `doses`), // Renamed traitlet
+      derived_prop(`bands_props`, [`band_type`, `show_legend`], (model) =>
+        pick_props(model, [`band_type`, `show_legend`]),
+      ),
+      derived_prop(
+        `dos_props`,
+        [`stack`, `sigma`, `normalize`, `show_legend`, `spin_mode`],
+        (model) =>
+          pick_props(model, [`stack`, `sigma`, `normalize`, `show_legend`, `spin_mode`]),
+      ),
+    ],
+  },
+  fermi_surface: {
+    component: FermiSurface,
+    drive: drive_props([
+      `fermi_data`,
+      `band_data`,
+      `mu`,
+      `representation`,
+      `surface_opacity`,
+      `show_bz`,
+      `bz_opacity`,
+      `show_vectors`,
+      `camera_projection`,
+    ]),
+  },
+  brillouin_zone: {
+    component: BrillouinZone,
+    drive: drive_props([
+      `structure`,
+      `bz_data`,
+      `surface_color`,
+      `surface_opacity`,
+      `edge_color`,
+      `edge_width`,
+      `show_vectors`,
+      `show_ibz`,
+      `ibz_color`,
+      `ibz_opacity`,
+      `camera_projection`,
+    ]),
+  },
+  phase_diagram: { component: IsobaricBinaryPhaseDiagram, drive: drive_props([`data`]) },
+  xrd: { component: XrdPlot, drive: drive_props([`patterns`]) },
+  periodic_table: {
+    component: PeriodicTable,
+    drive: [
+      ...drive_props([
+        `heatmap_values`,
+        `color_scale`,
+        `color_scale_range`,
+        `color_overrides`,
+        `labels`,
+        `show_color_bar`,
+        `gap`,
+        `missing_color`,
+      ]),
+      rename_prop(`log_scale`, `log`),
+    ],
+  },
+  rdf_plot: {
+    component: RdfPlot,
+    drive: drive_props([
+      `patterns`,
+      `structures`,
+      `mode`,
+      `show_reference_line`,
+      `cutoff`,
+      `n_bins`,
       `x_axis`,
       `y_axis`,
-      `tile_size`,
-      `gap`,
-      `show_values`,
-      `label_style`,
     ]),
-    log: get_prop(model, `log_scale`),
-  })
-}
-
-const render_spacegroup_bar: Render = ({ model, el }) => {
-  mount_widget(
-    model,
-    el,
-    SpacegroupBarPlot,
-    pick_props(model, [
+  },
+  heatmap_matrix: {
+    component: HeatmapMatrix,
+    drive: [
+      ...drive_props([
+        `x_items`,
+        `y_items`,
+        `values`,
+        `color_scale`,
+        `color_scale_range`,
+        `missing_color`,
+        `x_axis`,
+        `y_axis`,
+        `tile_size`,
+        `gap`,
+        `show_values`,
+        `label_style`,
+      ]),
+      rename_prop(`log_scale`, `log`),
+    ],
+  },
+  spacegroup_bar: {
+    component: SpacegroupBarPlot,
+    drive: drive_props([
       `data`,
       `show_counts`,
       `show_legend`,
@@ -607,41 +537,35 @@ const render_spacegroup_bar: Render = ({ model, el }) => {
       `x_axis`,
       `y_axis`,
     ]),
-  )
+  },
+  chem_pot_diagram: {
+    component: ChemPotDiagram,
+    drive: drive_props([`entries`, `config`, `temperature`]),
+  },
 }
 
-const render_chem_pot_diagram: Render = ({ model, el }) => {
-  mount_widget(
-    model,
+// Detect widget type and render
+const render: Render = (props) => {
+  const { model, el } = props
+  const widget_type = get_prop(model, `widget_type`) as string | undefined
+  // guard with Object.hasOwn so prototype keys (toString, constructor, ...) don't
+  // resolve as specs and silently bypass the unknown-widget_type error
+  const spec =
+    widget_type && Object.hasOwn(WIDGETS, widget_type) ? WIDGETS[widget_type] : undefined
+  if (!spec) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
+
+  cleanup_element(el)
+  inject_app_css(undefined, el)
+
+  // Watch this element's theme and re-inject CSS on change. The returned disposer
+  // (invoked by cleanup_element) unregisters this widget and tears down the shared
+  // DOM/media observers once the last widget is gone.
+  theme_unsubs.set(
     el,
-    ChemPotDiagram,
-    pick_props(model, [`entries`, `config`, `temperature`]),
+    watch_theme(el, () => inject_app_css(undefined, el)),
   )
-}
-
-// Static dispatch table — referenced by render() at call time (after module init).
-// Exported so tests can exercise individual renderers' drive/writeback wiring.
-export const renderers: Record<string, Render> = {
-  structure: render_structure,
-  trajectory: render_trajectory,
-  scatter_plot: render_scatter_plot,
-  scatter_plot_3d: render_scatter_plot_3d,
-  bar_plot: render_bar_plot,
-  histogram: render_histogram,
-  composition: render_composition,
-  convex_hull: render_convex_hull,
-  band_structure: render_band_structure,
-  dos: render_dos,
-  bands_and_dos: render_bands_and_dos,
-  fermi_surface: render_fermi_surface,
-  brillouin_zone: render_brillouin_zone,
-  phase_diagram: render_phase_diagram,
-  xrd: render_xrd,
-  periodic_table: render_periodic_table,
-  rdf_plot: render_rdf_plot,
-  heatmap_matrix: render_heatmap_matrix,
-  spacegroup_bar: render_spacegroup_bar,
-  chem_pot_diagram: render_chem_pot_diagram,
+  mount_spec(model, el, spec)
+  return () => cleanup_element(el)
 }
 
 export default { render }
