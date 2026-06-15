@@ -13,6 +13,12 @@ export const register_stub = (handle: StubHandle): void => {
   current = handle
 }
 
+// Clear the registry before each render so a renderer that fails to mount the stub
+// makes latest_stub() throw rather than return a stale handle from a prior test.
+export const reset_stub = (): void => {
+  current = null
+}
+
 // Control surface of the most recently mounted stub, for the test to read the
 // props a renderer passed in and drive $bindable writeback by key.
 export const latest_stub = (): StubHandle => {

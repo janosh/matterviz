@@ -2,7 +2,7 @@
 import { flushSync } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
-import { latest_stub } from './reactive-renderer-registry'
+import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
 // Replace the heavy matterviz components with a recording stub so we can exercise
 // the real anywidget renderer wiring (drive vs writeback key names, scatter
@@ -50,6 +50,7 @@ const as_model = (mock: MockModel) => mock as unknown as RenderArgs[`model`]
 // Run a renderer against a mock model + fresh DOM target, returning the stub the
 // renderer mounted so the test can read driven props / drive $bindable writeback.
 const run_renderer = (widget_type: string, model: MockModel) => {
+  reset_stub() // clear any prior stub so a failed mount throws instead of returning stale
   const el = document.createElement(`div`)
   document.body.append(el)
   void renderers[widget_type]({ model: as_model(model), el } as unknown as RenderArgs)

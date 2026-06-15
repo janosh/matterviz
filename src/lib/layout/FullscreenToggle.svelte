@@ -10,11 +10,11 @@
 </script>
 
 <button
+  {...rest}
   class="fullscreen-toggle {rest.class ?? ``}"
   onclick={() => (fullscreen = !fullscreen)}
   aria-label={fullscreen ? `Exit fullscreen` : `Enter fullscreen`}
   type="button"
-  {...rest}
 >
   <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" width="18" height="18" />
 </button>
