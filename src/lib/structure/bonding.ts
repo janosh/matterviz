@@ -681,6 +681,23 @@ export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
   ])
 }
 
+// Build a BondPair between two sites (shared by electroneg_ratio and solid_angle)
+const make_bond = (
+  sites: Site[],
+  idx_1: number,
+  idx_2: number,
+  bond_length: number,
+  strength: number,
+): BondPair => ({
+  pos_1: sites[idx_1].xyz,
+  pos_2: sites[idx_2].xyz,
+  site_idx_1: idx_1,
+  site_idx_2: idx_2,
+  bond_length,
+  strength,
+  transform_matrix: compute_bond_transform(sites[idx_1].xyz, sites[idx_2].xyz),
+})
+
 // Pack quantized cell coordinates into one integer key (exact for cell coords in
 // [-512, 511], i.e. structures up to ~1000 cells per axis - far beyond any real
 // case). Integer Map keys avoid per-lookup string building in the hot pair loop.
@@ -758,6 +775,11 @@ export function electroneg_ratio(
     similar_electronegativity_bonus = 1.2, // Bonus for similar electronegativity
     same_species_penalty = 0.5, // Penalty for bonds between same element
     strength_threshold = 0.3, // Minimum bond strength to include in results
+    // Only iterate the first `center_count` sites as bond centers (default: all).
+    // Coordination coloring sets this to the original-atom count so appended PBC image
+    // atoms are used as neighbors but not iterated as centers — identical coordination
+    // for the originals (by translational symmetry), far cheaper when images dominate.
+    center_count = Infinity,
   } = {},
 ): BondPair[] {
   const { sites } = structure
@@ -770,6 +792,7 @@ export function electroneg_ratio(
   // millions of candidate pairs in large supercells, so object property chains
   // and Map lookups are replaced with indexed array reads.
   const n_sites = sites.length
+  const n_center = Math.min(center_count, n_sites - 1)
   const electronegs = new Float64Array(n_sites)
   const radii = new Float64Array(n_sites) // 0 = no covalent radius known
   const metal_flags = new Uint8Array(n_sites)
@@ -823,7 +846,7 @@ export function electroneg_ratio(
 
   const potential_bonds: PotentialBond[] = []
 
-  for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
+  for (let idx_a = 0; idx_a < n_center; idx_a++) {
     const radius_a = radii[idx_a]
     if (radius_a === 0) continue // no covalent radius -> no pairs (symmetric: idx_b skips too)
     const [x1, y1, z1] = sites[idx_a].xyz
@@ -927,15 +950,7 @@ export function electroneg_ratio(
     }
 
     if (strength > strength_threshold) {
-      bonds.push({
-        pos_1: sites[site_idx_1].xyz,
-        pos_2: sites[site_idx_2].xyz,
-        site_idx_1,
-        site_idx_2,
-        bond_length: dist,
-        strength,
-        transform_matrix: compute_bond_transform(sites[site_idx_1].xyz, sites[site_idx_2].xyz),
-      })
+      bonds.push(make_bond(sites, site_idx_1, site_idx_2, dist, strength))
     }
   }
 
@@ -955,6 +970,7 @@ export function solid_angle(
     max_distance = 5.0,
     min_bond_dist = 0.4,
     strength_threshold = 0.05,
+    center_count = Infinity, // see electroneg_ratio: limit bond centers to first N sites
   } = {},
 ): BondPair[] {
   const { sites } = structure
@@ -964,8 +980,9 @@ export function solid_angle(
   const min_dist_sq = min_bond_dist ** 2
   const max_dist_sq = max_distance ** 2
   const spatial = setup_spatial_grid(sites, max_distance)
+  const n_center = Math.min(center_count, sites.length - 1)
 
-  for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
+  for (let idx_a = 0; idx_a < n_center; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
     const elem_a = get_majority_element(sites[idx_a])
     const radius_a = elem_a ? covalent_radii.get(elem_a) : undefined
@@ -996,15 +1013,7 @@ export function solid_angle(
       const strength = angle_strength * dist_penalty
 
       if (strength > strength_threshold) {
-        bonds.push({
-          pos_1: sites[idx_a].xyz,
-          pos_2: sites[idx_b].xyz,
-          site_idx_1: idx_a,
-          site_idx_2: idx_b,
-          bond_length: dist,
-          strength,
-          transform_matrix: compute_bond_transform(sites[idx_a].xyz, sites[idx_b].xyz),
-        })
+        bonds.push(make_bond(sites, idx_a, idx_b, dist, strength))
       }
     }
   }

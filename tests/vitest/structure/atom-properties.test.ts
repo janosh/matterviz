@@ -1,9 +1,11 @@
 import type { ElementSymbol } from '$lib'
+import { calc_coordination_nums } from '$lib/coordination'
+import * as math from '$lib/math'
 import type { Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import * as ap from '$lib/structure/atom-properties'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { make_crystal } from '../setup'
 
 type MoyoDatasetWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
@@ -141,6 +143,124 @@ describe(`Coordination`, () => {
         expected_length: 2,
         check: (vals: (number | string)[]) => vals.length === 2,
       },
+      {
+        // Regression: in the >20-atom optimized boundary-imaging path an inverted filter
+        // imaged atoms on the wrong side, so edge atoms lost their cross-cell neighbors
+        // (CN=1/0). A and B sit near opposite x faces and bond ONLY across the periodic
+        // boundary (1.44Å); 24 interior fillers push the count past the optimization
+        // threshold. The symmetric pair must each see the other (CN >= 1, equal).
+        name: `large structure boundary atoms keep cross-edge PBC neighbors`,
+        sites: [
+          { abc: [0.06, 0.5, 0.5] as Vec3, element: `C` },
+          { abc: [0.94, 0.5, 0.5] as Vec3, element: `C` },
+          ...Array.from({ length: 24 }, (_, idx) => ({
+            abc: [0.5, 0.1 + (idx % 6) * 0.15, 0.2 + Math.floor(idx / 6) * 0.2] as Vec3,
+            element: `C` as ElementSymbol,
+          })),
+        ],
+        lattice_size: 12,
+        pbc: [true, true, true] as [boolean, boolean, boolean],
+        expected_length: 26,
+        check: (vals: (number | string)[]) =>
+          typeof vals[0] === `number` &&
+          typeof vals[1] === `number` &&
+          vals[0] >= 1 &&
+          vals[1] >= 1 &&
+          vals[0] === vals[1],
+      },
+      {
+        name: `small cell, both atoms near boundaries`,
+        sites: [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.5, 0.5, 0.5] as Vec3 }],
+        lattice_size: 3,
+        pbc: [true, true, true],
+        expected_length: 2,
+        check: (vals) => vals.every((cn) => typeof cn === `number` && cn >= 0),
+      },
+      {
+        name: `non-periodic (molecular) structure`,
+        sites: [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.12, 0, 0] as Vec3, element: `O` }],
+        lattice_size: 10,
+        pbc: [false, false, false],
+        expected_length: 2,
+        check: (vals) => vals.every((cn) => typeof cn === `number` && cn > 0),
+      },
+      {
+        // returns CN for the 2 original sites only, not the 2 + 26·2 image atoms
+        name: `output excludes PBC image atoms`,
+        sites: [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.3, 0, 0] as Vec3 }],
+        lattice_size: 4,
+        pbc: [true, true, true],
+        expected_length: 2,
+        check: (vals) => vals.every((cn) => typeof cn === `number` && cn > 0),
+      },
+      {
+        // 64-atom grid exercises the optimized interior-atom imaging path
+        name: `large interior-atom grid`,
+        sites: Array.from({ length: 64 }, (_, idx) => ({
+          abc: [
+            ((idx % 4) + 0.5) / 5,
+            ((Math.floor(idx / 4) % 4) + 0.5) / 5,
+            (Math.floor(idx / 16) + 0.5) / 5,
+          ] as Vec3,
+        })),
+        lattice_size: 8,
+        pbc: [true, true, true],
+        expected_length: 64,
+        check: (vals) => vals.some((cn) => typeof cn === `number` && cn > 0),
+      },
+      {
+        name: `ionic atoms at exact cell boundary (NaCl)`,
+        sites: [
+          { abc: [0, 0, 0] as Vec3, element: `Na` },
+          { abc: [0.5, 0, 0] as Vec3, element: `Cl` },
+        ],
+        lattice_size: 5,
+        pbc: [true, true, true],
+        expected_length: 2,
+        check: (vals) => vals.every((cn) => typeof cn === `number` && cn > 0),
+      },
+      {
+        // atoms at 0.1 and 0.9 bond across the wrap (1 Å apart through the boundary)
+        name: `atoms just inside opposite faces bond through PBC`,
+        sites: [{ abc: [0.1, 0.5, 0.5] as Vec3 }, { abc: [0.9, 0.5, 0.5] as Vec3 }],
+        lattice_size: 5,
+        pbc: [true, true, true],
+        expected_length: 2,
+        check: (vals) => vals.every((cn) => typeof cn === `number` && cn > 0),
+      },
+      {
+        name: `mixed interior + boundary atoms`,
+        sites: [
+          { abc: [0, 0, 0] as Vec3, element: `Fe` },
+          { abc: [0.5, 0.5, 0.5] as Vec3, element: `Fe` },
+          { abc: [0.25, 0.25, 0.25] as Vec3, element: `Fe` },
+          { abc: [0.75, 0.75, 0.75] as Vec3, element: `Fe` },
+        ],
+        lattice_size: 5,
+        pbc: [true, true, true],
+        expected_length: 4,
+        check: (vals) => vals.every((cn) => typeof cn === `number`),
+      },
+      {
+        name: `partial PBC, atoms inside cell`,
+        sites: [{ abc: [0, 0, 0.1] as Vec3 }, { abc: [0.5, 0.5, 0.1] as Vec3 }],
+        lattice_size: 8,
+        pbc: [true, true, false],
+        expected_length: 2,
+        check: (vals) => vals.every((cn) => typeof cn === `number` && cn >= 0),
+      },
+      {
+        name: `very large cell with sparse atoms`,
+        sites: [
+          { abc: [0.1, 0.1, 0.1] as Vec3 },
+          { abc: [0.2, 0.1, 0.1] as Vec3, element: `O` },
+          { abc: [0.9, 0.9, 0.9] as Vec3, element: `N` },
+        ],
+        lattice_size: 50,
+        pbc: [true, true, true],
+        expected_length: 3,
+        check: (vals) => vals.every((cn) => typeof cn === `number` && cn >= 0),
+      },
     ])(`$name`, ({ sites, lattice_size, pbc, expected_length, check }) => {
       const structure = make_cubic_structure(sites, lattice_size, pbc)
       const { values, colors } = ap.get_coordination_colors(structure)
@@ -148,17 +268,6 @@ describe(`Coordination`, () => {
       expect(values).toHaveLength(expected_length)
       expect(colors).toHaveLength(expected_length)
       expect(check(values)).toBe(true)
-    })
-
-    test(`no PBC molecular structure`, () => {
-      const structure = make_cubic_structure(
-        [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.12, 0, 0] as Vec3, element: `O` }],
-        10,
-        [false, false, false],
-      )
-      const { values } = ap.get_coordination_colors(structure)
-      expect(values).toHaveLength(2)
-      expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
     })
 
     test.each([`electroneg_ratio`, `solid_angle`] as const)(
@@ -174,136 +283,213 @@ describe(`Coordination`, () => {
       },
     )
 
-    test(`returns colors for original sites only (not expanded 27x image atoms)`, () => {
-      const structure = make_cubic_structure(
-        [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.3, 0, 0] as Vec3 }],
-        4,
-      )
-      const { values, colors } = ap.get_coordination_colors(structure)
-      // Should return exactly 2, not 54 (2 + 26*2 image atoms)
-      expect(values).toHaveLength(2)
-      expect(colors).toHaveLength(2)
-      expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
-    })
-
     describe(`Boundary detection optimization`, () => {
-      test(`small structure with all atoms near boundaries gets correct coordination`, () => {
-        // 2-atom structure in small cell - both atoms should be near boundaries
-        const structure = make_cubic_structure(
+      // Brute-force coordination ground truth: image every atom by a full `shells`-cell
+      // shell (no cutoff approximation), tagging orig_site_idx exactly as production's
+      // imaging does so the competitive electroneg_ratio strategy treats images as
+      // their original atom. `shells` must exceed the cell's real bond reach in cells.
+      const brute_force_cn = (
+        matrix: [Vec3, Vec3, Vec3],
+        sites: { element: ElementSymbol; abc: Vec3 }[],
+        shells = 3,
+      ): number[] => {
+        const structure = make_crystal(matrix, sites, { charge: 0 })
+        const frac_to_cart = math.create_frac_to_cart(matrix)
+        const range = Array.from({ length: 2 * shells + 1 }, (_, idx) => idx - shells)
+        const offsets = range
+          .flatMap((dx) => range.flatMap((dy) => range.map((dz) => [dx, dy, dz] as Vec3)))
+          .filter(([dx, dy, dz]) => dx !== 0 || dy !== 0 || dz !== 0)
+        const images = structure.sites.flatMap((site, src) =>
+          offsets.map((off) => {
+            const abc: Vec3 = [
+              site.abc[0] + off[0],
+              site.abc[1] + off[1],
+              site.abc[2] + off[2],
+            ]
+            const properties = { ...site.properties, orig_site_idx: src }
+            return { ...site, abc, xyz: frac_to_cart(abc), properties }
+          }),
+        )
+        return calc_coordination_nums({ ...structure, sites: [...structure.sites, ...images] })
+          .sites.slice(0, sites.length)
+          .map((site) => site.coordination_num)
+      }
+
+      // Regression guards: get_coordination_colors must equal the brute-force ground
+      // truth across the regimes where the old imaging was wrong — oblique cells
+      // (heights ≠ vector lengths), thin cells (need >1 image shell), large-radius
+      // atoms (bonds exceed the old hard-coded 5 Å reach) and atoms on a cell boundary
+      // (abc component = 1, which must wrap so its cross-cell images are not dropped).
+      test.each([
+        {
+          name: `oblique (sheared) cell`,
+          matrix: [
+            [12, 0, 0],
+            [-12, 9, 0],
+            [12, -12, 6],
+          ] as [Vec3, Vec3, Vec3],
+          element: `C` as ElementSymbol,
+          abc_list: [
+            [0.75, 0.9, 0.85],
+            [0.95, 0.75, 0.85],
+            [0.15, 0.95, 0.4],
+            [0.05, 0.75, 0.4],
+            [0.6, 0.05, 0.9],
+            [0.9, 0.1, 0.7],
+            [1, 0.45, 0.05],
+            [0.55, 0.7, 0.5],
+            [0.7, 0.7, 0.5],
+            [0.5, 0.75, 0.25],
+            [0.3, 0.65, 0.6],
+            [0.2, 0.85, 0.8],
+            [0.75, 0.95, 0.9],
+            [0.4, 0.55, 0.4],
+            [0.3, 0.65, 0.35],
+            [0.75, 0.2, 0.4],
+            [0.35, 0.4, 0.9],
+            [0.35, 0.9, 0.45],
+            [0.1, 0.6, 0.25],
+            [0.95, 0.7, 0.2],
+            [0.1, 0.45, 0.4],
+            [0.4, 0.85, 0.75],
+            [0.45, 0.35, 0.75],
+            [0.3, 0.35, 0.5],
+            [0.8, 0.95, 0.05],
+          ] as Vec3[],
+        },
+        {
+          // c-axis height 3 Å < ~5 Å reach → needs 2 image shells along c
+          name: `thin cell (multi-shell)`,
+          matrix: [
+            [6, 0, 0],
+            [0, 6, 0],
+            [0, 0, 3],
+          ] as [Vec3, Vec3, Vec3],
+          element: `C` as ElementSymbol,
+          abc_list: [
+            [0.1, 0.1, 0.05],
+            [0.1, 0.5, 0.95],
+            [0.5, 0.1, 0.5],
+            [0.5, 0.5, 0.1],
+            [0.9, 0.9, 0.9],
+            [0.3, 0.7, 0.4],
+            [0.7, 0.3, 0.6],
+            [0.2, 0.8, 0.2],
+            [0.85, 0.2, 0.8],
+            [0.5, 0.9, 0.5],
+          ] as Vec3[],
+        },
+        {
+          // Cs covalent radius ~2.4 Å → bonds reach well past the old fixed 5 Å cutoff
+          name: `large-radius atoms (>5 Å bonds)`,
+          matrix: [
+            [9, 0, 0],
+            [0, 9, 0],
+            [0, 0, 9],
+          ] as [Vec3, Vec3, Vec3],
+          element: `Cs` as ElementSymbol,
+          abc_list: [
+            [0.1, 0.1, 0.1],
+            [0.7, 0.1, 0.1],
+            [0.1, 0.7, 0.1],
+            [0.1, 0.1, 0.7],
+            [0.7, 0.7, 0.7],
+            [0.4, 0.4, 0.4],
+          ] as Vec3[],
+        },
+        {
+          // atom 0 sits on the y=1 boundary; without wrapping, its cross-cell image
+          // bonding atom 1 (at 4.0 Å) is dropped and atom 1's CN comes out 0 not 1
+          name: `boundary atom (abc component = 1)`,
+          matrix: [
+            [8.5, 0, 0],
+            [0, 8.5, 0],
+            [0, 0, 8.5],
+          ] as [Vec3, Vec3, Vec3],
+          element: `K` as ElementSymbol,
+          abc_list: [
+            [0.05, 1, 0.55],
+            [0.8, 0, 0.95],
+          ] as Vec3[],
+        },
+      ])(
+        `coordination matches brute-force ground truth: $name`,
+        ({ matrix, element, abc_list }) => {
+          const sites = abc_list.map((abc) => ({ element, abc }))
+          const reference = brute_force_cn(matrix, sites)
+          expect(
+            ap.get_coordination_colors(make_crystal(matrix, sites, { charge: 0 })).values,
+          ).toEqual(reference)
+          // Sanity: the structure actually forms bonds (else the comparison is vacuous)
+          expect(reference.some((cn) => cn > 0)).toBe(true)
+        },
+      )
+
+      test(`partial PBC keeps non-periodic coordinates outside the cell`, () => {
+        // z is non-periodic; the two atoms are 9 Å apart in vacuum and must NOT bond.
+        // Wrapping z (1.2 → 0.2) would fold them ~1 Å apart and invent a bond.
+        const structure = make_crystal(
           [
-            { abc: [0, 0, 0] as Vec3, element: `C` },
-            { abc: [0.5, 0.5, 0.5] as Vec3, element: `C` },
+            [10, 0, 0],
+            [0, 10, 0],
+            [0, 0, 10],
           ],
-          3,
+          [
+            { element: `C`, abc: [0.5, 0.5, 1.2] },
+            { element: `C`, abc: [0.5, 0.5, 0.3] },
+          ],
+          { pbc: [true, true, false], charge: 0 },
+        )
+        expect(ap.get_coordination_colors(structure).values).toEqual([0, 0])
+      })
+
+      test(`warns once and still returns finite CN for pathological thin cells`, () => {
+        const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+        // c-axis height 1 Å ≪ ~5 Å reach → needs 6 image shells, far exceeding the cap
+        const structure = make_crystal(
+          [
+            [5, 0, 0],
+            [0, 5, 0],
+            [0, 0, 1],
+          ],
+          [
+            { element: `C`, abc: [0.2, 0.2, 0.5] },
+            { element: `C`, abc: [0.6, 0.6, 0.5] },
+          ],
+          { charge: 0 },
         )
         const { values } = ap.get_coordination_colors(structure)
-        expect(values).toHaveLength(2)
-        expect(values.every((cn) => typeof cn === `number` && cn >= 0)).toBe(true)
+        // capped imaging must not throw or produce NaN/undefined CN
+        expect(values.every((cn) => typeof cn === `number` && Number.isFinite(cn))).toBe(true)
+        expect(warn_spy).toHaveBeenCalledTimes(1)
+        expect(warn_spy.mock.calls[0][0]).toContain(`capping PBC images`)
+        warn_spy.mockRestore()
       })
 
-      test(`large structure with interior atoms benefits from optimization`, () => {
-        // Create a 4x4x4 grid of atoms in fractional coords (64 atoms total)
-        // Use denser packing so atoms can actually form bonds
-        const grid_sites: { abc: Vec3; element: ElementSymbol }[] = []
-        for (let x_idx = 0; x_idx < 4; x_idx++) {
-          for (let y_idx = 0; y_idx < 4; y_idx++) {
-            for (let z_idx = 0; z_idx < 4; z_idx++) {
-              grid_sites.push({
-                abc: [(x_idx + 0.5) / 5, (y_idx + 0.5) / 5, (z_idx + 0.5) / 5] as Vec3,
-                element: `C`,
-              })
-            }
-          }
-        }
-
-        const structure = make_cubic_structure(grid_sites, 8) // 8 Angstrom cell
-        const { values, colors } = ap.get_coordination_colors(structure)
-
-        expect(values).toHaveLength(64)
-        expect(colors).toHaveLength(64)
-        // Interior atoms should have coordination > 0
-        expect(values.some((cn) => typeof cn === `number` && cn > 0)).toBe(true)
-      })
-
-      test(`atoms at exact cell boundaries get correct coordination`, () => {
-        // Atoms at abc = [0, 0, 0] and [1, 0, 0] (equivalent due to PBC)
-        const structure = make_cubic_structure(
-          [
-            { abc: [0, 0, 0] as Vec3, element: `Na` },
-            { abc: [0.5, 0, 0] as Vec3, element: `Cl` },
-          ],
-          5,
-        )
-        const { values } = ap.get_coordination_colors(structure)
-        expect(values).toHaveLength(2)
-        // Both should have some coordination
-        expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
-      })
-
-      test(`atoms just inside boundary threshold still get images`, () => {
-        // Place atoms very close to boundaries to ensure they're detected
-        // In a 5 Angstrom cell, atoms at 0.1 and 0.9 fractional (0.5 and 4.5 Angstrom)
-        // should see each other through PBC (distance = 1.0 Angstrom through wrap)
-        const structure = make_cubic_structure(
-          [
-            { abc: [0.1, 0.5, 0.5] as Vec3, element: `C` },
-            { abc: [0.9, 0.5, 0.5] as Vec3, element: `C` },
-          ],
-          5,
-        )
-        const { values } = ap.get_coordination_colors(structure)
-        expect(values).toHaveLength(2)
-        // These atoms should see each other through PBC
-        expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
-      })
-
-      test(`mixed interior and boundary atoms both get correct coordination`, () => {
-        // Mix of boundary and interior atoms
-        const structure = make_cubic_structure(
-          [
-            { abc: [0, 0, 0] as Vec3, element: `Fe` }, // boundary
-            { abc: [0.5, 0.5, 0.5] as Vec3, element: `Fe` }, // interior
-            { abc: [0.25, 0.25, 0.25] as Vec3, element: `Fe` }, // interior
-            { abc: [0.75, 0.75, 0.75] as Vec3, element: `Fe` }, // interior
-          ],
-          5,
-        )
-        const { values } = ap.get_coordination_colors(structure)
-        expect(values).toHaveLength(4)
-        expect(values.every((cn) => typeof cn === `number`)).toBe(true)
-      })
-
-      test(`partial PBC only expands in periodic directions`, () => {
-        // Structure with PBC only in x and y, not z
-        const structure = make_cubic_structure(
-          [
-            { abc: [0, 0, 0.1] as Vec3, element: `C` },
-            { abc: [0.5, 0.5, 0.1] as Vec3, element: `C` },
-          ],
-          8,
-          [true, true, false], // PBC only in x, y
-        )
-        const { values } = ap.get_coordination_colors(structure)
-        expect(values).toHaveLength(2)
-        // Should still calculate coordination correctly
-        expect(values.every((cn) => typeof cn === `number` && cn >= 0)).toBe(true)
-      })
-
-      test(`very large cell with sparse atoms`, () => {
-        // Large 50 Angstrom cell with just a few atoms
-        // All atoms should be near boundaries relative to bonding cutoff
-        const structure = make_cubic_structure(
-          [
-            { abc: [0.1, 0.1, 0.1] as Vec3, element: `C` },
-            { abc: [0.2, 0.1, 0.1] as Vec3, element: `O` },
-            { abc: [0.9, 0.9, 0.9] as Vec3, element: `N` },
-          ],
-          50, // Very large cell
-        )
-        const { values, colors } = ap.get_coordination_colors(structure)
-        expect(values).toHaveLength(3)
-        expect(colors).toHaveLength(3)
-        expect(values.every((cn) => typeof cn === `number` && cn >= 0)).toBe(true)
+      test(`mixed-element cell coordination matches brute-force ground truth`, () => {
+        // Rocksalt NaCl (different radii + electronegativities exercise the metal/
+        // nonmetal bonding path): reach must use the larger radius (Na) so no Na-Cl
+        // image is dropped. Compared against the brute-force oracle like the cases above.
+        const matrix: [Vec3, Vec3, Vec3] = [
+          [5.6, 0, 0],
+          [0, 5.6, 0],
+          [0, 0, 5.6],
+        ]
+        const sites: { element: ElementSymbol; abc: Vec3 }[] = [
+          { element: `Na`, abc: [0, 0, 0] },
+          { element: `Cl`, abc: [0.5, 0, 0] },
+          { element: `Cl`, abc: [0, 0.5, 0] },
+          { element: `Cl`, abc: [0, 0, 0.5] },
+          { element: `Na`, abc: [0.5, 0.5, 0] },
+          { element: `Na`, abc: [0.5, 0, 0.5] },
+          { element: `Na`, abc: [0, 0.5, 0.5] },
+          { element: `Cl`, abc: [0.5, 0.5, 0.5] },
+        ]
+        const reference = brute_force_cn(matrix, sites)
+        expect(
+          ap.get_coordination_colors(make_crystal(matrix, sites, { charge: 0 })).values,
+        ).toEqual(reference)
+        expect(reference.some((cn) => cn > 0)).toBe(true)
       })
     })
   })

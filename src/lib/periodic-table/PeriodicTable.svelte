@@ -333,7 +333,9 @@
       )}
       {@const active = active_category === category ||
         active_element?.name === name || is_active_elem}
-      {@const style = `grid-column: ${column}; grid-row: ${row};`}
+      {@const style = `grid-column: ${column}; grid-row: ${row};${
+        tile_props?.style ? ` ${tile_props.style}` : ``
+      }`}
       <ElementTile
         {element}
         href={links
@@ -341,13 +343,13 @@
           ? `/${element[links]}`.toLowerCase()
           : links[symbol]
         : undefined}
-        {style}
         {value}
         bg_color={color_overrides[symbol] ?? bg_color(value, element) ?? undefined}
         bg_colors={Array.isArray(value) ? bg_colors(value, element) : []}
         {active}
         label={labels[symbol]}
         {...tile_props}
+        {style}
         onmouseenter={(event: MouseEvent) => {
           set_active_element(element)()
           handle_tooltip_enter(element, event)

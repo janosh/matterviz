@@ -564,6 +564,27 @@ export const cross_3d = (vec1: Vec3, vec2: Vec3): Vec3 => [
   vec1[0] * vec2[1] - vec1[1] * vec2[0],
 ]
 
+// Perpendicular distance between opposite cell faces per axis: volume / opposite-
+// face area. This (not the lattice vector length) is the correct denominator for
+// per-axis fractional reach in oblique cells. Degenerate (zero-volume) cells →
+// Infinity so callers' `dist / height` collapses to 0.
+export function cell_heights(matrix: Matrix3x3): Vec3 {
+  const [a_vec, b_vec, c_vec] = matrix
+  const cross_bc = cross_3d(b_vec, c_vec)
+  const volume = Math.abs(dot(a_vec, cross_bc))
+  if (volume === 0) return [Infinity, Infinity, Infinity]
+  // height along axis k = volume / area of the face spanned by the OTHER two vectors
+  const height_a = volume / Math.hypot(...cross_bc) // face b×c ⟂ a
+  const height_b = volume / Math.hypot(...cross_3d(a_vec, c_vec)) // face a×c ⟂ b
+  const height_c = volume / Math.hypot(...cross_3d(a_vec, b_vec)) // face a×b ⟂ c
+  return [height_a, height_b, height_c]
+}
+
+// `dist` Å of real-space reach as a fractional pad per axis (via cell heights,
+// correct for oblique cells). Degenerate cells → 0 (no images).
+export const frac_cutoff_per_axis = (matrix: Matrix3x3, dist: number): Vec3 =>
+  cell_heights(matrix).map((height) => dist / height) as Vec3
+
 // Scalar linear interpolation
 export const lerp = (start: number, end: number, t: number): number =>
   start + t * (end - start)

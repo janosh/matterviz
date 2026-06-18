@@ -16,7 +16,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { create_clipboard_feedback } from '$lib/overlays'
 
   type SiteDetail = {
     label: string
@@ -86,21 +86,14 @@
     sym_data?: MoyoDataset | null // Symmetry analysis data (bindable for external access)
   } = $props()
 
-  let copied_items = new SvelteSet<string>()
+  const { copied, copy } = create_clipboard_feedback()
   let sites_expanded = $state(false)
   let site_filter = $state(``)
   let site_window_start = $state(0)
   let site_cards_el = $state<HTMLDivElement>()
 
-  async function copy_to_clipboard(label: string, value: string, key: string) {
-    try {
-      await navigator.clipboard.writeText(`${label}: ${value}`)
-      copied_items.add(key)
-      setTimeout(() => copied_items.delete(key), 1000)
-    } catch (error) {
-      console.error(`Failed to copy to clipboard:`, error)
-    }
-  }
+  const copy_to_clipboard = (label: string, value: string, key: string): Promise<void> =>
+    copy(`${label}: ${value}`, key)
 
   function copy_event(
     event: MouseEvent,
@@ -434,7 +427,7 @@
         >
           <span>{@html sanitize_html(label)}</span>
           <span title={tooltip}>{@html sanitize_html(value)}</span>
-          {#if key && copied_items.has(key)}
+          {#if key && copied.has(key)}
             <Icon
               icon="Check"
               style="color: var(--success-color, #10b981); width: 12px; height: 12px"
@@ -539,7 +532,7 @@
                   <CopyButton
                     label="Copy {card.title}"
                     title="Copy {card.title}"
-                    copied={copied_items.has(`site-${card.idx}-summary`)}
+                    copied={copied.has(`site-${card.idx}-summary`)}
                     onclick={(event) =>
                       copy_event(event, card.title, site_summary(card), `site-${card.idx}-summary`)}
                   />
@@ -552,7 +545,7 @@
                       <CopyButton
                         label="Copy {card.title} {detail.label}"
                         title="Copy {detail.label}"
-                        copied={copied_items.has(`site-${card.idx}-${detail.key}`)}
+                        copied={copied.has(`site-${card.idx}-${detail.key}`)}
                         onclick={(event) =>
                           copy_event(
                             event,

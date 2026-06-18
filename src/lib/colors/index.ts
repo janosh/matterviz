@@ -1,7 +1,15 @@
 import { color as d3_color, rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { Vec3 } from '$lib/math'
-import type { ELEM_SYMBOLS } from '$lib/labels'
+import {
+  COLOR_THEMES,
+  get_system_mode,
+  get_theme_preference,
+  is_valid_theme_name,
+  resolve_theme_mode,
+  THEME_STORAGE_KEY,
+  THEME_TYPE,
+} from '$lib/theme'
+import { clamp01 } from '$lib/utils'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
 import jmol_colors from './jmol-colors.json' with { type: 'json' }
@@ -48,9 +56,6 @@ export const NEG_AXIS_COLORS = [
   [`ny`, `#44a044`, `#55b155`],
   [`nz`, `#4444b8`, `#5555c9`],
 ] as const
-
-export type RGBColor = Vec3
-export type ElementColorScheme = Record<(typeof ELEM_SYMBOLS)[number], RGBColor>
 
 const rgb_scheme_to_hex = (obj: Record<string, number[]>): Record<string, string> =>
   Object.fromEntries(
@@ -108,6 +113,9 @@ export function luminance(clr: string) {
   return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 // https://stackoverflow.com/a/596243
 }
 
+// CSS color string for a fully transparent background
+const NO_BG = `rgba(0, 0, 0, 0)`
+
 // get background color of passed DOM node, or recurse up the DOM tree if current node is transparent
 export function get_bg_color(
   elem: HTMLElement | null,
@@ -115,11 +123,10 @@ export function get_bg_color(
 ): string {
   if (bg_color) return bg_color
   // recurse up the DOM tree to find the first non-transparent background color
-  const transparent = `rgba(0, 0, 0, 0)`
-  if (!elem) return transparent // if no DOM node, return transparent
+  if (!elem) return NO_BG // if no DOM node, return transparent
 
   const bg = getComputedStyle(elem).backgroundColor // get node background color
-  if (bg !== transparent) return bg // if not transparent, return it
+  if (bg !== NO_BG) return bg // if not transparent, return it
   return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
 }
 
@@ -142,8 +149,7 @@ export const contrast_color =
     node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
   }
 
-const is_valid_bg = (bg: string): boolean =>
-  bg !== `` && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
+const is_valid_bg = (bg: string): boolean => bg !== `` && bg !== NO_BG && bg !== `transparent`
 
 // Detect and return the page background color from html/body elements or user preferences
 export function get_page_background(
@@ -162,22 +168,22 @@ export function get_page_background(
   if (is_valid_bg(html_bg)) return html_bg
 
   // Fall back to prefers-color-scheme
-  const prefers_dark = globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
+  const prefers_dark = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
   return prefers_dark ? fallback_dark : fallback_light
 }
 
-// Detect dark mode: checks data-theme attribute, localStorage, then OS preference
+// Detect dark mode: checks data-theme attribute, then the persisted theme
+// preference (resolving `auto` against the OS), then falls back to OS preference.
 export function is_dark_mode(): boolean {
   if (typeof document === `undefined`) return false
+  // Prefer the resolved theme name on data-theme (light/dark/white/black), else
+  // fall back to the persisted preference (resolving `auto` against the OS)
   const data_theme = document.documentElement.dataset.theme
-  if (data_theme === `dark` || data_theme === `light`) return data_theme === `dark`
-  try {
-    const stored = localStorage.getItem(`theme`)
-    if (stored === `dark` || stored === `light`) return stored === `dark`
-  } catch {
-    /* localStorage throws in private browsing mode */
-  }
-  return globalThis.matchMedia?.(`(prefers-color-scheme: dark)`).matches ?? false
+  const theme_name =
+    data_theme && is_valid_theme_name(data_theme)
+      ? data_theme
+      : resolve_theme_mode(get_theme_preference(), get_system_mode())
+  return THEME_TYPE[theme_name] === COLOR_THEMES.dark
 }
 
 // Watch for dark mode changes and call callback on each change. Returns cleanup function.
@@ -191,8 +197,8 @@ export function watch_dark_mode(on_change: (dark: boolean) => void): () => void 
     attributeFilter: [`data-theme`],
   })
 
-  const on_storage = (ev: StorageEvent) => {
-    if (ev.key === `theme`) notify()
+  const on_storage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY) notify()
   }
   globalThis.addEventListener(`storage`, on_storage)
 
@@ -221,7 +227,7 @@ export function css_color_to_hex(color: string | undefined, fallback: string): s
 // Returns the color in rgba() format, or the original color if format is unsupported.
 export function add_alpha(color: string, alpha: number): string {
   // Clamp alpha to valid CSS range [0, 1]
-  const clamped_alpha = Math.max(0, Math.min(1, alpha))
+  const clamped_alpha = clamp01(alpha)
 
   // Handle hex colors (#rgb, #rgba, #rrggbb, #rrggbbaa)
   if (color.startsWith(`#`)) {

@@ -5,7 +5,7 @@
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
-  import { SettingsSection } from '$lib/layout'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import { to_degrees, to_radians } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
@@ -494,107 +494,47 @@
         {/each}
       </select>
     </label>
-    <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.auto_rotate.description })}
-    >
-      Auto-rotate speed
-      <input
-        type="number"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.auto_rotate}
-      />
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.auto_rotate}
-      />
-    </label>
-    <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.rotate_speed.description })}
-    >
-      Rotate speed
-      <input
-        type="number"
-        min={0}
-        max={2}
-        step={0.05}
-        bind:value={scene_props.rotate_speed}
-      />
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={0.05}
-        bind:value={scene_props.rotate_speed}
-      />
-    </label>
-    <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_speed.description })}
-    >
-      Zoom speed
-      <input
-        type="number"
-        min={0.1}
-        max={0.8}
-        step={0.02}
-        bind:value={scene_props.zoom_speed}
-      />
-      <input
-        type="range"
-        min={0.1}
-        max={0.8}
-        step={0.02}
-        bind:value={scene_props.zoom_speed}
-      />
-    </label>
-    <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.pan_speed.description })}
-    >
-      Pan speed
-      <input
-        type="number"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.pan_speed}
-      />
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.pan_speed}
-      />
-    </label>
+    <NumberRangeInput
+      min={0}
+      max={2}
+      step={0.01}
+      bind:value={scene_props.auto_rotate}
+      title={SETTINGS_CONFIG.structure.auto_rotate.description}
+    >Auto-rotate speed</NumberRangeInput>
+    <NumberRangeInput
+      min={0}
+      max={2}
+      step={0.05}
+      bind:value={scene_props.rotate_speed}
+      title={SETTINGS_CONFIG.structure.rotate_speed.description}
+    >Rotate speed</NumberRangeInput>
+    <NumberRangeInput
+      min={0.1}
+      max={0.8}
+      step={0.02}
+      bind:value={scene_props.zoom_speed}
+      title={SETTINGS_CONFIG.structure.zoom_speed.description}
+    >Zoom speed</NumberRangeInput>
+    <NumberRangeInput
+      min={0}
+      max={2}
+      step={0.01}
+      bind:value={scene_props.pan_speed}
+      title={SETTINGS_CONFIG.structure.pan_speed.description}
+    >Pan speed</NumberRangeInput>
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_to_cursor.description })}
     >
       <input type="checkbox" bind:checked={scene_props.zoom_to_cursor} />
       <span>Zoom to cursor</span>
     </label>
-    <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.rotation_damping.description })}
-    >
-      Rotation damping
-      <input
-        type="number"
-        min={0.01}
-        max={0.3}
-        step={0.01}
-        bind:value={scene_props.rotation_damping}
-      />
-      <input
-        type="range"
-        min={0.01}
-        max={0.3}
-        step={0.01}
-        bind:value={scene_props.rotation_damping}
-      />
-    </label>
+    <NumberRangeInput
+      min={0.01}
+      max={0.3}
+      step={0.01}
+      bind:value={scene_props.rotation_damping}
+      title={SETTINGS_CONFIG.structure.rotation_damping.description}
+    >Rotation damping</NumberRangeInput>
 
     Axis Rotation
     <div class="rotation-axes">
@@ -653,25 +593,13 @@
       color_scale_selected = [DEFAULTS.structure.atom_color_scale]
     }}
   >
-    <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_radius.description })}
-    >
-      Radius <small>(Å)</small>
-      <input
-        type="number"
-        min={0.2}
-        max={2}
-        step={0.05}
-        bind:value={scene_props.atom_radius}
-      />
-      <input
-        type="range"
-        min={0.2}
-        max={2}
-        step={0.05}
-        bind:value={scene_props.atom_radius}
-      />
-    </label>
+    <NumberRangeInput
+      min={0.2}
+      max={2}
+      step={0.05}
+      bind:value={scene_props.atom_radius}
+      title={SETTINGS_CONFIG.structure.atom_radius.description}
+    >Radius <small>(Å)</small></NumberRangeInput>
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.same_size_atoms.description })}
     >
@@ -874,23 +802,12 @@
         }
       }}
     >
-      <label>
-        Global Scale
-        <input
-          type="number"
-          min={0.001}
-          max={5}
-          step={0.001}
-          bind:value={scene_props.vector_scale}
-        />
-        <input
-          type="range"
-          min={0.001}
-          max={5}
-          step={0.001}
-          bind:value={scene_props.vector_scale}
-        />
-      </label>
+      <NumberRangeInput
+        min={0.001}
+        max={5}
+        step={0.001}
+        bind:value={scene_props.vector_scale}
+      >Global Scale</NumberRangeInput>
       <label
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_normalize.description })}
         style="gap: 6pt"
@@ -931,25 +848,13 @@
         </label>
       {/if}
       {#if available_vector_keys.length > 1}
-        <label
-          {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_origin_gap.description })}
-        >
-          Origin Gap
-          <input
-            type="number"
-            min={0}
-            max={0.5}
-            step={0.02}
-            bind:value={scene_props.vector_origin_gap}
-          />
-          <input
-            type="range"
-            min={0}
-            max={0.5}
-            step={0.02}
-            bind:value={scene_props.vector_origin_gap}
-          />
-        </label>
+        <NumberRangeInput
+          min={0}
+          max={0.5}
+          step={0.02}
+          bind:value={scene_props.vector_origin_gap}
+          title={SETTINGS_CONFIG.structure.vector_origin_gap.description}
+        >Origin Gap</NumberRangeInput>
         {#each available_vector_keys as key (key)}
           {#if is_key_visible(key)}
             {@const on_scale = (
@@ -1088,23 +993,9 @@
               bind:value={lattice_props[color_prop]}
             />
           </label>
-          <label>
+          <NumberRangeInput min={0} max={1} {step} bind:value={lattice_props[opacity_prop]}>
             opacity
-            <input
-              type="number"
-              min={0}
-              max={1}
-              {step}
-              bind:value={lattice_props[opacity_prop]}
-            />
-            <input
-              type="range"
-              min={0}
-              max={1}
-              {step}
-              bind:value={lattice_props[opacity_prop]}
-            />
-          </label>
+          </NumberRangeInput>
         </div>
       {/each}
     </SettingsSection>
@@ -1133,17 +1024,9 @@
           }}
         />
       </label>
-      <label>
+      <NumberRangeInput min={0} max={1} step={0.02} bind:value={background_opacity}>
         Opacity
-        <input
-          type="number"
-          min={0}
-          max={1}
-          step={0.02}
-          bind:value={background_opacity}
-        />
-        <input type="range" min={0} max={1} step={0.02} bind:value={background_opacity} />
-      </label>
+      </NumberRangeInput>
     </div>
   </SettingsSection>
 
@@ -1158,44 +1041,20 @@
       scene_props.ambient_light = DEFAULTS.structure.ambient_light
     }}
   >
-    <label>
-      <span title="Intensity of the directional light" {@attach tooltip()}>
-        Directional light
-      </span>
-      <input
-        type="number"
-        min={0}
-        max={4}
-        step={0.01}
-        bind:value={scene_props.directional_light}
-      />
-      <input
-        type="range"
-        min={0}
-        max={4}
-        step={0.01}
-        bind:value={scene_props.directional_light}
-      />
-    </label>
-    <label>
-      <span title="Intensity of the ambient light" {@attach tooltip()}>
-        Ambient light
-      </span>
-      <input
-        type="number"
-        min={0.5}
-        max={3}
-        step={0.05}
-        bind:value={scene_props.ambient_light}
-      />
-      <input
-        type="range"
-        min={0.5}
-        max={3}
-        step={0.05}
-        bind:value={scene_props.ambient_light}
-      />
-    </label>
+    <NumberRangeInput
+      min={0}
+      max={4}
+      step={0.01}
+      bind:value={scene_props.directional_light}
+      title={SETTINGS_CONFIG.structure.directional_light.description}
+    >Directional light</NumberRangeInput>
+    <NumberRangeInput
+      min={0.5}
+      max={3}
+      step={0.05}
+      bind:value={scene_props.ambient_light}
+      title={SETTINGS_CONFIG.structure.ambient_light.description}
+    >Ambient light</NumberRangeInput>
   </SettingsSection>
 
   {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
@@ -1254,23 +1113,9 @@
       <label>
         Color <input type="color" bind:value={scene_props.bond_color} />
       </label>
-      <label>
+      <NumberRangeInput min={0.05} max={0.5} step={0.05} bind:value={scene_props.bond_thickness}>
         Thickness
-        <input
-          type="number"
-          min={0.05}
-          max={0.5}
-          step={0.05}
-          bind:value={scene_props.bond_thickness}
-        />
-        <input
-          type="range"
-          min={0.05}
-          max={0.5}
-          step={0.05}
-          bind:value={scene_props.bond_thickness}
-        />
-      </label>
+      </NumberRangeInput>
     </SettingsSection>
   {/if}
 
@@ -1305,27 +1150,13 @@
           DEFAULTS.structure.polyhedra_included_elements
       }}
     >
-      <label
-        {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.polyhedra_opacity.description,
-        })}
-      >
-        Opacity
-        <input
-          type="number"
-          min={0}
-          max={1}
-          step={0.05}
-          bind:value={scene_props.polyhedra_opacity}
-        />
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          bind:value={scene_props.polyhedra_opacity}
-        />
-      </label>
+      <NumberRangeInput
+        min={0}
+        max={1}
+        step={0.05}
+        bind:value={scene_props.polyhedra_opacity}
+        title={SETTINGS_CONFIG.structure.polyhedra_opacity.description}
+      >Opacity</NumberRangeInput>
       <label
         {@attach tooltip({
           content: SETTINGS_CONFIG.structure.polyhedra_color_mode.description,
@@ -1366,48 +1197,20 @@
         <input type="checkbox" bind:checked={scene_props.polyhedra_hide_center_atoms} />
         Hide center atoms
       </label>
-      <label
-        {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.polyhedra_min_neighbors.description,
-        })}
-      >
-        Min neighbors
-        <input
-          type="number"
-          min={4}
-          max={12}
-          step={1}
-          bind:value={scene_props.polyhedra_min_neighbors}
-        />
-        <input
-          type="range"
-          min={4}
-          max={12}
-          step={1}
-          bind:value={scene_props.polyhedra_min_neighbors}
-        />
-      </label>
-      <label
-        {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.polyhedra_max_neighbors.description,
-        })}
-      >
-        Max neighbors
-        <input
-          type="number"
-          min={4}
-          max={16}
-          step={1}
-          bind:value={scene_props.polyhedra_max_neighbors}
-        />
-        <input
-          type="range"
-          min={4}
-          max={16}
-          step={1}
-          bind:value={scene_props.polyhedra_max_neighbors}
-        />
-      </label>
+      <NumberRangeInput
+        min={4}
+        max={12}
+        step={1}
+        bind:value={scene_props.polyhedra_min_neighbors}
+        title={SETTINGS_CONFIG.structure.polyhedra_min_neighbors.description}
+      >Min neighbors</NumberRangeInput>
+      <NumberRangeInput
+        min={4}
+        max={16}
+        step={1}
+        bind:value={scene_props.polyhedra_max_neighbors}
+        title={SETTINGS_CONFIG.structure.polyhedra_max_neighbors.description}
+      >Max neighbors</NumberRangeInput>
       {#if structure_elements.length > 0}
         <div
           style="display: flex; flex-wrap: wrap; gap: 8pt; align-items: center"

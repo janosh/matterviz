@@ -124,19 +124,15 @@ export function find_image_atoms(
       // Build fractional coordinates by applying the integer translation
       // This ensures the image is a true periodic copy (preserving bond lengths)
       // rather than clamping it to the cell face.
+      const [s_a, s_b, s_c] = site.abc
       const img_abc: Vec3 = [
-        site.abc[0] + selected_shift[0],
-        site.abc[1] + selected_shift[1],
-        site.abc[2] + selected_shift[2],
+        s_a + selected_shift[0],
+        s_b + selected_shift[1],
+        s_c + selected_shift[2],
       ]
 
       // If no dimension actually shifted, continue
-      if (
-        img_abc[0] === site.abc[0] &&
-        img_abc[1] === site.abc[1] &&
-        img_abc[2] === site.abc[2]
-      )
-        continue
+      if (img_abc[0] === s_a && img_abc[1] === s_b && img_abc[2] === s_c) continue
 
       // Compute xyz from img_abc to ensure consistency
       const img_xyz = frac_to_cart_pos(img_abc, lattice_vecs)
@@ -150,25 +146,17 @@ export function find_image_atoms(
     }
   }
 
-  // Phase 2: polyhedra-completing images (VESTA boundary-mode-like). The face
-  // tolerance above only catches atoms within ~0.5 Å of a boundary, but bonds
-  // reach a covalent-radii sum further: an anion just beyond a cell face may be
-  // needed to complete the coordination shell of a cation near that face, so
-  // bonds and coordination polyhedra at cell edges come out truncated without it.
-  // Phase 2 adds ONLY such anion images: a candidate must qualify as a polyhedron
-  // vertex (a non-metal/metalloid - same condition as is_anion_vertex in
-  // polyhedra.ts) and be strictly more electronegative than the anchor atom it
-  // bonds to. Everything else - elemental metals, intermetallics (incl. multi
-  // metal ones like Al-Fe-Ni where EN differs but no polyhedra exist), equal-EN
-  // covalent networks, cation copies - gets no phase-2 images, so the default
-  // render stays minimal and grows uniformly from all cell surfaces (the phase-1
-  // boundary copies above are the only non-anion atoms outside the cell).
+  // Phase 2: anion images that complete coordination polyhedra / bonds at cell faces.
+  // Phase 1's ~0.5 Å face tolerance misses anions just beyond a face that still bond a
+  // cation near it, truncating boundary polyhedra. We add ONLY such images: a candidate
+  // must be a polyhedron vertex (non-metal/metalloid, like is_anion_vertex in
+  // polyhedra.ts) AND strictly more electronegative than the anchor it bonds. Metals,
+  // intermetallics, equal-EN networks and cation copies get none, keeping renders minimal.
   const site_radii: (number | null)[] = []
   const site_en: (number | null)[] = []
   const site_is_metal: boolean[] = []
   let max_radius = 0
-  // Minimum electronegativity among potential anchors: a candidate can only ever
-  // complete some cation's shell if it's strictly more electronegative than this
+  // Min anchor EN: a candidate only completes a cation's shell if more electronegative
   let min_anchor_en = Infinity
   for (const site of structure.sites) {
     const elem = get_majority_element(site)
@@ -183,29 +171,16 @@ export function find_image_atoms(
   }
   const max_bond_dist = 2 * max_radius + BOND_SLACK
   if (max_bond_dist > BOND_SLACK && min_anchor_en < Infinity) {
-    // Perpendicular cell heights: |frac| * height lower-bounds the Cartesian
-    // distance along each axis (valid for oblique cells)
-    const volume = Math.abs(
-      math.dot(lattice_vecs[0], math.cross_3d(lattice_vecs[1], lattice_vecs[2])),
+    // Per-axis fractional bond reach via perpendicular cell heights (correct for oblique
+    // cells; 0 for degenerate cells → no images). The + face tolerance covers phase-1
+    // anchors sitting slightly outside the cell.
+    const pad_per_axis = math.frac_cutoff_per_axis(
+      lattice_vecs,
+      max_bond_dist + PHYSICAL_TOLERANCE,
     )
-    // height = volume / opposite-face area. A zero-volume (degenerate) cell has two
-    // parallel lattice vectors and ill-defined heights; treat every axis as
-    // infinitely tall so the pad logic below adds no images (pad -> 0) instead of
-    // dividing by zero. When volume > 0 the vectors are linearly independent, so no
-    // pairwise cross product can be zero.
-    const heights =
-      volume === 0
-        ? [Infinity, Infinity, Infinity]
-        : [
-            volume / Math.hypot(...math.cross_3d(lattice_vecs[1], lattice_vecs[2])),
-            volume / Math.hypot(...math.cross_3d(lattice_vecs[0], lattice_vecs[2])),
-            volume / Math.hypot(...math.cross_3d(lattice_vecs[0], lattice_vecs[1])),
-          ]
 
-    // Anchor set for the bond test: base atoms plus the phase-1 boundary images
-    // (corner/edge/face copies). Anchoring on those too matches VESTA - every
-    // displayed boundary cation gets its shell completed (e.g. all 8 corner
-    // octahedra in rutile, not just the one at the origin).
+    // Bond-test anchors = base atoms + phase-1 boundary images, so every displayed
+    // boundary cation gets its shell completed (VESTA-like; e.g. all 8 rutile corners).
     const anchor_positions: Vec3[] = structure.sites.map((site) => site.xyz)
     const anchor_radii: (number | null)[] = [...site_radii]
     const anchor_en: (number | null)[] = [...site_en]
@@ -272,8 +247,7 @@ export function find_image_atoms(
       // respective boundary
       const axis_shifts = [0, 1, 2].map((axis) => {
         if (!pbc[axis]) return [0]
-        // + face tolerance: anchors (phase-1 images) can sit slightly outside the cell
-        const pad = (max_bond_dist + PHYSICAL_TOLERANCE) / heights[axis]
+        const pad = pad_per_axis[axis]
         const shifts = [0]
         if (site.abc[axis] < pad) shifts.push(1)
         if (site.abc[axis] > 1 - pad) shifts.push(-1)

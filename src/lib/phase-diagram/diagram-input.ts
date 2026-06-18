@@ -30,11 +30,9 @@ export interface RegionInput {
   label_position?: DiagramPoint
 }
 
-export type SpecialPointInput = SpecialPoint
-
 export interface DiagramInput {
   meta: DiagramInputMeta
   curves: Record<string, DiagramPoint[]>
   regions: RegionInput[]
-  special_points?: SpecialPointInput[]
+  special_points?: SpecialPoint[]
 }

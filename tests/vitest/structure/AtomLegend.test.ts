@@ -328,7 +328,7 @@ describe(`AtomLegend Component`, () => {
   })
 
   describe(`Property Legend - Continuous`, () => {
-    test(`renders continuous gradient legend`, () => {
+    test(`renders discrete bar with one labeled segment per integer value`, () => {
       mount(AtomLegend, {
         target: document.body,
         props: {
@@ -347,13 +347,120 @@ describe(`AtomLegend Component`, () => {
       const legend = doc_query(`.property-legend`)
       expect(legend).toBeInstanceOf(HTMLElement)
 
+      // Integer (coordination) data renders a discrete bar, not a continuous gradient
+      expect(document.querySelector(`.colorbar .bar`)).toBeNull()
+
+      const segments = document.querySelectorAll(`.discrete-colorbar .discrete-segment`)
+      expect(segments).toHaveLength(4)
+      const segment_labels = Array.from(segments).map((seg) => seg.textContent?.trim())
+      expect(segment_labels).toEqual([`2`, `4`, `6`, `8`])
+      // Each segment carries the color for its value
+      expect((segments[0] as HTMLElement).style.backgroundColor).toBe(`#440154`)
+      expect((segments[3] as HTMLElement).style.backgroundColor).toBe(`#fde724`)
+    })
+
+    test(`renders continuous gradient for non-integer numeric values`, () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: { mode: `custom`, scale_type: `continuous` },
+          property_colors: {
+            colors: [`#440154`, `#fde724`],
+            values: [0.5, 2.5],
+            min_value: 0.5,
+            max_value: 2.5,
+            unique_values: [0.5, 2.5],
+          },
+          title: `Charge`,
+        },
+      })
+
+      // Non-integer data keeps the smooth gradient ColorBar
+      expect(document.querySelector(`.discrete-colorbar`)).toBeNull()
       const gradient_bar = doc_query(`.colorbar .bar`)
       expect(gradient_bar).toBeInstanceOf(HTMLElement)
 
-      const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
-      expect(gradient_labels).toHaveLength(2)
-      expect(gradient_labels[0].textContent).toBe(`2`)
-      expect(gradient_labels[1].textContent).toBe(`8`)
+      // Legend forwards min/max as gradient tick labels
+      const tick_labels = Array.from(document.querySelectorAll(`.colorbar .tick-label`)).map(
+        (label) => label.textContent,
+      )
+      expect(tick_labels).toEqual([`0.5`, `2.5`])
+    })
+
+    test(`falls back to gradient when integer values exceed segment cap`, () => {
+      const many_values = Array.from({ length: 25 }, (_, idx) => idx + 1)
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+          property_colors: {
+            colors: many_values.map(() => `#440154`),
+            values: many_values,
+            min_value: 1,
+            max_value: 25,
+            unique_values: many_values,
+          },
+        },
+      })
+
+      // Too many segments would be unreadable, so keep the continuous gradient bar
+      expect(document.querySelector(`.discrete-colorbar`)).toBeNull()
+      expect(doc_query(`.colorbar .bar`)).toBeInstanceOf(HTMLElement)
+    })
+
+    test(`renders discrete bar at exactly the segment cap (20 values)`, () => {
+      const cap_values = Array.from({ length: 20 }, (_, idx) => idx + 1)
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+          property_colors: {
+            colors: cap_values.map(() => `#440154`),
+            values: cap_values,
+            min_value: 1,
+            max_value: 20,
+            unique_values: cap_values,
+          },
+        },
+      })
+
+      // Exactly MAX_DISCRETE_SEGMENTS unique values still renders discrete
+      expect(document.querySelector(`.colorbar .bar`)).toBeNull()
+      expect(document.querySelectorAll(`.discrete-segment`)).toHaveLength(20)
+    })
+
+    test(`integer property value visibility toggle on discrete bar`, async () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+          property_colors: {
+            colors: [`#440154`, `#fde724`],
+            values: [4, 6],
+            min_value: 4,
+            max_value: 6,
+            unique_values: [4, 6],
+          },
+          hidden_prop_vals: new Set<string | number>(),
+        },
+      })
+
+      const segments = document.querySelectorAll<HTMLButtonElement>(`.discrete-segment`)
+      expect(segments[0].classList.contains(`hidden`)).toBe(false)
+      expect(segments[0].getAttribute(`aria-pressed`)).toBe(`false`)
+      expect(segments[0].title).toBe(`Hide 4`)
+
+      // Clicking hides the value: class + aria-pressed flip on
+      segments[0].click()
+      await tick()
+      expect(segments[0].classList.contains(`hidden`)).toBe(true)
+      expect(segments[0].getAttribute(`aria-pressed`)).toBe(`true`)
+
+      // Clicking again restores it
+      segments[0].click()
+      await tick()
+      expect(segments[0].classList.contains(`hidden`)).toBe(false)
+      expect(segments[0].getAttribute(`aria-pressed`)).toBe(`false`)
     })
 
     test(`applies custom HTML attributes via rest props`, () => {
@@ -424,7 +531,7 @@ describe(`AtomLegend Component`, () => {
       expect(title.textContent).toBe(`Coordination`)
     })
 
-    test(`handles single value continuous scale`, () => {
+    test(`handles single integer value as one discrete segment`, () => {
       mount(AtomLegend, {
         target: document.body,
         props: {
@@ -439,14 +546,9 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const gradient_bar = doc_query(`.colorbar .bar`)
-      expect(gradient_bar).toBeInstanceOf(HTMLElement)
-
-      const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
-      expect(gradient_labels[0].textContent).toBe(`5`)
-      if (gradient_labels.length > 1) {
-        expect(gradient_labels[1].textContent).toBe(`5`)
-      }
+      const segments = document.querySelectorAll(`.discrete-segment`)
+      expect(segments).toHaveLength(1)
+      expect(segments[0].textContent?.trim()).toBe(`5`)
     })
 
     test(`handles single unique value without division by zero or NaN`, () => {
@@ -470,8 +572,8 @@ describe(`AtomLegend Component`, () => {
         })
       }).not.toThrow()
 
-      const gradient_bar = document.querySelector(`.colorbar .bar`)
-      expect(gradient_bar).toBeInstanceOf(HTMLElement)
+      const discrete_bar = document.querySelector(`.discrete-colorbar`)
+      expect(discrete_bar).toBeInstanceOf(HTMLElement)
 
       // Should not contain NaN or undefined anywhere
       const legend = document.querySelector(`.property-legend`)
@@ -497,8 +599,8 @@ describe(`AtomLegend Component`, () => {
         props: { atom_color_config: config, property_colors },
       })
 
-      const gradient_bar = document.querySelector(`.colorbar .bar`)
-      expect(gradient_bar).toBeInstanceOf(HTMLElement)
+      const segments = document.querySelectorAll(`.discrete-segment`)
+      expect(segments).toHaveLength(2)
 
       // Should not contain NaN or undefined anywhere in the legend
       const legend = document.querySelector(`.property-legend`)

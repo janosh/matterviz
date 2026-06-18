@@ -26,11 +26,8 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: Check for unused dependencies
+      - name: Check for unused dependencies and exports
         run: pnpm run knip
-
-      - name: Check for unused exports
-        run: pnpm run knip:exports
 
   publint:
     runs-on: ubuntu-latest

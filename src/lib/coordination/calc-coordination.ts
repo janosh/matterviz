@@ -30,26 +30,26 @@ export interface CoordinationData {
 export function calc_coordination_nums(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
+  // Limit bond centers to the first `center_count` sites (default: all). Callers that
+  // appended PBC image atoms pass the original-atom count so images count as neighbors
+  // but aren't iterated as centers — identical coordination for the originals, faster.
+  center_count?: number,
 ): CoordinationData {
   // Get bonds using the specified strategy
-  const bonds = BONDING_STRATEGIES[strategy](structure)
+  const bonds = BONDING_STRATEGIES[strategy](structure, { center_count })
 
-  // Count neighbors for each site
-  const neighbor_counts = new Map<number, Set<number>>()
   const sites = structure.sites
 
-  for (const bond of bonds) {
-    const { site_idx_1, site_idx_2 } = bond
-    if (!neighbor_counts.has(site_idx_1)) {
-      neighbor_counts.set(site_idx_1, new Set())
-    }
-    if (!neighbor_counts.has(site_idx_2)) {
-      neighbor_counts.set(site_idx_2, new Set())
-    }
-    const neighbors_1 = neighbor_counts.get(site_idx_1)
-    const neighbors_2 = neighbor_counts.get(site_idx_2)
-    if (neighbors_1) neighbors_1.add(site_idx_2)
-    if (neighbors_2) neighbors_2.add(site_idx_1)
+  // Build adjacency sets: each bond adds both endpoints to the other's neighbor set
+  const neighbor_counts = new Map<number, Set<number>>()
+  const add_neighbor = (site_idx: number, neighbor_idx: number) => {
+    const neighbors = neighbor_counts.get(site_idx) ?? new Set<number>()
+    neighbors.add(neighbor_idx)
+    neighbor_counts.set(site_idx, neighbors)
+  }
+  for (const { site_idx_1, site_idx_2 } of bonds) {
+    add_neighbor(site_idx_1, site_idx_2)
+    add_neighbor(site_idx_2, site_idx_1)
   }
 
   // Build coordination site data
@@ -57,6 +57,7 @@ export function calc_coordination_nums(
   const cn_by_element = new Map<string, number[]>()
   const cn_histogram = new Map<number, number>()
   const cn_histogram_by_element = new Map<string, Map<number, number>>()
+  const inc = (map: Map<number, number>, key: number) => map.set(key, (map.get(key) ?? 0) + 1)
 
   for (const [site_idx, site] of sites.entries()) {
     const element = site.species[0]?.element ?? `Unknown`
@@ -75,12 +76,10 @@ export function calc_coordination_nums(
     element_array.push(coordination_num)
     cn_by_element.set(element, element_array)
 
-    // Update overall cn_histogram
-    cn_histogram.set(coordination_num, (cn_histogram.get(coordination_num) ?? 0) + 1)
-
-    // Update cn_histogram_by_element
-    const element_histogram = cn_histogram_by_element.get(element) ?? new Map()
-    element_histogram.set(coordination_num, (element_histogram.get(coordination_num) ?? 0) + 1)
+    // Update overall + per-element histograms
+    inc(cn_histogram, coordination_num)
+    const element_histogram = cn_histogram_by_element.get(element) ?? new Map<number, number>()
+    inc(element_histogram, coordination_num)
     cn_histogram_by_element.set(element, element_histogram)
   }
 

@@ -91,6 +91,19 @@ describe(`PeriodicTable`, () => {
     expect(doc_query(`.ptable-grid`)?.textContent?.trim()).toBe(``)
   })
 
+  test(`tile_props.style merges with grid placement instead of clobbering it`, () => {
+    // regression: a style in tile_props was spread after the {style} that sets each
+    // tile's grid placement, overwriting grid-column/grid-row and collapsing the table
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { tile_props: { style: `cursor: pointer` } },
+    })
+    const tile = doc_query<HTMLElement>(`.element-tile`)
+    expect(tile.style.gridColumn).toBe(`1`) // H placement preserved
+    expect(tile.style.gridRow).toBe(`1`)
+    expect(tile.style.cursor).toBe(`pointer`) // user style still applied
+  })
+
   test(`PropertySelect integration`, () => {
     const props: { heatmap_values?: number[] } = {}
     mount(PeriodicTable, { target: document.body, props })

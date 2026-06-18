@@ -1,7 +1,7 @@
 import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from './colors'
-import { is_valid_theme_mode, type ThemeMode, type ThemeType } from './theme'
+import { get_theme_preference, type ThemeMode, type ThemeType } from './theme'
 
 export const selected = $state<{
   category: ElementCategory | null
@@ -23,22 +23,10 @@ export const colors = $state<{
   element: { ...default_element_colors },
 })
 
-// Theme state with safe initialization
-let initial_theme_mode: ThemeMode = AUTO_THEME
-let initial_system_mode: ThemeType = COLOR_THEMES.light
-
-// Safe theme initialization for test environments
-try {
-  if (typeof window !== `undefined` && globalThis.localStorage) {
-    const saved_theme = localStorage.getItem(`matterviz-theme`) ?? ``
-    initial_theme_mode = is_valid_theme_mode(saved_theme) ? saved_theme : AUTO_THEME
-  } else {
-    initial_theme_mode = AUTO_THEME
-    initial_system_mode = COLOR_THEMES.light
-  }
-} catch {
-  // Fallback for test environments or when localStorage is not available
-}
+// Theme state with safe initialization (get_theme_preference handles SSR +
+// missing/invalid localStorage, falling back to AUTO_THEME)
+const initial_theme_mode: ThemeMode = get_theme_preference()
+const initial_system_mode: ThemeType = COLOR_THEMES.light
 
 export const theme_state = $state<{
   mode: ThemeMode

@@ -122,16 +122,30 @@
     return String(val)
   }
 
-  // Map from property value to color (computed once, reused in categorical legend)
-  let color_map = $derived(
-    new Map(
-      // Use unique_values instead of values to avoid undefined colors from duplicates
-      property_colors?.unique_values?.flatMap((val) => {
-        const idx = property_colors.values.indexOf(val)
-        return idx !== -1 ? [[val, property_colors.colors[idx]]] : []
-      }),
-    ),
-  )
+  // Map each property value to its first color in a single O(n) pass (reused in
+  // categorical and discrete legends). Skips undefined colors if arrays ever drift.
+  let color_map = $derived.by(() => {
+    const map = new Map<number | string, string>()
+    const { values = [], colors: value_colors = [] } = property_colors ?? {}
+    for (const [idx, val] of values.entries()) {
+      const color = value_colors[idx]
+      if (color !== undefined && !map.has(val)) map.set(val, color)
+    }
+    return map
+  })
+
+  // Continuous integer properties (e.g. coordination numbers) render as a discrete
+  // segmented bar with one labeled block per integer value instead of a smooth gradient.
+  // Cap segment count so high-cardinality numeric properties keep the gradient bar.
+  const MAX_DISCRETE_SEGMENTS = 20
+  let is_discrete_numeric = $derived.by(() => {
+    const uniq = property_colors?.unique_values
+    // Number.isInteger is false for strings/non-numbers (no coercion), so it also
+    // excludes categorical (e.g. Wyckoff) data without a separate type check
+    return Boolean(
+      uniq?.length && uniq.length <= MAX_DISCRETE_SEGMENTS && uniq.every(Number.isInteger),
+    )
+  })
 
   function toggle_visibility<T>(
     set: Set<T>,
@@ -480,7 +494,29 @@
         <h4>{legend_title}</h4>
       </div>
     {/if}
-    {#if atom_color_config.scale_type === `continuous` && property_colors}
+    {#if atom_color_config.scale_type === `continuous` && property_colors && is_discrete_numeric}
+      <div class="discrete-colorbar">
+        {#each property_colors.unique_values ?? [] as value (value)}
+          {@const color = color_map.get(value)}
+          {@const is_hidden = hidden_prop_vals.has(value)}
+          <button
+            type="button"
+            class="discrete-segment"
+            class:hidden={is_hidden}
+            style:background-color={color}
+            aria-pressed={is_hidden}
+            onclick={(
+              event,
+            ) => (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
+            title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
+            {@attach tooltip({ placement: `top` })}
+            {@attach contrast_color()}
+          >
+            {format_value(value)}
+          </button>
+        {/each}
+      </div>
+    {:else if atom_color_config.scale_type === `continuous` && property_colors}
       <div
         title={legend_title}
         {@attach tooltip({ placement: `top` })}
@@ -794,6 +830,31 @@
   }
   .mode-option span {
     white-space: nowrap;
+  }
+  /* Discrete color bar: contiguous integer-labeled segments (e.g. coordination numbers) */
+  .discrete-colorbar {
+    display: flex;
+    height: var(--struct-discrete-bar-height, 16px);
+    border-radius: var(--border-radius, 3pt);
+    overflow: hidden;
+  }
+  .discrete-segment {
+    flex: 1 1 0;
+    min-width: 1.7em;
+    margin: 0;
+    padding: 0 4pt;
+    border: none;
+    border-radius: 0;
+    font-size: 0.85em;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: opacity 0.2s ease;
+  }
+  .discrete-segment.hidden {
+    opacity: 0.35;
+    text-decoration: line-through;
   }
   .category-label {
     padding: var(--struct-legend-padding, 0 4pt);

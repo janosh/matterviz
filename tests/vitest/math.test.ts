@@ -1518,6 +1518,97 @@ describe(`cross_3d`, () => {
   })
 })
 
+describe(`cell_heights`, () => {
+  test.each([
+    [
+      `unit cube`,
+      [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [1, 1, 1],
+    ],
+    [
+      `orthorhombic → vector lengths`,
+      [
+        [2, 0, 0],
+        [0, 3, 0],
+        [0, 0, 4],
+      ],
+      [2, 3, 4],
+    ],
+    // Oblique: heights drop below the vector lengths (|a|=2, |b|=√5, |c|=3) on the
+    // two sheared axes; the orthogonal c-axis stays at 3.
+    [
+      `oblique`,
+      [
+        [2, 0, 0],
+        [1, 2, 0],
+        [0, 0, 3],
+      ],
+      [12 / Math.sqrt(45), 2, 3],
+    ],
+  ] satisfies [string, math.Matrix3x3, Vec3][])(`%s`, (_name, matrix, expected) => {
+    const heights = math.cell_heights(matrix)
+    expect(heights).toEqual(expected.map((val) => expect.closeTo(val, 12)))
+    // Height is never larger than the corresponding lattice vector length
+    heights.forEach((h, idx) => expect(h).toBeLessThanOrEqual(Math.hypot(...matrix[idx])))
+  })
+
+  test(`degenerate (zero-volume) cell → Infinity heights`, () => {
+    // parallel a, b → no enclosed volume → ill-defined heights
+    const heights = math.cell_heights([
+      [1, 0, 0],
+      [2, 0, 0],
+      [0, 0, 1],
+    ])
+    expect(heights).toEqual([Infinity, Infinity, Infinity])
+  })
+})
+
+describe(`frac_cutoff_per_axis`, () => {
+  test.each([
+    // Orthorhombic: pad = dist / vector length
+    [
+      `orthorhombic`,
+      [
+        [2, 0, 0],
+        [0, 3, 0],
+        [0, 0, 4],
+      ],
+      [5 / 2, 5 / 3, 5 / 4],
+    ],
+    // Degenerate (zero-volume) cell → 0 pad (no images)
+    [
+      `degenerate`,
+      [
+        [1, 0, 0],
+        [2, 0, 0],
+        [0, 0, 1],
+      ],
+      [0, 0, 0],
+    ],
+  ] satisfies [string, math.Matrix3x3, Vec3][])(`%s`, (_name, matrix, expected) => {
+    expect(math.frac_cutoff_per_axis(matrix, 5)).toEqual(
+      expected.map((val) => expect.closeTo(val, 12)),
+    )
+  })
+
+  test(`oblique pad exceeds the naive lattice-vector-length cutoff`, () => {
+    // height < |vec| on sheared axes → dist/height > dist/|vec|: the latent fix
+    // images neighbors the old 5/|vec| cutoff missed
+    const matrix: math.Matrix3x3 = [
+      [2, 0, 0],
+      [1, 2, 0],
+      [0, 0, 3],
+    ]
+    const cutoff = math.frac_cutoff_per_axis(matrix, 5)
+    expect(cutoff[0]).toBeGreaterThan(5 / Math.hypot(...matrix[0]))
+    expect(cutoff[1]).toBeGreaterThan(5 / Math.hypot(...matrix[1]))
+  })
+})
+
 describe(`cross_2d`, () => {
   test.each([
     [`counter-clockwise unit triangle`, [0, 0], [1, 0], [0, 1], 1],

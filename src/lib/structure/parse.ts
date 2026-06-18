@@ -72,6 +72,37 @@ const cif_coords_key = (coords: Vec3): string =>
   `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
 const cif_site_key = (element: string, abc: Vec3, label: string): string =>
   `${element}|${label}|${cif_coords_key(abc)}`
+// Bravais lattice centering translations (excluding the identity) keyed by the
+// leading letter of a space-group Hermann-Mauguin symbol. R is the obverse
+// hexagonal setting.
+const CENTERING_VECTORS: Record<string, Vec3[]> = {
+  P: [],
+  I: [[0.5, 0.5, 0.5]],
+  F: [
+    [0, 0.5, 0.5],
+    [0.5, 0, 0.5],
+    [0.5, 0.5, 0],
+  ],
+  A: [[0, 0.5, 0.5]],
+  B: [[0.5, 0, 0.5]],
+  C: [[0.5, 0.5, 0]],
+  R: [
+    [2 / 3, 1 / 3, 1 / 3],
+    [1 / 3, 2 / 3, 2 / 3],
+  ],
+}
+// Detect the centering letter from a CIF's space-group H-M symbol, if present.
+const extract_cif_centering = (text: string): string | null => {
+  for (const line of text.split(`\n`)) {
+    const match =
+      /^_(?:symmetry_space_group_name_h-m|space_group_name_h-m(?:_alt)?)\s+(?<symbol>.+)/i.exec(
+        line.trim(),
+      )
+    const letter = match?.groups?.symbol.replaceAll(/['"]/g, ``).trim()[0]?.toUpperCase()
+    if (letter && letter in CENTERING_VECTORS) return letter
+  }
+  return null
+}
 const clone_structure_properties = (properties: StructureProperties): StructureProperties =>
   structuredClone(properties)
 const vec3_from_values = (values: readonly unknown[] | undefined, context: string): Vec3 => {
@@ -616,51 +647,51 @@ const parse_symmetry_expression = (
   return { coefficients, translation }
 }
 
-// Apply symmetry operations to generate equivalent positions
+// Apply symmetry operations (and optional lattice-centering translations) to
+// generate all equivalent positions. Deduplication uses 6 decimal places to
+// absorb floating point error from compound ops like x-y, -x+y.
 const apply_symmetry_ops = (
   atom: CifAtom,
   symmetry_ops: string[],
   wrap_fractional_coords: boolean,
+  centering: Vec3[] = [],
 ): CifAtom[] => {
-  if (symmetry_ops.length === 0) return [atom]
+  if (symmetry_ops.length === 0 && centering.length === 0) return [atom]
 
   const equivalent_atoms: CifAtom[] = []
   const seen = new Set<string>()
   const wrap = (coords: Vec3): Vec3 =>
     wrap_fractional_coords ? wrap_to_unit_cell(coords) : coords
-  // Use 6 decimal places for deduplication to handle floating point imprecision
-  // from compound symmetry operations like x-y, -x+y which can produce small errors
+  // Every generated position is also offset by each centering translation
+  const shifts: Vec3[] = [[0, 0, 0], ...centering]
 
-  // Always include base atom (optionally wrapped)
-  const base_coords = wrap(atom.coords)
-  seen.add(cif_coords_key(base_coords))
-  equivalent_atoms.push({ ...atom, coords: base_coords })
+  // Record a position plus its centering images, deduplicating on wrapped coords
+  const add_position = (coords: Vec3): void => {
+    for (const [dx, dy, dz] of shifts) {
+      const wrapped = wrap([coords[0] + dx, coords[1] + dy, coords[2] + dz])
+      const key = cif_coords_key(wrapped)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const id =
+        equivalent_atoms.length === 0 ? atom.id : `${atom.id}_${equivalent_atoms.length}`
+      equivalent_atoms.push({ ...atom, coords: wrapped, id })
+    }
+  }
 
+  add_position(atom.coords) // base atom (+ centering images)
+
+  // ops arrive pre-normalized (quotes + whitespace already stripped, see normalized_ops)
   for (const operation of symmetry_ops) {
-    const operation_match = /['"](?<expr>[^'"]+)['"]/.exec(operation)
-    const expr_str = operation_match ? operation_match[1] : operation.trim()
-    const parts = expr_str.split(`,`).map((part) => part.trim())
+    const parts = operation.split(`,`)
     if (parts.length !== 3) continue
 
     const new_coords: Vec3 = [0, 0, 0]
-
     for (let dim = 0; dim < 3; dim++) {
       const { coefficients, translation } = parse_symmetry_expression(parts[dim])
-      // Apply: new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
+      // new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
       new_coords[dim] = math.dot(coefficients, atom.coords) + translation
     }
-
-    // Wrap and deduplicate transformed coordinates
-    const wrapped = wrap(new_coords)
-    const cache_key = cif_coords_key(wrapped)
-    if (seen.has(cache_key)) continue
-    seen.add(cache_key)
-
-    equivalent_atoms.push({
-      ...atom,
-      coords: wrapped,
-      id: `${atom.id}_${equivalent_atoms.length}`,
-    })
+    add_position(new_coords)
   }
 
   return equivalent_atoms
@@ -950,17 +981,11 @@ export function parse_cif(
     const wrap_vec3 = (vec: Vec3): Vec3 =>
       wrap_fractional_coords ? wrap_to_unit_cell(vec) : vec
 
-    // Apply symmetry operations to generate all equivalent positions
-    const all_sites: Site[] = []
-
-    // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
-    const normalized_ops = symmetry_ops
-      .map((op) => /['"](?<expr>[^'"]+)['"]/.exec(op)?.[1] ?? op.trim())
-      .map((op) => op.replaceAll(/\s+/g, ``))
-
-    // Rely on symmetry operations list for all centering/translations to avoid double-counting
-    // TODO: Support conventional cells with centering by discovering centering from space group metadata
-    // when present (e.g. P, I, F, C, R centering types)
+    // Strip surrounding quotes and all whitespace (preserving duplicates; positions
+    // are deduplicated later). Leaves ops as bare `x,y,z`-style expressions.
+    const normalized_ops = symmetry_ops.map((op) =>
+      (/['"](?<expr>[^'"]+)['"]/.exec(op)?.groups?.expr ?? op).replaceAll(/\s+/g, ``),
+    )
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
     const atom_type_counts: Record<string, number> = {}
@@ -979,7 +1004,10 @@ export function parse_cif(
           const match = /^(?<element>[A-Z][a-z]*)/.exec(toks[sym_idx])
           const sym = match ? match[1] : toks[sym_idx]
           const num = parseInt(toks[num_idx], 10)
-          if (sym && !Number.isNaN(num)) atom_type_counts[sym] = num
+          // sum rows that normalize to the same element (e.g. Fe2+ and Fe3+ → Fe)
+          if (sym && !Number.isNaN(num)) {
+            atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + num
+          }
         }
       }
       break
@@ -997,45 +1025,81 @@ export function parse_cif(
 
     const ops_to_use = already_enumerated ? [] : normalized_ops
 
-    // Global deduplication of final sites (per element + coordinates + label)
-    // Use 6 decimal places to handle floating point imprecision from compound symmetry ops
-    const seen_site_keys = new Set<string>()
+    // Candidate lattice-centering translations from the space-group symbol (R
+    // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
+    // apply them is decided below by reconciling against _atom_type_number_in_cell.
+    const centering_letter = extract_cif_centering(text)
+    const is_hexagonal_setting =
+      Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
+    const centering =
+      centering_letter && (centering_letter !== `R` || is_hexagonal_setting)
+        ? CENTERING_VECTORS[centering_letter]
+        : []
 
-    for (const atom of atoms) {
-      const element = validate_element_symbol(atom.element, all_sites.length)
+    // Build all sites by expanding each atom via the symmetry ops (+ optional
+    // centering). Deduplicate globally on element + coordinates + label (6 dp to
+    // absorb floating point error from compound ops).
+    const build_sites = (extra_centering: Vec3[]): Site[] => {
+      const sites: Site[] = []
+      const seen_site_keys = new Set<string>()
+      for (const atom of atoms) {
+        const element = validate_element_symbol(atom.element, sites.length)
+        const coords =
+          atom.coords_type === `fract`
+            ? wrap_vec3(atom.coords)
+            : wrap_vec3(cart_to_frac([atom.coords[0], atom.coords[1], atom.coords[2]]))
+        const fractional_atom: CifAtom = { ...atom, coords, coords_type: `fract` }
 
-      // Convert to fractional coordinates if needed
-      let fractional_atom: CifAtom
-      if (atom.coords_type === `fract`) {
-        fractional_atom = {
-          ...atom,
-          coords: wrap_vec3(atom.coords),
-          coords_type: `fract`,
+        const equiv_atoms = apply_symmetry_ops(
+          fractional_atom,
+          ops_to_use,
+          wrap_fractional_coords,
+          extra_centering,
+        )
+        for (const equiv_atom of equiv_atoms) {
+          const abc = wrap_vec3(equiv_atom.coords)
+          const key = cif_site_key(element, abc, equiv_atom.id)
+          if (seen_site_keys.has(key)) continue
+          seen_site_keys.add(key)
+          sites.push(
+            make_site(
+              element,
+              abc,
+              frac_to_cart(abc),
+              equiv_atom.id,
+              {},
+              equiv_atom.occupancy,
+            ),
+          )
         }
-      } else {
-        const xyz_base: Vec3 = [atom.coords[0], atom.coords[1], atom.coords[2]]
-        const atom_abc = wrap_vec3(cart_to_frac(xyz_base))
-        fractional_atom = { ...atom, coords: atom_abc, coords_type: `fract` }
       }
-
-      // First apply symmetry operations in fractional space
-      const equiv_atoms = apply_symmetry_ops(
-        fractional_atom,
-        ops_to_use,
-        wrap_fractional_coords,
-      )
-
-      for (const equiv_atom of equiv_atoms) {
-        const abc = wrap_vec3(equiv_atom.coords)
-        const key = cif_site_key(element, abc, equiv_atom.id)
-        if (seen_site_keys.has(key)) continue
-        seen_site_keys.add(key)
-        const xyz = frac_to_cart(abc)
-        all_sites.push(make_site(element, abc, xyz, equiv_atom.id, {}, equiv_atom.occupancy))
-      }
+      return sites
     }
 
-    const sites = all_sites
+    // Expand with point-group ops first. If the space group is centered and the
+    // result falls short of _atom_type_number_in_cell, retry with centering and
+    // adopt it only when it reconciles the expected total exactly — this fixes
+    // CIFs listing point-only ops for the asymmetric unit while avoiding
+    // double-counting CIFs whose atom list already embeds centering (e.g. C2/c
+    // COD 7008984, where listed ops + atoms already total the cell contents).
+    let sites = build_sites([])
+    const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
+    if (centering.length > 0 && expected_total > sites.length) {
+      const centered_sites = build_sites(centering)
+      // Adopt centering only when per-element counts reconcile exactly. Checking
+      // the total alone is insufficient: it can coincide while individual element
+      // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
+      const counts: Record<string, number> = {}
+      for (const site of centered_sites) {
+        const element = site.species[0].element
+        counts[element] = (counts[element] ?? 0) + 1
+      }
+      const reconciles =
+        centered_sites.length === expected_total &&
+        Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
+      if (reconciles) sites = centered_sites
+    }
+
     return { sites, lattice: { matrix: lattice_matrix, ...lattice_params } }
   } catch (error) {
     diag_error(`Error parsing CIF file`, error)

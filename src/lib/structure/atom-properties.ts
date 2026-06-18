@@ -7,7 +7,8 @@ import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import { element_lookup, get_majority_element } from '$lib/structure/bonding'
+import { wrap_frac_coord } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
@@ -29,6 +30,14 @@ export interface AtomPropertyColors {
 
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = `interpolateViridis`
+// Cap on periodic image shells per axis when expanding for coordination. Guards
+// against image explosion in very thin / highly oblique cells (coordination is ~O(n²)).
+const MAX_IMAGE_SHELLS = 3
+// Max bond distance each strategy can form, mirroring the defaults in bonding.ts
+// (electroneg_ratio.max_distance_ratio, solid_angle.max_distance). Used to size PBC
+// image expansion just tightly enough that coordination never misses a bonded neighbor.
+const ELECTRONEG_MAX_RATIO = 2
+const SOLID_ANGLE_MAX_DIST = 5 // Å
 type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
 export const get_d3_color_scales = (): string[] =>
@@ -54,19 +63,6 @@ const build_image_site = (
     properties: { ...site.properties, orig_site_idx: orig_idx },
   }
 }
-
-const get_all_offsets = (
-  pbc: readonly [boolean, boolean, boolean],
-): readonly (readonly [number, number, number])[] =>
-  [-1, 0, 1]
-    .flatMap((dx) => [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const)))
-    .filter(
-      ([dx, dy, dz]) =>
-        !(dx === 0 && dy === 0 && dz === 0) &&
-        (pbc[0] || dx === 0) &&
-        (pbc[1] || dy === 0) &&
-        (pbc[2] || dz === 0),
-    )
 
 const make_categorical = <T>(
   vals: T[],
@@ -139,42 +135,98 @@ export const get_orig_site_idx = (site: Site | undefined, site_idx: number): num
       ? site.properties.orig_site_idx
       : site_idx
 
-// Expand structure with PBC images - use minimal expansion based on atom positions
-function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
+// Expand a periodic structure with the neighbor images needed for correct
+// coordination. Each atom's `reach` (the largest bond `strategy` can form for it —
+// electroneg_ratio's (r + r_max)·ratio or solid_angle's flat cap) sizes how many whole
+// cells to image per periodic axis, measured over the perpendicular cell height (not
+// the lattice vector length, so oblique cells work), keeping only images within `reach`
+// of the [0,1] cell and capping at MAX_IMAGE_SHELLS/axis (warns + may undercount beyond
+// that — near-degenerate cells only). Smaller atoms image less; atoms with no covalent
+// radius form no bonds and get no images.
+function expand_structure_for_pbc(
+  structure: AnyStructure,
+  strategy: BondingStrategy,
+): AnyStructure {
   if (!(`lattice` in structure) || !structure.lattice || structure.sites.length === 0) {
     return structure
   }
-
   const { sites, lattice } = structure
-  const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const pbc = lattice.pbc ?? [true, true, true]
-  const all_offsets = get_all_offsets(pbc)
+  if (!pbc.some(Boolean)) return structure
 
-  // Small structures: expand all atoms
-  if (sites.length < 20 || !pbc.some(Boolean)) {
-    const image_sites = sites.flatMap((site, orig_idx) =>
-      all_offsets.map((offset) => build_image_site(site, frac_to_cart, offset, orig_idx)),
-    )
-    return { ...structure, sites: [...sites, ...image_sites] }
-  }
-
-  // Large structures: only expand atoms near boundaries (within 5Å bond distance)
-  const cutoff: math.Vec3 = [5.0 / lattice.a, 5.0 / lattice.b, 5.0 / lattice.c]
-
-  const image_sites = sites.flatMap((site, orig_idx) => {
-    const norm = wrap_to_unit_cell(site.abc)
-
-    return all_offsets
-      .filter(
-        ([dx, dy, dz]) =>
-          (dx === 0 || (dx === -1 ? norm[0] <= cutoff[0] : norm[0] >= 1 - cutoff[0])) &&
-          (dy === 0 || (dy === -1 ? norm[1] <= cutoff[1] : norm[1] >= 1 - cutoff[1])) &&
-          (dz === 0 || (dz === -1 ? norm[2] <= cutoff[2] : norm[2] >= 1 - cutoff[2])),
-      )
-      .map((offset) => build_image_site(site, frac_to_cart, offset, orig_idx))
+  const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
+  // Wrap into [0,1) along PERIODIC axes only so the near-cell filter and image
+  // building share one position (else boundary atoms image on the wrong side and lose
+  // neighbors). Vacuum axes keep their real coord — wrapping would fold apart atoms
+  // together and invent bonds.
+  const cell_sites = sites.map((site) => {
+    const abc = site.abc.map((coord, axis) =>
+      pbc[axis] ? wrap_frac_coord(coord) : coord,
+    ) as math.Vec3
+    return { ...site, abc, xyz: frac_to_cart(abc) }
   })
 
-  return { ...structure, sites: [...sites, ...image_sites] }
+  // Covalent radius per atom (0 = unknown → forms no bonds → needs no images)
+  const radii = cell_sites.map((site) => {
+    const elem = get_majority_element(site)
+    return (elem ? element_lookup.get(elem)?.covalent_radius : undefined) ?? 0
+  })
+  let max_radius = 0
+  for (const radius of radii) if (radius > max_radius) max_radius = radius
+  const reach_of = (radius: number): number =>
+    strategy === `solid_angle`
+      ? SOLID_ANGLE_MAX_DIST
+      : (radius + max_radius) * ELECTRONEG_MAX_RATIO
+
+  const heights = math.cell_heights(lattice.matrix)
+  // Axes we image along: periodic and non-degenerate (finite height). Non-live axes
+  // (vacuum or degenerate) contribute no images — 0 shells + ∞ cutoff so their only
+  // copy (shift 0) always passes the near-cell filter. Loop-invariant, so hoisted out.
+  const live_axis = heights.map((height, axis) => pbc[axis] && Number.isFinite(height))
+  const image_near_cell = (frac: number, shift: number, axis_cutoff: number): boolean => {
+    const shifted = frac + shift
+    return shifted >= -axis_cutoff && shifted <= 1 + axis_cutoff
+  }
+
+  let capped = false
+  const image_sites: Site[] = []
+  for (const [orig_idx, site] of cell_sites.entries()) {
+    const radius = radii[orig_idx]
+    if (radius === 0) continue // no covalent radius → no bonds → no images
+    const reach = reach_of(radius)
+    // `cutoff` = fractional reach for the near-cell filter (keep an image shifted by `s`
+    // iff abc+s lands within `cutoff` of [0,1]); `n_shells` bounds the loop so no
+    // in-reach copy is missed.
+    const cutoff = heights.map((height, axis) => (live_axis[axis] ? reach / height : Infinity))
+    const n_shells = heights.map((height, axis) => {
+      if (!live_axis[axis]) return 0
+      const shells = Math.floor(1 + reach / height)
+      if (shells > MAX_IMAGE_SHELLS) capped = true
+      return Math.min(MAX_IMAGE_SHELLS, shells)
+    })
+
+    const [frac_a, frac_b, frac_c] = site.abc // periodic axes wrapped into [0, 1)
+    for (let dx = -n_shells[0]; dx <= n_shells[0]; dx++) {
+      if (!image_near_cell(frac_a, dx, cutoff[0])) continue
+      for (let dy = -n_shells[1]; dy <= n_shells[1]; dy++) {
+        if (!image_near_cell(frac_b, dy, cutoff[1])) continue
+        for (let dz = -n_shells[2]; dz <= n_shells[2]; dz++) {
+          if (dx === 0 && dy === 0 && dz === 0) continue
+          if (!image_near_cell(frac_c, dz, cutoff[2])) continue
+          image_sites.push(build_image_site(site, frac_to_cart, [dx, dy, dz], orig_idx))
+        }
+      }
+    }
+  }
+  if (capped) {
+    console.warn(
+      `[coordination] cell is very thin or oblique relative to bond reach; capping ` +
+        `PBC images at ${MAX_IMAGE_SHELLS} shells/axis, coordination near cell ` +
+        `boundaries may be undercounted`,
+    )
+  }
+
+  return { ...structure, sites: [...cell_sites, ...image_sites] }
 }
 
 export function get_coordination_colors(
@@ -191,10 +243,12 @@ export function get_coordination_colors(
   const has_pbc = has_lattice && (pbc === undefined || pbc.some(Boolean))
 
   // For PBC structures, expand with images from neighboring cells for accurate coordination
-  const coord_structure = has_pbc ? expand_structure_for_pbc(structure) : structure
+  const coord_structure = has_pbc ? expand_structure_for_pbc(structure, strategy) : structure
 
-  // Calculate coordination numbers on the (potentially expanded) structure
-  const all_coord_data = calc_coordination_nums(coord_structure, strategy)
+  // Calculate coordination numbers on the (potentially expanded) structure. Only the
+  // original atoms need coordination, so restrict bond centers to them; image atoms
+  // still count as their neighbors but aren't iterated as centers (big speedup).
+  const all_coord_data = calc_coordination_nums(coord_structure, strategy, orig_site_count)
 
   // Extract coordination numbers only for the original sites (not image atoms)
   const coord_nums = all_coord_data.sites
