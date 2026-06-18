@@ -35,4 +35,17 @@ describe(`create_clipboard_feedback`, () => {
     expect(first.copied.has(`shared`)).toBe(true)
     expect(second.copied.has(`shared`)).toBe(false)
   })
+
+  it(`tracks multiple keys with independent timeouts`, async () => {
+    vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
+    const { copied, copy } = create_clipboard_feedback(1000)
+    await copy(`a`, `k1`)
+    vi.advanceTimersByTime(600)
+    await copy(`b`, `k2`)
+    expect([copied.has(`k1`), copied.has(`k2`)]).toEqual([true, true])
+    vi.advanceTimersByTime(400) // k1 reaches 1000ms, k2 at 400ms
+    expect([copied.has(`k1`), copied.has(`k2`)]).toEqual([false, true])
+    vi.advanceTimersByTime(600) // k2 reaches 1000ms
+    expect(copied.has(`k2`)).toBe(false)
+  })
 })

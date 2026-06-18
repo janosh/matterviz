@@ -785,39 +785,81 @@ O2   O   0.410  0.140  0.880  1.000`
       ].join(`\n`)
     }
 
-    test.each([
-      [`P m -3 m`, 1, 1],
-      [`I m -3 m`, 2, 2],
-      [`F m -3 m`, 4, 4],
-      [`C m m m`, 2, 2],
-      [`A m m 2`, 2, 2],
-      [`B 1 1 2/m`, 2, 2],
-    ])(`%s with count %i expands to %i sites`, (symbol, count, expected) => {
-      const result = parse_cif(centered_cif(symbol, count))
-      assert(result, `Failed to parse ${symbol}`)
-      expect(result.sites).toHaveLength(expected)
-    })
-
-    test(`I-centering adds the body-center image`, () => {
-      const result = parse_cif(centered_cif(`I m -3 m`, 2))
-      assert(result, `Failed to parse`)
-      const coords = result.sites
-        .map((site) => site.abc)
+    // round + sort coords so float error (e.g. R's 1/3) and order don't matter
+    const sorted_coords = (sites: { abc: number[] }[]): number[][] =>
+      sites
+        .map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
         .sort((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
-      expect(coords).toEqual([
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ])
+
+    // expand a single origin atom to the full centered cell, checking the exact
+    // images so a swapped/missing centering vector can't pass on count alone
+    test.each([
+      [`P m -3 m`, `90 90 90`, [[0, 0, 0]]],
+      [
+        `I m -3 m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0.5, 0.5, 0.5],
+        ],
+      ],
+      [
+        `F m -3 m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0, 0.5, 0.5],
+          [0.5, 0, 0.5],
+          [0.5, 0.5, 0],
+        ],
+      ],
+      [
+        `C m m m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0.5, 0.5, 0],
+        ],
+      ],
+      [
+        `A m m 2`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0, 0.5, 0.5],
+        ],
+      ],
+      [
+        `B 1 1 2/m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0.5, 0, 0.5],
+        ],
+      ],
+      [
+        `R -3`,
+        `90 90 120`,
+        [
+          [0, 0, 0],
+          [0.333333, 0.666667, 0.666667],
+          [0.666667, 0.333333, 0.333333],
+        ],
+      ],
+    ])(`%s expands origin atom to the centered cell`, (symbol, angles, expected) => {
+      const result = parse_cif(centered_cif(symbol, expected.length, { angles }))
+      assert(result, `Failed to parse ${symbol}`)
+      expect(sorted_coords(result.sites)).toEqual(expected)
     })
 
-    test(`R-centering applies only in the hexagonal setting`, () => {
-      const hexagonal = parse_cif(centered_cif(`R -3`, 3, { angles: `90 90 120` }))
-      assert(hexagonal, `Failed to parse hexagonal R`)
-      expect(hexagonal.sites).toHaveLength(3)
-      // rhombohedral axes: hexagonal R vectors are invalid, so centering is skipped
-      const rhombohedral = parse_cif(centered_cif(`R 3`, 3, { angles: `70 70 70` }))
-      assert(rhombohedral, `Failed to parse rhombohedral R`)
-      expect(rhombohedral.sites).toHaveLength(1)
+    test.each([
+      [`hexagonal axes apply R centering`, `90 90 120`, 3],
+      [`rhombohedral axes skip R centering`, `70 70 70`, 1],
+      [`tilted alpha skips R centering`, `80 90 120`, 1],
+    ])(`R-centering: %s`, (_desc, angles, expected) => {
+      const result = parse_cif(centered_cif(`R -3`, 3, { angles }))
+      assert(result, `Failed to parse R with angles ${angles}`)
+      expect(result.sites).toHaveLength(expected)
     })
 
     test.each([
@@ -827,6 +869,41 @@ O2   O   0.410  0.140  0.880  1.000`
       const result = parse_cif(centered_cif(symbol, count, { with_count }))
       assert(result, `Failed to parse ${symbol}`)
       expect(result.sites).toHaveLength(expected)
+    })
+
+    test(`rejects centering when only the total reconciles, not per-element counts`, () => {
+      // I symbol implies ×2. Expected Fe 1 / O 3 (total 4). Centering both atoms at
+      // the origin yields Fe 2 / O 2 (total 4) — total matches but composition is
+      // wrong, so centering must be rejected and the 2 base sites kept.
+      const cif = [
+        `data_test`,
+        `_cell_length_a 5`,
+        `_cell_length_b 5`,
+        `_cell_length_c 5`,
+        `_cell_angle_alpha 90`,
+        `_cell_angle_beta 90`,
+        `_cell_angle_gamma 90`,
+        `_symmetry_space_group_name_H-M 'I m -3 m'`,
+        `loop_`,
+        `_space_group_symop_operation_xyz`,
+        `'x, y, z'`,
+        `loop_`,
+        `_atom_type_symbol`,
+        `_atom_type_number_in_cell`,
+        `Fe 1`,
+        `O 3`,
+        `loop_`,
+        `_atom_site_label`,
+        `_atom_site_type_symbol`,
+        `_atom_site_fract_x`,
+        `_atom_site_fract_y`,
+        `_atom_site_fract_z`,
+        `Fe1 Fe 0 0 0`,
+        `O1 O 0 0 0`,
+      ].join(`\n`)
+      const result = parse_cif(cif)
+      assert(result, `Failed to parse`)
+      expect(result.sites).toHaveLength(2)
     })
   })
 

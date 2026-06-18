@@ -168,7 +168,7 @@ export function get_page_background(
   if (is_valid_bg(html_bg)) return html_bg
 
   // Fall back to prefers-color-scheme
-  const prefers_dark = globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
+  const prefers_dark = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
   return prefers_dark ? fallback_dark : fallback_light
 }
 

@@ -1023,11 +1023,13 @@ export function parse_cif(
     const ops_to_use = already_enumerated ? [] : normalized_ops
 
     // Candidate lattice-centering translations from the space-group symbol (R
-    // only valid in the hexagonal setting, γ ≈ 120°). Whether to actually apply
-    // them is decided below by reconciling against _atom_type_number_in_cell.
+    // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
+    // apply them is decided below by reconciling against _atom_type_number_in_cell.
     const centering_letter = extract_cif_centering(text)
+    const is_hexagonal_setting =
+      Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
     const centering =
-      centering_letter && !(centering_letter === `R` && Math.abs(gamma - 120) > 1)
+      centering_letter && (centering_letter !== `R` || is_hexagonal_setting)
         ? CENTERING_VECTORS[centering_letter]
         : []
 
@@ -1081,7 +1083,18 @@ export function parse_cif(
     const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
     if (centering.length > 0 && expected_total > sites.length) {
       const centered_sites = build_sites(centering)
-      if (centered_sites.length === expected_total) sites = centered_sites
+      // Adopt centering only when per-element counts reconcile exactly. Checking
+      // the total alone is insufficient: it can coincide while individual element
+      // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
+      const counts: Record<string, number> = {}
+      for (const site of centered_sites) {
+        const element = site.species[0].element
+        counts[element] = (counts[element] ?? 0) + 1
+      }
+      const reconciles =
+        centered_sites.length === expected_total &&
+        Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
+      if (reconciles) sites = centered_sites
     }
 
     return { sites, lattice: { matrix: lattice_matrix, ...lattice_params } }

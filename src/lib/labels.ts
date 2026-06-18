@@ -66,9 +66,10 @@ export function format_value(value: number, formatter?: string): string {
 }
 
 // Human-readable label + unit (null when dimensionless) for displayable element
-// properties. Record-valued (ionic_radii, shannon_radii), asset (cpk-hex,
-// spectral_img) and heading/summary fields (name, symbol, discoverer, year,
-// summary) are intentionally omitted.
+// properties. Omitted: Record-valued (ionic_radii, shannon_radii), assets
+// (cpk-hex, spectral_img), heading/summary fields (name, symbol, category,
+// discoverer, year, summary) and electronegativity_pauling (identical to
+// electronegativity).
 export const ELEM_PROPERTY_LABELS: Partial<
   Record<keyof ChemicalElement, [string, string | null]>
 > = {
@@ -76,7 +77,6 @@ export const ELEM_PROPERTY_LABELS: Partial<
   atomic_mass: [`Atomic Mass`, `u`],
   atomic_radius: [`Atomic Radius`, `Å`],
   boiling_point: [`Boiling Point`, `K`],
-  category: [`Category`, null],
   column: [`Group`, null],
   common_oxidation_states: [`Common Oxidation States`, null],
   covalent_radius: [`Covalent Radius`, `Å`],
@@ -85,11 +85,10 @@ export const ELEM_PROPERTY_LABELS: Partial<
   electron_configuration: [`Electron Configuration`, null],
   electron_configuration_semantic: [`Electron Configuration (semantic)`, null],
   electronegativity: [`Electronegativity`, null],
-  electronegativity_pauling: [`Electronegativity (Pauling)`, null],
   electrons: [`Electrons`, null],
   first_ionization: [`First Ionization Energy`, `eV`],
   icsd_oxidation_states: [`ICSD Oxidation States`, null],
-  ionization_energies: [`Ionization Energies`, `eV`],
+  ionization_energies: [`Ionization Energies`, `kJ/mol`],
   melting_point: [`Melting Point`, `K`],
   mendeleev_number: [`Mendeleev Number`, null],
   molar_heat: [`Molar Heat`, `J/(mol·K)`],
