@@ -13,6 +13,12 @@ const DEFAULT_VISIBLE = new Set([`energy`, `force_max`, `stress_frobenius`])
 
 type VisibleProp = Readonly<{ property: string; unit: string }>
 
+// Shared per-series line/point styling derived from a single color
+const series_color_styles = (color: string) => ({
+  line_style: { stroke: color, stroke_width: 2 },
+  point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+})
+
 export interface PlotSeriesOptions {
   property_config?: Record<string, { label: string; unit: string }>
   colors?: readonly string[]
@@ -153,8 +159,7 @@ function create_series_from_stats(
       visible: false, // Will be assigned
       markers: n_values < 30 ? `line+points` : `line`,
       metadata: Array.from({ length: n_values }, () => series_metadata),
-      line_style: { stroke: color, stroke_width: 2 },
-      point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+      ...series_color_styles(color),
     })
     color_idx++
   }
@@ -409,8 +414,7 @@ export function generate_streaming_plot_series(
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
         property_key, // Store original property key for robust lookups
       })),
-      line_style: { stroke: color, stroke_width: 2 },
-      point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+      ...series_color_styles(color),
     })
 
     color_idx++

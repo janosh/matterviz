@@ -32,6 +32,20 @@ const parse_number_list = (text: string): number[] =>
     .map(parseFloat)
     .filter((val) => !isNaN(val))
 
+// Return the first parseable number from the text content of any of `tags`
+// (in order) that also passes the optional `ok` predicate. Null when none match.
+const query_first_number = (
+  doc: Document,
+  tags: readonly string[],
+  ok: (val: number) => boolean = () => true,
+): number | null => {
+  for (const tag of tags) {
+    const val = parseFloat(doc.querySelector(tag)?.textContent ?? ``)
+    if (!isNaN(val) && ok(val)) return val
+  }
+  return null
+}
+
 // Extract numeric value from header line matching "KEY=VALUE" or "KEY VALUE" pattern.
 // Returns null if not found or not a valid number.
 function extract_header_value(lines: string[], key_pattern: RegExp): number | null {
@@ -72,21 +86,21 @@ function normalize_and_subsample(
 // Subsample data while preserving peaks (local maxima).
 // Uses a combination of uniform sampling and peak preservation.
 function subsample_preserve_peaks(
-  x_values: number[],
-  y_values: number[],
+  x_vals: number[],
+  y_vals: number[],
   target_points: number,
 ): { x: number[]; y: number[] } {
-  const num_points = x_values.length
-  if (num_points <= target_points) return { x: x_values, y: y_values }
+  const num_points = x_vals.length
+  if (num_points <= target_points) return { x: x_vals, y: y_vals }
 
   // Find peaks (local maxima with significant height)
   const peaks: number[] = []
-  const threshold = Math.max(...y_values) * 0.05 // 5% of max as significance threshold
+  const threshold = Math.max(...y_vals) * 0.05 // 5% of max as significance threshold
   for (let idx = 1; idx < num_points - 1; idx++) {
     if (
-      y_values[idx] > y_values[idx - 1] &&
-      y_values[idx] > y_values[idx + 1] &&
-      y_values[idx] > threshold
+      y_vals[idx] > y_vals[idx - 1] &&
+      y_vals[idx] > y_vals[idx + 1] &&
+      y_vals[idx] > threshold
     ) {
       peaks.push(idx)
     }
@@ -98,7 +112,7 @@ function subsample_preserve_peaks(
 
   // Select top peaks by height
   const top_peaks = peaks
-    .map((idx) => ({ idx, y: y_values[idx] }))
+    .map((idx) => ({ idx, y: y_vals[idx] }))
     .sort((a, b) => b.y - a.y)
     .slice(0, peak_slots)
     .map((peak) => peak.idx)
@@ -118,8 +132,8 @@ function subsample_preserve_peaks(
   const selected = [...new Set([...uniform_indices, ...top_peaks])].sort((a, b) => a - b)
 
   return {
-    x: selected.map((idx) => x_values[idx]),
-    y: selected.map((idx) => y_values[idx]),
+    x: selected.map((idx) => x_vals[idx]),
+    y: selected.map((idx) => y_vals[idx]),
   }
 }
 
@@ -677,10 +691,7 @@ function extract_scan_parameters_xml(
   if (!intensities?.length) return null
 
   // Extract scan range parameters
-  let start_angle = 0
-  let step_size = DEFAULT_STEP_SIZE
-
-  // Try to find start angle - multiple possible locations
+  // Try multiple possible tag names, returning the first that parses (and passes `ok`)
   const start_candidates = [
     `Start`,
     `TwoThetaStart`,
@@ -689,18 +700,6 @@ function extract_scan_parameters_xml(
     `ScanAxisBeginPosition`,
     `Begin`,
   ]
-  for (const tag of start_candidates) {
-    const el = doc.querySelector(tag)
-    if (el?.textContent) {
-      const val = parseFloat(el.textContent)
-      if (!isNaN(val)) {
-        start_angle = val
-        break
-      }
-    }
-  }
-
-  // Try to find step size - multiple possible locations
   const step_candidates = [
     `Step`,
     `StepSize`,
@@ -709,16 +708,9 @@ function extract_scan_parameters_xml(
     `ScanAxisIncrement`,
     `StepWidth`,
   ]
-  for (const tag of step_candidates) {
-    const el = doc.querySelector(tag)
-    if (el?.textContent) {
-      const val = parseFloat(el.textContent)
-      if (!isNaN(val) && val > 0) {
-        step_size = val
-        break
-      }
-    }
-  }
+  const start_angle = query_first_number(doc, start_candidates) ?? 0
+  let step_size =
+    query_first_number(doc, step_candidates, (val) => val > 0) ?? DEFAULT_STEP_SIZE
 
   // Alternative: calculate step from start/end and count
   if (step_size === DEFAULT_STEP_SIZE) {

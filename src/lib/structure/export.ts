@@ -626,17 +626,10 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
 
   const lattice = structure.lattice
   if (lattice.matrix && Array.isArray(lattice.matrix) && lattice.matrix.length >= 3) {
-    // Convert 3x3 matrix to 3 vectors
-    const matrix = lattice.matrix
-    lines.push(
-      `${matrix[0][0].toFixed(8)} ${matrix[0][1].toFixed(8)} ${matrix[0][2].toFixed(8)}`,
-    )
-    lines.push(
-      `${matrix[1][0].toFixed(8)} ${matrix[1][1].toFixed(8)} ${matrix[1][2].toFixed(8)}`,
-    )
-    lines.push(
-      `${matrix[2][0].toFixed(8)} ${matrix[2][1].toFixed(8)} ${matrix[2][2].toFixed(8)}`,
-    )
+    // One line per lattice vector, exactly 3 components at 8-decimal fixed precision
+    for (const vec of lattice.matrix.slice(0, 3)) {
+      lines.push([vec[0], vec[1], vec[2]].map((coord) => coord.toFixed(8)).join(` `))
+    }
   } else {
     throw new Error(`No valid lattice matrix for POSCAR export`)
   }

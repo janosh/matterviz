@@ -647,11 +647,7 @@ const apply_symmetry_ops = (
     for (let dim = 0; dim < 3; dim++) {
       const { coefficients, translation } = parse_symmetry_expression(parts[dim])
       // Apply: new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
-      new_coords[dim] =
-        coefficients[0] * atom.coords[0] +
-        coefficients[1] * atom.coords[1] +
-        coefficients[2] * atom.coords[2] +
-        translation
+      new_coords[dim] = math.dot(coefficients, atom.coords) + translation
     }
 
     // Wrap and deduplicate transformed coordinates
@@ -716,6 +712,30 @@ const build_cif_atom_site_header_indices = (headers: string[]): Record<string, n
   return indices
 }
 
+// Which coordinate triple a CIF atom-site loop provides (fractional preferred), or null
+const cif_coords_type = (indices: Record<string, number>): `fract` | `cart` | null => {
+  if (indices.x !== undefined && indices.y !== undefined && indices.z !== undefined) {
+    return `fract`
+  }
+  if (
+    indices.cart_x !== undefined &&
+    indices.cart_y !== undefined &&
+    indices.cart_z !== undefined
+  ) {
+    return `cart`
+  }
+  return null
+}
+
+// The 3 column indices for the requested coordinate type
+const cif_coord_indices = (
+  indices: Record<string, number>,
+  coords_type: `fract` | `cart`,
+): number[] =>
+  coords_type === `fract`
+    ? [indices.x, indices.y, indices.z]
+    : [indices.cart_x, indices.cart_y, indices.cart_z]
+
 type CifAtom = {
   id: string
   element: string
@@ -754,10 +774,7 @@ const parse_cif_atom_data = (
   coords_type: `fract` | `cart`,
 ): CifAtom => {
   const { label = 0, symbol = -1, occupancy = -1 } = indices
-  const coord_indices =
-    coords_type === `fract`
-      ? [indices.x, indices.y, indices.z]
-      : [indices.cart_x, indices.cart_y, indices.cart_z]
+  const coord_indices = cif_coord_indices(indices, coords_type)
 
   if (coord_indices.some((idx) => idx === undefined)) {
     throw new Error(`Missing coordinate indices`)
@@ -843,15 +860,7 @@ export function parse_cif(
 
       // Check if this loop contains coordinate headers
       const indices_preview = build_cif_atom_site_header_indices(headers)
-      const has_coords =
-        (indices_preview.x !== undefined &&
-          indices_preview.y !== undefined &&
-          indices_preview.z !== undefined) ||
-        (indices_preview.cart_x !== undefined &&
-          indices_preview.cart_y !== undefined &&
-          indices_preview.cart_z !== undefined)
-
-      if (!has_coords) continue
+      if (cif_coords_type(indices_preview) === null) continue
 
       // This is the desired atom-site loop with coordinates: collect data lines
       atom_headers = headers
@@ -885,16 +894,7 @@ export function parse_cif(
     const header_indices = build_cif_atom_site_header_indices(atom_headers)
 
     // Determine available coordinate type
-    const coords_type: `fract` | `cart` | null =
-      header_indices.x !== undefined &&
-      header_indices.y !== undefined &&
-      header_indices.z !== undefined
-        ? `fract`
-        : header_indices.cart_x !== undefined &&
-            header_indices.cart_y !== undefined &&
-            header_indices.cart_z !== undefined
-          ? `cart`
-          : null
+    const coords_type = cif_coords_type(header_indices)
 
     if (!coords_type) {
       diag_error(`CIF atom site loop missing coordinates (fract or Cartn)`)
@@ -902,10 +902,7 @@ export function parse_cif(
     }
 
     // Collect required coordinate indices
-    const required_indices =
-      coords_type === `fract`
-        ? [header_indices.x, header_indices.y, header_indices.z]
-        : [header_indices.cart_x, header_indices.cart_y, header_indices.cart_z]
+    const required_indices = cif_coord_indices(header_indices, coords_type)
 
     const atoms = atom_data_lines
       .map(split_cif_tokens)
