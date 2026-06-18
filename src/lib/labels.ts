@@ -65,24 +65,43 @@ export function format_value(value: number, formatter?: string): string {
   return out === `-0` ? `0` : out
 }
 
-// TODO add labels and units for all elemental properties
+// Human-readable label + unit (null when dimensionless) for displayable element
+// properties. Record-valued (ionic_radii, shannon_radii), asset (cpk-hex,
+// spectral_img) and heading/summary fields (name, symbol, discoverer, year,
+// summary) are intentionally omitted.
 export const ELEM_PROPERTY_LABELS: Partial<
   Record<keyof ChemicalElement, [string, string | null]>
 > = {
+  appearance: [`Appearance`, null],
   atomic_mass: [`Atomic Mass`, `u`],
   atomic_radius: [`Atomic Radius`, `Å`],
   boiling_point: [`Boiling Point`, `K`],
+  category: [`Category`, null],
+  column: [`Group`, null],
+  common_oxidation_states: [`Common Oxidation States`, null],
   covalent_radius: [`Covalent Radius`, `Å`],
   density: [`Density`, `g/cm³`],
-  electron_affinity: [`Electron Affinity`, null],
+  electron_affinity: [`Electron Affinity`, `kJ/mol`],
+  electron_configuration: [`Electron Configuration`, null],
+  electron_configuration_semantic: [`Electron Configuration (semantic)`, null],
   electronegativity: [`Electronegativity`, null],
+  electronegativity_pauling: [`Electronegativity (Pauling)`, null],
+  electrons: [`Electrons`, null],
   first_ionization: [`First Ionization Energy`, `eV`],
+  icsd_oxidation_states: [`ICSD Oxidation States`, null],
+  ionization_energies: [`Ionization Energies`, `eV`],
   melting_point: [`Melting Point`, `K`],
   mendeleev_number: [`Mendeleev Number`, null],
-  // molar_heat: [`Molar Heat`, `J/(mol·K)`],
+  molar_heat: [`Molar Heat`, `J/(mol·K)`],
   n_shells: [`Number of Shells`, null],
   n_valence: [`Electron Valency`, null],
+  neutrons: [`Neutrons`, null],
   number: [`Atomic Number`, null],
+  number_of_isotopes: [`Number of Isotopes`, null],
+  oxidation_states: [`Oxidation States`, null],
+  period: [`Period`, null],
+  phase: [`Phase`, null],
+  protons: [`Protons`, null],
   shells: [`Electron Shell Occupations`, null],
   specific_heat: [`Specific Heat`, `J/(g K)`],
 } as const

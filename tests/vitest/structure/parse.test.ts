@@ -747,6 +747,89 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(Number.isFinite(result.lattice?.c as number)).toBe(true)
   })
 
+  // Lattice-centering reconstruction from the space-group H-M symbol. Applied
+  // only when it reconciles _atom_type_number_in_cell exactly, so atom lists
+  // that already embed centering (e.g. COD 7008984 above) are never doubled.
+  describe(`CIF centering from space-group symbol`, () => {
+    const centered_cif = (
+      symbol: string,
+      count: number,
+      {
+        angles = `90 90 90`,
+        with_count = true,
+      }: { angles?: string; with_count?: boolean } = {},
+    ): string => {
+      const [alpha, beta, gamma] = angles.split(` `)
+      return [
+        `data_test`,
+        `_cell_length_a 5`,
+        `_cell_length_b 5`,
+        `_cell_length_c 5`,
+        `_cell_angle_alpha ${alpha}`,
+        `_cell_angle_beta ${beta}`,
+        `_cell_angle_gamma ${gamma}`,
+        `_symmetry_space_group_name_H-M '${symbol}'`,
+        `loop_`,
+        `_space_group_symop_operation_xyz`,
+        `'x, y, z'`,
+        ...(with_count
+          ? [`loop_`, `_atom_type_symbol`, `_atom_type_number_in_cell`, `Fe ${count}`]
+          : []),
+        `loop_`,
+        `_atom_site_label`,
+        `_atom_site_type_symbol`,
+        `_atom_site_fract_x`,
+        `_atom_site_fract_y`,
+        `_atom_site_fract_z`,
+        `Fe1 Fe 0 0 0`,
+      ].join(`\n`)
+    }
+
+    test.each([
+      [`P m -3 m`, 1, 1],
+      [`I m -3 m`, 2, 2],
+      [`F m -3 m`, 4, 4],
+      [`C m m m`, 2, 2],
+      [`A m m 2`, 2, 2],
+      [`B 1 1 2/m`, 2, 2],
+    ])(`%s with count %i expands to %i sites`, (symbol, count, expected) => {
+      const result = parse_cif(centered_cif(symbol, count))
+      assert(result, `Failed to parse ${symbol}`)
+      expect(result.sites).toHaveLength(expected)
+    })
+
+    test(`I-centering adds the body-center image`, () => {
+      const result = parse_cif(centered_cif(`I m -3 m`, 2))
+      assert(result, `Failed to parse`)
+      const coords = result.sites
+        .map((site) => site.abc)
+        .sort((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
+      expect(coords).toEqual([
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+      ])
+    })
+
+    test(`R-centering applies only in the hexagonal setting`, () => {
+      const hexagonal = parse_cif(centered_cif(`R -3`, 3, { angles: `90 90 120` }))
+      assert(hexagonal, `Failed to parse hexagonal R`)
+      expect(hexagonal.sites).toHaveLength(3)
+      // rhombohedral axes: hexagonal R vectors are invalid, so centering is skipped
+      const rhombohedral = parse_cif(centered_cif(`R 3`, 3, { angles: `70 70 70` }))
+      assert(rhombohedral, `Failed to parse rhombohedral R`)
+      expect(rhombohedral.sites).toHaveLength(1)
+    })
+
+    test.each([
+      [`count already satisfied (atoms embed centering)`, `I m -3 m`, 1, true, 1],
+      [`no _atom_type_number_in_cell to reconcile against`, `F m -3 m`, 4, false, 1],
+    ])(`does not apply centering when %s`, (_desc, symbol, count, with_count, expected) => {
+      const result = parse_cif(centered_cif(symbol, count, { with_count }))
+      assert(result, `Failed to parse ${symbol}`)
+      expect(result.sites).toHaveLength(expected)
+    })
+  })
+
   it(`should detect CIF format by content`, () => {
     const result = parse_structure_file(QUARTZ_CIF_FOR_DETECTION)
     assert(result, `Failed to parse CIF`)
