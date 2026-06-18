@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'svelte'
-import { SvelteSet } from 'svelte/reactivity'
+import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type DraggablePane from './DraggablePane.svelte'
 
 export { default as ContextMenu } from './ContextMenu.svelte'
@@ -19,11 +19,20 @@ export function create_clipboard_feedback(duration = 1000): {
   copy: (text: string, key: string) => Promise<void>
 } {
   const copied = new SvelteSet<string>()
+  const timers = new SvelteMap<string, ReturnType<typeof setTimeout>>()
   const copy = async (text: string, key: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(text)
       copied.add(key)
-      setTimeout(() => copied.delete(key), duration)
+      // reset any in-flight timer so a re-copy gets the full feedback duration
+      clearTimeout(timers.get(key))
+      timers.set(
+        key,
+        setTimeout(() => {
+          copied.delete(key)
+          timers.delete(key)
+        }, duration),
+      )
     } catch (error) {
       console.error(`Failed to copy to clipboard:`, error)
     }

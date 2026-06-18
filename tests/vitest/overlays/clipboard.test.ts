@@ -36,6 +36,18 @@ describe(`create_clipboard_feedback`, () => {
     expect(second.copied.has(`shared`)).toBe(false)
   })
 
+  it(`resets the timeout when the same key is copied again`, async () => {
+    vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
+    const { copied, copy } = create_clipboard_feedback(1000)
+    await copy(`a`, `k`)
+    vi.advanceTimersByTime(700)
+    await copy(`a`, `k`) // re-copy must restart the full window
+    vi.advanceTimersByTime(700) // 1400ms since first copy; without reset k would be gone
+    expect(copied.has(`k`)).toBe(true)
+    vi.advanceTimersByTime(300) // 1000ms since the second copy
+    expect(copied.has(`k`)).toBe(false)
+  })
+
   it(`tracks multiple keys with independent timeouts`, async () => {
     vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
     const { copied, copy } = create_clipboard_feedback(1000)
