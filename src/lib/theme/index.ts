@@ -1,7 +1,7 @@
 // Theme System for MatterViz
 
 const is_browser = typeof window !== `undefined`
-const storage_key = `matterviz-theme`
+export const THEME_STORAGE_KEY = `matterviz-theme`
 
 // Core theme constants
 export const COLOR_THEMES = {
@@ -55,7 +55,7 @@ export const resolve_theme_mode = (
 export const get_theme_preference = (): ThemeMode => {
   if (!is_browser) return AUTO_THEME
   try {
-    const saved = localStorage[storage_key]
+    const saved = localStorage[THEME_STORAGE_KEY]
     return is_valid_theme_mode(saved ?? ``) ? (saved as ThemeMode) : AUTO_THEME
   } catch {
     return AUTO_THEME
@@ -64,14 +64,14 @@ export const get_theme_preference = (): ThemeMode => {
 
 export const save_theme_preference = (mode: ThemeMode): void => {
   try {
-    localStorage[storage_key] = mode
+    localStorage[THEME_STORAGE_KEY] = mode
   } catch {
     // Silently fail if localStorage is unavailable
   }
 }
 
 export const get_system_mode = (): ThemeType =>
-  is_browser && matchMedia(`(prefers-color-scheme: dark)`).matches
+  is_browser && globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
     ? COLOR_THEMES.dark
     : COLOR_THEMES.light
 
@@ -98,10 +98,3 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
   const color_scheme = THEME_TYPE[resolved]
   root.style.setProperty(`color-scheme`, color_scheme)
 }
-
-// Theme getters
-export const light_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.light] ?? {}
-export const dark_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.dark] ?? {}
-export const white_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.white] ?? {}
-export const black_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.black] ?? {}
-export const get_theme_by_name = (name: ThemeName) => globalThis.MATTERVIZ_THEMES?.[name] ?? {}

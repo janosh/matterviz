@@ -89,6 +89,10 @@ describe(`Bonding Algorithms`, () => {
       expect(bond.bond_length).toBeGreaterThan(0)
       expect(bond.strength).toBeGreaterThanOrEqual(0)
       expect(bond.strength).toBeLessThanOrEqual(2.0)
+      // positions correspond to their site indices and a 4x4 transform is emitted
+      expect(bond.pos_1).toEqual(structure.sites[bond.site_idx_1].xyz)
+      expect(bond.pos_2).toEqual(structure.sites[bond.site_idx_2].xyz)
+      expect(bond.transform_matrix).toHaveLength(16)
     }
   })
 

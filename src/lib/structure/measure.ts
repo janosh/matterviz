@@ -1,7 +1,7 @@
 // functions for measuring distances and angles between structure sites
 
 import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
-import { min_image_displacement, subtract } from '$lib/math'
+import { dot, min_image_displacement, subtract, to_degrees } from '$lib/math'
 import type { Pbc } from './pbc'
 
 export type AngleMode = `degrees` | `radians`
@@ -38,17 +38,10 @@ export function angle_between_vectors(v1: Vec3, v2: Vec3, mode: AngleMode = `deg
   const n2 = Math.hypot(v2[0], v2[1], v2[2])
   if (n1 === 0 || n2 === 0) return 0
 
-  // Dot product of vectors
-  const dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]
-
-  // Normalize dot product to get cosine
-  const cos_angle = dot / (n1 * n2)
-
-  // Clamp to [-1, 1] to avoid numerical errors with acos
+  // Normalize dot product to get cosine, clamped to [-1, 1] to avoid acos NaN
+  const cos_angle = dot(v1, v2) / (n1 * n2)
   const clamped = Math.max(-1, Math.min(1, cos_angle))
 
-  // Compute angle using arccos
   const ang = Math.acos(clamped)
-
-  return mode === `degrees` ? (ang * 180) / Math.PI : ang
+  return mode === `degrees` ? to_degrees(ang) : ang
 }

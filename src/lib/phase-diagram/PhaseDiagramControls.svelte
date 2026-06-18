@@ -111,8 +111,8 @@
   on_change: (val: number) => void,
   tip: string,
 )}
-  {@const oninput = (ev: Event & { currentTarget: HTMLInputElement }) =>
-    on_change(Number(ev.currentTarget.value))}
+  {@const oninput = (event: Event & { currentTarget: HTMLInputElement }) =>
+    on_change(Number(event.currentTarget.value))}
   <label {@attach tooltip({ content: tip })}>
     {label}
     <input type="number" {min} {max} {step} {value} {oninput} />

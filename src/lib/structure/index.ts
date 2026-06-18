@@ -119,12 +119,17 @@ export function format_chemical_formula(
   return formula.join(` `)
 }
 
+// Electronegativity by element symbol (0 when missing), for O(1) sort comparisons
+const electronegativity_by_symbol = new Map(
+  element_data.map((el) => [el.symbol, el.electronegativity ?? 0]),
+)
+
 export function format_formula_by_electronegativity(structure: AnyStructure): string {
   // concatenate elements in a structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) =>
     symbols.sort((el1, el2) => {
-      const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ?? 0
-      const elec_neg2 = element_data.find((el) => el.symbol === el2)?.electronegativity ?? 0
+      const elec_neg1 = electronegativity_by_symbol.get(el1) ?? 0
+      const elec_neg2 = electronegativity_by_symbol.get(el2) ?? 0
       // Sort by electronegativity (ascending), then alphabetically for ties
       if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
       return el1.localeCompare(el2)

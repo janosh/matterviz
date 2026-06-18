@@ -1,7 +1,7 @@
 <script lang="ts">
   import { sanitize_html } from '$lib/sanitize'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { create_clipboard_feedback } from '$lib/overlays'
   import CopyButton from './CopyButton.svelte'
 
   type InfoPaneRow = {
@@ -33,7 +33,7 @@
   } = $props()
 
   let info_filter = $state(``)
-  const copied_items = new SvelteSet<string>()
+  const { copied, copy } = create_clipboard_feedback()
   const row_key = (card_title: string, row: InfoPaneRow, row_idx: number): string =>
     row.key ?? `${card_title}:${row.label}:${row.value}:${row_idx}`
 
@@ -50,20 +50,11 @@
       .filter(({ rows }) => rows.length > 0)
   })
 
-  async function copy_row(
+  const copy_row = (
     card_title: string,
     row: InfoPaneRow,
     row_idx: number,
-  ): Promise<void> {
-    const key = row_key(card_title, row, row_idx)
-    try {
-      await navigator.clipboard.writeText(`${row.label}: ${row.value}`)
-      copied_items.add(key)
-      setTimeout(() => copied_items.delete(key), 1000)
-    } catch (error) {
-      console.error(`Failed to copy to clipboard:`, error)
-    }
-  }
+  ): Promise<void> => copy(`${row.label}: ${row.value}`, row_key(card_title, row, row_idx))
 </script>
 {#if show_filter}
   <input
@@ -89,7 +80,7 @@
             <CopyButton
               label="Copy {row.label}: {row.value}"
               title="Copy {row.label}"
-              copied={copied_items.has(row_key(card.title, row, row_idx))}
+              copied={copied.has(row_key(card.title, row, row_idx))}
               onclick={() => copy_row(card.title, row, row_idx)}
             />
           </div>
