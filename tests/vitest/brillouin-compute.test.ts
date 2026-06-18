@@ -22,7 +22,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { col_major, load_json } from './setup'
+import { col_major, cubic_matrix, IDENTITY_MATRIX3 as IDENTITY_MAT, load_json } from './setup'
 
 type BzReference = {
   real_lattice: number[][]
@@ -35,16 +35,7 @@ const reference_data = load_json<Record<string, BzReference>>(
 )
 
 // Common test constants
-const CUBIC_5: Matrix3x3 = [
-  [5, 0, 0],
-  [0, 5, 0],
-  [0, 0, 5],
-]
-const IDENTITY_MAT: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
+const CUBIC_5 = cubic_matrix(5)
 const INVERSION_MAT: Matrix3x3 = [
   [-1, 0, 0],
   [0, -1, 0],

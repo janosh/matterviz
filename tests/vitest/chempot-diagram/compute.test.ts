@@ -98,15 +98,9 @@ const sort_rows = (pts: number[][]): number[][] =>
       return 0
     })
 
-function dedup_vertices(pts: number[][], tol: number = 1e-4): number[][] {
-  const result: number[][] = []
-  for (const pt of pts) {
-    if (!result.some((ex) => ex.every((val, idx) => Math.abs(val - pt[idx]) < tol))) {
-      result.push(pt)
-    }
-  }
-  return result
-}
+// Thin wrapper over production dedup_points (keeps just the unique points)
+const dedup_vertices = (pts: number[][], tol: number = 1e-4): number[][] =>
+  dedup_points(pts, tol).unique
 
 // === Pymatgen parity tests ===
 

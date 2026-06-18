@@ -14,13 +14,13 @@ import {
 import type { SymmetryElement } from '$lib/symmetry'
 import { operations_from_number } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { col_major, init_moyo_for_tests } from '../setup'
+import {
+  col_major,
+  cubic_matrix,
+  IDENTITY_MATRIX3 as IDENTITY,
+  init_moyo_for_tests,
+} from '../setup'
 
-const IDENTITY: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
 const INVERSION: Matrix3x3 = [
   [-1, 0, 0],
   [0, -1, 0],
@@ -356,11 +356,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
 })
 
 describe(`cell clipping helpers`, () => {
-  const cubic_2: Matrix3x3 = [
-    [2, 0, 0],
-    [0, 2, 0],
-    [0, 0, 2],
-  ]
+  const cubic_2 = cubic_matrix(2)
 
   test(`clip_line_to_cell: axis along z through the origin spans the cell`, () => {
     const seg = clip_line_to_cell([0, 0, 0], [0, 0, 1], cubic_2)

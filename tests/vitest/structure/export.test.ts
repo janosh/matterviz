@@ -193,11 +193,6 @@ describe(`Export functionality`, () => {
 
   describe(`Round-trip exporters (fixtures)`, () => {
     const TOL = 8
-    const reconstruct = (abc: number[], L: number[][]) => [
-      abc[0] * L[0][0] + abc[1] * L[1][0] + abc[2] * L[2][0],
-      abc[0] * L[0][1] + abc[1] * L[1][1] + abc[2] * L[2][1],
-      abc[0] * L[0][2] + abc[1] * L[1][2] + abc[2] * L[2][2],
-    ]
     const to_any = (ps: {
       sites: AnyStructure[`sites`]
       lattice?: Omit<LatticeType, `pbc`> & Partial<Pick<LatticeType, `pbc`>>
@@ -232,12 +227,12 @@ describe(`Export functionality`, () => {
       const reparsed = parse_structure_file(exported)
       assert(reparsed?.lattice, `failed to reparse`)
       expect(reparsed.sites).toHaveLength(parsed.sites.length)
-      const lattice_matrix = reparsed.lattice.matrix
+      const frac_to_cart = math.create_frac_to_cart(reparsed.lattice.matrix)
       reparsed.sites.forEach((site, idx) => {
         expect(site.abc[0]).toBeCloseTo(parsed.sites[idx].abc[0], TOL)
         expect(site.abc[1]).toBeCloseTo(parsed.sites[idx].abc[1], TOL)
         expect(site.abc[2]).toBeCloseTo(parsed.sites[idx].abc[2], TOL)
-        const recon = reconstruct(site.abc, lattice_matrix)
+        const recon = frac_to_cart(site.abc)
         expect(recon[0]).toBeCloseTo(site.xyz[0], TOL)
         expect(recon[1]).toBeCloseTo(site.xyz[1], TOL)
         expect(recon[2]).toBeCloseTo(site.xyz[2], TOL)

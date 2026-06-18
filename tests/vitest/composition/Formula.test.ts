@@ -5,8 +5,14 @@ import {
   oxi_composition_to_elements,
   parse_formula_with_oxidation,
 } from '$lib/composition'
-import { mount } from 'svelte'
+import { type ComponentProps, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
+
+// Mount Formula into document.body and return its rendered `.formula` root (or null)
+const mount_formula = (props: ComponentProps<typeof Formula>): HTMLElement | null => {
+  mount(Formula, { target: document.body, props })
+  return document.querySelector<HTMLElement>(`.formula`)
+}
 
 test(`parse_formula_with_oxidation parses simple formulas`, () => {
   const result = parse_formula_with_oxidation(`H2O`)
@@ -186,16 +192,14 @@ test(`oxi_composition_to_elements converts correctly`, () => {
 })
 
 test(`Formula component renders with string formula`, () => {
-  mount(Formula, { target: document.body, props: { formula: `H2O` } })
-  const element = document.querySelector(`.formula`)
+  const element = mount_formula({ formula: `H2O` })
   expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`H`)
   expect(element?.textContent).toContain(`O`)
 })
 
 test(`Formula component renders with oxidation states (caret syntax)`, () => {
-  mount(Formula, { target: document.body, props: { formula: `Fe^2+O3` } })
-  const element = document.querySelector(`.formula`)
+  const element = mount_formula({ formula: `Fe^2+O3` })
   expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`Fe`)
   expect(element?.textContent).toContain(`+2`)
@@ -203,8 +207,7 @@ test(`Formula component renders with oxidation states (caret syntax)`, () => {
 })
 
 test(`Formula component renders with oxidation states (bracket syntax)`, () => {
-  mount(Formula, { target: document.body, props: { formula: `Fe[2+]O3` } })
-  const element = document.querySelector(`.formula`)
+  const element = mount_formula({ formula: `Fe[2+]O3` })
   expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`Fe`)
   expect(element?.textContent).toContain(`+2`)
@@ -216,10 +219,7 @@ test.each([
   { scheme: `Jmol` as const, expected_color_present: true },
   { scheme: `Alloy` as const, expected_color_present: true },
 ])(`Formula applies $scheme color scheme correctly`, ({ scheme, expected_color_present }) => {
-  mount(Formula, {
-    target: document.body,
-    props: { formula: `H2O`, color_scheme: scheme },
-  })
+  mount_formula({ formula: `H2O`, color_scheme: scheme })
   const symbols = document.querySelectorAll(`.element-symbol`)
   expect(symbols).toHaveLength(2)
 
@@ -229,33 +229,21 @@ test.each([
 })
 
 test(`Formula component ordering: original`, () => {
-  // Mounting to document.body
-  mount(Formula, {
-    target: document.body,
-    props: { formula: `OHFe`, ordering: `original` },
-  })
+  mount_formula({ formula: `OHFe`, ordering: `original` })
   const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   expect(text).toBe(`OHFe`)
 })
 
 test(`Formula component ordering: alphabetical`, () => {
-  // Mounting to document.body
-  mount(Formula, {
-    target: document.body,
-    props: { formula: `OHFe`, ordering: `alphabetical` },
-  })
+  mount_formula({ formula: `OHFe`, ordering: `alphabetical` })
   const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   expect(text).toBe(`FeHO`)
 })
 
 test(`Formula component ordering: electronegativity`, () => {
-  // Mounting to document.body
-  mount(Formula, {
-    target: document.body,
-    props: { formula: `ONa`, ordering: `electronegativity` },
-  })
+  mount_formula({ formula: `ONa`, ordering: `electronegativity` })
   const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   // Na has lower electronegativity than O, so it should come first
@@ -263,8 +251,7 @@ test(`Formula component ordering: electronegativity`, () => {
 })
 
 test(`Formula component ordering: hill`, () => {
-  // Mounting to document.body
-  mount(Formula, { target: document.body, props: { formula: `C2H6O`, ordering: `hill` } })
+  mount_formula({ formula: `C2H6O`, ordering: `hill` })
   const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   // Hill notation: C first, H second (if C present), then alphabetical
@@ -272,23 +259,20 @@ test(`Formula component ordering: hill`, () => {
 })
 
 test(`Formula component renders subscripts for amounts > 1`, () => {
-  // Mounting to document.body
-  mount(Formula, { target: document.body, props: { formula: `H2O` } })
+  mount_formula({ formula: `H2O` })
   const subscripts = document.querySelectorAll(`sub`)
   expect(subscripts).toHaveLength(1)
   expect(subscripts[0].textContent).toBe(`2`)
 })
 
 test(`Formula component does not render subscripts for amount = 1`, () => {
-  // Mounting to document.body
-  mount(Formula, { target: document.body, props: { formula: `HO` } })
+  mount_formula({ formula: `HO` })
   const subscripts = document.querySelectorAll(`sub`)
   expect(subscripts).toHaveLength(0)
 })
 
 test(`Formula component renders superscripts for oxidation states`, () => {
-  // Mounting to document.body
-  mount(Formula, { target: document.body, props: { formula: `Fe^2+O^2-` } })
+  mount_formula({ formula: `Fe^2+O^2-` })
   const superscripts = document.querySelectorAll(`sup`)
   expect(superscripts).toHaveLength(2)
 
@@ -304,8 +288,7 @@ test(`Formula component does not render superscripts for zero oxidation`, () => 
     Fe: { amount: 1, oxidation_state: 0 },
     O: { amount: 1, oxidation_state: 0 },
   } as OxiComposition
-  // Mounting to document.body
-  mount(Formula, { target: document.body, props: { formula: composition } })
+  mount_formula({ formula: composition })
   const superscripts = document.querySelectorAll(`sup`)
   expect(superscripts).toHaveLength(0)
 })
@@ -315,9 +298,7 @@ test(`Formula component accepts OxiComposition input`, () => {
     Fe: { amount: 2, oxidation_state: 3 },
     O: { amount: 3, oxidation_state: -2 },
   } as OxiComposition
-  // Mounting to document.body
-  mount(Formula, { target: document.body, props: { formula: composition } })
-  const element = document.querySelector(`.formula`)
+  const element = mount_formula({ formula: composition })
   expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`Fe`)
   expect(element?.textContent).toContain(`O`)
@@ -334,8 +315,7 @@ test.each([
   { as_value: `em` },
   { as_value: `p` },
 ])(`Formula renders with as="$as_value"`, ({ as_value }) => {
-  // Mounting to document.body
-  mount(Formula, { target: document.body, props: { formula: `H2O`, as: as_value } })
+  mount_formula({ formula: `H2O`, as: as_value })
   const element = document.querySelector(as_value)
   expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.classList.contains(`formula`)).toBe(true)
@@ -351,22 +331,13 @@ test.each([
   { scheme: `Muted` as const },
   { scheme: `Dark Mode` as const },
 ])(`Formula renders with color scheme "$scheme"`, ({ scheme }) => {
-  // Mounting to document.body
-  mount(Formula, {
-    target: document.body,
-    props: { formula: `H2O`, color_scheme: scheme },
-  })
-  const element = document.querySelector(`.formula`)
+  const element = mount_formula({ formula: `H2O`, color_scheme: scheme })
   expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.querySelectorAll(`.element-symbol`).length).toBe(2)
 })
 
 test(`Formula formats amounts with custom format string`, () => {
-  // Mounting to document.body
-  mount(Formula, {
-    target: document.body,
-    props: { formula: `H2O`, amount_format: `.2f` },
-  })
+  mount_formula({ formula: `H2O`, amount_format: `.2f` })
   const subscript = document.querySelector(`sub`)
   expect(subscript?.textContent).toBe(`2.00`)
 })
@@ -380,9 +351,7 @@ test.each([
 ])(
   `Formula handles complex formula "$formula"`,
   ({ formula, expected_elements, expected_superscripts }) => {
-    // Mounting to document.body
-    mount(Formula, { target: document.body, props: { formula } })
-    const element = document.querySelector(`.formula`)
+    const element = mount_formula({ formula })
     expect(element).toBeInstanceOf(HTMLElement)
 
     // Check that all expected elements are present
@@ -409,10 +378,7 @@ function normalize_to_hex(color: string): string {
 test.each([`Vesta`, `Jmol`] as const)(
   `Formula tooltip ElementTile uses same color scheme as symbol text (%s)`,
   async (color_scheme) => {
-    mount(Formula, {
-      target: document.body,
-      props: { formula: `Fe2O3`, color_scheme },
-    })
+    mount_formula({ formula: `Fe2O3`, color_scheme })
 
     const element_group = document.querySelector(`.element-group`) as HTMLElement
     expect(element_group).toBeInstanceOf(HTMLElement)
@@ -480,7 +446,7 @@ test.each([
   [`Ca(OH)2`, `Ca O2 H2`],
   [`Fe^3+2O^2-3`, `Fe(+3)2 O(-2)3`], // oxidation in parens to avoid "Fe+32" ambiguity
 ])(`Formula copy: "%s" -> "%s"`, (formula, expected) => {
-  mount(Formula, { target: document.body, props: { formula } })
+  mount_formula({ formula })
   const { text, type, prevented } = simulate_copy()
   expect(prevented).toBe(true)
   expect(type).toBe(`text/plain`)
@@ -488,32 +454,26 @@ test.each([
 })
 
 test(`Formula copy skipped when selection collapsed`, () => {
-  mount(Formula, { target: document.body, props: { formula: `H2O` } })
+  mount_formula({ formula: `H2O` })
   const { text, prevented } = simulate_copy(true)
   expect(prevented).toBe(false)
   expect(text).toBe(``)
 })
 
 test(`Formula copy skipped when selection extends outside formula`, () => {
-  mount(Formula, { target: document.body, props: { formula: `H2O` } })
+  mount_formula({ formula: `H2O` })
   const { text, prevented } = simulate_copy(false, true) // selection_outside = true
   expect(prevented).toBe(false)
   expect(text).toBe(``)
 })
 
 test(`Formula copy respects ordering prop`, () => {
-  mount(Formula, {
-    target: document.body,
-    props: { formula: `OHFe`, ordering: `alphabetical` },
-  })
+  mount_formula({ formula: `OHFe`, ordering: `alphabetical` })
   expect(simulate_copy().text).toBe(`Fe H O`)
 })
 
 test(`Formula copy handles fractional amounts`, () => {
   const composition = { Li: { amount: 0.5 }, O: { amount: 1 } } as OxiComposition
-  mount(Formula, {
-    target: document.body,
-    props: { formula: composition, amount_format: `.2f` },
-  })
+  mount_formula({ formula: composition, amount_format: `.2f` })
   expect(simulate_copy().text).toBe(`Li0.50 O`)
 })
