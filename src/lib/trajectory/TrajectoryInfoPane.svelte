@@ -2,7 +2,7 @@
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import { format_num } from '$lib/labels'
+  import { format_bytes, format_num } from '$lib/labels'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
@@ -34,11 +34,6 @@
   } = $props()
 
   // Helper functions
-  const format_size = (bytes: number) =>
-    bytes > 1024 * 1024
-      ? `${format_num(bytes / (1024 * 1024), `.2~f`)} MB`
-      : `${format_num(bytes / 1024, `.2~f`)} KB`
-
   const is_valid_number = (val: unknown): val is number =>
     typeof val === `number` && isFinite(val)
 
@@ -97,7 +92,7 @@
         current_file_path || undefined,
       ),
       file_size && file_size > 0 &&
-      safe_item(`File Size`, format_size(file_size), `file-size`),
+      safe_item(`File Size`, format_bytes(file_size), `file-size`),
       file_object?.lastModified &&
       safe_item(
         `Modified`,

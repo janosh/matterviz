@@ -2,7 +2,7 @@
   import type { FullscreenToggleProp } from './fullscreen'
   import type { ShowControlsState } from '$lib/controls'
   // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) for BrillouinZone/FermiSurface/Structure viewers; themed via neutral --viewer-* CSS vars
-  // TODO Trajectory.svelte still has its own control-buttons variant — migrate it here.
+  // NOTE Trajectory.svelte intentionally keeps its own controls: its bar is a full playback strip (nav/step/FPS/info+export panes/view-mode) rather than this floating top-right cluster. It already shares FullscreenButton + sync_fullscreen.
   import type { Snippet } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { tooltip } from 'svelte-multiselect/attachments'
