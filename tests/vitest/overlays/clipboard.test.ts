@@ -36,28 +36,16 @@ describe(`create_clipboard_feedback`, () => {
     expect(second.copied.has(`shared`)).toBe(false)
   })
 
-  it(`resets the timeout when the same key is copied again`, async () => {
-    vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
-    const { copied, copy } = create_clipboard_feedback(1000)
-    await copy(`a`, `k`)
-    vi.advanceTimersByTime(700)
-    await copy(`a`, `k`) // re-copy must restart the full window
-    vi.advanceTimersByTime(700) // 1400ms since first copy; without reset k would be gone
-    expect(copied.has(`k`)).toBe(true)
-    vi.advanceTimersByTime(300) // 1000ms since the second copy
-    expect(copied.has(`k`)).toBe(false)
-  })
-
-  it(`tracks multiple keys with independent timeouts`, async () => {
+  it(`gives each key an independent timer, restarted on re-copy`, async () => {
     vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
     const { copied, copy } = create_clipboard_feedback(1000)
     await copy(`a`, `k1`)
-    vi.advanceTimersByTime(600)
     await copy(`b`, `k2`)
-    expect([copied.has(`k1`), copied.has(`k2`)]).toEqual([true, true])
-    vi.advanceTimersByTime(400) // k1 reaches 1000ms, k2 at 400ms
-    expect([copied.has(`k1`), copied.has(`k2`)]).toEqual([false, true])
-    vi.advanceTimersByTime(600) // k2 reaches 1000ms
-    expect(copied.has(`k2`)).toBe(false)
+    vi.advanceTimersByTime(700)
+    await copy(`a`, `k1`) // re-copy restarts only k1's window; k2 unaffected
+    vi.advanceTimersByTime(400) // t=1100: k2 expired on its own schedule, k1 reset so alive
+    expect([copied.has(`k1`), copied.has(`k2`)]).toEqual([true, false])
+    vi.advanceTimersByTime(600) // t=1700: k1's restarted window elapses
+    expect(copied.has(`k1`)).toBe(false)
   })
 })

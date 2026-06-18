@@ -60,12 +60,6 @@
       <option {value}>{label}</option>
     {/each}
   {/snippet}
-  {#snippet check_row(text: string, get: () => boolean, set: (val: boolean) => void)}
-    <label style="flex: 1 1 100%">
-      <input type="checkbox" bind:checked={get, set} />
-      {text}
-    </label>
-  {/snippet}
   <ControlPane bind:controls_open controls_class="sunburst" {toggle_props} {pane_props}>
     {@render children?.()}
     <SettingsSection
@@ -159,12 +153,18 @@
         bind:value={min_fraction}
         style="flex: 1 1 100%"
       >Group slices below (fraction of total):</NumberRangeInput>
-      {@render check_row(`Show arc labels`, () => show_labels, (val) =>
-        show_labels = val)}
-      {@render check_row(`Zoom on click`, () => zoom_on_click, (val) =>
-        zoom_on_click = val)}
-      {@render check_row(`Show breadcrumbs when zoomed`, () => show_breadcrumbs, (val) =>
-        show_breadcrumbs = val)}
+      <label style="flex: 1 1 100%">
+        <input type="checkbox" bind:checked={show_labels} />
+        Show arc labels
+      </label>
+      <label style="flex: 1 1 100%">
+        <input type="checkbox" bind:checked={zoom_on_click} />
+        Zoom on click
+      </label>
+      <label style="flex: 1 1 100%">
+        <input type="checkbox" bind:checked={show_breadcrumbs} />
+        Show breadcrumbs when zoomed
+      </label>
     </SettingsSection>
     {#if export_buttons && on_export}
       <div class="export-row">
