@@ -680,10 +680,9 @@ const apply_symmetry_ops = (
 
   add_position(atom.coords) // base atom (+ centering images)
 
+  // ops arrive pre-normalized (quotes + whitespace already stripped, see normalized_ops)
   for (const operation of symmetry_ops) {
-    const operation_match = /['"](?<expr>[^'"]+)['"]/.exec(operation)
-    const expr_str = operation_match ? operation_match[1] : operation.trim()
-    const parts = expr_str.split(`,`).map((part) => part.trim())
+    const parts = operation.split(`,`)
     if (parts.length !== 3) continue
 
     const new_coords: Vec3 = [0, 0, 0]
@@ -982,10 +981,11 @@ export function parse_cif(
     const wrap_vec3 = (vec: Vec3): Vec3 =>
       wrap_fractional_coords ? wrap_to_unit_cell(vec) : vec
 
-    // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
-    const normalized_ops = symmetry_ops
-      .map((op) => /['"](?<expr>[^'"]+)['"]/.exec(op)?.[1] ?? op.trim())
-      .map((op) => op.replaceAll(/\s+/g, ``))
+    // Strip surrounding quotes and all whitespace (preserving duplicates; positions
+    // are deduplicated later). Leaves ops as bare `x,y,z`-style expressions.
+    const normalized_ops = symmetry_ops.map((op) =>
+      (/['"](?<expr>[^'"]+)['"]/.exec(op)?.groups?.expr ?? op).replaceAll(/\s+/g, ``),
+    )
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
     const atom_type_counts: Record<string, number> = {}

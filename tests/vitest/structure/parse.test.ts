@@ -751,13 +751,19 @@ O2   O   0.410  0.140  0.880  1.000`
   // only when it reconciles _atom_type_number_in_cell exactly, so atom lists
   // that already embed centering (e.g. COD 7008984 above) are never doubled.
   describe(`CIF centering from space-group symbol`, () => {
-    const centered_cif = (
+    // Minimal CIF with an identity-only symop loop, optional _atom_type counts and
+    // atom-site rows (defaults to a single Fe at the origin).
+    const make_cif = (
       symbol: string,
-      count: number,
       {
         angles = `90 90 90`,
-        with_count = true,
-      }: { angles?: string; with_count?: boolean } = {},
+        atom_types = [],
+        atom_sites = [`Fe1 Fe 0 0 0`],
+      }: {
+        angles?: string
+        atom_types?: [string, number][]
+        atom_sites?: string[]
+      } = {},
     ): string => {
       const [alpha, beta, gamma] = angles.split(` `)
       return [
@@ -772,8 +778,13 @@ O2   O   0.410  0.140  0.880  1.000`
         `loop_`,
         `_space_group_symop_operation_xyz`,
         `'x, y, z'`,
-        ...(with_count
-          ? [`loop_`, `_atom_type_symbol`, `_atom_type_number_in_cell`, `Fe ${count}`]
+        ...(atom_types.length
+          ? [
+              `loop_`,
+              `_atom_type_symbol`,
+              `_atom_type_number_in_cell`,
+              ...atom_types.map(([sym, num]) => `${sym} ${num}`),
+            ]
           : []),
         `loop_`,
         `_atom_site_label`,
@@ -781,9 +792,18 @@ O2   O   0.410  0.140  0.880  1.000`
         `_atom_site_fract_x`,
         `_atom_site_fract_y`,
         `_atom_site_fract_z`,
-        `Fe1 Fe 0 0 0`,
+        ...atom_sites,
       ].join(`\n`)
     }
+
+    const centered_cif = (
+      symbol: string,
+      count: number,
+      {
+        angles = `90 90 90`,
+        with_count = true,
+      }: { angles?: string; with_count?: boolean } = {},
+    ): string => make_cif(symbol, { angles, atom_types: with_count ? [[`Fe`, count]] : [] })
 
     // round + sort coords so float error (e.g. R's 1/3) and order don't matter
     const sorted_coords = (sites: { abc: number[] }[]): number[][] =>
@@ -875,32 +895,13 @@ O2   O   0.410  0.140  0.880  1.000`
       // I symbol implies ×2. Expected Fe 1 / O 3 (total 4). Centering both atoms at
       // the origin yields Fe 2 / O 2 (total 4) — total matches but composition is
       // wrong, so centering must be rejected and the 2 base sites kept.
-      const cif = [
-        `data_test`,
-        `_cell_length_a 5`,
-        `_cell_length_b 5`,
-        `_cell_length_c 5`,
-        `_cell_angle_alpha 90`,
-        `_cell_angle_beta 90`,
-        `_cell_angle_gamma 90`,
-        `_symmetry_space_group_name_H-M 'I m -3 m'`,
-        `loop_`,
-        `_space_group_symop_operation_xyz`,
-        `'x, y, z'`,
-        `loop_`,
-        `_atom_type_symbol`,
-        `_atom_type_number_in_cell`,
-        `Fe 1`,
-        `O 3`,
-        `loop_`,
-        `_atom_site_label`,
-        `_atom_site_type_symbol`,
-        `_atom_site_fract_x`,
-        `_atom_site_fract_y`,
-        `_atom_site_fract_z`,
-        `Fe1 Fe 0 0 0`,
-        `O1 O 0 0 0`,
-      ].join(`\n`)
+      const cif = make_cif(`I m -3 m`, {
+        atom_types: [
+          [`Fe`, 1],
+          [`O`, 3],
+        ],
+        atom_sites: [`Fe1 Fe 0 0 0`, `O1 O 0 0 0`],
+      })
       const result = parse_cif(cif)
       assert(result, `Failed to parse`)
       expect(result.sites).toHaveLength(2)
@@ -909,31 +910,12 @@ O2   O   0.410  0.140  0.880  1.000`
     test(`sums _atom_type rows that normalize to the same element (Fe2+/Fe3+)`, () => {
       // expected Fe = 1 + 1 = 2 (both rows → Fe); I-centering must expand the
       // single listed Fe to 2 sites to reconcile the summed total
-      const cif = [
-        `data_test`,
-        `_cell_length_a 5`,
-        `_cell_length_b 5`,
-        `_cell_length_c 5`,
-        `_cell_angle_alpha 90`,
-        `_cell_angle_beta 90`,
-        `_cell_angle_gamma 90`,
-        `_symmetry_space_group_name_H-M 'I m -3 m'`,
-        `loop_`,
-        `_space_group_symop_operation_xyz`,
-        `'x, y, z'`,
-        `loop_`,
-        `_atom_type_symbol`,
-        `_atom_type_number_in_cell`,
-        `Fe2+ 1`,
-        `Fe3+ 1`,
-        `loop_`,
-        `_atom_site_label`,
-        `_atom_site_type_symbol`,
-        `_atom_site_fract_x`,
-        `_atom_site_fract_y`,
-        `_atom_site_fract_z`,
-        `Fe1 Fe 0 0 0`,
-      ].join(`\n`)
+      const cif = make_cif(`I m -3 m`, {
+        atom_types: [
+          [`Fe2+`, 1],
+          [`Fe3+`, 1],
+        ],
+      })
       const result = parse_cif(cif)
       assert(result, `Failed to parse`)
       expect(result.sites).toHaveLength(2)
