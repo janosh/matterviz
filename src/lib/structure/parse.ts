@@ -1004,7 +1004,10 @@ export function parse_cif(
           const match = /^(?<element>[A-Z][a-z]*)/.exec(toks[sym_idx])
           const sym = match ? match[1] : toks[sym_idx]
           const num = parseInt(toks[num_idx], 10)
-          if (sym && !Number.isNaN(num)) atom_type_counts[sym] = num
+          // sum rows that normalize to the same element (e.g. Fe2+ and Fe3+ → Fe)
+          if (sym && !Number.isNaN(num)) {
+            atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + num
+          }
         }
       }
       break

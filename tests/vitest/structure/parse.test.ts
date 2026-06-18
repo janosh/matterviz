@@ -905,6 +905,39 @@ O2   O   0.410  0.140  0.880  1.000`
       assert(result, `Failed to parse`)
       expect(result.sites).toHaveLength(2)
     })
+
+    test(`sums _atom_type rows that normalize to the same element (Fe2+/Fe3+)`, () => {
+      // expected Fe = 1 + 1 = 2 (both rows → Fe); I-centering must expand the
+      // single listed Fe to 2 sites to reconcile the summed total
+      const cif = [
+        `data_test`,
+        `_cell_length_a 5`,
+        `_cell_length_b 5`,
+        `_cell_length_c 5`,
+        `_cell_angle_alpha 90`,
+        `_cell_angle_beta 90`,
+        `_cell_angle_gamma 90`,
+        `_symmetry_space_group_name_H-M 'I m -3 m'`,
+        `loop_`,
+        `_space_group_symop_operation_xyz`,
+        `'x, y, z'`,
+        `loop_`,
+        `_atom_type_symbol`,
+        `_atom_type_number_in_cell`,
+        `Fe2+ 1`,
+        `Fe3+ 1`,
+        `loop_`,
+        `_atom_site_label`,
+        `_atom_site_type_symbol`,
+        `_atom_site_fract_x`,
+        `_atom_site_fract_y`,
+        `_atom_site_fract_z`,
+        `Fe1 Fe 0 0 0`,
+      ].join(`\n`)
+      const result = parse_cif(cif)
+      assert(result, `Failed to parse`)
+      expect(result.sites).toHaveLength(2)
+    })
   })
 
   it(`should detect CIF format by content`, () => {
