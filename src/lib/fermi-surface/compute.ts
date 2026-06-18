@@ -287,7 +287,7 @@ export function compute_surface_area(surface: Isosurface): number {
     const cz = e1x * e2y - e1y * e2x
 
     // Area is half the magnitude of cross product
-    total_area += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5
+    total_area += Math.hypot(cx, cy, cz) * 0.5
   }
 
   return total_area

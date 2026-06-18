@@ -103,7 +103,7 @@ test.describe(`DOS Component Tests`, () => {
 
     // Assert axis labels reflect horizontal swap
     await expect(plot.locator(`.x-label`)).toContainText(/Density/i)
-    await expect(plot.locator(`.y-label`)).toContainText(/(Frequency|Energy)/i)
+    await expect(plot.locator(`.y-label`)).toContainText(/(?:Frequency|Energy)/i)
   })
 
   test(`converts frequencies to different units`, async ({ page }) => {
@@ -177,7 +177,7 @@ test.describe(`DOS Component Tests`, () => {
     expect(tooltip_text).toMatch(/Density.*:/)
 
     // Tooltip should show frequency/energy with unit (x-axis)
-    expect(tooltip_text).toMatch(/(Frequency|Energy)/)
+    expect(tooltip_text).toMatch(/(?:Frequency|Energy)/)
   })
 
   test(`tooltip shows series label with multiple DOS`, async ({ page }) => {

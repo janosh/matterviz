@@ -142,13 +142,10 @@ export function generate_mtl_content(scene: Scene): string {
       // Get diffuse color (main color)
       if (has_color_property(mat)) {
         const color = mat.color
-        lines.push(`Kd ${color.r.toFixed(6)} ${color.g.toFixed(6)} ${color.b.toFixed(6)}`)
+        const fmt = (val: number) => val.toFixed(6)
+        lines.push(`Kd ${fmt(color.r)} ${fmt(color.g)} ${fmt(color.b)}`)
         // Ambient is typically a fraction of diffuse
-        lines.push(
-          `Ka ${(color.r * 0.2).toFixed(6)} ${(color.g * 0.2).toFixed(6)} ${(
-            color.b * 0.2
-          ).toFixed(6)}`,
-        )
+        lines.push(`Ka ${fmt(color.r * 0.2)} ${fmt(color.g * 0.2)} ${fmt(color.b * 0.2)}`)
       } else {
         // Default white if no color
         lines.push(`Kd 1.000000 1.000000 1.000000`)

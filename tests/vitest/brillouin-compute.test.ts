@@ -184,9 +184,7 @@ describe(`BZ edge filtering`, () => {
       const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
       const max_len = Math.cbrt(bz.volume) * 10
       for (const [v1, v2] of bz.edges) {
-        const len = Math.sqrt(
-          (v2[0] - v1[0]) ** 2 + (v2[1] - v1[1]) ** 2 + (v2[2] - v1[2]) ** 2,
-        )
+        const len = Math.hypot(v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2])
         expect(len).toBeGreaterThan(0)
         expect(len).toBeLessThan(max_len)
       }

@@ -8,7 +8,7 @@
 
   let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()
 
-  const METHOD_SUFFIX = /-(pbe|m3gnet|chgnet-v[\d.]+|mace-[\w-]+)$/
+  const METHOD_SUFFIX = /-(?:pbe|m3gnet|chgnet-v[\d.]+|mace-[\w-]+)$/
 
   const method_label = (material: string, key: string) => {
     const method = key.slice(material.length + 1)
@@ -28,7 +28,8 @@
     }
     return [...by_material.entries()]
       .map(([material, keys]) => {
-        const [, mp_id = ``, formula = material] = /^(mp-\d+)-(.+)$/.exec(material) ?? []
+        const [, mp_id = ``, formula = material] =
+          /^(?<mp_id>mp-\d+)-(?<formula>.+)$/.exec(material) ?? []
         return { material, keys, label: mp_id ? `${formula} (${mp_id})` : material }
       })
       .sort((grp_a, grp_b) => grp_a.label.localeCompare(grp_b.label))

@@ -5,7 +5,7 @@ const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `c
 const SAFE_ATTRS = [`style`, `class`, `title`, `href`, `target`, `rel`]
 // only allow safe CSS properties for text formatting
 const SAFE_STYLE_RE =
-  /^\s*(color|font-weight|font-style|font-size|text-decoration|vertical-align)\s*:/
+  /^\s*(?:color|font-weight|font-style|font-size|text-decoration|vertical-align)\s*:/
 
 // Add a token to a space-separated string if not already present
 const ensure_token = (value: string, token: string): string => {

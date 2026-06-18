@@ -574,8 +574,7 @@
   }
 
   function mount_all_panels(): void {
-    for (let idx = 0; idx < panels.length; idx++) {
-      const panel = panels[idx]
+    for (const panel of panels) {
       if (panel.component) continue // already mounted
       const el = document.querySelector<HTMLElement>(`#${panel.id}`)
       if (!el) continue
@@ -730,7 +729,7 @@
     // Parse path segments: handles dotted keys like ["foo.bar"], array indices like [0],
     // and regular dotted paths like a.b.c
     const segments: string[] = []
-    const segment_re = /\["([^"]+)"\]|\[(\d+)\]|([^.[\]]+)/g
+    const segment_re = /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g
     let match: RegExpExecArray | null
     while ((match = segment_re.exec(path)) !== null) {
       segments.push(match[1] ?? match[2] ?? match[3])

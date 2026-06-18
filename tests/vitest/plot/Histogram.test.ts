@@ -253,7 +253,7 @@ describe(`Histogram`, () => {
           .querySelector(selector)
           ?.closest(`foreignObject`)
           ?.getAttribute(`transform`) ?? ``
-      const match = /rotate\(-90,\s*[\d.-]+,\s*([\d.-]+)\)/.exec(transform)
+      const match = /rotate\(-90,\s*[\d.-]+,\s*(?<pivot>[\d.-]+)\)/.exec(transform)
       if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
       return Number(match[1])
     }

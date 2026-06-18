@@ -276,7 +276,7 @@
     const cam = gizmo_cam_ref
     if (!cam) return
     const { x: cx, y: cy, z: cz } = cam.position
-    const dist = Math.sqrt(cx * cx + cy * cy + cz * cz)
+    const dist = Math.hypot(cx, cy, cz)
     if (dist < 1e-6) return
     const elev_rad = Math.acos(Math.max(-1, Math.min(1, cz / dist)))
     const sin_elev = Math.sin(elev_rad)
@@ -570,7 +570,7 @@
       const [x, y] = TRIANGLE_VERTICES[idx]
       const dx = x - centroid.x
       const dy = y - centroid.y
-      const length = Math.sqrt(dx * dx + dy * dy)
+      const length = Math.hypot(dx, dy)
       const distance = 0.05
 
       const label_pos = {

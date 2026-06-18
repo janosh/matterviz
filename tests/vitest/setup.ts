@@ -133,7 +133,7 @@ export const press_window_key = (event_init: KeyboardEventInit): KeyboardEvent =
 // value (a step counter, a toggle flag, ...) — the shortcut is deemed to have
 // "fired" whenever that value changes between checks, so it works for both
 // counters and toggles.
-export async function assert_hover_scoped_shortcut(opts: {
+export async function assertHoverScopedShortcut(opts: {
   viewer: HTMLElement
   fire: () => void
   read_state: () => unknown

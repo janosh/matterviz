@@ -1724,7 +1724,7 @@ describe(`generate_ribbon_path`, () => {
 
   it(`generates valid SVG path with lower edge reversed`, () => {
     const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], id, id, 5)
-    expect(path).toMatch(/^M[\d.,-]+( L[\d.,-]+)+ Z$/)
+    expect(path).toMatch(/^M[\d.,-]+(?: L[\d.,-]+)+ Z$/)
     // Verify polygon structure: upper edge 0→1→2, lower edge 2→1→0
     const points = path.match(/[\d.-]+,[\d.-]+/g) ?? []
     expect(points).toHaveLength(6)

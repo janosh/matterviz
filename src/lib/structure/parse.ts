@@ -143,9 +143,9 @@ function parse_coordinate_line(line: string): number[] {
     const sanitized = line
       .trim()
       // Add space when '-' follows a digit and precedes a digit or dot
-      .replaceAll(/(\d)-(?=[\d.])/g, `$1 -`)
+      .replaceAll(/(?<digit>\d)-(?=[\d.])/g, `$1 -`)
       // Revert accidental spaces after exponent markers
-      .replaceAll(/([eE])\s-\s/g, `$1-`)
+      .replaceAll(/(?<exp_marker>[eE])\s-\s/g, `$1-`)
     tokens = sanitized.split(/\s+/)
   }
 
@@ -470,7 +470,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
     let lattice: ParsedStructure[`lattice`] | undefined
 
     // Check for extended XYZ lattice information in comment line
-    const lattice_match = /Lattice="([^"]+)"/.exec(comment_line)
+    const lattice_match = /Lattice="(?<lattice>[^"]+)"/.exec(comment_line)
     if (lattice_match) {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
@@ -558,8 +558,7 @@ const parse_symmetry_expression = (
   const tokens: string[] = []
   let current_token = ``
 
-  for (let idx = 0; idx < expr.length; idx++) {
-    const char = expr[idx]
+  for (const char of expr) {
     if ((char === `+` || char === `-`) && current_token.length > 0) {
       tokens.push(current_token)
       current_token = char
@@ -571,7 +570,7 @@ const parse_symmetry_expression = (
 
   for (const token of tokens) {
     // Check if this token is a variable term (x, y, or z with optional sign)
-    const var_match = /^([+-]?)([xyz])$/.exec(token)
+    const var_match = /^(?<sign>[+-]?)(?<axis>[xyz])$/.exec(token)
     if (var_match) {
       const sign = var_match[1] === `-` ? -1 : 1
       const var_char = var_match[2]
@@ -638,7 +637,7 @@ const apply_symmetry_ops = (
   equivalent_atoms.push({ ...atom, coords: base_coords })
 
   for (const operation of symmetry_ops) {
-    const operation_match = /['"]([^'"]+)['"]/.exec(operation)
+    const operation_match = /['"](?<expr>[^'"]+)['"]/.exec(operation)
     const expr_str = operation_match ? operation_match[1] : operation.trim()
     const parts = expr_str.split(`,`).map((part) => part.trim())
     if (parts.length !== 3) continue
@@ -781,8 +780,9 @@ const parse_cif_atom_data = (
       ? parseFloat(raw_data[occupancy].split(`(`)[0]) || 1.0
       : 1.0
 
-  const from_symbol = symbol >= 0 ? /^([A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
-  const element_symbol = from_symbol ?? raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0]
+  const from_symbol =
+    symbol >= 0 ? /^(?<element>[A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
+  const element_symbol = from_symbol ?? raw_data[label]?.match(/(?:[A-Z][a-z]*)/g)?.[0]
   if (!element_symbol) {
     throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
   }
@@ -958,7 +958,7 @@ export function parse_cif(
 
     // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
     const normalized_ops = symmetry_ops
-      .map((op) => /['"]([^'"]+)['"]/.exec(op)?.[1] ?? op.trim())
+      .map((op) => /['"](?<expr>[^'"]+)['"]/.exec(op)?.[1] ?? op.trim())
       .map((op) => op.replaceAll(/\s+/g, ``))
 
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
@@ -979,7 +979,7 @@ export function parse_cif(
         const toks = split_cif_tokens(line)
         if (toks.length > Math.max(sym_idx, num_idx)) {
           // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
-          const match = /^([A-Z][a-z]*)/.exec(toks[sym_idx])
+          const match = /^(?<element>[A-Z][a-z]*)/.exec(toks[sym_idx])
           const sym = match ? match[1] : toks[sym_idx]
           const num = parseInt(toks[num_idx], 10)
           if (sym && !Number.isNaN(num)) atom_type_counts[sym] = num
@@ -1117,7 +1117,7 @@ export function parse_phonopy_yaml(
 
       // Check if we're still in the phonon_displacements section
       if (skip_displacements) {
-        if (/^[a-zA-Z_]/.exec(line)) {
+        if (/^[a-zA-Z_]/.test(line)) {
           // New top-level key, stop skipping
           skip_displacements = false
         } else continue // Still in phonon_displacements, skip this line
@@ -1632,17 +1632,17 @@ export function is_structure_file(filename: string): boolean {
   const name = filename.toLowerCase()
 
   // Trajectory-only formats (can't be structures)
-  if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
+  if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
 
   // Always structure formats
   if (STRUCTURE_EXTENSIONS_REGEX.test(name)) return true
   if (VASP_FILES_REGEX.test(name)) return true
 
   // .xyz/.extxyz files: structure unless they have trajectory keywords
-  if (/\.(xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
+  if (/\.(?:xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
 
   // Keyword-based detection for YAML/XML
-  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
+  if (/\.(?:yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
 
   // More restrictive keyword detection for JSON files
   if (

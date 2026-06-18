@@ -319,8 +319,8 @@ describe(`physical invariants`, () => {
     // chemical potential than the pure element)
     for (const pts of Object.values(cpd_ternary_formal.domains)) {
       for (const pt of pts) {
-        for (let dim = 0; dim < pt.length; dim++) {
-          expect(pt[dim], `Formal chempot should be <= 0`).toBeLessThanOrEqual(1e-4)
+        for (const chempot of pt) {
+          expect(chempot, `Formal chempot should be <= 0`).toBeLessThanOrEqual(1e-4)
         }
       }
     }

@@ -314,7 +314,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       for (const op of ops) {
         const elem = classify_symmetry_op(op.rotation, op.translation, centerings)
         if (elem === null) continue
-        expect(elem.label).toMatch(/^(-?[1-6](_[1-5])?|[mabcndg])$/)
+        expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndg])$/)
         if (elem.axis) {
           // axes are reduced integer vectors with canonical sign
           expect(elem.axis.every((val) => Number.isInteger(val))).toBe(true)
@@ -347,7 +347,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     // get intrinsic translation 5/6 along <111> and a bogus "3_0" label
     const elements = elements_for(199)
     for (const elem of elements) {
-      expect(elem.label).toMatch(/^(-?[1-6](_[1-5])?|[mabcndg])$/)
+      expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndg])$/)
     }
     const labels = new Set(elements.map((elem) => elem.label))
     expect(labels).toContain(`3`)

@@ -11,7 +11,7 @@ import {
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
 import { type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
 
-export type { AxisRanges }
+export { type AxisRanges } from '$lib/plot/core/types'
 
 const in_range = (val: number | null | undefined, lo: number, hi: number) =>
   val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
@@ -237,7 +237,7 @@ const is_transparent_or_none = (color: string | undefined | null): boolean =>
   !color ||
   color === `none` ||
   color === `transparent` ||
-  /rgba\([^)]+[,/]\s*0(\.0*)?\s*\)$/.test(color)
+  /rgba\([^)]+[,/]\s*0(?:\.0*)?\s*\)$/.test(color)
 
 // Type-guard negation of is_transparent_or_none so usable colors narrow to string
 const is_opaque_color = (color: string | undefined | null): color is string =>

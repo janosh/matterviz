@@ -399,7 +399,7 @@ test.each([
 // Normalize any color format to lowercase hex
 function normalize_to_hex(color: string): string {
   if (color.startsWith(`#`)) return color.toLowerCase()
-  const match = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(color)
+  const match = /rgb\((?<red>\d+),\s*(?<green>\d+),\s*(?<blue>\d+)\)/.exec(color)
   if (!match) return color
   const [, red, green, blue] = match
   const to_hex = (num_str: string) => parseInt(num_str, 10).toString(16).padStart(2, `0`)

@@ -118,7 +118,7 @@ describe(`BarPlot`, () => {
     const pivot_y = (selector: string) => {
       const transform =
         plot.querySelector(selector)?.closest(`foreignObject`)?.getAttribute(`transform`) ?? ``
-      const match = /rotate\(-90,\s*[\d.-]+,\s*([\d.-]+)\)/.exec(transform)
+      const match = /rotate\(-90,\s*[\d.-]+,\s*(?<pivot>[\d.-]+)\)/.exec(transform)
       if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
       return Number(match[1])
     }
@@ -241,7 +241,8 @@ describe(`BarPlot`, () => {
         plot.querySelectorAll(`.bar-series[data-series-idx="${idx}"] path[role="button"]`),
         (path) => {
           const [, y_str, h_str] =
-            path.getAttribute(`d`)?.match(/^M[\d.-]+,([\d.-]+)h[\d.-]+v([\d.-]+)/) ?? []
+            path.getAttribute(`d`)?.match(/^M[\d.-]+,(?<y>[\d.-]+)h[\d.-]+v(?<h>[\d.-]+)/) ??
+            []
           return { top: Number(y_str), bottom: Number(y_str) + Number(h_str) }
         },
       )

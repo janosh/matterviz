@@ -454,7 +454,8 @@ describe(`scan_renderable_paths`, () => {
     function resolve_path(root: unknown, path: string): unknown {
       if (!path) return root
       const segments: string[] = []
-      const segment_re = /\["([^"]+)"\]|\[(\d+)\]|([^.[\]]+)/g
+      const segment_re =
+        /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g
       let match: RegExpExecArray | null
       while ((match = segment_re.exec(path)) !== null) {
         segments.push(match[1] ?? match[2] ?? match[3])

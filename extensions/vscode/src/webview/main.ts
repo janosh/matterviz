@@ -52,7 +52,7 @@ const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
   phase_diagram: `phase_diagram`,
 }
 
-export type { ViewType }
+export type { ViewType } from '../types'
 export interface FileData {
   filename: string
   content: string
@@ -377,7 +377,7 @@ export const parse_file_content = async (
     const buffer = base64_to_array_buffer(content)
 
     // Binary trajectory formats: pass buffer directly to trajectory parser
-    if (/\.(h5|hdf5|traj)$/i.test(filename)) {
+    if (/\.(?:h5|hdf5|traj)$/i.test(filename)) {
       const data = await parse_trajectory_data(buffer, filename)
       return { type: `trajectory`, filename, data }
     }

@@ -5,7 +5,7 @@ import type { AnyStructure } from '$lib/structure/index'
 import { is_parsed_structure, parse_xyz } from '$lib/structure/parse'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
 import { strip_compression_extensions } from '$lib/io'
-import { ext_hint, FORMAT_PATTERNS, is_trajectory_file } from '$lib/trajectory/format-detect'
+import { ext_hint, FORMAT_PATTERNS } from '$lib/trajectory/format-detect'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type {
@@ -41,7 +41,8 @@ export {
   MAX_TEXT_FILE_SIZE,
 } from '$lib/trajectory/constants'
 export type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
-export { is_trajectory_file, TrajFrameReader }
+export { is_trajectory_file } from '$lib/trajectory/format-detect'
+export { TrajFrameReader } from '$lib/trajectory/frame-reader'
 
 export async function parse_trajectory_data(
   data: unknown,
@@ -67,7 +68,7 @@ export async function parse_trajectory_data(
 
     // Single XYZ fallback (content-sniffed when the filename gives no format hint,
     // e.g. blob: object URLs whose basenames are UUIDs)
-    const xyz_hint = ext_hint(filename, /\.(xyz|extxyz)$/)
+    const xyz_hint = ext_hint(filename, /\.(?:xyz|extxyz)$/)
     if (xyz_hint || (xyz_hint === null && count_xyz_frames(content) === 1)) {
       try {
         const structure = parse_xyz(content)
@@ -211,9 +212,9 @@ export async function parse_trajectory_async(
     // prefix for XYZ frames so large extensionless files still get indexed.
     const base_filename = strip_compression_extensions(filename)
     const can_index =
-      /\.(xyz|extxyz|traj)$/.test(base_filename) ||
+      /\.(?:xyz|extxyz|traj)$/.test(base_filename) ||
       (typeof data === `string` &&
-        ext_hint(filename, /\.(xyz|extxyz)$/) === null &&
+        ext_hint(filename, /\.(?:xyz|extxyz)$/) === null &&
         count_xyz_frames(data.slice(0, 2 ** 20)) >= 1)
     if (should_use_indexing && can_index) {
       return attach_parse_warnings(
@@ -310,7 +311,7 @@ async function parse_with_unified_loader(
 
 // Factory function for frame loader (simplified)
 export function create_frame_loader(filename: string): FrameLoader {
-  if (!/\.(xyz|extxyz|traj)$/.exec(filename.toLowerCase())) {
+  if (!/\.(?:xyz|extxyz|traj)$/.test(filename.toLowerCase())) {
     throw new Error(`Unsupported format for frame loading: ${filename}`)
   }
   return new TrajFrameReader(filename)

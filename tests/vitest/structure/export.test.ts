@@ -394,13 +394,13 @@ describe(`Export functionality`, () => {
         name: `basic structure with ID`,
         structure: {
           id: `water_molecule`,
-          sites: Array(2).fill({
+          sites: Array.from({ length: 2 }, () => ({
             species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
             abc: [0, 0, 0],
             xyz: [0, 0, 0],
             label: `H`,
             properties: {},
-          }),
+          })),
         } as AnyStructure,
         extension: `xyz`,
         should_contain: [`water_molecule`, `2sites`, `.xyz`],
@@ -409,13 +409,13 @@ describe(`Export functionality`, () => {
         name: `structure with many sites`,
         structure: {
           id: `complex_crystal`,
-          sites: Array(24).fill({
+          sites: Array.from({ length: 24 }, () => ({
             species: [{ element: `Si`, occu: 1, oxidation_state: 4 }],
             abc: [0, 0, 0],
             xyz: [0, 0, 0],
             label: `Si`,
             properties: {},
-          }),
+          })),
         } as AnyStructure,
         extension: `json`,
         should_contain: [`complex_crystal`, `24sites`, `.json`],
@@ -432,13 +432,13 @@ describe(`Export functionality`, () => {
       )
       const structure = {
         id: `lithium_oxide`,
-        sites: Array(3).fill({
+        sites: Array.from({ length: 3 }, () => ({
           species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
           abc: [0, 0, 0],
           xyz: [0, 0, 0],
           label: `Li`,
           properties: {},
-        }),
+        })),
       } as AnyStructure
       const result = create_structure_filename(structure, `xyz`)
       expect(result).toContain(`Li2O`)
@@ -453,13 +453,13 @@ describe(`Export functionality`, () => {
       mock_get_electro_neg_formula.mockReturnValue(`Li4 Fe4 P4 O16`)
       const structure = {
         id: `mp-19017`,
-        sites: Array(28).fill({
+        sites: Array.from({ length: 28 }, () => ({
           species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
           abc: [0, 0, 0],
           xyz: [0, 0, 0],
           label: `Li`,
           properties: {},
-        }),
+        })),
       } as AnyStructure
       const result = create_structure_filename(structure, `png`)
       expect(result).toBe(`mp-19017-Li4Fe4P4O16-28sites.png`)
@@ -898,7 +898,7 @@ describe(`Export functionality`, () => {
       const cif_content = structure_to_cif_str(disordered)
       const atom_rows = cif_content
         .split(`\n`)
-        .filter((line) => /^\S+ (Cu|Au) /.test(line.trim()))
+        .filter((line) => /^\S+ (?:Cu|Au) /.test(line.trim()))
       expect(atom_rows).toHaveLength(2)
 
       // each element's row carries the site coords and its OWN occupancy (col order:

@@ -340,16 +340,12 @@ describe(`calculate_rdf`, () => {
       // Check that fractional coordinates were calculated correctly
       // For at least one site, verify xyz = lattice · abc
       const site = structure.sites[0]
+      const [[l00, l01, l02], [l10, l11, l12], [l20, l21, l22]] = lattice
+      const [a0, a1, a2] = site.abc
       const xyz_from_abc = [
-        lattice[0][0] * site.abc[0] +
-          lattice[1][0] * site.abc[1] +
-          lattice[2][0] * site.abc[2],
-        lattice[0][1] * site.abc[0] +
-          lattice[1][1] * site.abc[1] +
-          lattice[2][1] * site.abc[2],
-        lattice[0][2] * site.abc[0] +
-          lattice[1][2] * site.abc[1] +
-          lattice[2][2] * site.abc[2],
+        l00 * a0 + l10 * a1 + l20 * a2,
+        l01 * a0 + l11 * a1 + l21 * a2,
+        l02 * a0 + l12 * a1 + l22 * a2,
       ]
       expect(xyz_from_abc[0]).toBeCloseTo(site.xyz[0], 10)
       expect(xyz_from_abc[1]).toBeCloseTo(site.xyz[1], 10)

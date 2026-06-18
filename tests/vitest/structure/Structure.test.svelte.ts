@@ -8,7 +8,7 @@ import { structures } from '$site/structures'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
-  assert_hover_scoped_shortcut,
+  assertHoverScopedShortcut,
   bind_props,
   doc_query,
   press_window_key,
@@ -127,7 +127,7 @@ describe(`Structure`, () => {
     })
     await tick()
 
-    await assert_hover_scoped_shortcut({
+    await assertHoverScopedShortcut({
       viewer: doc_query(`.structure`),
       fire: () => press_window_key({ key: `i`, ctrlKey: true }),
       read_state: () => state.info_pane_open,
