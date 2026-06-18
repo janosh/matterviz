@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 import {
   detect_view_type,
   is_plottable_data,
+  resolve_path,
   scan_renderable_paths,
 } from '../src/webview/detect'
 
@@ -450,25 +451,6 @@ describe(`scan_renderable_paths`, () => {
   )
 
   test(`all scanned paths resolve back to the original value`, () => {
-    // resolve_path mirror (same logic as JsonBrowser.svelte)
-    function resolve_path(root: unknown, path: string): unknown {
-      if (!path) return root
-      const segments: string[] = []
-      const segment_re =
-        /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g
-      let match: RegExpExecArray | null
-      while ((match = segment_re.exec(path)) !== null) {
-        segments.push(match[1] ?? match[2] ?? match[3])
-      }
-      let current: unknown = root
-      for (const segment of segments) {
-        if (current === null || current === undefined || typeof current !== `object`) {
-          return undefined
-        }
-        current = (current as Record<string, unknown>)[segment]
-      }
-      return current
-    }
     for (const [path] of fixture_paths) {
       const resolved = resolve_path(fixture, path)
       expect(resolved, `resolve_path failed for '${path}'`).toBeDefined()
