@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SettingsSection } from '$lib/layout'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type {
     SunburstLabelRotation,
     SunburstLabelText,
@@ -59,18 +59,6 @@
     {#each Object.entries(enum_map) as [value, label] (value)}
       <option {value}>{label}</option>
     {/each}
-  {/snippet}
-  {#snippet num_row(
-    text: string,
-    [min, max, step]: [number, number, number],
-    get: () => number,
-    set: (val: number) => void,
-  )}
-    <label style="flex: 1 1 100%">
-      {text}
-      <input type="range" {min} {max} {step} bind:value={get, set} />
-      <input type="number" {min} {max} {step} bind:value={get, set} />
-    </label>
   {/snippet}
   {#snippet check_row(text: string, get: () => boolean, set: (val: boolean) => void)}
     <label style="flex: 1 1 100%">
@@ -141,20 +129,36 @@
           {@render options(SETTINGS_CONFIG.sunburst.label_text.enum ?? {})}
         </select>
       </label>
-      {@render num_row(`Max depth (0 = all):`, [0, 10, 1], () => max_depth, (val) =>
-        max_depth = val)}
+      <NumberRangeInput
+        min={0}
+        max={10}
+        step={1}
+        bind:value={max_depth}
+        style="flex: 1 1 100%"
+      >Max depth (0 = all):</NumberRangeInput>
       {#if shape === `sunburst`}
-        {@render num_row(`Inner radius:`, [0, 0.8, 0.05], () => inner_radius, (val) =>
-          inner_radius = val)}
-        {@render num_row(`Pad angle (°):`, [0, 4, 0.1], () => pad_angle, (val) =>
-          pad_angle = val)}
+        <NumberRangeInput
+          min={0}
+          max={0.8}
+          step={0.05}
+          bind:value={inner_radius}
+          style="flex: 1 1 100%"
+        >Inner radius:</NumberRangeInput>
+        <NumberRangeInput
+          min={0}
+          max={4}
+          step={0.1}
+          bind:value={pad_angle}
+          style="flex: 1 1 100%"
+        >Pad angle (°):</NumberRangeInput>
       {/if}
-      {@render num_row(
-        `Group slices below (fraction of total):`,
-        [0, 0.2, 0.005],
-        () => min_fraction,
-        (val) => min_fraction = val,
-      )}
+      <NumberRangeInput
+        min={0}
+        max={0.2}
+        step={0.005}
+        bind:value={min_fraction}
+        style="flex: 1 1 100%"
+      >Group slices below (fraction of total):</NumberRangeInput>
       {@render check_row(`Show arc labels`, () => show_labels, (val) =>
         show_labels = val)}
       {@render check_row(`Zoom on click`, () => zoom_on_click, (val) =>
