@@ -325,9 +325,7 @@ export function parse_path(path: string): (string | number)[] {
   let current = ``
   let in_bracket = false
 
-  for (let idx = 0; idx < path.length; idx++) {
-    const char = path[idx]
-
+  for (const char of path) {
     if (char === `.` && !in_bracket) {
       if (current) segments.push(current)
       current = ``
@@ -341,7 +339,7 @@ export function parse_path(path: string): (string | number)[] {
         const num = Number(current)
         if (Number.isNaN(num)) {
           // Remove surrounding quotes and unescape internal quotes
-          const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll('\\"', `"`)
+          const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`)
           segments.push(unquoted)
         } else segments.push(num)
       }
@@ -356,7 +354,7 @@ export function parse_path(path: string): (string | number)[] {
       // Apply same numeric/quoted-string logic as inside brackets
       const num = Number(current)
       if (Number.isNaN(num)) {
-        const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll('\\"', `"`)
+        const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`)
         segments.push(unquoted)
       } else segments.push(num)
     } else segments.push(current)

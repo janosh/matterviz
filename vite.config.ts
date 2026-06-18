@@ -9,7 +9,7 @@ import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 
-const TEXT_EXT_RE = /\.(xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
+const TEXT_EXT_RE = /\.(?:xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
 const strip_query = (path: string) => path.replace(/\?.*$/, ``)
 const split_query = (path: string): [clean: string, query: string] => {
   const clean = strip_query(path)
@@ -30,7 +30,7 @@ const starry_night_theme_plugin: Plugin = {
   transform(code, id) {
     if (!id.includes(`starry-night/style/both.css`)) return null
     const dark_query =
-      /@media \(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}\s*\}/u
+      /@media \(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{(?<dark_rules>[^}]*)\}\s*\}/u
     // warn (don't silently no-op) if upstream restructured both.css and the regex stops matching
     if (!dark_query.test(code))
       this.warn(`starry-night dark-palette query not found; update regex`)

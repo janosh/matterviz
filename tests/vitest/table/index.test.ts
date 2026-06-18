@@ -159,8 +159,8 @@ describe(`calc_cell_color`, () => {
     `interpolateYlOrRd`,
   ] as const)(`produces valid colors with %s scale`, (scale) => {
     const result = calc_cell_color(50, [1, 50, 100], `higher`, scale)
-    expect(result.bg).toMatch(/^(rgb|#)/)
-    expect(result.text).toMatch(/^(black|white)$/)
+    expect(result.bg).toMatch(/^(?:rgb|#)/)
+    expect(result.text).toMatch(/^(?:black|white)$/)
   })
 
   it.each([

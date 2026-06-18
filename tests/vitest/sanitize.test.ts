@@ -32,7 +32,7 @@ const XSS_PAYLOADS = [
   `<svg><foreignObject><body onload=alert(1)></body></foreignObject></svg>`,
 ]
 
-function assert_no_xss(result: string): void {
+function assertNoXss(result: string): void {
   expect(result).not.toContain(`<script`)
   expect(result).not.toMatch(/on\w+\s*=/i)
   expect(result).not.toMatch(/javascript:/i)
@@ -48,7 +48,7 @@ function assert_no_xss(result: string): void {
 
 describe(`sanitize_html`, () => {
   test.each(XSS_PAYLOADS)(`strips XSS from: %s`, (payload) => {
-    assert_no_xss(sanitize_html(payload))
+    assertNoXss(sanitize_html(payload))
   })
 
   test.each([
@@ -80,7 +80,7 @@ describe(`sanitize_html`, () => {
 
   test(`merges noopener into existing rel without overwriting`, () => {
     const result = sanitize_html(`<a href="/x" rel="noreferrer">x</a>`)
-    const rel_tokens = /rel="([^"]+)"/.exec(result)?.[1]?.split(/\s+/) ?? []
+    const rel_tokens = /rel="(?<rel>[^"]+)"/.exec(result)?.[1]?.split(/\s+/) ?? []
     expect(rel_tokens).toContain(`noreferrer`)
     expect(rel_tokens).toContain(`noopener`)
   })
@@ -134,7 +134,7 @@ describe(`sanitize_html`, () => {
     [`double-encoded entities`, `<img src=x onerror=&#97;&#108;&#101;&#114;&#116;(1)>`],
     [`null byte injection`, `<scr\u0000ipt>alert(1)</script>`],
   ] as const)(`bypass attempt: %s`, (_name, input) => {
-    assert_no_xss(sanitize_html(input))
+    assertNoXss(sanitize_html(input))
   })
 
   test(`deeply nested dangerous content is stripped`, () => {
@@ -160,8 +160,8 @@ describe(`sanitize_formula`, () => {
   })
 
   test(`strips XSS injected via formula string`, () => {
-    assert_no_xss(sanitize_formula(`<script>alert(1)</script>`))
-    assert_no_xss(sanitize_formula(`Fe<img src=x onerror=alert(1)>2O3`))
+    assertNoXss(sanitize_formula(`<script>alert(1)</script>`))
+    assertNoXss(sanitize_formula(`Fe<img src=x onerror=alert(1)>2O3`))
   })
 })
 
@@ -187,7 +187,7 @@ describe(`compact formula helpers`, () => {
 
 describe(`sanitize_svg`, () => {
   test.each(XSS_PAYLOADS)(`strips XSS from: %s`, (payload) => {
-    assert_no_xss(sanitize_svg(payload))
+    assertNoXss(sanitize_svg(payload))
   })
 
   test.each([
@@ -217,7 +217,7 @@ describe(`sanitize_svg`, () => {
 
 describe(`sanitize_icon_svg`, () => {
   test.each(XSS_PAYLOADS)(`strips XSS from: %s`, (payload) => {
-    assert_no_xss(sanitize_icon_svg(payload))
+    assertNoXss(sanitize_icon_svg(payload))
   })
 
   test.each([

@@ -85,7 +85,7 @@ describe(`inline vite-plugin-json-gz query handling`, () => {
 })
 
 describe(`inline vite-plugin-raw-text query handling`, () => {
-  const TEXT_EXT_RE = /\.(xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
+  const TEXT_EXT_RE = /\.(?:xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
 
   const should_handle = (source: string): boolean => {
     if (source.includes(`url`)) return false

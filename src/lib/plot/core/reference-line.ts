@@ -283,7 +283,7 @@ export function calculate_annotation_position(
   // Calculate base position with edge padding applied along line direction
   const dx = x2 - x1
   const dy = y2 - y1
-  const len = Math.sqrt(dx * dx + dy * dy)
+  const len = Math.hypot(dx, dy)
 
   let base_x = x1 + frac * dx
   let base_y = y1 + frac * dy

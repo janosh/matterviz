@@ -143,9 +143,9 @@ function parse_coordinate_line(line: string): number[] {
     const sanitized = line
       .trim()
       // Add space when '-' follows a digit and precedes a digit or dot
-      .replaceAll(/(\d)-(?=[\d.])/g, `$1 -`)
+      .replaceAll(/(?<digit>\d)-(?=[\d.])/g, `$1 -`)
       // Revert accidental spaces after exponent markers
-      .replaceAll(/([eE])\s-\s/g, `$1-`)
+      .replaceAll(/(?<exp_marker>[eE])\s-\s/g, `$1-`)
     tokens = sanitized.split(/\s+/)
   }
 
@@ -470,7 +470,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
     let lattice: ParsedStructure[`lattice`] | undefined
 
     // Check for extended XYZ lattice information in comment line
-    const lattice_match = /Lattice="([^"]+)"/.exec(comment_line)
+    const lattice_match = /Lattice="(?<lattice>[^"]+)"/.exec(comment_line)
     if (lattice_match) {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
@@ -558,8 +558,7 @@ const parse_symmetry_expression = (
   const tokens: string[] = []
   let current_token = ``
 
-  for (let idx = 0; idx < expr.length; idx++) {
-    const char = expr[idx]
+  for (const char of expr) {
     if ((char === `+` || char === `-`) && current_token.length > 0) {
       tokens.push(current_token)
       current_token = char
@@ -571,7 +570,7 @@ const parse_symmetry_expression = (
 
   for (const token of tokens) {
     // Check if this token is a variable term (x, y, or z with optional sign)
-    const var_match = /^([+-]?)([xyz])$/.exec(token)
+    const var_match = /^(?<sign>[+-]?)(?<axis>[xyz])$/.exec(token)
     if (var_match) {
       const sign = var_match[1] === `-` ? -1 : 1
       const var_char = var_match[2]
@@ -638,7 +637,7 @@ const apply_symmetry_ops = (
   equivalent_atoms.push({ ...atom, coords: base_coords })
 
   for (const operation of symmetry_ops) {
-    const operation_match = /['"]([^'"]+)['"]/.exec(operation)
+    const operation_match = /['"](?<expr>[^'"]+)['"]/.exec(operation)
     const expr_str = operation_match ? operation_match[1] : operation.trim()
     const parts = expr_str.split(`,`).map((part) => part.trim())
     if (parts.length !== 3) continue
@@ -648,11 +647,7 @@ const apply_symmetry_ops = (
     for (let dim = 0; dim < 3; dim++) {
       const { coefficients, translation } = parse_symmetry_expression(parts[dim])
       // Apply: new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
-      new_coords[dim] =
-        coefficients[0] * atom.coords[0] +
-        coefficients[1] * atom.coords[1] +
-        coefficients[2] * atom.coords[2] +
-        translation
+      new_coords[dim] = math.dot(coefficients, atom.coords) + translation
     }
 
     // Wrap and deduplicate transformed coordinates
@@ -717,6 +712,30 @@ const build_cif_atom_site_header_indices = (headers: string[]): Record<string, n
   return indices
 }
 
+// Which coordinate triple a CIF atom-site loop provides (fractional preferred), or null
+const cif_coords_type = (indices: Record<string, number>): `fract` | `cart` | null => {
+  if (indices.x !== undefined && indices.y !== undefined && indices.z !== undefined) {
+    return `fract`
+  }
+  if (
+    indices.cart_x !== undefined &&
+    indices.cart_y !== undefined &&
+    indices.cart_z !== undefined
+  ) {
+    return `cart`
+  }
+  return null
+}
+
+// The 3 column indices for the requested coordinate type
+const cif_coord_indices = (
+  indices: Record<string, number>,
+  coords_type: `fract` | `cart`,
+): number[] =>
+  coords_type === `fract`
+    ? [indices.x, indices.y, indices.z]
+    : [indices.cart_x, indices.cart_y, indices.cart_z]
+
 type CifAtom = {
   id: string
   element: string
@@ -755,10 +774,7 @@ const parse_cif_atom_data = (
   coords_type: `fract` | `cart`,
 ): CifAtom => {
   const { label = 0, symbol = -1, occupancy = -1 } = indices
-  const coord_indices =
-    coords_type === `fract`
-      ? [indices.x, indices.y, indices.z]
-      : [indices.cart_x, indices.cart_y, indices.cart_z]
+  const coord_indices = cif_coord_indices(indices, coords_type)
 
   if (coord_indices.some((idx) => idx === undefined)) {
     throw new Error(`Missing coordinate indices`)
@@ -781,8 +797,9 @@ const parse_cif_atom_data = (
       ? parseFloat(raw_data[occupancy].split(`(`)[0]) || 1.0
       : 1.0
 
-  const from_symbol = symbol >= 0 ? /^([A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
-  const element_symbol = from_symbol ?? raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0]
+  const from_symbol =
+    symbol >= 0 ? /^(?<element>[A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
+  const element_symbol = from_symbol ?? raw_data[label]?.match(/(?:[A-Z][a-z]*)/g)?.[0]
   if (!element_symbol) {
     throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
   }
@@ -843,15 +860,7 @@ export function parse_cif(
 
       // Check if this loop contains coordinate headers
       const indices_preview = build_cif_atom_site_header_indices(headers)
-      const has_coords =
-        (indices_preview.x !== undefined &&
-          indices_preview.y !== undefined &&
-          indices_preview.z !== undefined) ||
-        (indices_preview.cart_x !== undefined &&
-          indices_preview.cart_y !== undefined &&
-          indices_preview.cart_z !== undefined)
-
-      if (!has_coords) continue
+      if (cif_coords_type(indices_preview) === null) continue
 
       // This is the desired atom-site loop with coordinates: collect data lines
       atom_headers = headers
@@ -885,16 +894,7 @@ export function parse_cif(
     const header_indices = build_cif_atom_site_header_indices(atom_headers)
 
     // Determine available coordinate type
-    const coords_type: `fract` | `cart` | null =
-      header_indices.x !== undefined &&
-      header_indices.y !== undefined &&
-      header_indices.z !== undefined
-        ? `fract`
-        : header_indices.cart_x !== undefined &&
-            header_indices.cart_y !== undefined &&
-            header_indices.cart_z !== undefined
-          ? `cart`
-          : null
+    const coords_type = cif_coords_type(header_indices)
 
     if (!coords_type) {
       diag_error(`CIF atom site loop missing coordinates (fract or Cartn)`)
@@ -902,10 +902,7 @@ export function parse_cif(
     }
 
     // Collect required coordinate indices
-    const required_indices =
-      coords_type === `fract`
-        ? [header_indices.x, header_indices.y, header_indices.z]
-        : [header_indices.cart_x, header_indices.cart_y, header_indices.cart_z]
+    const required_indices = cif_coord_indices(header_indices, coords_type)
 
     const atoms = atom_data_lines
       .map(split_cif_tokens)
@@ -958,7 +955,7 @@ export function parse_cif(
 
     // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
     const normalized_ops = symmetry_ops
-      .map((op) => /['"]([^'"]+)['"]/.exec(op)?.[1] ?? op.trim())
+      .map((op) => /['"](?<expr>[^'"]+)['"]/.exec(op)?.[1] ?? op.trim())
       .map((op) => op.replaceAll(/\s+/g, ``))
 
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
@@ -979,7 +976,7 @@ export function parse_cif(
         const toks = split_cif_tokens(line)
         if (toks.length > Math.max(sym_idx, num_idx)) {
           // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
-          const match = /^([A-Z][a-z]*)/.exec(toks[sym_idx])
+          const match = /^(?<element>[A-Z][a-z]*)/.exec(toks[sym_idx])
           const sym = match ? match[1] : toks[sym_idx]
           const num = parseInt(toks[num_idx], 10)
           if (sym && !Number.isNaN(num)) atom_type_counts[sym] = num
@@ -1117,7 +1114,7 @@ export function parse_phonopy_yaml(
 
       // Check if we're still in the phonon_displacements section
       if (skip_displacements) {
-        if (/^[a-zA-Z_]/.exec(line)) {
+        if (/^[a-zA-Z_]/.test(line)) {
           // New top-level key, stop skipping
           skip_displacements = false
         } else continue // Still in phonon_displacements, skip this line
@@ -1632,17 +1629,17 @@ export function is_structure_file(filename: string): boolean {
   const name = filename.toLowerCase()
 
   // Trajectory-only formats (can't be structures)
-  if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
+  if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
 
   // Always structure formats
   if (STRUCTURE_EXTENSIONS_REGEX.test(name)) return true
   if (VASP_FILES_REGEX.test(name)) return true
 
   // .xyz/.extxyz files: structure unless they have trajectory keywords
-  if (/\.(xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
+  if (/\.(?:xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
 
   // Keyword-based detection for YAML/XML
-  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
+  if (/\.(?:yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
 
   // More restrictive keyword detection for JSON files
   if (

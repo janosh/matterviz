@@ -82,6 +82,16 @@ export const doc_query = <T extends HTMLElement>(
 
 export const svg_query = (selector: string): SVGElement => query_required(selector)
 
+// Extract the rotation pivot-y from an axis label's enclosing foreignObject
+// `rotate(-90, x, pivot)` transform. Used to assert y/y2 axis titles share a pivot.
+export const axis_label_pivot_y = (root: ParentNode, selector: string): number => {
+  const transform =
+    root.querySelector(selector)?.closest(`foreignObject`)?.getAttribute(`transform`) ?? ``
+  const match = /rotate\(-90,\s*[\d.-]+,\s*(?<pivot>[\d.-]+)\)/.exec(transform)
+  if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
+  return Number(match[1])
+}
+
 // Walk up from `el` to the owning <svg>: true if any ancestor applies a clip-path.
 // Used to assert reference-line annotations render unclipped at the plot edges.
 export const inside_clip_path = (el: Element | null | undefined): boolean => {
@@ -133,7 +143,7 @@ export const press_window_key = (event_init: KeyboardEventInit): KeyboardEvent =
 // value (a step counter, a toggle flag, ...) — the shortcut is deemed to have
 // "fired" whenever that value changes between checks, so it works for both
 // counters and toggles.
-export async function assert_hover_scoped_shortcut(opts: {
+export async function assertHoverScopedShortcut(opts: {
   viewer: HTMLElement
   fire: () => void
   read_state: () => unknown
@@ -369,13 +379,7 @@ export function create_test_structure(
   frac_coords?: Vec3[],
 ): Crystal {
   const lattice_matrix: math.Matrix3x3 =
-    typeof lattice === `number`
-      ? [
-          [lattice, 0.0, 0.0],
-          [0.0, lattice, 0.0],
-          [0.0, 0.0, lattice],
-        ]
-      : lattice
+    typeof lattice === `number` ? cubic_matrix(lattice) : lattice
 
   // Calculate lattice parameters from matrix
   const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
@@ -451,13 +455,7 @@ export function make_crystal(
   options: { pbc?: Pbc; charge?: number } = {},
 ): Crystal {
   const lattice_matrix: math.Matrix3x3 =
-    typeof lattice_input === `number`
-      ? [
-          [lattice_input, 0, 0],
-          [0, lattice_input, 0],
-          [0, 0, lattice_input],
-        ]
-      : lattice_input
+    typeof lattice_input === `number` ? cubic_matrix(lattice_input) : lattice_input
 
   // Use standard pymatgen convention for frac↔cart conversion:
   // xyz = transpose(lattice) · abc, abc = inv(transpose(lattice)) · xyz
@@ -519,6 +517,20 @@ export function make_symmetry_structure(
     ? { ...crystal, lattice: { ...crystal.lattice, ...lattice_params } }
     : crystal
 }
+
+// Shared 3x3 matrix fixtures
+export const IDENTITY_MATRIX3: math.Matrix3x3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+]
+
+// Diagonal cubic lattice matrix with edge length `a`
+export const cubic_matrix = (a: number): math.Matrix3x3 => [
+  [a, 0, 0],
+  [0, a, 0],
+  [0, 0, a],
+]
 
 // Encode a 3x3 matrix as a flat 9-array in COLUMN-major order — how moyo/nalgebra serialize
 // rotation matrices on the wire (inverse of mat3_from_flat_col_major in symmetry-elements).

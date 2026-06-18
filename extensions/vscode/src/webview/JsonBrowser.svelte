@@ -30,7 +30,9 @@
   import { mount, unmount } from 'svelte'
   import {
     detect_view_type,
+    resolve_path,
     scan_renderable_paths,
+    structure_props,
     TYPE_COLORS,
     TYPE_LABELS,
   } from './detect'
@@ -440,25 +442,6 @@
     return val
   }
 
-  // Map user defaults to structure component props (mirrors main.ts structure_props)
-  function struct_props(merged: DefaultSettings): Record<string, unknown> {
-    const { structure } = merged
-    return {
-      scene_props: { ...structure, gizmo: structure.show_gizmo },
-      lattice_props: {
-        show_cell_vectors: structure.show_cell_vectors,
-        cell_edge_opacity: structure.cell_edge_opacity,
-        cell_surface_opacity: structure.cell_surface_opacity,
-        cell_edge_color: structure.cell_edge_color,
-        cell_surface_color: structure.cell_surface_color,
-      },
-      color_scheme: merged.color_scheme,
-      background_color: merged.background_color,
-      background_opacity: merged.background_opacity,
-      show_image_atoms: structure.show_image_atoms,
-    }
-  }
-
   // Merge defaults once (reused across all panel mounts)
   const merged_defaults = $derived(merge(defaults))
   const common_props = { fullscreen_toggle: false, style: `height:100%` }
@@ -485,7 +468,7 @@
     const struct_common = {
       allow_file_drop: false,
       enable_tips: false,
-      ...struct_props(merged_defaults),
+      ...structure_props(merged_defaults),
       ...common_props,
     }
 
@@ -574,8 +557,7 @@
   }
 
   function mount_all_panels(): void {
-    for (let idx = 0; idx < panels.length; idx++) {
-      const panel = panels[idx]
+    for (const panel of panels) {
       if (panel.component) continue // already mounted
       const el = document.querySelector<HTMLElement>(`#${panel.id}`)
       if (!el) continue
@@ -723,25 +705,6 @@
       const detected = detect_view_type(val)
       if (detected) replace_or_add_panel(data_path, detected, val)
     }, 150)
-  }
-
-  function resolve_path(root: unknown, path: string): unknown {
-    if (!path) return root
-    // Parse path segments: handles dotted keys like ["foo.bar"], array indices like [0],
-    // and regular dotted paths like a.b.c
-    const segments: string[] = []
-    const segment_re = /\["([^"]+)"\]|\[(\d+)\]|([^.[\]]+)/g
-    let match: RegExpExecArray | null
-    while ((match = segment_re.exec(path)) !== null) {
-      segments.push(match[1] ?? match[2] ?? match[3])
-    }
-    let current: unknown = root
-    for (const segment of segments) {
-      if (current === null || current === undefined || typeof current !== `object`)
-        return undefined
-      current = (current as Record<string, unknown>)[segment]
-    }
-    return current
   }
 
   // The first split direction determines the flex layout direction

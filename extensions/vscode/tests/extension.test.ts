@@ -193,7 +193,7 @@ describe(`MatterViz Extension`, () => {
         const regex_str = pattern
           .replaceAll(`.`, `\\.`) // escape dots
           .replaceAll(`*`, `.*`) // * → .*
-          .replaceAll(/\{([^}]+)\}/g, (_, group) => `(${group.split(`,`).join(`|`)})`) // {a,b} → (a|b)
+          .replaceAll(/\{(?<braced>[^}]+)\}/g, (_, group) => `(${group.split(`,`).join(`|`)})`) // {a,b} → (a|b)
         const regex = new RegExp(`^${regex_str}$`, `i`)
         if (regex.test(filename)) return true
       }
@@ -383,7 +383,9 @@ describe(`MatterViz Extension`, () => {
     expect(html).toContain(JSON.stringify(webview_data_with_theme))
 
     // Step 5: Verify the exact data structure that would be sent to webview
-    const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`)
+    const parsed_data = JSON.parse(
+      /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
+    )
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
     expect(parsed_data.data.is_base64).toBe(true)
@@ -1045,7 +1047,7 @@ describe(`MatterViz Extension`, () => {
 
     for (let idx = 0; idx < 1000; idx++) {
       const html = create_html(mock_webview, mock_context, data)
-      const nonce_match = /nonce="([a-zA-Z0-9]+)"/.exec(html)
+      const nonce_match = /nonce="(?<nonce>[a-zA-Z0-9]+)"/.exec(html)
       if (nonce_match) nonces.add(nonce_match[1])
     }
 
@@ -1073,7 +1075,7 @@ describe(`MatterViz Extension`, () => {
 
       expect(html).toContain(escaped_json)
       // Ensure no raw </script> inside the JSON data breaks out of the script tag
-      const data_script = /window\.matterviz_data=(.*?);/s.exec(html)
+      const data_script = /window\.matterviz_data=(?<json>.*?);/s.exec(html)
       if (data_script) {
         expect(data_script[1]).not.toContain(`</script>`)
       }
@@ -1133,7 +1135,9 @@ describe(`MatterViz Extension`, () => {
 
       const html = create_html(mock_webview, mock_context, data)
 
-      const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`)
+      const parsed_data = JSON.parse(
+        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
+      )
       expect(parsed_data.theme).toBe(`dark`)
     })
 
@@ -1793,7 +1797,7 @@ H 0.0 1.0 0.0`
       })
 
       const multi_frame_parsed_data = JSON.parse(
-        /matterviz_data=(\{[\s\S]*?\});/.exec(multi_frame_html)?.[1] ?? `{}`,
+        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(multi_frame_html)?.[1] ?? `{}`,
       )
 
       expect(multi_frame_parsed_data.type).toBe(`trajectory`)
@@ -1810,7 +1814,7 @@ H 0.0 1.0 0.0`
       })
 
       const single_frame_parsed_data = JSON.parse(
-        /matterviz_data=(\{[\s\S]*?\});/.exec(single_frame_html)?.[1] ?? `{}`,
+        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(single_frame_html)?.[1] ?? `{}`,
       )
 
       expect(single_frame_parsed_data.type).toBe(`structure`)
@@ -1823,7 +1827,7 @@ H 0.0 1.0 0.0`
       })
 
       const compressed_parsed_data = JSON.parse(
-        /matterviz_data=(\{[\s\S]*?\});/.exec(compressed_html)?.[1] ?? `{}`,
+        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(compressed_html)?.[1] ?? `{}`,
       )
 
       expect(compressed_parsed_data.type).toBe(`trajectory`) // Should be trajectory since filename contains trajectory keyword
@@ -1848,7 +1852,9 @@ H 0.0 1.0 0.0`
         theme: `light`,
       })
 
-      const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`)
+      const parsed_data = JSON.parse(
+        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
+      )
 
       // Should be 'trajectory' since filename contains trajectory keyword
       expect(parsed_data.type).toBe(`trajectory`)

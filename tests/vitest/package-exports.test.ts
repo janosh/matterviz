@@ -16,8 +16,8 @@ const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
 // This way an export pointing at a flat file when the source is a directory (or vice versa) fails.
 function source_candidates(dist_target: string): string[] {
   const rel = dist_target.replace(/^\.\/dist\//, ``).replace(/\.d\.ts$/, ``)
-  if (/\.(css|json)$/.test(rel)) return [join(lib_dir, rel)] // assets copied verbatim
-  const base = rel.replace(/\.(js|mjs|cjs)$/, ``)
+  if (/\.(?:css|json)$/.test(rel)) return [join(lib_dir, rel)] // assets copied verbatim
+  const base = rel.replace(/\.(?:js|mjs|cjs)$/, ``)
   // Subpath-pattern export (e.g. plot/*/index): expand the single `*` segment against the
   // real subdirectories so the wildcard is validated to point at >= 1 source file.
   if (base.includes(`*`)) {

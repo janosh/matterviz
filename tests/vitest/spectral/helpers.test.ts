@@ -31,6 +31,7 @@ import {
 } from '$lib/spectral/helpers'
 import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
+import { IDENTITY_MATRIX3 } from '../setup'
 
 describe(`is_valid_range`, () => {
   it.each([
@@ -450,11 +451,7 @@ describe(`find_qpoint_at_distance`, () => {
 })
 
 describe(`extract_k_path_points`, () => {
-  const identity_lattice: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
+  const identity_lattice = IDENTITY_MATRIX3
 
   it(`converts fractional coordinates to Cartesian reciprocal space`, () => {
     const band_struct: BaseBandStructure = {
@@ -582,11 +579,7 @@ describe(`extract_k_path_points`, () => {
 })
 
 describe(`find_qpoint_at_rescaled_x`, () => {
-  const identity_lattice: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
+  const identity_lattice = IDENTITY_MATRIX3
 
   // Test band structure: Γ→X→K with rescaled segments
   const rescaled_bs: BaseBandStructure = {
@@ -714,11 +707,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
 })
 
 describe(`normalize_band_structure`, () => {
-  const ident: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
+  const ident = IDENTITY_MATRIX3
   const make_pmg = (opts: Record<string, unknown>) => ({
     '@class': `PhononBandStructureSymmLine`,
     ...opts,
@@ -1724,7 +1713,7 @@ describe(`generate_ribbon_path`, () => {
 
   it(`generates valid SVG path with lower edge reversed`, () => {
     const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], id, id, 5)
-    expect(path).toMatch(/^M[\d.,-]+( L[\d.,-]+)+ Z$/)
+    expect(path).toMatch(/^M[\d.,-]+(?: L[\d.,-]+)+ Z$/)
     // Verify polygon structure: upper edge 0→1→2, lower edge 2→1→0
     const points = path.match(/[\d.-]+,[\d.-]+/g) ?? []
     expect(points).toHaveLength(6)

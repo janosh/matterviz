@@ -79,12 +79,13 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 
 export const TRAJ_KEYWORDS_SIMPLE_REGEX = new RegExp(`(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
 
+// Build a case-insensitive `\.(ext1|ext2|...)$` regex from extensions (leading dots stripped)
+const ext_regex = (exts: readonly string[]): RegExp =>
+  new RegExp(`\\.(${exts.map((ext) => ext.slice(1)).join(`|`)})$`, `i`)
+
 // File extensions for different file types
 export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`, `.lammpstrj`])
-export const TRAJ_EXTENSIONS_REGEX = new RegExp(
-  `\\.(${TRAJ_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
-  `i`,
-)
+export const TRAJ_EXTENSIONS_REGEX = ext_regex(TRAJ_EXTENSIONS)
 export const STRUCTURE_EXTENSIONS = Object.freeze([
   `.cif`,
   `.mcif`,
@@ -100,10 +101,7 @@ export const STRUCTURE_EXTENSIONS = Object.freeze([
   `.sdf`,
   `.mmcif`,
 ])
-export const STRUCTURE_EXTENSIONS_REGEX = new RegExp(
-  `\\.(${STRUCTURE_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
-  `i`,
-)
+export const STRUCTURE_EXTENSIONS_REGEX = ext_regex(STRUCTURE_EXTENSIONS)
 export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([
   `.dat`,
   `.data`,
@@ -111,24 +109,18 @@ export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([
   `.out`,
   `.json`,
 ])
-export const TRAJ_FALLBACK_EXTENSIONS_REGEX = new RegExp(
-  `\\.(${TRAJ_FALLBACK_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
-  `i`,
-)
+export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex(TRAJ_FALLBACK_EXTENSIONS)
 
 // Special regex patterns
 export const VASP_FILES_REGEX =
-  /(?:^|[\\/_.-])(poscar|contcar|potcar|incar|kpoints|outcar)(?:[\\/_.-]|$)/i
+  /(?:^|[\\/_.-])(?:poscar|contcar|potcar|incar|kpoints|outcar)(?:[\\/_.-]|$)/i
 export const VASP_VOLUMETRIC_REGEX =
-  /(?:^|[\\/_.-])(chgcar|aeccar[012]?|elfcar|locpot|parchg)(?:[\\/_.-]|$)/i
+  /(?:^|[\\/_.-])(?:chgcar|aeccar[012]?|elfcar|locpot|parchg)(?:[\\/_.-]|$)/i
 export const XDATCAR_REGEX = /xdatcar/i
 export const CONFIG_DIRS_REGEX =
-  /(?:^|[\\/])(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
-export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(out|txt|yml|py|csv|html|css|md|js|ts)$/i
-export const XYZ_EXTXYZ_REGEX = /\.(xyz|extxyz)$/i
+  /(?:^|[\\/])(?:\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
+export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(?:out|txt|yml|py|csv|html|css|md|js|ts)$/i
+export const XYZ_EXTXYZ_REGEX = /\.(?:xyz|extxyz)$/i
 
 // Compression extensions regex (shared across files)
-export const COMPRESSION_EXTENSIONS_REGEX = new RegExp(
-  `\\.(${COMPRESSION_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
-  `i`,
-)
+export const COMPRESSION_EXTENSIONS_REGEX = ext_regex(COMPRESSION_EXTENSIONS)

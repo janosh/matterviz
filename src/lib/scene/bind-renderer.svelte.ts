@@ -9,11 +9,15 @@ export function bind_renderer(
 ) {
   const threlte = useThrelte()
   $effect(() => {
-    on_bind(threlte.scene, threlte.camera.current)
+    // `camera.current` is not reactive, so subscribe to be notified when the active camera changes
+    const unsubscribe = threlte.camera.subscribe((camera) => {
+      on_bind(threlte.scene, camera)
+    })
     if (threlte.renderer) {
       on_renderer?.(threlte.renderer)
       renderer_registry.set(threlte.renderer.domElement, threlte.renderer)
     }
+    return unsubscribe
   })
   return threlte
 }

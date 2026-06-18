@@ -917,7 +917,7 @@
     // Skip auto-placement if user set explicit position in style
     const legend_style = legend?.style ?? ``
     if (
-      /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(
+      /(?:^|[;{]\s*)(?:top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(
         legend_style,
       )
     ) return null

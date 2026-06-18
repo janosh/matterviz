@@ -3,7 +3,7 @@ import type { TrajectoryType } from '$lib/trajectory'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import {
-  assert_hover_scoped_shortcut,
+  assertHoverScopedShortcut,
   bind_props,
   doc_query,
   make_trajectory_frame,
@@ -50,11 +50,9 @@ describe(`Trajectory keyboard shortcuts`, () => {
     const state = { current_step_idx: 0 }
     const viewer = await mount_trajectory(state)
 
-    await assert_hover_scoped_shortcut({
-      viewer,
-      fire: () => press_window_key({ key: `ArrowRight` }),
-      read_state: () => state.current_step_idx,
-    })
+    const fire = () => press_window_key({ key: `ArrowRight` })
+    const read_state = () => state.current_step_idx
+    await assertHoverScopedShortcut({ viewer, fire, read_state })
   })
 
   test(`suppresses the browser default only for keys it handles`, async () => {

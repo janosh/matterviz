@@ -10,7 +10,7 @@ const imports = import.meta.glob<BaseBandStructure>([`./*-bands.json`, `./*-band
 // Export with IDs extracted from filenames (e.g. ./cao-2605-bands.json -> cao_2605)
 export const electronic_bands = Object.fromEntries(
   Object.entries(imports).map(([path, data]) => [
-    /\/([^/]+)-bands\.json(?:\.gz)?$/.exec(path)?.[1]?.replaceAll('-', `_`) ?? path,
+    /\/(?<id>[^/]+)-bands\.json(?:\.gz)?$/.exec(path)?.[1]?.replaceAll(`-`, `_`) ?? path,
     data,
   ]),
 ) as Record<string, BaseBandStructure>

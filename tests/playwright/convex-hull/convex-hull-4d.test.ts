@@ -116,12 +116,12 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
 
     // Verify unstable/stable counts are finite numbers
     const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
-    const unstable_match = unstable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
+    const unstable_match = unstable_text?.match(/(?<visible>[0-9]+)\s*\/\s*(?:[0-9]+)/)
     expect(unstable_match).toBeTruthy()
     expect(Number.isFinite(Number(unstable_match?.[1]))).toBe(true)
 
     const stable_text = await info.getByTestId(`hull-visible-stable`).textContent()
-    const stable_match = stable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
+    const stable_match = stable_text?.match(/(?<visible>[0-9]+)\s*\/\s*(?:[0-9]+)/)
     expect(stable_match).toBeTruthy()
     expect(Number(stable_match?.[1])).toBeGreaterThanOrEqual(4) // At least elemental refs
   })

@@ -124,7 +124,7 @@ export function get_formula_label_segments(formula: string): FormulaLabelSegment
   const segments: FormulaLabelSegment[] = []
   let cursor = 0
 
-  for (const match of formula.matchAll(/([A-Za-z])(\d+(?:\.\d+)?)/g)) {
+  for (const match of formula.matchAll(/(?<letter>[A-Za-z])(?<amount>\d+(?:\.\d+)?)/g)) {
     const match_idx = match.index ?? 0
     const prefix = match[1]
     const amount = match[2]

@@ -13,7 +13,7 @@ import { count_xyz_frames } from './helpers'
 // Extensions that explicitly identify a format — when present, format detection trusts
 // the extension instead of sniffing content
 const KNOWN_FORMAT_EXT_REGEX =
-  /\.(xyz|extxyz|traj|h5|hdf5|lammpstrj|json|cif|poscar|vasp|yaml|yml|xml|csv)$/
+  /\.(?:xyz|extxyz|traj|h5|hdf5|lammpstrj|json|cif|poscar|vasp|yaml|yml|xml|csv)$/
 
 // Classify the filename hint for a format whose extensions match ext_regex:
 // true = filename matches, false = filename names a different known format,
@@ -41,7 +41,7 @@ export const FORMAT_PATTERNS = {
   },
 
   hdf5: (data: unknown, filename?: string) => {
-    if (ext_hint(filename, /\.(h5|hdf5)$/) === false) return false
+    if (ext_hint(filename, /\.(?:h5|hdf5)$/) === false) return false
     if (!(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
     return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every(
@@ -62,7 +62,7 @@ export const FORMAT_PATTERNS = {
   },
 
   xyz_multi: (data: string, filename?: string) => {
-    if (ext_hint(filename, /\.(xyz|extxyz)$/) === false) return false
+    if (ext_hint(filename, /\.(?:xyz|extxyz)$/) === false) return false
     return count_xyz_frames(data) >= 2
   },
 
@@ -78,7 +78,7 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   const base_name = strip_compression_extensions(filename)
 
   // For xyz/extxyz files, use content-based detection if available
-  if (/\.(xyz|extxyz)$/i.test(base_name)) {
+  if (/\.(?:xyz|extxyz)$/i.test(base_name)) {
     if (content) return count_xyz_frames(content) >= 2
     return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
   }
@@ -90,7 +90,7 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   if (MD_SIM_EXCLUDE_REGEX.test(base_name)) return false
 
   // For .h5/.hdf5 files, require trajectory keywords
-  if (/\.(h5|hdf5)$/i.test(base_name)) {
+  if (/\.(?:h5|hdf5)$/i.test(base_name)) {
     return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
   }
 

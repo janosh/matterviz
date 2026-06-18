@@ -13,6 +13,12 @@ const DEFAULT_VISIBLE = new Set([`energy`, `force_max`, `stress_frobenius`])
 
 type VisibleProp = Readonly<{ property: string; unit: string }>
 
+// Shared per-series line/point styling derived from a single color
+const series_color_styles = (color: string) => ({
+  line_style: { stroke: color, stroke_width: 2 },
+  point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+})
+
 export interface PlotSeriesOptions {
   property_config?: Record<string, { label: string; unit: string }>
   colors?: readonly string[]
@@ -139,6 +145,11 @@ function create_series_from_stats(
     const { clean_label, unit } = extract_label_and_unit(key, property_config)
     const color = colors[color_idx % colors.length]
 
+    // shared per-series metadata (consumers only read metadata[0]); one object, not n copies
+    const series_metadata = {
+      series_label: unit ? `${clean_label} (${unit})` : clean_label,
+      property_key: key, // Store original property key for robust lookups
+    }
     all_series.push({
       x: Array.from({ length: n_values }, (_, idx) => idx),
       y: stat.values,
@@ -147,12 +158,8 @@ function create_series_from_stats(
       y_axis: `y1`, // Will be reassigned
       visible: false, // Will be assigned
       markers: n_values < 30 ? `line+points` : `line`,
-      metadata: Array(n_values).fill({
-        series_label: unit ? `${clean_label} (${unit})` : clean_label,
-        property_key: key, // Store original property key for robust lookups
-      }),
-      line_style: { stroke: color, stroke_width: 2 },
-      point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+      metadata: Array.from({ length: n_values }, () => series_metadata),
+      ...series_color_styles(color),
     })
     color_idx++
   }
@@ -178,13 +185,13 @@ function group_and_assign_series(
   const groups = Array.from(unit_map.entries())
     .map(([unit, group_series]) => {
       const priority = calculate_priority(unit, group_series)
-      const has_default_visible = group_series.some((srs) => {
+      const is_visible = group_series.some((srs) => {
         const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
         const property_key = ((metadata?.property_key as string) || srs.label) ?? ``
         return is_default_visible(property_key, default_visible_properties)
       })
 
-      return { unit, series: group_series, priority, is_visible: has_default_visible }
+      return { unit, series: group_series, priority, is_visible }
     })
     .sort((a, b) => a.priority - b.priority)
 
@@ -407,8 +414,7 @@ export function generate_streaming_plot_series(
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
         property_key, // Store original property key for robust lookups
       })),
-      line_style: { stroke: color, stroke_width: 2 },
-      point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+      ...series_color_styles(color),
     })
 
     color_idx++

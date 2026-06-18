@@ -37,7 +37,7 @@ import { mount, unmount } from 'svelte'
 import type { ViewType } from '../types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '../types'
 import type { RenderableType } from './detect'
-import { detect_view_type } from './detect'
+import { detect_view_type, structure_props } from './detect'
 import JsonBrowser from './JsonBrowser.svelte'
 import { to_error } from '$lib/utils'
 
@@ -52,7 +52,7 @@ const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
   phase_diagram: `phase_diagram`,
 }
 
-export type { ViewType }
+export type { ViewType } from '../types'
 export interface FileData {
   filename: string
   content: string
@@ -377,7 +377,7 @@ export const parse_file_content = async (
     const buffer = base64_to_array_buffer(content)
 
     // Binary trajectory formats: pass buffer directly to trajectory parser
-    if (/\.(h5|hdf5|traj)$/i.test(filename)) {
+    if (/\.(?:h5|hdf5|traj)$/i.test(filename)) {
       const data = await parse_trajectory_data(buffer, filename)
       return { type: `trajectory`, filename, data }
     }
@@ -614,28 +614,6 @@ const create_display = (
 
   vscode_api?.postMessage({ command: `info`, text: log_message })
   return app
-}
-
-// Map defaults in settings.ts to structure component props
-// TIGHT COUPLING WARNING: settings-to-props mapping functions create a direct dependency between the centralized settings schema
-// (src/lib/settings.ts) and component prop interfaces. Changes to either side
-// require manual updates here.
-const structure_props = (defaults: DefaultSettings) => {
-  const { structure } = defaults
-  return {
-    scene_props: { ...structure, gizmo: structure.show_gizmo },
-    lattice_props: {
-      show_cell_vectors: structure.show_cell_vectors,
-      cell_edge_opacity: structure.cell_edge_opacity,
-      cell_surface_opacity: structure.cell_surface_opacity,
-      cell_edge_color: structure.cell_edge_color,
-      cell_surface_color: structure.cell_surface_color,
-    },
-    color_scheme: defaults.color_scheme,
-    background_color: defaults.background_color,
-    background_opacity: defaults.background_opacity,
-    show_image_atoms: structure.show_image_atoms,
-  }
 }
 
 // Map defaults to trajectory component props

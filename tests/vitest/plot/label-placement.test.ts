@@ -1,4 +1,4 @@
-import type { DataSeries, InternalPoint } from '$lib/plot'
+import type { DataSeries } from '$lib/plot'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { LabelPlacementConfig } from '$lib/plot/core/types'
 import {
@@ -370,25 +370,23 @@ const default_config: LabelPlacementConfig = {
 }
 
 function make_labeled_series(points: { x: number; y: number; text: string }[]): DataSeries[] {
-  const filtered_data: InternalPoint[] = points.map((pt, idx) => ({
-    x: pt.x,
-    y: pt.y,
-    series_idx: 0,
-    point_idx: idx,
+  const series = {
+    x: points.map((pt) => pt.x),
+    y: points.map((pt) => pt.y),
     point_style: { fill: `blue`, radius: 4 },
-    point_label: { text: pt.text, auto_placement: true, font_size: `10px` },
-  }))
-  return [
-    {
-      x: points.map((pt) => pt.x),
-      y: points.map((pt) => pt.y),
+    filtered_data: points.map((pt, idx) => ({
+      x: pt.x,
+      y: pt.y,
+      series_idx: 0,
+      point_idx: idx,
       point_style: { fill: `blue`, radius: 4 },
-      filtered_data,
-    },
-  ]
+      point_label: { text: pt.text, auto_placement: true, font_size: `10px` },
+    })),
+  }
+  return [series]
 }
 
-function place_and_expect_finite(
+function placeAndExpectFinite(
   points: { x: number; y: number; text: string }[],
   config = default_config,
 ): Record<string, { x: number; y: number }> {
@@ -443,8 +441,8 @@ describe(`compute_label_positions`, () => {
   })
 
   test(`places labels at finite positions for single and boundary points`, () => {
-    place_and_expect_finite([{ x: 50, y: 50, text: `Only` }])
-    place_and_expect_finite([
+    placeAndExpectFinite([{ x: 50, y: 50, text: `Only` }])
+    placeAndExpectFinite([
       { x: 15, y: 15, text: `Corner` },
       { x: 385, y: 285, text: `FarCorner` },
     ])
@@ -476,7 +474,7 @@ describe(`compute_label_positions`, () => {
       { x: 50, y: 50, text: `A` },
       { x: 200, y: 200, text: `B` },
     ]
-    const result = place_and_expect_finite(anchors)
+    const result = placeAndExpectFinite(anchors)
     for (const [idx, key] of Object.keys(result).entries()) {
       const dist = Math.hypot(result[key].x - anchors[idx].x, result[key].y - anchors[idx].y)
       expect(dist).toBeLessThan(40)
@@ -490,7 +488,7 @@ describe(`compute_label_positions`, () => {
       y: idx * 30,
       text: `P${idx}`,
     }))
-    const result = place_and_expect_finite(points, { ...default_config, max_labels: 5 })
+    const result = placeAndExpectFinite(points, { ...default_config, max_labels: 5 })
     // All fallback positions must stay within plot bounds (pad=10 each side)
     for (const pos of Object.values(result)) {
       expect(pos.x).toBeGreaterThanOrEqual(10)
@@ -513,7 +511,7 @@ describe(`compute_label_positions`, () => {
       { x: 50, y: 50, text: `OK` },
       { x: 380, y: 150, text: `RR` },
     ]
-    const result = place_and_expect_finite(points, { ...default_config, max_labels: 1 })
+    const result = placeAndExpectFinite(points, { ...default_config, max_labels: 1 })
     const edge_key = Object.keys(result)[1]
     const label_w = estimate_label_width(`RR`)
     expect(result[edge_key].x).toBe(390 - label_w)
@@ -548,7 +546,7 @@ describe(`compute_label_positions`, () => {
       { x: 103, y: 102, text: `Epsilon` },
       { x: 98, y: 100, text: `Zeta` },
     ]
-    const result = place_and_expect_finite(points, { ...default_config, sa_iterations: 2000 })
+    const result = placeAndExpectFinite(points, { ...default_config, sa_iterations: 2000 })
     const entries = Object.entries(result)
 
     const font_size = 10

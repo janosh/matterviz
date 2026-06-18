@@ -6,7 +6,7 @@ export const fixture_id = (path_or_name: string) =>
   path_or_name
     .split(`/`)
     .at(-1)
-    ?.replace(/\.json(\.gz)?$/, ``) ?? path_or_name
+    ?.replace(/\.json(?:\.gz)?$/, ``) ?? path_or_name
 
 // Precomputed XRD pattern index. Large fixtures are gzipped (.json.gz, decompressed
 // by the json_gz vite plugin); small ones stay plain .json for readable git diffs.

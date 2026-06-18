@@ -126,7 +126,7 @@ export function pretty_sym_point(symbol: string): string {
     .replaceAll(/\\?SIGMA/gi, `Σ`)
     .replaceAll(/\\?LAMBDA/gi, `Λ`)
     .replaceAll(
-      /(\p{L})(\d+)/gu,
+      /(?<letter>\p{L})(?<num>\d+)/gu,
       (_, letter, num) =>
         letter +
         num
@@ -1279,7 +1279,7 @@ export function compute_frequency_range(
 
 // Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
 function parse_axis_label(label: string): { name: string; unit?: string } {
-  const match = /^(.+?)\s*\(([^)]+)\)$/.exec(label)
+  const match = /^(?<name>.+?)\s*\((?<unit>[^)]+)\)$/.exec(label)
   return match ? { name: match[1], unit: match[2] } : { name: label }
 }
 

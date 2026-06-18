@@ -20,7 +20,7 @@
     }
     // Fall back to compact single-digit format: "001", "-101"
     const compact = input.replaceAll(/\s+/g, ``)
-    const match = compact.match(/^(-?\d)(-?\d)(-?\d)$/)
+    const match = compact.match(/^(?<h>-?\d)(?<k>-?\d)(?<l>-?\d)$/)
     if (match) return [Number(match[1]), Number(match[2]), Number(match[3])] as Vec3
     return null
   }

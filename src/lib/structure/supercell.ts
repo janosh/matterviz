@@ -1,7 +1,6 @@
 // Supercell generation utilities for Crystal
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { scale_lattice_matrix } from '$lib/math'
 import type { Crystal, Site, StructureBond } from './index'
 import { wrap_frac_coord } from './pbc'
 import { normalize_structure_bond } from './bonding'
@@ -110,7 +109,7 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
 }
 
 // Re-export from $lib/math for backward compatibility
-export { scale_lattice_matrix }
+export { scale_lattice_matrix } from '$lib/math'
 
 // Create a supercell from a Crystal
 // Takes original structure, scaling factors, and whether to fold coordinates back to unit cell (default: true)
@@ -135,14 +134,10 @@ export function make_supercell(
 
   const orig_matrix = structure.lattice.matrix
   // Create new scaled lattice
-  const new_lattice_matrix = scale_lattice_matrix(orig_matrix, supercell_scaling)
-  const lattice_params = math.calc_lattice_params(new_lattice_matrix)
+  const new_matrix = math.scale_lattice_matrix(orig_matrix, supercell_scaling)
+  const lattice_params = math.calc_lattice_params(new_matrix)
 
-  const new_lattice = {
-    ...structure.lattice,
-    matrix: new_lattice_matrix,
-    ...lattice_params,
-  }
+  const new_lattice = { ...structure.lattice, matrix: new_matrix, ...lattice_params }
 
   // Pre-allocate sites array
   const n_sites = structure.sites.length
@@ -150,7 +145,6 @@ export function make_supercell(
 
   // Destructure lattice vectors for fast inline arithmetic (avoid function calls in hot loop)
   const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = orig_matrix
-  const [sx, sy, sz] = supercell_scaling
 
   let write_idx = 0
   const sites = structure.sites
@@ -171,9 +165,9 @@ export function make_supercell(
           const site = sites[site_idx]
 
           // new_abc = (old_abc + [ii, jj, kk]) / supercell_scaling
-          let new_a = (site.abc[0] + ii) / sx
-          let new_b = (site.abc[1] + jj) / sy
-          let new_c = (site.abc[2] + kk) / sz
+          let new_a = (site.abc[0] + ii) / scale_x
+          let new_b = (site.abc[1] + jj) / scale_y
+          let new_c = (site.abc[2] + kk) / scale_z
 
           if (to_unit_cell) {
             new_a = wrap_frac_coord(new_a)

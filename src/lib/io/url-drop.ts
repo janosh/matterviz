@@ -8,19 +8,19 @@ const BINARY_EXTENSIONS = new Set(
 const TEXT_EXTENSIONS = new Set(
   `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `),
 )
-const VASP_BASENAME_RE = /^(poscar|xdatcar|contcar)$/i
-const GZ_EXT_RE = /\.(gz|gzip)$/i
+const VASP_BASENAME_RE = /^(?:poscar|xdatcar|contcar)$/i
+const GZ_EXT_RE = /\.(?:gz|gzip)$/i
 
 // Extract filename from Content-Disposition header, falling back to url_basename.
 function extract_filename(headers: Headers | undefined, fallback: string): string {
   if (!headers) return fallback
   const content_disposition_str = headers.get(`content-disposition`)
   if (!content_disposition_str) return fallback
-  const star_match = /filename\*=([^;]+)/i.exec(content_disposition_str)
+  const star_match = /filename\*=(?<value>[^;]+)/i.exec(content_disposition_str)
   if (star_match?.[1]) {
     let raw = star_match[1].trim().replaceAll(/^"|"$/g, ``)
     // Strip any RFC 5987 charset'language' prefix; bare values pass through unchanged
-    const ext_value_match = /^[\w!#$%&+^`{}~-]+'[\w-]*'(.*)$/.exec(raw)
+    const ext_value_match = /^[\w!#$%&+^`{}~-]+'[\w-]*'(?<value>.*)$/.exec(raw)
     if (ext_value_match) raw = ext_value_match[1]
     try {
       return decodeURIComponent(raw)
@@ -28,7 +28,7 @@ function extract_filename(headers: Headers | undefined, fallback: string): strin
       return raw
     }
   }
-  const plain_match = /filename\s*=\s*"?([^";]+)"?/i.exec(content_disposition_str)
+  const plain_match = /filename\s*=\s*"?(?<value>[^";]+)"?/i.exec(content_disposition_str)
   // truthiness check (not ??) so whitespace-only `filename=` values fall back too
   const name = plain_match?.[1]?.trim()
   if (!name) return fallback

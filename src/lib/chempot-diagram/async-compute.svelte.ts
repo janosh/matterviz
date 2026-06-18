@@ -85,7 +85,7 @@ export function compute_chempot_async(
     pending.set(id, { resolve, reject })
     try {
       // $state.snapshot strips Svelte $state proxies (not structured-cloneable)
-      // eslint-disable-next-line unicorn/require-post-message-target-origin
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin
       wkr.postMessage($state.snapshot({ id, entries, config }))
     } catch (err) {
       pending.delete(id)

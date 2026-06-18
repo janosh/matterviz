@@ -22,7 +22,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { col_major, load_json } from './setup'
+import { col_major, cubic_matrix, IDENTITY_MATRIX3 as IDENTITY_MAT, load_json } from './setup'
 
 type BzReference = {
   real_lattice: number[][]
@@ -35,16 +35,7 @@ const reference_data = load_json<Record<string, BzReference>>(
 )
 
 // Common test constants
-const CUBIC_5: Matrix3x3 = [
-  [5, 0, 0],
-  [0, 5, 0],
-  [0, 0, 5],
-]
-const IDENTITY_MAT: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
+const CUBIC_5 = cubic_matrix(5)
 const INVERSION_MAT: Matrix3x3 = [
   [-1, 0, 0],
   [0, -1, 0],
@@ -184,9 +175,7 @@ describe(`BZ edge filtering`, () => {
       const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
       const max_len = Math.cbrt(bz.volume) * 10
       for (const [v1, v2] of bz.edges) {
-        const len = Math.sqrt(
-          (v2[0] - v1[0]) ** 2 + (v2[1] - v1[1]) ** 2 + (v2[2] - v1[2]) ** 2,
-        )
+        const len = Math.hypot(v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2])
         expect(len).toBeGreaterThan(0)
         expect(len).toBeLessThan(max_len)
       }

@@ -44,7 +44,7 @@ test.describe(`OPTIMADE route`, () => {
           return json({ data: providers })
         }
         if (decoded.includes(`/structures`)) {
-          const match = /\/structures\/([^/?]+)/.exec(decoded)
+          const match = /\/structures\/(?<id>[^/?]+)/.exec(decoded)
           if (match?.[1] && structures[match[1]]) {
             return json({ data: structures[match[1]] })
           }

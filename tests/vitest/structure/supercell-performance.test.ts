@@ -86,8 +86,13 @@ describe(`supercell performance profiling`, () => {
       math.scale(structure.lattice.matrix[2], nz),
     ]
     const orig_lattice_T = math.transpose_3x3_matrix(structure.lattice.matrix)
+    const [[orig00, orig01, orig02], [orig10, orig11, orig12], [orig20, orig21, orig22]] =
+      orig_lattice_T
     const new_lattice_T = math.transpose_3x3_matrix(new_lattice_matrix)
     const new_lattice_T_inv = math.matrix_inverse_3x3(new_lattice_T)
+    const [[inv00, inv01, inv02], [inv10, inv11, inv12], [inv20, inv21, inv22]] =
+      new_lattice_T_inv
+    const [[lat00, lat01, lat02], [lat10, lat11, lat12], [lat20, lat21, lat22]] = new_lattice_T
     timings.matrix_setup = performance.now() - start
 
     // Phase 2: Translation vector computation
@@ -97,12 +102,9 @@ describe(`supercell performance profiling`, () => {
     for (let kk = 0; kk < nz; kk++) {
       for (let jj = 0; jj < ny; jj++) {
         for (let ii = 0; ii < nx; ii++) {
-          translations[trans_idx++] =
-            orig_lattice_T[0][0] * ii + orig_lattice_T[0][1] * jj + orig_lattice_T[0][2] * kk
-          translations[trans_idx++] =
-            orig_lattice_T[1][0] * ii + orig_lattice_T[1][1] * jj + orig_lattice_T[1][2] * kk
-          translations[trans_idx++] =
-            orig_lattice_T[2][0] * ii + orig_lattice_T[2][1] * jj + orig_lattice_T[2][2] * kk
+          translations[trans_idx++] = orig00 * ii + orig01 * jj + orig02 * kk
+          translations[trans_idx++] = orig10 * ii + orig11 * jj + orig12 * kk
+          translations[trans_idx++] = orig20 * ii + orig21 * jj + orig22 * kk
         }
       }
     }
@@ -121,26 +123,16 @@ describe(`supercell performance profiling`, () => {
           const tz = translations[trans_idx++]
           const label_suffix = `_${ii}${jj}${kk}`
 
-          for (let orig_idx = 0; orig_idx < structure.sites.length; orig_idx++) {
-            const orig_site = structure.sites[orig_idx]
+          for (const orig_site of structure.sites) {
             const [ox, oy, oz] = orig_site.xyz
 
             const new_x = ox + tx
             const new_y = oy + ty
             const new_z = oz + tz
 
-            let abc_x =
-              new_lattice_T_inv[0][0] * new_x +
-              new_lattice_T_inv[0][1] * new_y +
-              new_lattice_T_inv[0][2] * new_z
-            let abc_y =
-              new_lattice_T_inv[1][0] * new_x +
-              new_lattice_T_inv[1][1] * new_y +
-              new_lattice_T_inv[1][2] * new_z
-            let abc_z =
-              new_lattice_T_inv[2][0] * new_x +
-              new_lattice_T_inv[2][1] * new_y +
-              new_lattice_T_inv[2][2] * new_z
+            let abc_x = inv00 * new_x + inv01 * new_y + inv02 * new_z
+            let abc_y = inv10 * new_x + inv11 * new_y + inv12 * new_z
+            let abc_z = inv20 * new_x + inv21 * new_y + inv22 * new_z
 
             // Wrap coordinates
             abc_x %= 1
@@ -153,18 +145,9 @@ describe(`supercell performance profiling`, () => {
             if (abc_z < 0) abc_z += 1
             if (abc_z >= 1 - 1e-10) abc_z = 0
 
-            const final_x =
-              new_lattice_T[0][0] * abc_x +
-              new_lattice_T[0][1] * abc_y +
-              new_lattice_T[0][2] * abc_z
-            const final_y =
-              new_lattice_T[1][0] * abc_x +
-              new_lattice_T[1][1] * abc_y +
-              new_lattice_T[1][2] * abc_z
-            const final_z =
-              new_lattice_T[2][0] * abc_x +
-              new_lattice_T[2][1] * abc_y +
-              new_lattice_T[2][2] * abc_z
+            const final_x = lat00 * abc_x + lat01 * abc_y + lat02 * abc_z
+            const final_y = lat10 * abc_x + lat11 * abc_y + lat12 * abc_z
+            const final_z = lat20 * abc_x + lat21 * abc_y + lat22 * abc_z
 
             new_sites[site_idx++] = {
               species: orig_site.species,
@@ -180,27 +163,18 @@ describe(`supercell performance profiling`, () => {
     timings.site_generation = performance.now() - start
 
     const total = Object.values(timings).reduce((sum, time) => sum + time, 0)
+    const { matrix_setup, translation_vectors, site_generation } = timings
+    const pct = (ms: number) => ((ms / total) * 100).toFixed(1)
 
     console.warn(
       `\nSupercell generation phases (100 sites → ${structure.sites.length * det} sites):`,
     )
+    console.warn(`  Matrix setup: ${matrix_setup.toFixed(2)}ms (${pct(matrix_setup)}%)`)
     console.warn(
-      `  Matrix setup: ${timings.matrix_setup.toFixed(2)}ms (${(
-        (timings.matrix_setup / total) *
-        100
-      ).toFixed(1)}%)`,
+      `  Translation vectors: ${translation_vectors.toFixed(2)}ms (${pct(translation_vectors)}%)`,
     )
     console.warn(
-      `  Translation vectors: ${timings.translation_vectors.toFixed(2)}ms (${(
-        (timings.translation_vectors / total) *
-        100
-      ).toFixed(1)}%)`,
-    )
-    console.warn(
-      `  Site generation: ${timings.site_generation.toFixed(2)}ms (${(
-        (timings.site_generation / total) *
-        100
-      ).toFixed(1)}%)`,
+      `  Site generation: ${site_generation.toFixed(2)}ms (${pct(site_generation)}%)`,
     )
     console.warn(`  Total: ${total.toFixed(2)}ms`)
 

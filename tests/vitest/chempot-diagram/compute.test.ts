@@ -98,15 +98,9 @@ const sort_rows = (pts: number[][]): number[][] =>
       return 0
     })
 
-function dedup_vertices(pts: number[][], tol: number = 1e-4): number[][] {
-  const result: number[][] = []
-  for (const pt of pts) {
-    if (!result.some((ex) => ex.every((val, idx) => Math.abs(val - pt[idx]) < tol))) {
-      result.push(pt)
-    }
-  }
-  return result
-}
+// Thin wrapper over production dedup_points (keeps just the unique points)
+const dedup_vertices = (pts: number[][], tol: number = 1e-4): number[][] =>
+  dedup_points(pts, tol).unique
 
 // === Pymatgen parity tests ===
 
@@ -319,8 +313,8 @@ describe(`physical invariants`, () => {
     // chemical potential than the pure element)
     for (const pts of Object.values(cpd_ternary_formal.domains)) {
       for (const pt of pts) {
-        for (let dim = 0; dim < pt.length; dim++) {
-          expect(pt[dim], `Formal chempot should be <= 0`).toBeLessThanOrEqual(1e-4)
+        for (const chempot of pt) {
+          expect(chempot, `Formal chempot should be <= 0`).toBeLessThanOrEqual(1e-4)
         }
       }
     }

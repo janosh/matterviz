@@ -154,9 +154,9 @@
     }
   }
 
-  const hex_color_pattern = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i
+  const hex_color_pattern = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i
   const color_mix_pattern =
-    /^color-mix\(in srgb,\s*(#[0-9a-f]{3}(?:[0-9a-f]{3})?)\s+(\d+(?:\.\d+)?)%,\s*transparent\)$/i
+    /^color-mix\(in srgb,\s*(?<hex>#[0-9a-f]{3}(?:[0-9a-f]{3})?)\s+(?<pct>\d+(?:\.\d+)?)%,\s*transparent\)$/i
 
   const as_hex_color = (color: string | undefined, fallback: string): string =>
     color?.match(hex_color_pattern)?.[0] ?? fallback
