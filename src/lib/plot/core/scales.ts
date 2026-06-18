@@ -7,6 +7,7 @@ import type {
   SizeScaleConfig,
   TimeInterval,
 } from '$lib/plot'
+import { clamp01 } from '$lib/utils'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
@@ -591,7 +592,7 @@ function create_arcsinh_color_scale(
     const t_val = Math.asinh(value / safe_threshold)
     // Normalize to [0, 1]
     const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
-    return interpolator(Math.max(0, Math.min(1, normalized)))
+    return interpolator(clamp01(normalized))
   }) as ArcsinhColorScale
 
   // Domain getter/setter for D3 compatibility - returns same scale instance

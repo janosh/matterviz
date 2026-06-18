@@ -39,7 +39,7 @@ import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '../types'
 import type { RenderableType } from './detect'
 import { detect_view_type, structure_props } from './detect'
 import JsonBrowser from './JsonBrowser.svelte'
-import { to_error } from '$lib/utils'
+import { escape_html, to_error } from '$lib/utils'
 
 // Maps detect.ts RenderableType to ViewType for direct rendering.
 // Types not listed here fall through to json_browser (which can render all types
@@ -463,15 +463,6 @@ export const parse_file_content = async (
   const data = { ...structure, id: filename.replace(/\.[^/.]+$/, ``) }
   return { type: `structure`, data, filename }
 }
-
-// Escape HTML special chars to prevent XSS when inserting into innerHTML
-const escape_html = (text: string): string =>
-  text
-    .replaceAll(`&`, `&amp;`)
-    .replaceAll(`<`, `&lt;`)
-    .replaceAll(`>`, `&gt;`)
-    .replaceAll(`"`, `&quot;`)
-    .replaceAll(`'`, `&#39;`)
 
 // Create error display in container
 const create_error_display = (

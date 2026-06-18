@@ -2,6 +2,9 @@
 export const is_plain_object = (val: unknown): val is Record<string, unknown> =>
   typeof val === `object` && val !== null && !Array.isArray(val)
 
+// Clamp a number to the [0, 1] range.
+export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
+
 // Merge nested objects (1 level deep).
 export function merge_nested<T extends Record<string, unknown>>(
   obj1: T,

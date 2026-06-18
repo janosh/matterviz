@@ -6,6 +6,7 @@ import type { Vec2 } from '$lib/math'
 import { quantile_unordered } from '$lib/plot/box/quantile'
 import type { HandlerProps } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
+import { clamp01 } from '$lib/utils'
 
 // === Box plot types ===
 // How box plot whiskers are computed from a raw distribution
@@ -98,8 +99,6 @@ const EMPTY_STATS: BoxStats = {
   outliers: [],
   n: 0,
 }
-
-const clamp01 = (val: number): number => Math.max(0, Math.min(1, val))
 
 function collect_outliers_by_scan(
   values: readonly number[],

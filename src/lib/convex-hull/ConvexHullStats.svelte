@@ -12,7 +12,8 @@
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap } from 'svelte/reactivity'
+  import { create_clipboard_feedback } from '$lib/overlays'
   import type {
     ConvexHullEntry,
     EntryCategoryConfig,
@@ -60,7 +61,7 @@
       entry_href?: (entry: ConvexHullEntry) => string | null
     } = $props()
 
-  let copied_items = new SvelteSet<string>()
+  const { copied, copy } = create_clipboard_feedback()
   let view_mode = $state<`stats` | `table`>(`stats`)
   // Formula filter: when set, table shows only entries with this reduced formula
   let formula_filter = $state(``)
@@ -75,15 +76,8 @@
     : `min-width: 0; margin-inline: 0`
   )
 
-  async function copy_to_clipboard(label: string, value: string, key: string) {
-    try {
-      await navigator.clipboard.writeText(`${label}: ${value}`)
-      copied_items.add(key)
-      setTimeout(() => copied_items.delete(key), 1000)
-    } catch (error) {
-      console.error(`Failed to copy to clipboard:`, error)
-    }
-  }
+  const copy_to_clipboard = (label: string, value: string, key: string): Promise<void> =>
+    copy(`${label}: ${value}`, key)
   function handle_copy_keydown(
     event: KeyboardEvent,
     label: string,
@@ -471,7 +465,7 @@
         >
           <span>{@html sanitize_html(label)}:</span>
           <span>{@html sanitize_html(value)}</span>
-          {#if key && copied_items.has(key)}
+          {#if key && copied.has(key)}
             <Icon
               icon="Check"
               style="color: var(--success-color, #10b981); width: 12px; height: 12px"
@@ -512,7 +506,7 @@
               </span>
             {/each}
           </span>
-          {#if copied_items.has(`binary-subsystem-coverage`)}
+          {#if copied.has(`binary-subsystem-coverage`)}
             <Icon
               icon="Check"
               style="color: var(--success-color, #10b981); width: 12px; height: 12px"

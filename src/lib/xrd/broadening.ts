@@ -1,4 +1,5 @@
 import type { Vec2 } from '$lib/math'
+import { clamp01 } from '$lib/utils'
 import type { XrdPattern } from './index'
 
 const LOG_2 = Math.log(2)
@@ -65,7 +66,7 @@ export function pseudo_voigt(
 ): number {
   // Intensity at x
   // Clamp eta to [0, 1]
-  const safe_eta = Math.max(0, Math.min(1, eta))
+  const safe_eta = clamp01(eta)
   return safe_eta * lorentzian(x, x0, fwhm) + (1 - safe_eta) * gaussian(x, x0, fwhm)
 }
 

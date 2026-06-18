@@ -5,13 +5,13 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import type { SplitMode } from '$lib/coordination'
   import { CoordinationBarPlot, SPLIT_MODES } from '$lib/coordination'
-  import { Structure } from '$lib/structure'
+  import { type AtomColorConfig, Structure } from '$lib/structure'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { structures } from '$site/structures'
 
-  // Map structures by id for O(1) lookup
-  const structures_by_id = $derived<Record<string, Crystal>>(
-    Object.fromEntries(structures.map((struct) => [struct.id, struct])),
+  // Map structures by id for O(1) lookup (structures is a static import, not reactive)
+  const structures_by_id: Record<string, Crystal> = Object.fromEntries(
+    structures.map((struct) => [struct.id, struct]),
   )
 
   // Helper: convert #rrggbb to #rrggbbaa
@@ -22,10 +22,9 @@
     return hex_color.length === 7 ? `${hex_color}${alpha_hex}` : hex_color
   }
 
-  const compute_ids = structures.map((struct) => struct.id ?? ``)
-
-  // Single structure example
-  let single_id = $state<string>(compute_ids[0] || ``)
+  // Single structure example. Default to a complex oxide (Zr16Bi16O56) whose sites span
+  // coordination numbers 4, 6 and 8, so the discrete color bar shows several segments.
+  let single_id = $state<string>(`mp-756175`)
   let single_strategy = $state<BondingStrategy>(
     SETTINGS_CONFIG.structure.bonding_strategy.value,
   )
@@ -35,12 +34,32 @@
     structures_by_id[single_id] ?? null,
   )
 
-  // Multiple structures example
-  let selected_ids = $state<string[]>(compute_ids.slice(0, 3))
+  // Color the structure viewers by coordination number so the discrete color bar shows
+  // live next to the histogram; each section's scene_props links its bonding strategy so
+  // changing a dropdown updates that section's structure(s) and histogram together.
+  const coord_coloring: Partial<AtomColorConfig> = {
+    mode: `coordination`,
+    scale: `interpolateViridis`,
+    scale_type: `continuous`,
+  }
+  let single_color_config = $state({ ...coord_coloring })
+  let single_scene_props = $derived({ bonding_strategy: single_strategy })
+
+  // Multiple structures example. Default to structures spanning low, medium and high
+  // coordination: Ag4Hg4S4BrCl3 (CN 2-4), Zr18Pd24 (CN 6,7,9), Ac4Mg2 (CN 8,11,12).
+  let selected_ids = $state<string[]>([
+    `mp-1229155`,
+    `mp-12712`,
+    `mp-1183089-Ac4Mg2-monoclinic`,
+  ])
   let multi_split_mode = $state<SplitMode>(`by_element`)
   let multi_strategy = $state<BondingStrategy>(
     SETTINGS_CONFIG.structure.bonding_strategy.value,
   )
+
+  // Overlay tiles share the same coordination coloring, linked to the multi strategy
+  let multi_color_config = $state({ ...coord_coloring })
+  let multi_scene_props = $derived({ bonding_strategy: multi_strategy, gizmo: false })
 
   function toggle_select(id: string) {
     selected_ids = selected_ids.includes(id)
@@ -84,7 +103,10 @@
 
 <p>
   Visualize coordination numbers in crystal structures using different bonding strategies.
-  The coordination number (CN) is the number of nearest neighbors around each atom.
+  The coordination number (CN) is the number of nearest neighbors around each atom. The
+  structure viewers color each atom by its CN and show a <strong>discrete color bar</strong>
+  legend (bottom-right) with one labeled segment per integer CN value. Click a segment to
+  hide atoms with that CN; changing the strategy updates both the histogram and the bar.
 </p>
 
 <div class="bleed-1400">
@@ -132,7 +154,12 @@
         split_mode={single_split_mode}
         style="height: 500px"
       />
-      <Structure structure={single_struct} style="height: 500px" />
+      <Structure
+        structure={single_struct}
+        bind:atom_color_config={single_color_config}
+        scene_props={single_scene_props}
+        style="height: 500px"
+      />
     {/if}
   </section>
 
@@ -197,10 +224,11 @@
             <h3>{struct_id}</h3>
             <Structure
               structure={struct_obj}
+              atom_color_config={multi_color_config}
+              scene_props={multi_scene_props}
               style="height: 180px; width: 100%"
               enable_info_pane={false}
               enable_measure_mode={false}
-              scene_props={{ gizmo: false }}
             />
           </div>
         {/if}

@@ -148,10 +148,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     wavelength = WAVELENGTHS[wl_input]
   }
 
-  // Symmetry refinement (symprec > 0) is not implemented in TS version.
-  // Option retained for API parity.
-  // const symprec = options.symprec ?? 0
-
+  // Symmetry refinement (symprec > 0) is not implemented in TS version. Option retained for API parity.
   // For row-wise lattice matrix A (rows are a, b, c), reciprocal rows are inv(A)^T
   const recip_rows = math.transpose_3x3_matrix(
     math.matrix_inverse_3x3(structure.lattice.matrix),

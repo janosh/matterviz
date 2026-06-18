@@ -747,6 +747,181 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(Number.isFinite(result.lattice?.c as number)).toBe(true)
   })
 
+  // Lattice-centering reconstruction from the space-group H-M symbol. Applied
+  // only when it reconciles _atom_type_number_in_cell exactly, so atom lists
+  // that already embed centering (e.g. COD 7008984 above) are never doubled.
+  describe(`CIF centering from space-group symbol`, () => {
+    // Minimal CIF with an identity-only symop loop, optional _atom_type counts and
+    // atom-site rows (defaults to a single Fe at the origin).
+    const make_cif = (
+      symbol: string,
+      {
+        angles = `90 90 90`,
+        atom_types = [],
+        atom_sites = [`Fe1 Fe 0 0 0`],
+      }: {
+        angles?: string
+        atom_types?: [string, number][]
+        atom_sites?: string[]
+      } = {},
+    ): string => {
+      const [alpha, beta, gamma] = angles.split(` `)
+      return [
+        `data_test`,
+        `_cell_length_a 5`,
+        `_cell_length_b 5`,
+        `_cell_length_c 5`,
+        `_cell_angle_alpha ${alpha}`,
+        `_cell_angle_beta ${beta}`,
+        `_cell_angle_gamma ${gamma}`,
+        `_symmetry_space_group_name_H-M '${symbol}'`,
+        `loop_`,
+        `_space_group_symop_operation_xyz`,
+        `'x, y, z'`,
+        ...(atom_types.length
+          ? [
+              `loop_`,
+              `_atom_type_symbol`,
+              `_atom_type_number_in_cell`,
+              ...atom_types.map(([sym, num]) => `${sym} ${num}`),
+            ]
+          : []),
+        `loop_`,
+        `_atom_site_label`,
+        `_atom_site_type_symbol`,
+        `_atom_site_fract_x`,
+        `_atom_site_fract_y`,
+        `_atom_site_fract_z`,
+        ...atom_sites,
+      ].join(`\n`)
+    }
+
+    const centered_cif = (
+      symbol: string,
+      count: number,
+      {
+        angles = `90 90 90`,
+        with_count = true,
+      }: { angles?: string; with_count?: boolean } = {},
+    ): string => make_cif(symbol, { angles, atom_types: with_count ? [[`Fe`, count]] : [] })
+
+    // round + sort coords so float error (e.g. R's 1/3) and order don't matter
+    const sorted_coords = (sites: { abc: number[] }[]): number[][] =>
+      sites
+        .map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
+        .sort((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
+
+    // expand a single origin atom to the full centered cell, checking the exact
+    // images so a swapped/missing centering vector can't pass on count alone
+    test.each([
+      [`P m -3 m`, `90 90 90`, [[0, 0, 0]]],
+      [
+        `I m -3 m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0.5, 0.5, 0.5],
+        ],
+      ],
+      [
+        `F m -3 m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0, 0.5, 0.5],
+          [0.5, 0, 0.5],
+          [0.5, 0.5, 0],
+        ],
+      ],
+      [
+        `C m m m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0.5, 0.5, 0],
+        ],
+      ],
+      [
+        `A m m 2`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0, 0.5, 0.5],
+        ],
+      ],
+      [
+        `B 1 1 2/m`,
+        `90 90 90`,
+        [
+          [0, 0, 0],
+          [0.5, 0, 0.5],
+        ],
+      ],
+      [
+        `R -3`,
+        `90 90 120`,
+        [
+          [0, 0, 0],
+          [0.333333, 0.666667, 0.666667],
+          [0.666667, 0.333333, 0.333333],
+        ],
+      ],
+    ])(`%s expands origin atom to the centered cell`, (symbol, angles, expected) => {
+      const result = parse_cif(centered_cif(symbol, expected.length, { angles }))
+      assert(result, `Failed to parse ${symbol}`)
+      expect(sorted_coords(result.sites)).toEqual(expected)
+    })
+
+    test.each([
+      [`hexagonal axes apply R centering`, `90 90 120`, 3],
+      [`rhombohedral axes skip R centering`, `70 70 70`, 1],
+      [`tilted alpha skips R centering`, `80 90 120`, 1],
+    ])(`R-centering: %s`, (_desc, angles, expected) => {
+      const result = parse_cif(centered_cif(`R -3`, 3, { angles }))
+      assert(result, `Failed to parse R with angles ${angles}`)
+      expect(result.sites).toHaveLength(expected)
+    })
+
+    test.each([
+      [`count already satisfied (atoms embed centering)`, `I m -3 m`, 1, true, 1],
+      [`no _atom_type_number_in_cell to reconcile against`, `F m -3 m`, 4, false, 1],
+    ])(`does not apply centering when %s`, (_desc, symbol, count, with_count, expected) => {
+      const result = parse_cif(centered_cif(symbol, count, { with_count }))
+      assert(result, `Failed to parse ${symbol}`)
+      expect(result.sites).toHaveLength(expected)
+    })
+
+    test(`rejects centering when only the total reconciles, not per-element counts`, () => {
+      // I symbol implies ×2. Expected Fe 1 / O 3 (total 4). Centering both atoms at
+      // the origin yields Fe 2 / O 2 (total 4) — total matches but composition is
+      // wrong, so centering must be rejected and the 2 base sites kept.
+      const cif = make_cif(`I m -3 m`, {
+        atom_types: [
+          [`Fe`, 1],
+          [`O`, 3],
+        ],
+        atom_sites: [`Fe1 Fe 0 0 0`, `O1 O 0 0 0`],
+      })
+      const result = parse_cif(cif)
+      assert(result, `Failed to parse`)
+      expect(result.sites).toHaveLength(2)
+    })
+
+    test(`sums _atom_type rows that normalize to the same element (Fe2+/Fe3+)`, () => {
+      // expected Fe = 1 + 1 = 2 (both rows → Fe); I-centering must expand the
+      // single listed Fe to 2 sites to reconcile the summed total
+      const cif = make_cif(`I m -3 m`, {
+        atom_types: [
+          [`Fe2+`, 1],
+          [`Fe3+`, 1],
+        ],
+      })
+      const result = parse_cif(cif)
+      assert(result, `Failed to parse`)
+      expect(result.sites).toHaveLength(2)
+    })
+  })
+
   it(`should detect CIF format by content`, () => {
     const result = parse_structure_file(QUARTZ_CIF_FOR_DETECTION)
     assert(result, `Failed to parse CIF`)

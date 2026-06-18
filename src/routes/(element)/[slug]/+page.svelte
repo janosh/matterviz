@@ -52,7 +52,11 @@
 
   let key_vals = $derived(
     Object.keys(ELEM_PROPERTY_LABELS)
-      .filter((key) => element[key as keyof ChemicalElement])
+      .filter((key) => {
+        const value = element[key as keyof ChemicalElement]
+        // empty arrays would otherwise render as a unit-only row
+        return Array.isArray(value) ? value.length > 0 : Boolean(value)
+      })
       .map((key) => {
         const [label, unit] = ELEM_PROPERTY_LABELS[key as keyof ChemicalElement] ?? []
         let value = element[key as keyof ChemicalElement]
@@ -160,7 +164,7 @@
     </thead>
 
     <tbody>
-      {#each element.shells as shell_occu, shell_idx (shell_occu + shell_idx)}
+      {#each element.shells as shell_occu, shell_idx (shell_idx)}
         {@const shell_orbitals = element.electron_configuration
           .split(` `)
           .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))

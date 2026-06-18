@@ -129,11 +129,8 @@ export const merge_split_partial_sites = (
   hidden_elements: ReadonlySet<string> = new Set(),
 ): RenderSite[] => {
   const grouped_indices = group_split_partial_indices(sites, hidden_elements)
-  return build_render_sites(
-    sites,
-    grouped_indices.non_grouped_site_indices,
-    grouped_indices.grouped_site_indices,
-  )
+  const { non_grouped_site_indices, grouped_site_indices } = grouped_indices
+  return build_render_sites(sites, non_grouped_site_indices, grouped_site_indices)
 }
 
 export const compute_slice_geometry = (
@@ -152,10 +149,8 @@ export const compute_slice_geometry = (
     element,
     occu: occu * occupancy_scale_factor,
   }))
-  const normalized_total_occupancy = normalized_species.reduce(
-    (occupancy_sum, { occu }) => occupancy_sum + occu,
-    0,
-  )
+  // Sum of scaled occupancies equals total * scale (avoids a second O(n) pass)
+  const normalized_total_occupancy = total_visible_occupancy * occupancy_scale_factor
   const has_vacancy_gap = normalized_total_occupancy < 1 - OCCUPANCY_EPS
   const last_visible_species_idx = normalized_species.length - 1
   let start_angle = 0

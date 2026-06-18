@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SettingsSection } from '$lib/layout'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { SankeyNodeAlign, SankeyOrientation } from '$lib/plot'
   import ControlPane from '$lib/plot/core/components/ControlPane.svelte'
   import { DEFAULTS } from '$lib/settings'
@@ -74,21 +74,27 @@
           <option value="center">Center</option>
         </select>
       </label>
-      <label style="flex: 1 1 100%">
-        Node width:
-        <input type="range" min="4" max="60" step="1" bind:value={node_width} />
-        <input type="number" min="4" max="60" step="1" bind:value={node_width} />
-      </label>
-      <label style="flex: 1 1 100%">
-        Node padding:
-        <input type="range" min="0" max="40" step="1" bind:value={node_padding} />
-        <input type="number" min="0" max="40" step="1" bind:value={node_padding} />
-      </label>
-      <label style="flex: 1 1 100%">
-        Link opacity:
-        <input type="range" min="0.05" max="1" step="0.05" bind:value={link_opacity} />
-        <input type="number" min="0.05" max="1" step="0.05" bind:value={link_opacity} />
-      </label>
+      <NumberRangeInput
+        min={4}
+        max={60}
+        step={1}
+        bind:value={node_width}
+        style="flex: 1 1 100%"
+      >Node width:</NumberRangeInput>
+      <NumberRangeInput
+        min={0}
+        max={40}
+        step={1}
+        bind:value={node_padding}
+        style="flex: 1 1 100%"
+      >Node padding:</NumberRangeInput>
+      <NumberRangeInput
+        min={0.05}
+        max={1}
+        step={0.05}
+        bind:value={link_opacity}
+        style="flex: 1 1 100%"
+      >Link opacity:</NumberRangeInput>
       <label style="flex: 1 1 100%">
         <input type="checkbox" bind:checked={show_node_labels} />
         Show node labels

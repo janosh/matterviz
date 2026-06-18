@@ -85,9 +85,9 @@
     },
   })
 
-  function handle_dragover(ev: DragEvent) {
-    ev.preventDefault()
-    if (ev.dataTransfer) ev.dataTransfer.dropEffect = `copy`
+  function handle_dragover(event: DragEvent) {
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = `copy`
     dragging = true
   }
 

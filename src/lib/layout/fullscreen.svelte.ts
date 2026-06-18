@@ -1,7 +1,6 @@
 import { set_fullscreen_bg } from './fullscreen'
 
-// Two-way sync between a bindable `fullscreen` flag, the browser fullscreen state of a wrapper, and the fullscreen background CSS var. Creates $effects (call during component init). Shared by BrillouinZone/FermiSurface/Structure viewers.
-// TODO Trajectory.svelte still has its own fullscreen variant — migrate it here.
+// Two-way sync between a bindable `fullscreen` flag, the browser fullscreen state of a wrapper, and the fullscreen background CSS var. Creates $effects (call during component init). Shared by BrillouinZone/FermiSurface/Structure/Trajectory viewers.
 export function sync_fullscreen(opts: {
   get_wrapper: () => HTMLDivElement | undefined
   get_fullscreen: () => boolean
