@@ -145,7 +145,7 @@ function parse_bxsf(content: string): BandGridData {
     const lower = line.toLowerCase()
     if (lower.includes(`fermi`) && lower.includes(`energy`)) {
       // Match patterns like "Fermi Energy = 5.123" or "fermi_energy: -0.5"
-      const match = /(?:=|:)\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i.exec(line)
+      const match = /(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i.exec(line)
       if (match) {
         fermi_energy = parseFloat(match[1])
         break

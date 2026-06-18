@@ -9,6 +9,4 @@
 
 // Source of truth is data.json.gz. During npm packaging, scripts/package-dist-assets.ts
 // rewrites dist/element/data.js to inline decompressed JSON for sync consumers.
-import data from './data.json.gz'
-
-export default data
+export { default } from './data.json.gz'

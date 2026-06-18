@@ -215,7 +215,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(fullscreen_button).toBeEnabled()
     await expect(fullscreen_button).toHaveAttribute(
       `data-original-title`,
-      /(Exit|Enter) fullscreen/,
+      /(?:Exit|Enter) fullscreen/,
     )
     await fullscreen_button.click({ force: true })
     expect(error_occurred).toBe(false)

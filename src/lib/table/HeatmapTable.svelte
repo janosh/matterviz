@@ -85,7 +85,7 @@
   }
 
   const NUMERIC_WITH_ERROR_RE =
-    /^([-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
+    /^(?<numeric>[-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
 
   const parse_numeric_string = (val: string): number | null => {
     const numeric_str = val.match(NUMERIC_WITH_ERROR_RE)?.[1] ?? val
@@ -98,7 +98,7 @@
   const get_sort_val = (val: CellVal): string | number => {
     if (typeof val === `string`) {
       // Check for HTML data-sort-value attribute first
-      const sort_attr_match = val.match(/data-sort-value="([^"]*)"/)
+      const sort_attr_match = val.match(/data-sort-value="(?<value>[^"]*)"/)
       if (sort_attr_match) {
         const num = Number(sort_attr_match[1])
         return isNaN(num) ? sort_attr_match[1] : num

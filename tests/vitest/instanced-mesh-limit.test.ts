@@ -36,7 +36,10 @@ describe(`InstancedMesh limits`, () => {
     ).toHaveLength(2)
     // match up to the closing brace at the function's own indent (group 1), so the
     // pattern tolerates reindentation and skips deeper-nested braces (e.g. template literals)
-    const key_fn = /\n( *)function instanced_atom_group_key\([\s\S]*?\n\1\}/.exec(source)?.[0]
+    const key_fn =
+      /\n(?<indent> *)function instanced_atom_group_key\([\s\S]*?\n\k<indent>\}/.exec(
+        source,
+      )?.[0]
     if (!key_fn) throw new Error(`instanced_atom_group_key function not found`)
     for (const token of [`format_num(radius, \`.3~\`)`, `edit_mode_image`, `atoms.length`]) {
       expect(key_fn).toContain(token)

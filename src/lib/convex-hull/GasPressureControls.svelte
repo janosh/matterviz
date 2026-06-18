@@ -68,7 +68,7 @@
 
   // Format gas name for display (subscript numbers)
   const format_gas_name = (gas: GasSpecies): string =>
-    gas.replaceAll(/(\d+)/g, `<sub>$1</sub>`)
+    gas.replaceAll(/(?<digits>\d+)/g, `<sub>$1</sub>`)
 
   // Format pressure as plain text (no HTML) for the number input
   function format_pressure(P: number): string {

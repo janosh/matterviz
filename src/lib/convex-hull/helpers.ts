@@ -19,9 +19,9 @@ import type {
   MarkerSymbol,
   PhaseData,
 } from './types'
-import { DEFAULT_GAS_TEMP, MAGNETIC_ORDERING_CATEGORY } from './types'
+import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
-export { DEFAULT_GAS_TEMP }
+export { DEFAULT_GAS_TEMP } from './types'
 
 // Tolerance for classifying a phase as on the convex hull (eV/atom)
 export const HULL_STABILITY_TOL = 1e-6

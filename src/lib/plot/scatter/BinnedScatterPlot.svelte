@@ -275,8 +275,8 @@
     const bin_w = plot_width / density_result.x_bins
     const bin_h = plot_height / density_result.y_bins
     let occupied_count = 0
-    for (let idx = 0; idx < density_result.counts.length; idx++) {
-      if (density_result.counts[idx]) occupied_count++
+    for (const count of density_result.counts) {
+      if (count) occupied_count++
     }
     const stride = Math.max(1, Math.ceil(occupied_count / max_placement_bins))
     let occupied_idx = 0
@@ -338,8 +338,7 @@
     const values: number[] = []
     for (const srs of series) {
       if (!srs.size_values) continue
-      for (let idx = 0; idx < srs.size_values.length; idx++) {
-        const size_value = srs.size_values[idx]
+      for (const size_value of Array.from(srs.size_values)) {
         if (size_value == null || !Number.isFinite(size_value)) continue
         values.push(size_value)
       }

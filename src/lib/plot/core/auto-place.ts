@@ -25,7 +25,7 @@ export const placed_coords = (
 // True when the user pinned a decoration via its style (an edge property or position:absolute),
 // in which case auto-placement must leave it alone.
 export const has_explicit_position = (style?: string | null): boolean =>
-  /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style ?? ``)
+  /(?:^|[;{]\s*)(?:top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style ?? ``)
 
 // A decoration's pixel footprint: its rendered box once laid out, else `fallback` (offset dims read
 // 0 before first render). Used to decide crowding before the real size is known.

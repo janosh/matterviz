@@ -2,6 +2,7 @@
 // Used by JsonBrowser to detect renderable items in JSON trees and by main.ts
 // to decide whether to show the browser or render directly.
 
+import type { DefaultSettings } from '$lib/settings'
 import { is_optimade_raw } from '$lib/structure/parse'
 
 // Visualization types that can be rendered in the extension
@@ -441,4 +442,47 @@ export function scan_renderable_paths(
 
   walk(obj, prefix, 0)
   return results
+}
+
+// Resolve a path produced by scan_renderable_paths back to its value (inverse walk).
+// Handles dotted keys ["foo.bar"], array indices [0], and bare dotted paths a.b.c.
+export function resolve_path(root: unknown, path: string): unknown {
+  if (!path) return root
+  const segments: string[] = []
+  const segment_re =
+    /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g
+  let match: RegExpExecArray | null
+  while ((match = segment_re.exec(path)) !== null) {
+    segments.push(match[1] ?? match[2] ?? match[3])
+  }
+  let current: unknown = root
+  for (const segment of segments) {
+    if (current === null || current === undefined || typeof current !== `object`) {
+      return undefined
+    }
+    current = (current as Record<string, unknown>)[segment]
+  }
+  return current
+}
+
+// Map centralized settings defaults to Structure component props.
+// TIGHT COUPLING WARNING: this mapping ties the settings schema (src/lib/settings.ts)
+// to the Structure prop interface — changes on either side need a manual update here.
+// Shared by the webview entry (main.ts) and the JSON browser panel mounts (JsonBrowser.svelte).
+export const structure_props = (defaults: DefaultSettings) => {
+  const { structure } = defaults
+  return {
+    scene_props: { ...structure, gizmo: structure.show_gizmo },
+    lattice_props: {
+      show_cell_vectors: structure.show_cell_vectors,
+      cell_edge_opacity: structure.cell_edge_opacity,
+      cell_surface_opacity: structure.cell_surface_opacity,
+      cell_edge_color: structure.cell_edge_color,
+      cell_surface_color: structure.cell_surface_color,
+    },
+    color_scheme: defaults.color_scheme,
+    background_color: defaults.background_color,
+    background_opacity: defaults.background_opacity,
+    show_image_atoms: structure.show_image_atoms,
+  }
 }

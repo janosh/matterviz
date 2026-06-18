@@ -332,7 +332,7 @@
           const compression_format = detect_compression_format(lower_name)
           // Get base filename without compression extension
           const base_name = compression_format
-            ? lower_name.replace(/\.(gz|gzip)$/i, ``)
+            ? lower_name.replace(/\.(?:gz|gzip)$/i, ``)
             : lower_name
           const base_ext = base_name.split(`.`).pop()
 

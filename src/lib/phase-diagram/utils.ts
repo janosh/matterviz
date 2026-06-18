@@ -678,7 +678,7 @@ function format_label_parts(
 ): string {
   if (!use_subscripts) return label
   return label
-    .split(/(\s*\+\s*)/)
+    .split(/(?<separator>\s*\+\s*)/)
     .map((part) => {
       if (part.trim() === `+`) return part
       return formatter(part.trim(), use_subscripts)

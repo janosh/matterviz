@@ -14,13 +14,13 @@ import {
 import type { SymmetryElement } from '$lib/symmetry'
 import { operations_from_number } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { col_major, init_moyo_for_tests } from '../setup'
+import {
+  col_major,
+  cubic_matrix,
+  IDENTITY_MATRIX3 as IDENTITY,
+  init_moyo_for_tests,
+} from '../setup'
 
-const IDENTITY: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
 const INVERSION: Matrix3x3 = [
   [-1, 0, 0],
   [0, -1, 0],
@@ -314,7 +314,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       for (const op of ops) {
         const elem = classify_symmetry_op(op.rotation, op.translation, centerings)
         if (elem === null) continue
-        expect(elem.label).toMatch(/^(-?[1-6](_[1-5])?|[mabcndg])$/)
+        expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndg])$/)
         if (elem.axis) {
           // axes are reduced integer vectors with canonical sign
           expect(elem.axis.every((val) => Number.isInteger(val))).toBe(true)
@@ -347,7 +347,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     // get intrinsic translation 5/6 along <111> and a bogus "3_0" label
     const elements = elements_for(199)
     for (const elem of elements) {
-      expect(elem.label).toMatch(/^(-?[1-6](_[1-5])?|[mabcndg])$/)
+      expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndg])$/)
     }
     const labels = new Set(elements.map((elem) => elem.label))
     expect(labels).toContain(`3`)
@@ -356,11 +356,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
 })
 
 describe(`cell clipping helpers`, () => {
-  const cubic_2: Matrix3x3 = [
-    [2, 0, 0],
-    [0, 2, 0],
-    [0, 0, 2],
-  ]
+  const cubic_2 = cubic_matrix(2)
 
   test(`clip_line_to_cell: axis along z through the origin spans the cell`, () => {
     const seg = clip_line_to_cell([0, 0, 0], [0, 0, 1], cubic_2)

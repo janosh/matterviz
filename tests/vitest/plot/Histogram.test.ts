@@ -2,7 +2,7 @@ import { Histogram, type Vec2 } from '$lib'
 import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { resize_element } from '../setup'
+import { axis_label_pivot_y, resize_element } from '../setup'
 
 function mount_histogram(props: Record<string, unknown>) {
   document.body.innerHTML = ``
@@ -247,16 +247,7 @@ describe(`Histogram`, () => {
     await resize_element(plot, 400, 300) // axis labels only render once the plot has a size
     // both y titles rotate about the plot's vertical center; a stale label_shift default
     // used to push the y2 title 60px below center
-    const pivot_y = (selector: string) => {
-      const transform =
-        document
-          .querySelector(selector)
-          ?.closest(`foreignObject`)
-          ?.getAttribute(`transform`) ?? ``
-      const match = /rotate\(-90,\s*[\d.-]+,\s*([\d.-]+)\)/.exec(transform)
-      if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
-      return Number(match[1])
-    }
+    const pivot_y = (selector: string) => axis_label_pivot_y(document, selector)
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 

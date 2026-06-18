@@ -1025,14 +1025,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
         if (!marker_bbox) return Infinity
         const dx = legend_center_x - (marker_bbox.x + marker_bbox.width / 2)
         const dy = legend_center_y - (marker_bbox.y + marker_bbox.height / 2)
-        return Math.sqrt(dx * dx + dy * dy)
+        return Math.hypot(dx, dy)
       }),
     )
 
     // Use percentage-based threshold relative to plot size
     // 5% of plot diagonal is a reasonable minimum distance for small datasets
     // (larger percentages may not be achievable when data is concentrated in one area)
-    const plot_diagonal = Math.sqrt(plot_bbox.width ** 2 + plot_bbox.height ** 2)
+    const plot_diagonal = Math.hypot(plot_bbox.width, plot_bbox.height)
     const distance_threshold = plot_diagonal * 0.05
 
     // Legend should not be too close to any data point (smart placement should avoid markers)

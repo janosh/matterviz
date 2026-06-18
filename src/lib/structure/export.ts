@@ -142,13 +142,10 @@ export function generate_mtl_content(scene: Scene): string {
       // Get diffuse color (main color)
       if (has_color_property(mat)) {
         const color = mat.color
-        lines.push(`Kd ${color.r.toFixed(6)} ${color.g.toFixed(6)} ${color.b.toFixed(6)}`)
+        const fmt = (val: number) => val.toFixed(6)
+        lines.push(`Kd ${fmt(color.r)} ${fmt(color.g)} ${fmt(color.b)}`)
         // Ambient is typically a fraction of diffuse
-        lines.push(
-          `Ka ${(color.r * 0.2).toFixed(6)} ${(color.g * 0.2).toFixed(6)} ${(
-            color.b * 0.2
-          ).toFixed(6)}`,
-        )
+        lines.push(`Ka ${fmt(color.r * 0.2)} ${fmt(color.g * 0.2)} ${fmt(color.b * 0.2)}`)
       } else {
         // Default white if no color
         lines.push(`Kd 1.000000 1.000000 1.000000`)
@@ -629,17 +626,10 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
 
   const lattice = structure.lattice
   if (lattice.matrix && Array.isArray(lattice.matrix) && lattice.matrix.length >= 3) {
-    // Convert 3x3 matrix to 3 vectors
-    const matrix = lattice.matrix
-    lines.push(
-      `${matrix[0][0].toFixed(8)} ${matrix[0][1].toFixed(8)} ${matrix[0][2].toFixed(8)}`,
-    )
-    lines.push(
-      `${matrix[1][0].toFixed(8)} ${matrix[1][1].toFixed(8)} ${matrix[1][2].toFixed(8)}`,
-    )
-    lines.push(
-      `${matrix[2][0].toFixed(8)} ${matrix[2][1].toFixed(8)} ${matrix[2][2].toFixed(8)}`,
-    )
+    // One line per lattice vector, exactly 3 components at 8-decimal fixed precision
+    for (const vec of lattice.matrix.slice(0, 3)) {
+      lines.push([vec[0], vec[1], vec[2]].map((coord) => coord.toFixed(8)).join(` `))
+    }
   } else {
     throw new Error(`No valid lattice matrix for POSCAR export`)
   }

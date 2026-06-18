@@ -393,7 +393,7 @@ export async function export_trajectory_video(
 
       try {
         const blob = new Blob(chunks, { type: `video/webm` })
-        const webm_filename = filename.replace(/\.(mp4|webm)$/i, `.webm`)
+        const webm_filename = filename.replace(/\.(?:mp4|webm)$/i, `.webm`)
         download(blob, webm_filename, `video/webm`)
         on_progress?.(100)
         resolve()

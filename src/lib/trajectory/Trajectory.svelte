@@ -501,7 +501,7 @@
       reader.addEventListener(`error`, () => reject(new Error(`Failed to read file`)))
 
       // Read as text for text-based formats, binary for others
-      if (file.name.toLowerCase().match(/\.(xyz|json|extxyz|lammpstrj)$/)) {
+      if (/\.(?:xyz|json|extxyz|lammpstrj)$/.test(file.name.toLowerCase())) {
         reader.readAsText(file)
       } else reader.readAsArrayBuffer(file)
     })

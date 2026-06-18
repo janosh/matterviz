@@ -8,7 +8,7 @@ import {
 import { Object3D, OrthographicCamera } from 'three'
 import { describe, expect, test } from 'vitest'
 
-const expect_vec_close = (actual: Vec3, expected: Vec3): void => {
+const expectVecClose = (actual: Vec3, expected: Vec3): void => {
   for (const [idx, val] of actual.entries()) {
     expect(val).toBeCloseTo(expected[idx])
   }
@@ -31,7 +31,7 @@ describe(`label placement`, () => {
 
     const offset = choose_site_label_offset(bond_directions, base_offset)
 
-    expect_vec_close(offset, [0, -0.5, 0])
+    expectVecClose(offset, [0, -0.5, 0])
   })
 
   test(`preserves label offset length when choosing another direction`, () => {

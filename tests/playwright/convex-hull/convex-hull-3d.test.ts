@@ -163,7 +163,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
 
     // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
     const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
-    const unstable_match = unstable_text?.match(/(\d+)/)
+    const unstable_match = unstable_text?.match(/(?<count>\d+)/)
     const unstable_count = unstable_match ? parseInt(unstable_match[1], 10) : 0
     expect(unstable_count).toBeGreaterThan(0)
   })

@@ -23,12 +23,7 @@ const make_site = (element: ElementSymbol, xyz: number[]) => ({
 })
 
 // Helper to check basic RDF properties that all RDFs should satisfy
-function check_basic_rdf_properties(
-  radii: number[],
-  g_r: number[],
-  n_bins: number,
-  _name = ``,
-): void {
+function check_basic_rdf_properties(radii: number[], g_r: number[], n_bins: number): void {
   expect(radii).toHaveLength(n_bins)
   expect(g_r).toHaveLength(n_bins)
   expect(g_r.every((val) => val >= 0)).toBe(true)
@@ -340,17 +335,7 @@ describe(`calculate_rdf`, () => {
       // Check that fractional coordinates were calculated correctly
       // For at least one site, verify xyz = lattice · abc
       const site = structure.sites[0]
-      const xyz_from_abc = [
-        lattice[0][0] * site.abc[0] +
-          lattice[1][0] * site.abc[1] +
-          lattice[2][0] * site.abc[2],
-        lattice[0][1] * site.abc[0] +
-          lattice[1][1] * site.abc[1] +
-          lattice[2][1] * site.abc[2],
-        lattice[0][2] * site.abc[0] +
-          lattice[1][2] * site.abc[1] +
-          lattice[2][2] * site.abc[2],
-      ]
+      const xyz_from_abc = math.create_frac_to_cart(lattice)(site.abc)
       expect(xyz_from_abc[0]).toBeCloseTo(site.xyz[0], 10)
       expect(xyz_from_abc[1]).toBeCloseTo(site.xyz[1], 10)
       expect(xyz_from_abc[2]).toBeCloseTo(site.xyz[2], 10)

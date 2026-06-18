@@ -285,7 +285,7 @@
   // stoichiometric input before parsing/reordering.
   const normalize_formula_markup = (formula: string): string =>
     unescape_html(formula)
-      .replaceAll(/<sub>\s*([^<]+?)\s*<\/sub>/gi, `$1`)
+      .replaceAll(/<sub>\s*(?<content>[^<]+?)\s*<\/sub>/gi, `$1`)
       .replaceAll(/<[^>]+>/g, ``)
       .replaceAll(/\s+/g, ``)
   const sanitize_href = (href: string | null | undefined): string | null => {

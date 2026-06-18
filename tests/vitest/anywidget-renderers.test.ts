@@ -10,7 +10,7 @@ import { latest_stub, reset_stub } from './reactive-renderer-registry'
 // pulling the built dist bundle. The theme/css imports are stubbed for the same
 // reason (mount_spec never calls into them directly).
 vi.mock(`matterviz`, async () => {
-  const Stub = (await import(`./reactive-renderer-stub.svelte`)).default
+  const stub_module = await import(`./reactive-renderer-stub.svelte`)
   const component_names = [
     `Bands`,
     `BandsAndDos`,
@@ -33,7 +33,7 @@ vi.mock(`matterviz`, async () => {
     `Trajectory`,
     `XrdPlot`,
   ]
-  return Object.fromEntries(component_names.map((name) => [name, Stub]))
+  return Object.fromEntries(component_names.map((name) => [name, stub_module.default]))
 })
 vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
 vi.mock(`matterviz/colors`, () => ({ luminance: () => 0 }))

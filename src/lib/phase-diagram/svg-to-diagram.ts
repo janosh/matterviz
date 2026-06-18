@@ -823,7 +823,7 @@ function infer_mpds_components(doc: Document): [string, string] {
 
 // Parse stroke-width from style attribute or direct attribute (returns 0 if not found)
 function parse_stroke_width(el: Element): number {
-  const style_match = /stroke-width:\s*([\d.]+)/.exec(el.getAttribute(`style`) ?? ``)
+  const style_match = /stroke-width:\s*(?<width>[\d.]+)/.exec(el.getAttribute(`style`) ?? ``)
   if (style_match) return parseFloat(style_match[1])
   const attr = el.getAttribute(`stroke-width`)
   return attr ? parseFloat(attr) || 0 : 0
@@ -875,8 +875,8 @@ function find_comment_text(group: Element): string | null {
 // Clean LaTeX subscript notation: "La$_2$NiO$_4$" -> "La2NiO4"
 const clean_latex = (text: string): string =>
   text
-    .replaceAll(/\$_\{([^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
-    .replaceAll(/\$_(\d)\$/g, `$1`) // $_2$ -> 2
+    .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
+    .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
     .replaceAll(`$`, ``) // remove any remaining $
     .replaceAll(/\s+/g, ` `)
     .trim()
@@ -979,7 +979,7 @@ function parse_ml_path(
 // Parse translate(x, y) or translate(x) from a transform attribute
 // Single-arg translate uses implicit y=0 per SVG spec
 function parse_translate(el: Element | null): Vec2 | null {
-  const match = /translate\(\s*([\d.eE+-]+)(?:\s*[,\s]\s*([\d.eE+-]+))?\s*\)/.exec(
+  const match = /translate\(\s*(?<x>[\d.eE+-]+)(?:\s*[,\s]\s*(?<y>[\d.eE+-]+))?\s*\)/.exec(
     el?.getAttribute(`transform`) ?? ``,
   )
   if (!match) return null

@@ -49,7 +49,7 @@ export function format_value(value: number, formatter?: string): string {
   // Handle percentage formatting - remove trailing zeros
   if (formatter.includes(`%`)) {
     return formatted.includes(`.`)
-      ? formatted.replace(/(\.\d*?)0+%$/, `$1%`).replace(/\.%$/, `%`)
+      ? formatted.replace(/(?<decimals>\.\d*?)0+%$/, `$1%`).replace(/\.%$/, `%`)
       : formatted
   }
 
@@ -60,7 +60,7 @@ export function format_value(value: number, formatter?: string): string {
 
   // Remove trailing zeros after decimal point
   const out = formatted.includes(`.`)
-    ? formatted.replace(/(\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
+    ? formatted.replace(/(?<decimals>\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
     : formatted
   return out === `-0` ? `0` : out
 }
@@ -184,11 +184,11 @@ export function parse_si_float<T extends string | number | null | undefined>(
   // if not string, return as is
   if (typeof value !== `string`) return value
   // Remove whitespace and commas
-  const cleaned = value.trim().replaceAll(/(\d),(\d)/g, `$1$2`)
+  const cleaned = value.trim().replaceAll(/(?<before>\d),(?<after>\d)/g, `$1$2`)
 
   // SI-formatted number (e.g. "1.23k", "789µ"). Suffixes are case-sensitive (m=milli vs
   // M=mega), so no `i` flag: mismatched-case suffixes return the string as-is.
-  const match = /^([-+]?\d*\.?\d+)\s*([yzafpnµmkMGTPEZY])?$/.exec(cleaned)
+  const match = /^(?<num_part>[-+]?\d*\.?\d+)\s*(?<suffix>[yzafpnµmkMGTPEZY])?$/.exec(cleaned)
   if (match) {
     const [, num_part, suffix] = match
     let multiplier = 1

@@ -5,10 +5,10 @@ import { DEFAULTS } from '$lib/settings'
 import type { StructureHandlerData } from '$lib/structure'
 import * as exports from '$lib/structure/export'
 import { structures } from '$site/structures'
-import { flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
-  assert_hover_scoped_shortcut,
+  assertHoverScopedShortcut,
   bind_props,
   doc_query,
   press_window_key,
@@ -16,6 +16,11 @@ import {
 } from '../setup'
 
 const structure = structures[0]
+
+// Mount Structure into document.body (queries are left to each test via doc_query)
+const mount_structure = (props: ComponentProps<typeof Structure>): void => {
+  mount(Structure, { target: document.body, props })
+}
 
 // Shared test utilities to reduce duplication
 const SAMPLE_POSCAR_CONTENT = `BaTiO3 tetragonal
@@ -62,7 +67,7 @@ describe(`Structure`, () => {
       warns.push(args.map(String).join(` `))
     })
     try {
-      mount(Structure, { target: document.body, props: { structure } })
+      mount_structure({ structure })
       flushSync()
       await tick()
       flushSync()
@@ -76,10 +81,7 @@ describe(`Structure`, () => {
   })
 
   test(`open control pane when clicking toggle button`, () => {
-    mount(Structure, {
-      target: document.body,
-      props: { structure, controls_open: false, show_controls: true },
-    })
+    mount_structure({ structure, controls_open: false, show_controls: true })
 
     // Check that the controls toggle button exists and is clickable
     const controls_toggle = doc_query(`button.structure-controls-toggle`)
@@ -92,7 +94,7 @@ describe(`Structure`, () => {
   })
 
   test(`hides atom color mode toggle until viewer hover or focus`, async () => {
-    mount(Structure, { target: document.body, props: { structure } })
+    mount_structure({ structure })
     await tick()
 
     const viewer = doc_query(`.structure`)
@@ -121,13 +123,10 @@ describe(`Structure`, () => {
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
     const state = { info_pane_open: false }
-    mount(Structure, {
-      target: document.body,
-      props: bind_props({ structure, enable_info_pane: true }, state),
-    })
+    mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
 
-    await assert_hover_scoped_shortcut({
+    await assertHoverScopedShortcut({
       viewer: doc_query(`.structure`),
       fire: () => press_window_key({ key: `i`, ctrlKey: true }),
       read_state: () => state.info_pane_open,
@@ -136,10 +135,7 @@ describe(`Structure`, () => {
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
     const state = { info_pane_open: false, measure_mode: `edit-atoms` as MeasureMode }
-    mount(Structure, {
-      target: document.body,
-      props: bind_props({ structure, enable_info_pane: true }, state),
-    })
+    mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
     expect(state.measure_mode, `edit-atoms should stick for a plain structure`).toBe(
       `edit-atoms`,
@@ -154,10 +150,7 @@ describe(`Structure`, () => {
 
   test(`edit-atoms Delete shortcut deletes the selected atom and prevents default`, async () => {
     const state = { structure: structures[0], selected_sites: [] as number[] }
-    mount(Structure, {
-      target: document.body,
-      props: bind_props({ measure_mode: `edit-atoms` as MeasureMode }, state),
-    })
+    mount_structure(bind_props({ measure_mode: `edit-atoms` as MeasureMode }, state))
     await tick()
     state.selected_sites = [0] // select after mount (on-load effect clears selection)
     const n_before = state.structure.sites.length
@@ -180,19 +173,16 @@ describe(`Structure`, () => {
     { props: { cell_type: `conventional` }, reason: `transformed cell` },
   ] as const)(`disables edit-bonds mode for $reason views`, async ({ props }) => {
     let measure_mode: MeasureMode = `distance`
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        show_controls: true,
-        get measure_mode() {
-          return measure_mode
-        },
-        set measure_mode(value) {
-          measure_mode = value
-        },
-        ...props,
+    mount_structure({
+      structure,
+      show_controls: true,
+      get measure_mode() {
+        return measure_mode
       },
+      set measure_mode(value) {
+        measure_mode = value
+      },
+      ...props,
     })
 
     doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`).click()
@@ -209,14 +199,7 @@ describe(`Structure`, () => {
   })
 
   test(`shows safe bond editing controls by default`, async () => {
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        measure_mode: `edit-bonds`,
-        show_controls: true,
-      },
-    })
+    mount_structure({ structure, measure_mode: `edit-bonds`, show_controls: true })
     await tick()
 
     expect(doc_query(`.bond-edit-toolbar`)).toBeInstanceOf(HTMLElement)
@@ -246,14 +229,11 @@ describe(`Structure`, () => {
   ] as const)(
     `selection limit badge visibility in $mode mode`,
     async ({ mode, shows_limit }) => {
-      mount(Structure, {
-        target: document.body,
-        props: {
-          structure,
-          measured_sites: [0, 1, 2, 3, 4, 5, 6, 7],
-          measure_mode: mode,
-          show_controls: true,
-        },
+      mount_structure({
+        structure,
+        measured_sites: [0, 1, 2, 3, 4, 5, 6, 7],
+        measure_mode: mode,
+        show_controls: true,
       })
       await tick()
 
@@ -290,15 +270,12 @@ describe(`Structure`, () => {
   test.each(selection_control_cases)(
     `selection controls visibility in $mode mode`,
     async ({ mode, measured_sites, selected_sites, shows_reset }) => {
-      mount(Structure, {
-        target: document.body,
-        props: {
-          structure,
-          measured_sites,
-          selected_sites,
-          measure_mode: mode,
-          show_controls: true,
-        },
+      mount_structure({
+        structure,
+        measured_sites,
+        selected_sites,
+        measure_mode: mode,
+        show_controls: true,
       })
       await tick()
 
@@ -326,10 +303,7 @@ describe(`Structure`, () => {
         : vi.spyOn(exports.STRUCT_TEXT_FORMATS[fmt], `to_str`)
     export_spy.mockClear() // spies are shared across test.each runs
 
-    mount(Structure, {
-      target: document.body,
-      props: { structure, show_controls: true },
-    })
+    mount_structure({ structure, show_controls: true })
     const structure_controls_toggle = doc_query<HTMLButtonElement>(
       `button.structure-controls-toggle`,
     )
@@ -379,10 +353,7 @@ describe(`Structure`, () => {
     const requestFullscreenMock = vi.fn().mockResolvedValue(undefined)
     const exitFullscreenMock = vi.fn()
 
-    mount(Structure, {
-      target: document.body,
-      props: { structure, show_controls: true },
-    })
+    mount_structure({ structure, show_controls: true })
 
     // Find the wrapper element that was created by the component
     const wrapper = document.querySelector(`.structure`) as HTMLElement
@@ -422,15 +393,12 @@ describe(`Structure`, () => {
     let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure: undefined,
-        show_controls: true,
-        on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
-          structure_loaded = true
-          resolve_drop()
-        },
+    mount_structure({
+      structure: undefined,
+      show_controls: true,
+      on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
+        structure_loaded = true
+        resolve_drop()
       },
     })
 
@@ -455,16 +423,13 @@ describe(`Structure`, () => {
     let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure: undefined,
-        show_controls: true,
-        on_file_drop: (content: string | ArrayBuffer, _filename: string) => {
-          event_handled = true
-          file_content = content
-          resolve_drop()
-        },
+    mount_structure({
+      structure: undefined,
+      show_controls: true,
+      on_file_drop: (content: string | ArrayBuffer, _filename: string) => {
+        event_handled = true
+        file_content = content
+        resolve_drop()
       },
     })
 
@@ -491,15 +456,12 @@ describe(`Structure`, () => {
     let resolve_load!: () => void
     const load_done = new Promise<void>((resolve) => (resolve_load = resolve))
 
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure: undefined,
-        show_controls: true,
-        on_file_load: (data: StructureHandlerData) => {
-          loaded = data
-          resolve_load()
-        },
+    mount_structure({
+      structure: undefined,
+      show_controls: true,
+      on_file_load: (data: StructureHandlerData) => {
+        loaded = data
+        resolve_load()
       },
     })
 
@@ -523,17 +485,9 @@ describe(`Structure`, () => {
       selected_sites: [] as number[],
     }
 
-    mount(Structure, {
-      target: document.body,
-      props: bind_props(
-        {
-          structure,
-          info_pane_open: true,
-          show_controls: true,
-        },
-        state,
-      ),
-    })
+    mount_structure(
+      bind_props({ structure, info_pane_open: true, show_controls: true }, state),
+    )
     await tick()
 
     const first_site_row = document.querySelector(
@@ -652,10 +606,7 @@ describe(`Structure component nested JSON handling`, () => {
       },
     ],
   ])(`renders successfully with %s`, (_description, test_structure) => {
-    mount(Structure, {
-      target: document.body,
-      props: { structure: test_structure as AnyStructure },
-    })
+    mount_structure({ structure: test_structure as AnyStructure })
 
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
     expect(document.body.textContent).not.toContain(`No structure provided`)
@@ -670,10 +621,7 @@ describe(`Structure component nested JSON handling`, () => {
     [`structure with empty sites array`, { sites: [] }],
     [`structure with undefined sites`, { sites: undefined } as unknown],
   ])(`shows appropriate error for %s`, (_description, test_structure) => {
-    mount(Structure, {
-      target: document.body,
-      props: { structure: test_structure as AnyStructure },
-    })
+    mount_structure({ structure: test_structure as AnyStructure })
 
     if (!test_structure) {
       expect(document.body.textContent).toContain(`No structure provided`)
@@ -695,10 +643,7 @@ describe(`Structure component nested JSON handling`, () => {
     expect(nested_structure.sites.length).toBeGreaterThan(0)
 
     // Test component renders without errors
-    mount(Structure, {
-      target: document.body,
-      props: { structure: nested_structure as AnyStructure },
-    })
+    mount_structure({ structure: nested_structure as AnyStructure })
 
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
     expect(document.body.textContent).not.toContain(`No structure provided`)
@@ -716,10 +661,7 @@ test.each([
       camera_projection: initial_projection,
       auto_rotate: 0.5,
     }
-    mount(Structure, {
-      target: document.body,
-      props: { structure, controls_open: true, show_controls: true, scene_props },
-    })
+    mount_structure({ structure, controls_open: true, show_controls: true, scene_props })
     await tick()
 
     // Test 1: UI controls are accessible with correct options
@@ -798,14 +740,11 @@ describe(`atom label controls`, () => {
     const offset = [0, 0, 0] as Vec3
     offset[idx] = initial
 
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        controls_open: true,
-        show_controls: true,
-        scene_props: { show_site_labels: true, site_label_offset: offset },
-      },
+    mount_structure({
+      structure,
+      controls_open: true,
+      show_controls: true,
+      scene_props: { show_site_labels: true, site_label_offset: offset },
     })
 
     const offset_inputs = document.querySelectorAll(
@@ -822,14 +761,11 @@ describe(`atom label controls`, () => {
   })
 
   test(`color controls work correctly`, () => {
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        controls_open: true,
-        show_controls: true,
-        scene_props: { show_site_labels: true, site_label_color: `#ff0000` },
-      },
+    mount_structure({
+      structure,
+      controls_open: true,
+      show_controls: true,
+      scene_props: { show_site_labels: true, site_label_color: `#ff0000` },
     })
 
     const color_inputs = document.querySelectorAll(`input[type="color"]`)
@@ -857,17 +793,14 @@ describe(`atom label controls`, () => {
   })
 
   test(`size and padding controls work correctly`, () => {
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        controls_open: true,
-        show_controls: true,
-        scene_props: {
-          show_site_labels: true,
-          site_label_size: 1.2,
-          site_label_padding: 4,
-        },
+    mount_structure({
+      structure,
+      controls_open: true,
+      show_controls: true,
+      scene_props: {
+        show_site_labels: true,
+        site_label_size: 1.2,
+        site_label_padding: 4,
       },
     })
 
@@ -891,14 +824,11 @@ describe(`atom label controls`, () => {
   })
 
   test(`input constraints are correct`, () => {
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        controls_open: true,
-        show_controls: true,
-        scene_props: { show_site_labels: true },
-      },
+    mount_structure({
+      structure,
+      controls_open: true,
+      show_controls: true,
+      scene_props: { show_site_labels: true },
     })
 
     const size_input = document.querySelector(
@@ -934,25 +864,19 @@ describe(`atom label controls`, () => {
 
   test(`state isolation between instances works`, () => {
     // Mount first instance
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        controls_open: true,
-        show_controls: true,
-        scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.2] },
-      },
+    mount_structure({
+      structure,
+      controls_open: true,
+      show_controls: true,
+      scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.2] },
     })
 
     // Mount second instance
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure,
-        controls_open: true,
-        show_controls: true,
-        scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.7] },
-      },
+    mount_structure({
+      structure,
+      controls_open: true,
+      show_controls: true,
+      scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.7] },
     })
 
     const all_offset_inputs = document.querySelectorAll(
@@ -1016,21 +940,18 @@ describe(`Structure string parsing`, () => {
       let parse_state = $state<{ parsed?: AnyStructure }>({})
       let loaded = false
 
-      mount(Structure, {
-        target: document.body,
-        props: {
-          structure_string: content,
-          get structure() {
-            return parse_state.parsed
-          },
-          set structure(val) {
-            parse_state.parsed = val
-          },
-          on_file_load: (data: StructureHandlerData) => {
-            loaded = true
-            expect(data.total_atoms).toBe(atoms)
-            expect(data.filename).toBe(`string`)
-          },
+      mount_structure({
+        structure_string: content,
+        get structure() {
+          return parse_state.parsed
+        },
+        set structure(val) {
+          parse_state.parsed = val
+        },
+        on_file_load: (data: StructureHandlerData) => {
+          loaded = true
+          expect(data.total_atoms).toBe(atoms)
+          expect(data.filename).toBe(`string`)
         },
       })
 
@@ -1056,26 +977,20 @@ describe(`Structure string parsing`, () => {
     [`malformed JSON`, `{bad`],
   ])(`handles %s gracefully`, async (_, content) => {
     let errored = false
-    mount(Structure, {
-      target: document.body,
-      props: { structure_string: content, on_error: () => (errored = true) },
-    })
+    mount_structure({ structure_string: content, on_error: () => (errored = true) })
     await tick()
     expect(errored).toBe(true)
   })
 
   test(`loading state works correctly`, async () => {
     let loading_state = $state({ loading: false })
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure_string: SAMPLE_POSCAR_CONTENT,
-        get loading() {
-          return loading_state.loading
-        },
-        set loading(val) {
-          loading_state.loading = val
-        },
+    mount_structure({
+      structure_string: SAMPLE_POSCAR_CONTENT,
+      get loading() {
+        return loading_state.loading
+      },
+      set loading(val) {
+        loading_state.loading = val
       },
     })
     await tick()
@@ -1084,13 +999,10 @@ describe(`Structure string parsing`, () => {
 
   test(`file size emission works correctly`, async () => {
     let size = 0
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure_string: SAMPLE_POSCAR_CONTENT,
-        on_file_load: (data: StructureHandlerData) => {
-          size = data.file_size ?? 0
-        },
+    mount_structure({
+      structure_string: SAMPLE_POSCAR_CONTENT,
+      on_file_load: (data: StructureHandlerData) => {
+        size = data.file_size ?? 0
       },
     })
     await tick()
@@ -1103,13 +1015,10 @@ describe(`Structure string parsing`, () => {
       ok: true,
       text: () => Promise.resolve(SAMPLE_POSCAR_CONTENT),
     })
-    mount(Structure, {
-      target: document.body,
-      props: {
-        data_url: `/test.poscar`,
-        structure_string: `ignored`,
-        on_file_load: (data: StructureHandlerData) => (filename = data.filename ?? ``),
-      },
+    mount_structure({
+      data_url: `/test.poscar`,
+      structure_string: `ignored`,
+      on_file_load: (data: StructureHandlerData) => (filename = data.filename ?? ``),
     })
     await tick()
     expect(filename).toBe(`test.poscar`)
@@ -1121,12 +1030,7 @@ describe(`Structure string parsing`, () => {
       status: 404,
       text: () => Promise.resolve(``),
     })
-    mount(Structure, {
-      target: document.body,
-      props: {
-        data_url: `/missing-structure.json`,
-      },
-    })
+    mount_structure({ data_url: `/missing-structure.json` })
     await tick()
     await tick()
 

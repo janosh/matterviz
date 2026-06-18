@@ -14,7 +14,8 @@ import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 // name:type:ncols triples (e.g. "species:S:1:pos:R:3:forces:R:3"), falling back
 // to the conventional "symbol x y z" layout when absent or malformed
 function parse_extxyz_columns(comment: string) {
-  const fields = /Properties\s*=\s*"?([^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
+  const fields =
+    /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
   // Well-formed Properties is name:type:ncols triples; a non-multiple of 3 is malformed,
   // so bail to the conventional default rather than trusting a partial layout
   let layout: Record<string, { offset: number; ncols: number }> | null =
@@ -34,7 +35,11 @@ function parse_extxyz_columns(comment: string) {
 
 // Parse Lattice="ax ay az bx by bz cx cy cz" from an extxyz comment line
 function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
-  const vals = /Lattice\s*=\s*"([^"]+)"/i.exec(comment)?.[1].trim().split(/\s+/).map(Number)
+  const vals = /Lattice\s*=\s*"(?<lattice>[^"]+)"/i
+    .exec(comment)?.[1]
+    .trim()
+    .split(/\s+/)
+    .map(Number)
   if (vals?.length !== 9 || !vals.every(Number.isFinite)) return undefined
   return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
 }
@@ -62,7 +67,7 @@ export function parse_xyz_comment_metadata(comment: string): {
     const match = pattern.exec(comment)
     if (match) properties[key] = parseFloat(match[1])
   }
-  const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i.exec(comment)?.[1]
+  const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(?<step>\d+)/i.exec(comment)?.[1]
   return { step: step ? parseInt(step, 10) : undefined, properties }
 }
 

@@ -299,8 +299,7 @@
     }
     const ordered_segments = helpers.get_ordered_segments(canonical, segments_to_plot)
 
-    for (let seg_idx = 0; seg_idx < ordered_segments.length; seg_idx++) {
-      const segment_key = ordered_segments[seg_idx]
+    for (const segment_key of ordered_segments) {
       if (positions[segment_key]) continue
 
       const [start_label, end_label] = segment_key.split(`_`)

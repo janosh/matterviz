@@ -53,7 +53,7 @@ test.describe(`Trajectory Performance Tests`, () => {
     await expect(step_info).toBeVisible()
 
     const step_text = await step_info.textContent()
-    const max_step_match = step_text?.match(/\/ (\d+)/)
+    const max_step_match = step_text?.match(/\/ (?<max>\d+)/)
     const max_step = max_step_match ? parseInt(max_step_match[1], 10) : 0
 
     expect(max_step).toBeGreaterThanOrEqual(200)

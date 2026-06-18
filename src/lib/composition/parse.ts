@@ -77,11 +77,11 @@ export const atomic_symbol_to_num = (
 const expand_parentheses = (formula: string): string => {
   while (formula.includes(`(`)) {
     const expanded = formula.replaceAll(
-      /\(([^()]+)\)(\d+(?:\.\d+)?|\.\d+)?/g,
+      /\((?<group>[^()]+)\)(?<multiplier>\d+(?:\.\d+)?|\.\d+)?/g,
       (_match, group, multiplier) => {
         const mult = parse_count(multiplier)
         return group.replaceAll(
-          /([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g,
+          /(?<element>[A-Z][a-z]?)(?<count>\d+(?:\.\d+)?|\.\d+)?/g,
           (_m: string, element: string, count: string) => {
             const count_str = format_count(parse_count(count) * mult)
             return element + (count_str === `1` ? `` : count_str)
@@ -110,7 +110,9 @@ export const parse_formula = (formula: string): CompositionType => {
     const coeff = seg_idx > 0 ? /^(?:\d+(?:\.\d+)?|\.\d+)/.exec(segment)?.[0] : undefined
     const multiplier = coeff ? parseFloat(coeff) : 1
     const expanded = expand_parentheses(segment.slice(coeff?.length ?? 0))
-    for (const match of expanded.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
+    for (const match of expanded.matchAll(
+      /(?<element>[A-Z][a-z]?)(?<count>\d+(?:\.\d+)?|\.\d+)?/g,
+    )) {
       const [, element, count] = match
       if (!is_elem_symbol(element)) throw new Error(`Invalid element symbol: ${element}`)
       composition[element] = (composition[element] ?? 0) + parse_count(count) * multiplier
@@ -264,7 +266,9 @@ const parse_oxidation_state = (oxidation_str: string): number => {
     return oxidation_str === `+` ? 1 : -1
   }
   // Handle formats like "2+", "+2", "2-", "-2"
-  const ox_match = /([+-]?)(\d+)([+-]?)/.exec(oxidation_str)
+  const ox_match = /(?<sign_before>[+-]?)(?<number>\d+)(?<sign_after>[+-]?)/.exec(
+    oxidation_str,
+  )
   if (!ox_match) return 0
 
   const [, sign_before, number, sign_after] = ox_match
@@ -293,7 +297,7 @@ export const parse_formula_with_oxidation = (
   //          - just count: count
   //          - neither
   const regex =
-    /([A-Z][a-z]?)(?:(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])((?:\d+(?:\.\d+)?|\.\d+)?)|((?:\d+(?:\.\d+)?|\.\d+))(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?)?/g
+    /(?<element>[A-Z][a-z]?)(?:(?:\^(?<oxi_caret>[+-]?\d+[+-]?|[+-])|\[(?<oxi_bracket>[+-]?\d+[+-]?|[+-])\])(?<count_after>(?:\d+(?:\.\d+)?|\.\d+)?)|(?<count_before>(?:\d+(?:\.\d+)?|\.\d+))(?:\^(?<oxi_caret_2>[+-]?\d+[+-]?|[+-])|\[(?<oxi_bracket_2>[+-]?\d+[+-]?|[+-])\])?)?/g
 
   let match: RegExpExecArray | null
   let orig_idx = 0
@@ -502,7 +506,8 @@ export function parse_formula_with_wildcards(formula: string): WildcardFormulaTo
   // Regex to match either:
   // 1. Standard element symbol with optional decimal count
   // 2. Wildcard with optional decimal count
-  const regex = /([A-Z][a-z]?)((?:\d+(?:\.\d+)?|\.\d+)?)|(\*)((?:\d+(?:\.\d+)?|\.\d+)?)/g
+  const regex =
+    /(?<element>[A-Z][a-z]?)(?<count>(?:\d+(?:\.\d+)?|\.\d+)?)|(?<wildcard>\*)(?<wildcard_count>(?:\d+(?:\.\d+)?|\.\d+)?)/g
 
   let match: RegExpExecArray | null
   while ((match = regex.exec(cleaned)) !== null) {

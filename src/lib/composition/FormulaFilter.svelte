@@ -389,7 +389,7 @@
   function is_valid_constraint(constraint: string): boolean {
     if (!constraint) return true
     return /^\d+$/.test(constraint) || /^\d+-\d+$/.test(constraint) ||
-      /^(>=|<=|>|<)\d+$/.test(constraint)
+      /^(?:>=|<=|>|<)\d+$/.test(constraint)
   }
 
   function strip_operator_prefix(

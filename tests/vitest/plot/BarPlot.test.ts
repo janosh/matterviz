@@ -2,7 +2,7 @@ import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { inside_clip_path, mount_sized } from '../setup'
+import { axis_label_pivot_y, inside_clip_path, mount_sized } from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -115,13 +115,7 @@ describe(`BarPlot`, () => {
     })
     // both y titles rotate about the plot's vertical center; a stale label_shift default
     // used to push the y2 title 60px below center
-    const pivot_y = (selector: string) => {
-      const transform =
-        plot.querySelector(selector)?.closest(`foreignObject`)?.getAttribute(`transform`) ?? ``
-      const match = /rotate\(-90,\s*[\d.-]+,\s*([\d.-]+)\)/.exec(transform)
-      if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
-      return Number(match[1])
-    }
+    const pivot_y = (selector: string) => axis_label_pivot_y(plot, selector)
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 
@@ -241,7 +235,8 @@ describe(`BarPlot`, () => {
         plot.querySelectorAll(`.bar-series[data-series-idx="${idx}"] path[role="button"]`),
         (path) => {
           const [, y_str, h_str] =
-            path.getAttribute(`d`)?.match(/^M[\d.-]+,([\d.-]+)h[\d.-]+v([\d.-]+)/) ?? []
+            path.getAttribute(`d`)?.match(/^M[\d.-]+,(?<y>[\d.-]+)h[\d.-]+v(?<h>[\d.-]+)/) ??
+            []
           return { top: Number(y_str), bottom: Number(y_str) + Number(h_str) }
         },
       )

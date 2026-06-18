@@ -210,7 +210,7 @@ describe(`Surface3D configuration logic`, () => {
       for (const u_val of [0, Math.PI / 4, Math.PI / 2, Math.PI]) {
         for (const v_val of [0, 0.25, 0.5, 0.75, 1]) {
           const pt = parametric_fn(u_val, v_val)
-          const xy_radius = Math.sqrt(pt.x * pt.x + pt.y * pt.y)
+          const xy_radius = Math.hypot(pt.x, pt.y)
           expect(xy_radius).toBeCloseTo(radius, 10)
         }
       }
@@ -341,7 +341,7 @@ describe(`Surface3D configuration logic`, () => {
       expect(points).toHaveLength(4)
       type Point3D = (typeof points)[0]
       const distance = (p1: Point3D, p2: Point3D) =>
-        Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2)
+        Math.hypot(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z)
 
       // All 6 edges of a tetrahedron
       const edges = [

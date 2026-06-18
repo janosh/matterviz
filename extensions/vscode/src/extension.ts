@@ -174,7 +174,7 @@ export const read_file = async (file_path: string): Promise<FileData> => {
 
   // Files we serialize as base64 for the webview (compressed OR binary)
   const is_base64_payload =
-    COMPRESSION_EXTENSIONS_REGEX.test(filename) || /\.(traj|h5|hdf5)$/i.test(filename)
+    COMPRESSION_EXTENSIONS_REGEX.test(filename) || /\.(?:traj|h5|hdf5)$/i.test(filename)
 
   // Check file size to avoid loading huge files into memory
   let file_size: number

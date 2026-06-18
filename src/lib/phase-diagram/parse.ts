@@ -149,7 +149,8 @@ const LINE_PARSERS: LineParser[] = [
   {
     // ELEMENT AL FCC_A1 2.698154E-02 4.5773304E+03 2.871870E+01!
     prefix: `ELEMENT `,
-    pattern: /ELEMENT\s+(\S+)\s+(\S+)\s+([\d.E+-]+)\s+([\d.E+-]+)\s+([\d.E+-]+)/i,
+    pattern:
+      /ELEMENT\s+(?<symbol>\S+)\s+(?<reference_phase>\S+)\s+(?<mass>[\d.E+-]+)\s+(?<enthalpy>[\d.E+-]+)\s+(?<entropy>[\d.E+-]+)/i,
     handler: (match, data) => {
       data.elements.push({
         symbol: match[1].toUpperCase(),
@@ -163,7 +164,7 @@ const LINE_PARSERS: LineParser[] = [
   {
     // PHASE LIQUID % 1 1.0 !
     prefix: `PHASE `,
-    pattern: /PHASE\s+(\S+)\s+(%\S*)\s+(\d+)\s+(.+?)!/i,
+    pattern: /PHASE\s+(?<name>\S+)\s+(?<model_hints>%\S*)\s+(?<count>\d+)\s+(?<sites>.+?)!/i,
     handler: (match, data) => {
       const sublattice_sites = match[4]
         .trim()
@@ -181,7 +182,7 @@ const LINE_PARSERS: LineParser[] = [
   {
     // CONSTITUENT FCC_A1 :AL,ZN : VA : !
     prefix: `CONSTITUENT `,
-    pattern: /CONSTITUENT\s+(\S+)\s*:\s*(.+?)!/i,
+    pattern: /CONSTITUENT\s+(?<phase_name>\S+)\s*:\s*(?<constituents>.+?)!/i,
     handler: (match, data) => {
       const phase_name = match[1]
       const constituents = match[2].split(`:`).map((sub) =>
@@ -199,7 +200,7 @@ const LINE_PARSERS: LineParser[] = [
   {
     // FUNCTION GHSERAL 298.15 expr1; 700 Y expr2; 933.47 Y expr3; 2900 N !
     prefix: `FUNCTION `,
-    pattern: /FUNCTION\s+(\S+)\s+(.+?)!/i,
+    pattern: /FUNCTION\s+(?<name>\S+)\s+(?<body>.+?)!/i,
     handler: (match, data) => {
       const ranges = parse_temperature_ranges(match[2])
       if (ranges.length > 0) {
@@ -214,9 +215,9 @@ const LINE_PARSERS: LineParser[] = [
   {
     // PARAMETER G(LIQUID,AL;0) 298.15 +GHSERAL+11005.029-11.841867*T; 6000 N !
     prefix: `PARAMETER `,
-    pattern: /PARAMETER\s+(\w+)\(([^)]+)\)\s+(.+?)!/i,
+    pattern: /PARAMETER\s+(?<type>\w+)\((?<spec>[^)]+)\)\s+(?<expression>.+?)!/i,
     handler: (match, data) => {
-      const spec_match = /([^,]+),([^;]+);(\d+)/.exec(match[2])
+      const spec_match = /(?<phase>[^,]+),(?<constituents>[^;]+);(?<order>\d+)/.exec(match[2])
       if (spec_match) {
         data.parameters.push({
           type: match[1],
@@ -236,7 +237,7 @@ function parse_temperature_ranges(body: string): { min: number; max: number; exp
   for (const segment of body.split(/;\s*/)) {
     const trimmed = segment.trim()
     if (!trimmed) continue
-    const temp_match = /^([\d.E+-]+)\s+(.+)/i.exec(trimmed)
+    const temp_match = /^(?<temp>[\d.E+-]+)\s+(?<expr>.+)/i.exec(trimmed)
     if (temp_match) {
       const next_temp = parseFloat(temp_match[1])
       const expr = temp_match[2].replace(/\s+[YN]\s*$/, ``).trim()
@@ -257,7 +258,7 @@ function parse_tdb_line(line: string, data: TdbData): void {
       if (match) parser.handler(match, data)
       else if (parser.prefix === `ELEMENT `) {
         // Fallback for simpler ELEMENT format: ELEMENT AL FCC_A1!
-        const simple_match = /ELEMENT\s+(\S+)\s+(\S+)/i.exec(line)
+        const simple_match = /ELEMENT\s+(?<symbol>\S+)\s+(?<reference_phase>\S+)/i.exec(line)
         if (simple_match) {
           data.elements.push({
             symbol: simple_match[1].toUpperCase(),
