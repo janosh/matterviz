@@ -10,7 +10,7 @@ describe(`NumberRangeInput`, () => {
     const state = $state({ value: 0.5 })
     mount(NumberRangeInput, {
       target,
-      props: bind_props({ min: 0, max: 1, step: 0.1, range_aria_label: `vol` }, state),
+      props: bind_props({ min: 0, max: 1, step: 0.1, title: `vol` }, state),
     })
 
     const number = target.querySelector<HTMLInputElement>(`input[type="number"]`)
@@ -21,7 +21,7 @@ describe(`NumberRangeInput`, () => {
     const number_before_range =
       number.compareDocumentPosition(range) & Node.DOCUMENT_POSITION_FOLLOWING
     expect(number_before_range).toBeGreaterThan(0)
-    expect(range.getAttribute(`aria-label`)).toBe(`vol`)
+    expect(range.getAttribute(`aria-label`)).toBe(`vol`) // range slider reuses title
     expect(number.valueAsNumber).toBe(0.5)
     expect(range.valueAsNumber).toBe(0.5)
 
@@ -38,5 +38,14 @@ describe(`NumberRangeInput`, () => {
     await tick()
     expect(state.value).toBe(0.3)
     expect(number.valueAsNumber).toBe(0.3)
+
+    // without a title the range slider gets no aria-label (no "undefined"/empty attr)
+    const untitled = document.createElement(`div`)
+    mount(NumberRangeInput, {
+      target: untitled,
+      props: { min: 0, max: 1, step: 0.1, value: 0 },
+    })
+    const untitled_range = untitled.querySelector<HTMLInputElement>(`input[type="range"]`)
+    expect(untitled_range?.getAttribute(`aria-label`)).toBeNull()
   })
 })

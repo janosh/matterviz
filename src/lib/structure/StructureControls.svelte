@@ -499,28 +499,28 @@
       max={2}
       step={0.01}
       bind:value={scene_props.auto_rotate}
-      tooltip_content={SETTINGS_CONFIG.structure.auto_rotate.description}
+      title={SETTINGS_CONFIG.structure.auto_rotate.description}
     >Auto-rotate speed</NumberRangeInput>
     <NumberRangeInput
       min={0}
       max={2}
       step={0.05}
       bind:value={scene_props.rotate_speed}
-      tooltip_content={SETTINGS_CONFIG.structure.rotate_speed.description}
+      title={SETTINGS_CONFIG.structure.rotate_speed.description}
     >Rotate speed</NumberRangeInput>
     <NumberRangeInput
       min={0.1}
       max={0.8}
       step={0.02}
       bind:value={scene_props.zoom_speed}
-      tooltip_content={SETTINGS_CONFIG.structure.zoom_speed.description}
+      title={SETTINGS_CONFIG.structure.zoom_speed.description}
     >Zoom speed</NumberRangeInput>
     <NumberRangeInput
       min={0}
       max={2}
       step={0.01}
       bind:value={scene_props.pan_speed}
-      tooltip_content={SETTINGS_CONFIG.structure.pan_speed.description}
+      title={SETTINGS_CONFIG.structure.pan_speed.description}
     >Pan speed</NumberRangeInput>
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_to_cursor.description })}
@@ -533,7 +533,7 @@
       max={0.3}
       step={0.01}
       bind:value={scene_props.rotation_damping}
-      tooltip_content={SETTINGS_CONFIG.structure.rotation_damping.description}
+      title={SETTINGS_CONFIG.structure.rotation_damping.description}
     >Rotation damping</NumberRangeInput>
 
     Axis Rotation
@@ -598,7 +598,7 @@
       max={2}
       step={0.05}
       bind:value={scene_props.atom_radius}
-      tooltip_content={SETTINGS_CONFIG.structure.atom_radius.description}
+      title={SETTINGS_CONFIG.structure.atom_radius.description}
     >Radius <small>(Å)</small></NumberRangeInput>
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.same_size_atoms.description })}
@@ -853,7 +853,7 @@
           max={0.5}
           step={0.02}
           bind:value={scene_props.vector_origin_gap}
-          tooltip_content={SETTINGS_CONFIG.structure.vector_origin_gap.description}
+          title={SETTINGS_CONFIG.structure.vector_origin_gap.description}
         >Origin Gap</NumberRangeInput>
         {#each available_vector_keys as key (key)}
           {#if is_key_visible(key)}
@@ -1041,16 +1041,20 @@
       scene_props.ambient_light = DEFAULTS.structure.ambient_light
     }}
   >
-    <NumberRangeInput min={0} max={4} step={0.01} bind:value={scene_props.directional_light}>
-      <span title="Intensity of the directional light" {@attach tooltip()}>
-        Directional light
-      </span>
-    </NumberRangeInput>
-    <NumberRangeInput min={0.5} max={3} step={0.05} bind:value={scene_props.ambient_light}>
-      <span title="Intensity of the ambient light" {@attach tooltip()}>
-        Ambient light
-      </span>
-    </NumberRangeInput>
+    <NumberRangeInput
+      min={0}
+      max={4}
+      step={0.01}
+      bind:value={scene_props.directional_light}
+      title={SETTINGS_CONFIG.structure.directional_light.description}
+    >Directional light</NumberRangeInput>
+    <NumberRangeInput
+      min={0.5}
+      max={3}
+      step={0.05}
+      bind:value={scene_props.ambient_light}
+      title={SETTINGS_CONFIG.structure.ambient_light.description}
+    >Ambient light</NumberRangeInput>
   </SettingsSection>
 
   {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
@@ -1151,7 +1155,7 @@
         max={1}
         step={0.05}
         bind:value={scene_props.polyhedra_opacity}
-        tooltip_content={SETTINGS_CONFIG.structure.polyhedra_opacity.description}
+        title={SETTINGS_CONFIG.structure.polyhedra_opacity.description}
       >Opacity</NumberRangeInput>
       <label
         {@attach tooltip({
@@ -1198,14 +1202,14 @@
         max={12}
         step={1}
         bind:value={scene_props.polyhedra_min_neighbors}
-        tooltip_content={SETTINGS_CONFIG.structure.polyhedra_min_neighbors.description}
+        title={SETTINGS_CONFIG.structure.polyhedra_min_neighbors.description}
       >Min neighbors</NumberRangeInput>
       <NumberRangeInput
         min={4}
         max={16}
         step={1}
         bind:value={scene_props.polyhedra_max_neighbors}
-        tooltip_content={SETTINGS_CONFIG.structure.polyhedra_max_neighbors.description}
+        title={SETTINGS_CONFIG.structure.polyhedra_max_neighbors.description}
       >Max neighbors</NumberRangeInput>
       {#if structure_elements.length > 0}
         <div

@@ -3,6 +3,7 @@
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
+  import NumberRangeInput from '$lib/layout/NumberRangeInput.svelte'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { AxisConfig } from '$lib/plot'
@@ -101,25 +102,6 @@
   const has_special_points = $derived((data?.special_points?.length ?? 0) > 0)
 </script>
 
-<!-- Reusable snippet for number + range input pairs -->
-{#snippet num_range(
-  label: string,
-  value: number,
-  min: number,
-  max: number,
-  step: number,
-  on_change: (val: number) => void,
-  tip: string,
-)}
-  {@const oninput = (event: Event & { currentTarget: HTMLInputElement }) =>
-    on_change(Number(event.currentTarget.value))}
-  <label {@attach tooltip({ content: tip })}>
-    {label}
-    <input type="number" {min} {max} {step} {value} {oninput} />
-    <input type="range" {min} {max} {step} {value} {oninput} />
-  </label>
-{/snippet}
-
 <DraggablePane
   bind:show={controls_open}
   pane_props={{
@@ -201,25 +183,27 @@
       )
     }}
   >
-    {@render num_range(
-        `Font size`,
-        merged_config.font_size,
-        8,
-        20,
-        1,
-        (val) => update_config(`font_size`, val),
-        `Font size for axis labels and tick marks`,
-      )}
+    <NumberRangeInput
+      min={8}
+      max={20}
+      step={1}
+      title="Font size for axis labels and tick marks"
+      bind:value={
+        () => merged_config.font_size,
+        (val) => update_config(`font_size`, val)
+      }
+    >Font size</NumberRangeInput>
     {#if has_special_points}
-      {@render num_range(
-        `Special pt radius`,
-        merged_config.special_point_radius,
-        2,
-        12,
-        1,
-        (val) => update_config(`special_point_radius`, val),
-        `Radius of special point markers (eutectic, peritectic, etc.)`,
-      )}
+      <NumberRangeInput
+        min={2}
+        max={12}
+        step={1}
+        title="Radius of special point markers (eutectic, peritectic, etc.)"
+        bind:value={
+          () => merged_config.special_point_radius,
+          (val) => update_config(`special_point_radius`, val)
+        }
+      >Special pt radius</NumberRangeInput>
     {/if}
   </SettingsSection>
 
@@ -281,33 +265,36 @@
         </label>
       </div>
     </span>
-    {@render num_range(
-        `Line width`,
-        merged_config.tie_line.stroke_width,
-        0.5,
-        5,
-        0.5,
-        (val) => update_nested(`tie_line`, `stroke_width`, val),
-        `Thickness of the tie-line`,
-      )}
-    {@render num_range(
-        `Endpoint radius`,
-        merged_config.tie_line.endpoint_radius,
-        2,
-        10,
-        1,
-        (val) => update_nested(`tie_line`, `endpoint_radius`, val),
-        `Radius of phase boundary endpoint markers`,
-      )}
-    {@render num_range(
-        `Cursor radius`,
-        merged_config.tie_line.cursor_radius,
-        2,
-        10,
-        1,
-        (val) => update_nested(`tie_line`, `cursor_radius`, val),
-        `Radius of the cursor position marker`,
-      )}
+    <NumberRangeInput
+      min={0.5}
+      max={5}
+      step={0.5}
+      title="Thickness of the tie-line"
+      bind:value={
+        () => merged_config.tie_line.stroke_width,
+        (val) => update_nested(`tie_line`, `stroke_width`, val)
+      }
+    >Line width</NumberRangeInput>
+    <NumberRangeInput
+      min={2}
+      max={10}
+      step={1}
+      title="Radius of phase boundary endpoint markers"
+      bind:value={
+        () => merged_config.tie_line.endpoint_radius,
+        (val) => update_nested(`tie_line`, `endpoint_radius`, val)
+      }
+    >Endpoint radius</NumberRangeInput>
+    <NumberRangeInput
+      min={2}
+      max={10}
+      step={1}
+      title="Radius of the cursor position marker"
+      bind:value={
+        () => merged_config.tie_line.cursor_radius,
+        (val) => update_nested(`tie_line`, `cursor_radius`, val)
+      }
+    >Cursor radius</NumberRangeInput>
   </SettingsSection>
 
   <!-- Axis Configuration Section -->

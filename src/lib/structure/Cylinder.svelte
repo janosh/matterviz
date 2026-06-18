@@ -38,7 +38,6 @@
     )
     const euler = new Euler().setFromQuaternion(quaternion)
     const bond_rotation: Vec3 = [euler.x, euler.y, euler.z]
-    // return results
     return { height: bond_height, position: bond_position, rotation: bond_rotation }
   }
 </script>
