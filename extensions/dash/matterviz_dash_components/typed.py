@@ -204,7 +204,7 @@ class PeriodicTable(MatterViz):
         lanth_act_style: str | None = None,
         links: dict | None = None,
         log: bool | None = None,
-        missing: dict | None = None,
+        missing: Any | None = None,
         show_color_bar: bool | None = None,
         show_photo: bool | None = None,
         split_layout: Any | None = None,
