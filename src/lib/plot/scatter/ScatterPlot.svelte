@@ -1399,7 +1399,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class="scatter {rest.class ?? ``}"
+  class={[`scatter`, rest.class]}
   class:fullscreen
 >
   {#if width && height}
@@ -1652,6 +1652,7 @@
                 line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
                 line_width={(tc(`line.width`) ? styles.line?.width : null) ?? ls?.stroke_width ?? 2}
                 line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
+                curve={ls?.curve}
                 area_color="transparent"
                 line_tween={effective_line_tween}
               />

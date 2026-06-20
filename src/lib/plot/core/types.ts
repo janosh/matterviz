@@ -121,6 +121,9 @@ export interface BarStyle {
   [key: string]: unknown
 }
 
+// d3-shape curve used to connect series points; `linear` draws straight segments
+export type LineCurve = `linear` | `monotone` | `natural` | `step` | `basis` | `catmull-rom`
+
 export interface LineStyle {
   color?: string
   width?: number
@@ -170,6 +173,7 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
     stroke?: string
     stroke_width?: number
     line_dash?: string
+    curve?: LineCurve // d3-shape curve for the connecting line; `linear` = straight segments
   }
   // Internal fields used after processing (not provided by users)
   filtered_data?: InternalPoint<Metadata>[]
