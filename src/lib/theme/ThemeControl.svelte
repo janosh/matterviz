@@ -21,7 +21,12 @@
   })
 </script>
 
-<select bind:value={theme_mode} {...rest} class="theme-control {rest.class ?? ``}">
+<select
+  aria-label="Color theme"
+  bind:value={theme_mode}
+  {...rest}
+  class={[`theme-control`, rest.class]}
+>
   {#each THEME_OPTIONS as { label, icon, value } (value)}
     <option {value}>{icon}&ensp;{label}</option>
   {/each}

@@ -23,6 +23,7 @@
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { SvelteSet } from 'svelte/reactivity'
   import { full_data_extractor } from './extract'
   import type {
     ParseProgress,
@@ -299,7 +300,7 @@
   let current_structure = $derived(current_frame?.structure)
 
   // Track hidden elements (persists across frame changes)
-  let hidden_elements = $state(new Set<ElementSymbol>())
+  let hidden_elements = $state(new SvelteSet<ElementSymbol>())
 
   let step_label_positions = $derived.by((): number[] => {
     if (!step_labels || total_frames <= 1) return []
@@ -904,7 +905,7 @@
   onclick={handle_click_outside}
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
-  class="trajectory {actual_layout} {rest.class ?? ``}"
+  class={[`trajectory`, actual_layout, rest.class]}
   class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&
   actual_show_plot && show_structure}
 >
@@ -1212,7 +1213,7 @@
                 scatter_props.legend?.on_toggle?.(series_idx)
               },
             }}
-            class="plot {scatter_props.class ?? ``}"
+            class={[`plot`, scatter_props.class]}
           >
             {#snippet tooltip({
               x,
@@ -1242,7 +1243,7 @@
               histogram_props.on_series_toggle?.(series_idx)
             }}
             style="height: 100%"
-            class="plot {histogram_props.class ?? ``}"
+            class={[`plot`, histogram_props.class]}
             --ctrl-btn-top="6ex"
           >
             {#snippet tooltip({

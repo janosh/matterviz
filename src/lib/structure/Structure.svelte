@@ -1528,7 +1528,7 @@
   {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
-  class="structure {rest.class ?? ``}"
+  class={[`structure`, rest.class]}
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}
@@ -1542,7 +1542,12 @@
   {:else if (structure?.sites?.length ?? 0) > 0}
     {#snippet reset_camera_btn()}
       {#if camera_has_moved && controls_config.visible(`reset-camera`)}
-        <button class="reset-camera" onclick={reset_camera} title={reset_text}>
+        <button
+          class="reset-camera"
+          onclick={reset_camera}
+          title={reset_text}
+          aria-label={reset_text}
+        >
           <!-- Target/Focus icon for reset camera -->
           <Icon icon="Reset" />
         </button>
@@ -1565,6 +1570,7 @@
           <button
             onclick={() => (measure_menu_open = !measure_menu_open)}
             title="Measure / Edit"
+            aria-label="Measure / Edit"
             class="view-mode-button"
             class:active={measure_menu_open}
             aria-expanded={measure_menu_open}

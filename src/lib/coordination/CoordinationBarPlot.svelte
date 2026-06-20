@@ -299,6 +299,6 @@
     {tooltip}
     ondrop={handle_file_drop}
     {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
-    class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
+    class={[rest.class, dragover && `dragover`]}
   />
 {/if}

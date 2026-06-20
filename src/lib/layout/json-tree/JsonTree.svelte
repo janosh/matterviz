@@ -58,7 +58,7 @@
   let search_input_value = $state(``)
   let focused_path = $state<string | null>(null)
   // Use Set for O(1) lookup/add/delete instead of O(n) array operations
-  let registered_paths_set = $state(new Set<string>())
+  const registered_paths_set = new SvelteSet<string>()
   let registered_paths_list = $state<string[]>([]) // ordered list for keyboard nav
   let copy_feedback_path = $state<string | null>(null)
   let copy_feedback_error = $state(false)
@@ -94,7 +94,7 @@
   $effect.pre(() => {
     if (!value_changed(value)) return
     focused_path = null
-    registered_paths_set = new Set()
+    registered_paths_set.clear()
     registered_paths_list = []
     copy_feedback_path = null
     copy_feedback_error = false

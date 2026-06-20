@@ -240,7 +240,7 @@
     {...toggle_props}
     style={toggle_props.style ?? ``}
     onclick={toggle_pane}
-    class="pane-toggle {toggle_props.class ?? ``}"
+    class={[`pane-toggle`, toggle_props.class]}
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
   >
     <Icon icon={show ? open_icon : closed_icon} style={icon_style} />
@@ -261,7 +261,7 @@
     style:left={initial_position.left}
     style:display={show ? `grid` : `none`}
     {...pane_props}
-    class="draggable-pane toc-exclude {show ? `pane-open` : ``} {pane_props.class ?? ``}"
+    class={[`draggable-pane toc-exclude`, show && `pane-open`, pane_props.class]}
   >
     <DragControlTab
       show_controls={show_control_buttons}

@@ -381,7 +381,7 @@
   ondrop={handle_file_drop}
   {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   {...rest}
-  class="fermi-surface {rest.class ?? ``}"
+  class={[`fermi-surface`, rest.class]}
 >
   {@render children?.({ fermi_data, bz_data })}
   {#if loading}

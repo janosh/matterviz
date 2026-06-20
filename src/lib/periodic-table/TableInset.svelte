@@ -7,7 +7,7 @@
     & { as?: keyof HTMLElementTagNameMap; children?: Snippet } = $props()
 </script>
 
-<svelte:element this={as} {...rest} class="table-inset {rest.class ?? ``}">
+<svelte:element this={as} {...rest} class={[`table-inset`, rest.class]}>
   {@render children?.()}
 </svelte:element>
 

@@ -43,6 +43,11 @@ describe(`ThemeControl`, () => {
     expect(select).toBeInstanceOf(HTMLSelectElement)
   })
 
+  test(`has a default aria-label when none is provided`, () => {
+    mount(ThemeControl, { target: document.body, props: {} })
+    expect(doc_query(`select.theme-control`).getAttribute(`aria-label`)).toBe(`Color theme`)
+  })
+
   test(`forwards additional props to select element`, () => {
     mount(ThemeControl, {
       target: document.body,

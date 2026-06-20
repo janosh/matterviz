@@ -341,7 +341,7 @@
   {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   {onkeydown}
   {...rest}
-  class="brillouin-zone {rest.class ?? ``}"
+  class={[`brillouin-zone`, rest.class]}
 >
   {@render children?.({ structure, bz_data })}
   {#if loading}

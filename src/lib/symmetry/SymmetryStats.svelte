@@ -128,7 +128,7 @@
   const symprec_step = $derived(get_step_from_order_of_magnitude(settings.symprec))
 </script>
 
-<div {...rest} class="symmetry-stats {rest.class ?? ``}">
+<div {...rest} class={[`symmetry-stats`, rest.class]}>
   {#if sym_data}
     {@render header?.({ sym_data, settings })}
   {/if}

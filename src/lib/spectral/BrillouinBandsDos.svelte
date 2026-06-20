@@ -171,7 +171,7 @@
 
 <div
   {...rest}
-  class="bands-dos-brillouin {screen_class} {rest.class ?? ``}"
+  class={[`bands-dos-brillouin`, screen_class, rest.class]}
   bind:clientWidth
 >
   {@render children?.({

@@ -185,7 +185,10 @@ describe(`Structure`, () => {
       ...props,
     })
 
-    doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`).click()
+    const measure_btn = doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`)
+    // icon-only button needs an accessible name (title alone is unreliable for AT)
+    expect(measure_btn.getAttribute(`aria-label`)).toBe(`Measure / Edit`)
+    measure_btn.click()
     await tick()
     const edit_bonds_button = [
       ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),

@@ -109,7 +109,7 @@
   viewBox="0 0 {size} {size}"
   style:max-width="{size}px"
   {...rest}
-  class="bubble-chart {rest.class ?? ``}"
+  class={[`bubble-chart`, rest.class]}
   bind:this={svg_node}
 >
   {#each bubbles as bubble (bubble.element)}

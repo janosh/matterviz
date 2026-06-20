@@ -351,7 +351,7 @@
   onmouseleave={() => on_hover_change?.(false)}
   {...rest}
   style={div_style}
-  class="legend {rest.class ?? ``}"
+  class={[`legend`, rest.class]}
   class:draggable
   class:is-dragging={is_dragging}
   class:grouped={has_groups}

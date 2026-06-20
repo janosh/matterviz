@@ -616,7 +616,7 @@
 {#key reset_counter}
   <ScatterPlot
     {...rest}
-    class="convex-hull-2d {rest.class ?? ``} {drag_over ? `dragover` : ``}"
+    class={[`convex-hull-2d`, rest.class, drag_over && `dragover`]}
     style={`${style}; ${rest.style ?? ``}`}
     data-has-selection={selected_entry !== null}
     bind:wrapper
@@ -689,7 +689,7 @@
       bind:visible={copy_feedback.visible}
       position={copy_feedback.position}
     />
-    <DragOverlay visible={drag_over} />
+    <DragOverlay visible={drag_over} message="Drop JSON file to load phase diagram data" />
 
     {#if hull_data.has_temp_data && temperature !== undefined}
       <TemperatureSlider available_temperatures={hull_data.available_temperatures} bind:temperature />

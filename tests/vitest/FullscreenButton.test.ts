@@ -8,20 +8,26 @@ describe(`FullscreenButton`, () => {
     [false, `Enter fullscreen`],
     [true, `Exit fullscreen`],
   ])(
-    `fullscreen=%s renders title/aria-pressed and forwards rest props`,
-    (fullscreen, title) => {
+    `fullscreen=%s: title, aria-pressed, default+override aria-label, class merge`,
+    (fullscreen, label) => {
+      // no aria-label passed -> defaults to the title text
+      document.body.innerHTML = ``
+      mount(FullscreenButton, { target: document.body, props: { fullscreen } })
+      const btn = doc_query<HTMLButtonElement>(`button.fullscreen-btn`)
+      expect(btn.title).toBe(label)
+      expect(btn.getAttribute(`aria-pressed`)).toBe(String(fullscreen))
+      expect(btn.getAttribute(`aria-label`)).toBe(label) // default
+      expect(btn.querySelector(`svg`)).not.toBeNull() // default Icon content
+
+      // caller class merges with the built-in styling hook; caller aria-label wins (spread order)
       document.body.innerHTML = ``
       mount(FullscreenButton, {
         target: document.body,
-        props: { fullscreen, class: `my-fs-btn`, [`aria-label`]: title },
+        props: { fullscreen, class: `my-fs-btn`, [`aria-label`]: `Custom label` },
       })
-      const button = doc_query<HTMLButtonElement>(`button.my-fs-btn`)
-      // built-in stable styling hook, merged with the consumer-passed class
-      expect(button.classList.contains(`fullscreen-btn`)).toBe(true)
-      expect(button.title).toBe(title)
-      expect(button.getAttribute(`aria-pressed`)).toBe(String(fullscreen))
-      expect(button.getAttribute(`aria-label`)).toBe(title)
-      expect(button.querySelector(`svg`)).not.toBeNull() // default Icon content
+      const custom = doc_query<HTMLButtonElement>(`button.my-fs-btn`)
+      expect(custom.classList.contains(`fullscreen-btn`)).toBe(true)
+      expect(custom.getAttribute(`aria-label`)).toBe(`Custom label`)
     },
   )
 })

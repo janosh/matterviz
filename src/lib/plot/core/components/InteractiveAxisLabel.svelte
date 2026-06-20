@@ -43,7 +43,7 @@
   onkeydown={stop_key}
   role="group"
   {...rest}
-  class="interactive-axis-label {axis_type} {rest.class ?? ``}"
+  class={[`interactive-axis-label`, axis_type, rest.class]}
 >
   {#if is_interactive && options}
     <PortalSelect

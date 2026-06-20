@@ -205,7 +205,7 @@
   }
 </script>
 
-<div {...rest} class="controls-grid {rest.class ?? ``}">
+<div {...rest} class={[`controls-grid`, rest.class]}>
   <section class="category-colors">
     <h3 style="grid-column: span 2">
       Element Category Colors

@@ -306,7 +306,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class="scatter-3d {rest.class ?? ``}"
+  class={[`scatter-3d`, rest.class]}
   class:fullscreen
 >
   {#if width && height}
