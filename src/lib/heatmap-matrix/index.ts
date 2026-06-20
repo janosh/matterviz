@@ -27,6 +27,18 @@ export type CellContext = {
   bg_color: string | null
 }
 
+// styling for heatmap cells/tiles with no value (null/non-finite, non-color strings, or
+// <=0 in log mode). Shared by HeatmapMatrix and PeriodicTable.
+export interface MissingCellStyle {
+  // fill for missing cells: any CSS color, or `element-category` for the item's category
+  // color (only honored by category-aware tables like PeriodicTable)
+  color?: `element-category` | (string & {})
+  // text shown on missing cells (e.g. `N/A`); by default they show no value
+  label?: string
+  // arbitrary extra CSS applied to missing cells (e.g. `opacity: 0.4` to dim them)
+  style?: string
+}
+
 // Human-readable labels for built-in orderings
 export const ORDERING_LABELS = {
   atomic_number: `Atomic Number`,
