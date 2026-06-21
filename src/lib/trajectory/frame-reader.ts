@@ -235,8 +235,7 @@ export class TrajFrameReader implements FrameLoader {
   private get_xyz_cache(data: string): { lines: string[]; frame_starts: number[] } {
     if (this.xyz_cache?.data === data) return this.xyz_cache
     const lines = data.trim().split(/\r?\n/)
-    const frame_starts: number[] = []
-    for (const { start } of iter_xyz_frames(lines)) frame_starts.push(start)
+    const frame_starts = Array.from(iter_xyz_frames(lines), ({ start }) => start)
     this.xyz_cache = { data, lines, frame_starts }
     return this.xyz_cache
   }

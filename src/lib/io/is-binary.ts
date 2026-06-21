@@ -61,11 +61,7 @@ const BINARY_DATA_EXTENSIONS = new Set(`h5 hdf5 traj npz pkl dat brml raw`.split
 // downloaded/kept as raw bytes (used for binary-fetch mode and .gz inner-format checks)
 export const BINARY_EXTENSIONS = new Set([
   ...BINARY_DATA_EXTENSIONS,
-  `gz`,
-  `gzip`,
-  `zip`,
-  `bz2`,
-  `xz`,
+  ...`gz gzip zip bz2 xz`.split(` `),
 ])
 
 // Known text formats (plus extensionless VASP files) — safe to fetch/sniff as text
