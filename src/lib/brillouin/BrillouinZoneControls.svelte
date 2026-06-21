@@ -84,10 +84,7 @@
   <SettingsSection
     title="Edges"
     current_values={{ edge_color, edge_width }}
-    on_reset={() => {
-      edge_color = `#000000`
-      edge_width = 0.006
-    }}
+    on_reset={() => [edge_color, edge_width] = [`#000000`, 0.002]}
   >
     <label>
       <span>Color:</span>

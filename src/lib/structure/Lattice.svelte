@@ -113,6 +113,9 @@
         vector={vec}
         scale={1}
         color={vector_colors[idx]}
+        shaft_radius={0.1}
+        arrow_head_radius={0.2}
+        arrow_head_length={0.8}
         onpointerenter={() => hovered_idx = idx}
         onpointerleave={() => hovered_idx = null}
       />
