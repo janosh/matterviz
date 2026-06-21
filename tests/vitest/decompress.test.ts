@@ -109,6 +109,8 @@ describe(`decompress utility functions`, () => {
 
       expect(result.content).toBe(json_string)
       expect(result.filename).toBe(`test.json`)
+      // decompress_file now returns string | ArrayBuffer; .json decodes to a string
+      if (typeof result.content !== `string`) throw new Error(`expected string content`)
       expect(JSON.parse(result.content)).toEqual(test_json)
     })
 

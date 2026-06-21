@@ -244,6 +244,29 @@ describe(`Full Data Extractor`, () => {
     }
   })
 
+  it(`detects lattice param variation from metadata fallback (single pass)`, () => {
+    // No structure lattice → variation is computed from metadata. a varies, b/c constant.
+    const traj: TrajectoryType = {
+      frames: [
+        make_trajectory_frame(0, 1, { a: 5.0, b: 5.0, c: 5.0 }),
+        make_trajectory_frame(1, 1, { a: 5.1, b: 5.0, c: 5.0 }),
+      ],
+      metadata: {},
+    }
+    const frame0 = full_data_extractor(traj.frames[0], traj)
+    const frame1 = full_data_extractor(traj.frames[1], traj)
+
+    expect(frame0.constant_a).toBeUndefined() // a varies
+    expect(frame0.constant_b).toBe(1)
+    expect(frame0.constant_c).toBe(1)
+    // alpha/beta/gamma absent from every frame → NOT constant (never observed)
+    for (const key of [`constant_alpha`, `constant_beta`, `constant_gamma`]) {
+      expect(frame0[key]).toBeUndefined()
+    }
+    // Cached result is identical for every frame of the same trajectory
+    for (const key of constant_lattice_keys) expect(frame1[key]).toBe(frame0[key])
+  })
+
   it(`should detect constant lattice parameters`, () => {
     const constant_trajectory: TrajectoryType = {
       frames: [

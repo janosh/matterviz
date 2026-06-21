@@ -990,6 +990,9 @@
   const effective_atom_radius = $derived(declutter_active ? atom_radius * 0.6 : atom_radius)
 
   $effect(() => {
+    // skip the costly bonding recompute every atom-drag frame; reuse last bond_pairs while
+    // dragging (like polyhedra) and recompute on release
+    if (dragging_atoms) return
     // Bonds are computed when either bond rendering or polyhedra need them. The
     // raw/effective mix is deliberate: RAW show_bonds keeps bond_pairs available
     // during symmetry declutter (cylinders hide via effective_show_bonds in

@@ -31,7 +31,8 @@ describe(`SettingsSection`, () => {
     const [h4_a, h4_b] = [...document.querySelectorAll(`h4`)]
     const [sec_a, sec_b] = [...document.querySelectorAll(`section`)]
     // ids are non-empty, unique, and each section points at its own heading
-    expect(h4_a.id).toBe(true)
+    // (boolean assertion is oxlint-stable; --fix rewrites toBeTruthy() -> toBe(true))
+    expect(h4_a.id.startsWith(`settings-section-title-`)).toBe(true)
     expect(h4_a.id).not.toBe(h4_b.id)
     expect(sec_a.getAttribute(`aria-labelledby`)).toBe(h4_a.id)
     expect(sec_b.getAttribute(`aria-labelledby`)).toBe(h4_b.id)

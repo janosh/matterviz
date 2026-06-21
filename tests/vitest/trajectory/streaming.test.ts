@@ -13,7 +13,7 @@ import {
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
 import process from 'node:process'
 import { flushSync, mount, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import TrajectoryRaceHarness from './TrajectoryRaceHarness.svelte'
 
 // CI environments have higher timing variability
@@ -144,35 +144,21 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Frame Indexing`, () => {
-    it(`should build frame index for XYZ trajectory`, async () => {
-      const data = create_synthetic_xyz(10)
-      const loader = new TrajFrameReader(`test.xyz`)
+    it.each([
+      [`XYZ`, create_synthetic_xyz(10), `test.xyz`, 2, [0, 2, 4, 6, 8]], // 10 frames, every 2nd
+      [`ASE`, create_synthetic_ase(20), `test.traj`, 5, [0, 5, 10, 15]], // 20 frames, every 5th
+    ])(
+      `builds frame index for %s trajectory`,
+      async (_fmt, data, file, rate, frame_numbers) => {
+        const index = await new TrajFrameReader(file).build_frame_index(data, rate)
 
-      const index = await loader.build_frame_index(data, 2) // Every 2nd frame
-
-      expect(index).toHaveLength(5) // 10 frames, every 2nd = 5 indices
-      expect(index[0].frame_number).toBe(0)
-      expect(index[1].frame_number).toBe(2)
-      expect(index[2].frame_number).toBe(4)
-
-      // Verify byte offsets are increasing
-      for (let idx = 1; idx < index.length; idx++) {
-        expect(index[idx].byte_offset).toBeGreaterThan(index[idx - 1].byte_offset)
-      }
-    })
-
-    it(`should build frame index for ASE trajectory`, async () => {
-      const data = create_synthetic_ase(20)
-      const loader = new TrajFrameReader(`test.traj`)
-
-      const index = await loader.build_frame_index(data, 5) // Every 5th frame
-
-      expect(index).toHaveLength(4) // 20 frames, every 5th = 4 indices
-      expect(index[0].frame_number).toBe(0)
-      expect(index[1].frame_number).toBe(5)
-      expect(index[2].frame_number).toBe(10)
-      expect(index[3].frame_number).toBe(15)
-    })
+        expect(index.map((entry) => entry.frame_number)).toEqual(frame_numbers)
+        // byte offsets strictly increasing
+        for (let idx = 1; idx < index.length; idx++) {
+          expect(index[idx].byte_offset).toBeGreaterThan(index[idx - 1].byte_offset)
+        }
+      },
+    )
 
     it(`should report progress during indexing`, async () => {
       const data = create_synthetic_xyz(1000) // Larger for progress testing
@@ -215,15 +201,6 @@ describe(`Trajectory Streaming`, () => {
 
       const invalid_frame = await loader.load_frame(data, 15) // Beyond available frames
       expect(invalid_frame).toBeNull()
-    })
-
-    it(`should work with frame index for faster access`, async () => {
-      const data = create_synthetic_xyz(20)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      // Load frame using index (should be faster for large files)
-      const frame = await loader.load_frame(data, 8)
-      expect(frame?.step).toBe(8)
     })
 
     it(`should parse Lattice and Properties-offset forces in indexed loads`, async () => {
@@ -341,33 +318,31 @@ describe(`Trajectory Streaming`, () => {
       expect(result.frames).toHaveLength(5) // All frames loaded
     })
 
-    it(`should force streaming when explicitly requested`, async () => {
-      const data = create_synthetic_xyz(5)
+    // use_indexing forces streaming even for small files, incl. compressed filenames
+    it.each([
+      [
+        `explicit request`,
+        `force_streaming.xyz`,
+        { use_indexing: true, extract_plot_metadata: true },
+        true,
+      ],
+      [`compressed filename`, `compressed-trajectory.xyz.gz`, { use_indexing: true }, false],
+    ])(
+      `forces indexed loading (%s)`,
+      async (_desc, filename, options, expect_plot_metadata) => {
+        const result = await parse_trajectory_async(
+          create_synthetic_xyz(5),
+          filename,
+          undefined,
+          options,
+        )
 
-      const result = await parse_trajectory_async(data, `force_streaming.xyz`, undefined, {
-        use_indexing: true,
-        extract_plot_metadata: true,
-      })
-
-      // Should have streaming metadata even for small file
-      expect(result.is_indexed).toBe(true)
-      expect(result.indexed_frames).toBeDefined()
-      expect(result.plot_metadata).toBeDefined()
-    })
-
-    it(`should enable indexed loading for compressed xyz filenames`, async () => {
-      const data = create_synthetic_xyz(5)
-      const result = await parse_trajectory_async(
-        data,
-        `compressed-trajectory.xyz.gz`,
-        undefined,
-        { use_indexing: true },
-      )
-
-      expect(result.is_indexed).toBe(true)
-      expect(result.indexed_frames).toBeDefined()
-      expect(result.total_frames).toBe(5)
-    })
+        expect(result.is_indexed).toBe(true)
+        expect(result.indexed_frames).toBeDefined()
+        expect(result.total_frames).toBe(5)
+        if (expect_plot_metadata) expect(result.plot_metadata).toBeDefined()
+      },
+    )
   })
 
   describe(`Memory Efficiency`, () => {
@@ -522,6 +497,10 @@ describe(`Trajectory Streaming`, () => {
       const data = create_synthetic_xyz(100)
       const loader = new TrajFrameReader(`test.xyz`)
 
+      // Warm the line/frame-index cache once (first load builds it in O(n)); after
+      // that every seek is O(1) lookup + O(frame_size) regardless of position.
+      await loader.load_frame(data, 0)
+
       // Time frame access at different positions
       const measure_access = async (frame_num: number) => {
         const start = performance.now()
@@ -540,6 +519,45 @@ describe(`Trajectory Streaming`, () => {
       // CI has high timing variability; use generous threshold (semantically testing O(1) access)
       const max_ratio = is_ci ? 50 : 6
       expect(max_time / min_time).toBeLessThan(max_ratio)
+    })
+
+    it(`splits the XYZ payload once across many sequential frame loads`, async () => {
+      // Regression: load_xyz_frame used to re-split the whole file (data.split(/\r?\n/))
+      // and rescan from line 0 on every seek → O(n²) over a full playback/export.
+      // The cache must split the newline-delimited payload exactly once.
+      const data = create_synthetic_xyz(60)
+      const loader = new TrajFrameReader(`test.xyz`)
+
+      const split_spy = vi.spyOn(String.prototype, `split`)
+      const newline_splits = () =>
+        split_spy.mock.calls.filter(
+          ([sep]) => sep instanceof RegExp && sep.source.includes(`\\n`),
+        ).length
+
+      try {
+        for (let idx = 0; idx < 60; idx++) {
+          const frame = await loader.load_frame(data, idx)
+          expect(frame?.step, `frame ${idx}`).toBe(idx)
+        }
+        // Exactly one full-file split despite 60 sequential loads (was 60 before the fix)
+        expect(newline_splits()).toBe(1)
+      } finally {
+        split_spy.mockRestore()
+      }
+    })
+
+    it(`reuses the cache for random-access and repeated loads`, async () => {
+      const data = create_synthetic_xyz(40)
+      const loader = new TrajFrameReader(`test.xyz`)
+
+      // Non-sequential + repeated access must stay correct with the line cache
+      for (const idx of [37, 0, 19, 37, 5, 0]) {
+        const frame = await loader.load_frame(data, idx)
+        expect(frame?.step, `frame ${idx}`).toBe(idx)
+        expect(frame?.metadata?.energy).toBeCloseTo(-10 - idx * 0.1, 10)
+      }
+      // Out-of-range still returns null after the cache is warm
+      expect(await loader.load_frame(data, 40)).toBeNull()
     })
 
     it(`metadata extraction returns valid plot data without loading all frames`, async () => {

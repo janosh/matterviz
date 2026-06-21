@@ -118,18 +118,27 @@
     mesh.count = count
   })
 
-  let shader_material = $derived(
-    new ShaderMaterial({
-      vertexShader: vertex_shader,
-      fragmentShader: fragment_shader,
-      uniforms: {
-        ambientIntensity: { value: group.ambient_light ?? 0.7 },
-        directionalIntensity: { value: group.directional_light ?? 0.3 },
-        saturation: { value: saturation },
-        brightness: { value: brightness },
-      },
-    }),
-  )
+  // Create the GPU material once + mutate uniforms reactively (a $derived would leak a new
+  // ShaderMaterial per lighting tweak). The $effect sets real uniform values before paint.
+  const shader_material = new ShaderMaterial({
+    vertexShader: vertex_shader,
+    fragmentShader: fragment_shader,
+    uniforms: {
+      ambientIntensity: { value: 0.7 },
+      directionalIntensity: { value: 0.3 },
+      saturation: { value: 0.5 },
+      brightness: { value: 0.7 },
+    },
+  })
+
+  $effect(() => {
+    shader_material.uniforms.ambientIntensity.value = group.ambient_light ?? 0.7
+    shader_material.uniforms.directionalIntensity.value = group.directional_light ?? 0.3
+    shader_material.uniforms.saturation.value = saturation
+    shader_material.uniforms.brightness.value = brightness
+  })
+
+  $effect(() => () => shader_material.dispose())
 </script>
 
 <T.InstancedMesh

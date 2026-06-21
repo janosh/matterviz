@@ -46,6 +46,34 @@
       : ([0, 0, 0] satisfies Vec3),
   )
 
+  // Build the sheared box geometry in an effect so the previous one is disposed on
+  // matrix change / unmount (same disposal pattern as the polyhedra in StructureScene).
+  let box_geometry = $state<BoxGeometry | null>(null)
+  $effect(() => {
+    if (!matrix) {
+      box_geometry = null
+      return
+    }
+    const shear_matrix = new Matrix4().makeBasis(
+      new Vector3(...matrix[0]),
+      new Vector3(...matrix[1]),
+      new Vector3(...matrix[2]),
+    )
+    const geo = new BoxGeometry(1, 1, 1).applyMatrix4(shear_matrix)
+    box_geometry = geo
+    return () => geo.dispose()
+  })
+
+  // Edge segments derive from the box geometry; the transient EdgesGeometry is
+  // disposed inline since only its extracted positions are kept.
+  let edge_segments = $derived.by<[Vector3, Vector3][]>(() => {
+    if (!box_geometry || !(cell_edge_opacity > 0)) return []
+    const edges_geometry = new EdgesGeometry(box_geometry)
+    const segments = get_edge_segments(edges_geometry)
+    edges_geometry.dispose()
+    return segments
+  })
+
   // Extract line segments from EdgesGeometry for cylinder-based thick lines
   function get_edge_segments(edges_geometry: EdgesGeometry): [Vector3, Vector3][] {
     const positions = edges_geometry.getAttribute(`position`).array as Float32Array
@@ -95,102 +123,90 @@
   }
 </script>
 
-{#if matrix}
-  {#key matrix}
-    {@const shear_matrix = new Matrix4().makeBasis(
-    new Vector3(...matrix[0]),
-    new Vector3(...matrix[1]),
-    new Vector3(...matrix[2]),
-  )}
-    {@const box_geometry = new BoxGeometry(1, 1, 1).applyMatrix4(shear_matrix)}
+{#if matrix && box_geometry}
+  <!-- Render wireframe edges if edge opacity > 0 -->
+  {#if cell_edge_opacity > 0}
+    <!-- Use cylinders for thick wireframe lines -->
+    <T.Group position={lattice_center}>
+      {#each edge_segments as [start, end], idx (idx)}
+        {@const { position, rotation, length } = get_cylinder_transform(start, end)}
+        <T.Mesh {position} {rotation}>
+          <T.CylinderGeometry
+            args={[cell_edge_width * 0.01, cell_edge_width * 0.01, length, 8]}
+          />
+          <T.MeshStandardMaterial
+            color={cell_edge_color}
+            opacity={cell_edge_opacity}
+            transparent
+            depthWrite={false}
+          />
+        </T.Mesh>
+      {/each}
+    </T.Group>
+  {/if}
 
-    <!-- Render wireframe edges if edge opacity > 0 -->
-    {#if cell_edge_opacity > 0}
-      {@const edges_geometry = new EdgesGeometry(box_geometry)}
-      {@const edge_segments = get_edge_segments(edges_geometry)}
+  <!-- Render transparent surfaces if surface opacity > 0 -->
+  {#if cell_surface_opacity > 0}
+    <T.Mesh geometry={box_geometry} position={lattice_center}>
+      <T.MeshStandardMaterial
+        color={cell_surface_color}
+        opacity={cell_surface_opacity}
+        transparent
+        depthWrite={false}
+      />
+    </T.Mesh>
+  {/if}
 
-      <!-- Use cylinders for thick wireframe lines -->
-      <T.Group position={lattice_center}>
-        {#each edge_segments as [start, end], idx (idx)}
-          {@const { position, rotation, length } = get_cylinder_transform(start, end)}
-          <T.Mesh {position} {rotation}>
-            <T.CylinderGeometry
-              args={[cell_edge_width * 0.01, cell_edge_width * 0.01, length, 8]}
-            />
-            <T.MeshStandardMaterial
-              color={cell_edge_color}
-              opacity={cell_edge_opacity}
-              transparent
-              depthWrite={false}
-            />
-          </T.Mesh>
-        {/each}
-      </T.Group>
-    {/if}
-
-    <!-- Render transparent surfaces if surface opacity > 0 -->
-    {#if cell_surface_opacity > 0}
-      <T.Mesh geometry={box_geometry} position={lattice_center}>
-        <T.MeshStandardMaterial
-          color={cell_surface_color}
-          opacity={cell_surface_opacity}
-          transparent
-          depthWrite={false}
-        />
-      </T.Mesh>
-    {/if}
-
-    <!-- NOTE below is an untested fix for the lattice vectors being much too small when deployed even though they look correct in local dev -->
-    {#if show_cell_vectors}
-      <T.Group position={vector_origin}>
-        {#each matrix as vec, idx (vec)}
-          {@const shaft_length = Math.hypot(...vec) * 0.85}
-          <!-- Shaft goes to 85% of vector length -->
-          {@const tip_start_position = math.scale(vec, 0.85)}
-          <!-- Calculate rotation to align with vector direction -->
-          {@const quaternion = new Quaternion().setFromUnitVectors(
+  <!-- NOTE below is an untested fix for the lattice vectors being much too small when deployed even though they look correct in local dev -->
+  {#if show_cell_vectors}
+    <T.Group position={vector_origin}>
+      {#each matrix as vec, idx (vec)}
+        {@const shaft_length = Math.hypot(...vec) * 0.85}
+        <!-- Shaft goes to 85% of vector length -->
+        {@const tip_start_position = math.scale(vec, 0.85)}
+        <!-- Calculate rotation to align with vector direction -->
+        {@const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0), // Default up direction for cylinder/cone
       new Vector3(...vec).normalize(),
     )}
-          {@const rotation = new Euler()
+        {@const rotation = new Euler()
       .setFromQuaternion(quaternion)
       .toArray()
       .slice(0, 3) as Vec3}
-          <!-- Arrow shaft - position at center of shaft length -->
-          {@const shaft_center = math.scale(vec, 0.425)}
-          <!-- Center at 42.5% = half of 85% -->
-          <T.Mesh
-            position={shaft_center}
-            {rotation}
-            onpointerenter={() => hovered_idx = idx}
-            onpointerleave={() => hovered_idx = null}
-          >
-            <T.CylinderGeometry args={[0.05, 0.05, shaft_length, 16]} />
-            <T.MeshStandardMaterial color={vector_colors[idx]} />
-          </T.Mesh>
+        <!-- Arrow shaft - position at center of shaft length -->
+        {@const shaft_center = math.scale(vec, 0.425)}
+        <!-- Center at 42.5% = half of 85% -->
+        <T.Mesh
+          position={shaft_center}
+          {rotation}
+          onpointerenter={() => hovered_idx = idx}
+          onpointerleave={() => hovered_idx = null}
+        >
+          <T.CylinderGeometry args={[0.05, 0.05, shaft_length, 16]} />
+          <T.MeshStandardMaterial color={vector_colors[idx]} />
+        </T.Mesh>
 
-          <!-- Arrow tip -->
-          <T.Mesh
-            position={tip_start_position}
-            {rotation}
-            onpointerenter={() => hovered_idx = idx}
-            onpointerleave={() => hovered_idx = null}
-          >
-            <T.ConeGeometry args={[0.175, 0.5, 16]} />
-            <T.MeshStandardMaterial color={vector_colors[idx]} />
-          </T.Mesh>
-        {/each}
-      </T.Group>
+        <!-- Arrow tip -->
+        <T.Mesh
+          position={tip_start_position}
+          {rotation}
+          onpointerenter={() => hovered_idx = idx}
+          onpointerleave={() => hovered_idx = null}
+        >
+          <T.ConeGeometry args={[0.175, 0.5, 16]} />
+          <T.MeshStandardMaterial color={vector_colors[idx]} />
+        </T.Mesh>
+      {/each}
+    </T.Group>
 
-      <!-- Tooltip for hovered vector -->
-      {#if hovered_idx !== null && matrix}
-        {@const hovered_vec = matrix[hovered_idx]}
-        {@const tooltip_position = math.add(vector_origin, hovered_vec)}
-        <CanvasTooltip position={tooltip_position}>
-          <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
-          ({hovered_vec.map((coord) => format_num(coord, float_fmt)).join(`, `)}) Å
-        </CanvasTooltip>
-      {/if}
+    <!-- Tooltip for hovered vector -->
+    {#if hovered_idx !== null && matrix}
+      {@const hovered_vec = matrix[hovered_idx]}
+      {@const tooltip_position = math.add(vector_origin, hovered_vec)}
+      <CanvasTooltip position={tooltip_position}>
+        <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
+        ({hovered_vec.map((coord) => format_num(coord, float_fmt)).join(`, `)}) Å
+      </CanvasTooltip>
     {/if}
-  {/key}
+  {/if}
 {/if}

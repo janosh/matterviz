@@ -241,7 +241,9 @@ const LINE_CURVE_TO_FILL: Record<LineCurve, FillCurveType> = {
   'catmull-rom': `catmullRom`,
 }
 const line_curve_to_fill = (curve: LineCurve | undefined): FillCurveType =>
-  curve ? LINE_CURVE_TO_FILL[curve] : `monotoneX`
+  // ?? monotoneX guards an unknown string from an untyped (Python/JSON) caller, matching
+  // Line.svelte's `CURVE_FACTORIES[curve] ?? curveMonotoneX` fallback
+  (curve ? LINE_CURVE_TO_FILL[curve] : undefined) ?? `monotoneX`
 
 // Resolve a boundary to native points + curve in data coordinates. `companion` supplies x
 // positions for boundaries that don't define their own (constant/axis/function/data-without-x).

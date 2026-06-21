@@ -115,40 +115,45 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
   return data
 }
 
-// Helper function to check if a property varies across trajectory frames
-function property_varies(
-  trajectory: TrajectoryType,
-  property_key: string,
-  tolerance = 1e-10,
-): boolean {
-  if (trajectory.frames.length <= 1) return false
+const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
 
-  const values: number[] = []
+// Cache per trajectory: full_data_extractor runs once per frame, so without this it
+// rescans all frames on every call (O(n²)). WeakMap → GC'd with the trajectory.
+const constant_params_cache = new WeakMap<TrajectoryType, Set<string>>()
+
+// Lattice params constant across the trajectory, in a single pass (prefer lattice value,
+// else metadata; tol 1e-10). A param must be observed in ≥1 frame to count as constant;
+// params absent from every frame are excluded (not silently treated as "constant").
+function get_constant_lattice_params(trajectory: TrajectoryType): Set<string> {
+  const cached = constant_params_cache.get(trajectory)
+  if (cached) return cached
+
+  const tolerance = 1e-10
+  const first_values = new Map<string, number>()
+  const varies = new Set<string>()
+
   for (const frame of trajectory.frames) {
-    // Check both direct structure properties and metadata
-    let value: number | undefined
+    const lattice =
+      `lattice` in frame.structure
+        ? (frame.structure.lattice as Record<string, unknown>)
+        : null
+    for (const param of LATTICE_PARAMS) {
+      if (varies.has(param)) continue // already known to vary, skip
 
-    if (`lattice` in frame.structure) {
-      const lattice_value = (frame.structure.lattice as Record<string, unknown>)[property_key]
-      if (typeof lattice_value === `number`) value = lattice_value
-    }
+      const lattice_value = lattice?.[param]
+      const value = typeof lattice_value === `number` ? lattice_value : frame.metadata?.[param]
+      if (typeof value !== `number`) continue
 
-    if (value === undefined && frame.metadata && property_key in frame.metadata) {
-      const metadata_value = frame.metadata[property_key]
-      if (typeof metadata_value === `number`) {
-        value = metadata_value
-      }
-    }
-
-    if (value !== undefined) {
-      values.push(value)
+      const first = first_values.get(param)
+      if (first === undefined) first_values.set(param, value)
+      else if (Math.abs(value - first) > tolerance) varies.add(param)
     }
   }
 
-  if (values.length <= 1) return false
-
-  const first_value = values[0]
-  return values.some((value) => Math.abs(value - first_value) > tolerance)
+  // only params observed in ≥1 frame; a never-present param is not "constant"
+  const constant = new Set([...first_values.keys()].filter((param) => !varies.has(param)))
+  constant_params_cache.set(trajectory, constant)
+  return constant
 }
 
 // Combined data extractor that extracts all common properties
@@ -156,22 +161,15 @@ export const full_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
   trajectory: TrajectoryType,
 ): Record<string, number> => {
-  const base_data = {
+  const result: Record<string, number> = {
     ...energy_data_extractor(frame, trajectory),
     ...force_stress_data_extractor(frame, trajectory),
     ...structural_data_extractor(frame, trajectory),
   }
 
-  // Check which lattice parameters vary
-  const lattice_params = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`]
-  const result = { ...base_data }
-
-  // Add metadata to specify which properties don't vary
-  for (const param of lattice_params) {
-    if (!property_varies(trajectory, param)) {
-      // Mark individual lattice parameters as constant
-      result[`constant_${param}`] = 1
-    }
+  // Mark individual lattice parameters that don't vary across the trajectory
+  for (const param of get_constant_lattice_params(trajectory)) {
+    result[`constant_${param}`] = 1
   }
 
   return result

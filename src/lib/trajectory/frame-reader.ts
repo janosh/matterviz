@@ -29,6 +29,9 @@ const filter_properties = (metadata: TrajectoryMetadata, properties?: string[]):
 export class TrajFrameReader implements FrameLoader {
   private readonly format: `xyz` | `ase`
   private global_numbers?: number[]
+  // Split lines + per-frame start indices for the last XYZ payload, so repeat seeks are
+  // O(1) lookup instead of re-splitting + rescanning from line 0 (was O(n²) over playback)
+  private xyz_cache?: { data: string; lines: string[]; frame_starts: number[] }
 
   constructor(filename: string) {
     const base_filename = strip_compression_extensions(filename)
@@ -228,18 +231,31 @@ export class TrajFrameReader implements FrameLoader {
     return metadata_list
   }
 
-  private load_xyz_frame(data: string, frame_number: number): TrajectoryFrame | null {
+  // Build + cache the line array and per-frame start indices once per payload
+  private get_xyz_cache(data: string): { lines: string[]; frame_starts: number[] } {
+    if (this.xyz_cache?.data === data) return this.xyz_cache
     const lines = data.trim().split(/\r?\n/)
-    let current_frame = 0
+    const frame_starts: number[] = []
+    for (const { start } of iter_xyz_frames(lines)) frame_starts.push(start)
+    this.xyz_cache = { data, lines, frame_starts }
+    return this.xyz_cache
+  }
 
-    for (const frame of iter_xyz_frames(lines)) {
-      if (current_frame++ < frame_number) continue // skip frames before the target
-      return build_xyz_frame(lines, frame, {
+  private load_xyz_frame(data: string, frame_number: number): TrajectoryFrame | null {
+    const { lines, frame_starts } = this.get_xyz_cache(data)
+    const start = frame_starts[frame_number]
+    if (start === undefined) return null // out-of-range frame
+
+    const num_atoms = parseInt(lines[start]?.trim(), 10)
+    const comment = lines[start + 1] ?? ``
+    return build_xyz_frame(
+      lines,
+      { start, num_atoms, comment },
+      {
         frame_label: `indexed frame ${frame_number}`,
         default_step: frame_number,
-      })
-    }
-    return null
+      },
+    )
   }
 
   private load_ase_frame(data: ArrayBuffer, frame_number: number): TrajectoryFrame | null {

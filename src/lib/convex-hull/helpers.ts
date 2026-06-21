@@ -51,12 +51,19 @@ export const extract_structure_from_entry = (
   return (orig_entry?.structure as AnyStructure) || null
 }
 
-// [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1)
+// Loop-based min/max — Math.min/max(...arr) blows the stack on large (>~100k) arrays
+export const array_min = (values: readonly number[]): number =>
+  values.reduce((min, val) => (val < min ? val : min), Infinity)
+export const array_max = (values: readonly number[]): number =>
+  values.reduce((max, val) => (val > max ? val : max), -Infinity)
+
+// [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1).
+// Filter to finite values: NaN/undefined distances would otherwise produce a broken range.
 export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
   const dists = entries
     .map((entry) => entry.e_above_hull)
-    .filter((val): val is number => typeof val === `number`)
-  return dists.length > 0 ? [Math.min(...dists), Math.max(...dists, 0.1)] : [0, 0.1]
+    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
+  return dists.length > 0 ? [array_min(dists), Math.max(array_max(dists), 0.1)] : [0, 0.1]
 }
 
 export const entry_is_stable = (
@@ -65,6 +72,12 @@ export const entry_is_stable = (
 ): boolean =>
   entry.is_stable === true ||
   (entry.is_stable !== false && Math.abs(entry.e_above_hull ?? Infinity) <= tol)
+
+// Whether to plot an entry at a given max hull distance: stable, or a finite distance
+// within max_dist. Unknown distance (undefined) is excluded, not treated as 0/stable.
+export const entry_within_hull_dist = (entry: StabilityEntry, max_dist: number): boolean =>
+  entry_is_stable(entry) ||
+  (typeof entry.e_above_hull === `number` && entry.e_above_hull <= max_dist)
 
 // Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
 export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>

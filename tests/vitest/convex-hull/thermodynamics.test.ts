@@ -253,24 +253,31 @@ describe(`3D Convex Hull`, () => {
     expect(e_hull_at_xy(models, 10, 10)).toBeNull()
   })
 
+  // Flat triangle on the z=0 plane (downward normal), shared by the cases below
+  const flat_models = build_lower_hull_model([
+    {
+      vertices: [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 0.5, y: 1, z: 0 },
+      ],
+      normal: { x: 0, y: 0, z: -1 },
+      centroid: { x: 0.5, y: 1 / 3, z: 0 },
+    },
+  ])
+
   test.each([
     [{ x: 0.5, y: 0.3, z: 0 }, 0, `on hull`],
     [{ x: 0.5, y: 0.3, z: 0.5 }, 0.5, `above hull`],
     [{ x: 0.5, y: 0.3, z: -0.5 }, 0, `below hull`],
   ])(`compute_e_above_hull_for_points: %s → %d`, (point, expected) => {
-    const triangles: ConvexHullTriangle[] = [
-      {
-        vertices: [
-          { x: 0, y: 0, z: 0 },
-          { x: 1, y: 0, z: 0 },
-          { x: 0.5, y: 1, z: 0 },
-        ],
-        normal: { x: 0, y: 0, z: -1 },
-        centroid: { x: 0.5, y: 1 / 3, z: 0 },
-      },
-    ]
-    const models = build_lower_hull_model(triangles)
-    expect(compute_e_above_hull_for_points([point], models)[0]).toBeCloseTo(expected, 10)
+    expect(compute_e_above_hull_for_points([point], flat_models)[0]).toBeCloseTo(expected, 10)
+  })
+
+  test(`compute_e_above_hull_for_points: point outside hull projection → NaN (unknown, not 0)`, () => {
+    // a point with no covering hull face has an unknown distance — must not collapse to 0
+    // (which would mislabel it as on-hull/stable)
+    expect(compute_e_above_hull_for_points([{ x: 10, y: 10, z: 0 }], flat_models)[0]).toBeNaN()
   })
 })
 
@@ -378,16 +385,12 @@ describe(`calculate_e_above_hull`, () => {
     expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0, 10)
   })
 
-  test(`throws for empty refs`, () => {
-    expect(() => calculate_e_above_hull(make_phase({ Fe: 1 }, -4.0), [])).toThrow(
-      /cannot be empty/,
-    )
-  })
-
-  test(`throws for missing element in refs`, () => {
-    const refs = [make_phase({ Fe: 1 }, -4.0)]
-    const entry = make_phase({ Li: 1 }, -2.0)
-    expect(() => calculate_e_above_hull(entry, refs)).toThrow(/not present in reference/)
+  const fe_ref = make_phase({ Fe: 1 }, -4.0)
+  test.each([
+    [`empty refs`, fe_ref, [], /cannot be empty/],
+    [`missing element`, make_phase({ Li: 1 }, -2.0), [fe_ref], /not present in reference/],
+  ] as const)(`throws for %s`, (_desc, entry, refs, err) => {
+    expect(() => calculate_e_above_hull(entry, [...refs])).toThrow(err)
   })
 
   // Quinary (5-element) system tests
@@ -470,6 +473,20 @@ describe(`calculate_e_above_hull`, () => {
   test(`returns empty for empty input array`, () => {
     expect(calculate_e_above_hull([], fe_o_refs)).toEqual({})
   })
+
+  test(`keys same-composition polymorphs separately when entry_id is absent`, () => {
+    // Two FeO polymorphs (distinct energies, no entry_id) plus elemental refs.
+    // Old code keyed by composition alone → 3 keys (the two FeO collided); the fix
+    // includes energy in the fallback key → 4 distinct keys.
+    const entries = [
+      make_phase({ Fe: 1 }, -4.0),
+      make_phase({ O: 1 }, -2.0),
+      make_phase({ Fe: 1, O: 1 }, -3.0),
+      make_phase({ Fe: 1, O: 1 }, -2.5),
+    ]
+    const results = calculate_e_above_hull(entries, entries)
+    expect(Object.keys(results)).toHaveLength(4)
+  })
 })
 
 describe(`get_convex_hull_stats`, () => {
@@ -509,9 +526,11 @@ describe(`get_convex_hull_stats`, () => {
     expect(stats?.hull_distance.max).toBe(0.2)
   })
 
-  test(`includes quaternary when max_arity=4`, () => {
+  test.each([4, undefined])(`counts quaternary entry (max_arity=%s)`, (max_arity) => {
     const entries = [make_phase({ Li: 1, Fe: 1, P: 1, O: 4 }, -10.0)]
-    expect(get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 4)?.quaternary).toBe(1)
+    expect(get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], max_arity)?.quaternary).toBe(
+      1,
+    )
   })
 
   test(`sorts chemical system by electronegativity`, () => {
@@ -530,12 +549,6 @@ describe(`get_convex_hull_stats`, () => {
     const stats = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`, `Mn`, `Co`])
     expect(stats?.quinary_plus).toBe(2)
     expect(stats?.binary).toBe(1)
-  })
-
-  test(`uses default max_arity=4 when omitted`, () => {
-    const entries = [make_phase({ Li: 1, Fe: 1, P: 1, O: 4 }, -10.0)]
-    const stats = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`])
-    expect(stats?.quaternary).toBe(1)
   })
 
   test(`zeroes binary when max_arity=1`, () => {
@@ -670,6 +683,47 @@ describe(`process_hull_for_stats`, () => {
     ].find((entry) => Object.keys(entry.composition).length === 2)
     expect(compound?.e_form_per_atom).toBe(-99)
   })
+
+  // Regression: keying hull distances by JSON.stringify(composition) collided for
+  // same-composition polymorphs without entry_id (last-processed distance won for all).
+  // Covers both the binary and N-dim (ternary) hull branches of calculate_e_above_hull.
+  test.each([
+    {
+      system: `binary`,
+      entries: [
+        make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
+        make_phase({ O: 1 }, -2.0, { entry_id: `O` }),
+        // No entry_id: FeO on the tie-line (e_form 0) and FeO 0.5 eV/atom above it
+        make_phase({ Fe: 1, O: 1 }, -3.0), // energy -6.0
+        make_phase({ Fe: 1, O: 1 }, -2.5), // energy -5.0
+      ],
+      on_hull_energy: -6.0,
+      above_hull_energy: -5.0,
+    },
+    {
+      system: `ternary`,
+      entries: [
+        make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
+        make_phase({ Fe: 1 }, 0, { entry_id: `Fe` }),
+        make_phase({ O: 1 }, 0, { entry_id: `O` }),
+        // No entry_id: LiFeO2 on the hull and a polymorph 0.5 eV/atom above it
+        make_phase({ Li: 1, Fe: 1, O: 2 }, -1.0), // energy -4.0
+        make_phase({ Li: 1, Fe: 1, O: 2 }, -0.5), // energy -2.0
+      ],
+      on_hull_energy: -4.0,
+      above_hull_energy: -2.0,
+    },
+  ])(
+    `scores same-composition polymorphs without entry_id distinctly ($system)`,
+    ({ entries, on_hull_energy, above_hull_energy }) => {
+      const result = process_hull_for_stats(entries)
+      const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
+      const on_hull = all.find((entry) => entry.energy === on_hull_energy)
+      const above_hull = all.find((entry) => entry.energy === above_hull_energy)
+      expect(on_hull?.e_above_hull).toBeCloseTo(0, 6)
+      expect(above_hull?.e_above_hull).toBeCloseTo(0.5, 6)
+    },
+  )
 })
 
 describe(`N-Dimensional Convex Hull`, () => {

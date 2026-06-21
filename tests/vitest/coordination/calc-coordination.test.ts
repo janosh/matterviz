@@ -11,29 +11,19 @@ describe(`calc_coordination_nums`, () => {
     { element: `Cl`, abc: [0, 0.5, 0.5], oxidation_state: -1 },
   ])
 
-  test(`should calculate coordination numbers`, () => {
-    const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`)
-
-    expect(result.sites).toHaveLength(4)
-    expect(result.cn_histogram.size).toBeGreaterThan(0)
-    expect(result.cn_by_element.size).toBe(2) // Na and Cl
-  })
-
-  test(`should group by element`, () => {
-    const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`)
-
-    expect(result.cn_by_element.has(`Na`)).toBe(true)
-    expect(result.cn_by_element.has(`Cl`)).toBe(true)
-    expect(result.cn_histogram_by_element.has(`Na`)).toBe(true)
-    expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
-  })
-
-  test(`should work with solid_angle strategy`, () => {
-    const result = calc_coordination_nums(simple_cubic, `solid_angle`)
-
-    expect(result.sites).toHaveLength(4)
-    expect(result.cn_histogram.size).toBeGreaterThan(0)
-  })
+  test.each([`electroneg_ratio`, `solid_angle`] as const)(
+    `computes per-element coordination (%s)`,
+    (strategy) => {
+      const result = calc_coordination_nums(simple_cubic, strategy)
+      expect(result.sites).toHaveLength(4)
+      expect(result.cn_histogram.size).toBeGreaterThan(0)
+      expect(result.cn_by_element.size).toBe(2) // Na and Cl
+      for (const elem of [`Na`, `Cl`] as const) {
+        expect(result.cn_by_element.has(elem)).toBe(true)
+        expect(result.cn_histogram_by_element.has(elem)).toBe(true)
+      }
+    },
+  )
 
   test(`should handle structure with distant atoms`, () => {
     const isolated_atoms = make_crystal(
@@ -53,5 +43,39 @@ describe(`calc_coordination_nums`, () => {
     const cn_values = result.sites.map((site) => site.coordination_num)
     expect(cn_values.every((cn) => cn === 0)).toBe(true)
     expect(result.cn_histogram.get(0)).toBe(2)
+  })
+
+  // PBC-expanded structures append image atoms after the originals and pass the
+  // original-atom count as center_count; only the originals must appear as centers.
+  test.each([
+    [undefined, 4],
+    [2, 2],
+    [1, 1],
+  ])(
+    `center_count=%s restricts per-site data/histograms to %s centers`,
+    (center_count, expected) => {
+      const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`, center_count)
+      expect(result.sites).toHaveLength(expected)
+      const histogram_total = [...result.cn_histogram.values()].reduce((sum, n) => sum + n, 0)
+      expect(histogram_total).toBe(expected)
+    },
+  )
+
+  test(`buckets disordered sites by majority element, not species[0]`, () => {
+    const struct = make_crystal(3, [
+      [`Cl`, [0, 0, 0]],
+      [`O`, [0.5, 0.5, 0.5]],
+    ])
+    // Disordered site whose minority species (Na) is listed first
+    struct.sites[0].species = [
+      { element: `Na`, occu: 0.3, oxidation_state: 0 },
+      { element: `Cl`, occu: 0.7, oxidation_state: 0 },
+    ]
+    const result = calc_coordination_nums(struct, `electroneg_ratio`)
+    expect(result.cn_by_element.has(`Cl`)).toBe(true)
+    expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
+    // Minority element must NOT create its own bucket for the disordered site
+    expect(result.cn_by_element.has(`Na`)).toBe(false)
+    expect(result.sites[0].element).toBe(`Cl`)
   })
 })
