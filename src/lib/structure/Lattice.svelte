@@ -19,7 +19,7 @@
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
     show_cell_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
-    vector_origin = [-1, -1, -1] satisfies Vec3,
+    vector_origin = [-1, -1, -1],
     float_fmt = `.2f`,
   }: {
     matrix?: math.Matrix3x3
@@ -35,10 +35,8 @@
   } = $props()
 
   let hovered_idx = $state<number | null>(null) // track hovered vector
-  let lattice_center = $derived(
-    matrix
-      ? (math.scale(math.add(...matrix), 0.5) satisfies Vec3)
-      : ([0, 0, 0] satisfies Vec3),
+  let lattice_center: Vec3 = $derived(
+    matrix ? (math.scale(math.add(...matrix), 0.5)) : ([0, 0, 0])
   )
 
   // Build the sheared box geometry in an effect so the previous one is disposed on
@@ -111,7 +109,7 @@
       <Arrow
         position={vector_origin}
         vector={vec}
-        scale={1}
+        scale={0.5}
         color={vector_colors[idx]}
         shaft_radius={0.1}
         arrow_head_radius={0.2}
