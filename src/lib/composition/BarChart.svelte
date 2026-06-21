@@ -145,7 +145,7 @@
 <svg
   viewBox="0 0 {size} {svg_height}"
   {...rest}
-  class="bar-chart {rest.class ?? ``}"
+  class={[`bar-chart`, rest.class]}
   style:max-width="{size}px"
   bind:this={svg_node}
 >

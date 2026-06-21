@@ -985,8 +985,10 @@ type SpinDensities = Record<string, number[]>
 
 // Pymatgen Dos base class format
 export interface PymatgenDos {
-  '@class': string
-  '@module': string
+  // pymatgen MSONable markers - optional since hand-built/partial DOS may omit them,
+  // but the format detectors (normalize_dos, is_pymatgen_format) key on them
+  '@class'?: string
+  '@module'?: string
   energies: number[]
   densities: SpinDensities | number[]
   efermi: number
@@ -994,7 +996,7 @@ export interface PymatgenDos {
 
 // Pymatgen CompleteDos format (includes projected DOS)
 export interface PymatgenCompleteDos extends PymatgenDos {
-  '@class': `CompleteDos` | `LobsterCompleteDos`
+  '@class'?: `CompleteDos` | `LobsterCompleteDos`
   structure?: Record<string, unknown>
   pdos?: Record<string, SpinDensities>[]
   atom_dos?: Record<string, PymatgenDos>

@@ -17,4 +17,10 @@ describe(`DragOverlay`, () => {
     expect(overlay.style.zIndex).toBe(`1`)
     expect(overlay.textContent).toContain(`Drop it`)
   })
+
+  test(`uses a neutral default message (not phase-diagram specific)`, () => {
+    mount(DragOverlay, { target: document.body, props: { visible: true } })
+    const overlay = doc_query<HTMLDivElement>(`.drag-overlay`)
+    expect(overlay.textContent).toContain(`Drop file to load`)
+  })
 })

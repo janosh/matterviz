@@ -63,7 +63,7 @@
 
 <div
   {...rest}
-  class="plot-tooltip {rest.class ?? ``}"
+  class={[`plot-tooltip`, rest.class]}
   style:background-color={bg_color}
   style:color={text_color}
   {style}

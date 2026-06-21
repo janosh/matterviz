@@ -208,36 +208,158 @@ describe(`PeriodicTable`, () => {
     console.error = orig_console_error
   })
 
+  // missing-color resolution for the first tile (H), which is missing whenever a heatmap
+  // is shown without an H value. `color` is a CSS color or `element-category`; the default
+  // is `#666` under a heatmap and element category colors for a plain table ([] heatmap).
   test.each([
-    [`element-category`, `#ff8c00`], // now returns actual color from DEFAULT_CATEGORY_COLORS
-    [`#ff0000`, `#ff0000`],
-    [`#666666`, `#666666`],
-  ] as const)(`missing_color=%s -> %s`, (missing_color, expected_bg) => {
+    [{ He: 5 }, { color: `element-category` }, `#ff8c00`], // category color
+    [{ He: 5 }, { color: `#ff0000` }, `#ff0000`], // explicit color
+    [{ He: 5 }, {}, `#666`], // default gray (heatmap shown, H absent)
+    [[], {}, `#ff8c00`], // no heatmap -> element category color
+  ] as const)(
+    `missing resolution heatmap=%j missing=%j -> %s`,
+    (heatmap, missing, expected) => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: heatmap as never, missing },
+      })
+      const tile = document.querySelector(`.element-tile`) as HTMLElement
+      expect(tile?.style.backgroundColor).toBe(expected)
+    },
+  )
+
+  // 0 is a real, colorable value (not missing); only absent/null/<=0-in-log are missing
+  test(`zero maps through the color scale, absent elements use the missing fallback`, () => {
     mount(PeriodicTable, {
       target: document.body,
-      props: { heatmap_values: [0, 0, 0, 0], missing_color },
+      props: { heatmap_values: { H: 0, He: 10 }, missing: { color: `#666` } },
     })
-    const tile = document.querySelector(`.element-tile`) as HTMLElement
-    expect(tile?.style.backgroundColor).toBe(expected_bg)
+    const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+    expect(tiles[0].style.backgroundColor).not.toBe(`#666`) // H=0 -> scale color, not missing
+    expect(tiles[0].style.backgroundColor).not.toBe(``) // a real color is applied
+    expect(tiles[1].style.backgroundColor).not.toBe(`#666`) // He=10 -> scale color
+    expect(tiles[2].style.backgroundColor).toBe(`#666`) // Li absent -> missing
   })
 
   test.each([
-    [{ values: [undefined, null, false, 10.5], missing_color: `#123456`, log: false }],
-    [{ values: [0, -5, 1, 10], missing_color: `#abcdef`, log: true }],
-  ] as const)(`missing_color edge cases`, ({ values, missing_color, log }) => {
+    [{ values: [undefined, null, false, 10.5], color: `#123456`, log: false }],
+    [{ values: [-1, -5, 1, 10], color: `#abcdef`, log: true }], // <=0 missing in log mode
+  ] as const)(`missing color edge cases`, ({ values, color, log }) => {
     mount(PeriodicTable, {
       target: document.body,
-      props: { heatmap_values: values as never, missing_color, log },
+      props: { heatmap_values: values as never, missing: { color }, log },
     })
     const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
 
     // First two tiles should use missing color
-    expect(tiles[0].style.backgroundColor).toBe(missing_color)
-    expect(tiles[1].style.backgroundColor).toBe(missing_color)
+    expect(tiles[0].style.backgroundColor).toBe(color)
+    expect(tiles[1].style.backgroundColor).toBe(color)
 
     // Later tiles with valid values should use color scale
     const valid_tile_idx = log ? 2 : 3
-    expect(tiles[valid_tile_idx].style.backgroundColor).not.toBe(missing_color)
+    expect(tiles[valid_tile_idx].style.backgroundColor).not.toBe(color)
+  })
+
+  // missing decorations (label/style) apply only to tiles whose value is genuinely
+  // missing: absent keys and non-finite values (NaN) are missing, while present
+  // numbers and explicit colors are real data that never gets decorated.
+  test.each([
+    [`absent object key`, { He: 5 }, [true, false]], // H absent -> missing, He present
+    [`NaN is missing`, [NaN, 5], [true, false]], // NaN -> missing, value 5 present
+    [`explicit colors are real data`, [`#ff0000`, `#00ff00`], [false, false]],
+  ] as const)(
+    `missing decorations apply only to missing tiles: %s`,
+    (_desc, heatmap, [t0_missing, t1_missing]) => {
+      const missing = { label: `N/A`, style: `opacity: 0.3; outline: 1px solid red;` }
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: heatmap as never, missing },
+      })
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+      ;[t0_missing, t1_missing].forEach((is_missing, idx) => {
+        expect(tiles[idx].textContent?.includes(`N/A`)).toBe(is_missing)
+        expect(tiles[idx].style.opacity).toBe(is_missing ? `0.3` : ``)
+        expect(tiles[idx].style.outline.includes(`red`)).toBe(is_missing)
+      })
+    },
+  )
+
+  // NaN/Infinity are missing AND must not poison the color-scale domain for valid tiles
+  test(`non-finite values don't poison the color-scale domain`, () => {
+    const color_scale = (frac: number) =>
+      frac >= 0 && frac <= 1 ? `rgb(0, 0, 0)` : `rgb(255, 255, 255)`
+    mount(PeriodicTable, {
+      target: document.body,
+      props: {
+        heatmap_values: [NaN, 1, 2] as never,
+        color_scale,
+        missing: { color: `#666` },
+      },
+    })
+    const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+    expect(tiles[0].style.backgroundColor).toBe(`#666`) // NaN -> missing
+    // domain is [1, 2] (NaN excluded); valid tiles normalize into [0,1] -> in-range color
+    expect(tiles[1].style.backgroundColor).toBe(`rgb(0, 0, 0)`)
+    expect(tiles[2].style.backgroundColor).toBe(`rgb(0, 0, 0)`)
+  })
+
+  // a multi-value tile is missing only when ALL segments are missing (order-independent)
+  test.each([
+    [[5, null], ``],
+    [[null, 5], ``], // regression: was decorated because only segment[0] was checked
+    [[null, null], `0.3`],
+  ] as const)(
+    `multi-value tile %j missing-decorated opacity=%s`,
+    (value, expected_opacity) => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [value] as never, missing: { style: `opacity: 0.3` } },
+      })
+      const tile = document.querySelector(`.element-tile`) as HTMLElement
+      expect(tile.style.opacity).toBe(expected_opacity)
+    },
+  )
+
+  // a color_override is a solid color and must win over multi-value segment colors
+  test(`color_overrides win over multi-value segment colors`, () => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { heatmap_values: [[1, 2]] as never, color_overrides: { H: `purple` } },
+    })
+    const tile = document.querySelector(`.element-tile`) as HTMLElement
+    expect(tile.style.backgroundColor).toBe(`purple`) // override shown as solid background
+    expect(tile.querySelectorAll(`.segment`)).toHaveLength(0) // segment colors suppressed
+  })
+
+  // in log mode, 0 (and negatives) are non-positive -> missing; positives still map
+  test(`log mode treats 0 as missing, positives map through the scale`, () => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { heatmap_values: [0, 1, 10], log: true, missing: { color: `#666` } },
+    })
+    const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+    expect(tiles[0].style.backgroundColor).toBe(`#666`) // 0 -> missing in log mode
+    expect(tiles[1].style.backgroundColor).not.toBe(`#666`) // 1 -> mapped
+    expect(tiles[2].style.backgroundColor).not.toBe(`#666`) // 10 -> mapped
+  })
+
+  // log-mode tooltip scale_context.min must be the smallest positive bound, not cs_min
+  test(`log-mode tooltip scale_context.min uses the smallest positive value`, async () => {
+    let captured_min: number | undefined
+    const tooltip = createRawSnippet<[{ scale_context: { min: number } }]>((props) => ({
+      render: () => {
+        captured_min = props().scale_context.min
+        return `<span>tt</span>`
+      },
+    }))
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { heatmap_values: [0, 2, 8], log: true, tooltip },
+    })
+    const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+    tiles[1].dispatchEvent(mouseenter) // He = 2 (a positive value)
+    await tick()
+    expect(captured_min).toBe(2) // smallest positive (cs_min_pos), not 0 (cs_min)
   })
 
   test.each([

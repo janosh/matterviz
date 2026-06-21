@@ -376,9 +376,13 @@ export function calculate_domain(values: number[], scale_type: ScaleType = `line
   if (min_val === undefined || max_val === undefined) return [0, 1]
 
   const type_name = get_scale_type_name(scale_type)
-  // Only log scale needs domain clamping to positive values
-  // Arcsinh and linear can handle any values
-  return type_name === `log` ? [Math.max(min_val, math.LOG_EPS), max_val] : [min_val, max_val]
+  // log clamps to positive (arcsinh/linear take any value); clamp BOTH ends so all-negative
+  // data can't leave max <= the clamped min and invert/collapse the scale
+  if (type_name === `log`) {
+    const lo = Math.max(min_val, math.LOG_EPS)
+    return [lo, Math.max(max_val, lo)]
+  }
+  return [min_val, max_val]
 }
 
 // Advanced domain calculation with padding and nice boundaries (from ScatterPlot)
@@ -549,10 +553,10 @@ export function create_color_scale(
   const type_name = get_scale_type_name(scale_type)
 
   if (type_name === `log`) {
-    return scaleSequentialLog(interpolator).domain([
-      Math.max(min_val, math.LOG_EPS),
-      Math.max(max_val, min_val * 1.1),
-    ])
+    // clamp both ends (like create_scale): all-negative data otherwise yields an inverted
+    // [LOG_EPS, max<0] domain that maps every input to undefined
+    const lo = Math.max(min_val, math.LOG_EPS)
+    return scaleSequentialLog(interpolator).domain([lo, Math.max(max_val, lo * 1.1)])
   }
   if (type_name === `arcsinh`) {
     // For arcsinh color scale, we create a custom scale that wraps the interpolator

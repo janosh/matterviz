@@ -111,7 +111,7 @@
 </script>
 
 {#if enabled_gases.length > 0}
-  <div {...rest} class="pressure-controls {position} {rest.class ?? ``}">
+  <div {...rest} class={[`pressure-controls`, position, rest.class]}>
     {#each enabled_gases as gas (gas)}
       {@const P = get_pressure(gas)}
       {@const mu = get_mu(gas)}

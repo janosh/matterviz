@@ -337,7 +337,7 @@
 {/snippet}
 
 {#if show_element_legend}
-  <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
+  <div {...rest} class={[`atom-legend element-legend`, rest.class]}>
     {@render mode_selector_snippet()}
     {#each sorted_element_entries as [elem, amt], idx (elem)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}

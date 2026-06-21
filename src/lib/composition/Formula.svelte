@@ -124,7 +124,7 @@
 <svelte:element
   this={as}
   {...rest}
-  class="formula {rest.class ?? ``}"
+  class={[`formula`, rest.class]}
   oncopy={handle_copy}
 >
   {#each sorted_elements as { element, amount, oxidation_state } (element)}

@@ -33,6 +33,18 @@ const series_line = (pts: readonly Pt[]): string =>
 
 const domains = { x_domain: [0, 20] as Vec2, y_domain: [0, 100] as Vec2 }
 
+// trace a fill region to its SVG path and report whether it contains a cubic Bézier (spline `C`)
+const fill_path_is_cubic = (region: FillRegion, fill_series: DataSeries[]): boolean => {
+  const [segment] = compute_fill_segments(region, fill_series, domains)
+  expect(segment).toBeDefined()
+  return generate_fill_path(
+    segment.upper,
+    segment.lower,
+    segment.upper_curve,
+    segment.lower_curve,
+  ).includes(`C`)
+}
+
 describe(`monotone_interpolate`, () => {
   it(`returns exact y at knots`, () => {
     const xs = [0, 10, 20, 30]
@@ -126,6 +138,56 @@ describe(`resolve_boundary_points`, () => {
       { x: 10, y: 20 },
       { x: 20, y: 30 },
     ])
+  })
+
+  // a series fill edge inherits the series' line_style.curve so it matches the rendered line
+  it.each([
+    [undefined, `monotoneX`], // no curve -> default
+    [`monotone`, `monotoneX`], // renamed key (not caught by the undefined default)
+    [`linear`, `linear`],
+    [`natural`, `natural`],
+    [`step`, `step`],
+    [`basis`, `basis`],
+    [`catmull-rom`, `catmullRom`],
+  ] as const)(`series fill edge maps line curve %s -> %s`, (line_curve, expected) => {
+    const curved_series: DataSeries[] = [
+      { x: [0, 10, 20], y: [10, 20, 30], line_style: line_curve ? { curve: line_curve } : {} },
+    ]
+    const result = resolve_boundary_points(
+      { type: `series`, series_idx: 0 },
+      curved_series,
+      domains,
+    )
+    expect(result?.curve).toBe(expected)
+  })
+
+  // end-to-end: the inherited curve survives compute_fill_segments -> generate_fill_path, so a
+  // linear series fill edge renders straight (no cubic `C`) while the default stays cubic
+  it.each([
+    [undefined, true], // default monotone -> cubic fill edge
+    [`linear`, false], // straight segments -> no cubic
+  ] as const)(`series fill path cubic=%j for line curve %s`, (line_curve, has_cubic) => {
+    const curved_series: DataSeries[] = [
+      { x: [0, 10, 20], y: [10, 20, 15], line_style: line_curve ? { curve: line_curve } : {} },
+    ]
+    const region: FillRegion = { upper: { type: `series`, series_idx: 0 }, lower: 0 }
+    expect(fill_path_is_cubic(region, curved_series)).toBe(has_cubic)
+  })
+
+  // error bands inherit the central series' line curve (data boundaries default monotoneX)
+  it.each([
+    [undefined, true], // default monotone -> cubic band edges
+    [`linear`, false], // straight band edges
+  ] as const)(`error-band fill path cubic=%j for line curve %s`, (line_curve, has_cubic) => {
+    const curved_series: DataSeries[] = [
+      { x: [0, 10, 20], y: [10, 20, 15], line_style: line_curve ? { curve: line_curve } : {} },
+    ]
+    const region = convert_error_band_to_fill_region(
+      { series: { type: `series`, series_idx: 0 }, error: 2 },
+      curved_series,
+    )
+    expect(region).not.toBeNull()
+    expect(fill_path_is_cubic(region as FillRegion, curved_series)).toBe(has_cubic)
   })
 
   it.each([

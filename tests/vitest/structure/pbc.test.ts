@@ -3,9 +3,11 @@ import * as math from '$lib/math'
 import { create_frac_to_cart, euclidean_dist } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
+import { get_majority_element } from '$lib/structure/bonding'
 import { parse_structure_file } from '$lib/structure/parse'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
 import { structure_map } from '$site/structures'
+import lifemn_cif from '$site/structures/Li4Fe3Mn1(PO4)4.cif?raw'
 import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
@@ -154,6 +156,31 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   // distance of Al, but Fe is a metal -> no image
   const fe_images = find_image_atoms(intermetallic).filter(([idx]) => idx === 1)
   expect(fe_images).toHaveLength(0)
+})
+
+test(`phase-2 doesn't float framework cation-formers beyond the cell to complete spectator shells`, () => {
+  // Regression (Li4Fe3Mn1(PO4)4): spectator Li sits at every cell corner/edge. The
+  // composition has framework cations (Fe/Mn/P) so Li renders no polyhedron - yet
+  // before the fix phase-2 still pulled P (and its O) periodic images ~2 Å (0.42
+  // fractional on the short 4.74 Å c-axis) beyond the face to "complete" the
+  // never-drawn Li shells, floating whole PO4 groups outside the cell. Completion
+  // images must now only complete framework (Fe/Mn) shells: all O anions, far fewer
+  // of them, none stacked far past a face.
+  const structure = parse_structure_file(lifemn_cif, `Li4Fe3Mn1(PO4)4.cif`) as Crystal
+  const completion = find_image_atoms(structure).filter(
+    ([, , , is_completion]) => is_completion,
+  )
+  expect(completion.length).toBeGreaterThan(0)
+  expect(completion.length).toBeLessThanOrEqual(20) // was 74 before the fix
+  for (const [src_idx, , img_abc] of completion) {
+    // every completion image is an oxygen anion - no P (or Li/Fe/Mn) cation copies
+    expect(get_majority_element(structure.sites[src_idx])).toBe(`O`)
+    // and none float more than ~0.35 fractional units past any face (would have been
+    // 0.42 for the spurious P images), i.e. no second-shell stacking on PBC images
+    for (const coord of img_abc) {
+      expect(Math.max(0, -coord, coord - 1)).toBeLessThan(0.35)
+    }
+  }
 })
 
 test(`find_image_atoms handles a degenerate (zero-volume) lattice without NaN`, () => {

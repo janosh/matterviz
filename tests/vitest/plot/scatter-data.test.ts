@@ -43,10 +43,29 @@ describe(`filter_series_to_ranges`, () => {
     expect(x2_series.filtered_data.map((pt) => pt.x)).toEqual([150]) // 250 > 200 excluded
   })
 
-  test(`handles inverted ranges and skips NaN/null coords`, () => {
-    const series: DataSeries[] = [{ x: [1, 5, NaN], y: [2, 8, 3] }]
+  test(`handles inverted ranges via min/max of the bounds`, () => {
+    const series: DataSeries[] = [{ x: [1, 5, 15], y: [2, 8, 3] }]
     const [result] = filter_series_to_ranges(series, { ...ranges, x: [10, 0], y: [10, 0] })
-    expect(result.filtered_data.map((pt) => pt.x)).toEqual([1, 5])
+    expect(result.filtered_data.map((pt) => pt.x)).toEqual([1, 5]) // 15 outside effective [0, 10]
+  })
+
+  // Non-finite coords must drop even with an infinite range bound — the case `!isNaN` misses
+  // but `Number.isFinite` catches (finite ranges would already reject them via the <= max check)
+  test.each([
+    [`NaN`, NaN],
+    [`+Infinity`, Infinity],
+    [`-Infinity`, -Infinity],
+  ] as const)(`excludes %s coords even with an infinite range bound`, (_desc, bad_val) => {
+    const inf_ranges: AxisRanges = {
+      x: [-Infinity, Infinity],
+      x2: [0, 1],
+      y: [-Infinity, Infinity],
+      y2: [0, 1],
+    }
+    const series: DataSeries[] = [{ x: [1, bad_val, 3], y: [2, 2, bad_val] }]
+    const [result] = filter_series_to_ranges(series, inf_ranges)
+    // bad x dropped, and the x=3 point dropped because its y is non-finite
+    expect(result.filtered_data.map((pt) => pt.x)).toEqual([1])
   })
 
   test(`augments points with per-point styles, color and size values`, () => {

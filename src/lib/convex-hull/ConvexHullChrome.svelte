@@ -209,7 +209,11 @@
 />
 
 <!-- z-index 1: above auto-stacked siblings after the chrome (3D gizmo, gas controls), below z-2 sliders -->
-<DragOverlay visible={interactions.drag_over} style="z-index: 1" />
+<DragOverlay
+  visible={interactions.drag_over}
+  message="Drop JSON file to load phase diagram data"
+  style="z-index: 1"
+/>
 
 {#if interactions.modal_open && interactions.selected_structure}
   <StructurePopup

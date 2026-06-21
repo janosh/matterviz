@@ -844,7 +844,6 @@ describe(`normalize_band_structure`, () => {
 
     it(`handles Kpoint objects with labels`, () => {
       const result = normalize_band_structure({
-        '@module': `pymatgen.phonon.bandstructure`,
         qpoints: [
           { frac_coords: [0, 0, 0], label: `GAMMA` },
           {
@@ -1127,8 +1126,6 @@ describe(`normalize_band_structure`, () => {
   describe(`electronic band structures (pymatgen BandStructureSymmLine)`, () => {
     it(`converts BandStructureSymmLine with kpoints`, () => {
       const result = normalize_band_structure({
-        '@class': `BandStructureSymmLine`,
-        '@module': `pymatgen.electronic_structure.bandstructure`,
         kpoints: [
           [0, 0, 0],
           [0.5, 0, 0],
@@ -1152,7 +1149,6 @@ describe(`normalize_band_structure`, () => {
 
     it(`extracts first spin channel from spin-keyed bands`, () => {
       const result = normalize_band_structure({
-        '@class': `BandStructureSymmLine`,
         kpoints: [
           [0, 0, 0],
           [0.5, 0, 0],
@@ -1181,7 +1177,6 @@ describe(`normalize_band_structure`, () => {
 
     it(`drops malformed spin-down channel when band shapes mismatch`, () => {
       const result = normalize_band_structure({
-        '@class': `BandStructureSymmLine`,
         kpoints: [
           [0, 0, 0],
           [0.5, 0, 0],
@@ -1204,8 +1199,6 @@ describe(`normalize_band_structure`, () => {
 
     it(`handles BandStructure base class (not just SymmLine)`, () => {
       const result = normalize_band_structure({
-        '@class': `BandStructure`,
-        '@module': `pymatgen.electronic_structure.bandstructure`,
         kpoints: [
           [0, 0, 0],
           [0.25, 0, 0],
@@ -1218,7 +1211,9 @@ describe(`normalize_band_structure`, () => {
     })
 
     it(`handles pymatgen electronic with branches field`, () => {
-      // Pymatgen BandStructureSymmLine can include branches
+      // Pymatgen BandStructureSymmLine can include branches. When branches are
+      // present, is_pymatgen_format relies on the @class marker (structural
+      // kpoints detection is skipped for branch-containing inputs).
       const result = normalize_band_structure({
         '@class': `BandStructureSymmLine`,
         kpoints: [
@@ -1240,7 +1235,6 @@ describe(`normalize_band_structure`, () => {
 
     it(`handles electronic bands with array format (already extracted)`, () => {
       const result = normalize_band_structure({
-        '@class': `BandStructureSymmLine`,
         kpoints: [
           [0, 0, 0],
           [0.5, 0, 0],
@@ -1258,21 +1252,28 @@ describe(`normalize_band_structure`, () => {
     })
 
     it(`detects electronic format by @module containing electronic_structure`, () => {
-      const result = normalize_band_structure({
-        '@module': `pymatgen.electronic_structure.bandstructure`,
+      // branches present -> is_pymatgen_format skips structural (kpoints) detection, so the
+      // @module marker is what's load-bearing here
+      const pmg_input = {
         kpoints: [
           [0, 0, 0],
           [0.5, 0, 0],
         ],
         bands: { '1': [[0, 1]] },
+        branches: [{ name: `\\Gamma-X`, start_index: 0, end_index: 1 }],
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      }
+      const result = normalize_band_structure({
+        '@module': `pymatgen.electronic_structure.bandstructure`,
+        ...pmg_input,
       })
       expect(result?.qpoints).toHaveLength(2)
+      // without the marker the same branched input is not recognized (mutation guard)
+      expect(normalize_band_structure(pmg_input)).toBeNull()
     })
 
     it(`returns null for electronic structure with empty kpoints`, () => {
       const result = normalize_band_structure({
-        '@class': `BandStructureSymmLine`,
         kpoints: [],
         bands: { '1': [] },
         labels_dict: {},
@@ -1282,7 +1283,6 @@ describe(`normalize_band_structure`, () => {
 
     it(`returns null for electronic structure with null bands`, () => {
       const result = normalize_band_structure({
-        '@class': `BandStructureSymmLine`,
         kpoints: [
           [0, 0, 0],
           [0.5, 0, 0],
@@ -1352,8 +1352,6 @@ describe(`normalize_dos`, () => {
 
     it(`handles pymatgen CompleteDos with spin-keyed densities`, () => {
       const result = normalize_dos({
-        '@class': `CompleteDos`,
-        '@module': `pymatgen.electronic_structure.dos`,
         energies: [-5, -2.5, 0, 2.5, 5],
         densities: { '1': [0.1, 0.4, 1.0, 0.4, 0.1], '-1': [0.1, 0.3, 0.9, 0.3, 0.1] },
         efermi: 0,
@@ -1366,8 +1364,6 @@ describe(`normalize_dos`, () => {
 
     it(`handles LobsterCompleteDos with spin-keyed densities`, () => {
       const result = normalize_dos({
-        '@class': `LobsterCompleteDos`,
-        '@module': `Lobster`,
         energies: [-10, -5, 0, 5, 10],
         densities: { '-1': [0.0, 0.5, 1.0, 0.5, 0.0], '1': [0.0, 0.6, 1.1, 0.6, 0.0] },
         efermi: 0,
@@ -1499,8 +1495,6 @@ describe(`normalize_dos`, () => {
 
 describe(`shift_to_fermi`, () => {
   const make_dos = (efermi: number, energies: number[]): PymatgenCompleteDos => ({
-    '@class': `CompleteDos`,
-    '@module': `pymatgen.electronic_structure.dos`,
     energies,
     densities: energies.map(() => 1.0), // Dummy densities
     efermi,
@@ -1533,8 +1527,6 @@ describe(`shift_to_fermi`, () => {
 
   it(`shifts nested atom_dos and spd_dos energies`, () => {
     const dos: PymatgenCompleteDos = {
-      '@class': `CompleteDos`,
-      '@module': `pymatgen.electronic_structure.dos`,
       energies: [0, 5, 10],
       densities: [0.5, 1.0, 0.5],
       efermi: 5.0,
@@ -1547,8 +1539,6 @@ describe(`shift_to_fermi`, () => {
           efermi: 5.0,
         },
         O: {
-          '@class': `Dos`,
-          '@module': `pymatgen.electronic_structure.dos`,
           energies: [0, 5, 10],
           densities: [0.2, 0.4, 0.2],
           efermi: 5.0,
@@ -1581,6 +1571,11 @@ describe(`shift_to_fermi`, () => {
     expect(shifted.spd_dos?.s.efermi).toBe(0)
     expect(shifted.spd_dos?.s.energies).toEqual([-5, 0, 5])
     expect(shifted.spd_dos?.s.densities).toEqual([0.1, 0.2, 0.1]) // Unchanged
+
+    // Nested pymatgen markers preserved through the shift (spread in shift_dos_energies)
+    expect(shifted.atom_dos?.Fe[`@class`]).toBe(`Dos`)
+    expect(shifted.atom_dos?.Fe[`@module`]).toBe(`pymatgen.electronic_structure.dos`)
+    expect(shifted.spd_dos?.s[`@class`]).toBe(`Dos`)
   })
 
   it(`handles zero Fermi energy (no-op)`, () => {

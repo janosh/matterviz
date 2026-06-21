@@ -53,7 +53,7 @@
       font-size: 0.85em;
     }
     input {
-      width: 4em;
+      width: 5.5em;
       padding: 0.15em 0.3em;
       border: 1px solid var(--border-color, #ccc);
       border-radius: 4px;

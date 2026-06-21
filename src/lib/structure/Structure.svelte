@@ -283,37 +283,49 @@
     }
   })
 
-  // Load structure from URL when data_url is provided
+  // Load structure from URL when data_url is provided. A monotonic load_id ignores stale
+  // completions so a newer data_url (or an externally-supplied structure, via the cleanup)
+  // can't be clobbered by a slow earlier fetch.
+  let data_url_load_id = 0
   $effect(() => {
-    if (data_url && !structure) {
-      loading = true
-      error_msg = undefined
+    if (!data_url || structure) return
+    const load_id = ++data_url_load_id
+    const is_current = () => load_id === data_url_load_id
+    loading = true
+    error_msg = undefined
 
-      load_from_url(data_url, (content, filename) => {
-        if (on_file_drop) on_file_drop(content, filename)
-        else {
-          // Parse structure internally when no handler provided
-          try {
-            const text_content = content instanceof ArrayBuffer
-              ? new TextDecoder().decode(content)
-              : content
-            const parsed = parse_file_content(text_content, filename)
-            emit_file_load_event(parsed, filename, content)
-          } catch (error) {
-            error_msg = `Failed to parse structure: ${
-              to_error(error).message
-            }`
-            on_error?.({ error_msg, filename })
-          }
+    load_from_url(data_url, (content, filename) => {
+      if (!is_current()) return // stale response
+      if (on_file_drop) on_file_drop(content, filename)
+      else {
+        // Parse structure internally when no handler provided
+        try {
+          const text_content = content instanceof ArrayBuffer
+            ? new TextDecoder().decode(content)
+            : content
+          const parsed = parse_file_content(text_content, filename)
+          emit_file_load_event(parsed, filename, content)
+        } catch (error) {
+          error_msg = `Failed to parse structure: ${to_error(error).message}`
+          on_error?.({ error_msg, filename })
         }
+      }
+    })
+      .catch((error: Error) => {
+        if (!is_current()) return
+        console.error(`Failed to load structure from URL:`, error)
+        error_msg = `Failed to load structure: ${error.message}`
+        on_error?.({ error_msg, filename: data_url })
       })
-        .then(() => loading = false)
-        .catch((error: Error) => {
-          console.error(`Failed to load structure from URL:`, error)
-          error_msg = `Failed to load structure: ${error.message}`
-          loading = false
-          on_error?.({ error_msg, filename: data_url })
-        })
+      .finally(() => {
+        if (is_current()) loading = false
+      })
+
+    return () => { // invalidate in-flight load on data_url change / structure arrival / unmount
+      if (is_current()) {
+        data_url_load_id += 1
+        loading = false
+      }
     }
   })
 
@@ -934,9 +946,8 @@
     })
   })
 
-  // Apply element mapping then image atoms to the supercell structure.
-  // Skip get_pbc_image_sites during atom drags — the vector math + doubled site
-  // count causes frame drops. Image atoms reappear instantly on drag release.
+  // Element-map + PBC image atoms. Skipped during drags (doubled site count drops frames);
+  // images return on release.
   $effect(() => {
     let struct = supercell_structure
     if (struct && element_mapping && Object.keys(element_mapping).length > 0) {
@@ -1392,7 +1403,8 @@
     const lattice = `lattice` in structure
       ? (structure as Crystal).lattice.matrix
       : null
-    const cart_to_frac = lattice ? create_cart_to_frac(lattice) : null
+    // get_cart_to_frac guards matrix_inverse_3x3, which throws on singular lattices
+    const cart_to_frac = get_cart_to_frac()
     const frac_to_cart = lattice ? create_frac_to_cart(lattice) : null
     structure = {
       ...structure,
@@ -1528,7 +1540,7 @@
   {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
-  class="structure {rest.class ?? ``}"
+  class={[`structure`, rest.class]}
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}
@@ -1542,7 +1554,12 @@
   {:else if (structure?.sites?.length ?? 0) > 0}
     {#snippet reset_camera_btn()}
       {#if camera_has_moved && controls_config.visible(`reset-camera`)}
-        <button class="reset-camera" onclick={reset_camera} title={reset_text}>
+        <button
+          class="reset-camera"
+          onclick={reset_camera}
+          title={reset_text}
+          aria-label={reset_text}
+        >
           <!-- Target/Focus icon for reset camera -->
           <Icon icon="Reset" />
         </button>
@@ -1565,6 +1582,7 @@
           <button
             onclick={() => (measure_menu_open = !measure_menu_open)}
             title="Measure / Edit"
+            aria-label="Measure / Edit"
             class="view-mode-button"
             class:active={measure_menu_open}
             aria-expanded={measure_menu_open}

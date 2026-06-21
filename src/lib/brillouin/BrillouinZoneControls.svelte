@@ -9,7 +9,7 @@
     surface_color = $bindable(`#4488ff`),
     surface_opacity = $bindable(0.3),
     edge_color = $bindable(`#000000`),
-    edge_width = $bindable(0.05),
+    edge_width = $bindable(0.002),
     show_vectors = $bindable(true),
     camera_projection = $bindable(`perspective`),
     // Irreducible BZ options
@@ -84,10 +84,7 @@
   <SettingsSection
     title="Edges"
     current_values={{ edge_color, edge_width }}
-    on_reset={() => {
-      edge_color = `#000000`
-      edge_width = 0.05
-    }}
+    on_reset={() => [edge_color, edge_width] = [`#000000`, 0.002]}
   >
     <label>
       <span>Color:</span>
@@ -95,7 +92,7 @@
     </label>
     <label>
       <span>Width:</span>
-      <input type="range" min="0.01" max="0.2" step="0.01" bind:value={edge_width} />
+      <input type="range" min="0.002" max="0.02" step="0.001" bind:value={edge_width} />
       <span class="value">{edge_width.toFixed(2)}</span>
     </label>
   </SettingsSection>

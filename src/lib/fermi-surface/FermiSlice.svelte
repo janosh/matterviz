@@ -152,7 +152,7 @@
   }
   : null}
   padding={{ t: 5, b: 5, l: 5, r: 5 }}
-  class="fermi-slice {rest.class ?? ``}"
+  class={[`fermi-slice`, rest.class]}
   style={rest.style}
 >
   {#snippet user_content({ x_scale_fn, y_scale_fn, pad, width, height })}

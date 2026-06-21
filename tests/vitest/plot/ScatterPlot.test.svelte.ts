@@ -72,6 +72,29 @@ describe(`ScatterPlot`, () => {
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
+  // guards the line_style.curve -> <Line> wiring (the Line unit test alone wouldn't catch
+  // ScatterPlot dropping `curve={ls?.curve}`). cubic `C` commands appear only for splines.
+  test.each([
+    [`linear`, false], // straight segments -> no cubic Bézier anywhere
+    [`monotone`, true], // default spline -> cubic Bézier present
+  ] as const)(
+    `line_style.curve=%s flows through to the rendered line`,
+    async (curve, cubic) => {
+      const series: DataSeries[] = [
+        { x: [0, 1, 2, 3], y: [0, 8, 1, 9], markers: `line`, line_style: { curve } },
+      ]
+      const plot = await mount_sized_scatter_plot({
+        series,
+        line_tween: { duration: 0 }, // disable path morph so the final `d` is set synchronously
+        legend: null,
+      })
+      const has_cubic = [...plot.querySelectorAll(`path`)].some((path) =>
+        (path.getAttribute(`d`) ?? ``).includes(`C`),
+      )
+      expect(has_cubic).toBe(cubic)
+    },
+  )
+
   test(`mounts with x2-axis series and renders x2 axis`, async () => {
     const plot = await mount_sized_scatter_plot({
       series: [

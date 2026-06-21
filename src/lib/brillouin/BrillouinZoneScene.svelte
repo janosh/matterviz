@@ -25,7 +25,7 @@
     surface_color = $bindable(`#4488ff`),
     surface_opacity = $bindable(0.3),
     edge_color = $bindable(`#000000`),
-    edge_width = $bindable(0.05),
+    edge_width = $bindable(0.002),
     show_vectors = $bindable(true),
     vector_scale = $bindable(1.0),
     // Irreducible BZ options
@@ -105,7 +105,7 @@
 
   // K-path styling. The invisible hover proxy is twice the visible thickness so the cursor
   // snaps to the path even when it isn't directly over the thin visible segment.
-  const KPATH_THICKNESS = 0.12
+  const KPATH_THICKNESS = 0.012
   const KPATH_HOVER_THICKNESS = KPATH_THICKNESS * 2
 
   // Threshold for skipping k-path segments that bridge a path discontinuity (e.g. `U|K`).

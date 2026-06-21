@@ -409,7 +409,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class="sankey {rest.class ?? ``}"
+  class={[`sankey`, rest.class]}
   class:fullscreen
 >
   {#if width && height}

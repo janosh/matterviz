@@ -65,7 +65,7 @@
 </script>
 
 {#if rows.length > 0 || unoccupied_rows.length > 0}
-  <table {...rest} class="wyckoff-table {rest.class ?? ``}">
+  <table {...rest} class={[`wyckoff-table`, rest.class]}>
     <thead>
       <tr>
         {#each [

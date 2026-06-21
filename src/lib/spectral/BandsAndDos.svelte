@@ -106,7 +106,7 @@
 
 <div
   {...rest}
-  class="bands-and-dos {rest.class ?? ``}"
+  class={[`bands-and-dos`, rest.class]}
   style={`display: grid; grid-template-columns: 1fr 200px; gap: 0;` + (rest.style ?? ``)}
 >
   {@render children?.({ hovered_frequency })}

@@ -15,10 +15,19 @@ const make_items = (labels: string[]): AxisItem[] =>
 const x_items = make_items([`A`, `B`, `C`])
 const y_items = make_items([`X`, `Y`, `Z`])
 
-const mount_matrix = (props: Partial<ComponentProps<typeof HeatmapMatrix>> = {}): void => {
+// `x`/`y` are a shorthand to build x_items/y_items from label arrays; pass x_items/y_items
+// directly for custom AxisItem objects (e.g. explicit sort_value)
+const mount_matrix = (
+  props: { x?: string[]; y?: string[] } & Partial<ComponentProps<typeof HeatmapMatrix>> = {},
+): void => {
+  const { x, y, ...rest } = props
   mount(HeatmapMatrix, {
     target: document.body,
-    props: { x_items, y_items, ...props },
+    props: {
+      x_items: x ? make_items(x) : x_items,
+      y_items: y ? make_items(y) : y_items,
+      ...rest,
+    },
   })
 }
 
@@ -145,12 +154,12 @@ describe(`values and colors`, () => {
     expect(cells[2].style.backgroundColor).toBe(cells[6].style.backgroundColor) // both value 1
   })
 
-  test(`null values get missing_color, non-null values don't`, () => {
+  test(`null values get the missing color, non-null values don't`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`, `C`]),
-      y_items: make_items([`X`]),
+      x: [`A`, `B`, `C`],
+      y: [`X`],
       values: [[null, 1, null]],
-      missing_color: `red`,
+      missing: { color: `red` },
     })
     const cells = get_data_cells()
     expect(cells[0].style.backgroundColor).toBe(`red`)
@@ -158,27 +167,43 @@ describe(`values and colors`, () => {
     expect(cells[2].style.backgroundColor).toBe(`red`)
   })
 
+  test(`missing.label and missing.style decorate only missing cells`, () => {
+    mount_matrix({
+      x: [`A`, `B`],
+      y: [`X`],
+      values: [[null, 1]],
+      missing: { color: `red`, label: `N/A`, style: `opacity: 0.4` },
+    })
+    const cells = get_data_cells()
+    // A=null is missing -> label + dimmed
+    expect(cells[0].textContent?.trim()).toBe(`N/A`)
+    expect(cells[0].style.opacity).toBe(`0.4`)
+    // B=1 is present -> no label, not dimmed
+    expect(cells[1].textContent).not.toContain(`N/A`)
+    expect(cells[1].style.opacity).toBe(``)
+  })
+
   test(`record-based values resolve by key with null handling`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`]),
-      y_items: make_items([`X`, `Y`]),
+      x: [`A`, `B`],
+      y: [`X`, `Y`],
       values: { X: { A: 0, B: 1 }, Y: { A: 0.5, B: null } },
-      missing_color: `red`,
+      missing: { color: `red` },
     })
     const cells = get_data_cells()
     expect(cells).toHaveLength(4)
     // X.A=0 and X.B=1 should have different colors (different values)
     expect(cells[0].style.backgroundColor).not.toBe(cells[1].style.backgroundColor)
-    // Y.B=null should get the missing_color
+    // Y.B=null should get the missing color
     expect(cells[3].style.backgroundColor).toBe(`red`)
-    // Y.A=0.5 should NOT be missing_color
+    // Y.A=0.5 should NOT be the missing color
     expect(cells[2].style.backgroundColor).not.toBe(`red`)
   })
 
   test(`custom color_scale function is applied`, () => {
     mount_matrix({
-      x_items: make_items([`A`]),
-      y_items: make_items([`X`]),
+      x: [`A`],
+      y: [`X`],
       values: [[0.5]],
       color_scale: () => `rgb(255, 0, 0)`,
     })
@@ -187,8 +212,8 @@ describe(`values and colors`, () => {
 
   test(`color_overrides takes precedence over computed color`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`]),
-      y_items: make_items([`X`]),
+      x: [`A`, `B`],
+      y: [`X`],
       values: [[0.2, 0.8]],
       color_overrides: { [make_color_override_key(`B`, `X`)]: `rgb(1, 2, 3)` },
     })
@@ -199,11 +224,11 @@ describe(`values and colors`, () => {
 
   test(`log mode anchors at smallest positive value when data has non-positives`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`, `C`, `D`]),
-      y_items: make_items([`X`]),
+      x: [`A`, `B`, `C`, `D`],
+      y: [`X`],
       values: [[-1, 0.01, 1, 100]],
       log: true,
-      missing_color: `red`,
+      missing: { color: `red` },
       color_scale: (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`,
     })
     const cells = get_data_cells()
@@ -218,8 +243,8 @@ describe(`values and colors`, () => {
 
   test(`log mode safely handles non-positive color range minimum`, () => {
     mount_matrix({
-      x_items: make_items([`A`]),
-      y_items: make_items([`X`]),
+      x: [`A`],
+      y: [`X`],
       values: [[1]],
       log: true,
       color_scale_range: [-10, 10],
@@ -338,10 +363,7 @@ describe(`edge cases`, () => {
   ])(
     `$desc renders $data data cells and $empty empty cells`,
     ({ x, y, symmetric, data, empty }) => {
-      mount(HeatmapMatrix, {
-        target: document.body,
-        props: { x_items: make_items(x), y_items: make_items(y), symmetric },
-      })
+      mount_matrix({ x, y, symmetric })
       expect(get_data_cells()).toHaveLength(data)
       expect(get_empty_cells()).toHaveLength(empty)
     },
@@ -349,18 +371,19 @@ describe(`edge cases`, () => {
 })
 
 describe(`hide_empty`, () => {
+  // 3x3 grid where column B and row Y are entirely null
+  const sparse = {
+    x: [`A`, `B`, `C`],
+    y: [`X`, `Y`, `Z`],
+    values: [
+      [1, null, 2],
+      [null, null, null],
+      [3, null, 4],
+    ],
+  }
+
   test(`compact removes all-null columns and rows`, () => {
-    // 3x3 grid where column B and row Y are all null
-    mount_matrix({
-      x_items: make_items([`A`, `B`, `C`]),
-      y_items: make_items([`X`, `Y`, `Z`]),
-      values: [
-        [1, null, 2],
-        [null, null, null],
-        [3, null, 4],
-      ],
-      hide_empty: `compact`,
-    })
+    mount_matrix({ ...sparse, hide_empty: `compact` })
     // Column B (all null) and row Y (all null) should be removed
     const x_labels = get_x_labels()
     const y_labels = get_y_labels()
@@ -375,16 +398,7 @@ describe(`hide_empty`, () => {
   })
 
   test(`gaps keeps grid dimensions but hides empty rows/cols`, () => {
-    mount_matrix({
-      x_items: make_items([`A`, `B`, `C`]),
-      y_items: make_items([`X`, `Y`, `Z`]),
-      values: [
-        [1, null, 2],
-        [null, null, null],
-        [3, null, 4],
-      ],
-      hide_empty: `gaps`,
-    })
+    mount_matrix({ ...sparse, hide_empty: `gaps` })
     // Same 2 visible labels per axis, but grid template uses full 3 cols/rows
     expect(get_x_labels()).toHaveLength(2)
     expect(get_y_labels()).toHaveLength(2)
@@ -400,16 +414,7 @@ describe(`hide_empty`, () => {
   })
 
   test(`false shows all rows/cols including all-null ones`, () => {
-    mount_matrix({
-      x_items: make_items([`A`, `B`, `C`]),
-      y_items: make_items([`X`, `Y`, `Z`]),
-      values: [
-        [1, null, 2],
-        [null, null, null],
-        [3, null, 4],
-      ],
-      hide_empty: false,
-    })
+    mount_matrix({ ...sparse, hide_empty: false })
     expect(get_x_labels()).toHaveLength(3)
     expect(get_y_labels()).toHaveLength(3)
     expect(get_data_cells()).toHaveLength(9)
@@ -418,11 +423,9 @@ describe(`hide_empty`, () => {
 
 describe(`axis label placement`, () => {
   test(`stagger_axis_labels=true splits x(top/bottom) and y(left/right) sides`, () => {
-    const four_x_items = make_items([`A`, `B`, `C`, `D`])
-    const four_y_items = make_items([`W`, `X`, `Y`, `Z`])
     mount_matrix({
-      x_items: four_x_items,
-      y_items: four_y_items,
+      x: [`A`, `B`, `C`, `D`],
+      y: [`W`, `X`, `Y`, `Z`],
       stagger_axis_labels: true,
     })
     const x_labels = get_x_labels()
@@ -461,8 +464,8 @@ describe(`axis label placement`, () => {
 
   test(`staggered labels avoid summary row and summary column tracks`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`, `C`, `D`]),
-      y_items: make_items([`W`, `X`, `Y`, `Z`]),
+      x: [`A`, `B`, `C`, `D`],
+      y: [`W`, `X`, `Y`, `Z`],
       values: [
         [1, 2, 3, 4],
         [5, 6, 7, 8],
@@ -487,8 +490,8 @@ describe(`axis label placement`, () => {
 describe(`milestone feature props`, () => {
   test(`search_query filters visible labels`, () => {
     mount_matrix({
-      x_items: make_items([`Al`, `Fe`, `Ni`]),
-      y_items: make_items([`Al`, `Fe`, `Ni`]),
+      x: [`Al`, `Fe`, `Ni`],
+      y: [`Al`, `Fe`, `Ni`],
       search_query: `fe`,
     })
     expect(get_x_labels()).toHaveLength(1)
@@ -520,8 +523,8 @@ describe(`milestone feature props`, () => {
 
   test(`legend_format passes through to format_num`, () => {
     mount_matrix({
-      x_items: make_items([`A`]),
-      y_items: make_items([`X`]),
+      x: [`A`],
+      y: [`X`],
       values: [[1.234]],
       show_legend: true,
       legend_ticks: 2,
@@ -561,8 +564,8 @@ describe(`milestone feature props`, () => {
 
   test(`selected outline color token contrasts with dark cell backgrounds`, () => {
     mount_matrix({
-      x_items: make_items([`A`]),
-      y_items: make_items([`X`]),
+      x: [`A`],
+      y: [`X`],
       selection_mode: `single`,
       values: [[`#000000`]],
     })
@@ -598,8 +601,8 @@ describe(`milestone feature props`, () => {
 
   test(`symmetric summaries ignore hidden upper triangle`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`]),
-      y_items: make_items([`A`, `B`]),
+      x: [`A`, `B`],
+      y: [`A`, `B`],
       values: [
         [1, 2],
         [3, 4],
@@ -616,8 +619,8 @@ describe(`milestone feature props`, () => {
 describe(`show_values`, () => {
   test(`true renders formatted numbers inside cells`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`]),
-      y_items: make_items([`X`]),
+      x: [`A`, `B`],
+      y: [`X`],
       values: [[1.2345, 0.001]],
       show_values: true,
     })
@@ -629,8 +632,8 @@ describe(`show_values`, () => {
 
   test(`custom format string is used`, () => {
     mount_matrix({
-      x_items: make_items([`A`]),
-      y_items: make_items([`X`]),
+      x: [`A`],
+      y: [`X`],
       values: [[Math.PI]],
       show_values: `.1f`,
     })
@@ -639,8 +642,8 @@ describe(`show_values`, () => {
 
   test(`ignored when custom cell snippet is provided`, () => {
     mount_matrix({
-      x_items: make_items([`A`]),
-      y_items: make_items([`X`]),
+      x: [`A`],
+      y: [`X`],
       values: [[42]],
       show_values: true,
       cell: (() => {}) as unknown as ComponentProps<typeof HeatmapMatrix>[`cell`],
@@ -650,8 +653,8 @@ describe(`show_values`, () => {
 
   test(`null values produce no span`, () => {
     mount_matrix({
-      x_items: make_items([`A`, `B`]),
-      y_items: make_items([`X`]),
+      x: [`A`, `B`],
+      y: [`X`],
       values: [[null, 1]],
       show_values: true,
     })

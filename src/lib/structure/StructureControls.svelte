@@ -1215,7 +1215,9 @@
         <div
           style="display: flex; flex-wrap: wrap; gap: 8pt; align-items: center"
           {@attach tooltip({
-            content: SETTINGS_CONFIG.structure.polyhedra_excluded_elements.description,
+            content: `${
+              SETTINGS_CONFIG.structure.polyhedra_excluded_elements.description
+            }. Force-including a spectator center (alkali or heavy alkaline-earth, e.g. Li, Na, Ba) may render its polyhedra truncated at cell boundaries.`,
           })}
         >
           Centers:

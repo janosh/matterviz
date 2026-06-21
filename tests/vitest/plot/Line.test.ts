@@ -143,6 +143,22 @@ describe(`Line`, () => {
     expect(paths_2[0].getAttribute(`d`)).toMatch(/^M0,100L100,0$/)
   })
 
+  test.each([
+    [`linear`, /^M0,100L100,0L200,100$/], // straight segments between points
+    [`monotone`, /^M0,100C/], // default cubic spline (curveMonotoneX)
+  ] as const)(`curve=%s sets line interpolation`, (curve, expected) => {
+    const points: Vec2[] = [
+      [0, 100],
+      [100, 0],
+      [200, 100],
+    ]
+    mount(Line, {
+      target: document.body,
+      props: { points, origin: [0, 100], curve, line_tween: { duration: 0 } },
+    })
+    expect(document.querySelectorAll(`path`)[0].getAttribute(`d`)).toMatch(expected)
+  })
+
   test(`calculates area path correctly with 2 points`, () => {
     const points: Vec2[] = [
       [0, 50],

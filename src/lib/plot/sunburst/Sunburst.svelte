@@ -682,7 +682,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class="sunburst {rest.class ?? ``}"
+  class={[`sunburst`, rest.class]}
   class:fullscreen
   class:icicle={shape === `icicle`}
 >

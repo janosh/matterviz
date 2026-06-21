@@ -12,12 +12,13 @@
     Orientation,
   } from '$lib/plot/core/types'
   import type { AnyStructure } from '$lib/structure'
+  import { calc_structure_coordination } from '$lib/structure/atom-properties'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { parse_any_structure } from '$lib/structure/parse'
   import { is_crystal } from '$lib/structure/validation'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { calc_coordination_nums, type CoordinationData } from './calc-coordination'
+  import type { CoordinationData } from './calc-coordination'
   import type { SplitMode } from './index'
   import { to_error } from '$lib/utils'
 
@@ -87,10 +88,11 @@
     return [...base_entries, ...dropped_entries]
   })
 
-  // Compute coordination data for each structure
+  // Compute coordination data for each structure via the shared PBC-aware helper so
+  // boundary-atom coordination matches the 3D viewer (which uses the same path).
   const entries_with_data = $derived(structure_entries.map((entry) => ({
     ...entry,
-    data: calc_coordination_nums(entry.structure, strategy),
+    data: calc_structure_coordination(entry.structure, strategy),
   })))
 
   // Compute appropriate ranges
@@ -299,6 +301,6 @@
     {tooltip}
     ondrop={handle_file_drop}
     {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
-    class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
+    class={[rest.class, dragover && `dragover`]}
   />
 {/if}

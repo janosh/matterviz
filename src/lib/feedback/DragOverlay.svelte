@@ -1,19 +1,15 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  let {
-    visible = false,
-    message = `Drop JSON file to load phase diagram data`,
-    style = undefined,
-  }: {
+  let { visible = false, message = `Drop file to load`, ...rest }: {
     visible?: boolean
     message?: string
-    style?: string
-  } = $props()
+  } & HTMLAttributes<HTMLDivElement> = $props()
 </script>
 
 {#if visible}
-  <div class="drag-overlay" {style}>
+  <div {...rest} class={[`drag-overlay`, rest.class]}>
     <div class="drag-message">
       <Icon icon="Info" />
       <span>{message}</span>

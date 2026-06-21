@@ -17,6 +17,7 @@
     HeatmapExportFormat,
     HeatmapTooltipProp,
     LegendPosition,
+    MissingCellStyle,
     NormalizeMode,
     SymmetricMode,
   } from './index'
@@ -38,7 +39,7 @@
     color_scale = $bindable(`interpolateViridis`),
     color_scale_range = [null, null],
     color_overrides = {},
-    missing_color = `transparent`,
+    missing = {},
     log = false,
     value_transform,
     normalize = `linear`,
@@ -119,7 +120,7 @@
     color_scale?: D3InterpolateName | ((val: number) => string)
     color_scale_range?: [number | null, number | null]
     color_overrides?: Record<string, string>
-    missing_color?: string
+    missing?: MissingCellStyle
     log?: boolean
     value_transform?: (
       value: number,
@@ -410,15 +411,21 @@
   let cs_max = $derived(color_scale_range[1] ?? domain_max)
   let use_log_norm = $derived(normalize === `log` || log)
 
+  // fill for cells with no mappable value (default transparent)
+  let missing_fill = $derived(missing.color ?? `transparent`)
+
+  // whether a value lacks a mappable scale color (-> missing fill + label/style decorations)
+  function cell_is_missing(val: CellValue): boolean {
+    if (val === null) return true
+    if (typeof val === `string`) return !is_color(val)
+    return !Number.isFinite(val) || (use_log_norm && val <= 0)
+  }
+
   // Map a single value to a background color
   function value_to_color(val: CellValue): string | null {
-    if (val === null) return missing_color || null
-    if (typeof val === `string`) {
-      if (is_color(val)) return val
-      return missing_color || null
-    }
-    if (!Number.isFinite(val) || !color_scale_fn) return missing_color || null
-    if (use_log_norm && val <= 0) return missing_color || null
+    if (typeof val === `string`) return is_color(val) ? val : missing_fill || null
+    // null/string excluded above -> val narrows to number past this guard
+    if (val === null || !color_scale_fn || cell_is_missing(val)) return missing_fill || null
 
     const span = cs_max - cs_min
     if (!Number.isFinite(span) || span === 0) return color_scale_fn(0.5)
@@ -430,7 +437,7 @@
       const is_descending_range = cs_min > cs_max
       const lower_bound = Math.min(cs_min, cs_max)
       const upper_bound = Math.max(cs_min, cs_max)
-      if (upper_bound <= 0) return missing_color || null
+      if (upper_bound <= 0) return missing_fill || null
       const safe_lower_bound = lower_bound > 0 ? lower_bound : (min_pos ?? upper_bound)
       const safe_value = Math.max(val, safe_lower_bound)
       const log_min = Math.log(safe_lower_bound)
@@ -443,7 +450,7 @@
       const log_normalized = (Math.log(safe_value) - log_min) / (log_max - log_min)
       normalized = is_descending_range ? 1 - log_normalized : log_normalized
     }
-    if (!Number.isFinite(normalized)) return missing_color || null
+    if (!Number.isFinite(normalized)) return missing_fill || null
     return color_scale_fn(Math.max(0, Math.min(1, normalized)))
   }
 
@@ -1161,7 +1168,7 @@
   <div
     {...rest}
     bind:this={matrix_el}
-    class="grid theme-{theme} {rest.class ?? ``}"
+    class={[`grid`, `theme-${theme}`, rest.class]}
     style:--n-cols={gaps_mode ? x_items.length : grid_col_count}
     style:--n-rows={gaps_mode ? y_items.length : grid_row_count}
     style:--extra-right-y={(use_side_split_y_labels || symmetric === `upper`) ? 1 : 0}
@@ -1241,6 +1248,8 @@
         {@const bg = bg_flat[flat_idx]}
         {@const should_render = !is_hidden_cell(x_idx, y_idx)}
         {#if should_render}
+          {@const raw = get_value(x_idx, y_idx)}
+          {@const cell_missing = cell_is_missing(raw)}
           <svelte:element
             this={cell_tag_name}
             class={cell_class_name}
@@ -1249,6 +1258,7 @@
             class:animated={animate_updates}
             data-x={x_idx}
             data-y={y_idx}
+            style={cell_missing ? missing.style : undefined}
             style:background-color={bg}
             style:color={text_flat?.[flat_idx]}
             style:--heatmap-selected-outline-color={selected_outline_flat[flat_idx]}
@@ -1257,15 +1267,14 @@
           >
             {#if cell}
               {@render cell(build_cell_context(x_idx, y_idx))}
-            {:else if show_values}
-              {@const raw = get_value(x_idx, y_idx)}
-              {#if raw !== null}
-                <span class="cell-value">{
-                  typeof raw === `number`
-                  ? format_num(raw, show_values === true ? `.3~g` : show_values)
-                  : raw
-                }</span>
-              {/if}
+            {:else if cell_missing}
+              {#if missing.label}<span class="cell-value">{missing.label}</span>{/if}
+            {:else if show_values && raw !== null}
+              <span class="cell-value">{
+                typeof raw === `number`
+                ? format_num(raw, show_values === true ? `.3~g` : show_values)
+                : raw
+              }</span>
             {/if}
           </svelte:element>
         {:else}

@@ -800,7 +800,7 @@
 <div
   {...rest}
   bind:this={wrapper}
-  class="binned-scatter {rest.class ?? ``}"
+  class={[`binned-scatter`, rest.class]}
   class:fullscreen
   data-render-mode={render_mode}
   style:--binned-scatter-label-font-size={point_labels_settings.font_size}

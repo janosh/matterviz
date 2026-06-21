@@ -14,7 +14,14 @@ import type {
   PhaseStats,
   ProcessedPhaseData,
 } from './types'
-import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './helpers'
+import {
+  array_max,
+  array_min,
+  get_arity,
+  HULL_STABILITY_TOL,
+  is_on_hull,
+  is_unary_entry,
+} from './helpers'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
@@ -75,13 +82,7 @@ export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
       .map((entry) => [Object.keys(entry.composition)[0], entry]),
   )
 
-  return {
-    entries: normalized_entries,
-    stable_entries,
-    unstable_entries,
-    elements,
-    el_refs,
-  }
+  return { entries: normalized_entries, stable_entries, unstable_entries, elements, el_refs }
 }
 
 // Get energy per atom with correction applied, or fallback to raw energy_per_atom/energy.
@@ -133,8 +134,13 @@ export function find_lowest_energy_unary_refs(
   return refs
 }
 
-// Result key for an entry: entry_id, falling back to its serialized composition
-const id_of = (entry: PhaseData) => entry.entry_id ?? JSON.stringify(entry.composition)
+// Result key: entry_id, else composition|energy|structure. Composition alone collides for
+// same-stoichiometry polymorphs (last distance would win), so add energy + structure.
+const id_of = (entry: PhaseData): string => {
+  if (entry.entry_id) return entry.entry_id
+  const structure_hash = entry.structure ? JSON.stringify(entry.structure) : ``
+  return `${JSON.stringify(entry.composition)}|${entry.energy}|${structure_hash}`
+}
 
 // Calculate energy above hull (eV/atom). Missing pure element refs default to E_form = 0.
 export function calculate_e_above_hull(
@@ -617,7 +623,7 @@ export function e_hull_at_xy(models: HullFaceModel[], x: number, y: number) {
 export const compute_e_above_hull_for_points = (points: Point3D[], models: HullFaceModel[]) =>
   points.map((point) => {
     const z_hull = e_hull_at_xy(models, point.x, point.y)
-    if (z_hull === null) return 0
+    if (z_hull === null) return NaN // unknown: no hull face covers this point
     return Math.max(0, point.z - z_hull)
   })
 
@@ -1089,10 +1095,10 @@ const build_simplex_models_nd = (simplices: number[][][]): SimplexModelND[] =>
     // Compute bounding box in spatial dimensions
     const spatial_dim = dim - 1
     const bbox_min = Array.from({ length: spatial_dim }, (_, idx) =>
-      Math.min(...vertices_spatial.map((pt) => pt[idx])),
+      array_min(vertices_spatial.map((pt) => pt[idx])),
     )
     const bbox_max = Array.from({ length: spatial_dim }, (_, idx) =>
-      Math.max(...vertices_spatial.map((pt) => pt[idx])),
+      array_max(vertices_spatial.map((pt) => pt[idx])),
     )
 
     return { vertices, vertices_spatial, bbox_min, bbox_max }

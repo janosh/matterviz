@@ -58,26 +58,31 @@
   let missing_heatmap_key: string | null = $state(`atomic_mass`)
   let missing_color: string = $state(`#666666`)
   let missing_use_category: boolean = $state(false)
+  let missing_label: string = $state(``)
+  let missing_opacity: number = $state(1)
   let missing_active_element: ChemicalElement | null = $state(null)
   let missing_active_category: ElementCategory | null = $state(null)
 
-  // Missing color demo derived values
-  let missing_get_element_value = $derived((el: ChemicalElement) => {
-    if (!missing_heatmap_key) return 0
+  // Missing color demo derived values (null = missing, distinct from a real 0)
+  let missing_get_element_value = $derived((el: ChemicalElement): number | null => {
+    if (!missing_heatmap_key) return null
     const value = el[missing_heatmap_key as keyof typeof el]
-    return typeof value === `number` ? value : 0
+    return typeof value === `number` ? value : null
   })
 
-  let missing_computed_color = $derived(
-    missing_use_category ? `element-category` : missing_color,
-  )
+  let missing_config = $derived({
+    color: missing_use_category ? `element-category` : missing_color,
+    label: missing_label || undefined,
+    // dim missing tiles via the `style` escape hatch (opacity fades the whole tile)
+    style: missing_opacity < 1 ? `opacity: ${missing_opacity}` : undefined,
+  })
   let missing_heatmap_values = $derived.by(() => {
     if (!missing_heatmap_key) return []
 
     const full_values = element_data.map(missing_get_element_value)
 
-    // only show every 3rd element to demo missing color
-    return full_values.map((value, idx) => (idx % 3 === 0 ? value : 0))
+    // only show every 3rd element so the rest demo the missing fallback
+    return full_values.map((value, idx) => (idx % 3 === 0 ? value : null))
   })
 
   // Active elements border demo
@@ -163,14 +168,18 @@
 
 <h2>Missing Color Demo</h2>
 <p>
-  The <code>missing_color</code> prop is used to control how missing values in heatmap
-  data are displayed.
+  The <code>missing</code> prop (<code>{`{ color, label, style }`}</code>) styles tiles with
+  no heatmap value. <code>color</code> takes any CSS color or
+  <code>'element-category'</code> (default: category colors for a plain table, gray for a
+  heatmap); <code>label</code> and <code>style</code> further decorate missing tiles (e.g.
+  <code>style="opacity: 0.4"</code> to dim them). Note <code>0</code> is a real value mapped
+  through the color scale — only absent / <code>null</code> entries count as missing.
 </p>
 
 <PeriodicTable
   tile_props={{ show_name: window_width > 800 }}
   heatmap_values={missing_heatmap_values}
-  missing_color={missing_computed_color}
+  missing={missing_config}
   bind:active_element={missing_active_element}
   bind:active_category={missing_active_category}
   links="name"
@@ -196,6 +205,29 @@
           type="color"
           bind:value={missing_color}
           disabled={missing_use_category || !missing_heatmap_values?.length}
+        />
+      </label>
+
+      <label {style}>
+        Missing label:
+        <input
+          type="text"
+          placeholder="e.g. N/A"
+          bind:value={missing_label}
+          disabled={!missing_heatmap_values?.length}
+          style="width: 5em"
+        />
+      </label>
+
+      <label {style}>
+        Missing opacity: {missing_opacity}
+        <input
+          type="range"
+          min="0.1"
+          max="1"
+          step="0.1"
+          bind:value={missing_opacity}
+          disabled={!missing_heatmap_values?.length}
         />
       </label>
     </TableInset>

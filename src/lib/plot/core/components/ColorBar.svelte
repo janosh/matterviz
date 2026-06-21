@@ -550,7 +550,7 @@
   style:flex-direction={wrapper_flex_dir}
   {...rest}
   style={div_style + (rest.style ?? ``)}
-  class="colorbar {rest.class ?? ``}"
+  class={[`colorbar`, rest.class]}
 >
   {#if title || has_any_select}
     <div class="title-row {actual_title_side} {orientation}" style={actual_title_style}>

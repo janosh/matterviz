@@ -35,7 +35,7 @@
   let default_fmt = $derived(fmt) // rename fmt to default_fmt for internal use
 </script>
 
-<svelte:element this={as} {...rest} class="info-card {rest.class ?? ``}">
+<svelte:element this={as} {...rest} class={[`info-card`, rest.class]}>
   {#if title || title_snippet}
     <h2>
       {#if title_snippet}{@render title_snippet()}{:else}

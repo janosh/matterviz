@@ -36,8 +36,6 @@ async function inject_vectors(page: Page, mode: `multi` | `single`) {
   await page.evaluate(
     (site_props) => {
       const structure = {
-        '@module': `pymatgen.core.structure`,
-        '@class': `Structure`,
         charge: 0,
         lattice: {
           matrix: [

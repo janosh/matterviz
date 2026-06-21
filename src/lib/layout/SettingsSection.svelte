@@ -48,6 +48,9 @@
     deep_copy(current_values) as Record<string, unknown>
   )
 
+  // unique per-instance id so aria-labelledby stays valid with multiple sections on a page
+  const title_id = `settings-section-title-${crypto.randomUUID()}`
+
   // Check if any values have changed from reference values
   let has_changes = $derived.by(() => {
     for (const [key, reference_value] of Object.entries(reference_values)) {
@@ -91,7 +94,7 @@
   }
 </script>
 
-<h4 id="settings-section-title">
+<h4 id={title_id}>
   {title}
 
   {#if has_changes}
@@ -106,7 +109,7 @@
     </button>
   {/if}
 </h4>
-<section {...rest} aria-labelledby="settings-section-title">
+<section {...rest} aria-labelledby={title_id}>
   {@render children?.({ current_values, has_changes, reference_values })}
 </section>
 

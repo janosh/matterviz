@@ -4,7 +4,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
-  import { Euler, Quaternion, Vector3 } from 'three'
+  import { rotation_from_direction } from './geometry'
 
   let {
     position,
@@ -47,14 +47,7 @@
     math.add(position, math.scale(dir, shaft_len + head_len * 0.5)),
   )
 
-  const rotation = $derived.by((): Vec3 => {
-    if (mag < math.EPS) return [0, 0, 0]
-    const quat = new Quaternion().setFromUnitVectors(
-      new Vector3(0, 1, 0),
-      new Vector3(...dir),
-    )
-    return new Euler().setFromQuaternion(quat).toArray().slice(0, 3) as Vec3
-  })
+  const rotation = $derived(rotation_from_direction(vector))
 </script>
 
 {#if shaft_len > 0.01}

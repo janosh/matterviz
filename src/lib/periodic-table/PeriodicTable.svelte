@@ -9,8 +9,12 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '$lib/colors'
+  import type { MissingCellStyle } from '$lib/heatmap-matrix'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
+
+  // a tile's heat value: scalar or 1-4-segment array of numbers/colors
+  type HeatValue = number | number[] | string | string[]
 
   const default_f_block_inset_tiles = [
     { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
@@ -36,7 +40,7 @@
     color_scale_range = [null, null],
     color_overrides = {},
     labels = {},
-    missing_color = `element-category`,
+    missing = {},
     split_layout = undefined,
     show_color_bar = true,
     color_bar_props = {},
@@ -50,12 +54,12 @@
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
-    // either array of numbers/colors (can be partial, missing elements default to 0) or object with
-    // element symbol as key and heat value as value
-    // NEW: each value can now be a single number/color or array of 1-4 numbers/colors for multi-segment display
+    // array (positional by atomic number, can be partial) or object keyed by element symbol.
+    // each value is a single number/color or an array of 1-4 numbers/colors for multi-segment
+    // tiles. null/omitted -> missing (uses the `missing` fallback); 0 is a real value
     heatmap_values?:
-      | Partial<Record<ElementSymbol, number | number[] | string | string[]>>
-      | (number | number[] | string | string[])[]
+      | Partial<Record<ElementSymbol, HeatValue | null>>
+      | (HeatValue | null)[]
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
     links?: keyof ChemicalElement | Record<ElementSymbol, string> | null
@@ -78,9 +82,7 @@
     color_scale_range?: [number | null, number | null]
     color_overrides?: Partial<Record<ElementSymbol, string>>
     labels?: Partial<Record<ElementSymbol, string>>
-    // background color for elements missing from heatmap_values
-    // "element-category" falls back to element category default color
-    missing_color?: string
+    missing?: MissingCellStyle // styling for tiles with no heatmap value
     // control the layout of multi-value splits for all tiles
     split_layout?: `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
     // automatically show a color bar when heatmap_values is provided (default: true)
@@ -94,7 +96,7 @@
         [
           {
             element: ChemicalElement
-            value: number | number[] | string | string[]
+            value: HeatValue | null
             active: boolean
             bg_color: string | null
             scale_context: ScaleContext
@@ -125,7 +127,9 @@
         )
         return []
       }
-      return ELEM_SYMBOLS.map((symbol) => heatmap_values[symbol] ?? 0)
+      // keep absent elements as null (distinct from a real 0 value) so they map to the
+      // missing fallback while explicit 0 maps through the color scale
+      return ELEM_SYMBOLS.map((symbol) => heatmap_values[symbol] ?? null)
     }
     return []
   })
@@ -188,124 +192,93 @@
     typeof color_scale === `string` ? get_d3_interpolator(color_scale) : color_scale,
   )
 
+  // finite numeric heat value (numeric strings coerced; colors, null/false and non-finite
+  // excluded so they can't poison the color-scale domain). null => not a mappable number
+  const to_heat_num = (
+    value: number | string | false | null | undefined,
+  ): number | null => {
+    if (value == null || value === false || is_color(value)) return null
+    const num = Number(value)
+    return Number.isFinite(num) ? num : null
+  }
+
+  let heat_nums = $derived(
+    heat_values.flat().map(to_heat_num).filter((num): num is number => num !== null),
+  )
+  // values usable by the active scale (log excludes non-positive)
+  let usable_heat_nums = $derived(log ? heat_nums.filter((num) => num > 0) : heat_nums)
+
   let cs_min = $derived(
-    color_scale_range[0] ??
-      (heat_values.length > 0
-        ? Math.min(
-          ...heat_values.flat().filter((val): val is number => typeof val === `number`),
-        )
-        : 0),
+    color_scale_range[0] ?? (heat_nums.length > 0 ? Math.min(...heat_nums) : 0),
   )
   let cs_max = $derived(
-    color_scale_range[1] ??
-      (heat_values.length > 0
-        ? Math.max(
-          ...heat_values.flat().filter((val): val is number => typeof val === `number`),
-        )
-        : 1),
+    color_scale_range[1] ?? (heat_nums.length > 0 ? Math.max(...heat_nums) : 1),
   )
 
   // smallest positive bound for log color mapping (matches the auto ColorBar's log scale)
   let cs_min_pos = $derived.by(() => {
     if (cs_min > 0) return cs_min
-    const pos = heat_values.flat().filter((val): val is number =>
-      typeof val === `number` && val > 0
-    )
+    const pos = heat_nums.filter((num) => num > 0)
     return pos.length > 0 ? Math.min(...pos) : cs_max
   })
 
-  let bg_color = $derived(
-    (
-      value: number | number[] | string | string[] | false,
-      element?: ChemicalElement,
-    ): string | null => {
-      if (Array.isArray(value)) {
-        // For arrays, return the color of the first value (used as fallback)
-        return bg_color(value[0], element)
-      }
+  // whether a value maps to a heatmap color (false => use the missing fallback). 0 is a
+  // real value; only absent/null/non-finite (and <=0 in log mode) count as missing. a
+  // multi-value tile is missing only when every segment is missing
+  const value_is_missing = (value: HeatValue | false | null): boolean => {
+    if (Array.isArray(value)) return value.every(value_is_missing) // [] -> true (missing)
+    if (is_color(value)) return false // explicit colors are real values, not missing
+    const num = to_heat_num(value)
+    return num === null || (log && num <= 0)
+  }
 
-      // If it's already a color string, return it directly
-      if (is_color(value)) return value
+  const bg_color = (
+    value: HeatValue | false | null,
+    element?: ChemicalElement,
+  ): string | null => {
+    if (Array.isArray(value)) return bg_color(value[0], element) // arrays: use first value
+    if (is_color(value)) return value // already a color string
 
-      // Return missing color for zero/invalid values or when no heatmap data
-      if (
-        !value ||
-        value === 0 ||
-        (log && value <= 0) ||
-        !heat_values?.length ||
-        !color_scale_fn
-      ) {
-        // Use missing color for zero/missing values or when no heatmap data
-        if (missing_color === `element-category` && element) {
-          return colors.category[element.category] || `#cccccc`
-        }
-        return missing_color
-      }
+    if (!heat_values.length || !color_scale_fn || value_is_missing(value)) {
+      const category_color = (element && colors.category[element.category]) || `#cccccc`
+      if (missing.color === `element-category`) return category_color
+      // default: category colors for a plain table, gray for missing heatmap data
+      return missing.color || (heat_values.length ? `#666` : category_color)
+    }
 
-      // map value to [0, 1] range
-      const span = cs_max - cs_min
-      if (span === 0) return color_scale_fn?.(0.5) // midpoint when all values equal
+    // map value to [0, 1] range
+    const num = Number(value)
+    const span = cs_max - cs_min
+    if (span === 0) return color_scale_fn(0.5) // midpoint when all values equal
+    if (log) {
+      const log_span = Math.log(cs_max) - Math.log(cs_min_pos)
+      if (log_span === 0) return color_scale_fn(0.5)
+      return color_scale_fn((Math.log(num) - Math.log(cs_min_pos)) / log_span)
+    }
+    return color_scale_fn((num - cs_min) / span)
+  }
 
-      if (log) {
-        // log mapping matching the log ColorBar (value <= 0 returned missing_color above)
-        const log_span = Math.log(cs_max) - Math.log(cs_min_pos)
-        if (log_span === 0) return color_scale_fn?.(0.5)
-        value = (Math.log(value as number) - Math.log(cs_min_pos)) / log_span
-      } else value = ((value as number) - cs_min) / span
-      return color_scale_fn?.(value as number)
-    },
-  )
-
-  let bg_colors = $derived(
-    (
-      value: number | number[] | string | string[] | false,
-      element?: ChemicalElement,
-    ) => {
-      if (!Array.isArray(value)) return []
-
-      return value.map((val) => {
-        // If it's already a color string, return it directly
-        if (is_color(val)) return val
-        // Otherwise, map it through the color scale
-        return bg_color(val as number, element)
-      })
-    },
-  )
+  // per-segment colors for multi-value tiles (bg_color already handles color strings)
+  const bg_colors = (value: HeatValue | false, element?: ChemicalElement) =>
+    Array.isArray(value) ? value.map((val) => bg_color(val, element)) : []
 
   // Determine whether to automatically show the color bar
-  let should_show_color_bar = $derived.by(() => {
-    if (!show_color_bar || inset || heat_values.length === 0) return false
-
-    const num_vals = heat_values
-      .flat()
-      .filter((val): val is number => typeof val === `number`)
-
-    const usable_values = log ? num_vals.filter((val) => val > 0) : num_vals
-
-    return usable_values.length > 0
-  })
+  let should_show_color_bar = $derived(
+    show_color_bar && !inset && usable_heat_nums.length > 0,
+  )
 
   // Calculate heat range for color bar
   let heat_range = $derived.by((): Vec2 => {
     if (!should_show_color_bar) return [0, 1]
-
-    const numeric_values = heat_values
-      .flat()
-      .filter((val): val is number => typeof val === `number`)
-    const usable_values = log ? numeric_values.filter((val) => val > 0) : numeric_values
-
-    if (usable_values.length === 0) return [0, 1]
-
-    const min = color_scale_range[0] ?? Math.min(...usable_values)
-    const max = color_scale_range[1] ?? Math.max(...usable_values)
-
+    const min = color_scale_range[0] ?? Math.min(...usable_heat_nums)
+    const max = color_scale_range[1] ?? Math.max(...usable_heat_nums)
     return [min, max]
   })
 </script>
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
-<div {...rest} class="periodic-table {rest.class ?? ``}">
+<div {...rest} class={[`periodic-table`, rest.class]}>
   <div class="ptable-grid" style:gap>
     {#if should_show_color_bar}
       <TableInset class="auto-colorbar-inset">
@@ -326,6 +299,9 @@
     {#each element_data as element (element.number)}
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[element.number - 1]}
+      {@const override = color_overrides[symbol]}
+      {@const tile_missing = heat_values.length > 0 && !override &&
+        value_is_missing(value)}
       {@const is_active_elem = active_elements?.some((active_elem) =>
         typeof active_elem === `string`
           ? active_elem === symbol
@@ -335,7 +311,7 @@
         active_element?.name === name || is_active_elem}
       {@const style = `grid-column: ${column}; grid-row: ${row};${
         tile_props?.style ? ` ${tile_props.style}` : ``
-      }`}
+      }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
       <ElementTile
         {element}
         href={links
@@ -343,11 +319,11 @@
           ? `/${element[links]}`.toLowerCase()
           : links[symbol]
         : undefined}
-        {value}
-        bg_color={color_overrides[symbol] ?? bg_color(value, element) ?? undefined}
-        bg_colors={Array.isArray(value) ? bg_colors(value, element) : []}
+        value={tile_missing ? undefined : value ?? undefined}
+        bg_color={override ?? bg_color(value, element) ?? undefined}
+        bg_colors={!override && Array.isArray(value) ? bg_colors(value, element) : []}
         {active}
-        label={labels[symbol]}
+        label={labels[symbol] ?? (tile_missing ? missing.label : undefined)}
         {...tile_props}
         {style}
         onmouseenter={(event: MouseEvent) => {
@@ -392,16 +368,16 @@
     {#if tooltip_visible && tooltip_element}
       {@const el = tooltip_element as ChemicalElement}
       {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
-      {@const tooltip_value = heat_values[el.number - 1] ?? 0}
+      {@const tooltip_value = heat_values[el.number - 1]}
       {#if typeof tooltip == `function`}
         <div class="tooltip" {style}>
           {@render tooltip({
           element: el,
-          value: tooltip_value,
+          value: tooltip_value ?? null,
           active: active_category === el.category ||
             active_element?.name === el.name,
           bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
-          scale_context: { min: cs_min, max: cs_max, color_scale },
+          scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
         })}
         </div>
       {:else if tooltip !== false}

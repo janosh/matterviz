@@ -790,7 +790,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class="box-plot {rest.class ?? ``}"
+  class={[`box-plot`, rest.class]}
   class:fullscreen
 >
   {#if width && height}

@@ -124,6 +124,42 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 </div>
 ```
 
+## Line Interpolation Curves
+
+The connecting line between points chooses its interpolation via `line_style.curve`. The default `monotone` smooths through points, while `linear` draws perfectly straight segments — the honest choice for most scientific data (no spline overshoot between samples). Toggle the curve below on a deliberately sharp signal to see the difference:
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  // sharp zigzag so the interpolation style is unmistakable
+  const x = Array.from({ length: 11 }, (_, idx) => idx)
+  const y = [0, 8, 1, 9, 2, 7, 1, 8, 0, 6, 2]
+
+  const curves = ['linear', 'monotone', 'natural', 'step', 'basis', 'catmull-rom']
+  let curve = $state('linear')
+
+  let series = $derived([{
+    x,
+    y,
+    point_style: { fill: 'steelblue', radius: 4 },
+    line_style: { curve },
+    markers: 'line+points',
+    label: `curve: ${curve}`,
+  }])
+</script>
+
+<label style="display: flex; gap: 6pt; align-items: center; margin-bottom: 8pt">
+  Connecting line curve:
+  <select bind:value={curve}>
+    {#each curves as option (option)}
+      <option value={option}>{option}</option>
+    {/each}
+  </select>
+</label>
+<ScatterPlot {series} x_axis={{ label: 'x' }} y_axis={{ label: 'y' }} style="height: 300px" />
+```
+
 ## Custom Point Styling and Tooltips
 
 Demonstrate various point styles, custom tooltips, and hover effects:

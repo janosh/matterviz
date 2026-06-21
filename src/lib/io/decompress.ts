@@ -1,6 +1,6 @@
 import type { COMPRESSION_EXTENSIONS } from '$lib/constants'
 import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
-import { to_error } from '$lib/utils'
+import { is_binary_payload } from './is-binary'
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
@@ -52,43 +52,23 @@ export async function decompress_data_binary(
   }
 }
 
-export function decompress_file(file: File): Promise<{ content: string; filename: string }> {
+const to_content = (filename: string, buffer: ArrayBuffer): string | ArrayBuffer =>
+  is_binary_payload(filename, buffer) ? buffer : new TextDecoder().decode(buffer)
+
+// Read a dropped file, decompressing supported formats. Binary payloads (by extension or
+// magic bytes) return as ArrayBuffer so parsers get raw bytes; text decodes to string.
+export async function decompress_file(
+  file: File,
+): Promise<{ content: string | ArrayBuffer; filename: string }> {
   const format = detect_compression_format(file.name)
-  const is_supported =
+  const is_supported_compression =
     format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
+  const buffer = await file.arrayBuffer()
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.addEventListener(
-      `load`,
-      () => {
-        try {
-          const result = reader.result
-          // strict null check: empty files legitimately read as '' (falsy)
-          if (result === null) throw new Error(`Failed to read file`)
-
-          if (is_supported && format) {
-            if (!(result instanceof ArrayBuffer)) throw new Error(`Expected binary file data`)
-            decompress_data(result, format).then((content) => {
-              const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-              resolve({ content, filename })
-            }, reject)
-          } else {
-            if (typeof result !== `string`) throw new Error(`Expected text file data`)
-            resolve({ content: result, filename: file.name })
-          }
-        } catch (error) {
-          reject(to_error(error))
-        }
-      },
-      { once: true },
-    )
-    reader.addEventListener(`error`, () =>
-      reject(new Error(`Failed to read file ${file.name}`)),
-    )
-
-    if (is_supported) reader.readAsArrayBuffer(file)
-    else reader.readAsText(file)
-  })
+  if (is_supported_compression && format) {
+    const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    const decompressed = await decompress_data_binary(buffer, format)
+    return { content: to_content(filename, decompressed), filename }
+  }
+  return { content: to_content(file.name, buffer), filename: file.name }
 }

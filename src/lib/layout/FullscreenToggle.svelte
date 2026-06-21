@@ -11,7 +11,7 @@
 
 <button
   {...rest}
-  class="fullscreen-toggle {rest.class ?? ``}"
+  class={[`fullscreen-toggle`, rest.class]}
   onclick={() => (fullscreen = !fullscreen)}
   aria-label={fullscreen ? `Exit fullscreen` : `Enter fullscreen`}
   type="button"

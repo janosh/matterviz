@@ -1,9 +1,19 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
+  import type { LineCurve } from '$lib/plot/core/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
-  import { curveMonotoneX, line } from 'd3-shape'
+  import type { CurveFactory } from 'd3-shape'
+  import {
+    curveBasis,
+    curveCatmullRom,
+    curveLinear,
+    curveMonotoneX,
+    curveNatural,
+    curveStep,
+    line,
+  } from 'd3-shape'
   import { untrack } from 'svelte'
   import { linear } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
@@ -18,6 +28,7 @@
     area_stroke = null,
     line_tween = {},
     line_dash = DEFAULTS.scatter.line.dash,
+    curve = `monotone`,
     ...rest
   }: Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> & {
     points: readonly Vec2[]
@@ -28,12 +39,25 @@
     area_stroke?: string | null
     line_tween?: TweenOptions<string>
     line_dash?: string
+    curve?: LineCurve
   } = $props()
 
-  const lineGenerator = line()
-    .x((point) => point[0])
-    .y((point) => point[1])
-    .curve(curveMonotoneX)
+  const CURVE_FACTORIES: Record<LineCurve, CurveFactory> = {
+    linear: curveLinear,
+    monotone: curveMonotoneX,
+    natural: curveNatural,
+    step: curveStep,
+    basis: curveBasis,
+    'catmull-rom': curveCatmullRom,
+  }
+  // fall back to monotone for unknown strings from untyped (Python/JSON) callers
+  let curve_fn = $derived(CURVE_FACTORIES[curve] ?? curveMonotoneX)
+  let lineGenerator = $derived(
+    line()
+      .x((point) => point[0])
+      .y((point) => point[1])
+      .curve(curve_fn),
+  )
 
   // Only compute/render/tween the area fill when it is actually visible. Most line
   // plots (e.g. every ScatterPlot line) pass a transparent area, so skipping it

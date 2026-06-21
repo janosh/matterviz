@@ -10,7 +10,7 @@
   } & HTMLAttributes<HTMLDivElement> = $props()
 </script>
 
-<div {...rest} class="empty-state {rest.class ?? ``}">
+<div {...rest} class={[`empty-state`, rest.class]}>
   {#if children}
     {@render children()}
   {:else if message}

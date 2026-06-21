@@ -545,7 +545,7 @@
 
 <div
   {...rest}
-  class="binary-phase-diagram {rest.class ?? ``}"
+  class={[`binary-phase-diagram`, rest.class]}
   class:fullscreen
   bind:this={wrapper}
   bind:clientWidth={width}
