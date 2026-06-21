@@ -58,7 +58,7 @@
     handle_selector: `.drag-handle`,
   })}
   {...rest}
-  class="structure-popup {place_right ? `right` : `left`} {rest.class ?? ``}"
+  class={[`structure-popup`, place_right ? `right` : `left`, rest.class]}
   role="dialog"
   aria-modal="true"
   tabindex="-1"

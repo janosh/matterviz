@@ -14,7 +14,7 @@ import { type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
 export { type AxisRanges } from '$lib/plot/core/types'
 
 const in_range = (val: number | null | undefined, lo: number, hi: number) =>
-  val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
+  val != null && Number.isFinite(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
 
 // Filter series data to only include points within bounds and augment with internal data.
 // Full x/y arrays are kept on each returned series (via spread) so connecting lines can

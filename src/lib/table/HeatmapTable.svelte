@@ -900,7 +900,7 @@
 {#snippet sort_hint_element(pos: `top` | `bottom`)}
   {#if hint_config?.position === pos}
     <div
-      class="sort-hint {hint_config.class ?? ``}"
+      class={[`sort-hint`, hint_config.class]}
       class:permanent={hint_config.permanent}
       style={hint_config.style}
     >
@@ -913,7 +913,7 @@
   {@attach table_tooltips}
   {...rest_props}
   bind:this={container_el}
-  class="table-container {rest_props.class ?? ``}"
+  class={[`table-container`, rest_props.class]}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onmouseleave={() => {
     show_column_dropdown = false
@@ -1304,7 +1304,7 @@
           <tr
             animate:flip={{ duration: 500 }}
             style={row.style}
-            class={row.class ?? ``}
+            class={row.class}
             class:selected={row_selected}
             tabindex={onrowclick ? 0 : undefined}
             onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}

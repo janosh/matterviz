@@ -40,15 +40,11 @@ const spin_polarized_dos: ElectronicDos = {
 }
 
 const pymatgen_complete_dos: PymatgenCompleteDos = {
-  '@class': `CompleteDos`,
-  '@module': `pymatgen.electronic_structure.dos`,
   energies: [-5, -2.5, 0, 2.5, 5],
   densities: { '1': [0.1, 0.4, 1.0, 0.4, 0.1], '-1': [0.08, 0.35, 0.9, 0.35, 0.08] },
   efermi: 0,
   atom_dos: {
     Fe: {
-      '@class': `Dos`,
-      '@module': `pymatgen.electronic_structure.dos`,
       energies: [-5, -2.5, 0, 2.5, 5],
       densities: {
         '1': [0.05, 0.3, 0.8, 0.3, 0.05],
@@ -57,8 +53,6 @@ const pymatgen_complete_dos: PymatgenCompleteDos = {
       efermi: 0,
     },
     O: {
-      '@class': `Dos`,
-      '@module': `pymatgen.electronic_structure.dos`,
       energies: [-5, -2.5, 0, 2.5, 5],
       densities: { '1': [0.05, 0.1, 0.2, 0.1, 0.05], '-1': [0.04, 0.1, 0.2, 0.1, 0.04] },
       efermi: 0,
@@ -66,22 +60,16 @@ const pymatgen_complete_dos: PymatgenCompleteDos = {
   },
   spd_dos: {
     s: {
-      '@class': `Dos`,
-      '@module': `pymatgen.electronic_structure.dos`,
       energies: [-5, -2.5, 0, 2.5, 5],
       densities: [0.02, 0.05, 0.1, 0.05, 0.02],
       efermi: 0,
     },
     p: {
-      '@class': `Dos`,
-      '@module': `pymatgen.electronic_structure.dos`,
       energies: [-5, -2.5, 0, 2.5, 5],
       densities: [0.03, 0.1, 0.3, 0.1, 0.03],
       efermi: 0,
     },
     d: {
-      '@class': `Dos`,
-      '@module': `pymatgen.electronic_structure.dos`,
       energies: [-5, -2.5, 0, 2.5, 5],
       densities: [0.05, 0.25, 0.6, 0.25, 0.05],
       efermi: 0,

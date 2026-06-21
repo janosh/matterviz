@@ -131,10 +131,7 @@
     show_unstable: () => show_unstable,
     entry_category: () => entry_category,
     hidden_categories: () => hidden_categories,
-    // Always include stable entries and elemental reference points
-    keep_plot_entry: (entry, max_dist) =>
-      helpers.entry_is_stable(entry) ||
-      (typeof entry.e_above_hull === `number` && entry.e_above_hull <= max_dist),
+    keep_plot_entry: helpers.entry_within_hull_dist,
     set_temperature: (next_temp) => temperature = next_temp,
     set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
     set_stable_entries: (value) => stable_entries = value,
@@ -203,11 +200,11 @@
       })
       const raw_dists = thermo.compute_e_above_hull_4d(valid.map((item) => item.pt), hull_4d)
       const hull_map = new Map(valid.map((item, hull_idx) => [item.idx, raw_dists[hull_idx]]))
-      return coords.map((entry, idx) => {
-        const raw = hull_map.get(idx)
-        if (raw === undefined) return { ...entry, e_above_hull: raw, is_stable: false }
-        return { ...entry, ...compute_hull_stability(raw, entry.exclude_from_hull) }
-      })
+      // missing/non-finite distance (no energy or point outside hull projection) -> unknown
+      return coords.map((entry, idx) => ({
+        ...entry,
+        ...compute_hull_stability(hull_map.get(idx), entry.exclude_from_hull),
+      }))
     } catch (err) {
       console.error(`Error computing quaternary coordinates:`, err)
       return []
@@ -607,7 +604,7 @@
     let min_w = 0
     if (hull_face_color_mode === `formation_energy`) {
       const all_avg_w = triangles.map((tri) => tri.avg_w)
-      min_w = Math.min(...all_avg_w)
+      min_w = helpers.array_min(all_avg_w)
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
         color_scale,
@@ -625,7 +622,7 @@
       }
       if (hull_face_color_mode === `dominant_element`) {
         // Find element with highest fraction
-        const max_idx = tri.centroid_bary.indexOf(Math.max(...tri.centroid_bary))
+        const max_idx = tri.centroid_bary.indexOf(helpers.array_max(tri.centroid_bary))
         const el = elements[max_idx]
         return element_colors[el] ?? `#888888`
       }
@@ -761,7 +758,7 @@
 
 <div
   {...rest}
-  class="convex-hull-4d {rest.class ?? ``}"
+  class={[`convex-hull-4d`, rest.class]}
   class:dragover={interactions.drag_over}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}

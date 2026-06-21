@@ -22,6 +22,41 @@ export const get_majority_element = (site: Site | undefined): ElementSymbol | nu
   return site.species.reduce((max, spec) => (spec.occu > max.occu ? spec : max)).element
 }
 
+// Large low-valent A-site cations whose coordination polyhedra (CN 8-12) tend to
+// obscure the structural framework. VESTA-style figures draw the framework
+// (e.g. TiO6 in BaTiO3, FeO6/PO4 in LiFePO4) and leave these as plain spheres.
+// They still get polyhedra when they are the only qualifying cations (e.g. NaCl)
+// or when force-included via `included_center_elements`. Shared by polyhedra.ts
+// (vertex/center selection) and pbc.ts (phase-2 boundary completion) so the bond
+// graph and the polyhedra it feeds stay consistent.
+const SPECTATOR_CATEGORIES = new Set([`alkali metal`])
+const HEAVY_ALKALINE_EARTHS = new Set([`Ca`, `Sr`, `Ba`, `Ra`])
+
+export const is_spectator_center = (element: string): boolean =>
+  SPECTATOR_CATEGORIES.has(element_lookup.get(element as ElementSymbol)?.category ?? ``) ||
+  HEAVY_ALKALINE_EARTHS.has(element)
+
+// True if the composition contains a framework cation: a non-spectator element
+// strictly less electronegative than the most electronegative element present
+// (i.e. one that can coordinate the anions). When true, spectator A-site cations
+// are hidden from coordination polyhedra (compute_polyhedra) and skipped by phase-2
+// boundary completion (find_image_atoms) - sharing this keeps the bond graph and
+// the polyhedra it feeds consistent. Purely ionic binaries (NaCl, Li2O) return
+// false, so the spectator IS the framework and keeps its polyhedra/completions.
+export function has_framework_potential(elements: Iterable<string>): boolean {
+  const els = [...new Set(elements)] // dedupe so callers can pass per-site element lists
+  let max_en = -Infinity
+  for (const el of els) {
+    const en = element_lookup.get(el as ElementSymbol)?.electronegativity
+    if (en != null && en > max_en) max_en = en
+  }
+  return els.some((el) => {
+    if (is_spectator_center(el)) return false
+    const en = element_lookup.get(el as ElementSymbol)?.electronegativity
+    return en != null && en < max_en
+  })
+}
+
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
 

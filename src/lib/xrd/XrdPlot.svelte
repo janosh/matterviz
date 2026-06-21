@@ -476,7 +476,7 @@
         {tooltip}
         ondrop={handle_file_drop}
         {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
-        class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
+        class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         {controls}
         controls_extra={broadening_controls_snippet}
@@ -527,7 +527,7 @@
         {tooltip}
         ondrop={handle_file_drop}
         {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
-        class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
+        class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         show_controls={controls.show}
         controls_open={controls.open}

@@ -21,9 +21,10 @@
   type="button"
   onclick={() => toggle_fullscreen(wrapper)}
   title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+  aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
   aria-pressed={fullscreen}
   {...rest}
-  class="fullscreen-btn {rest.class ?? ``}"
+  class={[`fullscreen-btn`, rest.class]}
 >
   {#if typeof toggle === `function`}
     {@render toggle({ fullscreen })}

@@ -7,6 +7,7 @@
   import { createAttachmentKey } from 'svelte/attachments'
   import { tooltip } from 'svelte-multiselect/attachments'
   import FullscreenButton from './FullscreenButton.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   let {
     controls_config,
@@ -15,10 +16,10 @@
     fullscreen_toggle = true,
     fullscreen_btn_style = undefined,
     wrapper = undefined,
-    style = undefined,
     before = undefined,
     children = undefined,
-  }: {
+    ...rest
+  }: HTMLAttributes<HTMLElement> & {
     controls_config: ShowControlsState
     filename?: string
     fullscreen?: boolean
@@ -35,8 +36,9 @@
 </script>
 
 <section
-  class="control-buttons {controls_config.class}"
-  style={[style, controls_config.style].filter(Boolean).join(`; `)}
+  {...rest}
+  class={[`control-buttons`, controls_config.class, rest.class]}
+  style={[rest.style, controls_config.style].filter(Boolean).join(`; `)}
 >
   {#if controls_config.mode !== `never`}
     {@render before?.()}

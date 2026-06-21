@@ -577,7 +577,7 @@
 {/snippet}
 
 {#if layout === `side-by-side`}
-  <div {...rest} class="convex-hull-stats side-by-side {rest.class ?? ``}">
+  <div {...rest} class={[`convex-hull-stats side-by-side`, rest.class]}>
     <div class="stats-pane">
       {@render stats_panel()}
     </div>
@@ -586,7 +586,7 @@
     </div>
   </div>
 {:else}
-  <div {...rest} class="convex-hull-stats {rest.class ?? ``}">
+  <div {...rest} class={[`convex-hull-stats`, rest.class]}>
     <div class="view-toggle">
       <button class:active={view_mode === `stats`} onclick={() => view_mode = `stats`}>
         Stats

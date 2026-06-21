@@ -295,8 +295,6 @@ END_BLOCK_BANDGRID_3D`
         isosurfaces: {
           1: [
             {
-              '@module': `ifermi.surface`,
-              '@class': `Isosurface`,
               vertices: [
                 [0.0, 0.0, 0.0],
                 [1.0, 0.0, 0.0],
@@ -310,8 +308,6 @@ END_BLOCK_BANDGRID_3D`
           ],
           '-1': [
             {
-              '@module': `ifermi.surface`,
-              '@class': `Isosurface`,
               vertices: [
                 [0.0, 0.0, 0.0],
                 [0.0, 1.0, 0.0],
@@ -381,8 +377,6 @@ END_BLOCK_BANDGRID_3D`
         isosurfaces: {
           1: [
             {
-              '@module': `ifermi.surface`,
-              '@class': `Isosurface`,
               vertices: [
                 [0.0, 0.0, 0.0],
                 [1.0, 0.0, 0.0],

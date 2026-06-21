@@ -143,7 +143,6 @@
     if (!band_structs) return {}
 
     // Detect single band structure by checking for characteristic fields
-    // - pymatgen format: has @class or @module markers (may also have branches)
     // - matterviz format: has qpoints + branches (no pymatgen markers)
     const has_qpoints = `qpoints` in band_structs &&
       Array.isArray(band_structs.qpoints) &&

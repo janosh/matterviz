@@ -6,10 +6,7 @@ import type { AnyStructure } from '$lib/structure'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import { symbol } from 'd3-shape'
-import {
-  analyze_gas_data as _analyze_gas_data,
-  apply_gas_corrections as _apply_gas_corrections,
-} from './gas-thermodynamics'
+import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import type {
   ConvexHullConfig,
   EntryCategoryConfig,
@@ -29,10 +26,15 @@ export const HULL_STABILITY_TOL = 1e-6
 // Clamp raw hull distance and compute stability for a single entry.
 // Excluded entries keep their raw (possibly negative) distance and are never stable.
 export function compute_hull_stability(
-  raw_distance: number,
+  raw_distance: number | null | undefined,
   exclude_from_hull?: boolean,
   tol: number = HULL_STABILITY_TOL,
-): { e_above_hull: number; is_stable: boolean } {
+): { e_above_hull: number | undefined; is_stable: boolean | undefined } {
+  // unknown distance (degenerate hull / point outside hull projection / missing energy):
+  // not 0/stable — leave both undefined so it isn't mislabeled on-hull
+  if (raw_distance == null || !Number.isFinite(raw_distance)) {
+    return { e_above_hull: undefined, is_stable: undefined }
+  }
   if (exclude_from_hull) return { e_above_hull: raw_distance, is_stable: false }
   const e_above_hull = Math.abs(raw_distance) < tol ? 0 : Math.max(0, raw_distance)
   return { e_above_hull, is_stable: e_above_hull <= tol }
@@ -51,12 +53,19 @@ export const extract_structure_from_entry = (
   return (orig_entry?.structure as AnyStructure) || null
 }
 
-// [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1)
+// Loop-based min/max — Math.min/max(...arr) blows the stack on large (>~100k) arrays
+export const array_min = (values: readonly number[]): number =>
+  values.reduce((min, val) => (val < min ? val : min), Infinity)
+export const array_max = (values: readonly number[]): number =>
+  values.reduce((max, val) => (val > max ? val : max), -Infinity)
+
+// [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1).
+// Filter to finite values: NaN/undefined distances would otherwise produce a broken range.
 export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
   const dists = entries
     .map((entry) => entry.e_above_hull)
-    .filter((val): val is number => typeof val === `number`)
-  return dists.length > 0 ? [Math.min(...dists), Math.max(...dists, 0.1)] : [0, 0.1]
+    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
+  return dists.length > 0 ? [array_min(dists), Math.max(array_max(dists), 0.1)] : [0, 0.1]
 }
 
 export const entry_is_stable = (
@@ -65,6 +74,12 @@ export const entry_is_stable = (
 ): boolean =>
   entry.is_stable === true ||
   (entry.is_stable !== false && Math.abs(entry.e_above_hull ?? Infinity) <= tol)
+
+// Whether to plot an entry at a given max hull distance: stable, or a finite distance
+// within max_dist. Unknown distance (undefined) is excluded, not treated as 0/stable.
+export const entry_within_hull_dist = (entry: StabilityEntry, max_dist: number): boolean =>
+  entry_is_stable(entry) ||
+  (typeof entry.e_above_hull === `number` && entry.e_above_hull <= max_dist)
 
 // Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
 export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
@@ -994,8 +1009,7 @@ export function filter_entries_at_temperature(
       }
     }
 
-    // Exclude entry (has temp data but can't get energy at T)
-    return []
+    return [] // Exclude entry (has temp data but can't get energy at T)
   })
 }
 
@@ -1014,48 +1028,40 @@ export function get_gas_corrected_entries(
   merged_config: GasThermodynamicsConfig | undefined
 } {
   if (!gas_config?.enabled_gases?.length) {
-    return {
-      entries,
-      analysis: {
-        has_gas_dependent_elements: false,
-        gas_elements: [],
-        relevant_gases: [],
-      },
-      merged_config: undefined,
+    const analysis = {
+      has_gas_dependent_elements: false,
+      gas_elements: [],
+      relevant_gases: [],
     }
+    return { entries, analysis, merged_config: undefined }
   }
 
   const merged_config: GasThermodynamicsConfig = {
     ...gas_config,
     pressures: { ...gas_config.pressures, ...gas_pressures },
   }
-  const analysis = _analyze_gas_data(entries, merged_config)
+  const analysis = analyze_gas_data(entries, merged_config)
 
   if (!analysis.has_gas_dependent_elements) {
     return { entries, analysis, merged_config }
   }
 
-  return {
-    entries: _apply_gas_corrections(entries, merged_config, temperature),
-    analysis,
-    merged_config,
-  }
+  const corr_entries = apply_gas_corrections(entries, merged_config, temperature)
+  return { entries: corr_entries, analysis, merged_config }
 }
 
 // Derive a display label for a convex hull entry, falling back to composition
 // when reduced_formula and name are both missing.
 export function get_entry_label(
-  entry: { reduced_formula?: string; name?: string; composition: Record<string, number> },
+  entry: Pick<PhaseData, `reduced_formula` | `name` | `composition`>,
   elements?: ElementSymbol[],
 ): string {
   if (entry.reduced_formula) return entry.reduced_formula
   if (entry.name) return entry.name
-  let pairs = Object.entries(entry.composition).filter(([, amt]) => amt > 0)
+  type Pairs = [ElementSymbol, number][]
+  let pairs = Object.entries(entry.composition).filter(([, amt]) => (amt ?? 0) > 0) as Pairs
   if (elements) {
-    pairs = pairs.sort(
-      ([el1], [el2]) =>
-        elements.indexOf(el1 as ElementSymbol) - elements.indexOf(el2 as ElementSymbol),
-    )
+    pairs = pairs.sort(([el1], [el2]) => elements.indexOf(el1) - elements.indexOf(el2))
   }
   return pairs
     .map(([el, amt]) => (Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`))

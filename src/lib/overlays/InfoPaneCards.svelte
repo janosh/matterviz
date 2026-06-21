@@ -69,7 +69,7 @@
 {#if filtered_cards.length === 0}
   <p class="empty-filter">No {empty_label} matches "{info_filter}".</p>
 {:else}
-  <div {...rest} class="info-cards {rest.class ?? ``}" style:--row-label-min={row_label_min}>
+  <div {...rest} class={[`info-cards`, rest.class]} style:--row-label-min={row_label_min}>
     {#each filtered_cards as card (card.title)}
       <section class="info-card">
         <svelte:element this={`h${heading_level}`}>{card.title}</svelte:element>

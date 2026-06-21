@@ -2,7 +2,10 @@
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { get_d3_interpolator } from '$lib/colors'
-import { calc_coordination_nums } from '$lib/coordination'
+import {
+  calc_coordination_nums,
+  type CoordinationData,
+} from '$lib/coordination/calc-coordination'
 import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
@@ -229,31 +232,31 @@ function expand_structure_for_pbc(
   return { ...structure, sites: [...cell_sites, ...image_sites] }
 }
 
+// PBC-aware coordination: expand periodic cells with image atoms (so boundary atoms get
+// full coordination), counting only original atoms as centers. Shared by the 3D viewer and
+// CoordinationBarPlot so both report identical numbers.
+export function calc_structure_coordination(
+  structure: AnyStructure,
+  strategy: BondingStrategy = `electroneg_ratio`,
+): CoordinationData {
+  const has_lattice = `lattice` in structure && structure.lattice !== undefined
+  const pbc = has_lattice ? structure.lattice.pbc : undefined
+  const has_pbc = has_lattice && (pbc === undefined || pbc.some(Boolean))
+  // Image atoms still count as neighbors but aren't iterated as centers (big speedup)
+  const coord_structure = has_pbc ? expand_structure_for_pbc(structure, strategy) : structure
+  return calc_coordination_nums(coord_structure, strategy, structure.sites.length)
+}
+
 export function get_coordination_colors(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
   scale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const orig_site_count = structure.sites.length
-
-  // Check if structure has periodic boundary conditions
-  const has_lattice = `lattice` in structure && structure.lattice !== undefined
-  const pbc = has_lattice ? structure.lattice.pbc : undefined
-  const has_pbc = has_lattice && (pbc === undefined || pbc.some(Boolean))
-
-  // For PBC structures, expand with images from neighboring cells for accurate coordination
-  const coord_structure = has_pbc ? expand_structure_for_pbc(structure, strategy) : structure
-
-  // Calculate coordination numbers on the (potentially expanded) structure. Only the
-  // original atoms need coordination, so restrict bond centers to them; image atoms
-  // still count as their neighbors but aren't iterated as centers (big speedup).
-  const all_coord_data = calc_coordination_nums(coord_structure, strategy, orig_site_count)
-
-  // Extract coordination numbers only for the original sites (not image atoms)
-  const coord_nums = all_coord_data.sites
-    .slice(0, orig_site_count)
-    .map((site) => site.coordination_num)
+  // sites is already limited to the original atoms (calc_coordination_nums center_count)
+  const coord_nums = calc_structure_coordination(structure, strategy).sites.map(
+    (site) => site.coordination_num,
+  )
 
   const { colors, unique_values } = apply_color_scale(coord_nums, scale, type)
   return build_prop_colors(coord_nums, colors, unique_values)

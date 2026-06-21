@@ -10,7 +10,12 @@ import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
 import { get_orig_site_idx } from './atom-properties'
-import { element_lookup, get_majority_element } from './bonding'
+import {
+  element_lookup,
+  get_majority_element,
+  has_framework_potential,
+  is_spectator_center,
+} from './bonding'
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`
 
@@ -350,18 +355,6 @@ export function build_adjacency(bonds: readonly BondPair[]): Map<number, Set<num
 
 // --- Center selection ---
 
-// Large low-valent A-site cations whose coordination polyhedra (CN 8-12) tend to
-// obscure the structural framework. VESTA-style figures draw the framework
-// (e.g. TiO6 in BaTiO3, FeO6/PO4 in LiFePO4) and leave these as plain spheres.
-// They still get polyhedra when they are the only qualifying cations (e.g. NaCl)
-// or when force-included via `included_center_elements`.
-const SPECTATOR_CATEGORIES = new Set([`alkali metal`])
-const HEAVY_ALKALINE_EARTHS = new Set([`Ca`, `Sr`, `Ba`, `Ra`])
-
-export const is_spectator_center = (element: string): boolean =>
-  SPECTATOR_CATEGORIES.has(element_lookup.get(element as ElementSymbol)?.category ?? ``) ||
-  HEAVY_ALKALINE_EARTHS.has(element)
-
 // A bonded neighbor counts as a polyhedron vertex only if it's an anion-former:
 // a nonmetal or metalloid that is more electronegative than the center. This keeps
 // spurious cation-cation bonds (e.g. Ti-Ba in perovskites, Li-P in thiophosphates)
@@ -521,14 +514,7 @@ export function compute_polyhedra(
   // the anions). Composition-based rather than candidate-based so boundary
   // truncation of framework polyhedra doesn't promote Li/Na/Ba clutter; purely
   // ionic binaries like NaCl or CaF2 still draw their spectator polyhedra.
-  const max_en = Math.max(
-    ...unique_elements.map((el) => element_lookup.get(el)?.electronegativity ?? -Infinity),
-  )
-  const has_framework_potential = unique_elements.some((el) => {
-    if (is_spectator_center(el)) return false
-    const en = element_lookup.get(el)?.electronegativity
-    return en !== null && en !== undefined && en < max_en
-  })
+  const has_framework = has_framework_potential(unique_elements)
 
   // Weakly-bound center species (mean bond length well beyond the covalent-radii
   // sum, e.g. lone-pair Bi3+ with 8 long Bi-O bonds) are hidden when a
@@ -554,7 +540,7 @@ export function compute_polyhedra(
 
   const visible = candidates.filter(({ element }) => {
     if (included.has(element)) return true
-    if (is_spectator_center(element) && has_framework_potential) return false
+    if (is_spectator_center(element) && has_framework) return false
     return !is_weak_species(element)
   })
 

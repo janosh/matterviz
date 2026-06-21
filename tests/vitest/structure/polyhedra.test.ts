@@ -1,12 +1,11 @@
 import type { Vec3 } from '$lib'
 import type { BondPair } from '$lib/structure'
-import { electroneg_ratio } from '$lib/structure/bonding'
+import { electroneg_ratio, is_spectator_center } from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import {
   build_adjacency,
   compute_polyhedra,
   convex_hull_3d,
-  is_spectator_center,
   merge_polyhedra_buffers,
 } from '$lib/structure/polyhedra'
 import type { Polyhedron } from '$lib/structure/polyhedra'

@@ -78,7 +78,7 @@
 {#if visible}
   {@const { x, y } = get_smart_position()}
   {@const style = `position: absolute; left: ${x}px; top: ${y}px; ${rest.style ?? ``}`}
-  <div {...rest} class="context-menu {rest.class ?? ``}" {style} bind:this={menu_element}>
+  <div {...rest} class={[`context-menu`, rest.class]} {style} bind:this={menu_element}>
     {#each sections as { title, options } (title)}
       <div class="section">
         <div class="header">{title}</div>

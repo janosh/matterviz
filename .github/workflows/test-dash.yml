@@ -53,7 +53,7 @@ jobs:
       # Install dash extension deps
       - name: Install Dash extension dependencies
         run: |
-          npm install
+          pnpm install
           pip install -e ".[dev]"
 
       # Sync typed wrappers using local matterviz dist (not npm version)
@@ -77,7 +77,7 @@ jobs:
 
       # Build the JS bundle (required for component tests)
       - name: Build Dash components
-        run: npm run build
+        run: pnpm run build
 
       # Run Python unit tests (fast, no browser)
       - name: Run unit tests

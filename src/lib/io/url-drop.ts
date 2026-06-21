@@ -1,15 +1,16 @@
 import { load_binary_traj } from '$lib/trajectory/parse'
 import { decompress_data_binary } from './decompress'
+import {
+  BINARY_EXTENSIONS,
+  ext_of,
+  has_binary_inner_ext,
+  has_binary_magic,
+  has_gzip_magic,
+  has_hdf5_magic,
+  is_known_text_file,
+  strip_gz_ext,
+} from './is-binary'
 import type { FileInfo } from './types'
-
-const BINARY_EXTENSIONS = new Set(
-  `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz brml raw`.split(` `),
-)
-const TEXT_EXTENSIONS = new Set(
-  `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `),
-)
-const VASP_BASENAME_RE = /^(?:poscar|xdatcar|contcar)$/i
-const GZ_EXT_RE = /\.(?:gz|gzip)$/i
 
 // Extract filename from Content-Disposition header, falling back to url_basename.
 function extract_filename(headers: Headers | undefined, fallback: string): string {
@@ -35,13 +36,6 @@ function extract_filename(headers: Headers | undefined, fallback: string): strin
   return name
 }
 
-const ext_of = (name: string): string => name.split(`.`).pop()?.toLowerCase() ?? ``
-
-// Whether the file inside a .gz/.gzip wrapper is a known binary format that a
-// lossy text decode would corrupt (bytes >= 0x80 → U+FFFD)
-const has_binary_inner_ext = (filename: string): boolean =>
-  BINARY_EXTENSIONS.has(ext_of(filename.replace(GZ_EXT_RE, ``)))
-
 // Gunzip a fetched payload → [content, filename] with .gz/.gzip stripped; content
 // stays an ArrayBuffer for binary inner formats, decoded string otherwise
 async function decompress_gz_payload(
@@ -52,7 +46,7 @@ async function decompress_gz_payload(
   const content = has_binary_inner_ext(filename)
     ? decompressed
     : new TextDecoder().decode(decompressed)
-  return [content, filename.replace(GZ_EXT_RE, ``)]
+  return [content, strip_gz_ext(filename)]
 }
 
 // Handle URL-based file drop data by fetching content lazily
@@ -109,12 +103,12 @@ export async function load_from_url(
       const result = await load_binary_traj(resp, `H5`, true)
 
       // Log warning if signature doesn't match (only for ArrayBuffer results)
-      if (result instanceof ArrayBuffer && result.byteLength >= 8) {
-        const view = new Uint8Array(result.slice(0, 8))
-        const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
-        if (!hdf5_signature.every((byte, idx) => view[idx] === byte)) {
-          console.warn(`File has .h5/.hdf5 extension but missing HDF5 signature`)
-        }
+      if (
+        result instanceof ArrayBuffer &&
+        result.byteLength >= 8 &&
+        !has_hdf5_magic(new Uint8Array(result.slice(0, 8)))
+      ) {
+        console.warn(`File has .h5/.hdf5 extension but missing HDF5 signature`)
       }
 
       return callback(result, filename)
@@ -134,7 +128,7 @@ export async function load_from_url(
 
   // Skip Range requests for known text formats to avoid production server issues
   // Include VASP files that don't have extensions (POSCAR, XDATCAR, CONTCAR)
-  const is_known_text = TEXT_EXTENSIONS.has(ext) || VASP_BASENAME_RE.test(url_basename)
+  const is_known_text = is_known_text_file(url_basename)
   let sniffed_callback_args: [content: string | ArrayBuffer, filename: string] | undefined
 
   if (!is_known_text) {
@@ -148,15 +142,9 @@ export async function load_from_url(
       const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
       if (head.ok) {
         const buf = new Uint8Array(await head.arrayBuffer())
-        const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
-        const is_hdf5 =
-          buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 && buf[3] === 0x46
-        // ASE .traj files start with the Ulm signature "- of Ulm"
-        const is_ase_traj = [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d].every(
-          (byte, idx) => buf[idx] === byte,
-        )
-        if (is_gzip) sniffed = `gzip`
-        else if (is_hdf5 || is_ase_traj) sniffed = `binary`
+        // gzip is gunzipped downstream; other binary magic (HDF5, ZIP, ASE Ulm) stays raw
+        if (has_gzip_magic(buf)) sniffed = `gzip`
+        else if (has_binary_magic(buf)) sniffed = `binary`
       }
     } catch {
       // Fall through to text fetch if the Range HEAD request fails

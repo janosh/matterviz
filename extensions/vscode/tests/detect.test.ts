@@ -232,7 +232,6 @@ describe(`detect_view_type`, () => {
       `dos`,
       {
         '@class': `CompleteDos`,
-        '@module': `pymatgen.electronic_structure.dos`,
         energies: [-5, 0, 5],
         densities: { '1': [0.1, 0.5, 0.1] },
         efermi: 0.0,

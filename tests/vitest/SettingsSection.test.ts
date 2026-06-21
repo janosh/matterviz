@@ -19,6 +19,25 @@ describe(`SettingsSection`, () => {
     expect(doc_query(`h4`).textContent?.trim()).toBe(`Test Section`)
   })
 
+  test(`generates a unique title id so aria-labelledby stays valid across instances`, () => {
+    mount(SettingsSection, {
+      target: document.body,
+      props: { ...base_props, title: `Section A`, children: snippet(`A`) },
+    })
+    mount(SettingsSection, {
+      target: document.body,
+      props: { ...base_props, title: `Section B`, children: snippet(`B`) },
+    })
+    const [h4_a, h4_b] = [...document.querySelectorAll(`h4`)]
+    const [sec_a, sec_b] = [...document.querySelectorAll(`section`)]
+    // ids are non-empty, unique, and each section points at its own heading
+    // (boolean assertion is oxlint-stable; --fix rewrites toBeTruthy() -> toBe(true))
+    expect(h4_a.id.startsWith(`settings-section-title-`)).toBe(true)
+    expect(h4_a.id).not.toBe(h4_b.id)
+    expect(sec_a.getAttribute(`aria-labelledby`)).toBe(h4_a.id)
+    expect(sec_b.getAttribute(`aria-labelledby`)).toBe(h4_b.id)
+  })
+
   test(`title is required and h4 is always present`, () => {
     mount(SettingsSection, {
       target: document.body,

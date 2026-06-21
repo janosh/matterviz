@@ -759,17 +759,16 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`analyze_temperature_data`, () => {
-    test(`returns has_temp_data=false for empty entries`, () => {
-      const result = helpers.analyze_temperature_data([])
-      expect(result.has_temp_data).toBe(false)
-      expect(result.available_temperatures).toEqual([])
-    })
-
-    test(`returns has_temp_data=false when no entries have temp data`, () => {
-      const entries: PhaseData[] = [
-        { composition: { Fe: 1 }, energy: 0 },
-        { composition: { Li: 1 }, energy: 0 },
-      ]
+    test.each([
+      [`empty entries`, [] as PhaseData[]],
+      [
+        `entries without temp data`,
+        [
+          { composition: { Fe: 1 }, energy: 0 },
+          { composition: { Li: 1 }, energy: 0 },
+        ] as PhaseData[],
+      ],
+    ])(`returns has_temp_data=false for %s`, (_desc, entries) => {
       const result = helpers.analyze_temperature_data(entries)
       expect(result.has_temp_data).toBe(false)
       expect(result.available_temperatures).toEqual([])
@@ -828,46 +827,38 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`interpolate_energy_at_temperature`, () => {
-    test(`linearly interpolates between bracketing temperatures`, () => {
-      const entry = make_entry([300, 600], [-1, -2])
-      // At T=450 (midpoint), energy should be -1.5
-      expect(helpers.interpolate_energy_at_temperature(entry, 450, 500)).toBeCloseTo(-1.5)
-      // At T=375 (1/4 of the way), energy should be -1.25
-      expect(helpers.interpolate_energy_at_temperature(entry, 375, 500)).toBeCloseTo(-1.25)
+    test.each([
+      [`midpoint of [300,600]`, make_entry([300, 600], [-1, -2]), 450, 500, -1.5],
+      [`quarter of [300,600]`, make_entry([300, 600], [-1, -2]), 375, 500, -1.25],
+      // non-uniform spacing: 650 is halfway between knots 400 and 900
+      [`non-uniform spacing`, make_entry([300, 400, 900], [-1, -1.2, -2]), 650, 600, -1.6],
+      // unsorted temps: tightest bracket 300-600 (gap 300) within max_gap 400
+      [
+        `tightest bracket (unsorted)`,
+        make_entry([900, 300, 600], [-3, -1, -2]),
+        450,
+        400,
+        -1.5,
+      ],
+    ])(`interpolates %s`, (_desc, entry, temp, max_gap, expected) => {
+      expect(helpers.interpolate_energy_at_temperature(entry, temp, max_gap)).toBeCloseTo(
+        expected,
+      )
     })
 
-    test(`returns null when T is outside range`, () => {
-      const entry = make_entry([300, 600], [-1, -2])
-      expect(helpers.interpolate_energy_at_temperature(entry, 200, 500)).toBeNull()
-      expect(helpers.interpolate_energy_at_temperature(entry, 700, 500)).toBeNull()
-    })
-
-    test(`returns null when gap exceeds max_gap`, () => {
-      const entry = make_entry([300, 900], [-1, -2])
-      expect(helpers.interpolate_energy_at_temperature(entry, 600, 500)).toBeNull()
-    })
-
-    test(`handles non-uniform temperature spacing`, () => {
-      const entry = make_entry([300, 400, 900], [-1, -1.2, -2])
-      // Interpolate between 400 and 900
-      const result = helpers.interpolate_energy_at_temperature(entry, 650, 600)
-      // 650 is exactly halfway between 400 and 900
-      expect(result).toBeCloseTo((-1.2 + -2) / 2)
-    })
-
-    test(`finds tightest bracket with unsorted temperatures`, () => {
-      // Unsorted: [900, 300, 600] - must scan all to find closest bracket
-      const entry = make_entry([900, 300, 600], [-3, -1, -2])
-      // T=450 should bracket between 300 and 600 (gap=300), not 300 and 900 (gap=600)
-      const result = helpers.interpolate_energy_at_temperature(entry, 450, 400)
-      // With max_gap=400, should succeed (gap=300) and interpolate halfway between -1 and -2
-      expect(result).toBeCloseTo(-1.5)
-    })
-
-    test(`fails when tightest bracket still exceeds max_gap`, () => {
-      const entry = make_entry([900, 300, 600], [-3, -1, -2])
-      // T=450, tightest bracket is 300-600 (gap=300), max_gap=200 should fail
-      expect(helpers.interpolate_energy_at_temperature(entry, 450, 200)).toBeNull()
+    test.each([
+      [`T below range`, make_entry([300, 600], [-1, -2]), 200, 500],
+      [`T above range`, make_entry([300, 600], [-1, -2]), 700, 500],
+      [`gap exceeds max_gap`, make_entry([300, 900], [-1, -2]), 600, 500],
+      // unsorted: tightest bracket 300-600 (gap 300) still exceeds max_gap 200
+      [
+        `tightest bracket exceeds max_gap`,
+        make_entry([900, 300, 600], [-3, -1, -2]),
+        450,
+        200,
+      ],
+    ])(`returns null when %s`, (_desc, entry, temp, max_gap) => {
+      expect(helpers.interpolate_energy_at_temperature(entry, temp, max_gap)).toBeNull()
     })
   })
 
@@ -1112,5 +1103,32 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
       helpers.build_entry_tooltip_text(mag_entry({ magnetic_ordering: `FiM` })),
     ).toContain(`Magnetic: FiM`)
     expect(helpers.build_entry_tooltip_text(mag_entry())).not.toContain(`Magnetic`)
+  })
+})
+
+describe(`array_min / array_max`, () => {
+  test.each([
+    [[3, 1, 2], 1, 3],
+    [[-5, -2, -9], -9, -2],
+    [[42], 42, 42],
+    [[0.1, 0.5, 0.3], 0.1, 0.5],
+  ] as [number[], number, number][])(
+    `%j → min %d, max %d`,
+    (values, expected_min, expected_max) => {
+      expect(helpers.array_min(values)).toBe(expected_min)
+      expect(helpers.array_max(values)).toBe(expected_max)
+    },
+  )
+
+  test(`empty array yields ±Infinity (callers guard length first)`, () => {
+    expect(helpers.array_min([])).toBe(Infinity)
+    expect(helpers.array_max([])).toBe(-Infinity)
+  })
+
+  // Math.min/max(...arr) blows the stack on large arrays; the reduce-based helpers don't.
+  test(`handles large arrays without stack overflow`, () => {
+    const big = Array.from({ length: 500_000 }, (_, idx) => idx)
+    expect(helpers.array_min(big)).toBe(0)
+    expect(helpers.array_max(big)).toBe(499_999)
   })
 })

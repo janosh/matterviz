@@ -1,6 +1,6 @@
 import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { BONDING_STRATEGIES } from '$lib/structure/bonding'
+import { BONDING_STRATEGIES, get_majority_element } from '$lib/structure/bonding'
 
 export interface CoordinationSite {
   site_idx: number
@@ -59,14 +59,18 @@ export function calc_coordination_nums(
   const cn_histogram_by_element = new Map<string, Map<number, number>>()
   const inc = (map: Map<number, number>, key: number) => map.set(key, (map.get(key) ?? 0) + 1)
 
+  // PBC-expanded structures pass center_count: only the first center_count sites are real
+  // centers; image atoms still count as neighbors but aren't iterated as centers
+  const center_limit = center_count ?? sites.length
   for (const [site_idx, site] of sites.entries()) {
-    const element = site.species[0]?.element ?? `Unknown`
+    if (site_idx >= center_limit) break
+    const element = get_majority_element(site) ?? `Unknown`
     const neighbors_set = neighbor_counts.get(site_idx) ?? new Set()
     const coordination_num = neighbors_set.size
 
     // Get neighbor elements
     const neighbor_elements = Array.from(neighbors_set).map(
-      (neighbor_idx) => sites[neighbor_idx].species[0]?.element ?? `Unknown`,
+      (neighbor_idx) => get_majority_element(sites[neighbor_idx]) ?? `Unknown`,
     )
 
     coordination_sites.push({ site_idx, element, coordination_num, neighbor_elements })

@@ -11,7 +11,7 @@
 <button
   {...rest}
   type="button"
-  class="copy-button {rest.class ?? ``}"
+  class={[`copy-button`, rest.class]}
   aria-label={label}
   {title}
   {onclick}

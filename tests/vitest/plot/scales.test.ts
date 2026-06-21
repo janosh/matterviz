@@ -83,6 +83,10 @@ describe(`scales`, () => {
       [[10, 100, 1000], `log`, [10, 1000]],
       [[0.001, 0.1, 1], `log`, [0.001, 1]],
       [[-5, 0, 5], `log`, [math.LOG_EPS, 5]],
+      // all-negative log data: max must be clamped up to the positive floor too, else the
+      // domain comes back inverted ([LOG_EPS, -1]) and collapses the (color) scale
+      [[-10, -1], `log`, [math.LOG_EPS, math.LOG_EPS]],
+      [[-100, -50, -10], `log`, [math.LOG_EPS, math.LOG_EPS]],
       [[], `linear`, [0, 1]],
       [[42], `linear`, [42, 42]],
     ])(`%s %s scale`, (values, scale_type, expected) => {
@@ -92,6 +96,8 @@ describe(`scales`, () => {
       } else {
         expect(domain).toEqual(expected)
       }
+      // never inverted regardless of input sign
+      expect(domain[0]).toBeLessThanOrEqual(domain[1])
     })
   })
 
@@ -714,6 +720,24 @@ describe(`scales`, () => {
       // All colors should be unique for these spread-out values
       const unique_colors = new Set(colors)
       expect(unique_colors.size).toBe(colors.length)
+    })
+  })
+
+  describe(`create_color_scale with log`, () => {
+    // all-negative auto-range would otherwise produce an inverted [LOG_EPS, max<0] domain that
+    // makes scaleSequentialLog return undefined for every value
+    test.each([
+      { values: [10, 1000] as Vec2, desc: `all-positive` },
+      { values: [-10, -1] as Vec2, desc: `all-negative` },
+      { values: [-5, 50] as Vec2, desc: `mixed sign` },
+    ])(`clamps log domain to a non-inverted positive range ($desc)`, ({ values }) => {
+      const scale = create_color_scale({ type: `log`, scheme: `interpolateViridis` }, values)
+      const domain = scale.domain()
+      const [d_min, d_max] = [domain[0], domain[domain.length - 1]]
+      expect(d_min).toBeGreaterThan(0)
+      expect(d_min).toBeLessThan(d_max) // never inverted or degenerate
+      // a positive in-range value still maps to a real color string (not undefined)
+      expect(typeof scale(Math.max(values[1], 1))).toBe(`string`)
     })
   })
 })

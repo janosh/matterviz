@@ -3465,8 +3465,6 @@ describe(`Coordinate Normalization`, () => {
     },
   ])(`normalizes nested $name`, ({ wrapper, abc, expected_abc, expected_xyz, parser }) => {
     const inner = {
-      '@module': `pymatgen.core.structure`,
-      '@class': `Structure`,
       charge: 0,
       lattice: {
         matrix: [
@@ -3536,7 +3534,6 @@ describe(`Coordinate Normalization`, () => {
     const pymatgen_struct = {
       output: {
         structure: {
-          '@module': `pymatgen.core.structure`,
           lattice: {
             matrix: [
               [6.22, 0, 0],

@@ -283,6 +283,37 @@ describe(`Coordination`, () => {
       },
     )
 
+    // CoordinationBarPlot and the 3D viewer both call calc_structure_coordination, so
+    // their boundary-atom CN must agree and must exceed the raw-cell count (regression:
+    // the bar plot previously ran on the raw cell and undercounted boundary atoms).
+    test.each([`electroneg_ratio`, `solid_angle`] as const)(
+      `calc_structure_coordination expands PBC and matches viewer CN (%s)`,
+      (strategy) => {
+        const structure = make_cubic_structure(
+          [
+            { abc: [0, 0, 0] as Vec3, element: `Na` },
+            { abc: [0.5, 0, 0] as Vec3, element: `Cl` },
+            { abc: [0, 0.5, 0] as Vec3, element: `Cl` },
+            { abc: [0, 0, 0.5] as Vec3, element: `Cl` },
+          ],
+          5,
+        )
+        const orig_count = structure.sites.length
+        const bar_plot_cn = ap
+          .calc_structure_coordination(structure, strategy)
+          .sites.map((site) => site.coordination_num)
+        const viewer_cn = ap.get_coordination_colors(structure, strategy).values
+        const raw_cn = calc_coordination_nums(structure, strategy).sites.map(
+          (site) => site.coordination_num,
+        )
+
+        expect(bar_plot_cn).toHaveLength(orig_count)
+        expect(bar_plot_cn).toEqual(viewer_cn)
+        // Corner Na bonds to Cl images across the boundary, so PBC CN > raw-cell CN
+        expect(bar_plot_cn[0]).toBeGreaterThan(raw_cn[0])
+      },
+    )
+
     describe(`Boundary detection optimization`, () => {
       // Brute-force coordination ground truth: image every atom by a full `shells`-cell
       // shell (no cutoff approximation), tagging orig_site_idx exactly as production's

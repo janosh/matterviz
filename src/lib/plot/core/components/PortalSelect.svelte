@@ -206,7 +206,7 @@
     aria-expanded={dropdown_open}
     aria-haspopup="listbox"
     {...rest}
-    class="portal-select-trigger {rest.class ?? ``}"
+    class={[`portal-select-trigger`, rest.class]}
   >
     {@html sanitize_html(format_option(selected_option))}
     <span class="arrow">▾</span>

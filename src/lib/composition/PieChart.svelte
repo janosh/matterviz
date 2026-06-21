@@ -202,7 +202,7 @@
   viewBox="0 0 {size} {size}"
   style:max-width="{size}px"
   {...rest}
-  class="pie-chart {rest.class ?? ``}"
+  class={[`pie-chart`, rest.class]}
   bind:this={svg_node}
 >
   {#each segments as segment (segment.element)}

@@ -204,7 +204,7 @@ class PeriodicTable(MatterViz):
         lanth_act_style: str | None = None,
         links: dict | None = None,
         log: bool | None = None,
-        missing_color: str | None = None,
+        missing: Any | None = None,
         show_color_bar: bool | None = None,
         show_photo: bool | None = None,
         split_layout: Any | None = None,
@@ -248,8 +248,8 @@ class PeriodicTable(MatterViz):
             mv_props["links"] = links
         if log is not None:
             mv_props["log"] = log
-        if missing_color is not None:
-            mv_props["missing_color"] = missing_color
+        if missing is not None:
+            mv_props["missing"] = missing
         if show_color_bar is not None:
             mv_props["show_color_bar"] = show_color_bar
         if show_photo is not None:

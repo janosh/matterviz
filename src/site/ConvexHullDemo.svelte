@@ -82,7 +82,7 @@
     on_click={handle_click}
     style="margin-block: 1em"
   />
-  <div {...rest} class="hull-grid {rest.class ?? ``}">
+  <div {...rest} class={[`hull-grid`, rest.class]}>
     <ConvexHull3D
       entries={ternary_entries}
       controls={{ title: ternary_elements.join(`-`) }}

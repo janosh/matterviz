@@ -140,7 +140,7 @@
     show_unstable: () => show_unstable,
     entry_category: () => entry_category,
     hidden_categories: () => hidden_categories,
-    keep_plot_entry: (entry, max_dist) => (entry.e_above_hull ?? 0) <= max_dist,
+    keep_plot_entry: helpers.entry_within_hull_dist,
     set_temperature: (next_temp) => temperature = next_temp,
     set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
     set_stable_entries: (value) => stable_entries = value,
@@ -196,8 +196,10 @@
     if (hull_data.energy_mode !== `on-the-fly`) return coords_entries
     const pts = coords_entries.map(({ x, y, z }) => ({ x, y, z }))
     const raw_dists = thermo.compute_e_above_hull_for_points(pts, hull_model)
+    // non-finite distance (no covering hull face) -> unknown, handled by compute_hull_stability
     return coords_entries.map((entry, idx) => ({
-      ...entry, ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull),
+      ...entry,
+      ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull),
     }))
   })
 
@@ -670,7 +672,7 @@
       const all_e_form = hull_faces.flatMap((tri) =>
         tri.vertices.map((vertex) => vertex.z)
       )
-      min_face_e_form = Math.min(...all_e_form)
+      min_face_e_form = helpers.array_min(all_e_form)
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
         color_scale,
@@ -1060,7 +1062,7 @@
 
 <div
   {...rest}
-  class="convex-hull-3d {rest.class ?? ``}"
+  class={[`convex-hull-3d`, rest.class]}
   class:dragover={interactions.drag_over}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}

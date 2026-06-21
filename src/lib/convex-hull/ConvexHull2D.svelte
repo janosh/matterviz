@@ -142,8 +142,7 @@
     show_unstable: () => show_unstable,
     entry_category: () => entry_category,
     hidden_categories: () => hidden_categories,
-    keep_plot_entry: (entry, max_dist) =>
-      helpers.entry_is_stable(entry) || (entry.e_above_hull ?? 0) <= max_dist,
+    keep_plot_entry: helpers.entry_within_hull_dist,
     set_temperature: (next_temp) => temperature = next_temp,
     set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
     set_stable_entries: (value) => stable_entries = value,
@@ -229,7 +228,8 @@
 
     const enriched_entries = coords_entries.map((entry) => {
       const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
-      const raw_dist = y_hull == null ? 0 : entry.y - y_hull
+      // degenerate hull (<2 points): y_hull null -> unknown distance (not 0/stable)
+      const raw_dist = y_hull == null ? undefined : entry.y - y_hull
       return { ...entry, ...helpers.compute_hull_stability(raw_dist, entry.exclude_from_hull) }
     })
     return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
@@ -259,8 +259,8 @@
   const y_domain = $derived.by((): Vec2 => {
     const ys = plot_entries.map((entry) => entry.y)
     if (ys.length === 0) return [-1, 0]
-    const min_y_data = Math.min(...ys)
-    const max_y_data = Math.max(...ys)
+    const min_y_data = helpers.array_min(ys)
+    const max_y_data = helpers.array_max(ys)
     const span = Math.max(1e-9, max_y_data - min_y_data)
     const pad = 0.05 * span
     return [min_y_data - pad, max_y_data + pad]
@@ -616,7 +616,7 @@
 {#key reset_counter}
   <ScatterPlot
     {...rest}
-    class="convex-hull-2d {rest.class ?? ``} {drag_over ? `dragover` : ``}"
+    class={[`convex-hull-2d`, rest.class, drag_over && `dragover`]}
     style={`${style}; ${rest.style ?? ``}`}
     data-has-selection={selected_entry !== null}
     bind:wrapper
@@ -689,7 +689,7 @@
       bind:visible={copy_feedback.visible}
       position={copy_feedback.position}
     />
-    <DragOverlay visible={drag_over} />
+    <DragOverlay visible={drag_over} message="Drop JSON file to load phase diagram data" />
 
     {#if hull_data.has_temp_data && temperature !== undefined}
       <TemperatureSlider available_temperatures={hull_data.available_temperatures} bind:temperature />

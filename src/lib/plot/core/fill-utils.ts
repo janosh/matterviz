@@ -1,8 +1,9 @@
 // Fill-between utility functions for ScatterPlot fill regions
 // Each fill edge is traced through its boundary's own points with the same curve the series line
-// uses (curveMonotoneX), so an unclipped fill edge coincides with the line it borders. When an
-// edge is clipped (x_range / partial overlap), the inserted endpoint shifts the neighboring
-// monotone tangent, so the clipped edge can deviate sub-pixel from the full series line.
+// uses (a series edge inherits the series' `line_style.curve`, default monotoneX), so an unclipped
+// fill edge coincides with the line it borders. When an edge is clipped (x_range / partial
+// overlap), inserted endpoints are evaluated on a monotone-cubic approximation: sub-pixel for
+// monotoneX/linear/step, but natural/basis/catmullRom edges can deviate more at the clip points.
 
 import type { Vec2 } from '$lib/math'
 import type { CurveFactory } from 'd3-shape'
@@ -26,6 +27,7 @@ import type {
   FillCurveType,
   FillGradient,
   FillRegion,
+  LineCurve,
 } from '$lib/plot/core/types'
 
 // Epsilon value for log scale clamping (to avoid log(0) = -Infinity)
@@ -228,6 +230,21 @@ interface DomainContext {
   y2_domain?: Vec2
 }
 
+// Bridge the public LineCurve vocabulary (series `line_style.curve`) to FillCurveType names so
+// a series fill edge traces with the same curve as its rendered line. Default: monotoneX.
+const LINE_CURVE_TO_FILL: Record<LineCurve, FillCurveType> = {
+  linear: `linear`,
+  monotone: `monotoneX`,
+  natural: `natural`,
+  step: `step`,
+  basis: `basis`,
+  'catmull-rom': `catmullRom`,
+}
+const line_curve_to_fill = (curve: LineCurve | undefined): FillCurveType =>
+  // ?? monotoneX guards an unknown string from an untyped (Python/JSON) caller, matching
+  // Line.svelte's `CURVE_FACTORIES[curve] ?? curveMonotoneX` fallback
+  (curve ? LINE_CURVE_TO_FILL[curve] : undefined) ?? `monotoneX`
+
 // Resolve a boundary to native points + curve in data coordinates. `companion` supplies x
 // positions for boundaries that don't define their own (constant/axis/function/data-without-x).
 export function resolve_boundary_points(
@@ -247,15 +264,21 @@ export function resolve_boundary_points(
     points: horizontal(span_xs, y),
     curve: `linear`,
   })
-  // series / function / data edges are traced with monotoneX (matches the series line)
-  const curved_edge = (points: Pt[]): ResolvedBoundary | null =>
-    points.length > 0 ? { points, curve: `monotoneX` } : null
+  // function / data edges trace with monotoneX by default; a series edge inherits the
+  // series' own line curve so the fill border coincides with the rendered line
+  const curved_edge = (
+    points: Pt[],
+    curve: FillCurveType = `monotoneX`,
+  ): ResolvedBoundary | null => (points.length > 0 ? { points, curve } : null)
 
   if (typeof boundary === `number`) return flat_edge(boundary)
   if (boundary.type === `series`) {
     const resolved = resolve_series_ref(boundary, series)
     if (!resolved) return null
-    return curved_edge(finite_points(resolved.x, resolved.y))
+    return curved_edge(
+      finite_points(resolved.x, resolved.y),
+      line_curve_to_fill(resolved.line_style?.curve),
+    )
   }
   if (boundary.type === `constant`) return flat_edge(boundary.value)
   if (boundary.type === `axis`) {
@@ -518,6 +541,9 @@ export function convert_error_band_to_fill_region(
   return {
     id: error_band.id,
     label: error_band.label,
+    // band edges are data boundaries (default monotoneX); inherit the central series' line
+    // curve so the band traces with the same curve as the line it brackets
+    curve: line_curve_to_fill(resolved.line_style?.curve),
     upper: { type: `data`, x, values: y.map((val, idx) => val + upper_err[idx]) },
     lower: { type: `data`, x, values: y.map((val, idx) => val - lower_err[idx]) },
     fill: error_band.fill ?? default_color ?? `#4e79a7`,

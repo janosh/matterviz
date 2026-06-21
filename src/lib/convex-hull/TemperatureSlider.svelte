@@ -53,7 +53,7 @@
 
 <div
   {...rest}
-  class="temperature-slider {rest.class ?? ``}"
+  class={[`temperature-slider`, rest.class]}
   {@attach tooltip({ content: `Temperature for G(T) free energies` })}
 >
   <label class="temp-label">

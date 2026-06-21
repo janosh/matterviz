@@ -20,6 +20,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 <script lang="ts">
   import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
+  import { quaternion_from_direction } from '$lib/structure/geometry'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     clip_line_to_cell,
@@ -39,7 +40,6 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     LinearFilter,
     Matrix4,
     OctahedronGeometry,
-    Quaternion,
     RepeatWrapping,
     RGBAFormat,
     Vector3,
@@ -92,7 +92,6 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     inversion_color?: string
   } = $props()
 
-  const UP = new Vector3(0, 1, 0)
   const UNIT_SCALE = new Vector3(1, 1, 1)
 
   // 1D stripe alpha texture for glide fills (three.js alphaMap samples the GREEN
@@ -140,7 +139,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     new CylinderGeometry(radius, radius, length, 12).applyMatrix4(
       new Matrix4().compose(
         center,
-        new Quaternion().setFromUnitVectors(UP, dir_unit),
+        quaternion_from_direction(dir_unit.toArray() as Vec3),
         UNIT_SCALE,
       ),
     )

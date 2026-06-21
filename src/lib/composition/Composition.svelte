@@ -147,7 +147,7 @@
   aria-haspopup="menu"
   aria-expanded={context_menu.open}
   {...rest}
-  class="composition {rest.class ?? ``}"
+  class={[`composition`, rest.class]}
 />
 
 {#if context_menu.open}
