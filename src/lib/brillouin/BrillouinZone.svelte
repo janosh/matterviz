@@ -53,7 +53,7 @@
     surface_color = $bindable(`#4488ff`),
     surface_opacity = $bindable(0.3),
     edge_color = $bindable(`#000000`),
-    edge_width = $bindable(0.05),
+    edge_width = $bindable(0.002),
     show_vectors = $bindable(true),
     vector_scale = $bindable(1.0),
     camera_projection = $bindable(`perspective`),

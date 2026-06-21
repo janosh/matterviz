@@ -57,7 +57,7 @@
     bz_color = `#888888`,
     bz_opacity = 0.1,
     bz_edge_color = `#333333`,
-    bz_edge_width = 0.02,
+    bz_edge_width = 0.002,
     show_vectors = true,
     tile_bz = false,
     // Clipping plane

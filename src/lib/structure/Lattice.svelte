@@ -5,15 +5,10 @@
   import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { CanvasTooltip } from '$lib/structure'
+  import Arrow from './Arrow.svelte'
+  import Cylinder from './Cylinder.svelte'
   import { T } from '@threlte/core'
-  import {
-    BoxGeometry,
-    EdgesGeometry,
-    Euler,
-    Matrix4,
-    Quaternion,
-    Vector3,
-  } from 'three'
+  import { BoxGeometry, EdgesGeometry, Matrix4, Vector3 } from 'three'
 
   let {
     matrix = undefined,
@@ -64,71 +59,37 @@
     return () => geo.dispose()
   })
 
-  // Edge segments derive from the box geometry; the transient EdgesGeometry is
-  // disposed inline since only its extracted positions are kept.
-  let edge_segments = $derived.by<[Vector3, Vector3][]>(() => {
+  // Edge segments (Cartesian endpoint pairs) from the box geometry; the transient
+  // EdgesGeometry is disposed inline since only its extracted positions are kept.
+  let edge_segments = $derived.by<[Vec3, Vec3][]>(() => {
     if (!box_geometry || !(cell_edge_opacity > 0)) return []
     const edges_geometry = new EdgesGeometry(box_geometry)
-    const segments = get_edge_segments(edges_geometry)
-    edges_geometry.dispose()
-    return segments
-  })
-
-  // Extract line segments from EdgesGeometry for cylinder-based thick lines
-  function get_edge_segments(edges_geometry: EdgesGeometry): [Vector3, Vector3][] {
     const positions = edges_geometry.getAttribute(`position`).array as Float32Array
-    const segments: [Vector3, Vector3][] = []
+    edges_geometry.dispose()
+    const segments: [Vec3, Vec3][] = []
     // each edge is two consecutive xyz triplets (6 floats)
     for (let idx = 0; idx < positions.length; idx += 6) {
       segments.push([
-        new Vector3().fromArray(positions, idx),
-        new Vector3().fromArray(positions, idx + 3),
+        [positions[idx], positions[idx + 1], positions[idx + 2]],
+        [positions[idx + 3], positions[idx + 4], positions[idx + 5]],
       ])
     }
     return segments
-  }
-
-  // Euler rotation (as Vec3) aligning the cylinder/cone +Y axis with `direction`
-  const vec_to_rotation = (direction: Vector3): Vec3 => {
-    const quaternion = new Quaternion().setFromUnitVectors(
-      new Vector3(0, 1, 0),
-      direction.clone().normalize(),
-    )
-    return new Euler().setFromQuaternion(quaternion).toArray().slice(0, 3) as Vec3
-  }
-
-  // Calculate cylinder transform for a line segment
-  function get_cylinder_transform(
-    start: Vector3,
-    end: Vector3,
-  ): { position: Vec3; rotation: Vec3; length: number } {
-    const direction = end.clone().sub(start)
-    const length = direction.length()
-    const position = start.clone().add(end).multiplyScalar(0.5).toArray()
-    // zero-length segment: no rotation (degenerate cylinder)
-    const rotation = length === 0 ? ([0, 0, 0] as Vec3) : vec_to_rotation(direction)
-    return { position, rotation, length }
-  }
+  })
 </script>
 
 {#if matrix && box_geometry}
-  <!-- Render wireframe edges if edge opacity > 0 -->
+  <!-- Wireframe edges (thick lines via cylinders) when edge opacity > 0 -->
   {#if cell_edge_opacity > 0}
-    <!-- Use cylinders for thick wireframe lines -->
     <T.Group position={lattice_center}>
       {#each edge_segments as [start, end], idx (idx)}
-        {@const { position, rotation, length } = get_cylinder_transform(start, end)}
-        <T.Mesh {position} {rotation}>
-          <T.CylinderGeometry
-            args={[cell_edge_width * 0.01, cell_edge_width * 0.01, length, 8]}
-          />
-          <T.MeshStandardMaterial
-            color={cell_edge_color}
-            opacity={cell_edge_opacity}
-            transparent
-            depthWrite={false}
-          />
-        </T.Mesh>
+        <Cylinder
+          from={start}
+          to={end}
+          thickness={cell_edge_width * 0.01}
+          color={cell_edge_color}
+          opacity={cell_edge_opacity}
+        />
       {/each}
     </T.Group>
   {/if}
@@ -145,39 +106,17 @@
     </T.Mesh>
   {/if}
 
-  <!-- NOTE below is an untested fix for the lattice vectors being much too small when deployed even though they look correct in local dev -->
   {#if show_cell_vectors}
-    <T.Group position={vector_origin}>
-      {#each matrix as vec, idx (vec)}
-        {@const shaft_length = Math.hypot(...vec) * 0.85}
-        <!-- Shaft goes to 85% of vector length -->
-        {@const tip_start_position = math.scale(vec, 0.85)}
-        {@const rotation = vec_to_rotation(new Vector3(...vec))}
-        <!-- Arrow shaft - position at center of shaft length -->
-        {@const shaft_center = math.scale(vec, 0.425)}
-        <!-- Center at 42.5% = half of 85% -->
-        <T.Mesh
-          position={shaft_center}
-          {rotation}
-          onpointerenter={() => hovered_idx = idx}
-          onpointerleave={() => hovered_idx = null}
-        >
-          <T.CylinderGeometry args={[0.05, 0.05, shaft_length, 16]} />
-          <T.MeshStandardMaterial color={vector_colors[idx]} />
-        </T.Mesh>
-
-        <!-- Arrow tip -->
-        <T.Mesh
-          position={tip_start_position}
-          {rotation}
-          onpointerenter={() => hovered_idx = idx}
-          onpointerleave={() => hovered_idx = null}
-        >
-          <T.ConeGeometry args={[0.175, 0.5, 16]} />
-          <T.MeshStandardMaterial color={vector_colors[idx]} />
-        </T.Mesh>
-      {/each}
-    </T.Group>
+    {#each matrix as vec, idx (vec)}
+      <Arrow
+        position={vector_origin}
+        vector={vec}
+        scale={1}
+        color={vector_colors[idx]}
+        onpointerenter={() => hovered_idx = idx}
+        onpointerleave={() => hovered_idx = null}
+      />
+    {/each}
 
     <!-- Tooltip for hovered vector -->
     {#if hovered_idx !== null && matrix}
