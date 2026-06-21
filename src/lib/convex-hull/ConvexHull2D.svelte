@@ -228,12 +228,9 @@
 
     const enriched_entries = coords_entries.map((entry) => {
       const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
-      // degenerate hull (<2 points): distance unknown, not 0 (which would mark all stable)
-      if (y_hull == null) return { ...entry, e_above_hull: undefined, is_stable: undefined }
-      return {
-        ...entry,
-        ...helpers.compute_hull_stability(entry.y - y_hull, entry.exclude_from_hull),
-      }
+      // degenerate hull (<2 points): y_hull null -> unknown distance (not 0/stable)
+      const raw_dist = y_hull == null ? undefined : entry.y - y_hull
+      return { ...entry, ...helpers.compute_hull_stability(raw_dist, entry.exclude_from_hull) }
     })
     return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
   })

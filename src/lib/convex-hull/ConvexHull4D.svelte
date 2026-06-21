@@ -200,15 +200,11 @@
       })
       const raw_dists = thermo.compute_e_above_hull_4d(valid.map((item) => item.pt), hull_4d)
       const hull_map = new Map(valid.map((item, hull_idx) => [item.idx, raw_dists[hull_idx]]))
-      return coords.map((entry, idx) => {
-        const raw = hull_map.get(idx)
-        // no finite hull distance (missing energy or projection outside hull) is
-        // unknown, not unstable — leave e_above_hull/is_stable undefined
-        if (raw === undefined || !Number.isFinite(raw)) {
-          return { ...entry, e_above_hull: undefined, is_stable: undefined }
-        }
-        return { ...entry, ...compute_hull_stability(raw, entry.exclude_from_hull) }
-      })
+      // missing/non-finite distance (no energy or point outside hull projection) -> unknown
+      return coords.map((entry, idx) => ({
+        ...entry,
+        ...compute_hull_stability(hull_map.get(idx), entry.exclude_from_hull),
+      }))
     } catch (err) {
       console.error(`Error computing quaternary coordinates:`, err)
       return []

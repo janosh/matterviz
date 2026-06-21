@@ -82,13 +82,7 @@ export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
       .map((entry) => [Object.keys(entry.composition)[0], entry]),
   )
 
-  return {
-    entries: normalized_entries,
-    stable_entries,
-    unstable_entries,
-    elements,
-    el_refs,
-  }
+  return { entries: normalized_entries, stable_entries, unstable_entries, elements, el_refs }
 }
 
 // Get energy per atom with correction applied, or fallback to raw energy_per_atom/energy.

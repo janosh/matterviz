@@ -6,10 +6,7 @@ import type { AnyStructure } from '$lib/structure'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import { symbol } from 'd3-shape'
-import {
-  analyze_gas_data as _analyze_gas_data,
-  apply_gas_corrections as _apply_gas_corrections,
-} from './gas-thermodynamics'
+import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import type {
   ConvexHullConfig,
   EntryCategoryConfig,
@@ -29,10 +26,15 @@ export const HULL_STABILITY_TOL = 1e-6
 // Clamp raw hull distance and compute stability for a single entry.
 // Excluded entries keep their raw (possibly negative) distance and are never stable.
 export function compute_hull_stability(
-  raw_distance: number,
+  raw_distance: number | null | undefined,
   exclude_from_hull?: boolean,
   tol: number = HULL_STABILITY_TOL,
-): { e_above_hull: number; is_stable: boolean } {
+): { e_above_hull: number | undefined; is_stable: boolean | undefined } {
+  // unknown distance (degenerate hull / point outside hull projection / missing energy):
+  // not 0/stable — leave both undefined so it isn't mislabeled on-hull
+  if (raw_distance == null || !Number.isFinite(raw_distance)) {
+    return { e_above_hull: undefined, is_stable: undefined }
+  }
   if (exclude_from_hull) return { e_above_hull: raw_distance, is_stable: false }
   const e_above_hull = Math.abs(raw_distance) < tol ? 0 : Math.max(0, raw_distance)
   return { e_above_hull, is_stable: e_above_hull <= tol }
@@ -1042,17 +1044,14 @@ export function get_gas_corrected_entries(
     ...gas_config,
     pressures: { ...gas_config.pressures, ...gas_pressures },
   }
-  const analysis = _analyze_gas_data(entries, merged_config)
+  const analysis = analyze_gas_data(entries, merged_config)
 
   if (!analysis.has_gas_dependent_elements) {
     return { entries, analysis, merged_config }
   }
 
-  return {
-    entries: _apply_gas_corrections(entries, merged_config, temperature),
-    analysis,
-    merged_config,
-  }
+  const corr_entries = apply_gas_corrections(entries, merged_config, temperature)
+  return { entries: corr_entries, analysis, merged_config }
 }
 
 // Derive a display label for a convex hull entry, falling back to composition

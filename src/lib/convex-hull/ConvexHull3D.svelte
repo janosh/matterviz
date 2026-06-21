@@ -196,13 +196,11 @@
     if (hull_data.energy_mode !== `on-the-fly`) return coords_entries
     const pts = coords_entries.map(({ x, y, z }) => ({ x, y, z }))
     const raw_dists = thermo.compute_e_above_hull_for_points(pts, hull_model)
-    return coords_entries.map((entry, idx) => {
-      // unknown distance (no covering hull face) is not 0/stable
-      if (!Number.isFinite(raw_dists[idx])) {
-        return { ...entry, e_above_hull: undefined, is_stable: undefined }
-      }
-      return { ...entry, ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull) }
-    })
+    // non-finite distance (no covering hull face) -> unknown, handled by compute_hull_stability
+    return coords_entries.map((entry, idx) => ({
+      ...entry,
+      ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull),
+    }))
   })
 
   // Canvas rendering

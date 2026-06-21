@@ -99,6 +99,20 @@ describe(`compute_hull_stability`, () => {
       expect(result.is_stable).toBe(expected_stable)
     },
   )
+
+  // unknown distance (degenerate hull / point outside projection / missing energy) must stay
+  // undefined — not 0/stable — even when excluded, so it can't be mislabeled on-hull
+  test.each([null, undefined, NaN, Infinity, -Infinity] as const)(
+    `unknown distance %s -> undefined`,
+    (raw) => {
+      for (const excluded of [false, true]) {
+        expect(compute_hull_stability(raw, excluded)).toEqual({
+          e_above_hull: undefined,
+          is_stable: undefined,
+        })
+      }
+    },
+  )
 })
 
 describe(`show_controls`, () => {
