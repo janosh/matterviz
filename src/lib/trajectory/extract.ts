@@ -142,7 +142,8 @@ function get_constant_lattice_params(trajectory: TrajectoryType): Set<string> {
 
       const lattice_value = lattice?.[param]
       const value = typeof lattice_value === `number` ? lattice_value : frame.metadata?.[param]
-      if (typeof value !== `number`) continue
+      // Number.isFinite: NaN is typeof `number` but Math.abs(next-NaN)=NaN → false constant
+      if (typeof value !== `number` || !Number.isFinite(value)) continue
 
       const first = first_values.get(param)
       if (first === undefined) first_values.set(param, value)

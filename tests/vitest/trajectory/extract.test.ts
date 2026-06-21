@@ -6,7 +6,7 @@ import {
   structural_data_extractor,
 } from '$lib/trajectory/extract'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { make_trajectory_frame, read_binary_test_file } from '../setup'
 
 const constant_lattice_keys = [
@@ -24,6 +24,13 @@ const create_frame_with_lattice = (
   lattice_params: Record<string, number>,
   metadata: Record<string, unknown> = {},
 ): TrajectoryFrame => make_trajectory_frame(step, 1, metadata, lattice_params)
+
+// Wrap frames in a trajectory; the source_format/frame_count metadata is boilerplate the
+// extractors ignore (they read frames), so it's derived here instead of repeated per test
+const make_traj = (frames: TrajectoryFrame[]): TrajectoryType => ({
+  frames,
+  metadata: { source_format: `test`, frame_count: frames.length },
+})
 
 describe(`Energy Data Extractor`, () => {
   it.each([
@@ -189,32 +196,18 @@ describe(`Structural Data Extractor`, () => {
 
 describe(`Full Data Extractor`, () => {
   it(`should combine all extractors`, () => {
-    const trajectory: TrajectoryType = {
-      frames: [
-        create_frame_with_lattice(
-          0,
-          { a: 1.0, b: 1.0, c: 1.0, alpha: 90, beta: 90, gamma: 90, volume: 1.0 },
-          {
-            energy: -10.0,
-            force_max: 2.0,
-            density: 2.5,
-          },
-        ),
-        create_frame_with_lattice(
-          1,
-          { a: 1.1, b: 1.1, c: 1.1, alpha: 91, beta: 92, gamma: 93, volume: 1.331 },
-          {
-            energy: -10.5,
-            force_max: 1.5,
-            density: 2.3,
-          },
-        ),
-      ],
-      metadata: {
-        source_format: `test`,
-        frame_count: 2,
-      },
-    }
+    const trajectory = make_traj([
+      create_frame_with_lattice(
+        0,
+        { a: 1.0, b: 1.0, c: 1.0, alpha: 90, beta: 90, gamma: 90, volume: 1.0 },
+        { energy: -10.0, force_max: 2.0, density: 2.5 },
+      ),
+      create_frame_with_lattice(
+        1,
+        { a: 1.1, b: 1.1, c: 1.1, alpha: 91, beta: 92, gamma: 93, volume: 1.331 },
+        { energy: -10.5, force_max: 1.5, density: 2.3 },
+      ),
+    ])
 
     const frame1_data = full_data_extractor(trajectory.frames[0], trajectory)
     const frame2_data = full_data_extractor(trajectory.frames[1], trajectory)
@@ -244,48 +237,50 @@ describe(`Full Data Extractor`, () => {
     }
   })
 
-  it(`detects lattice param variation from metadata fallback (single pass)`, () => {
-    // No structure lattice → variation is computed from metadata. a varies, b/c constant.
-    const traj: TrajectoryType = {
-      frames: [
-        make_trajectory_frame(0, 1, { a: 5.0, b: 5.0, c: 5.0 }),
-        make_trajectory_frame(1, 1, { a: 5.1, b: 5.0, c: 5.0 }),
+  // No structure lattice → constancy is read from frame.metadata: a param is constant only
+  // if observed (finite) in ≥1 frame and never varies (single pass, cached per trajectory).
+  it.each([
+    {
+      name: `varying a, constant b/c, absent angles aren't constant`,
+      frames_meta: [
+        { a: 5.0, b: 5.0, c: 5.0 },
+        { a: 5.1, b: 5.0, c: 5.0 },
       ],
-      metadata: {},
-    }
-    const frame0 = full_data_extractor(traj.frames[0], traj)
-    const frame1 = full_data_extractor(traj.frames[1], traj)
-
-    expect(frame0.constant_a).toBeUndefined() // a varies
-    expect(frame0.constant_b).toBe(1)
-    expect(frame0.constant_c).toBe(1)
-    // alpha/beta/gamma absent from every frame → NOT constant (never observed)
-    for (const key of [`constant_alpha`, `constant_beta`, `constant_gamma`]) {
-      expect(frame0[key]).toBeUndefined()
-    }
-    // Cached result is identical for every frame of the same trajectory
-    for (const key of constant_lattice_keys) expect(frame1[key]).toBe(frame0[key])
+      expected: {
+        constant_a: undefined,
+        constant_b: 1,
+        constant_c: 1,
+        constant_alpha: undefined,
+        constant_beta: undefined,
+        constant_gamma: undefined,
+      },
+    },
+    {
+      // NaN is typeof `number`; without a finiteness guard it poisons `first` so the real
+      // 5 → 10 variation goes undetected and `a` is wrongly marked constant.
+      name: `non-finite value is unobserved (NaN doesn't mask 5 → 10 variation)`,
+      frames_meta: [
+        { a: NaN, b: 5.0 },
+        { a: 5.0, b: 5.0 },
+        { a: 10.0, b: 5.0 },
+      ],
+      expected: { constant_a: undefined, constant_b: 1 },
+    },
+  ])(`metadata-fallback constancy: $name`, ({ frames_meta, expected }) => {
+    const traj = make_traj(frames_meta.map((meta, idx) => make_trajectory_frame(idx, 1, meta)))
+    const all = traj.frames.map((frame) => full_data_extractor(frame, traj))
+    const frame0: Record<string, number | undefined> = all[0]
+    for (const [key, val] of Object.entries(expected)) expect(frame0[key], key).toBe(val)
+    // cached constant set is identical for every frame of the same trajectory
+    const last = all[all.length - 1]
+    for (const key of constant_lattice_keys) expect(last[key]).toBe(all[0][key])
   })
 
   it(`should detect constant lattice parameters`, () => {
-    const constant_trajectory: TrajectoryType = {
-      frames: [
-        create_frame_with_lattice(
-          0,
-          { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 },
-          { energy: -10.0 },
-        ),
-        create_frame_with_lattice(
-          1,
-          { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 },
-          { energy: -10.0 },
-        ),
-      ],
-      metadata: {
-        source_format: `test`,
-        frame_count: 2,
-      },
-    }
+    const constant_trajectory = make_traj([
+      create_frame_with_lattice(0, { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 }, { energy: -10.0 }),
+      create_frame_with_lattice(1, { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 }, { energy: -10.0 }),
+    ])
 
     const frame1_data = full_data_extractor(constant_trajectory.frames[0], constant_trajectory)
     const frame2_data = full_data_extractor(constant_trajectory.frames[1], constant_trajectory)
@@ -323,14 +318,7 @@ describe(`Default Plotting Behavior`, () => {
       should_vary: false,
     },
   ])(`should $name`, ({ trajectory_frames, expected_volumes, should_vary }) => {
-    const trajectory: TrajectoryType = {
-      frames: trajectory_frames,
-      metadata: {
-        source_format: `test`,
-        frame_count: trajectory_frames.length,
-      },
-    }
-
+    const trajectory = make_traj(trajectory_frames)
     const frame_data = trajectory_frames.map((frame) => full_data_extractor(frame, trajectory))
 
     // Should have volume in all frames
@@ -349,12 +337,14 @@ describe(`Default Plotting Behavior`, () => {
 })
 
 describe(`HDF5 Trajectory Data Extraction`, () => {
-  it(`should extract data from HDF5 trajectory`, async () => {
+  // Parse the real HDF5 fixture once and share it across both tests
+  let trajectory: TrajectoryType
+  beforeAll(async () => {
     const hdf5_content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(
-      hdf5_content,
-      `flame-gold-cluster-55-atoms.h5`,
-    )
+    trajectory = await parse_trajectory_data(hdf5_content, `flame-gold-cluster-55-atoms.h5`)
+  })
+
+  it(`should extract data from HDF5 trajectory`, () => {
     const first_frame = trajectory.frames[0]
 
     const energy_data = energy_data_extractor(first_frame, trajectory)
@@ -374,13 +364,7 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     }
   })
 
-  it(`should handle all frames and lattice consistency`, async () => {
-    const hdf5_content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(
-      hdf5_content,
-      `flame-gold-cluster-55-atoms.h5`,
-    )
-
+  it(`should handle all frames and lattice consistency`, () => {
     const all_frame_data = trajectory.frames.map((frame: TrajectoryFrame) =>
       full_data_extractor(frame, trajectory),
     )
@@ -413,21 +397,18 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
 describe(`regression tests for trajectory plotting integration`, () => {
   it(`should provide consistent units and handle mixed data for plotting`, () => {
     // Test lattice parameters with consistent units
-    const lattice_trajectory: TrajectoryType = {
-      frames: [
-        create_frame_with_lattice(
-          0,
-          { a: 5.0, b: 5.1, c: 10.0, alpha: 90, beta: 90, gamma: 120, volume: 255.5 },
-          {},
-        ),
-        create_frame_with_lattice(
-          1,
-          { a: 5.1, b: 5.2, c: 10.1, alpha: 90, beta: 90, gamma: 120, volume: 267.5 },
-          {},
-        ),
-      ],
-      metadata: { source_format: `test`, frame_count: 2 },
-    }
+    const lattice_trajectory = make_traj([
+      create_frame_with_lattice(
+        0,
+        { a: 5.0, b: 5.1, c: 10.0, alpha: 90, beta: 90, gamma: 120, volume: 255.5 },
+        {},
+      ),
+      create_frame_with_lattice(
+        1,
+        { a: 5.1, b: 5.2, c: 10.1, alpha: 90, beta: 90, gamma: 120, volume: 267.5 },
+        {},
+      ),
+    ])
 
     const lattice_data = full_data_extractor(lattice_trajectory.frames[0], lattice_trajectory)
     expect(lattice_data.a).toBeDefined()
@@ -436,21 +417,18 @@ describe(`regression tests for trajectory plotting integration`, () => {
     expect(lattice_data.volume).toBeDefined()
 
     // Test mixed structural and energy data
-    const mixed_trajectory: TrajectoryType = {
-      frames: [
-        create_frame_with_lattice(
-          0,
-          { a: 5.0, volume: 125.0 },
-          { energy: -100.0, force_max: 0.5 },
-        ),
-        create_frame_with_lattice(
-          1,
-          { a: 5.1, volume: 132.3 },
-          { energy: -101.0, force_max: 0.3 },
-        ),
-      ],
-      metadata: { source_format: `test`, frame_count: 2 },
-    }
+    const mixed_trajectory = make_traj([
+      create_frame_with_lattice(
+        0,
+        { a: 5.0, volume: 125.0 },
+        { energy: -100.0, force_max: 0.5 },
+      ),
+      create_frame_with_lattice(
+        1,
+        { a: 5.1, volume: 132.3 },
+        { energy: -101.0, force_max: 0.3 },
+      ),
+    ])
 
     const mixed_data = full_data_extractor(mixed_trajectory.frames[0], mixed_trajectory)
     expect(mixed_data.a).toBe(5.0)
@@ -478,13 +456,10 @@ describe(`regression tests for trajectory plotting integration`, () => {
 
   it(`should handle edge cases for plotting compatibility`, () => {
     // Single varying property
-    const single_prop_trajectory: TrajectoryType = {
-      frames: [
-        create_frame_with_lattice(0, { a: 5.0 }, { energy: -100.0 }),
-        create_frame_with_lattice(1, { a: 5.0 }, { energy: -101.0 }), // Only energy varies
-      ],
-      metadata: { source_format: `test`, frame_count: 2 },
-    }
+    const single_prop_trajectory = make_traj([
+      create_frame_with_lattice(0, { a: 5.0 }, { energy: -100.0 }),
+      create_frame_with_lattice(1, { a: 5.0 }, { energy: -101.0 }), // Only energy varies
+    ])
 
     const single_data = single_prop_trajectory.frames.map((frame) =>
       full_data_extractor(frame, single_prop_trajectory),
