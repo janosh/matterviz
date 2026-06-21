@@ -5,6 +5,20 @@ import {
 } from '$lib/io/decompress'
 import { describe, expect, test } from 'vitest'
 
+// Compress bytes with the platform CompressionStream for round-trip tests
+const compress = async (
+  data: Uint8Array,
+  format: `gzip` | `deflate` | `deflate-raw` = `gzip`,
+): Promise<ArrayBuffer> => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(data)
+      controller.close()
+    },
+  })
+  return new Response(stream.pipeThrough(new CompressionStream(format))).arrayBuffer()
+}
+
 describe(`decompress utility functions`, () => {
   describe(`detect_compression_format`, () => {
     test.each([
@@ -51,10 +65,7 @@ describe(`decompress utility functions`, () => {
       async (format) => {
         if (!globalThis.DecompressionStream) return
 
-        const invalid_data = new ArrayBuffer(10)
-        const view = new Uint8Array(invalid_data)
-        view.fill(255)
-
+        const invalid_data = new Uint8Array(10).fill(255).buffer
         await expect(decompress_data(invalid_data, format)).rejects.toThrow(
           `Failed to decompress ${format} file`,
         )
@@ -67,123 +78,120 @@ describe(`decompress utility functions`, () => {
         if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
 
         const test_string = `{"test": "data", "format": "${format}"}`
-        const encoder = new TextEncoder()
-        const data = encoder.encode(test_string)
-
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(data)
-            controller.close()
-          },
-        })
-
-        const compressed_stream = stream.pipeThrough(new CompressionStream(format))
-        const response = new Response(compressed_stream)
-        const compressed_buffer = await response.arrayBuffer()
-
-        const decompressed = await decompress_data(compressed_buffer, format)
-        expect(decompressed).toBe(test_string)
+        const compressed = await compress(new TextEncoder().encode(test_string), format)
+        expect(await decompress_data(compressed, format)).toBe(test_string)
       },
     )
   })
 
+  // decompress_file returns string | ArrayBuffer: text decodes to a string, binary payloads
+  // (by extension or magic bytes) stay ArrayBuffer so a lossy UTF-8 decode can't corrupt them
   describe(`decompress_file`, () => {
-    test(`should handle regular (uncompressed) text files`, async () => {
-      const test_content = `Hello, world!`
-      const file = new File([test_content], `test.txt`, { type: `text/plain` })
+    test.each([`structure.xyz`, `config.json`, `POSCAR`, `notes.md`, `greeting.txt`])(
+      `decodes text file %s to a string`,
+      async (filename) => {
+        const text = `H 0 0 0\nO 1 1 1`
+        const result = await decompress_file(new File([text], filename))
+        expect(result).toEqual({ content: text, filename })
+        expect(typeof result.content).toBe(`string`)
+      },
+    )
 
-      const result = await decompress_file(file)
-
-      expect(result.content).toBe(test_content)
-      expect(result.filename).toBe(`test.txt`)
-    })
-
-    test(`should handle JSON files`, async () => {
+    test(`round-trips JSON file content`, async () => {
       const test_json = { message: `Hello, JSON!` }
       const json_string = JSON.stringify(test_json, null, 2)
-      const file = new File([json_string], `test.json`, {
-        type: `application/json`,
-      })
+      const result = await decompress_file(new File([json_string], `test.json`))
 
-      const result = await decompress_file(file)
-
-      expect(result.content).toBe(json_string)
       expect(result.filename).toBe(`test.json`)
-      // decompress_file now returns string | ArrayBuffer; .json decodes to a string
       if (typeof result.content !== `string`) throw new Error(`expected string content`)
       expect(JSON.parse(result.content)).toEqual(test_json)
     })
 
+    test(`resolves empty (0-byte) files to empty content`, async () => {
+      const result = await decompress_file(new File([], `empty.txt`))
+      expect(result).toEqual({ content: ``, filename: `empty.txt` })
+    })
+
+    // supported compressed text → string, with the compression extension stripped
     test.each([
-      [`gzip`, `test.json.gz`],
-      [`deflate`, `test.json.deflate`],
-      [`deflate-raw`, `test.json.z`],
-    ] as const)(
-      `should process %s compressed files and remove extension`,
-      async (format, filename) => {
-        if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
+      [`gzip`, `gz`],
+      [`deflate`, `deflate`],
+      [`deflate-raw`, `z`],
+    ] as const)(`decompresses %s text and strips the extension`, async (format, ext) => {
+      if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
+      const text = `{"compressed": true, "format": "${format}"}`
+      const compressed = await compress(new TextEncoder().encode(text), format)
+      const result = await decompress_file(new File([compressed], `test.json.${ext}`))
+      expect(result.content).toBe(text)
+      expect(result.filename).toBe(`test.json`) // extension removed
+    })
 
-        const test_content = `{"compressed": true, "format": "${format}"}`
-        const encoder = new TextEncoder()
-        const data = encoder.encode(test_content)
-
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(data)
-            controller.close()
-          },
-        })
-
-        const compressed_stream = stream.pipeThrough(new CompressionStream(format))
-        const response = new Response(compressed_stream)
-        const compressed_buffer = await response.arrayBuffer()
-
-        const compressed_file = new File([compressed_buffer], filename, {
-          type: `application/octet-stream`,
-        })
-
-        const result = await decompress_file(compressed_file)
-
-        expect(result.content).toBe(test_content)
-        expect(result.filename).toBe(`test.json`) // Extension removed
+    // unsupported compression (.bz2/.zip) is treated as uncompressed: extension kept
+    test.each([`test.json.bz2`, `test.json.zip`])(
+      `treats unsupported compression %s as uncompressed`,
+      async (filename) => {
+        const text = `fake compressed data`
+        const result = await decompress_file(new File([text], filename))
+        expect(result.content).toBe(text)
+        expect(result.filename).toBe(filename) // extension not removed
       },
     )
 
-    test(`should handle unsupported compression formats`, async () => {
-      // Create a file with unsupported extension
-      const test_content = `fake compressed data`
-      const file = new File([test_content], `test.json.bz2`, {
-        type: `application/octet-stream`,
-      })
-
-      // Since .bz2 is not supported, this should be treated as uncompressed
-      const result = await decompress_file(file)
-      expect(result.content).toBe(test_content)
-      expect(result.filename).toBe(`test.json.bz2`) // Extension not removed
-    })
-
-    test(`should handle ZIP files as unsupported compression format`, async () => {
-      // Create a file with ZIP extension
-      const test_content = `fake zip data`
-      const file = new File([test_content], `test.json.zip`, {
-        type: `application/octet-stream`,
-      })
-
-      // Since ZIP decompression is not supported in browser, this should be treated as uncompressed
-      const result = await decompress_file(file)
-      expect(result.content).toBe(test_content)
-      expect(result.filename).toBe(`test.json.zip`) // Extension not removed
-    })
-
-    test(`should reject when compressed file decompression fails`, async () => {
+    test(`rejects when a compressed file fails to decompress`, async () => {
       if (!globalThis.DecompressionStream) return
+      const invalid = new Uint8Array(10).fill(255)
+      await expect(decompress_file(new File([invalid], `test.json.gz`))).rejects.toThrow(
+        `Failed to decompress gzip file`,
+      )
+    })
 
-      const invalid_data = new Uint8Array(10).fill(255)
-      const file = new File([invalid_data], `test.json.gz`, {
-        type: `application/octet-stream`,
-      })
+    // binary formats (by extension) stay ArrayBuffer; a lossy UTF-8 decode would corrupt
+    // bytes >= 0x80 into U+FFFD and feed garbage to parsers
+    test.each([`trajectory.h5`, `run.traj`, `model.npz`, `scan.raw`])(
+      `keeps binary file %s as ArrayBuffer`,
+      async (filename) => {
+        const bytes = new Uint8Array([0x00, 0x80, 0xff, 0x12, 0x89, 0x48])
+        const result = await decompress_file(new File([bytes], filename))
+        expect(result.content).toBeInstanceOf(ArrayBuffer)
+        expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(bytes)
+        expect(result.filename).toBe(filename)
+      },
+    )
 
-      await expect(decompress_file(file)).rejects.toThrow(`Failed to decompress gzip file`)
+    // magic-byte sniffing catches binary payloads that lack a known binary extension
+    test.each([
+      [`HDF5`, [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]],
+      [`gzip`, [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]],
+      [`ZIP/PK`, [0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00]],
+      [`ASE Ulm`, [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d]],
+    ])(`detects %s magic bytes without a binary extension`, async (_label, magic) => {
+      const bytes = new Uint8Array(magic)
+      const result = await decompress_file(new File([bytes], `payload.dump`))
+      expect(result.content).toBeInstanceOf(ArrayBuffer)
+      expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(bytes)
+    })
+
+    // no binary extension and no real binary magic signature → decode to string.
+    // "PK-..." guards the tightened matching: a leading "PK" alone is not a real ZIP signature
+    test.each([
+      { filename: `payload.dump`, text: `plain text payload` },
+      { filename: `x.dump`, text: `PK-12 is a plastic, not a zip` },
+    ])(`decodes non-magic text ($filename) to string`, async ({ filename, text }) => {
+      const result = await decompress_file(new File([text], filename))
+      expect(result.content).toBe(text)
+    })
+
+    // a compressed binary payload without a binary inner extension must still stay ArrayBuffer
+    // via post-decompression magic-byte detection (else a text decode corrupts it)
+    test(`keeps a gzipped binary payload (by magic) as ArrayBuffer`, async () => {
+      if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
+      const hdf5 = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02])
+      const gz = await compress(hdf5)
+      // payload.gz -> payload (no binary extension): only magic bytes can save it
+      const result = await decompress_file(new File([gz], `payload.gz`))
+      expect(result.content).toBeInstanceOf(ArrayBuffer)
+      expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(hdf5)
+      expect(result.filename).toBe(`payload`)
     })
   })
 })
