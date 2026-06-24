@@ -221,7 +221,8 @@
     <h1>Binned Scatter Plot</h1>
     <p>
       Dense scatter rendering with adaptive density bins, point picking, size scaling,
-      and a structure popup on material clicks.
+      a structure popup on material clicks, and per-family marginal distributions
+      (top histogram + right KDE) that track zoom/pan.
     </p>
   </header>
 
@@ -240,6 +241,7 @@
     {x_axis}
     {y_axis}
     {density}
+    marginals={{ top: { type: `histogram`, size: 64 }, right: { type: `kde`, size: 64 } }}
     tooltip={point_tooltip}
     bind:render_mode
     bind:wrapper={plot_host}

@@ -120,19 +120,25 @@ describe(`PlotAxis`, () => {
     expect(mark.getAttribute(`x2`)).toBe(`5`)
   })
 
-  test(`domain culls off-plot ticks and hides out-of-domain labels`, async () => {
-    // pixel range for x is [40, 180]; 250 is off-plot, 150 is on-plot but outside data domain
-    const svg = await mount_axis({ side: `x`, ticks: [50, 100, 150, 250], domain: [0, 120] })
-    const ticks = svg.querySelectorAll(`g.tick`)
-    expect(ticks).toHaveLength(3) // 250 culled by pixel-range check
-    expect(svg.querySelectorAll(`g.tick text`)).toHaveLength(2) // 150 rendered without a label
-  })
-
-  test(`without domain, all finite ticks render (no culling)`, async () => {
-    const svg = await mount_axis({ side: `x`, ticks: [50, 100, 250] })
-    expect(svg.querySelectorAll(`g.tick`)).toHaveLength(3)
-    expect(svg.querySelectorAll(`g.tick text`)).toHaveLength(3)
-  })
+  // `domain` culls ticks whose pixel pos is off-plot and hides labels for in-plot ticks outside the
+  // data domain (x pixel range is [40,180]: 250 is off-plot -> culled; 150 is on-plot but outside
+  // [0,120] -> tick without label). Without `domain`, every finite tick renders with its label.
+  test.each([
+    [
+      `domain culls off-plot ticks, hides out-of-domain labels`,
+      { ticks: [50, 100, 150, 250], domain: [0, 120] },
+      3,
+      2,
+    ],
+    [`no domain -> all finite ticks render with labels`, { ticks: [50, 100, 250] }, 3, 3],
+  ] as [string, Record<string, unknown>, number, number][])(
+    `%s`,
+    async (_desc, props, n_ticks, n_labels) => {
+      const svg = await mount_axis({ side: `x`, ...props })
+      expect(svg.querySelectorAll(`g.tick`)).toHaveLength(n_ticks)
+      expect(svg.querySelectorAll(`g.tick text`)).toHaveLength(n_labels)
+    },
+  )
 
   test(`unit_on_first_tick appends unit only to the first tick`, async () => {
     const svg = await mount_axis({
@@ -171,6 +177,34 @@ describe(`PlotAxis`, () => {
     const no_coords = await mount_axis({ side: `x`, ticks: [50], axis: { label: `Energy` } })
     expect(no_coords.querySelector(`.axis-label`)).toBeNull()
   })
+
+  // Regression guard: AxisLabel offsets its foreignObject by `-width/2` and sets its width to the
+  // same value, so the (CSS-centered) label content always lands on label_x — even when PlotAxis
+  // grows the container to plot_w (> the 200px default). A wider plot must NOT push the label
+  // off-center; only label_x controls horizontal placement.
+  test.each([
+    [`narrow plot clamps container to the 200px default`, 200, 200],
+    [`wide plot grows container to plot_w`, 600, 540], // plot_w = 600 - pad.l(40) - pad.r(20)
+  ])(
+    `x-axis label container stays centered on label_x (%s)`,
+    async (_desc, plot_width, exp_w) => {
+      const label_x = 123
+      const svg = await mount_axis({
+        side: `x`,
+        ticks: [50],
+        axis: { label: `Energy` },
+        label_x,
+        label_y: 50,
+        width: plot_width,
+      })
+      const foreign_obj = query(svg, `.x-axis foreignObject`)
+      const foreign_obj_x = Number(foreign_obj.getAttribute(`x`))
+      const foreign_obj_w = Number(foreign_obj.getAttribute(`width`))
+      expect(foreign_obj_w).toBe(exp_w)
+      // container centered on label_x regardless of its width
+      expect(foreign_obj_x + foreign_obj_w / 2).toBe(label_x)
+    },
+  )
 
   // Regression guard: x and x2 rotate their tick labels to opposite anchors.
   test.each([

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { format_value } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
+  import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
   import type { Sides } from '$lib/plot/core/layout'
   import type { AxisConfig } from '$lib/plot/core/types'
@@ -161,6 +162,7 @@
       axis_type={side}
       color={axis.color}
       on_select={(key) => on_axis_change?.(key)}
+      width={is_x ? Math.max(plot_w, AXIS_LABEL_CONTAINER.width) : undefined}
     />
   {/if}
 </g>

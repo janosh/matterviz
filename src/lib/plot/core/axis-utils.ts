@@ -6,7 +6,6 @@ import type {
   AxisLoadError,
   BarSeries,
   DataLoaderFn,
-  DataLoaderResult,
   DataSeries,
 } from '$lib/plot/core/types'
 
@@ -56,76 +55,19 @@ export function merge_series_state<T extends DataSeries | BarSeries>(
   })
 }
 
-// State accessors for axis change handler - enables sharing logic across plot components
+// Read/write accessors a plot supplies so the shared axis-change logic can drive its reactive
+// state. Each axis has independent get/set so a plot may read a merged $derived but write the raw
+// $bindable prop (e.g. BarPlot's secondary axes) without pushing library defaults into bound state.
 export interface AxisChangeState<T extends DataSeries | BarSeries> {
-  get_axis: (axis: AxisType) => AxisConfig
-  set_axis: (axis: AxisType, config: AxisConfig) => void
-  get_series: () => T[]
-  set_series: (series: T[]) => void
-  get_loading: () => AxisType | null
-  set_loading: (axis: AxisType | null) => void
+  axes: Record<AxisType, { get: () => AxisConfig; set: (config: AxisConfig) => void }>
+  series: { get: () => T[]; set: (series: T[]) => void }
+  loading: { get: () => AxisType | null; set: (axis: AxisType | null) => void }
 }
 
-// Handle axis property change - loads new data via data_loader
-// Returns a function bound to the component's state accessors
-export const create_axis_change_handler =
-  <T extends DataSeries | BarSeries>(
-    state: AxisChangeState<T>,
-    data_loader: DataLoaderFn<Record<string, unknown>, T> | undefined,
-    on_axis_change?: (axis: AxisType, key: string, new_series: T[]) => void,
-    on_error?: (error: AxisLoadError) => void,
-  ): ((axis: AxisType, key: string) => Promise<void>) =>
-  async (axis: AxisType, key: string) => {
-    if (!data_loader || state.get_loading()) return
-
-    const axis_config = state.get_axis(axis)
-    const prev_key = axis_config.selected_key
-
-    // Skip if key unchanged AND series already loaded (allows initial load when series empty)
-    if (prev_key === key && state.get_series().length > 0) return
-
-    // Update selected_key immediately for UI feedback
-    state.set_axis(axis, { ...axis_config, selected_key: key })
-    state.set_loading(axis)
-
-    try {
-      const result: DataLoaderResult<Record<string, unknown>, T> = await data_loader(
-        axis,
-        key,
-        state.get_series(),
-      )
-
-      // Merge new series with preserved state from old series
-      const merged = merge_series_state(state.get_series(), result.series)
-      state.set_series(merged)
-
-      // Update axis label/unit if provided
-      if (result.axis_label || result.axis_unit) {
-        const current = state.get_axis(axis)
-        state.set_axis(axis, {
-          ...current,
-          label: result.axis_label ?? current.label,
-          unit: result.axis_unit ?? current.unit,
-        })
-      }
-
-      on_axis_change?.(axis, key, merged)
-    } catch (err) {
-      console.error(`Failed to load data for ${axis}=${key}:`, err)
-
-      // Revert selection
-      state.set_axis(axis, { ...state.get_axis(axis), selected_key: prev_key })
-
-      const message = to_error(err).message
-      on_error?.({ axis, key, message })
-    } finally {
-      state.set_loading(null)
-    }
-  }
-
-// Bundle axis change handler with one-shot auto-load of the first axis option.
-// get_props keeps callback props fresh; try_auto_load reads series/axis configs
-// through state getters so a component `$effect(try_auto_load)` tracks them reactively.
+// Axis-change loader: `handle_axis_change` loads new data for an axis property change via the
+// data_loader (reading `get_props` fresh each call so callbacks stay current), and `try_auto_load`
+// loads the first axis option once when series start empty. Reads state through getters so a
+// component `$effect(try_auto_load)` tracks them reactively.
 export function create_axis_loader<T extends DataSeries | BarSeries>(
   state: AxisChangeState<T>,
   get_props: () => {
@@ -135,16 +77,45 @@ export function create_axis_loader<T extends DataSeries | BarSeries>(
   },
 ) {
   let auto_load_attempted = false // prevent infinite retries on failure
-  const handle_axis_change = (axis: AxisType, key: string) => {
+
+  // No-op when already loading, or when the key is unchanged and series are already present
+  const handle_axis_change = async (axis: AxisType, key: string) => {
     const { data_loader, on_axis_change, on_error } = get_props()
-    return create_axis_change_handler(state, data_loader, on_axis_change, on_error)(axis, key)
+    if (!data_loader || state.loading.get()) return
+    const axis_config = state.axes[axis].get()
+    const prev_key = axis_config.selected_key
+    if (prev_key === key && state.series.get().length > 0) return
+
+    state.axes[axis].set({ ...axis_config, selected_key: key }) // immediate UI feedback
+    state.loading.set(axis)
+    try {
+      const result = await data_loader(axis, key, state.series.get())
+      const merged = merge_series_state(state.series.get(), result.series)
+      state.series.set(merged)
+      if (result.axis_label || result.axis_unit) {
+        const current = state.axes[axis].get()
+        state.axes[axis].set({
+          ...current,
+          label: result.axis_label ?? current.label,
+          unit: result.axis_unit ?? current.unit,
+        })
+      }
+      on_axis_change?.(axis, key, merged)
+    } catch (err) {
+      console.error(`Failed to load data for ${axis}=${key}:`, err)
+      state.axes[axis].set({ ...state.axes[axis].get(), selected_key: prev_key }) // revert
+      on_error?.({ axis, key, message: to_error(err).message })
+    } finally {
+      state.loading.set(null)
+    }
   }
-  // Auto-load data if series is empty but options exist (runs once, x-axis first then y)
+
+  // Auto-load once if series is empty but options exist (x-axis first, then y)
   const try_auto_load = () => {
-    if (state.get_series().length > 0 || !get_props().data_loader || auto_load_attempted)
+    if (state.series.get().length > 0 || !get_props().data_loader || auto_load_attempted)
       return
     for (const axis of [`x`, `y`] as const) {
-      const config = state.get_axis(axis)
+      const config = state.axes[axis].get()
       if (config.options?.length) {
         auto_load_attempted = true
         handle_axis_change(axis, config.selected_key ?? config.options[0].key).catch(() => {})

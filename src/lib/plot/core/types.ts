@@ -280,6 +280,35 @@ export type SizeScaleConfig = {
   value_range?: Vec2
 }
 
+// Shared defaults for color/size scales and colorbar layout (scatter, bar, binned-scatter, …)
+const COLOR_BAR_WIDTH = 220
+export const COLOR_BAR_DEFAULTS = {
+  width: COLOR_BAR_WIDTH,
+  horizontal_bar_height: 16,
+  binned_bar_height: 10,
+  horizontal_footprint: { width: COLOR_BAR_WIDTH, height: 56 },
+  vertical_footprint: { width: 56, height: 100 },
+} as const
+// Shared color/size scale defaults for scatter, scatter-3d, binned-scatter, bar, …
+const VIRIDIS: D3InterpolateName = `interpolateViridis`
+const SCATTER_RADIUS: Vec2 = [2, 10]
+const BINNED_RADIUS: Vec2 = [4, 12]
+export const SCALE_DEFAULTS: {
+  scheme: D3InterpolateName
+  color: ColorScaleConfig
+  radius: Vec2
+  binned_radius: Vec2
+  size: SizeScaleConfig
+  size_3d: SizeScaleConfig
+} = {
+  scheme: VIRIDIS,
+  color: { type: `linear`, scheme: VIRIDIS, value_range: undefined },
+  radius: SCATTER_RADIUS,
+  binned_radius: BINNED_RADIUS,
+  size: { type: `linear`, radius_range: SCATTER_RADIUS, value_range: undefined },
+  size_3d: { type: `linear`, radius_range: [0.05, 0.2], value_range: undefined },
+}
+
 // Type guard for select value narrowing (avoids unsafe casts)
 const SCALE_TYPE_NAMES = new Set<string>([`linear`, `log`, `arcsinh`, `time`])
 export const is_scale_type_name = (val: string): val is ScaleTypeName =>

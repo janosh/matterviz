@@ -7,6 +7,10 @@ export type Sides = { t?: number; b?: number; l?: number; r?: number }
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 30
 
+// Default plot padding (px) reserved for axis ticks/labels, shared by
+// Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
+export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
+
 // X position for a right-side (y2) axis label: past the plot edge plus tick shift and
 // measured tick-label width (both zero when tick labels render inside the plot)
 export function y2_axis_label_x(

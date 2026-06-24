@@ -27,6 +27,14 @@ function get_tick_numbers(axis: `x` | `y`): number[] {
 
 const get_y_tick_numbers = (): number[] => get_tick_numbers(`y`)
 
+// Mount a histogram, flush one tick, and read its y-axis tick numbers (the common
+// arrange+act for the count-domain tests). Resets the DOM, so it's safe to call twice per test.
+const y_ticks_after = async (props: Record<string, unknown>): Promise<number[]> => {
+  mount_histogram(props)
+  await tick()
+  return get_y_tick_numbers()
+}
+
 const get_svg = () => {
   const svg = document.querySelector(`svg[role="application"]`)
   if (!svg) throw new Error(`histogram plot area not found`)
@@ -57,10 +65,19 @@ describe(`Histogram`, () => {
       bins: 5,
       expected_min_max: [1, 20],
     },
+    {
+      // A puts all 5 in one bin, B spreads across bins: the y-domain must reflect the
+      // taller series (max count across series), so the top tick is >= 5
+      name: `uses the maximum count across multiple series`,
+      series: [
+        { x: [], y: [0, 0, 0, 0, 0], label: `A` },
+        { x: [], y: [1, 2, 3, 4, 5], label: `B` },
+      ],
+      bins: 5,
+      expected_min_max: [5, 50],
+    },
   ])(`$name`, async ({ series, bins, expected_min_max }) => {
-    mount_histogram({ series, bins })
-    await tick()
-    const ticks = get_y_tick_numbers()
+    const ticks = await y_ticks_after({ series, bins })
     expect(ticks.length).toBeGreaterThan(0)
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeGreaterThanOrEqual(expected_min_max[0])
@@ -89,20 +106,6 @@ describe(`Histogram`, () => {
     // log pan preserves the visible span (a constant factor): ticks still cover >= 1
     // decade; the old linear math left a sub-decade slice here
     expect(Math.max(...ticks) / Math.min(...ticks)).toBeGreaterThanOrEqual(10)
-  })
-
-  test(`multi-series uses maximum counts across series`, async () => {
-    mount_histogram({
-      series: [
-        { x: [], y: [0, 0, 0, 0, 0], label: `A` }, // single bin gets 5
-        { x: [], y: [1, 2, 3, 4, 5], label: `B` }, // spread across bins
-      ],
-      bins: 5,
-    })
-    await tick()
-    const ticks = get_y_tick_numbers()
-    const max_tick = Math.max(...ticks)
-    expect(max_tick).toBeGreaterThanOrEqual(5)
   })
 
   const repeated_histogram_series = { x: [], y: [0, 1, 2], label: `Repeated` }
@@ -152,62 +155,58 @@ describe(`Histogram`, () => {
 
   test(`bins sensitivity: fewer bins increase per-bin counts`, async () => {
     const series = [{ x: [], y: [1, 2, 3, 4, 5, 6, 7, 8, 9], label: `A` }]
-
-    mount_histogram({ series, bins: 9 })
-    await tick()
-    const ticks_many = get_y_tick_numbers()
-    const max_many = Math.max(...ticks_many)
-
-    mount_histogram({ series, bins: 3 })
-    await tick()
-    const ticks_few = get_y_tick_numbers()
-    const max_few = Math.max(...ticks_few)
-
+    const max_many = Math.max(...(await y_ticks_after({ series, bins: 9 })))
+    const max_few = Math.max(...(await y_ticks_after({ series, bins: 3 })))
     expect(max_few).toBeGreaterThanOrEqual(max_many)
   })
 
   test(`y_axis.range caps auto count domain`, async () => {
-    mount_histogram({
+    const ticks = await y_ticks_after({
       series: [{ x: [], y: [1, 1, 1, 1, 1] }],
       bins: 5,
       y_axis: { range: [0, 3] },
     })
-    await tick()
-    const ticks = get_y_tick_numbers()
-    const max_tick = Math.max(...ticks)
-    expect(max_tick).toBeLessThanOrEqual(3)
+    expect(Math.max(...ticks)).toBeLessThanOrEqual(3)
   })
 
   test(`x_axis.range applies domain; y max tick >= computed max bin count`, async () => {
     const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
+    const max_bin_count = (domain?: [number, number]): number =>
+      d3max(
+        (domain ? bin().domain(domain) : bin()).thresholds(5)(series[0].y),
+        (b) => b.length,
+      ) ?? 0
 
-    mount_histogram({ series, bins: 5 })
-    await tick()
-    const ticks_full = get_y_tick_numbers()
-    const full_max = Math.max(...ticks_full)
-    const full_hist = bin().thresholds(5)(series[0].y)
-    const full_expected = d3max(full_hist, (histogram_bin) => histogram_bin.length) ?? 0
-    expect(full_max).toBeGreaterThanOrEqual(full_expected)
+    const full_max = Math.max(...(await y_ticks_after({ series, bins: 5 })))
+    expect(full_max).toBeGreaterThanOrEqual(max_bin_count())
 
-    mount_histogram({ series, bins: 5, x_axis: { range: [0, 3] } })
-    await tick()
-    const ticks_zoom = get_y_tick_numbers()
-    const zoom_max = Math.max(...ticks_zoom)
-    const zoom_hist = bin().domain([0, 3]).thresholds(5)(series[0].y)
-    const zoom_expected = d3max(zoom_hist, (histogram_bin) => histogram_bin.length) ?? 0
-    expect(zoom_max).toBeGreaterThanOrEqual(zoom_expected)
+    const zoom_max = Math.max(
+      ...(await y_ticks_after({ series, bins: 5, x_axis: { range: [0, 3] } })),
+    )
+    expect(zoom_max).toBeGreaterThanOrEqual(max_bin_count([0, 3]))
   })
 
   test(`log y-scale still uses count-based domain`, async () => {
-    mount_histogram({
+    const ticks = await y_ticks_after({
       series: [{ x: [], y: [1, 1, 1, 1, 1] }],
       bins: 5,
       y_axis: { scale_type: `log`, format: `.2r`, range: [1, null] },
     })
-    await tick()
-    const ticks = get_y_tick_numbers()
     // log scale should not include non-positive ticks
     expect(Math.min(...ticks)).toBeGreaterThan(0)
+  })
+
+  test(`log y-scale renders bins with one count`, async () => {
+    mount_histogram({
+      series: [{ x: [], y: [1, 100], label: `Sparse tail` }],
+      bins: 2,
+      y_axis: { scale_type: `log` },
+    })
+    const plot = document.querySelector<HTMLElement>(`.histogram`)
+    if (!plot) throw new Error(`Histogram root element not found`)
+    await resize_element(plot, 400, 300)
+
+    expect(document.querySelectorAll(`g.histogram-series path[role="button"]`)).toHaveLength(2)
   })
 
   test(`mounts with x2-axis series and renders x2 axis`, async () => {

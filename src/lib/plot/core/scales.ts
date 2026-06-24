@@ -7,11 +7,13 @@ import type {
   SizeScaleConfig,
   TimeInterval,
 } from '$lib/plot'
+import { get_d3_interpolator } from '$lib/colors'
 import { clamp01 } from '$lib/utils'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_time_scale,
+  SCALE_DEFAULTS,
 } from '$lib/plot/core/types'
 import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
@@ -543,7 +545,7 @@ export function create_color_scale(
   const interpolator =
     typeof candidate_interpolator === `function`
       ? candidate_interpolator
-      : d3_sc.interpolateViridis
+      : get_d3_interpolator(SCALE_DEFAULTS.scheme)
   const [min_val, max_val] =
     (typeof color_scale_config === `string` ? undefined : color_scale_config.value_range) ??
     auto_color_range
@@ -614,7 +616,7 @@ export function create_size_scale(
   config: SizeScaleConfig,
   all_size_values: (number | null)[],
 ) {
-  const [min_radius, max_radius] = config.radius_range ?? [2, 10]
+  const [min_radius, max_radius] = config.radius_range ?? SCALE_DEFAULTS.radius
   const auto_range =
     all_size_values.length > 0
       ? extent(all_size_values.filter((val): val is number => val !== null))

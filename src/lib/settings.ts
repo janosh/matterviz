@@ -1164,7 +1164,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 5,
       },
       stroke_color: {
-        value: `#000000`,
+        value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Box outline color`,
       },
       border_radius: {
@@ -1182,7 +1182,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 5,
       },
       color: {
-        value: `#000000`,
+        value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Whisker line color`,
       },
       cap_fraction: {
@@ -1200,7 +1200,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 6,
       },
       color: {
-        value: `#000000`,
+        value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Median line color`,
       },
     },

@@ -63,6 +63,41 @@ describe(`BoxPlot`, () => {
     expect(box_group?.querySelectorAll(`rect`)).toHaveLength(2)
   })
 
+  // 2 whiskers + 2 caps + 1 median render as <line>s inside .box-series (tukey, cap_fraction
+  // > 0, show_mean off); the IQR box is a <rect class="iqr-box">
+  const theme_stroke = `var(--text-color, black)`
+  const box_line_strokes = (plot: HTMLElement): (string | null)[] =>
+    [...plot.querySelectorAll(`.box-series line`)].map((el) => el.getAttribute(`stroke`))
+
+  // whiskers, median and box outline default to a theme CSS variable (like the axis/tick/grid
+  // colors) so they track light/dark themes instead of being permanently black; an explicit
+  // color recolors only its own glyph, leaving every other stroke on the theme default. Each
+  // case gives the expected per-color line tally (sums to 5) and the IQR rect stroke.
+  test.each([
+    [`default`, {}, { [theme_stroke]: 5 }, theme_stroke],
+    [
+      `whisker`,
+      { whisker: { color: `tomato` } },
+      { tomato: 4, [theme_stroke]: 1 },
+      theme_stroke,
+    ],
+    [
+      `median`,
+      { median_style: { color: `gold` } },
+      { gold: 1, [theme_stroke]: 4 },
+      theme_stroke,
+    ],
+    [`box outline`, { box: { stroke_color: `cyan` } }, { [theme_stroke]: 5 }, `cyan`],
+  ] as const)(`%s color is theme-aware and isolated`, async (_name, extra, lines, rect) => {
+    const plot = await mount_sized_box_plot({ series: [basic], ...extra })
+    const strokes = box_line_strokes(plot)
+    expect(strokes).toHaveLength(5)
+    for (const [color, count] of Object.entries(lines)) {
+      expect(strokes.filter((stroke) => stroke === color)).toHaveLength(count)
+    }
+    expect(plot.querySelector(`.iqr-box`)?.getAttribute(`stroke`)).toBe(rect)
+  })
+
   test(`show_value_labels renders one label per box`, async () => {
     const series = [basic, { ...basic, label: `B`, color: `tomato` }]
     const plot = await mount_sized_box_plot({ series, show_value_labels: true })
@@ -253,25 +288,26 @@ describe(`BoxPlot`, () => {
     },
   )
 
-  test(`inner box is narrower inside a violin than a standalone box`, async () => {
+  // inner IQR-box width: a violin shrinks the default box, and per-series box_width widens it
+  test.each([
+    {
+      name: `violin inner box is narrower than a standalone box`,
+      narrow: () => mount_sized_box_plot({ series: [basic], kind: `violin+box` }),
+      wide: () => mount_sized_box_plot({ series: [basic], kind: `box` }),
+    },
+    {
+      name: `per-series box_width widens the violin inner box`,
+      narrow: () => mount_sized_box_plot({ series: [basic], kind: `violin+box` }),
+      wide: () =>
+        mount_sized_box_plot({ series: [{ ...basic, box_width: 0.8 }], kind: `violin+box` }),
+    },
+  ])(`$name`, async ({ narrow, wide }) => {
     const rect_w = (plot: HTMLElement) =>
       parseFloat(iqr_box(plot)[0].getAttribute(`width`) ?? `0`)
-    const box_only = await mount_sized_box_plot({ series: [basic], kind: `box` })
+    const narrow_plot = await narrow()
     document.body.innerHTML = ``
-    const violin_box = await mount_sized_box_plot({ series: [basic], kind: `violin+box` })
-    expect(rect_w(violin_box)).toBeLessThan(rect_w(box_only))
-  })
-
-  test(`per-series box_width overrides the violin inner-box default`, async () => {
-    const rect_w = (plot: HTMLElement) =>
-      parseFloat(iqr_box(plot)[0].getAttribute(`width`) ?? `0`)
-    const thin = await mount_sized_box_plot({ series: [basic], kind: `violin+box` })
-    document.body.innerHTML = ``
-    const wide = await mount_sized_box_plot({
-      series: [{ ...basic, box_width: 0.8 }],
-      kind: `violin+box`,
-    })
-    expect(rect_w(wide)).toBeGreaterThan(rect_w(thin))
+    const wide_plot = await wide()
+    expect(rect_w(narrow_plot)).toBeLessThan(rect_w(wide_plot))
   })
 
   test(`per-series kind overrides the component default`, async () => {

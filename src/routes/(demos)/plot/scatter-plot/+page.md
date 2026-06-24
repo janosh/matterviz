@@ -124,6 +124,96 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 </div>
 ```
 
+## Marginal Distributions
+
+Marginal distribution plots summarize the data projected onto each axis as a thin strip alongside the plot. The `marginals` prop is a layered API: pass a boolean for sensible defaults, a single type string, or a per-side map for full control. Built-in types are `histogram`, `kde`, `cdf`, and `rug`, plus a `snippet` escape hatch for anything else. Marginals reuse the main plot's positional scale, so they stay pixel-aligned and update live with zoom/pan. The same `marginals` API works on every 2D plot (`Histogram`, `BarPlot`, `BoxPlot`, `Violin`, `BinnedScatterPlot`).
+
+The example below combines the common controls: per-side `type`, `per_series` (one curve per series vs. one merged curve), and `placement` (`auto` hugs tick-free sides like top/right and sits outside the ticks on axis sides; force `flush`/`outer`).
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // deterministic gaussian clusters (seeded LCG keeps the demo stable)
+  let seed = 7
+  const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+  const normal = (mu, sd) =>
+    mu + sd * Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(2 * Math.PI * rand())
+  const cluster = (n, mx, my, sd, fill, label) => ({
+    x: Array.from({ length: n }, () => normal(mx, sd)),
+    y: Array.from({ length: n }, () => normal(my, sd)),
+    markers: 'points', // scattered clusters: no connecting lines
+    point_style: { fill, radius: 3, fill_opacity: 0.55 },
+    label,
+  })
+  const series = [
+    cluster(250, 2, 3, 1, 'steelblue', 'Cluster A'),
+    cluster(250, 5, 6, 1.2, 'orangered', 'Cluster B'),
+  ]
+
+  const types = ['histogram', 'kde', 'cdf', 'rug']
+  let top_type = $state('histogram')
+  let right_type = $state('kde')
+  let per_series = $state(true)
+  let placement = $state('auto')
+</script>
+
+<div style="display: flex; flex-wrap: wrap; gap: 1em; margin-bottom: 1em">
+  <label>Top:
+    <select bind:value={top_type}>{#each types as t (t)}<option>{t}</option>{/each}</select>
+  </label>
+  <label>Right:
+    <select bind:value={right_type}>{#each types as t (t)}<option>{t}</option>{/each}</select>
+  </label>
+  <label>Placement:
+    <select bind:value={placement}>
+      <option>auto</option><option>flush</option><option>outer</option>
+    </select>
+  </label>
+  <label><input type="checkbox" bind:checked={per_series} /> per-series</label>
+</div>
+
+<ScatterPlot
+  {series}
+  marginals={{
+    top: { type: top_type, per_series, placement, size: 80 },
+    right: { type: right_type, per_series, placement, size: 80 },
+  }}
+  style="height: 480px"
+/>
+```
+
+### More options
+
+Each strip is fully configurable via per-side keys (shown as static snippets):
+
+- **Style & bin** a strip: `size`, `gap`, `fill`, `fill_opacity`, `stroke`, `stroke_width`, `opacity`, histogram `bins`, KDE `bandwidth` (`'silverman'`/`'scott'`/number), line `curve`.
+- **Normalize** histograms: `normalize: 'count' | 'density' | 'probability'`.
+- **Align** two strips by pinning the value axis: `value_range: [0, 1]`.
+- **Bind** a strip to a secondary axis: `axis: 'x2' | 'y2'`.
+- **Summarize external values** instead of the series: `data: number[] | (ctx) => number[]`.
+- **Compute a bespoke curve**: `reduce: (values, weights, ctx) => MarginalCurve`.
+
+```svelte
+<ScatterPlot {series} marginals={{
+  top: { type: 'histogram', bins: 40, fill: '#0ca678', normalize: 'density' },
+  right: { type: 'kde', bandwidth: 'scott', curve: 'natural' },
+}} />
+```
+
+For anything the built-ins don't cover, a per-side `snippet` draws the strip from scratch. It receives `{ rect, positional_scale, value_scale, baseline, curves, series }`:
+
+```svelte
+{#snippet mean_marker(ctx)}
+  {#each ctx.series as srs (srs.label)}
+    {@const xs = Array.from(srs.x ?? [])}
+    {@const mean = xs.reduce((sum, val) => sum + val, 0) / (xs.length || 1)}
+    <circle cx={ctx.positional_scale(mean)} cy={ctx.rect.y + 10} r="3" fill={srs.color} />
+  {/each}
+{/snippet}
+<ScatterPlot {series} marginals={{ top: { snippet: mean_marker } }} />
+```
+
 ## Line Interpolation Curves
 
 The connecting line between points chooses its interpolation via `line_style.curve`. The default `monotone` smooths through points, while `linear` draws perfectly straight segments — the honest choice for most scientific data (no spline overshoot between samples). Toggle the curve below on a deliberately sharp signal to see the difference:

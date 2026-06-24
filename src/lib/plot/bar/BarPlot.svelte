@@ -33,11 +33,13 @@
     compute_element_placement,
     PlotAxis,
     PlotLegend,
+    PlotMarginals,
     ReferenceLine,
     ScatterPoint,
   } from '$lib/plot'
-  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { create_axis_loader } from '$lib/plot/core/axis-utils'
+  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
+  import { type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -55,7 +57,7 @@
     generate_ticks,
     get_tick_label,
   } from '$lib/plot/core/scales'
-  import { DEFAULT_MARKERS } from '$lib/plot/core/types'
+  import { DEFAULT_MARKERS, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'
@@ -72,6 +74,7 @@
   } from '$lib/plot/core/auto-place'
   import {
     calc_auto_padding,
+    DEFAULT_PLOT_PADDING,
     filter_padding,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
@@ -109,7 +112,7 @@
     y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
     range_padding = 0.05,
-    padding = { t: 20, b: 60, l: 60, r: 20 },
+    padding = DEFAULT_PLOT_PADDING,
     legend = {},
     show_legend,
     bar = {},
@@ -121,12 +124,8 @@
     on_bar_click,
     on_bar_hover,
     // Line marker props (matching ScatterPlot)
-    color_scale = {
-      type: `linear`,
-      scheme: `interpolateViridis`,
-      value_range: undefined,
-    },
-    size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
+    color_scale = SCALE_DEFAULTS.color,
+    size_scale = SCALE_DEFAULTS.size,
     point_tween,
     on_point_click,
     on_point_hover,
@@ -146,6 +145,7 @@
     on_axis_change,
     on_error,
     pan = {},
+    marginals = false,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
     series?: BarSeries<Metadata>[]
@@ -200,6 +200,7 @@
     ) => void
     on_error?: (error: AxisLoadError) => void
     pan?: PanConfig
+    marginals?: MarginalsProp
   } = $props()
 
   // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
@@ -277,6 +278,11 @@
   let x2_series = $derived(
     visible_series.filter((srs) => srs.x_axis === `x2`),
   )
+  // Whether the secondary x2 (top) / y2 (right) axis actually renders: BarPlot only supports
+  // them in vertical orientation. Derive once so ticks, padding, axis rendering, and marginal
+  // placement stay in sync. (Data-existence checks below use the bare `*_series.length` instead.)
+  let show_x2 = $derived(x2_series.length > 0 && orientation === `vertical`)
+  let show_y2 = $derived(y2_series.length > 0 && orientation === `vertical`)
 
   let auto_ranges = $derived(compute_bar_auto_ranges({
     visible_series,
@@ -323,26 +329,22 @@
   })
 
   // Layout: dynamic padding based on tick label widths
-  const default_padding = { t: 20, b: 60, l: 60, r: 20 }
   // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
-  let base_pad = $derived(filter_padding(padding, default_padding))
+  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
 
   // Update padding when format or ticks change
   $effect(() => {
     const new_pad = width && height && ticks.y.length > 0
       ? calc_auto_padding({
         padding,
-        default_padding,
+        default_padding: DEFAULT_PLOT_PADDING,
         x2_axis: { ...x2_axis, tick_values: ticks.x2 },
         y_axis: { ...y_axis, tick_values: ticks.y },
         y2_axis: { ...y2_axis, tick_values: ticks.y2 },
       })
-      : filter_padding(padding, default_padding)
+      : filter_padding(padding, DEFAULT_PLOT_PADDING)
     // Expand right padding if y2 ticks are shown (only for vertical orientation)
-    if (
-      width && height && y2_series.length > 0 && ticks.y2.length > 0 &&
-      orientation === `vertical`
-    ) {
+    if (width && height && show_y2 && ticks.y2.length > 0) {
       // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
       // When ticks are inside, they don't contribute to padding
       const inside = y2_axis.tick?.label?.inside ?? false
@@ -355,10 +357,7 @@
       )
     }
     // Expand top padding if x2 ticks are shown (only for vertical orientation)
-    if (
-      width && height && x2_series.length > 0 && ticks.x2.length > 0 &&
-      orientation === `vertical`
-    ) {
+    if (width && height && show_x2 && ticks.x2.length > 0) {
       const inside = x2_axis.tick?.label?.inside ?? false
       const tick_shift = inside ? 0 : Math.abs(x2_axis.tick?.label?.shift?.y ?? 0) + 5
       const tick_height = inside ? 0 : 16
@@ -426,14 +425,38 @@
         : null,
     })
   )
-  const pad = $derived(decor.pad)
+  // Resolve marginals: a cumulative/Pareto CDF over the CATEGORY axis weighted by bar height.
+  // Categories sit on x (vertical) or y (horizontal), so the default side and the value array
+  // flip with orientation. The value axis carries no marginal (a bar's height isn't a sample).
+  const marginal_is_vertical = $derived(orientation === `vertical`)
+  const resolved_marginals = $derived(
+    normalize_marginals(
+      marginals,
+      marginal_is_vertical ? { top: { type: `cdf` } } : { right: { type: `cdf` } },
+    ),
+  )
+  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  const marginal_series = $derived<MarginalSeriesInput[]>(
+    internal_series.map((srs) => ({
+      x: marginal_is_vertical ? (srs?.x ?? []) : undefined,
+      y: marginal_is_vertical ? undefined : (srs?.x ?? []),
+      // magnitude weights so negative bars still yield a monotonic cumulative (CDF) marginal
+      weight: srs?.y?.map((value) => Math.abs(value)) ?? [],
+      color: srs?.color ??
+        (srs?.render_mode === `line` ? line_state.color : bar_state.color) ?? `steelblue`,
+      label: srs?.label,
+      visible: srs?.visible ?? true,
+      x_axis: srs?.x_axis,
+      y_axis: srs?.y_axis,
+    })),
+  )
+  const marginal_has_axis = $derived(marginal_axis_presence(show_x2, show_y2))
   const legend_auto_outside = $derived(decor.legend_outside)
   const legend_outside_x = $derived(decor.legend_pos.x)
   const legend_outside_y = $derived(decor.legend_pos.y)
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  // Scales
   let scales = $derived({
     x: create_scale(x_axis.scale_type ?? `linear`, ranges.current.x, [
       pad.l,
@@ -509,7 +532,6 @@
     ) as Record<number, string>
   })
 
-  // Ticks
   let ticks = $derived({
     x: width && height
       ? (category_indices && cat_axis === `x` ? cat_tick_indices : generate_ticks(
@@ -529,7 +551,7 @@
         { default_count: 6 },
       ))
       : [],
-    y2: width && height && y2_series.length > 0 && orientation === `vertical`
+    y2: width && height && show_y2
       ? generate_ticks(
         ranges.current.y2,
         y2_axis.scale_type ?? `linear`,
@@ -540,7 +562,7 @@
         },
       )
       : [],
-    x2: width && height && x2_series.length > 0 && orientation === `vertical`
+    x2: width && height && show_x2
       ? generate_ticks(
         ranges.current.x2,
         x2_axis.scale_type ?? `linear`,
@@ -805,24 +827,17 @@
   })
 
   // State accessors for shared axis change handler
+  // Secondary axes read the merged $derived (x2_axis/y2_axis) but write the raw $bindable props
+  // (x2_axis_prop/y2_axis_prop) so library defaults aren't pushed into the parent's bound state
   const axis_state: AxisChangeState<BarSeries<Metadata>> = {
-    get_axis: (axis) => {
-      if (axis === `x`) return x_axis
-      if (axis === `x2`) return x2_axis
-      if (axis === `y`) return y_axis
-      return y2_axis
+    axes: {
+      x: { get: () => x_axis, set: (config) => (x_axis = { ...x_axis, ...config }) },
+      x2: { get: () => x2_axis, set: (config) => (x2_axis_prop = { ...x2_axis_prop, ...config }) },
+      y: { get: () => y_axis, set: (config) => (y_axis = { ...y_axis, ...config }) },
+      y2: { get: () => y2_axis, set: (config) => (y2_axis_prop = { ...y2_axis_prop, ...config }) },
     },
-    set_axis: (axis, config) => {
-      // Spread into existing state to preserve merged type structure
-      if (axis === `x`) x_axis = { ...x_axis, ...config }
-      else if (axis === `x2`) x2_axis_prop = { ...x2_axis_prop, ...config }
-      else if (axis === `y`) y_axis = { ...y_axis, ...config }
-      else y2_axis_prop = { ...y2_axis_prop, ...config }
-    },
-    get_series: () => series,
-    set_series: (new_series) => (series = new_series),
-    get_loading: () => axis_loading,
-    set_loading: (axis) => (axis_loading = axis),
+    series: { get: () => series, set: (next) => (series = next) },
+    loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
   // Shared handler + one-shot auto-load bound to this component's state
@@ -955,7 +970,7 @@
 
       <!-- X2-axis (Top) -->
       <!-- Note: x2 axis is only supported for vertical orientation -->
-      {#if x2_series.length > 0 && orientation === `vertical`}
+      {#if show_x2}
         <PlotAxis
           side="x2"
           ticks={ticks.x2 as number[]}
@@ -999,7 +1014,7 @@
 
       <!-- Y2-axis (Right) -->
       <!-- Note: y2 axis is only supported for vertical orientation. Implementing x2 for horizontal mode requires additional complexity. -->
-      {#if y2_series.length > 0 && orientation === `vertical`}
+      {#if show_y2}
         <PlotAxis
           side="y2"
           ticks={ticks.y2 as number[]}
@@ -1334,6 +1349,23 @@
 
       {@render ref_lines_layer(ref_lines_by_z.below_points)}
       {@render ref_lines_layer(ref_lines_by_z.above_all)}
+
+      <!-- Marginal distribution strips -->
+      <PlotMarginals
+        marginals={resolved_marginals}
+        series={marginal_series}
+        {width}
+        {height}
+        {pad}
+        has_axis={marginal_has_axis}
+        axes={{
+          x1: marginal_axis(scales.x, ranges.current.x, x_axis, cat_axis === `x` ? (pos) => category_list[Math.round(pos)] : undefined),
+          x2: marginal_axis(scales.x2, ranges.current.x2, x2_axis),
+          y1: marginal_axis(scales.y, ranges.current.y, y_axis, cat_axis === `y` ? (pos) => category_list[Math.round(pos)] : undefined),
+          y2: marginal_axis(scales.y2, ranges.current.y2, y2_axis),
+        }}
+        id={clip_path_id}
+      />
     </svg>
 
     <!-- Legend -->

@@ -28,8 +28,11 @@
     compute_element_placement,
     PlotAxis,
     PlotLegend,
+    PlotMarginals,
     ReferenceLine,
   } from '$lib/plot'
+  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
   import {
     build_obstacles_norm,
     clip_bar,
@@ -50,6 +53,7 @@
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
+    DEFAULT_PLOT_PADDING,
     filter_padding,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
@@ -115,7 +119,7 @@
     y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.box.display),
     range_padding = 0.05,
-    padding = { t: 20, b: 60, l: 60, r: 20 },
+    padding = DEFAULT_PLOT_PADDING,
     legend = {},
     show_legend,
     box = {},
@@ -158,6 +162,7 @@
     header_controls,
     controls_extra,
     pan = {},
+    marginals = false,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
     series?: BoxPlotSeries<Metadata>[]
@@ -202,6 +207,7 @@
     on_ref_line_click?: (event: RefLineEvent) => void
     on_ref_line_hover?: (event: RefLineEvent | null) => void
     pan?: PanConfig
+    marginals?: MarginalsProp
   } = $props()
 
   let box_state = $derived({ ...DEFAULTS.box.box, ...box })
@@ -362,6 +368,11 @@
     orientation === `vertical` ? srs.y_axis === `y2` : srs.x_axis === `x2`
   let secondary_boxes = $derived(visible_boxes.filter((box_item) => is_secondary(box_item.series)))
   let has_secondary = $derived(secondary_boxes.length > 0)
+  // The secondary value axis renders transposed by orientation: x2 (top) when horizontal, y2
+  // (right) when vertical. Derive once so axis rendering, ticks, range writes, point picking, and
+  // marginal placement all stay provably in sync.
+  let show_x2 = $derived(has_secondary && orientation === `horizontal`)
+  let show_y2 = $derived(has_secondary && orientation === `vertical`)
 
   // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range
   const value_points = (boxes: Box[]): { x: number; y: number }[] =>
@@ -432,22 +443,19 @@
     }
   })
 
-  const default_padding = { t: 20, b: 60, l: 60, r: 20 }
-  let base_pad = $derived(filter_padding(padding, default_padding))
+  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
 
   $effect(() => { // dynamic padding from tick label widths
     const new_pad = width && height && ticks.y.length > 0
       ? calc_auto_padding({
         padding,
-        default_padding,
+        default_padding: DEFAULT_PLOT_PADDING,
         x2_axis: { ...x2_axis, tick_values: ticks.x2 },
         y_axis: { ...y_axis, tick_values: ticks.y },
         y2_axis: { ...y2_axis, tick_values: ticks.y2 },
       })
-      : filter_padding(padding, default_padding)
-    if (
-      width && height && orientation === `vertical` && has_secondary && ticks.y2.length > 0
-    ) {
+      : filter_padding(padding, DEFAULT_PLOT_PADDING)
+    if (width && height && show_y2 && ticks.y2.length > 0) {
       const inside = y2_axis.tick?.label?.inside ?? false
       const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
       const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
@@ -505,7 +513,30 @@
         : null,
     })
   )
-  const pad = $derived(decor.pad)
+  // Marginals are opt-in (default prop `false`) and bind to the VALUE axis, pooling each box's
+  // raw samples. The default side follows orientation (value axis = y when vertical, x when
+  // horizontal) so the `marginals` boolean / type-string shorthand land on a meaningful side.
+  // Each box is tagged with its value axis so a primary-axis marginal ignores secondary boxes.
+  const marginal_vertical = $derived(orientation === `vertical`)
+  const resolved_marginals = $derived(
+    normalize_marginals(marginals, marginal_vertical ? { right: true } : { top: true }),
+  )
+  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  const marginal_series = $derived<MarginalSeriesInput[]>(
+    visible_boxes.map((box_item) => {
+      const secondary = is_secondary(box_item.series)
+      return {
+        x: marginal_vertical ? undefined : (box_item.series.y ?? []),
+        y: marginal_vertical ? (box_item.series.y ?? []) : undefined,
+        color: box_color(box_item.idx),
+        label: box_item.series.label,
+        visible: true,
+        x_axis: marginal_vertical ? `x1` : (secondary ? `x2` : `x1`),
+        y_axis: marginal_vertical ? (secondary ? `y2` : `y1`) : `y1`,
+      }
+    }),
+  )
+  const marginal_has_axis = $derived(marginal_axis_presence(show_x2, show_y2))
   const legend_auto_outside = $derived(decor.legend_outside)
   const legend_outside_x = $derived(decor.legend_pos.x)
   const legend_outside_y = $derived(decor.legend_pos.y)
@@ -562,12 +593,12 @@
         { default_count: 6 },
       ))
       : [],
-    y2: width && height && has_secondary && orientation === `vertical`
+    y2: width && height && show_y2
       ? generate_ticks(ranges.current.y2, y2_axis.scale_type ?? `linear`, y2_axis.ticks, scales.y2, {
         default_count: 6,
       })
       : [],
-    x2: width && height && has_secondary && orientation === `horizontal`
+    x2: width && height && show_x2
       ? generate_ticks(ranges.current.x2, x2_axis.scale_type ?? `linear`, x2_axis.ticks, scales.x2, {
         default_count: 8,
       })
@@ -595,15 +626,11 @@
       // the secondary value axis is x2 only in horizontal mode, y2 only in vertical
       // (is_secondary keys off orientation); writing the off-orientation axis would
       // store a phantom range from its [0, 1] sentinel scale into the bound prop
-      const next_x2 = has_secondary && orientation === `horizontal`
-        ? invert_rect_range(scales.x2, start.x, current.x)
-        : null
+      const next_x2 = show_x2 ? invert_rect_range(scales.x2, start.x, current.x) : null
       if (next_x2) x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
       const next_y = invert_rect_range(scales.y, start.y, current.y)
       if (next_y) y_axis = { ...y_axis, range: next_y }
-      const next_y2 = has_secondary && orientation === `vertical`
-        ? invert_rect_range(scales.y2, start.y, current.y)
-        : null
+      const next_y2 = show_y2 ? invert_rect_range(scales.y2, start.y, current.y) : null
       if (next_y2) y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
     },
     on_reset: () => {
@@ -862,7 +889,7 @@
         label_y={height - pad.b / 3 + (x_axis.label_shift?.y ?? 0)}
       />
 
-      {#if has_secondary && orientation === `horizontal`}
+      {#if show_x2}
         <PlotAxis
           side="x2"
           ticks={ticks.x2 as number[]}
@@ -899,7 +926,7 @@
         label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
       />
 
-      {#if has_secondary && orientation === `vertical`}
+      {#if show_y2}
         <PlotAxis
           side="y2"
           ticks={ticks.y2 as number[]}
@@ -941,8 +968,8 @@
           x2_scale_type={x2_axis.scale_type}
           y_scale_type={y_axis.scale_type}
           y2_scale_type={y2_axis.scale_type}
-          has_x2={has_secondary && orientation === `horizontal`}
-          has_y2={has_secondary && orientation === `vertical`}
+          has_x2={show_x2}
+          has_y2={show_y2}
           {width}
           {height}
           {pad}
@@ -1120,6 +1147,23 @@
 
       {@render ref_lines_layer(ref_lines_by_z.below_points)}
       {@render ref_lines_layer(ref_lines_by_z.above_all)}
+
+      <!-- Marginal distribution strips -->
+      <PlotMarginals
+        marginals={resolved_marginals}
+        series={marginal_series}
+        {width}
+        {height}
+        {pad}
+        has_axis={marginal_has_axis}
+        axes={{
+          x1: marginal_axis(scales.x, ranges.current.x, x_axis),
+          x2: marginal_axis(scales.x2, ranges.current.x2, x2_axis),
+          y1: marginal_axis(scales.y, ranges.current.y, y_axis),
+          y2: marginal_axis(scales.y2, ranges.current.y2, y2_axis),
+        }}
+        id={clip_path_id}
+      />
     </svg>
 
     {#if legend && should_show_legend}
@@ -1210,8 +1254,8 @@
         auto_x2_range={auto_ranges.x2 as Vec2}
         auto_y_range={auto_ranges.y as Vec2}
         auto_y2_range={auto_ranges.y2 as Vec2}
-        has_x2_points={has_secondary && orientation === `horizontal`}
-        has_y2_points={has_secondary && orientation === `vertical`}
+        has_x2_points={show_x2}
+        has_y2_points={show_y2}
         children={controls_extra}
       />
     {/if}

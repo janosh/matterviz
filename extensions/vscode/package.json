@@ -1042,7 +1042,7 @@
         },
         "matterviz.box.box.stroke_color": {
           "type": "string",
-          "default": "#000000",
+          "default": "var(--text-color, black)",
           "description": "Box outline color"
         },
         "matterviz.box.box.border_radius": {
@@ -1061,7 +1061,7 @@
         },
         "matterviz.box.whisker.color": {
           "type": "string",
-          "default": "#000000",
+          "default": "var(--text-color, black)",
           "description": "Whisker line color"
         },
         "matterviz.box.whisker.cap_fraction": {
@@ -1080,7 +1080,7 @@
         },
         "matterviz.box.median.color": {
           "type": "string",
-          "default": "#000000",
+          "default": "var(--text-color, black)",
           "description": "Median line color"
         },
         "matterviz.box.outlier.radius": {

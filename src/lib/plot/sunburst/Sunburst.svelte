@@ -29,6 +29,7 @@
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { create_color_scale } from '$lib/plot/core/scales'
+  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { arc_label_transform, arrow_nav_target, project_arcs } from '$lib/plot/sunburst/render'
   import type { ScreenArc as ScreenArcOf } from '$lib/plot/sunburst/render'
   import { compute_sunburst_layout, type PositionedArc } from '$lib/plot/sunburst/sunburst'
@@ -63,7 +64,7 @@
     zoom_root_id = $bindable(null),
     show_breadcrumbs = $bindable(DEFAULTS.sunburst.show_breadcrumbs),
     color_values,
-    color_scale = `interpolateViridis`,
+    color_scale = SCALE_DEFAULTS.scheme,
     color_range,
     colorbar = {},
     export_buttons = true,
