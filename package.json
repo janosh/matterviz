@@ -223,7 +223,6 @@
     "@types/d3-shape": "^3.1.8",
     "@types/d3-time-format": "^4.0.3",
     "@types/three": "^0.184.1",
-    "@typescript/native-preview": "7.0.0-dev.20260622.1",
     "@vitest/coverage-v8": "4.1.9",
     "@wooorm/starry-night": "^3.10.0",
     "happy-dom": "^20.10.6",
@@ -233,7 +232,7 @@
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
     "svelte": "^5.56.4",
-    "svelte-check-rs": "0.10.1",
+    "svelte-check": "^4.7.1",
     "typescript": "6.0.3",
     "vite": "^8.0.16",
     "vite-plus": "^0.2.1",
@@ -269,8 +268,7 @@
       "extensions/**"
     ],
     "ignoreDependencies": [
-      "@typescript/native-preview",
-      "svelte-check-rs"
+      "svelte-check"
     ]
   }
 }
