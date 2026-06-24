@@ -457,23 +457,18 @@
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  let scales = $derived({
-    x: create_scale(x_axis.scale_type ?? `linear`, ranges.current.x, [
-      pad.l,
-      width - pad.r,
-    ]),
-    x2: create_scale(x2_axis.scale_type ?? `linear`, ranges.current.x2, [
-      pad.l,
-      width - pad.r,
-    ]),
-    y: create_scale(y_axis.scale_type ?? `linear`, ranges.current.y, [
-      height - pad.b,
-      pad.t,
-    ]),
-    y2: create_scale(y2_axis.scale_type ?? `linear`, ranges.current.y2, [
-      height - pad.b,
-      pad.t,
-    ]),
+  // x/x2 share the horizontal pixel span, y/y2 the inverted vertical one
+  let scales = $derived.by(() => {
+    const x_px: Vec2 = [pad.l, width - pad.r]
+    const y_px: Vec2 = [height - pad.b, pad.t]
+    const axis_scale = (axis: typeof x_axis, range: Vec2, px: Vec2) =>
+      create_scale(axis.scale_type ?? `linear`, range, px)
+    return {
+      x: axis_scale(x_axis, ranges.current.x, x_px),
+      x2: axis_scale(x2_axis, ranges.current.x2, x_px),
+      y: axis_scale(y_axis, ranges.current.y, y_px),
+      y2: axis_scale(y2_axis, ranges.current.y2, y_px),
+    }
   })
 
   // Compute plot center for point tweening origin
@@ -532,47 +527,28 @@
     ) as Record<number, string>
   })
 
-  let ticks = $derived({
-    x: width && height
-      ? (category_indices && cat_axis === `x` ? cat_tick_indices : generate_ticks(
-        ranges.current.x,
-        x_axis.scale_type ?? `linear`,
-        x_axis.ticks,
-        scales.x,
-        { default_count: 8 },
-      ))
-      : [],
-    y: width && height
-      ? (category_indices && cat_axis === `y` ? cat_tick_indices : generate_ticks(
-        ranges.current.y,
-        y_axis.scale_type ?? `linear`,
-        y_axis.ticks,
-        scales.y,
-        { default_count: 6 },
-      ))
-      : [],
-    y2: width && height && show_y2
-      ? generate_ticks(
-        ranges.current.y2,
-        y2_axis.scale_type ?? `linear`,
-        y2_axis.ticks,
-        scales.y2,
-        {
-          default_count: 6,
-        },
-      )
-      : [],
-    x2: width && height && show_x2
-      ? generate_ticks(
-        ranges.current.x2,
-        x2_axis.scale_type ?? `linear`,
-        x2_axis.ticks,
-        scales.x2,
-        {
-          default_count: 8,
-        },
-      )
-      : [],
+  let ticks = $derived.by(() => {
+    const axis_ticks = (
+      axis: typeof x_axis,
+      range: Vec2,
+      scale: typeof scales.x,
+      default_count: number,
+      show = true,
+    ) =>
+      width && height && show
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, { default_count })
+        : []
+    // categorical axes show one tick per category instead of generated numeric ticks
+    return {
+      x: category_indices && cat_axis === `x` && width && height
+        ? cat_tick_indices
+        : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
+      y: category_indices && cat_axis === `y` && width && height
+        ? cat_tick_indices
+        : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
+      y2: axis_ticks(y2_axis, ranges.current.y2, scales.y2, 6, show_y2),
+      x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
+    }
   })
 
   // Cache measured tick-label widths so expensive canvas text measurement

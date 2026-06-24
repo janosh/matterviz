@@ -554,7 +554,7 @@
 
   let ticks = $derived.by(() => {
     // x/y always render; x2/y2 only when their series exist (else their scale is a [0,1] sentinel)
-    const make = (
+    const axis_ticks = (
       axis: typeof final_x_axis,
       range: Vec2,
       scale: typeof scales.x,
@@ -564,12 +564,11 @@
       width && height && show
         ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, { default_count })
         : []
-    return {
-      x: make(final_x_axis, ranges.current.x, scales.x, 8),
-      x2: make(final_x2_axis, ranges.current.x2, scales.x2, 8, x2_series.length > 0),
-      y: make(final_y_axis, ranges.current.y, scales.y, 6),
-      y2: make(final_y2_axis, ranges.current.y2, scales.y2, 6, y2_series.length > 0),
-    }
+    const x = axis_ticks(final_x_axis, ranges.current.x, scales.x, 8)
+    const x2 = axis_ticks(final_x2_axis, ranges.current.x2, scales.x2, 8, x2_series.length > 0)
+    const y = axis_ticks(final_y_axis, ranges.current.y, scales.y, 6)
+    const y2 = axis_ticks(final_y2_axis, ranges.current.y2, scales.y2, 6, y2_series.length > 0)
+    return { x, x2, y, y2 }
   })
 
   // Cache measured tick-label widths so expensive text measurement only runs
