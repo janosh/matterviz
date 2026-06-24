@@ -510,7 +510,10 @@ const clean_pairs = (
     if (require_positive && pos <= 0) continue
     if (weights && out_wts) {
       const weight = weights[idx]
-      if (!Number.isFinite(weight)) continue
+      // skip non-finite and negative weights: a negative makes a weighted CDF non-monotone and
+      // skews histogram normalization. zero is kept (it contributes nothing and the renderer
+      // already drops zero-value bars, so skipping it would only needlessly drop rug/kde positions)
+      if (!Number.isFinite(weight) || weight < 0) continue
       out_wts.push(weight)
     }
     out_pos.push(pos)
@@ -571,6 +574,11 @@ function compute_cdf(positions: number[], weights: number[] | undefined): Margin
   return { kind: `line`, points, max: 1 }
 }
 
+// Smallest strictly-positive value (Infinity if none): repairs a degenerate log lower bound (<= 0)
+// so kde grids / histogram bins don't dip to non-renderable positions
+const smallest_positive = (vals: number[]): number =>
+  vals.reduce((min, val) => (val > 0 && val < min ? val : min), Infinity)
+
 function compute_kde(
   positions: number[],
   config: ResolvedMarginalConfig,
@@ -582,10 +590,7 @@ function compute_kde(
   // otherwise emit grid points at <= 0 -> NaN pixels) by clamping to the smallest positive sample.
   let clip: [number | null, number | null] | undefined
   if (get_scale_type_name(scale_type) === `log` && positional_range[0] <= 0) {
-    const min_pos = positions.reduce(
-      (min, val) => (val > 0 && val < min ? val : min),
-      Infinity,
-    )
+    const min_pos = smallest_positive(positions)
     if (Number.isFinite(min_pos)) clip = [min_pos, null]
   }
   const kde = gaussian_kde(positions, {
@@ -624,7 +629,15 @@ export function compute_marginal_curve(
       ? { kind: `bars`, bins: [], max: 0 }
       : { kind: `line`, points: [], max: 0 }
   }
-  if (config.type === `histogram`) return compute_histogram(pos, wts, config, range)
+  if (config.type === `histogram`) {
+    // on a degenerate log axis (lower bound <= 0) bin over the smallest positive sample instead, so
+    // bins aren't spread below the smallest renderable position (mirrors compute_kde's clip)
+    const hist_range: Vec2 =
+      get_scale_type_name(scale_type) === `log` && range[0] <= 0
+        ? [smallest_positive(pos), range[1]]
+        : range
+    return compute_histogram(pos, wts, config, hist_range)
+  }
   if (config.type === `cdf`) return compute_cdf(pos, wts)
   return compute_kde(pos, config, range, scale_type)
 }

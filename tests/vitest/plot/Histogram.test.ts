@@ -186,27 +186,48 @@ describe(`Histogram`, () => {
     expect(zoom_max).toBeGreaterThanOrEqual(max_bin_count([0, 3]))
   })
 
-  test(`log y-scale still uses count-based domain`, async () => {
-    const ticks = await y_ticks_after({
-      series: [{ x: [], y: [1, 1, 1, 1, 1] }],
+  test(`log y-scale: positive count-based domain; non-positive explicit lower falls back to auto`, async () => {
+    const series = [{ x: [], y: [1, 1, 1, 1, 1] }]
+    // auto and an explicit positive lower both yield a count-based domain with no non-positive ticks
+    const auto = await y_ticks_after({ series, bins: 5, y_axis: { scale_type: `log` } })
+    expect(Math.min(...auto)).toBeGreaterThan(0)
+    const pinned = await y_ticks_after({
+      series,
       bins: 5,
-      y_axis: { scale_type: `log`, format: `.2r`, range: [1, null] },
+      y_axis: { scale_type: `log`, range: [1, null] },
     })
-    // log scale should not include non-positive ticks
-    expect(Math.min(...ticks)).toBeGreaterThan(0)
+    expect(Math.min(...pinned)).toBeGreaterThan(0)
+    // an invalid (<= 0) explicit lower is ignored, falling back to the auto minimum (the old
+    // `y_limit[0] ?? ...` kept the 0 verbatim, yielding a broken log domain starting at 0)
+    const zero_lower = await y_ticks_after({
+      series,
+      bins: 5,
+      y_axis: { scale_type: `log`, range: [0, null] },
+    })
+    expect(zero_lower).toEqual(auto)
   })
 
-  test(`log y-scale renders bins with one count`, async () => {
+  test(`log y-scale renders bins with one count at visible height`, async () => {
     mount_histogram({
       series: [{ x: [], y: [1, 100], label: `Sparse tail` }],
       bins: 2,
+      bar: { border_radius: 0 }, // radius-free path so the height shows up as a parseable `v{h}` segment
       y_axis: { scale_type: `log` },
     })
     const plot = document.querySelector<HTMLElement>(`.histogram`)
     if (!plot) throw new Error(`Histogram root element not found`)
     await resize_element(plot, 400, 300)
 
-    expect(document.querySelectorAll(`g.histogram-series path[role="button"]`)).toHaveLength(2)
+    const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
+    expect(bars).toHaveLength(2)
+    // each singleton-count bin must have visible height: the old log y-range floored at the count,
+    // collapsing them to ~0px at the baseline. bar_path encodes height as `...v{h}h...`
+    for (const bar of bars) {
+      const height = Number(
+        /v(?<h>-?\d+(?:\.\d+)?)h/.exec(bar.getAttribute(`d`) ?? ``)?.groups?.h,
+      )
+      expect(height).toBeGreaterThan(2)
+    }
   })
 
   test(`mounts with x2-axis series and renders x2 axis`, async () => {

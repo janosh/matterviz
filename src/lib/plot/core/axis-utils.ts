@@ -88,11 +88,14 @@ export function create_axis_loader<T extends DataSeries | BarSeries>(
 
     state.axes[axis].set({ ...axis_config, selected_key: key }) // immediate UI feedback
     state.loading.set(axis)
+    let merged: T[] = state.series.get()
+    let load_error: AxisLoadError | undefined
     try {
       const result = await data_loader(axis, key, state.series.get())
-      const merged = merge_series_state(state.series.get(), result.series)
+      merged = merge_series_state(state.series.get(), result.series)
       state.series.set(merged)
-      if (result.axis_label || result.axis_unit) {
+      // !== undefined (not truthiness) so a loader can intentionally clear a label/unit to ``
+      if (result.axis_label !== undefined || result.axis_unit !== undefined) {
         const current = state.axes[axis].get()
         state.axes[axis].set({
           ...current,
@@ -100,14 +103,20 @@ export function create_axis_loader<T extends DataSeries | BarSeries>(
           unit: result.axis_unit ?? current.unit,
         })
       }
-      on_axis_change?.(axis, key, merged)
     } catch (err) {
       console.error(`Failed to load data for ${axis}=${key}:`, err)
-      state.axes[axis].set({ ...state.axes[axis].get(), selected_key: prev_key }) // revert
-      on_error?.({ axis, key, message: to_error(err).message })
+      state.axes[axis].set(axis_config) // revert every axis field mutated above, not just selected_key
+      load_error = { axis, key, message: to_error(err).message }
     } finally {
-      state.loading.set(null)
+      state.loading.set(null) // always clears, even if a consumer callback below throws
     }
+    // callbacks run only after internal state is fully settled, so a throwing consumer callback
+    // can neither leave `loading` stuck nor trigger the loader rollback
+    if (load_error) {
+      on_error?.(load_error)
+      return
+    }
+    on_axis_change?.(axis, key, merged)
   }
 
   // Auto-load once if series is empty but options exist (x-axis first, then y)

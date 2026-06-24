@@ -252,36 +252,32 @@ describe(`compute_marginal_curve`, () => {
     expect(integral).toBeCloseTo(1, 6)
   })
 
-  test(`cdf is monotonic and ends at 1`, () => {
+  // every cdf is monotonic, ends at 1, and collapses tied positions; per case we pin the resulting
+  // positions (and exact values where weights matter). negative weights are dropped (they'd make the
+  // cumulative non-monotone); zero is kept harmlessly
+  test.each([
+    [`sorts tied positions`, [3, 1, 2], undefined, range, [1, 2, 3], undefined],
+    [`reflects weights`, [1, 2], [1, 3], [0, 3], [1, 2], [0.25, 1]],
+    [`skips negative weights`, [1, 2, 3], [1, -5, 3], [0, 4], [1, 3], [0.25, 1]],
+  ] as const)(`cdf %s`, (_desc, positions, weights, range_in, expected_pos, expected_vals) => {
     const curve = compute_marginal_curve(
-      [3, 1, 2],
-      undefined,
+      positions,
+      weights,
       resolved({ type: `cdf` }),
-      range,
+      [range_in[0], range_in[1]],
       `linear`,
     )
     const { points, max } = as_line(curve)
     expect(max).toBe(1)
+    expect(points.map((pt) => pt.pos)).toEqual(expected_pos)
     const values = points.map((pt) => pt.value)
-    expect(values[values.length - 1]).toBeCloseTo(1, 6)
+    expect(values.at(-1)).toBeCloseTo(1, 6)
     for (let idx = 1; idx < values.length; idx++) {
       expect(values[idx]).toBeGreaterThanOrEqual(values[idx - 1])
     }
-    // positions strictly increasing (ties collapsed)
-    expect(points.map((pt) => pt.pos)).toEqual([1, 2, 3])
-  })
-
-  test(`weighted cdf reflects weights`, () => {
-    const curve = compute_marginal_curve(
-      [1, 2],
-      [1, 3],
-      resolved({ type: `cdf` }),
-      [0, 3],
-      `linear`,
-    )
-    const { points } = as_line(curve)
-    expect(points[0].value).toBeCloseTo(0.25, 6)
-    expect(points[1].value).toBeCloseTo(1, 6)
+    if (expected_vals) {
+      expected_vals.forEach((val, idx) => expect(values[idx]).toBeCloseTo(val, 6))
+    }
   })
 
   // kde yields a finite, non-negative 100-point density line — including for zero-variance input,
@@ -395,6 +391,21 @@ describe(`compute_marginal_curve`, () => {
       `log`,
     )
     expect(sum_bins(curve)).toBe(1)
+  })
+
+  // a degenerate log range (lower bound <= 0) must clamp the histogram bin domain to the smallest
+  // positive sample, so no bin spans non-positive (non-renderable) positions
+  test(`log histogram clamps the bin domain to positive on a degenerate range`, () => {
+    const curve = compute_marginal_curve(
+      [10, 20, 30],
+      undefined,
+      resolved({ bins: 4 }),
+      [-5, 100],
+      `log`,
+    )
+    const { bins } = as_bars(curve)
+    expect(bins.length).toBeGreaterThan(0)
+    expect(Math.min(...bins.map((bin) => bin.pos0))).toBeGreaterThanOrEqual(10)
   })
 
   // a reversed range (inverted axis) must not crash d3.bin or empty the kde grid; the range
@@ -515,15 +526,14 @@ describe(`marginal_hit`, () => {
     expect(marginal_hit(ctx, 75, 60)?.value).toBe(8)
   })
 
-  test(`bars: pointer outside every bin returns null`, () => {
+  // px=150 is beyond the bin's [0,50] px span; px=25/py=30 sits inside the column but above the
+  // rendered bar (value=3 spans py 46..64)
+  test.each([
+    [`beyond the bin span`, 150, 60],
+    [`inside the column but above the bar`, 25, 30],
+  ] as const)(`bars: pointer %s returns null`, (_desc, px, py) => {
     const ctx = make_ctx([bars_curve([{ pos0: 0, pos1: 5, value: 3 }])])
-    expect(marginal_hit(ctx, 150, 60)).toBeNull() // px=150 is beyond the [0,50] bin span
-  })
-
-  test(`bars: pointer inside a bin column but outside the filled bar returns null`, () => {
-    const ctx = make_ctx([bars_curve([{ pos0: 0, pos1: 5, value: 3 }])])
-    // value=3 spans py 46..64, so py=30 is inside the strip but above the rendered bar.
-    expect(marginal_hit(ctx, 25, 30)).toBeNull()
+    expect(marginal_hit(ctx, px, py)).toBeNull()
   })
 
   test(`bars: overlaid series resolve to the tallest bar`, () => {

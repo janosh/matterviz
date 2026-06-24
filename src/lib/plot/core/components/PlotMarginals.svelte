@@ -221,13 +221,15 @@
             ? { x: pos_min, y: val_min, width: pos_len, height: val_len }
             : { x: val_min, y: pos_min, width: val_len, height: pos_len }
         })
-        .filter((bar) => isFinite(bar.x) && isFinite(bar.y))
+        // all four must be finite: a custom reduce/data bin with a non-finite edge/value would
+        // otherwise emit width/height="Infinity" (invalid SVG). mirrors marginal_hit's bar filter
+        .filter((bar) => [bar.x, bar.y, bar.width, bar.height].every(isFinite))
       return base
     }
 
     if (data.kind === `line`) {
-      const pts = data.points.filter((pt) => isFinite(pt.pos) && isFinite(pt.value))
-      if (pts.length < 2) return base
+      const raw_pts = data.points.filter((pt) => isFinite(pt.pos) && isFinite(pt.value))
+      if (raw_pts.length < 2) return base
       // area fills (kde/cdf) read better lighter than histogram bars
       base.fill_opacity = config.fill_opacity ?? 0.5
       // For monotone, the monotonic axis is the position axis: x for top/bottom, y for left/right
@@ -239,6 +241,10 @@
       // cross-axis. The line generator is symmetric; the area differs only in which axis baselines.
       const px = (pt: LinePt) => (is_x ? pos_scale(pt.pos) : val_scale(pt.value))
       const py = (pt: LinePt) => (is_x ? val_scale(pt.value) : pos_scale(pt.pos))
+      // drop points whose scaled pixels are non-finite (degenerate/log scales) so the path stays
+      // valid — mirrors marginal_hit, which also skips non-finite scaled coords
+      const pts = raw_pts.filter((pt) => isFinite(px(pt)) && isFinite(py(pt)))
+      if (pts.length < 2) return base
       const area_gen = is_x
         ? area<LinePt>().x(px).y0(baseline).y1(py)
         : area<LinePt>().y(py).x0(baseline).x1(px)

@@ -1,4 +1,4 @@
-import type { DataSeries } from '$lib/plot'
+import type { DataSeries, MarginalSideInput } from '$lib/plot'
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -156,6 +156,34 @@ describe(`PlotMarginals integration`, () => {
     expect(root.querySelectorAll(`.marginal-top rect`)).toHaveLength(0)
     // value-axis is keyed on the actual curve kind, so a rug-returning reduce gets none
     expect(root.querySelector(`.marginal-axis-top`)).toBeNull()
+  })
+
+  // a point that's finite in data space but scales to a non-finite pixel (pos 0 on a log axis)
+  // must be dropped so the rendered path has no NaN/Infinity coords
+  test(`line marginal drops points that scale to non-finite pixels`, async () => {
+    const root = await mount_scatter({
+      series: [scatter_series],
+      x_axis: { scale_type: `log`, range: [1, 100] },
+      marginals: {
+        top: {
+          type: `kde`,
+          reduce: () => ({
+            kind: `line`,
+            points: [
+              { pos: 0, value: 1 },
+              { pos: 10, value: 1 },
+              { pos: 50, value: 1 },
+            ],
+            max: 1,
+          }),
+        },
+      },
+    })
+    const paths = [...root.querySelectorAll(`.marginal-top path`)]
+    expect(paths.length).toBeGreaterThan(0)
+    for (const path of paths) {
+      expect(path.getAttribute(`d`) ?? ``).not.toMatch(/NaN|Infinity/)
+    }
   })
 
   test(`a custom snippet replaces the built-in rendering`, async () => {
@@ -402,17 +430,27 @@ describe(`marginal value-axis`, () => {
       (node) => node.textContent ?? ``,
     )
 
-  test(`Histogram default top: CDF line + 'CDF' value-axis with percent ticks`, async () => {
+  // same setup, so content (title/ticks/line) and geometry (spine/label placement/title rotation)
+  // of the default top CDF value-axis are asserted together
+  test(`Histogram default top CDF value-axis: title, percent ticks, and x-strip geometry`, async () => {
     const root = await mount_histogram({ series: hist_series, marginals: true })
     expect(root.querySelectorAll(`.marginal-top path`).length).toBeGreaterThan(0) // cdf line
     const axis = root.querySelector(`.marginal-axis-top`)
-    expect(axis).not.toBeNull()
-    expect(axis?.querySelector(`.marginal-axis-title`)?.textContent).toBe(`CDF`)
-    expect(axis?.querySelector(`line`)).not.toBeNull() // spine
+    if (!axis) throw new Error(`expected a top value-axis`)
+    expect(axis.querySelector(`.marginal-axis-title`)?.textContent).toBe(`CDF`)
     // CDF domain is [0,1] -> nice ticks [0,0.5,1] as percentages; the baseline 0% tick is dropped
     // (it would overlap the host plot's top y-tick), leaving 50% and 100%
     expect(tick_labels(axis)).toEqual(expect.arrayContaining([`50%`, `100%`]))
     expect(tick_labels(axis)).not.toContain(`0%`)
+    // geometry: vertical spine (x1 === x2), tick labels OUTSIDE it (to its left, like a y-axis),
+    // and a title rotated -90 (reads bottom-to-top)
+    const spine_x = Number(axis.querySelector(`line`)?.getAttribute(`x1`))
+    expect(axis.querySelector(`line`)?.getAttribute(`x2`)).toBe(String(spine_x))
+    const tick_el = axis.querySelector(`text:not(.marginal-axis-title)`)
+    expect(Number(tick_el?.getAttribute(`x`))).toBeLessThan(spine_x)
+    expect(axis.querySelector(`.marginal-axis-title`)?.getAttribute(`transform`)).toContain(
+      `rotate(-90`,
+    )
   })
 
   test(`histogram normalize drives the title and percent ticks`, async () => {
@@ -451,21 +489,6 @@ describe(`marginal value-axis`, () => {
     expect(spine?.getAttribute(`y2`)).toBe(spine?.getAttribute(`y1`))
   })
 
-  test(`x-strip value-axis geometry: vertical spine, labels outside it, rotated title`, async () => {
-    const root = await mount_histogram({ series: hist_series, marginals: true })
-    const axis = root.querySelector(`.marginal-axis-top`)
-    if (!axis) throw new Error(`expected a top value-axis`)
-    const spine_x = Number(axis.querySelector(`line`)?.getAttribute(`x1`))
-    expect(axis.querySelector(`line`)?.getAttribute(`x2`)).toBe(String(spine_x)) // vertical spine
-    // tick labels sit OUTSIDE the spine (to its left), like a regular y-axis
-    const tick_el = axis.querySelector(`text:not(.marginal-axis-title)`)
-    expect(Number(tick_el?.getAttribute(`x`))).toBeLessThan(spine_x)
-    // title reads bottom-to-top (rotated -90)
-    expect(axis.querySelector(`.marginal-axis-title`)?.getAttribute(`transform`)).toContain(
-      `rotate(-90`,
-    )
-  })
-
   test(`label overrides the auto value-axis title`, async () => {
     const root = await mount_histogram({
       series: hist_series,
@@ -486,21 +509,23 @@ describe(`marginal value-axis`, () => {
     expect(root.querySelector(`.marginal-axis-top`)).toBeNull()
   })
 
-  // empty data => degenerate [0,0] domain, so no value-axis is drawn
-  test(`empty data renders no value-axis`, async () => {
+  // empty data => degenerate [0,0] domain, so no value-axis is drawn... unless a value_range pins
+  // the scale, in which case the axis renders even with no data
+  test.each([
+    [`empty data renders no value-axis`, { type: `histogram` }, false],
+    [
+      `value_range renders it even with empty data`,
+      {
+        type: `histogram`,
+        value_range: [0, 100],
+      },
+      true,
+    ],
+  ] as [string, MarginalSideInput, boolean][])(`%s`, async (_desc, top, present) => {
     const root = await mount_histogram({
       series: [{ x: [], y: [], label: `empty` }],
-      marginals: { top: { type: `histogram` } },
+      marginals: { top },
     })
-    expect(root.querySelector(`.marginal-axis-top`)).toBeNull()
-  })
-
-  // ...unless a value_range pins the scale, in which case the axis renders even with no data
-  test(`value_range renders the value-axis even with empty data`, async () => {
-    const root = await mount_histogram({
-      series: [{ x: [], y: [], label: `empty` }],
-      marginals: { top: { type: `histogram`, value_range: [0, 100] } },
-    })
-    expect(root.querySelector(`.marginal-axis-top`)).not.toBeNull()
+    expect(root.querySelector(`.marginal-axis-top`) !== null).toBe(present)
   })
 })

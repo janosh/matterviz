@@ -596,13 +596,13 @@
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
       x_axis = { ...x_axis, range: next_x }
-      // gate x2/y2 on series presence: their scales are [0, 1] sentinels otherwise,
-      // so inverting would store a phantom range in the bindable prop
-      const next_x2 = x2_series.length > 0 ? invert_rect_range(scales.x2, start.x, current.x) : null
+      // gate x2/y2 on whether they actually render (show_x2/show_y2 also require vertical);
+      // otherwise their [0, 1] sentinel scales would store a phantom range in the bindable prop
+      const next_x2 = show_x2 ? invert_rect_range(scales.x2, start.x, current.x) : null
       if (next_x2) x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
       const next_y = invert_rect_range(scales.y, start.y, current.y)
       if (next_y) y_axis = { ...y_axis, range: next_y }
-      const next_y2 = y2_series.length > 0 ? invert_rect_range(scales.y2, start.y, current.y) : null
+      const next_y2 = show_y2 ? invert_rect_range(scales.y2, start.y, current.y) : null
       if (next_y2) y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
     },
     on_reset: () => {
@@ -1061,8 +1061,8 @@
           y2_scale_type={y2_axis.scale_type}
           x_is_time={x_axis.format?.startsWith(`%`) ?? false}
           x2_is_time={x2_axis.format?.startsWith(`%`) ?? false}
-          has_x2={x2_series.length > 0}
-          has_y2={y2_series.length > 0}
+          has_x2={show_x2}
+          has_y2={show_y2}
           {width}
           {height}
           {pad}
@@ -1460,8 +1460,8 @@
         auto_x2_range={auto_ranges.x2 as Vec2}
         auto_y_range={auto_ranges.y as Vec2}
         auto_y2_range={auto_ranges.y2 as Vec2}
-        has_x2_points={x2_series.length > 0}
-        has_y2_points={y2_series.length > 0}
+        has_x2_points={show_x2}
+        has_y2_points={show_y2}
         children={controls_extra}
       />
     {/if}

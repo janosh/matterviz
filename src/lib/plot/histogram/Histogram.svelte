@@ -245,6 +245,16 @@
     selected_series.filter((srs: DataSeries) => srs.x_axis === `x2`),
   )
 
+  // On a log axis a lower bound <= 0 is invalid, so treat it as unset (null): both the auto range
+  // (calc_y_range) and the resolved range then fall back to the positive count-based minimum rather
+  // than pinning the log domain at <= 0 (a broken scale).
+  const log_safe_range = (axis: typeof final_y_axis): [number | null, number | null] => {
+    const range = axis.range ?? [null, null]
+    const lower = range[0]
+    const is_log = get_scale_type_name(axis.scale_type ?? `linear`) === `log`
+    return is_log && typeof lower === `number` && lower <= 0 ? [null, range[1]] : range
+  }
+
   let auto_ranges = $derived.by(() => {
     // Only x1 series contribute to the x1 auto-range (x2 series get their own domain below)
     const x1_values = selected_series.flatMap((srs) => srs.x_axis === `x2` ? [] : srs.y)
@@ -303,8 +313,9 @@
         range_padding,
         false,
       )
-      // For automatic log count axes, start just below the smallest non-empty bin so
-      // singleton tail bins don't collapse to zero height at the baseline.
+      // For log count axes, start just below the smallest non-empty bin so singleton tail bins
+      // don't collapse to zero height at the baseline. y_limit is pre-sanitized log-safe, so a null
+      // (incl. dropped non-positive) lower correctly falls back to the positive minimum.
       if (type_name === `log`) return [y_limit[0] ?? min_count / 1.1, y1]
 
       // For linear/arcsinh, start from 0
@@ -313,12 +324,12 @@
 
     const y1_range = calc_y_range(
       y1_series,
-      final_y_axis.range ?? [null, null],
+      log_safe_range(final_y_axis),
       final_y_axis.scale_type ?? `linear`,
     )
     const y2_auto_range = calc_y_range(
       y2_series,
-      final_y2_axis.range ?? [null, null],
+      log_safe_range(final_y2_axis),
       final_y2_axis.scale_type ?? `linear`,
     )
 
@@ -342,10 +353,16 @@
   })
 
   $effect(() => {
-    // Supports one-sided range pinning (null bounds fall back to auto); returns null
-    // for transient non-finite bounds (skip: writing NaN breaks scales and loops here)
+    // Supports one-sided range pinning (null bounds fall back to auto); returns null for transient
+    // non-finite bounds (skip: writing NaN breaks scales and loops here). y/y2 ranges are
+    // log-sanitized so an invalid (<= 0) log lower falls back to the auto count minimum.
     const next = resolve_axis_ranges(
-      { x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis },
+      {
+        x: final_x_axis,
+        x2: final_x2_axis,
+        y: { range: log_safe_range(final_y_axis) },
+        y2: { range: log_safe_range(final_y2_axis) },
+      },
       auto_ranges,
     )
     if (!next) return
