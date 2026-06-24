@@ -25,12 +25,12 @@
     "@janosh/vite-config": "github:janosh/dotfiles",
     "@spglib/moyo-wasm": "^0.12.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.0.0",
     "anywidget": "^0.11.0",
     "matterviz": "file:../..",
-    "svelte": "^5.56.3",
+    "svelte": "^5.56.4",
     "svelte-multiselect": "^11.7.2",
-    "vite": "^8.0.16",
+    "vite": "^8.1.0",
     "vite-plus": "latest"
   },
   "packageManager": "pnpm@11.5.0"

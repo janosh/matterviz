@@ -41,6 +41,12 @@ const get_svg = () => {
   return svg
 }
 
+const get_plot = (): HTMLElement => {
+  const plot = document.querySelector<HTMLElement>(`.histogram`)
+  if (!plot) throw new Error(`Histogram root element not found`)
+  return plot
+}
+
 // happy-dom lacks Touch/TouchEvent constructors, so dispatch plain events
 // carrying a touches array (the handlers only read touches[*].clientX/Y)
 const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
@@ -52,7 +58,13 @@ const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
 }
 
 describe(`Histogram`, () => {
-  test.each([
+  test.each<{
+    name: string
+    series: { x: number[]; y: number[]; label?: string }[]
+    bins: number
+    y_axis?: { range: Vec2 }
+    expected_min_max: Vec2
+  }>([
     {
       name: `y-axis based on counts for identical values`,
       series: [{ x: [], y: [1, 1, 1, 1, 1], label: `A` }],
@@ -76,8 +88,16 @@ describe(`Histogram`, () => {
       bins: 5,
       expected_min_max: [5, 50],
     },
-  ])(`$name`, async ({ series, bins, expected_min_max }) => {
-    const ticks = await y_ticks_after({ series, bins })
+    {
+      // explicit range caps the auto count domain (max count 5 clamped to 3)
+      name: `y_axis.range caps the auto count domain`,
+      series: [{ x: [], y: [1, 1, 1, 1, 1] }],
+      bins: 5,
+      y_axis: { range: [0, 3] },
+      expected_min_max: [1, 3],
+    },
+  ])(`$name`, async ({ series, bins, y_axis, expected_min_max }) => {
+    const ticks = await y_ticks_after({ series, bins, y_axis })
     expect(ticks.length).toBeGreaterThan(0)
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeGreaterThanOrEqual(expected_min_max[0])
@@ -160,21 +180,12 @@ describe(`Histogram`, () => {
     expect(max_few).toBeGreaterThanOrEqual(max_many)
   })
 
-  test(`y_axis.range caps auto count domain`, async () => {
-    const ticks = await y_ticks_after({
-      series: [{ x: [], y: [1, 1, 1, 1, 1] }],
-      bins: 5,
-      y_axis: { range: [0, 3] },
-    })
-    expect(Math.max(...ticks)).toBeLessThanOrEqual(3)
-  })
-
   test(`x_axis.range applies domain; y max tick >= computed max bin count`, async () => {
     const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
     const max_bin_count = (domain?: [number, number]): number =>
       d3max(
         (domain ? bin().domain(domain) : bin()).thresholds(5)(series[0].y),
-        (b) => b.length,
+        (bucket) => bucket.length,
       ) ?? 0
 
     const full_max = Math.max(...(await y_ticks_after({ series, bins: 5 })))
@@ -214,17 +225,16 @@ describe(`Histogram`, () => {
       bar: { border_radius: 0 }, // radius-free path so the height shows up as a parseable `v{h}` segment
       y_axis: { scale_type: `log` },
     })
-    const plot = document.querySelector<HTMLElement>(`.histogram`)
-    if (!plot) throw new Error(`Histogram root element not found`)
-    await resize_element(plot, 400, 300)
+    await resize_element(get_plot(), 400, 300)
 
     const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
     expect(bars).toHaveLength(2)
     // each singleton-count bin must have visible height: the old log y-range floored at the count,
-    // collapsing them to ~0px at the baseline. bar_path encodes height as `...v{h}h...`
+    // collapsing them to ~0px at the baseline. extract the radius-free bar_path's relative `v{h}`
+    // segment tolerantly (whitespace, any following command) so format tweaks don't yield NaN.
     for (const bar of bars) {
       const height = Number(
-        /v(?<h>-?\d+(?:\.\d+)?)h/.exec(bar.getAttribute(`d`) ?? ``)?.groups?.h,
+        /v\s*(?<h>-?\d*\.?\d+)/.exec(bar.getAttribute(`d`) ?? ``)?.groups?.h,
       )
       expect(height).toBeGreaterThan(2)
     }
@@ -262,9 +272,7 @@ describe(`Histogram`, () => {
       y_axis: { label: `Primary` },
       y2_axis: { label: `Secondary` },
     })
-    const plot = document.querySelector<HTMLElement>(`.histogram`)
-    if (!plot) throw new Error(`Histogram root element not found`)
-    await resize_element(plot, 400, 300) // axis labels only render once the plot has a size
+    await resize_element(get_plot(), 400, 300) // axis labels only render once the plot has a size
     // both y titles rotate about the plot's vertical center; a stale label_shift default
     // used to push the y2 title 60px below center
     const pivot_y = (selector: string) => axis_label_pivot_y(document, selector)
