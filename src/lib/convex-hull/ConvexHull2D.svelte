@@ -738,7 +738,7 @@
     color: var(--text-color, currentColor);
     transition: background-color 0.2s, opacity 0.2s;
     display: flex;
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
+    font-size: var(--ctrl-btn-icon-size);
   }
   :global(.convex-hull-2d :is(.control-btn, .fullscreen-btn):hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);

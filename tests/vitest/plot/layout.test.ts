@@ -442,5 +442,20 @@ describe(`layout utility functions`, () => {
       })
       expect(with_label.t - without.t).toBe(AXIS_LABEL_HEIGHT)
     })
+
+    // y/y2 axis titles must reserve their rotated width too, else a wide tick label (e.g.
+    // "-789.389") pushes the title into the ticks (mirrors the x2 reservation above)
+    it.each([
+      [`l`, `y_axis`],
+      [`r`, `y2_axis`],
+    ] as const)(`%s reserves AXIS_LABEL_HEIGHT for the %s title`, (side, axis_key) => {
+      const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
+      const without = calc_auto_padding({ ...base, [axis_key]: { tick_values: [1, 2] } })
+      const with_label = calc_auto_padding({
+        ...base,
+        [axis_key]: { tick_values: [1, 2], label: `Energy (eV)` },
+      })
+      expect(with_label[side] - without[side]).toBe(AXIS_LABEL_HEIGHT)
+    })
   })
 })

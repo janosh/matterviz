@@ -2035,7 +2035,7 @@
   .measure-mode-dropdown > button {
     background: transparent;
     padding: 1px 6px;
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
+    font-size: var(--ctrl-btn-icon-size);
   }
   .selection-limit-text {
     font-weight: bold;

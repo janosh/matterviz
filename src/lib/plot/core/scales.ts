@@ -280,6 +280,27 @@ export function create_scale(
   return scaleLinear().domain(domain).range(output_range)
 }
 
+// Build the four axis scales for a 2D plot in one call: x/x2 share the horizontal pixel span,
+// y/y2 the inverted vertical one. Shared by BarPlot/BoxPlot/Histogram (identical layout math).
+export function create_axis_scales<A extends { scale_type?: ScaleType }>(
+  axes: { x: A; x2: A; y: A; y2: A },
+  ranges: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 },
+  pad: { l: number; r: number; t: number; b: number },
+  width: number,
+  height: number,
+) {
+  const x_px: Vec2 = [pad.l, width - pad.r]
+  const y_px: Vec2 = [height - pad.b, pad.t]
+  const scale = (axis: A, domain: Vec2, px: Vec2) =>
+    create_scale(axis.scale_type ?? `linear`, domain, px)
+  return {
+    x: scale(axes.x, ranges.x, x_px),
+    x2: scale(axes.x2, ranges.x2, x_px),
+    y: scale(axes.y, ranges.y, y_px),
+    y2: scale(axes.y2, ranges.y2, y_px),
+  }
+}
+
 // Create a time scale for time-based data
 export const create_time_scale = (domain: Vec2, output_range: Vec2) =>
   scaleTime()

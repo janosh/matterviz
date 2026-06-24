@@ -51,8 +51,8 @@
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import {
+    create_axis_scales,
     create_color_scale,
-    create_scale,
     create_size_scale,
     generate_ticks,
     get_tick_label,
@@ -457,19 +457,15 @@
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  // x/x2 share the horizontal pixel span, y/y2 the inverted vertical one
-  let scales = $derived.by(() => {
-    const x_px: Vec2 = [pad.l, width - pad.r]
-    const y_px: Vec2 = [height - pad.b, pad.t]
-    const axis_scale = (axis: typeof x_axis, range: Vec2, px: Vec2) =>
-      create_scale(axis.scale_type ?? `linear`, range, px)
-    return {
-      x: axis_scale(x_axis, ranges.current.x, x_px),
-      x2: axis_scale(x2_axis, ranges.current.x2, x_px),
-      y: axis_scale(y_axis, ranges.current.y, y_px),
-      y2: axis_scale(y2_axis, ranges.current.y2, y_px),
-    }
-  })
+  let scales = $derived(
+    create_axis_scales(
+      { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
+      ranges.current,
+      pad,
+      width,
+      height,
+    ),
+  )
 
   // Compute plot center for point tweening origin
   let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
@@ -523,8 +519,8 @@
       !Array.isArray(user_ticks)
     ) return user_ticks
     return Object.fromEntries(
-      category_list.map((cat, idx) => [idx, cat]),
-    ) as Record<number, string>
+      category_list.map((cat, idx): [number, string] => [idx, cat]),
+    )
   })
 
   let ticks = $derived.by(() => {
@@ -928,10 +924,10 @@
       <!-- X-axis -->
       <PlotAxis
         side="x"
-        ticks={ticks.x as number[]}
+        ticks={ticks.x}
         place={scales.x}
         axis={x_axis}
-        domain={ranges.current.x as Vec2}
+        domain={ranges.current.x}
         {pad}
         {width}
         {height}
@@ -949,10 +945,10 @@
       {#if show_x2}
         <PlotAxis
           side="x2"
-          ticks={ticks.x2 as number[]}
+          ticks={ticks.x2}
           place={scales.x2}
           axis={x2_axis}
-          domain={ranges.current.x2 as Vec2}
+          domain={ranges.current.x2}
           {pad}
           {width}
           {height}
@@ -968,10 +964,10 @@
       <!-- Y-axis -->
       <PlotAxis
         side="y"
-        ticks={ticks.y as number[]}
+        ticks={ticks.y}
         place={scales.y}
         axis={y_axis}
-        domain={ranges.current.y as Vec2}
+        domain={ranges.current.y}
         {pad}
         {width}
         {height}
@@ -993,10 +989,10 @@
       {#if show_y2}
         <PlotAxis
           side="y2"
-          ticks={ticks.y2 as number[]}
+          ticks={ticks.y2}
           place={scales.y2}
           axis={y2_axis}
-          domain={ranges.current.y2 as Vec2}
+          domain={ranges.current.y2}
           {pad}
           {width}
           {height}
@@ -1432,10 +1428,10 @@
         bind:y_axis
         bind:y2_axis={y2_axis_prop}
         bind:display
-        auto_x_range={auto_ranges.x as Vec2}
-        auto_x2_range={auto_ranges.x2 as Vec2}
-        auto_y_range={auto_ranges.y as Vec2}
-        auto_y2_range={auto_ranges.y2 as Vec2}
+        auto_x_range={auto_ranges.x}
+        auto_x2_range={auto_ranges.x2}
+        auto_y_range={auto_ranges.y}
+        auto_y2_range={auto_ranges.y2}
         has_x2_points={show_x2}
         has_y2_points={show_y2}
         children={controls_extra}

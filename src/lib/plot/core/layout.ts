@@ -101,28 +101,31 @@ export const calc_auto_padding = ({
   y2_axis = {},
   label_gap = LABEL_GAP_DEFAULT,
 }: AutoPaddingConfig): Required<Sides> => {
-  const x2_ticks = x2_axis.tick_values ?? []
-  const y_ticks = y_axis.tick_values ?? []
-  const y_format = y_axis.format ?? ``
-  const y2_ticks = y2_axis.tick_values ?? []
-  const y2_format = y2_axis.format ?? ``
+  // Padding for a vertical-axis side (y/y2): widest tick label + gap + the rotated axis-title
+  // width (mirrors the `t` branch's AXIS_LABEL_HEIGHT) so a wide tick label can't overlap the title.
+  const side_pad = (
+    axis: AxisConfig & { tick_values?: (string | number)[] },
+    default_side: number,
+  ) =>
+    Math.max(
+      default_side,
+      measure_max_tick_width(axis.tick_values ?? [], axis.format ?? ``) +
+        label_gap +
+        (axis.label ? AXIS_LABEL_HEIGHT : 0),
+    )
 
   return {
     t:
       padding.t ??
-      (x2_ticks.length > 0
+      ((x2_axis.tick_values ?? []).length > 0
         ? Math.max(
             default_padding.t,
             TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? AXIS_LABEL_HEIGHT : 0),
           )
         : default_padding.t),
     b: padding.b ?? default_padding.b,
-    l:
-      padding.l ??
-      Math.max(default_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
-    r:
-      padding.r ??
-      Math.max(default_padding.r, measure_max_tick_width(y2_ticks, y2_format) + label_gap),
+    l: padding.l ?? side_pad(y_axis, default_padding.l),
+    r: padding.r ?? side_pad(y2_axis, default_padding.r),
   }
 }
 

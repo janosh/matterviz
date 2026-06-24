@@ -410,19 +410,20 @@
 
   let x_axis = $derived({
     label: `Step`,
-    format: `.3~s`,
+    // ~g (not ~s) so sub-1 values read as 0.8 rather than SI "800m"; integer steps stay clean
+    format: `~g`,
     ticks: step_label_positions,
   })
   // Generate axis labels based on first visible series on each axis
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
   let y_axis = $derived({
     label: y_axis_labels.y1,
-    format: `.2~s`,
+    format: `~g`,
     label_shift: { y: 10 },
   })
   let y2_axis = $derived({
     label: y_axis_labels.y2,
-    format: `.2~s`,
+    format: `~g`,
     label_shift: { y: 80 },
   })
 
@@ -964,7 +965,7 @@
               {#if filename_copied}
                 <Icon
                   icon="Check"
-                  style="color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); font-size: 16px; animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%"
+                  style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
                 />
               {/if}
             </button>
@@ -1202,7 +1203,7 @@
             controls={scatter_controls}
             current_x_value={current_step_idx}
             change={plot_skimming ? handle_plot_change : undefined}
-            padding={{ t: 20, b: 60, l: 52, r: has_y2_series ? 100 : 20 }}
+            padding={{ t: 20, b: 60, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
             {...scatter_props}
@@ -1374,7 +1375,7 @@
     }
     button {
       background: var(--btn-bg);
-      font-size: clamp(0.8rem, 2cqw, 1rem);
+      font-size: var(--ctrl-btn-icon-size);
       &:hover:not(:disabled) {
         background: var(--btn-bg-hover);
       }
@@ -1413,6 +1414,8 @@
   .step-slider {
     width: 100%;
     accent-color: var(--accent-color);
+    position: relative;
+    z-index: 1; /* keep the slider knob above the step labels (which follow it in the DOM) */
   }
   .step-labels {
     position: absolute;
@@ -1470,7 +1473,7 @@
     position: relative;
   }
   .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle)) {
-    font-size: clamp(1rem, 2.2cqw, 1.1rem);
+    font-size: var(--ctrl-btn-icon-size);
   }
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);

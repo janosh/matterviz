@@ -264,7 +264,7 @@
     color: var(--text-color, currentColor);
     transition: background-color 0.2s;
     display: flex;
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
+    font-size: var(--ctrl-btn-icon-size);
   }
   .control-buttons :global(button):hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);

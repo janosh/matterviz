@@ -49,7 +49,7 @@
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import {
-    create_scale,
+    create_axis_scales,
     generate_ticks,
     get_nice_data_range,
     get_tick_label,
@@ -505,18 +505,15 @@
   const legend_outside_y = $derived(decor.legend_pos.y)
 
   // Scales and data (x/x2 share the horizontal pixel span, y/y2 the inverted vertical one)
-  let scales = $derived.by(() => {
-    const x_px: Vec2 = [pad.l, width - pad.r]
-    const y_px: Vec2 = [height - pad.b, pad.t]
-    const axis_scale = (axis: typeof final_x_axis, range: Vec2, px: Vec2) =>
-      create_scale(axis.scale_type ?? `linear`, range, px)
-    return {
-      x: axis_scale(final_x_axis, ranges.current.x, x_px),
-      x2: axis_scale(final_x2_axis, ranges.current.x2, x_px),
-      y: axis_scale(final_y_axis, ranges.current.y, y_px),
-      y2: axis_scale(final_y2_axis, ranges.current.y2, y_px),
-    }
-  })
+  let scales = $derived(
+    create_axis_scales(
+      { x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis },
+      ranges.current,
+      pad,
+      width,
+      height,
+    ),
+  )
 
   // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
   let histogram_bins = $derived.by(() => {
@@ -865,10 +862,10 @@
     <!-- X-axis -->
     <PlotAxis
       side="x"
-      ticks={ticks.x as number[]}
+      ticks={ticks.x}
       place={scales.x}
       axis={final_x_axis}
-      domain={ranges.current.x as Vec2}
+      domain={ranges.current.x}
       {pad}
       {width}
       {height}
@@ -884,10 +881,10 @@
     {#if x2_series.length > 0}
       <PlotAxis
         side="x2"
-        ticks={ticks.x2 as number[]}
+        ticks={ticks.x2}
         place={scales.x2}
         axis={final_x2_axis}
-        domain={ranges.current.x2 as Vec2}
+        domain={ranges.current.x2}
         {pad}
         {width}
         {height}
@@ -903,10 +900,10 @@
     <!-- Y-axis -->
     <PlotAxis
       side="y"
-      ticks={ticks.y as number[]}
+      ticks={ticks.y}
       place={scales.y}
       axis={final_y_axis}
-      domain={ranges.current.y as Vec2}
+      domain={ranges.current.y}
       {pad}
       {width}
       {height}
@@ -926,10 +923,10 @@
     {#if y2_series.length > 0}
       <PlotAxis
         side="y2"
-        ticks={ticks.y2 as number[]}
+        ticks={ticks.y2}
         place={scales.y2}
         axis={final_y2_axis}
-        domain={ranges.current.y2 as Vec2}
+        domain={ranges.current.y2}
         {pad}
         {width}
         {height}
