@@ -245,14 +245,16 @@
     selected_series.filter((srs: DataSeries) => srs.x_axis === `x2`),
   )
 
-  // On a log axis a lower bound <= 0 is invalid, so treat it as unset (null): both the auto range
-  // (calc_y_range) and the resolved range then fall back to the positive count-based minimum rather
+  // On a log axis any bound <= 0 is invalid, so treat it as unset (null): both the auto range
+  // (calc_y_range) and the resolved range then fall back to the positive count-based bound rather
   // than pinning the log domain at <= 0 (a broken scale).
   const log_safe_range = (axis: typeof final_y_axis): [number | null, number | null] => {
-    const range = axis.range ?? [null, null]
-    const lower = range[0]
-    const is_log = get_scale_type_name(axis.scale_type ?? `linear`) === `log`
-    return is_log && typeof lower === `number` && lower <= 0 ? [null, range[1]] : range
+    const [lo, hi] = axis.range ?? [null, null]
+    if (get_scale_type_name(axis.scale_type ?? `linear`) !== `log`) return [lo, hi]
+    // drop any bound <= 0 (guard the type first: `null <= 0` is true in JS)
+    const drop_non_positive = (bound: number | null) =>
+      typeof bound === `number` && bound <= 0 ? null : bound
+    return [drop_non_positive(lo), drop_non_positive(hi)]
   }
 
   let auto_ranges = $derived.by(() => {
@@ -286,10 +288,9 @@
       scale_type: ScaleType,
     ): Vec2 => {
       const type_name = get_scale_type_name(scale_type)
-      if (series_list.length === 0) {
-        const fallback = type_name === `log` ? 1 : 0
-        return [fallback, 1]
-      }
+      // no-data fallback: a positive floor on log (counts can't be <= 0), else 0
+      const empty_range: Vec2 = [type_name === `log` ? 1 : 0, 1]
+      if (series_list.length === 0) return empty_range
       // Bin each series over the domain of the x-axis it renders on (d3 bin() drops
       // out-of-domain values, so binning x2 series over the x1 domain skews max_count)
       const counts = series_list.flatMap((srs: DataSeries) => {
@@ -298,11 +299,7 @@
       })
       const max_count = Math.max(0, ...counts)
 
-      // If there's effectively no data, avoid log-range issues (counts can't be <= 0 on log)
-      if (max_count <= 0) {
-        const fallback = type_name === `log` ? 1 : 0
-        return [fallback, 1]
-      }
+      if (max_count <= 0) return empty_range
 
       const min_count = type_name === `log` ? Math.min(...counts) : 0
       const [y0, y1] = get_nice_data_range(
@@ -487,12 +484,13 @@
     normalize_marginals(marginals, { top: { type: `cdf`, bins } }),
   )
   const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  // a lone series uses the configured bar color; with multiple, each gets its own
+  const series_color = (series_data: DataSeries) =>
+    selected_series.length === 1 ? final_bar.color : extract_series_color(series_data)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data }) => ({
       x: series_data.y ?? [],
-      color: selected_series.length === 1
-        ? final_bar.color
-        : extract_series_color(series_data),
+      color: series_color(series_data),
       label: series_data.label,
       visible: true,
       x_axis: series_data.x_axis,
@@ -506,28 +504,18 @@
   const legend_outside_x = $derived(decor.legend_pos.x)
   const legend_outside_y = $derived(decor.legend_pos.y)
 
-  // Scales and data
-  let scales = $derived({
-    x: create_scale(
-      final_x_axis.scale_type ?? `linear`,
-      ranges.current.x,
-      [pad.l, width - pad.r],
-    ),
-    x2: create_scale(
-      final_x2_axis.scale_type ?? `linear`,
-      ranges.current.x2,
-      [pad.l, width - pad.r],
-    ),
-    y: create_scale(
-      final_y_axis.scale_type ?? `linear`,
-      ranges.current.y,
-      [height - pad.b, pad.t],
-    ),
-    y2: create_scale(
-      final_y2_axis.scale_type ?? `linear`,
-      ranges.current.y2,
-      [height - pad.b, pad.t],
-    ),
+  // Scales and data (x/x2 share the horizontal pixel span, y/y2 the inverted vertical one)
+  let scales = $derived.by(() => {
+    const x_px: Vec2 = [pad.l, width - pad.r]
+    const y_px: Vec2 = [height - pad.b, pad.t]
+    const axis_scale = (axis: typeof final_x_axis, range: Vec2, px: Vec2) =>
+      create_scale(axis.scale_type ?? `linear`, range, px)
+    return {
+      x: axis_scale(final_x_axis, ranges.current.x, x_px),
+      x2: axis_scale(final_x2_axis, ranges.current.x2, x_px),
+      y: axis_scale(final_y_axis, ranges.current.y, y_px),
+      y2: axis_scale(final_y2_axis, ranges.current.y2, y_px),
+    }
   })
 
   // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
@@ -547,9 +535,7 @@
         id: series_data.id ?? series_idx,
         series_idx,
         label: series_data.label || `Series ${series_idx + 1}`,
-        color: selected_series.length === 1
-          ? final_bar.color
-          : extract_series_color(series_data),
+        color: series_color(series_data),
         bins: bins_arr,
         max_count: max(bins_arr, (data) => data.length) || 0,
         x_axis: series_data.x_axis,
@@ -566,43 +552,24 @@
     })),
   )
 
-  let ticks = $derived({
-    x: width && height
-      ? generate_ticks(
-        ranges.current.x,
-        final_x_axis.scale_type ?? `linear`,
-        final_x_axis.ticks,
-        scales.x,
-        { default_count: 8 },
-      )
-      : [],
-    x2: width && height && x2_series.length > 0
-      ? generate_ticks(
-        ranges.current.x2,
-        final_x2_axis.scale_type ?? `linear`,
-        final_x2_axis.ticks,
-        scales.x2,
-        { default_count: 8 },
-      )
-      : [],
-    y: width && height
-      ? generate_ticks(
-        ranges.current.y,
-        final_y_axis.scale_type ?? `linear`,
-        final_y_axis.ticks,
-        scales.y,
-        { default_count: 6 },
-      )
-      : [],
-    y2: width && height && y2_series.length > 0
-      ? generate_ticks(
-        ranges.current.y2,
-        final_y2_axis.scale_type ?? `linear`,
-        final_y2_axis.ticks,
-        scales.y2,
-        { default_count: 6 },
-      )
-      : [],
+  let ticks = $derived.by(() => {
+    // x/y always render; x2/y2 only when their series exist (else their scale is a [0,1] sentinel)
+    const make = (
+      axis: typeof final_x_axis,
+      range: Vec2,
+      scale: typeof scales.x,
+      default_count: number,
+      show = true,
+    ) =>
+      width && height && show
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, { default_count })
+        : []
+    return {
+      x: make(final_x_axis, ranges.current.x, scales.x, 8),
+      x2: make(final_x2_axis, ranges.current.x2, scales.x2, 8, x2_series.length > 0),
+      y: make(final_y_axis, ranges.current.y, scales.y, 6),
+      y2: make(final_y2_axis, ranges.current.y2, scales.y2, 6, y2_series.length > 0),
+    }
   })
 
   // Cache measured tick-label widths so expensive text measurement only runs

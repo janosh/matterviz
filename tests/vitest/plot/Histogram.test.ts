@@ -197,16 +197,18 @@ describe(`Histogram`, () => {
     expect(zoom_max).toBeGreaterThanOrEqual(max_bin_count([0, 3]))
   })
 
-  test(`log y-scale: positive count-based domain; non-positive explicit lower falls back to auto`, async () => {
+  test(`log y-scale: positive count-based domain; non-positive explicit bound falls back to auto`, async () => {
     const series = [{ x: [], y: [1, 1, 1, 1, 1] }]
     // auto and an explicit positive lower both yield a count-based domain with no non-positive ticks
     const auto = await y_ticks_after({ series, bins: 5, y_axis: { scale_type: `log` } })
+    expect(auto.length).toBeGreaterThan(0) // guard: Math.min(...[]) is Infinity -> false pass
     expect(Math.min(...auto)).toBeGreaterThan(0)
     const pinned = await y_ticks_after({
       series,
       bins: 5,
       y_axis: { scale_type: `log`, range: [1, null] },
     })
+    expect(pinned.length).toBeGreaterThan(0)
     expect(Math.min(...pinned)).toBeGreaterThan(0)
     // an invalid (<= 0) explicit lower is ignored, falling back to the auto minimum (the old
     // `y_limit[0] ?? ...` kept the 0 verbatim, yielding a broken log domain starting at 0)
@@ -216,6 +218,10 @@ describe(`Histogram`, () => {
       y_axis: { scale_type: `log`, range: [0, null] },
     })
     expect(zero_lower).toEqual(auto)
+    // a non-positive upper bound is likewise invalid on a log axis and falls back to the auto domain
+    const y_axis = { scale_type: `log`, range: [null, -5] }
+    const neg_upper = await y_ticks_after({ series, bins: 5, y_axis })
+    expect(neg_upper).toEqual(auto)
   })
 
   test(`log y-scale renders bins with one count at visible height`, async () => {
