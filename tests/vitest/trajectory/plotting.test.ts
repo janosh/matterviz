@@ -106,6 +106,35 @@ describe(`generate_plot_series`, () => {
     assert_unit_group_constraints(series)
   })
 
+  it(`memoizes per-frame extraction for the same trajectory + extractor`, () => {
+    const trajectory = create_trajectory(COMMON_TRAJECTORIES.multi_property)
+    let calls = 0
+    const counting = (frame: TrajectoryFrame) => {
+      calls++
+      return test_extractor(frame)
+    }
+    generate_plot_series(trajectory, counting)
+    const per_walk = calls
+    expect(per_walk).toBe(trajectory.frames.length) // one extract per frame
+
+    // repeat call with same trajectory + extractor reuses cached stats (no re-walk)
+    generate_plot_series(trajectory, counting)
+    expect(calls).toBe(per_walk)
+
+    // a different extractor invalidates the cache -> re-walks every frame
+    const other = (frame: TrajectoryFrame) => {
+      calls++
+      return test_extractor(frame)
+    }
+    generate_plot_series(trajectory, other)
+    expect(calls).toBe(per_walk * 2)
+
+    // a different trajectory (new identity) also re-walks
+    const before = calls
+    generate_plot_series(create_trajectory(COMMON_TRAJECTORIES.lattice_params), counting)
+    expect(calls).toBeGreaterThan(before)
+  })
+
   it.each([
     { name: `empty trajectory`, frames: [], expected_length: 0 },
     { name: `single frame`, frames: [{ energy: -10.0 }], expected_length: 0 },
@@ -263,13 +292,9 @@ describe(`should_hide_plot`, () => {
     expect(should_hide_plot(trajectory, series)).toBe(expected)
   })
 
-  it(`should handle single frame trajectory and custom tolerance`, () => {
-    const single_frame = create_trajectory([{}])
-    expect(should_hide_plot(single_frame, [])).toBe(true) // Single frame should hide plot
-
-    const series = [create_series([1.0, 1.000001, 1.0])]
-    expect(should_hide_plot(trajectory, series)).toBe(false) // Default tolerance
-    expect(should_hide_plot(trajectory, series, 1e-2)).toBe(true) // Loose tolerance
+  it(`hides plot for single-frame trajectory despite a varying series`, () => {
+    const single_frame = create_trajectory([{ energy: -10 }])
+    expect(should_hide_plot(single_frame, [create_series([1.0, 2.0, 3.0])])).toBe(true)
   })
 
   it.each([
@@ -285,7 +310,8 @@ describe(`should_hide_plot`, () => {
     { name: `very strict`, tolerance: 1e-10, expected: false },
     { name: `very loose`, tolerance: 1e10, expected: true },
     { name: `zero tolerance`, tolerance: 0, expected: false },
-  ])(`should handle extreme tolerance: $name`, ({ tolerance, expected }) => {
+    { name: `default (undefined) tolerance`, tolerance: undefined, expected: false },
+  ])(`should handle tolerance: $name`, ({ tolerance, expected }) => {
     const series = [create_series([1.0, 1.0000001, 1.0])]
     expect(should_hide_plot(trajectory, series, tolerance)).toBe(expected)
   })
@@ -317,31 +343,26 @@ describe(`generate_axis_labels`, () => {
       series: [create_series([1, 2], false, `Hidden`, `eV`)],
       expected: { y1: `Value`, y2: `Value` },
     },
+    {
+      name: `series split across y1 and y2`,
+      series: [
+        create_series([1, 2], true, `Energy`, `eV`, `y1`),
+        create_series([3, 4], true, `Force`, `eV/Å`, `y2`),
+      ],
+      expected: { y1: `Energy (eV)`, y2: `Force (eV/Å)` },
+    },
+    {
+      name: `multiple series concatenated on y1 with separate y2`,
+      series: [
+        create_series([5.0, 5.1], true, `A`, `Å`, `y1`),
+        create_series([5.1, 5.2], true, `B`, `Å`, `y1`),
+        create_series([1.0, 2.0], true, `Energy`, `eV`, `y2`),
+      ],
+      expected: { y1: `A / B (Å)`, y2: `Energy (eV)` },
+    },
   ])(`should generate axis labels for $name`, ({ series, expected }) => {
     const labels = generate_axis_labels(series)
     expect(labels).toEqual(expected)
-  })
-
-  it(`should handle different axes assignments`, () => {
-    const series = [
-      { ...create_series([1, 2], true, `Energy`, `eV`), y_axis: `y1` as const },
-      { ...create_series([3, 4], true, `Force`, `eV/Å`), y_axis: `y2` as const },
-    ]
-    const labels = generate_axis_labels(series)
-    expect(labels.y1).toBe(`Energy (eV)`)
-    expect(labels.y2).toBe(`Force (eV/Å)`)
-  })
-
-  it(`should concatenate multiple series on same axis`, () => {
-    const series = [
-      { ...create_series([5.0, 5.1], true, `A`, `Å`), y_axis: `y1` as const },
-      { ...create_series([5.1, 5.2], true, `B`, `Å`), y_axis: `y1` as const },
-      { ...create_series([1.0, 2.0], true, `Energy`, `eV`), y_axis: `y2` as const },
-    ]
-
-    const labels = generate_axis_labels(series)
-    expect(labels.y1).toBe(`A / B (Å)`)
-    expect(labels.y2).toBe(`Energy (eV)`)
   })
 })
 

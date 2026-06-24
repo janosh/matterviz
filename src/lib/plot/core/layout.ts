@@ -101,18 +101,22 @@ export const calc_auto_padding = ({
   y2_axis = {},
   label_gap = LABEL_GAP_DEFAULT,
 }: AutoPaddingConfig): Required<Sides> => {
-  // Padding for a vertical-axis side (y/y2): widest tick label + gap + the rotated axis-title
-  // width (mirrors the `t` branch's AXIS_LABEL_HEIGHT) so a wide tick label can't overlap the title.
+  // Padding for a vertical-axis side (y/y2): when ticks render, reserve widest tick label + gap +
+  // the rotated axis-title width (mirrors the `t` branch's AXIS_LABEL_HEIGHT) so a wide tick label
+  // can't overlap the title. With no tick labels (e.g. no y2 series) reserve nothing extra.
   const side_pad = (
     axis: AxisConfig & { tick_values?: (string | number)[] },
     default_side: number,
-  ) =>
-    Math.max(
+  ) => {
+    const ticks = axis.tick_values ?? []
+    if (ticks.length === 0) return default_side
+    return Math.max(
       default_side,
-      measure_max_tick_width(axis.tick_values ?? [], axis.format ?? ``) +
+      measure_max_tick_width(ticks, axis.format ?? ``) +
         label_gap +
         (axis.label ? AXIS_LABEL_HEIGHT : 0),
     )
+  }
 
   return {
     t:

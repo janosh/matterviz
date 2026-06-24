@@ -32,6 +32,16 @@ interface UnitGroup {
   is_visible: boolean
 }
 
+// Cache the per-frame walk per trajectory so re-renders that only change visible_properties or
+// labels/config reuse it (legend toggles mutate plot_series directly and skip regeneration, so they
+// don't hit this). Keyed by trajectory identity (WeakMap auto-evicts), invalidated on extractor
+// change. Assumes trajectories are immutable: replace the object to change frames, never mutate
+// `frames` in place (parsing always yields fresh trajectories, matching extract.ts).
+const stats_cache = new WeakMap<
+  TrajectoryType,
+  { extractor: TrajectoryDataExtractor; stats: ReturnType<typeof extract_property_statistics> }
+>()
+
 // Unified property extraction and series generation
 export function generate_plot_series(
   trajectory: TrajectoryType,
@@ -46,8 +56,15 @@ export function generate_plot_series(
     default_visible_properties = DEFAULT_VISIBLE,
   } = options
 
-  // Single-pass data extraction with variance detection
-  const property_stats = extract_property_statistics(trajectory, data_extractor)
+  // Single-pass extraction with variance detection, cached per trajectory (see stats_cache above)
+  const cached = stats_cache.get(trajectory)
+  let property_stats: ReturnType<typeof extract_property_statistics>
+  if (cached?.extractor === data_extractor) {
+    property_stats = cached.stats
+  } else {
+    property_stats = extract_property_statistics(trajectory, data_extractor)
+    stats_cache.set(trajectory, { extractor: data_extractor, stats: property_stats })
+  }
 
   // Create all series
   const all_series = create_series_from_stats(property_stats, property_config, colors)

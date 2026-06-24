@@ -367,7 +367,8 @@ describe(`layout utility functions`, () => {
         padding: { t: 10, l: 80 },
         default_padding: defaults,
       })
-      expect(result).toEqual({ t: 10, l: 80, b: 60, r: 30 })
+      // no y2 ticks -> r is the plain default (no tick-label/title reservation)
+      expect(result).toEqual({ t: 10, l: 80, b: 60, r: 20 })
     })
 
     it(`left padding is at least default when y-axis has ticks`, () => {
