@@ -59,13 +59,15 @@
     DataSeries,
     LegendConfig,
     PlotConfig,
-    ScaleType,
   } from '$lib/plot/core/types'
-  import { get_scale_type_name } from '$lib/plot/core/types'
+  import {
+    compute_count_range,
+    compute_histogram_bins,
+    log_safe_range,
+  } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
   import { DEFAULTS } from '$lib/settings'
-  import { bin, max } from 'd3-array'
   import type { Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -245,18 +247,6 @@
     selected_series.filter((srs: DataSeries) => srs.x_axis === `x2`),
   )
 
-  // On a log axis any bound <= 0 is invalid, so treat it as unset (null): both the auto range
-  // (calc_y_range) and the resolved range then fall back to the positive count-based bound rather
-  // than pinning the log domain at <= 0 (a broken scale).
-  const log_safe_range = (axis: typeof final_y_axis): [number | null, number | null] => {
-    const [lo, hi] = axis.range ?? [null, null]
-    if (get_scale_type_name(axis.scale_type ?? `linear`) !== `log`) return [lo, hi]
-    // drop any bound <= 0 (guard the type first: `null <= 0` is true in JS)
-    const drop_non_positive = (bound: number | null) =>
-      typeof bound === `number` && bound <= 0 ? null : bound
-    return [drop_non_positive(lo), drop_non_positive(hi)]
-  }
-
   let auto_ranges = $derived.by(() => {
     // Only x1 series contribute to the x1 auto-range (x2 series get their own domain below)
     const x1_values = selected_series.flatMap((srs) => srs.x_axis === `x2` ? [] : srs.y)
@@ -281,54 +271,17 @@
       )
       : [0, 1] as Vec2
 
-    // Calculate y-range for a specific set of series
-    const calc_y_range = (
-      series_list: typeof selected_series,
-      y_limit: [number | null, number | null],
-      scale_type: ScaleType,
-    ): Vec2 => {
-      const type_name = get_scale_type_name(scale_type)
-      // no-data fallback: a positive floor on log (counts can't be <= 0), else 0
-      const empty_range: Vec2 = [type_name === `log` ? 1 : 0, 1]
-      if (series_list.length === 0) return empty_range
-      // Bin each series over the domain of the x-axis it renders on (d3 bin() drops
-      // out-of-domain values, so binning x2 series over the x1 domain skews max_count)
-      const counts = series_list.flatMap((srs: DataSeries) => {
-        const hist = bin().domain(srs.x_axis === `x2` ? auto_x2 : auto_x).thresholds(bins)
-        return hist(srs.y).map((data) => data.length).filter((count) => count > 0)
-      })
-      const max_count = Math.max(0, ...counts)
-
-      if (max_count <= 0) return empty_range
-
-      const min_count = type_name === `log` ? Math.min(...counts) : 0
-      const [y0, y1] = get_nice_data_range(
-        [{ x: min_count, y: 0 }, { x: max_count, y: 0 }],
-        ({ x }) => x,
-        y_limit,
-        scale_type,
-        range_padding,
-        false,
-      )
-      // For log count axes, start just below the smallest non-empty bin so singleton tail bins
-      // don't collapse to zero height at the baseline. y_limit is pre-sanitized log-safe, so a null
-      // (incl. dropped non-positive) lower correctly falls back to the positive minimum.
-      if (type_name === `log`) return [y_limit[0] ?? min_count / 1.1, y1]
-
-      // For linear/arcsinh, start from 0
-      return [Math.max(0, y0), y1]
-    }
-
-    const y1_range = calc_y_range(
-      y1_series,
-      log_safe_range(final_y_axis),
-      final_y_axis.scale_type ?? `linear`,
-    )
-    const y2_auto_range = calc_y_range(
-      y2_series,
-      log_safe_range(final_y2_axis),
-      final_y2_axis.scale_type ?? `linear`,
-    )
+    const count_cfg = { x_domain: auto_x, x2_domain: auto_x2, bin_count: bins, range_padding }
+    const y1_range = compute_count_range(y1_series, {
+      ...count_cfg,
+      scale_type: final_y_axis.scale_type ?? `linear`,
+      y_limit: log_safe_range(final_y_axis),
+    })
+    const y2_auto_range = compute_count_range(y2_series, {
+      ...count_cfg,
+      scale_type: final_y2_axis.scale_type ?? `linear`,
+      y_limit: log_safe_range(final_y2_axis),
+    })
 
     return { x: auto_x, x2: auto_x2, y: y1_range, y2: y2_auto_range }
   })
@@ -518,26 +471,12 @@
   // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
   let histogram_bins = $derived.by(() => {
     if (selected_series.length === 0 || !width || !height) return []
-    const hist_generator = bin()
-      .domain([ranges.current.x[0], ranges.current.x[1]])
-      .thresholds(bins)
-    const x2_hist_generator = x2_series.length > 0
-      ? bin().domain([ranges.current.x2[0], ranges.current.x2[1]]).thresholds(bins)
-      : null
-    return selected_series_entries.map(({ series_data, series_idx }) => {
-      const use_x2 = series_data.x_axis === `x2`
-      const active_hist = use_x2 && x2_hist_generator ? x2_hist_generator : hist_generator
-      const bins_arr = active_hist(series_data.y)
-      return {
-        id: series_data.id ?? series_idx,
-        series_idx,
-        label: series_data.label || `Series ${series_idx + 1}`,
-        color: series_color(series_data),
-        bins: bins_arr,
-        max_count: max(bins_arr, (data) => data.length) || 0,
-        x_axis: series_data.x_axis,
-        y_axis: series_data.y_axis,
-      }
+    return compute_histogram_bins(selected_series_entries, {
+      x_domain: ranges.current.x,
+      x2_domain: ranges.current.x2,
+      has_x2: x2_series.length > 0,
+      bin_count: bins,
+      series_color,
     })
   })
   // Render-time data adds the pixel scales (pad-dependent)
