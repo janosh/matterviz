@@ -1262,6 +1262,7 @@ class Bands(MatterViz):
         legend: Any | None = None,
         line_kwargs: Any | None = None,
         line_tween: Any | None = None,
+        marginals: Any | None = None,
         pan: Any | None = None,
         path_mode: Any | None = None,
         point_tween: Any | None = None,
@@ -1328,6 +1329,8 @@ class Bands(MatterViz):
             mv_props["line_kwargs"] = line_kwargs
         if line_tween is not None:
             mv_props["line_tween"] = line_tween
+        if marginals is not None:
+            mv_props["marginals"] = marginals
         if pan is not None:
             mv_props["pan"] = pan
         if path_mode is not None:
@@ -1414,6 +1417,7 @@ class Dos(MatterViz):
         label_placement_config: dict | None = None,
         legend: Any | None = None,
         line_tween: Any | None = None,
+        marginals: Any | None = None,
         normalize: Any | None = None,
         orientation: Any | None = None,
         pan: Any | None = None,
@@ -1476,6 +1480,8 @@ class Dos(MatterViz):
             mv_props["legend"] = legend
         if line_tween is not None:
             mv_props["line_tween"] = line_tween
+        if marginals is not None:
+            mv_props["marginals"] = marginals
         if normalize is not None:
             mv_props["normalize"] = normalize
         if orientation is not None:
@@ -1563,6 +1569,7 @@ class ScatterPlot(MatterViz):
         label_placement_config: dict | None = None,
         legend: Any | None = None,
         line_tween: Any | None = None,
+        marginals: Any | None = None,
         pan: Any | None = None,
         point_tween: Any | None = None,
         ref_lines: list | None = None,
@@ -1606,6 +1613,8 @@ class ScatterPlot(MatterViz):
             mv_props["legend"] = legend
         if line_tween is not None:
             mv_props["line_tween"] = line_tween
+        if marginals is not None:
+            mv_props["marginals"] = marginals
         if pan is not None:
             mv_props["pan"] = pan
         if point_tween is not None:
@@ -1661,6 +1670,7 @@ class Histogram(MatterViz):
         bins: float | None = None,
         data_loader: Any | None = None,
         legend: Any | None = None,
+        marginals: Any | None = None,
         mode: Any | None = None,
         pan: Any | None = None,
         ref_lines: list | None = None,
@@ -1686,6 +1696,8 @@ class Histogram(MatterViz):
             mv_props["data_loader"] = data_loader
         if legend is not None:
             mv_props["legend"] = legend
+        if marginals is not None:
+            mv_props["marginals"] = marginals
         if mode is not None:
             mv_props["mode"] = mode
         if pan is not None:
