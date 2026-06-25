@@ -795,6 +795,27 @@ export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
+// Memo for the costly neighbor search: WeakMap keyed by structure (GC'd with it), each holding a
+// per-signature (strategy + JSON options) map of results. The multi-side view's 4 panes share one
+// search (identical inputs, one flush); the per-signature map also lets alternating
+// strategies/options on the same structure reuse earlier results instead of thrashing one slot.
+const bond_memo = new WeakMap<AnyStructure, Map<string, BondPair[]>>()
+
+export function compute_bonds(
+  structure: AnyStructure,
+  strategy: BondingStrategy,
+  options: Record<string, unknown> = {},
+): BondPair[] {
+  const sig = `${strategy}:${JSON.stringify(options)}`
+  let by_sig = bond_memo.get(structure)
+  const cached = by_sig?.get(sig)
+  if (cached) return cached
+  const bonds = BONDING_STRATEGIES[strategy](structure, options)
+  if (!by_sig) bond_memo.set(structure, (by_sig = new Map()))
+  by_sig.set(sig, bonds)
+  return bonds
+}
+
 // Electronegativity-based bonding with chemical preferences.
 // This algorithm considers electronegativity differences between atoms, metal/nonmetal
 // properties, and distance to determine bond strength. Bonds are only created if the

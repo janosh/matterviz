@@ -4,6 +4,7 @@ import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { CameraProjection } from '$lib/settings'
 import type { ComponentProps } from 'svelte'
 import type LatticeComponent from './Lattice.svelte'
 import type { Pbc } from './pbc'
@@ -25,10 +26,28 @@ export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureExportPane } from './StructureExportPane.svelte'
 export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
+export { default as StructureViewport } from './StructureViewport.svelte'
 export * from './supercell'
 
 export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
 export type BondEditMode = `add` | `delete`
+
+// A single viewport definition for the multi-side (2x2) view. `direction` is the
+// camera offset direction from the structure center (target-relative); `projection`
+// chooses perspective vs orthographic; `label` is shown in the viewport corner.
+export type StructureView = {
+  label?: string
+  projection?: CameraProjection
+  direction?: Vec3
+}
+
+// Ovito-like default 2x2 view set: one perspective + three orthographic axis views.
+export const DEFAULT_STRUCTURE_VIEWS: StructureView[] = [
+  { label: `Perspective`, projection: `perspective`, direction: [1, 0.3, 0.8] },
+  { label: `Front`, projection: `orthographic`, direction: [0, 0, 1] },
+  { label: `Top`, projection: `orthographic`, direction: [0, 1, 0] },
+  { label: `Right`, projection: `orthographic`, direction: [1, 0, 0] },
+]
 
 export type Species = {
   element: ElementSymbol

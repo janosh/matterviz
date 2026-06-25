@@ -1386,9 +1386,6 @@
     contain: layout;
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
-    :global(.plot) {
-      background: var(--surface-bg);
-    }
     &.active {
       z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
       .trajectory-controls {

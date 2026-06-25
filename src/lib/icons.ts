@@ -620,6 +620,10 @@ export const ICON_DATA = {
     viewBox: `0 0 24 24`,
     path: `<path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2M4 4h5v16H4zm7 0h9v8h-9zm0 10h9v6h-9z"/>`,
   },
+  Grid2x2: {
+    viewBox: `0 0 24 24`,
+    path: `<path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2M4 4h7v7H4zm0 9h7v7H4zm9-9h7v7h-7zm0 9h7v7h-7z"/>`,
+  },
   FermiSurface: {
     viewBox: `0 0 24 24`,
     stroke: `currentColor`,
