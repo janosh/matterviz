@@ -3,7 +3,7 @@ import type { CellType } from '$lib/symmetry'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 // Mock sym_data for testing cell type buttons
 const mock_sym_data = {
@@ -209,20 +209,19 @@ describe(`CellSelect`, () => {
     ] as const)(
       `clicking Prim button with sym_data=%s results in cell_type=%s`,
       async (sym_data, expected) => {
-        let cell_type = $state<CellType>(`original`)
-        await mount_and_open({
-          supercell_scaling: `1x1x1`,
-          sym_data,
-          get cell_type() {
-            return cell_type
-          },
-          set cell_type(val) {
-            cell_type = val
-          },
-        })
+        const state = $state({ cell_type: `original` as CellType })
+        await mount_and_open(
+          bind_props(
+            {
+              supercell_scaling: `1x1x1`,
+              sym_data,
+            },
+            state,
+          ),
+        )
         document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)[1].click()
         await tick()
-        expect(cell_type).toBe(expected)
+        expect(state.cell_type).toBe(expected)
       },
     )
   })
@@ -249,15 +248,8 @@ describe(`CellSelect`, () => {
     })
 
     test(`clicking preset updates scaling and closes menu`, async () => {
-      let scaling = $state(`1x1x1`)
-      await mount_and_open({
-        get supercell_scaling() {
-          return scaling
-        },
-        set supercell_scaling(val) {
-          scaling = val
-        },
-      })
+      const state = $state({ supercell_scaling: `1x1x1` })
+      await mount_and_open(bind_props({}, state))
 
       const btn = Array.from(document.querySelectorAll<HTMLButtonElement>(`.preset-btn`)).find(
         (button_elem) => normalize_supercell_label(button_elem.textContent) === `2x2x2`,
@@ -266,7 +258,7 @@ describe(`CellSelect`, () => {
       btn?.click()
       await tick()
 
-      expect(scaling).toBe(`2x2x2`)
+      expect(state.supercell_scaling).toBe(`2x2x2`)
       expect(document.querySelector(`.dropdown`)).toBeNull()
     })
   })
@@ -322,15 +314,8 @@ describe(`CellSelect`, () => {
     ])(
       `%s with input="%s" results in scaling="%s", menu_open=%s`,
       async (method, input_val, expected_scaling, menu_stays_open) => {
-        let scaling = $state(`1x1x1`)
-        await mount_and_open({
-          get supercell_scaling() {
-            return scaling
-          },
-          set supercell_scaling(val) {
-            scaling = val
-          },
-        })
+        const state = $state({ supercell_scaling: `1x1x1` })
+        await mount_and_open(bind_props({}, state))
 
         const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
         input.value = input_val
@@ -344,7 +329,7 @@ describe(`CellSelect`, () => {
         }
         await tick()
 
-        expect(scaling).toBe(expected_scaling)
+        expect(state.supercell_scaling).toBe(expected_scaling)
         if (menu_stays_open) {
           expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
         } else {
@@ -379,34 +364,23 @@ describe(`CellSelect`, () => {
     })
 
     test(`toggle button updates when props change`, async () => {
-      let scaling = $state(`1x1x1`)
-      let cell_type = $state<CellType>(`original`)
+      const state = $state({
+        supercell_scaling: `1x1x1`,
+        cell_type: `original` as CellType,
+      })
       mount(CellSelect, {
         target: document.body,
-        props: {
-          get supercell_scaling() {
-            return scaling
-          },
-          set supercell_scaling(val) {
-            scaling = val
-          },
-          get cell_type() {
-            return cell_type
-          },
-          set cell_type(val) {
-            cell_type = val
-          },
-        },
+        props: bind_props({}, state),
       })
 
       const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
       expect(normalize_supercell_label(toggle.textContent)).toBe(`1x1x1`)
 
-      scaling = `2x2x2`
+      state.supercell_scaling = `2x2x2`
       await tick()
       expect(normalize_supercell_label(toggle.textContent)).toBe(`2x2x2`)
 
-      cell_type = `primitive`
+      state.cell_type = `primitive`
       await tick()
       expect(normalize_supercell_label(toggle.textContent)).toBe(`Prim 2x2x2`)
     })

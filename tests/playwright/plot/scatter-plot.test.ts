@@ -105,6 +105,16 @@ const get_marker_bbox = async (
 const get_bbox_area = (bbox: { width: number; height: number } | null): number =>
   bbox ? bbox.width * bbox.height : 0
 
+const get_svg_rect = async (
+  rect: Locator,
+): Promise<{ x: number; y: number; width: number; height: number }> =>
+  rect.evaluate((el) => ({
+    x: Number(el.getAttribute(`x`)),
+    y: Number(el.getAttribute(`y`)),
+    width: Number(el.getAttribute(`width`)),
+    height: Number(el.getAttribute(`height`)),
+  }))
+
 // Check and return marker sizes and relationships
 const check_marker_sizes = async (
   plot_locator: Locator,
@@ -270,6 +280,99 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Check markers are rendered (10 points in basic_data)
     await expect(scatter_plot.locator(`path.marker`)).toHaveCount(10)
+  })
+
+  test(`marginals align with plot area, portal tooltips, recompute on zoom, and do not start zoom drags`, async ({
+    page,
+  }) => {
+    const plot = page.locator(`#marginals-browser-regression .scatter`)
+    const svg = plot.locator(`> svg[role="application"]`).first()
+    const top_strip = plot.locator(`.marginal-top`)
+    const top_hit = plot.locator(`.marginal-hit-top`)
+    const right_hit = plot.locator(`.marginal-hit-right`)
+    const plot_clip = svg.locator(`clipPath[id^="plot-area-clip-"] rect`)
+    const zoom_rect = plot.locator(`rect.zoom-rect`)
+    const x_axis = plot.locator(`g.x-axis`)
+    const y_axis = plot.locator(`g.y-axis`)
+
+    await ensure_plot_visible(plot)
+    await expect(top_strip.locator(`path[fill="none"]`)).toBeVisible()
+    await expect(plot.locator(`.marginal-right rect`)).not.toHaveCount(0)
+    await expect(plot.locator(`.marginal-axis-top .marginal-axis-title`)).toHaveText(
+      `x density`,
+    )
+
+    // strips align with the plot area: top spans its width and sits above it,
+    // right spans its height and sits to the right of it
+    const [clip, top, right] = await Promise.all([
+      get_svg_rect(plot_clip),
+      get_svg_rect(top_hit),
+      get_svg_rect(right_hit),
+    ])
+    expect(top.x).toBeCloseTo(clip.x, 1)
+    expect(top.width).toBeCloseTo(clip.width, 1)
+    expect(top.y + top.height).toBeLessThan(clip.y)
+    expect(right.y).toBeCloseTo(clip.y, 1)
+    expect(right.height).toBeCloseTo(clip.height, 1)
+    expect(right.x).toBeGreaterThan(clip.x + clip.width)
+
+    const top_hit_box = await top_hit.boundingBox()
+    if (!top_hit_box) throw new Error(`top marginal hit box missing`)
+    await page.mouse.move(
+      top_hit_box.x + top_hit_box.width * 0.55,
+      top_hit_box.y + top_hit_box.height * 0.45,
+    )
+    const tooltip = plot.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText(`Energy`)
+    await expect(tooltip).toContainText(`x density`)
+    await expect.poll(() => tooltip.evaluate((el) => el.closest(`svg`) === null)).toBe(true)
+
+    // a drag starting on the marginal hit area must not begin a zoom selection
+    const before_drag = await get_tick_range(x_axis)
+    await page.mouse.down()
+    await page.mouse.move(top_hit_box.x + top_hit_box.width * 0.8, top_hit_box.y + 8)
+    await expect(zoom_rect).toBeHidden()
+    await page.mouse.up()
+    await expect(zoom_rect).toBeHidden()
+    expect(await get_tick_range(x_axis)).toEqual(before_drag)
+
+    // zooming the host plot shrinks both axes and recomputes the top KDE
+    const svg_box = await svg.boundingBox()
+    if (!svg_box) throw new Error(`scatter svg box missing`)
+    const initial_x = await get_tick_range(x_axis)
+    const initial_y = await get_tick_range(y_axis)
+    const top_kde_before = await top_strip.locator(`path[fill="none"]`).getAttribute(`d`)
+
+    await page.mouse.move(
+      svg_box.x + clip.x + clip.width * 0.25,
+      svg_box.y + clip.y + clip.height * 0.75,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      svg_box.x + clip.x + clip.width * 0.45,
+      svg_box.y + clip.y + clip.height * 0.55,
+      { steps: 8 },
+    )
+    await page.mouse.move(
+      svg_box.x + clip.x + clip.width * 0.65,
+      svg_box.y + clip.y + clip.height * 0.35,
+      { steps: 5 },
+    )
+    await expect(zoom_rect).toBeVisible()
+    await page.mouse.up()
+    await expect(zoom_rect).toBeHidden()
+
+    await expect(async () => {
+      const zoomed_x = await get_tick_range(x_axis)
+      const zoomed_y = await get_tick_range(y_axis)
+      const top_kde_after = await top_strip.locator(`path[fill="none"]`).getAttribute(`d`)
+      expect(zoomed_x.range).toBeGreaterThan(0)
+      expect(zoomed_y.range).toBeGreaterThan(0)
+      expect(zoomed_x.range).toBeLessThan(initial_x.range)
+      expect(zoomed_y.range).toBeLessThan(initial_y.range)
+      expect(top_kde_after).not.toBe(top_kde_before)
+    }).toPass({ timeout: 2000 })
   })
 
   // Marker and line rendering tests

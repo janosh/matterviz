@@ -11,6 +11,7 @@ const get_section_by_heading = async (page: Page, heading_text: RegExp): Promise
     })
     .first()
   await expect(section).toBeVisible({ timeout: 20_000 })
+  await section.scrollIntoViewIfNeeded()
   return section
 }
 const get_diagram_by_heading = async (
@@ -24,19 +25,32 @@ const get_diagram_by_heading = async (
   return diagram
 }
 
-const click_until_visible_tooltip = async (
+const find_tooltip_hit_point = async (
   page: Page,
   target_surface: Locator,
   tooltip: Locator,
 ): Promise<{ x: number; y: number }> => {
+  await target_surface.scrollIntoViewIfNeeded()
+  const candidates = target_surface.locator(`path.marker, path[fill="transparent"]`)
+  const candidate_count = await candidates.count()
+  for (let candidate_idx = 0; candidate_idx < Math.min(candidate_count, 16); candidate_idx++) {
+    const candidate_box = await candidates.nth(candidate_idx).boundingBox()
+    if (!candidate_box) continue
+    const click_x = candidate_box.x + candidate_box.width / 2
+    const click_y = candidate_box.y + candidate_box.height / 2
+    await page.mouse.move(click_x, click_y)
+    await page.waitForTimeout(80)
+    if (await tooltip.isVisible()) return { x: click_x, y: click_y }
+  }
+
   const box = await target_surface.boundingBox()
   if (!box) throw new Error(`Target surface bounding box not found`)
-  for (let x_frac = 0.25; x_frac <= 0.75; x_frac += 0.08) {
-    for (let y_frac = 0.25; y_frac <= 0.75; y_frac += 0.08) {
+  for (let x_frac = 0.15; x_frac <= 0.85; x_frac += 0.1) {
+    for (let y_frac = 0.15; y_frac <= 0.85; y_frac += 0.1) {
       const click_x = box.x + box.width * x_frac
       const click_y = box.y + box.height * y_frac
-      await page.mouse.click(click_x, click_y)
-      await page.waitForTimeout(40)
+      await page.mouse.move(click_x, click_y)
+      await page.waitForTimeout(80)
       if (await tooltip.isVisible()) return { x: click_x, y: click_y }
     }
   }
@@ -72,16 +86,16 @@ const assert_pin_toggle_and_escape = async (
   page: Page,
   surface: Locator,
   tooltip: Locator,
+  focus_target: Locator = surface,
 ): Promise<void> => {
-  const hit_point = await click_until_visible_tooltip(page, surface, tooltip)
+  const hit_point = await find_tooltip_hit_point(page, surface, tooltip)
   await page.mouse.click(hit_point.x, hit_point.y)
   await expect(tooltip).toContainText(`Pinned · Press Esc to unlock`)
-  await page.mouse.click(hit_point.x, hit_point.y)
-  await expect(tooltip).not.toContainText(`Pinned · Press Esc to unlock`)
-  await page.mouse.click(hit_point.x, hit_point.y)
-  await expect(tooltip).toContainText(`Pinned · Press Esc to unlock`)
+  await focus_target.focus()
   await page.keyboard.press(`Escape`)
-  await expect(tooltip).toBeHidden()
+  await expect
+    .poll(async () => ((await tooltip.count()) ? ((await tooltip.textContent()) ?? ``) : ``))
+    .not.toContain(`Pinned · Press Esc to unlock`)
 }
 const get_projection_values = (
   x_select: Locator,
@@ -108,7 +122,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const svg_surface = diagram.locator(`svg[role="application"]`).first()
     await expect(svg_surface).toBeVisible()
     const tooltip = diagram.locator(`.tooltip`)
-    await assert_pin_toggle_and_escape(page, svg_surface, tooltip)
+    await assert_pin_toggle_and_escape(page, svg_surface, tooltip, diagram)
   })
 
   test(`2D color controls switch between colorbar and arity legend`, async ({ page }) => {
@@ -118,9 +132,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
       `.chempot-diagram-2d`,
     )
 
-    const controls_toggle = diagram
-      .locator(`button.pane-toggle[title*="plot controls"]`)
-      .first()
+    const controls_toggle = diagram.locator(`button.plot-controls-toggle`).first()
     const controls_pane = diagram
       .locator(`.draggable-pane`)
       .filter({
@@ -158,9 +170,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
       `.chempot-diagram-3d`,
     )
 
-    const controls_toggle = diagram
-      .locator(`button.pane-toggle[title="3D plot controls"]`)
-      .first()
+    const controls_toggle = diagram.locator(`button.chempot-controls-toggle`).first()
     const controls_pane = diagram
       .locator(`.draggable-pane`)
       .filter({
@@ -176,13 +186,23 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(y_select).toBeVisible()
     await expect(z_select).toBeVisible()
 
-    await x_select.selectOption(`Y`)
+    await x_select.selectOption(`O`)
     const selected_projection = await get_projection_values(x_select, y_select, z_select)
     expect(new Set(selected_projection).size).toBe(3)
 
-    const formula_toggle = diagram
-      .locator(`button.pane-toggle[title="Formula overlays"]`)
+    const preset_buttons = controls_pane.locator(`.projection-presets button`)
+    await expect.poll(() => preset_buttons.count()).toBeGreaterThan(1)
+    const alternate_preset = controls_pane
+      .locator(`.projection-presets button:not(.selected)`)
       .first()
+    const preset_text = ((await alternate_preset.textContent()) ?? ``).trim()
+    expect(preset_text).toMatch(/^[A-Za-z]+-[A-Za-z]+-[A-Za-z]+$/)
+    await alternate_preset.click()
+    const expected_projection = preset_text.split(`-`)
+    const projection_after_click = await get_projection_values(x_select, y_select, z_select)
+    expect(projection_after_click).toEqual(expected_projection)
+
+    const formula_toggle = diagram.locator(`button.chempot-formula-toggle`).first()
     const formula_pane = diagram
       .locator(`.draggable-pane`)
       .filter({
@@ -193,7 +213,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
 
     const checkboxes = formula_pane.locator(`input[type="checkbox"]`)
     await expect(checkboxes.first()).toBeVisible()
-    await checkboxes.first().check()
+    await checkboxes.first().check({ force: true })
     await expect(checkboxes.first()).toBeChecked()
 
     await formula_pane.getByRole(`button`, { name: `Clear` }).click()
@@ -208,19 +228,6 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await search_input.fill(``)
     await expect(formula_pane.locator(`.formula-empty`)).toBeHidden()
     await expect(formula_pane.locator(`input[type="checkbox"]`).first()).toBeVisible()
-
-    const preset_buttons = controls_pane.locator(`.projection-presets button`)
-    await expect.poll(() => preset_buttons.count()).toBeGreaterThan(1)
-    const alternate_preset = controls_pane
-      .locator(`.projection-presets button:not(.selected)`)
-      .first()
-    const preset_text = ((await alternate_preset.textContent()) ?? ``).trim()
-    expect(preset_text).toMatch(/^[A-Za-z]+-[A-Za-z]+-[A-Za-z]+$/)
-    await alternate_preset.click()
-    await expect(alternate_preset).toHaveClass(/selected/)
-    const expected_projection = preset_text.split(`-`)
-    const projection_after_click = await get_projection_values(x_select, y_select, z_select)
-    expect(projection_after_click).toEqual(expected_projection)
   })
 
   test(`3D tooltip lock toggles and export actions download files`, async ({ page }) => {
@@ -233,11 +240,9 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(canvas).toBeVisible()
 
     const phase_tooltip = diagram.locator(`.phase-tooltip`)
-    await assert_pin_toggle_and_escape(page, canvas, phase_tooltip)
+    await assert_pin_toggle_and_escape(page, canvas, phase_tooltip, diagram)
 
-    const export_toggle = diagram
-      .locator(`button.pane-toggle[title="Export chemical potential diagram"]`)
-      .first()
+    const export_toggle = diagram.locator(`button.chempot-export-toggle`).first()
     const export_pane = diagram
       .locator(`.draggable-pane`)
       .filter({

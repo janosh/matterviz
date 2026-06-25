@@ -540,26 +540,26 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`keeps unique fill ID hover stable when source index changes`, async () => {
-    let fill_regions = $state<FillRegion[]>([
-      { id: `target`, lower: 0, upper: 0.2, fill: `steelblue` },
-    ])
+    const state = $state({
+      fill_regions: [{ id: `target`, lower: 0, upper: 0.2, fill: `steelblue` }],
+    })
     mount(ScatterPlot, {
       target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        x_axis: { range: [0, 1] as Vec2 },
-        y_axis: { range: [0, 1] as Vec2 },
-        get fill_regions() {
-          return fill_regions
+      props: bind_props(
+        {
+          series: [{ x: [0, 1], y: [0, 1] }],
+          x_axis: { range: [0, 1] as Vec2 },
+          y_axis: { range: [0, 1] as Vec2 },
+          legend: null,
+          style: `width: 400px; height: 300px;`,
         },
-        legend: null,
-        style: `width: 400px; height: 300px;`,
-      },
+        state,
+      ),
     })
     await resize_element(doc_query(`.scatter`), 400, 300)
 
     await hover(svg_query(`[aria-label="Fill region 0"]`))
-    fill_regions = [
+    state.fill_regions = [
       { id: `inserted`, lower: 0.3, upper: 0.4, fill: `transparent` },
       { id: `target`, lower: 0, upper: 0.2, fill: `steelblue` },
     ]
@@ -593,21 +593,23 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`hidden fill keeps its legend item so it can be toggled back on`, async () => {
-    let fill_regions = $state<FillRegion[]>([
-      { id: `band`, label: `Band`, lower: 0, upper: 0.5, fill: `steelblue` },
-    ])
+    const state = $state({
+      fill_regions: [
+        { id: `band`, label: `Band`, lower: 0, upper: 0.5, fill: `steelblue` },
+      ] as FillRegion[],
+    })
     mount(ScatterPlot, {
       target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        x_axis: { range: [0, 1] as Vec2 },
-        y_axis: { range: [0, 1] as Vec2 },
-        get fill_regions() {
-          return fill_regions
+      props: bind_props(
+        {
+          series: [{ x: [0, 1], y: [0, 1] }],
+          x_axis: { range: [0, 1] as Vec2 },
+          y_axis: { range: [0, 1] as Vec2 },
+          legend: {},
+          style: `width: 400px; height: 300px;`,
         },
-        legend: {},
-        style: `width: 400px; height: 300px;`,
-      },
+        state,
+      ),
     })
     await resize_element(doc_query(`.scatter`), 400, 300)
     await tick()
@@ -622,7 +624,7 @@ describe(`ScatterPlot`, () => {
     expect(fill_item()).toBeDefined()
 
     // hide it (what clicking the legend fill item does via the fill_regions binding)
-    fill_regions = [{ ...fill_regions[0], visible: false }]
+    state.fill_regions = [{ ...state.fill_regions[0], visible: false }]
     flushSync()
     await tick()
 

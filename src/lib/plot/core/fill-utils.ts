@@ -241,8 +241,7 @@ const LINE_CURVE_TO_FILL: Record<LineCurve, FillCurveType> = {
   'catmull-rom': `catmullRom`,
 }
 const line_curve_to_fill = (curve: LineCurve | undefined): FillCurveType =>
-  // ?? monotoneX guards an unknown string from an untyped (Python/JSON) caller, matching
-  // Line.svelte's `CURVE_FACTORIES[curve] ?? curveMonotoneX` fallback
+  // ?? monotoneX guards an unknown string from an untyped (Python/JSON) caller
   (curve ? LINE_CURVE_TO_FILL[curve] : undefined) ?? `monotoneX`
 
 // Resolve a boundary to native points + curve in data coordinates. `companion` supplies x
@@ -492,6 +491,12 @@ const CURVE_MAP: Record<FillCurveType, CurveFactory> = {
 
 const get_curve = (curve_type: FillCurveType): CurveFactory =>
   CURVE_MAP[curve_type] ?? curveMonotoneX
+
+// Resolve a public LineCurve (a series' `line_style.curve`) to its d3 CurveFactory. Single source
+// of truth shared by Line.svelte and PlotMarginals.svelte (composes the LineCurve -> FillCurveType
+// -> CurveFactory maps); unknown/undefined falls back to curveMonotoneX.
+export const line_curve_factory = (curve: LineCurve | undefined): CurveFactory =>
+  get_curve(line_curve_to_fill(curve))
 
 const trace = (points: readonly Pt[], curve_type: FillCurveType): string =>
   line<Pt>()

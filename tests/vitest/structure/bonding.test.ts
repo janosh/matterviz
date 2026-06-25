@@ -32,6 +32,14 @@ const make_random_structure = (n_atoms: number): Crystal => {
   )
 }
 
+// Find the bond between two site indices regardless of stored order
+const find_bond = (bonds: BondPair[], idx_a: number, idx_b: number): BondPair | undefined =>
+  bonds.find(
+    (bond) =>
+      (bond.site_idx_1 === idx_a && bond.site_idx_2 === idx_b) ||
+      (bond.site_idx_1 === idx_b && bond.site_idx_2 === idx_a),
+  )
+
 describe(`Bonding Algorithms`, () => {
   const algorithms: [BondingAlgo, BondingStrategy, Vec2[]][] = [
     [
@@ -843,135 +851,25 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   // 6. It sees "Short" neighbor. Distance 2.0. Accepted.
   //    Result: Image Na has 1 bond (or 2 bonds with different strengths).
 
-  const Na_props = { element: `Na` as const, occu: 1, oxidation_state: 0 }
-  const Cl_props = { element: `Cl` as const, occu: 1, oxidation_state: 0 }
+  // Two copies of identical local geometry (a Na with a "Long" 3.0 A and a "Short" 2.0 A Cl
+  // neighbor): sites 0-2 are originals, 3-5 are images (orig_site_idx 0,1,2) placed 100 A away.
+  const structure = make_crystal(1000, [
+    { element: `Na`, xyz: [0, 0, 0], properties: { orig_site_idx: 0 } },
+    { element: `Cl`, xyz: [3, 0, 0], properties: { orig_site_idx: 1 } }, // Long (3.0 A)
+    { element: `Cl`, xyz: [0, 2, 0], properties: { orig_site_idx: 2 } }, // Short (2.0 A)
+    { element: `Na`, xyz: [100, 0, 0], properties: { orig_site_idx: 0 } },
+    { element: `Cl`, xyz: [103, 0, 0], properties: { orig_site_idx: 1 } }, // Long image
+    { element: `Cl`, xyz: [100, 2, 0], properties: { orig_site_idx: 2 } }, // Short image
+  ])
 
-  const structure: Crystal = {
-    sites: [
-      // 0: Original Na
-      {
-        species: [Na_props],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `Na`,
-        properties: { orig_site_idx: 0 },
-      },
-      // 1: Cl at distance 3.0 (Long)
-      {
-        species: [Cl_props],
-        abc: [0, 0, 0],
-        xyz: [3.0, 0, 0],
-        label: `Cl_long`,
-        properties: { orig_site_idx: 1 },
-      },
-      // 2: Cl at distance 2.0 (Short)
-      {
-        species: [Cl_props],
-        abc: [0, 0, 0],
-        xyz: [0, 2.0, 0],
-        label: `Cl_short`,
-        properties: { orig_site_idx: 2 },
-      },
+  // Threshold tuned so the Long-bond penalty (applied once closest=2.0 is known) drops it below
+  // threshold. Pre-fix the original kept 2 bonds (it saw Long before Short set closest) while the
+  // image kept 1; the fix gathers all closest distances before penalizing, so both bond the same.
+  const bonds = bonding.electroneg_ratio(structure, { strength_threshold: 0.6 })
+  const bond_count = (anchor: number) =>
+    bonds.filter((bond) => bond.site_idx_1 === anchor || bond.site_idx_2 === anchor).length
 
-      // 3: Image Na (shifted by 10 in y, but we manually place neighbors relative to it to mimic periodicity)
-      // Actually, we can just place it far away and give it its own neighbors with same local geometry
-      {
-        species: [Na_props],
-        abc: [0, 0, 0],
-        xyz: [100, 0, 0],
-        label: `Na_img`,
-        properties: { orig_site_idx: 0 },
-      },
-      // 4: Image Cl Long (relative to Na_img: +3.0 x)
-      {
-        species: [Cl_props],
-        abc: [0, 0, 0],
-        xyz: [103.0, 0, 0],
-        label: `Cl_long_img`,
-        properties: { orig_site_idx: 1 },
-      },
-      // 5: Image Cl Short (relative to Na_img: +2.0 y)
-      {
-        species: [Cl_props],
-        abc: [0, 0, 0],
-        xyz: [100, 2.0, 0],
-        label: `Cl_short_img`,
-        properties: { orig_site_idx: 2 },
-      },
-    ],
-    lattice: {
-      matrix: [
-        [1000, 0, 0],
-        [0, 1000, 0],
-        [0, 0, 1000],
-      ],
-      pbc: [true, true, true],
-      a: 1000,
-      b: 1000,
-      c: 1000,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 1e9,
-    },
-  }
-
-  // We expect bonds:
-  // 0-1 (dist 3.0), 0-2 (dist 2.0)
-  // 3-4 (dist 3.0), 3-5 (dist 2.0)
-
-  // To trigger the penalty effectively, we need the penalty to push strength below threshold (default 0.3).
-  // Base strength for Na-Cl is high (metal-nonmetal bonus 1.5, en diff ~2.1 > 1.7 -> 1.3 bonus).
-  // Na(0.93) Cl(3.16). Diff=2.23.
-  // Strength ~= 1.0 * 1.5 (metal-nonmetal) * 1.3 (en_diff) = 1.95.
-  // Distance weight: dist/expected. Na(1.54)+Cl(0.99) = 2.53.
-  // Long (3.0): ratio = 3.0/2.53 = 1.18. Weight = exp(-((1.18-1)^2)/0.18) = exp(-0.032/0.18) = exp(-0.18) ~= 0.83.
-  // Short (2.0): ratio = 2.0/2.53 = 0.79. Weight = exp(-((0.79-1)^2)/0.18) = exp(-0.044/0.18) = exp(-0.24) ~= 0.78.
-  //
-  // Strength Long ~= 1.95 * 0.83 = 1.6.
-  // Strength Short ~= 1.95 * 0.78 = 1.5.
-  //
-  // Penalty: if dist > closest.
-  // closest = 2.0.
-  // Long (3.0) > 2.0. Ratio 1.5.
-  // Penalty = exp(-(1.5 - 1) / 0.5) = exp(-0.5 / 0.5) = exp(-1) = 0.36.
-  // Penalized Long Strength = 1.6 * 0.36 = 0.57.
-  // Still > 0.3 threshold?
-  //
-  // Let's adjust distances to make penalty more severe or initial strength lower.
-  // Or increase threshold.
-
-  const options = {
-    strength_threshold: 0.6, // Increase threshold so penalized bond drops below
-  }
-
-  const bonds = bonding.electroneg_ratio(structure, options)
-
-  const bonds_orig = bonds.filter((bond) => bond.site_idx_1 === 0 || bond.site_idx_2 === 0)
-  const bonds_img = bonds.filter((bond) => bond.site_idx_1 === 3 || bond.site_idx_2 === 3)
-
-  // If bug exists:
-  // Orig will have 2 bonds (Short + Long, because Long processed first)
-  // Img will have 1 bond (Short only, because Long processed after Short was known via Orig)
-
-  // Sort bonds by length for easier debugging
-  bonds_orig.sort((a, b) => a.bond_length - b.bond_length)
-  bonds_img.sort((a, b) => a.bond_length - b.bond_length)
-
-  expect(bonds_img).toHaveLength(bonds_orig.length)
-
-  // If fixed, both should have 1 bond (because the penalty is now applied to both)
-  // Or both have 2 (if penalty wasn't strong enough).
-  // In our case, we tuned threshold so penalty should remove Long bond.
-  // Wait, if penalty removes Long bond, then both should have 1 bond.
-  // With bug: Orig had 2, Img had 1.
-  // With fix: Both should have 1 (consistent).
-
-  // Actually, the "fix" ensures that original also sees the penalty from the short bond
-  // because we calculate closest distances for all pairs BEFORE applying penalties.
-  // So the Short bond (2.0) will penalize the Long bond (3.0) even for the original atom.
-
-  expect(bonds_orig).toHaveLength(bonds_img.length)
+  expect(bond_count(3)).toBe(bond_count(0)) // image (idx 3) bonds identically to original (idx 0)
 })
 test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bonds`, () => {
   // Benzene-like fragment: C bonded to C and H.
@@ -988,69 +886,17 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
   // C-C is the "closest" in normalized space. C-H is slightly further.
   // Both should survive.
 
-  const C_props = { element: `C` as const, occu: 1, oxidation_state: 0 }
-  const H_props = { element: `H` as const, occu: 1, oxidation_state: 0 }
-
-  const structure: Crystal = {
-    sites: [
-      // Central C
-      {
-        species: [C_props],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `C1`,
-        properties: { orig_site_idx: 0 },
-      },
-      // Neighbor H (1.09 A away)
-      {
-        species: [H_props],
-        abc: [0, 0, 0],
-        xyz: [1.09, 0, 0],
-        label: `H1`,
-        properties: { orig_site_idx: 1 },
-      },
-      // Neighbor C (1.40 A away)
-      {
-        species: [C_props],
-        abc: [0, 0, 0],
-        xyz: [0, 1.4, 0],
-        label: `C2`,
-        properties: { orig_site_idx: 2 },
-      },
-    ],
-    lattice: {
-      matrix: [
-        [10, 0, 0],
-        [0, 10, 0],
-        [0, 0, 10],
-      ],
-      pbc: [true, true, true],
-      a: 10,
-      b: 10,
-      c: 10,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 1000,
-    },
-  }
+  const structure = make_crystal(10, [
+    { element: `C`, xyz: [0, 0, 0] }, // central C
+    { element: `H`, xyz: [1.09, 0, 0] }, // C-H at 1.09 A (shorter raw distance)
+    { element: `C`, xyz: [0, 1.4, 0] }, // C-C at 1.40 A (closer in normalized space)
+  ])
 
   const bonds = bonding.electroneg_ratio(structure)
 
-  // We expect C1-H1 and C1-C2.
-  const c_h = bonds.find(
-    (bond) =>
-      (bond.site_idx_1 === 0 && bond.site_idx_2 === 1) ||
-      (bond.site_idx_1 === 1 && bond.site_idx_2 === 0),
-  )
-  const c_c = bonds.find(
-    (bond) =>
-      (bond.site_idx_1 === 0 && bond.site_idx_2 === 2) ||
-      (bond.site_idx_1 === 2 && bond.site_idx_2 === 0),
-  )
-
-  expect(c_h).toBeDefined()
-  expect(c_c).toBeDefined()
+  // Both C1-H1 and C1-C2 must survive (normalized distance keeps the longer C-C bond)
+  expect(find_bond(bonds, 0, 1)).toBeDefined()
+  expect(find_bond(bonds, 0, 2)).toBeDefined()
 })
 
 test(`bonding logic treats original and image atoms consistently`, () => {
@@ -1099,73 +945,18 @@ test(`bonding logic treats original and image atoms consistently`, () => {
 })
 
 test(`electroneg_ratio ignores weak bonds for closest neighbor penalty`, () => {
-  const Na_props = { element: `Na` as const, occu: 1, oxidation_state: 0 }
-  const Cl_props = { element: `Cl` as const, occu: 1, oxidation_state: 0 }
+  const structure = make_crystal(10, [
+    { element: `Na`, xyz: [0, 0, 0] },
+    { element: `Na`, xyz: [2, 0, 0] }, // weak (metal-metal, same species), short 2.0 A
+    { element: `Cl`, xyz: [0, 3, 0] }, // strong (ionic), longer 3.0 A
+  ])
 
-  const structure: Crystal = {
-    sites: [
-      {
-        species: [Na_props],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `Na`,
-        properties: { orig_site_idx: 0 },
-      },
-      // Weak neighbor (metal-metal, same species) at short distance
-      {
-        species: [Na_props],
-        abc: [0, 0, 0],
-        xyz: [2.0, 0, 0],
-        label: `Na_weak`,
-        properties: { orig_site_idx: 1 },
-      },
-      // Strong neighbor (ionic) at longer distance
-      {
-        species: [Cl_props],
-        abc: [0, 0, 0],
-        xyz: [0, 3.0, 0],
-        label: `Cl_strong`,
-        properties: { orig_site_idx: 2 },
-      },
-    ],
-    lattice: {
-      matrix: [
-        [10, 0, 0],
-        [0, 10, 0],
-        [0, 0, 10],
-      ],
-      pbc: [true, true, true],
-      a: 10,
-      b: 10,
-      c: 10,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 1000,
-    },
-  }
+  // Na-Na (2.0 A) is weak -> rejected by threshold; Na-Cl (3.0 A) is strong -> accepted. If the
+  // rejected Na-Na wrongly set the "closest" distance, Na-Cl would be over-penalized and dropped.
+  const bonds = bonding.electroneg_ratio(structure, { strength_threshold: 0.4 })
 
-  // Na-Na (2.0A): weak -> should be rejected by threshold
-  // Na-Cl (3.0A): strong -> should be accepted
-  // If Na-Na incorrectly sets "closest" distance despite being rejected,
-  // Na-Cl gets penalized heavily and might be rejected too.
-  const bonds = bonding.electroneg_ratio(structure, {
-    strength_threshold: 0.4,
-  })
-
-  const na_na = bonds.find(
-    (bond) =>
-      (bond.site_idx_1 === 0 && bond.site_idx_2 === 1) ||
-      (bond.site_idx_1 === 1 && bond.site_idx_2 === 0),
-  )
-  const na_cl = bonds.find(
-    (bond) =>
-      (bond.site_idx_1 === 0 && bond.site_idx_2 === 2) ||
-      (bond.site_idx_1 === 2 && bond.site_idx_2 === 0),
-  )
-
-  expect(na_na).toBeUndefined()
-  expect(na_cl).toBeDefined()
+  expect(find_bond(bonds, 0, 1)).toBeUndefined() // weak Na-Na rejected
+  expect(find_bond(bonds, 0, 2)).toBeDefined() // strong Na-Cl survives
 })
 
 describe(`remap_bonds_after_deletion`, () => {
@@ -1189,5 +980,56 @@ describe(`remap_bonds_after_deletion`, () => {
     [`preserves order and cell_shift`, [bond(2, 3, shifted)], [0], [bond(1, 2, shifted)]],
   ])(`%s`, (_desc, bonds, deleted, expected) => {
     expect(bonding.remap_bonds_after_deletion(bonds, new Set(deleted))).toEqual(expected)
+  })
+})
+
+describe(`compute_bonds memo`, () => {
+  const structure = get_test_structure([
+    { xyz: [0, 0, 0], element: `Fe` },
+    { xyz: [2, 0, 0], element: `O` },
+    { xyz: [4, 0, 0], element: `C` },
+  ])
+
+  test(`matches the underlying strategy result`, () => {
+    expect(bonding.compute_bonds(structure, `electroneg_ratio`)).toEqual(
+      bonding.electroneg_ratio(structure),
+    )
+  })
+
+  test(`repeated identical calls reuse the cached array (multi-view dedup)`, () => {
+    // simulate the 4 panes computing bonds for the same structure in one flush
+    const first = bonding.compute_bonds(structure, `electroneg_ratio`, {})
+    const second = bonding.compute_bonds(structure, `electroneg_ratio`, {})
+    expect(second).toBe(first) // same reference => no recompute
+  })
+
+  const other_structure = get_test_structure([{ xyz: [0, 0, 0] }])
+  test.each([
+    [`different structure`, other_structure, `electroneg_ratio`, {}],
+    [`different strategy`, structure, `solid_angle`, {}],
+    [`different options`, structure, `electroneg_ratio`, { max_distance_ratio: 3 }],
+  ] as const)(`recomputes on %s`, (_desc, struct, strategy, options) => {
+    const base = bonding.compute_bonds(structure, `electroneg_ratio`, {})
+    const next = bonding.compute_bonds(struct, strategy, options)
+    expect(next).not.toBe(base)
+  })
+
+  test(`caches per-structure so interleaved distinct structures don't thrash`, () => {
+    // Two Structure components on one page compute bonds for different structures in the same
+    // flush. A single global memo slot would evict each other every call; the per-structure
+    // WeakMap keeps both warm so repeat calls still hit the cache.
+    const a1 = bonding.compute_bonds(structure, `electroneg_ratio`, {})
+    const b1 = bonding.compute_bonds(other_structure, `electroneg_ratio`, {})
+    expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(a1)
+    expect(bonding.compute_bonds(other_structure, `electroneg_ratio`, {})).toBe(b1)
+  })
+
+  test(`alternating strategies/options on one structure reuse results (no slot thrash)`, () => {
+    // A single { sig, bonds } slot per structure would evict the prior result on every
+    // strategy/options switch; the per-signature map keeps each warm so switching back hits cache.
+    const eneg = bonding.compute_bonds(structure, `electroneg_ratio`, {})
+    const solid = bonding.compute_bonds(structure, `solid_angle`, {})
+    expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(eneg)
+    expect(bonding.compute_bonds(structure, `solid_angle`, {})).toBe(solid)
   })
 })

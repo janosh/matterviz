@@ -50,10 +50,12 @@ jobs:
         run: corepack enable && pnpm install && pnpm run package:dist
         working-directory: .
 
-      # Install dash extension deps
+      # --ignore-workspace: the root install above can auto-create a pnpm-workspace.yaml
+      # (pnpm cooldown for freshly released deps) that makes this standalone install a
+      # no-op, leaving node_modules missing (matterviz/app.css then fails to resolve).
       - name: Install Dash extension dependencies
         run: |
-          pnpm install
+          pnpm install --ignore-workspace
           pip install -e ".[dev]"
 
       # Sync typed wrappers using local matterviz dist (not npm version)

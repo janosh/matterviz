@@ -849,8 +849,8 @@ describe(`real example files`, () => {
 
     // Use ArrayBuffer for binary formats, string for text
     const is_binary = [`brml`, `raw`].includes(base_ext ?? ``)
-    const input = is_binary ? content.buffer : content.toString()
-    const result = await parse_xrd_file(input as string | ArrayBuffer, base_filename)
+    const input = is_binary ? new Uint8Array(content).buffer : content.toString()
+    const result = await parse_xrd_file(input, base_filename)
 
     expect(result).not.toBeNull()
     if (!result) return // Type guard for TypeScript

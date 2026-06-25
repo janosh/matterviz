@@ -21,6 +21,7 @@
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
+  import StructureViewport from './StructureViewport.svelte'
   import type {
     AnyStructure,
     BondEditMode,
@@ -28,8 +29,10 @@
     Crystal,
     MeasureMode,
     StructureBond,
+    StructureView,
   } from '$lib/structure'
   import {
+    DEFAULT_STRUCTURE_VIEWS,
     default_vector_configs,
     get_element_counts,
     get_pbc_image_sites,
@@ -45,13 +48,12 @@
   import * as symmetry from '$lib/symmetry'
   import { transform_cell } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { Camera, OrthographicCamera, Scene } from 'three'
+  import type { Camera, Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
@@ -107,6 +109,8 @@
     lattice_props: lattice_props_in = $bindable(),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
+    multi_view = $bindable(false),
+    views = DEFAULT_STRUCTURE_VIEWS,
     enable_measure_mode = $bindable(true),
     measure_mode = $bindable<MeasureMode>(`distance`),
     bond_edit_mode = $bindable<BondEditMode>(`add`),
@@ -215,6 +219,12 @@
       bond_edit_mode?: BondEditMode
       bond_edit_order?: BondOrder
       info_pane_open?: boolean
+      // When true, split the canvas into a 2x2 grid showing the structure from
+      // different angles (Ovito-style). Each pane has independent orbit controls.
+      multi_view?: boolean
+      // The 4 (or more) view definitions used by multi_view. Defaults to an
+      // Ovito-like set: one perspective + three orthographic axis views.
+      views?: StructureView[]
       fullscreen_toggle?: FullscreenToggleProp
       bottom_left?: Snippet<[{ structure?: AnyStructure }]>
       top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
@@ -667,7 +677,6 @@
   // Add-atom sub-mode state (bound to StructureScene)
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
-  let canvas_cursor = $state(`default`)
   let is_measure_selection_mode = $derived(
     measure_mode === `distance` || measure_mode === `angle`,
   )
@@ -971,16 +980,41 @@
         : struct
   })
 
-  // Track if camera has ever been moved from initial position
-  let camera_has_moved = $state(false)
-  let camera_is_moving = $state(false)
+  // scene + camera of the primary pane, bound out for the export pane. All other camera
+  // handling (move tracking, reset, re-framing) lives in StructureViewport.
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
-  let orbit_controls = $state<
-    ComponentProps<typeof StructureScene>[`orbit_controls`]
-  >(undefined)
-  let rotation_target_ref = $state<Vec3 | undefined>(undefined)
-  let initial_computed_zoom = $state<number | undefined>(undefined)
+
+  // Multi-side view state: index of the pane the pointer is over (gets edit interactions),
+  // a token bumped to reset every pane, and the set of panes whose camera has moved (so
+  // the reset button stays visible until every moved pane is reset). Pane 0 = primary.
+  let active_pane_idx = $state(0)
+  let reset_token = $state(0)
+  // SvelteSet is already reactive; do NOT wrap in $state (double-proxying breaks it)
+  const moved_panes = new SvelteSet<number>()
+  let any_camera_moved = $derived(moved_panes.size > 0)
+
+  // Inputs shared by every StructureViewport (single + all multi-view panes). Camera,
+  // selection bindings, and per-pane chrome differ and stay on each snippet below.
+  let shared_viewport_props = $derived({
+    structure: displayed_structure,
+    base_structure: cell_transformed_structure,
+    scene_props,
+    gizmo: scene_gizmo,
+    lattice_props,
+    volumetric_data: supercell_volume,
+    isosurface_settings,
+    bond_edits_enabled,
+    bond_edit_order,
+    measure_mode,
+    atom_color_config,
+    sym_data,
+    active_sites: active_scene_sites,
+    on_sites_moved: handle_sites_moved,
+    on_operation_start: push_undo,
+    on_bond_edit_start: push_bond_undo,
+    on_add_atom: handle_add_atom,
+  })
 
   // Mutual exclusion: opening one pane closes others
   $effect(() => {
@@ -999,89 +1033,27 @@
     }
   })
 
-  // Reset tracking when structure changes
+  // Reset moved-pane tracking when structure changes
   $effect(() => {
-    if (structure) camera_has_moved = false
+    // untrack: clearing must not add moved_panes as a dependency, else a pane move
+    // (which adds to moved_panes) would immediately re-run this and clear it again.
+    if (structure) untrack(() => moved_panes.clear())
   })
 
   // Clear stale camera target and position so StructureScene uses the new
   // structure's rotation_target (unit cell center) and auto-positions the camera.
   function clear_camera_state() {
+    // Reset to a fresh [0,0,0] so the primary viewport re-frames the new structure.
+    // Side panes reset their local camera state in StructureViewport's structure effect.
     scene_props.camera_target = undefined
     scene_props.camera_position = [0, 0, 0]
   }
 
-  const read_orbit_target = (): Vec3 | undefined => {
-    if (!orbit_controls?.target) return
-    const { x, y, z } = orbit_controls.target
-    return [x, y, z]
-  }
-
-  const read_camera_position = (): Vec3 | undefined =>
-    camera
-      ? [camera.position.x, camera.position.y, camera.position.z]
-      : scene_props.camera_position
-
-  // Emit debounced camera updates while controls are active.
-  $effect(() => {
-    if (!camera_is_moving) return
-    camera_has_moved = true
-
-    const emit_camera_move = () => {
-      const camera_position = read_camera_position()
-      if (camera_position === undefined) return
-      const camera_target = read_orbit_target()
-      scene_props.camera_position = camera_position
-      scene_props.camera_target = camera_target
-      on_camera_move?.({
-        structure,
-        camera_has_moved,
-        camera_position,
-        camera_target,
-      })
-    }
-
-    emit_camera_move()
-    const emit_interval = setInterval(emit_camera_move, 200)
-    return () => clearInterval(emit_interval)
-  })
-
-  function reset_camera() {
-    // Reset camera position to trigger automatic positioning.
-    scene_props.camera_position = [0, 0, 0]
-    scene_props.camera_target = rotation_target_ref
-    camera_has_moved = false
-
-    let camera_position: Vec3 = [0, 0, 0]
-    let camera_target: Vec3 | undefined = rotation_target_ref
-
-    // Reset pan/zoom and ensure controls target returns to structure center.
-    if (orbit_controls && camera) {
-      if (
-        `reset` in orbit_controls &&
-        typeof orbit_controls.reset === `function`
-      ) orbit_controls.reset()
-      if (orbit_controls.target && rotation_target_ref) {
-        const [target_x, target_y, target_z] = rotation_target_ref
-        orbit_controls.target.set(target_x, target_y, target_z)
-      }
-
-      // Reset zoom for orthographic camera
-      if (`zoom` in camera && initial_computed_zoom !== undefined) {
-        const ortho_camera = camera as OrthographicCamera
-        ortho_camera.zoom = initial_computed_zoom
-        ortho_camera.updateProjectionMatrix()
-      }
-
-      // Call update to apply changes immediately
-      if (typeof orbit_controls.update === `function`) orbit_controls.update()
-      camera_position = read_camera_position() ?? camera_position
-      camera_target = read_orbit_target()
-    }
-
-    scene_props.camera_position = camera_position
-    scene_props.camera_target = camera_target
-    on_camera_reset?.({ structure, camera_has_moved, camera_position, camera_target })
+  // Reset every pane's camera (each StructureViewport resets on a reset_token bump and,
+  // for the primary, emits on_camera_reset).
+  function reset_all_cameras() {
+    reset_token += 1
+    moved_panes.clear()
   }
 
   const emit_file_load_event = (
@@ -1331,6 +1303,11 @@
     } else if (event.key === `i` && has_modifier && enable_info_pane) {
       info_pane_open = !info_pane_open
       return true
+    } else if (
+      event.key === `g` && has_modifier && controls_config.visible(`multi-view`)
+    ) {
+      multi_view = !multi_view
+      return true
     } else if (event.key === `Escape`) {
       // Prioritize closing panes, then exit edit modes, then exit fullscreen
       if (info_pane_open) info_pane_open = false
@@ -1510,9 +1487,9 @@
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
   class:gizmo-visible={Boolean(scene_gizmo)}
+  class:multi-view={multi_view}
   role="application"
   tabindex="0"
-  style:--canvas-cursor={canvas_cursor}
   aria-label="Structure viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -1524,17 +1501,6 @@
     if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
       focused = false
     }
-  }}
-  ondblclick={(event) => {
-    const target = event.target
-    if (!(target instanceof HTMLElement)) return
-    // Don't reset if double-click was on UI controls/panes/legend
-    if (
-      [`.control-buttons`, `.structure-legend`, `.atom-legend`, `.info-pane`, `.export-pane`, `.controls-pane`].some((selector) => target.closest(selector))
-      || target.tagName === `BUTTON` || target.tagName === `INPUT` || target.tagName === `SELECT`
-    ) return
-    // Reset camera for double-clicks on the 3D scene
-    reset_camera()
   }}
   ondrop={handle_file_drop}
   {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
@@ -1553,10 +1519,10 @@
     <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if (structure?.sites?.length ?? 0) > 0}
     {#snippet reset_camera_btn()}
-      {#if camera_has_moved && controls_config.visible(`reset-camera`)}
+      {#if any_camera_moved && controls_config.visible(`reset-camera`)}
         <button
           class="reset-camera"
-          onclick={reset_camera}
+          onclick={reset_all_cameras}
           title={reset_text}
           aria-label={reset_text}
         >
@@ -1574,6 +1540,20 @@
       before={reset_camera_btn}
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch"
     >
+      {#if controls_config.visible(`multi-view`)}
+        <button
+          class="multi-view-toggle"
+          class:active={multi_view}
+          onclick={() => (multi_view = !multi_view)}
+          title="Toggle multi-side view 2×2 grid (Cmd/Ctrl+G)"
+          aria-label="Toggle multi-side view"
+          aria-pressed={multi_view}
+          {@attach tooltip()}
+        >
+          <Icon icon="Grid2x2" />
+        </button>
+      {/if}
+
       {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
         <div
           class="measure-mode-dropdown"
@@ -1587,6 +1567,7 @@
             class:active={measure_menu_open}
             aria-expanded={measure_menu_open}
             style="transform: scale(1.2)"
+            {@attach tooltip()}
           >
             {#if show_measure_selection_limit}
               <span class="selection-limit-text">
@@ -1863,56 +1844,89 @@
       {/snippet}
     </AtomLegend>
 
+    <!-- One StructureViewport renders the single view; four render the 2x2 multi-view.
+      The primary pane (index 0) carries the external camera API: scene/camera are bound
+      out for export and camera_position/target persist into scene_props, and it emits
+      on_camera_move/on_camera_reset. All camera handling itself lives in StructureViewport. -->
+    {#snippet primary_viewport(view: StructureView)}
+      <StructureViewport
+        in_grid={multi_view}
+        label={multi_view ? view.label : undefined}
+        active={multi_view && active_pane_idx === 0}
+        interactive={!multi_view || active_pane_idx === 0}
+        onactivate={() => (active_pane_idx = 0)}
+        {reset_token}
+        report_moved={(moved) =>
+        moved ? moved_panes.add(0) : moved_panes.delete(0)}
+        {on_camera_move}
+        {on_camera_reset}
+        {...shared_viewport_props}
+        camera_direction={view.direction}
+        camera_projection={view.projection ?? scene_props.camera_projection}
+        bind:camera_position={scene_props.camera_position}
+        bind:camera_target={scene_props.camera_target}
+        bind:scene
+        bind:camera
+        bind:selected_sites
+        bind:measured_sites
+        bind:hovered_site_idx
+        bind:hidden_elements
+        bind:hidden_prop_vals
+        bind:element_radius_overrides
+        bind:site_radius_overrides
+        bind:added_bonds
+        bind:removed_bonds
+        bind:bond_order_overrides
+        bind:bond_edit_mode
+        bind:add_atom_mode
+        bind:add_element
+        bind:dragging_atoms
+        bind:polyhedra_rendered_elements
+      />
+    {/snippet}
+
+    {#snippet extra_viewport(view: StructureView, pane_idx: number)}
+      <StructureViewport
+        in_grid
+        label={view.label}
+        active={active_pane_idx === pane_idx}
+        interactive={active_pane_idx === pane_idx}
+        onactivate={() => (active_pane_idx = pane_idx)}
+        {reset_token}
+        report_moved={(moved) =>
+        moved ? moved_panes.add(pane_idx) : moved_panes.delete(pane_idx)}
+        {...shared_viewport_props}
+        camera_direction={view.direction}
+        camera_projection={view.projection ?? scene_props.camera_projection}
+        bind:selected_sites
+        bind:measured_sites
+        bind:hovered_site_idx
+        bind:hidden_elements
+        bind:hidden_prop_vals
+        bind:element_radius_overrides
+        bind:site_radius_overrides
+        bind:added_bonds
+        bind:removed_bonds
+        bind:bond_order_overrides
+        bind:bond_edit_mode
+        bind:add_atom_mode
+        bind:add_element
+        bind:dragging_atoms
+      />
+    {/snippet}
+
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
-      <!-- prevent HTML labels from rendering outside of the canvas -->
-      <div style="overflow: hidden; height: 100%; width: 100%">
-        <Canvas>
-          <StructureScene
-            structure={displayed_structure}
-            base_structure={cell_transformed_structure}
-            {...scene_props}
-            gizmo={scene_gizmo}
-            {lattice_props}
-            volumetric_data={supercell_volume}
-            {isosurface_settings}
-            bind:camera_is_moving
-            bind:selected_sites
-            active_sites={active_scene_sites}
-            bind:hovered_idx={hovered_site_idx}
-            bind:measured_sites
-            bind:scene
-            bind:camera
-            bind:orbit_controls
-            bind:rotation_target_ref
-            bind:initial_computed_zoom
-            bind:hidden_elements
-            bind:hidden_prop_vals
-            bind:element_radius_overrides
-            bind:site_radius_overrides
-            bind:added_bonds
-            bind:removed_bonds
-            bind:bond_order_overrides
-            {bond_edits_enabled}
-            bind:bond_edit_mode
-            {bond_edit_order}
-            {measure_mode}
-            {width}
-            {height}
-            {atom_color_config}
-            {sym_data}
-            on_sites_moved={handle_sites_moved}
-            on_operation_start={push_undo}
-            on_bond_edit_start={push_bond_undo}
-            on_add_atom={handle_add_atom}
-            bind:add_atom_mode
-            bind:add_element
-            bind:cursor={canvas_cursor}
-            bind:dragging_atoms
-            bind:polyhedra_rendered_elements
-          />
-        </Canvas>
-      </div>
+      {#if multi_view}
+        <div class="viewport-grid">
+          {@render primary_viewport(views[0] ?? {})}
+          {#each views.slice(1) as view, idx (idx)}
+            {@render extra_viewport(view, idx + 1)}
+          {/each}
+        </div>
+      {:else}
+        {@render primary_viewport({})}
+      {/if}
     {/if}
 
     <div class="bottom-left">
@@ -1958,13 +1972,29 @@
     background: var(--struct-bg-fullscreen, var(--struct-bg));
     overflow: hidden;
   }
-  .structure:fullscreen :global(canvas) {
+  /* Single view: stretch the lone canvas to the full screen in fullscreen mode.
+    In multi-view the grid fills the screen and each canvas fills its 1fr cell. */
+  .structure:fullscreen:not(.multi-view) :global(canvas) {
     height: 100vh !important;
     width: 100vw !important;
   }
   .structure.dragover {
     background: var(--struct-dragover-bg, var(--dragover-bg));
     border: var(--struct-dragover-border, var(--dragover-border));
+  }
+  /* 2x2 multi-side view grid: four equal subcanvases. grid-auto-rows keeps rows
+    equal-height if a custom `views` array supplies more than four entries. */
+  .viewport-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    grid-auto-rows: 1fr;
+    gap: var(--struct-viewport-gap, 2px);
+    height: 100%;
+    width: 100%;
+  }
+  .multi-view-toggle.active {
+    color: var(--accent-color, #4a9eff);
   }
   /* Ensure canvas is transparent so the themed --struct-bg shows through */
   .structure :global(canvas) {
@@ -2035,7 +2065,7 @@
   .measure-mode-dropdown > button {
     background: transparent;
     padding: 1px 6px;
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
+    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
   }
   .selection-limit-text {
     font-weight: bold;

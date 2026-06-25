@@ -1,5 +1,6 @@
 import type { Vec2 } from '$lib/math'
 import { BinnedScatterPlot, type BinnedDensityConfig } from '$lib/plot'
+import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -328,7 +329,7 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     binned_plot().dispatchEvent(
-      new MouseEvent(`click`, { bubbles: true, clientX: 437, clientY: 284 }),
+      new MouseEvent(`click`, { bubbles: true, clientX: 437, clientY: 280 }),
     )
 
     expect(on_point_click).toHaveBeenCalledOnce()
@@ -390,15 +391,15 @@ describe(`BinnedScatterPlot`, () => {
           pointerId: 1,
         }),
       )
-    pointer(`pointerdown`, 206, 440, 0)
-    pointer(`pointermove`, 633, 128)
-    pointer(`pointerup`, 633, 128)
+    pointer(`pointerdown`, 206, 436, 0)
+    pointer(`pointermove`, 633, 124)
+    pointer(`pointerup`, 633, 124)
     await tick()
 
-    plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 283 }))
+    plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 247 }))
     expect(on_density_zoom).not.toHaveBeenCalled()
 
-    plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 283 }))
+    plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 247 }))
     expect(on_density_zoom).toHaveBeenCalledTimes(1)
     await tick()
 
@@ -432,7 +433,7 @@ describe(`BinnedScatterPlot`, () => {
       await settle()
 
       binned_plot().dispatchEvent(
-        new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 283 }),
+        new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 247 }),
       )
 
       expect(on_point_click).toHaveBeenCalledTimes(point_clicks)
@@ -498,7 +499,7 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     doc_query(`.binned-scatter`).dispatchEvent(
-      new PointerEvent(`pointermove`, { bubbles: true, clientX: 420, clientY: 283 }),
+      new PointerEvent(`pointermove`, { bubbles: true, clientX: 420, clientY: 247 }),
     )
     await tick()
 
@@ -509,10 +510,75 @@ describe(`BinnedScatterPlot`, () => {
     expect(tooltip.style.color).toBe(`#ffffff`)
 
     doc_query(`.binned-scatter`).dispatchEvent(
-      new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 283 }),
+      new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 247 }),
     )
     expect(on_point_click).toHaveBeenCalledWith(
       expect.objectContaining({ color: interpolateViridis(0) }),
+    )
+  })
+
+  // Regression: colorless multi-series must use the series index color everywhere. This catches the
+  // old get_series_color(0)-for-all fallback in both point rendering and per-series marginals.
+  test(`colorless series use distinct per-index colors`, async () => {
+    const fill_styles: string[] = []
+    const ctx = mock_canvas_context()
+    Object.defineProperty(ctx, `fillStyle`, {
+      get: () => fill_styles.at(-1) ?? ``,
+      set: (value: string) => void fill_styles.push(value),
+    })
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series: [
+          { x: [0.2], y: [0.2] }, // series 0
+          { x: [0.5], y: [0.5] }, // series 1
+        ],
+        marginals: { top: { type: `histogram`, per_series: true } },
+        density: point_mode(),
+        style: `width: 800px; height: 600px`,
+        x_axis: { range: [0, 1] },
+        y_axis: { range: [0, 1] },
+      },
+    })
+    await settle()
+    expect(render_mode()).toBe(`points`)
+    // draw_points paints each colorless series with its index color (canvas fillStyle)
+    expect(fill_styles).toContain(get_series_color(0))
+    expect(fill_styles).toContain(get_series_color(1))
+    // per-series marginals get the same index colors so they're visually distinguishable
+    const marginal_fills = new Set(
+      [...document.querySelectorAll(`.marginal-top rect`)].map((rect) =>
+        rect.getAttribute(`fill`),
+      ),
+    )
+    expect(marginal_fills.has(get_series_color(0))).toBe(true)
+    expect(marginal_fills.has(get_series_color(1))).toBe(true)
+  })
+
+  // point_color carries the per-index color into the click payload (no marginals so the plot area
+  // isn't shrunk by a marginal reservation and the click maps to series 1 at (0.5, 0.5))
+  test(`point click payload carries the per-index color`, async () => {
+    const on_point_click = vi.fn()
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series: [
+          { x: [0.2], y: [0.2] }, // series 0, away from the click
+          { x: [0.5], y: [0.5] }, // series 1, under the click at (420, 280)
+        ],
+        density: point_mode(),
+        style: `width: 800px; height: 600px`,
+        x_axis: { range: [0, 1] },
+        y_axis: { range: [0, 1] },
+        on_point_click,
+      },
+    })
+    await settle()
+    binned_plot().dispatchEvent(
+      new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 280 }),
+    )
+    expect(on_point_click).toHaveBeenCalledWith(
+      expect.objectContaining({ series_idx: 1, color: get_series_color(1) }),
     )
   })
 
@@ -560,7 +626,7 @@ describe(`BinnedScatterPlot`, () => {
     const first_label = labels[0]
     if (!first_leader) throw new Error(`missing first point label leader`)
     if (!first_label) throw new Error(`missing first point label`)
-    const point_center = { x: 420, y: 284 }
+    const point_center = { x: 420, y: 280 }
     const label_center = {
       x: parseFloat(first_label.style.left),
       y: parseFloat(first_label.style.top),
@@ -670,13 +736,13 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     binned_plot().dispatchEvent(
-      new PointerEvent(`pointermove`, { bubbles: true, clientX: 420, clientY: 284 }),
+      new PointerEvent(`pointermove`, { bubbles: true, clientX: 420, clientY: 280 }),
     )
     await tick()
     expect(document.querySelector(`.custom-point-tooltip`)?.textContent).toBe(`label-wbm-1`)
 
     binned_plot().dispatchEvent(
-      new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 284 }),
+      new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 280 }),
     )
     expect(on_point_click).toHaveBeenCalledWith(
       expect.objectContaining({ point_data: { label: `label-wbm-1` } }),
@@ -831,7 +897,7 @@ describe(`BinnedScatterPlot`, () => {
 
     accesses = 0
     binned_plot().dispatchEvent(
-      new PointerEvent(`pointermove`, { bubbles: true, clientX: 420, clientY: 283 }),
+      new PointerEvent(`pointermove`, { bubbles: true, clientX: 420, clientY: 280 }),
     )
     expect(accesses).toBe(0)
   })

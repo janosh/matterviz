@@ -19,12 +19,12 @@
     LegendConfig,
     RefLine3D,
     RefPlane,
-    ScaleType,
     Scatter3DHandlerEvent,
     SizeScaleConfig,
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
+  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { Canvas } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { onMount } from 'svelte'
@@ -54,17 +54,9 @@
     },
     styles = {},
     // Color and size scaling
-    color_scale = {
-      type: `linear` as ScaleType,
-      scheme: `interpolateViridis` as D3InterpolateName,
-      value_range: undefined,
-    },
+    color_scale = SCALE_DEFAULTS.color,
     color_bar = {},
-    size_scale = {
-      type: `linear` as ScaleType,
-      radius_range: [0.05, 0.2],
-      value_range: undefined,
-    },
+    size_scale = SCALE_DEFAULTS.size_3d,
     // Legend
     legend = {},
     // Camera settings

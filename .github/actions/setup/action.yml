@@ -18,4 +18,7 @@ runs:
       run: |
         corepack enable
         pnpm install
-        for ext in $EXTENSIONS; do pnpm -C "extensions/$ext" install; done
+        # --ignore-workspace: a freshly released dep trips pnpm's cooldown
+        # (minimumReleaseAge), auto-creating a pnpm-workspace.yaml that makes these
+        # standalone extension installs no-ops (skipping anywidget/@types/node/matterviz).
+        for ext in $EXTENSIONS; do pnpm -C "extensions/$ext" install --ignore-workspace; done

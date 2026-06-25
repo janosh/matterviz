@@ -13,10 +13,14 @@
   import { create_pulse_animation } from '$lib/effects.svelte'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
+  import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
-  import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
+  import { compute_element_placement, DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
+  import { get_series_color } from '$lib/plot/core/data-transform'
+  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
   import {
     build_pick_index,
     bin_points,
@@ -32,6 +36,7 @@
   import type { DensityBin, DenseInternalPoint, DensePointSeries } from '$lib/plot/scatter/adaptive-density'
   import { create_color_scale, create_scale, create_size_scale, generate_ticks } from '$lib/plot/core/scales'
   import type { AxisConfig, DataSeries, InternalPoint, ScatterHandlerProps } from '$lib/plot/core/types'
+  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import {
     compute_label_positions,
     estimate_label_size,
@@ -43,7 +48,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type {
-    BinnedColorScaleConfig,
     BinnedDensityConfig,
     BinnedOverlaysConfig,
     BinnedPointDataFn,
@@ -52,6 +56,7 @@
     BinnedPointTooltipPayload,
     BinnedSizeScaleConfig,
   } from '$lib/plot/scatter/binned-scatter-types'
+  import { DEFAULT_BINNED_SIZE_SCALE } from '$lib/plot/scatter/binned-scatter-types'
 
   type RenderMode = `density` | `points`
   type DensePointEvent = {
@@ -65,29 +70,15 @@
     event: MouseEvent
   }
   type OverlayContext = { height: number; width: number; fullscreen: boolean }
-  const default_color_bar_size = { width: 220, height: 10 }
   const default_density_auto_point_mode = { max_points: 25_000, max_points_per_px: 0.12 }
   const default_density_color_bar: ComponentProps<typeof ColorBar> = { title: `Density` }
-  const default_density_color_scale = {
-    type: `linear`,
-    scheme: `interpolateViridis`,
-  } satisfies Exclude<BinnedColorScaleConfig, string>
-  const default_pad = { l: 64, r: 24, t: 24, b: 56 }
-  const default_point_radius_range: Vec2 = [4, 12]
-  const default_pick_radius = default_point_radius_range[1]
-  const default_size_scale = {
-    type: `linear`,
-    radius_range: default_point_radius_range,
-    pick_radius: default_pick_radius,
-  } satisfies BinnedSizeScaleConfig
   const max_placement_bins = 500
-  const default_point_color = `#4dabf7`
 
   let {
     series,
     x_axis = {},
     y_axis = {},
-    size_scale = default_size_scale,
+    size_scale = DEFAULT_BINNED_SIZE_SCALE,
     density: density_config = {},
     overlays: overlays_config = {},
     padding: padding_config = {},
@@ -103,6 +94,7 @@
     fullscreen_toggle = true,
     children,
     header_controls,
+    marginals = false,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
     series: DensePointSeries<Metadata>[]
@@ -124,6 +116,7 @@
     fullscreen_toggle?: boolean
     children?: Snippet<[OverlayContext]>
     header_controls?: Snippet<[OverlayContext]>
+    marginals?: MarginalsProp
   } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
@@ -143,10 +136,30 @@
   let label_sizes = new SvelteMap<string, LabelSize>()
   const clip_path_id = `binned-scatter-plot-area-${next_clip_id++}`
 
-  let pad = $derived(filter_padding(padding_config, default_pad))
+  const resolved_marginals = $derived(
+    normalize_marginals(marginals, { top: true, right: true }),
+  )
+  // Unlike the other 2D plots this one doesn't auto-grow padding for tick labels, so this
+  // shared default is its final pad (merged with any user `padding`), not just a floor.
+  let pad = $derived(
+    add_sides(
+      filter_padding(padding_config, DEFAULT_PLOT_PADDING),
+      reserve_marginal_pad(resolved_marginals),
+    ),
+  )
+  const marginal_series = $derived<MarginalSeriesInput[]>(
+    series.map((srs, idx) => ({
+      x: srs.x,
+      y: srs.y,
+      color: srs.color ?? get_series_color(idx),
+      label: srs.label,
+      visible: true,
+    })),
+  )
+  const marginal_has_axis = marginal_axis_presence(false, false)
   let density_settings = $derived({
     bin_px: density_config.bin_px ?? 2.8,
-    color_scale: density_config.color_scale ?? default_density_color_scale,
+    color_scale: density_config.color_scale ?? SCALE_DEFAULTS.color,
     color_bar: density_config.color_bar === undefined ? default_density_color_bar : density_config.color_bar,
     auto_point_mode: density_config.auto_point_mode === undefined
       ? default_density_auto_point_mode
@@ -267,7 +280,7 @@
       tick_labels: color_bar.tick_labels ?? 4,
       tick_side: color_bar.tick_side ?? `primary`,
       bar_style: color_bar.bar_style ??
-        `width: ${default_color_bar_size.width}px; height: ${default_color_bar_size.height}px; ${color_bar.style ?? ``}`,
+        `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.binned_bar_height}px; ${color_bar.style ?? ``}`,
     }
   })
   let density_placement_points = $derived.by(() => {
@@ -308,7 +321,7 @@
     // renders; compute_element_placement measures the real footprint once laid out
     const fallback_size = is_vertical
       ? { width: 56, height: 120 }
-      : { width: default_color_bar_size.width, height: 50 }
+      : { width: COLOR_BAR_DEFAULTS.width, height: 50 }
 
     return compute_element_placement({
       plot_bounds: plot_rect,
@@ -346,12 +359,12 @@
     return values
   })
   let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
-  let min_point_radius = $derived(size_scale.radius_range?.[0] ?? default_point_radius_range[0])
-  let max_point_radius = $derived(size_scale.radius_range?.[1] ?? default_point_radius_range[1])
+  let min_point_radius = $derived(size_scale.radius_range?.[0] ?? SCALE_DEFAULTS.binned_radius[0])
+  let max_point_radius = $derived(size_scale.radius_range?.[1] ?? SCALE_DEFAULTS.binned_radius[1])
   let pick_radius_px = $derived(
     size_scale.pick_radius === `auto`
       ? max_point_radius
-      : size_scale.pick_radius ?? default_pick_radius,
+      : size_scale.pick_radius ?? SCALE_DEFAULTS.binned_radius[1],
   )
 
   $effect(() => {
@@ -432,7 +445,7 @@
     const [y_min, y_max] = range_bounds(y_range)
     const pulse = selected_pulse.unit
     for (const [series_idx, srs] of series.entries()) {
-      ctx.fillStyle = srs.color ?? default_point_color
+      ctx.fillStyle = srs.color ?? get_series_color(series_idx)
       const n_points = Math.min(srs.x.length, srs.y.length)
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
@@ -452,7 +465,7 @@
         ctx.fill()
         if (is_selected) {
           ctx.globalAlpha = 0.35 + 0.25 * pulse
-          ctx.strokeStyle = srs.color ?? default_point_color
+          ctx.strokeStyle = srs.color ?? get_series_color(series_idx)
           ctx.lineWidth = 1.5 + pulse
           ctx.beginPath()
           ctx.arc(cx, cy, radius * (1.45 + 0.25 * pulse), 0, 2 * Math.PI)
@@ -513,7 +526,7 @@
   })
 
   const point_color = (point: DenseInternalPoint<Metadata>): string =>
-    series[point.series_idx]?.color ?? default_point_color
+    series[point.series_idx]?.color ?? get_series_color(point.series_idx)
 
   const point_label_key = (point: DenseInternalPoint<Metadata>): string =>
     `${point.series_idx}-${point.point_idx}`
@@ -905,6 +918,21 @@
         {/each}
       </g>
     {/if}
+
+    <!-- Marginal distribution strips -->
+    <PlotMarginals
+      marginals={resolved_marginals}
+      series={marginal_series}
+      {width}
+      {height}
+      {pad}
+      has_axis={marginal_has_axis}
+      axes={{
+        x1: marginal_axis(x_scale_fn, x_range, x_axis),
+        y1: marginal_axis(y_scale_fn, y_range, y_axis),
+      }}
+      id={clip_path_id}
+    />
   </svg>
 
   {#if point_labels_settings.render && point_label_payloads.length}

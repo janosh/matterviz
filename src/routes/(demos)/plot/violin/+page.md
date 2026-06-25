@@ -9,7 +9,9 @@ controls) is shared.
 ## Basic Usage
 
 Pass one series per distribution. Bandwidth defaults to Silverman's rule; override per series or
-globally via `bandwidth` (`'silverman'`, `'scott'`, or a number).
+globally via `bandwidth` (`'silverman'`, `'scott'`, or a number). Opt into `marginals` to add a
+value-axis distribution strip (a per-series `histogram` here) — the same `marginals` API shared
+across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)):
 
 ```svelte example
 <script lang="ts">
@@ -31,7 +33,13 @@ globally via `bandwidth` (`'silverman'`, `'scott'`, or a number).
   ]
 </script>
 
-<Violin {series} x_axis={{ label: `Model` }} y_axis={{ label: `Error` }} style="height: 400px" />
+<Violin
+  {series}
+  x_axis={{ label: `Model` }}
+  y_axis={{ label: `Error` }}
+  marginals={{ right: { type: `histogram`, size: 90 } }}
+  style="height: 400px"
+/>
 ```
 
 ## Violin + Box Overlay
