@@ -52,6 +52,7 @@ class Structure(MatterViz):
         loading: bool | None = None,
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
+        multi_view: bool | None = None,
         performance_mode: Any | None = None,
         png_dpi: float | None = None,
         reset_text: str | None = None,
@@ -64,6 +65,7 @@ class Structure(MatterViz):
         structure_string: str | None = None,
         sym_data: Any | None = None,
         symmetry_settings: dict | None = None,
+        views: list | None = None,
         volumetric_data: list | None = None,
         width: float | None = None,
         mv_props: dict | None = None,
@@ -133,6 +135,8 @@ class Structure(MatterViz):
             mv_props["measure_mode"] = measure_mode
         if measured_sites is not None:
             mv_props["measured_sites"] = measured_sites
+        if multi_view is not None:
+            mv_props["multi_view"] = multi_view
         if performance_mode is not None:
             mv_props["performance_mode"] = performance_mode
         if png_dpi is not None:
@@ -157,6 +161,8 @@ class Structure(MatterViz):
             mv_props["sym_data"] = sym_data
         if symmetry_settings is not None:
             mv_props["symmetry_settings"] = symmetry_settings
+        if views is not None:
+            mv_props["views"] = views
         if volumetric_data is not None:
             mv_props["volumetric_data"] = volumetric_data
         if width is not None:
