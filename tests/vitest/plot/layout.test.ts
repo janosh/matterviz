@@ -367,7 +367,8 @@ describe(`layout utility functions`, () => {
         padding: { t: 10, l: 80 },
         default_padding: defaults,
       })
-      expect(result).toEqual({ t: 10, l: 80, b: 60, r: 30 })
+      // no y2 ticks -> r is the plain default (no tick-label/title reservation)
+      expect(result).toEqual({ t: 10, l: 80, b: 60, r: 20 })
     })
 
     it(`left padding is at least default when y-axis has ticks`, () => {
@@ -441,6 +442,21 @@ describe(`layout utility functions`, () => {
         x2_axis: { tick_values: [1, 2], label: `Energy` },
       })
       expect(with_label.t - without.t).toBe(AXIS_LABEL_HEIGHT)
+    })
+
+    // y/y2 axis titles must reserve their rotated width too, else a wide tick label (e.g.
+    // "-789.389") pushes the title into the ticks (mirrors the x2 reservation above)
+    it.each([
+      [`l`, `y_axis`],
+      [`r`, `y2_axis`],
+    ] as const)(`%s reserves AXIS_LABEL_HEIGHT for the %s title`, (side, axis_key) => {
+      const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
+      const without = calc_auto_padding({ ...base, [axis_key]: { tick_values: [1, 2] } })
+      const with_label = calc_auto_padding({
+        ...base,
+        [axis_key]: { tick_values: [1, 2], label: `Energy (eV)` },
+      })
+      expect(with_label[side] - without[side]).toBe(AXIS_LABEL_HEIGHT)
     })
   })
 })

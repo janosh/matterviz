@@ -4,7 +4,7 @@
 
 ## Basic Usage
 
-Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switch orientation, whisker mode, and toggle outliers/mean.
+Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switch orientation, whisker mode, and toggle outliers/mean. Opt into `marginals` to pair each box with the full distribution shape on the value axis (a per-series KDE here) — the same `marginals` API shared across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)):
 
 ```svelte example
 <script lang="ts">
@@ -35,6 +35,7 @@ Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switc
   {series}
   x_axis={{ label: `Model` }}
   y_axis={{ label: `Error` }}
+  marginals={{ right: { type: `kde`, size: 90 } }}
   style="height: 400px"
 />
 ```
@@ -156,7 +157,7 @@ Set `show_value_labels` to print the median (or mean, via `value_label_stat`) ab
 
 ## Horizontal Orientation
 
-Set `orientation="horizontal"` to lay boxes out along the value axis (categories on the y-axis).
+Set `orientation="horizontal"` to lay boxes out along the value axis (categories on the y-axis). The `marginals` strip transposes with the plot — the per-series KDE flips from the right (vertical) to the top (horizontal) so it always summarizes the value axis:
 
 ```svelte example
 <script lang="ts">
@@ -174,6 +175,7 @@ Set `orientation="horizontal"` to lay boxes out along the value axis (categories
   orientation="horizontal"
   x_axis={{ label: `Error` }}
   y_axis={{ label: `Model` }}
+  marginals={{ top: { type: `kde`, size: 90 } }}
   style="height: 360px"
 />
 ```

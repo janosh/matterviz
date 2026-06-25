@@ -23,6 +23,16 @@
     },
   }
 
+  const marginal_browser_series: DataSeries[] = [
+    {
+      x: [0.4, 0.8, 1.2, 1.7, 2.2, 2.9, 3.4, 4.2, 5.1, 6.3, 7.2, 8.4, 9.1],
+      y: [8.8, 7.4, 8.1, 6.6, 6.9, 5.7, 6.1, 5.1, 4.5, 3.7, 2.9, 2.2, 1.4],
+      label: `Browser marginal series`,
+      markers: `points`,
+      point_style: { fill: `#0ca678`, radius: 4, stroke: `white`, stroke_width: 1 },
+    },
+  ]
+
   // === Marker Types Data ===
   const points_data = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -610,6 +620,20 @@
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
     controls={{ show: true }}
+  />
+</section>
+
+<section id="marginals-browser-regression">
+  <h2>Marginals Browser Regression</h2>
+  <ScatterPlot
+    series={marginal_browser_series}
+    x_axis={{ label: `Energy`, range: [0, 10] }}
+    y_axis={{ label: `Score`, range: [0, 10] }}
+    marginals={{
+      top: { type: `kde`, size: 76, label: `x density` },
+      right: { type: `histogram`, size: 76, bins: 8, label: `y count` },
+    }}
+    style="height: 430px; width: 620px"
   />
 </section>
 

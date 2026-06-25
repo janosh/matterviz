@@ -7,11 +7,18 @@ import type {
   ScatterHandlerProps,
   SizeScaleConfig,
 } from '$lib/plot/core/types'
+import { SCALE_DEFAULTS } from '$lib/plot/core/types'
 import type { ComponentProps, Snippet } from 'svelte'
 
 export type BinnedColorScaleConfig = ColorScaleConfig | D3InterpolateName
 
 export type BinnedSizeScaleConfig = SizeScaleConfig & { pick_radius?: number | `auto` }
+
+export const DEFAULT_BINNED_SIZE_SCALE: BinnedSizeScaleConfig = {
+  type: `linear`,
+  radius_range: SCALE_DEFAULTS.binned_radius,
+  pick_radius: SCALE_DEFAULTS.binned_radius[1],
+}
 
 export type BinnedDensityConfig = {
   bin_px?: number

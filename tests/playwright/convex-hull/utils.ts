@@ -10,33 +10,18 @@ export async function ensure_pane_visible(pane: Locator, opener_btn: Locator): P
   }
 }
 
-// Open a DraggablePane by mirroring the DOM state it has after a successful toggle.
-// Programmatic clicks can miss delegated Svelte handlers in these tests, so direct DOM
-// updates avoid flaky pane-opening setup.
+// Open a DraggablePane through its toggle and retry while WebGL-heavy pages settle.
 async function open_pane(
   page: Page,
   diagram: Locator,
   pane_selector: string,
-  toggle_selector?: string,
+  toggle_selector: string,
 ): Promise<Locator> {
   const pane = diagram.locator(`.draggable-pane.${pane_selector}`)
+  const toggle = diagram.locator(toggle_selector).first()
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    // Match DraggablePane's open state closely enough for visibility checks.
-    await diagram.evaluate(
-      (el, { sel, toggle_sel }) => {
-        const pane_el = el.querySelector(`.${sel}`) as HTMLElement
-        if (pane_el) {
-          pane_el.style.display = `grid`
-          pane_el.classList.add(`pane-open`)
-          if (toggle_sel) {
-            const toggle = el.querySelector(toggle_sel)
-            if (toggle) toggle.setAttribute(`aria-expanded`, `true`)
-          }
-        }
-      },
-      { sel: pane_selector, toggle_sel: toggle_selector ?? null },
-    )
+    await dom_click(toggle)
     await page.waitForTimeout(200)
     if (await pane.isVisible()) return pane
   }
@@ -52,7 +37,7 @@ export const open_controls_pane = (page: Page, diagram: Locator): Promise<Locato
   )
 
 export const open_info_pane = (page: Page, diagram: Locator): Promise<Locator> =>
-  open_pane(page, diagram, `convex-hull-info-pane`)
+  open_pane(page, diagram, `convex-hull-info-pane`, `.info-btn`)
 
 export async function open_info_and_controls(
   diagram: Locator,
@@ -86,8 +71,5 @@ export const get_canvas_hash = (canvas: Locator): Promise<string> =>
     return hash.toString()
   })
 
-// Single protocol round-trip (locator.evaluate auto-waits for the element). The previous
-// elementHandle -> evaluate -> dispose dance took 3 round-trips, which stalled for 80+ s
-// on main-thread-saturated pages (10+ canvases with rAF pulse loops on the demo page).
-export const dom_click = (target: Locator): Promise<void> =>
-  target.evaluate((el) => (el as HTMLElement).click())
+// Dispatch directly through Playwright so canvas overlays cannot intercept control clicks.
+export const dom_click = (target: Locator): Promise<void> => target.dispatchEvent(`click`)

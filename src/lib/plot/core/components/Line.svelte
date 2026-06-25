@@ -1,19 +1,11 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
+  import { line_curve_factory } from '$lib/plot/core/fill-utils'
   import type { LineCurve } from '$lib/plot/core/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
-  import type { CurveFactory } from 'd3-shape'
-  import {
-    curveBasis,
-    curveCatmullRom,
-    curveLinear,
-    curveMonotoneX,
-    curveNatural,
-    curveStep,
-    line,
-  } from 'd3-shape'
+  import { line } from 'd3-shape'
   import { untrack } from 'svelte'
   import { linear } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
@@ -42,16 +34,8 @@
     curve?: LineCurve
   } = $props()
 
-  const CURVE_FACTORIES: Record<LineCurve, CurveFactory> = {
-    linear: curveLinear,
-    monotone: curveMonotoneX,
-    natural: curveNatural,
-    step: curveStep,
-    basis: curveBasis,
-    'catmull-rom': curveCatmullRom,
-  }
-  // fall back to monotone for unknown strings from untyped (Python/JSON) callers
-  let curve_fn = $derived(CURVE_FACTORIES[curve] ?? curveMonotoneX)
+  // falls back to monotone for unknown strings from untyped (Python/JSON) callers
+  let curve_fn = $derived(line_curve_factory(curve))
   let lineGenerator = $derived(
     line()
       .x((point) => point[0])

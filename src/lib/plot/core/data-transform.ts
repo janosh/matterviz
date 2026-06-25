@@ -13,12 +13,15 @@ export const get_series_symbol = (series_idx: number): D3SymbolName =>
 
 // Extract the primary color from a series data object.
 // Checks line stroke, then point fill (handling arrays), with fallback to default blue.
-export const extract_series_color = (series_data: DataSeries): string =>
-  (series_data.line_style?.stroke ??
+export const extract_series_color = (series_data: DataSeries): string => {
+  const color =
+    series_data.line_style?.stroke ??
     (Array.isArray(series_data.point_style)
       ? series_data.point_style[0]?.fill
-      : series_data.point_style?.fill)) || // oxlint-disable-line @typescript-eslint/prefer-nullish-coalescing -- empty fill should use default color
-  `#4A9EFF`
+      : series_data.point_style?.fill)
+  if (color) return color
+  return DEFAULTS.scatter.point.color
+}
 
 // Prepare legend data from series array
 export const prepare_legend_data = (

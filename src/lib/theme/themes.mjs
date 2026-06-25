@@ -41,6 +41,17 @@ const tooltip_bg = (light_bg, dark_bg, light_op = 0.95, dark_op = 0.95) => ({
   black: `rgba(20, 20, 20, 0.98)`,
 })
 
+// Slight contrast shading drawn behind plot SVGs and structure canvases so they read
+// as panels sitting on top of the page background. Shared so a plot and a structure
+// shown side by side (e.g. trajectory view) get an identical tint. Kept subtle; light
+// modes darken, dark modes lighten.
+const canvas_bg = {
+  light: `rgba(0, 0, 0, 0.03)`,
+  dark: `rgba(255, 255, 255, 0.07)`,
+  white: `rgba(0, 0, 0, 0.025)`,
+  black: `rgba(255, 255, 255, 0.1)`,
+}
+
 const themes = {
   // Core colors
   'page-bg': {
@@ -167,13 +178,9 @@ const themes = {
     black: `1px solid rgba(255, 255, 255, 0.075)`,
   },
 
-  // Structure-specific
-  'struct-bg': {
-    light: `rgba(0, 0, 0, 0.02)`,
-    dark: `rgba(255, 255, 255, 0.07)`,
-    white: `rgba(0, 0, 0, 0.01)`,
-    black: `rgba(255, 255, 255, 0.1)`,
-  },
+  // Plot & structure canvas backgrounds (shared subtle panel shading)
+  'plot-bg': canvas_bg,
+  'struct-bg': canvas_bg,
   'struct-bg-fullscreen': {
     light: page_bg_light,
     dark: page_bg_dark,

@@ -2,7 +2,7 @@
 
 ## Basic Histogram
 
-This example demonstrates bar styling options including `border_radius` for rounded corners and `stroke_color`/`stroke_width` for bar borders:
+This example demonstrates bar styling options including `border_radius` for rounded corners and `stroke_color`/`stroke_width` for bar borders. The `marginals` prop adds a cumulative-distribution (CDF) strip on top — it accepts `histogram`, `kde`, `cdf`, or `rug` on any side and works on every 2D plot (see the [full reference](/plot/scatter-plot#marginal-distributions)):
 
 ```svelte example
 <script lang="ts">
@@ -18,7 +18,7 @@ This example demonstrates bar styling options including `border_radius` for roun
 
   let data = $derived({
     y: generate_normal(sample_size, 50, 15),
-    label: `Normal Distribution (μ=50, σ=15)`,
+    label: `Normal Distribution (N=${format_num(sample_size, `~s`)}, μ=50, σ=15)`,
   })
 
   function handle_bar_hover(data: HistogramHandlerProps | null): void {
@@ -73,10 +73,13 @@ This example demonstrates bar styling options including `border_radius` for roun
   series={[data]}
   {bins}
   {show_controls}
+  range_padding={0}
   bar={{ border_radius, stroke_color: `#364fc7`, stroke_width: 0.5 }}
+  y_axis={{ label: `Count (N=${format_num(sample_size, `~s`)})` }}
   on_bar_hover={handle_bar_hover}
   on_bar_click={handle_bar_click}
   {tooltip}
+  marginals={{ top: `cdf` }}
   style="height: 400px"
 />
 
@@ -157,17 +160,14 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   let display = $state({ x_grid: true, y_grid: true, y2_grid: false })
   let bar = $state({ opacity: 0.6, stroke_width: 1.5 })
 
-  let series = $state([
+  const base_series = [
     { y: utils.generate_normal(1200, 5, 2), label: `Normal (μ=5, σ=2)`, line_style: { stroke: `crimson` } },
     { y: utils.generate_exponential(1200, 0.3), label: `Exponential (λ=0.3)`, line_style: { stroke: `royalblue` }, y_axis: `y2` },
     { y: utils.generate_uniform(1200, 0, 15), label: `Uniform (0-15)`, line_style: { stroke: `mediumseagreen` } },
     { y: utils.generate_gamma(1000, 2, 3), label: `Gamma (α=2, β=3)`, line_style: { stroke: `darkorange` }, y_axis: `y2` },
-  ])
-
-  function toggle_series(idx: number): void {
-    series[idx].visible = !series[idx].visible
-    series = [...series]
-  }
+  ]
+  let visible = $state(base_series.map(() => true))
+  let series = $derived(base_series.map((srs, idx) => ({ ...srs, visible: visible[idx] })))
 </script>
 
 <div style="display: flex; gap: 1em; flex-wrap: wrap; margin-block: 2em; align-items: center;">
@@ -195,9 +195,9 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   <label style="display: flex; align-items: center; gap: 4px"><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
 </div>
 
-{#each series as srs, idx (srs.label)}
+{#each base_series as srs, idx (srs.label)}
   <label style="display: flex; align-items: center; gap: 4px">
-    <input type="checkbox" checked={srs.visible} onchange={() => toggle_series(idx)} />
+    <input type="checkbox" bind:checked={visible[idx]} />
     <span style="width: 16px; height: 16px; background: {srs.line_style.stroke}"></span>
     {srs.label} {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
   </label>

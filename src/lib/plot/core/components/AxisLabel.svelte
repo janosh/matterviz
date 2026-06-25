@@ -14,6 +14,7 @@
     loading = false,
     axis_type,
     on_select,
+    width = AXIS_LABEL_CONTAINER.width,
   }: {
     x: number
     y: number
@@ -25,13 +26,15 @@
     loading?: boolean
     axis_type: `x` | `x2` | `y` | `y2`
     on_select?: (key: string) => void
+    // container width for centering/wrapping; wider lets long horizontal titles fit on one line
+    width?: number
   } = $props()
 </script>
 
 <foreignObject
-  x={x - AXIS_LABEL_CONTAINER.x_offset}
+  x={x - width / 2}
   y={y - AXIS_LABEL_CONTAINER.y_offset}
-  width={AXIS_LABEL_CONTAINER.width}
+  {width}
   height={AXIS_LABEL_CONTAINER.height}
   style="overflow: visible; pointer-events: none"
   transform={rotate ? `rotate(-90, ${x}, ${y})` : undefined}

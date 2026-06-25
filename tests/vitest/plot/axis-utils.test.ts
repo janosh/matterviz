@@ -1,5 +1,5 @@
-import type { AxisConfig, DataSeries } from '$lib/plot'
-import { create_axis_change_handler, merge_series_state } from '$lib/plot/core/axis-utils'
+import type { AxisConfig, AxisLoadError, DataLoaderFn, DataSeries } from '$lib/plot'
+import { create_axis_loader, merge_series_state } from '$lib/plot/core/axis-utils'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`merge_series_state`, () => {
@@ -50,109 +50,115 @@ describe(`merge_series_state`, () => {
     expect(merged[1].visible).toBe(false)
   })
 
-  test(`keeps new series defaults when id has no old match but value is provided`, () => {
-    const old_series: DataSeries[] = [{ id: `a`, x: [1], y: [1], visible: false }]
-    const new_series: DataSeries[] = [{ id: `c`, x: [30], y: [30], visible: true }]
-    const merged = merge_series_state(old_series, new_series)
-    expect(merged[0].visible).toBe(true)
-  })
-
-  test(`does not fall back to position when id has no old match`, () => {
-    const old_series: DataSeries[] = [{ id: `a`, x: [1], y: [1], visible: false }]
-    const new_series: DataSeries[] = [{ id: `c`, x: [30], y: [30] }]
-    const merged = merge_series_state(old_series, new_series)
-    expect(merged[0].visible).toBeUndefined()
+  // An unmatched id keeps the new series' own value (true) and never inherits by position (undefined)
+  test.each([
+    { name: `keeps provided visibility`, visible: true, expected: true },
+    { name: `does not inherit by position`, visible: undefined, expected: undefined },
+  ])(`for an unmatched id, $name`, ({ visible, expected }) => {
+    const merged = merge_series_state(
+      [{ id: `a`, x: [1], y: [1], visible: false }],
+      [{ id: `c`, x: [30], y: [30], visible }],
+    )
+    expect(merged[0].visible).toBe(expected)
   })
 })
 
-describe(`create_axis_change_handler`, () => {
-  // Create a mock state object for testing.
+describe(`create_axis_loader`, () => {
+  // Create a mock state object for testing. Each axis gets its OWN accessor so tests can
+  // verify the change is routed to the correct axis (not hardcoded to `x`).
   function create_mock_state(initial_key: string = `energy`) {
-    let axis_config: AxisConfig = { selected_key: initial_key }
     let series: DataSeries[] = []
     let loading: `x` | `x2` | `y` | `y2` | null = null
 
+    const make_axis = (key: string) => {
+      let axis_config: AxisConfig = { selected_key: key }
+      return {
+        get: vi.fn(() => axis_config),
+        set: vi.fn((config: AxisConfig) => {
+          axis_config = config
+        }),
+      }
+    }
     return {
-      get_axis: vi.fn((_axis: `x` | `x2` | `y` | `y2`) => axis_config),
-      set_axis: vi.fn((_axis: `x` | `x2` | `y` | `y2`, config: AxisConfig) => {
-        axis_config = config
-      }),
-      get_series: vi.fn(() => series),
-      set_series: vi.fn((new_series: DataSeries[]) => {
-        series = new_series
-      }),
-      get_loading: vi.fn(() => loading),
-      set_loading: vi.fn((axis: `x` | `x2` | `y` | `y2` | null) => {
-        loading = axis
-      }),
+      axes: {
+        x: make_axis(initial_key),
+        x2: make_axis(initial_key),
+        y: make_axis(initial_key),
+        y2: make_axis(initial_key),
+      },
+      series: {
+        get: vi.fn(() => series),
+        set: vi.fn((new_series: DataSeries[]) => {
+          series = new_series
+        }),
+      },
+      loading: {
+        get: vi.fn(() => loading),
+        set: vi.fn((next: `x` | `x2` | `y` | `y2` | null) => {
+          loading = next
+        }),
+      },
     }
   }
 
-  test(`does not call data_loader when key unchanged and series loaded (no-op guard)`, async () => {
+  type MockState = ReturnType<typeof create_mock_state>
+  type LoaderProps = {
+    data_loader?: DataLoaderFn<Record<string, unknown>, DataSeries>
+    on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string, series: DataSeries[]) => void
+    on_error?: (error: AxisLoadError) => void
+  }
+  const make_handler = (state: MockState, props: LoaderProps) =>
+    create_axis_loader(state, () => props).handle_axis_change
+
+  // Each guard short-circuits before touching state or calling the loader
+  test.each([
+    {
+      name: `key unchanged and series already loaded`,
+      arrange: (state: MockState) =>
+        (state.series.get = vi.fn(() => [{ x: [1], y: [1] }] as DataSeries[])),
+      with_loader: true,
+      key: `energy`,
+    },
+    { name: `data_loader is undefined`, arrange: () => {}, with_loader: false, key: `volume` },
+    {
+      name: `a load is already in progress`,
+      arrange: (state: MockState) => (state.loading.get = vi.fn(() => `y`)),
+      with_loader: true,
+      key: `volume`,
+    },
+  ])(`is a no-op when $name`, async ({ arrange, with_loader, key }) => {
     const state = create_mock_state(`energy`)
-    // Initialize with existing series so no-op guard is active
-    state.get_series = vi.fn(
-      () =>
-        [
-          {
-            x: [1],
-            y: [1],
-          },
-        ] as DataSeries[],
-    )
-    const data_loader = vi.fn().mockResolvedValue({ series: [] })
+    arrange(state)
+    const data_loader = with_loader ? vi.fn().mockResolvedValue({ series: [] }) : undefined
     const on_axis_change = vi.fn()
 
-    const handler = create_axis_change_handler(state, data_loader, on_axis_change)
+    await make_handler(state, { data_loader, on_axis_change })(`x`, key)
 
-    // Call with the same key as currently selected
-    await handler(`x`, `energy`)
-
-    // data_loader should NOT be called because key didn't change and series exists
-    expect(data_loader).not.toHaveBeenCalled()
+    if (data_loader) expect(data_loader).not.toHaveBeenCalled()
     expect(on_axis_change).not.toHaveBeenCalled()
-    expect(state.set_loading).not.toHaveBeenCalled()
+    expect(state.axes.x.set).not.toHaveBeenCalled()
+    expect(state.loading.set).not.toHaveBeenCalled()
+    expect(state.series.set).not.toHaveBeenCalled()
   })
 
-  test(`calls data_loader when key changes`, async () => {
+  // a load fires both when the key changes and when it's unchanged but series are empty (initial
+  // lazy load); both commit the series, fire on_axis_change, and clear the loading flag
+  test.each([
+    { name: `key changes`, key: `volume` },
+    { name: `key unchanged but series are empty (initial lazy load)`, key: `energy` },
+  ])(`calls data_loader when $name`, async ({ key }) => {
     const state = create_mock_state(`energy`)
-    const new_series: DataSeries[] = [{ x: [1], y: [2], label: `test` }]
+    const new_series: DataSeries[] = [{ x: [1], y: [2], label: `loaded` }]
     const data_loader = vi.fn().mockResolvedValue({ series: new_series })
     const on_axis_change = vi.fn()
 
-    const handler = create_axis_change_handler(state, data_loader, on_axis_change)
+    await make_handler(state, { data_loader, on_axis_change })(`x`, key)
 
-    await handler(`x`, `volume`)
-
-    expect(data_loader).toHaveBeenCalledWith(`x`, `volume`, [])
-    expect(on_axis_change).toHaveBeenCalledWith(`x`, `volume`, new_series)
-    expect(state.set_loading).toHaveBeenCalledWith(`x`)
-    expect(state.set_loading).toHaveBeenLastCalledWith(null)
-  })
-
-  test(`returns early when data_loader is undefined`, async () => {
-    const state = create_mock_state(`energy`)
-    const on_axis_change = vi.fn()
-
-    const handler = create_axis_change_handler(state, undefined, on_axis_change)
-
-    await handler(`x`, `volume`)
-
-    expect(state.set_axis).not.toHaveBeenCalled()
-    expect(on_axis_change).not.toHaveBeenCalled()
-  })
-
-  test(`returns early when loading in progress`, async () => {
-    const state = create_mock_state(`energy`)
-    // Simulate loading in progress
-    state.get_loading = vi.fn(() => `y`)
-    const data_loader = vi.fn().mockResolvedValue({ series: [] })
-
-    const handler = create_axis_change_handler(state, data_loader)
-
-    await handler(`x`, `volume`)
-
-    expect(data_loader).not.toHaveBeenCalled()
+    expect(data_loader).toHaveBeenCalledWith(`x`, key, [])
+    expect(on_axis_change).toHaveBeenCalledWith(`x`, key, new_series)
+    expect(state.series.set).toHaveBeenCalledWith(new_series)
+    expect(state.loading.set).toHaveBeenCalledWith(`x`)
+    expect(state.loading.set).toHaveBeenLastCalledWith(null)
   })
 
   test(`reverts selection and calls on_error on data_loader failure`, async () => {
@@ -161,56 +167,141 @@ describe(`create_axis_change_handler`, () => {
     const data_loader = vi.fn().mockRejectedValue(new Error(`Network error`))
     const on_error = vi.fn()
 
-    const handler = create_axis_change_handler(state, data_loader, undefined, on_error)
-
-    await handler(`x`, `volume`)
+    await make_handler(state, { data_loader, on_error })(`x`, `volume`)
 
     expect(on_error).toHaveBeenCalledWith({
       axis: `x`,
       key: `volume`,
       message: `Network error`,
     })
-    // Check that set_axis was called to revert (second call after initial update)
-    expect(state.set_axis).toHaveBeenCalledTimes(2)
-    expect(state.set_loading).toHaveBeenLastCalledWith(null)
+    // set called twice: initial selected_key update, then revert
+    expect(state.axes.x.set).toHaveBeenCalledTimes(2)
+    expect(state.loading.set).toHaveBeenLastCalledWith(null)
 
     error_spy.mockRestore()
   })
 
-  test(`updates axis label and unit when provided in result`, async () => {
+  // a loader result's axis_label/axis_unit overwrite the axis fields (alongside the selected_key
+  // update); empty strings (not just truthy values) overwrite, so a loader can clear them
+  test.each([
+    {
+      name: `updates label/unit when provided`,
+      seed: { selected_key: `energy` },
+      result: { axis_label: `Volume`, axis_unit: `Å³` },
+      expected: { selected_key: `volume`, label: `Volume`, unit: `Å³` },
+    },
+    {
+      name: `clears label/unit when the loader returns empty strings`,
+      seed: { selected_key: `energy`, label: `Old`, unit: `eV` },
+      result: { axis_label: ``, axis_unit: `` },
+      expected: { selected_key: `volume`, label: ``, unit: `` },
+    },
+  ])(`$name`, async ({ seed, result, expected }) => {
     const state = create_mock_state(`energy`)
-    const data_loader = vi.fn().mockResolvedValue({
-      series: [],
-      axis_label: `Volume`,
-      axis_unit: `Å³`,
-    })
+    state.axes.x.set(seed) // seed via stateful mock
+    const data_loader = vi.fn().mockResolvedValue({ series: [], ...result })
 
-    const handler = create_axis_change_handler(state, data_loader)
+    await make_handler(state, { data_loader })(`x`, `volume`)
 
-    await handler(`x`, `volume`)
-
-    // set_axis called twice: selected_key update + label/unit update
-    expect(state.set_axis).toHaveBeenCalledTimes(2)
-    expect(state.set_axis).toHaveBeenCalledWith(
-      `x`,
-      expect.objectContaining({ label: `Volume`, unit: `Å³` }),
-    )
+    expect(state.axes.x.get()).toEqual(expected)
   })
 
-  test(`calls data_loader when key unchanged but series empty (initial lazy load)`, async () => {
+  // verifies the loader READS the addressed axis (not a hardcoded `x`): y is already on `volume`
+  // with series loaded, so the no-op guard fires only if prev_key is read from `y`
+  test(`reads the addressed axis when applying the no-op guard`, async () => {
     const state = create_mock_state(`energy`)
-    // Series is empty (default), simulating initial state before any data loaded
-    const new_series: DataSeries[] = [{ x: [1], y: [2], label: `loaded` }]
+    state.axes.y.set({ selected_key: `volume` })
+    state.series.set([{ x: [1], y: [1] }] as DataSeries[])
+    const data_loader = vi.fn().mockResolvedValue({ series: [] })
+
+    await make_handler(state, { data_loader })(`y`, `volume`)
+
+    // reading `y` sees key unchanged + series present -> no-op; a regression reading `x`
+    // (key `energy`) would mismatch `volume` and wrongly trigger a load
+    expect(data_loader).not.toHaveBeenCalled()
+  })
+
+  test(`a throwing on_axis_change does not trigger the loader rollback`, async () => {
+    const state = create_mock_state(`energy`)
+    const new_series: DataSeries[] = [{ x: [1], y: [2] }]
     const data_loader = vi.fn().mockResolvedValue({ series: new_series })
-    const on_axis_change = vi.fn()
+    const on_error = vi.fn()
+    const on_axis_change = vi.fn(() => {
+      throw new Error(`consumer callback blew up`)
+    })
 
-    const handler = create_axis_change_handler(state, data_loader, on_axis_change)
+    // the load succeeded, so the callback throw must propagate -- not be swallowed as a load failure
+    await expect(
+      make_handler(state, { data_loader, on_axis_change, on_error })(`x`, `volume`),
+    ).rejects.toThrow(`consumer callback blew up`)
 
-    // Call with the SAME key as selected_key - should still load since series empty
-    await handler(`x`, `energy`)
+    expect(on_error).not.toHaveBeenCalled() // not misclassified as a loader failure
+    expect(state.series.set).toHaveBeenCalledWith(new_series) // series stays committed
+    // only the selected_key update ran; no revert set call
+    expect(state.axes.x.set).toHaveBeenCalledTimes(1)
+    expect(state.loading.set).toHaveBeenLastCalledWith(null) // loading still cleared
+  })
 
-    expect(data_loader).toHaveBeenCalledWith(`x`, `energy`, [])
-    expect(on_axis_change).toHaveBeenCalledWith(`x`, `energy`, new_series)
-    expect(state.set_series).toHaveBeenCalledWith(new_series)
+  // routes the change to the addressed axis only (guards against a hardcoded-axis regression)
+  test.each([`x`, `x2`, `y`, `y2`] as const)(
+    `routes a load to the %s axis only`,
+    async (axis) => {
+      const state = create_mock_state(`energy`)
+      const new_series: DataSeries[] = [{ x: [1], y: [2] }]
+      const data_loader = vi.fn().mockResolvedValue({ series: new_series })
+      const on_axis_change = vi.fn()
+
+      await make_handler(state, { data_loader, on_axis_change })(axis, `volume`)
+
+      expect(data_loader).toHaveBeenCalledWith(axis, `volume`, [])
+      expect(on_axis_change).toHaveBeenCalledWith(axis, `volume`, new_series)
+      expect(state.axes[axis].set).toHaveBeenCalledWith({ selected_key: `volume` })
+      for (const other of [`x`, `x2`, `y`, `y2`] as const) {
+        if (other !== axis) expect(state.axes[other].set).not.toHaveBeenCalled()
+      }
+    },
+  )
+
+  // try_auto_load picks the first axis (x before y) whose options are populated, once
+  test.each([
+    { name: `prefers x when both have options`, x_opts: true, y_opts: true, loaded: `x` },
+    {
+      name: `falls back to y when only y has options`,
+      x_opts: false,
+      y_opts: true,
+      loaded: `y`,
+    },
+    { name: `no-op when no axis has options`, x_opts: false, y_opts: false, loaded: null },
+  ])(`try_auto_load $name`, ({ x_opts, y_opts, loaded }) => {
+    const state = create_mock_state(`energy`)
+    const with_opts = (key: string) => ({ selected_key: key, options: [{ key, label: key }] })
+    state.axes.x.get = vi.fn(() => (x_opts ? with_opts(`energy`) : { selected_key: `energy` }))
+    state.axes.y.get = vi.fn(() => (y_opts ? with_opts(`volume`) : { selected_key: `volume` }))
+    const data_loader = vi.fn().mockResolvedValue({ series: [{ x: [1], y: [1] }] })
+
+    const { try_auto_load } = create_axis_loader(state, () => ({ data_loader }))
+    try_auto_load()
+
+    // data_loader is invoked synchronously up to its first await
+    if (loaded) expect(data_loader).toHaveBeenCalledWith(loaded, expect.any(String), [])
+    else expect(data_loader).not.toHaveBeenCalled()
+  })
+
+  test(`try_auto_load only attempts once even after failure`, async () => {
+    const state = create_mock_state(`energy`)
+    state.axes.x.get = vi.fn(() => ({
+      selected_key: `energy`,
+      options: [{ key: `energy`, label: `E` }],
+    }))
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const data_loader = vi.fn().mockRejectedValue(new Error(`boom`))
+
+    const { try_auto_load } = create_axis_loader(state, () => ({ data_loader }))
+    try_auto_load()
+    await Promise.resolve()
+    try_auto_load()
+
+    expect(data_loader).toHaveBeenCalledTimes(1)
+    error_spy.mockRestore()
   })
 })

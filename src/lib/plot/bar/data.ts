@@ -3,6 +3,7 @@
 // offsets and grouped-bar layout info. Extracted from BarPlot.svelte so the
 // math is unit-testable without mounting the component.
 
+import type { Vec2 } from '$lib/math'
 import { get_nice_data_range } from '$lib/plot/core/scales'
 import type { BarMode, BarSeries, Orientation, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
@@ -99,14 +100,14 @@ export interface BarAutoRangeOpts<Metadata = Record<string, unknown>> {
 // values share one sign and no explicit range is set.
 export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
   opts: BarAutoRangeOpts<Metadata>,
-): { x: number[]; x2: number[]; y: number[]; y2: number[] } {
+): { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 } {
   const { visible_series, mode, orientation, range_padding, category_count } = opts
 
   const calc_y_range = (
     series_list: readonly NumericBarSeries<Metadata>[],
     y_limit: [number | null, number | null],
     scale_type: ScaleType,
-  ) => {
+  ): Vec2 => {
     let points = series_list.flatMap((srs) =>
       srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] })),
     )
@@ -173,14 +174,14 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     limit: [number | null, number | null],
     scale_type: ScaleType,
     is_time: boolean,
-  ) => {
+  ): Vec2 => {
     const points = series_list.flatMap((srs) => srs.x.map((x_val) => ({ x: x_val, y: 0 })))
     if (points.length === 0) return [0, 1]
     return get_nice_data_range(points, (pt) => pt.x, limit, scale_type, range_padding, is_time)
   }
 
   // Categorical x axes use a fixed range centered on integer indices
-  const x_auto_range =
+  const x_auto_range: Vec2 =
     category_count > 0
       ? [-0.5, category_count - 0.5]
       : calc_x_range(
@@ -189,12 +190,8 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
           opts.x_scale_type,
           opts.x_is_time,
         )
-  const x2_auto_range = calc_x_range(
-    opts.x2_series,
-    opts.x2_range,
-    opts.x2_scale_type,
-    opts.x2_is_time,
-  )
+  const { x2_series, x2_range, x2_scale_type, x2_is_time } = opts
+  const x2_auto_range = calc_x_range(x2_series, x2_range, x2_scale_type, x2_is_time)
 
   const y1_range = calc_y_range(opts.y1_series, opts.y_range, opts.y_scale_type)
   const y2_auto_range = calc_y_range(opts.y2_series, opts.y2_range, opts.y2_scale_type)

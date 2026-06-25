@@ -55,6 +55,10 @@ function generate_unstable_data(
   return { x, y }
 }
 
+// Population variance about a known mean — used to assert smoothing reduces spread
+const variance = (values: readonly number[], mean: number): number =>
+  values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length
+
 describe(`compute_local_variance`, () => {
   it.each([
     { input: [], window: 5, expected: [], desc: `empty array` },
@@ -374,7 +378,7 @@ describe(`apply_bounds`, () => {
     { mode: `filter` as const, expected_y: [-5, 0, 5, 10, 15], filtered: [0, 4] },
   ])(`$mode mode works correctly`, ({ mode, expected_y, filtered }) => {
     const result = apply_bounds(x, y, { min: 0, max: 10, mode })
-    if (mode === `clamp`) expect(result.y).toEqual(expected_y)
+    expect(result.y).toEqual(expected_y) // filter leaves y untouched; clamp pins to [0, 10]
     expect(result.filtered_indices).toEqual(filtered)
     expect(result.violations).toBe(2)
   })
@@ -441,11 +445,7 @@ describe(`smooth_savitzky_golay`, () => {
 
     const oscillating = [0, 2, 0, 2, 0, 2, 0, 2, 0]
     const smoothed_osc = smooth_savitzky_golay(oscillating, 5, 2)
-    const orig_var =
-      oscillating.reduce((sum, val) => sum + (val - 1) ** 2, 0) / oscillating.length
-    const smooth_var =
-      smoothed_osc.reduce((sum, val) => sum + (val - 1) ** 2, 0) / smoothed_osc.length
-    expect(smooth_var).toBeLessThan(orig_var)
+    expect(variance(smoothed_osc, 1)).toBeLessThan(variance(oscillating, 1))
   })
 
   it(`handles different polynomial orders and NaN values`, () => {
@@ -453,6 +453,23 @@ describe(`smooth_savitzky_golay`, () => {
     expect(smooth_savitzky_golay(quadratic, 5, 1)).toHaveLength(9)
     expect(smooth_savitzky_golay(quadratic, 5, 2)).toHaveLength(9)
     expect(smooth_savitzky_golay([1, 2, NaN, 4, 5, 6, 7], 5, 2)).toHaveLength(7)
+  })
+
+  // Regression: the Math.max(window, order + 2) and Math.min(window, length) clamps could
+  // leave actual_window even, producing an asymmetric kernel + a normalization mismatch
+  // (coeffs_sum summed more taps than the loop). SG must still reproduce polynomials of
+  // degree <= order at interior points. Pre-fix, window=3/order=2 gave interior errors ~11.
+  it.each([
+    { length: 21, window: 3, order: 2, desc: `max(window, order+2) -> even 4` },
+    { length: 21, window: 1, order: 2, desc: `tiny window -> even floor` },
+    { length: 6, window: 9, order: 2, desc: `min(window, even length) -> even 6` },
+    { length: 21, window: 5, order: 2, desc: `already odd (control)` },
+  ])(`reproduces quadratics at interior points: $desc`, ({ length, window, order }) => {
+    const quad = Array.from({ length }, (_, idx) => 2 * idx * idx - 3 * idx + 5)
+    const out = smooth_savitzky_golay(quad, window, order)
+    expect(out).toHaveLength(length)
+    // half = 2 stays clear of edge effects for every effective window above (3 or 5)
+    for (let idx = 2; idx < length - 2; idx++) expect(out[idx]).toBeCloseTo(quad[idx], 6)
   })
 })
 
@@ -506,36 +523,25 @@ describe(`clean_series`, () => {
   })
 
   it(`applies physical bounds with different modes`, () => {
+    // in_place: false makes clean_series copy x/y internally, so the same series is safe to reuse
     const series: DataSeries = { x: [0, 1, 2, 3, 4], y: [-10, 5, 10, 15, 100] }
 
-    const clamp = clean_series(
-      { ...series, x: [...series.x], y: [...series.y] },
-      {
-        bounds: { min: 0, mode: `clamp` },
-        in_place: false,
-      },
-    )
+    const clamp = clean_series(series, { bounds: { min: 0, mode: `clamp` }, in_place: false })
     expect(clamp.series.y[0]).toBe(0)
 
-    const filter = clean_series(
-      { ...series, x: [...series.x], y: [...series.y] },
-      {
-        bounds: { min: 0, max: 20, mode: `filter` },
-        in_place: false,
-      },
-    )
+    const filter = clean_series(series, {
+      bounds: { min: 0, max: 20, mode: `filter` },
+      in_place: false,
+    })
     expect(filter.series.x).toEqual([1, 2, 3])
     expect(filter.quality.points_removed).toBe(2)
 
-    const nullMode = clean_series(
-      { ...series, x: [...series.x], y: [...series.y] },
-      {
-        bounds: { min: 0, max: 20, mode: `null` },
-        in_place: false,
-      },
-    )
-    expect(Number.isNaN(nullMode.series.y[0])).toBe(true)
-    expect(Number.isNaN(nullMode.series.y[4])).toBe(true)
+    const null_mode = clean_series(series, {
+      bounds: { min: 0, max: 20, mode: `null` },
+      in_place: false,
+    })
+    expect(Number.isNaN(null_mode.series.y[0])).toBe(true)
+    expect(Number.isNaN(null_mode.series.y[4])).toBe(true)
   })
 
   it.each([
@@ -545,10 +551,7 @@ describe(`clean_series`, () => {
     const y = [0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10]
     const series: DataSeries = { x: y.map((_, idx) => idx), y }
     const result = clean_series(series, { smooth, in_place: false })
-    const orig_var = y.reduce((sum, val) => sum + (val - 5) ** 2, 0) / y.length
-    const smooth_var =
-      result.series.y.reduce((sum, val) => sum + (val - 5) ** 2, 0) / result.series.y.length
-    expect(smooth_var).toBeLessThan(orig_var)
+    expect(variance(result.series.y, 5)).toBeLessThan(variance(y, 5))
   })
 
   it.each([
@@ -847,15 +850,8 @@ describe(`clean_xyz`, () => {
     expect(result.x).toEqual(x_input)
 
     // y and z should be smoothed (variance reduced)
-    const y_orig_var = y_input.reduce((sum, val) => sum + (val - 5) ** 2, 0) / y_input.length
-    const y_smooth_var =
-      result.y.reduce((sum, val) => sum + (val - 5) ** 2, 0) / result.y.length
-    expect(y_smooth_var).toBeLessThan(y_orig_var)
-
-    const z_orig_var = z_input.reduce((sum, val) => sum + (val - 5) ** 2, 0) / z_input.length
-    const z_smooth_var =
-      result.z.reduce((sum, val) => sum + (val - 5) ** 2, 0) / result.z.length
-    expect(z_smooth_var).toBeLessThan(z_orig_var)
+    expect(variance(result.y, 5)).toBeLessThan(variance(y_input, 5))
+    expect(variance(result.z, 5)).toBeLessThan(variance(z_input, 5))
   })
 
   // Regression: dynamic bounds must use x-axis value, not primary axis value

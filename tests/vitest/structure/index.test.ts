@@ -1,6 +1,7 @@
 import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import {
+  DEFAULT_STRUCTURE_VIEWS,
   default_vector_configs,
   get_all_site_vectors,
   get_structure_vector_keys,
@@ -466,6 +467,32 @@ describe(`default_vector_configs`, () => {
     const configs = default_vector_configs(keys)
     expect(configs.force_6.color).toBe(VECTOR_PALETTE[6 % VECTOR_PALETTE.length])
     expect(configs.force_7.color).toBe(VECTOR_PALETTE[7 % VECTOR_PALETTE.length])
+  })
+})
+
+describe(`DEFAULT_STRUCTURE_VIEWS`, () => {
+  test(`matches the exact Ovito-like default set (label, projection, direction)`, () => {
+    expect(DEFAULT_STRUCTURE_VIEWS).toEqual([
+      { label: `Perspective`, projection: `perspective`, direction: [1, 0.3, 0.8] },
+      { label: `Front`, projection: `orthographic`, direction: [0, 0, 1] },
+      { label: `Top`, projection: `orthographic`, direction: [0, 1, 0] },
+      { label: `Right`, projection: `orthographic`, direction: [1, 0, 0] },
+    ])
+  })
+
+  test(`has exactly one perspective + three orthographic views for a 2x2 grid`, () => {
+    expect(DEFAULT_STRUCTURE_VIEWS).toHaveLength(4)
+    const projections = DEFAULT_STRUCTURE_VIEWS.map((view) => view.projection)
+    expect(projections.filter((proj) => proj === `perspective`)).toHaveLength(1)
+    expect(projections.filter((proj) => proj === `orthographic`)).toHaveLength(3)
+  })
+
+  test(`every view has a unique label and a non-zero direction`, () => {
+    const labels = DEFAULT_STRUCTURE_VIEWS.map((view) => view.label)
+    expect(new Set(labels).size).toBe(labels.length)
+    for (const view of DEFAULT_STRUCTURE_VIEWS) {
+      expect(Math.hypot(...(view.direction ?? [0, 0, 0]))).toBeGreaterThan(0)
+    }
   })
 })
 

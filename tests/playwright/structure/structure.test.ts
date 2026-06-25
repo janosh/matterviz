@@ -3117,6 +3117,12 @@ test.describe(`Edit Atoms Mode`, () => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
+  async function select_atom_for_delete(page: Page): Promise<void> {
+    await page.locator(`[data-testid="btn-select-site-0"]`).click()
+    await page.locator(`#test-structure`).focus()
+    await page.keyboard.press(`Delete`)
+  }
+
   test(`edit-atoms mode can be selected from dropdown`, async ({ page }) => {
     await enter_edit_atoms_mode(page)
 
@@ -3178,14 +3184,7 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
-
-    // Click on an atom to select it (use center of canvas)
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-
-    // Focus wrapper for keyboard events and press Delete
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     // Undo button should now be enabled
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
@@ -3196,12 +3195,7 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
-
-    // Select and delete an atom
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     // Wait for undo to become available, then click it
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
@@ -3217,12 +3211,7 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
-
-    // Select and delete
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
     await expect(undo_btn).toBeEnabled({ timeout: 2000 })
@@ -3282,19 +3271,141 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
 
     // Initially no count badges
     await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
 
     // Delete an atom to create history
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     // Should show undo count badge with "1"
     const count_badge = structure_div.locator(`.history-count`).first()
     await expect(count_badge).toBeVisible({ timeout: 2000 })
     await expect(count_badge).toHaveText(`1`)
+  })
+})
+
+test.describe(`Multi-side view (2x2 grid)`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await goto_structure_test(page, `/test/structure?show_controls=always`)
+  })
+
+  test(`toggle splits canvas into 4 labeled viewports and back`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+
+    // Single view: one viewport cell, no grid
+    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+    await expect(structure_div.locator(`.viewport-grid`)).toHaveCount(0)
+
+    const toggle = structure_div.locator(`button.multi-view-toggle`)
+    await expect(toggle).toBeVisible()
+    await toggle.click()
+
+    // Multi view: 2x2 grid with 4 cells, 4 canvases, 4 labels
+    await expect(structure_div).toHaveClass(/multi-view/)
+    await expect(structure_div.locator(`.viewport-grid`)).toBeVisible()
+    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
+    await expect(structure_div.locator(`.viewport-grid canvas`)).toHaveCount(4, {
+      timeout: get_canvas_timeout(),
+    })
+    const labels = structure_div.locator(`.viewport-label`)
+    await expect(labels).toHaveCount(4)
+    await expect(labels.nth(0)).toHaveText(`Perspective`)
+    await expect(labels.nth(1)).toHaveText(`Front`)
+
+    // Each pane occupies roughly a quarter of the viewer (clearly smaller than full width)
+    const wrapper_box = await structure_div.boundingBox()
+    if (!wrapper_box) throw new Error(`structure wrapper has no bounding box`)
+    for (let pane_idx = 0; pane_idx < 4; pane_idx++) {
+      const cell_box = await structure_div
+        .locator(`.viewport-cell`)
+        .nth(pane_idx)
+        .boundingBox()
+      if (!cell_box) throw new Error(`viewport cell ${pane_idx} has no bounding box`)
+      expect(cell_box.width).toBeLessThan(wrapper_box.width * 0.75)
+      expect(cell_box.width).toBeGreaterThan(50)
+    }
+
+    // Toggle back to single view
+    await toggle.click()
+    await expect(structure_div).not.toHaveClass(/multi-view/)
+    await expect(structure_div.locator(`.viewport-grid`)).toHaveCount(0)
+    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+    await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
+      timeout: get_canvas_timeout(),
+    })
+  })
+
+  test(`hovering a pane marks it active for edit interactions`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+    await structure_div.locator(`button.multi-view-toggle`).click()
+    const cells = structure_div.locator(`.viewport-cell`)
+    await expect(cells).toHaveCount(4)
+
+    // Hovering the third pane should move the `active` highlight to it
+    await cells.nth(2).hover({ position: { x: 20, y: 20 } })
+    await expect(cells.nth(2)).toHaveClass(/active/)
+    await expect(cells.nth(0)).not.toHaveClass(/active/)
+  })
+
+  test(`Cmd/Ctrl+G toggles between grid and single view`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+    await structure_div.focus() // viewer must be focused to receive the shortcut
+    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+
+    const grid_shortcut = `${is_mac ? `Meta` : `Control`}+g`
+    await page.keyboard.press(grid_shortcut)
+    await expect(structure_div).toHaveClass(/multi-view/)
+    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
+
+    await page.keyboard.press(grid_shortcut)
+    await expect(structure_div).not.toHaveClass(/multi-view/)
+    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+  })
+
+  // Regression: the hover tooltip must be able to overflow its own pane into
+  // neighboring panes instead of being clipped/occluded by them. Only the active
+  // pane is allowed to overflow (and is raised above siblings); inactive panes clip.
+  test(`active pane allows tooltip overflow, inactive panes clip`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+    await structure_div.locator(`button.multi-view-toggle`).click()
+    const cells = structure_div.locator(`.viewport-cell`)
+    await expect(cells).toHaveCount(4)
+
+    const overflow_of = (idx: number) =>
+      cells.nth(idx).evaluate((node) => getComputedStyle(node).overflow)
+
+    // Pane 0 is active by default: its overlay (tooltip) may overflow and paints on top
+    await expect(cells.nth(0)).toHaveClass(/active/)
+    expect(await overflow_of(0)).toBe(`visible`)
+    expect(await cells.nth(0).evaluate((node) => getComputedStyle(node).zIndex)).toBe(`1`)
+    expect(await overflow_of(1)).toBe(`hidden`)
+
+    // Activating another pane moves the overflow allowance to it
+    await cells.nth(2).hover({ position: { x: 20, y: 20 } })
+    await expect(cells.nth(2)).toHaveClass(/active/)
+    expect(await overflow_of(2)).toBe(`visible`)
+    expect(await overflow_of(0)).toBe(`hidden`)
+  })
+
+  test(`repeated toggling settles on the right canvas count without leaking contexts`, async ({
+    page,
+  }) => {
+    const structure_div = page.locator(`#test-structure`)
+    const toggle = structure_div.locator(`button.multi-view-toggle`)
+    const canvas_timeout = get_canvas_timeout()
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await toggle.click()
+      await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
+      await expect(structure_div.locator(`.viewport-grid canvas`)).toHaveCount(4, {
+        timeout: canvas_timeout,
+      })
+      await toggle.click()
+      await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+      await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
+        timeout: canvas_timeout,
+      })
+    }
   })
 })

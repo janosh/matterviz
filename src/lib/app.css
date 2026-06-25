@@ -18,6 +18,13 @@
   --sms-selected-bg: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.15));
   --border-radius: 3pt;
 
+  /* Single source of truth for viewer control-button icon size, shared by all viewer chromes
+     (Structure/Brillouin/Fermi/ConvexHull/Trajectory). Scales with the container but is capped so
+     toolbar icons don't grow oversized in fullscreen. Uses rem (not em) so the size is consistent
+     across viewers regardless of their local font-size (e.g. Trajectory's controls run at 0.85em).
+     Override per viewer by setting this on its wrapper. */
+  --ctrl-btn-icon-size: clamp(0.7rem, 2cqmin, 0.85rem);
+
   /* App-wide overlay stack: controls < fullscreen/nav < dialogs < floating options.
      These must exceed Threlte HTML overlays, which use very high z-index values. */
   --z-index-overlay-controls: 100000000;

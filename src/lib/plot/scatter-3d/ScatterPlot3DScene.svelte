@@ -17,6 +17,7 @@
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
+  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { bind_renderer } from '$lib/scene'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -46,7 +47,7 @@
     ref_lines = [],
     ref_planes = [],
     color_scale_fn = () => get_series_color(0),
-    size_scale = { type: `linear`, radius_range: [0.05, 0.2] },
+    size_scale = SCALE_DEFAULTS.size_3d,
     camera_position = [10, 10, 10] as Vec3,
     camera_projection = `perspective` as CameraProjection3D,
     auto_rotate = 0,

@@ -57,7 +57,7 @@
   scale_context,
 }: {
   element: ChemicalElement
-  value: string | number | (number | string)[]
+  value: string | number | (number | string)[] | null
   active: boolean
   bg_color: string | null
   scale_context: ScaleContext

@@ -59,9 +59,9 @@
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
-    BONDING_STRATEGIES,
     BOND_ORDER_OPTIONS,
     canonicalize_bond_target,
+    compute_bonds,
     delete_bond as apply_delete_bond,
     get_bond_key,
     get_bond_render_matrices,
@@ -133,6 +133,7 @@
     same_size_atoms = false,
     camera_position = DEFAULTS.structure.camera_position,
     camera_target = undefined,
+    camera_direction = undefined,
     camera_projection = DEFAULTS.structure.camera_projection,
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
@@ -237,6 +238,7 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
+    interactive = true,
   }: SceneControlProps & {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
@@ -245,6 +247,9 @@
     // determined by the atomic radius of the element
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
     camera_target?: Vec3 // external orbit-controls target for pan synchronization
+    // When set (and camera_position is unset/zero), auto-place the camera along this
+    // direction from the structure center (used by the multi-side view for fixed angles)
+    camera_direction?: Vec3
     show_atoms?: boolean
     show_bonds?: ShowBonds
     show_site_labels?: boolean
@@ -337,6 +342,10 @@
     dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
     volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
+    // When false, disable edit-mode-only scene affordances (TransformControls, add-atom
+    // click-plane, edit-bond hit meshes). Used by multi-side view to keep these in the
+    // active pane only. Selection/hover/measurement overlays stay active in all panes.
+    interactive?: boolean
   } = $props()
 
   const pulse = create_pulse_animation(
@@ -647,6 +656,7 @@
   }
 
   function add_or_restore_pair(site_idx_1: number, site_idx_2: number) {
+    if (!interactive) return // inactive panes must not mutate shared bond state
     const rendered_target = { site_idx_1, site_idx_2 }
     if (!can_edit_bond(rendered_target)) return
     const edit_state = current_bond_edit_state()
@@ -787,6 +797,9 @@
     }
 
     if (measure_mode === `edit-bonds`) {
+      // Only the active pane edits: inactive panes keep selection/hover overlays visible
+      // but must not change selection or add/restore bonds in shared state.
+      if (!interactive) return
       if (bond_edit_mode === `delete`) {
         measured_sites = []
         selected_sites = []
@@ -811,6 +824,8 @@
     }
 
     if (measure_mode === `edit-atoms`) {
+      // Inactive panes don't drive edit-atoms selection (gizmo/add-plane are interactive-gated)
+      if (!interactive) return
       // Block image atoms (detected by orig_site_idx property from PBC)
       const site = structure?.sites?.[site_index]
       if (site?.properties?.orig_site_idx != null) return
@@ -897,6 +912,8 @@
       ? get_center_of_mass(structure)
       : [0, 0, 0] as Vec3,
   )
+  // Negated target for the inner un-translate group (recomputed only on target change)
+  let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)
 
   let structure_size = $derived.by(() => {
     if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
@@ -945,8 +962,15 @@
 
   // Using $state because this is mutated in an effect based on viewport/structure size
   let computed_zoom = $state(untrack(() => initial_zoom))
+  // structure_size is read untracked so structure changes don't re-zoom the user's view;
+  // zoom only re-frames on a genuine viewport resize. Skip same-value width/height
+  // re-fires (a wrapping component can transiently re-emit clientWidth/Height during a
+  // structure swap) so they don't sneak in a re-zoom with the new structure_size.
+  let last_zoom_dims: [number, number] = [0, 0]
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
+    if (width === last_zoom_dims[0] && height === last_zoom_dims[1]) return
+    last_zoom_dims = [width, height]
     const structure_max_dim = Math.max(1, untrack(() => structure_size))
     const viewer_min_dim = Math.min(width, height)
     const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
@@ -960,7 +984,18 @@
     if (camera_position.every((val) => val === 0) && structure) {
       stored_initial_zoom = undefined
       const distance = Math.max(1, structure_size) * (60 / fov)
-      camera_position = [distance, distance * 0.3, distance * 0.8]
+      // When a view direction is given (multi-side view), place the camera
+      // target-relative along it; otherwise use the default angled position.
+      // normalize_vec returns [0,0,0] for an absent or zero-length direction (arrays are
+      // truthy, so a plain `camera_direction ?` check would miss [0,0,0]); treat that as
+      // "no direction" and fall back to the default, since placing the camera on the
+      // rotation target would be a degenerate zero-length view.
+      const view_dir: Vec3 = camera_direction
+        ? math.normalize_vec(camera_direction, [0, 0, 0])
+        : [0, 0, 0]
+      camera_position = view_dir.some((val) => val !== 0)
+        ? math.add(rotation_target, math.scale(view_dir, distance))
+        : [distance, distance * 0.3, distance * 0.8]
     }
   })
   // Whether a never|always|crystals|molecules setting applies to the current structure
@@ -1002,7 +1037,7 @@
     const want_bonds = applies_to_structure(show_bonds)
     const want_polyhedra = applies_to_structure(effective_show_polyhedra)
     if (structure && (want_bonds || want_polyhedra)) {
-      bond_pairs = BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
+      bond_pairs = compute_bonds(structure, bonding_strategy, bonding_options)
     } else bond_pairs = []
   })
 
@@ -1388,6 +1423,41 @@
     return base_radius * effective_atom_radius
   }
 
+  // Sites to outline with a translucent sphere: hovered + all selected/active sites. Kept
+  // independent of the pulse animation so this list (with its per-site radius lookups) only
+  // rebuilds when highlighted sites change; pulsing opacity is applied per-frame in the
+  // template instead, avoiding a rebuild every frame in every multi-view pane.
+  type HighlightTarget = {
+    kind: `hover` | `selected` | `active`
+    site: Site
+    site_idx: number | null
+    color: string
+    radius: number
+  }
+  let highlight_targets: HighlightTarget[] = $derived.by(() => {
+    const targets: HighlightTarget[] = []
+    const add = (
+      kind: HighlightTarget[`kind`],
+      site: Site | null,
+      site_idx: number | null,
+      color: string,
+    ) => {
+      if (!site) return
+      const radius = site_idx !== null
+        ? radius_by_site_idx.get(site_idx) ?? get_site_radius(site, site_idx)
+        : get_site_radius(site, site_idx)
+      targets.push({ kind, site, site_idx, color, radius })
+    }
+    add(`hover`, hovered_site, hovered_idx, `white`)
+    for (const idx of selected_sites ?? []) {
+      add(`selected`, structure?.sites?.[idx] ?? null, idx, selection_highlight_color)
+    }
+    for (const idx of active_sites ?? []) {
+      add(`active`, structure?.sites?.[idx] ?? null, idx, active_highlight_color)
+    }
+    return targets
+  })
+
   // Interpolate between spin-down (#3498db blue) and spin-up (#e74c3c red)
   // based on the z-component direction of a magnetic vector
   function spin_direction_color(vec: Vec3): string {
@@ -1566,6 +1636,12 @@
     ),
   )
 
+  // Partial-occupancy atoms render as separate wedge meshes (see template below).
+  // Derived so the filter isn't re-run inline on every render of the atoms group.
+  let partial_occupancy_atoms = $derived(
+    atom_data.filter((atom) => atom.has_partial_occupancy),
+  )
+
   let orbit_controls_props = $derived(build_orbit_props({
     camera_projection,
     target: camera_target ?? rotation_target,
@@ -1683,7 +1759,7 @@
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>
   <T.Group {rotation}>
-    <T.Group position={math.scale(rotation_target, -1)}>
+    <T.Group position={neg_rotation_target}>
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
         {#each instanced_atom_groups as atom_group (instanced_atom_group_key(atom_group, measure_mode))}
@@ -1712,7 +1788,7 @@
         {/each}
 
         <!-- Regular rendering for partial occupancy atoms -->
-        {#each atom_data.filter((atom) => atom.has_partial_occupancy) as
+        {#each partial_occupancy_atoms as
           atom
           (atom.site_idx + atom.element + atom.occupancy)
         }
@@ -1853,7 +1929,7 @@
       {/if}
 
       <!-- Clickable bond hit-test cylinders in edit-bonds mode -->
-      {#if measure_mode === `edit-bonds` && editable_bond_pairs.length > 0}
+      {#if interactive && measure_mode === `edit-bonds` && editable_bond_pairs.length > 0}
         {#each editable_bond_pairs as
           bond
           (`bond-hit-${bond_edit_mode}-${rendered_bond_key_for(bond)}`)
@@ -1922,7 +1998,7 @@
         {/each}
       {/if}
 
-      {#if editable_atom_hit_targets.length > 0}
+      {#if interactive && editable_atom_hit_targets.length > 0}
         {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
           <T.Mesh
             position={atom_hit.position}
@@ -1942,7 +2018,7 @@
         {/each}
       {/if}
 
-      {#if measure_mode === `edit-bonds` && bond_context_menu}
+      {#if interactive && measure_mode === `edit-bonds` && bond_context_menu}
         {@const current_order = get_current_bond_order(
           bond_context_menu.site_idx_1,
           bond_context_menu.site_idx_2,
@@ -2006,56 +2082,27 @@
         </extras.HTML>
       {/if}
 
-      <!-- highlight hovered, active and selected sites -->
-      {#each [
-          {
-            kind: `hover`,
-            site: hovered_site,
-            opacity: 0.28,
-            color: `white`,
-            site_idx: hovered_idx,
-          },
-          ...((selected_sites ?? []).map((idx) => ({
-            kind: `selected`,
-            site: structure?.sites?.[idx] ?? null,
-            site_idx: idx,
-            opacity: pulse_opacity,
-            color: selection_highlight_color,
-          }))),
-          ...((active_sites ?? []).map((idx) => ({
-            kind: `active`,
-            site: structure?.sites?.[idx] ?? null,
-            site_idx: idx,
-            opacity: pulse_opacity, // Let it pulse freely
-            color: active_highlight_color,
-          }))),
-        ] as
-        entry
-        (`${entry.kind}-${entry.site_idx}`)
-      }
-        {@const { site, opacity, color, kind, site_idx } = entry}
-        {#if site}
-          {@const xyz = site.xyz}
-          {@const highlight_radius = site_idx !== null
-          ? radius_by_site_idx.get(site_idx) ?? get_site_radius(site, site_idx)
-          : get_site_radius(site, site_idx)}
-          <T.Mesh
-            position={xyz}
-            scale={1.2 * highlight_radius}
-            oncreate={disable_raycast}
-          >
-            <T.SphereGeometry args={[0.5, 22, 22]} />
-            <T.MeshStandardMaterial
-              {color}
-              transparent
-              {opacity}
-              emissive={color}
-              emissiveIntensity={kind === `selected` || kind === `active` ? 0.7 : 0.2}
-              depthTest={false}
-              depthWrite={false}
-            />
-          </T.Mesh>
-        {/if}
+      <!-- highlight hovered, active and selected sites. The target list is a pulse-
+        independent $derived; only the opacity reads the per-frame pulse value so the
+        array isn't rebuilt every animation frame. -->
+      {#each highlight_targets as entry (`${entry.kind}-${entry.site_idx}`)}
+        {@const is_pulsing = entry.kind !== `hover`}
+        <T.Mesh
+          position={entry.site.xyz}
+          scale={1.2 * entry.radius}
+          oncreate={disable_raycast}
+        >
+          <T.SphereGeometry args={[0.5, 22, 22]} />
+          <T.MeshStandardMaterial
+            color={entry.color}
+            transparent
+            opacity={is_pulsing ? pulse_opacity : 0.28}
+            emissive={entry.color}
+            emissiveIntensity={is_pulsing ? 0.7 : 0.2}
+            depthTest={false}
+            depthWrite={false}
+          />
+        </T.Mesh>
       {/each}
 
       <!-- selection order labels (1, 2, 3, ...) for measurements and bond editing -->
@@ -2156,7 +2203,7 @@
       {/if}
 
       <!-- TransformControls for editing atoms in edit-atoms mode -->
-      {#if measure_mode === `edit-atoms` && selected_sites.length > 0 &&
+      {#if interactive && measure_mode === `edit-atoms` && selected_sites.length > 0 &&
           structure?.sites}
         {@const selected_atoms = selected_sites
           .map((idx) => structure?.sites?.[idx])
@@ -2211,7 +2258,7 @@
 
       <!-- Invisible plane for click-to-place atom in add-atom mode -->
       <!-- Uses onBeforeRender to orient normal toward camera so raycasts always hit -->
-      {#if measure_mode === `edit-atoms` && add_atom_mode}
+      {#if interactive && measure_mode === `edit-atoms` && add_atom_mode}
         {@const center = rotation_target ?? [0, 0, 0]}
         <T.Mesh
           position={center}

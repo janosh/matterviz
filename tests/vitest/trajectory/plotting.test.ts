@@ -106,6 +106,46 @@ describe(`generate_plot_series`, () => {
     assert_unit_group_constraints(series)
   })
 
+  it(`memoizes extraction until extractor, trajectory, or frame identities change`, () => {
+    const trajectory = create_trajectory([{ energy: -10 }, { energy: -11 }])
+    let call_count = 0
+    const counting_extractor = (frame: TrajectoryFrame) => {
+      call_count++
+      return test_extractor(frame)
+    }
+
+    let series = generate_plot_series(trajectory, counting_extractor)
+    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -11])
+    expect(call_count).toBe(trajectory.frames.length)
+
+    generate_plot_series(trajectory, counting_extractor)
+    expect(call_count).toBe(trajectory.frames.length)
+
+    trajectory.frames.push(make_trajectory_frame(2, 1, { energy: -12 }))
+    series = generate_plot_series(trajectory, counting_extractor)
+    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -11, -12])
+    expect(call_count).toBe(5)
+
+    trajectory.frames[1] = make_trajectory_frame(1, 1, { energy: -20 })
+    series = generate_plot_series(trajectory, counting_extractor)
+    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -20, -12])
+    expect(call_count).toBe(8)
+
+    const other_extractor = (frame: TrajectoryFrame) => {
+      call_count++
+      return test_extractor(frame)
+    }
+    generate_plot_series(trajectory, other_extractor)
+    expect(call_count).toBe(11)
+
+    const before_other_trajectory = call_count
+    generate_plot_series(
+      create_trajectory(COMMON_TRAJECTORIES.lattice_params),
+      counting_extractor,
+    )
+    expect(call_count).toBeGreaterThan(before_other_trajectory)
+  })
+
   it.each([
     { name: `empty trajectory`, frames: [], expected_length: 0 },
     { name: `single frame`, frames: [{ energy: -10.0 }], expected_length: 0 },
@@ -263,13 +303,9 @@ describe(`should_hide_plot`, () => {
     expect(should_hide_plot(trajectory, series)).toBe(expected)
   })
 
-  it(`should handle single frame trajectory and custom tolerance`, () => {
-    const single_frame = create_trajectory([{}])
-    expect(should_hide_plot(single_frame, [])).toBe(true) // Single frame should hide plot
-
-    const series = [create_series([1.0, 1.000001, 1.0])]
-    expect(should_hide_plot(trajectory, series)).toBe(false) // Default tolerance
-    expect(should_hide_plot(trajectory, series, 1e-2)).toBe(true) // Loose tolerance
+  it(`hides plot for single-frame trajectory despite a varying series`, () => {
+    const single_frame = create_trajectory([{ energy: -10 }])
+    expect(should_hide_plot(single_frame, [create_series([1.0, 2.0, 3.0])])).toBe(true)
   })
 
   it.each([
@@ -285,7 +321,8 @@ describe(`should_hide_plot`, () => {
     { name: `very strict`, tolerance: 1e-10, expected: false },
     { name: `very loose`, tolerance: 1e10, expected: true },
     { name: `zero tolerance`, tolerance: 0, expected: false },
-  ])(`should handle extreme tolerance: $name`, ({ tolerance, expected }) => {
+    { name: `default (undefined) tolerance`, tolerance: undefined, expected: false },
+  ])(`should handle tolerance: $name`, ({ tolerance, expected }) => {
     const series = [create_series([1.0, 1.0000001, 1.0])]
     expect(should_hide_plot(trajectory, series, tolerance)).toBe(expected)
   })
@@ -317,31 +354,26 @@ describe(`generate_axis_labels`, () => {
       series: [create_series([1, 2], false, `Hidden`, `eV`)],
       expected: { y1: `Value`, y2: `Value` },
     },
+    {
+      name: `series split across y1 and y2`,
+      series: [
+        create_series([1, 2], true, `Energy`, `eV`, `y1`),
+        create_series([3, 4], true, `Force`, `eV/Å`, `y2`),
+      ],
+      expected: { y1: `Energy (eV)`, y2: `Force (eV/Å)` },
+    },
+    {
+      name: `multiple series concatenated on y1 with separate y2`,
+      series: [
+        create_series([5.0, 5.1], true, `A`, `Å`, `y1`),
+        create_series([5.1, 5.2], true, `B`, `Å`, `y1`),
+        create_series([1.0, 2.0], true, `Energy`, `eV`, `y2`),
+      ],
+      expected: { y1: `A / B (Å)`, y2: `Energy (eV)` },
+    },
   ])(`should generate axis labels for $name`, ({ series, expected }) => {
     const labels = generate_axis_labels(series)
     expect(labels).toEqual(expected)
-  })
-
-  it(`should handle different axes assignments`, () => {
-    const series = [
-      { ...create_series([1, 2], true, `Energy`, `eV`), y_axis: `y1` as const },
-      { ...create_series([3, 4], true, `Force`, `eV/Å`), y_axis: `y2` as const },
-    ]
-    const labels = generate_axis_labels(series)
-    expect(labels.y1).toBe(`Energy (eV)`)
-    expect(labels.y2).toBe(`Force (eV/Å)`)
-  })
-
-  it(`should concatenate multiple series on same axis`, () => {
-    const series = [
-      { ...create_series([5.0, 5.1], true, `A`, `Å`), y_axis: `y1` as const },
-      { ...create_series([5.1, 5.2], true, `B`, `Å`), y_axis: `y1` as const },
-      { ...create_series([1.0, 2.0], true, `Energy`, `eV`), y_axis: `y2` as const },
-    ]
-
-    const labels = generate_axis_labels(series)
-    expect(labels.y1).toBe(`A / B (Å)`)
-    expect(labels.y2).toBe(`Energy (eV)`)
   })
 })
 

@@ -201,7 +201,9 @@
       : undefined
   })
   let is_playing = $state(false)
-  let play_interval: ReturnType<typeof setInterval> | undefined = $state(undefined)
+  // requestAnimationFrame handle for the playback loop (rAF auto-pauses in background tabs and
+  // self-throttles, unlike setInterval which drifts and queues work when a frame render overruns)
+  let play_raf: number | undefined
 
   // Ensure fps is within the allowed range
   $effect(() => {
@@ -263,11 +265,74 @@
     }
   })
 
+  // LRU cache of decoded frames (keyed to the current trajectory) so scrub/playback over
+  // indexed/streaming trajectories avoids re-reading frames and prefetch can warm upcoming ones.
+  // Capped by frame count AND a total-atom budget (cache many tiny frames or few huge ones).
+  const FRAME_CACHE_MAX = 64
+  const FRAME_CACHE_MAX_ATOMS = 200_000
+  let frame_cache = new Map<number, TrajectoryFrame>()
+  let frame_cache_owner: TrajectoryType | undefined
+  // Frames currently being read (direct or prefetch) so we don't kick off duplicate loads
+  const inflight_frames = new Set<number>()
+
+  // Reset per-trajectory caches when the trajectory changes (frames belong to the old one)
+  function ensure_frame_cache_owner() {
+    if (frame_cache_owner !== trajectory) {
+      frame_cache = new Map()
+      inflight_frames.clear()
+      frame_cache_owner = trajectory
+    }
+  }
+  // Sync LRU read (delete + re-insert refreshes recency); undefined on miss
+  function cache_get(frame_idx: number): TrajectoryFrame | undefined {
+    const hit = frame_cache.get(frame_idx)
+    if (!hit) return undefined
+    frame_cache.delete(frame_idx)
+    frame_cache.set(frame_idx, hit)
+    return hit
+  }
+  // Sync LRU write, evicting oldest entries until under both the frame and atom budgets
+  function cache_put(frame_idx: number, frame: TrajectoryFrame) {
+    frame_cache.set(frame_idx, frame)
+    let total_atoms = 0
+    for (const cached of frame_cache.values()) total_atoms += cached.structure?.sites?.length ?? 0
+    while (
+      frame_cache.size > 1 &&
+      (frame_cache.size > FRAME_CACHE_MAX || total_atoms > FRAME_CACHE_MAX_ATOMS)
+    ) {
+      const oldest = frame_cache.keys().next().value
+      if (oldest === undefined) break
+      total_atoms -= frame_cache.get(oldest)?.structure?.sites?.length ?? 0
+      frame_cache.delete(oldest)
+    }
+  }
+
+  // Warm the next couple of frames in the background (fire-and-forget) so playback/forward-scrub
+  // doesn't stall on a serial per-frame read; skips frames already cached or in flight
+  function prefetch_frames(from_idx: number) {
+    const frame_loader = trajectory?.frame_loader
+    if (!frame_loader) return
+    const owner = trajectory
+    for (const ahead of [1, 2]) {
+      const idx = from_idx + ahead
+      if (idx >= total_frames || frame_cache.has(idx) || inflight_frames.has(idx)) continue
+      inflight_frames.add(idx)
+      frame_loader
+        .load_frame(orig_data || ``, idx)
+        .then((frame) => {
+          if (frame && frame_cache_owner === owner) cache_put(idx, frame)
+        })
+        .catch(() => {})
+        .finally(() => inflight_frames.delete(idx))
+    }
+  }
+
   // Load frame on demand - works for both indexed files and external streaming
   async function load_frame_on_demand(frame_idx: number) {
     const load_trajectory = trajectory
     const frame_loader = load_trajectory?.frame_loader
     if (!load_trajectory || !frame_loader) return
+    ensure_frame_cache_owner()
 
     const request_id = ++frame_load_request_id
     const request_is_current = () =>
@@ -275,13 +340,23 @@
       trajectory === load_trajectory &&
       current_step_idx === frame_idx
 
+    const cached = cache_get(frame_idx) // synchronous cache hit -> no await, no stale race
+    if (cached) {
+      current_frame = cached
+      prefetch_frames(frame_idx)
+      return
+    }
+    inflight_frames.add(frame_idx) // let concurrent prefetch skip the frame we're already loading
     try {
       const frame = await frame_loader.load_frame(
-        orig_data || ``, // Use original_data for indexed files, empty string for external streaming
+        orig_data || ``, // original_data for indexed files, empty string for external streaming
         frame_idx,
       )
+      // cache the decoded frame even if it arrived stale (still valid data for that index)
+      if (frame && frame_cache_owner === load_trajectory) cache_put(frame_idx, frame)
       if (!request_is_current()) return
       current_frame = frame
+      prefetch_frames(frame_idx) // warm upcoming frames for smooth playback/scrub
     } catch (error) {
       if (!request_is_current()) return
       console.error(`Failed to load frame ${frame_idx}:`, error)
@@ -293,6 +368,8 @@
         step_idx: frame_idx,
         frame_count: total_frames,
       })
+    } finally {
+      inflight_frames.delete(frame_idx)
     }
   }
 
@@ -410,19 +487,20 @@
 
   let x_axis = $derived({
     label: `Step`,
-    format: `.3~s`,
+    // ~g (not ~s) so sub-1 values read as 0.8 rather than SI "800m"; integer steps stay clean
+    format: `~g`,
     ticks: step_label_positions,
   })
   // Generate axis labels based on first visible series on each axis
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
   let y_axis = $derived({
     label: y_axis_labels.y1,
-    format: `.2~s`,
+    format: `~g`,
     label_shift: { y: 10 },
   })
   let y2_axis = $derived({
     label: y_axis_labels.y2,
-    format: `.2~s`,
+    format: `~g`,
     label_shift: { y: 80 },
   })
 
@@ -529,44 +607,50 @@
       })
     }
   }
-  $effect(() => { // Effect to manage playback interval
-    // Only watch is_playing and frame_rate_ms, not play_interval itself
-    const playing = is_playing
-    const rate_ms = 1000 / fps
+  // Advance one frame (or loop back to start), firing the matching callbacks
+  function advance_playback() {
+    if (current_step_idx >= total_frames - 1) {
+      if (trajectory) {
+        on_end?.({
+          trajectory,
+          step_idx: current_step_idx,
+          frame_count: total_frames,
+          frame: current_frame || undefined,
+        })
+      }
+      go_to_step(0) // loop back to 1st step
+      if (trajectory) on_loop?.({ trajectory, frame_count: total_frames })
+    } else next_step()
+  }
 
-    // Read current interval once (untrack to avoid circular dependency)
-    const current_interval = untrack(() => play_interval)
-    if (playing) {
-      // Clear existing interval if it exists
-      if (current_interval !== undefined) clearInterval(current_interval)
-
-      // Create new interval with current frame rate
-      play_interval = setInterval(() => {
-        if (current_step_idx >= total_frames - 1) {
-          if (trajectory) {
-            on_end?.({
-              trajectory,
-              step_idx: current_step_idx,
-              frame_count: total_frames,
-              frame: current_frame || undefined,
-            })
-          }
-          go_to_step(0) // Loop back to 1st step
-          if (trajectory) {
-            on_loop?.({ trajectory, frame_count: total_frames })
-          }
-        } else next_step()
-      }, rate_ms)
-    } else if (current_interval !== undefined) {
-      // Clear interval when not playing
-      clearInterval(current_interval)
-      play_interval = undefined
+  // rAF playback loop. Only tracks `is_playing`; `fps`/`current_step_idx`/`total_frames` are read
+  // live in the untracked tick, so changing fps mid-play retargets the cadence without restarting.
+  // Clamped delta + at most one advance per tick lets a background tab resume cleanly (no jump),
+  // but also caps playback at the ~60fps refresh rate (= default fps_range max; higher won't help).
+  $effect(() => {
+    if (!is_playing) return
+    let last = performance.now()
+    let accumulated_ms = 0
+    const tick = (now: number) => {
+      // stop if the trajectory went away or is no longer animatable (e.g. swapped mid-play)
+      if (!trajectory || total_frames <= 1) {
+        is_playing = false
+        return
+      }
+      accumulated_ms += Math.min(now - last, 250)
+      last = now
+      const step_ms = 1000 / Math.max(0.1, fps)
+      if (accumulated_ms >= step_ms) {
+        accumulated_ms = Math.min(accumulated_ms - step_ms, step_ms)
+        advance_playback()
+      }
+      play_raf = requestAnimationFrame(tick)
     }
-  })
-
-  // Cleanup interval on component destroy
-  $effect(() => () => {
-    if (play_interval !== undefined) clearInterval(play_interval)
+    play_raf = requestAnimationFrame(tick)
+    return () => {
+      if (play_raf !== undefined) cancelAnimationFrame(play_raf)
+      play_raf = undefined
+    }
   })
 
   // Handle internal file format drops
@@ -964,7 +1048,7 @@
               {#if filename_copied}
                 <Icon
                   icon="Check"
-                  style="color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); font-size: 16px; animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%"
+                  style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
                 />
               {/if}
             </button>
@@ -976,14 +1060,16 @@
               <button
                 onclick={prev_step}
                 disabled={current_step_idx === 0 || is_playing}
-                title="Previous step"
+                title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
               >
                 ⏮
               </button>
               <button
                 onclick={toggle_play}
                 disabled={total_frames <= 1}
-                title={is_playing ? `Pause playback` : `Play trajectory`}
+                title={`${
+                  is_playing ? `Pause` : `Play`
+                } (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
                 class="play-button"
                 class:playing={is_playing}
               >
@@ -992,7 +1078,7 @@
               <button
                 onclick={next_step}
                 disabled={current_step_idx === total_frames - 1 || is_playing}
-                title="Next step"
+                title="Next step (→) · End: last · l: +10 · PageDown: +25"
               >
                 ⏭
               </button>
@@ -1040,8 +1126,8 @@
             </div>
           {/if}
 
-          <!-- Frame rate control - only shown when playing -->
-          {#if is_playing && controls_config.visible(`fps`)}
+          <!-- Frame rate control: shown for any multi-frame trajectory so speed can be set before play -->
+          {#if total_frames > 1 && controls_config.visible(`fps`)}
             <label
               class="fps-section"
               style="font-size: 0.9em; display: flex; align-items: center; gap: 5pt; margin-inline: 6pt"
@@ -1202,7 +1288,7 @@
             controls={scatter_controls}
             current_x_value={current_step_idx}
             change={plot_skimming ? handle_plot_change : undefined}
-            padding={{ t: 20, b: 60, l: 52, r: has_y2_series ? 100 : 20 }}
+            padding={{ t: 20, b: 60, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
             {...scatter_props}
@@ -1300,9 +1386,6 @@
     contain: layout;
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
-    :global(.plot) {
-      background: var(--surface-bg);
-    }
     &.active {
       z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
       .trajectory-controls {
@@ -1354,7 +1437,7 @@
   .trajectory-controls {
     display: flex;
     align-items: center;
-    gap: clamp(2pt, 1cqw, 1ex);
+    gap: clamp(4pt, 1.6cqw, 1.5ex);
     padding: clamp(2pt, 0.5cqw, 1ex) clamp(4pt, 1cqw, 1.2ex);
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
@@ -1374,7 +1457,7 @@
     }
     button {
       background: var(--btn-bg);
-      font-size: clamp(0.8rem, 2cqw, 1rem);
+      font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
       &:hover:not(:disabled) {
         background: var(--btn-bg-hover);
       }
@@ -1390,7 +1473,13 @@
   .nav-section {
     display: flex;
     align-items: center;
-    gap: clamp(1pt, 0.5cqw, 5pt);
+    gap: clamp(3pt, 1cqw, 9pt);
+  }
+  /* nudge control-button icons slightly larger via transform */
+  .nav-section button,
+  .view-mode-button,
+  .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle, .fullscreen-button)) {
+    transform: scale(1.15);
   }
   .step-section {
     display: flex;
@@ -1413,6 +1502,8 @@
   .step-slider {
     width: 100%;
     accent-color: var(--accent-color);
+    position: relative;
+    z-index: 1; /* keep the slider knob above the step labels (which follow it in the DOM) */
   }
   .step-labels {
     position: absolute;
@@ -1470,7 +1561,7 @@
     position: relative;
   }
   .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle)) {
-    font-size: clamp(1rem, 2.2cqw, 1.1rem);
+    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
   }
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);

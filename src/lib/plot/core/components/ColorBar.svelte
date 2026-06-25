@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { luminance } from '$lib/colors'
+  import { get_d3_interpolator, luminance } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -20,11 +20,15 @@
     Orientation,
     ScaleType,
   } from '$lib/plot/core/types'
-  import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
+  import {
+    get_arcsinh_threshold,
+    get_scale_type_name,
+    SCALE_DEFAULTS,
+  } from '$lib/plot/core/types'
 
   let {
     title = $bindable(),
-    color_scale = $bindable(`interpolateViridis`),
+    color_scale = $bindable(SCALE_DEFAULTS.scheme),
     bar_style = undefined,
     title_style = undefined,
     wrapper_style = undefined,
@@ -261,7 +265,7 @@
     if (color_scale_fn) return color_scale_fn // Prioritize passed function
 
     // Fallback: create function from scheme name/function in 'color_scale' prop
-    let interpolator = d3_sc.interpolateViridis // Default interpolator
+    let interpolator = get_d3_interpolator(SCALE_DEFAULTS.scheme) // Default interpolator
     if (typeof color_scale === `string`) {
       const func_name = color_scale.startsWith(`interpolate`)
         ? color_scale

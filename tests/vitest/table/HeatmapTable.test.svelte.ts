@@ -1,6 +1,7 @@
 import { HeatmapTable, type Label, type RowData } from '$lib'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { assert, describe, expect, it, vi } from 'vitest'
+import { bind_props } from '../setup'
 
 describe(`HeatmapTable`, () => {
   const sample_data = [
@@ -69,18 +70,18 @@ describe(`HeatmapTable`, () => {
   })
 
   it(`handles empty data and filters undefined rows`, async () => {
-    let data_with_empty = $state([{ Model: undefined, Score: undefined }, ...sample_data])
+    const state = $state({ data: [{ Model: undefined, Score: undefined }, ...sample_data] })
 
     mount(HeatmapTable, {
       target: document.body,
-      props: { data: data_with_empty, columns: sample_columns },
+      props: bind_props({ columns: sample_columns }, state),
     })
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
 
-    data_with_empty = []
+    state.data = []
     await tick()
-    expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
+    expect(document.querySelectorAll(`tbody tr`)).toHaveLength(1)
   })
 
   describe(`Sorting and Data Updates`, () => {
@@ -116,23 +117,23 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`maintains sort state on data updates`, async () => {
-      let data = $state(sample_data)
+      const state = $state({ data: sample_data })
       mount(HeatmapTable, {
         target: document.body,
-        props: { data, columns: sample_columns },
+        props: bind_props({ columns: sample_columns }, state),
       })
 
       const score_header = document.querySelectorAll(`th`)[1]
       score_header.click() // Sort by Score
       await tick()
 
-      data = [{ Model: `D`, Score: 0.65, Value: 400 }, ...sample_data]
+      state.data = [{ Model: `D`, Score: 0.65, Value: 400 }, ...sample_data]
       await tick()
 
       const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
         (cell) => cell.textContent?.trim(),
       )
-      expect(scores).toEqual([`0.95`, `0.85`, `0.75`])
+      expect(scores).toEqual([`0.95`, `0.85`, `0.75`, `0.65`])
     })
 
     it(`sorts date columns correctly`, () => {

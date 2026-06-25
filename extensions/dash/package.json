@@ -20,10 +20,10 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/prop-types": "^15.7.15",
-    "@types/react": "^19.2.14",
-    "svelte": "^5.55.8",
+    "@types/react": "^19.2.17",
+    "svelte": "^5.56.4",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13"
+    "vite": "^8.1.0"
   },
   "peerDependencies": {
     "react": ">=16.14.0",

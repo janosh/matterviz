@@ -7,6 +7,10 @@ export type Sides = { t?: number; b?: number; l?: number; r?: number }
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 30
 
+// Default plot padding (px) reserved for axis ticks/labels, shared by
+// Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
+export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
+
 // X position for a right-side (y2) axis label: past the plot edge plus tick shift and
 // measured tick-label width (both zero when tick labels render inside the plot)
 export function y2_axis_label_x(
@@ -97,28 +101,35 @@ export const calc_auto_padding = ({
   y2_axis = {},
   label_gap = LABEL_GAP_DEFAULT,
 }: AutoPaddingConfig): Required<Sides> => {
-  const x2_ticks = x2_axis.tick_values ?? []
-  const y_ticks = y_axis.tick_values ?? []
-  const y_format = y_axis.format ?? ``
-  const y2_ticks = y2_axis.tick_values ?? []
-  const y2_format = y2_axis.format ?? ``
+  // Padding for a vertical-axis side (y/y2): when ticks render, reserve widest tick label + gap +
+  // the rotated axis-title width (mirrors the `t` branch's AXIS_LABEL_HEIGHT) so a wide tick label
+  // can't overlap the title. With no tick labels (e.g. no y2 series) reserve nothing extra.
+  const side_pad = (
+    axis: AxisConfig & { tick_values?: (string | number)[] },
+    default_side: number,
+  ) => {
+    const ticks = axis.tick_values ?? []
+    if (ticks.length === 0) return default_side
+    return Math.max(
+      default_side,
+      measure_max_tick_width(ticks, axis.format ?? ``) +
+        label_gap +
+        (axis.label ? AXIS_LABEL_HEIGHT : 0),
+    )
+  }
 
   return {
     t:
       padding.t ??
-      (x2_ticks.length > 0
+      ((x2_axis.tick_values ?? []).length > 0
         ? Math.max(
             default_padding.t,
             TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? AXIS_LABEL_HEIGHT : 0),
           )
         : default_padding.t),
     b: padding.b ?? default_padding.b,
-    l:
-      padding.l ??
-      Math.max(default_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
-    r:
-      padding.r ??
-      Math.max(default_padding.r, measure_max_tick_width(y2_ticks, y2_format) + label_gap),
+    l: padding.l ?? side_pad(y_axis, default_padding.l),
+    r: padding.r ?? side_pad(y2_axis, default_padding.r),
   }
 }
 

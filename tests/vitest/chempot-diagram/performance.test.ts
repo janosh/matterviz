@@ -48,9 +48,6 @@ function compute_e_form(entry: PhaseData, el_refs: Record<string, PhaseData>): n
   return energy_per_atom - ref_energy
 }
 
-const hash_points = (points_3d: number[][]): string =>
-  points_3d.map((point) => point.map((value) => value.toFixed(4)).join(`,`)).join(`;`)
-
 const pd_entries = load_json<PhaseData[]>(`${test_dir}/pd_entries_test.json.gz`)
 const ytos_entries = load_json<PhaseData[]>(`${test_dir}/ytos_entries.json.gz`)
 
@@ -123,15 +120,15 @@ describe(`chempot performance gates`, () => {
         formal_chempots: false,
       })
       const domains = Object.entries(diagram_data.domains)
-        .map(([formula, points_3d]) => ({ formula, points_3d }))
-        .filter((domain) => domain.points_3d.length >= 3)
+        .map(([, points_3d]) => points_3d)
+        .filter((points_3d) => points_3d.length >= 3)
       const preprocess_cycles = 24
 
       const naive_ms = bench_ms(
         () => {
           for (let cycle_idx = 0; cycle_idx < preprocess_cycles; cycle_idx++) {
-            for (const domain of domains) {
-              get_3d_domain_simplexes_and_ann_loc(domain.points_3d)
+            for (const points_3d of domains) {
+              get_3d_domain_simplexes_and_ann_loc(points_3d)
             }
           }
         },
@@ -139,20 +136,14 @@ describe(`chempot performance gates`, () => {
         2,
       )
 
-      const ann_cache = new Map<
-        string,
-        ReturnType<typeof get_3d_domain_simplexes_and_ann_loc>
-      >()
+      const ann_cache = new Map<string, number[]>()
       const optimized_ms = bench_ms(
         () => {
           for (let cycle_idx = 0; cycle_idx < preprocess_cycles; cycle_idx++) {
-            for (const domain of domains) {
-              const cache_key = `${domain.formula}|${hash_points(domain.points_3d)}`
-              let cached = ann_cache.get(cache_key)
-              if (!cached) {
-                cached = get_3d_domain_simplexes_and_ann_loc(domain.points_3d)
-                ann_cache.set(cache_key, cached)
-              }
+            for (const points_3d of domains) {
+              const cache_key = points_3d.map((point) => point.join(`,`)).join(`;`)
+              if (ann_cache.has(cache_key)) continue
+              ann_cache.set(cache_key, get_3d_domain_simplexes_and_ann_loc(points_3d).ann_loc)
             }
           }
         },

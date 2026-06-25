@@ -1044,6 +1044,50 @@ describe(`Structure string parsing`, () => {
   })
 })
 
+// Multi-side view (2x2 grid). The canvas grid itself is gated behind a
+// `typeof WebGLRenderingContext !== 'undefined'` guard so it doesn't render in
+// happy-dom; these cover the toggle button + wrapper class. The 4-canvas render
+// and independent rotation are exercised by the playwright suite.
+describe(`Multi-side view`, () => {
+  test(`toggle button renders and flips multi_view + wrapper class`, async () => {
+    mount_structure({ structure, show_controls: `always` })
+    await tick()
+
+    const toggle = doc_query<HTMLButtonElement>(`button.multi-view-toggle`)
+    expect(toggle).toBeInstanceOf(HTMLButtonElement)
+    expect(toggle.getAttribute(`aria-pressed`)).toBe(`false`)
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+
+    toggle.click()
+    flushSync()
+    await tick()
+
+    expect(toggle.getAttribute(`aria-pressed`)).toBe(`true`)
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
+
+    toggle.click()
+    flushSync()
+    await tick()
+    expect(toggle.getAttribute(`aria-pressed`)).toBe(`false`)
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+  })
+
+  test(`multi_view prop initial value reflects on wrapper`, async () => {
+    mount_structure({ structure, multi_view: true, show_controls: `always` })
+    await tick()
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
+  })
+
+  test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {
+    mount_structure({
+      structure,
+      show_controls: { mode: `always`, hidden: [`multi-view`] },
+    })
+    await tick()
+    expect(document.querySelector(`button.multi-view-toggle`)).toBeNull()
+  })
+})
+
 // Regression tests for camera rotation center bug (commit 10477bb9 introduced
 // scene_props.camera_target for comparison-view sync, but it persisted across
 // structure loads, causing the orbit center to shift to a corner of the new cell).

@@ -2,6 +2,8 @@ import { expect, type Page, test } from '@playwright/test'
 import { drop_file, IS_CI, wait_for_3d_canvas } from './helpers'
 
 const BZ_SELECTOR = `#test-brillouin-zone`
+const status_locator = (page: Page, test_id: string) =>
+  page.locator(`section`, { hasText: `Status` }).locator(`[data-testid="${test_id}"]`)
 // IBZ computation requires moyo-wasm symmetry analysis which can be slow,
 // especially in CI with software rendering. 10s accommodates most structures.
 const IBZ_LOAD_TIMEOUT = 10000
@@ -23,16 +25,16 @@ test.describe(`BrillouinZone Component Tests`, () => {
   test(`BZ order control updates`, async ({ page }) => {
     const order_input = page.locator(`#bz-order`)
     await order_input.fill(`2`)
-    await expect(page.locator(`[data-testid="bz-order"]`)).toHaveText(`2`)
+    await expect(status_locator(page, `bz-order`)).toHaveText(`2`)
     await order_input.fill(`1`)
-    await expect(page.locator(`[data-testid="bz-order"]`)).toHaveText(`1`)
+    await expect(status_locator(page, `bz-order`)).toHaveText(`1`)
   })
 
   test(`camera projection toggles`, async ({ page }) => {
     const projection = page.locator(`#camera-projection`)
     await expect(projection).toHaveValue(`perspective`)
     await projection.selectOption(`orthographic`)
-    await expect(page.locator(`[data-testid="camera-projection"]`)).toHaveText(`orthographic`)
+    await expect(status_locator(page, `camera-projection`)).toHaveText(`orthographic`)
     await projection.selectOption(`perspective`)
   })
 
@@ -40,29 +42,29 @@ test.describe(`BrillouinZone Component Tests`, () => {
     const checkbox = page.locator(`#controls-open`)
     await expect(checkbox).not.toBeChecked()
     await checkbox.check()
-    await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`true`)
+    await expect(status_locator(page, `controls-open`)).toHaveText(`true`)
     await checkbox.uncheck()
-    await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`false`)
+    await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
   })
 
   test(`info pane toggles`, async ({ page }) => {
     const checkbox = page.locator(`#info-pane-open`)
     await expect(checkbox).not.toBeChecked()
     await checkbox.check()
-    await expect(page.locator(`[data-testid="info-pane-open"]`)).toHaveText(`true`)
+    await expect(status_locator(page, `info-pane-open`)).toHaveText(`true`)
     await checkbox.uncheck()
   })
 
   test(`show controls setting cycles`, async ({ page }) => {
     const select = page.locator(`#show-controls`)
-    const status = page.locator(`[data-testid="show-controls"]`)
+    const show_controls_status = status_locator(page, `show-controls`)
 
-    await select.selectOption(`false`)
-    await expect(status).toHaveText(`false`)
-    await select.selectOption(`true`)
-    await expect(status).toHaveText(`true`)
-    await select.selectOption(`600`)
-    await expect(status).toHaveText(`600`)
+    await select.selectOption(`never`)
+    await expect(show_controls_status).toHaveText(`never`)
+    await select.selectOption(`always`)
+    await expect(show_controls_status).toHaveText(`always`)
+    await select.selectOption(`hover`)
+    await expect(show_controls_status).toHaveText(`hover`)
   })
 
   test(`handles camera rotation and zoom`, async ({ page }) => {
@@ -120,10 +122,10 @@ test.describe(`BrillouinZone Component Tests`, () => {
 
   test(`Escape closes panes`, async ({ page }) => {
     await page.locator(`#controls-open`).check()
-    await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`true`)
+    await expect(status_locator(page, `controls-open`)).toHaveText(`true`)
     await page.locator(BZ_SELECTOR).click()
     await page.keyboard.press(`Escape`)
-    await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`false`)
+    await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
   })
 })
 

@@ -40,6 +40,7 @@
     Line,
     PlotAxis,
     PlotLegend,
+    PlotMarginals,
     PlotTooltip,
     ReferenceLine,
     ScatterPlotControls,
@@ -47,20 +48,23 @@
     ZeroLines,
     ZoomRect,
   } from '$lib/plot'
+  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
   import {
     build_obstacles_norm,
     has_explicit_position,
     measured_footprint,
     place_decorations,
   } from '$lib/plot/core/auto-place'
-  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import { AXIS_DEFAULTS, type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
+    COLOR_BAR_DEFAULTS,
     DEFAULT_MARKERS,
     get_scale_type_name,
     is_time_scale,
+    SCALE_DEFAULTS,
   } from '$lib/plot/core/types'
   import { compute_label_positions } from '$lib/plot/core/utils/label-placement'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -130,13 +134,9 @@
     tooltip,
     user_content,
     change = () => {},
-    color_scale = {
-      type: `linear`,
-      scheme: `interpolateViridis`,
-      value_range: undefined,
-    },
+    color_scale = SCALE_DEFAULTS.color,
     color_bar = {},
-    size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
+    size_scale = SCALE_DEFAULTS.size,
     label_placement_config = {},
     hover_config = {},
     legend = {},
@@ -163,6 +163,7 @@
     on_axis_change,
     on_error,
     pan = {},
+    marginals = false,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & Omit<BasePlotProps, `change`> & PlotConfig & {
     series?: DataSeries<Metadata>[]
@@ -224,6 +225,7 @@
     ) => void
     on_error?: (error: AxisLoadError) => void
     pan?: PanConfig
+    marginals?: MarginalsProp
   } = $props()
 
   // Merged axis/display values with defaults (use $derived to avoid breaking $bindable)
@@ -403,8 +405,8 @@
     colorbar_element?.offsetWidth && colorbar_element?.offsetHeight
       ? measure_full_footprint(colorbar_element)
       : colorbar_is_horizontal
-      ? { width: 220, height: 56 }
-      : { width: 56, height: 100 },
+      ? COLOR_BAR_DEFAULTS.horizontal_footprint
+      : COLOR_BAR_DEFAULTS.vertical_footprint,
   )
   const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 80 }))
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
@@ -458,7 +460,32 @@
         : null,
     })
   )
-  const pad = $derived(decor.pad)
+  // Resolve marginals and reserve outer-band padding so the plot shrinks to make room
+  const resolved_marginals = $derived(
+    normalize_marginals(marginals, { top: true, right: true }),
+  )
+  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  // Map series to the generic marginal input, reusing the line/legend color fallback
+  const marginal_series = $derived<MarginalSeriesInput[]>(
+    series_with_ids.map((srs, idx) => {
+      const point_fill = Array.isArray(srs?.point_style)
+        ? srs.point_style[0]?.fill
+        : srs?.point_style?.fill
+      return {
+        x: srs?.x ?? [],
+        y: srs?.y ?? [],
+        color: srs?.line_style?.stroke ?? point_fill ??
+          get_series_color(srs?.orig_series_idx ?? idx),
+        label: srs?.label,
+        visible: srs?.visible ?? true,
+        x_axis: srs?.x_axis,
+        y_axis: srs?.y_axis,
+      }
+    }),
+  )
+  const marginal_has_axis = $derived(
+    marginal_axis_presence(x2_points.length > 0, y2_points.length > 0),
+  )
   const legend_auto_outside = $derived(decor.legend_outside)
   const legend_outside_x = $derived(decor.legend_pos.x)
   const legend_outside_y = $derived(decor.legend_pos.y)
@@ -884,8 +911,8 @@
     // renders; compute_element_placement measures the real footprint once it's laid out
     const is_horizontal = (color_bar.orientation ?? `horizontal`) === `horizontal`
     const colorbar_size = is_horizontal
-      ? { width: 220, height: 56 }
-      : { width: 56, height: 100 }
+      ? COLOR_BAR_DEFAULTS.horizontal_footprint
+      : COLOR_BAR_DEFAULTS.vertical_footprint
 
     // Build exclusion rects (avoid legend if it's placed)
     const exclude_rects: Rect[] = []
@@ -1298,24 +1325,16 @@
   })
 
   // State accessors for shared axis change handler
+  // Spread into existing state in each setter to preserve merged type structure
   const axis_state: AxisChangeState<DataSeries<Metadata>> = {
-    get_axis: (axis) => {
-      if (axis === `x`) return x_axis
-      if (axis === `x2`) return x2_axis
-      if (axis === `y`) return y_axis
-      return y2_axis
+    axes: {
+      x: { get: () => x_axis, set: (config) => (x_axis = { ...x_axis, ...config }) },
+      x2: { get: () => x2_axis, set: (config) => (x2_axis = { ...x2_axis, ...config }) },
+      y: { get: () => y_axis, set: (config) => (y_axis = { ...y_axis, ...config }) },
+      y2: { get: () => y2_axis, set: (config) => (y2_axis = { ...y2_axis, ...config }) },
     },
-    set_axis: (axis, config) => {
-      // Spread into existing state to preserve merged type structure
-      if (axis === `x`) x_axis = { ...x_axis, ...config }
-      else if (axis === `x2`) x2_axis = { ...x2_axis, ...config }
-      else if (axis === `y`) y_axis = { ...y_axis, ...config }
-      else y2_axis = { ...y2_axis, ...config }
-    },
-    get_series: () => series,
-    set_series: (new_series) => (series = new_series),
-    get_loading: () => axis_loading,
-    set_loading: (axis) => (axis_loading = axis),
+    series: { get: () => series, set: (next) => (series = next) },
+    loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
   // Shared handler + one-shot auto-load bound to this component's state
@@ -1774,6 +1793,23 @@
       {@render fill_regions_layer(fills_by_z.above_all)}
       <!-- Reference lines: above all -->
       {@render ref_lines_layer(ref_lines_by_z.above_all)}
+
+      <!-- Marginal distribution strips -->
+      <PlotMarginals
+        marginals={resolved_marginals}
+        series={marginal_series}
+        {width}
+        {height}
+        {pad}
+        has_axis={marginal_has_axis}
+        axes={{
+          x1: marginal_axis(x_scale_fn, [x_min, x_max], final_x_axis),
+          x2: marginal_axis(x2_scale_fn, [x2_min, x2_max], final_x2_axis),
+          y1: marginal_axis(y_scale_fn, [y_min, y_max], final_y_axis),
+          y2: marginal_axis(y2_scale_fn, [y2_min, y2_max], final_y2_axis),
+        }}
+        id={component_id}
+      />
     </svg>
 
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
@@ -1866,7 +1902,7 @@
           color_scale_domain={color_domain}
           scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
           range={color_domain?.every((val) => val != null) ? color_domain : undefined}
-          bar_style="width: 220px; height: 16px; {color_bar?.style ?? ``}"
+          bar_style="width: {COLOR_BAR_DEFAULTS.width}px; height: {COLOR_BAR_DEFAULTS.horizontal_bar_height}px; {color_bar?.style ?? ``}"
           {...color_bar}
           wrapper_style={effective_cbar_wrapper_style ? `height: 100%; width: 100%;` : ``}
         />

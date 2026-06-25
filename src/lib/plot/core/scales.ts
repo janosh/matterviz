@@ -7,11 +7,13 @@ import type {
   SizeScaleConfig,
   TimeInterval,
 } from '$lib/plot'
+import { get_d3_interpolator } from '$lib/colors'
 import { clamp01 } from '$lib/utils'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_time_scale,
+  SCALE_DEFAULTS,
 } from '$lib/plot/core/types'
 import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
@@ -276,6 +278,27 @@ export function create_scale(
   }
   // For 'time' or 'linear', return linear scale (time scales need create_time_scale())
   return scaleLinear().domain(domain).range(output_range)
+}
+
+// Build the four axis scales for a 2D plot in one call: x/x2 share the horizontal pixel span,
+// y/y2 the inverted vertical one. Shared by BarPlot/BoxPlot/Histogram (identical layout math).
+export function create_axis_scales<A extends { scale_type?: ScaleType }>(
+  axes: { x: A; x2: A; y: A; y2: A },
+  ranges: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 },
+  pad: { l: number; r: number; t: number; b: number },
+  width: number,
+  height: number,
+) {
+  const x_px: Vec2 = [pad.l, width - pad.r]
+  const y_px: Vec2 = [height - pad.b, pad.t]
+  const scale = (axis: A, domain: Vec2, px: Vec2) =>
+    create_scale(axis.scale_type ?? `linear`, domain, px)
+  return {
+    x: scale(axes.x, ranges.x, x_px),
+    x2: scale(axes.x2, ranges.x2, x_px),
+    y: scale(axes.y, ranges.y, y_px),
+    y2: scale(axes.y2, ranges.y2, y_px),
+  }
 }
 
 // Create a time scale for time-based data
@@ -543,7 +566,7 @@ export function create_color_scale(
   const interpolator =
     typeof candidate_interpolator === `function`
       ? candidate_interpolator
-      : d3_sc.interpolateViridis
+      : get_d3_interpolator(SCALE_DEFAULTS.scheme)
   const [min_val, max_val] =
     (typeof color_scale_config === `string` ? undefined : color_scale_config.value_range) ??
     auto_color_range
@@ -614,7 +637,7 @@ export function create_size_scale(
   config: SizeScaleConfig,
   all_size_values: (number | null)[],
 ) {
-  const [min_radius, max_radius] = config.radius_range ?? [2, 10]
+  const [min_radius, max_radius] = config.radius_range ?? SCALE_DEFAULTS.radius
   const auto_range =
     all_size_values.length > 0
       ? extent(all_size_values.filter((val): val is number => val !== null))

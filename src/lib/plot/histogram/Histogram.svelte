@@ -15,10 +15,12 @@
     HistogramControls,
     PlotAxis,
     PlotLegend,
+    PlotMarginals,
     ReferenceLine,
   } from '$lib/plot'
-  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
+  import { AXIS_DEFAULTS, type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/core/data-transform'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
@@ -30,6 +32,7 @@
   } from '$lib/plot/core/interactions'
   import {
     calc_auto_padding,
+    DEFAULT_PLOT_PADDING,
     filter_padding,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
@@ -46,7 +49,7 @@
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import {
-    create_scale,
+    create_axis_scales,
     generate_ticks,
     get_nice_data_range,
     get_tick_label,
@@ -56,13 +59,15 @@
     DataSeries,
     LegendConfig,
     PlotConfig,
-    ScaleType,
   } from '$lib/plot/core/types'
-  import { get_scale_type_name } from '$lib/plot/core/types'
+  import {
+    compute_count_range,
+    compute_histogram_bins,
+    log_safe_range,
+  } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
   import { DEFAULTS } from '$lib/settings'
-  import { bin, max } from 'd3-array'
   import type { Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -79,7 +84,7 @@
     y2_axis: y2_axis_init = {},
     display: display_init = DEFAULTS.histogram.display,
     range_padding = 0.05,
-    padding = { t: 20, b: 60, l: 60, r: 20 },
+    padding = DEFAULT_PLOT_PADDING,
     bins = $bindable(100),
     show_legend = $bindable(true),
     legend = {},
@@ -108,6 +113,7 @@
     on_axis_change,
     on_error,
     pan = {},
+    marginals = false,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
     series: DataSeries[]
@@ -150,6 +156,7 @@
     ) => void
     on_error?: (error: AxisLoadError) => void
     pan?: PanConfig
+    marginals?: MarginalsProp
   } = $props()
 
   // Local state for controls (initialized from props, owned by this component)
@@ -264,57 +271,17 @@
       )
       : [0, 1] as Vec2
 
-    // Calculate y-range for a specific set of series
-    const calc_y_range = (
-      series_list: typeof selected_series,
-      y_limit: [number | null, number | null],
-      scale_type: ScaleType,
-    ): Vec2 => {
-      const type_name = get_scale_type_name(scale_type)
-      if (series_list.length === 0) {
-        const fallback = type_name === `log` ? 1 : 0
-        return [fallback, 1]
-      }
-      // Bin each series over the domain of the x-axis it renders on (d3 bin() drops
-      // out-of-domain values, so binning x2 series over the x1 domain skews max_count)
-      const max_count = Math.max(
-        0,
-        ...series_list.map((srs: DataSeries) => {
-          const hist = bin().domain(srs.x_axis === `x2` ? auto_x2 : auto_x).thresholds(bins)
-          return max(hist(srs.y), (data) => data.length) || 0
-        }),
-      )
-
-      // If there's effectively no data, avoid log-range issues (counts can't be <= 0 on log)
-      if (max_count <= 0) {
-        const fallback = type_name === `log` ? 1 : 0
-        return [fallback, 1]
-      }
-
-      const [y0, y1] = get_nice_data_range(
-        [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
-        ({ x }) => x,
-        y_limit,
-        scale_type,
-        range_padding,
-        false,
-      )
-      // For log scale, minimum must be >= 1 (count can't be 0 on log)
-      // For linear/arcsinh, start from 0
-      const y_min = type_name === `log` ? Math.max(1, y0) : Math.max(0, y0)
-      return [y_min, y1]
-    }
-
-    const y1_range = calc_y_range(
-      y1_series,
-      final_y_axis.range ?? [null, null],
-      final_y_axis.scale_type ?? `linear`,
-    )
-    const y2_auto_range = calc_y_range(
-      y2_series,
-      final_y2_axis.range ?? [null, null],
-      final_y2_axis.scale_type ?? `linear`,
-    )
+    const count_cfg = { x_domain: auto_x, x2_domain: auto_x2, bin_count: bins, range_padding }
+    const y1_range = compute_count_range(y1_series, {
+      ...count_cfg,
+      scale_type: final_y_axis.scale_type ?? `linear`,
+      y_limit: log_safe_range(final_y_axis),
+    })
+    const y2_auto_range = compute_count_range(y2_series, {
+      ...count_cfg,
+      scale_type: final_y2_axis.scale_type ?? `linear`,
+      y_limit: log_safe_range(final_y2_axis),
+    })
 
     return { x: auto_x, x2: auto_x2, y: y1_range, y2: y2_auto_range }
   })
@@ -336,10 +303,16 @@
   })
 
   $effect(() => {
-    // Supports one-sided range pinning (null bounds fall back to auto); returns null
-    // for transient non-finite bounds (skip: writing NaN breaks scales and loops here)
+    // Supports one-sided range pinning (null bounds fall back to auto); returns null for transient
+    // non-finite bounds (skip: writing NaN breaks scales and loops here). y/y2 ranges are
+    // log-sanitized so an invalid (<= 0) log lower falls back to the auto count minimum.
     const next = resolve_axis_ranges(
-      { x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis },
+      {
+        x: final_x_axis,
+        x2: final_x2_axis,
+        y: { range: log_safe_range(final_y_axis) },
+        y2: { range: log_safe_range(final_y2_axis) },
+      },
       auto_ranges,
     )
     if (!next) return
@@ -354,9 +327,8 @@
   })
 
   // Layout: dynamic padding based on tick label widths
-  const default_padding = { t: 20, b: 60, l: 60, r: 20 }
   // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
-  let base_pad = $derived(filter_padding(padding, default_padding))
+  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
 
   // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
@@ -367,12 +339,12 @@
     const new_pad = width && height && current_ticks_y.length > 0
       ? calc_auto_padding({
         padding,
-        default_padding,
+        default_padding: DEFAULT_PLOT_PADDING,
         x2_axis: { ...final_x2_axis, tick_values: current_ticks_x2 },
         y_axis: { ...final_y_axis, tick_values: current_ticks_y },
         y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },
       })
-      : filter_padding(padding, default_padding)
+      : filter_padding(padding, DEFAULT_PLOT_PADDING)
 
     // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
     if (
@@ -457,60 +429,54 @@
         : null,
     })
   )
-  const pad = $derived(decor.pad)
+  // Resolve marginals (default: CDF strip on top) and reserve outer-band padding. Pass the
+  // histogram's `bins` as the marginal's histogram bin count (NOT `size`/thickness) so a
+  // `histogram` marginal inherits the main binning via normalize_marginals' merge; `cdf`
+  // ignores `bins`. Samples lie along x and equal series.y, so the adapter maps y -> x.
+  const resolved_marginals = $derived(
+    normalize_marginals(marginals, { top: { type: `cdf`, bins } }),
+  )
+  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  // a lone series uses the configured bar color; with multiple, each gets its own
+  const series_color = (series_data: DataSeries) =>
+    selected_series.length === 1 ? final_bar.color : extract_series_color(series_data)
+  const marginal_series = $derived<MarginalSeriesInput[]>(
+    selected_series_entries.map(({ series_data }) => ({
+      x: series_data.y ?? [],
+      color: series_color(series_data),
+      label: series_data.label,
+      visible: true,
+      x_axis: series_data.x_axis,
+      y_axis: series_data.y_axis,
+    })),
+  )
+  const marginal_has_axis = $derived(
+    marginal_axis_presence(x2_series.length > 0, y2_series.length > 0),
+  )
   const legend_auto_outside = $derived(decor.legend_outside)
   const legend_outside_x = $derived(decor.legend_pos.x)
   const legend_outside_y = $derived(decor.legend_pos.y)
 
-  // Scales and data
-  let scales = $derived({
-    x: create_scale(
-      final_x_axis.scale_type ?? `linear`,
-      ranges.current.x,
-      [pad.l, width - pad.r],
+  // Scales and data (x/x2 share the horizontal pixel span, y/y2 the inverted vertical one)
+  let scales = $derived(
+    create_axis_scales(
+      { x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis },
+      ranges.current,
+      pad,
+      width,
+      height,
     ),
-    x2: create_scale(
-      final_x2_axis.scale_type ?? `linear`,
-      ranges.current.x2,
-      [pad.l, width - pad.r],
-    ),
-    y: create_scale(
-      final_y_axis.scale_type ?? `linear`,
-      ranges.current.y,
-      [height - pad.b, pad.t],
-    ),
-    y2: create_scale(
-      final_y2_axis.scale_type ?? `linear`,
-      ranges.current.y2,
-      [height - pad.b, pad.t],
-    ),
-  })
+  )
 
   // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
   let histogram_bins = $derived.by(() => {
     if (selected_series.length === 0 || !width || !height) return []
-    const hist_generator = bin()
-      .domain([ranges.current.x[0], ranges.current.x[1]])
-      .thresholds(bins)
-    const x2_hist_generator = x2_series.length > 0
-      ? bin().domain([ranges.current.x2[0], ranges.current.x2[1]]).thresholds(bins)
-      : null
-    return selected_series_entries.map(({ series_data, series_idx }) => {
-      const use_x2 = series_data.x_axis === `x2`
-      const active_hist = use_x2 && x2_hist_generator ? x2_hist_generator : hist_generator
-      const bins_arr = active_hist(series_data.y)
-      return {
-        id: series_data.id ?? series_idx,
-        series_idx,
-        label: series_data.label || `Series ${series_idx + 1}`,
-        color: selected_series.length === 1
-          ? final_bar.color
-          : extract_series_color(series_data),
-        bins: bins_arr,
-        max_count: max(bins_arr, (data) => data.length) || 0,
-        x_axis: series_data.x_axis,
-        y_axis: series_data.y_axis,
-      }
+    return compute_histogram_bins(selected_series_entries, {
+      x_domain: ranges.current.x,
+      x2_domain: ranges.current.x2,
+      has_x2: x2_series.length > 0,
+      bin_count: bins,
+      series_color,
     })
   })
   // Render-time data adds the pixel scales (pad-dependent)
@@ -522,43 +488,23 @@
     })),
   )
 
-  let ticks = $derived({
-    x: width && height
-      ? generate_ticks(
-        ranges.current.x,
-        final_x_axis.scale_type ?? `linear`,
-        final_x_axis.ticks,
-        scales.x,
-        { default_count: 8 },
-      )
-      : [],
-    x2: width && height && x2_series.length > 0
-      ? generate_ticks(
-        ranges.current.x2,
-        final_x2_axis.scale_type ?? `linear`,
-        final_x2_axis.ticks,
-        scales.x2,
-        { default_count: 8 },
-      )
-      : [],
-    y: width && height
-      ? generate_ticks(
-        ranges.current.y,
-        final_y_axis.scale_type ?? `linear`,
-        final_y_axis.ticks,
-        scales.y,
-        { default_count: 6 },
-      )
-      : [],
-    y2: width && height && y2_series.length > 0
-      ? generate_ticks(
-        ranges.current.y2,
-        final_y2_axis.scale_type ?? `linear`,
-        final_y2_axis.ticks,
-        scales.y2,
-        { default_count: 6 },
-      )
-      : [],
+  let ticks = $derived.by(() => {
+    // x/y always render; x2/y2 only when their series exist (else their scale is a [0,1] sentinel)
+    const axis_ticks = (
+      axis: typeof final_x_axis,
+      range: Vec2,
+      scale: typeof scales.x,
+      default_count: number,
+      show = true,
+    ) =>
+      width && height && show
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, { default_count })
+        : []
+    const x = axis_ticks(final_x_axis, ranges.current.x, scales.x, 8)
+    const x2 = axis_ticks(final_x2_axis, ranges.current.x2, scales.x2, 8, x2_series.length > 0)
+    const y = axis_ticks(final_y_axis, ranges.current.y, scales.y, 6)
+    const y2 = axis_ticks(final_y2_axis, ranges.current.y2, scales.y2, 6, y2_series.length > 0)
+    return { x, x2, y, y2 }
   })
 
   // Cache measured tick-label widths so expensive text measurement only runs
@@ -706,24 +652,16 @@
   })
 
   // State accessors for shared axis change handler
+  // Spread into existing state in each setter to preserve merged type structure
   const axis_state: AxisChangeState<DataSeries> = {
-    get_axis: (axis) => {
-      if (axis === `x`) return x_axis
-      if (axis === `x2`) return x2_axis
-      if (axis === `y`) return y_axis
-      return y2_axis
+    axes: {
+      x: { get: () => x_axis, set: (config) => (x_axis = { ...x_axis, ...config }) },
+      x2: { get: () => x2_axis, set: (config) => (x2_axis = { ...x2_axis, ...config }) },
+      y: { get: () => y_axis, set: (config) => (y_axis = { ...y_axis, ...config }) },
+      y2: { get: () => y2_axis, set: (config) => (y2_axis = { ...y2_axis, ...config }) },
     },
-    set_axis: (axis, config) => {
-      // Spread into existing state to preserve merged type structure
-      if (axis === `x`) x_axis = { ...x_axis, ...config }
-      else if (axis === `x2`) x2_axis = { ...x2_axis, ...config }
-      else if (axis === `y`) y_axis = { ...y_axis, ...config }
-      else y2_axis = { ...y2_axis, ...config }
-    },
-    get_series: () => series,
-    set_series: (new_series) => (series = new_series),
-    get_loading: () => axis_loading,
-    set_loading: (axis) => (axis_loading = axis),
+    series: { get: () => series, set: (next) => (series = next) },
+    loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
   // Shared handler + one-shot auto-load bound to this component's state
@@ -863,10 +801,10 @@
     <!-- X-axis -->
     <PlotAxis
       side="x"
-      ticks={ticks.x as number[]}
+      ticks={ticks.x}
       place={scales.x}
       axis={final_x_axis}
-      domain={ranges.current.x as Vec2}
+      domain={ranges.current.x}
       {pad}
       {width}
       {height}
@@ -882,10 +820,10 @@
     {#if x2_series.length > 0}
       <PlotAxis
         side="x2"
-        ticks={ticks.x2 as number[]}
+        ticks={ticks.x2}
         place={scales.x2}
         axis={final_x2_axis}
-        domain={ranges.current.x2 as Vec2}
+        domain={ranges.current.x2}
         {pad}
         {width}
         {height}
@@ -901,10 +839,10 @@
     <!-- Y-axis -->
     <PlotAxis
       side="y"
-      ticks={ticks.y as number[]}
+      ticks={ticks.y}
       place={scales.y}
       axis={final_y_axis}
-      domain={ranges.current.y as Vec2}
+      domain={ranges.current.y}
       {pad}
       {width}
       {height}
@@ -924,10 +862,10 @@
     {#if y2_series.length > 0}
       <PlotAxis
         side="y2"
-        ticks={ticks.y2 as number[]}
+        ticks={ticks.y2}
         place={scales.y2}
         axis={final_y2_axis}
-        domain={ranges.current.y2 as Vec2}
+        domain={ranges.current.y2}
         {pad}
         {width}
         {height}
@@ -1009,6 +947,23 @@
 
     <!-- Reference lines: above all -->
     {@render ref_lines_layer(ref_lines_by_z.above_all)}
+
+    <!-- Marginal distribution strips -->
+    <PlotMarginals
+      marginals={resolved_marginals}
+      series={marginal_series}
+      {width}
+      {height}
+      {pad}
+      has_axis={marginal_has_axis}
+      axes={{
+        x1: marginal_axis(scales.x, ranges.current.x, final_x_axis),
+        x2: marginal_axis(scales.x2, ranges.current.x2, final_x2_axis),
+        y1: marginal_axis(scales.y, ranges.current.y, final_y_axis),
+        y2: marginal_axis(scales.y2, ranges.current.y2, final_y2_axis),
+      }}
+      id={clip_path_id}
+    />
   </svg>
 
   <!-- Tooltip (outside SVG for proper HTML rendering) -->
