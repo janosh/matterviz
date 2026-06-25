@@ -751,7 +751,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
     },
     vector_scale: {
-      value: 1.0,
+      value: 0.75,
       description: `Scale factor for site vector arrows`,
       minimum: 0.1,
       maximum: 10.0,
@@ -773,8 +773,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not.`,
     },
     vector_uniform_thickness: {
-      value: false,
-      description: `Use the same shaft and head size for all arrows regardless of length. When off (default), thickness scales with arrow length.`,
+      value: true,
+      description: `Use the same shaft and head size for all arrows regardless of length. Negative radii are scaled by characteristic atom spacing.`,
     },
     vector_origin_gap: {
       value: 0,
@@ -783,20 +783,20 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 0.5,
     },
     vector_shaft_radius: {
-      value: -0.03,
-      description: `Radius of vector shaft (negative = relative to length, positive = absolute)`,
+      value: -0.01,
+      description: `Radius of vector shaft (negative = relative to length or atom spacing with uniform thickness, positive = absolute)`,
       minimum: -0.1,
       maximum: 0.1,
     },
     vector_arrow_head_radius: {
-      value: -0.06,
-      description: `Radius of vector arrow head (negative = relative to length, positive = absolute)`,
+      value: -0.04,
+      description: `Radius of vector arrow head (negative = relative to length or atom spacing with uniform thickness, positive = absolute)`,
       minimum: -0.2,
       maximum: 0.2,
     },
     vector_arrow_head_length: {
-      value: -0.15,
-      description: `Length of vector arrow head (negative = relative to length, positive = absolute)`,
+      value: -0.1,
+      description: `Length of vector arrow head (negative = relative to length or atom spacing with uniform thickness, positive = absolute)`,
       minimum: -0.5,
       maximum: 0.5,
     },

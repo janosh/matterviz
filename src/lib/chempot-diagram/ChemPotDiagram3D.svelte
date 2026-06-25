@@ -380,6 +380,21 @@
     max_energy_per_atom: number | null
   }
   type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
+  const domain_annotation_cache = new Map<string, number[]>()
+
+  function get_domain_ann_loc(points_3d: number[][]): number[] {
+    if (points_3d.length >= 3) {
+      const cache_key = points_3d.map((point) => point.join(`,`)).join(`;`)
+      const cached = domain_annotation_cache.get(cache_key)
+      if (cached) return cached
+      const ann_loc = get_3d_domain_simplexes_and_ann_loc(points_3d).ann_loc
+      domain_annotation_cache.set(cache_key, ann_loc)
+      return ann_loc
+    }
+    return points_3d[0].map((_, col_idx) =>
+      points_3d.reduce((sum, point) => sum + point[col_idx], 0) / points_3d.length
+    )
+  }
 
   const render_domains = $derived.by((): DomainRenderData[] => {
     if (!diagram_data || plot_elements.length < 2) return []
@@ -407,18 +422,11 @@
         )
         : pts
       if (padded.length < 2) continue
-      const is_draw = formulas_to_draw.includes(formula)
-      const centroid = padded[0].map((_, col_idx) =>
-        padded.reduce((sum, point) => sum + point[col_idx], 0) / padded.length
-      )
-      const ann_loc = padded.length >= 3
-        ? get_3d_domain_simplexes_and_ann_loc(padded).ann_loc
-        : centroid
       result.push({
         formula,
         points_3d: padded,
-        ann_loc,
-        is_draw_formula: is_draw,
+        ann_loc: get_domain_ann_loc(padded),
+        is_draw_formula: formulas_to_draw.includes(formula),
         label_font_size: bbox_diagonal(padded),
       })
     }
@@ -2018,12 +2026,25 @@
     hover_info = null
   }
 
+  function stop_phase_pointer_event(raw_event: unknown): void {
+    if (!raw_event || typeof raw_event !== `object`) return
+
+    const event = raw_event as { nativeEvent?: unknown; stopPropagation?: () => void }
+    event.stopPropagation?.()
+
+    const native_event = event.nativeEvent
+    if (!native_event || typeof native_event !== `object`) return
+    const native_pointer_event = native_event as { stopPropagation?: () => void }
+    native_pointer_event.stopPropagation?.()
+  }
+
   function handle_phase_hover(domain_data: HoverMeshData, raw_event: unknown): void {
     if (locked_hover_formula && locked_hover_formula !== domain_data.formula) return
     set_hover_info(domain_data, raw_event)
   }
 
   function toggle_phase_lock(domain_data: HoverMeshData, raw_event: unknown): void {
+    stop_phase_pointer_event(raw_event)
     if (locked_hover_formula === domain_data.formula) {
       clear_hover_lock()
       return

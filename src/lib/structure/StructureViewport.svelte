@@ -5,9 +5,8 @@
   // Each viewport owns its camera: move tracking, reset (on reset_token), and orbit-target
   // recentering on structure change. The primary pane (index 0) additionally binds out
   // scene/camera for the export pane and receives the on_camera_move/on_camera_reset
-  // callbacks so it drives Structure's external camera API. camera_position is read from the
-  // scene_props spread (shared across panes, so each pane auto-frames along its own
-  // camera_direction); camera_target is per-pane so each can recenter independently.
+  // callbacks so it drives Structure's external camera API. Camera state is per-pane:
+  // the primary pane binds it back to Structure's scene_props, while side panes keep it local.
   import type { ElementSymbol } from '$lib/element'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import type { Vec3 } from '$lib/math'
@@ -57,8 +56,7 @@
     active_sites = [],
     camera_direction = undefined,
     camera_projection = `orthographic`,
-    // Per-pane orbit target (primary syncs it from scene_props, panes manage it locally).
-    // camera_position is NOT a prop: StructureScene reads it from the scene_props spread.
+    camera_position = $bindable([0, 0, 0]),
     camera_target = $bindable(undefined),
 
     // Edit-mode callbacks
@@ -112,6 +110,7 @@
     active_sites?: number[]
     camera_direction?: Vec3
     camera_projection?: CameraProjection
+    camera_position?: Vec3
     camera_target?: Vec3
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
@@ -149,10 +148,8 @@
     return { ...(typeof gizmo === `object` ? gizmo : {}), size }
   })
 
-  // Internal camera state bound from StructureScene (not exposed to the parent).
-  // camera_position is scratch for the on_camera_move/reset payloads; StructureScene's
-  // actual camera_position comes from the scene_props spread.
-  let camera_position = $state<Vec3>([0, 0, 0])
+  // Internal orbit controls are bound from StructureScene; camera_position/target are
+  // bindable above so the primary viewport can persist moves into scene_props.
   let orbit_controls = $state<
     ComponentProps<typeof StructureScene>[`orbit_controls`]
   >(undefined)
@@ -226,8 +223,8 @@
     last_reset_token = token
   })
 
-  // Clear stale orbit target on structure change so the new cell re-centers
-  // (keeps the angle, only recenters)
+  // Clear stale camera state on structure change so each pane re-frames the new cell
+  // along its configured direction.
   let viewport_first_run = true
   $effect(() => {
     void structure
@@ -235,7 +232,10 @@
       viewport_first_run = false
       return
     }
-    untrack(() => (camera_target = undefined))
+    untrack(() => {
+      camera_position = [0, 0, 0]
+      camera_target = undefined
+    })
   })
 
   function handle_dblclick(event: MouseEvent) {
@@ -266,6 +266,7 @@
       {base_structure}
       {...scene_props}
       {...(in_grid ? { auto_rotate: 0 } : {})}
+      {camera_position}
       {camera_target}
       {camera_projection}
       {camera_direction}

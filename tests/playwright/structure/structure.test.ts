@@ -3117,6 +3117,12 @@ test.describe(`Edit Atoms Mode`, () => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
+  async function select_atom_for_delete(page: Page): Promise<void> {
+    await page.locator(`[data-testid="btn-select-site-0"]`).click()
+    await page.locator(`#test-structure`).focus()
+    await page.keyboard.press(`Delete`)
+  }
+
   test(`edit-atoms mode can be selected from dropdown`, async ({ page }) => {
     await enter_edit_atoms_mode(page)
 
@@ -3178,14 +3184,7 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
-
-    // Click on an atom to select it (use center of canvas)
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-
-    // Focus wrapper for keyboard events and press Delete
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     // Undo button should now be enabled
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
@@ -3196,12 +3195,7 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
-
-    // Select and delete an atom
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     // Wait for undo to become available, then click it
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
@@ -3217,12 +3211,7 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
-
-    // Select and delete
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
     await expect(undo_btn).toBeEnabled({ timeout: 2000 })
@@ -3282,15 +3271,12 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
 
     // Initially no count badges
     await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
 
     // Delete an atom to create history
-    await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await select_atom_for_delete(page)
 
     // Should show undo count badge with "1"
     const count_badge = structure_div.locator(`.history-count`).first()

@@ -415,8 +415,8 @@ test.describe(`Trajectory Component`, () => {
         /Play|Pause/,
       )
       await expect(
-        trajectory_controls.locator(`button[title="Previous step"]`),
-      ).toHaveAttribute(`title`, `Previous step`)
+        trajectory_controls.locator(`button[title^="Previous step"]`),
+      ).toHaveAttribute(`title`, /^Previous step/)
       await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
         `title`,
         /info/,

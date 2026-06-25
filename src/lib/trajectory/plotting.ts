@@ -3,7 +3,12 @@ import { PLOT_COLORS } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
 import { get_coefficient_of_variation } from '$lib/math'
 import type { DataSeries } from '$lib/plot/core/types'
-import type { TrajectoryDataExtractor, TrajectoryMetadata, TrajectoryType } from './index'
+import type {
+  TrajectoryDataExtractor,
+  TrajectoryFrame,
+  TrajectoryMetadata,
+  TrajectoryType,
+} from './index'
 
 // Configuration constants
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
@@ -34,12 +39,22 @@ interface UnitGroup {
 
 // Cache the per-frame walk per trajectory so re-renders that only change visible_properties or
 // labels/config reuse it (legend toggles mutate plot_series directly and skip regeneration, so they
-// don't hit this). Keyed by trajectory identity (WeakMap auto-evicts), invalidated on extractor
-// change. Assumes trajectories are immutable: replace the object to change frames, never mutate
-// `frames` in place (parsing always yields fresh trajectories, matching extract.ts).
+// don't hit this). Keyed by trajectory identity (WeakMap auto-evicts) and invalidated on extractor
+// or frame identity changes.
+const same_frames = (
+  cached_frames: readonly TrajectoryFrame[],
+  current_frames: readonly TrajectoryFrame[],
+): boolean =>
+  cached_frames.length === current_frames.length &&
+  cached_frames.every((frame, frame_idx) => frame === current_frames[frame_idx])
+
 const stats_cache = new WeakMap<
   TrajectoryType,
-  { extractor: TrajectoryDataExtractor; stats: ReturnType<typeof extract_property_statistics> }
+  {
+    extractor: TrajectoryDataExtractor
+    frames: TrajectoryFrame[]
+    stats: ReturnType<typeof extract_property_statistics>
+  }
 >()
 
 // Unified property extraction and series generation
@@ -59,11 +74,15 @@ export function generate_plot_series(
   // Single-pass extraction with variance detection, cached per trajectory (see stats_cache above)
   const cached = stats_cache.get(trajectory)
   let property_stats: ReturnType<typeof extract_property_statistics>
-  if (cached?.extractor === data_extractor) {
+  if (cached?.extractor === data_extractor && same_frames(cached.frames, trajectory.frames)) {
     property_stats = cached.stats
   } else {
     property_stats = extract_property_statistics(trajectory, data_extractor)
-    stats_cache.set(trajectory, { extractor: data_extractor, stats: property_stats })
+    stats_cache.set(trajectory, {
+      extractor: data_extractor,
+      frames: [...trajectory.frames],
+      stats: property_stats,
+    })
   }
 
   // Create all series

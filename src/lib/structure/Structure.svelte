@@ -1043,8 +1043,8 @@
   // Clear stale camera target and position so StructureScene uses the new
   // structure's rotation_target (unit cell center) and auto-positions the camera.
   function clear_camera_state() {
-    // Reset to a fresh [0,0,0] so every viewport re-frames the new structure along its
-    // axis (each StructureScene reads camera_position from this shared scene_props value).
+    // Reset to a fresh [0,0,0] so the primary viewport re-frames the new structure.
+    // Side panes reset their local camera state in StructureViewport's structure effect.
     scene_props.camera_target = undefined
     scene_props.camera_position = [0, 0, 0]
   }
@@ -1863,7 +1863,8 @@
         {...shared_viewport_props}
         camera_direction={view.direction}
         camera_projection={view.projection ?? scene_props.camera_projection}
-        camera_target={scene_props.camera_target}
+        bind:camera_position={scene_props.camera_position}
+        bind:camera_target={scene_props.camera_target}
         bind:scene
         bind:camera
         bind:selected_sites
@@ -2064,7 +2065,7 @@
   .measure-mode-dropdown > button {
     background: transparent;
     padding: 1px 6px;
-    font-size: var(--ctrl-btn-icon-size);
+    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
   }
   .selection-limit-text {
     font-weight: bold;

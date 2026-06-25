@@ -1457,7 +1457,7 @@
     }
     button {
       background: var(--btn-bg);
-      font-size: var(--ctrl-btn-icon-size);
+      font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
       &:hover:not(:disabled) {
         background: var(--btn-bg-hover);
       }
@@ -1561,7 +1561,7 @@
     position: relative;
   }
   .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle)) {
-    font-size: var(--ctrl-btn-icon-size);
+    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
   }
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);

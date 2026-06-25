@@ -99,7 +99,7 @@
     display: flex;
     padding: var(--viewer-buttons-btn-padding, 4px);
     border-radius: var(--border-radius, 3pt);
-    font-size: var(--ctrl-btn-icon-size);
+    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
   }
   section.control-buttons :global(button:hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);

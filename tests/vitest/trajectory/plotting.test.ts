@@ -106,33 +106,44 @@ describe(`generate_plot_series`, () => {
     assert_unit_group_constraints(series)
   })
 
-  it(`memoizes per-frame extraction for the same trajectory + extractor`, () => {
-    const trajectory = create_trajectory(COMMON_TRAJECTORIES.multi_property)
-    let calls = 0
-    const counting = (frame: TrajectoryFrame) => {
-      calls++
+  it(`memoizes extraction until extractor, trajectory, or frame identities change`, () => {
+    const trajectory = create_trajectory([{ energy: -10 }, { energy: -11 }])
+    let call_count = 0
+    const counting_extractor = (frame: TrajectoryFrame) => {
+      call_count++
       return test_extractor(frame)
     }
-    generate_plot_series(trajectory, counting)
-    const per_walk = calls
-    expect(per_walk).toBe(trajectory.frames.length) // one extract per frame
 
-    // repeat call with same trajectory + extractor reuses cached stats (no re-walk)
-    generate_plot_series(trajectory, counting)
-    expect(calls).toBe(per_walk)
+    let series = generate_plot_series(trajectory, counting_extractor)
+    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -11])
+    expect(call_count).toBe(trajectory.frames.length)
 
-    // a different extractor invalidates the cache -> re-walks every frame
-    const other = (frame: TrajectoryFrame) => {
-      calls++
+    generate_plot_series(trajectory, counting_extractor)
+    expect(call_count).toBe(trajectory.frames.length)
+
+    trajectory.frames.push(make_trajectory_frame(2, 1, { energy: -12 }))
+    series = generate_plot_series(trajectory, counting_extractor)
+    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -11, -12])
+    expect(call_count).toBe(5)
+
+    trajectory.frames[1] = make_trajectory_frame(1, 1, { energy: -20 })
+    series = generate_plot_series(trajectory, counting_extractor)
+    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -20, -12])
+    expect(call_count).toBe(8)
+
+    const other_extractor = (frame: TrajectoryFrame) => {
+      call_count++
       return test_extractor(frame)
     }
-    generate_plot_series(trajectory, other)
-    expect(calls).toBe(per_walk * 2)
+    generate_plot_series(trajectory, other_extractor)
+    expect(call_count).toBe(11)
 
-    // a different trajectory (new identity) also re-walks
-    const before = calls
-    generate_plot_series(create_trajectory(COMMON_TRAJECTORIES.lattice_params), counting)
-    expect(calls).toBeGreaterThan(before)
+    const before_other_trajectory = call_count
+    generate_plot_series(
+      create_trajectory(COMMON_TRAJECTORIES.lattice_params),
+      counting_extractor,
+    )
+    expect(call_count).toBeGreaterThan(before_other_trajectory)
   })
 
   it.each([

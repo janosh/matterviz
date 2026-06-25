@@ -86,16 +86,6 @@ const atom_label = (
   return occurrence === `first` ? labels.first() : labels.last()
 }
 
-const click_atom_label = async (
-  page: Page,
-  label_text: string,
-  options: { force?: boolean } = {},
-): Promise<void> => {
-  const label = atom_label(page, label_text)
-  await expect(label).toBeVisible()
-  await label.click(options)
-}
-
 const select_atom_label_with_keyboard = async (
   page: Page,
   label_text: string,
@@ -453,11 +443,12 @@ test.describe(`Bond component`, () => {
     const menu = page.locator(`#test-structure .bond-context-menu`)
     await expect(menu).toBeHidden()
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+    await page.locator(`[data-testid="btn-clear-selected"]`).click()
+    await page.locator(`[data-testid="btn-clear-measured"]`).click()
 
-    await click_atom_label(page, `C`)
+    await select_atom_label_with_keyboard(page, `C`)
     await expect(menu).toBeHidden()
-    await expect(page.locator(`#test-structure .selection-label`)).toBeVisible()
-    await click_atom_label(page, `O`)
+    await select_atom_label_with_keyboard(page, `O`)
     await expect(menu).toBeVisible()
     await menu.getByRole(`button`, { name: `Close` }).click()
     expect(console_errors).toHaveLength(0)
@@ -473,8 +464,8 @@ test.describe(`Bond component`, () => {
     const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
     await order_select.selectOption({ label: `Double` })
 
-    await click_atom_label(page, `C`)
-    await click_atom_label(page, `O`)
+    await select_atom_label_with_keyboard(page, `C`)
+    await select_atom_label_with_keyboard(page, `O`)
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
@@ -484,8 +475,8 @@ test.describe(`Bond component`, () => {
     await expect(order_select).toHaveValue(`2`)
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
 
-    await click_atom_label(page, `C`)
-    await click_atom_label(page, `O`)
+    await select_atom_label_with_keyboard(page, `C`)
+    await select_atom_label_with_keyboard(page, `O`)
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
