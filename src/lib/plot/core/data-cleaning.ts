@@ -80,7 +80,8 @@ function apply_smoothing(
   if (config.type === `moving_avg`) {
     return smooth_moving_average(y_values, config.window)
   } else if (config.type === `savgol`) {
-    // omit polynomial_order so smooth_savitzky_golay applies its own default
+    // pass polynomial_order through: when it's undefined, smooth_savitzky_golay's
+    // default parameter applies (JS defaults also kick in for an explicit undefined)
     return smooth_savitzky_golay(y_values, config.window, config.polynomial_order)
   } else if (config.type === `gaussian`) {
     return apply_gaussian_smearing(x_values, y_values, config.sigma)

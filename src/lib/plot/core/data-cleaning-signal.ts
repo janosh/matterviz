@@ -379,6 +379,10 @@ export function smooth_savitzky_golay(
   let actual_window = window % 2 === 0 ? window + 1 : window
   actual_window = Math.max(actual_window, polynomial_order + 2)
   actual_window = Math.min(actual_window, values.length)
+  // max/min clamps above can re-even the window (polynomial_order + 2 is even for even orders;
+  // values.length may be even). Force odd so the kernel stays symmetric and matches
+  // compute_savgol_coefficients' (2 * floor(window / 2) + 1)-length row.
+  if (actual_window % 2 === 0) actual_window -= 1
 
   if (actual_window < 3) return [...values]
 
