@@ -233,6 +233,8 @@
       return
     }
     untrack(() => {
+      // Preserve explicit camera props supplied alongside a structure change.
+      if (camera_target !== undefined || camera_position.some((coord) => coord !== 0)) return
       camera_position = [0, 0, 0]
       camera_target = undefined
     })
