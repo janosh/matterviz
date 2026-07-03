@@ -5,6 +5,7 @@ import * as math from '$lib/math'
 import type { AnyStructure, LatticeType, Site } from '$lib/structure'
 import {
   clean_geometry_for_export,
+  convert_instanced_meshes_to_regular,
   create_structure_filename,
   export_structure_as,
   extract_bond_color_for_instance,
@@ -24,6 +25,7 @@ import {
   Color,
   Float32BufferAttribute,
   InstancedBufferAttribute,
+  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -1395,6 +1397,83 @@ describe(`3D Export Color Preservation`, () => {
       ])
       expect(extract_bond_color_for_instance(geom, -1)).toBeNull()
       expect(extract_bond_color_for_instance(geom, 3)).toBeNull()
+    })
+  })
+
+  describe(`convert_instanced_meshes_to_regular color precedence`, () => {
+    // Colors below use component form (already in working color space) so values
+    // round-trip exactly through instanceColor buffers and material colors
+    const converted_group_colors = (scene: Scene, name: string): number[][] => {
+      const converted = convert_instanced_meshes_to_regular(scene)
+      const colors: number[][] = []
+      converted.traverse((obj) => {
+        if (obj.name === name) {
+          for (const child of obj.children) {
+            const mat = (child as Mesh).material as MeshStandardMaterial
+            colors.push([mat.color.r, mat.color.g, mat.color.b])
+          }
+        }
+      })
+      return colors
+    }
+
+    test(`flagged meshes read per-instance colors, not the white base material`, () => {
+      // Mirrors InstancedAtoms/ArrowInstances: white material + instanceColor buffer
+      const scene = new Scene()
+      const atoms = new InstancedMesh(
+        new SphereGeometry(0.5, 4, 4),
+        new MeshStandardMaterial(),
+        2,
+      )
+      atoms.name = `atoms`
+      atoms.userData.per_instance_color = true
+      atoms.setColorAt(0, new Color(1, 0, 0))
+      atoms.setColorAt(1, new Color(0, 0, 1))
+      scene.add(atoms)
+
+      expect(converted_group_colors(scene, `atoms`)).toEqual([
+        [1, 0, 0],
+        [0, 0, 1],
+      ])
+    })
+
+    test(`legacy unflagged meshes keep the material color over all-white instanceColor`, () => {
+      // Mirrors threlte-instanced meshes (e.g. ScatterPlot3D): real color lives on
+      // the material, instanceColor is an all-white buffer that must NOT win
+      const scene = new Scene()
+      const legacy = new InstancedMesh(
+        new SphereGeometry(0.5, 4, 4),
+        new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
+        1,
+      )
+      legacy.name = `legacy`
+      legacy.setColorAt(0, new Color(1, 1, 1))
+      scene.add(legacy)
+
+      expect(converted_group_colors(scene, `legacy`)).toEqual([[0, 1, 0]])
+    })
+
+    test(`shader-material bond gradients win over everything`, () => {
+      const scene = new Scene()
+      const bond_geometry = new SphereGeometry(0.5, 4, 4)
+      bond_geometry.setAttribute(
+        `instanceColorStart`,
+        new InstancedBufferAttribute(new Float32Array([1, 0, 0]), 3),
+      )
+      bond_geometry.setAttribute(
+        `instanceColorEnd`,
+        new InstancedBufferAttribute(new Float32Array([0, 0, 1]), 3),
+      )
+      const bonds = new InstancedMesh(
+        bond_geometry,
+        new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
+        1,
+      )
+      bonds.name = `bonds`
+      bonds.userData.per_instance_color = true // must lose to the gradient path
+      scene.add(bonds)
+
+      expect(converted_group_colors(scene, `bonds`)).toEqual([[0.5, 0, 0.5]])
     })
   })
 

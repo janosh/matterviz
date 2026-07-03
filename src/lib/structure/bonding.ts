@@ -736,8 +736,9 @@ const make_bond = (
 // Pack quantized cell coordinates into one integer key (exact for cell coords in
 // [-512, 511], i.e. structures up to ~1000 cells per axis - far beyond any real
 // case). Integer Map keys avoid per-lookup string building in the hot pair loop.
+// Also used by pbc.ts for its phase-2 boundary-completion grid.
 const CELL_OFFSET = 512
-const pack_cell_key = (x: number, y: number, z: number): number =>
+export const pack_cell_key = (x: number, y: number, z: number): number =>
   (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
 
 // Build spatial grid by dividing 3D space into cubic cells.
@@ -757,22 +758,30 @@ function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
 }
 
 // Get all site indices in 3x3x3 cube of cells around position.
+// Fills and returns a REUSED module-level array (valid until the next call):
+// this runs once per bond center, so per-call allocations would dominate GC
+// pressure when computing bonds for large supercells.
+const scratch_neighbors: number[] = []
 function get_neighbors_from_grid(pos: Vec3, grid: SpatialGrid, cell_size: number): number[] {
   const [cx, cy, cz] = [
     Math.floor(pos[0] / cell_size),
     Math.floor(pos[1] / cell_size),
     Math.floor(pos[2] / cell_size),
   ]
-  const neighbors: number[] = []
+  scratch_neighbors.length = 0
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dz = -1; dz <= 1; dz++) {
         const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
-        if (cell) for (const idx of cell) neighbors.push(idx)
+        if (cell) {
+          for (let cell_idx = 0; cell_idx < cell.length; cell_idx++) {
+            scratch_neighbors.push(cell[cell_idx])
+          }
+        }
       }
     }
   }
-  return neighbors
+  return scratch_neighbors
 }
 
 // Setup spatial decomposition for structures with >50 atoms.

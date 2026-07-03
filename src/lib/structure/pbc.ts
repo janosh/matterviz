@@ -6,6 +6,7 @@ import {
   get_majority_element,
   has_framework_potential,
   is_spectator_center,
+  pack_cell_key,
 } from './bonding'
 import type { ParsedStructure } from './parse'
 
@@ -201,12 +202,15 @@ export function find_image_atoms(
       anchor_skipped.push(site_skipped[src_idx])
     }
 
-    // Spatial grid over anchors for the bond check
-    const grid = new Map<string, number[]>()
-    const grid_key = (pos: Vec3): string =>
-      pos.map((coord) => Math.floor(coord / max_bond_dist)).join(`,`)
+    // Spatial grid over anchors for the bond check (integer-packed keys: this
+    // grid is probed 27x per candidate image in the loop below)
+    const grid = new Map<number, number[]>()
     for (const [idx, pos] of anchor_positions.entries()) {
-      const key = grid_key(pos)
+      const key = pack_cell_key(
+        Math.floor(pos[0] / max_bond_dist),
+        Math.floor(pos[1] / max_bond_dist),
+        Math.floor(pos[2] / max_bond_dist),
+      )
       const cell = grid.get(key)
       if (cell) cell.push(idx)
       else grid.set(key, [idx])
@@ -218,7 +222,8 @@ export function find_image_atoms(
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dz = -1; dz <= 1; dz++) {
-            for (const anchor_idx of grid.get(`${cx + dx},${cy + dy},${cz + dz}`) ?? []) {
+            for (const anchor_idx of grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz)) ??
+              []) {
               if (anchor_skipped[anchor_idx]) continue
               const anchor_radius = anchor_radii[anchor_idx]
               const anchor_electroneg = anchor_en[anchor_idx]

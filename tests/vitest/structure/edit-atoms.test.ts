@@ -4,6 +4,8 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import { create_cart_to_frac } from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 import { get_pbc_image_sites } from '$lib/structure'
+import type { HistoryStacks } from '$lib/structure/edit-history'
+import { push_edit, step_history } from '$lib/structure/edit-history'
 import { describe, expect, test } from 'vitest'
 import { get_dummy_structure, make_crystal } from '../setup'
 
@@ -129,45 +131,37 @@ describe(`edit-atoms: scene-to-structure index mapping`, () => {
 })
 
 // === Undo/Redo Stack Behavior ===
-// Tests the push/pop invariants used by the edit-atoms undo/redo system
+// Exercises the REAL history helpers used by Structure.svelte (push_edit /
+// step_history from $lib/structure/edit-history), wrapped in the same
+// reassignment pattern the component uses for its $state.raw stacks.
 
 describe(`edit-atoms: undo/redo stack`, () => {
   const MAX_HISTORY = 20
 
   function create_stack_ops() {
-    let undo_stack: AnyStructure[] = []
-    let redo_stack: AnyStructure[] = []
-
-    function push_undo(structure: AnyStructure) {
-      undo_stack = [...undo_stack.slice(-(MAX_HISTORY - 1)), structuredClone(structure)]
-      redo_stack = []
-    }
-
-    function undo(structure: AnyStructure): AnyStructure | null {
-      if (undo_stack.length === 0) return null
-      redo_stack = [...redo_stack, structuredClone(structure)]
-      const restored = undo_stack.at(-1) ?? null
-      undo_stack = undo_stack.slice(0, -1)
-      return restored
-    }
-
-    function redo(structure: AnyStructure): AnyStructure | null {
-      if (redo_stack.length === 0) return null
-      undo_stack = [...undo_stack, structuredClone(structure)]
-      const restored = redo_stack.at(-1) ?? null
-      redo_stack = redo_stack.slice(0, -1)
-      return restored
-    }
+    let stacks: HistoryStacks<AnyStructure> = [[], []]
 
     return {
-      push_undo,
-      undo,
-      redo,
+      push_undo(structure: AnyStructure) {
+        stacks = push_edit(stacks, structuredClone(structure), MAX_HISTORY)
+      },
+      undo(structure: AnyStructure): AnyStructure | null {
+        const result = step_history(stacks, `undo`, structuredClone(structure))
+        if (!result) return null
+        stacks = result.stacks
+        return result.restored
+      },
+      redo(structure: AnyStructure): AnyStructure | null {
+        const result = step_history(stacks, `redo`, structuredClone(structure))
+        if (!result) return null
+        stacks = result.stacks
+        return result.restored
+      },
       get undo_count() {
-        return undo_stack.length
+        return stacks[0].length
       },
       get redo_count() {
-        return redo_stack.length
+        return stacks[1].length
       },
     }
   }

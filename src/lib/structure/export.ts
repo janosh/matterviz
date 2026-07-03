@@ -184,7 +184,8 @@ function extract_material_color(mat: Material): { r: number; g: number; b: numbe
 const is_instanced_mesh = (obj: Object3D): obj is InstancedMesh =>
   (obj as InstancedMesh).isInstancedMesh || obj.type === `InstancedMesh`
 
-function convert_instanced_meshes_to_regular(scene: Scene): Scene {
+// @internal exported only for tests - not part of the public API.
+export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // STEP 1: Collect material colors from ORIGINAL scene BEFORE cloning
   // This is crucial because scene.clone() may not properly preserve Threlte's material colors
   const material_colors = new Map<string, { r: number; g: number; b: number }>()
@@ -290,6 +291,14 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
       if (bond_color) {
         // Bond with gradient color - use stored midpoint color
         new_material.color.copy(bond_color)
+      } else if (instanced_mesh.userData.per_instance_color && instanced_mesh.instanceColor) {
+        // Meshes flagged per_instance_color (atoms, arrows) keep a white base
+        // material and store real colors in the instanceColor buffer
+        new_material.color.setRGB(
+          instanced_mesh.instanceColor.getX(idx),
+          instanced_mesh.instanceColor.getY(idx),
+          instanced_mesh.instanceColor.getZ(idx),
+        )
       } else if (stored_color) {
         // Atom with shared material color
         new_material.color.setRGB(stored_color.r, stored_color.g, stored_color.b)
