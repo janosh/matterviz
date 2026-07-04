@@ -13,6 +13,7 @@ import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { parse_structure_file } from '$lib/structure/parse'
 import type { TrajectoryType } from '$lib/trajectory'
+import { parse_num_token } from '$lib/utils'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import type { ViewType } from '../types'
@@ -72,10 +73,9 @@ export const parse_large_file_marker = (
   if (size_separator_idx <= 0) throw new Error(`Malformed large file marker`)
 
   const file_path = payload.slice(0, size_separator_idx)
-  const size_text = payload.slice(size_separator_idx + 1)
-  const file_size = Number(size_text)
-  // reject empty/whitespace size segments explicitly since Number(``) === 0
-  if (!size_text.trim() || !Number.isSafeInteger(file_size) || file_size < 0) {
+  // parse_num_token maps empty/whitespace size segments to NaN (Number(``) is 0)
+  const file_size = parse_num_token(payload.slice(size_separator_idx + 1))
+  if (!Number.isSafeInteger(file_size) || file_size < 0) {
     throw new Error(`Malformed large file size`)
   }
   return { file_path, file_size }

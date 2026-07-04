@@ -70,13 +70,14 @@ export async function decompress_file(
   file: File,
 ): Promise<{ content: string | ArrayBuffer; filename: string }> {
   const format = detect_compression_format(file.name)
-  const is_supported_compression =
-    format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
+  // zip/xz/bz2 are handled by their own code paths; null = not compressed
+  const decompressible =
+    format !== null && format !== `zip` && format !== `xz` && format !== `bz2` ? format : null
   const buffer = await file.arrayBuffer()
 
-  if (is_supported_compression && format) {
+  if (decompressible) {
     const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    const decompressed = await decompress_data_binary(buffer, format)
+    const decompressed = await decompress_data_binary(buffer, decompressible)
     return { content: to_content(filename, decompressed), filename }
   }
   return { content: to_content(file.name, buffer), filename: file.name }

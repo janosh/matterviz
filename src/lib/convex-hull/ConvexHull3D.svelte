@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
+  import { clamp01 } from '$lib/utils'
   import {
     add_alpha,
     AXIS_COLORS,
@@ -796,7 +797,7 @@
     const denom = Math.max(1e-6, max_fe - min_fe)
     return (value: number) => {
       // alpha 0 at 0 eV, goes to hull_face_opacity at most negative energy
-      const energy_fraction = Math.max(0, Math.min(1, (value - min_fe) / denom))
+      const energy_fraction = clamp01((value - min_fe) / denom)
       const alpha = (1 - energy_fraction) * hull_face_opacity
       return add_alpha(hull_face_color, alpha)
     }

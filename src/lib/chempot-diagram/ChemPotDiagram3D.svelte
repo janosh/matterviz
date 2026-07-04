@@ -1769,9 +1769,8 @@
     const projections = display.projections
     if (!projections) return []
     const [r0, r1, r2] = niced_range
-    const s0 = (r0[1] - r0[0]) * (display.projection_scale ?? 0.5)
-    const s1 = (r1[1] - r1[0]) * (display.projection_scale ?? 0.5)
-    const s2 = (r2[1] - r2[0]) * (display.projection_scale ?? 0.5)
+    const projection_scale = display.projection_scale ?? 0.5
+    const [s0, s1, s2] = niced_range.map(([lo, hi]) => (hi - lo) * projection_scale)
     const planes: {
       key: string
       pos: Vec3
@@ -2100,7 +2099,7 @@
             <label>
               <input
                 type="checkbox"
-                checked={formulas_to_draw.includes(formula)}
+                checked={formula_overlay_idx !== -1}
                 onchange={() => toggle_formula_selection(formula)}
               />
               <span

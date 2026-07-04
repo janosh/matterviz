@@ -208,9 +208,6 @@
 
   // Get color for a surface/vertex
   function get_surface_color(surface: Isosurface, vertex_idx?: number): string {
-    if (color_property === `band`) {
-      return constants.BAND_COLORS[surface.band_index % constants.BAND_COLORS.length]
-    }
     if (
       (color_property === `velocity` || color_property === `custom`) &&
       surface.properties &&

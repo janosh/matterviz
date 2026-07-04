@@ -325,6 +325,14 @@ export function parse_path(path: string): (string | number)[] {
   let current = ``
   let in_bracket = false
 
+  // Bracket tokens are numeric indices or quoted keys (quotes stripped, \" unescaped)
+  const push_bracket_token = (token: string): void => {
+    const num = Number(token)
+    if (Number.isNaN(num)) {
+      segments.push(token.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`))
+    } else segments.push(num)
+  }
+
   for (const char of path) {
     if (char === `.` && !in_bracket) {
       if (current) segments.push(current)
@@ -334,15 +342,7 @@ export function parse_path(path: string): (string | number)[] {
       current = ``
       in_bracket = true
     } else if (char === `]`) {
-      if (current) {
-        // Check if it's a number index
-        const num = Number(current)
-        if (Number.isNaN(num)) {
-          // Remove surrounding quotes and unescape internal quotes
-          const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`)
-          segments.push(unquoted)
-        } else segments.push(num)
-      }
+      if (current) push_bracket_token(current)
       current = ``
       in_bracket = false
     } else current += char
@@ -350,14 +350,8 @@ export function parse_path(path: string): (string | number)[] {
 
   // Handle trailing content (e.g., unclosed bracket like "a[0")
   if (current) {
-    if (in_bracket) {
-      // Apply same numeric/quoted-string logic as inside brackets
-      const num = Number(current)
-      if (Number.isNaN(num)) {
-        const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`)
-        segments.push(unquoted)
-      } else segments.push(num)
-    } else segments.push(current)
+    if (in_bracket) push_bracket_token(current)
+    else segments.push(current)
   }
 
   return segments

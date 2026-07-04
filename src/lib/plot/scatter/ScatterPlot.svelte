@@ -966,8 +966,7 @@
 
     // Fallback estimate (with room for tick labels) used before the colorbar first
     // renders; compute_element_placement measures the real footprint once it's laid out
-    const is_horizontal = (color_bar.orientation ?? `horizontal`) === `horizontal`
-    const colorbar_size = is_horizontal
+    const colorbar_size = colorbar_is_horizontal
       ? COLOR_BAR_DEFAULTS.horizontal_footprint
       : COLOR_BAR_DEFAULTS.vertical_footprint
 
