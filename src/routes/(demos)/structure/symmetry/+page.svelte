@@ -53,10 +53,11 @@
       : [],
   )
 
-  onMount(() => { // Initialize WASM
+  onMount(() => {
+    // Initialize WASM
     ensure_moyo_wasm_ready()
-      .then(() => wasm_ready = true)
-      .catch((err) => error = `WASM init failed: ${err}`)
+      .then(() => (wasm_ready = true))
+      .catch((err) => (error = `WASM init failed: ${err}`))
   })
 
   // Update filename from URL
@@ -67,9 +68,7 @@
   })
 
   // Derived values for wyckoff positions
-  const base_wyckoff_positions = $derived(
-    wyckoff_positions_from_moyo(top_ex_sym_data ?? null),
-  )
+  const base_wyckoff_positions = $derived(wyckoff_positions_from_moyo(top_ex_sym_data ?? null))
   // Full Wyckoff-position database of the detected space-group setting (moyo 0.11):
   // adds ITA representative coordinates and lets the table list unoccupied positions
   const wyckoff_db = $derived(
@@ -79,9 +78,12 @@
   )
   const wyckoff_positions = $derived.by(() => {
     if (
-      !base_wyckoff_positions || !displayed_structure || !current_structure ||
+      !base_wyckoff_positions ||
+      !displayed_structure ||
+      !current_structure ||
       !top_ex_sym_data
-    ) return base_wyckoff_positions
+    )
+      return base_wyckoff_positions
 
     // Only apply mapping for periodic structures with lattice
     if (!(`lattice` in current_structure) || !(`lattice` in displayed_structure)) {
@@ -122,8 +124,8 @@
         {wyckoff_positions}
         db_positions={wyckoff_db}
         show_unoccupied={show_unoccupied_wyckoff}
-        on_hover={(site_indices) => hovered_wyckoff_sites = site_indices ?? []}
-        on_click={(site_indices) => active_wyckoff_sites = site_indices ?? []}
+        on_hover={(site_indices) => (hovered_wyckoff_sites = site_indices ?? [])}
+        on_click={(site_indices) => (active_wyckoff_sites = site_indices ?? [])}
       />
       {#if wyckoff_db.length > 0}
         <label style="display: flex; gap: 6pt; align-items: center; margin-top: 1em">
@@ -182,14 +184,14 @@
   </Structure>
 </div>
 
-<p style="margin: 2em 0; text-align: center">
-  Drag any structure onto the viewer:
-</p>
+<p style="margin: 2em 0; text-align: center">Drag any structure onto the viewer:</p>
 
 <FilePicker
   files={structure_files}
   show_category_filters
-  on_drag_end={() => {/* noop to avoid TS complaining */}}
+  on_drag_end={() => {
+    /* noop to avoid TS complaining */
+  }}
   style="margin-bottom: 3em"
 />
 
@@ -203,10 +205,7 @@
       <h3>Two Column - Stats + Structure</h3>
       <div class="two-column-layout">
         <div>
-          <SymmetryStats
-            sym_data={two_col_sym_data}
-            bind:settings={two_col_sym_settings}
-          />
+          <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
         </div>
         <Structure
           data_url="/structures/{current_filename}"
@@ -222,10 +221,7 @@
     <div class="example-section">
       <h3>Stacked Layout - Stats Above Structure</h3>
       <div class="stacked-layout">
-        <SymmetryStats
-          sym_data={stacked_sym_data}
-          bind:settings={stacked_sym_settings}
-        />
+        <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
         <Structure
           data_url="/structures/{current_filename}"
           show_controls={true}

@@ -10,10 +10,7 @@
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { atomic_radii } from '$lib/structure'
-  import type {
-    AtomColorConfig,
-    AtomPropertyColors,
-  } from '$lib/structure/atom-properties'
+  import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
@@ -77,8 +74,7 @@
   }
 
   let show_element_legend = $derived(
-    atom_color_config.mode === `element` && elements &&
-      Object.keys(elements).length > 0,
+    atom_color_config.mode === `element` && elements && Object.keys(elements).length > 0,
   )
   let show_property_legend = $derived(
     atom_color_config.mode !== `element` && property_colors?.colors.length,
@@ -111,12 +107,12 @@
   let format_value = (val: number | string): string => {
     if (typeof val === `number`) return format_num(val, `.3~f`)
 
-    if (typeof val === `string` && val.includes(`|`)) { // Format Wyckoff orbit IDs
+    if (typeof val === `string` && val.includes(`|`)) {
+      // Format Wyckoff orbit IDs
       const [wyckoff, element] = val.split(`|`, 2)
       // Count how many sites have this wyckoff+element combination
-      const count = property_colors?.values.filter((property_value) =>
-        property_value === val
-      ).length ?? 0
+      const count =
+        property_colors?.values.filter((property_value) => property_value === val).length ?? 0
       return `${element}:${count}${wyckoff}`
     }
     return String(val)
@@ -147,11 +143,7 @@
     )
   })
 
-  function toggle_visibility<T>(
-    set: Set<T>,
-    value: T,
-    event: MouseEvent,
-  ): Set<T> {
+  function toggle_visibility<T>(set: Set<T>, value: T, event: MouseEvent): Set<T> {
     event.preventDefault()
     event.stopPropagation()
     const new_set = new SvelteSet(set)
@@ -170,8 +162,7 @@
     const query = remap_search.toLowerCase()
     return ELEM_SYMBOLS.filter((elem) => {
       const data = element_data?.find((el) => el.symbol === elem)
-      return elem.toLowerCase().includes(query) ||
-        data?.name?.toLowerCase().includes(query)
+      return elem.toLowerCase().includes(query) || data?.name?.toLowerCase().includes(query)
     })
   })
 
@@ -179,14 +170,13 @@
   let sorted_element_entries = $derived.by(() => {
     if (!elements) return []
     const element_amounts = elements as Record<string, number>
-    const ordered_known_entries = ELEM_SYMBOLS
-      .flatMap((element_symbol) => {
-        const amount = element_amounts[element_symbol]
-        return amount === undefined ? [] : [[element_symbol, amount] as const]
-      })
+    const ordered_known_entries = ELEM_SYMBOLS.flatMap((element_symbol) => {
+      const amount = element_amounts[element_symbol]
+      return amount === undefined ? [] : [[element_symbol, amount] as const]
+    })
     const unknown_entries = Object.entries(element_amounts)
-      .filter(([element_symbol]) =>
-        !known_element_symbols.has(element_symbol as ElementSymbol)
+      .filter(
+        ([element_symbol]) => !known_element_symbols.has(element_symbol as ElementSymbol),
       )
       .sort(([element_a], [element_b]) => element_a.localeCompare(element_b))
     return [...ordered_known_entries, ...unknown_entries]
@@ -209,7 +199,7 @@
   const MAX_RADIUS = 5
 
   const parse_radius = (value: string): number | null => {
-    const num = parseFloat(value)
+    const num = Number(value)
     return !isNaN(num) && num >= MIN_RADIUS && num <= MAX_RADIUS ? num : null
   }
 
@@ -252,7 +242,7 @@
 {#snippet mode_selector_snippet()}
   <div
     class="mode-selector"
-    {@attach click_outside({ callback: () => mode_menu_open = false })}
+    {@attach click_outside({ callback: () => (mode_menu_open = false) })}
   >
     <button
       class="mode-toggle"
@@ -268,10 +258,7 @@
     </button>
     {#if mode_menu_open}
       <div class="mode-dropdown">
-        {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as
-          [value, label]
-          (value)
-        }
+        {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
           <button
             class="mode-option"
             class:selected={atom_color_config.mode === value}
@@ -345,7 +332,8 @@
       <div class="legend-item">
         <label
           bind:this={labels[idx]}
-          title="{element_data?.find((el) => el.symbol === displayed_elem)?.name ?? ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
+          title="{element_data?.find((el) => el.symbol === displayed_elem)?.name ??
+            ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
           class:hidden={is_hidden}
@@ -378,13 +366,12 @@
         <button
           class="toggle-visibility"
           class:element-hidden={is_hidden}
-          onclick={(
-            event,
-          ) => (hidden_elements = toggle_visibility(
-            hidden_elements,
-            elem as ElementSymbol,
-            event,
-          ))}
+          onclick={(event) =>
+            (hidden_elements = toggle_visibility(
+              hidden_elements,
+              elem as ElementSymbol,
+              event,
+            ))}
           title={is_hidden ? `Show ${elem} atoms` : `Hide ${elem} atoms`}
           {@attach tooltip({ placement: `top` })}
           type="button"
@@ -404,8 +391,8 @@
             <div class="radius-control">
               <label
                 title={displayed_elem !== elem
-                ? `Radius for ${elem} atoms (displayed as ${displayed_elem})`
-                : `Radius for ${elem} atoms`}
+                  ? `Radius for ${elem} atoms (displayed as ${displayed_elem})`
+                  : `Radius for ${elem} atoms`}
                 {@attach tooltip({ placement: `top` })}
               >
                 <span>Radius ({elem})</span>
@@ -417,10 +404,7 @@
                   value={get_element_radius(elem as ElementSymbol)}
                   oninput={(event) => {
                     if (event.target instanceof HTMLInputElement) {
-                      update_element_radius(
-                        elem as ElementSymbol,
-                        event.target.value,
-                      )
+                      update_element_radius(elem as ElementSymbol, event.target.value)
                     }
                   }}
                 />
@@ -505,9 +489,8 @@
             class:hidden={is_hidden}
             style:background-color={color}
             aria-pressed={is_hidden}
-            onclick={(
-              event,
-            ) => (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
+            onclick={(event) =>
+              (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
             {@attach contrast_color()}
@@ -517,10 +500,7 @@
         {/each}
       </div>
     {:else if atom_color_config.scale_type === `continuous` && property_colors}
-      <div
-        title={legend_title}
-        {@attach tooltip({ placement: `top` })}
-      >
+      <div title={legend_title} {@attach tooltip({ placement: `top` })}>
         <ColorBar
           color_scale={atom_color_config.scale}
           range={[property_colors.min_value ?? 0, property_colors.max_value ?? 0]}
@@ -535,10 +515,7 @@
         />
       </div>
     {:else if atom_color_config.scale_type === `categorical` && property_colors}
-      {#each property_colors.unique_values || [] as
-        value
-        (`${atom_color_config.mode}-${value}`)
-      }
+      {#each property_colors.unique_values || [] as value (`${atom_color_config.mode}-${value}`)}
         {@const color = color_map.get(value)}
         {@const is_hidden = hidden_prop_vals.has(value)}
         <div class="legend-item">
@@ -553,13 +530,8 @@
           <button
             class="toggle-visibility"
             class:element-hidden={is_hidden}
-            onclick={(
-              event,
-            ) => (hidden_prop_vals = toggle_visibility(
-              hidden_prop_vals,
-              value,
-              event,
-            ))}
+            onclick={(event) =>
+              (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
             type="button"
@@ -634,7 +606,10 @@
     display: grid;
     place-items: center;
     opacity: 0;
-    transition: opacity 0.2s ease, background 0.2s ease, transform 0.1s ease;
+    transition:
+      opacity 0.2s ease,
+      background 0.2s ease,
+      transform 0.1s ease;
     z-index: 2;
     pointer-events: auto;
   }
@@ -789,7 +764,9 @@
     margin-bottom: 0.25rem;
     background: var(--surface-bg);
     border-radius: var(--border-radius, 3pt);
-    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+    box-shadow:
+      0 8px 16px -4px rgba(0, 0, 0, 0.3),
+      0 4px 8px -2px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
     z-index: 10;

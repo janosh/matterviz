@@ -54,7 +54,7 @@ describe(`ReferenceLine`, () => {
       (line) => line.getAttribute(`stroke`) !== `transparent`,
     )
     expect(visible_line).toBeInstanceOf(SVGLineElement)
-    const y_pos = parseFloat(visible_line?.getAttribute(`y1`) ?? `0`)
+    const y_pos = Number(visible_line?.getAttribute(`y1`) ?? `0`)
     expect(y_pos).toBeCloseTo(y_scale(50), 0) // y=50 mapped through y_scale
   })
 
@@ -84,7 +84,7 @@ describe(`ReferenceLine`, () => {
     expect(visible_line).toBeInstanceOf(SVGLineElement)
 
     // Verify the visible line is at correct x position
-    const x_pos = parseFloat(visible_line?.getAttribute(`x1`) ?? `0`)
+    const x_pos = Number(visible_line?.getAttribute(`x1`) ?? `0`)
     expect(x_pos).toBeCloseTo(x_scale(50), 0) // x=50 mapped through x_scale
   })
 
@@ -298,8 +298,8 @@ describe(`ReferenceLine`, () => {
     )
 
     // x1 should be at x_scale(20), x2 at x_scale(80)
-    const x1 = parseFloat(visible_line?.getAttribute(`x1`) ?? `0`)
-    const x2 = parseFloat(visible_line?.getAttribute(`x2`) ?? `0`)
+    const x1 = Number(visible_line?.getAttribute(`x1`) ?? `0`)
+    const x2 = Number(visible_line?.getAttribute(`x2`) ?? `0`)
 
     expect(x1).toBeCloseTo(x_scale(20), 0)
     expect(x2).toBeCloseTo(x_scale(80), 0)
@@ -399,7 +399,7 @@ describe(`ReferenceLine`, () => {
     )
 
     // Y should use y2_scale
-    const y1 = parseFloat(visible_line?.getAttribute(`y1`) ?? `0`)
+    const y1 = Number(visible_line?.getAttribute(`y1`) ?? `0`)
     expect(y1).toBeCloseTo(y2_scale(50), 0)
   })
 })

@@ -44,16 +44,13 @@
   ) as BaseBandStructure | null
 
   // Compute shared frequency/energy range from both bands and DOS data
-  let shared_frequency_range = $derived(
-    helpers.compute_frequency_range(band_structs, doses),
-  )
+  let shared_frequency_range = $derived(helpers.compute_frequency_range(band_structs, doses))
 
   // Extract Fermi level from electronic band structure or DOS data
   let fermi_level = $derived.by((): number | undefined => {
     // Check band structures for efermi
-    const bs_source = `efermi` in (band_structs as object)
-      ? band_structs
-      : Object.values(band_structs)[0]
+    const bs_source =
+      `efermi` in (band_structs as object) ? band_structs : Object.values(band_structs)[0]
     const bs_efermi = (bs_source as Record<string, unknown>)?.efermi
     if (typeof bs_efermi === `number`) return bs_efermi
 
@@ -75,13 +72,12 @@
   let hovered_band_point = $state<InternalPoint | null>(null)
   let bands_x_positions = $state<Record<string, Vec2>>({})
   let hovered_qpoint_index = $derived(
-    hovered_band_point && first_band_struct &&
-      Object.keys(bands_x_positions).length > 0
+    hovered_band_point && first_band_struct && Object.keys(bands_x_positions).length > 0
       ? helpers.find_qpoint_at_rescaled_x(
-        first_band_struct,
-        hovered_band_point.x,
-        bands_x_positions,
-      )
+          first_band_struct,
+          hovered_band_point.x,
+          bands_x_positions,
+        )
       : null,
   )
   // Q-point hovered directly on the BZ k-path (reverse direction: BZ -> bands/DOS)
@@ -89,9 +85,7 @@
   // Unified hovered q-point: a band-point hover takes priority, else a BZ k-path hover
   let active_qpoint_index = $derived(hovered_qpoint_index ?? bz_hovered_qpoint_index)
   let hovered_k_point = $derived(
-    active_qpoint_index !== null
-      ? (k_path_points[active_qpoint_index] as Vec3)
-      : null,
+    active_qpoint_index !== null ? (k_path_points[active_qpoint_index] as Vec3) : null,
   )
   const [desktop_width, tablet_width] = [1200, 600]
   let clientWidth = $state(desktop_width)
@@ -101,8 +95,8 @@
     clientWidth >= desktop_width
       ? `desktop`
       : clientWidth >= tablet_width
-      ? `tablet`
-      : `phone`,
+        ? `tablet`
+        : `phone`,
   )
 
   const bands_default_axis = (range = shared_frequency_range): AxisConfig =>
@@ -169,11 +163,7 @@
   let hovered_frequency = $state<number | null>(null)
 </script>
 
-<div
-  {...rest}
-  class={[`bands-dos-brillouin`, screen_class, rest.class]}
-  bind:clientWidth
->
+<div {...rest} class={[`bands-dos-brillouin`, screen_class, rest.class]} bind:clientWidth>
   {@render children?.({
     hovered_frequency,
     hovered_band_point,
@@ -201,11 +191,13 @@
     {k_path_points}
     k_path_labels={first_band_struct?.qpoints?.flatMap((qpoint, idx) =>
       k_path_points[idx]
-        ? [{
-          position: k_path_points[idx],
-          label: qpoint.label ? helpers.pretty_sym_point(qpoint.label) : null,
-        }]
-        : []
+        ? [
+            {
+              position: k_path_points[idx],
+              label: qpoint.label ? helpers.pretty_sym_point(qpoint.label) : null,
+            },
+          ]
+        : [],
     ) ?? []}
     {hovered_k_point}
     hovered_qpoint_index={active_qpoint_index}

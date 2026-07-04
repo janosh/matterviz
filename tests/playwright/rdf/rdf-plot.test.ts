@@ -139,8 +139,8 @@ test.describe(`RdfPlot Component Tests`, () => {
     const last_x = await x_ticks.last().textContent()
 
     if (first_x && last_x) {
-      expect(parseFloat(first_x)).toBeCloseTo(0, 1)
-      expect(parseFloat(last_x)).toBeLessThanOrEqual(12)
+      expect(Number(first_x)).toBeCloseTo(0, 1)
+      expect(Number(last_x)).toBeLessThanOrEqual(12)
     }
 
     // Y-axis values are non-negative

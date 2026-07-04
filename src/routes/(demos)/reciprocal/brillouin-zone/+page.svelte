@@ -145,9 +145,7 @@
     show_controls
     allow_file_drop
     on_file_drop={(content, filename) => {
-      const text = content instanceof ArrayBuffer
-        ? new TextDecoder().decode(content)
-        : content
+      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
       try {
         const parsed = parse_any_structure(text, filename)
         if (`lattice` in parsed) dropped_structure = parsed

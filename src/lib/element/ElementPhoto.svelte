@@ -3,9 +3,14 @@
   import Icon from '$lib/Icon.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { element, missing_msg = `No image for `, ...rest }:
-    & HTMLAttributes<HTMLImageElement | HTMLDivElement>
-    & { element: ChemicalElement; missing_msg?: string } = $props()
+  let {
+    element,
+    missing_msg = `No image for `,
+    ...rest
+  }: HTMLAttributes<HTMLImageElement | HTMLDivElement> & {
+    element: ChemicalElement
+    missing_msg?: string
+  } = $props()
 
   let { name, number } = $derived(element ?? {})
   let file = $derived(`elements/${number}-${name?.toLowerCase()}.avif`)
@@ -21,7 +26,8 @@
   {#if hidden && missing_msg}
     <div {...rest}>
       <span>
-        <Icon icon="NoImage" />&nbsp;{missing_msg} {name}
+        <Icon icon="NoImage" />&nbsp;{missing_msg}
+        {name}
       </span>
     </div>
   {/if}
@@ -41,11 +47,7 @@
     padding: var(--element-photo-padding, 3pt);
     box-sizing: border-box;
     place-items: center;
-    background-image: linear-gradient(
-      to top left,
-      rgba(0, 100, 0, 0.5),
-      rgba(0, 0, 100, 0.3)
-    );
+    background-image: linear-gradient(to top left, rgba(0, 100, 0, 0.5), rgba(0, 0, 100, 0.3));
     color: var(--text-color);
     border-radius: var(--element-photo-border-radius, var(--border-radius, 3pt));
     width: 100%;

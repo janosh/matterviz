@@ -1,10 +1,6 @@
 <script lang="ts">
   import { format_num } from '$lib/labels'
-  import {
-    FullscreenToggle,
-    set_fullscreen_bg,
-    setup_fullscreen_effect,
-  } from '$lib/layout'
+  import { FullscreenToggle, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
   import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
@@ -116,9 +112,7 @@
     // Custom tooltip - can be a snippet (replaces default), config object (adds prefix/suffix),
     // or false to disable tooltip entirely
     tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig | false
-    children?: Snippet<
-      [{ width: number; height: number; fullscreen: boolean }]
-    >
+    children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
   } = $props()
 
   // Shared icon/toggle styling for controls and export panes
@@ -210,9 +204,7 @@
 
   // y_scale maps data temperatures to SVG coordinates
   // We keep this in data units so region vertices render correctly
-  const y_scale = $derived(
-    scaleLinear().domain(temp_range).range([bottom, top]),
-  )
+  const y_scale = $derived(scaleLinear().domain(temp_range).range([bottom, top]))
 
   // y_scale_display maps display temperatures (after unit conversion) to SVG
   // Used for axis labels and ticks
@@ -221,9 +213,7 @@
   )
 
   // Generate tick values using d3 scale's built-in ticks method
-  const x_ticks = $derived(
-    x_scale.ticks(typeof x_axis.ticks === `number` ? x_axis.ticks : 5),
-  )
+  const x_ticks = $derived(x_scale.ticks(typeof x_axis.ticks === `number` ? x_axis.ticks : 5))
   // Use display scale for y ticks so they show converted temperatures
   const y_ticks = $derived(
     y_scale_display.ticks(typeof y_axis.ticks === `number` ? y_axis.ticks : 6),
@@ -262,9 +252,7 @@
   const transformed_boundaries = $derived(
     (effective_data?.boundaries ?? []).map((boundary) => ({
       ...boundary,
-      svg_path: generate_boundary_path(
-        transform_vertices(boundary.points, x_scale, y_scale),
-      ),
+      svg_path: generate_boundary_path(transform_vertices(boundary.points, x_scale, y_scale)),
     })),
   )
 
@@ -354,11 +342,7 @@
   })
 
   // Find nearest special point within threshold (in SVG pixels)
-  function find_nearby_special_point(
-    svg_x: number,
-    svg_y: number,
-    threshold: number = 20,
-  ) {
+  function find_nearby_special_point(svg_x: number, svg_y: number, threshold: number = 20) {
     let nearest: (typeof transformed_special_points)[0] | null = null
     let min_dist = threshold
     for (const point of transformed_special_points) {
@@ -372,19 +356,14 @@
   }
 
   // Pointer move handler (unified mouse/touch via Pointer Events API)
-  function handle_pointer_move(
-    event: PointerEvent & { currentTarget: SVGElement },
-  ) {
+  function handle_pointer_move(event: PointerEvent & { currentTarget: SVGElement }) {
     const svg = event.currentTarget
     const rect = svg.getBoundingClientRect()
     const svg_x = event.clientX - rect.left
     const svg_y = event.clientY - rect.top
 
     // Check if within plot area
-    if (
-      svg_x < left || svg_x > right || svg_y < top || svg_y > bottom ||
-      !effective_data
-    ) {
+    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom || !effective_data) {
       clear_hover()
       return
     }
@@ -395,9 +374,7 @@
     const region = find_phase_at_point(composition, temperature, effective_data)
 
     // Check for nearby special point
-    const nearby_special = show_special_points
-      ? find_nearby_special_point(svg_x, svg_y)
-      : null
+    const nearby_special = show_special_points ? find_nearby_special_point(svg_x, svg_y) : null
 
     if (region) {
       hovered_region = region
@@ -406,11 +383,9 @@
         composition,
         temperature,
         position: { x: event.clientX, y: event.clientY },
-        lever_rule: calculate_lever_rule(region, composition, temperature) ||
-          undefined,
+        lever_rule: calculate_lever_rule(region, composition, temperature) || undefined,
         vertical_lever_rule:
-          calculate_vertical_lever_rule(region, composition, temperature) ||
-          undefined,
+          calculate_vertical_lever_rule(region, composition, temperature) || undefined,
         special_point: nearby_special || undefined,
       }
       on_phase_hover?.(hover_info)
@@ -462,9 +437,7 @@
   const comp_unit = $derived(effective_data?.composition_unit ?? `at%`)
 
   // Pseudo-binary support: format compound names with subscripts when enabled
-  const use_subscripts = $derived(
-    effective_data?.pseudo_binary?.use_subscripts ?? true,
-  )
+  const use_subscripts = $derived(effective_data?.pseudo_binary?.use_subscripts ?? true)
 
   // Formatted component labels for SVG axis labels (with tspan subscripts if compound)
   const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
@@ -593,7 +566,7 @@
         bind:editor_open
         bind:diagram_input
         data={effective_data}
-        ondata={(edited) => data_override = edited}
+        ondata={(edited) => (data_override = edited)}
         icon_style={pane_icon_style}
         toggle_props={pane_toggle_props}
       />
@@ -667,8 +640,8 @@
           <path
             d={region.svg_path}
             fill={region.gradient
-            ? `url(#${gradient_uid}-${region.id})`
-            : (region.color || get_phase_color(region.name))}
+              ? `url(#${gradient_uid}-${region.id})`
+              : region.color || get_phase_color(region.name)}
             stroke="none"
             class:hovered={hovered_region?.id === region.id}
           />
@@ -698,7 +671,8 @@
           {#each transformed_regions as region (region.id)}
             {@const line_height = merged_config.font_size * 1.2}
             <g
-              transform="translate({region.label_pos[0]}, {region.label_pos[1]}) rotate({region.label_rotation}) scale({region.label_scale})"
+              transform="translate({region.label_pos[0]}, {region
+                .label_pos[1]}) rotate({region.label_rotation}) scale({region.label_scale})"
             >
               {#each region.label_lines as line, line_idx (line_idx)}
                 <text
@@ -726,34 +700,34 @@
         {@const y_bot = y_scale(vlr.bottom_temperature)}
         {@const y_top = y_scale(vlr.top_temperature)}
         {@render tie_line_viz(
-        cx,
-        y_bot,
-        cx,
-        y_top,
-        [
-          { cx, cy: y_bot, color: get_phase_color(vlr.bottom_phase, `rgb`) },
-          { cx, cy: y_top, color: get_phase_color(vlr.top_phase, `rgb`) },
-        ],
-        cx,
-        y_scale(effective_hover_info.temperature),
-      )}
+          cx,
+          y_bot,
+          cx,
+          y_top,
+          [
+            { cx, cy: y_bot, color: get_phase_color(vlr.bottom_phase, `rgb`) },
+            { cx, cy: y_top, color: get_phase_color(vlr.top_phase, `rgb`) },
+          ],
+          cx,
+          y_scale(effective_hover_info.temperature),
+        )}
       {:else if lever_rule_mode === `horizontal` && effective_hover_info?.lever_rule}
         {@const lr = effective_hover_info.lever_rule}
         {@const cy = y_scale(effective_hover_info.temperature)}
         {@const x_l = x_scale(lr.left_composition)}
         {@const x_r = x_scale(lr.right_composition)}
         {@render tie_line_viz(
-        x_l,
-        cy,
-        x_r,
-        cy,
-        [
-          { cx: x_l, cy, color: get_phase_color(lr.left_phase, `rgb`) },
-          { cx: x_r, cy, color: get_phase_color(lr.right_phase, `rgb`) },
-        ],
-        x_scale(effective_hover_info.composition),
-        cy,
-      )}
+          x_l,
+          cy,
+          x_r,
+          cy,
+          [
+            { cx: x_l, cy, color: get_phase_color(lr.left_phase, `rgb`) },
+            { cx: x_r, cy, color: get_phase_color(lr.right_phase, `rgb`) },
+          ],
+          x_scale(effective_hover_info.composition),
+          cy,
+        )}
       {/if}
 
       <!-- Special points (rendered last for highest z-index) -->
@@ -996,8 +970,7 @@
   .binary-phase-diagram :global(.pd-editor-toggle) {
     opacity: 1;
   }
-  .binary-phase-diagram:is(:hover, :focus-within)
-    :is(:global(.pane-toggle), .header-controls),
+  .binary-phase-diagram:is(:hover, :focus-within) :is(:global(.pane-toggle), .header-controls),
   .binary-phase-diagram :global(.pane-toggle:is(:focus-visible, [aria-expanded='true'])),
   .header-controls:has(:global(.pane-open)) {
     opacity: 1;
@@ -1024,7 +997,12 @@
     pointer-events: none; /* Let hit-area handle events */
   }
   /* Grouped pointer-events: none */
-  .region-label, .tie-line, .tooltip-container, .copy-feedback, .grid, .region-labels {
+  .region-label,
+  .tie-line,
+  .tooltip-container,
+  .copy-feedback,
+  .grid,
+  .region-labels {
     pointer-events: none;
   }
   .region-label {
@@ -1081,7 +1059,8 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
   @keyframes copy-fade-up {
-    0%, 70% {
+    0%,
+    70% {
       opacity: 1;
     }
     100% {

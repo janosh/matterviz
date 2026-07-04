@@ -52,7 +52,7 @@
     return entries.filter((entry) =>
       (Object.keys(entry.composition) as ElementSymbol[])
         .filter((el) => (entry.composition?.[el] ?? 0) > 0)
-        .every((el) => element_set.has(el))
+        .every((el) => element_set.has(el)),
     )
   }
 
@@ -67,11 +67,13 @@
   )
   const ternary_entries = $derived(filter_by_elements(quaternary_entries, ternary_elements))
 
-  const picker_files = systems.map((sys): FileInfo => ({
-    name: sys.name,
-    url: ``,
-    type: `json`,
-  }))
+  const picker_files = systems.map(
+    (sys): FileInfo => ({
+      name: sys.name,
+      url: ``,
+      type: `json`,
+    }),
+  )
   let active_files = $derived(active_name ? [active_name] : [])
 </script>
 

@@ -12,8 +12,9 @@
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<`always` | `hover` | `never`>(`hover`)
-  let scene_props: ComponentProps<typeof StructureScene> & { show_gizmo: boolean } =
-    $state(DEFAULTS.structure)
+  let scene_props: ComponentProps<typeof StructureScene> & { show_gizmo: boolean } = $state(
+    DEFAULTS.structure,
+  )
   let performance_mode = $state<`quality` | `speed`>(`quality`)
   // expose selection state for tests
   let selected_sites = $state<number[]>([])
@@ -31,9 +32,7 @@
   let event_calls = $state<{ event: string; data: unknown }[]>([])
 
   // Structure state - can be overridden by data_url
-  let structure = $state<Crystal | undefined>(
-    mp1_struct as unknown as Crystal,
-  )
+  let structure = $state<Crystal | undefined>(mp1_struct as unknown as Crystal)
 
   // Lattice properties for testing - using new dual opacity controls
   let lattice_props = $state({
@@ -57,7 +56,8 @@
     // Data URL for loading external structures
     if (url_params.has(`data_url`)) {
       const data_url = url_params.get(`data_url`)
-      if (data_url) { // Clear the static structure to allow data_url loading
+      if (data_url) {
+        // Clear the static structure to allow data_url loading
         structure = undefined
       }
     }
@@ -74,29 +74,24 @@
       lattice_props.cell_edge_color = url_params.get(`cell_edge_color`) || `white`
     }
     if (url_params.has(`cell_surface_color`)) {
-      lattice_props.cell_surface_color = url_params.get(`cell_surface_color`) ||
-        `white`
+      lattice_props.cell_surface_color = url_params.get(`cell_surface_color`) || `white`
     }
     if (url_params.has(`cell_edge_opacity`)) {
-      const opacity = parseFloat(url_params.get(`cell_edge_opacity`) || `0.4`)
+      const opacity = Number(url_params.get(`cell_edge_opacity`) || `0.4`)
       if (!isNaN(opacity)) lattice_props.cell_edge_opacity = opacity
     }
     if (url_params.has(`cell_surface_opacity`)) {
-      const opacity = parseFloat(url_params.get(`cell_surface_opacity`) || `0.01`)
+      const opacity = Number(url_params.get(`cell_surface_opacity`) || `0.01`)
       if (!isNaN(opacity)) lattice_props.cell_surface_opacity = opacity
     }
     if (url_params.has(`cell_edge_width`)) {
-      const line_width = parseInt(url_params.get(`cell_edge_width`) || `1`, 10)
+      const line_width = Math.trunc(Number(url_params.get(`cell_edge_width`) || `1`))
       if (!isNaN(line_width)) lattice_props.cell_edge_width = line_width
     }
 
     // Component properties
     if (url_params.has(`show_controls`)) {
-      const param = url_params.get(`show_controls`) as
-        | `always`
-        | `hover`
-        | `never`
-        | null
+      const param = url_params.get(`show_controls`) as `always` | `hover` | `never` | null
       if (param && [`always`, `hover`, `never`].includes(param)) show_controls = param
     }
     if (url_params.has(`performance_mode`)) {
@@ -122,12 +117,13 @@
 
     // Vector origin gap
     if (url_params.has(`vector_origin_gap`)) {
-      const gap = parseFloat(url_params.get(`vector_origin_gap`) || `0`)
+      const gap = Number(url_params.get(`vector_origin_gap`) || `0`)
       if (!isNaN(gap)) scene_props.vector_origin_gap = gap
     }
   })
 
-  $effect(() => { // Listen for custom events from tests
+  $effect(() => {
+    // Listen for custom events from tests
     if (typeof window === `undefined`) return
 
     const handle_lattice_props = (event: Event) => {
@@ -197,32 +193,26 @@
 
 <section>
   <h2>Controls for Test Page</h2>
-  <label>Controls Open: <input
-      type="checkbox"
-      bind:checked={controls_open}
-    /></label><br />
-  <label>Canvas Width: <input
+  <label>Controls Open: <input type="checkbox" bind:checked={controls_open} /></label><br />
+  <label
+    >Canvas Width: <input
       type="number"
       bind:value={canvas.width}
       data-testid="canvas-width-input"
-    /></label><br />
-  <label>Canvas Height: <input
+    /></label
+  ><br />
+  <label
+    >Canvas Height: <input
       type="number"
       bind:value={canvas.height}
       data-testid="canvas-height-input"
-    /></label><br />
-  <label>Background Color: <input
-      type="color"
-      bind:value={background_color}
-    /></label><br />
-  <label>Show Gizmo: <input
-      type="checkbox"
-      bind:checked={scene_props.show_gizmo}
-    /></label><br />
-  <label>Show Atoms: <input
-      type="checkbox"
-      bind:checked={scene_props.show_atoms}
-    /></label><br />
+    /></label
+  ><br />
+  <label>Background Color: <input type="color" bind:value={background_color} /></label><br />
+  <label>Show Gizmo: <input type="checkbox" bind:checked={scene_props.show_gizmo} /></label><br
+  />
+  <label>Show Atoms: <input type="checkbox" bind:checked={scene_props.show_atoms} /></label><br
+  />
   <label>
     Show Buttons:
     <select bind:value={show_controls}>
@@ -240,13 +230,10 @@
   </label>
   <label>
     Supercell Scaling:
-    <input
-      type="text"
-      bind:value={supercell_scaling}
-      data-testid="supercell-input"
-    />
+    <input type="text" bind:value={supercell_scaling} data-testid="supercell-input" />
   </label><br />
-  <label>Show Image Atoms:
+  <label
+    >Show Image Atoms:
     <input
       type="checkbox"
       bind:checked={show_image_atoms}
@@ -255,28 +242,10 @@
   </label>
   <label>
     Fullscreen:
-    <input
-      type="checkbox"
-      bind:checked={fullscreen}
-      data-testid="fullscreen-checkbox"
-    />
+    <input type="checkbox" bind:checked={fullscreen} data-testid="fullscreen-checkbox" />
   </label>
   <div style="margin-top: 0.5em">
-    {#each [
-        [`select-site-0`, () => selected_sites = [0]],
-        [`set-selected`, () => selected_sites = [0, 1]],
-        [`clear-selected`, () => selected_sites = []],
-        [`set-measured`, () => measured_sites = [0, 1, 2]],
-        [`clear-measured`, () => measured_sites = []],
-        [`set-edit-atoms`, () => measure_mode = `edit-atoms`],
-        [`set-edit-bonds`, () => measure_mode = `edit-bonds`],
-        [`set-bond-add`, () => bond_edit_mode = `add`],
-        [`set-bond-delete`, () => bond_edit_mode = `delete`],
-        [`set-distance-mode`, () => measure_mode = `distance`],
-      ] as const as
-      [btn_type, onclick]
-      (btn_type)
-    }
+    {#each [[`select-site-0`, () => (selected_sites = [0])], [`set-selected`, () => (selected_sites = [0, 1])], [`clear-selected`, () => (selected_sites = [])], [`set-measured`, () => (measured_sites = [0, 1, 2])], [`clear-measured`, () => (measured_sites = [])], [`set-edit-atoms`, () => (measure_mode = `edit-atoms`)], [`set-edit-bonds`, () => (measure_mode = `edit-bonds`)], [`set-bond-add`, () => (bond_edit_mode = `add`)], [`set-bond-delete`, () => (bond_edit_mode = `delete`)], [`set-distance-mode`, () => (measure_mode = `distance`)]] as const as [btn_type, onclick] (btn_type)}
       <button type="button" data-testid="btn-{btn_type}" {onclick}>
         {btn_type}
       </button>
@@ -288,8 +257,8 @@
   id="test-structure"
   {structure}
   data_url={typeof window !== `undefined`
-  ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
-  : undefined}
+    ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
+    : undefined}
   bind:controls_open
   bind:info_pane_open
   bind:width={canvas.width}
@@ -337,23 +306,22 @@
   Performance Mode Status: {performance_mode}
 </div>
 <div data-testid="camera-projection-status">
-  Camera Projection Status: {
-    scene_props.camera_projection || DEFAULTS.structure.camera_projection
-  }
+  Camera Projection Status: {scene_props.camera_projection ||
+    DEFAULTS.structure.camera_projection}
 </div>
 
 <div
   data-testid="vector-configs-status"
-  data-configs={JSON.stringify(scene_props.vector_configs ?? DEFAULTS.structure.vector_configs)}
+  data-configs={JSON.stringify(
+    scene_props.vector_configs ?? DEFAULTS.structure.vector_configs,
+  )}
 >
-  Vector Configs: {
-    JSON.stringify(scene_props.vector_configs ?? DEFAULTS.structure.vector_configs)
-  }
+  Vector Configs: {JSON.stringify(
+    scene_props.vector_configs ?? DEFAULTS.structure.vector_configs,
+  )}
 </div>
 <div data-testid="vector-origin-gap-status">
-  Vector Origin Gap: {
-    scene_props.vector_origin_gap ?? DEFAULTS.structure.vector_origin_gap
-  }
+  Vector Origin Gap: {scene_props.vector_origin_gap ?? DEFAULTS.structure.vector_origin_gap}
 </div>
 
 <div data-testid="event-calls-status" style="max-height: 50vh; overflow-y: auto">

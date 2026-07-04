@@ -27,22 +27,21 @@
 
   let basic_data = $derived.by(() => {
     const values = generate_normal(sample_size, 5, 2)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Normal Distribution`,
-      visible: true,
-      line_style: { stroke: `#2563eb` },
-      point_style: { fill: `#2563eb` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Normal Distribution`,
+        visible: true,
+        line_style: { stroke: `#2563eb` },
+        point_style: { fill: `#2563eb` },
+      },
+    ] as DataSeries[]
   })
 
   let multiple_series_data = $derived.by(() => {
     const normal_data = generate_normal(500, 5, 2)
-    const exponential_data = Array.from(
-      { length: 500 },
-      () => -Math.log(Math.random()) / 0.3,
-    )
+    const exponential_data = Array.from({ length: 500 }, () => -Math.log(Math.random()) / 0.3)
     const uniform_data = Array.from({ length: 500 }, () => Math.random() * 15)
 
     return [
@@ -74,10 +73,7 @@
   })
 
   let log_data = $derived.by(() => {
-    const log_normal = Array.from(
-      { length: 1000 },
-      () => Math.exp(Math.random() * 2 + 1),
-    )
+    const log_normal = Array.from({ length: 1000 }, () => Math.exp(Math.random() * 2 + 1))
     const power_law = Array.from({ length: 1000 }, () => Math.random() ** -2)
 
     return [
@@ -116,14 +112,16 @@
       ]
     }
 
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: distribution_type.charAt(0).toUpperCase() + distribution_type.slice(1),
-      visible: true,
-      line_style: { stroke: `#2563eb` },
-      point_style: { fill: `#2563eb` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: distribution_type.charAt(0).toUpperCase() + distribution_type.slice(1),
+        visible: true,
+        line_style: { stroke: `#2563eb` },
+        point_style: { fill: `#2563eb` },
+      },
+    ] as DataSeries[]
   })
 
   let bin_comparison_data = $derived.by(() => {
@@ -143,107 +141,119 @@
         { ...base_series, label: `${bin_count_100} bins` },
       ] as DataSeries[]
     }
-      return [{ ...base_series, label: `${single_bin_count} bins` }] as DataSeries[]
-
+    return [{ ...base_series, label: `${single_bin_count} bins` }] as DataSeries[]
   })
 
   let tick_test_data = $derived.by(() => {
     const values = generate_normal(800, 0, 1)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Tick Configuration Test`,
-      visible: true,
-      line_style: { stroke: `#2563eb` },
-      point_style: { fill: `#2563eb` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Tick Configuration Test`,
+        visible: true,
+        line_style: { stroke: `#2563eb` },
+        point_style: { fill: `#2563eb` },
+      },
+    ] as DataSeries[]
   })
 
   let range_test_data = $derived.by(() => {
     const values = generate_normal(1000, 0, 1)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Range Control Test`,
-      visible: true,
-      line_style: { stroke: `#2563eb` },
-      point_style: { fill: `#2563eb` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Range Control Test`,
+        visible: true,
+        line_style: { stroke: `#2563eb` },
+        point_style: { fill: `#2563eb` },
+      },
+    ] as DataSeries[]
   })
 
   let zero_lines_data = $derived.by(() => {
     const values = generate_normal(500, 2, 1)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Zero Lines Test`,
-      visible: true,
-      line_style: { stroke: `#2563eb` },
-      point_style: { fill: `#2563eb` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Zero Lines Test`,
+        visible: true,
+        line_style: { stroke: `#2563eb` },
+        point_style: { fill: `#2563eb` },
+      },
+    ] as DataSeries[]
   })
 
   let custom_tooltip_data = $derived.by(() => {
     const values = generate_normal(300, 5, 1)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Custom Tooltip`,
-      visible: true,
-      line_style: { stroke: `#8b5cf6` },
-      point_style: { fill: `#8b5cf6` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Custom Tooltip`,
+        visible: true,
+        line_style: { stroke: `#8b5cf6` },
+        point_style: { fill: `#8b5cf6` },
+      },
+    ] as DataSeries[]
   })
 
   let zoom_test_data = $derived.by(() => {
     const values = generate_normal(1000, 0, 1)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Zoom/Pan Test`,
-      visible: true,
-      line_style: { stroke: `#059669` },
-      point_style: { fill: `#059669` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Zoom/Pan Test`,
+        visible: true,
+        line_style: { stroke: `#059669` },
+        point_style: { fill: `#059669` },
+      },
+    ] as DataSeries[]
   })
 
   let hovered_data = $derived.by(() => {
     const values = generate_normal(500, 0, 1)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Hover Test`,
-      visible: true,
-      line_style: { stroke: `#dc2626` },
-      point_style: { fill: `#dc2626` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Hover Test`,
+        visible: true,
+        line_style: { stroke: `#dc2626` },
+        point_style: { fill: `#dc2626` },
+      },
+    ] as DataSeries[]
   })
 
   let wide_range_data = $derived.by(() => {
-    const values = [
-      ...generate_normal(200, -1000, 100),
-      ...generate_normal(200, 1000, 100),
-    ]
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Wide Range`,
-      visible: true,
-      line_style: { stroke: `#7c3aed` },
-      point_style: { fill: `#7c3aed` },
-    }] as DataSeries[]
+    const values = [...generate_normal(200, -1000, 100), ...generate_normal(200, 1000, 100)]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Wide Range`,
+        visible: true,
+        line_style: { stroke: `#7c3aed` },
+        point_style: { fill: `#7c3aed` },
+      },
+    ] as DataSeries[]
   })
 
   let small_range_data = $derived.by(() => {
     const values = generate_normal(500, 0.0001, 0.00001)
-    return [{
-      x: values.map((_, idx) => idx),
-      y: values,
-      label: `Small Range`,
-      visible: true,
-      line_style: { stroke: `#ea580c` },
-      point_style: { fill: `#ea580c` },
-    }] as DataSeries[]
+    return [
+      {
+        x: values.map((_, idx) => idx),
+        y: values,
+        label: `Small Range`,
+        visible: true,
+        line_style: { stroke: `#ea580c` },
+        point_style: { fill: `#ea580c` },
+      },
+    ] as DataSeries[]
   })
 
   // Y2 axis test series
@@ -321,11 +331,14 @@
 </script>
 
 <section data-testid="basic-single-series-section">
-  <label>Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} /> {
-      bin_count
-    }</label>
-  <label>Sample Size: <input type="range" min="100" max="5000" bind:value={sample_size} />
-    {sample_size}</label>
+  <label
+    >Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} />
+    {bin_count}</label
+  >
+  <label
+    >Sample Size: <input type="range" min="100" max="5000" bind:value={sample_size} />
+    {sample_size}</label
+  >
   <Histogram
     id="basic-single-series"
     series={basic_data}
@@ -336,20 +349,14 @@
   />
 </section>
 
-<label>Opacity: <input
-    type="range"
-    min="0.1"
-    max="1"
-    step="0.1"
-    bind:value={overlay_opacity}
-  /> {overlay_opacity}</label>
-<label>Stroke Width: <input
-    type="range"
-    min="0.5"
-    max="5"
-    step="0.5"
-    bind:value={stroke_width}
-  /> {stroke_width}</label>
+<label
+  >Opacity: <input type="range" min="0.1" max="1" step="0.1" bind:value={overlay_opacity} />
+  {overlay_opacity}</label
+>
+<label
+  >Stroke Width: <input type="range" min="0.5" max="5" step="0.5" bind:value={stroke_width} />
+  {stroke_width}</label
+>
 <label><input type="checkbox" bind:checked={normal_visible} /> Normal</label>
 <label><input type="checkbox" bind:checked={exponential_visible} /> Exponential</label>
 <label><input type="checkbox" bind:checked={uniform_visible} /> Uniform</label>
@@ -362,12 +369,16 @@
 />
 
 <section data-testid="logarithmic-scales-section">
-  <label>X-axis: <input type="radio" name="x-scale" value="linear" bind:group={x_scale} />
+  <label
+    >X-axis: <input type="radio" name="x-scale" value="linear" bind:group={x_scale} />
     Linear <input type="radio" name="x-scale" value="log" bind:group={x_scale} />
-    Log</label>
-  <label>Y-axis: <input type="radio" name="y-scale" value="linear" bind:group={y_scale} />
+    Log</label
+  >
+  <label
+    >Y-axis: <input type="radio" name="y-scale" value="linear" bind:group={y_scale} />
     Linear <input type="radio" name="y-scale" value="log" bind:group={y_scale} />
-    Log</label>
+    Log</label
+  >
   <Histogram
     id="logarithmic-scales"
     series={log_data}
@@ -378,12 +389,14 @@
   />
 </section>
 
-<label>Distribution Type: <select bind:value={distribution_type}>
+<label
+  >Distribution Type: <select bind:value={distribution_type}>
     <option value="bimodal">Bimodal</option>
     <option value="skewed">Skewed</option>
     <option value="discrete">Discrete</option>
     <option value="age">Age Groups</option>
-  </select></label>
+  </select></label
+>
 <Histogram
   id="real-world-distributions"
   series={real_world_data}
@@ -394,22 +407,23 @@
 <section data-testid="bin-size-comparison-section">
   <label><input type="checkbox" bind:checked={show_overlay} /> Show Overlay</label>
   {#if show_overlay}
-    <label>10 bins: <input type="range" min="5" max="20" bind:value={bin_count_10} /> {
-        bin_count_10
-      }</label>
-    <label>30 bins: <input type="range" min="20" max="50" bind:value={bin_count_30} /> {
-        bin_count_30
-      }</label>
-    <label>100 bins: <input type="range" min="50" max="150" bind:value={bin_count_100} />
-      {bin_count_100}</label>
+    <label
+      >10 bins: <input type="range" min="5" max="20" bind:value={bin_count_10} />
+      {bin_count_10}</label
+    >
+    <label
+      >30 bins: <input type="range" min="20" max="50" bind:value={bin_count_30} />
+      {bin_count_30}</label
+    >
+    <label
+      >100 bins: <input type="range" min="50" max="150" bind:value={bin_count_100} />
+      {bin_count_100}</label
+    >
   {:else}
-    <label>Bin Count: <input
-        type="range"
-        min="5"
-        max="100"
-        bind:value={single_bin_count}
-      />
-      {single_bin_count}</label>
+    <label
+      >Bin Count: <input type="range" min="5" max="100" bind:value={single_bin_count} />
+      {single_bin_count}</label
+    >
   {/if}
   <Histogram
     id="bin-size-comparison"
@@ -421,12 +435,14 @@
 </section>
 
 <section data-testid="tick-configuration-section">
-  <label>X-axis Ticks: <input type="range" min="3" max="15" bind:value={x_tick_count} /> {
-      x_tick_count
-    }</label>
-  <label>Y-axis Ticks: <input type="range" min="3" max="12" bind:value={y_tick_count} /> {
-      y_tick_count
-    }</label>
+  <label
+    >X-axis Ticks: <input type="range" min="3" max="15" bind:value={x_tick_count} />
+    {x_tick_count}</label
+  >
+  <label
+    >Y-axis Ticks: <input type="range" min="3" max="12" bind:value={y_tick_count} />
+    {y_tick_count}</label
+  >
   <Histogram
     id="tick-configuration"
     series={tick_test_data}

@@ -2,6 +2,17 @@
 import { parse_fermi_file } from '$lib/fermi-surface/parse'
 import { describe, expect, test } from 'vitest'
 
+// Typed wrapper for band-grid formats (BXSF/FRMSF) to avoid per-test casts
+type BandGrid = {
+  energies: number[][][][][]
+  k_grid: number[]
+  n_bands: number
+  n_spins: number
+  fermi_energy: number
+}
+const parse_grid = (content: string, filename?: string): BandGrid =>
+  parse_fermi_file(content, filename) as BandGrid
+
 describe(`parse_fermi_file`, () => {
   describe(`BXSF format`, () => {
     const sample_bxsf = `# Sample BXSF file
@@ -30,46 +41,30 @@ BEGIN_BLOCK_BANDGRID_3D
 END_BLOCK_BANDGRID_3D
 `
 
-    test(`parses valid BXSF file`, () => {
-      const result = parse_fermi_file(sample_bxsf, `test.bxsf`)
-      expect(result).not.toBeNull()
-      expect(`energies` in (result ?? {})).toBe(true)
-
-      const band_data = result as { k_grid: number[]; n_bands: number; n_spins: number }
+    test(`parses metadata, grid shape, energies and Fermi energy from valid BXSF`, () => {
+      const band_data = parse_grid(sample_bxsf, `test.bxsf`)
       expect(band_data.k_grid).toEqual([3, 3, 3])
       expect(band_data.n_bands).toBe(1)
       expect(band_data.n_spins).toBe(1)
-    })
 
-    test(`extracts correct grid dimensions`, () => {
-      const result = parse_fermi_file(sample_bxsf, `test.bxsf`)
-      expect(result).not.toBeNull()
+      // Grid shape: [spin][band][kx][ky][kz]
+      expect(band_data.energies).toHaveLength(1)
+      expect(band_data.energies[0]).toHaveLength(1)
+      expect(band_data.energies[0][0]).toHaveLength(3)
+      expect(band_data.energies[0][0][0]).toHaveLength(3)
+      expect(band_data.energies[0][0][0][0]).toHaveLength(3)
 
-      const band_data = result as { energies: number[][][][][] }
-      expect(band_data.energies).toHaveLength(1) // 1 spin
-      expect(band_data.energies[0]).toHaveLength(1) // 1 band
-      expect(band_data.energies[0][0]).toHaveLength(3) // kx
-      expect(band_data.energies[0][0][0]).toHaveLength(3) // ky
-      expect(band_data.energies[0][0][0][0]).toHaveLength(3) // kz
-    })
+      // First plane values: 5.0 6.0 5.0 / ...
+      expect(band_data.energies[0][0][0][0]).toEqual([5.0, 6.0, 5.0])
 
-    test(`parses energy values correctly`, () => {
-      const result = parse_fermi_file(sample_bxsf, `test.bxsf`)
-      expect(result).not.toBeNull()
-
-      const band_data = result as { energies: number[][][][][] }
-      // Check first plane values: 5.0 6.0 5.0 / 6.0 7.0 6.0 / 5.0 6.0 5.0
-      expect(band_data.energies[0][0][0][0][0]).toBe(5.0)
-      expect(band_data.energies[0][0][0][0][1]).toBe(6.0)
-      expect(band_data.energies[0][0][0][0][2]).toBe(5.0)
-    })
-
-    test(`extracts Fermi energy from comment`, () => {
-      const result = parse_fermi_file(sample_bxsf, `test.bxsf`)
-      expect(result).not.toBeNull()
-
-      const band_data = result as { fermi_energy: number }
+      // Fermi energy extracted from the `# Fermi energy: 7.0 eV` comment
       expect(band_data.fermi_energy).toBe(7.0)
+    })
+
+    test(`parses Fortran D-exponent energies (0.5D+01 etc)`, () => {
+      // Fortran codes write doubles as D-exponents which Number() rejects
+      const d_exp_bxsf = sample_bxsf.replace(`5.0 6.0 5.0`, `0.5D+01 6.0 5.0`)
+      expect(parse_grid(d_exp_bxsf, `test.bxsf`).energies[0][0][0][0][0]).toBe(5.0)
     })
 
     test(`throws on invalid BXSF file`, () => {
@@ -96,14 +91,7 @@ END_BLOCK_BANDGRID_3D
   END_BANDGRID_3D
 END_BLOCK_BANDGRID_3D
 `
-      const result = parse_fermi_file(bxsf_with_blanks, `test.bxsf`)
-      expect(result).not.toBeNull()
-
-      const band_data = result as {
-        n_bands: number
-        k_grid: number[]
-        energies: number[][][][][]
-      }
+      const band_data = parse_grid(bxsf_with_blanks, `test.bxsf`)
       expect(band_data.n_bands).toBe(1)
       expect(band_data.k_grid).toEqual([2, 2, 2])
       // Verify all 8 energy values were parsed correctly
@@ -169,21 +157,11 @@ END_BLOCK_BANDGRID_3D`
 0.1
 `
 
-    test(`parses valid FRMSF file`, () => {
-      const result = parse_fermi_file(sample_frmsf, `test.frmsf`)
-      expect(result).not.toBeNull()
-
-      const band_data = result as { k_grid: number[]; n_bands: number; n_spins: number }
+    test(`parses valid FRMSF metadata and converts energies from Hartree to eV`, () => {
+      const band_data = parse_grid(sample_frmsf, `test.frmsf`)
       expect(band_data.k_grid).toEqual([3, 3, 3])
       expect(band_data.n_bands).toBe(1)
       expect(band_data.n_spins).toBe(1)
-    })
-
-    test(`converts units from Hartree to eV`, () => {
-      const result = parse_fermi_file(sample_frmsf, `test.frmsf`)
-      expect(result).not.toBeNull()
-
-      const band_data = result as { energies: number[][][][][] }
       // 0.1 Hartree * 27.2114 = 2.72114 eV
       expect(band_data.energies[0][0][0][0][0]).toBeCloseTo(0.1 * 27.2114, 3)
     })
@@ -191,6 +169,15 @@ END_BLOCK_BANDGRID_3D`
     test(`throws on invalid FRMSF file`, () => {
       expect(() => parse_fermi_file(`invalid`, `test.frmsf`)).toThrow(
         /Failed to parse Fermi surface file 'test.frmsf': FRMSF/,
+      )
+    })
+
+    test(`parses Fortran D-exponent energies (0.1D+00 etc)`, () => {
+      // Fortran codes write doubles as D-exponents which Number() rejects
+      const d_exp_frmsf = sample_frmsf.replace(/^0\.1$/m, `0.1D+00`)
+      expect(parse_grid(d_exp_frmsf, `test.frmsf`).energies[0][0][0][0][0]).toBeCloseTo(
+        0.1 * 27.2114,
+        3,
       )
     })
   })

@@ -68,7 +68,7 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
       ...(bw_arr ? { bar_width: remap(bw_arr, 0.5) } : {}),
       ...(srs.color_values ? { color_values: remap(srs.color_values, null) } : {}),
       ...(srs.size_values ? { size_values: remap(srs.size_values, null) } : {}),
-    } as NumericBarSeries<Metadata>
+    }
   })
   return { category_list, internal_series }
 }

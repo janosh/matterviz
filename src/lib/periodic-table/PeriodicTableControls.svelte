@@ -220,10 +220,7 @@
         onmouseleave={() => (selected.category = null)}
         onblur={() => (selected.category = null)}
       >
-        <input
-          type="color"
-          bind:value={colors.category[category]}
-        />
+        <input type="color" bind:value={colors.category[category]} />
         <span>{category}</span>
         {#if colors.category[category] !== DEFAULT_CATEGORY_COLORS[category]}
           <button
@@ -262,32 +259,14 @@
 
     <label>
       <span>Inner transition offset</span>
-      <input
-        type="range"
-        min="0.1"
-        max="2"
-        step="0.1"
-        bind:value={inner_transition_offset}
-      />
-      <input
-        type="number"
-        min="0.1"
-        max="2"
-        step="0.1"
-        bind:value={inner_transition_offset}
-      />
+      <input type="range" min="0.1" max="2" step="0.1" bind:value={inner_transition_offset} />
+      <input type="number" min="0.1" max="2" step="0.1" bind:value={inner_transition_offset} />
       <button onclick={() => reset_property(`inner_transition_offset`)}>reset</button>
     </label>
 
     <label>
       <span>Transition duration (s)</span>
-      <input
-        type="range"
-        min="0.1"
-        max="2"
-        step="0.1"
-        bind:value={tile_transition_duration}
-      />
+      <input type="range" min="0.1" max="2" step="0.1" bind:value={tile_transition_duration} />
       <input
         type="number"
         min="0.1"
@@ -350,39 +329,15 @@
 
     <label>
       <span>Symbol weight</span>
-      <input
-        type="range"
-        min="100"
-        max="900"
-        step="100"
-        bind:value={symbol_font_weight}
-      />
-      <input
-        type="number"
-        min="100"
-        max="900"
-        step="100"
-        bind:value={symbol_font_weight}
-      />
+      <input type="range" min="100" max="900" step="100" bind:value={symbol_font_weight} />
+      <input type="number" min="100" max="900" step="100" bind:value={symbol_font_weight} />
       <button onclick={() => reset_property(`symbol_font_weight`)}>reset</button>
     </label>
 
     <label>
       <span>Number weight</span>
-      <input
-        type="range"
-        min="100"
-        max="900"
-        step="100"
-        bind:value={number_font_weight}
-      />
-      <input
-        type="number"
-        min="100"
-        max="900"
-        step="100"
-        bind:value={number_font_weight}
-      />
+      <input type="range" min="100" max="900" step="100" bind:value={number_font_weight} />
+      <input type="number" min="100" max="900" step="100" bind:value={number_font_weight} />
       <button onclick={() => reset_property(`number_font_weight`)}>reset</button>
     </label>
   </section>
@@ -424,13 +379,7 @@
     <label>
       <span>Line height</span>
       <input type="range" min="0.8" max="2" step="0.1" bind:value={tooltip_line_height} />
-      <input
-        type="number"
-        min="0.8"
-        max="2"
-        step="0.1"
-        bind:value={tooltip_line_height}
-      />
+      <input type="number" min="0.8" max="2" step="0.1" bind:value={tooltip_line_height} />
       <button onclick={() => reset_property(`tooltip_line_height`)}>reset</button>
     </label>
 
@@ -449,8 +398,7 @@
 <style>
   .controls-grid {
     display: grid;
-    grid-template-columns:
-      var(--ptable-ctrl-columns, repeat(auto-fit, minmax(320px, 1fr)));
+    grid-template-columns: var(--ptable-ctrl-columns, repeat(auto-fit, minmax(320px, 1fr)));
     gap: var(--ptable-ctrl-gap, 1.5em);
     margin: var(--ptable-ctrl-margin, 2em auto);
     padding: 0 1em;

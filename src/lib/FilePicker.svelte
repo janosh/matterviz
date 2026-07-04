@@ -137,9 +137,9 @@
         class:active={is_active}
         onclick={() => category && toggle_filter(`category`, category)}
         onkeydown={(evt) =>
-        (evt.key === `Enter` || evt.key === ` `) &&
-        category &&
-        toggle_filter(`category`, category)}
+          (evt.key === `Enter` || evt.key === ` `) &&
+          category &&
+          toggle_filter(`category`, category)}
         role="button"
         tabindex="0"
         aria-pressed={is_active}
@@ -148,8 +148,7 @@
         {category}
       </span>
     {/each}
-    {#if show_category_filters && uniq_categories.length > 0 &&
-        uniq_formats.length > 0}
+    {#if show_category_filters && uniq_categories.length > 0 && uniq_formats.length > 0}
       <span class="divider"></span>
     {/if}
 
@@ -160,15 +159,13 @@
         class:active={is_active}
         onclick={() => toggle_filter(`type`, format)}
         onkeydown={(evt) =>
-        (evt.key === `Enter` || evt.key === ` `) && toggle_filter(`type`, format)}
+          (evt.key === `Enter` || evt.key === ` `) && toggle_filter(`type`, format)}
         role="button"
         tabindex="0"
         {@attach tooltip({ content: `Filter to show only ${format.toUpperCase()} files` })}
       >
-        <span
-          class="format-circle"
-          style:background-color={file_type_colors[format]}
-        ></span> {format.toUpperCase()}
+        <span class="format-circle" style:background-color={file_type_colors[format]}></span>
+        {format.toUpperCase()}
       </span>
     {/each}
 
@@ -176,7 +173,7 @@
       <button
         {@attach tooltip({ content: `Clear all filters` })}
         class="clear-filter"
-        onclick={() => [active_category_filter, active_type_filter] = [null, null]}
+        onclick={() => ([active_category_filter, active_type_filter] = [null, null])}
       >
         ✕
       </button>
@@ -222,14 +219,15 @@
       role="button"
       tabindex="0"
       title={on_click
-      ? `Click to load or drag this ${base_type.toUpperCase()} file`
-      : `Drag this ${base_type.toUpperCase()} file`}
+        ? `Click to load or drag this ${base_type.toUpperCase()} file`
+        : `Drag this ${base_type.toUpperCase()} file`}
     >
       {#if file.label}
         <span
           class="file-type-badge"
           style:background-color={file_type_colors[base_type] ?? `rgba(128,128,128,0.8)`}
-        >{base_type.toUpperCase()}</span>
+          >{base_type.toUpperCase()}</span
+        >
       {/if}
       <div class="file-name">
         {file.category ? `${file.category_icon} ` : ``}{file.label ?? file.name}

@@ -1,4 +1,4 @@
-import { FormulaFilter } from '$lib/composition'
+import { FormulaFilter, type FormulaSearchMode } from '$lib/composition'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
@@ -185,7 +185,9 @@ describe(`FormulaFilter`, () => {
     async ({ initial_value, expected_mode }) => {
       // Regression test: when value is set from URL params without search_mode,
       // the component should infer the correct mode from the value format
-      const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
+      const state: { search_mode: FormulaSearchMode } = $state({
+        search_mode: `elements`,
+      })
       mount(FormulaFilter, {
         target: document.body,
         props: bind_props({ value: initial_value }, state),
@@ -197,9 +199,9 @@ describe(`FormulaFilter`, () => {
 
   test(`re-infers mode when value prop changes externally`, async () => {
     // When parent updates value prop without search_mode, mode should be re-inferred
-    const state = $state({
+    const state: { value: string; search_mode: FormulaSearchMode } = $state({
       value: `LiFePO4`,
-      search_mode: `elements` as `elements` | `chemsys` | `exact`,
+      search_mode: `elements`,
     })
     mount(FormulaFilter, { target: document.body, props: bind_props({}, state) })
     await tick()
@@ -217,7 +219,9 @@ describe(`FormulaFilter`, () => {
     [`Li,Fe`, `elements`],
   ])(`search_mode binding updates to %s for input "%s"`, (input, expected_mode) => {
     // Verifies that the search_mode bindable prop is synchronized when user enters input
-    const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
+    const state: { search_mode: FormulaSearchMode } = $state({
+      search_mode: `elements`,
+    })
     mount(FormulaFilter, {
       target: document.body,
       props: bind_props({ value: `` }, state),
@@ -447,7 +451,9 @@ describe(`FormulaFilter`, () => {
     )
 
     test(`placeholders show wildcard examples`, async () => {
-      const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
+      const state: { search_mode: FormulaSearchMode } = $state({
+        search_mode: `elements`,
+      })
       mount(FormulaFilter, {
         target: document.body,
         props: bind_props({ value: `` }, state),
@@ -470,7 +476,9 @@ describe(`FormulaFilter`, () => {
       [`Li,*,*`, `elements`],
       [`*2O3`, `exact`],
     ])(`infers mode=%s from wildcard URL param "%s"`, async (value, expected_mode) => {
-      const state = $state({ search_mode: `elements` as `elements` | `chemsys` | `exact` })
+      const state: { search_mode: FormulaSearchMode } = $state({
+        search_mode: `elements`,
+      })
       mount(FormulaFilter, {
         target: document.body,
         props: bind_props({ value }, state),
@@ -799,8 +807,8 @@ describe(`FormulaFilter`, () => {
     }
 
     test(`mode lock prevents automatic mode inference`, async () => {
-      const state = $state({
-        search_mode: `elements` as `elements` | `chemsys` | `exact`,
+      const state: { search_mode: FormulaSearchMode; mode_locked: boolean } = $state({
+        search_mode: `elements`,
         mode_locked: true,
       })
       mount_filter(bind_props({ value: `Li-Fe-O` }, state))

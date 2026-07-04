@@ -40,12 +40,16 @@
   } = $props()
 
   let endpoints = $derived(
-    resolve_line_endpoints(ref_line, { x_min, x_max, y_min, y_max }, {
-      x_scale,
-      x2_scale,
-      y_scale,
-      y2_scale,
-    }),
+    resolve_line_endpoints(
+      ref_line,
+      { x_min, x_max, y_min, y_max },
+      {
+        x_scale,
+        x2_scale,
+        y_scale,
+        y2_scale,
+      },
+    ),
   )
 
   let is_focused = $state(false)
@@ -61,18 +65,16 @@
   let annotation_pos = $derived(
     endpoints && ref_line.annotation
       ? calculate_annotation_position(
-        endpoints[0],
-        endpoints[1],
-        endpoints[2],
-        endpoints[3],
-        ref_line.annotation,
-      )
+          endpoints[0],
+          endpoints[1],
+          endpoints[2],
+          endpoints[3],
+          ref_line.annotation,
+        )
       : null,
   )
 
-  const make_event = (
-    event: MouseEvent | KeyboardEvent | FocusEvent,
-  ): RefLineEvent => ({
+  const make_event = (event: MouseEvent | KeyboardEvent | FocusEvent): RefLineEvent => ({
     event,
     line_idx,
     line_id: ref_line.id,
@@ -152,11 +154,12 @@
       {@const anno_padding = anno.padding ?? 2}
       {@const font_size = parseFloat(String(anno.font_size ?? 12))}
       {@const text_width = anno.text.length * font_size * 0.6}
-      {@const anchor_offset = {
-      start: 0,
-      middle: text_width / 2,
-      end: text_width,
-    }[annotation_pos.text_anchor] ?? 0}
+      {@const anchor_offset =
+        {
+          start: 0,
+          middle: text_width / 2,
+          end: text_width,
+        }[annotation_pos.text_anchor] ?? 0}
       {#if anno.background}
         <rect
           x={annotation_pos.x - anno_padding - anchor_offset}
@@ -167,8 +170,8 @@
           rx="2"
           ry="2"
           transform={annotation_pos.rotation
-          ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
-          : undefined}
+            ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
+            : undefined}
           style:pointer-events="none"
         />
       {/if}
@@ -178,8 +181,8 @@
         text-anchor={annotation_pos.text_anchor}
         dominant-baseline={annotation_pos.dominant_baseline}
         transform={annotation_pos.rotation
-        ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
-        : undefined}
+          ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
+          : undefined}
         fill={anno.color ?? style.color}
         font-size={anno.font_size ?? `12px`}
         font-family={anno.font_family ?? `inherit`}

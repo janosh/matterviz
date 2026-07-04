@@ -7,12 +7,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import JsonNode from './JsonNode.svelte'
-  import type {
-    CopyEventPosition,
-    DiffEntry,
-    JsonTreeContext,
-    JsonTreeProps,
-  } from './types'
+  import type { CopyEventPosition, DiffEntry, JsonTreeContext, JsonTreeProps } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
   import {
     build_ghost_map,
@@ -50,8 +45,7 @@
     editable = false,
     onchange,
     ...rest
-  }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect` | `onchange`> =
-    $props()
+  }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect` | `onchange`> = $props()
 
   // Internal state
   let search_query = $state(``)
@@ -72,16 +66,14 @@
   // Reference to the search input for focus management
   let search_input_element: HTMLInputElement | undefined = $state()
   // Context menu state (null when closed)
-  let context_menu_state = $state<
-    {
-      x: number
-      y: number
-      path: string
-      value: unknown
-      expandable: boolean
-      is_collapsed: boolean
-    } | null
-  >(null)
+  let context_menu_state = $state<{
+    x: number
+    y: number
+    path: string
+    value: unknown
+    expandable: boolean
+    is_collapsed: boolean
+  } | null>(null)
   // Pinned paths for quick reference
   let pinned_paths = $state(new SvelteSet<string>())
   // Selection state for bulk operations
@@ -101,7 +93,9 @@
     context_menu_state = null
     force_expanded = new SvelteSet()
     const valid_paths = new SvelteSet(collect_all_paths(value, root_label ?? ``))
-    collapsed_paths = new SvelteSet([...collapsed_paths].filter((path) => valid_paths.has(path)))
+    collapsed_paths = new SvelteSet(
+      [...collapsed_paths].filter((path) => valid_paths.has(path)),
+    )
     pinned_paths = new SvelteSet()
     selected_paths = new SvelteSet()
     last_selected_path = null
@@ -211,8 +205,8 @@
   // Navigate to previous match
   function go_to_prev_match(): void {
     if (sorted_matches.length === 0) return
-    current_match_index = (current_match_index - 1 + sorted_matches.length) %
-      sorted_matches.length
+    current_match_index =
+      (current_match_index - 1 + sorted_matches.length) % sorted_matches.length
     scroll_to_current_match()
   }
 
@@ -250,14 +244,16 @@
   // Get all descendant paths of a given path (including the path itself)
   function get_descendants(target_path: string): string[] {
     const all_paths = collect_all_paths(value, root_path)
-    const descendants = target_path === `` ? all_paths : all_paths.filter(
-      (entry) =>
-        entry === target_path || entry.startsWith(`${target_path}.`) ||
-        entry.startsWith(`${target_path}[`),
-    )
-    return descendants.includes(target_path)
-      ? descendants
-      : [target_path, ...descendants]
+    const descendants =
+      target_path === ``
+        ? all_paths
+        : all_paths.filter(
+            (entry) =>
+              entry === target_path ||
+              entry.startsWith(`${target_path}.`) ||
+              entry.startsWith(`${target_path}[`),
+          )
+    return descendants.includes(target_path) ? descendants : [target_path, ...descendants]
   }
 
   function expand_all(): void {
@@ -277,9 +273,8 @@
 
     for (const path of all_paths) {
       const segments = parse_path(path)
-      const depth = root_label && segments[0] === root_label
-        ? segments.length - 1
-        : segments.length
+      const depth =
+        root_label && segments[0] === root_label ? segments.length - 1 : segments.length
       ;(depth >= level ? new_collapsed : new_expanded).add(path)
     }
 
@@ -303,7 +298,8 @@
       await navigator.clipboard.writeText(text)
       copy_feedback_error = false
       oncopy?.(path, text)
-    } catch { // Clipboard API failed - still show feedback but as error
+    } catch {
+      // Clipboard API failed - still show feedback but as error
       copy_feedback_error = true
     }
     copy_feedback_path = path // Show feedback regardless of success/failure
@@ -421,9 +417,7 @@
       const start_idx = registered_paths_list.indexOf(last_selected_path)
       const end_idx = registered_paths_list.indexOf(select_path)
       if (start_idx !== -1 && end_idx !== -1) {
-        const [from, to] = start_idx < end_idx
-          ? [start_idx, end_idx]
-          : [end_idx, start_idx]
+        const [from, to] = start_idx < end_idx ? [start_idx, end_idx] : [end_idx, start_idx]
         for (let idx = from; idx <= to; idx++) {
           selected_paths.add(registered_paths_list[idx])
         }
@@ -661,9 +655,7 @@
           >
             <Icon icon="ArrowDown" style="width: 12px; height: 12px" />
           </button>
-          <span class="match-count">{current_match_index + 1} of {
-              sorted_matches.length
-            }</span>
+          <span class="match-count">{current_match_index + 1} of {sorted_matches.length}</span>
         </div>
       {/if}
       <div class="controls">
@@ -691,12 +683,7 @@
         <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
           <Icon icon="Expand" style="width: 14px; height: 14px" />
         </button>
-        <button
-          type="button"
-          onclick={collapse_all}
-          title="Collapse all"
-          {@attach tooltip()}
-        >
+        <button type="button" onclick={collapse_all} title="Collapse all" {@attach tooltip()}>
           <Icon icon="Collapse" style="width: 14px; height: 14px" />
         </button>
         <button
@@ -780,18 +767,16 @@
             type="button"
             class="pinned-path"
             onclick={() =>
-            copy_to_clipboard(
-              pinned_path,
-              serialize_for_copy(get_value_at_path(pinned_path)),
-            )}
+              copy_to_clipboard(
+                pinned_path,
+                serialize_for_copy(get_value_at_path(pinned_path)),
+              )}
             title="Click to copy value"
             {@attach tooltip()}
           >
             {pinned_path}
           </button>
-          <span class="pinned-value">{
-            format_preview(get_value_at_path(pinned_path))
-          }</span>
+          <span class="pinned-value">{format_preview(get_value_at_path(pinned_path))}</span>
           <button
             type="button"
             class="unpin-btn"
@@ -821,8 +806,8 @@
       class="copy-feedback"
       class:error={copy_feedback_error}
       style={copy_feedback_pos
-      ? `left: ${copy_feedback_pos.x}px; top: ${copy_feedback_pos.y - 24}px`
-      : `right: 8px; top: 8px`}
+        ? `left: ${copy_feedback_pos.x}px; top: ${copy_feedback_pos.y - 24}px`
+        : `right: 8px; top: 8px`}
     >
       {copy_feedback_error ? `Copy failed` : `Copied!`}
     </div>
@@ -850,9 +835,7 @@
         <button
           type="button"
           onclick={() =>
-          ctx_menu_action((st) =>
-            copy_to_clipboard(st.path, serialize_for_copy(st.value))
-          )}
+            ctx_menu_action((st) => copy_to_clipboard(st.path, serialize_for_copy(st.value)))}
         >
           <Icon icon="Copy" style="width: 12px; height: 12px" /> Copy value
         </button>
@@ -871,11 +854,11 @@
           <button
             type="button"
             onclick={() =>
-            ctx_menu_action((st) =>
-              st.is_collapsed
-                ? toggle_collapse_recursive(st.path, false)
-                : collapse_children_only(st.path)
-            )}
+              ctx_menu_action((st) =>
+                st.is_collapsed
+                  ? toggle_collapse_recursive(st.path, false)
+                  : collapse_children_only(st.path),
+              )}
           >
             {context_menu_state.is_collapsed ? `Expand` : `Collapse`} all children
           </button>
@@ -883,10 +866,7 @@
         <li class="separator"></li>
       {/if}
       <li>
-        <button
-          type="button"
-          onclick={() => ctx_menu_action((st) => toggle_pin(st.path))}
-        >
+        <button type="button" onclick={() => ctx_menu_action((st) => toggle_pin(st.path))}>
           {pinned_paths.has(context_menu_state.path) ? `Unpin` : `Pin`} this path
         </button>
       </li>
@@ -1006,7 +986,9 @@
     font-weight: 500;
     color: inherit;
     opacity: 0.6;
-    transition: opacity 0.15s, background 0.15s;
+    transition:
+      opacity 0.15s,
+      background 0.15s;
   }
   .controls button:hover {
     opacity: 1;
@@ -1144,18 +1126,12 @@
     font: inherit;
   }
   .context-menu button:hover {
-    background: var(
-      --jt-ctx-hover,
-      light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1))
-    );
+    background: var(--jt-ctx-hover, light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1)));
   }
   .context-menu .separator {
     height: 1px;
     margin: 4px 8px;
-    background: var(
-      --jt-ctx-border,
-      light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1))
-    );
+    background: var(--jt-ctx-border, light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1)));
   }
   .pinned-panel :where(button) {
     background: none;

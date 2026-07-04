@@ -9,22 +9,18 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import { FullscreenButton, type FullscreenToggleProp, SettingsSection, toggle_fullscreen } from '$lib/layout'
+  import {
+    FullscreenButton,
+    type FullscreenToggleProp,
+    SettingsSection,
+    toggle_fullscreen,
+  } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec2, Vec3 } from '$lib/math'
-  import {
-    convex_hull_2d,
-    cross_3d,
-    merge_coplanar_triangles,
-    normalize_vec,
-  } from '$lib/math'
+  import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
-  import {
-    constrain_tooltip_position,
-    pad_rect,
-    rects_overlap,
-  } from '$lib/plot/core/layout'
+  import { constrain_tooltip_position, pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -129,18 +125,22 @@
   } = $props()
 
   // Control overrides (override ?? config ?? default, cleared by Reset)
-  const overrides = create_chempot_overrides(() => config, [
-    `formal_chempots`,
-    `label_stable`,
-    `element_padding`,
-    `default_min_limit`,
-    `formulas_to_draw`,
-    `draw_formula_meshes`,
-    `draw_formula_lines`,
-    `color_mode`,
-    `color_scale`,
-    `reverse_color_scale`,
-  ], { color_mode: `arity`, formulas_to_draw: [] })
+  const overrides = create_chempot_overrides(
+    () => config,
+    [
+      `formal_chempots`,
+      `label_stable`,
+      `element_padding`,
+      `default_min_limit`,
+      `formulas_to_draw`,
+      `draw_formula_meshes`,
+      `draw_formula_lines`,
+      `color_mode`,
+      `color_scale`,
+      `reverse_color_scale`,
+    ],
+    { color_mode: `arity`, formulas_to_draw: [] },
+  )
   const formal_chempots = $derived(overrides.resolve(`formal_chempots`))
   const label_stable = $derived(overrides.resolve(`label_stable`))
   const element_padding = $derived(overrides.resolve(`element_padding`))
@@ -156,9 +156,7 @@
     config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level,
   )
   const formula_colors = $derived(
-    config.formula_colors?.length
-      ? config.formula_colors
-      : CHEMPOT_DEFAULTS.formula_colors,
+    config.formula_colors?.length ? config.formula_colors : CHEMPOT_DEFAULTS.formula_colors,
   )
 
   const formula_label_segments = (formula: string): FormulaLabelSegment[] =>
@@ -181,21 +179,38 @@
   // Separate effects so each reacts to its own pane opening independently —
   // a single $derived ternary would create priority ordering where opening
   // a "lower" pane while a "higher" one is open fails silently.
-  $effect(() => { if (export_pane_open) { formula_picker_open = false; controls_open = false } })
-  $effect(() => { if (formula_picker_open) { export_pane_open = false; controls_open = false } })
-  $effect(() => { if (controls_open) { export_pane_open = false; formula_picker_open = false } })
+  $effect(() => {
+    if (export_pane_open) {
+      formula_picker_open = false
+      controls_open = false
+    }
+  })
+  $effect(() => {
+    if (formula_picker_open) {
+      export_pane_open = false
+      controls_open = false
+    }
+  })
+  $effect(() => {
+    if (controls_open) {
+      export_pane_open = false
+      formula_picker_open = false
+    }
+  })
   let container_width = $state(0)
   let container_height = $state(0)
   const base_aspect_ratio = $derived(height > 0 && width > 0 ? height / width : 1)
   const render_width = $derived(container_width > 0 ? container_width : width)
   const render_height = $derived(
     fullscreen
-      ? (container_height > 0 ? container_height : height)
+      ? container_height > 0
+        ? container_height
+        : height
       : Math.round(render_width * base_aspect_ratio),
   )
 
   let mounted = $state(false)
-  onMount(() => mounted = true)
+  onMount(() => (mounted = true))
   let orbit_controls_ref = $state<OrbitControls | undefined>(undefined)
   // Backside tracking: axes/ticks/labels render on the far side from the camera
   // back[i] = backside data coordinate value for data axis i
@@ -248,9 +263,7 @@
     if (next_temperature !== temperature) temperature = next_temperature
   })
 
-  const show_temperature_slider = $derived(
-    has_temp_data && available_temperatures.length > 0,
-  )
+  const show_temperature_slider = $derived(has_temp_data && available_temperatures.length > 0)
 
   const projection_source_entries = $derived(
     get_projection_source_entries(entries, temp_filtered_entries),
@@ -262,10 +275,10 @@
         projection_source_entries.flatMap((entry) =>
           Object.entries(entry.composition)
             .filter(([, amount]) => amount > 0)
-            .map(([element]) => element)
+            .map(([element]) => element),
         ),
       ),
-    ).sort()
+    ).sort(),
   )
   const has_multinary_system = $derived(all_entry_elements.length > 3)
   let projection_elements_override = $state<string[] | null>(null)
@@ -287,9 +300,7 @@
   })
   const effective_config = $derived({
     ...config,
-    elements: projection_elements.length === 3
-      ? projection_elements
-      : config.elements,
+    elements: projection_elements.length === 3 ? projection_elements : config.elements,
     formal_chempots,
     label_stable,
     element_padding,
@@ -319,7 +330,9 @@
         diagram_data = null
         diagram_computing = false
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   })
 
   const plot_elements = $derived(diagram_data?.elements ?? projection_elements)
@@ -348,15 +361,11 @@
   })
   const current_projection_key = $derived(plot_elements.join(`|`))
   let formula_filter_query = $state(``)
-  const available_formulas = $derived.by(() =>
-    Object.keys(diagram_data?.domains ?? {}).sort()
-  )
+  const available_formulas = $derived.by(() => Object.keys(diagram_data?.domains ?? {}).sort())
   const filtered_formulas = $derived.by(() => {
     const query = formula_filter_query.trim().toLowerCase()
     if (!query) return available_formulas
-    return available_formulas.filter((formula) =>
-      formula.toLowerCase().includes(query)
-    )
+    return available_formulas.filter((formula) => formula.toLowerCase().includes(query))
   })
 
   // Process domains for rendering
@@ -391,8 +400,9 @@
       domain_annotation_cache.set(cache_key, ann_loc)
       return ann_loc
     }
-    return points_3d[0].map((_, col_idx) =>
-      points_3d.reduce((sum, point) => sum + point[col_idx], 0) / points_3d.length
+    return points_3d[0].map(
+      (_, col_idx) =>
+        points_3d.reduce((sum, point) => sum + point[col_idx], 0) / points_3d.length,
     )
   }
 
@@ -401,25 +411,20 @@
 
     const dim = diagram_data.elements.length
     const indices = Array.from({ length: dim }, (_, idx) => idx)
-    const new_lims = element_padding > 0
-      ? apply_element_padding(
-        diagram_data.domains,
-        indices,
-        element_padding,
-        default_min_limit,
-      )
-      : null
+    const new_lims =
+      element_padding > 0
+        ? apply_element_padding(
+            diagram_data.domains,
+            indices,
+            element_padding,
+            default_min_limit,
+          )
+        : null
 
     const result: DomainRenderData[] = []
     for (const [formula, pts] of Object.entries(diagram_data.domains)) {
       const padded = new_lims
-        ? pad_domain_points(
-          pts,
-          indices,
-          new_lims,
-          default_min_limit,
-          element_padding,
-        )
+        ? pad_domain_points(pts, indices, new_lims, default_min_limit, element_padding)
         : pts
       if (padded.length < 2) continue
       result.push({
@@ -477,9 +482,7 @@
   // Original (non-renormalized) elemental references for formation energy computation.
   // diagram_data.el_refs may be renormalized to zero when formal_chempots is true,
   // so we compute our own from the raw entries to get true DFT reference energies.
-  const raw_el_refs = $derived(
-    get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
-  )
+  const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
 
   const color_mode_labels: Record<NumericColorMode, string> = {
     energy: `Energy per atom (eV)`,
@@ -494,11 +497,7 @@
       return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
     }
     if (active_color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(
-        temp_filtered_entries,
-        formula,
-        raw_el_refs,
-      ) ?? null
+      return best_form_energy_for_formula(temp_filtered_entries, formula, raw_el_refs) ?? null
     }
     return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
   }
@@ -545,24 +544,22 @@
   })
 
   // Range and label for the color bar (null for none/arity which are categorical)
-  const color_range = $derived.by(
-    (): { min: number; max: number; label: string } | null => {
-      const values = domain_color_values?.values ?? []
-      if (values.length === 0) return null
-      let lo = values[0], hi = values[0]
-      for (let idx = 1; idx < values.length; idx++) {
-        if (values[idx] < lo) lo = values[idx]
-        if (values[idx] > hi) hi = values[idx]
-      }
-      return {
-        min: lo,
-        max: Math.max(hi, lo + 1e-6),
-        label: color_mode === `none` || color_mode === `arity`
-          ? ``
-          : color_mode_labels[color_mode],
-      }
-    },
-  )
+  const color_range = $derived.by((): { min: number; max: number; label: string } | null => {
+    const values = domain_color_values?.values ?? []
+    if (values.length === 0) return null
+    let lo = values[0],
+      hi = values[0]
+    for (let idx = 1; idx < values.length; idx++) {
+      if (values[idx] < lo) lo = values[idx]
+      if (values[idx] > hi) hi = values[idx]
+    }
+    return {
+      min: lo,
+      max: Math.max(hi, lo + 1e-6),
+      label:
+        color_mode === `none` || color_mode === `arity` ? `` : color_mode_labels[color_mode],
+    }
+  })
 
   const arity_legend_labels = $derived.by((): string[] => {
     let has_four_plus_regions = false
@@ -582,9 +579,12 @@
   const render_axis_scale = $derived.by((): Vec3 => {
     const points = render_domains.flatMap((domain) => domain.points_3d)
     if (points.length === 0) return [1, 1, 1]
-    let min0 = Infinity, max0 = -Infinity
-    let min1 = Infinity, max1 = -Infinity
-    let min2 = Infinity, max2 = -Infinity
+    let min0 = Infinity,
+      max0 = -Infinity
+    let min1 = Infinity,
+      max1 = -Infinity
+    let min2 = Infinity,
+      max2 = -Infinity
     for (const point of points) {
       if (point[0] < min0) min0 = point[0]
       if (point[0] > max0) max0 = point[0]
@@ -624,11 +624,7 @@
       sum_z += z_val
     }
     const n_points = points.length
-    const center = new THREE.Vector3(
-      sum_x / n_points,
-      sum_y / n_points,
-      sum_z / n_points,
-    )
+    const center = new THREE.Vector3(sum_x / n_points, sum_y / n_points, sum_z / n_points)
     // Compute max distance from center
     let max_dist = 0
     for (const point of points) {
@@ -643,30 +639,22 @@
     data_center.y + data_extent,
     data_center.z + data_extent,
   ])
-  const default_camera_target = $derived<Vec3>([
-    data_center.x,
-    data_center.y,
-    data_center.z,
-  ])
+  const default_camera_target = $derived<Vec3>([data_center.x, data_center.y, data_center.z])
   const default_orthographic_zoom = $derived(
     Math.min(render_width, render_height) / (data_extent * 1.6),
   )
   let camera_position_override = $state<Vec3 | null>(null)
   let camera_target_override = $state<Vec3 | null>(null)
   let orthographic_zoom_override = $state<number | null>(null)
-  const camera_position = $derived(
-    camera_position_override ?? default_camera_position,
-  )
-  const camera_target = $derived(
-    camera_target_override ?? default_camera_target,
-  )
-  const orthographic_zoom = $derived(
-    orthographic_zoom_override ?? default_orthographic_zoom,
-  )
+  const camera_position = $derived(camera_position_override ?? default_camera_position)
+  const camera_target = $derived(camera_target_override ?? default_camera_target)
+  const orthographic_zoom = $derived(orthographic_zoom_override ?? default_orthographic_zoom)
   // Label scale factor: zoom relative to default, so labels grow/shrink with zoom
   // Labels scale sub-linearly with zoom so they grow but don't dominate when zoomed in
   const zoom_scale = $derived(
-    default_orthographic_zoom > 0 ? Math.sqrt(orthographic_zoom / default_orthographic_zoom) : 1,
+    default_orthographic_zoom > 0
+      ? Math.sqrt(orthographic_zoom / default_orthographic_zoom)
+      : 1,
   )
   let last_data_center: Vec3 | null = null
   let last_data_extent: number | null = null
@@ -675,14 +663,16 @@
   // Each domain in a chem pot diagram is a convex polygon/polyhedron. We project
   // to 2D (trying all 3 axis-aligned planes) and use the best projection's
   // convex hull boundary. This reliably handles both flat and 3D domains.
-  function get_domain_edges(
-    pts: number[][],
-  ): [number[], number[]][] {
+  function get_domain_edges(pts: number[][]): [number[], number[]][] {
     const unique = dedup_3d(pts)
     if (unique.length < 2) return []
     if (unique.length === 2) return [[unique[0], unique[1]]]
     if (unique.length === 3) {
-      return [[unique[0], unique[1]], [unique[1], unique[2]], [unique[0], unique[2]]]
+      return [
+        [unique[0], unique[1]],
+        [unique[1], unique[2]],
+        [unique[0], unique[2]],
+      ]
     }
     return get_2d_hull_edges(unique)
   }
@@ -702,9 +692,7 @@
   // (largest non-degenerate hull area). Unioning multiple projections can add
   // non-physical diagonals for nearly coplanar domains.
   // Called only from get_domain_edges with 4+ unique points
-  function get_2d_hull_edges(
-    pts: number[][],
-  ): [number[], number[]][] {
+  function get_2d_hull_edges(pts: number[][]): [number[], number[]][] {
     let selected_hull: Vec2[] = []
     let selected_coord_to_idx: SvelteMap<string, number> | null = null
     let selected_hull_area = -1
@@ -714,15 +702,20 @@
 
       // Skip this projection if points collapse to a line (near-zero range in
       // either projected axis). This avoids spurious edges from edge-on views.
-      let min0 = Infinity, max0 = -Infinity, min1 = Infinity, max1 = -Infinity
+      let min0 = Infinity,
+        max0 = -Infinity,
+        min1 = Infinity,
+        max1 = -Infinity
       for (const pt of pts) {
-        const v0 = pt[axes[0]], v1 = pt[axes[1]]
+        const v0 = pt[axes[0]],
+          v1 = pt[axes[1]]
         if (v0 < min0) min0 = v0
         if (v0 > max0) max0 = v0
         if (v1 < min1) min1 = v1
         if (v1 > max1) max1 = v1
       }
-      const range0 = max0 - min0, range1 = max1 - min1
+      const range0 = max0 - min0,
+        range1 = max1 - min1
       const max_2d_range = Math.max(range0, range1)
       if (max_2d_range < 1e-6 || Math.min(range0, range1) < max_2d_range * 0.01) {
         continue
@@ -760,7 +753,9 @@
         `${point_b[0].toFixed(6)},${point_b[1].toFixed(6)}`,
       )
       if (
-        point_a_idx == null || point_b_idx == null || point_a_idx >= pts.length ||
+        point_a_idx == null ||
+        point_b_idx == null ||
+        point_a_idx >= pts.length ||
         point_b_idx >= pts.length
       ) {
         console.warn(`get_2d_hull_edges: invalid edge`, {
@@ -854,7 +849,9 @@
     const n_verts = pos.count
     const n_faces = n_verts / 3
     // Hull centroid for orienting face normals outward
-    let hx = 0, hy = 0, hz = 0
+    let hx = 0,
+      hy = 0,
+      hz = 0
     for (let vert_idx = 0; vert_idx < n_verts; vert_idx++) {
       hx += pos.getX(vert_idx)
       hy += pos.getY(vert_idx)
@@ -908,7 +905,9 @@
     const centroids = render_domains
       .filter((domain) => !domain.is_draw_formula && domain.points_3d.length > 0)
       .map((domain) => {
-        let sx = 0, sy = 0, sz = 0
+        let sx = 0,
+          sy = 0,
+          sz = 0
         for (const pt of domain.points_3d) {
           const [x_val, y_val, z_val] = to_render_xyz(pt)
           sx += x_val
@@ -916,7 +915,12 @@
           sz += z_val
         }
         const n_points = domain.points_3d.length
-        return { formula: domain.formula, cx: sx / n_points, cy: sy / n_points, cz: sz / n_points }
+        return {
+          formula: domain.formula,
+          cx: sx / n_points,
+          cy: sy / n_points,
+          cz: sz / n_points,
+        }
       })
 
     // Assign each face to the nearest domain centroid
@@ -946,9 +950,9 @@
       const tol = 1e-3
       const round = (val: number): number => Math.round(val / tol)
       const vkey = (vert_idx: number): string =>
-        `${round(pos.getX(vert_idx))},${round(pos.getY(vert_idx))},${
-          round(pos.getZ(vert_idx))
-        }`
+        `${round(pos.getX(vert_idx))},${round(pos.getY(vert_idx))},${round(
+          pos.getZ(vert_idx),
+        )}`
       // Compute face normals
       const normals: Vec3[] = []
       for (let face_idx = 0; face_idx < n_faces; face_idx++) {
@@ -970,13 +974,11 @@
       for (let face_idx = 0; face_idx < n_faces; face_idx++) {
         const base = face_idx * 3
         const keys = [vkey(base), vkey(base + 1), vkey(base + 2)]
-        for (
-          const ek of [
-            edge_key(keys[0], keys[1]),
-            edge_key(keys[1], keys[2]),
-            edge_key(keys[0], keys[2]),
-          ]
-        ) {
+        for (const ek of [
+          edge_key(keys[0], keys[1]),
+          edge_key(keys[1], keys[2]),
+          edge_key(keys[0], keys[2]),
+        ]) {
           const list = edge_faces.get(ek)
           if (list) list.push(face_idx)
           else edge_faces.set(ek, [face_idx])
@@ -992,13 +994,15 @@
         return node
       }
       const union = (a_idx: number, b_idx: number): void => {
-        const ra = find(a_idx), rb = find(b_idx)
+        const ra = find(a_idx),
+          rb = find(b_idx)
         if (ra !== rb) parent[ra] = rb
       }
       for (const pair of edge_faces.values()) {
         if (pair.length !== 2) continue
         const [fa, fb] = pair
-        const na = normals[fa], nb = normals[fb]
+        const na = normals[fa],
+          nb = normals[fb]
         if (Math.abs(na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2]) > 1 - tol) {
           union(fa, fb)
         }
@@ -1148,15 +1152,9 @@
 
   const controls_series = $derived<DataSeries3D[]>([
     {
-      x: render_domains.flatMap((domain) =>
-        domain.points_3d.map((point) => point[1])
-      ),
-      y: render_domains.flatMap((domain) =>
-        domain.points_3d.map((point) => point[2])
-      ),
-      z: render_domains.flatMap((domain) =>
-        domain.points_3d.map((point) => point[0])
-      ),
+      x: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[1])),
+      y: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[2])),
+      z: render_domains.flatMap((domain) => domain.points_3d.map((point) => point[0])),
       label: `domains`,
     },
   ])
@@ -1167,8 +1165,7 @@
     const result: { geometry: THREE.BufferGeometry; color: string }[] = []
     for (const domain of render_domains) {
       if (!domain.is_draw_formula) continue
-      const color_idx = formulas_to_draw.indexOf(domain.formula) %
-        formula_colors.length
+      const color_idx = formulas_to_draw.indexOf(domain.formula) % formula_colors.length
       const swizzled = domain.points_3d.map((point) => to_render_xyz(point))
       const positions: number[] = []
       for (const [pa, pb] of get_domain_edges(swizzled)) {
@@ -1187,8 +1184,7 @@
     if (!draw_formula_meshes) return result
     for (const domain of render_domains) {
       if (!domain.is_draw_formula || domain.points_3d.length < 4) continue
-      const color_idx = formulas_to_draw.indexOf(domain.formula) %
-        formula_colors.length
+      const color_idx = formulas_to_draw.indexOf(domain.formula) % formula_colors.length
       const unique = dedup_3d(domain.points_3d)
       if (unique.length < 4) continue
       const vectors = unique.map((pt) => to_vec3(pt))
@@ -1202,10 +1198,7 @@
     return result
   })
 
-  function get_touches_limits(
-    points_3d: number[][],
-    lims: Vec2[],
-  ): string[] {
+  function get_touches_limits(points_3d: number[][], lims: Vec2[]): string[] {
     const limit_tol = 1e-3
     const touches_limits: string[] = []
     for (
@@ -1215,11 +1208,11 @@
     ) {
       const [axis_min, axis_max] = lims[axis_idx]
       const axis_name = plot_elements[axis_idx] ?? `axis_${axis_idx}`
-      const touches_min = points_3d.some((point) =>
-        Math.abs(point[axis_idx] - axis_min) < limit_tol
+      const touches_min = points_3d.some(
+        (point) => Math.abs(point[axis_idx] - axis_min) < limit_tol,
       )
-      const touches_max = points_3d.some((point) =>
-        Math.abs(point[axis_idx] - axis_max) < limit_tol
+      const touches_max = points_3d.some(
+        (point) => Math.abs(point[axis_idx] - axis_max) < limit_tol,
       )
       if (touches_min) touches_limits.push(`${axis_name} lower bound`)
       if (touches_max) touches_limits.push(`${axis_name} upper bound`)
@@ -1277,9 +1270,7 @@
     const vertex_owners = new SvelteMap<string, string[]>()
     for (const domain of render_domains) {
       for (const pt of domain.points_3d) {
-        const key = pt.map((val) => (Math.round(val / tol) * tol).toFixed(4)).join(
-          `,`,
-        )
+        const key = pt.map((val) => (Math.round(val / tol) * tol).toFixed(4)).join(`,`)
         const owners = vertex_owners.get(key)
         if (owners) {
           if (!owners.includes(domain.formula)) owners.push(domain.formula)
@@ -1357,9 +1348,7 @@
     geometry.dispose()
   }
 
-  function dispose_geometries(
-    geometries: (THREE.BufferGeometry | null | undefined)[],
-  ): void {
+  function dispose_geometries(geometries: (THREE.BufferGeometry | null | undefined)[]): void {
     for (const geometry of geometries) dispose_geometry(geometry)
   }
 
@@ -1463,10 +1452,7 @@
   })
 
   // Helper to create a line geometry from two Vec3 arrays
-  function make_line_geom(
-    start: Vec3,
-    end: Vec3,
-  ): THREE.BufferGeometry {
+  function make_line_geom(start: Vec3, end: Vec3): THREE.BufferGeometry {
     const geom = new THREE.BufferGeometry()
     geom.setAttribute(
       `position`,
@@ -1514,11 +1500,12 @@
     return [0, 1, 2].map((axis) => {
       const ticks = data_ticks[axis]
       const color = axis_colors[axis]
-      const label = axis === 0
-        ? (z_axis.label || chem_axis_label(0))
-        : axis === 1
-        ? (x_axis.label || chem_axis_label(1))
-        : (y_axis.label || chem_axis_label(2))
+      const label =
+        axis === 0
+          ? z_axis.label || chem_axis_label(0)
+          : axis === 1
+            ? x_axis.label || chem_axis_label(1)
+            : y_axis.label || chem_axis_label(2)
 
       const tick_geoms: THREE.BufferGeometry[] = []
       const grid_geoms: THREE.BufferGeometry[] = []
@@ -1538,16 +1525,14 @@
           back[2] + out_y * tick_label_dist,
         )
         for (const val of ticks) {
-          tick_geoms.push(make_line_geom(
-            swiz(val, back[1], back[2]),
-            swiz(val, back[1], back[2] + out_y * tick_size),
-          ))
-          grid_geoms.push(
-            make_line_geom(swiz(val, r1[0], back[2]), swiz(val, r1[1], back[2])),
+          tick_geoms.push(
+            make_line_geom(
+              swiz(val, back[1], back[2]),
+              swiz(val, back[1], back[2] + out_y * tick_size),
+            ),
           )
-          grid_geoms.push(
-            make_line_geom(swiz(val, back[1], r2[0]), swiz(val, back[1], r2[1])),
-          )
+          grid_geoms.push(make_line_geom(swiz(val, r1[0], back[2]), swiz(val, r1[1], back[2])))
+          grid_geoms.push(make_line_geom(swiz(val, back[1], r2[0]), swiz(val, back[1], r2[1])))
           tick_labels.push({
             pos: swiz(
               val,
@@ -1568,16 +1553,14 @@
           back[2] + out_y * tick_label_dist,
         )
         for (const val of ticks) {
-          tick_geoms.push(make_line_geom(
-            swiz(back[0], val, back[2]),
-            swiz(back[0], val, back[2] + out_y * tick_size),
-          ))
-          grid_geoms.push(
-            make_line_geom(swiz(r0[0], val, back[2]), swiz(r0[1], val, back[2])),
+          tick_geoms.push(
+            make_line_geom(
+              swiz(back[0], val, back[2]),
+              swiz(back[0], val, back[2] + out_y * tick_size),
+            ),
           )
-          grid_geoms.push(
-            make_line_geom(swiz(back[0], val, r2[0]), swiz(back[0], val, r2[1])),
-          )
+          grid_geoms.push(make_line_geom(swiz(r0[0], val, back[2]), swiz(r0[1], val, back[2])))
+          grid_geoms.push(make_line_geom(swiz(back[0], val, r2[0]), swiz(back[0], val, r2[1])))
           tick_labels.push({
             pos: swiz(back[0], val, back[2] + out_y * tick_label_dist),
             text: format_num(val, `.3~g`),
@@ -1594,16 +1577,14 @@
           outer_end(r2) + outer_direction(r2) * axis_label_dist,
         )
         for (const val of ticks) {
-          tick_geoms.push(make_line_geom(
-            swiz(back[0], back[1], val),
-            swiz(back[0], back[1] + out_x * tick_size, val),
-          ))
-          grid_geoms.push(
-            make_line_geom(swiz(r0[0], back[1], val), swiz(r0[1], back[1], val)),
+          tick_geoms.push(
+            make_line_geom(
+              swiz(back[0], back[1], val),
+              swiz(back[0], back[1] + out_x * tick_size, val),
+            ),
           )
-          grid_geoms.push(
-            make_line_geom(swiz(back[0], r1[0], val), swiz(back[0], r1[1], val)),
-          )
+          grid_geoms.push(make_line_geom(swiz(r0[0], back[1], val), swiz(r0[1], back[1], val)))
+          grid_geoms.push(make_line_geom(swiz(back[0], r1[0], val), swiz(back[0], r1[1], val)))
           tick_labels.push({
             pos: swiz(back[0], back[1] + out_x * tick_label_dist, val),
             text: format_num(val, `.3~g`),
@@ -1631,16 +1612,12 @@
 
   function update_label_occlusion(): void {
     if (!wrapper) return
-    const tick_labels = Array.from(
-      wrapper.querySelectorAll<HTMLElement>(`.axis-tick-label`),
-    )
+    const tick_labels = Array.from(wrapper.querySelectorAll<HTMLElement>(`.axis-tick-label`))
     tick_labels_occluded = false
     for (const tick_label of tick_labels) {
       tick_label.style.visibility = ``
     }
-    const domain_rects = Array.from(
-      wrapper.querySelectorAll<HTMLElement>(`.domain-label`),
-    )
+    const domain_rects = Array.from(wrapper.querySelectorAll<HTMLElement>(`.domain-label`))
       .filter((domain_label) => {
         const style = getComputedStyle(domain_label)
         return style.display !== `none` && style.visibility !== `hidden`
@@ -1708,11 +1685,7 @@
     }
     const controls_target = controls?.target
     if (controls_target) {
-      camera_target_override = [
-        controls_target.x,
-        controls_target.y,
-        controls_target.z,
-      ]
+      camera_target_override = [controls_target.x, controls_target.y, controls_target.z]
     }
   }
 
@@ -1888,18 +1861,12 @@
       next_projection[current_owner_idx] = next_projection[axis_idx]
     }
     next_projection[axis_idx] = element
-    const normalized = normalize_projection_triplet(
-      next_projection,
-      all_entry_elements,
-    )
+    const normalized = normalize_projection_triplet(next_projection, all_entry_elements)
     if (normalized) projection_elements_override = normalized
   }
 
   function apply_projection_preset(preset_elements: string[]): void {
-    const normalized = normalize_projection_triplet(
-      preset_elements,
-      all_entry_elements,
-    )
+    const normalized = normalize_projection_triplet(preset_elements, all_entry_elements)
     if (normalized) projection_elements_override = normalized
   }
 
@@ -1976,19 +1943,21 @@
         },
         {
           label: `View`,
-          on_download: () =>
-            export_view_json_file(current_view_settings(), export_basename),
+          on_download: () => export_view_json_file(current_view_settings(), export_basename),
         },
         {
           label: `GLB`,
           on_download: () =>
-            export_glb_file({
-              hull_geometry: colored_hull_geometry,
-              hull_opacity: color_mode === `none` ? 0.25 : 0.4,
-              edge_geometry,
-              formula_meshes: formula_mesh_data,
-              formula_edges: draw_formula_lines ? formula_edge_data : [],
-            }, export_basename),
+            export_glb_file(
+              {
+                hull_geometry: colored_hull_geometry,
+                hull_opacity: color_mode === `none` ? 0.25 : 0.4,
+                edge_geometry,
+                formula_meshes: formula_mesh_data,
+                formula_edges: draw_formula_lines ? formula_edge_data : [],
+              },
+              export_basename,
+            ),
         },
       ],
     },
@@ -2005,10 +1974,12 @@
     const pointer = hover_info?.pointer
     if (!pointer) return { x: 4, y: 4 }
     return constrain_tooltip_position(
-      pointer.x, pointer.y,
+      pointer.x,
+      pointer.y,
       tooltip_el?.offsetWidth ?? 200,
       tooltip_el?.offsetHeight ?? 100,
-      container_width, container_height,
+      container_width,
+      container_height,
       { offset: 0 },
     )
   })
@@ -2074,20 +2045,15 @@
   role="application"
   tabindex="0"
   onkeydown={(event) => {
-    if (
-      event.target instanceof HTMLInputElement ||
-      event.target instanceof HTMLSelectElement
-    ) return
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)
+      return
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
     else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
   }}
   onpointerdown={(event) => {
     const target = event.target
-    if (
-      locked_hover_formula &&
-      (target === wrapper || target instanceof HTMLCanvasElement)
-    ) {
+    if (locked_hover_formula && (target === wrapper || target instanceof HTMLCanvasElement)) {
       clear_hover_lock()
     }
   }}
@@ -2123,11 +2089,7 @@
       </div>
       <label class="overlay-search">
         Search:
-        <input
-          type="text"
-          placeholder="Formula filter"
-          bind:value={formula_filter_query}
-        />
+        <input type="text" placeholder="Formula filter" bind:value={formula_filter_query} />
       </label>
       <div class="formula-list">
         {#if filtered_formulas.length === 0}
@@ -2145,7 +2107,7 @@
                 class="formula-color-dot"
                 style:background={formula_colors[
                   (formula_overlay_idx >= 0 ? formula_overlay_idx : formula_idx) %
-                  formula_colors.length
+                    formula_colors.length
                 ]}
               ></span>
               {get_electro_neg_formula(formula, true, ``, `.3~s`)}
@@ -2252,8 +2214,7 @@
             <input
               type="checkbox"
               checked={draw_formula_meshes}
-              onchange={() =>
-              overrides.set(`draw_formula_meshes`, !draw_formula_meshes)}
+              onchange={() => overrides.set(`draw_formula_meshes`, !draw_formula_meshes)}
             /> Meshes
           </label>
           <label>
@@ -2273,7 +2234,7 @@
               step="0.1"
               value={element_padding}
               oninput={(event) =>
-              overrides.set(`element_padding`, Number(event.currentTarget.value))}
+                overrides.set(`element_padding`, Number(event.currentTarget.value))}
             />
           </label>
           <label>
@@ -2284,7 +2245,7 @@
               step="1"
               value={default_min_limit}
               oninput={(event) =>
-              overrides.set(`default_min_limit`, Number(event.currentTarget.value))}
+                overrides.set(`default_min_limit`, Number(event.currentTarget.value))}
             />
           </label>
         </div>
@@ -2294,7 +2255,7 @@
             id="chempot-color-mode"
             value={color_mode}
             onchange={(event) =>
-            overrides.set(`color_mode`, event.currentTarget.value as ChemPotColorMode)}
+              overrides.set(`color_mode`, event.currentTarget.value as ChemPotColorMode)}
           >
             {#each CHEMPOT_COLOR_MODE_OPTIONS as [value, label] (value)}
               <option {value}>{label}</option>
@@ -2308,10 +2269,7 @@
               id="chempot-color-scale"
               value={color_scale}
               onchange={(event) =>
-              overrides.set(
-                `color_scale`,
-                event.currentTarget.value as D3InterpolateName,
-              )}
+                overrides.set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
             >
               {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
                 <option {value}>{label}</option>
@@ -2321,8 +2279,7 @@
               <input
                 type="checkbox"
                 checked={reverse_color_scale}
-                onchange={() =>
-                overrides.set(`reverse_color_scale`, !reverse_color_scale)}
+                onchange={() => overrides.set(`reverse_color_scale`, !reverse_color_scale)}
               /> Rev
             </label>
           </div>
@@ -2335,312 +2292,300 @@
     {/if}
   </section>
   {#if show_temperature_slider && temperature !== undefined}
-    <TemperatureSlider
-      class="chempot-temp-slider"
-      {available_temperatures}
-      bind:temperature
-    />
+    <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
   {/if}
   <div class="canvas-clip">
-  {#if diagram_computing}
-    <div class="computing-state">
-      <Spinner text="Computing chemical potential domains..." style="--spinner-size: 1.2em" />
-    </div>
-  {:else if !diagram_data}
-    <div class="error-state" role="alert" aria-live="polite">
-      <p>Cannot compute chemical potential diagram.</p>
-      <p>Need at least 2 elements with elemental reference entries.</p>
-    </div>
-  {:else if mounted && typeof WebGLRenderingContext !== `undefined`}
-    <Canvas
-      createRenderer={(cvs) =>
-      new THREE.WebGLRenderer({
-        canvas: cvs,
-        alpha: true,
-        antialias: true,
-        preserveDrawingBuffer: true,
-      })}
-    >
-      <ChemPotScene3D>
-        {#if camera_projection === `orthographic`}
-          <!-- Orthographic camera matching pymatgen's projection style -->
-          <T.OrthographicCamera
-            makeDefault
-            position={camera_position}
-            zoom={orthographic_zoom}
-            near={0.1}
-            far={data_extent * 10}
-          >
-            <extras.OrbitControls
-              bind:ref={orbit_controls_ref}
-              enableRotate
-              enableZoom
-              enablePan
-              autoRotate={auto_rotate > 0}
-              autoRotateSpeed={auto_rotate}
-              target={camera_target}
-            />
-          </T.OrthographicCamera>
-        {:else}
-          <T.PerspectiveCamera
-            makeDefault
-            position={camera_position}
-            fov={50}
-            near={0.1}
-            far={data_extent * 10}
-          >
-            <extras.OrbitControls
-              bind:ref={orbit_controls_ref}
-              enableRotate
-              enableZoom
-              enablePan
-              autoRotate={auto_rotate > 0}
-              autoRotateSpeed={auto_rotate}
-              target={camera_target}
-            />
-          </T.PerspectiveCamera>
-        {/if}
+    {#if diagram_computing}
+      <div class="computing-state">
+        <Spinner
+          text="Computing chemical potential domains..."
+          style="--spinner-size: 1.2em"
+        />
+      </div>
+    {:else if !diagram_data}
+      <div class="error-state" role="alert" aria-live="polite">
+        <p>Cannot compute chemical potential diagram.</p>
+        <p>Need at least 2 elements with elemental reference entries.</p>
+      </div>
+    {:else if mounted && typeof WebGLRenderingContext !== `undefined`}
+      <Canvas
+        createRenderer={(cvs) =>
+          new THREE.WebGLRenderer({
+            canvas: cvs,
+            alpha: true,
+            antialias: true,
+            preserveDrawingBuffer: true,
+          })}
+      >
+        <ChemPotScene3D>
+          {#if camera_projection === `orthographic`}
+            <!-- Orthographic camera matching pymatgen's projection style -->
+            <T.OrthographicCamera
+              makeDefault
+              position={camera_position}
+              zoom={orthographic_zoom}
+              near={0.1}
+              far={data_extent * 10}
+            >
+              <extras.OrbitControls
+                bind:ref={orbit_controls_ref}
+                enableRotate
+                enableZoom
+                enablePan
+                autoRotate={auto_rotate > 0}
+                autoRotateSpeed={auto_rotate}
+                target={camera_target}
+              />
+            </T.OrthographicCamera>
+          {:else}
+            <T.PerspectiveCamera
+              makeDefault
+              position={camera_position}
+              fov={50}
+              near={0.1}
+              far={data_extent * 10}
+            >
+              <extras.OrbitControls
+                bind:ref={orbit_controls_ref}
+                enableRotate
+                enableZoom
+                enablePan
+                autoRotate={auto_rotate > 0}
+                autoRotateSpeed={auto_rotate}
+                target={camera_target}
+              />
+            </T.PerspectiveCamera>
+          {/if}
 
-        <!-- Ambient light for visibility -->
-        <T.AmbientLight intensity={0.8} />
-        <T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
+          <!-- Ambient light for visibility -->
+          <T.AmbientLight intensity={0.8} />
+          <T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
 
-        <!-- Vertex-colored hull for both plain and colored modes.
+          <!-- Vertex-colored hull for both plain and colored modes.
            {#key domain_colors} forces Threlte to re-create the mesh whenever
            colors change (covers color_mode, color_scale, and data updates),
            since on-demand rendering won't detect mutated vertex color buffers. -->
-        {#if colored_hull_geometry}
-          {#key domain_colors}
-            <T.Mesh geometry={colored_hull_geometry}>
+          {#if colored_hull_geometry}
+            {#key domain_colors}
+              <T.Mesh geometry={colored_hull_geometry}>
+                <T.MeshBasicMaterial
+                  vertexColors
+                  transparent
+                  opacity={color_mode === `none` ? 0.25 : 0.4}
+                  side={THREE.DoubleSide}
+                  polygonOffset
+                  polygonOffsetFactor={1}
+                  polygonOffsetUnits={1}
+                />
+              </T.Mesh>
+            {/key}
+          {/if}
+
+          <!-- Domain boundary edges (wireframe on top of opaque fills) -->
+          <T.LineSegments geometry={edge_geometry}>
+            <T.LineBasicMaterial color={0x333333} linewidth={1} />
+          </T.LineSegments>
+
+          <!-- Invisible pick meshes for per-phase hover tooltip -->
+          {#each hover_mesh_data as domain_hover (domain_hover.formula)}
+            <T.Mesh
+              geometry={domain_hover.geometry}
+              onpointerenter={(event: unknown) => handle_phase_hover(domain_hover, event)}
+              onpointermove={(event: unknown) => handle_phase_hover(domain_hover, event)}
+              onpointerdown={(event: unknown) => toggle_phase_lock(domain_hover, event)}
+              onpointerleave={() => {
+                if (!locked_hover_formula && hover_info?.formula === domain_hover.formula) {
+                  hover_info = null
+                }
+              }}
+            >
               <T.MeshBasicMaterial
-                vertexColors
                 transparent
-                opacity={color_mode === `none` ? 0.25 : 0.4}
+                opacity={0}
                 side={THREE.DoubleSide}
-                polygonOffset
-                polygonOffsetFactor={1}
-                polygonOffsetUnits={1}
+                depthWrite={false}
               />
             </T.Mesh>
-          {/key}
-        {/if}
-
-        <!-- Domain boundary edges (wireframe on top of opaque fills) -->
-        <T.LineSegments geometry={edge_geometry}>
-          <T.LineBasicMaterial color={0x333333} linewidth={1} />
-        </T.LineSegments>
-
-        <!-- Invisible pick meshes for per-phase hover tooltip -->
-        {#each hover_mesh_data as domain_hover (domain_hover.formula)}
-          <T.Mesh
-            geometry={domain_hover.geometry}
-            onpointerenter={(event: unknown) => handle_phase_hover(domain_hover, event)}
-            onpointermove={(event: unknown) => handle_phase_hover(domain_hover, event)}
-            onpointerdown={(event: unknown) => toggle_phase_lock(domain_hover, event)}
-            onpointerleave={() => {
-              if (
-                !locked_hover_formula &&
-                hover_info?.formula === domain_hover.formula
-              ) {
-                hover_info = null
-              }
-            }}
-          >
-            <T.MeshBasicMaterial
-              transparent
-              opacity={0}
-              side={THREE.DoubleSide}
-              depthWrite={false}
-            />
-          </T.Mesh>
-        {/each}
-
-        <!-- Formula overlay meshes (semi-transparent colored fill) -->
-        {#each formula_mesh_data as { geometry, color }, mesh_idx (mesh_idx)}
-          <T.Mesh {geometry}>
-            <T.MeshBasicMaterial
-              color={new THREE.Color(color)}
-              transparent
-              opacity={0.13}
-              side={THREE.DoubleSide}
-              depthWrite={false}
-            />
-          </T.Mesh>
-        {/each}
-
-        <!-- Formula overlay edges (colored, thicker) -->
-        {#if draw_formula_lines}
-          {#each formula_edge_data as { geometry, color }, edge_idx (edge_idx)}
-            <T.LineSegments {geometry}>
-              <T.LineBasicMaterial color={new THREE.Color(color)} linewidth={2} />
-            </T.LineSegments>
           {/each}
-        {/if}
 
-        {#each projection_planes as plane (`${plane.key}-${projection_opacity}`)}
-          <T.Mesh position={plane.pos} rotation={plane.rot}>
-            <T.PlaneGeometry args={plane.size} />
-            <T.MeshBasicMaterial
-              color={plane.color}
-              opacity={projection_opacity}
-              transparent
-              side={THREE.DoubleSide}
-              depthWrite={false}
-            />
-          </T.Mesh>
-        {/each}
+          <!-- Formula overlay meshes (semi-transparent colored fill) -->
+          {#each formula_mesh_data as { geometry, color }, mesh_idx (mesh_idx)}
+            <T.Mesh {geometry}>
+              <T.MeshBasicMaterial
+                color={new THREE.Color(color)}
+                transparent
+                opacity={0.13}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </T.Mesh>
+          {/each}
 
-        {#if display.show_bounding_box}
-          <T.LineSegments geometry={bounding_box_geometry}>
-            <T.LineBasicMaterial color="#666" opacity={0.6} transparent />
-          </T.LineSegments>
-        {/if}
-
-        <!-- Axes, ticks, grid lines, and labels -->
-        {#each grid_config as gc (gc.axis)}
-          {#if display.show_axes}
-            <!-- Main axis line -->
-            <T.Line geometry={gc.line_geom}>
-              <T.LineBasicMaterial color={gc.color} linewidth={2} />
-            </T.Line>
-            <!-- Tick marks -->
-            {#each gc.tick_geoms as tick_geom, tdx (tdx)}
-              <T.Line geometry={tick_geom}>
-                <T.LineBasicMaterial color={gc.color} />
-              </T.Line>
+          <!-- Formula overlay edges (colored, thicker) -->
+          {#if draw_formula_lines}
+            {#each formula_edge_data as { geometry, color }, edge_idx (edge_idx)}
+              <T.LineSegments {geometry}>
+                <T.LineBasicMaterial color={new THREE.Color(color)} linewidth={2} />
+              </T.LineSegments>
             {/each}
           {/if}
-          {#if display.show_grid}
-            <!-- Grid lines -->
-            {#each gc.grid_geoms as grid_geom, gdx (gdx)}
-              <T.Line geometry={grid_geom}>
-                <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
-              </T.Line>
-            {/each}
+
+          {#each projection_planes as plane (`${plane.key}-${projection_opacity}`)}
+            <T.Mesh position={plane.pos} rotation={plane.rot}>
+              <T.PlaneGeometry args={plane.size} />
+              <T.MeshBasicMaterial
+                color={plane.color}
+                opacity={projection_opacity}
+                transparent
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </T.Mesh>
+          {/each}
+
+          {#if display.show_bounding_box}
+            <T.LineSegments geometry={bounding_box_geometry}>
+              <T.LineBasicMaterial color="#666" opacity={0.6} transparent />
+            </T.LineSegments>
           {/if}
-          {#if display.show_axis_labels}
-            <!-- Tick labels (billboarded, always face camera) -->
-            {#each gc.tick_labels as tick, tick_idx (tick_idx)}
+
+          <!-- Axes, ticks, grid lines, and labels -->
+          {#each grid_config as gc (gc.axis)}
+            {#if display.show_axes}
+              <!-- Main axis line -->
+              <T.Line geometry={gc.line_geom}>
+                <T.LineBasicMaterial color={gc.color} linewidth={2} />
+              </T.Line>
+              <!-- Tick marks -->
+              {#each gc.tick_geoms as tick_geom, tdx (tdx)}
+                <T.Line geometry={tick_geom}>
+                  <T.LineBasicMaterial color={gc.color} />
+                </T.Line>
+              {/each}
+            {/if}
+            {#if display.show_grid}
+              <!-- Grid lines -->
+              {#each gc.grid_geoms as grid_geom, gdx (gdx)}
+                <T.Line geometry={grid_geom}>
+                  <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
+                </T.Line>
+              {/each}
+            {/if}
+            {#if display.show_axis_labels}
+              <!-- Tick labels (billboarded, always face camera) -->
+              {#each gc.tick_labels as tick, tick_idx (tick_idx)}
+                <extras.HTML position={tick.pos} center portal={wrapper} zIndexRange={[1, 0]}>
+                  <span class="tick-label axis-tick-label">{tick.text}</span>
+                </extras.HTML>
+              {/each}
+              <!-- Axis label -->
               <extras.HTML
-                position={tick.pos}
+                position={gc.label_pos}
                 center
                 portal={wrapper}
                 zIndexRange={[1, 0]}
               >
-                <span class="tick-label axis-tick-label">{tick.text}</span>
+                <span class="axis-label" style:color={gc.color}>{@html gc.label}</span>
+              </extras.HTML>
+            {/if}
+          {/each}
+
+          <!-- Domain labels -->
+          {#if label_stable}
+            {#each visible_domain_labels as domain (domain.formula)}
+              <extras.HTML
+                position={domain.position}
+                center
+                portal={wrapper}
+                zIndexRange={[5, 5]}
+              >
+                <span
+                  class="domain-label"
+                  style:font-size="{(domain.label_font_size * zoom_scale).toFixed(1)}px"
+                >
+                  {#each formula_label_segments(domain.formula) as segment}
+                    <span class:formula-subscript={segment.subscript}>{segment.text}</span>
+                  {/each}
+                </span>
               </extras.HTML>
             {/each}
-            <!-- Axis label -->
-            <extras.HTML
-              position={gc.label_pos}
-              center
-              portal={wrapper}
-              zIndexRange={[1, 0]}
-            >
-              <span class="axis-label" style:color={gc.color}>{@html gc.label}</span>
-            </extras.HTML>
           {/if}
-        {/each}
-
-        <!-- Domain labels -->
-        {#if label_stable}
-          {#each visible_domain_labels as domain (domain.formula)}
-            <extras.HTML
-              position={domain.position}
-              center
-              portal={wrapper}
-              zIndexRange={[5, 5]}
-            >
-              <span
-                class="domain-label"
-                style:font-size="{(domain.label_font_size * zoom_scale).toFixed(1)}px"
-              >
-                {#each formula_label_segments(domain.formula) as segment}
-                  <span class:formula-subscript={segment.subscript}>{segment.text}</span>
-                {/each}
-              </span>
-            </extras.HTML>
+        </ChemPotScene3D>
+      </Canvas>
+      <!-- Color bar for continuous modes -->
+      {#if color_mode !== `none` && color_mode !== `arity` && color_range}
+        {@const color_bar_config = get_chempot_color_bar_config(
+          color_scale,
+          reverse_color_scale,
+        )}
+        <ColorBar
+          title={color_range.label}
+          range={[color_range.min, color_range.max]}
+          color_scale_fn={color_bar_config.color_scale_fn}
+          color_scale_domain={color_bar_config.color_scale_domain}
+          wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
+          bar_style="height: 12px;"
+          title_style="margin-bottom: 4px;"
+        />
+      {/if}
+      <!-- Categorical legend for arity mode -->
+      {#if color_mode === `arity`}
+        <div class="arity-legend">
+          {#each arity_legend_labels as label, idx (label)}
+            <span>
+              <span style:background={arity_colors[idx]}></span>
+              {label}
+            </span>
           {/each}
-        {/if}
-      </ChemPotScene3D>
-    </Canvas>
-    <!-- Color bar for continuous modes -->
-    {#if color_mode !== `none` && color_mode !== `arity` && color_range}
-      {@const color_bar_config = get_chempot_color_bar_config(
-      color_scale,
-      reverse_color_scale,
-    )}
-      <ColorBar
-        title={color_range.label}
-        range={[color_range.min, color_range.max]}
-        color_scale_fn={color_bar_config.color_scale_fn}
-        color_scale_domain={color_bar_config.color_scale_domain}
-        wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
-        bar_style="height: 12px;"
-        title_style="margin-bottom: 4px;"
-      />
-    {/if}
-    <!-- Categorical legend for arity mode -->
-    {#if color_mode === `arity`}
-      <div class="arity-legend">
-        {#each arity_legend_labels as label, idx (label)}
-          <span>
-            <span style:background={arity_colors[idx]}></span>
-            {label}
-          </span>
-        {/each}
-      </div>
-    {/if}
-  {/if}
-  {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
-    <aside
-      bind:this={tooltip_el}
-      class="phase-tooltip"
-      style:left="{tooltip_pos.x}px"
-      style:top="{tooltip_pos.y}px"
-    >
-      <h4>
-        {#each formula_label_segments(hover_info.formula) as segment}
-          <span class:formula-subscript={segment.subscript}>{segment.text}</span>
-        {/each}
-      </h4>
-      {#if locked_hover_formula === hover_info.formula}
-        <p>Pinned · Press Esc to unlock</p>
+        </div>
       {/if}
-      <p>
-        Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
-        {hover_info.n_points}
-      </p>
-      <p>
-        Entries: {hover_info.matching_entry_count}
-        {#if hover_info.min_energy_per_atom !== null &&
-          hover_info.max_energy_per_atom !== null}
-          · E/atom: {format_num(hover_info.min_energy_per_atom, `.4~g`)}
-          to {format_num(hover_info.max_energy_per_atom, `.4~g`)} eV
+    {/if}
+    {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
+      <aside
+        bind:this={tooltip_el}
+        class="phase-tooltip"
+        style:left="{tooltip_pos.x}px"
+        style:top="{tooltip_pos.y}px"
+      >
+        <h4>
+          {#each formula_label_segments(hover_info.formula) as segment}
+            <span class:formula-subscript={segment.subscript}>{segment.text}</span>
+          {/each}
+        </h4>
+        {#if locked_hover_formula === hover_info.formula}
+          <p>Pinned · Press Esc to unlock</p>
         {/if}
-      </p>
-      {#if tooltip_detail_level === `detailed`}
-        <h5>Axis ranges</h5>
-        {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-          <p>
-            {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
-            {format_num(axis_range.max_val, `.4~g`)} eV
-          </p>
-        {/each}
         <p>
-          Centroid: ({
-            hover_info.ann_loc.map((value) => format_num(value, `.3~g`)).join(
-              `, `,
-            )
-          })
+          Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
+          {hover_info.n_points}
         </p>
-        {#if hover_info.touches_limits.length > 0}
-          <h5>Touches bounds</h5>
-          <p>{hover_info.touches_limits.join(`, `)}</p>
+        <p>
+          Entries: {hover_info.matching_entry_count}
+          {#if hover_info.min_energy_per_atom !== null && hover_info.max_energy_per_atom !== null}
+            · E/atom: {format_num(hover_info.min_energy_per_atom, `.4~g`)}
+            to {format_num(hover_info.max_energy_per_atom, `.4~g`)} eV
+          {/if}
+        </p>
+        {#if tooltip_detail_level === `detailed`}
+          <h5>Axis ranges</h5>
+          {#each hover_info.axis_ranges as axis_range (axis_range.element)}
+            <p>
+              {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
+              {format_num(axis_range.max_val, `.4~g`)} eV
+            </p>
+          {/each}
+          <p>
+            Centroid: ({hover_info.ann_loc
+              .map((value) => format_num(value, `.3~g`))
+              .join(`, `)})
+          </p>
+          {#if hover_info.touches_limits.length > 0}
+            <h5>Touches bounds</h5>
+            <p>{hover_info.touches_limits.join(`, `)}</p>
+          {/if}
         {/if}
-      {/if}
-    </aside>
-  {/if}
+      </aside>
+    {/if}
   </div>
 </div>
 
@@ -2729,8 +2674,10 @@
   }
   .chempot-diagram-3d :global(.projection-controls .pane-row) {
     display: grid;
-    grid-template-columns:
-      auto minmax(4.5em, 1fr) auto minmax(4.5em, 1fr) auto minmax(4.5em, 1fr);
+    grid-template-columns: auto minmax(4.5em, 1fr) auto minmax(4.5em, 1fr) auto minmax(
+        4.5em,
+        1fr
+      );
     align-items: center;
     gap: 3pt;
   }
@@ -2870,10 +2817,7 @@
   .phase-tooltip {
     position: absolute;
     max-width: min(32rem, 92vw);
-    background: var(
-      --tooltip-bg,
-      light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9))
-    );
+    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9)));
     color: var(--tooltip-text, var(--text-color, #222));
     border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     border-radius: 6px;

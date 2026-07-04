@@ -207,7 +207,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // All should have some opacity for background effect
     const opacities = await system_rects.evaluateAll((rects) =>
-      rects.map((rect) => parseFloat(rect.getAttribute(`opacity`) ?? `1`)),
+      rects.map((rect) => Number(rect.getAttribute(`opacity`) ?? `1`)),
     )
 
     // Background rectangles should have low opacity
@@ -221,7 +221,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Get x-axis tick values
     const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
     const tick_values = x_ticks
-      .map((text) => parseInt(text.replaceAll(/[^\d]/g, ``), 10))
+      .map((text) => Number(text.replaceAll(/[^\d]/g, ``)))
       .filter((num) => !isNaN(num) && num > 0)
 
     if (tick_values.length > 0) {

@@ -46,20 +46,17 @@
   const DEFAULT_SEARCH_EXAMPLES: SearchExampleCategory[] = [
     {
       label: `Has elements`,
-      description:
-        `Materials containing these elements. Operators/ranges: +Li,-O,Fe:1-2. Use * for any element.`,
+      description: `Materials containing these elements. Operators/ranges: +Li,-O,Fe:1-2. Use * for any element.`,
       examples: [`Li,Fe`, `+Li,-O`, `Li,*,*`],
     },
     {
       label: `Chemical system`,
-      description:
-        `Materials with only these elements (no others). Wildcards/ranges supported.`,
+      description: `Materials with only these elements (no others). Wildcards/ranges supported.`,
       examples: [`Li-Fe-O`, `Li-Fe-*-*`, `*-*-O`],
     },
     {
       label: `Exact formula`,
-      description:
-        `Materials with this exact stoichiometry. Unicode paste, wildcards, and canonicalization supported.`,
+      description: `Materials with this exact stoichiometry. Unicode paste, wildcards, and canonicalization supported.`,
       examples: [`LiFePO4`, `LiFe*2*`, `*2O3`],
     },
   ]
@@ -162,10 +159,9 @@
       if (!raw) return []
       const parsed: unknown = JSON.parse(raw)
       if (!Array.isArray(parsed)) return []
-      return parsed.filter((item): item is string => typeof item === `string`).slice(
-        0,
-        max_history,
-      )
+      return parsed
+        .filter((item): item is string => typeof item === `string`)
+        .slice(0, max_history)
     } catch {
       return []
     }
@@ -249,9 +245,7 @@
   let visible_history = $derived.by(() => {
     const filtered = history
       .filter((item) => item !== value)
-      .filter((item) =>
-        item.toLowerCase().includes(history_query.toLowerCase().trim())
-      )
+      .filter((item) => item.toLowerCase().includes(history_query.toLowerCase().trim()))
     const pinned = filtered.filter((item) => pinned_history.includes(item))
     const unpinned = filtered.filter((item) => !pinned_history.includes(item))
     return [...pinned, ...unpinned]
@@ -305,9 +299,9 @@
   $effect(() => {
     if (!examples_open || !examples_wrapper) return
     requestAnimationFrame(() => {
-      const dropdown = examples_wrapper?.querySelector(`.examples-dropdown`) as
-        | HTMLElement
-        | null
+      const dropdown = examples_wrapper?.querySelector(
+        `.examples-dropdown`,
+      ) as HTMLElement | null
       if (!dropdown) return
       const rect = dropdown.getBoundingClientRect()
       if (rect.right > window.innerWidth && !anchor_left) anchor_left = true
@@ -337,11 +331,13 @@
     for (const [superscript, ascii] of Object.entries(SUPERSCRIPT_TO_ASCII)) {
       normalized = normalized.replaceAll(superscript, ascii)
     }
-    return normalized
-      // keep hydrate dots (deleting would glue digits: CuSO4·5H2O -> CuSO45H2O)
-      .replaceAll(`⋅`, `·`)
-      .replaceAll(`−`, `-`)
-      .replaceAll(/\s+/g, ``)
+    return (
+      normalized
+        // keep hydrate dots (deleting would glue digits: CuSO4·5H2O -> CuSO45H2O)
+        .replaceAll(`⋅`, `·`)
+        .replaceAll(`−`, `-`)
+        .replaceAll(/\s+/g, ``)
+    )
   }
 
   function normalize_exact_formula(input: string): string {
@@ -356,8 +352,9 @@
     try {
       const tokens = parse_formula_with_wildcards(sanitized_input)
       const explicit = tokens
-        .filter((token): token is { element: ElementSymbol; count: number } =>
-          token.element !== null
+        .filter(
+          (token): token is { element: ElementSymbol; count: number } =>
+            token.element !== null,
         )
         .map((token) => ({ element: token.element, count: token.count }))
       const wildcard_tokens = tokens.filter((token) => token.element === null)
@@ -365,21 +362,19 @@
       // Merge explicit element counts before sorting.
       const merged_explicit: { element: string; count: number }[] = []
       for (const token of explicit) {
-        const existing = merged_explicit.find((item) =>
-          item.element === token.element
-        )
+        const existing = merged_explicit.find((item) => item.element === token.element)
         if (existing) existing.count += token.count
         else merged_explicit.push(token)
       }
       const sorted_explicit = merged_explicit.sort((elem_a, elem_b) =>
-        elem_a.element.localeCompare(elem_b.element)
+        elem_a.element.localeCompare(elem_b.element),
       )
-      const wildcard_str = wildcard_tokens.map((token) =>
-        token.count > 1 ? `*${token.count}` : `*`
-      ).join(``)
-      const explicit_str = sorted_explicit.map((token) =>
-        token.count > 1 ? `${token.element}${token.count}` : token.element
-      ).join(``)
+      const wildcard_str = wildcard_tokens
+        .map((token) => (token.count > 1 ? `*${token.count}` : `*`))
+        .join(``)
+      const explicit_str = sorted_explicit
+        .map((token) => (token.count > 1 ? `${token.element}${token.count}` : token.element))
+        .join(``)
       return `${explicit_str}${wildcard_str}`
     } catch {
       return sanitized_input
@@ -388,16 +383,18 @@
 
   function is_valid_constraint(constraint: string): boolean {
     if (!constraint) return true
-    return /^\d+$/.test(constraint) || /^\d+-\d+$/.test(constraint) ||
+    return (
+      /^\d+$/.test(constraint) ||
+      /^\d+-\d+$/.test(constraint) ||
       /^(?:>=|<=|>|<)\d+$/.test(constraint)
+    )
   }
 
-  function strip_operator_prefix(
-    token: string,
-  ): { operator: FormulaFilterToken[`operator`]; value: string } {
-    const operator = token.startsWith(`-`) || token.startsWith(`!`)
-      ? `exclude`
-      : `include`
+  function strip_operator_prefix(token: string): {
+    operator: FormulaFilterToken[`operator`]
+    value: string
+  } {
+    const operator = token.startsWith(`-`) || token.startsWith(`!`) ? `exclude` : `include`
     const stripped_value =
       token.startsWith(`+`) || token.startsWith(`-`) || token.startsWith(`!`)
         ? token.slice(1)
@@ -429,8 +426,9 @@
     const is_wildcard = element === `*`
     const is_valid_element = is_wildcard || is_elem_symbol(element)
     const normalized_constraint = constraint?.trim() || null
-    const is_valid = is_valid_element && (normalized_constraint === null ||
-      is_valid_constraint(normalized_constraint))
+    const is_valid =
+      is_valid_element &&
+      (normalized_constraint === null || is_valid_constraint(normalized_constraint))
 
     return {
       raw: raw_token,
@@ -442,36 +440,37 @@
     }
   }
 
-  function tokenize_query(
-    input: string,
-    mode: FormulaSearchMode,
-  ): FormulaFilterToken[] {
+  function tokenize_query(input: string, mode: FormulaSearchMode): FormulaFilterToken[] {
     const trimmed = input.trim()
     if (!trimmed) return []
     if (mode === `exact`) {
-      return [{
-        raw: trimmed,
-        element: trimmed,
-        operator: `include`,
-        constraint: null,
-        is_wildcard: has_wildcards(trimmed),
-        is_valid: sanitize_exact_formula(trimmed).is_valid,
-      }]
+      return [
+        {
+          raw: trimmed,
+          element: trimmed,
+          operator: `include`,
+          constraint: null,
+          is_wildcard: has_wildcards(trimmed),
+          is_valid: sanitize_exact_formula(trimmed).is_valid,
+        },
+      ]
     }
     const normalized = mode === `chemsys` ? trimmed.replaceAll(`,`, `-`) : trimmed
-    const tokens = mode === `chemsys`
-      // Keep range constraints like Fe:1-2 intact while splitting token separators.
-      ? normalized.split(/-(?!\d)/)
-      : normalized.split(`,`)
+    const tokens =
+      mode === `chemsys`
+        ? // Keep range constraints like Fe:1-2 intact while splitting token separators.
+          normalized.split(/-(?!\d)/)
+        : normalized.split(`,`)
     return tokens
       .map((token) => token.trim())
       .filter(Boolean)
       .map(parse_token)
   }
 
-  function sanitize_exact_formula(
-    input: string,
-  ): { is_valid: boolean; error_message: string | null } {
+  function sanitize_exact_formula(input: string): {
+    is_valid: boolean
+    error_message: string | null
+  } {
     const trimmed = input.trim()
     if (!trimmed) return { is_valid: true, error_message: null }
     try {
@@ -510,9 +509,7 @@
         return token_a.element.localeCompare(token_b.element)
       })
 
-    return normalized_tokens
-      .map(serialize_token)
-      .join(separator)
+    return normalized_tokens.map(serialize_token).join(separator)
   }
 
   function parse_query(
@@ -521,14 +518,15 @@
   ): FormulaFilterParseResult {
     const tokens = tokenize_query(normalized_value, mode)
     const first_invalid_token = tokens.find((token) => !token.is_valid)
-    const exact_validation = mode === `exact`
-      ? sanitize_exact_formula(normalized_value)
-      : {
-        is_valid: !first_invalid_token,
-        error_message: first_invalid_token
-          ? `Invalid token: ${first_invalid_token.raw}`
-          : null,
-      }
+    const exact_validation =
+      mode === `exact`
+        ? sanitize_exact_formula(normalized_value)
+        : {
+            is_valid: !first_invalid_token,
+            error_message: first_invalid_token
+              ? `Invalid token: ${first_invalid_token.raw}`
+              : null,
+          }
     return {
       value: normalized_value,
       normalized_value,
@@ -559,7 +557,10 @@
     if (!trimmed) return []
     // If contains commas or dashes, split by those and sort alphabetically
     if (trimmed.includes(`,`) || trimmed.includes(`-`)) {
-      const parts = trimmed.split(/[-,]/).map((str) => str.trim()).filter(Boolean)
+      const parts = trimmed
+        .split(/[-,]/)
+        .map((str) => str.trim())
+        .filter(Boolean)
       // Separate wildcards from regular elements
       const wildcards = parts.filter((part) => part === `*`)
       const regular_parts = parts.filter((part) => part !== `*`)
@@ -569,7 +570,8 @@
     }
     // Otherwise parse as formula (already returns sorted by default)
     // For formulas with wildcards, we can't parse them normally
-    if (has_wildcards(trimmed)) { // Use shared utility and extract unique elements
+    if (has_wildcards(trimmed)) {
+      // Use shared utility and extract unique elements
       const tokens = parse_formula_with_wildcards(trimmed)
       const unique_elements: string[] = []
       for (const token of tokens) {
@@ -578,9 +580,7 @@
         }
       }
       const elements = unique_elements.sort()
-      const wildcards = tokens.filter((token) => token.element === null).map(() =>
-        `*`
-      )
+      const wildcards = tokens.filter((token) => token.element === null).map(() => `*`)
       return [...elements, ...wildcards]
     }
     try {
@@ -672,9 +672,7 @@
         focused_history_idx = (focused_history_idx + 1) % len
       } else if (event.key === `ArrowUp`) {
         event.preventDefault()
-        focused_history_idx = focused_history_idx <= 0
-          ? len - 1
-          : focused_history_idx - 1
+        focused_history_idx = focused_history_idx <= 0 ? len - 1 : focused_history_idx - 1
       }
     }
   }
@@ -709,8 +707,8 @@
   function handle_menu_keydown(event: KeyboardEvent): void {
     const len = all_examples.length
     if (!len) return
-    const is_button_activation = (event.key === `Enter` || event.key === ` `) &&
-      event.target instanceof HTMLButtonElement
+    const is_button_activation =
+      (event.key === `Enter` || event.key === ` `) && event.target instanceof HTMLButtonElement
     if (is_button_activation) return
 
     const key_actions: Record<string, () => void> = {
@@ -734,8 +732,9 @@
   function remove_token(token_idx: number): void {
     if (search_mode === `exact`) return
     const separator = search_mode === `chemsys` ? `-` : `,`
-    const tokens = tokenize_query(input_value, search_mode)
-      .filter((_, idx) => idx !== token_idx)
+    const tokens = tokenize_query(input_value, search_mode).filter(
+      (_, idx) => idx !== token_idx,
+    )
     const next_value = tokens.map(serialize_token).join(separator)
     input_value = next_value
     set_value(next_value, search_mode)
@@ -752,8 +751,8 @@
     search_mode === `chemsys`
       ? `Li-Fe-O or Li-*-*`
       : search_mode === `exact`
-      ? `LiFePO4 or LiFe*2*`
-      : `Li,Fe,O or Li,*,*`,
+        ? `LiFePO4 or LiFe*2*`
+        : `Li,Fe,O or Li,*,*`,
   )
 
   const MODE_LABELS: Record<FormulaSearchMode, string> = {
@@ -877,8 +876,8 @@
       class:locked={mode_locked}
       onclick={cycle_mode}
       title={mode_locked
-      ? `Mode is locked`
-      : `Click to switch to '${next_mode.mode}' → ${next_mode.value}`}
+        ? `Mode is locked`
+        : `Click to switch to '${next_mode.mode}' → ${next_mode.value}`}
       {@attach tooltip()}
       aria-label="Change search mode"
     >
@@ -959,11 +958,7 @@
 </div>
 {#if show_chip_row}
   <div class="token-chip-row">
-    {#each parsed_tokens as
-      token,
-      idx
-      (`${token.operator}:${token.element}:${token.constraint ?? ``}:${idx}`)
-    }
+    {#each parsed_tokens as token, idx (`${token.operator}:${token.element}:${token.constraint ?? ``}:${idx}`)}
       <button
         type="button"
         class="token-chip"
@@ -1037,7 +1032,9 @@
       cursor: pointer;
       color: var(--highlight, #4db6ff);
       opacity: 0.8;
-      transition: opacity 0.15s, background 0.15s;
+      transition:
+        opacity 0.15s,
+        background 0.15s;
       &:hover {
         opacity: 1;
         background: rgba(77, 182, 255, 0.2);

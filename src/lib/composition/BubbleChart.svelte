@@ -60,14 +60,13 @@
     }
 
     // Use D3's pack layout for proper circle packing
-    const pack_layout = pack<HierarchyData | Child>().size([
-      size - 2 * padding,
-      size - 2 * padding,
-    ]).padding(padding * 0.1) // Small padding between circles
+    const pack_layout = pack<HierarchyData | Child>()
+      .size([size - 2 * padding, size - 2 * padding])
+      .padding(padding * 0.1) // Small padding between circles
 
     const root = pack_layout(
-      hierarchy<HierarchyData | Child>(hierarchy_data).sum(
-        (data) => (`amount` in data ? data.amount : 0),
+      hierarchy<HierarchyData | Child>(hierarchy_data).sum((data) =>
+        `amount` in data ? data.amount : 0,
       ),
     )
 
@@ -82,8 +81,7 @@
       // Calculate font scale based on bubble size and smart text fitting
       const [min_font_scale, max_font_scale] = [0.6, 2] as const
       const scale_factor = radius / max_radius
-      const base_scale = min_font_scale +
-        scale_factor * (max_font_scale - min_font_scale)
+      const base_scale = min_font_scale + scale_factor * (max_font_scale - min_font_scale)
       const label_text = data.element + (show_amounts ? data.amount.toString() : ``)
       const available_space = radius * 2 * 0.8 // 80% of bubble diameter for text
       const font_scale = get_chart_font_scale(base_scale, label_text, available_space)
@@ -134,7 +132,8 @@
       }}
     >
       <title>
-        {bubble.element}: {bubble.amount} {bubble.amount === 1 ? `atom` : `atoms`}
+        {bubble.element}: {bubble.amount}
+        {bubble.amount === 1 ? `atom` : `atoms`}
       </title>
     </circle>
 
@@ -154,13 +153,13 @@
         class:hovered={hovered_element === bubble.element}
       >
         <div class="bubble-label" style:color={bubble.text_color}>
-          <span class="element-symbol" style:font-size="{14 * bubble.font_scale}px">{
-            bubble.element
-          }</span>
+          <span class="element-symbol" style:font-size="{14 * bubble.font_scale}px"
+            >{bubble.element}</span
+          >
           {#if show_amounts}
-            <sub class="amount" style:font-size="{8 * bubble.font_scale}px">{
-              bubble.amount
-            }</sub>
+            <sub class="amount" style:font-size="{8 * bubble.font_scale}px"
+              >{bubble.amount}</sub
+            >
           {/if}
         </div>
       </foreignObject>
@@ -177,7 +176,8 @@
   .bubble.interactive {
     cursor: pointer;
   }
-  .bubble.interactive:hover, .bubble.hovered {
+  .bubble.interactive:hover,
+  .bubble.hovered {
     filter: brightness(1.1);
   }
   .bubble.interactive:focus {

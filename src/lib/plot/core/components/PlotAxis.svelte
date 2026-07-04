@@ -68,23 +68,39 @@
 
   // Tick-invariant label geometry (depends only on side/inside/rotation/shift)
   const text_x = $derived(
-    is_x ? shift_x : (side === `y` ? (inside ? 8 : -8) : (inside ? -8 : 8)) + shift_x,
+    is_x ? shift_x : (side === `y` ? (inside ? 8 : -8) : inside ? -8 : 8) + shift_x,
   )
   const text_y = $derived(
-    is_x ? (side === `x` ? (inside ? -8 : 8) : (inside ? 8 : -8)) + shift_y : shift_y,
+    is_x ? (side === `x` ? (inside ? -8 : 8) : inside ? 8 : -8) + shift_y : shift_y,
   )
   const text_anchor = $derived(
     is_x
-      ? (rotation === 0
+      ? rotation === 0
         ? `middle`
         : side === `x`
-        ? (inside ? `end` : `start`)
-        : (inside ? `start` : `end`)) // x2 rotates opposite to x
-      : (side === `y` ? (inside ? `start` : `end`) : (inside ? `end` : `start`)),
+          ? inside
+            ? `end`
+            : `start`
+          : inside
+            ? `start`
+            : `end` // x2 rotates opposite to x
+      : side === `y`
+        ? inside
+          ? `start`
+          : `end`
+        : inside
+          ? `end`
+          : `start`,
   )
   const text_baseline = $derived(
     is_x
-      ? (side === `x` ? (inside ? `auto` : `hanging`) : (inside ? `hanging` : `auto`))
+      ? side === `x`
+        ? inside
+          ? `auto`
+          : `hanging`
+        : inside
+          ? `hanging`
+          : `auto`
       : `central`,
   )
   const text_transform = $derived(
@@ -95,17 +111,21 @@
   // Keep tick marks' y1="0"/x1="0" explicit: BarPlot's grid test selects `.tick line:not([y1='0'])`.
   const grid_line = $derived(
     is_x
-      ? (side === `x` ? { y1: -plot_h, y2: 0 } : { y1: 0, y2: plot_h })
-      : (side === `y` ? { x1: 0, x2: plot_w } : { x1: -plot_w, x2: 0 }),
+      ? side === `x`
+        ? { y1: -plot_h, y2: 0 }
+        : { y1: 0, y2: plot_h }
+      : side === `y`
+        ? { x1: 0, x2: plot_w }
+        : { x1: -plot_w, x2: 0 },
   )
   const tick_mark = $derived(
     is_x
-      ? (side === `x`
+      ? side === `x`
         ? { y1: 0, y2: inside ? -5 : 5 }
-        : { y1: inside ? 0 : -5, y2: inside ? 5 : 0 })
-      : (side === `y`
+        : { y1: inside ? 0 : -5, y2: inside ? 5 : 0 }
+      : side === `y`
         ? { x1: inside ? 0 : -5, x2: inside ? 5 : 0 }
-        : { x1: inside ? -5 : 0, x2: inside ? 0 : 5 }),
+        : { x1: inside ? -5 : 0, x2: inside ? 0 : 5 },
   )
 
   // ScatterPlot mode: cull ticks whose pixel pos is off-plot and hide labels outside the data domain
@@ -143,8 +163,9 @@
             fill={tick_color?.(tick) ?? text_fill}
             transform={text_transform}
           >
-            {tick_text(tick)}{#if unit_on_first_tick && idx === 0 && axis.unit}&zwnj;&ensp;{axis
-                .unit}{/if}
+            {tick_text(
+              tick,
+            )}{#if unit_on_first_tick && idx === 0 && axis.unit}&zwnj;&ensp;{axis.unit}{/if}
           </text>
         {/if}
       </g>

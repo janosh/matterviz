@@ -40,9 +40,7 @@
     onclear?: () => void // Callback when clear button is clicked (fires before onchange)
   } & HTMLAttributes<HTMLDivElement> = $props()
 
-  let show_histogram = $derived(
-    histogram_position !== `none` && histogram_data?.length,
-  )
+  let show_histogram = $derived(histogram_position !== `none` && histogram_data?.length)
 
   // Active when either bound is set (undefined = unbounded)
   let active = $derived(min_value !== undefined || max_value !== undefined)
@@ -56,9 +54,7 @@
     return histogram_data.filter((val) => val >= min && val <= max)
   })
 
-  function onkeydown(
-    event: KeyboardEvent & { currentTarget: HTMLInputElement },
-  ): void {
+  function onkeydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }): void {
     if (event.key === `Enter`) {
       event.preventDefault()
       event.currentTarget.blur()

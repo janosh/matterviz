@@ -3,6 +3,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
+  import { clamp01 } from '$lib/utils'
   import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
   import { format } from 'd3-format'
@@ -108,10 +109,9 @@
     if (orientation === `horizontal`) {
       return tick_side === `primary` ? `top` : `bottom`
     } // orientation === `vertical`
-      // If ticks are primary (right), default label to left
-      // If ticks are secondary (left), default label to right
-      return tick_side === `primary` ? `left` : `right`
-
+    // If ticks are primary (right), default label to left
+    // If ticks are secondary (left), default label to right
+    return tick_side === `primary` ? `left` : `right`
   })
 
   // Number of ticks to generate
@@ -119,29 +119,43 @@
     Array.isArray(tick_labels)
       ? tick_labels.length
       : typeof tick_labels === `number`
-      ? tick_labels
-      : 5,
+        ? tick_labels
+        : 5,
   )
+
+  // Log scales need positive bounds: a non-positive max falls back to linear
+  // (with a warning), a non-positive min is clamped to LOG_EPS.
+  const prepare_log_domain = (
+    min: number,
+    max: number,
+    context: string,
+  ): { min: number; use_log: boolean } => {
+    if (max <= 0) {
+      console.warn(
+        `Log scale requires a positive max value ${context}. Received max=${max}. Falling back to linear.`,
+      )
+      return { min, use_log: false }
+    }
+    if (min <= 0) {
+      console.warn(
+        `Log scale received non-positive min value (${min}) ${context}. Using epsilon=${math.LOG_EPS} instead.`,
+      )
+      return { min: math.LOG_EPS, use_log: true }
+    }
+    return { min, use_log: true }
+  }
 
   // Scale for ticks - based *only* on 'range' prop and 'scale_type' for ticks
   let scale_for_ticks = $derived.by(() => {
     const type_name = get_scale_type_name(scale_type)
-    let use_log_for_ticks = type_name === `log`
     let [scale_min, scale_max] = range
-
-    // Validate range for log scale ticks and apply epsilon if needed
+    let use_log_for_ticks = type_name === `log`
     if (use_log_for_ticks) {
-      if (scale_max <= 0) {
-        console.warn(
-          `Log scale requires a positive max value for ticks. Received max=${scale_max}. Using linear scale for ticks instead.`,
-        )
-        use_log_for_ticks = false
-      } else if (scale_min <= 0) {
-        console.warn(
-          `Log scale received non-positive min value (${scale_min}) for ticks. Using epsilon=${math.LOG_EPS} instead.`,
-        )
-        scale_min = math.LOG_EPS // Substitute with epsilon
-      }
+      ;({ min: scale_min, use_log: use_log_for_ticks } = prepare_log_domain(
+        scale_min,
+        scale_max,
+        `for ticks`,
+      ))
     }
 
     // For arcsinh, use our custom scale
@@ -212,11 +226,13 @@
         if (
           Math.abs(Math.log10(nice_min) % 1) < FRACTIONAL_TOL &&
           !power_of_10_ticks.includes(nice_min)
-        ) power_of_10_ticks.unshift(nice_min)
+        )
+          power_of_10_ticks.unshift(nice_min)
         if (
           Math.abs(Math.log10(nice_max) % 1) < FRACTIONAL_TOL &&
           !power_of_10_ticks.includes(nice_max)
-        ) power_of_10_ticks.push(nice_max)
+        )
+          power_of_10_ticks.push(nice_max)
 
         // If no powers of 10 are within range (e.g. [0.1, 0.9]), fall back to D3 ticks?
         // Or just return filtered list which might be empty?
@@ -246,7 +262,6 @@
       const fraction = idx / (n_ticks - 1)
       return scale_min + fraction * (scale_max - scale_min)
     })
-
   })
 
   // Update nice_range binding when snapping ticks
@@ -273,9 +288,7 @@
       if (func_name in d3_sc) {
         interpolator = d3_sc[func_name as D3InterpolateName]
       } else {
-        console.error(
-          `Color scale '${color_scale}' not found. Falling back on 'Viridis'.`,
-        )
+        console.error(`Color scale '${color_scale}' not found. Falling back on 'Viridis'.`)
       }
     } else if (typeof color_scale === `function`) {
       // User passed a function (assumed interpolator [0,1] -> color)
@@ -289,17 +302,11 @@
     // Use scale_type for fallback scale creation too. Validate domain for log.
     let use_log_fallback = type_name === `log`
     if (use_log_fallback) {
-      if (max_val <= 0) {
-        console.warn(
-          `Log scale requires a positive max value for fallback scale. Received max=${max_val}. Using linear scale for colors.`,
-        )
-        use_log_fallback = false
-      } else if (min_val <= 0) {
-        console.warn(
-          `Log scale received non-positive min value (${min_val}) for fallback scale. Using epsilon=${math.LOG_EPS} instead.`,
-        )
-        min_val = math.LOG_EPS // Substitute with epsilon
-      }
+      ;({ min: min_val, use_log: use_log_fallback } = prepare_log_domain(
+        min_val,
+        max_val,
+        `for fallback scale`,
+      ))
     }
 
     // Use potentially adjusted min/max for domain (ascending)
@@ -316,7 +323,7 @@
       return (value: number): string => {
         const t_val = Math.asinh(value / threshold)
         const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
-        return interpolator(Math.max(0, Math.min(1, normalized)))
+        return interpolator(clamp01(normalized))
       }
     }
 
@@ -339,27 +346,25 @@
     // Validate domain for log interpolation and apply epsilon if needed
     let use_log_interp = type_name === `log`
     let adjusted_min_ramp = min_ramp_domain
-    let adjusted_max_ramp = max_ramp_domain
-
+    const adjusted_max_ramp = max_ramp_domain
     if (use_log_interp) {
-      if (max_ramp_domain <= 0) {
-        console.warn(
-          `Log scale specified for gradient, but max domain value (${max_ramp_domain}) is not positive. Using linear interpolation.`,
-        )
-        use_log_interp = false
-      } else if (min_ramp_domain <= 0) {
-        console.warn(
-          `Log scale specified for gradient, but min domain value (${min_ramp_domain}) is not positive. Using epsilon=${math.LOG_EPS} instead.`,
-        )
-        adjusted_min_ramp = math.LOG_EPS // Substitute with epsilon
-      }
+      ;({ min: adjusted_min_ramp, use_log: use_log_interp } = prepare_log_domain(
+        min_ramp_domain,
+        max_ramp_domain,
+        `for gradient`,
+      ))
     }
 
     const n_steps = Math.max(2, Math.floor(steps)) // guard against steps <= 1 to avoid NaN/degenerate gradients
 
     // Pre-compute loop-invariant values for each scale type
-    let log_min = 0, log_max = 0, log_span = 0
-    let asinh_threshold = 1, asinh_min = 0, asinh_max = 0, asinh_span = 0
+    let log_min = 0,
+      log_max = 0,
+      log_span = 0
+    let asinh_threshold = 1,
+      asinh_min = 0,
+      asinh_max = 0,
+      asinh_span = 0
     const linear_span = max_ramp_domain - min_ramp_domain
 
     if (use_log_interp) {
@@ -379,13 +384,12 @@
       let data_value: number
 
       if (use_log_interp) {
-        data_value = log_span === 0
-          ? adjusted_min_ramp
-          : 10 ** (log_min + fraction * log_span)
+        data_value = log_span === 0 ? adjusted_min_ramp : 10 ** (log_min + fraction * log_span)
       } else if (type_name === `arcsinh`) {
-        data_value = asinh_span === 0
-          ? min_ramp_domain
-          : Math.sinh(asinh_min + fraction * asinh_span) * asinh_threshold
+        data_value =
+          asinh_span === 0
+            ? min_ramp_domain
+            : Math.sinh(asinh_min + fraction * asinh_span) * asinh_threshold
       } else {
         data_value = min_ramp_domain + fraction * linear_span
       }
@@ -402,15 +406,9 @@
 
   // CSS variables for bar width/height based on orientation
   let final_bar_style = $derived(
-    `--cbar-width: ${
-      orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 10px)`
-    };
-    --cbar-height: ${
-      orientation === `vertical` ? `100%` : `var(--cbar-thickness, 10px)`
-    };
-    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)}); ${
-      bar_style ?? ``
-    }`,
+    `--cbar-width: ${orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 10px)`};
+    --cbar-height: ${orientation === `vertical` ? `100%` : `var(--cbar-thickness, 10px)`};
+    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)}); ${bar_style ?? ``}`,
   )
 
   // Calculate additional margin for main label if it overlaps with ticks
@@ -419,11 +417,14 @@
     if (tick_side === `inside`) return ``
 
     // Determine concrete side outside ticks are on
-    const concrete_outside_tick_side = orientation === `horizontal`
-      ? tick_side === `primary` ? `bottom` : `top`
-      : tick_side === `primary`
-      ? `right`
-      : `left`
+    const concrete_outside_tick_side =
+      orientation === `horizontal`
+        ? tick_side === `primary`
+          ? `bottom`
+          : `top`
+        : tick_side === `primary`
+          ? `right`
+          : `left`
 
     if (actual_title_side !== concrete_outside_tick_side) return ``
 
@@ -447,8 +448,7 @@
       ? `max-width: var(--cbar-label-max-width, 2em);`
       : ``
 
-    return `${size_constraint} ${label_overlap_margin_style} ${title_style ?? ``}`
-      .trim()
+    return `${size_constraint} ${label_overlap_margin_style} ${title_style ?? ``}`.trim()
   })
 
   function get_tick_text_color(tick_value: number): string | null {
@@ -466,9 +466,7 @@
   }
 
   let has_property_select = $derived(property_options && property_options.length > 0)
-  let has_color_scale_select = $derived(
-    color_scale_options && color_scale_options.length > 0,
-  )
+  let has_color_scale_select = $derived(color_scale_options && color_scale_options.length > 0)
   let has_any_select = $derived(has_property_select || has_color_scale_select)
 
   // Keep bindable selected keys valid so state matches the select's first-option fallback.
@@ -526,28 +524,24 @@
   // Align items based on orientation and title position
   let div_style = $derived(`
     --cbar-wrapper-align-items: ${
-    orientation === `vertical` &&
-      (actual_title_side === `left` || actual_title_side === `right`)
-      ? `stretch`
-      : `center`
-  };
+        orientation === `vertical` &&
+        (actual_title_side === `left` || actual_title_side === `right`)
+          ? `stretch`
+          : `center`
+      };
     --cbar-label-display: ${
-    orientation === `vertical` &&
-      (actual_title_side === `left` || actual_title_side === `right`)
-      ? `flex`
-      : `inline-block`
-  };
+        orientation === `vertical` &&
+        (actual_title_side === `left` || actual_title_side === `right`)
+          ? `flex`
+          : `inline-block`
+      };
     height: ${
-    orientation === `vertical`
-      ? `var(--cbar-height, 100%)`
-      : `var(--cbar-height, auto)`
-  };
-    min-height: ${
-    orientation === `vertical` ? `var(--cbar-min-height, 150px)` : `auto`
-  };
+        orientation === `vertical` ? `var(--cbar-height, 100%)` : `var(--cbar-height, auto)`
+      };
+    min-height: ${orientation === `vertical` ? `var(--cbar-min-height, 150px)` : `auto`};
     max-height: ${
-    orientation === `vertical` ? `var(--cbar-max-height, 1000px)` : `none`
-  }; ${wrapper_style ?? ``}`)
+        orientation === `vertical` ? `var(--cbar-max-height, 1000px)` : `none`
+      }; ${wrapper_style ?? ``}`)
 </script>
 
 <div
@@ -587,10 +581,7 @@
     </div>
   {/if}
   <div style={final_bar_style} class="bar">
-    {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as
-      tick_label
-      (tick_label)
-    }
+    {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as tick_label (tick_label)}
       {@const position_percent =
         // Use derived scale's mapping function to get position percent
         scale_for_ticks(tick_label)}

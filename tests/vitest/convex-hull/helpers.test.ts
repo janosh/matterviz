@@ -181,7 +181,7 @@ describe(`helpers: thresholds and tooltips`, () => {
     const t1 = helpers.build_entry_tooltip_text({
       composition: { Li: 1 },
       energy: -1,
-    } as PhaseData)
+    })
     expect(t1).toMatch(/Li/)
     const t2 = helpers.build_entry_tooltip_text({
       composition: { Li: 1, O: 1 },
@@ -189,7 +189,7 @@ describe(`helpers: thresholds and tooltips`, () => {
       e_form_per_atom: -3,
       e_above_hull: 0,
       entry_id: `mp-1`,
-    } as PhaseData)
+    })
     expect(t2).toMatch(/E<sub>above hull<\/sub>/)
     expect(t2).toMatch(/E<sub>form<\/sub>/)
     expect(t2).toMatch(/ID/)
@@ -299,7 +299,7 @@ describe(`helpers: energy range preserves zero formation energy`, () => {
 describe(`helpers: mouse hit testing`, () => {
   test(`find_hull_entry_at_mouse returns null when no canvas`, () => {
     const hit = helpers.find_hull_entry_at_mouse(
-      undefined as unknown as HTMLCanvasElement,
+      undefined,
       { clientX: 0, clientY: 0 } as unknown as MouseEvent,
       [],
       (x: number, y: number, _z: number) => ({ x, y }),
@@ -598,7 +598,7 @@ describe(`helpers: batch polymorph stats computation`, () => {
         energy: -1,
         e_above_hull: 0,
         entry_id: `mp-1`,
-      } as PhaseData,
+      },
     ])
     expect(single.size).toBe(1)
     expect(single.get(`mp-1`)).toEqual({ total: 0, higher: 0, lower: 0, equal: 0 })
@@ -820,7 +820,7 @@ describe(`helpers: temperature interpolation`, () => {
       [`T above data range`, standard_entry, 1000, 500, false],
       [`gap exceeds max_gap`, sparse_entry, 600, 500, false],
       [`gap equals max_gap`, sparse_entry, 600, 600, true],
-      [`no temp data`, { composition: { Fe: 1 }, energy: -1 } as PhaseData, 450, 500, false],
+      [`no temp data`, { composition: { Fe: 1 }, energy: -1 }, 450, 500, false],
     ])(`%s → %s`, (_, entry, T, max_gap, expected) => {
       expect(helpers.can_interpolate_at_temperature(entry, T, max_gap)).toBe(expected)
     })

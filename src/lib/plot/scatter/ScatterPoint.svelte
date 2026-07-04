@@ -3,7 +3,10 @@
   import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
   import type { Point2D } from '$lib/math'
   import type { PointStyle } from '$lib/plot/core/types'
-  import { estimate_label_size, label_leader_segment } from '$lib/plot/core/utils/label-placement'
+  import {
+    estimate_label_size,
+    label_leader_segment,
+  } from '$lib/plot/core/utils/label-placement'
   import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
@@ -103,13 +106,16 @@
     {@const offset_x = label.offset?.x ?? 10}
     {@const offset_y = label.offset?.y ?? 0}
     {@const displacement = Math.hypot(offset_x, offset_y)}
-    {@const leader_line = displacement > leader_line_threshold ? label_leader_segment({
-      point: { x: 0, y: 0 },
-      point_radius: style.radius ?? 3,
-      label_center: { x: offset_x, y: offset_y },
-      label_size: label.size ?? estimate_label_size(label.text, label.font_size),
-      min_length: 6,
-    }) : null}
+    {@const leader_line =
+      displacement > leader_line_threshold
+        ? label_leader_segment({
+            point: { x: 0, y: 0 },
+            point_radius: style.radius ?? 3,
+            label_center: { x: offset_x, y: offset_y },
+            label_size: label.size ?? estimate_label_size(label.text, label.font_size),
+            min_length: 6,
+          })
+        : null}
     {#if leader_line}
       <line
         x1={leader_line.x1}
@@ -164,7 +170,8 @@
     filter: blur(3px);
   }
   @keyframes ring-pulse {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 0.3;
       transform: scale(1);
     }

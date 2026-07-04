@@ -93,7 +93,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
       const text = await info.getByTestId(`hull-visible-unstable`).textContent()
       // Format: Visible unstable: X / Y
       const match = text?.match(/(?<x>\d+)\s*\/\s*(?<y>\d+)/)
-      return match ? { x: parseInt(match[1], 10), y: parseInt(match[2], 10) } : { x: 0, y: 0 }
+      return match ? { x: Number(match[1]), y: Number(match[2]) } : { x: 0, y: 0 }
     }
 
     const before = await get_visible_unstable()
@@ -183,7 +183,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     const get_visible_unstable = async () => {
       const text = await info.getByTestId(`hull-visible-unstable`).textContent()
       const match = text?.match(/(?<visible>\d+)\s*\/\s*(?:\d+)/)
-      return match ? parseInt(match[1], 10) : 0
+      return match ? Number(match[1]) : 0
     }
     const before = await get_visible_unstable()
     // Toggle 'Above hull' off

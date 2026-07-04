@@ -4,7 +4,7 @@ import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, svg_query } from '../setup'
 
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 // Shared deterministic point cloud; spreads y values without RNG overhead.
@@ -628,8 +628,8 @@ describe(`BinnedScatterPlot`, () => {
     if (!first_label) throw new Error(`missing first point label`)
     const point_center = { x: 420, y: 280 }
     const label_center = {
-      x: parseFloat(first_label.style.left),
-      y: parseFloat(first_label.style.top),
+      x: Number(first_label.style.left.replace(`px`, ``)),
+      y: Number(first_label.style.top.replace(`px`, ``)),
     }
     const delta_x = label_center.x - point_center.x
     const delta_y = label_center.y - point_center.y
@@ -753,7 +753,9 @@ describe(`BinnedScatterPlot`, () => {
     mock_label_measurement(40, 10)
     const label_distance = (): number => {
       const label = doc_query<HTMLElement>(`.point-labels .point-label`)
-      return Math.hypot(parseFloat(label.style.left) - 420, parseFloat(label.style.top) - 284)
+      const left = Number(label.style.left.replace(`px`, ``))
+      const top = Number(label.style.top.replace(`px`, ``))
+      return Math.hypot(left - 420, top - 284)
     }
     const base_props = {
       series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
@@ -843,7 +845,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(getComputedStyle(doc_query(`.point-label-measure`)).fontSize).toBe(`20px`)
   })
 
-  test(`keeps y-axis label close to axis and lowers HTML subscripts`, async () => {
+  test(`renders rotated y-axis label as SVG text with subscript tspans`, async () => {
     mount(BinnedScatterPlot, {
       target: document.body,
       props: {
@@ -855,13 +857,13 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const foreign_object =
-      doc_query<HTMLElement>(`.axis-label.y-label`).closest(`foreignObject`)
-    const subscript = doc_query<HTMLElement>(`.axis-label.y-label sub`)
+    const label = svg_query(`.axis-label.y-label`)
+    const subscript = label.querySelector(`tspan[baseline-shift="sub"]`)
 
-    expect(foreign_object?.getAttribute(`x`)).toBe(`-78`)
-    expect(subscript.textContent).toBe(`form`)
-    expect(parseFloat(getComputedStyle(subscript).top)).toBeGreaterThan(0)
+    expect(label.tagName.toLowerCase()).toBe(`text`)
+    expect(label.closest(`foreignObject`)).toBeNull()
+    expect(label.parentElement?.getAttribute(`transform`)).toContain(`rotate(-90`)
+    expect(subscript?.textContent).toBe(`form`)
   })
 
   test(`waits for plot dimensions before scanning explicit-range data`, async () => {
@@ -873,7 +875,7 @@ describe(`BinnedScatterPlot`, () => {
           return Reflect.get(target, prop, receiver)
         },
       })
-    const n_points = 1_000
+    const n_points = 1000
 
     mount(BinnedScatterPlot, {
       target: document.body,

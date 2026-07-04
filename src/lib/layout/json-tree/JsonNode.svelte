@@ -191,9 +191,7 @@
       if (expandable && !is_collapsed) {
         toggle_collapse()
       }
-    } else if (
-      (event.key === `c` || event.key === `C`) && (event.ctrlKey || event.metaKey)
-    ) {
+    } else if ((event.key === `c` || event.key === `C`) && (event.ctrlKey || event.metaKey)) {
       // When nodes are selected, let the tree-level handler do bulk copy
       if (ctx?.selected_paths.size) return
       event.preventDefault()
@@ -299,10 +297,7 @@
           {#if expandable && is_collapsed}
             ▸
           {:else}
-            <Icon
-              icon="Copy"
-              style="width: 10px; height: 10px; vertical-align: baseline"
-            />
+            <Icon icon="Copy" style="width: 10px; height: 10px; vertical-align: baseline" />
           {/if}
         </span>
       </button>
@@ -371,9 +366,9 @@
               {/if}
             </span>
             <span class="colon">:</span>
-            <span style="color: var(--jt-preview); font-style: italic">{
-              format_preview(ghost.value)
-            }</span>
+            <span style="color: var(--jt-preview); font-style: italic"
+              >{format_preview(ghost.value)}</span
+            >
           </span>
         </div>
       {/each}
@@ -497,7 +492,9 @@
       color: var(--jt-number, light-dark(#098658, #b5cea8));
     }
   }
-  .colon, .comma, .bracket {
+  .colon,
+  .comma,
+  .bracket {
     color: var(--jt-punctuation, light-dark(#000, #d4d4d4));
   }
   .colon {

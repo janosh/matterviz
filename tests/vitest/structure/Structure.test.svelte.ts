@@ -2,7 +2,7 @@ import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { add, euclidean_dist, pbc_dist, scale } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
-import type { StructureHandlerData } from '$lib/structure'
+import type { StructureBond, StructureHandlerData } from '$lib/structure'
 import * as exports from '$lib/structure/export'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
@@ -38,7 +38,7 @@ Direct
 0.0 0.5 0.5`
 
 const create_mock_data_transfer = (files: File[]): DataTransfer => ({
-  files: Object.assign(files, { item: (idx: number) => files[idx] ?? null }) as FileList,
+  files: Object.assign(files, { item: (idx: number) => files[idx] ?? null }),
   getData: () => ``,
   dropEffect: `copy` as const,
   effectAllowed: `copy` as const,
@@ -148,24 +148,40 @@ describe(`Structure`, () => {
     expect(state.info_pane_open, `hover path ignored in edit mode`).toBe(false)
   })
 
-  test(`edit-atoms Delete shortcut deletes the selected atom and prevents default`, async () => {
-    const state = { structure: structures[0], selected_sites: [] as number[] }
-    mount_structure(bind_props({ measure_mode: `edit-atoms` as MeasureMode }, state))
+  test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
+    // Deleting site 0 drops its bond and shifts the 1-2 bond down to 0-1; undo
+    // must restore both structure sites and the remapped bindable bonds prop
+    const orig_bonds: StructureBond[] = [
+      { site_idx_1: 0, site_idx_2: 1, order: 1 },
+      { site_idx_1: 1, site_idx_2: 2, order: 2 },
+    ]
+    const state = {
+      structure: structures[0],
+      bonds: structuredClone(orig_bonds),
+      selected_sites: [] as number[],
+    }
+    const edit_props: { measure_mode: MeasureMode } = { measure_mode: `edit-atoms` }
+    mount_structure(bind_props(edit_props, state))
     await tick()
     state.selected_sites = [0] // select after mount (on-load effect clears selection)
     const n_before = state.structure.sites.length
 
     // dispatch on the viewer (focused/element path) — handle_and_prevent should run
-    const event = new KeyboardEvent(`keydown`, {
-      key: `Delete`,
-      cancelable: true,
-      bubbles: true,
-    })
-    doc_query(`.structure`).dispatchEvent(event)
+    const press = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent(`keydown`, { cancelable: true, bubbles: true, ...init })
+      doc_query(`.structure`).dispatchEvent(event)
+      return event
+    }
+    const delete_event = press({ key: `Delete` })
     await tick()
-
-    expect(event.defaultPrevented, `Delete should be handled`).toBe(true)
+    expect(delete_event.defaultPrevented, `Delete should be handled`).toBe(true)
     expect(state.structure.sites).toHaveLength(n_before - 1)
+    expect(state.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+
+    press({ key: `z`, ctrlKey: true })
+    await tick()
+    expect(state.structure.sites).toHaveLength(n_before)
+    expect(state.bonds).toEqual(orig_bonds)
   })
 
   test.each([
@@ -391,16 +407,19 @@ describe(`Structure`, () => {
     })
   })
 
-  test(`drag and drop file handling`, async () => {
-    let structure_loaded = false
+  test.each([
+    [`test.poscar`, SAMPLE_POSCAR_CONTENT],
+    [`test.txt`, `test content`],
+  ])(`drag and drop passes %s content to on_file_drop`, async (filename, content) => {
+    let [dropped_content, dropped_filename]: (string | ArrayBuffer | null)[] = [null, null]
     let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount_structure({
       structure: undefined,
       show_controls: true,
-      on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
-        structure_loaded = true
+      on_file_drop: (file_content: string | ArrayBuffer, file_name: string) => {
+        ;[dropped_content, dropped_filename] = [file_content, file_name]
         resolve_drop()
       },
     })
@@ -408,48 +427,14 @@ describe(`Structure`, () => {
     const wrapper = document.querySelector(`.structure`) as HTMLElement
     expect(wrapper).toBeInstanceOf(HTMLElement)
 
-    const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
-    const drag_event = create_drop_event([file])
-
-    // Trigger the drop event
-    wrapper.dispatchEvent(drag_event)
+    const file = new File([content], filename, { type: `text/plain` })
+    wrapper.dispatchEvent(create_drop_event([file]))
 
     // Wait for the drop handler to complete instead of sleeping
     await drop_done
 
-    // Verify that the file drop handler was called
-    expect(structure_loaded).toBe(true)
-  })
-
-  test(`drag and drop event handling`, async () => {
-    let [event_handled, file_content]: [boolean, string | ArrayBuffer | null] = [false, null]
-    let resolve_drop!: () => void
-    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
-
-    mount_structure({
-      structure: undefined,
-      show_controls: true,
-      on_file_drop: (content: string | ArrayBuffer, _filename: string) => {
-        event_handled = true
-        file_content = content
-        resolve_drop()
-      },
-    })
-
-    const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeInstanceOf(HTMLElement)
-
-    const file = new File([`test content`], `test.txt`, { type: `text/plain` })
-    const drag_event = create_drop_event([file])
-
-    // Trigger the drop event
-    wrapper.dispatchEvent(drag_event)
-
-    // Wait for the drop handler to complete instead of sleeping
-    await drop_done
-
-    expect(event_handled).toBe(true)
-    expect(file_content).toBe(`test content`)
+    expect(dropped_content).toBe(content)
+    expect(dropped_filename).toBe(filename)
   })
 
   test(`drag and drop without on_file_drop handler parses the file internally`, async () => {
@@ -618,11 +603,11 @@ describe(`Structure component nested JSON handling`, () => {
   test.each([
     [`undefined structure`, undefined],
     [`null structure`, null],
-    [`empty object`, {} as unknown],
-    [`structure without sites`, { lattice: {} } as unknown],
-    [`structure with null sites`, { sites: null } as unknown],
+    [`empty object`, {}],
+    [`structure without sites`, { lattice: {} }],
+    [`structure with null sites`, { sites: null }],
     [`structure with empty sites array`, { sites: [] }],
-    [`structure with undefined sites`, { sites: undefined } as unknown],
+    [`structure with undefined sites`, { sites: undefined }],
   ])(`shows appropriate error for %s`, (_description, test_structure) => {
     mount_structure({ structure: test_structure as AnyStructure })
 
@@ -697,12 +682,12 @@ test.each([
       `.controls-pane input[type="number"][max="2"]`,
     ) as HTMLInputElement
 
-    expect(parseFloat(radius_input?.value || `0`)).toBeCloseTo(1.0, 1)
-    expect(parseFloat(auto_rotate_input?.value || `0`)).toBeCloseTo(0.5, 1)
+    expect(Number(radius_input?.value || `0`)).toBeCloseTo(1.0, 1)
+    expect(Number(auto_rotate_input?.value || `0`)).toBeCloseTo(0.5, 1)
 
     radius_input.value = `2.0`
     radius_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(parseFloat(radius_input.value)).toBeCloseTo(2.0, 1)
+    expect(Number(radius_input.value)).toBeCloseTo(2.0, 1)
 
     // Test 5: State persistence across component updates (simplified for Svelte 5)
     // In a real app, scene_props would be reactive - here we just verify the projection persists
@@ -756,11 +741,11 @@ describe(`atom label controls`, () => {
     expect(offset_inputs.length).toBeGreaterThanOrEqual(3)
 
     const input = offset_inputs[idx] as HTMLInputElement
-    expect(parseFloat(input.value)).toBeCloseTo(initial, 1)
+    expect(Number(input.value)).toBeCloseTo(initial, 1)
 
     input.value = new_value.toString()
     input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(parseFloat(input.value)).toBeCloseTo(new_value, 1)
+    expect(Number(input.value)).toBeCloseTo(new_value, 1)
   })
 
   test(`color controls work correctly`, () => {
@@ -792,7 +777,7 @@ describe(`atom label controls`, () => {
     ) as HTMLInputElement
     opacity_input.value = `0.5`
     opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(parseFloat(opacity_input.value)).toBeCloseTo(0.5, 2)
+    expect(Number(opacity_input.value)).toBeCloseTo(0.5, 2)
   })
 
   test(`size and padding controls work correctly`, () => {
@@ -814,16 +799,16 @@ describe(`atom label controls`, () => {
       `input[type="number"][min="0"][max="10"][step="1"]`,
     ) as HTMLInputElement
 
-    expect(parseFloat(size_input.value)).toBeCloseTo(1.2, 1)
-    expect(parseInt(padding_input.value, 10)).toBe(4)
+    expect(Number(size_input.value)).toBeCloseTo(1.2, 1)
+    expect(Number(padding_input.value)).toBe(4)
 
     size_input.value = `1.8`
     padding_input.value = `6`
     size_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     padding_input.dispatchEvent(new Event(`input`, { bubbles: true }))
 
-    expect(parseFloat(size_input.value)).toBeCloseTo(1.8, 1)
-    expect(parseInt(padding_input.value, 10)).toBe(6)
+    expect(Number(size_input.value)).toBeCloseTo(1.8, 1)
+    expect(Number(padding_input.value)).toBe(6)
   })
 
   test(`input constraints are correct`, () => {
@@ -890,14 +875,14 @@ describe(`atom label controls`, () => {
     const instance1_z = all_offset_inputs[2] as HTMLInputElement
     const instance2_z = all_offset_inputs[5] as HTMLInputElement
 
-    expect(parseFloat(instance1_z.value)).toBeCloseTo(0.2, 1)
-    expect(parseFloat(instance2_z.value)).toBeCloseTo(0.7, 1)
+    expect(Number(instance1_z.value)).toBeCloseTo(0.2, 1)
+    expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
 
     instance1_z.value = `0.9`
     instance1_z.dispatchEvent(new Event(`input`, { bubbles: true }))
 
-    expect(parseFloat(instance1_z.value)).toBeCloseTo(0.9, 1)
-    expect(parseFloat(instance2_z.value)).toBeCloseTo(0.7, 1)
+    expect(Number(instance1_z.value)).toBeCloseTo(0.9, 1)
+    expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
   })
 })
 
@@ -985,8 +970,9 @@ describe(`Structure string parsing`, () => {
     expect(errored).toBe(true)
   })
 
-  test(`loading state works correctly`, async () => {
+  test(`loading state resets and file size is emitted after structure_string load`, async () => {
     let loading_state = $state({ loading: false })
+    let size = 0
     mount_structure({
       structure_string: SAMPLE_POSCAR_CONTENT,
       get loading() {
@@ -995,20 +981,12 @@ describe(`Structure string parsing`, () => {
       set loading(val) {
         loading_state.loading = val
       },
-    })
-    await tick()
-    expect(loading_state.loading).toBe(false)
-  })
-
-  test(`file size emission works correctly`, async () => {
-    let size = 0
-    mount_structure({
-      structure_string: SAMPLE_POSCAR_CONTENT,
       on_file_load: (data: StructureHandlerData) => {
         size = data.file_size ?? 0
       },
     })
     await tick()
+    expect(loading_state.loading).toBe(false)
     expect(size).toBe(new Blob([SAMPLE_POSCAR_CONTENT]).size)
   })
 

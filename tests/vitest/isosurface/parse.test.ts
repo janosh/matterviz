@@ -26,13 +26,13 @@ function make_chgcar({
     `   ${counts}`,
   ]
   if (selective_dynamics) lines.push(`Selective dynamics`)
-  lines.push(coord_mode as string)
+  lines.push(coord_mode)
   lines.push(...(positions as string[]).map((pos) => `  ${pos}`))
   lines.push(``)
   lines.push(`   ${grid_dims}`)
-  lines.push(data as string)
-  if (augmentation) lines.push(augmentation as string)
-  if (second_volume) lines.push(``, second_volume as string)
+  lines.push(data)
+  if (augmentation) lines.push(augmentation)
+  if (second_volume) lines.push(``, second_volume)
   lines.push(``)
   return lines.join(`\n`)
 }
@@ -208,8 +208,17 @@ describe(`parse_chgcar`, () => {
     [`too-short file`, `Si\n1.0\n`],
     [`empty content`, ``],
     [`invalid scale factor`, make_chgcar({ scale: `not_a_number` })],
+    // blank scale line must error, not silently become scale 0 (Number(``) is 0)
+    [`blank scale factor line`, make_chgcar({ scale: `` })],
   ])(`returns null for %s`, (_label, content) => {
     expect(parse_chgcar(content)).toBeNull()
+  })
+
+  test(`tolerates trailing comment on scale line like parseFloat did`, () => {
+    // default 5.43 Å lattice scaled by 2
+    expect(
+      parse_chgcar(make_chgcar({ scale: `2.0 ! scale` }))?.structure.lattice?.a,
+    ).toBeCloseTo(10.86, 5)
   })
 
   test(`returns null for singular CHGCAR lattice instead of throwing`, () => {

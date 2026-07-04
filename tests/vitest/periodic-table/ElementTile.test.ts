@@ -667,7 +667,7 @@ describe(`ElementTile`, () => {
         props: {
           element: rand_element,
           value: [1, 2, 3, 4],
-          split_layout: layout as unknown as SplitLayout,
+          split_layout: layout as never,
           bg_colors: [`#ff0000`, `#00ff00`, `#0000ff`, `#ffff00`],
         },
       })

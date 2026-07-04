@@ -30,9 +30,7 @@
   let current_mode = $state(untrack(() => mode))
   let svg_node = $state<SVGSVGElement | null>(null)
 
-  let Component = $derived(
-    { pie: PieChart, bubble: BubbleChart, bar: BarChart }[current_mode],
-  )
+  let Component = $derived({ pie: PieChart, bubble: BubbleChart, bar: BarChart }[current_mode])
   let parsed: CompositionType = $derived.by(() => {
     try {
       return parse_composition(composition)
@@ -46,13 +44,14 @@
 
   let context_menu = $state({ open: false, x: 0, y: 0 })
 
-  function handle_right_click(event: MouseEvent) { // open context menu
+  function handle_right_click(event: MouseEvent) {
+    // open context menu
     event.preventDefault()
     context_menu.open = false // Close any existing context menu first
     context_menu.x = event.pageX
     context_menu.y = event.pageY
     // Use a small delay to ensure the prev context menu closes happens before opening new one
-    setTimeout(() => context_menu.open = true, 0)
+    setTimeout(() => (context_menu.open = true), 0)
   }
 
   const mode_options = [
@@ -89,10 +88,7 @@
     { title: sec_titles.export, options: export_options },
   ] as const
 
-  function handle_context_menu_select(
-    section_title: string,
-    option: { value: string },
-  ) {
+  function handle_context_menu_select(section_title: string, option: { value: string }) {
     if (section_title === sec_titles.display_mode) {
       current_mode = option.value as CompositionChartMode
     } else if (section_title === sec_titles.color_scheme) {
@@ -160,6 +156,6 @@
     on_select={handle_context_menu_select}
     position={context_menu}
     visible={context_menu.open}
-    on_close={() => context_menu.open = false}
+    on_close={() => (context_menu.open = false)}
   />
 {/if}

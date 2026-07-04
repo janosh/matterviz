@@ -7,13 +7,15 @@
     step,
     structure: {
       charge: 0,
-      sites: [{
-        label: `Frame ${step}`,
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [step, 0, 0],
-        properties: {},
-      }],
+      sites: [
+        {
+          label: `Frame ${step}`,
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [step, 0, 0],
+          properties: {},
+        },
+      ],
     },
   })
 

@@ -166,13 +166,15 @@ All layout knobs are reactive props (also exposed in the settings pane): `orient
 </script>
 
 <div style="display: flex; gap: 1em; margin-bottom: 1em; flex-wrap: wrap">
-  <label>Orientation:
+  <label
+    >Orientation:
     <select bind:value={orientation}>
       <option value="horizontal">Horizontal</option>
       <option value="vertical">Vertical</option>
     </select>
   </label>
-  <label>Link color:
+  <label
+    >Link color:
     <select bind:value={link_color_mode}>
       <option value="source">Source</option>
       <option value="target">Target</option>
@@ -204,12 +206,7 @@ spacegroup correspondence diagrams). `source`/`target` are zero-based node indic
   )
 </script>
 
-<Sankey
-  {data}
-  node_align="left"
-  value_format=","
-  style="height: 360px"
-/>
+<Sankey {data} node_align="left" value_format="," style="height: 360px" />
 ```
 
 ## Custom tooltip

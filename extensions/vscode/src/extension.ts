@@ -519,11 +519,9 @@ function start_watching_file(
     stop_watching_file(file_path)
 
     // Create a new file system watcher for this specific file
+    const file_dir = vscode.Uri.file(path.dirname(file_path))
     const watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(
-        vscode.Uri.file(path.dirname(file_path)),
-        path.basename(file_path),
-      ),
+      new vscode.RelativePattern(file_dir, path.basename(file_path)),
     )
 
     // Listen for file changes

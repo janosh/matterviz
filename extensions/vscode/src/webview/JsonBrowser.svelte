@@ -277,7 +277,8 @@
       if (
         target instanceof HTMLElement &&
         [`INPUT`, `SELECT`, `TEXTAREA`].includes(target.tagName)
-      ) return
+      )
+        return
       close_all_panels()
     }
     globalThis.addEventListener(`keydown`, on_keydown)

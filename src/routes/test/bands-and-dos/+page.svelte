@@ -24,7 +24,11 @@
     labels_dict: { GAMMA: [0.0, 0.0, 0.0], X: [0.5, 0.0, 0.0] },
     distance: [0.0, 0.5, 1.0],
     nb_bands: 3,
-    bands: [[0.0, 1.0, 2.0], [1.0, 2.0, 3.0], [2.0, 3.0, 4.0]],
+    bands: [
+      [0.0, 1.0, 2.0],
+      [1.0, 2.0, 3.0],
+      [2.0, 3.0, 4.0],
+    ],
   }
 
   const mock_dos: PhononDos = {
@@ -90,8 +94,8 @@
 
 <h2 id="electronic-bands">Electronic Bands (CaO)</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Shows electronic band structure. The Fermi level (E<sub>F</sub>) is automatically
-  detected and displayed as a dashed red line.
+  Shows electronic band structure. The Fermi level (E<sub>F</sub>) is automatically detected
+  and displayed as a dashed red line.
 </p>
 <BandsAndDos
   band_structs={electronic_bands.cao_2605}
@@ -103,8 +107,8 @@
 
 <h2 id="electronic-spin-polarized">Electronic Bands (VBr₂ Spin-Polarized)</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Spin-polarized electronic band structure showing both spin channels. Note the Fermi
-  level marker.
+  Spin-polarized electronic band structure showing both spin channels. Note the Fermi level
+  marker.
 </p>
 <BandsAndDos
   band_structs={electronic_bands.vbr2_971787}
@@ -119,8 +123,8 @@
 
 <h2 id="electronic-comparison">Electronic vs Phonon Comparison</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Side-by-side comparison showing how electronic bands display the Fermi level while
-  phonon bands do not (phonons have no Fermi energy concept).
+  Side-by-side comparison showing how electronic bands display the Fermi level while phonon
+  bands do not (phonons have no Fermi energy concept).
 </p>
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem">
   <div>

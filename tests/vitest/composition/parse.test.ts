@@ -115,7 +115,7 @@ describe(`normalize_composition`, () => {
     [{ H: 0, O: 1, C: -5 }, { O: 1 }, `removes zero and negative mixed`],
     [{}, {}, `handles empty composition`],
     [{ H: `invalid` as unknown as number, O: 1 }, { O: 1 }, `handles non-numeric values`],
-    [{ Xx: 1, O: 1 } as unknown as CompositionType, { O: 1 }, `filters invalid symbols`],
+    [{ Xx: 1, O: 1 }, { O: 1 }, `filters invalid symbols`],
   ])(`should normalize %s to %s (%s)`, (input, expected, _description) => {
     expect(normalize_composition(input)).toEqual(expected)
   })
@@ -419,9 +419,7 @@ describe(`generate_chem_sys_subspaces`, () => {
     [{ Fe: 2, O: 3 }, [`Fe`, `Fe-O`, `O`], `object: iron oxide`],
     [{}, [], `object: empty`],
   ])(`%s -> %j (%s)`, (input, expected, _desc) => {
-    const result = generate_chem_sys_subspaces(
-      input as string | ElementSymbol[] | CompositionType,
-    )
+    const result = generate_chem_sys_subspaces(input)
     expect(result.sort((str_a, str_b) => str_a.localeCompare(str_b))).toEqual(
       expected.sort((str_a, str_b) => str_a.localeCompare(str_b)),
     )

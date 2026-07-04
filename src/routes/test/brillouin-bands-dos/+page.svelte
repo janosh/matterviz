@@ -81,7 +81,8 @@
     // oxfmt-ignore
     distance: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0],
     nb_bands: 3,
-    bands: [ // oxfmt-ignore
+    bands: [
+      // oxfmt-ignore
       [0.0, 0.5, 0.8, 1.0, 0.8, 0.5, 0.8, 1.2, 1.5, 1.8, 2.0, 1.8, 1.5, 1.0, 0.5, 0.0], // oxfmt-ignore
       [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 2.8, 2.6, 2.4, 2.2, 1.0], // oxfmt-ignore
       [2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 3.8, 3.6, 3.2, 2.8, 2.0],
@@ -172,17 +173,15 @@
 <BrillouinBandsDos
   structure={mock_structure}
   band_structs={{
-    'DFT': mock_band_structure,
-    'Model': {
+    DFT: mock_band_structure,
+    Model: {
       ...mock_band_structure,
-      bands: mock_band_structure.bands.map((band) =>
-        band.map((freq) => freq * 1.1)
-      ),
+      bands: mock_band_structure.bands.map((band) => band.map((freq) => freq * 1.1)),
     },
   }}
   doses={{
-    'DFT': mock_dos,
-    'Model': {
+    DFT: mock_dos,
+    Model: {
       ...mock_dos,
       densities: mock_dos.densities.map((dens) => dens * 1.2),
     },
@@ -199,9 +198,9 @@
 
 <h2 id="electronic-bands">Electronic Bands (CaO)</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Electronic band structure with 3D Brillouin zone visualization. The Fermi level (E<sub
-  >F</sub>) is automatically detected and displayed as a dashed red line in both the bands
-  and DOS plots. Note: Using mock Si structure for BZ (actual CaO structure unavailable).
+  Electronic band structure with 3D Brillouin zone visualization. The Fermi level (E<sub>F</sub
+  >) is automatically detected and displayed as a dashed red line in both the bands and DOS
+  plots. Note: Using mock Si structure for BZ (actual CaO structure unavailable).
 </p>
 <BrillouinBandsDos
   structure={mock_structure}
@@ -214,8 +213,7 @@
 
 <h2 id="electronic-with-controls">Electronic Bands with BZ Controls</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Same electronic data but with Brillouin zone controls enabled for interactive
-  exploration.
+  Same electronic data but with Brillouin zone controls enabled for interactive exploration.
 </p>
 <BrillouinBandsDos
   structure={mock_structure}
@@ -232,8 +230,8 @@
 
 <h2 id="comparison">Electronic vs Phonon Comparison</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Side-by-side comparison: Electronic bands show Fermi level marker (E<sub>F</sub>),
-  phonon bands do not (no Fermi energy concept for phonons).
+  Side-by-side comparison: Electronic bands show Fermi level marker (E<sub>F</sub>), phonon
+  bands do not (no Fermi energy concept for phonons).
 </p>
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
   <div>

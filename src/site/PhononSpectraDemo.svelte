@@ -40,7 +40,7 @@
 
   const current = $derived(groups.find((grp) => grp.label === active_label) ?? default_group)
   // Map the current material's per-method keys to method-labeled entries (DFT (PBE), CHGNet, ...)
-  const labeled = <T,>(record: Record<string, T>) =>
+  const labeled = <T>(record: Record<string, T>) =>
     Object.fromEntries(
       (current?.keys ?? [])
         .filter((key) => record[key])

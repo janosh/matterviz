@@ -153,9 +153,9 @@ describe(`Coordination`, () => {
         sites: [
           { abc: [0.06, 0.5, 0.5] as Vec3, element: `C` },
           { abc: [0.94, 0.5, 0.5] as Vec3, element: `C` },
-          ...Array.from({ length: 24 }, (_, idx) => ({
+          ...Array.from({ length: 24 }, (_, idx): { abc: Vec3; element: ElementSymbol } => ({
             abc: [0.5, 0.1 + (idx % 6) * 0.15, 0.2 + Math.floor(idx / 6) * 0.2] as Vec3,
-            element: `C` as ElementSymbol,
+            element: `C`,
           })),
         ],
         lattice_size: 12,
@@ -257,9 +257,10 @@ describe(`Coordination`, () => {
           { abc: [0.9, 0.9, 0.9] as Vec3, element: `N` },
         ],
         lattice_size: 50,
-        pbc: [true, true, true],
+        pbc: [true, true, true] as [boolean, boolean, boolean],
         expected_length: 3,
-        check: (vals) => vals.every((cn) => typeof cn === `number` && cn >= 0),
+        check: (vals: (number | string)[]) =>
+          vals.every((cn) => typeof cn === `number` && cn >= 0),
       },
     ])(`$name`, ({ sites, lattice_size, pbc, expected_length, check }) => {
       const structure = make_cubic_structure(sites, lattice_size, pbc)
@@ -351,7 +352,12 @@ describe(`Coordination`, () => {
       // (heights ≠ vector lengths), thin cells (need >1 image shell), large-radius
       // atoms (bonds exceed the old hard-coded 5 Å reach) and atoms on a cell boundary
       // (abc component = 1, which must wrap so its cross-cell images are not dropped).
-      test.each([
+      test.each<{
+        name: string
+        matrix: [Vec3, Vec3, Vec3]
+        element: ElementSymbol
+        abc_list: Vec3[]
+      }>([
         {
           name: `oblique (sheared) cell`,
           matrix: [
@@ -359,7 +365,7 @@ describe(`Coordination`, () => {
             [-12, 9, 0],
             [12, -12, 6],
           ] as [Vec3, Vec3, Vec3],
-          element: `C` as ElementSymbol,
+          element: `C`,
           abc_list: [
             [0.75, 0.9, 0.85],
             [0.95, 0.75, 0.85],
@@ -396,7 +402,7 @@ describe(`Coordination`, () => {
             [0, 6, 0],
             [0, 0, 3],
           ] as [Vec3, Vec3, Vec3],
-          element: `C` as ElementSymbol,
+          element: `C`,
           abc_list: [
             [0.1, 0.1, 0.05],
             [0.1, 0.5, 0.95],
@@ -418,7 +424,7 @@ describe(`Coordination`, () => {
             [0, 9, 0],
             [0, 0, 9],
           ] as [Vec3, Vec3, Vec3],
-          element: `Cs` as ElementSymbol,
+          element: `Cs`,
           abc_list: [
             [0.1, 0.1, 0.1],
             [0.7, 0.1, 0.1],
@@ -437,7 +443,7 @@ describe(`Coordination`, () => {
             [0, 8.5, 0],
             [0, 0, 8.5],
           ] as [Vec3, Vec3, Vec3],
-          element: `K` as ElementSymbol,
+          element: `K`,
           abc_list: [
             [0.05, 1, 0.55],
             [0.8, 0, 0.95],

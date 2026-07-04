@@ -24,9 +24,9 @@ This example demonstrates bar styling options including `border_radius` for roun
   function handle_bar_hover(data: HistogramHandlerProps | null): void {
     if (data) {
       const { value, count, property } = data
-      hover_info = `Hovering: ${property} - Value: ${
-        value.toFixed(1)
-      }, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
+      hover_info = `Hovering: ${property} - Value: ${value.toFixed(
+        1,
+      )}, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
     } else {
       hover_info = 'Hover over a bar to see details'
     }
@@ -34,38 +34,34 @@ This example demonstrates bar styling options including `border_radius` for roun
 
   function handle_bar_click(data: HistogramHandlerProps): void {
     const { value, count, property } = data
-    click_info = `Clicked: ${property} - Value: ${
-      value.toFixed(1)
-    }, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
+    click_info = `Clicked: ${property} - Value: ${value.toFixed(
+      1,
+    )}, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
   }
 
   const info_style =
     'margin: 1em 0; padding: 2pt 5pt; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px'
 </script>
 
-<div
-  style="display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em"
->
-  <label style="display: flex; align-items: center; gap: 4px">Bins: {bins}<input
-      type="range"
-      bind:value={bins}
-      min="5"
-      max="200"
-    /></label>
-  <label style="display: flex; align-items: center; gap: 4px">Size: {sample_size}
+<div style="display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em">
+  <label style="display: flex; align-items: center; gap: 4px"
+    >Bins: {bins}<input type="range" bind:value={bins} min="5" max="200" /></label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    >Size: {sample_size}
     <input type="range" bind:value={sample_size} min="100" max="10000" step="100" />
   </label>
-  <label style="display: flex; align-items: center; gap: 4px"><input
-      type="checkbox"
-      bind:checked={show_controls}
-    />Controls</label>
-  <label style="display: flex; align-items: center; gap: 4px">Radius: {border_radius}
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="checkbox" bind:checked={show_controls} />Controls</label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    >Radius: {border_radius}
     <input type="range" bind:value={border_radius} min="0" max="8" />
   </label>
 </div>
 
 {#snippet tooltip({ value, count })}
-  Value: {value.toFixed(1)}<br>Count: {count}<br>
+  Value: {value.toFixed(1)}<br />Count: {count}<br />
   %: {format_num(count / sample_size, `.2~%`)}
 {/snippet}
 
@@ -113,18 +109,15 @@ When comparing distributions with vastly different sample sizes, use **dual y-ax
 </script>
 
 <div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
-  <label style="display: flex; align-items: center; gap: 4px"><input
-      type="checkbox"
-      bind:checked={display.x_grid}
-    />X grid</label>
-  <label style="display: flex; align-items: center; gap: 4px"><input
-      type="checkbox"
-      bind:checked={display.y_grid}
-    />Y1 grid</label>
-  <label style="display: flex; align-items: center; gap: 4px"><input
-      type="checkbox"
-      bind:checked={display.y2_grid}
-    />Y2 grid</label>
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="checkbox" bind:checked={display.x_grid} />X grid</label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label
+  >
 </div>
 
 <Histogram
@@ -139,8 +132,8 @@ When comparing distributions with vastly different sample sizes, use **dual y-ax
   style="height: 400px"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br>
-    Score: {value.toFixed(1)}<br>Count: {count}
+    <strong>{property}</strong><br />
+    Score: {value.toFixed(1)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```
@@ -154,52 +147,85 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
 
-  let x_axis = $state({scale_type: `linear`})
-  let y_axis = $state({scale_type: `linear`, label: `Count (Normal/Uniform)`})
-  let y2_axis = $state({scale_type: `linear`, label: `Count (Exp/Gamma)`})
+  let x_axis = $state({ scale_type: `linear` })
+  let y_axis = $state({ scale_type: `linear`, label: `Count (Normal/Uniform)` })
+  let y2_axis = $state({ scale_type: `linear`, label: `Count (Exp/Gamma)` })
   let display = $state({ x_grid: true, y_grid: true, y2_grid: false })
   let bar = $state({ opacity: 0.6, stroke_width: 1.5 })
 
   const base_series = [
-    { y: utils.generate_normal(1200, 5, 2), label: `Normal (μ=5, σ=2)`, line_style: { stroke: `crimson` } },
-    { y: utils.generate_exponential(1200, 0.3), label: `Exponential (λ=0.3)`, line_style: { stroke: `royalblue` }, y_axis: `y2` },
-    { y: utils.generate_uniform(1200, 0, 15), label: `Uniform (0-15)`, line_style: { stroke: `mediumseagreen` } },
-    { y: utils.generate_gamma(1000, 2, 3), label: `Gamma (α=2, β=3)`, line_style: { stroke: `darkorange` }, y_axis: `y2` },
+    {
+      y: utils.generate_normal(1200, 5, 2),
+      label: `Normal (μ=5, σ=2)`,
+      line_style: { stroke: `crimson` },
+    },
+    {
+      y: utils.generate_exponential(1200, 0.3),
+      label: `Exponential (λ=0.3)`,
+      line_style: { stroke: `royalblue` },
+      y_axis: `y2`,
+    },
+    {
+      y: utils.generate_uniform(1200, 0, 15),
+      label: `Uniform (0-15)`,
+      line_style: { stroke: `mediumseagreen` },
+    },
+    {
+      y: utils.generate_gamma(1000, 2, 3),
+      label: `Gamma (α=2, β=3)`,
+      line_style: { stroke: `darkorange` },
+      y_axis: `y2`,
+    },
   ]
   let visible = $state(base_series.map(() => true))
   let series = $derived(base_series.map((srs, idx) => ({ ...srs, visible: visible[idx] })))
 </script>
 
 <div style="display: flex; gap: 1em; flex-wrap: wrap; margin-block: 2em; align-items: center;">
-  <label>Opacity:
+  <label
+    >Opacity:
     <input type="number" bind:value={bar.opacity} min="0.1" max="1" step="0.1" />
     <input type="range" bind:value={bar.opacity} min="0.1" max="1" step="0.1" />
   </label>
-  <label>Stroke Width:
+  <label
+    >Stroke Width:
     <input type="number" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
     <input type="range" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
   </label>
 
-  <label style="display: flex; gap: 5pt">X: {#each [`linear`, `log`] as scale (scale)}
-    <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
-  {/each}</label>
-  <label style="display: flex; gap: 5pt">Y1: {#each [`linear`, `log`] as scale (scale)}
-    <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
-  {/each}</label>
-  <label style="display: flex; gap: 5pt">Y2: {#each [`linear`, `log`] as scale (scale)}
-    <input type="radio" bind:group={y2_axis.scale_type} value={scale} />{scale}
-  {/each}</label>
+  <label style="display: flex; gap: 5pt"
+    >X: {#each [`linear`, `log`] as scale (scale)}
+      <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
+    {/each}</label
+  >
+  <label style="display: flex; gap: 5pt"
+    >Y1: {#each [`linear`, `log`] as scale (scale)}
+      <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
+    {/each}</label
+  >
+  <label style="display: flex; gap: 5pt"
+    >Y2: {#each [`linear`, `log`] as scale (scale)}
+      <input type="radio" bind:group={y2_axis.scale_type} value={scale} />{scale}
+    {/each}</label
+  >
 
-  <label style="display: flex; align-items: center; gap: 4px"><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
-  <label style="display: flex; align-items: center; gap: 4px"><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
-  <label style="display: flex; align-items: center; gap: 4px"><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="checkbox" bind:checked={display.x_grid} />X grid</label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label
+  >
 </div>
 
 {#each base_series as srs, idx (srs.label)}
   <label style="display: flex; align-items: center; gap: 4px">
     <input type="checkbox" bind:checked={visible[idx]} />
     <span style="width: 16px; height: 16px; background: {srs.line_style.stroke}"></span>
-    {srs.label} {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
+    {srs.label}
+    {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
   </label>
 {/each}
 
@@ -215,8 +241,10 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong style="color: {series.find(srs => srs.label === property)?.line_style?.stroke}">{property}</strong><br>
-    Value: {value.toFixed(2)}<br>Count: {count}
+    <strong style="color: {series.find((srs) => srs.label === property)?.line_style?.stroke}"
+      >{property}</strong
+    ><br />
+    Value: {value.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```
@@ -268,13 +296,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   </label>
 {/each}
 
-<label>Bins: {bins}<input
-    type="range"
-    bind:value={bins}
-    min="10"
-    max="100"
-    step="5"
-  /></label>
+<label>Bins: {bins}<input type="range" bind:value={bins} min="10" max="100" step="5" /></label>
 
 <Histogram
   {series}
@@ -285,8 +307,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br>
-    Value: {value.toExponential(2)}<br>Count: {count}
+    <strong>{property}</strong><br />
+    Value: {value.toExponential(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```
@@ -330,9 +352,10 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 
   let x_axis = $derived({
     label: `Value (${x_scale_type})`,
-    scale_type: x_scale_type === `arcsinh`
-      ? { type: `arcsinh`, threshold: arcsinh_threshold }
-      : x_scale_type,
+    scale_type:
+      x_scale_type === `arcsinh`
+        ? { type: `arcsinh`, threshold: arcsinh_threshold }
+        : x_scale_type,
   })
 
   let y_axis = $derived({
@@ -376,11 +399,13 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 </p>
 
 <Histogram
-  series={[{
-    y: mixed_data,
-    label: `Mixed Range Data`,
-    line_style: { stroke: `#4c6ef5` },
-  }]}
+  series={[
+    {
+      y: mixed_data,
+      label: `Mixed Range Data`,
+      line_style: { stroke: `#4c6ef5` },
+    },
+  ]}
   bins={60}
   {x_axis}
   {y_axis}
@@ -440,17 +465,19 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   let current = $derived(distributions[selected])
   let series_data = $derived(
     mode === `single`
-      ? [{
-        y: current.data,
-        label: current.label,
-        line_style: { stroke: current.color },
-      }]
+      ? [
+          {
+            y: current.data,
+            label: current.label,
+            line_style: { stroke: current.color },
+          },
+        ]
       : Object.entries(distributions).map(([key, dist]) => ({
-        y: dist.data,
-        label: dist.label,
-        line_style: { stroke: dist.color },
-        visible: key === selected,
-      })),
+          y: dist.data,
+          label: dist.label,
+          line_style: { stroke: dist.color },
+          visible: key === selected,
+        })),
   )
 </script>
 
@@ -462,11 +489,9 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 
 <div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
   {#each [`single`, `overlay`] as display_mode (display_mode)}
-    <label style="display: flex; align-items: center; gap: 4px"><input
-        type="radio"
-        bind:group={mode}
-        value={display_mode}
-      />{display_mode}</label>
+    <label style="display: flex; align-items: center; gap: 4px"
+      ><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label
+    >
   {/each}
 </div>
 
@@ -480,11 +505,12 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br>
-    {{ age: `Age`, discrete: `Rating` }[selected] ?? `Value`}: {
-      format_num(value, selected === `discrete` ? `.1f` : `.0f`)
-    }<br>
-    Count: {count}<br>%: {format_num(count / current.data.length, `.2~%`)}
+    <strong>{property}</strong><br />
+    {{ age: `Age`, discrete: `Rating` }[selected] ?? `Value`}: {format_num(
+      value,
+      selected === `discrete` ? `.1f` : `.0f`,
+    )}<br />
+    Count: {count}<br />%: {format_num(count / current.data.length, `.2~%`)}
   {/snippet}
 </Histogram>
 ```
@@ -500,7 +526,11 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   let data_type = $state(`mixed`)
   let bar = $state({ opacity: 0.8 })
 
-  const base_data = $derived(data_type === `mixed` ? utils.generate_mixed_data(3000) : utils.generate_complex_distribution(3000))
+  const base_data = $derived(
+    data_type === `mixed`
+      ? utils.generate_mixed_data(3000)
+      : utils.generate_complex_distribution(3000),
+  )
   const colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`]
 </script>
 
@@ -545,11 +575,19 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   let data_source = $state(`financial`)
 
   const color_schemes = {
-    default: [`#3498db`], warm: [`#e74c3c`, `#f39c12`, `#e67e22`],
-    cool: [`#3498db`, `#2ecc71`, `#1abc9c`], monochrome: [`#2c3e50`, `#34495e`, `#7f8c8d`],
+    default: [`#3498db`],
+    warm: [`#e74c3c`, `#f39c12`, `#e67e22`],
+    cool: [`#3498db`, `#2ecc71`, `#1abc9c`],
+    monochrome: [`#2c3e50`, `#34495e`, `#7f8c8d`],
   }
 
-  const x_formats = { number: `.1f`, scientific: `.2e`, percentage: `.1%`, currency: `$,.0f`, engineering: `.2~s` }
+  const x_formats = {
+    number: `.1f`,
+    scientific: `.2e`,
+    percentage: `.1%`,
+    currency: `$,.0f`,
+    engineering: `.2~s`,
+  }
   const y_formats = { count: `d`, percentage: `.1%`, thousands: `,.0f`, scientific: `.1e` }
 
   let x_axis = $state({})
@@ -560,30 +598,43 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
     y_axis.label = y_format === `percentage` ? `Percentage` : `Count`
     y_axis.format = y_format === `percentage` ? `.1%` : y_formats[y_format]
   })
-  let data = $derived(data_source === `financial` ? utils.generate_financial_data(1200) : utils.generate_scientific_data(1200))
-  let series = $derived([{
-    y: data,
-    label: data_source === `financial` ? `Stock Prices` : `Scientific Measurements`,
-    line_style: { stroke: color_schemes[color_scheme][0] },
-  }])
+  let data = $derived(
+    data_source === `financial`
+      ? utils.generate_financial_data(1200)
+      : utils.generate_scientific_data(1200),
+  )
+  let series = $derived([
+    {
+      y: data,
+      label: data_source === `financial` ? `Stock Prices` : `Scientific Measurements`,
+      line_style: { stroke: color_schemes[color_scheme][0] },
+    },
+  ])
 </script>
 
 <div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
   {#each [`financial`, `scientific`] as source (source)}
-    <label style="display: flex; align-items: center; gap: 4px"><input type="radio" bind:group={data_source} value={source} />{source}</label>
+    <label style="display: flex; align-items: center; gap: 4px"
+      ><input type="radio" bind:group={data_source} value={source} />{source}</label
+    >
   {/each}
 </div>
 
 <select bind:value={color_scheme}>
-  {#each Object.keys(color_schemes) as scheme (scheme)}<option value={scheme}>{scheme}</option>{/each}
+  {#each Object.keys(color_schemes) as scheme (scheme)}<option value={scheme}>{scheme}</option
+    >{/each}
 </select>
 
 <select bind:value={x_format}>
-  {#each Object.entries(x_formats) as [key, format] (key)}<option value={key}>{key} ({format})</option>{/each}
+  {#each Object.entries(x_formats) as [key, format] (key)}<option value={key}
+      >{key} ({format})</option
+    >{/each}
 </select>
 
 <select bind:value={y_format}>
-  {#each Object.entries(y_formats) as [key, format] (key)}<option value={key}>{key} ({format})</option>{/each}
+  {#each Object.entries(y_formats) as [key, format] (key)}<option value={key}
+      >{key} ({format})</option
+    >{/each}
 </select>
 
 <Histogram
@@ -591,12 +642,20 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   {x_axis}
   {y_axis}
   bins={35}
-  style="height: 450px; border: 2px solid {color_schemes[color_scheme][0]}; border-radius: 8px;"
+  style="height: 450px; border: 2px solid {color_schemes[
+    color_scheme
+  ][0]}; border-radius: 8px;"
 >
   {#snippet tooltip({ value, count, property })}
-    <div style="background: {color_schemes[color_scheme][0]}; color: white; padding: 8px; border-radius: 6px;">
-      <strong>{property}</strong><br>
-      {x_format === `currency` ? `Price: $${value.toFixed(0)}` : `Value: ${value.toFixed(2)}`}<br>
+    <div
+      style="background: {color_schemes[
+        color_scheme
+      ][0]}; color: white; padding: 8px; border-radius: 6px;"
+    >
+      <strong>{property}</strong><br />
+      {x_format === `currency`
+        ? `Price: $${value.toFixed(0)}`
+        : `Value: ${value.toFixed(2)}`}<br />
       Count: {count}
     </div>
   {/snippet}
@@ -623,57 +682,47 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 
   let series_data = $derived(
     mode === `single`
-      ? [{
-        y: performance_data[data_type],
-        label: `${data_type} (${dataset_size.toLocaleString()} points)`,
-        line_style: { stroke: `#2c3e50` },
-      }]
+      ? [
+          {
+            y: performance_data[data_type],
+            label: `${data_type} (${dataset_size.toLocaleString()} points)`,
+            line_style: { stroke: `#2c3e50` },
+          },
+        ]
       : Object.entries(performance_data).map(([key, data]) => ({
-        y: data,
-        label: `${key} (${data.length.toLocaleString()} points)`,
-        line_style: {
-          stroke: key === `normal`
-            ? `#e74c3c`
-            : key === `uniform`
-            ? `#3498db`
-            : `#2ecc71`,
-        },
-        visible: key === data_type,
-      })),
+          y: data,
+          label: `${key} (${data.length.toLocaleString()} points)`,
+          line_style: {
+            stroke: key === `normal` ? `#e74c3c` : key === `uniform` ? `#3498db` : `#2ecc71`,
+          },
+          visible: key === data_type,
+        })),
   )
 </script>
 
-<label>Size: {dataset_size.toLocaleString()}<input
+<label
+  >Size: {dataset_size.toLocaleString()}<input
     type="range"
     bind:value={dataset_size}
     min="1000"
     max="50000"
     step="1000"
-  /></label>
+  /></label
+>
 
-{#each [`normal`, `uniform`, `sparse`] as type (type)}<label><input
-      type="radio"
-      bind:group={data_type}
-      value={type}
-    />{type}</label>{/each}
+{#each [`normal`, `uniform`, `sparse`] as type (type)}<label
+    ><input type="radio" bind:group={data_type} value={type} />{type}</label
+  >{/each}
 
-<label>Bins: {bins}<input
-    type="range"
-    bind:value={bins}
-    min="10"
-    max="200"
-    step="10"
-  /></label>
+<label>Bins: {bins}<input type="range" bind:value={bins} min="10" max="200" step="10" /></label
+>
 
 {#each [`single`, `overlay`] as display_mode (display_mode)}
-  <label><input
-      type="radio"
-      bind:group={mode}
-      value={display_mode}
-    />{display_mode}</label>
+  <label><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label>
 {/each}
 
-<strong>Performance:</strong> {data_type} distribution, {dataset_size.toLocaleString()}
+<strong>Performance:</strong>
+{data_type} distribution, {dataset_size.toLocaleString()}
 points, {bins} bins, {mode} mode
 
 <Histogram
@@ -684,7 +733,7 @@ points, {bins} bins, {mode} mode
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br>Value: {value.toFixed(2)}<br>Count: {count}
+    <strong>{property}</strong><br />Value: {value.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```
@@ -717,88 +766,90 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   let series = $derived(
     comparison_mode
       ? [
-        { y: sample_a, label: `Control`, line_style: { stroke: `#3498db` } },
-        { y: sample_b, label: `Treatment`, line_style: { stroke: `#e74c3c` } },
-      ]
-      : [{
-        y: data,
-        label: `Normal Distribution`,
-        line_style: { stroke: `#4c6ef5` },
-      }],
+          { y: sample_a, label: `Control`, line_style: { stroke: `#3498db` } },
+          { y: sample_b, label: `Treatment`, line_style: { stroke: `#e74c3c` } },
+        ]
+      : [
+          {
+            y: data,
+            label: `Normal Distribution`,
+            line_style: { stroke: `#4c6ef5` },
+          },
+        ],
   )
 
   let ref_lines = $derived(
     comparison_mode
       ? [
-        {
-          type: `vertical`,
-          x: mean_a,
-          label: `Control Mean`,
-          style: { color: `#3498db`, width: 2.5 },
-          annotation: {
-            text: `μ₁ = ${mean_a.toFixed(1)}`,
-            position: `end`,
-            side: `left`,
+          {
+            type: `vertical`,
+            x: mean_a,
+            label: `Control Mean`,
+            style: { color: `#3498db`, width: 2.5 },
+            annotation: {
+              text: `μ₁ = ${mean_a.toFixed(1)}`,
+              position: `end`,
+              side: `left`,
+            },
           },
-        },
-        {
-          type: `vertical`,
-          x: mean_b,
-          label: `Treatment Mean`,
-          style: { color: `#e74c3c`, width: 2.5 },
-          annotation: {
-            text: `μ₂ = ${mean_b.toFixed(1)}`,
-            position: `end`,
-            side: `right`,
+          {
+            type: `vertical`,
+            x: mean_b,
+            label: `Treatment Mean`,
+            style: { color: `#e74c3c`, width: 2.5 },
+            annotation: {
+              text: `μ₂ = ${mean_b.toFixed(1)}`,
+              position: `end`,
+              side: `right`,
+            },
           },
-        },
-        {
-          type: `vertical`,
-          x: 50,
-          label: `Expected`,
-          style: { color: `#2ecc71`, width: 2, dash: `8 4` },
-          annotation: { text: `Expected = 50`, position: `center`, side: `right` },
-          z_index: `below-grid`,
-        },
-      ]
+          {
+            type: `vertical`,
+            x: 50,
+            label: `Expected`,
+            style: { color: `#2ecc71`, width: 2, dash: `8 4` },
+            annotation: { text: `Expected = 50`, position: `center`, side: `right` },
+            z_index: `below-grid`,
+          },
+        ]
       : [
-        {
-          type: `vertical`,
-          x: actual_mean,
-          label: `Mean`,
-          style: { color: `#e74c3c`, width: 2.5 },
-          annotation: {
-            text: `μ = ${actual_mean.toFixed(1)}`,
-            position: `end`,
-            side: `right`,
+          {
+            type: `vertical`,
+            x: actual_mean,
+            label: `Mean`,
+            style: { color: `#e74c3c`, width: 2.5 },
+            annotation: {
+              text: `μ = ${actual_mean.toFixed(1)}`,
+              position: `end`,
+              side: `right`,
+            },
           },
-        },
-        {
-          type: `vertical`,
-          x: actual_median,
-          label: `Median`,
-          style: { color: `#2ecc71`, width: 2, dash: `6 3` },
-          annotation: {
-            text: `Med = ${actual_median.toFixed(1)}`,
-            position: `end`,
-            side: `left`,
+          {
+            type: `vertical`,
+            x: actual_median,
+            label: `Median`,
+            style: { color: `#2ecc71`, width: 2, dash: `6 3` },
+            annotation: {
+              text: `Med = ${actual_median.toFixed(1)}`,
+              position: `end`,
+              side: `left`,
+            },
           },
-        },
-        {
-          type: `vertical`,
-          x: actual_mean - std_dev,
-          label: `-1σ`,
-          style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
-          annotation: { text: `-1σ`, position: `center`, side: `left` },
-        },
-        {
-          type: `vertical`,
-          x: actual_mean + std_dev,
-          label: `+1σ`,
-          style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
-          annotation: { text: `+1σ`, position: `center`, side: `right` },
-        },
-      ],
+          {
+            type: `vertical`,
+            x: actual_mean - std_dev,
+            label: `-1σ`,
+            style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
+            annotation: { text: `-1σ`, position: `center`, side: `left` },
+          },
+          {
+            type: `vertical`,
+            x: actual_mean + std_dev,
+            label: `+1σ`,
+            style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
+            annotation: { text: `+1σ`, position: `center`, side: `right` },
+          },
+        ],
   )
 </script>
 
@@ -822,9 +873,9 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
     Δμ = {(mean_b - mean_a).toFixed(2)} (Treatment − Control)
   {:else}
     <span><strong style="color: #e74c3c">━</strong> Mean: {actual_mean.toFixed(2)}</span>
-    <span style="margin-left: 2em"><strong style="color: #2ecc71">╌</strong> Median: {
-        actual_median.toFixed(2)
-      }</span>
+    <span style="margin-left: 2em"
+      ><strong style="color: #2ecc71">╌</strong> Median: {actual_median.toFixed(2)}</span
+    >
     <span style="margin-left: 2em"><strong style="color: #9b59b6">┄</strong> ±1σ</span>
   {/if}
 </div>
@@ -966,8 +1017,9 @@ This demo stress-tests histograms with interactive property switching:
     all_data[prop_key] = material_classes.map((_, idx) => {
       seed += 17
       // Shift each class slightly for variety
-      return generate_distribution(config.type, n_points, seed + idx * 1000)
-        .map((val) => val + idx * 0.5)
+      return generate_distribution(config.type, n_points, seed + idx * 1000).map(
+        (val) => val + idx * 0.5,
+      )
     })
   }
 
@@ -1036,9 +1088,7 @@ This demo stress-tests histograms with interactive property switching:
   bind:series
   {bins}
   x_axis={{
-    label: `${property_configs[current_prop].label} (${
-      property_configs[current_prop].unit
-    })`,
+    label: `${property_configs[current_prop].label} (${property_configs[current_prop].unit})`,
     options: x_options,
     selected_key: current_prop,
   }}
@@ -1051,10 +1101,8 @@ This demo stress-tests histograms with interactive property switching:
 />
 
 <p style="margin-top: 0.5em; font-size: 0.8em; opacity: 0.7">
-  {total_points.toLocaleString()} samples across 3 material classes. Try rapidly switching
-  properties. Current distribution type: <code>{
-    property_configs[current_prop].type
-  }</code>
+  {total_points.toLocaleString()} samples across 3 material classes. Try rapidly switching properties.
+  Current distribution type: <code>{property_configs[current_prop].type}</code>
 </p>
 ```
 
@@ -1262,8 +1310,8 @@ Plot two distributions with independent x-scales on the same histogram. The prim
   ]
 </script>
 
-Two normal distributions on independent x-scales. Bottom: mass in kg (blue). Top: mass in
-lbs (orange). Each series bins against its own x-axis range.
+Two normal distributions on independent x-scales. Bottom: mass in kg (blue). Top: mass in lbs
+(orange). Each series bins against its own x-axis range.
 
 <Histogram
   {series}

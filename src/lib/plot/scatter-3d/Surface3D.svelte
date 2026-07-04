@@ -23,11 +23,8 @@
   } = $props()
 
   // Normalize value to scene coordinates (centered around 0)
-  const normalize = (
-    value: number,
-    [min_val, max_val]: Vec2,
-    scene_size: number,
-  ): number => ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
+  const normalize = (value: number, [min_val, max_val]: Vec2, scene_size: number): number =>
+    ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
 
   // Parse color to THREE.Color with fallback
   function parse_color(color: string): THREE.Color {
@@ -39,11 +36,7 @@
   }
 
   // Calculate vertex color based on config
-  function get_vertex_color(
-    x_val: number,
-    y_val: number,
-    z_val: number,
-  ): THREE.Color {
+  function get_vertex_color(x_val: number, y_val: number, z_val: number): THREE.Color {
     if (config.color_fn) return parse_color(config.color_fn(x_val, y_val, z_val))
     if (config.color) return parse_color(config.color)
     // Default: color by z value (blue to red gradient)
@@ -168,9 +161,7 @@
   let material_props = $derived({
     transparent: is_transparent,
     opacity: config.opacity ?? 1,
-    side: (config.double_sided ?? is_transparent)
-      ? THREE.DoubleSide
-      : THREE.FrontSide,
+    side: (config.double_sided ?? is_transparent) ? THREE.DoubleSide : THREE.FrontSide,
     vertexColors: true,
     depthWrite: true,
   })

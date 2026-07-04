@@ -79,21 +79,21 @@ test.describe(`Structure Component Tests`, () => {
       structure
         .locator(selector)
         .first()
-        .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+        .evaluate((element) => Number(getComputedStyle(element).fontSize.replace(`px`, ``)))
     const legend_label_size = await get_font_size(`.atom-legend .legend-item label`)
     const toggle_size = await get_font_size(`.cell-select .toggle-btn`)
     const preset_size = await get_font_size(`.cell-select .preset-btn`)
     const preset_gap = await structure
       .locator(`.cell-select .supercell-grid`)
-      .evaluate((element) => Number.parseFloat(getComputedStyle(element).gap))
+      .evaluate((element) => Number(getComputedStyle(element).gap.replace(`px`, ``)))
     const preset_padding = await structure
       .locator(`.cell-select .preset-btn`)
       .first()
       .evaluate((element) => {
         const style = getComputedStyle(element)
         return {
-          top: Number.parseFloat(style.paddingTop),
-          right: Number.parseFloat(style.paddingRight),
+          top: Number(style.paddingTop.replace(`px`, ``)),
+          right: Number(style.paddingRight.replace(`px`, ``)),
         }
       })
 
@@ -523,22 +523,22 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check initial value (should be 0 for transparent)
     const initial_value = await opacity_number_input.inputValue()
-    expect(parseFloat(initial_value)).toBe(0)
+    expect(Number(initial_value)).toBe(0)
 
     // Test number input
     await opacity_number_input.fill(`0.5`)
     const number_value = await opacity_number_input.inputValue()
-    expect(parseFloat(number_value)).toBe(0.5)
+    expect(Number(number_value)).toBe(0.5)
 
     // Test range input
     await opacity_range_input.fill(`0.8`)
     const range_value = await opacity_range_input.inputValue()
-    expect(parseFloat(range_value)).toBe(0.8)
+    expect(Number(range_value)).toBe(0.8)
 
     // Verify inputs are synchronized
     const final_number_value = await opacity_number_input.inputValue()
     const final_range_value = await opacity_range_input.inputValue()
-    expect(parseFloat(final_number_value)).toBe(parseFloat(final_range_value))
+    expect(Number(final_number_value)).toBe(Number(final_range_value))
   })
 
   test(`label padding control works correctly`, async ({ page }) => {
@@ -561,22 +561,22 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check initial value
     const initial_value = await padding_number_input.inputValue()
-    expect(parseInt(initial_value, 10)).toBeGreaterThanOrEqual(0)
+    expect(Number(initial_value)).toBeGreaterThanOrEqual(0)
 
     // Test number input
     await padding_number_input.fill(`5`)
     const number_value = await padding_number_input.inputValue()
-    expect(parseInt(number_value, 10)).toBe(5)
+    expect(Number(number_value)).toBe(5)
 
     // Test range input
     await padding_range_input.fill(`8`)
     const range_value = await padding_range_input.inputValue()
-    expect(parseInt(range_value, 10)).toBe(8)
+    expect(Number(range_value)).toBe(8)
 
     // Verify inputs are synchronized
     const final_number_value = await padding_number_input.inputValue()
     const final_range_value = await padding_range_input.inputValue()
-    expect(parseInt(final_number_value, 10)).toBe(parseInt(final_range_value, 10))
+    expect(Number(final_number_value)).toBe(Number(final_range_value))
   })
 
   test(`label offset X control works correctly`, async ({ page }) => {
@@ -599,18 +599,18 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check initial value
     const initial_value = await offset_x_number_input.inputValue()
-    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(-1)
-    expect(parseFloat(initial_value)).toBeLessThanOrEqual(1)
+    expect(Number(initial_value)).toBeGreaterThanOrEqual(-1)
+    expect(Number(initial_value)).toBeLessThanOrEqual(1)
 
     // Test number input
     await offset_x_number_input.fill(`0.5`)
     const number_value = await offset_x_number_input.inputValue()
-    expect(parseFloat(number_value)).toBe(0.5)
+    expect(Number(number_value)).toBe(0.5)
 
     // Test another value
     await offset_x_number_input.fill(`-0.3`)
     const final_value = await offset_x_number_input.inputValue()
-    expect(parseFloat(final_value)).toBe(-0.3)
+    expect(Number(final_value)).toBe(-0.3)
   })
 
   test(`label offset Y control works correctly`, async ({ page }) => {
@@ -633,18 +633,18 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check initial value
     const initial_value = await offset_y_number_input.inputValue()
-    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(-1)
-    expect(parseFloat(initial_value)).toBeLessThanOrEqual(1)
+    expect(Number(initial_value)).toBeGreaterThanOrEqual(-1)
+    expect(Number(initial_value)).toBeLessThanOrEqual(1)
 
     // Test number input
     await offset_y_number_input.fill(`0.2`)
     const number_value = await offset_y_number_input.inputValue()
-    expect(parseFloat(number_value)).toBe(0.2)
+    expect(Number(number_value)).toBe(0.2)
 
     // Test another value
     await offset_y_number_input.fill(`-0.7`)
     const final_value = await offset_y_number_input.inputValue()
-    expect(parseFloat(final_value)).toBe(-0.7)
+    expect(Number(final_value)).toBe(-0.7)
   })
 
   test(`label offset Z control works correctly`, async ({ page }) => {
@@ -667,18 +667,18 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check initial value
     const initial_value = await offset_z_number_input.inputValue()
-    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(-1)
-    expect(parseFloat(initial_value)).toBeLessThanOrEqual(1)
+    expect(Number(initial_value)).toBeGreaterThanOrEqual(-1)
+    expect(Number(initial_value)).toBeLessThanOrEqual(1)
 
     // Test number input
     await offset_z_number_input.fill(`0.3`)
     const number_value = await offset_z_number_input.inputValue()
-    expect(parseFloat(number_value)).toBe(0.3)
+    expect(Number(number_value)).toBe(0.3)
 
     // Test another value
     await offset_z_number_input.fill(`-0.5`)
     const final_value = await offset_z_number_input.inputValue()
-    expect(parseFloat(final_value)).toBe(-0.5)
+    expect(Number(final_value)).toBe(-0.5)
   })
 
   test(`label font size control works correctly`, async ({ page }) => {
@@ -705,18 +705,18 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check initial value
     const initial_value = await size_range_input.inputValue()
-    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(0.5)
-    expect(parseFloat(initial_value)).toBeLessThanOrEqual(2)
+    expect(Number(initial_value)).toBeGreaterThanOrEqual(0.5)
+    expect(Number(initial_value)).toBeLessThanOrEqual(2)
 
     // Test range input
     await size_range_input.fill(`1.5`)
     const new_value = await size_range_input.inputValue()
-    expect(parseFloat(new_value)).toBe(1.5)
+    expect(Number(new_value)).toBe(1.5)
 
     // Test another value
     await size_range_input.fill(`0.8`)
     const final_value = await size_range_input.inputValue()
-    expect(parseFloat(final_value)).toBe(0.8)
+    expect(Number(final_value)).toBe(0.8)
   })
 
   test(`label controls have correct input constraints`, async ({ page }) => {
@@ -863,7 +863,7 @@ test.describe(`Structure Component Tests`, () => {
 
     expect(new_text_color).toBe(`#ff0000`)
     expect(new_background_color).toBe(`#0000ff`)
-    expect(parseFloat(new_opacity)).toBe(0.7)
+    expect(Number(new_opacity)).toBe(0.7)
   })
 
   test(`gizmo is hidden when prop is set to false`, async ({ page }) => {
@@ -1628,7 +1628,7 @@ test.describe(`Export Button Tests`, () => {
 
     // Test changing DPI value
     const initial_value = await dpi_input.inputValue()
-    expect(parseInt(initial_value, 10)).toBeGreaterThanOrEqual(72)
+    expect(Number(initial_value)).toBeGreaterThanOrEqual(72)
 
     await dpi_input.fill(`200`)
     await expect(dpi_input).toHaveValue(`200`)
@@ -2625,7 +2625,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
       await expect(y_range_input).toHaveValue(expected)
 
       // For valid values, number input should match
-      if (parseInt(input, 10) <= 360) {
+      if (Number(input) <= 360) {
         await expect(y_number_input).toHaveValue(expected)
       }
     }
@@ -2761,7 +2761,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
 
     expect(styles.display).toBe(`flex`)
     // allow small variance in computed gap
-    const gapNum = parseFloat(styles.gap)
+    const gapNum = Number(styles.gap.replace(`px`, ``))
     expect(gapNum).toBeGreaterThan(8)
     expect(gapNum).toBeLessThan(20)
 
@@ -2848,7 +2848,7 @@ test.describe(`Element Visibility Toggle`, () => {
     // Capture initial state
     const initial_screenshot = await canvas.screenshot()
     const initial_opacity = await label.evaluate((el) =>
-      parseFloat(globalThis.getComputedStyle(el).opacity),
+      Number(globalThis.getComputedStyle(el).opacity),
     )
     // Initial check - tooltip stores in data-original-title
     await expect(toggle_button).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
@@ -2865,7 +2865,7 @@ test.describe(`Element Visibility Toggle`, () => {
     // Wait for CSS transition to complete (opacity 0.2s ease)
     await expect(async () => {
       const hidden_opacity = await label.evaluate((el) =>
-        parseFloat(globalThis.getComputedStyle(el).opacity),
+        Number(globalThis.getComputedStyle(el).opacity),
       )
       expect(hidden_opacity).toBeLessThan(initial_opacity)
       // CSS sets .element-legend label.hidden { opacity: 0.4 }
@@ -2975,7 +2975,7 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Button hidden initially
     const initial_opacity = await toggle_button.evaluate((el) =>
-      parseFloat(globalThis.getComputedStyle(el).opacity),
+      Number(globalThis.getComputedStyle(el).opacity),
     )
     expect(initial_opacity).toBe(0)
 
@@ -2983,7 +2983,7 @@ test.describe(`Element Visibility Toggle`, () => {
     await first_item.hover()
     await expect(async () => {
       const hover_opacity = await toggle_button.evaluate((el) =>
-        parseFloat(globalThis.getComputedStyle(el).opacity),
+        Number(globalThis.getComputedStyle(el).opacity),
       )
       expect(hover_opacity).toBeGreaterThan(0)
     }).toPass({ timeout: get_canvas_timeout() })
@@ -2997,7 +2997,7 @@ test.describe(`Element Visibility Toggle`, () => {
     await expect(toggle_button).toHaveClass(/element-hidden/)
     await expect(async () => {
       const hidden_opacity = await toggle_button.evaluate((el) =>
-        parseFloat(globalThis.getComputedStyle(el).opacity),
+        Number(globalThis.getComputedStyle(el).opacity),
       )
       expect(hidden_opacity).toBeGreaterThan(0.9)
     }).toPass({ timeout: 2000 })
@@ -3295,7 +3295,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
 
     // Single view: one viewport cell, no grid
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
-    await expect(structure_div.locator(`.viewport-grid`)).toHaveCount(0)
+    await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
 
     const toggle = structure_div.locator(`button.multi-view-toggle`)
     await expect(toggle).toBeVisible()
@@ -3303,9 +3303,9 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
 
     // Multi view: 2x2 grid with 4 cells, 4 canvases, 4 labels
     await expect(structure_div).toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-grid`)).toBeVisible()
+    await expect(structure_div.locator(`.viewport-stage.multi`)).toBeVisible()
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
-    await expect(structure_div.locator(`.viewport-grid canvas`)).toHaveCount(4, {
+    await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
       timeout: get_canvas_timeout(),
     })
     const labels = structure_div.locator(`.viewport-label`)
@@ -3329,7 +3329,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // Toggle back to single view
     await toggle.click()
     await expect(structure_div).not.toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-grid`)).toHaveCount(0)
+    await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
     await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
       timeout: get_canvas_timeout(),
@@ -3398,7 +3398,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     for (let cycle = 0; cycle < 3; cycle++) {
       await toggle.click()
       await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
-      await expect(structure_div.locator(`.viewport-grid canvas`)).toHaveCount(4, {
+      await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
         timeout: canvas_timeout,
       })
       await toggle.click()

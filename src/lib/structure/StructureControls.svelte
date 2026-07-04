@@ -97,15 +97,13 @@
 
   // Sync local selection to config
   $effect(() => {
-    if (
-      color_scale_selected[0] && color_scale_selected[0] !== atom_color_config.scale
-    ) atom_color_config.scale = color_scale_selected[0]
+    if (color_scale_selected[0] && color_scale_selected[0] !== atom_color_config.scale)
+      atom_color_config.scale = color_scale_selected[0]
   })
   // Sync config to local selection (for external updates)
   $effect(() => {
-    if (
-      atom_color_config.scale && atom_color_config.scale !== color_scale_selected[0]
-    ) color_scale_selected = [atom_color_config.scale]
+    if (atom_color_config.scale && atom_color_config.scale !== color_scale_selected[0])
+      color_scale_selected = [atom_color_config.scale]
   })
   // Auto-set scale_type based on mode
   $effect(() => {
@@ -121,9 +119,7 @@
   // actually use as centers - minority occupancies of disordered sites never are.
   let structure_elements = $derived(
     [
-      ...new Set(
-        (structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? []),
-      ),
+      ...new Set((structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? [])),
     ].sort(),
   )
 
@@ -135,8 +131,10 @@
   const is_polyhedra_center_enabled = (element: string): boolean => {
     const excluded = scene_props.polyhedra_excluded_elements ?? []
     const included = scene_props.polyhedra_included_elements ?? []
-    return !excluded.includes(element) &&
+    return (
+      !excluded.includes(element) &&
       (included.includes(element) || polyhedra_rendered_elements.includes(element))
+    )
   }
 
   // Toggle an element as polyhedra center. Enabled elements get excluded; disabled
@@ -183,10 +181,7 @@
       : { hex_color, opacity: 1 }
   }
 
-  const default_site_label_color = as_hex_color(
-    DEFAULTS.structure.site_label_color,
-    `#111111`,
-  )
+  const default_site_label_color = as_hex_color(DEFAULTS.structure.site_label_color, `#111111`)
   const default_site_label_bg = parse_label_bg_color(
     DEFAULTS.structure.site_label_bg_color,
     `#000000`,
@@ -231,10 +226,10 @@
 
     if (!external_color_changed) scene_props.site_label_color = site_label_hex_color
     if (!external_bg_changed) {
-      scene_props.site_label_bg_color =
-        `color-mix(in srgb, ${site_label_bg_hex_color} ${
-          format_num(site_label_background_opacity, `.1~%`)
-        }, transparent)`
+      scene_props.site_label_bg_color = `color-mix(in srgb, ${site_label_bg_hex_color} ${format_num(
+        site_label_background_opacity,
+        `.1~%`,
+      )}, transparent)`
     }
 
     last_synced_site_label_color = scene_props.site_label_color
@@ -245,9 +240,7 @@
   scene_props.site_label_offset ??= [...DEFAULTS.structure.site_label_offset]
 
   // Collect available vector property keys from the structure
-  let available_vector_keys = $derived(
-    structure ? get_structure_vector_keys(structure) : [],
-  )
+  let available_vector_keys = $derived(structure ? get_structure_vector_keys(structure) : [])
   const is_key_visible = (key: string): boolean =>
     scene_props.vector_configs?.[key]?.visible !== false
 
@@ -399,11 +392,11 @@
             type="color"
             aria-label={`${key} vector color`}
             value={scene_props.vector_configs?.[key]?.color ??
-            VECTOR_PALETTE[idx % VECTOR_PALETTE.length]}
+              VECTOR_PALETTE[idx % VECTOR_PALETTE.length]}
             onchange={(evt) =>
-            update_vector_config(key, {
-              color: evt.currentTarget.value,
-            })}
+              update_vector_config(key, {
+                color: evt.currentTarget.value,
+              })}
             style="width: 22px; height: 22px; padding: 0; border: none; cursor: pointer"
           />
           {key}
@@ -430,10 +423,7 @@
     >
       Bonds:
       <select bind:value={scene_props.show_bonds}>
-        {#each Object.entries(SETTINGS_CONFIG.structure.show_bonds.enum ?? {}) as
-          [value, label]
-          (value)
-        }
+        {#each Object.entries(SETTINGS_CONFIG.structure.show_bonds.enum ?? {}) as [value, label] (value)}
           <option {value}>{label}</option>
         {/each}
       </select>
@@ -444,10 +434,7 @@
     >
       Polyhedra:
       <select bind:value={scene_props.show_polyhedra}>
-        {#each Object.entries(SETTINGS_CONFIG.structure.show_polyhedra.enum ?? {}) as
-          [value, label]
-          (value)
-        }
+        {#each Object.entries(SETTINGS_CONFIG.structure.show_polyhedra.enum ?? {}) as [value, label] (value)}
           <option {value}>{label}</option>
         {/each}
       </select>
@@ -484,12 +471,7 @@
         Projection
       </span>
       <select bind:value={scene_props.camera_projection}>
-        {#each Object.entries(
-            SETTINGS_CONFIG.structure.camera_projection.enum ?? {},
-          ) as
-          [value, label]
-          (value)
-        }
+        {#each Object.entries(SETTINGS_CONFIG.structure.camera_projection.enum ?? {}) as [value, label] (value)}
           <option {value}>{label}</option>
         {/each}
       </select>
@@ -500,28 +482,29 @@
       step={0.01}
       bind:value={scene_props.auto_rotate}
       title={SETTINGS_CONFIG.structure.auto_rotate.description}
-    >Auto-rotate speed</NumberRangeInput>
+      >Auto-rotate speed</NumberRangeInput
+    >
     <NumberRangeInput
       min={0}
       max={2}
       step={0.05}
       bind:value={scene_props.rotate_speed}
-      title={SETTINGS_CONFIG.structure.rotate_speed.description}
-    >Rotate speed</NumberRangeInput>
+      title={SETTINGS_CONFIG.structure.rotate_speed.description}>Rotate speed</NumberRangeInput
+    >
     <NumberRangeInput
       min={0.1}
       max={0.8}
       step={0.02}
       bind:value={scene_props.zoom_speed}
-      title={SETTINGS_CONFIG.structure.zoom_speed.description}
-    >Zoom speed</NumberRangeInput>
+      title={SETTINGS_CONFIG.structure.zoom_speed.description}>Zoom speed</NumberRangeInput
+    >
     <NumberRangeInput
       min={0}
       max={2}
       step={0.01}
       bind:value={scene_props.pan_speed}
-      title={SETTINGS_CONFIG.structure.pan_speed.description}
-    >Pan speed</NumberRangeInput>
+      title={SETTINGS_CONFIG.structure.pan_speed.description}>Pan speed</NumberRangeInput
+    >
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_to_cursor.description })}
     >
@@ -534,17 +517,14 @@
       step={0.01}
       bind:value={scene_props.rotation_damping}
       title={SETTINGS_CONFIG.structure.rotation_damping.description}
-    >Rotation damping</NumberRangeInput>
+      >Rotation damping</NumberRangeInput
+    >
 
     Axis Rotation
     <div class="rotation-axes">
       {#each AXIS_COLORS as [axis, color], idx (axis)}
         <div>
-          <div
-            {@attach tooltip()}
-            title="{axis}-axis rotation in degrees"
-            style:color
-          >
+          <div {@attach tooltip()} title="{axis}-axis rotation in degrees" style:color>
             <span>{axis.toUpperCase()} = </span>
             <input
               type="number"
@@ -552,8 +532,7 @@
               max={360}
               step={1}
               value={rotation_degrees[idx].toFixed(0)}
-              oninput={(event) =>
-              update_rotation(axis, Number(event.currentTarget.value))}
+              oninput={(event) => update_rotation(axis, Number(event.currentTarget.value))}
               style:color
               style="margin: 0"
             />
@@ -599,16 +578,15 @@
       step={0.05}
       bind:value={scene_props.atom_radius}
       title={SETTINGS_CONFIG.structure.atom_radius.description}
-    >Radius <small>(Å)</small></NumberRangeInput>
+      >Radius <small>(Å)</small></NumberRangeInput
+    >
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.same_size_atoms.description })}
     >
       Same size atoms
       <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
     </label>
-    <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.color_scheme.description })}
-    >
+    <label {@attach tooltip({ content: SETTINGS_CONFIG.color_scheme.description })}>
       Color scheme
       <Select
         options={Object.keys(ELEMENT_COLOR_SCHEMES)}
@@ -623,14 +601,12 @@
         aria-label="Color scheme"
       >
         {#snippet children({ option })}
-          {@const option_style =
-            `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
+          {@const option_style = `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
           <div style={option_style}>
             {option}
             <div style="display: flex; gap: 3pt">
               {#each get_representative_colors(String(option)) as color (color)}
-                {@const color_style =
-                `width: 15px; height: 15px; border-radius: 2px; background: ${color};`}
+                {@const color_style = `width: 15px; height: 15px; border-radius: 2px; background: ${color};`}
                 <div style={color_style}></div>
               {/each}
             </div>
@@ -643,10 +619,7 @@
     >
       Atom coloring
       <select bind:value={atom_color_config.mode}>
-        {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as
-          [value, label]
-          (value)
-        }
+        {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
           <option {value} disabled={!sym_data && value === `wyckoff`}>{label}</option>
         {/each}
       </select>
@@ -794,20 +767,16 @@
         scene_props.vector_color_mode = DEFAULTS.structure.vector_color_mode
         scene_props.vector_color_scale = DEFAULTS.structure.vector_color_scale
         scene_props.vector_normalize = DEFAULTS.structure.vector_normalize
-        scene_props.vector_uniform_thickness =
-          DEFAULTS.structure.vector_uniform_thickness
+        scene_props.vector_uniform_thickness = DEFAULTS.structure.vector_uniform_thickness
         scene_props.vector_origin_gap = DEFAULTS.structure.vector_origin_gap
         for (const key of available_vector_keys) {
           update_vector_config(key, { scale: null })
         }
       }}
     >
-      <NumberRangeInput
-        min={0.001}
-        max={5}
-        step={0.001}
-        bind:value={scene_props.vector_scale}
-      >Global Scale</NumberRangeInput>
+      <NumberRangeInput min={0.001} max={5} step={0.001} bind:value={scene_props.vector_scale}
+        >Global Scale</NumberRangeInput
+      >
       <label
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_normalize.description })}
         style="gap: 6pt"
@@ -816,7 +785,9 @@
         Normalize
       </label>
       <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_uniform_thickness.description })}
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.vector_uniform_thickness.description,
+        })}
         style="gap: 6pt"
       >
         <input type="checkbox" bind:checked={scene_props.vector_uniform_thickness} />
@@ -854,17 +825,18 @@
           step={0.02}
           bind:value={scene_props.vector_origin_gap}
           title={SETTINGS_CONFIG.structure.vector_origin_gap.description}
-        >Origin Gap</NumberRangeInput>
+          >Origin Gap</NumberRangeInput
+        >
         {#each available_vector_keys as key (key)}
           {#if is_key_visible(key)}
-            {@const on_scale = (
-        evt: Event & { currentTarget: HTMLInputElement },
-      ) => {
-        const parsed = parseFloat(evt.currentTarget.value)
-        update_vector_config(key, { scale: Number.isNaN(parsed) ? 1.0 : parsed })
-      }}
+            {@const on_scale = (evt: Event & { currentTarget: HTMLInputElement }) => {
+              const parsed = parseFloat(evt.currentTarget.value)
+              update_vector_config(key, { scale: Number.isNaN(parsed) ? 1.0 : parsed })
+            }}
             <label
-              {@attach tooltip({ content: `Scale multiplier for ${key} arrows (applied on top of global scale)` })}
+              {@attach tooltip({
+                content: `Scale multiplier for ${key} arrows (applied on top of global scale)`,
+              })}
             >
               {key} scale
               <input
@@ -926,7 +898,9 @@
       </label>
       <label>
         <span
-          {@attach tooltip({ content: `Create supercells by repeating the unit cell. Examples: "2x2x2", "3x1x2", or "2"` })}
+          {@attach tooltip({
+            content: `Create supercells by repeating the unit cell. Examples: "2x2x2", "3x1x2", or "2"`,
+          })}
         >
           Supercell Scaling
         </span>
@@ -943,8 +917,8 @@
           pattern="^(\d+|\d+x\d+x\d+)$"
           aria-invalid={!supercell_input_valid}
           title={supercell_input_valid
-          ? `Valid supercell scaling: ${supercell_scaling}`
-          : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}
+            ? `Valid supercell scaling: ${supercell_scaling}`
+            : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}
         />
       </label>
       {#if supercell_loading}
@@ -968,30 +942,11 @@
         </div>
       {/if}
 
-      {#each [
-        {
-          label: `Edge color`,
-          color_prop: `cell_edge_color`,
-          opacity_prop: `cell_edge_opacity`,
-          step: 0.05,
-        },
-        {
-          label: `Surface color`,
-          color_prop: `cell_surface_color`,
-          opacity_prop: `cell_surface_opacity`,
-          step: 0.01,
-        },
-      ] as const as
-        { label, color_prop, opacity_prop, step }
-        (label)
-      }
+      {#each [{ label: `Edge color`, color_prop: `cell_edge_color`, opacity_prop: `cell_edge_opacity`, step: 0.05 }, { label: `Surface color`, color_prop: `cell_surface_color`, opacity_prop: `cell_surface_opacity`, step: 0.01 }] as const as { label, color_prop, opacity_prop, step } (label)}
         <div class="pane-row">
           <label>
             {label}
-            <input
-              type="color"
-              bind:value={lattice_props[color_prop]}
-            />
+            <input type="color" bind:value={lattice_props[color_prop]} />
           </label>
           <NumberRangeInput min={0} max={1} {step} bind:value={lattice_props[opacity_prop]}>
             opacity
@@ -1047,14 +1002,16 @@
       step={0.01}
       bind:value={scene_props.directional_light}
       title={SETTINGS_CONFIG.structure.directional_light.description}
-    >Directional light</NumberRangeInput>
+      >Directional light</NumberRangeInput
+    >
     <NumberRangeInput
       min={0.5}
       max={3}
       step={0.05}
       bind:value={scene_props.ambient_light}
       title={SETTINGS_CONFIG.structure.ambient_light.description}
-    >Ambient light</NumberRangeInput>
+      >Ambient light</NumberRangeInput
+    >
   </SettingsSection>
 
   {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
@@ -1077,12 +1034,7 @@
     >
       <label>
         Strategy <select bind:value={scene_props.bonding_strategy}>
-          {#each Object.entries(
-            SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
-          ) as
-            [value, label]
-            (value)
-          }
+          {#each Object.entries(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}) as [value, label] (value)}
             <option {value}>{label}</option>
           {/each}
         </select>
@@ -1096,15 +1048,12 @@
       </label>
       {#if scene_props.auto_bond_order}
         <label
-          {@attach tooltip({ content: SETTINGS_CONFIG.structure.aromatic_display.description })}
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.aromatic_display.description,
+          })}
         >
           Aromatic display <select bind:value={scene_props.aromatic_display}>
-            {#each Object.entries(
-              SETTINGS_CONFIG.structure.aromatic_display.enum ?? {},
-            ) as
-              [value, label]
-              (value)
-            }
+            {#each Object.entries(SETTINGS_CONFIG.structure.aromatic_display.enum ?? {}) as [value, label] (value)}
               <option {value}>{label}</option>
             {/each}
           </select>
@@ -1113,7 +1062,12 @@
       <label>
         Color <input type="color" bind:value={scene_props.bond_color} />
       </label>
-      <NumberRangeInput min={0.05} max={0.5} step={0.05} bind:value={scene_props.bond_thickness}>
+      <NumberRangeInput
+        min={0.05}
+        max={0.5}
+        step={0.05}
+        bind:value={scene_props.bond_thickness}
+      >
         Thickness
       </NumberRangeInput>
     </SettingsSection>
@@ -1156,19 +1110,15 @@
         step={0.05}
         bind:value={scene_props.polyhedra_opacity}
         title={SETTINGS_CONFIG.structure.polyhedra_opacity.description}
-      >Opacity</NumberRangeInput>
+        >Opacity</NumberRangeInput
+      >
       <label
         {@attach tooltip({
           content: SETTINGS_CONFIG.structure.polyhedra_color_mode.description,
         })}
       >
         Color <select bind:value={scene_props.polyhedra_color_mode}>
-          {#each Object.entries(
-            SETTINGS_CONFIG.structure.polyhedra_color_mode.enum ?? {},
-          ) as
-            [value, label]
-            (value)
-          }
+          {#each Object.entries(SETTINGS_CONFIG.structure.polyhedra_color_mode.enum ?? {}) as [value, label] (value)}
             <option {value}>{label}</option>
           {/each}
         </select>
@@ -1203,14 +1153,16 @@
         step={1}
         bind:value={scene_props.polyhedra_min_neighbors}
         title={SETTINGS_CONFIG.structure.polyhedra_min_neighbors.description}
-      >Min neighbors</NumberRangeInput>
+        >Min neighbors</NumberRangeInput
+      >
       <NumberRangeInput
         min={4}
         max={16}
         step={1}
         bind:value={scene_props.polyhedra_max_neighbors}
         title={SETTINGS_CONFIG.structure.polyhedra_max_neighbors.description}
-      >Max neighbors</NumberRangeInput>
+        >Max neighbors</NumberRangeInput
+      >
       {#if structure_elements.length > 0}
         <div
           style="display: flex; flex-wrap: wrap; gap: 8pt; align-items: center"

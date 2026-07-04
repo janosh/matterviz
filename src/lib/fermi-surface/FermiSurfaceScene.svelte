@@ -153,8 +153,8 @@
 
   // Filter surfaces based on selected bands
   let visible_surfaces = $derived(
-    fermi_data?.isosurfaces.filter((surface) =>
-      selected_bands === undefined || selected_bands.includes(surface.band_index)
+    fermi_data?.isosurfaces.filter(
+      (surface) => selected_bands === undefined || selected_bands.includes(surface.band_index),
     ) ?? [],
   )
 
@@ -218,9 +218,7 @@
     ) {
       const prop = surface.properties[vertex_idx]
       const [min_val, max_val] = property_range
-      const normalized = max_val > min_val
-        ? (prop - min_val) / (max_val - min_val)
-        : 0.5
+      const normalized = max_val > min_val ? (prop - min_val) / (max_val - min_val) : 0.5
       return get_d3_interpolator(color_scale as D3InterpolateName)(normalized)
     }
     // Spin coloring
@@ -240,8 +238,7 @@
     const normals: number[] = []
     const colors: number[] = []
 
-    const use_vertex_colors = color_property === `velocity` ||
-      color_property === `custom`
+    const use_vertex_colors = color_property === `velocity` || color_property === `custom`
 
     const n_vertices = surface.vertices.length
 
@@ -257,9 +254,12 @@
 
         // Validate face indices are within bounds (protects against malformed JSON files)
         if (
-          idx0 < 0 || idx0 >= n_vertices ||
-          idx1 < 0 || idx1 >= n_vertices ||
-          idx2 < 0 || idx2 >= n_vertices
+          idx0 < 0 ||
+          idx0 >= n_vertices ||
+          idx1 < 0 ||
+          idx1 >= n_vertices ||
+          idx2 < 0 ||
+          idx2 >= n_vertices
         ) {
           continue
         }
@@ -297,10 +297,7 @@
     }
 
     const geometry = new BufferGeometry()
-    geometry.setAttribute(
-      `position`,
-      new BufferAttribute(new Float32Array(positions), 3),
-    )
+    geometry.setAttribute(`position`, new BufferAttribute(new Float32Array(positions), 3))
     geometry.setAttribute(`normal`, new BufferAttribute(new Float32Array(normals), 3))
 
     if (use_vertex_colors) {
@@ -358,18 +355,20 @@
     camera_position || default_camera_position(scene_size),
   )
 
-  const orbit_controls_props = $derived(build_orbit_props({
-    camera_projection,
-    target: rotation_target,
-    rotate_speed,
-    zoom_speed,
-    zoom_to_cursor,
-    pan_speed,
-    max_zoom,
-    min_zoom,
-    auto_rotate,
-    rotation_damping,
-  }))
+  const orbit_controls_props = $derived(
+    build_orbit_props({
+      camera_projection,
+      target: rotation_target,
+      rotate_speed,
+      zoom_speed,
+      zoom_to_cursor,
+      pan_speed,
+      max_zoom,
+      min_zoom,
+      auto_rotate,
+      rotation_damping,
+    }),
+  )
 
   // Create BZ geometry
   const bz_geometry = $derived(
@@ -423,11 +422,7 @@
     let [min_dist, nearest_idx] = [Infinity, 0]
     for (let idx = 0; idx < surface.vertices.length; idx++) {
       const vertex = surface.vertices[idx]
-      const dist = Math.hypot(
-        point[0] - vertex[0],
-        point[1] - vertex[1],
-        point[2] - vertex[2],
-      )
+      const dist = Math.hypot(point[0] - vertex[0], point[1] - vertex[1], point[2] - vertex[2])
       if (dist < min_dist) {
         min_dist = dist
         nearest_idx = idx
@@ -459,9 +454,8 @@
     const nearest_idx = find_nearest_vertex(surface, local_position)
     const property_value = surface.properties?.[nearest_idx]
     const has_velocities = fermi_data?.metadata?.has_velocities
-    const property_name = property_value != null
-      ? (has_velocities ? `velocity` : `custom`)
-      : undefined
+    const property_name =
+      property_value != null ? (has_velocities ? `velocity` : `custom`) : undefined
 
     const { clientX, clientY } = event.nativeEvent
     return {
@@ -533,19 +527,11 @@
 
   <!-- Reciprocal lattice vectors -->
   {#if show_vectors && fermi_data?.k_lattice}
-    <ReciprocalVectors
-      k_lattice={fermi_data.k_lattice}
-      {vector_scale}
-      size={scene_size}
-    />
+    <ReciprocalVectors k_lattice={fermi_data.k_lattice} {vector_scale} size={scene_size} />
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->
-  {#each visible_surfaces as
-    surface,
-    surface_idx
-    (`surface-${surface.band_index}-${surface.spin}-${surface_idx}`)
-  }
+  {#each visible_surfaces as surface, surface_idx (`surface-${surface.band_index}-${surface.spin}-${surface_idx}`)}
     {@const geo_key = `${surface.band_index}-${surface.spin}-${surface_idx}`}
     {@const geo_data = geometry_cache.get(geo_key)}
     {@const surface_color = get_surface_color(surface)}
@@ -562,7 +548,7 @@
             matrixAutoUpdate={false}
             {renderOrder}
             onpointermove={(event: ThreltePointerEvent) =>
-            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
             onpointerleave={clear_hover}
           >
             <T.MeshBasicMaterial
@@ -583,7 +569,7 @@
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2}
             onpointermove={(event: ThreltePointerEvent) =>
-            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
             onpointerleave={clear_hover}
           >
             <T.MeshStandardMaterial
@@ -600,16 +586,11 @@
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2 + 1}
             onpointermove={(event: ThreltePointerEvent) =>
-            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
             onpointerleave={clear_hover}
           >
             <T.MeshStandardMaterial
-              {...get_material_props(
-                surface_color,
-                use_vertex_colors,
-                surface_idx,
-                `front`,
-              )}
+              {...get_material_props(surface_color, use_vertex_colors, surface_idx, `front`)}
               metalness={0.1}
               roughness={0.6}
               flatShading={false}
@@ -623,16 +604,11 @@
             matrixAutoUpdate={false}
             {renderOrder}
             onpointermove={(event: ThreltePointerEvent) =>
-            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
             onpointerleave={clear_hover}
           >
             <T.MeshStandardMaterial
-              {...get_material_props(
-                surface_color,
-                use_vertex_colors,
-                surface_idx,
-                `front`,
-              )}
+              {...get_material_props(surface_color, use_vertex_colors, surface_idx, `front`)}
               metalness={0.1}
               roughness={0.6}
               flatShading={false}

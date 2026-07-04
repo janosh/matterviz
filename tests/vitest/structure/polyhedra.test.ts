@@ -204,27 +204,16 @@ describe(`convex_hull_3d`, () => {
         const verts = face_verts(hull, face)
         const normal = tri_normal(verts)
         // face normal points away from the centroid
-        expect(
-          dot(
-            normal,
-            add_vec(
-              verts[0],
-              centroid.map((coord) => -coord),
-            ),
-          ),
-        ).toBeGreaterThan(0)
+        const centroid_to_vert = add_vec(
+          verts[0],
+          centroid.map((coord) => -coord),
+        )
+        expect(dot(normal, centroid_to_vert)).toBeGreaterThan(0)
         // every input point is inside or on the hull (within eps of each face plane)
         const norm_len = Math.hypot(...normal)
+        const neg_vert = verts[0].map((coord) => -coord) as Vec3
         for (const point of points) {
-          expect(
-            dot(
-              normal,
-              add_vec(
-                point,
-                verts[0].map((coord) => -coord),
-              ),
-            ) / norm_len,
-          ).toBeLessThan(1e-6)
+          expect(dot(normal, add_vec(point, neg_vert)) / norm_len).toBeLessThan(1e-6)
         }
       }
     }
@@ -386,6 +375,16 @@ describe(`compute_polyhedra`, () => {
   test(`empty inputs return no polyhedra`, () => {
     expect(compute_polyhedra(make_nacl_cluster(), [])).toHaveLength(0)
     expect(compute_polyhedra({ sites: [] }, octahedral_bonds)).toHaveLength(0)
+  })
+
+  test(`recomputes when same structure coordinates mutate`, () => {
+    const structure = make_nacl_cluster()
+    expect(compute_polyhedra(structure, octahedral_bonds)).toHaveLength(1)
+
+    structure.sites[1].xyz = [100, 100, 100] as Vec3
+    structure.sites[2].xyz = [-100, -100, -100] as Vec3
+    structure.sites[3].xyz = [100, -100, 100] as Vec3
+    expect(compute_polyhedra(structure, octahedral_bonds)).toHaveLength(0)
   })
 
   test(`performance: 10x10x10 rocksalt supercell (8000 sites) stays fast`, () => {

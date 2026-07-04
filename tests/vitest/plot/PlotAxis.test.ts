@@ -89,10 +89,10 @@ describe(`PlotAxis`, () => {
   )
 
   test.each([
-    [`x` as Side, { y1: `-60`, y2: `0` }],
-    [`x2` as Side, { y1: `0`, y2: `${plot_h}` }],
-    [`y` as Side, { x1: `0`, x2: `${plot_w}` }],
-    [`y2` as Side, { x1: `${-plot_w}`, x2: `0` }],
+    [`x`, { y1: `-60`, y2: `0` }],
+    [`x2`, { y1: `0`, y2: `${plot_h}` }],
+    [`y`, { x1: `0`, x2: `${plot_w}` }],
+    [`y2`, { x1: `${-plot_w}`, x2: `0` }],
   ])(`%s axis: grid line spans plot when show_grid`, async (side, expected) => {
     const svg = await mount_axis({ side, ticks: [50], show_grid: true })
     const lines = query(svg, `g.tick`).querySelectorAll(`line`)
@@ -178,6 +178,20 @@ describe(`PlotAxis`, () => {
     expect(no_coords.querySelector(`.axis-label`)).toBeNull()
   })
 
+  test(`renders static rotated y-axis label as SVG text`, async () => {
+    const svg = await mount_axis({
+      side: `y`,
+      ticks: [50],
+      axis: { label: `Energy` },
+      label_x: 20,
+      label_y: 50,
+    })
+    const label = query(svg, `.axis-label.y-label`)
+    expect(label.tagName.toLowerCase()).toBe(`text`)
+    expect(label.closest(`foreignObject`)).toBeNull()
+    expect(label.parentElement?.getAttribute(`transform`)).toBe(`rotate(-90, 20, 50)`)
+  })
+
   // Regression guard: AxisLabel offsets its foreignObject by `-width/2` and sets its width to the
   // same value, so the (CSS-centered) label content always lands on label_x — even when PlotAxis
   // grows the container to plot_w (> the 200px default). A wider plot must NOT push the label
@@ -208,8 +222,8 @@ describe(`PlotAxis`, () => {
 
   // Regression guard: x and x2 rotate their tick labels to opposite anchors.
   test.each([
-    [`x` as Side, `start`],
-    [`x2` as Side, `end`],
+    [`x`, `start`],
+    [`x2`, `end`],
   ])(`%s rotated tick label anchors to %s`, async (side, anchor) => {
     const svg = await mount_axis({
       side,

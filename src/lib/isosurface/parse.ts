@@ -10,6 +10,7 @@ import type { Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { ParsedStructure } from '$lib/structure/parse'
 import { make_site } from '$lib/structure/site'
+import { parse_leading_num } from '$lib/utils'
 import type { DataRange, VolumetricData, VolumetricFileData } from './types'
 
 // Bohr radius in Angstroms (for Gaussian .cube unit conversion)
@@ -220,7 +221,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
   // Line 1: scale factor
   cur = read_line(content, pos)
-  const scale_factor = parseFloat(cur.line)
+  const scale_factor = parse_leading_num(cur.line)
   if (isNaN(scale_factor)) {
     vol_error(`Invalid scaling factor in CHGCAR`)
     return null
@@ -250,8 +251,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   }
 
   // Detect VASP 5+ format (has element symbols before counts)
-  const first_token = cur.line.trim().split(/\s+/)[0]
-  const has_element_symbols = isNaN(parseInt(first_token, 10))
+  const has_element_symbols = isNaN(parse_leading_num(cur.line))
 
   if (has_element_symbols) {
     element_symbols = cur.line.trim().split(/\s+/)
@@ -641,7 +641,7 @@ export function parse_volumetric_file(
   // CHGCAR detection: requires POSCAR-like header (scale factor on line 2) AND
   // a grid dimensions line (3 integers) somewhere after the header. This distinguishes
   // CHGCAR from plain POSCAR/CONTCAR files which share the same header format.
-  if (lines.length > 2 && !isNaN(parseFloat(lines[1].trim()))) {
+  if (lines.length > 2 && !isNaN(parse_leading_num(lines[1]))) {
     // Scan for grid dimensions line (3 integers) starting from ~line 7
     let scan_pos = find_line_offset(content, 7)
     // Only scan a limited window, not the entire file

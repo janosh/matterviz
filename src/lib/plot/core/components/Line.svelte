@@ -56,7 +56,10 @@
   let ymin = $derived(origin[1] ?? min(points.map((point) => point[1])))
   // Guard against NaN/Infinity in area_path coords (can happen during scale transitions)
   let area_path = $derived(
-    show_area && line_path && isFinite(x_min ?? NaN) && isFinite(x_max ?? NaN) &&
+    show_area &&
+      line_path &&
+      isFinite(x_min ?? NaN) &&
+      isFinite(x_max ?? NaN) &&
       isFinite(ymin ?? NaN)
       ? `${line_path}L${x_max},${ymin}L${x_min},${ymin}Z`
       : ``,
@@ -88,9 +91,7 @@
   })
 
   let line_d = $derived(tween_disabled ? line_path : tweened_line.current)
-  let area_d = $derived(
-    show_area ? (tween_disabled ? area_path : tweened_area.current) : ``,
-  )
+  let area_d = $derived(show_area ? (tween_disabled ? area_path : tweened_area.current) : ``)
 </script>
 
 <path

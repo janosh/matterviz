@@ -6,16 +6,17 @@ import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { is_elem_symbol } from '$lib/element'
 import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { parse_leading_num } from '$lib/utils'
 
 // Parse the 7-line XDATCAR header at lines[start]: title, scale factor, 3 lattice rows
 // (multiplied by scale), element names, element counts
 function parse_xdatcar_header(lines: string[], start: number) {
-  const scale = parseFloat(lines[start + 1])
+  const scale = parse_leading_num(lines[start + 1])
   const rows = lines.slice(start + 2, start + 5).map((line) =>
     line
       .trim()
       .split(/\s+/)
-      .map((val) => parseFloat(val) * scale),
+      .map((val) => Number(val) * scale),
   )
   const names = lines[start + 5].trim().split(/\s+/)
   const counts = lines[start + 6].trim().split(/\s+/).map(Number)
@@ -47,9 +48,10 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
   }
   const bad_element = element_names.find((name) => !is_elem_symbol(name))
   if (bad_element) throw new Error(`Invalid element symbol in XDATCAR: ${bad_element}`)
-  let elements: ElementSymbol[] = element_names.flatMap((name, idx) =>
-    Array(element_counts[idx]).fill(name),
-  )
+  // "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl]
+  const expand_element_counts = (names: string[], counts: number[]): ElementSymbol[] =>
+    names.flatMap((name, idx) => Array(counts[idx]).fill(name))
+  let elements = expand_element_counts(element_names, element_counts)
 
   const frames: TrajectoryFrame[] = []
   let line_idx = 7
@@ -75,7 +77,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
           hdr.names.every(is_elem_symbol) &&
           hdr.counts.every((count) => Number.isInteger(count) && count > 0)
         ) {
-          elements = hdr.names.flatMap((name, idx) => Array(hdr.counts[idx]).fill(name))
+          elements = expand_element_counts(hdr.names, hdr.counts)
         }
       }
     }
@@ -83,7 +85,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     const config_line = lines[config_idx]
     line_idx = config_idx + 1
     const step_match = /configuration=\s*(?<step>\d+)/.exec(config_line)
-    const step = step_match ? parseInt(step_match[1], 10) : frames.length + 1
+    const step = step_match ? Math.trunc(Number(step_match[1])) : frames.length + 1
 
     const positions = []
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {

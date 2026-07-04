@@ -26,18 +26,18 @@
 
   let cmd_palette_open = $state(false)
 
-  $effect(() => { // Apply theme changes when mode changes (after SSR)
+  $effect(() => {
+    // Apply theme changes when mode changes (after SSR)
     if (typeof window !== `undefined`) apply_theme_to_dom(theme_state.mode)
   })
 
-  $effect(() => { // Update system preference when it changes
+  $effect(() => {
+    // Update system preference when it changes
     if (typeof window !== `undefined`) {
       const media_query = window.matchMedia(`(prefers-color-scheme: dark)`)
 
       const update_system_mode = () => {
-        const new_preference = media_query.matches
-          ? COLOR_THEMES.dark
-          : COLOR_THEMES.light
+        const new_preference = media_query.matches ? COLOR_THEMES.dark : COLOR_THEMES.light
         theme_state.system_mode = new_preference
 
         // If user is on auto mode, update the theme
@@ -82,19 +82,13 @@
   portal={{ active: true }}
   ulOptionsStyle="z-index: var(--z-index-overlay-options)"
 />
-<GitHubCorner
-  href={pkg.repository}
-  --github-corner-bg-hover="var(--github-corner-bg-hover)"
-/>
+<GitHubCorner href={pkg.repository} --github-corner-bg-hover="var(--github-corner-bg-hover)" />
 <CopyButton global class="copy-btn" />
 
 <ThemeControl />
 
 <Nav
-  routes={[
-    [`/`, `Home`],
-    ...nav_routes,
-  ]}
+  routes={[[`/`, `Home`], ...nav_routes]}
   labels={{
     '/how-to/hook-up-to-external-api': `Hook up to external API`,
     '/how-to/use-without-svelte': `Use without Svelte`,

@@ -660,7 +660,7 @@ export interface PlotControlsProps extends PlotConfig {
 // Base props shared across plot components (non-bindable props only)
 // Components should declare x_axis, y_axis, display, etc. as $bindable() grouped configs
 export interface BasePlotProps {
-  range_padding?: number // Factor to pad auto-detected ranges before nicing (e.g. 0.05 = 5%)
+  range_padding?: number // Factor to pad auto-detected ranges before nicing (default 0)
   padding?: Sides
   // State
   hovered?: boolean

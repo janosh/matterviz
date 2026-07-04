@@ -5,7 +5,7 @@ import type { AxisConfig } from '$lib/plot/core/types'
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Default gap between tick labels and axis labels
-export const LABEL_GAP_DEFAULT = 30
+export const LABEL_GAP_DEFAULT = 20
 
 // Default plot padding (px) reserved for axis ticks/labels, shared by
 // Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
@@ -31,11 +31,10 @@ export function y2_axis_label_x(
 export const filter_padding = (
   padding: Partial<Sides> | undefined | null,
   defaults: Required<Sides>,
-): Required<Sides> =>
-  ({
-    ...defaults,
-    ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, v]) => v !== undefined)),
-  }) as Required<Sides>
+): Required<Sides> => ({
+  ...defaults,
+  ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, v]) => v !== undefined)),
+})
 
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
@@ -92,6 +91,8 @@ export const measure_max_tick_width = (ticks: (string | number)[], format: strin
 export const TICK_LABEL_HEIGHT = 16
 // Estimated height of an axis label (font-size ~14px + margin)
 export const AXIS_LABEL_HEIGHT = 20
+// Distance from an x/x2 axis baseline to the title center.
+export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
 export const calc_auto_padding = ({
   padding,
@@ -372,9 +373,9 @@ export function compute_element_placement(
       : 0
 
   // Precompute plot corners (constant across all candidates)
-  const plot_left = plot_bounds.x + axis_clearance
+  const plot_left = valid_x_min
   const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
-  const plot_top = plot_bounds.y + axis_clearance
+  const plot_top = valid_y_min
   const plot_bottom = plot_bounds.y + plot_bounds.height - axis_clearance
   const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
 

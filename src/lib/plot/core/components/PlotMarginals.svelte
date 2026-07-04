@@ -92,8 +92,19 @@
   // `config.tooltip` snippet overrides this default content.
   const tip = $derived.by(() => {
     if (!hovered) return null
-    const { kind, config, color, format, pos, pos0, pos1, pos_label, value, label, axis_title } =
-      hovered
+    const {
+      kind,
+      config,
+      color,
+      format,
+      pos,
+      pos0,
+      pos1,
+      pos_label,
+      value,
+      label,
+      axis_title,
+    } = hovered
     const bg_color = color.trim().toLowerCase() === `currentcolor` ? null : color
     const pos_fmt = format || `.3~g`
     // Position row = `<axis title>: <value>`. The title uses the host axis's markup convention
@@ -101,13 +112,22 @@
     // text (matches how tick labels render, so a literal `<` in a bin label isn't mangled). `||`
     // (not `??`) so an empty/whitespace axis title falls back to the generic `range`/`pos` label.
     const head_label = sanitize_html(axis_title?.trim() || (kind === `bars` ? `range` : `pos`))
-    const head_value = kind === `bars`
-      ? `${format_value(pos0 ?? pos, pos_fmt)}–${format_value(pos1 ?? pos, pos_fmt)}`
-      : pos_label ?? format_value(pos, pos_fmt)
-    const value_row = kind === `rug`
-      ? null
-      : `${default_marginal_label(config)}: ${format_value(value ?? 0, marginal_value_format(config))}`
-    return { bg_color, snippet: config.tooltip, label, head_label, head_value, value: value_row }
+    const head_value =
+      kind === `bars`
+        ? `${format_value(pos0 ?? pos, pos_fmt)}–${format_value(pos1 ?? pos, pos_fmt)}`
+        : (pos_label ?? format_value(pos, pos_fmt))
+    const value_row =
+      kind === `rug`
+        ? null
+        : `${default_marginal_label(config)}: ${format_value(value ?? 0, marginal_value_format(config))}`
+    return {
+      bg_color,
+      snippet: config.tooltip,
+      label,
+      head_label,
+      head_value,
+      value: value_row,
+    }
   })
 
   type RugMark = { x1: number; y1: number; x2: number; y2: number }
@@ -234,9 +254,12 @@
       base.fill_opacity = config.fill_opacity ?? 0.5
       // For monotone, the monotonic axis is the position axis: x for top/bottom, y for left/right
       const curve_name = config.curve ?? `monotone`
-      const curve_fn = curve_name === `monotone`
-        ? (is_x ? curveMonotoneX : curveMonotoneY)
-        : line_curve_factory(curve_name)
+      const curve_fn =
+        curve_name === `monotone`
+          ? is_x
+            ? curveMonotoneX
+            : curveMonotoneY
+          : line_curve_factory(curve_name)
       // Position maps to x for top/bottom strips and to y for left/right strips; value is the
       // cross-axis. The line generator is symmetric; the area differs only in which axis baselines.
       const px = (pt: LinePt) => (is_x ? pos_scale(pt.pos) : val_scale(pt.value))
@@ -262,7 +285,7 @@
       .map((px) =>
         is_x
           ? { x1: px, y1: baseline, x2: px, y2: baseline + dir * rug_len }
-          : { x1: baseline, y1: px, x2: baseline + dir * rug_len, y2: px }
+          : { x1: baseline, y1: px, x2: baseline + dir * rug_len, y2: px },
       )
     // rug ticks are unfilled lines, so `opacity` (already config.opacity in base) controls them
     return base
@@ -342,14 +365,17 @@
       // Only summarize series that render on the axis this side binds to (a top/x1 marginal
       // ignores x2 series; a right/y1 marginal ignores y2 series)
       const axis_series = visible.filter((srs) =>
-        is_x ? (srs.x_axis ?? `x1`) === axis : (srs.y_axis ?? `y1`) === axis
+        is_x ? (srs.x_axis ?? `x1`) === axis : (srs.y_axis ?? `y1`) === axis,
       )
       const merged_color = config.color ?? axis_series[0]?.color ?? `currentColor`
       // One combined curve (for reduce / data / merged), colored once
       const single = (curve: MarginalCurve): MarginalSeriesCurve[] => [
         { series_idx: -1, color: merged_color, curve },
       ]
-      const compute = (pos: ArrayLike<number>, wts: ArrayLike<number> | undefined): MarginalCurve =>
+      const compute = (
+        pos: ArrayLike<number>,
+        wts: ArrayLike<number> | undefined,
+      ): MarginalCurve =>
         compute_marginal_curve(pos, wts, config, positional_range, scale_type)
 
       // Resolve which curves to draw (precedence: reduce > data > per-series > merged)
@@ -363,7 +389,12 @@
       } else if (config.per_series) {
         curves = axis_series.map((srs, idx) => {
           const { positions, weights } = series_values(srs, is_x)
-          return { series_idx: idx, color: srs.color, label: srs.label, curve: compute(positions, weights) }
+          return {
+            series_idx: idx,
+            color: srs.color,
+            label: srs.label,
+            curve: compute(positions, weights),
+          }
         })
       } else {
         const { positions, weights } = merge_values(axis_series, is_x)
@@ -400,14 +431,15 @@
         curves: config.snippet
           ? []
           : curves.map((curve) =>
-            build_curve_render(curve, side, is_x, pos_scale, val_scale, baseline, config)
-          ),
+              build_curve_render(curve, side, is_x, pos_scale, val_scale, baseline, config),
+            ),
         // Value axis only when there's something to scale: a pinned value_range, or positive
         // non-rug content (max > 0). This skips rug (no value), empty curves (degenerate [0,0]
         // domain), and snippets (which draw their own).
-        value_axis: config.value_axis && !config.snippet && (config.value_range != null || max > 0)
-          ? build_value_axis(is_x, rect, val_scale, domain, config)
-          : null,
+        value_axis:
+          config.value_axis && !config.snippet && (config.value_range != null || max > 0)
+            ? build_value_axis(is_x, rect, val_scale, domain, config)
+            : null,
       })
     }
     return out
@@ -490,8 +522,8 @@
           x={tick.x}
           y={tick.y}
           text-anchor={value_axis.anchor}
-          dominant-baseline={value_axis.baseline}
-        >{tick.text}</text>
+          dominant-baseline={value_axis.baseline}>{tick.text}</text
+        >
       {/each}
       {#if value_axis.title.text}
         <text
@@ -500,8 +532,8 @@
           y={value_axis.title.y}
           text-anchor="middle"
           dominant-baseline="central"
-          transform={value_axis.title.transform}
-        >{value_axis.title.text}</text>
+          transform={value_axis.title.transform}>{value_axis.title.text}</text
+        >
       {/if}
     </g>
   {/if}
@@ -537,7 +569,11 @@
      some strip is actually hoverable (skips the empty portal on plots with no/snippet marginals). -->
 {#if side_renders.some((render) => is_hoverable(render.config))}
   <foreignObject width="0" height="0" style="overflow: visible">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="display: contents" {@attach portal_to_wrapper}>
+    <div
+      xmlns="http://www.w3.org/1999/xhtml"
+      style="display: contents"
+      {@attach portal_to_wrapper}
+    >
       {#if hovered && tip}
         <PlotTooltip
           x={hovered.x}
@@ -553,8 +589,8 @@
             <!-- contiguous (no source whitespace) so rows don't pick up stray leading spaces;
                  head_label is pre-sanitized @html so an axis title with markup renders, while the
                  value/category portion stays literal text -->
-            {#if tip.label}<strong>{tip.label}</strong><br
-              />{/if}{@html tip.head_label}: {tip.head_value}{#if tip.value}<br />{tip.value}{/if}
+            {#if tip.label}<strong>{tip.label}</strong><br />{/if}{@html tip.head_label}: {tip.head_value}{#if tip.value}<br
+              />{tip.value}{/if}
           {/if}
         </PlotTooltip>
       {/if}

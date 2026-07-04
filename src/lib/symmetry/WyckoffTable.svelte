@@ -39,9 +39,9 @@
     const occupied_letters = new SvelteSet(rows.map((row) => wyckoff_letter(row.wyckoff)))
     return db_positions
       .filter((pos) => !occupied_letters.has(pos.letter))
-      .toSorted((pos_1, pos_2) =>
-        pos_1.multiplicity - pos_2.multiplicity ||
-        pos_1.letter.localeCompare(pos_2.letter)
+      .toSorted(
+        (pos_1, pos_2) =>
+          pos_1.multiplicity - pos_2.multiplicity || pos_1.letter.localeCompare(pos_2.letter),
       )
   })
   const has_ita_coords = $derived(
@@ -68,26 +68,7 @@
   <table {...rest} class={[`wyckoff-table`, rest.class]}>
     <thead>
       <tr>
-        {#each [
-          [`Wyckoff`, `Wyckoff position: Multiplicity + Letter`],
-          [`Element`, `Chemical element symbol`],
-          [`Fractional Coords`, `Fractional coordinates within the unit cell`],
-          ...(has_ita_coords
-          ? [[
-            `ITA Coords`,
-            `Representative coordinates from the International Tables: x/y/z mark free parameters, fractions mark symmetry-fixed coordinates`,
-          ]]
-          : []),
-          ...(has_site_symmetry
-          ? [[
-            `Site Symm.`,
-            `Site symmetry: point group of operations leaving the site invariant`,
-          ]]
-          : []),
-        ] as
-          [col, title]
-          (col)
-        }
+        {#each [[`Wyckoff`, `Wyckoff position: Multiplicity + Letter`], [`Element`, `Chemical element symbol`], [`Fractional Coords`, `Fractional coordinates within the unit cell`], ...(has_ita_coords ? [[`ITA Coords`, `Representative coordinates from the International Tables: x/y/z mark free parameters, fractions mark symmetry-fixed coordinates`]] : []), ...(has_site_symmetry ? [[`Site Symm.`, `Site symmetry: point group of operations leaving the site invariant`]] : [])] as [col, title] (col)}
           <th {title}>{col}</th>
         {/each}
       </tr>

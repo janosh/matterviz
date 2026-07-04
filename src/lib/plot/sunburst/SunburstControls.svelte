@@ -123,36 +123,32 @@
           {@render options(SETTINGS_CONFIG.sunburst.label_text.enum ?? {})}
         </select>
       </label>
-      <NumberRangeInput
-        min={0}
-        max={10}
-        step={1}
-        bind:value={max_depth}
-        style="flex: 1 1 100%"
-      >Max depth (0 = all):</NumberRangeInput>
+      <NumberRangeInput min={0} max={10} step={1} bind:value={max_depth} style="flex: 1 1 100%"
+        >Max depth (0 = all):</NumberRangeInput
+      >
       {#if shape === `sunburst`}
         <NumberRangeInput
           min={0}
           max={0.8}
           step={0.05}
           bind:value={inner_radius}
-          style="flex: 1 1 100%"
-        >Inner radius:</NumberRangeInput>
+          style="flex: 1 1 100%">Inner radius:</NumberRangeInput
+        >
         <NumberRangeInput
           min={0}
           max={4}
           step={0.1}
           bind:value={pad_angle}
-          style="flex: 1 1 100%"
-        >Pad angle (°):</NumberRangeInput>
+          style="flex: 1 1 100%">Pad angle (°):</NumberRangeInput
+        >
       {/if}
       <NumberRangeInput
         min={0}
         max={0.2}
         step={0.005}
         bind:value={min_fraction}
-        style="flex: 1 1 100%"
-      >Group slices below (fraction of total):</NumberRangeInput>
+        style="flex: 1 1 100%">Group slices below (fraction of total):</NumberRangeInput
+      >
       <label style="flex: 1 1 100%">
         <input type="checkbox" bind:checked={show_labels} />
         Show arc labels
@@ -174,8 +170,8 @@
             type="button"
             class="export-btn"
             aria-label="Download {fmt.toUpperCase()}"
-            onclick={() => on_export?.(fmt)}
-          >{fmt.toUpperCase()}</button>
+            onclick={() => on_export?.(fmt)}>{fmt.toUpperCase()}</button
+          >
         {/each}
       </div>
     {/if}

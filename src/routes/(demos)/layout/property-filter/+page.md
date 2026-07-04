@@ -11,9 +11,8 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
   import { PropertyFilter } from 'matterviz'
 
   // Generate sample data
-  const bandgaps = Array.from(
-    { length: 400 },
-    () => Math.abs(Math.random() * 5 + Math.random() * 2 - 0.5),
+  const bandgaps = Array.from({ length: 400 }, () =>
+    Math.abs(Math.random() * 5 + Math.random() * 2 - 0.5),
   )
 
   let min = $state<number>()
@@ -29,8 +28,9 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
   }
 
   const filtered_count = $derived(
-    bandgaps.filter((bandgap) =>
-      (min === undefined || bandgap >= min) && (max === undefined || bandgap <= max)
+    bandgaps.filter(
+      (bandgap) =>
+        (min === undefined || bandgap >= min) && (max === undefined || bandgap <= max),
     ).length,
   )
 </script>
@@ -51,13 +51,11 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
   onclear={() => log_event(`clear`)}
 />
 
-<div
-  style="display: flex; justify-content: space-between; margin-top: 8pt; font-size: 0.85em"
->
+<div style="display: flex; justify-content: space-between; margin-top: 8pt; font-size: 0.85em">
   <span><strong>{filtered_count}</strong> of {bandgaps.length} materials in range</span>
-  <span style="opacity: 0.6; font-family: monospace">{
-    events[events.length - 1] || `No events yet`
-  }</span>
+  <span style="opacity: 0.6; font-family: monospace"
+    >{events[events.length - 1] || `No events yet`}</span
+  >
 </div>
 ```
 
@@ -154,13 +152,7 @@ Filter materials by multiple properties simultaneously:
   )
 
   function clear_all() {
-    bg_min =
-      bg_max =
-      e_min =
-      e_max =
-      v_min =
-      v_max =
-        undefined
+    bg_min = bg_max = e_min = e_max = v_min = v_max = undefined
   }
 </script>
 
@@ -197,9 +189,7 @@ Filter materials by multiple properties simultaneously:
   style="display: flex; justify-content: space-between; align-items: center; margin-top: 1em; padding-top: 1em; border-top: 1px solid rgba(128, 128, 128, 0.2)"
 >
   <span><strong>~{total}</strong> of {n_mats} materials match all filters</span>
-  <button onclick={clear_all} style="font-size: 0.85em; padding: 6pt 12pt">
-    Clear all
-  </button>
+  <button onclick={clear_all} style="font-size: 0.85em; padding: 6pt 12pt"> Clear all </button>
 </div>
 ```
 
@@ -226,9 +216,10 @@ Filter and display a materials table:
   let bg_max = $state()
 
   const filtered = $derived(
-    materials.filter((mat) =>
-      (bg_min === undefined || mat.bandgap >= bg_min) &&
-      (bg_max === undefined || mat.bandgap <= bg_max)
+    materials.filter(
+      (mat) =>
+        (bg_min === undefined || mat.bandgap >= bg_min) &&
+        (bg_max === undefined || mat.bandgap <= bg_max),
     ),
   )
 </script>

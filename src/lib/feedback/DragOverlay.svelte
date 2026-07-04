@@ -2,7 +2,11 @@
   import Icon from '$lib/Icon.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { visible = false, message = `Drop file to load`, ...rest }: {
+  let {
+    visible = false,
+    message = `Drop file to load`,
+    ...rest
+  }: {
     visible?: boolean
     message?: string
   } & HTMLAttributes<HTMLDivElement> = $props()

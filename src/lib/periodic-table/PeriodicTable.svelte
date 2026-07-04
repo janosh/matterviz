@@ -57,9 +57,7 @@
     // array (positional by atomic number, can be partial) or object keyed by element symbol.
     // each value is a single number/color or an array of 1-4 numbers/colors for multi-segment
     // tiles. null/omitted -> missing (uses the `missing` fallback); 0 is a real value
-    heatmap_values?:
-      | Partial<Record<ElementSymbol, HeatValue | null>>
-      | (HeatValue | null)[]
+    heatmap_values?: Partial<Record<ElementSymbol, HeatValue | null>> | (HeatValue | null)[]
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
     links?: keyof ChemicalElement | Record<ElementSymbol, string> | null
@@ -93,16 +91,16 @@
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
       | Snippet<
-        [
-          {
-            element: ChemicalElement
-            value: HeatValue | null
-            active: boolean
-            bg_color: string | null
-            scale_context: ScaleContext
-          },
-        ]
-      >
+          [
+            {
+              element: ChemicalElement
+              value: HeatValue | null
+              active: boolean
+              bg_color: string | null
+              scale_context: ScaleContext
+            },
+          ]
+        >
       | boolean
     children?: Snippet
     onenter?: (element: ChemicalElement) => void
@@ -116,7 +114,8 @@
             `each element possibly omitting elements at the end, got ${heatmap_values.length}`,
         )
         return []
-      }return heatmap_values
+      }
+      return heatmap_values
     } else if (typeof heatmap_values === `object`) {
       const bad_keys = Object.keys(heatmap_values).filter(
         (key) => !ELEM_SYMBOLS.includes(key as ElementSymbol),
@@ -162,14 +161,11 @@
       ArrowDown: row === 6 && in_f_block ? 9 : row === 7 && in_f_block ? 10 : row + 1,
     }
     const target_row = row_map[event.key] ?? row
-    const target_col = event.key === `ArrowLeft`
-      ? col - 1
-      : event.key === `ArrowRight`
-      ? col + 1
-      : col
+    const target_col =
+      event.key === `ArrowLeft` ? col - 1 : event.key === `ArrowRight` ? col + 1 : col
     active_element =
       element_data.find((el) => el.column === target_col && el.row === target_row) ??
-        active_element
+      active_element
   }
 
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent) {
@@ -194,16 +190,17 @@
 
   // finite numeric heat value (numeric strings coerced; colors, null/false and non-finite
   // excluded so they can't poison the color-scale domain). null => not a mappable number
-  const to_heat_num = (
-    value: number | string | false | null | undefined,
-  ): number | null => {
+  const to_heat_num = (value: number | string | false | null | undefined): number | null => {
     if (value == null || value === false || is_color(value)) return null
     const num = Number(value)
     return Number.isFinite(num) ? num : null
   }
 
   let heat_nums = $derived(
-    heat_values.flat().map(to_heat_num).filter((num): num is number => num !== null),
+    heat_values
+      .flat()
+      .map(to_heat_num)
+      .filter((num): num is number => num !== null),
   )
   // values usable by the active scale (log excludes non-positive)
   let usable_heat_nums = $derived(log ? heat_nums.filter((num) => num > 0) : heat_nums)
@@ -263,9 +260,7 @@
     Array.isArray(value) ? value.map((val) => bg_color(val, element)) : []
 
   // Determine whether to automatically show the color bar
-  let should_show_color_bar = $derived(
-    show_color_bar && !inset && usable_heat_nums.length > 0,
-  )
+  let should_show_color_bar = $derived(show_color_bar && !inset && usable_heat_nums.length > 0)
 
   // Calculate heat range for color bar
   let heat_range = $derived.by((): Vec2 => {
@@ -300,26 +295,25 @@
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[element.number - 1]}
       {@const override = color_overrides[symbol]}
-      {@const tile_missing = heat_values.length > 0 && !override &&
-        value_is_missing(value)}
+      {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
       {@const is_active_elem = active_elements?.some((active_elem) =>
         typeof active_elem === `string`
           ? active_elem === symbol
-          : active_elem?.symbol === symbol
+          : active_elem?.symbol === symbol,
       )}
-      {@const active = active_category === category ||
-        active_element?.name === name || is_active_elem}
+      {@const active =
+        active_category === category || active_element?.name === name || is_active_elem}
       {@const style = `grid-column: ${column}; grid-row: ${row};${
         tile_props?.style ? ` ${tile_props.style}` : ``
       }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
       <ElementTile
         {element}
         href={links
-        ? typeof links == `string`
-          ? `/${element[links]}`.toLowerCase()
-          : links[symbol]
-        : undefined}
-        value={tile_missing ? undefined : value ?? undefined}
+          ? typeof links == `string`
+            ? `/${element[links]}`.toLowerCase()
+            : links[symbol]
+          : undefined}
+        value={tile_missing ? undefined : (value ?? undefined)}
         bg_color={override ?? bg_color(value, element) ?? undefined}
         bg_colors={!override && Array.isArray(value) ? bg_colors(value, element) : []}
         {active}
@@ -372,13 +366,12 @@
       {#if typeof tooltip == `function`}
         <div class="tooltip" {style}>
           {@render tooltip({
-          element: el,
-          value: tooltip_value ?? null,
-          active: active_category === el.category ||
-            active_element?.name === el.name,
-          bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
-          scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
-        })}
+            element: el,
+            value: tooltip_value ?? null,
+            active: active_category === el.category || active_element?.name === el.name,
+            bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
+            scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
+          })}
         </div>
       {:else if tooltip !== false}
         <div class="tooltip" {style}>
@@ -426,10 +419,7 @@
   .tooltip {
     position: absolute;
     transform: translate(-50%, -10%);
-    background: var(
-      --tooltip-bg,
-      light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85))
-    );
+    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     color: var(--tooltip-color, light-dark(#222, #eee));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));

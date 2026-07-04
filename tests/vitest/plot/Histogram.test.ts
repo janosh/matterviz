@@ -347,6 +347,6 @@ describe(`Histogram`, () => {
     const legend = document.querySelector<HTMLElement>(`.legend`)
     expect(legend).toBeInstanceOf(HTMLElement)
     // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
-    expect(parseFloat(legend?.style.top ?? `0`)).toBeGreaterThan(150)
+    expect(Number(legend?.style.top.replace(`px`, ``) ?? `0`)).toBeGreaterThan(150)
   })
 })

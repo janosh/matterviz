@@ -15,7 +15,11 @@
   } from './plot-utils'
   import type { PlotType, AxisMapping } from './plot-utils'
 
-  let { data, initial_type, onclose, }: {
+  let {
+    data,
+    initial_type,
+    onclose,
+  }: {
     data: unknown
     initial_type?: PlotType
     onclose?: () => void
@@ -223,7 +227,6 @@
             series={histogram_series}
             x_axis={{ label: mapping.x ?? mapping.y ?? `value` }}
             y_axis={{ label: `Count` }}
-            bins={30}
             style="height: 100%"
           />
         {:else if plot_type === `table`}

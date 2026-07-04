@@ -6,7 +6,7 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import { type ChartSegmentData, get_chart_font_scale } from './index'
+  import { chart_segment_label, type ChartSegmentData, get_chart_font_scale } from './index'
   import { fractional_composition } from './parse'
 
   type BarSegmentData = ChartSegmentData & {
@@ -66,13 +66,11 @@
   let svg_height = $derived(label_height + gap + bar_height + gap + label_height)
   let bar_y = $derived(label_height + gap)
   let above_labels_y = $derived(label_height / 2)
-  let below_labels_y = $derived(
-    label_height + gap + bar_height + gap + label_height / 2,
-  )
+  let below_labels_y = $derived(label_height + gap + bar_height + gap + label_height / 2)
 
   let segments = $derived.by(() => {
-    const element_entries = Object.entries(composition).filter(([_, amount]) =>
-      amount && amount > 0
+    const element_entries = Object.entries(composition).filter(
+      ([_, amount]) => amount && amount > 0,
     ) as [ElementSymbol, number][]
     if (element_entries.length === 0) return []
 
@@ -87,8 +85,13 @@
 
       const segment_size = Math.min(width, size)
       const base_scale = Math.min(2, Math.max(1, segment_size / 40))
-      const label_text = element + (show_amounts ? amount?.toString() ?? `` : ``) +
-        (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
+      const label_text = chart_segment_label(
+        element,
+        amount,
+        fraction,
+        show_amounts,
+        show_percentages,
+      )
       const font_scale = get_chart_font_scale(
         base_scale,
         label_text,
@@ -135,9 +138,9 @@
   </tspan>
   {#if show_amounts || show_percentages}
     <tspan class="amount" style:font-size="{6.5 * segment.font_scale}px" dx="1" dy="5">
-      {show_amounts ? segment.amount : ``}{show_amounts && show_percentages ? `=` : ``}{
-        show_percentages ? format_num(segment.fraction, `.1~%`) : ``
-      }
+      {show_amounts ? segment.amount : ``}{show_amounts && show_percentages
+        ? `=`
+        : ``}{show_percentages ? format_num(segment.fraction, `.1~%`) : ``}
     </tspan>
   {/if}
 {/snippet}
@@ -161,8 +164,7 @@
 
   <!-- External labels above -->
   {#each segments as segment (segment.element)}
-    {#if show_labels && segment.needs_external_label &&
-      segment.external_label_position === `above`}
+    {#if show_labels && segment.needs_external_label && segment.external_label_position === `above`}
       <text
         x={segment.label_x}
         y={above_labels_y}
@@ -205,20 +207,19 @@
         class:hovered={hovered_element === segment.element}
         onmouseenter={() => interactive && (hovered_element = segment.element)}
         onmouseleave={() => interactive && (hovered_element = null)}
-        {...(interactive
-        ? {
-          role: `button`,
-          tabindex: 0,
-          'aria-label': `${segment.element}: ${segment.amount} ${
-            segment.amount === 1 ? `atom` : `atoms`
-          } (${format_num(segment.fraction, `.1~%`)})`,
-        }
-        : {})}
+        {...interactive
+          ? {
+              role: `button`,
+              tabindex: 0,
+              'aria-label': `${segment.element}: ${segment.amount} ${
+                segment.amount === 1 ? `atom` : `atoms`
+              } (${format_num(segment.fraction, `.1~%`)})`,
+            }
+          : {}}
       >
         <title>
-          {segment.element}: {segment.amount} {segment.amount === 1 ? `atom` : `atoms`} ({
-            format_num(segment.fraction, `.1~%`)
-          })
+          {segment.element}: {segment.amount}
+          {segment.amount === 1 ? `atom` : `atoms`} ({format_num(segment.fraction, `.1~%`)})
         </title>
       </rect>
       {#if segment_content}
@@ -245,8 +246,7 @@
 
   <!-- External labels below -->
   {#each segments as segment (segment.element)}
-    {#if show_labels && segment.needs_external_label &&
-      segment.external_label_position === `below`}
+    {#if show_labels && segment.needs_external_label && segment.external_label_position === `below`}
       <text
         x={segment.label_x}
         y={below_labels_y}
@@ -274,18 +274,21 @@
   .bar-segment.interactive {
     cursor: pointer;
   }
-  .bar-segment.interactive:hover, .bar-segment.hovered {
+  .bar-segment.interactive:hover,
+  .bar-segment.hovered {
     filter: brightness(1.1);
   }
   .bar-segment.interactive:focus {
     outline: 2px solid var(--focus-color, #0066cc);
     outline-offset: 2px;
   }
-  .external-label, .bar-label {
+  .external-label,
+  .bar-label {
     transition: all 0.2s ease;
     pointer-events: none;
   }
-  .external-label.hovered, .bar-label.hovered {
+  .external-label.hovered,
+  .bar-label.hovered {
     font-weight: 700;
   }
   .element-symbol {

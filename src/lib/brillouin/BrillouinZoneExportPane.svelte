@@ -58,25 +58,29 @@
   const sections = $derived<ExportSection[]>([
     {
       title: `Export as image`,
-      items: [{
-        label: `PNG`,
-        disabled: !scene || !camera,
-        show_dpi: true,
-        on_download: export_as_png,
-      }],
+      items: [
+        {
+          label: `PNG`,
+          disabled: !scene || !camera,
+          show_dpi: true,
+          on_download: export_as_png,
+        },
+      ],
     },
     {
       title: `Export as data`,
       tooltip: `Includes vertices, faces, edges, and reciprocal lattice vectors`,
-      items: [{
-        label: `JSON`,
-        disabled: !bz_data,
-        on_download: export_as_json,
-        copy_text: () => {
-          const json_data = get_json_data()
-          return json_data ? JSON.stringify(json_data, null, 2) : null
+      items: [
+        {
+          label: `JSON`,
+          disabled: !bz_data,
+          on_download: export_as_json,
+          copy_text: () => {
+            const json_data = get_json_data()
+            return json_data ? JSON.stringify(json_data, null, 2) : null
+          },
         },
-      }],
+      ],
     },
   ])
 </script>

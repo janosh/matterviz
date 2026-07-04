@@ -7,7 +7,14 @@
   // The label text/markup is passed as children (supports inline units like <small>Å</small>).
   // Pass a `title` (via rest) to show a tooltip; wrapping <label> only names the number input
   // so range slider reuses that `title` as its accessible name.
-  let { value = $bindable(), min, max, step, children, ...rest }: {
+  let {
+    value = $bindable(),
+    min,
+    max,
+    step,
+    children,
+    ...rest
+  }: {
     value: number | undefined
     min: number | string
     max: number | string

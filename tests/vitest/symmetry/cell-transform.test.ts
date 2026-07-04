@@ -22,28 +22,27 @@ const make_moyo_cell = (
 })
 
 // Helper to create a mock MoyoDataset
-const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDataset =>
-  ({
-    std_cell,
-    prim_std_cell,
-    // Minimal required fields for MoyoDataset
-    number: 225,
-    hall_number: 523,
-    hm_symbol: `Fm-3m`,
-    operations: [],
-    orbits: [],
-    wyckoffs: [],
-    site_symmetry_symbols: [],
-    std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    std_origin_shift: [0, 0, 0],
-    std_rotation_matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    pearson_symbol: `cF8`,
-    prim_std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    prim_std_origin_shift: [0, 0, 0],
-    mapping_std_prim: [],
-    symprec: 1e-5,
-    angle_tolerance: { type: `Default` },
-  }) as MoyoDataset
+const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDataset => ({
+  std_cell,
+  prim_std_cell,
+  // Minimal required fields for MoyoDataset
+  number: 225,
+  hall_number: 523,
+  hm_symbol: `Fm-3m`,
+  operations: [],
+  orbits: [],
+  wyckoffs: [],
+  site_symmetry_symbols: [],
+  std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  std_origin_shift: [0, 0, 0],
+  std_rotation_matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  pearson_symbol: `cF8`,
+  prim_std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  prim_std_origin_shift: [0, 0, 0],
+  mapping_std_prim: [],
+  symprec: 1e-5,
+  angle_tolerance: { type: `Default` },
+})
 
 describe(`moyo_cell_to_structure`, () => {
   test(`converts cubic cell correctly`, () => {

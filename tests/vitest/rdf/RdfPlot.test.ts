@@ -2,9 +2,10 @@ import { RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
 import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
-import { type ComponentProps, createRawSnippet, mount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, resize_element } from '../setup'
+import RdfPlotHarness from './RdfPlotHarness.svelte'
 
 const nacl_structure = structure_map.get(`mp-1234`)
 const pd_structure = structure_map.get(`mp-2`)
@@ -125,6 +126,28 @@ describe(`RdfPlot`, () => {
     expect(plot.classList.contains(`custom-class`)).toBe(true)
     expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Custom X`)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Custom Y`)
+  })
+
+  test(`updates axis title when external axis props change`, async () => {
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    mount(RdfPlotHarness, {
+      target,
+      props: { pattern: create_synthetic_pattern() },
+    })
+    await tick()
+
+    let plot = target.querySelector<HTMLElement>(`.scatter`)
+    if (!plot) throw new Error(`RdfPlot root element not found`)
+    await resize_element(plot, 400, 300)
+    expect(target.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Initial r`)
+
+    target.querySelector<HTMLButtonElement>(`.change-rdf-axis`)?.click()
+    await tick()
+    plot = target.querySelector<HTMLElement>(`.scatter`)
+    if (!plot) throw new Error(`RdfPlot root element not found after axis change`)
+    await resize_element(plot, 400, 300)
+    expect(target.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Updated r`)
   })
 
   test(`children snippet`, () => {

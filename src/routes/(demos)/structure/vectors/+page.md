@@ -19,7 +19,11 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
   import { Structure } from 'matterviz'
 
   const fe_bcc = {
-    matrix: [[-1.435, 1.435, 1.435], [1.435, -1.435, 1.435], [1.435, 1.435, -1.435]],
+    matrix: [
+      [-1.435, 1.435, 1.435],
+      [1.435, -1.435, 1.435],
+      [1.435, 1.435, -1.435],
+    ],
     pbc: [true, true, true],
     a: 2.486,
     b: 2.486,
@@ -30,7 +34,11 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
     volume: 11.82,
   }
   const nacl = {
-    matrix: [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]],
+    matrix: [
+      [5.64, 0, 0],
+      [0, 5.64, 0],
+      [0, 0, 5.64],
+    ],
     pbc: [true, true, true],
     a: 5.64,
     b: 5.64,
@@ -41,7 +49,11 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
     volume: 179.41,
   }
   const tio2 = {
-    matrix: [[4.594, 0, 0], [0, 4.594, 0], [0, 0, 2.959]],
+    matrix: [
+      [4.594, 0, 0],
+      [0, 4.594, 0],
+      [0, 0, 2.959],
+    ],
     pbc: [true, true, true],
     a: 4.594,
     b: 4.594,
@@ -78,8 +90,7 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
     },
     {
       title: `Fe BCC — antiferromagnetic magmoms`,
-      desc:
-        `Scalar magmom ±2.2 μB along z, spin-direction coloring (red=up, blue=down)`,
+      desc: `Scalar magmom ±2.2 μB along z, spin-direction coloring (red=up, blue=down)`,
       structure: {
         lattice: fe_bcc,
         sites: [
@@ -125,8 +136,7 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
     },
     {
       title: `NaCl — ionic forces`,
-      desc:
-        `Forces on a rock-salt structure with different element colors per sublattice`,
+      desc: `Forces on a rock-salt structure with different element colors per sublattice`,
       structure: {
         lattice: nacl,
         sites: [
@@ -163,8 +173,7 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
     },
     {
       title: `TiO₂ rutile — force comparison`,
-      desc:
-        `force_DFT vs force_MLFF on a multi-element oxide. Use Origin Gap to separate overlapping arrows`,
+      desc: `force_DFT vs force_MLFF on a multi-element oxide. Use Origin Gap to separate overlapping arrows`,
       structure: {
         lattice: tio2,
         sites: [
@@ -181,7 +190,7 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
           {
             species: [{ element: `Ti`, occu: 1 }],
             abc: [0.5, 0.5, 0.5],
-            xyz: [2.297, 2.297, 1.480],
+            xyz: [2.297, 2.297, 1.48],
             label: `Ti`,
             properties: {
               force_DFT: [-0.1, 0.2, -0.8],
@@ -213,8 +222,7 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
     },
     {
       title: `Fe BCC — forces + magmoms`,
-      desc:
-        `Three vector layers: force_DFT, force_MLFF, and magmom with distinct directions. Per-layer palette coloring`,
+      desc: `Three vector layers: force_DFT, force_MLFF, and magmom with distinct directions. Per-layer palette coloring`,
       structure: {
         lattice: fe_bcc,
         sites: [
@@ -288,7 +296,11 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
         }
         return {
           lattice: {
-            matrix: [[super_a, 0, 0], [0, super_a, 0], [0, 0, super_a]],
+            matrix: [
+              [super_a, 0, 0],
+              [0, super_a, 0],
+              [0, 0, super_a],
+            ],
             pbc: [true, true, true],
             a: super_a,
             b: super_a,
@@ -318,7 +330,7 @@ For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a 
           {
             species: [{ element: `Ti`, occu: 1 }],
             abc: [0.5, 0.5, 0.5],
-            xyz: [2.297, 2.297, 1.480],
+            xyz: [2.297, 2.297, 1.48],
             label: `Ti`,
             properties: { force: [-0.1, 0.15, -0.3], spin: [-0.5, -0.5, 0.8] },
           },

@@ -56,12 +56,7 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
   </select>
 </label>
 
-<Dos
-  doses={shift_to_fermi(dos_spin_polarization)}
-  {pdos_type}
-  stack
-  spin_mode="up_only"
-/>
+<Dos doses={shift_to_fermi(dos_spin_polarization)} {pdos_type} stack spin_mode="up_only" />
 ```
 
 ## Stacking and Smearing
@@ -136,7 +131,7 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
     }))}
     active_files={[active_file]}
     show_category_filters
-    on_click={(file) => [active_file, pdos_type] = [file.name, null]}
+    on_click={(file) => ([active_file, pdos_type] = [file.name, null])}
   />
   {#if is_electronic}
     <select bind:value={pdos_type} style="padding: 4px">

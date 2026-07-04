@@ -382,10 +382,10 @@ describe(`Explicit Bond Metadata`, () => {
     expect(missing_result).toMatchObject({ action: `not-visible`, changed: false })
   })
 
-  test.each([
-    { selected_order: 2 as BondOrder, expected_overrides: [] },
+  test.each<{ selected_order: BondOrder; expected_overrides: StructureBond[] }>([
+    { selected_order: 2, expected_overrides: [] },
     {
-      selected_order: 1 as BondOrder,
+      selected_order: 1,
       expected_overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
     },
   ])(
@@ -1032,4 +1032,60 @@ describe(`compute_bonds memo`, () => {
     expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(eneg)
     expect(bonding.compute_bonds(structure, `solid_angle`, {})).toBe(solid)
   })
+})
+
+describe(`spatial grid scratch array reuse`, () => {
+  // Deterministic grid of atoms at bonding distance so repeated runs are comparable
+  const make_deterministic_structure = (n_atoms: number): Crystal => {
+    const per_edge = Math.ceil(Math.cbrt(n_atoms))
+    const spacing = 1.5 // Å, within covalent bonding range for C/N/O
+    return make_crystal(
+      per_edge * spacing + 1,
+      Array.from({ length: n_atoms }, (_, idx) => ({
+        element: ([`C`, `N`, `O`] as const)[idx % 3],
+        xyz: [
+          (idx % per_edge) * spacing,
+          (Math.floor(idx / per_edge) % per_edge) * spacing,
+          Math.floor(idx / (per_edge * per_edge)) * spacing,
+        ] as Vec3,
+      })),
+    )
+  }
+
+  test.each([`electroneg_ratio`, `solid_angle`] as const)(
+    `%s bonds are stable and duplicate-free across repeated + interleaved calls`,
+    (strategy) => {
+      // >50 sites forces the spatial-grid path, whose neighbor lookup fills a
+      // REUSED module-level scratch array. Interleaving two structures then
+      // recomputing the first would surface any state leaking between calls.
+      const struct_a = make_deterministic_structure(80)
+      const struct_b = make_deterministic_structure(120)
+      const bond_key = (bond: BondPair) => `${bond.site_idx_1}-${bond.site_idx_2}`
+
+      const first_a = bonding.BONDING_STRATEGIES[strategy](struct_a)
+      const first_b = bonding.BONDING_STRATEGIES[strategy](struct_b)
+      const second_a = bonding.BONDING_STRATEGIES[strategy](struct_a)
+
+      expect(first_a.length).toBeGreaterThan(0)
+      expect(second_a.map(bond_key)).toEqual(first_a.map(bond_key))
+      expect(new Set(first_a.map(bond_key)).size).toBe(first_a.length)
+      expect(new Set(first_b.map(bond_key)).size).toBe(first_b.length)
+    },
+  )
+})
+
+test(`pack_cell_key is injective in a dense block and safe-integer at ±512 range corners`, () => {
+  const keys = new Set<number>()
+  for (let x = -5; x <= 5; x++) {
+    for (let y = -5; y <= 5; y++)
+      for (let z = -5; z <= 5; z++) keys.add(bonding.pack_cell_key(x, y, z))
+  }
+  expect(keys.size).toBe(11 ** 3)
+  for (const [x, y, z] of [
+    [-512, -512, -512],
+    [511, 511, 511],
+    [-512, 511, -512],
+  ]) {
+    expect(Number.isSafeInteger(bonding.pack_cell_key(x, y, z))).toBe(true)
+  }
 })

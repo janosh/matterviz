@@ -3,10 +3,13 @@
   import { ICON_DATA, type IconName } from './icons'
 
   type IconData = { path: string; viewBox: string; stroke?: string }
-  let { icon, path, viewBox = `0 0 24 24`, stroke, ...rest }:
-    & { icon?: IconName }
-    & Partial<IconData>
-    & SVGAttributes<SVGSVGElement> = $props()
+  let {
+    icon,
+    path,
+    viewBox = `0 0 24 24`,
+    stroke,
+    ...rest
+  }: { icon?: IconName } & Partial<IconData> & SVGAttributes<SVGSVGElement> = $props()
 
   const data: IconData = $derived.by(() => {
     if (path) return { path, viewBox, stroke }

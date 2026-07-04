@@ -41,8 +41,7 @@
     },
     {
       label: `Atom Selection`,
-      value:
-        `Click atoms to select them, then pick distance or angle mode to measure all pairwise distances/angles`,
+      value: `Click atoms to select them, then pick distance or angle mode to measure all pairwise distances/angles`,
     },
     {
       label: `Navigation`,
@@ -54,8 +53,7 @@
     },
     {
       label: `Colors`,
-      value:
-        `Click legend labels to change colors, double-click to reset, right-click to remap elements`,
+      value: `Click legend labels to change colors, double-click to reset, right-click to remap elements`,
     },
     {
       label: `Keyboard`,
@@ -95,12 +93,7 @@
   const copy_to_clipboard = (label: string, value: string, key: string): Promise<void> =>
     copy(`${label}: ${value}`, key)
 
-  function copy_event(
-    event: MouseEvent,
-    label: string,
-    value: string,
-    key: string,
-  ) {
+  function copy_event(event: MouseEvent, label: string, value: string, key: string) {
     event.stopPropagation()
     copy_to_clipboard(label, value, key)
   }
@@ -121,9 +114,8 @@
         : [...selected_sites, site_idx]
       return
     }
-    selected_sites = selected_sites.length === 1 && selected_sites[0] === site_idx
-      ? []
-      : [site_idx]
+    selected_sites =
+      selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
   }
 
   function update_site_filter(event: Event): void {
@@ -154,9 +146,10 @@
       current_card.parentElement?.querySelectorAll<HTMLDivElement>(`.site-card`) ?? [],
     )
     const current_idx = sibling_cards.indexOf(current_card)
-    const next_idx = event.key === `ArrowDown`
-      ? Math.min(current_idx + 1, sibling_cards.length - 1)
-      : Math.max(current_idx - 1, 0)
+    const next_idx =
+      event.key === `ArrowDown`
+        ? Math.min(current_idx + 1, sibling_cards.length - 1)
+        : Math.max(current_idx - 1, 0)
     sibling_cards[next_idx]?.focus()
   }
 
@@ -164,10 +157,9 @@
     element_data?.find((element_record) => element_record.symbol === element)?.name || element
 
   const site_summary = (card: SiteCard): string =>
-    [
-      card.element_name,
-      ...card.details.map(({ label, value }) => `${label}: ${value}`),
-    ].join(`; `)
+    [card.element_name, ...card.details.map(({ label, value }) => `${label}: ${value}`)].join(
+      `; `,
+    )
 
   function format_site_property(prop_key: string, prop_value: unknown): SiteDetail | null {
     if (prop_value == null) return null
@@ -180,14 +172,16 @@
     let tooltip: string | undefined
 
     if (
-      prop_key === `force` && Array.isArray(prop_value) &&
-      prop_value.length === 3 && prop_value.every((value) => typeof value === `number`)
+      prop_key === `force` &&
+      Array.isArray(prop_value) &&
+      prop_value.length === 3 &&
+      prop_value.every((value) => typeof value === `number`)
     ) {
       const force_values = prop_value as [number, number, number]
       const value = `${format_num(Math.hypot(...force_values), `.3~f`)} eV/Å`
-      tooltip = `Force vector: ${
-        force_values.map((force) => format_num(force, `.3~f`)).join(`, `)
-      } eV/Å`
+      tooltip = `Force vector: ${force_values
+        .map((force) => format_num(force, `.3~f`))
+        .join(`, `)} eV/Å`
       return { label: prop_key, value, key: prop_key, tooltip }
     }
     if (prop_key === `magmom` || prop_key.includes(`magnet`)) {
@@ -199,7 +193,7 @@
 
     const value = Array.isArray(prop_value)
       ? format_value_list(prop_value)
-      : format_numeric_value(prop_value) ?? String(prop_value)
+      : (format_numeric_value(prop_value) ?? String(prop_value))
     return { label: prop_key, value, key: prop_key }
   }
 
@@ -262,7 +256,9 @@
     // Symmetry Info
     if (`lattice` in structure && sym_data) {
       const { operations } = sym_data
-      let translations = 0, rotations = 0, roto_translations = 0
+      let translations = 0,
+        rotations = 0,
+        roto_translations = 0
       for (const op of operations) {
         const has_translation = op.translation.some((offset) => offset !== 0)
         const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
@@ -271,14 +267,15 @@
         else roto_translations++
       }
 
-      const international_symbol = (sym_data as MoyoDataset & {
-        international_short?: string
-      }).international_short
-      const space_group_symbol = (sym_data.hm_symbol ?? international_symbol)
-        ?.replaceAll(
-          /\s+/g,
-          ``,
-        )
+      const international_symbol = (
+        sym_data as MoyoDataset & {
+          international_short?: string
+        }
+      ).international_short
+      const space_group_symbol = (sym_data.hm_symbol ?? international_symbol)?.replaceAll(
+        /\s+/g,
+        ``,
+      )
       const space_group_value = space_group_symbol
         ? `${sym_data.number} (${space_group_symbol})`
         : String(sym_data.number)
@@ -287,8 +284,16 @@
         title: `Symmetry`,
         items: [
           { label: `Space Group`, value: space_group_value, key: `symmetry-space-group` },
-          { label: `Hall Number`, value: String(sym_data.hall_number), key: `symmetry-hall-number` },
-          { label: `Pearson Symbol`, value: sym_data.pearson_symbol, key: `symmetry-pearson-symbol` },
+          {
+            label: `Hall Number`,
+            value: String(sym_data.hall_number),
+            key: `symmetry-hall-number`,
+          },
+          {
+            label: `Pearson Symbol`,
+            value: sym_data.pearson_symbol,
+            key: `symmetry-pearson-symbol`,
+          },
           {
             label: `Symmetry Ops`,
             value: `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
@@ -340,9 +345,9 @@
         element_name,
         title,
         details,
-        search_text: `${title} ${element} ${element_name} ${
-          details.map(({ label, value }) => `${label} ${value}`).join(` `)
-        }`.toLowerCase(),
+        search_text: `${title} ${element} ${element_name} ${details
+          .map(({ label, value }) => `${label} ${value}`)
+          .join(` `)}`.toLowerCase(),
       }
     })
   })
@@ -375,8 +380,7 @@
     if (!pane_open || selected_site_idx === undefined) return
     const visible_idx = visible_site_cards.findIndex(({ idx }) => idx === selected_site_idx)
     if (visible_idx === -1) return
-    const selected_window_start = Math.floor(visible_idx / SITE_WINDOW_SIZE) *
-      SITE_WINDOW_SIZE
+    const selected_window_start = Math.floor(visible_idx / SITE_WINDOW_SIZE) * SITE_WINDOW_SIZE
     if (selected_window_start !== site_window_start) {
       site_window_start = selected_window_start
       return
@@ -440,8 +444,8 @@
       {#if section.title === `Symmetry` && wyckoff_positions.length > 0}
         <WyckoffTable
           {wyckoff_positions}
-          on_hover={(site_indices) => highlighted_sites = site_indices ?? []}
-          on_click={(site_indices) => selected_sites = site_indices ?? []}
+          on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
+          on_click={(site_indices) => (selected_sites = site_indices ?? [])}
           style="width: 100%; margin-top: 0.5em; font-size: 0.8em"
         />
       {/if}
@@ -465,7 +469,9 @@
         {/if}
       </div>
       {#if sites_hidden_by_threshold}
-        <p class="sites-note">Site list hidden for this {structure.sites.length}-site structure.</p>
+        <p class="sites-note">
+          Site list hidden for this {structure.sites.length}-site structure.
+        </p>
       {:else if site_cards.length > 0}
         <input
           class="site-filter"
@@ -484,19 +490,21 @@
                 type="button"
                 disabled={site_window_start === 0}
                 onclick={() =>
-                  site_window_start = Math.max(0, site_window_start - SITE_WINDOW_SIZE)}
+                  (site_window_start = Math.max(0, site_window_start - SITE_WINDOW_SIZE))}
               >
                 Previous
               </button>
-              <span>{site_window_start + 1}-{site_window_end} of {visible_site_cards.length}</span>
+              <span
+                >{site_window_start + 1}-{site_window_end} of {visible_site_cards.length}</span
+              >
               <button
                 type="button"
                 disabled={site_window_end >= visible_site_cards.length}
                 onclick={() =>
-                  site_window_start = Math.min(
+                  (site_window_start = Math.min(
                     Math.max(0, visible_site_cards.length - SITE_WINDOW_SIZE),
                     site_window_start + SITE_WINDOW_SIZE,
-                  )}
+                  ))}
               >
                 Next
               </button>
@@ -504,8 +512,8 @@
           {/if}
           <div class="site-cards" bind:this={site_cards_el}>
             {#each rendered_site_cards as card (card.idx)}
-              {@const is_highlighted = highlighted_sites.includes(card.idx) ||
-                hovered_site_idx === card.idx}
+              {@const is_highlighted =
+                highlighted_sites.includes(card.idx) || hovered_site_idx === card.idx}
               {@const is_selected = selected_sites.includes(card.idx)}
               <div
                 class="site-card"
@@ -534,7 +542,12 @@
                     title="Copy {card.title}"
                     copied={copied.has(`site-${card.idx}-summary`)}
                     onclick={(event) =>
-                      copy_event(event, card.title, site_summary(card), `site-${card.idx}-summary`)}
+                      copy_event(
+                        event,
+                        card.title,
+                        site_summary(card),
+                        `site-${card.idx}-summary`,
+                      )}
                   />
                 </div>
                 <div class="site-card-details">

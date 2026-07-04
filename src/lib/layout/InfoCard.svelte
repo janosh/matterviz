@@ -4,8 +4,9 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props<T extends keyof HTMLElementTagNameMap = `section`>
-    extends HTMLAttributes<HTMLElementTagNameMap[T]> {
+  interface Props<T extends keyof HTMLElementTagNameMap = `section`> extends HTMLAttributes<
+    HTMLElementTagNameMap[T]
+  > {
     data?: {
       title: string
       value?: string | number | number[] | null
@@ -43,13 +44,7 @@
       {/if}
     </h2>
   {/if}
-  {#each data.filter((itm) =>
-      (!(`condition` in itm) || itm?.condition) && itm.value !== undefined &&
-      itm.value !== null
-    ) as
-    { title, value, unit, fmt = default_fmt, tooltip }
-    (title + value + unit + fmt)
-  }
+  {#each data.filter((itm) => (!(`condition` in itm) || itm?.condition) && itm.value !== undefined && itm.value !== null) as { title, value, unit, fmt = default_fmt, tooltip } (title + value + unit + fmt)}
     <div>
       <span class="title" {title}>
         {@html sanitize_html(title)}
@@ -77,10 +72,7 @@
     padding: var(--ic-padding, 10pt 12pt);
     margin: var(--ic-margin, 1em 0);
     gap: var(--ic-gap, 10pt 5%);
-    background-color: var(
-      --ic-bg,
-      light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1))
-    );
+    background-color: var(--ic-bg, light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1)));
     font-size: var(--ic-font-size);
     width: var(--ic-width);
   }
@@ -88,10 +80,7 @@
     grid-column: 1 / -1;
     margin: 0;
     border-bottom: 1px solid
-      var(
-        --ic-title-border-color,
-        light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3))
-      );
+      var(--ic-title-border-color, light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3)));
   }
   div {
     display: flex;

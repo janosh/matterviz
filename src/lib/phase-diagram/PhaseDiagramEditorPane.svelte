@@ -111,7 +111,8 @@
     animation: fade-out 3s ease-out forwards;
   }
   @keyframes fade-out {
-    0%, 80% {
+    0%,
+    80% {
       opacity: 1;
     }
     100% {

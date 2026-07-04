@@ -38,6 +38,7 @@
     get_pbc_image_sites,
     get_structure_vector_keys,
   } from '$lib/structure'
+  import { push_edit, step_history } from '$lib/structure/edit-history'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import {
     is_valid_supercell_input,
@@ -187,101 +188,101 @@
     on_camera_reset,
     on_bonds_change,
     ...rest
-  }:
-    & {
-      structure?: AnyStructure
-      bonds?: StructureBond[]
-      scene_props?: ComponentProps<typeof StructureScene>
-      // Controls visibility configuration.
-      // - 'always': controls always visible
-      // - 'hover': controls visible on component hover (default)
-      // - 'never': controls never visible
-      // - object: { mode, hidden, style } for fine-grained control
-      //
-      // Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
-      show_controls?: ShowControlsProp
-      fullscreen?: boolean
-      // bindable width of the canvas
-      width?: number
-      // bindable height of the canvas
-      height?: number
-      // Canvas wrapper element (for export pane)
-      wrapper?: HTMLDivElement
-      // PNG export DPI setting
-      png_dpi?: number
-      reset_text?: string
-      hovered?: boolean
-      dragover?: boolean
-      allow_file_drop?: boolean
-      enable_info_pane?: boolean
-      enable_measure_mode?: boolean
-      measure_mode?: MeasureMode
-      bond_edit_mode?: BondEditMode
-      bond_edit_order?: BondOrder
-      info_pane_open?: boolean
-      // When true, split the canvas into a 2x2 grid showing the structure from
-      // different angles (Ovito-style). Each pane has independent orbit controls.
-      multi_view?: boolean
-      // The 4 (or more) view definitions used by multi_view. Defaults to an
-      // Ovito-like set: one perspective + three orthographic axis views.
-      views?: StructureView[]
-      fullscreen_toggle?: FullscreenToggleProp
-      bottom_left?: Snippet<[{ structure?: AnyStructure }]>
-      top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
-      data_url?: string // URL to load structure from (alternative to providing structure directly)
-      // Generic callback for when files are dropped - receives raw content and filename
-      on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
-      // spinner props (passed to Spinner component)
-      spinner_props?: ComponentProps<typeof Spinner>
-      loading?: boolean
-      error_msg?: string
-      // Performance mode: 'quality' (default) or 'speed' for large structures
-      performance_mode?: `quality` | `speed`
-      // allow parent components to control highlighted/selected site indices
-      selected_sites?: number[]
-      highlighted_sites?: number[]
-      hovered_site_idx?: number | null
-      // explicit measured sites for distance/angle overlays
-      measured_sites?: number[]
-      // expose the displayed structure (with image atoms and/or supercell) for external use
-      displayed_structure?: AnyStructure
-      // Track which elements are hidden (bindable across frames in trajectories)
-      hidden_elements?: Set<ElementSymbol>
-      // Track which property values are hidden (e.g. Wyckoff positions, coordination numbers)
-      hidden_prop_vals?: Set<number | string>
-      // Per-element radius overrides (absolute values in Angstroms)
-      element_radius_overrides?: Partial<Record<ElementSymbol, number>>
-      // Per-site radius overrides (absolute values in Angstroms)
-      // Accepts Map or SvelteMap for flexibility with external callers
-      site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
-      // Symmetry analysis data (bindable for external access)
-      sym_data?: MoyoDataset | null
-      // Symmetry analysis settings (bindable for external control)
-      symmetry_settings?: Partial<SymmetrySettings>
-      // Map element symbols to different elements (e.g. {'H': 'Na', 'He': 'Cl'})
-      element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
-      // Cell type: original, conventional, or primitive (requires symmetry analysis)
-      cell_type?: CellType
-      // Volumetric data for isosurface rendering (parsed from CHGCAR or .cube files)
-      volumetric_data?: VolumetricData[]
-      // Isosurface rendering settings
-      isosurface_settings?: IsosurfaceSettings
-      // Active volume index when multiple volumes are present
-      active_volume_idx?: number
-      // structure content as string (alternative to providing structure directly or via data_url)
-      structure_string?: string
-      // Atom coloring configuration
-      atom_color_config?: Partial<AtomColorConfig>
-      children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
-      on_file_load?: EventHandler
-      on_error?: EventHandler
-      on_fullscreen_change?: EventHandler
-      on_camera_move?: EventHandler
-      on_camera_reset?: EventHandler
-      on_bonds_change?: (bonds: StructureBond[] | undefined) => void
-    }
-    & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`>
-    & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
+  }: {
+    structure?: AnyStructure
+    bonds?: StructureBond[]
+    scene_props?: ComponentProps<typeof StructureScene>
+    // Controls visibility configuration.
+    // - 'always': controls always visible
+    // - 'hover': controls visible on component hover (default)
+    // - 'never': controls never visible
+    // - object: { mode, hidden, style } for fine-grained control
+    //
+    // Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
+    show_controls?: ShowControlsProp
+    fullscreen?: boolean
+    // bindable width of the canvas
+    width?: number
+    // bindable height of the canvas
+    height?: number
+    // Canvas wrapper element (for export pane)
+    wrapper?: HTMLDivElement
+    // PNG export DPI setting
+    png_dpi?: number
+    reset_text?: string
+    hovered?: boolean
+    dragover?: boolean
+    allow_file_drop?: boolean
+    enable_info_pane?: boolean
+    enable_measure_mode?: boolean
+    measure_mode?: MeasureMode
+    bond_edit_mode?: BondEditMode
+    bond_edit_order?: BondOrder
+    info_pane_open?: boolean
+    // When true, split the canvas into a 2x2 grid showing the structure from
+    // different angles (Ovito-style). Each pane has independent orbit controls.
+    multi_view?: boolean
+    // The 4 (or more) view definitions used by multi_view. Defaults to an
+    // Ovito-like set: one perspective + three orthographic axis views.
+    views?: StructureView[]
+    fullscreen_toggle?: FullscreenToggleProp
+    bottom_left?: Snippet<[{ structure?: AnyStructure }]>
+    top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
+    data_url?: string // URL to load structure from (alternative to providing structure directly)
+    // Generic callback for when files are dropped - receives raw content and filename
+    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    // spinner props (passed to Spinner component)
+    spinner_props?: ComponentProps<typeof Spinner>
+    loading?: boolean
+    error_msg?: string
+    // Performance mode: 'quality' (default) or 'speed' for large structures
+    performance_mode?: `quality` | `speed`
+    // allow parent components to control highlighted/selected site indices
+    selected_sites?: number[]
+    highlighted_sites?: number[]
+    hovered_site_idx?: number | null
+    // explicit measured sites for distance/angle overlays
+    measured_sites?: number[]
+    // expose the displayed structure (with image atoms and/or supercell) for external
+    // use. Output-only: the scene renders from an internal raw copy for performance,
+    // so external writes to this prop are ignored (overwritten on the next pipeline run)
+    displayed_structure?: AnyStructure
+    // Track which elements are hidden (bindable across frames in trajectories)
+    hidden_elements?: Set<ElementSymbol>
+    // Track which property values are hidden (e.g. Wyckoff positions, coordination numbers)
+    hidden_prop_vals?: Set<number | string>
+    // Per-element radius overrides (absolute values in Angstroms)
+    element_radius_overrides?: Partial<Record<ElementSymbol, number>>
+    // Per-site radius overrides (absolute values in Angstroms)
+    // Accepts Map or SvelteMap for flexibility with external callers
+    site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
+    // Symmetry analysis data (bindable for external access)
+    sym_data?: MoyoDataset | null
+    // Symmetry analysis settings (bindable for external control)
+    symmetry_settings?: Partial<SymmetrySettings>
+    // Map element symbols to different elements (e.g. {'H': 'Na', 'He': 'Cl'})
+    element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
+    // Cell type: original, conventional, or primitive (requires symmetry analysis)
+    cell_type?: CellType
+    // Volumetric data for isosurface rendering (parsed from CHGCAR or .cube files)
+    volumetric_data?: VolumetricData[]
+    // Isosurface rendering settings
+    isosurface_settings?: IsosurfaceSettings
+    // Active volume index when multiple volumes are present
+    active_volume_idx?: number
+    // structure content as string (alternative to providing structure directly or via data_url)
+    structure_string?: string
+    // Atom coloring configuration
+    atom_color_config?: Partial<AtomColorConfig>
+    children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
+    on_file_load?: EventHandler
+    on_error?: EventHandler
+    on_fullscreen_change?: EventHandler
+    on_camera_move?: EventHandler
+    on_camera_reset?: EventHandler
+    on_bonds_change?: (bonds: StructureBond[] | undefined) => void
+  } & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`> &
+    Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
@@ -310,9 +311,8 @@
       else {
         // Parse structure internally when no handler provided
         try {
-          const text_content = content instanceof ArrayBuffer
-            ? new TextDecoder().decode(content)
-            : content
+          const text_content =
+            content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
           const parsed = parse_file_content(text_content, filename)
           emit_file_load_event(parsed, filename, content)
         } catch (error) {
@@ -331,7 +331,8 @@
         if (is_current()) loading = false
       })
 
-    return () => { // invalidate in-flight load on data_url change / structure arrival / unmount
+    return () => {
+      // invalidate in-flight load on data_url change / structure arrival / unmount
       if (is_current()) {
         data_url_load_id += 1
         loading = false
@@ -339,7 +340,8 @@
     }
   })
 
-  $effect(() => { // Parse structure from string when structure_string is provided
+  $effect(() => {
+    // Parse structure from string when structure_string is provided
     if (!structure_string || data_url) return
     loading = true
     error_msg = undefined
@@ -353,9 +355,7 @@
         throw new Error(`Failed to parse structure from string`)
       }
     } catch (err) {
-      error_msg = `Failed to parse structure from string: ${
-        to_error(err).message
-      }`
+      error_msg = `Failed to parse structure from string: ${to_error(err).message}`
       untrack(() => on_error?.({ error_msg, filename: `string` }))
     } finally {
       loading = false
@@ -411,12 +411,7 @@
 
   // Compute property-based colors for legend display
   let property_colors = $derived(
-    get_property_colors(
-      structure,
-      atom_color_config,
-      scene_props.bonding_strategy,
-      sym_data,
-    ),
+    get_property_colors(structure, atom_color_config, scene_props.bonding_strategy, sym_data),
   )
 
   let symmetry_run_id = 0
@@ -448,7 +443,7 @@
     } else {
       // Keep previous symmetry data while recomputing so bound consumers
       // (e.g. SymmetryStats inputs) do not unmount and lose focus.
-      untrack(() => symmetry_error = undefined)
+      untrack(() => (symmetry_error = undefined))
     }
     const run_id = ++symmetry_run_id
     // Destructure symmetry_settings to ensure Svelte tracks changes to symprec and algo
@@ -458,20 +453,21 @@
     // Skip symmetry auto-analysis in unit tests; happy-dom can't fetch WASM assets
     if (typeof process !== `undefined` && process.env?.VITEST) return
 
-    symmetry.ensure_moyo_wasm_ready()
+    symmetry
+      .ensure_moyo_wasm_ready()
       .then(() =>
         run_id === symmetry_run_id
           ? symmetry.analyze_structure_symmetry(current_structure, current_settings)
-          : null
+          : null,
       )
       .then((data) => {
         if (data && run_id === symmetry_run_id) {
-          untrack(() => sym_data = data)
+          untrack(() => (sym_data = data))
         }
       })
       .catch((err) => {
         if (run_id === symmetry_run_id) {
-          untrack(() => sym_data = null)
+          untrack(() => (sym_data = null))
           symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
           console.error(`Symmetry analysis failed:`, err)
         }
@@ -496,8 +492,7 @@
   let last_emitted_bond_signature = $state<string>()
   let bond_edit_snapshot = $state.raw<BondEditSnapshot>()
   let has_bond_edits = $derived(
-    added_bonds.length > 0 || removed_bonds.length > 0 ||
-      bond_order_overrides.length > 0,
+    added_bonds.length > 0 || removed_bonds.length > 0 || bond_order_overrides.length > 0,
   )
 
   const clone_bonds = (edit_bonds: StructureBond[]): StructureBond[] =>
@@ -578,10 +573,10 @@
   const current_source_bond_signature = (): string => {
     const raw_signature = bond_signature(current_source_bonds())
     if (raw_signature !== last_emitted_bond_signature) return raw_signature
-    return bond_history_context?.source_bond_signature ??
-      (bond_edit_snapshot
-        ? bond_signature(bond_edit_snapshot.bonds)
-        : raw_signature)
+    return (
+      bond_history_context?.source_bond_signature ??
+      (bond_edit_snapshot ? bond_signature(bond_edit_snapshot.bonds) : raw_signature)
+    )
   }
 
   const current_bond_edit_context = (): BondEditContext => ({
@@ -668,8 +663,15 @@
 
   // === Edit-atoms mode state ===
   let dragging_atoms = $state(false)
-  let undo_stack = $state<AnyStructure[]>([])
-  let redo_stack = $state<AnyStructure[]>([])
+  // History entries snapshot the bindable `bonds` prop alongside the structure:
+  // atom deletion remaps `bonds` to the shifted site indices, so restoring the
+  // structure alone would leave explicit bonds pointing at wrong sites.
+  type EditSnapshot = { structure: AnyStructure; bonds: StructureBond[] | undefined }
+  // $state.raw: stacks hold full structure snapshots — deep-proxying them would make
+  // every restored structure (and all downstream site reads) go through proxy traps.
+  // Mutations happen via reassignment so .length stays reactive in the template.
+  let undo_stack = $state.raw<EditSnapshot[]>([])
+  let redo_stack = $state.raw<EditSnapshot[]>([])
   const MAX_HISTORY = 20
   // Flag set before internal edits (undo/redo/delete/add/move) to distinguish
   // them from external structure changes (file load, trajectory step, etc.)
@@ -714,28 +716,40 @@
     dragging_atoms = false
   }
 
+  const snapshot_edit_state = (current: AnyStructure): EditSnapshot => ({
+    structure: $state.snapshot(current) as AnyStructure,
+    bonds: bonds && ($state.snapshot(bonds) as StructureBond[]),
+  })
+
   function push_undo() {
     if (!structure) return
-    if (undo_stack.length >= MAX_HISTORY) {
-      undo_stack.splice(0, undo_stack.length - MAX_HISTORY + 1)
-    }
-    undo_stack.push($state.snapshot(structure) as AnyStructure)
-    redo_stack.length = 0
+    ;[undo_stack, redo_stack] = push_edit(
+      [undo_stack, redo_stack],
+      snapshot_edit_state(structure),
+      MAX_HISTORY,
+    )
   }
 
-  // Shared undo/redo: pop from `source`, push current state onto `target`
-  function apply_history(source: AnyStructure[], target: AnyStructure[]) {
-    if (source.length === 0 || !structure) return
-    const restored = source.pop()
-    if (!restored) return
+  // Shared undo/redo: restore the top of that direction's stack, pushing the
+  // current state onto the opposite one ($state.raw stacks update by reassignment)
+  function apply_history(direction: `undo` | `redo`) {
+    // Check the stack before snapshotting: $state.snapshot deep-clones the structure
+    if (!structure || (direction === `undo` ? undo_stack : redo_stack).length === 0) return
+    const result = step_history(
+      [undo_stack, redo_stack],
+      direction,
+      snapshot_edit_state(structure),
+    )
+    if (!result) return
     is_internal_edit = true
-    target.push($state.snapshot(structure) as AnyStructure)
-    structure = restored
+    ;[undo_stack, redo_stack] = result.stacks
+    structure = result.restored.structure
+    bonds = result.restored.bonds
     clear_selection()
   }
 
-  const undo = () => apply_history(undo_stack, redo_stack)
-  const redo = () => apply_history(redo_stack, undo_stack)
+  const undo = () => apply_history(`undo`)
+  const redo = () => apply_history(`redo`)
 
   // Clear undo/redo stacks when structure changes externally (file load, etc.)
   // Internal edits set is_internal_edit=true before modifying structure.
@@ -778,7 +792,10 @@
   $effect(() => {
     void bond_edit_mode
     untrack(() => {
-      if (measure_mode === `edit-bonds` && (selected_sites.length > 0 || measured_sites.length > 0)) {
+      if (
+        measure_mode === `edit-bonds` &&
+        (selected_sites.length > 0 || measured_sites.length > 0)
+      ) {
         clear_selection()
       }
     })
@@ -833,7 +850,8 @@
   // This must happen BEFORE supercell transformation
   let cell_transformed_structure = $derived.by(() => {
     if (
-      !structure_with_bonds || !(`lattice` in structure_with_bonds) ||
+      !structure_with_bonds ||
+      !(`lattice` in structure_with_bonds) ||
       cell_type === `original`
     ) {
       return structure_with_bonds
@@ -850,8 +868,11 @@
     }
   })
 
-  // Create supercell if needed (uses cell_transformed_structure as base)
-  let supercell_structure = $state(structure)
+  // Create supercell if needed (uses cell_transformed_structure as base).
+  // $state.raw: supercells can hold thousands of sites — deep-proxying them makes
+  // every downstream read (bonding, PBC images, instancing) traverse proxy traps,
+  // measured ~15x slower for compute_bonds on a 704-site supercell.
+  let supercell_structure = $state.raw(structure)
   let supercell_loading = $state(false)
   let has_supercell = $derived(
     Boolean(supercell_scaling) && ![``, `1x1x1`, `1`].includes(supercell_scaling),
@@ -896,9 +917,10 @@
     } else {
       // For large supercells, show loading state and use async generation
       const sites_count = base_structure.sites?.length || 0
-      const [nx_str, ny_str, nz_str] = supercell_scaling.split(/[x×]/)
-      const scaling_mult = (parseInt(nx_str, 10) || 1) * (parseInt(ny_str, 10) || 1) *
-        (parseInt(nz_str, 10) || 1)
+      // lenient parse just for a size estimate (invalid factors count as 1)
+      const scaling_mult = supercell_scaling
+        .split(/[x×]/)
+        .reduce((product, factor) => product * (Number(factor) || 1), 1)
       const estimated_sites = sites_count * scaling_mult
 
       // Show spinner for supercells with >1000 estimated sites or scaling >8
@@ -924,10 +946,7 @@
         }, 10)
       } else {
         if (base_structure && `lattice` in base_structure) {
-          supercell_structure = make_supercell(
-            base_structure as Crystal,
-            supercell_scaling,
-          )
+          supercell_structure = make_supercell(base_structure as Crystal, supercell_scaling)
         }
         supercell_loading = false
       }
@@ -957,6 +976,10 @@
 
   // Element-map + PBC image atoms. Skipped during drags (doubled site count drops frames);
   // images return on release.
+  // The render path reads the internal $state.raw copy, NOT the bindable prop:
+  // if a consumer binds displayed_structure to a deep $state, reading the prop
+  // back would re-proxy every site and slow all scene computations ~10x.
+  let internal_displayed_structure = $state.raw<AnyStructure | undefined>(undefined)
   $effect(() => {
     let struct = supercell_structure
     if (struct && element_mapping && Object.keys(element_mapping).length > 0) {
@@ -973,11 +996,14 @@
         })),
       }
     }
-    displayed_structure =
-      !dragging_atoms && show_image_atoms && struct && `lattice` in struct &&
-        struct.lattice
+    // Local var, NOT a read-back of the states written below: reading our own
+    // fresh-object write inside this effect would self-retrigger it forever.
+    const next =
+      !dragging_atoms && show_image_atoms && struct && `lattice` in struct && struct.lattice
         ? get_pbc_image_sites(struct)
         : struct
+    internal_displayed_structure = next
+    displayed_structure = next
   })
 
   // scene + camera of the primary pane, bound out for the export pane. All other camera
@@ -997,7 +1023,7 @@
   // Inputs shared by every StructureViewport (single + all multi-view panes). Camera,
   // selection bindings, and per-pane chrome differ and stay on each snippet below.
   let shared_viewport_props = $derived({
-    structure: displayed_structure,
+    structure: internal_displayed_structure,
     base_structure: cell_transformed_structure,
     scene_props,
     gizmo: scene_gizmo,
@@ -1019,17 +1045,17 @@
   // Mutual exclusion: opening one pane closes others
   $effect(() => {
     if (info_pane_open) {
-      untrack(() => [controls_open, export_pane_open] = [false, false])
+      untrack(() => ([controls_open, export_pane_open] = [false, false]))
     }
   })
   $effect(() => {
     if (controls_open) {
-      untrack(() => [info_pane_open, export_pane_open] = [false, false])
+      untrack(() => ([info_pane_open, export_pane_open] = [false, false]))
     }
   })
   $effect(() => {
     if (export_pane_open) {
-      untrack(() => [info_pane_open, controls_open] = [false, false])
+      untrack(() => ([info_pane_open, controls_open] = [false, false]))
     }
   })
 
@@ -1064,19 +1090,14 @@
     on_file_load?.({
       structure: loaded_structure,
       filename,
-      file_size: typeof content === `string`
-        ? new Blob([content]).size
-        : content.byteLength,
+      file_size: typeof content === `string` ? new Blob([content]).size : content.byteLength,
       total_atoms: loaded_structure.sites?.length || 0,
     })
 
   // Try to parse content as a volumetric file, setting both structure and volumetric data.
   // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
   // Returns the parsed structure on success, or null if the file isn't a volumetric format.
-  function try_parse_volumetric(
-    text_content: string,
-    filename: string,
-  ): AnyStructure | null {
+  function try_parse_volumetric(text_content: string, filename: string): AnyStructure | null {
     const vol_result = parse_volumetric_file(text_content, filename)
     if (!vol_result) return null
     // parse_volumetric_file extracts structure from file header;
@@ -1111,15 +1132,12 @@
     on_drop: (content, filename) => {
       if (on_file_drop) return on_file_drop(content, filename)
       try {
-        const text_content = content instanceof ArrayBuffer
-          ? new TextDecoder().decode(content)
-          : content
+        const text_content =
+          content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
         const parsed = parse_file_content(text_content, filename)
         emit_file_load_event(parsed, filename, content)
       } catch (err) {
-        error_msg = `Failed to parse structure: ${
-          to_error(err).message
-        }`
+        error_msg = `Failed to parse structure: ${to_error(err).message}`
         on_error?.({ error_msg, filename })
       }
     },
@@ -1246,8 +1264,10 @@
       }
       // Duplicate selected atoms at a small offset
       if (
-        key === `d` && (event.ctrlKey || event.metaKey) &&
-        selected_sites.length > 0 && structure?.sites
+        key === `d` &&
+        (event.ctrlKey || event.metaKey) &&
+        selected_sites.length > 0 &&
+        structure?.sites
       ) {
         is_internal_edit = true
         push_undo()
@@ -1256,11 +1276,7 @@
         const new_sites = structure.sites
           .filter((_, idx) => orig_indices.has(idx))
           .map((site) => {
-            const new_xyz: Vec3 = [
-              site.xyz[0] + 0.5,
-              site.xyz[1] + 0.5,
-              site.xyz[2] + 0.5,
-            ]
+            const new_xyz: Vec3 = [site.xyz[0] + 0.5, site.xyz[1] + 0.5, site.xyz[2] + 0.5]
             return {
               ...site,
               xyz: new_xyz,
@@ -1276,9 +1292,7 @@
         // Select the newly duplicated atoms
         selected_sites = new_sites.map((_, idx) => base_idx + idx)
         measured_sites = [...selected_sites]
-        show_toast(
-          `Duplicated ${new_sites.length} site${new_sites.length > 1 ? `s` : ``}`,
-        )
+        show_toast(`Duplicated ${new_sites.length} site${new_sites.length > 1 ? `s` : ``}`)
         return true
       }
 
@@ -1303,9 +1317,7 @@
     } else if (event.key === `i` && has_modifier && enable_info_pane) {
       info_pane_open = !info_pane_open
       return true
-    } else if (
-      event.key === `g` && has_modifier && controls_config.visible(`multi-view`)
-    ) {
+    } else if (event.key === `g` && has_modifier && controls_config.visible(`multi-view`)) {
       multi_view = !multi_view
       return true
     } else if (event.key === `Escape`) {
@@ -1339,7 +1351,7 @@
   ): SvelteSet<number> {
     const result = new SvelteSet<number>()
     for (const scene_idx of scene_indices) {
-      const displayed_site = displayed_structure?.sites?.[scene_idx]
+      const displayed_site = internal_displayed_structure?.sites?.[scene_idx]
       if (!displayed_site) continue
       if (skip_image_atoms && displayed_site.properties?.orig_site_idx != null) {
         continue
@@ -1377,9 +1389,7 @@
     const orig_indices = scene_to_structure_indices(scene_indices)
     // For crystals, wrap to [0,1) inline so normalize_fractional_coords fast-paths.
     // For molecules (no lattice), just apply the Cartesian delta directly.
-    const lattice = `lattice` in structure
-      ? (structure as Crystal).lattice.matrix
-      : null
+    const lattice = `lattice` in structure ? (structure as Crystal).lattice.matrix : null
     // get_cart_to_frac guards matrix_inverse_3x3, which throws on singular lattices
     const cart_to_frac = get_cart_to_frac()
     const frac_to_cart = lattice ? create_frac_to_cart(lattice) : null
@@ -1423,9 +1433,7 @@
     change_element_mode = false
     change_element_value = ``
     show_toast(
-      `Changed ${orig_indices.size} site${
-        orig_indices.size > 1 ? `s` : ``
-      } to ${elem}`,
+      `Changed ${orig_indices.size} site${orig_indices.size > 1 ? `s` : ``} to ${elem}`,
     )
   }
 
@@ -1440,13 +1448,16 @@
     push_undo()
     structure = {
       ...structure,
-      sites: [...structure.sites, {
-        species: [{ element: elem, occu: 1, oxidation_state: 0 }],
-        xyz,
-        abc: get_cart_to_frac()?.(xyz) ?? xyz,
-        label: elem,
-        properties: {},
-      }],
+      sites: [
+        ...structure.sites,
+        {
+          species: [{ element: elem, occu: 1, oxidation_state: 0 }],
+          xyz,
+          abc: get_cart_to_frac()?.(xyz) ?? xyz,
+          label: elem,
+          properties: {},
+        },
+      ],
     }
     show_toast(`Added ${elem} at (${xyz.map((coord) => coord.toFixed(2)).join(`, `)})`)
   }
@@ -1458,10 +1469,7 @@
       const alpha_hex = Math.round(background_opacity * 255)
         .toString(16)
         .padStart(2, `0`)
-      wrapper.style.setProperty(
-        `--struct-bg-override`,
-        `${background_color}${alpha_hex}`,
-      )
+      wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
     } else if (typeof window !== `undefined` && wrapper) {
       // Remove override to use theme system
       wrapper.style.removeProperty(`--struct-bg-override`)
@@ -1503,7 +1511,10 @@
     }
   }}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+  {...drag_over_handlers({
+    allow: () => allow_file_drop,
+    set_dragover: (over) => (dragover = over),
+  })}
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
@@ -1557,7 +1568,7 @@
       {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
         <div
           class="measure-mode-dropdown"
-          {@attach click_outside({ callback: () => measure_menu_open = false })}
+          {@attach click_outside({ callback: () => (measure_menu_open = false) })}
         >
           <button
             onclick={() => (measure_menu_open = !measure_menu_open)}
@@ -1575,18 +1586,17 @@
               </span>
             {:else}
               <Icon
-                icon={({
-                  distance: `Ruler`,
-                  angle: `Angle`,
-                  'edit-bonds': `Link`,
-                  'edit-atoms': `Edit`,
-                } as const)[measure_mode]}
+                icon={(
+                  {
+                    distance: `Ruler`,
+                    angle: `Angle`,
+                    'edit-bonds': `Link`,
+                    'edit-atoms': `Edit`,
+                  } as const
+                )[measure_mode]}
               />
             {/if}
-            <Icon
-              icon="Arrow{measure_menu_open ? `Up` : `Down`}"
-              style="margin-left: -2px"
-            />
+            <Icon icon="Arrow{measure_menu_open ? `Up` : `Down`}" style="margin-left: -2px" />
           </button>
           {#if show_selection_reset}
             <button
@@ -1602,12 +1612,7 @@
           {/if}
           {#if measure_menu_open}
             <div class="view-mode-dropdown">
-              {#each [
-          { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
-          { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
-          { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
-          { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 },
-        ] as const as { mode, icon, label, scale } (mode)}
+              {#each [{ mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 }, { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 }, { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 }, { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 }] as const as { mode, icon, label, scale } (mode)}
                 <button
                   class="view-mode-option"
                   class:selected={measure_mode === mode}
@@ -1673,10 +1678,7 @@
               </label>
             {/if}
             <div class="bond-edit-mode-toggle">
-              {#each [
-                { mode: `add`, label: `Add`, title: `Add: click two atoms` },
-                { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
-              ] as const as { mode, label, title } (mode)}
+              {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
                 <button
                   type="button"
                   class:selected={bond_edit_mode === mode}
@@ -1737,8 +1739,7 @@
         {/if}
 
         <!-- Change-element input (shown when 'e' pressed with selection) -->
-        {#if measure_mode === `edit-atoms` && change_element_mode &&
-      selected_sites.length > 0}
+        {#if measure_mode === `edit-atoms` && change_element_mode && selected_sites.length > 0}
           <div class="add-atom-input">
             <label>
               <span>New element:</span>
@@ -1766,8 +1767,7 @@
         {/if}
       {/if}
 
-      {#if enable_info_pane && normalized_structure &&
-      controls_config.visible(`info-pane`)}
+      {#if enable_info_pane && normalized_structure && controls_config.visible(`info-pane`)}
         <StructureInfoPane
           structure={normalized_structure}
           bind:pane_open={info_pane_open}
@@ -1826,7 +1826,7 @@
       bind:element_radius_overrides
       bind:site_radius_overrides
       selected_sites={atom_legend_selected_sites}
-      structure={displayed_structure}
+      structure={internal_displayed_structure}
       show_mode_toggle={viewer_active}
       {sym_data}
     >
@@ -1856,8 +1856,7 @@
         interactive={!multi_view || active_pane_idx === 0}
         onactivate={() => (active_pane_idx = 0)}
         {reset_token}
-        report_moved={(moved) =>
-        moved ? moved_panes.add(0) : moved_panes.delete(0)}
+        report_moved={(moved) => (moved ? moved_panes.add(0) : moved_panes.delete(0))}
         {on_camera_move}
         {on_camera_reset}
         {...shared_viewport_props}
@@ -1894,7 +1893,7 @@
         onactivate={() => (active_pane_idx = pane_idx)}
         {reset_token}
         report_moved={(moved) =>
-        moved ? moved_panes.add(pane_idx) : moved_panes.delete(pane_idx)}
+          moved ? moved_panes.add(pane_idx) : moved_panes.delete(pane_idx)}
         {...shared_viewport_props}
         camera_direction={view.direction}
         camera_projection={view.projection ?? scene_props.camera_projection}
@@ -1917,20 +1916,18 @@
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
-      {#if multi_view}
-        <div class="viewport-grid">
-          {@render primary_viewport(views[0] ?? {})}
+      <div class:multi={multi_view} class="viewport-stage">
+        {@render primary_viewport(multi_view ? (views[0] ?? {}) : {})}
+        {#if multi_view}
           {#each views.slice(1) as view, idx (idx)}
             {@render extra_viewport(view, idx + 1)}
           {/each}
-        </div>
-      {:else}
-        {@render primary_viewport({})}
-      {/if}
+        {/if}
+      </div>
     {/if}
 
     <div class="bottom-left">
-      {@render bottom_left?.({ structure: displayed_structure })}
+      {@render bottom_left?.({ structure: internal_displayed_structure })}
     </div>
 
     {#if toast_msg}
@@ -1940,9 +1937,7 @@
     {#if symmetry_error}
       <div class="symmetry-error">
         <span>{symmetry_error}</span>
-        <button onclick={() => (symmetry_error = undefined)} aria-label="Dismiss">
-          ×
-        </button>
+        <button onclick={() => (symmetry_error = undefined)} aria-label="Dismiss"> × </button>
       </div>
     {/if}
   {:else if structure}
@@ -1982,16 +1977,18 @@
     background: var(--struct-dragover-bg, var(--dragover-bg));
     border: var(--struct-dragover-border, var(--dragover-border));
   }
+  .viewport-stage {
+    height: 100%;
+    width: 100%;
+  }
   /* 2x2 multi-side view grid: four equal subcanvases. grid-auto-rows keeps rows
     equal-height if a custom `views` array supplies more than four entries. */
-  .viewport-grid {
+  .viewport-stage.multi {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
     grid-auto-rows: 1fr;
     gap: var(--struct-viewport-gap, 2px);
-    height: 100%;
-    width: 100%;
   }
   .multi-view-toggle.active {
     color: var(--accent-color, #4a9eff);
@@ -2026,7 +2023,9 @@
     right: 0;
     background: var(--surface-bg);
     border-radius: var(--border-radius, 3pt);
-    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+    box-shadow:
+      0 8px 16px -4px rgba(0, 0, 0, 0.3),
+      0 4px 8px -2px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
   }
@@ -2127,7 +2126,8 @@
     opacity: 0;
   }
   @keyframes toast-fade {
-    0%, 70% {
+    0%,
+    70% {
       opacity: 1;
     }
     100% {

@@ -13,7 +13,12 @@
   } = $props()
 </script>
 
-{#snippet control_button(callback: () => void, css_class: string, icon: IconName, label: string)}
+{#snippet control_button(
+  callback: () => void,
+  css_class: string,
+  icon: IconName,
+  label: string,
+)}
   <button
     type="button"
     class={css_class}

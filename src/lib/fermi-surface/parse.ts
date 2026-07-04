@@ -1,7 +1,7 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { is_plain_object } from '$lib/utils'
+import { is_plain_object, normalize_scientific_notation, parse_leading_num } from '$lib/utils'
 import * as constants from './constants'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type {
@@ -15,12 +15,14 @@ import type {
 
 const parse_number_tokens = (line: string): string[] => line.split(/\s+/).filter(Boolean)
 
-// Parse whitespace-separated floats from a line (optimized with unary +)
-const parse_floats = (line: string): number[] => parse_number_tokens(line).map(Number)
+// Parse whitespace-separated floats from a line. Normalizes Fortran D-exponents
+// (`0.1234D+01`) which Fortran codes emit in BXSF/FRMSF and Number() rejects
+const parse_floats = (line: string): number[] =>
+  parse_number_tokens(normalize_scientific_notation(line)).map(Number)
 
 // Parse whitespace-separated integers from a line
 const parse_ints = (line: string): number[] =>
-  parse_number_tokens(line).map((part) => parseInt(part, 10))
+  parse_number_tokens(line).map((part) => Math.trunc(Number(part)))
 
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.
 // Format specification: http://www.xcrysden.org/doc/XSF.html
@@ -59,7 +61,7 @@ function parse_bxsf(content: string): BandGridData {
   }
 
   // Parse number of bands
-  const n_bands = parseInt(next_line(), 10)
+  const n_bands = Math.trunc(Number(next_line()))
   if (isNaN(n_bands) || n_bands <= 0) {
     throw new Error(`Invalid number of bands in BXSF file`)
   }
@@ -147,7 +149,7 @@ function parse_bxsf(content: string): BandGridData {
       // Match patterns like "Fermi Energy = 5.123" or "fermi_energy: -0.5"
       const match = /(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i.exec(line)
       if (match) {
-        fermi_energy = parseFloat(match[1])
+        fermi_energy = Number(match[1])
         break
       }
     }
@@ -184,13 +186,13 @@ function parse_frmsf(content: string): BandGridData {
   // 0 = Monkhorst-Pack grid (shifted)
   // 1 = Gamma-centered grid
   // 2 = Gamma + half grid shift
-  const lshift = parseInt(lines[line_idx++], 10)
+  const lshift = Math.trunc(Number(lines[line_idx++]))
   if (isNaN(lshift) || lshift < 0 || lshift > 2) {
     throw new Error(`FRMSF: Invalid lshift value (expected 0, 1, or 2)`)
   }
 
   // Line 3: number of bands
-  const n_bands = parseInt(lines[line_idx++], 10)
+  const n_bands = Math.trunc(Number(lines[line_idx++]))
   if (isNaN(n_bands) || n_bands <= 0) {
     throw new Error(`FRMSF: Invalid number of bands`)
   }
@@ -224,16 +226,13 @@ function parse_frmsf(content: string): BandGridData {
     for (let band_idx = 0; band_idx < n_bands; band_idx++) {
       const energy_values: number[] = []
 
-      // Read energy values (first value per line only, ignore auxiliary columns)
+      // Read energy values (first value per line only, ignore auxiliary columns;
+      // normalize Fortran D-exponents like parse_floats does)
       while (energy_values.length < total_points && line_idx < lines.length) {
-        const line = lines[line_idx]
-        const first_token = line?.split(/\s+/)[0]
-        if (first_token && !isNaN(parseFloat(first_token))) {
-          energy_values.push(parseFloat(first_token))
-          line_idx++
-        } else {
-          break
-        }
+        const energy = parse_leading_num(normalize_scientific_notation(lines[line_idx] ?? ``))
+        if (isNaN(energy)) break
+        energy_values.push(energy)
+        line_idx++
       }
 
       if (energy_values.length < total_points) {
@@ -428,7 +427,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   let has_spin = false
 
   for (const [band_key, iso_list] of Object.entries(isosurfaces_obj)) {
-    const band_index = parseInt(band_key, 10)
+    const band_index = Math.trunc(Number(band_key))
     // spin is determined by sign: positive = up, negative = down
     const spin: SpinChannel = band_index < 0 ? `down` : `up`
     const abs_band_idx = Math.abs(band_index)
@@ -457,10 +456,10 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
       let dimensionality: SurfaceDimensionality | undefined
       if (ifermi_iso.dimensionality) {
         const dim = ifermi_iso.dimensionality.toLowerCase()
-        if (dim.includes(`1d`) || dim === `1d`) dimensionality = `1D`
-        else if (dim.includes(`quasi`) || dim === `quasi-2d`) dimensionality = `quasi-2D`
-        else if (dim.includes(`2d`) || dim === `2d`) dimensionality = `2D`
-        else if (dim.includes(`3d`) || dim === `3d`) dimensionality = `3D`
+        if (dim.includes(`1d`)) dimensionality = `1D`
+        else if (dim.includes(`quasi`)) dimensionality = `quasi-2D`
+        else if (dim.includes(`2d`)) dimensionality = `2D`
+        else if (dim.includes(`3d`)) dimensionality = `3D`
       }
 
       // Compute area for this isosurface using fan triangulation for N-gons

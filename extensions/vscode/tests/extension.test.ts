@@ -775,7 +775,7 @@ describe(`MatterViz Extension`, () => {
           filename: `structure.cif`,
           request_id: `req1`,
           frame_index: 0,
-        } as MessageData,
+        },
         mock_webview,
       )
 
@@ -786,7 +786,7 @@ describe(`MatterViz Extension`, () => {
           filename: `trajectory.traj`,
           request_id: `req2`,
           frame_index: 0,
-        } as MessageData,
+        },
         mock_webview,
       )
 
@@ -894,7 +894,7 @@ describe(`MatterViz Extension`, () => {
             filename: `file_${test_case.size}.cif`,
             request_id: `req_${test_case.size}`,
             frame_index: 0,
-          } as MessageData,
+          },
           mock_webview,
         )
       })
@@ -928,7 +928,7 @@ describe(`MatterViz Extension`, () => {
           filename: `error-file.cif`,
           request_id: `req_error`,
           frame_index: 0,
-        } as MessageData,
+        },
         mock_webview,
       )
 
@@ -956,7 +956,7 @@ describe(`MatterViz Extension`, () => {
           filename: `file1.cif`,
           request_id: `req1`,
           frame_index: 0,
-        } as MessageData,
+        },
         mock_webview,
       )
 
@@ -967,7 +967,7 @@ describe(`MatterViz Extension`, () => {
           filename: `file2.cif`,
           request_id: `req2`,
           frame_index: 0,
-        } as MessageData,
+        },
         mock_webview,
       )
 

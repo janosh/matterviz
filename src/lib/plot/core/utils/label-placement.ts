@@ -80,7 +80,7 @@ export function parse_font_size(size_str?: string): number {
   if (!size_str) return 12
   const match = /^(?<size>\d+(?:\.\d+)?)(?<unit>px|em|rem)?$/.exec(size_str)
   if (!match) return 12
-  const value = parseFloat(match[1])
+  const value = Number(match[1])
   return match[2] === `em` || match[2] === `rem` ? value * 16 : value
 }
 

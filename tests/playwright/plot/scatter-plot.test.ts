@@ -268,9 +268,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(y_tick_texts.length).toBeGreaterThan(0)
 
     // Verify tick values are parseable numbers (handles plain numbers and scientific notation)
-    const parse_tick = (text: string) => parseFloat(text)
-    const x_values = x_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
-    const y_values = y_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
+    const x_values = x_tick_texts.map(Number).filter((val) => !isNaN(val))
+    const y_values = y_tick_texts.map(Number).filter((val) => !isNaN(val))
     expect(x_values.length).toBeGreaterThan(0)
     expect(y_values.length).toBeGreaterThan(0)
 
@@ -564,9 +563,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Verify tick values span a reasonable range for the data
       const x_tick_texts = await plot.locator(`g.x-axis .tick text`).allTextContents()
       const y_tick_texts = await plot.locator(`g.y-axis .tick text`).allTextContents()
-      const parse_tick = (text: string) => parseFloat(text)
-      const x_values = x_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
-      const y_values = y_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
+      const x_values = x_tick_texts.map(Number).filter((val) => !isNaN(val))
+      const y_values = y_tick_texts.map(Number).filter((val) => !isNaN(val))
 
       // Tick range should be positive (axis spans some distance)
       if (x_values.length >= 2) {
@@ -609,7 +607,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Verify tick values follow logarithmic progression (roughly constant ratios)
       const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
       const tick_values = tick_texts
-        .map((text) => parseFloat(text))
+        .map(Number)
         .filter((val) => !isNaN(val) && val > 0)
         .sort((a, b) => a - b)
 
@@ -1631,8 +1629,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expect(tick_texts.length).toBeGreaterThan(0)
 
       // Verify tick values are parseable and in ascending order
-      const parse_tick = (text: string) => parseFloat(text)
-      const values = tick_texts.map(parse_tick).filter((val) => !isNaN(val))
+      const values = tick_texts.map(Number).filter((val) => !isNaN(val))
       expect(values.length).toBeGreaterThan(0)
 
       // Verify ascending order (proper axis scaling)
@@ -1654,9 +1651,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const x_tick_texts = await scatter_plot.locator(`g.x-axis .tick text`).allTextContents()
     const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`).allTextContents()
 
-    const parse_tick = (text: string) => parseFloat(text)
-    const x_values = x_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
-    const y_values = y_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
+    const x_values = x_tick_texts.map(Number).filter((val) => !isNaN(val))
+    const y_values = y_tick_texts.map(Number).filter((val) => !isNaN(val))
 
     // Verify we have a reasonable number of ticks
     expect(x_values.length).toBeGreaterThanOrEqual(4)

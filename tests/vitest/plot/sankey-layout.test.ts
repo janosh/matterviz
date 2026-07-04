@@ -124,14 +124,17 @@ describe(`compute_sankey_layout`, () => {
   })
 
   test.each([
-    [{ nodes: [], links: [] } as SankeyData, { width: 0, height: 0 }],
+    [
+      { nodes: [], links: [] },
+      { width: 0, height: 0 },
+    ],
     [tri, { width: 0, height: 0 }], // valid data but zero size -> empty
     // all-zero link values would divide by zero in d3-sankey (NaN ribbon paths)
     [
       {
         nodes: [{ label: `A` }, { label: `B` }],
         links: [{ source: 0, target: 1, value: 0 }],
-      } as SankeyData,
+      },
       dims,
     ],
   ])(`returns empty layout for degenerate input %#`, (data, size) => {

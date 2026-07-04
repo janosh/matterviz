@@ -8,14 +8,23 @@
     {
       label: `Renewable`,
       children: [
-        { label: `Solar`, children: [{ label: `PV`, value: 8 }, { label: `CSP`, value: 2 }] },
+        {
+          label: `Solar`,
+          children: [
+            { label: `PV`, value: 8 },
+            { label: `CSP`, value: 2 },
+          ],
+        },
         { label: `Wind`, value: 12 },
         { label: `Hydro`, value: 6 },
       ],
     },
     {
       label: `Fossil`,
-      children: [{ label: `Coal`, value: 10 }, { label: `Gas`, value: 12 }],
+      children: [
+        { label: `Coal`, value: 10 },
+        { label: `Gas`, value: 12 },
+      ],
     },
   ]
 
@@ -71,12 +80,7 @@
 
 <section id="flat-sunburst">
   <h2>Flat plotly-trace input + value_mode total + legend</h2>
-  <Sunburst
-    data={flat}
-    value_mode="total"
-    show_legend
-    style="height: 360px"
-  />
+  <Sunburst data={flat} value_mode="total" show_legend style="height: 360px" />
 </section>
 
 <section id="zoom-sunburst">
@@ -106,12 +110,7 @@
 
 <section id="icicle-sunburst">
   <h2>Icicle shape</h2>
-  <Sunburst
-    shape="icicle"
-    data={energy}
-    tween={{ duration: 50 }}
-    style="height: 360px"
-  />
+  <Sunburst shape="icicle" data={energy} tween={{ duration: 50 }} style="height: 360px" />
 </section>
 
 <section id="other-sunburst">
@@ -132,25 +131,21 @@
 
 <section id="large-sunburst">
   <h2>Large hierarchy (2920 arcs)</h2>
-  <Sunburst
-    data={large}
-    tween={{ duration: 50 }}
-    show_labels={false}
-    style="height: 400px"
-  />
+  <Sunburst data={large} tween={{ duration: 50 }} show_labels={false} style="height: 400px" />
 </section>
 
 <section id="metric-sunburst">
   <h2>Metric coloring (colorbar reserves space, no overlap)</h2>
-  <Sunburst data={energy} color_values={(arc: PositionedArc) => arc.value} style="height: 360px" />
+  <Sunburst
+    data={energy}
+    color_values={(arc: PositionedArc) => arc.value}
+    style="height: 360px"
+  />
 </section>
 
 <section id="spacegroup-sunburst">
   <h2>Spacegroup sunburst (crystal system &rarr; spacegroup)</h2>
-  <Sunburst
-    data={spacegroup_sunburst_data(spacegroups)}
-    style="height: 400px"
-  />
+  <Sunburst data={spacegroup_sunburst_data(spacegroups)} style="height: 400px" />
 </section>
 
 <style>

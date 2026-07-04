@@ -24,9 +24,7 @@ describe(`normalize_show_controls`, () => {
     [{ mode: `always` as const }, `always`, `always-visible`],
     [{ mode: `never` as const }, `never`, ``],
   ])(`maps %j to mode=%s, class=%s`, (input, expected_mode, expected_class) => {
-    const config = normalize_show_controls(
-      input as Parameters<typeof normalize_show_controls>[0],
-    )
+    const config = normalize_show_controls(input)
     expect(config.mode).toBe(expected_mode)
     expect(config.class).toBe(expected_class)
   })

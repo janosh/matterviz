@@ -73,13 +73,11 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   const centers = center_sites.filter((site) => has_species(site, center_species))
   const neighbors = sites.filter((site) => has_species(site, neighbor_species))
 
-  if (centers.length === 0 || neighbors.length === 0) {
-    const element_pair =
-      center_species && neighbor_species
-        ? ([center_species, neighbor_species] as [string, string])
-        : undefined
-    return { r, g_r, element_pair }
-  }
+  const element_pair =
+    center_species && neighbor_species
+      ? ([center_species, neighbor_species] as [string, string])
+      : undefined
+  if (centers.length === 0 || neighbors.length === 0) return { r, g_r, element_pair }
 
   // Calculate distances and bin them with occupancy weighting
   const use_pbc = pbc.some(Boolean)
@@ -117,10 +115,6 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     }
   }
 
-  const element_pair =
-    center_species && neighbor_species
-      ? ([center_species, neighbor_species] as [string, string])
-      : undefined
   return { r, g_r, element_pair }
 }
 

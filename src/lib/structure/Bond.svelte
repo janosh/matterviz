@@ -4,7 +4,11 @@
   import type { InstancedMesh } from 'three'
   import { Color, InstancedBufferAttribute, Matrix4, ShaderMaterial } from 'three'
 
-  let { group, saturation = 0.5, brightness = 0.7 }: {
+  let {
+    group,
+    saturation = 0.5,
+    brightness = 0.7,
+  }: {
     group: BondGroupWithGradients
     saturation?: number
     brightness?: number
@@ -104,12 +108,10 @@
 
     // Update geometry color attributes
     const { geometry } = mesh
-    for (
-      const [name, buffer] of [
-        [`instanceColorStart`, colors_start],
-        [`instanceColorEnd`, colors_end],
-      ] as const
-    ) {
+    for (const [name, buffer] of [
+      [`instanceColorStart`, colors_start],
+      [`instanceColorEnd`, colors_end],
+    ] as const) {
       const existing = geometry.getAttribute(name)
       if (existing?.array === buffer) existing.needsUpdate = true
       else geometry.setAttribute(name, new InstancedBufferAttribute(buffer, 3))
@@ -141,9 +143,6 @@
   $effect(() => () => shader_material.dispose())
 </script>
 
-<T.InstancedMesh
-  args={[undefined, shader_material, group.instances.length]}
-  bind:ref={mesh}
->
+<T.InstancedMesh args={[undefined, shader_material, group.instances.length]} bind:ref={mesh}>
   <T.CylinderGeometry args={[group.thickness, group.thickness, 1, 8]} />
 </T.InstancedMesh>
