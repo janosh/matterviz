@@ -352,10 +352,12 @@ describe(`render() lifecycle`, () => {
     const listener_count = () =>
       Object.values(model.listeners).reduce((sum, set) => sum + set.size, 0)
 
+    // as never: anywidget's RenderProps also wants signal/host/experimental,
+    // which the drive-listener assertions below don't need
     const dispose = anywidget_module.default.render({
       model: as_model(model),
       el,
-    }) as () => void
+    } as never) as () => void
     flushSync()
     expect(listener_count()).toBeGreaterThan(0) // drive listeners registered
 
