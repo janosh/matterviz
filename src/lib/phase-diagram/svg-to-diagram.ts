@@ -128,7 +128,7 @@ function extract_simple_ticks(
 ): void {
   // Y-axis ticks: class="tick-text" with text-anchor: end
   for (const text_el of Array.from(doc.querySelectorAll(`.tick-text`))) {
-    const value = Number(text_el.textContent?.trim() || NaN)
+    const value = leading_number(text_el.textContent)
     if (isNaN(value)) continue
 
     // Find the immediately preceding sibling tick line (not just any line in parent)
@@ -143,7 +143,7 @@ function extract_simple_ticks(
 
   // X-axis ticks: class="tick-text-x"
   for (const text_el of Array.from(doc.querySelectorAll(`.tick-text-x`))) {
-    const value = Number(text_el.textContent?.trim() || NaN)
+    const value = leading_number(text_el.textContent)
     if (isNaN(value)) continue
 
     const px_x = parse_float_attr(text_el, `x`)
@@ -165,7 +165,7 @@ function extract_mpds_scales(doc: Document): {
   // Extract all numeric text values to infer axis ranges
   const numbers: number[] = []
   for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
-    const val = Number(text_el.textContent?.trim() || NaN)
+    const val = leading_number(text_el.textContent)
     if (!isNaN(val)) numbers.push(val)
   }
 
@@ -821,19 +821,26 @@ function infer_mpds_components(doc: Document): [string, string] {
 
 // === Utility Functions ===
 
-// Parse stroke-width from style attribute or direct attribute (returns 0 if not found)
+// Leading numeric prefix like parseFloat (`2px` -> 2, `600 K` -> 600, else NaN):
+// Number() alone rejects unit-suffixed/annotated values that real SVG exports contain
+function leading_number(text: string | null | undefined): number {
+  const match = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(text?.trim() ?? ``)
+  return match ? Number(match[0]) : NaN
+}
+
+// Parse stroke-width from style or direct attribute (0 if missing, `2px` units ok)
 function parse_stroke_width(el: Element): number {
   const style_match = /stroke-width:\s*(?<width>[\d.]+)/.exec(el.getAttribute(`style`) ?? ``)
   if (style_match) return Number(style_match[1])
-  const attr = el.getAttribute(`stroke-width`)
-  return attr ? Number(attr) || 0 : 0
+  const parsed = leading_number(el.getAttribute(`stroke-width`))
+  return isNaN(parsed) ? 0 : parsed
 }
 
 // Parse a float attribute from an SVG element
 function parse_float_attr(el: Element, attr: string): number | null {
   const val = el.getAttribute(attr)
   if (val === null) return null
-  const parsed = Number(val)
+  const parsed = leading_number(val)
   return isNaN(parsed) ? null : parsed
 }
 
@@ -842,7 +849,7 @@ function extract_comment_number(group: Element): number | null {
   const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
   let node: Comment | null
   while ((node = walker.nextNode() as Comment | null)) {
-    const value = Number(node.textContent?.trim() || NaN)
+    const value = leading_number(node.textContent)
     if (!isNaN(value)) return value
   }
   return null

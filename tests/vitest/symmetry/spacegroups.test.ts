@@ -178,6 +178,10 @@ describe(`normalize_spacegroup`, () => {
     [`invalid`, null],
     [`P999`, null],
     [``, null],
+    [`146`, 146],
+    [`146:R`, 146], // setting-qualified numeric strings keep the leading integer
+    [`62.0`, 62],
+    [`231:R`, null],
   ])(`should return %s for %s`, (input, expected) => {
     expect(spg.normalize_spacegroup(input)).toBe(expected)
   })

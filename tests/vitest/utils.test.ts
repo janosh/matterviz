@@ -1,5 +1,19 @@
-import { decode_url_safe_base64, merge_nested } from '$lib'
+import { decode_url_safe_base64, merge_nested, parse_leading_num, parse_num_token } from '$lib'
 import { describe, expect, test } from 'vitest'
+
+describe(`parse_num_token / parse_leading_num`, () => {
+  test.each([
+    // [input, whole-token result, first-token result]
+    [` 1.5 `, 1.5, 1.5],
+    [``, NaN, NaN], // blank must be NaN, not 0 (unlike Number(``))
+    [`2.0 ! scale`, NaN, 2], // leading_num keeps first token like parseFloat
+    [`6 methane`, NaN, 6], // Tinker-style XYZ count line
+    [`abc`, NaN, NaN],
+  ])(`%j -> %s / %s`, (input, whole, leading) => {
+    expect(parse_num_token(input)).toBe(whole)
+    expect(parse_leading_num(input)).toBe(leading)
+  })
+})
 
 describe(`merge_nested`, () => {
   test(`merges flat and nested objects`, () => {

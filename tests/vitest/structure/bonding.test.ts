@@ -1073,3 +1073,19 @@ describe(`spatial grid scratch array reuse`, () => {
     },
   )
 })
+
+test(`pack_cell_key is injective in a dense block and safe-integer at ±512 range corners`, () => {
+  const keys = new Set<number>()
+  for (let x = -5; x <= 5; x++) {
+    for (let y = -5; y <= 5; y++)
+      for (let z = -5; z <= 5; z++) keys.add(bonding.pack_cell_key(x, y, z))
+  }
+  expect(keys.size).toBe(11 ** 3)
+  for (const [x, y, z] of [
+    [-512, -512, -512],
+    [511, 511, 511],
+    [-512, 511, -512],
+  ]) {
+    expect(Number.isSafeInteger(bonding.pack_cell_key(x, y, z))).toBe(true)
+  }
+})

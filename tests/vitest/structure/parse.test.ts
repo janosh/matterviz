@@ -491,10 +491,27 @@ describe(`Auto-detection & Error Handling`, () => {
     },
     { name: `XYZ by content`, content: cyclohexane, sites: 18 },
     { name: `POSCAR by content`, content: ba_ti_o3_tetragonal, sites: 5 },
+    {
+      name: `POSCAR by content with per-axis scale factors`,
+      content: `Test\n1.1 1.1 1.2\n5 0 0\n0 5 0\n0 0 5\nH O\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5`,
+      sites: 2,
+    },
+    {
+      name: `Tinker-style XYZ with title after atom count`,
+      content: `2 water fragment\ncomment\nO 0.0 0.0 0.0\nH 0.0 0.0 1.0`,
+      sites: 2,
+    },
   ])(`should detect $name`, ({ content, filename, sites }) => {
     const result = parse_structure_file(content, filename)
     assert(result, `Failed to parse structure file`)
     expect(result.sites).toHaveLength(sites)
+  })
+
+  it(`should not misread a blank POSCAR element line as VASP 4 zero counts`, () => {
+    // A blank line 6 must not become atom_counts=[0] via Number(``) === 0
+    const result = parse_poscar(`Test\n1.0\n5 0 0\n0 5 0\n0 0 5\n\n1\nDirect\n0 0 0`)
+    assert(result, `Failed to parse POSCAR with blank element line`)
+    expect(result.sites.length).toBeGreaterThan(0)
   })
 
   it(`should handle non-orthogonal lattices with matrix inversion`, () => {

@@ -6,7 +6,6 @@
   import type { Vec3 } from '$lib/math'
   import { T, useTask, useThrelte } from '@threlte/core'
   import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
   import { Group } from 'three'
   import { type LabelPlacement, LabelProjector } from './atom-label-placement'
 
@@ -75,13 +74,14 @@
   // Follow camera motion (runs only on rendered frames, like threlte's <HTML>)
   useTask(update_positions, { stage: renderStage, autoInvalidate: false })
 
-  // Immediate repositioning when label data or viewport size changes
+  // Immediate repositioning when label data, offsets or viewport size changes.
+  // update_positions is deliberately tracked: it reads entries, screen_margin and
+  // (via get_offset) the scene's offset state, so offset changes re-run this
+  // effect even when no frame is scheduled.
   $effect(() => {
-    void entries
     void $size
-    void screen_margin
     last_transforms = []
-    untrack(update_positions)
+    update_positions()
   })
 
   const portal_action = (el: HTMLElement) => {

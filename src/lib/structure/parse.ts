@@ -19,7 +19,12 @@ import type { Pbc } from '$lib/structure/pbc'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import { iter_xyz_frames } from '$lib/trajectory/helpers'
-import { normalize_scientific_notation, to_error } from '$lib/utils'
+import {
+  normalize_scientific_notation,
+  parse_leading_num,
+  parse_num_token,
+  to_error,
+} from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
 
 // === Parse error contract ===
@@ -321,9 +326,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
 
     // Detect if this is VASP 5+ format (has element symbols)
     // Try to parse the first token as a number - if it succeeds, it's VASP 4 format
-    const first_token = lines[line_index].trim().split(/\s+/)[0]
-    const first_token_as_number = Number(first_token)
-    const has_element_symbols = isNaN(first_token_as_number)
+    const has_element_symbols = isNaN(parse_leading_num(lines[line_index]))
 
     if (has_element_symbols) {
       // VASP 5+ format - parse element symbols (may span multiple lines)
@@ -332,9 +335,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       // Look ahead to find where numbers start (atom counts)
       for (let lookahead_idx = 1; lookahead_idx < 10; lookahead_idx++) {
         if (line_index + lookahead_idx >= lines.length) break
-        const next_line_first_token = lines[line_index + lookahead_idx].trim().split(/\s+/)[0]
-        const next_token_as_number = Number(next_line_first_token)
-        if (!isNaN(next_token_as_number)) {
+        if (!isNaN(parse_leading_num(lines[line_index + lookahead_idx]))) {
           symbol_lines = lookahead_idx
           break
         }
@@ -489,8 +490,9 @@ export function parse_xyz(content: string): ParsedStructure | null {
       return null
     }
 
-    // Parse number of atoms (line 1)
-    const num_atoms = Math.trunc(Number(lines[0].trim()))
+    // Parse number of atoms (line 1). Only the first token counts: Tinker-style
+    // XYZ files put a title after the count (e.g. `6 methane`)
+    const num_atoms = Math.trunc(parse_leading_num(lines[0]))
     if (isNaN(num_atoms) || num_atoms <= 0) {
       diag_error(`Invalid number of atoms in XYZ file`)
       return null
@@ -1003,7 +1005,9 @@ export function parse_cif(
           // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
           const match = /^(?<element>[A-Z][a-z]*)/.exec(toks[sym_idx])
           const sym = match ? match[1] : toks[sym_idx]
-          const num = Math.trunc(Number(toks[num_idx]))
+          // Strip standard-uncertainty parentheses (`8(0)` -> `8`) like other CIF
+          // readers; empty prefixes like `(8)` parse as NaN and get skipped
+          const num = Math.trunc(parse_num_token(toks[num_idx].split(`(`)[0]))
           // sum rows that normalize to the same element (e.g. Fe2+ and Fe3+ → Fe)
           if (sym && !Number.isNaN(num)) {
             atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + num
@@ -1378,8 +1382,9 @@ function parse_structure_file_impl(
     return null
   }
 
-  // XYZ format detection: first line should be a number, second line is comment
-  const first_line_number = Math.trunc(Number(lines[0].trim()))
+  // XYZ format detection: first line should start with a number (atom count,
+  // optionally followed by a Tinker-style title), second line is comment
+  const first_line_number = Math.trunc(parse_leading_num(lines[0]))
   if (!isNaN(first_line_number) && first_line_number > 0) {
     // Check if this looks like XYZ format
     if (lines.length >= first_line_number + 2) {
@@ -1409,10 +1414,10 @@ function parse_structure_file_impl(
 
   // POSCAR format detection: look for typical structure
   if (lines.length >= 8) {
-    // Guard against blank lines: Number(``) is 0, not NaN
-    const second_line = lines[1].trim()
-    // Second line is a number (scale factor), likely POSCAR
-    if (second_line && !isNaN(Number(second_line))) return parse_poscar(content)
+    // Second line starts with a number (scale factor), likely POSCAR. First
+    // token only: POSCAR allows three per-axis scale factors (or trailing
+    // comments) on line 2, and blank lines must not pass
+    if (!isNaN(parse_leading_num(lines[1]))) return parse_poscar(content)
   }
 
   // CIF format detection: look for CIF-specific keywords

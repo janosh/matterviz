@@ -837,7 +837,9 @@
       if (site?.properties?.orig_site_idx != null) return
 
       const is_selected = selected_sites.includes(site_index)
-      const is_shift = evt instanceof MouseEvent && evt.shiftKey
+      // threlte dispatches plain objects wrapping the DOM event, so read shift
+      // from the extracted native event (evt itself is never a MouseEvent for 3D hits)
+      const is_shift = native_event instanceof MouseEvent && native_event.shiftKey
 
       // In edit-atoms mode, selected_sites and measured_sites always stay in sync
       let new_sites: number[]

@@ -2,7 +2,7 @@
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { CameraProjection } from '$lib/settings'
-  import { make_change_detector } from '$lib/utils'
+  import { make_change_detector, parse_num_token } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type {
     BandGridData,
@@ -119,8 +119,7 @@
   }
 
   function handle_mu_change(event: Event & { currentTarget: HTMLInputElement }) {
-    const trimmed = event.currentTarget.value.trim()
-    const parsed = Number(trimmed)
+    const parsed = parse_num_token(event.currentTarget.value)
     // Only update mu when input is valid; keep last valid value during transient
     // invalid states (e.g. empty string while user is typing a new value)
     if (Number.isFinite(parsed)) {

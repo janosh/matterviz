@@ -10,6 +10,7 @@ import type { Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { ParsedStructure } from '$lib/structure/parse'
 import { make_site } from '$lib/structure/site'
+import { parse_leading_num } from '$lib/utils'
 import type { DataRange, VolumetricData, VolumetricFileData } from './types'
 
 // Bohr radius in Angstroms (for Gaussian .cube unit conversion)
@@ -220,7 +221,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
   // Line 1: scale factor
   cur = read_line(content, pos)
-  const scale_factor = Number(cur.line)
+  const scale_factor = parse_leading_num(cur.line)
   if (isNaN(scale_factor)) {
     vol_error(`Invalid scaling factor in CHGCAR`)
     return null
@@ -250,8 +251,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   }
 
   // Detect VASP 5+ format (has element symbols before counts)
-  const first_token = cur.line.trim().split(/\s+/)[0]
-  const has_element_symbols = isNaN(Number(first_token))
+  const has_element_symbols = isNaN(parse_leading_num(cur.line))
 
   if (has_element_symbols) {
     element_symbols = cur.line.trim().split(/\s+/)

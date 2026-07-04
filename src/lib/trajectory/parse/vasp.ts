@@ -6,11 +6,12 @@ import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { is_elem_symbol } from '$lib/element'
 import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { parse_leading_num } from '$lib/utils'
 
 // Parse the 7-line XDATCAR header at lines[start]: title, scale factor, 3 lattice rows
 // (multiplied by scale), element names, element counts
 function parse_xdatcar_header(lines: string[], start: number) {
-  const scale = Number(lines[start + 1])
+  const scale = parse_leading_num(lines[start + 1])
   const rows = lines.slice(start + 2, start + 5).map((line) =>
     line
       .trim()
