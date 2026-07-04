@@ -184,6 +184,34 @@ function extract_material_color(mat: Material): { r: number; g: number; b: numbe
 const is_instanced_mesh = (obj: Object3D): obj is InstancedMesh =>
   (obj as InstancedMesh).isInstancedMesh || obj.type === `InstancedMesh`
 
+// Resolve the export color for one instance of an InstancedMesh. Precedence:
+// gradient bond midpoints (shader bonds), then per-instance colors on meshes
+// flagged userData.per_instance_color (atoms/arrows keep a white base material
+// and store real colors in the instanceColor buffer), then the shared material
+// color (legacy threlte-instanced meshes carry an all-white instanceColor that
+// must NOT win), then instanceColor as a last resort. null = keep default.
+function resolve_instance_material_color(
+  instanced_mesh: InstancedMesh,
+  instance_idx: number,
+  bond_colors: Map<number, Color> | undefined,
+  stored_color: { r: number; g: number; b: number } | undefined,
+): Color | null {
+  const bond_color = bond_colors?.get(instance_idx)
+  if (bond_color) return bond_color
+
+  const { instanceColor } = instanced_mesh
+  const per_instance = instanceColor
+    ? new Color(
+        instanceColor.getX(instance_idx),
+        instanceColor.getY(instance_idx),
+        instanceColor.getZ(instance_idx),
+      )
+    : null
+  if (instanced_mesh.userData.per_instance_color && per_instance) return per_instance
+  if (stored_color) return new Color(stored_color.r, stored_color.g, stored_color.b)
+  return per_instance
+}
+
 // @internal exported only for tests - not part of the public API.
 export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // STEP 1: Collect material colors from ORIGINAL scene BEFORE cloning
@@ -286,30 +314,14 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
       })
       new_material.name = `material_${mesh_idx}_${idx}`
 
-      // Apply the correct color
-      const bond_color = stored_bond_colors?.get(idx)
-      if (bond_color) {
-        // Bond with gradient color - use stored midpoint color
-        new_material.color.copy(bond_color)
-      } else if (instanced_mesh.userData.per_instance_color && instanced_mesh.instanceColor) {
-        // Meshes flagged per_instance_color (atoms, arrows) keep a white base
-        // material and store real colors in the instanceColor buffer
-        new_material.color.setRGB(
-          instanced_mesh.instanceColor.getX(idx),
-          instanced_mesh.instanceColor.getY(idx),
-          instanced_mesh.instanceColor.getZ(idx),
-        )
-      } else if (stored_color) {
-        // Atom with shared material color
-        new_material.color.setRGB(stored_color.r, stored_color.g, stored_color.b)
-      } else if (instanced_mesh.instanceColor) {
-        // Fallback: per-instance colors from instanceColor attribute
-        const color_r = instanced_mesh.instanceColor.getX(idx)
-        const color_g = instanced_mesh.instanceColor.getY(idx)
-        const color_b = instanced_mesh.instanceColor.getZ(idx)
-        new_material.color.setRGB(color_r, color_g, color_b)
-      }
-      // If no color found, material stays default white
+      // Apply the correct color (null = no color found, material stays default white)
+      const resolved_color = resolve_instance_material_color(
+        instanced_mesh,
+        idx,
+        stored_bond_colors,
+        stored_color,
+      )
+      if (resolved_color) new_material.color.copy(resolved_color)
 
       const mesh = new Mesh(cloned_geometry, new_material)
 
