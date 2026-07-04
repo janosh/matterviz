@@ -51,14 +51,6 @@ const is_scattered_trajectory = (sites: ParsedStructure[`sites`]): boolean => {
   return atoms_outside_cell.length > sites.length * 0.1
 }
 
-// Cartesian position of fractional coords abc in the given lattice (rows = lattice vectors)
-const frac_to_cart_pos = (abc: Vec3, lattice_vecs: readonly Vec3[]): Vec3 =>
-  math.add(
-    math.scale(lattice_vecs[0], abc[0]),
-    math.scale(lattice_vecs[1], abc[1]),
-    math.scale(lattice_vecs[2], abc[2]),
-  )
-
 export function find_image_atoms(
   structure: ParsedStructure,
   { tolerance }: { tolerance?: number } = {},
@@ -71,23 +63,19 @@ export function find_image_atoms(
 
   const image_sites: [number, Vec3, Vec3, boolean?][] = []
   const lattice_vecs = structure.lattice.matrix
+  const frac_to_cart = math.create_frac_to_cart(lattice_vecs)
+  const vec_lens = lattice_vecs.map((vec) => Math.hypot(...vec))
 
   // Scale zero-displacement threshold by lattice length scale to avoid magic numbers
-  const lattice_norm = Math.max(
-    Math.hypot(...lattice_vecs[0]),
-    Math.hypot(...lattice_vecs[1]),
-    Math.hypot(...lattice_vecs[2]),
-  )
+  const lattice_norm = Math.max(...vec_lens)
   const displacement_eps_sq = (1e-10 * lattice_norm) ** 2
 
   // Boundary tolerance: physical 0.5 Å as fractional per-axis, so large cells (MOFs)
   // don't over-generate (a flat 0.05 fractional would be huge there)
   const PHYSICAL_TOLERANCE = 0.5 // Å
-  const tolerances = [0, 1, 2].map((dim) => {
-    if (tolerance !== undefined) return tolerance
-    const vec_len = Math.hypot(...lattice_vecs[dim])
-    return vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05
-  })
+  const tolerances = vec_lens.map(
+    (vec_len) => tolerance ?? (vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05),
+  )
 
   const pbc: Pbc = structure.lattice.pbc ?? [true, true, true] // no images across vacuum
 
@@ -123,7 +111,7 @@ export function find_image_atoms(
       ]
       if (img_abc[0] === s_a && img_abc[1] === s_b && img_abc[2] === s_c) continue
 
-      const img_xyz = frac_to_cart_pos(img_abc, lattice_vecs)
+      const img_xyz = frac_to_cart(img_abc)
       // Skip zero-displacement images (guards against FP edge cases)
       const displacement = math.subtract(img_xyz, site.xyz)
       const displacement_len_sq = displacement.reduce((sum, val) => sum + val * val, 0)
@@ -279,7 +267,7 @@ export function find_image_atoms(
               site.abc[1] + shift_b,
               site.abc[2] + shift_c,
             ]
-            const img_xyz = frac_to_cart_pos(img_abc, lattice_vecs)
+            const img_xyz = frac_to_cart(img_abc)
             if (!completes_cation_shell(img_xyz, radius, en)) continue
             seen_images.add(key)
             image_sites.push([idx, img_xyz, img_abc, true])

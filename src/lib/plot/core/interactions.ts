@@ -18,7 +18,6 @@ export function get_relative_coords(
   if (!(element instanceof Element)) return null
 
   const box = element.getBoundingClientRect()
-  if (!box) return null
   return { x: evt.clientX - box.left, y: evt.clientY - box.top }
 }
 

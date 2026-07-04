@@ -1679,7 +1679,7 @@
               ? 0.25
               : 1}
           >
-            {#if series_markers?.includes(`line`)}
+            {#if series_markers.includes(`line`)}
               {@const all_line_points = series_data.x.map((x, idx) => ({
                 x,
                 y: series_data.y[idx],
@@ -1733,7 +1733,7 @@
           {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
           {@const series_default_symbol = get_series_symbol(series_data.orig_series_idx ?? 0)}
           <g data-series-id={series_data._id}>
-            {#if series_markers?.includes(`points`)}
+            {#if series_markers.includes(`points`)}
               {#each series_data.filtered_data as point (`${point.series_idx}-${point.point_idx}`)}
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}

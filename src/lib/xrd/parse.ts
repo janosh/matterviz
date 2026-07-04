@@ -170,14 +170,6 @@ export function parse_xy_file(content: string): XrdPattern | null {
   return { x: normalized.x, y: normalized.y }
 }
 
-// Parse a .xye file containing three-column XRD data (2θ, intensity, error).
-// Same as .xy but with an optional third column for uncertainties (ignored for plotting).
-export function parse_xye_file(content: string): XrdPattern | null {
-  // XYE is just XY with an extra error column - reuse parse_xy_file which already
-  // handles extra columns by only taking the first two
-  return parse_xy_file(content)
-}
-
 // Parse a Rigaku .ras file (ASCII format with structured header).
 // Format: *RAS_HEADER_START ... *RAS_HEADER_END followed by *RAS_INT_START ... *RAS_INT_END
 // Data can be single-column (intensity only) or multi-column (2-theta, intensity, [error])

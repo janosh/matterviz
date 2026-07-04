@@ -8,7 +8,6 @@ import {
   parse_xrd_file,
   parse_xrdml_file,
   parse_xy_file,
-  parse_xye_file,
 } from '$lib/xrd/parse'
 import { zipSync } from 'fflate'
 import type { Buffer } from 'node:buffer'
@@ -130,13 +129,13 @@ describe(`parse_xy_file`, () => {
   })
 })
 
-describe(`parse_xye_file`, () => {
+describe(`parse_xy_file with XYE data (error column ignored)`, () => {
   test.each([
     [`space-separated`, `10.0 100 5\n20.0 200 10\n30.0 300 15`],
     [`tab-separated`, `10.0\t100\t5\n20.0\t200\t10\n30.0\t300\t15`],
     [`extra columns`, `10.0 100 5 extra\n20.0 200 10 extra\n30.0 300 15 extra`],
   ])(`parses %s XYE data`, (_desc, content) => {
-    const result = parse_xye_file(content)
+    const result = parse_xy_file(content)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([10, 20, 30])
     // Normalized: 100/300*100=33.33, 200/300*100=66.67, 300/300*100=100

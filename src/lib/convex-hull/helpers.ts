@@ -307,15 +307,10 @@ export function build_entry_tooltip_text(
     : `${entry.name ?? entry.reduced_formula ?? ``}\n`
 
   if (!is_element) {
-    const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
-    if (total > 0) {
-      const fractions = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .map(([el, amt]) => `${el}: ${format_fractional(amt / total)}`)
-      if (fractions.length > 1) {
-        text += `Composition: ${fractions.join(`, `)}\n`
-      }
-    }
+    const fractions = Object.entries(get_fractional_composition(entry.composition)).map(
+      ([elem, frac]) => `${elem}: ${format_fractional(frac)}`,
+    )
+    if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
   }
 
   if (entry.e_above_hull !== undefined) {
@@ -406,16 +401,14 @@ export function compute_energy_mode_info(
       break
     }
   }
-  const can_compute_hull = can_compute_e_form
-
   // Resolve mode to avoid inconsistent states:
   // - If full precomputed available, honor user toggle
-  // - Else if we can compute both, use on-the-fly automatically
+  // - Else if we can compute, use on-the-fly automatically
   // - Else fall back to precomputed (best-effort)
   const energy_mode =
     has_precomputed_e_form && has_precomputed_hull
       ? energy_source_mode
-      : can_compute_e_form && can_compute_hull
+      : can_compute_e_form
         ? `on-the-fly`
         : `precomputed`
 
@@ -423,7 +416,8 @@ export function compute_energy_mode_info(
     has_precomputed_e_form,
     has_precomputed_hull,
     can_compute_e_form,
-    can_compute_hull,
+    // hull needs the same unary references as e_form, so the two always agree
+    can_compute_hull: can_compute_e_form,
     energy_mode,
     unary_refs,
   }

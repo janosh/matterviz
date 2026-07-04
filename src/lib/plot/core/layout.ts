@@ -373,9 +373,9 @@ export function compute_element_placement(
       : 0
 
   // Precompute plot corners (constant across all candidates)
-  const plot_left = plot_bounds.x + axis_clearance
+  const plot_left = valid_x_min
   const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
-  const plot_top = plot_bounds.y + axis_clearance
+  const plot_top = valid_y_min
   const plot_bottom = plot_bounds.y + plot_bounds.height - axis_clearance
   const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
 

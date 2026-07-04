@@ -641,7 +641,7 @@ export function parse_volumetric_file(
   // CHGCAR detection: requires POSCAR-like header (scale factor on line 2) AND
   // a grid dimensions line (3 integers) somewhere after the header. This distinguishes
   // CHGCAR from plain POSCAR/CONTCAR files which share the same header format.
-  if (lines.length > 2 && !isNaN(Number(lines[1].trim()))) {
+  if (lines.length > 2 && !isNaN(parse_leading_num(lines[1]))) {
     // Scan for grid dimensions line (3 integers) starting from ~line 7
     let scan_pos = find_line_offset(content, 7)
     // Only scan a limited window, not the entire file

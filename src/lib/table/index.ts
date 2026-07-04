@@ -1,7 +1,7 @@
-import { pick_contrast_color } from '$lib/colors'
+import { type D3InterpolateName, get_d3_interpolator, pick_contrast_color } from '$lib/colors'
 import { max, min } from 'd3-array'
 import { scaleLog, scaleSequential } from 'd3-scale'
-import * as d3sc from 'd3-scale-chromatic'
+import type * as d3sc from 'd3-scale-chromatic'
 import type { Snippet } from 'svelte'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
@@ -134,9 +134,7 @@ export function calc_cell_color(
   // Reverse the range if lower values are better
   if (better === `lower`) range.reverse()
 
-  // Get interpolator function, fallback to viridis if not a valid function
-  const scale_fn = d3sc[color_scale]
-  const interpolator = typeof scale_fn === `function` ? scale_fn : d3sc.interpolateViridis
+  const interpolator = get_d3_interpolator(color_scale as D3InterpolateName)
 
   // Use log scale for positive values, otherwise linear/sequential scale
   const bg =

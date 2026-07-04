@@ -226,16 +226,6 @@ function resolve_optimade_element(
   return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
 }
 
-const try_create_cart_to_frac = (
-  lattice_matrix: math.Matrix3x3,
-): ((v: Vec3) => Vec3) | null => {
-  try {
-    return math.create_cart_to_frac(lattice_matrix)
-  } catch {
-    return null
-  }
-}
-
 const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
   Math.abs(axis_lengths[0]) > math.EPS ? xyz[0] / axis_lengths[0] : 0,
   Math.abs(axis_lengths[1]) > math.EPS ? xyz[1] / axis_lengths[1] : 0,
@@ -258,8 +248,11 @@ const cart_to_frac_with_fallback = (
   matrix: math.Matrix3x3,
   axis_lengths?: Vec3,
 ): { convert: (xyz: Vec3) => Vec3; exact: boolean } => {
-  const exact_converter = try_create_cart_to_frac(matrix)
-  if (exact_converter) return { convert: exact_converter, exact: true }
+  try {
+    return { convert: math.create_cart_to_frac(matrix), exact: true }
+  } catch {
+    // fall through to the per-axis-length approximation below
+  }
   const lengths: Vec3 = axis_lengths ?? [
     Math.hypot(...matrix[0]),
     Math.hypot(...matrix[1]),

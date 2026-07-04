@@ -1,7 +1,7 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { is_plain_object } from '$lib/utils'
+import { is_plain_object, parse_leading_num } from '$lib/utils'
 import * as constants from './constants'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type {
@@ -226,14 +226,10 @@ function parse_frmsf(content: string): BandGridData {
 
       // Read energy values (first value per line only, ignore auxiliary columns)
       while (energy_values.length < total_points && line_idx < lines.length) {
-        const line = lines[line_idx]
-        const first_token = line?.split(/\s+/)[0]
-        if (first_token && !isNaN(Number(first_token))) {
-          energy_values.push(Number(first_token))
-          line_idx++
-        } else {
-          break
-        }
+        const energy = parse_leading_num(lines[line_idx] ?? ``)
+        if (isNaN(energy)) break
+        energy_values.push(energy)
+        line_idx++
       }
 
       if (energy_values.length < total_points) {
@@ -457,10 +453,10 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
       let dimensionality: SurfaceDimensionality | undefined
       if (ifermi_iso.dimensionality) {
         const dim = ifermi_iso.dimensionality.toLowerCase()
-        if (dim.includes(`1d`) || dim === `1d`) dimensionality = `1D`
-        else if (dim.includes(`quasi`) || dim === `quasi-2d`) dimensionality = `quasi-2D`
-        else if (dim.includes(`2d`) || dim === `2d`) dimensionality = `2D`
-        else if (dim.includes(`3d`) || dim === `3d`) dimensionality = `3D`
+        if (dim.includes(`1d`)) dimensionality = `1D`
+        else if (dim.includes(`quasi`)) dimensionality = `quasi-2D`
+        else if (dim.includes(`2d`)) dimensionality = `2D`
+        else if (dim.includes(`3d`)) dimensionality = `3D`
       }
 
       // Compute area for this isosurface using fan triangulation for N-gons
