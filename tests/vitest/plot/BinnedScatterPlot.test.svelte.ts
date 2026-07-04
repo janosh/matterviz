@@ -220,6 +220,69 @@ describe(`BinnedScatterPlot`, () => {
     expect(ref_group?.getAttribute(`clip-path`)).toBe(`url(#${clip_path?.id})`)
   })
 
+  test.each([
+    // y=x diagonal auto-fills the axis ranges: with x=y ranges [0,1] on an 800x600
+    // plot padded {l:80,r:20,t:30,b:60}, it runs corner to corner
+    [
+      { type: `diagonal`, slope: 1, intercept: 0 } as const,
+      { x1: 80, y1: 540, x2: 780, y2: 30 },
+      { stroke: `currentColor`, dash: null }, // RefLine default style is solid
+    ],
+    // horizontal line at mid-range spans the full x extent
+    [
+      { type: `horizontal`, y: 0.5, style: { color: `red`, dash: `4 4` } } as const,
+      { x1: 80, y1: 285, x2: 780, y2: 285 },
+      { stroke: `red`, dash: `4 4` },
+    ],
+  ])(
+    `resolves declarative RefLine %o against current axis ranges`,
+    async (ref_line, coords, style) => {
+      mount(BinnedScatterPlot, {
+        target: document.body,
+        props: {
+          series: [{ x: [0, 1], y: [0, 1] }],
+          x_axis: { range: [0, 1] as Vec2 },
+          y_axis: { range: [0, 1] as Vec2 },
+          overlays: { ref_lines: [ref_line] },
+          density: hidden_density,
+          padding: { l: 80, r: 20, t: 30, b: 60 },
+          style: `width: 800px; height: 600px`,
+        },
+      })
+      await settle()
+
+      const line = document.querySelector(`.reference-lines line`)
+      expect(line).toBeInstanceOf(SVGLineElement)
+      for (const [attr, expected] of Object.entries(coords)) {
+        expect(Number(line?.getAttribute(attr)), attr).toBeCloseTo(expected, 6)
+      }
+      expect(line?.getAttribute(`stroke`)).toBe(style.stroke)
+      expect(line?.getAttribute(`stroke-dasharray`)).toBe(style.dash)
+    },
+  )
+
+  test(`drops declarative RefLines that resolve outside the axis ranges`, async () => {
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        x_axis: { range: [0, 1] as Vec2 },
+        y_axis: { range: [0, 1] as Vec2 },
+        overlays: {
+          ref_lines: [
+            { type: `vertical`, x: 5 }, // outside x range -> dropped
+            { type: `horizontal`, y: 0.5, visible: false }, // explicitly hidden
+          ],
+        },
+        density: hidden_density,
+        style: `width: 800px; height: 600px`,
+      },
+    })
+    await settle()
+
+    expect(document.querySelectorAll(`.reference-lines line`)).toHaveLength(0)
+  })
+
   test(`uses density color scale type for colorbar ticks`, async () => {
     mount(BinnedScatterPlot, {
       target: document.body,

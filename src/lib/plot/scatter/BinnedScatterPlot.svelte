@@ -62,7 +62,12 @@
     InternalPoint,
     ScatterHandlerProps,
   } from '$lib/plot/core/types'
-  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import {
+    COLOR_BAR_DEFAULTS,
+    REF_LINE_STYLE_DEFAULTS,
+    SCALE_DEFAULTS,
+  } from '$lib/plot/core/types'
+  import { resolve_line_endpoints } from '$lib/plot/core/reference-line'
   import {
     compute_label_positions,
     estimate_label_size,
@@ -196,7 +201,38 @@
         : density_config.auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
-  let ref_lines = $derived(overlays_config.ref_lines ?? [])
+  // pixel-space endpoints + style per ref line. Declarative RefLine entries (with a
+  // `type` field) are resolved against the current axis ranges via the shared core
+  // resolver, so e.g. a parity diagonal spans the full plot area and stays correct
+  // under zoom; legacy explicit-endpoint entries are scaled as-is (clip path crops
+  // out-of-range parts). Annotation/legend/interaction RefLine fields are ignored.
+  let resolved_ref_lines = $derived.by(() => {
+    const [x_min, x_max] = range_bounds(x_range)
+    const [y_min, y_max] = range_bounds(y_range)
+    return (overlays_config.ref_lines ?? []).flatMap((line) => {
+      if (!(`type` in line)) {
+        return {
+          x1: x_scale_fn(line.x1),
+          y1: y_scale_fn(line.y1),
+          x2: x_scale_fn(line.x2),
+          y2: y_scale_fn(line.y2),
+          color: line.color ?? `currentColor`,
+          width: line.width ?? 1.5,
+          dash: line.dash ?? `5 4`,
+          opacity: 1,
+        }
+      }
+      if (line.visible === false) return []
+      const endpoints = resolve_line_endpoints(
+        line,
+        { x_min, x_max, y_min, y_max },
+        { x_scale: x_scale_fn, y_scale: y_scale_fn },
+      )
+      if (!endpoints) return []
+      const [x1, y1, x2, y2] = endpoints
+      return { x1, y1, x2, y2, ...REF_LINE_STYLE_DEFAULTS, ...line.style }
+    })
+  })
   let point_labels_settings = $derived({
     font_size: point_labels.font_size ?? `11px`,
     max_count: point_labels.max_count ?? 50,
@@ -897,15 +933,16 @@
     </defs>
 
     <g class="reference-lines" clip-path="url(#{clip_path_id})">
-      {#each ref_lines as line}
+      {#each resolved_ref_lines as line}
         <line
-          x1={x_scale_fn(line.x1)}
-          x2={x_scale_fn(line.x2)}
-          y1={y_scale_fn(line.y1)}
-          y2={y_scale_fn(line.y2)}
-          stroke={line.color ?? `currentColor`}
-          stroke-width={line.width ?? 1.5}
-          stroke-dasharray={line.dash ?? `5 4`}
+          x1={line.x1}
+          x2={line.x2}
+          y1={line.y1}
+          y2={line.y2}
+          stroke={line.color}
+          stroke-width={line.width}
+          stroke-dasharray={line.dash || null}
+          stroke-opacity={line.opacity}
         />
       {/each}
     </g>
