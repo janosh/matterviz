@@ -6,11 +6,7 @@
     ElementAxisOrderingKey,
     SymmetricMode,
   } from '$lib/heatmap-matrix'
-  import {
-    elements_to_axis,
-    HeatmapMatrix,
-    HeatmapMatrixControls,
-  } from '$lib/heatmap-matrix'
+  import { elements_to_axis, HeatmapMatrix, HeatmapMatrixControls } from '$lib/heatmap-matrix'
   import { format_num } from '$lib/labels'
 
   // === Demo 1: Full element matrix with ordering controls, tooltip, and click ===
@@ -65,10 +61,9 @@
   let show_row_summaries = $state(false)
   let show_col_summaries = $state(false)
   let demo2_theme = $state<`default` | `light` | `dark` | `publication`>(`default`)
-  const demo_symbols = `Li,Na,K,Mg,Ca,Al,Fe,Cu,Zn,Ag,Au,Pt,Ti,Ni,Co,Mn,Cr,V,Si,Ge`
-    .split(
-      `,`,
-    ) as ElementSymbol[]
+  const demo_symbols = `Li,Na,K,Mg,Ca,Al,Fe,Cu,Zn,Ag,Au,Pt,Ti,Ni,Co,Mn,Cr,V,Si,Ge`.split(
+    `,`,
+  ) as ElementSymbol[]
   let small_axis = $derived(elements_to_axis(demo_symbols, ordering))
   let small_values = $derived(en_diff_matrix(small_axis))
 
@@ -89,7 +84,7 @@
       // Generate a synthetic heatmap: Gaussian-ish distribution centered near (3,3)
       const dist = Math.hypot(x_idx - 3, y_idx - 3)
       return Math.round(100 * Math.exp(-dist * 0.4))
-    })
+    }),
   )
 </script>
 
@@ -105,8 +100,8 @@
 <h2>Element Pair Electronegativity Difference</h2>
 <p>
   Full 118-element matrix colored by |&Delta;EN|. Elements without electronegativity data
-  (noble gases, some superheavy) are auto-hidden with <code>hide_empty="compact"</code>.
-  Hover for tooltips, click cells for details.
+  (noble gases, some superheavy) are auto-hidden with <code>hide_empty="compact"</code>. Hover
+  for tooltips, click cells for details.
 </p>
 
 <div
@@ -135,11 +130,11 @@
       tooltip_mode="both"
       enable_brush
       onbrush={(payload) =>
-      brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
-        payload.x_range[1]
-      }, ${payload.y_range[0]}-${payload.y_range[1]})`}
+        (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
+          payload.x_range[1]
+        }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
       onexport={(format_name) =>
-      last_export_status = `Exported ${format_name.toUpperCase()}`}
+        (last_export_status = `Exported ${format_name.toUpperCase()}`)}
       tooltip
       onclick={(cell: CellContext) => (clicked_cell = cell)}
     />
@@ -151,7 +146,7 @@
     bind:show_legend
     bind:legend_position
     bind:search_query
-    onexport={(format_name) => last_export_status = `Exported ${format_name.toUpperCase()}`}
+    onexport={(format_name) => (last_export_status = `Exported ${format_name.toUpperCase()}`)}
     toggle_visible={show_primary_controls_toggle}
   >
     <label>
@@ -191,11 +186,9 @@
 <!-- Demo 2: Subset with symmetric mode, custom tooltip, dblclick, and different color scale -->
 <h2>Symmetric Subset with Custom Tooltip</h2>
 <p>
-  20 metals with switchable symmetric mode (lower/upper/off) and <code
-  >interpolatePlasma</code>
-  color scale. Custom tooltip shows element names and electronegativity values.
-  Double-click updates the status text below. Use the controls (gear icon) to toggle
-  symmetric mode.
+  20 metals with switchable symmetric mode (lower/upper/off) and <code>interpolatePlasma</code>
+  color scale. Custom tooltip shows element names and electronegativity values. Double-click updates
+  the status text below. Use the controls (gear icon) to toggle symmetric mode.
 </p>
 
 <div
@@ -219,18 +212,17 @@
     tile_size="20px"
     gap="1px"
     ondblclick={(cell: CellContext) =>
-    dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${
-      format_cell_value(cell.value)
-    }`}
+      (dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${format_cell_value(
+        cell.value,
+      )}`)}
     style="margin: 1em auto"
   >
     {#snippet tooltip(ctx)}
       {@const x_el = ctx.x_item.data as ChemicalElement}
       {@const y_el = ctx.y_item.data as ChemicalElement}
       <strong>{x_el.name}</strong> &ndash; <strong>{y_el.name}</strong><br />
-      EN: {x_el.electronegativity_pauling ?? `?`} vs {
-        y_el.electronegativity_pauling ?? `?`
-      }<br />
+      EN: {x_el.electronegativity_pauling ?? `?`} vs {y_el.electronegativity_pauling ?? `?`}<br
+      />
       |&Delta;EN| = {format_cell_value(ctx.value)}
     {/snippet}
   </HeatmapMatrix>
@@ -251,10 +243,11 @@
 <!-- Demo 3: Arbitrary non-element axes -->
 <h2>Arbitrary Axis Items</h2>
 <p>
-  Axes don't have to be elements. This demo uses property-range bins as both axes, showing
-  that <code>HeatmapMatrix</code> works with any <code>AxisItem[]</code>. Uses <code
-  >interpolateYlOrRd</code> color scale and a custom cell snippet that renders the value
-  inside each tile.
+  Axes don't have to be elements. This demo uses property-range bins as both axes, showing that <code
+    >HeatmapMatrix</code
+  >
+  works with any <code>AxisItem[]</code>. Uses <code>interpolateYlOrRd</code> color scale and a custom
+  cell snippet that renders the value inside each tile.
 </p>
 
 <HeatmapMatrix

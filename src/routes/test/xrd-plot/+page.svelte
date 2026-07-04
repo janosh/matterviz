@@ -28,9 +28,7 @@
     d_hkls: [4.05, 2.72, 2.06, 1.67, 1.41],
   }
 
-  const single_entries: PatternEntry[] = [
-    { label: `Material A`, pattern: pattern_a },
-  ]
+  const single_entries: PatternEntry[] = [{ label: `Material A`, pattern: pattern_a }]
 
   const multi_entries: PatternEntry[] = [
     { label: `Material A`, pattern: pattern_a },

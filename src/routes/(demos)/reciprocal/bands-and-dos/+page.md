@@ -63,13 +63,13 @@ Compare band structures and DOS from different computational methods:
 <BandsAndDos
   band_structs={{
     'DFT (PBE)': phonon_bands['mp-2758-Sr4Se4-pbe'],
-    'M3GNet': phonon_bands['mp-2758-Sr4Se4-m3gnet'],
-    'CHGNet': phonon_bands['mp-2758-Sr4Se4-chgnet-v0.3.0'],
+    M3GNet: phonon_bands['mp-2758-Sr4Se4-m3gnet'],
+    CHGNet: phonon_bands['mp-2758-Sr4Se4-chgnet-v0.3.0'],
   }}
   doses={{
     'DFT (PBE)': phonon_dos['mp-2758-Sr4Se4-pbe'],
-    'M3GNet': phonon_dos['mp-2758-Sr4Se4-m3gnet'],
-    'CHGNet': phonon_dos['mp-2758-Sr4Se4-chgnet-v0.3.0'],
+    M3GNet: phonon_dos['mp-2758-Sr4Se4-m3gnet'],
+    CHGNet: phonon_dos['mp-2758-Sr4Se4-chgnet-v0.3.0'],
   }}
   dos_props={{ normalize: 'max', sigma: 0.15 }}
   shared_y_axis

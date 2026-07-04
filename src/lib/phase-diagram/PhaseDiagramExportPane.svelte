@@ -41,8 +41,7 @@
   )
 
   const svg = $derived(
-    svg_element ??
-      (wrapper?.querySelector(svg_query_selector) as SVGSVGElement | null),
+    svg_element ?? (wrapper?.querySelector(svg_query_selector) as SVGSVGElement | null),
   )
 
   const json_export_data = $derived(json_payload ?? data)
@@ -64,23 +63,24 @@
           label: `PNG`,
           disabled: !svg,
           show_dpi: true,
-          on_download: () =>
-            svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi),
+          on_download: () => svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi),
         },
       ],
     },
     {
       title: `Data`,
       tooltip: `Export phase diagram data as JSON`,
-      items: [{
-        label: `JSON`,
-        disabled: !json_export_data,
-        on_download: () => {
-          const content = json_string()
-          if (content) download(content, `${full_filename}.json`, `application/json`)
+      items: [
+        {
+          label: `JSON`,
+          disabled: !json_export_data,
+          on_download: () => {
+            const content = json_string()
+            if (content) download(content, `${full_filename}.json`, `application/json`)
+          },
+          copy_text: json_string,
         },
-        copy_text: json_string,
-      }],
+      ],
     },
   ])
 </script>

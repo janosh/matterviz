@@ -646,7 +646,9 @@ describe(`show_values`, () => {
       y: [`X`],
       values: [[42]],
       show_values: true,
-      cell: (() => {}) as unknown as ComponentProps<typeof HeatmapMatrix>[`cell`],
+      // not a real snippet - only presence matters for suppressing .cell-value
+      // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
+      cell: (() => {}) as never,
     })
     expect(document.querySelectorAll(`.cell-value`)).toHaveLength(0)
   })

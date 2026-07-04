@@ -7,19 +7,13 @@
   import { element_data, ElementTile } from 'matterviz'
 
   const rand_color = () =>
-    `hsl(${Math.random() * 360}, ${Math.random() * 50 + 50}%, ${
-      Math.random() * 50 + 50
-    }%)`
+    `hsl(${Math.random() * 360}, ${Math.random() * 50 + 50}%, ${Math.random() * 50 + 50}%)`
 </script>
 
 <ol>
-  {#each Array(27).fill(0).map((_, idx) => ({
-      bg_color: rand_color(),
-      element: element_data[idx],
-    })) as
-    { bg_color, element }
-    (element.symbol)
-  }
+  {#each Array(27)
+    .fill(0)
+    .map( (_, idx) => ({ bg_color: rand_color(), element: element_data[idx] }), ) as { bg_color, element } (element.symbol)}
     <ElementTile {bg_color} {element} style="width: 4em; margin: 0" />
   {/each}
 </ol>
@@ -82,8 +76,8 @@ ElementTile supports displaying multiple values per tile with different split la
 
 <h4>Auto-determined Layouts</h4>
 <p>
-  When <code>split_layout</code> is not specified, the layout is automatically chosen
-  based on the number of values.
+  When <code>split_layout</code> is not specified, the layout is automatically chosen based on the
+  number of values.
 </p>
 <div class="examples">
   <ElementTile

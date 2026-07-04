@@ -61,9 +61,8 @@
     const crystal_sys = spg.spacegroup_to_crystal_sys(sym_data.number)
     const lattice_sys = spg.spacegroup_num_to_lattice_system(sym_data.number)
     if (!crystal_sys) return `?`
-    const suffix = lattice_sys && lattice_sys !== crystal_sys
-      ? ` (${lattice_sys} lattice)`
-      : ``
+    const suffix =
+      lattice_sys && lattice_sys !== crystal_sys ? ` (${lattice_sys} lattice)` : ``
     return `${crystal_sys}${suffix}`
   })
 
@@ -89,30 +88,18 @@
   })
 
   const titles = {
-    symprec:
-      `Symmetry precision control in spglib/moyo. Lower values (e.g. 1e-4, the default) are more strict, higher values (e.g. 1e-1) are more tolerant of numerical errors in atomic positions.`,
-    algo:
-      `Symmetry detection algorithm: Moyo uses moyo's newer recommended settings, Spglib is useful if you need compatible results to an existing set of spglib-detected symmetries.`,
-    space_group:
-      `International Tables Space group number (1-230) - unique identifier for each space group. Higher numbers indicate more symmetries in the crystal.`,
-    crystal_system:
-      `Crystal system classification based on the unit cell symmetry. Seven systems: triclinic, monoclinic, orthorhombic, tetragonal, trigonal, hexagonal, and cubic. For trigonal space groups, the lattice system (rhombohedral for R-centered groups, hexagonal otherwise) is shown in parentheses when it differs from the crystal system.`,
-    hermann_mauguin:
-      `Hermann-Mauguin symbol describes symmetry operations. Format: Lattice type + Point group symmetry. Example: P4/mmm = Primitive + 4-fold rotation + mirror planes`,
-    hall_number:
-      `Hall number: alternative numbering system for space groups. Useful for crystallographic software compatibility.`,
-    pearson_symbol:
-      `Pearson symbol. Format: Crystal system + Number of atoms per unit cell. Example: tP2 = tetragonal primitive with 2 atoms`,
-    symmetry_operations:
-      `Total symmetry operations that map the crystal structure onto itself. Includes rotations, translations, and combinations.`,
-    distinct_orbits:
-      `Number of unique Wyckoff positions (symmetry-equivalent atomic sites) in the crystal structure.`,
-    wyckoff_sequence:
-      `Wyckoff sequence: letters of all occupied Wyckoff positions in descending alphabetical order, with superscript counts for letters occupied by multiple orbits. A standard structure-type fingerprint (complements the Pearson symbol).`,
-    free_params:
-      `Internal degrees of freedom: number of free fractional-coordinate parameters (x, y, z in the ITA representative coordinates) summed over occupied Wyckoff orbits. 0 means all atomic positions are fully fixed by symmetry.`,
-    settings:
-      `All settings of this space group in the International Tables (origin choices, unique axes, cell choices, hexagonal vs rhombohedral axes). The setting detected for this structure is highlighted.`,
+    symprec: `Symmetry precision control in spglib/moyo. Lower values (e.g. 1e-4, the default) are more strict, higher values (e.g. 1e-1) are more tolerant of numerical errors in atomic positions.`,
+    algo: `Symmetry detection algorithm: Moyo uses moyo's newer recommended settings, Spglib is useful if you need compatible results to an existing set of spglib-detected symmetries.`,
+    space_group: `International Tables Space group number (1-230) - unique identifier for each space group. Higher numbers indicate more symmetries in the crystal.`,
+    crystal_system: `Crystal system classification based on the unit cell symmetry. Seven systems: triclinic, monoclinic, orthorhombic, tetragonal, trigonal, hexagonal, and cubic. For trigonal space groups, the lattice system (rhombohedral for R-centered groups, hexagonal otherwise) is shown in parentheses when it differs from the crystal system.`,
+    hermann_mauguin: `Hermann-Mauguin symbol describes symmetry operations. Format: Lattice type + Point group symmetry. Example: P4/mmm = Primitive + 4-fold rotation + mirror planes`,
+    hall_number: `Hall number: alternative numbering system for space groups. Useful for crystallographic software compatibility.`,
+    pearson_symbol: `Pearson symbol. Format: Crystal system + Number of atoms per unit cell. Example: tP2 = tetragonal primitive with 2 atoms`,
+    symmetry_operations: `Total symmetry operations that map the crystal structure onto itself. Includes rotations, translations, and combinations.`,
+    distinct_orbits: `Number of unique Wyckoff positions (symmetry-equivalent atomic sites) in the crystal structure.`,
+    wyckoff_sequence: `Wyckoff sequence: letters of all occupied Wyckoff positions in descending alphabetical order, with superscript counts for letters occupied by multiple orbits. A standard structure-type fingerprint (complements the Pearson symbol).`,
+    free_params: `Internal degrees of freedom: number of free fractional-coordinate parameters (x, y, z in the ITA representative coordinates) summed over occupied Wyckoff orbits. 0 means all atomic positions are fully fixed by symmetry.`,
+    settings: `All settings of this space group in the International Tables (origin choices, unique axes, cell choices, hexagonal vs rhombohedral axes). The setting detected for this structure is highlighted.`,
     translations: `Number of translations in the crystal structure.`,
     rotations: `Number of rotations in the crystal structure.`,
     roto_translations: `Number of roto-translations in the crystal structure.`,
@@ -168,10 +155,10 @@
       <select
         value={settings.algo}
         onchange={(evt) =>
-        settings = {
-          ...settings,
-          algo: evt.currentTarget.value as `Moyo` | `Spglib`,
-        }}
+          (settings = {
+            ...settings,
+            algo: evt.currentTarget.value as `Moyo` | `Spglib`,
+          })}
       >
         {#each Object.keys(SETTINGS_CONFIG.symmetry.algo.enum ?? {}) as value (value)}
           <option {value}>{value}</option>
@@ -182,48 +169,50 @@
 
   {@render children?.({ sym_data, settings })}
   {#if sym_data}
+    {@const stat_tiles = [
+      {
+        label: `Space Group`,
+        title: `${tooltips?.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${tooltips?.hermann_mauguin}`,
+        value: `${sym_data.number} (${display_hm_symbol})`,
+      },
+      {
+        label: `Crystal System`,
+        title: tooltips?.crystal_system,
+        value: crystal_system_label,
+      },
+      {
+        label: `Hall Number`,
+        title: tooltips?.hall_number,
+        value: `${sym_data.hall_number}${
+          current_setting ? ` (${current_setting.hall_symbol})` : ``
+        }`,
+      },
+      { label: `Pearson`, title: tooltips?.pearson_symbol, value: sym_data.pearson_symbol },
+      { label: `Wyckoff Positions`, title: tooltips?.distinct_orbits, value: wyckoff_count },
+      wyckoff_seq && {
+        label: `Wyckoff Sequence`,
+        title: tooltips?.wyckoff_sequence,
+        value: wyckoff_seq,
+      },
+      free_params !== null && {
+        label: `Free Parameters`,
+        title: tooltips?.free_params,
+        value: free_params,
+      },
+    ].filter((tile) => typeof tile === `object`)}
     <div class="stats-grid">
-      <div
-        title="{tooltips?.space_group} at {settings.symprec} (using {settings.algo} algo). {tooltips?.hermann_mauguin}"
-        {@attach tooltip()}
-      >
-        Space Group <strong>{sym_data.number} ({display_hm_symbol})</strong>
-      </div>
-      <div title={tooltips?.crystal_system} {@attach tooltip()}>
-        Crystal System <strong>{crystal_system_label}</strong>
-      </div>
-      <div title={tooltips?.hall_number} {@attach tooltip()}>
-        Hall Number <strong>
-          {sym_data.hall_number}{
-            current_setting ? ` (${current_setting.hall_symbol})` : ``
-          }
-        </strong>
-      </div>
-      <div title={tooltips?.pearson_symbol} {@attach tooltip()}>
-        Pearson <strong>{sym_data.pearson_symbol}</strong>
-      </div>
-      <div title={tooltips?.distinct_orbits} {@attach tooltip()}>
-        Wyckoff Positions <strong>{wyckoff_count}</strong>
-      </div>
-      {#if wyckoff_seq}
-        <div title={tooltips?.wyckoff_sequence} {@attach tooltip()}>
-          Wyckoff Sequence <strong>{wyckoff_seq}</strong>
+      {#each stat_tiles as tile (tile.label)}
+        <div title={tile.title} {@attach tooltip()}>
+          {tile.label} <strong>{tile.value}</strong>
         </div>
-      {/if}
-      {#if free_params !== null}
-        <div title={tooltips?.free_params} {@attach tooltip()}>
-          Free Parameters <strong>{free_params}</strong>
-        </div>
-      {/if}
+      {/each}
       <div
         class="sym-ops-summary"
         title="{sym_ops_counts.translations} translations + {sym_ops_counts.rotations} rotations + {sym_ops_counts.roto_translations} roto-translations"
         {@attach tooltip()}
       >
         Total sym ops: <strong>{sym_data.operations.length}</strong>
-        ({sym_ops_counts.translations}T + {sym_ops_counts.rotations}R + {
-          sym_ops_counts.roto_translations
-        }RT)
+        ({sym_ops_counts.translations}T + {sym_ops_counts.rotations}R + {sym_ops_counts.roto_translations}RT)
       </div>
     </div>
     {#if settings_entries.length > 1}
@@ -287,8 +276,7 @@
   }
   .stats-grid {
     display: var(--sym-stats-display, grid);
-    grid-template-columns:
-      var(--sym-stats-grid-columns, repeat(auto-fit, minmax(275px, 1fr)));
+    grid-template-columns: var(--sym-stats-grid-columns, repeat(auto-fit, minmax(275px, 1fr)));
     gap: var(--sym-stats-grid-gap, 1ex 1em);
     margin-block: var(--sym-stats-grid-margin-block, 1ex);
     align-items: var(--sym-stats-grid-align, start);

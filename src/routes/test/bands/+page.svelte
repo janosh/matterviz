@@ -166,11 +166,7 @@
 />
 
 <h2 id="union-path">Union Path Mode</h2>
-<Bands
-  band_structs={mock_band_structure}
-  path_mode="union"
-  data-testid="union-path-plot"
-/>
+<Bands band_structs={mock_band_structure} path_mode="union" data-testid="union-path-plot" />
 
 <h2 id="intersection-path">Intersection Path Mode</h2>
 <Bands
@@ -235,12 +231,14 @@
 <Bands
   band_structs={mock_band_structure}
   units="cm-1"
-  highlight_regions={[{
-    y_min: 40,
-    y_max: 90,
-    color: `rgba(255, 193, 7, 0.35)`,
-    label: `Target window`,
-  }]}
+  highlight_regions={[
+    {
+      y_min: 40,
+      y_max: 90,
+      color: `rgba(255, 193, 7, 0.35)`,
+      label: `Target window`,
+    },
+  ]}
   data-testid="phonon-units-highlight-plot"
 />
 

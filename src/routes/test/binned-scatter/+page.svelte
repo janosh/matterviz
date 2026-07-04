@@ -29,7 +29,8 @@
   const x_axis = $derived(make_axis(`x`))
   const y_axis = $derived(make_axis(`y`))
 
-  const next_frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  const next_frame = () =>
+    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 
   function make_series(test_mode: TestMode, count: number): DensePointSeries[] {
     if (test_mode === `singleton`) {
@@ -47,16 +48,20 @@
     return [{ x, y }]
   }
 
-  async function wait_for_plot_ready(expected_count: number, test_mode: TestMode): Promise<void> {
+  async function wait_for_plot_ready(
+    expected_count: number,
+    test_mode: TestMode,
+  ): Promise<void> {
     const expected_label = `Density (${expected_count.toLocaleString()} points)`
     const start = performance.now()
     while (performance.now() - start < 10_000) {
       await next_frame()
       const plot = document.querySelector<HTMLElement>(`.binned-scatter`)
       const label = document.querySelector<HTMLElement>(`.colorbar .label`)
-      const plot_ready = test_mode === `points`
-        ? plot?.dataset.renderMode === `points`
-        : label?.textContent === expected_label
+      const plot_ready =
+        test_mode === `points`
+          ? plot?.dataset.renderMode === `points`
+          : label?.textContent === expected_label
       if (plot_ready) return
     }
     timed_out = true
@@ -76,7 +81,9 @@
       const default_points = mode === `points` ? 20_000 : MAX_POINTS
       const parsed = Math.floor(Number(params.get(`points`) ?? default_points))
       // Clamp to avoid NaN/negative (RangeError) or oversized typed-array allocations
-      n_points = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), MAX_POINTS) : default_points
+      n_points = Number.isFinite(parsed)
+        ? Math.min(Math.max(parsed, 0), MAX_POINTS)
+        : default_points
     }
     const next_series = make_series(mode, n_points)
 
@@ -103,7 +110,8 @@
     data-zoom-count={zoom_count}
     data-point-click-count={point_click_count}
   >
-    {mode} {n_points.toLocaleString()} mount {mount_ms.toFixed(1)}ms
+    {mode}
+    {n_points.toLocaleString()} mount {mount_ms.toFixed(1)}ms
   </output>
 
   {#if series.length}
@@ -114,8 +122,8 @@
       {density}
       data-testid="binned-scatter-host"
       style="height: 600px; width: 900px;"
-      on_density_zoom={() => zoom_count += 1}
-      on_point_click={() => point_click_count += 1}
+      on_density_zoom={() => (zoom_count += 1)}
+      on_point_click={() => (point_click_count += 1)}
     />
   {/if}
 </main>

@@ -17,6 +17,8 @@
     width = 500,
     height = 400,
     onclose,
+    close_on_outside = true,
+    show_drag_handle = true,
     stats,
     top_left,
     children,
@@ -28,6 +30,8 @@
     width?: number
     height?: number
     onclose?: () => void
+    close_on_outside?: boolean
+    show_drag_handle?: boolean
     stats?: StructurePopupStats
     top_left?: Snippet<[StructurePopupContext]>
     children?: Snippet<[StructurePopupContext]>
@@ -35,7 +39,8 @@
   } = $props()
 
   const formula_html = $derived.by(() =>
-    sanitize_formula(get_electro_neg_formula(stats?.formula ?? structure, true)))
+    sanitize_formula(get_electro_neg_formula(stats?.formula ?? structure, true)),
+  )
   const context = $derived({ structure, stats, formula_html })
 </script>
 
@@ -48,6 +53,7 @@
 <svelte:window
   onkeydown={(event) => event.key === `Escape` && onclose?.()}
   onmousedown={(event) => {
+    if (!close_on_outside) return
     if (!popup_div || !(event.target instanceof Node)) return
     if (!popup_div.contains(event.target)) onclose?.()
   }}
@@ -64,7 +70,9 @@
   tabindex="-1"
   bind:this={popup_div}
 >
-  <DragControlTab />
+  {#if show_drag_handle}
+    <DragControlTab />
+  {/if}
   <div class="structure-popup-content">
     {#if top_left || stats}
       <div class="structure-stats">
@@ -72,13 +80,13 @@
           {@render top_left(context)}
         {:else if stats}
           {#if stats.id}
-            ID = {stats.id}<br>
+            ID = {stats.id}<br />
           {/if}
           {#if formula_html}
-            {@html formula_html}<br>
+            {@html formula_html}<br />
           {/if}
           {#if stats.e_above_hull != null}
-            E<sub>above hull</sub> = {format_num(stats.e_above_hull, `.3~`)} eV/atom<br>
+            E<sub>above hull</sub> = {format_num(stats.e_above_hull, `.3~`)} eV/atom<br />
           {/if}
           {#if stats.e_form != null}
             E<sub>form</sub> = {format_num(stats.e_form, `.3~`)}

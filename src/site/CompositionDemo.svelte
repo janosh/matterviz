@@ -12,7 +12,8 @@
   let formula = $state(`LiFePO4`)
   let parsed_composition: CompositionType = $derived(parse_composition(formula))
 
-  const compositions = [ // Example compositions
+  const compositions = [
+    // Example compositions
     [`Uranium`, `U`],
     [`Water`, `H2O`],
     [`Iron Oxide`, `Fe2O3`],
@@ -26,10 +27,7 @@
     [`Caffeine`, `C8H10N4O2`],
     [`Steel`, JSON.stringify({ Fe: 98, C: 2 })],
     [`Bronze`, JSON.stringify({ Cu: 88, Sn: 12 })],
-    [
-      `Stainless Steel`,
-      JSON.stringify({ Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 }),
-    ],
+    [`Stainless Steel`, JSON.stringify({ Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 })],
     [`Lithium Phosphate`, JSON.stringify({ Li: 1, P: 1, O: 4 })],
     [`Aluminum Oxide`, `Al2O3`],
     [`Silicon Carbide`, `SiC`],
@@ -41,7 +39,9 @@
   function get_formula_display(composition_formula: string): string {
     let parsed
     try {
-      parsed = composition_formula.startsWith(`{`) ? JSON.parse(composition_formula) : composition_formula
+      parsed = composition_formula.startsWith(`{`)
+        ? JSON.parse(composition_formula)
+        : composition_formula
     } catch (err) {
       console.error(`Invalid JSON formula:`, err)
       parsed = composition_formula
@@ -67,9 +67,7 @@
 
 {#if show_interactive}
   <label>
-    Enter a chemical formula (e.g. Fe2O3, H2O, ...) or a composition object (e.g. {
-      `{Li: 1, Fe: 1, P: 1, O: 4}`
-    }):
+    Enter a chemical formula (e.g. Fe2O3, H2O, ...) or a composition object (e.g. {`{Li: 1, Fe: 1, P: 1, O: 4}`}):
     <input
       bind:value={formula}
       placeholder={`e.g. Fe2O3, H2O, or {Fe: 2, O: 3}`}
@@ -77,15 +75,7 @@
     />
   </label>
   <div class="composition-grid">
-    {#each [
-      [`Pie Chart`, `pie`, `Vesta`],
-      [`Bubble Chart`, `bubble`, `Jmol`],
-      [`Donut Chart`, `pie`, `Pastel`, { inner_radius: 40 }],
-      [`Percentages`, `pie`, `Muted`],
-    ] as const as
-      [name, mode, color_scheme, props = {}]
-      (name)
-    }
+    {#each [[`Pie Chart`, `pie`, `Vesta`], [`Bubble Chart`, `bubble`, `Jmol`], [`Donut Chart`, `pie`, `Pastel`, { inner_radius: 40 }], [`Percentages`, `pie`, `Muted`]] as const as [name, mode, color_scheme, props = { }] (name)}
       <div class="composition-card">
         <h3>{name}</h3>
         <Composition composition={parsed_composition} {mode} {color_scheme} {...props} />

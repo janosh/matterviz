@@ -136,7 +136,7 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
       ? data_series.point_style[0]
       : data_series?.point_style
 
-    if (series_markers?.includes(`points`)) {
+    if (series_markers.includes(`points`)) {
       if (first_point_style) {
         if (
           typeof first_point_style.symbol_type === `string` &&
@@ -161,7 +161,7 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
       display_style.symbol_color = undefined
     }
 
-    if (series_markers?.includes(`line`)) {
+    if (series_markers.includes(`line`)) {
       // Explicit line stroke, then color scale, then point colors, then series default
       let line_color = data_series?.line_style?.stroke
       if (!line_color) {
@@ -257,11 +257,11 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
   if (is_opaque_color(scale_color)) return scale_color
   const fill_color = point_style?.fill
   if (is_opaque_color(fill_color)) return fill_color
-  if (series_markers?.includes(`points`)) {
+  if (series_markers.includes(`points`)) {
     const stroke_color = point_style?.stroke
     if (is_opaque_color(stroke_color)) return stroke_color
   }
-  if (series_markers?.includes(`line`)) {
+  if (series_markers.includes(`line`)) {
     const line_style = series?.line_style ?? {}
     const first_point_style = Array.isArray(series?.point_style)
       ? series?.point_style[0]
@@ -273,7 +273,7 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
     }
     if (is_transparent_or_none(line_color_candidate) && first_color_value != null)
       line_color_candidate = color_scale_fn(first_color_value)
-    if (is_transparent_or_none(line_color_candidate) && series_markers?.includes(`points`))
+    if (is_transparent_or_none(line_color_candidate) && series_markers.includes(`points`))
       line_color_candidate = first_point_style?.stroke
     if (is_opaque_color(line_color_candidate)) return line_color_candidate
   }

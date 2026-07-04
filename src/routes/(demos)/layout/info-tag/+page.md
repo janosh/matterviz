@@ -23,9 +23,9 @@ Five semantic variants (default, success, warning, error, info) × three sizes (
 <div style="display: grid; gap: 12pt">
   {#each sizes as size (size)}
     <div style="display: flex; flex-wrap: wrap; gap: 8pt; align-items: center">
-      <span
-        style="width: 30px; font-size: 0.75em; opacity: 0.5; text-transform: uppercase"
-      >{size}</span>
+      <span style="width: 30px; font-size: 0.75em; opacity: 0.5; text-transform: uppercase"
+        >{size}</span
+      >
       {#each tags as tag (tag.value)}
         <InfoTag label={tag.label} value={tag.value} variant={tag.variant} {size}>
           {#if tag.icon}
@@ -98,15 +98,15 @@ Removable tags, custom click handlers, and custom copy values:
       variant={clicked === mat ? `success` : `default`}
     />
   {/each}
-  {#if clicked}<span style="font-size: 0.85em; opacity: 0.7; align-self: center">→
-      Selected: {clicked}</span>{/if}
+  {#if clicked}<span style="font-size: 0.85em; opacity: 0.7; align-self: center"
+      >→ Selected: {clicked}</span
+    >{/if}
 </div>
 
 <div
   style="display: flex; flex-wrap: wrap; gap: 8pt; padding-top: 1em; border-top: 1px solid rgba(128, 128, 128, 0.2); margin-top: 1em"
 >
-  <strong style="font-size: 0.85em; opacity: 0.7; align-self: center"
-  >Custom copy:</strong>
+  <strong style="font-size: 0.85em; opacity: 0.7; align-self: center">Custom copy:</strong>
   <InfoTag
     label="ID:"
     value="mp-12345"

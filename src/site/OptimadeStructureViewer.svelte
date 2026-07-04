@@ -19,9 +19,14 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-multiselect/attachments'
 
-  let { structure_id: init_structure_id, selected_provider: init_provider, ...rest }:
-    & { structure_id?: string; selected_provider?: string }
-    & HTMLAttributes<HTMLDivElement> = $props()
+  let {
+    structure_id: init_structure_id,
+    selected_provider: init_provider,
+    ...rest
+  }: {
+    structure_id?: string
+    selected_provider?: string
+  } & HTMLAttributes<HTMLDivElement> = $props()
 
   let structure = $state<Crystal | null>(null)
   let [loading_struct, loading_suggestions] = $state([false, false])
@@ -38,7 +43,8 @@
     available_providers.find((provider) => provider.id === selected_db),
   )
 
-  $effect(() => { // Initialize from URL slug (only if no props provided)
+  $effect(() => {
+    // Initialize from URL slug (only if no props provided)
     if (init_structure_id || init_provider) return // Props take precedence
 
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
@@ -53,7 +59,8 @@
     }
   })
 
-  $effect(() => { // Load providers on mount
+  $effect(() => {
+    // Load providers on mount
     load_providers()
   })
 
@@ -86,12 +93,10 @@
       structure_id,
       selected_db,
       available_providers,
-    ).catch(
-      (err) => {
-        struct_error = `Failed to load structure: ${err}`
-        return null
-      },
-    )
+    ).catch((err) => {
+      struct_error = `Failed to load structure: ${err}`
+      return null
+    })
 
     if (data) {
       structure = optimade_to_crystal(data)
@@ -162,7 +167,8 @@
                 input_value = ``
               }}
             >
-              <Icon icon="Database" /> {id}
+              <Icon icon="Database" />
+              {id}
             </button>
             <a
               href={attributes.base_url}
@@ -200,8 +206,8 @@
         <div class="structure-suggestions">
           {#each suggested_structures as struct (struct.id)}
             {@const formula = get_electro_neg_formula(
-          struct.attributes.chemical_formula_descriptive ?? ``,
-        )}
+              struct.attributes.chemical_formula_descriptive ?? ``,
+            )}
             <button onclick={() => navigate_to_structure(struct.id)}>
               <span style="font-family: monospace">{struct.id}</span>
               {#if formula}
@@ -276,10 +282,13 @@
     gap: clamp(1em, 2vw, 1.5em);
     max-height: 80vh;
   }
-  .db-column, .suggestions-column, .structure-column {
+  .db-column,
+  .suggestions-column,
+  .structure-column {
     max-height: inherit;
   }
-  .db-column h3, .suggestions-column h3 {
+  .db-column h3,
+  .suggestions-column h3 {
     margin: 0 0 0.75em;
     padding: 0.5em 0 0 0;
   }
@@ -366,7 +375,8 @@
       grid-column: 1 / -1;
       order: -1;
     }
-    .db-column h3, .suggestions-column h3 {
+    .db-column h3,
+    .suggestions-column h3 {
       position: static;
     }
   }

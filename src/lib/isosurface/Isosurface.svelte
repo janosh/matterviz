@@ -14,13 +14,12 @@
     Uint32BufferAttribute,
   } from 'three'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import {
-    DEFAULT_ISOSURFACE_SETTINGS,
-    downsample_grid,
-    pad_periodic_grid,
-  } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, downsample_grid, pad_periodic_grid } from './types'
 
-  let { volume, settings = DEFAULT_ISOSURFACE_SETTINGS }: {
+  let {
+    volume,
+    settings = DEFAULT_ISOSURFACE_SETTINGS,
+  }: {
     volume: VolumetricData
     settings?: IsosurfaceSettings
   } = $props()
@@ -28,23 +27,22 @@
   // Resolve layers: use explicit layers array if provided, else build from single-isovalue settings
   let resolved_layers = $derived.by((): IsosurfaceLayer[] => {
     if (settings.layers?.length) return settings.layers
-    return [{
-      isovalue: settings.isovalue,
-      color: settings.positive_color,
-      opacity: settings.opacity,
-      visible: true,
-      show_negative: settings.show_negative,
-      negative_color: settings.negative_color,
-    }]
+    return [
+      {
+        isovalue: settings.isovalue,
+        color: settings.positive_color,
+        opacity: settings.opacity,
+        visible: true,
+        show_negative: settings.show_negative,
+        negative_color: settings.negative_color,
+      },
+    ]
   })
 
   // Build indexed BufferGeometry from marching cubes output.
   // Uses Three.js index buffer to avoid tripling vertex data, and
   // computeVertexNormals() for fast GPU-friendly normals.
-  function build_geometry(
-    vertices: Vec3[],
-    faces: number[][],
-  ): BufferGeometry | null {
+  function build_geometry(vertices: Vec3[], faces: number[][]): BufferGeometry | null {
     if (vertices.length === 0 || faces.length === 0) return null
 
     // Flatten vertices: Vec3[] → Float32Array
@@ -242,11 +240,7 @@
     </T.Mesh>
   {:else if entry.opacity < 1}
     <!-- Two-pass rendering for correct transparency -->
-    <T.Mesh
-      geometry={entry.geometry}
-      renderOrder={entry.render_order}
-      frustumCulled={false}
-    >
+    <T.Mesh geometry={entry.geometry} renderOrder={entry.render_order} frustumCulled={false}>
       <T.MeshStandardMaterial
         color={entry.color}
         transparent

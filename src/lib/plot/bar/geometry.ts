@@ -47,7 +47,7 @@ export function compute_line_points<Metadata = Record<string, unknown>>(opts: {
         metadata,
         series_idx,
         point_idx: idx,
-      } as LineSeriesPoint<Metadata>
+      }
     })
     .filter((pt) => isFinite(pt.x) && isFinite(pt.y))
 }

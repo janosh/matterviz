@@ -136,9 +136,7 @@
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
-    children?: Snippet<
-      [{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]
-    >
+    children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
     on_file_drop?: (filename: string) => void
     on_file_load?: (data: FermiFileLoadData) => void
     on_error?: (data: FermiErrorData) => void
@@ -173,17 +171,12 @@
   // Yield to browser so spinner can render before heavy computation
   const tick = () =>
     new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     )
 
   // Parse and load Fermi surface from content (async for UI responsiveness)
-  async function parse_fermi_content(
-    content: string | ArrayBuffer,
-    filename: string,
-  ) {
-    const text = content instanceof ArrayBuffer
-      ? new TextDecoder().decode(content)
-      : content
+  async function parse_fermi_content(content: string | ArrayBuffer, filename: string) {
+    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
 
     // parse_fermi_file throws a descriptive error when parsing fails
     const parsed = parse_fermi_file(text, filename)
@@ -208,9 +201,7 @@
     try {
       await parse_fermi_content(content, filename)
     } catch (err) {
-      error_msg = `Failed to parse ${filename}: ${
-        to_error(err).message
-      }`
+      error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename })
     }
   }
@@ -277,11 +268,10 @@
   // Compute BZ when structure or fermi_data changes
   $effect(() => {
     // Get k_lattice from available sources (priority order)
-    const k_lattice = fermi_data?.k_lattice ??
+    const k_lattice =
+      fermi_data?.k_lattice ??
       band_data?.k_lattice ??
-      (structure?.lattice?.matrix
-        ? reciprocal_lattice(structure.lattice.matrix)
-        : null)
+      (structure?.lattice?.matrix ? reciprocal_lattice(structure.lattice.matrix) : null)
 
     if (!k_lattice) {
       bz_data = undefined
@@ -361,8 +351,7 @@
     set_fullscreen: (val) => (fullscreen = val),
     bg_css_var: `--fermi-bg-fullscreen`,
     on_request_error: () => (fullscreen = false),
-    on_change: (val) =>
-      on_fullscreen_change?.({ fermi_data, bz_data, fullscreen: val }),
+    on_change: (val) => on_fullscreen_change?.({ fermi_data, bz_data, fullscreen: val }),
   })
 </script>
 
@@ -379,7 +368,10 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+  {...drag_over_handlers({
+    allow: () => allow_file_drop,
+    set_dragover: (over) => (dragover = over),
+  })}
   {...rest}
   class={[`fermi-surface`, rest.class]}
 >

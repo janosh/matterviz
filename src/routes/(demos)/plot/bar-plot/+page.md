@@ -63,9 +63,7 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
 
   let x_axis = $derived({
     label: orientation === `horizontal` ? `Band Gap (eV)` : `Semiconductor`,
-    categories: custom_order
-      ? [`Diamond`, `GaN`, `ZnO`, `GaAs`, `CdTe`, `Si`]
-      : undefined,
+    categories: custom_order ? [`Diamond`, `GaN`, `ZnO`, `GaAs`, `CdTe`, `Si`] : undefined,
   })
   let y_axis = $derived({
     label: orientation === `horizontal` ? `Semiconductor` : `Band Gap (eV)`,
@@ -85,21 +83,12 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
     <input
       type="checkbox"
       checked={orientation === `horizontal`}
-      onchange={(
-        evt,
-      ) => (orientation = evt.currentTarget.checked ? `horizontal` : `vertical`)}
+      onchange={(evt) => (orientation = evt.currentTarget.checked ? `horizontal` : `vertical`)}
     /> Horizontal
   </label>
 </div>
 
-<BarPlot
-  series={band_gaps}
-  {mode}
-  {orientation}
-  {x_axis}
-  {y_axis}
-  style="height: 400px"
-/>
+<BarPlot series={band_gaps} {mode} {orientation} {x_axis} {y_axis} style="height: 400px" />
 ```
 
 Note how series can have **different categories** -- DFT (PBE) includes CdTe while GW only covers three materials. Missing categories render as zero-height bars in stacked mode, and are simply absent in grouped mode.
@@ -137,21 +126,15 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
 </script>
 
 <div style="margin-bottom: 1em; display: flex; gap: 1em; align-items: center">
-  <label style="display: flex; align-items: center; gap: 4px"><input
-      type="radio"
-      bind:group={mode}
-      value="overlay"
-    /> Overlay</label>
-  <label style="display: flex; align-items: center; gap: 4px"><input
-      type="radio"
-      bind:group={mode}
-      value="stacked"
-    /> Stacked (Sum)</label>
-  <label style="display: flex; align-items: center; gap: 4px"><input
-      type="radio"
-      bind:group={mode}
-      value="grouped"
-    /> Grouped (Side-by-Side)</label>
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="radio" bind:group={mode} value="overlay" /> Overlay</label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="radio" bind:group={mode} value="stacked" /> Stacked (Sum)</label
+  >
+  <label style="display: flex; align-items: center; gap: 4px"
+    ><input type="radio" bind:group={mode} value="grouped" /> Grouped (Side-by-Side)</label
+  >
 </div>
 
 <BarPlot
@@ -232,16 +215,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
       y: [125000, 142000, 158000, 171000, 165000, 189000, 203000, 218000],
       label: `Sales Revenue ($)`,
       color: `#4c6ef5`,
-      labels: [
-        `Q1-22`,
-        `Q2-22`,
-        `Q3-22`,
-        `Q4-22`,
-        `Q1-23`,
-        `Q2-23`,
-        `Q3-23`,
-        `Q4-23`,
-      ],
+      labels: [`Q1-22`, `Q2-22`, `Q3-22`, `Q4-22`, `Q1-23`, `Q2-23`, `Q3-23`, `Q4-23`],
     },
     {
       x: [1, 2, 3, 4, 5, 6, 7, 8],
@@ -367,8 +341,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 
   function handle_click(data) {
     const { metadata, y } = data
-    clicked_info =
-      `${metadata.phase} at ${metadata.temp}: ${metadata.structure} structure, ${y}% stable (${metadata.stability})`
+    clicked_info = `${metadata.phase} at ${metadata.temp}: ${metadata.structure} structure, ${y}% stable (${metadata.stability})`
   }
 
   function handle_hover(data) {
@@ -378,8 +351,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
     } else hovered_info = `Hover over a bar`
   }
 
-  const info_style =
-    `margin: 1em 0; padding: 4pt 8pt; background: rgba(255,255,255,0.1); border-radius: var(--border-radius); font-size: 0.9em`
+  const info_style = `margin: 1em 0; padding: 4pt 8pt; background: rgba(255,255,255,0.1); border-radius: var(--border-radius); font-size: 0.9em`
 </script>
 
 <BarPlot
@@ -400,10 +372,12 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 </BarPlot>
 
 <div style={info_style}>
-  <strong>Clicked:</strong> {clicked_info}
+  <strong>Clicked:</strong>
+  {clicked_info}
 </div>
 <div style={info_style}>
-  <strong>Hovered:</strong> {hovered_info}
+  <strong>Hovered:</strong>
+  {hovered_info}
 </div>
 ```
 
@@ -432,15 +406,14 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges
 
   let y_axis = $derived({
     label: `Energy (${y_scale_type})`,
-    scale_type: y_scale_type === `arcsinh`
-      ? { type: `arcsinh`, threshold: arcsinh_threshold }
-      : y_scale_type,
+    scale_type:
+      y_scale_type === `arcsinh`
+        ? { type: `arcsinh`, threshold: arcsinh_threshold }
+        : y_scale_type,
   })
 </script>
 
-<div
-  style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
->
+<div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center">
   <fieldset>
     <legend>Y-axis Scale</legend>
     {#each scale_types as scale (scale)}
@@ -460,16 +433,10 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges
 </div>
 
 <p style="font-size: 0.9em; opacity: 0.8">
-  Energy values span -500 to +500 eV. Log scale can't display negatives. Try switching
-  scales!
+  Energy values span -500 to +500 eV. Log scale can't display negatives. Try switching scales!
 </p>
 
-<BarPlot
-  series={energy_data}
-  x_axis={{ label: `Element` }}
-  {y_axis}
-  style="height: 400px"
->
+<BarPlot series={energy_data} x_axis={{ label: `Element` }} {y_axis} style="height: 400px">
   {#snippet tooltip({ y, labels, x })}
     <strong>{labels?.[x - 1] ?? `Element ${x}`}</strong><br />
     Energy: {y.toLocaleString()} eV
@@ -491,16 +458,7 @@ Bar plots handle negative values automatically and display zero lines for refere
       y: [-2.45, 1.28, -1.82, 0.95, -3.12, 2.01, -0.67, -1.93],
       label: `Formation Energy`,
       color: `#4c6ef5`,
-      labels: [
-        `TiO₂`,
-        `CuO`,
-        `Al₂O₃`,
-        `Fe₂O₃`,
-        `MgO`,
-        `ZnO`,
-        `NiO`,
-        `FeO`,
-      ],
+      labels: [`TiO₂`, `CuO`, `Al₂O₃`, `Fe₂O₃`, `MgO`, `ZnO`, `NiO`, `FeO`],
     },
     {
       x: [1, 2, 3, 4, 5, 6, 7, 8],
@@ -585,17 +543,11 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
   </label>
   <label>
     X Ticks: {x_axis.ticks}
-    <input type="range" bind:value={x_axis.ticks} min="3" max="10" style="width: 100px">
+    <input type="range" bind:value={x_axis.ticks} min="3" max="10" style="width: 100px" />
   </label>
 </div>
 
-<BarPlot
-  series={yearly_data}
-  {x_axis}
-  {y_axis}
-  {y2_axis}
-  style="height: 400px"
-/>
+<BarPlot series={yearly_data} {x_axis} {y_axis} {y2_axis} style="height: 400px" />
 ```
 
 ## Spectroscopy Data with Zoom
@@ -607,9 +559,13 @@ Interactive zoom and pan for exploring large datasets. Click and drag to zoom, d
   import { BarPlot } from 'matterviz'
 
   // oxfmt-ignore
-  const absorption_data = [0.05, 0.12, 0.28, 0.65, 1.45, 2.8, 4.2, 3.5, 2.1, 0.95, 0.38, 0.15, 0.06]
+  const absorption_data = [
+    0.05, 0.12, 0.28, 0.65, 1.45, 2.8, 4.2, 3.5, 2.1, 0.95, 0.38, 0.15, 0.06,
+  ]
   // oxfmt-ignore
-  const theoretical_data = [0.02, 0.08, 0.22, 0.58, 1.35, 2.65, 4.0, 3.3, 1.95, 0.85, 0.32, 0.12, 0.05]
+  const theoretical_data = [
+    0.02, 0.08, 0.22, 0.58, 1.35, 2.65, 4.0, 3.3, 1.95, 0.85, 0.32, 0.12, 0.05,
+  ]
 
   const spectroscopy = [
     {
@@ -636,8 +592,8 @@ Interactive zoom and pan for exploring large datasets. Click and drag to zoom, d
 <div
   style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px"
 >
-  <strong>Instructions:</strong> Click and drag to zoom into a wavelength region.
-  Double-click to reset the view. Marker colors show intensity via color scale.
+  <strong>Instructions:</strong> Click and drag to zoom into a wavelength region. Double-click to
+  reset the view. Marker colors show intensity via color scale.
 </div>
 
 <BarPlot
@@ -661,15 +617,7 @@ Line series support full marker customization including symbol types, sizes, col
   let symbol_type = $state(`Circle`)
   let radius = $state(6)
 
-  const symbol_types = [
-    `Circle`,
-    `Square`,
-    `Triangle`,
-    `Diamond`,
-    `Star`,
-    `Cross`,
-    `Wye`,
-  ]
+  const symbol_types = [`Circle`, `Square`, `Triangle`, `Diamond`, `Star`, `Cross`, `Wye`]
 
   // Efficiency measurements with size scaled by sample count
   const efficiency_data = [
@@ -696,23 +644,21 @@ Line series support full marker customization including symbol types, sizes, col
     efficiency_data.map((srs) =>
       srs.render_mode === `line`
         ? {
-          ...srs,
-          markers,
-          point_style: {
-            symbol_type,
-            radius,
-            stroke: `white`,
-            stroke_width: 2,
-          },
-        }
-        : srs
+            ...srs,
+            markers,
+            point_style: {
+              symbol_type,
+              radius,
+              stroke: `white`,
+              stroke_width: 2,
+            },
+          }
+        : srs,
     ),
   )
 </script>
 
-<div
-  style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
->
+<div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center">
   <label>
     Markers:
     <select bind:value={markers}>
@@ -732,7 +678,7 @@ Line series support full marker customization including symbol types, sizes, col
   </label>
   <label>
     Size: {radius}
-    <input type="range" bind:value={radius} min="3" max="12" style="width: 80px">
+    <input type="range" bind:value={radius} min="3" max="12" style="width: 80px" />
   </label>
 </div>
 
@@ -789,66 +735,65 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
   let ref_lines = $derived(
     comparison_mode
       ? [
-        {
-          type: `horizontal`,
-          y: measured_mean,
-          label: `Measured Mean`,
-          style: { color: `#3498db`, width: 2, dash: `8 4` },
-          annotation: {
-            text: `μ = ${measured_mean.toFixed(2)}`,
-            position: `start`,
-            side: `above`,
+          {
+            type: `horizontal`,
+            y: measured_mean,
+            label: `Measured Mean`,
+            style: { color: `#3498db`, width: 2, dash: `8 4` },
+            annotation: {
+              text: `μ = ${measured_mean.toFixed(2)}`,
+              position: `start`,
+              side: `above`,
+            },
           },
-        },
-        {
-          type: `horizontal`,
-          y: predicted_mean,
-          label: `Predicted Mean`,
-          style: { color: `#e74c3c`, width: 2, dash: `8 4` },
-          annotation: {
-            text: `μ = ${predicted_mean.toFixed(2)}`,
-            position: `end`,
-            side: `below`,
+          {
+            type: `horizontal`,
+            y: predicted_mean,
+            label: `Predicted Mean`,
+            style: { color: `#e74c3c`, width: 2, dash: `8 4` },
+            annotation: {
+              text: `μ = ${predicted_mean.toFixed(2)}`,
+              position: `end`,
+              side: `below`,
+            },
           },
-        },
-        {
-          type: `diagonal`,
-          slope: 1,
-          intercept: 0,
-          label: `Parity`,
-          style: { color: `#7f8c8d`, width: 1, dash: `4 2` },
-          z_index: `below-grid`,
-        },
-      ]
+          {
+            type: `diagonal`,
+            slope: 1,
+            intercept: 0,
+            label: `Parity`,
+            style: { color: `#7f8c8d`, width: 1, dash: `4 2` },
+            z_index: `below-grid`,
+          },
+        ]
       : [
-        {
-          type: `horizontal`,
-          y: 90,
-          label: `Excellent`,
-          style: { color: `#2ecc71`, width: 2 },
-          annotation: { text: `Excellent (90%)`, position: `end`, side: `above` },
-        },
-        {
-          type: `horizontal`,
-          y: 80,
-          label: `Good`,
-          style: { color: `#f39c12`, width: 2, dash: `6 3` },
-          annotation: { text: `Good (80%)`, position: `end`, side: `above` },
-        },
-        {
-          type: `horizontal`,
-          y: 70,
-          label: `Minimum`,
-          style: { color: `#e74c3c`, width: 2, dash: `4 4` },
-          annotation: { text: `Minimum (70%)`, position: `end`, side: `below` },
-        },
-      ],
+          {
+            type: `horizontal`,
+            y: 90,
+            label: `Excellent`,
+            style: { color: `#2ecc71`, width: 2 },
+            annotation: { text: `Excellent (90%)`, position: `end`, side: `above` },
+          },
+          {
+            type: `horizontal`,
+            y: 80,
+            label: `Good`,
+            style: { color: `#f39c12`, width: 2, dash: `6 3` },
+            annotation: { text: `Good (80%)`, position: `end`, side: `above` },
+          },
+          {
+            type: `horizontal`,
+            y: 70,
+            label: `Minimum`,
+            style: { color: `#e74c3c`, width: 2, dash: `4 4` },
+            annotation: { text: `Minimum (70%)`, position: `end`, side: `below` },
+          },
+        ],
   )
 </script>
 
 <label style="margin-bottom: 1em; display: block">
-  <input type="checkbox" bind:checked={comparison_mode} /> Comparison mode (grouped bars
-  with means)
+  <input type="checkbox" bind:checked={comparison_mode} /> Comparison mode (grouped bars with means)
 </label>
 
 <BarPlot
@@ -954,7 +899,8 @@ Reference lines support hover effects and click handlers for interactivity:
 />
 
 <div style="margin-top: 0.5em; font-size: 0.9em">
-  <strong>Selected:</strong> {selected_target ?? `Click a target line`}
+  <strong>Selected:</strong>
+  {selected_target ?? `Click a target line`}
 </div>
 ```
 
@@ -1044,13 +990,7 @@ This demo stress-tests interactive axis labels with:
   const n_materials = 50
   const rng = seeded_random(123)
 
-  const crystal_systems = [
-    `Cubic`,
-    `Tetragonal`,
-    `Orthorhombic`,
-    `Hexagonal`,
-    `Monoclinic`,
-  ]
+  const crystal_systems = [`Cubic`, `Tetragonal`, `Orthorhombic`, `Hexagonal`, `Monoclinic`]
   const system_colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`, `#9b59b6`]
 
   // Generate material data
@@ -1133,7 +1073,9 @@ This demo stress-tests interactive axis labels with:
   // Stats
   let avg_load_time = $derived(
     load_times.length > 0
-      ? Math.round(load_times.reduce((sum, load_time) => sum + load_time, 0) / load_times.length)
+      ? Math.round(
+          load_times.reduce((sum, load_time) => sum + load_time, 0) / load_times.length,
+        )
       : 0,
   )
 </script>
@@ -1278,16 +1220,7 @@ Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'`
       y: [125, 142, 158, 171, 165, 189, 203, 218],
       label: `Sales ($K)`,
       color: `#4c6ef5`,
-      labels: [
-        `Q1-22`,
-        `Q2-22`,
-        `Q3-22`,
-        `Q4-22`,
-        `Q1-23`,
-        `Q2-23`,
-        `Q3-23`,
-        `Q4-23`,
-      ],
+      labels: [`Q1-22`, `Q2-22`, `Q3-22`, `Q4-22`, `Q1-23`, `Q2-23`, `Q3-23`, `Q4-23`],
     },
     {
       x: quarters,
@@ -1362,8 +1295,8 @@ Plot two bar series with independent x-scales on the same chart. The primary x-a
   ]
 </script>
 
-Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: temperature
-in °F (red). Each series is positioned using its own x-axis scale.
+Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: temperature in
+°F (red). Each series is positioned using its own x-axis scale.
 
 <BarPlot
   {series}

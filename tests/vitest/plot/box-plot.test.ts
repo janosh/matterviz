@@ -1,5 +1,4 @@
 import { compute_box_stats, is_whisker_mode, WHISKER_MODES } from '$lib/plot'
-import type { WhiskerMode } from '$lib/plot'
 import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, test } from 'vitest'
 
@@ -154,7 +153,7 @@ describe(`compute_box_stats`, () => {
   test(`per-mode whisker ordering stays consistent`, () => {
     const data = [...one_to_ten, 50]
     for (const mode of WHISKER_MODES) {
-      const stats = compute_box_stats(data, { whisker_mode: mode as WhiskerMode })
+      const stats = compute_box_stats(data, { whisker_mode: mode })
       expect(stats.whisker_low).toBeLessThanOrEqual(stats.q1)
       expect(stats.q1).toBeLessThanOrEqual(stats.median)
       expect(stats.median).toBeLessThanOrEqual(stats.q3)

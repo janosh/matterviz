@@ -23,9 +23,10 @@
 <h1>Icon Gallery</h1>
 
 <p>
-  The <a
-    href="https://github.com/janosh/matterviz/blob/main/src/lib/Icon.svelte#L28"
-  ><code>Icon</code></a> component renders SVG icons from a built-in library of
+  The <a href="https://github.com/janosh/matterviz/blob/main/src/lib/Icon.svelte#L28"
+    ><code>Icon</code></a
+  >
+  component renders SVG icons from a built-in library of
   <strong>{icon_names.length}</strong> icons. Pass an icon name to the
   <code>icon</code> prop, or provide custom <code>path</code> and
   <code>viewBox</code> props for custom SVGs.
@@ -34,11 +35,7 @@
 <div class="controls">
   <label>
     <Icon icon="Search" style="font-size: 1.2em" />
-    <input
-      type="text"
-      placeholder="Filter icons (fuzzy search)..."
-      bind:value={filter_text}
-    />
+    <input type="text" placeholder="Filter icons (fuzzy search)..." bind:value={filter_text} />
   </label>
   <span class="count">
     {filtered_icons.length} / {icon_names.length} icons
@@ -84,10 +81,9 @@
 
 <h2>Usage</h2>
 
-<pre
-  class="language-svelte"
->
-<code>{`${`<`}script>
+<pre class="language-svelte">
+<code
+    >{`${`<`}script>
   import { Icon } from '$lib'
 ${`<`}/script>
 
@@ -98,7 +94,8 @@ ${`<`}/script>
 <Icon icon="Settings" style="font-size: 2em" />
 
 <!-- Custom SVG path -->
-<Icon path="M12 2L2 7l10 5 10-5-10-5z" viewBox="0 0 24 24" />`}</code></pre>
+<Icon path="M12 2L2 7l10 5 10-5-10-5z" viewBox="0 0 24 24" />`}</code
+  ></pre>
 
 <style>
   ::highlight(text-filter-highlight) {

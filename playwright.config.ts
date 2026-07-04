@@ -33,7 +33,7 @@ export default {
   timeout: is_ci ? 45_000 : 30_000, // CI gets longer timeout due to slower shared resources
   // default expect timeout is 5s; give assertions more headroom on slower CI so transient
   // contention (theme/tooltip/render updates) doesn't trip them before retries can help
-  expect: { timeout: is_ci ? 15_000 : 5_000 },
+  expect: { timeout: is_ci ? 15_000 : 5000 },
   retries: is_ci ? 2 : 0, // Retry flaky tests in CI
   testDir: `tests/playwright`,
   // list reporter keeps each shard's pass/fail + error output readable in its CI log

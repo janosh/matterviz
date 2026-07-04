@@ -367,12 +367,13 @@ export function get_convex_hull_stats(
     )
     .filter(Number.isFinite)
 
-  // Use reduce instead of Math.min/max(...arr) to avoid stack overflow on large datasets
+  // array_min/array_max reduce instead of Math.min/max(...arr) to avoid stack
+  // overflow on large datasets
   const energy_range =
     energies.length > 0
       ? {
-          min: energies.reduce((min, val) => (val < min ? val : min), Infinity),
-          max: energies.reduce((max, val) => (val > max ? val : max), -Infinity),
+          min: array_min(energies),
+          max: array_max(energies),
           avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
         }
       : { min: 0, max: 0, avg: 0 }
@@ -383,7 +384,7 @@ export function get_convex_hull_stats(
   const hull_distance =
     hull_distances.length > 0
       ? {
-          max: hull_distances.reduce((max, val) => (val > max ? val : max), -Infinity),
+          max: array_max(hull_distances),
           avg: hull_distances.reduce((sum, val) => sum + val, 0) / hull_distances.length,
         }
       : { max: 0, avg: 0 }

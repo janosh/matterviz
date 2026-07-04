@@ -50,8 +50,15 @@
   let side_unstable = $state<ConvexHullEntry[]>([])
   let clicked_entry_id = $state<string | undefined>(undefined)
   let selected_quinary_path = $state<string>(``)
-  const deferred_sections = [`stats`, `highlight`, `magnetic`, `temperature`, `gas`, `quinary`] as const
-  type DemoSection = typeof deferred_sections[number]
+  const deferred_sections = [
+    `stats`,
+    `highlight`,
+    `magnetic`,
+    `temperature`,
+    `gas`,
+    `quinary`,
+  ] as const
+  type DemoSection = (typeof deferred_sections)[number]
   let mounted_demo_count = $state(0)
   const section_mounted = (section: DemoSection): boolean =>
     deferred_sections.indexOf(section) < mounted_demo_count
@@ -95,7 +102,7 @@
     const loader = quinary_files[selected_quinary_path]
     if (loader && section_mounted(`quinary`)) {
       void load_data_file(selected_quinary_path, loader).catch((error) =>
-        log_load_error(selected_quinary_path, error)
+        log_load_error(selected_quinary_path, error),
       )
     }
   })
@@ -111,20 +118,24 @@
     return entries.filter((entry) =>
       (Object.keys(entry.composition) as ElementSymbol[])
         .filter((el) => (entry.composition?.[el] ?? 0) > 0)
-        .every((el) => element_set.has(el))
+        .every((el) => element_set.has(el)),
     )
   }
 
   // Create ternary subsets from quaternary data
-  const na_fe_o_entries = $derived(filter_by_elements(
-    loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`) ?? [],
-    [`Na`, `Fe`, `O`],
-  ))
+  const na_fe_o_entries = $derived(
+    filter_by_elements(
+      loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`) ?? [],
+      [`Na`, `Fe`, `O`],
+    ),
+  )
 
-  const li_co_ni_o_data = $derived(filter_by_elements(
-    loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ?? [],
-    [`Li`, `Co`, `O`],
-  ))
+  const li_co_ni_o_data = $derived(
+    filter_by_elements(
+      loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ?? [],
+      [`Li`, `Co`, `O`],
+    ),
+  )
 
   // Full quaternary data for Li-Co-Ni-O
   const li_co_ni_o_quaternary = $derived(
@@ -138,8 +149,9 @@
     count = 5,
   ) =>
     entries
-      .filter((entry): entry is PhaseData & { entry_id: string } =>
-        Boolean(entry.entry_id) && filter(entry)
+      .filter(
+        (entry): entry is PhaseData & { entry_id: string } =>
+          Boolean(entry.entry_id) && filter(entry),
       )
       .slice(0, count)
       .map((entry) => entry.entry_id)
@@ -160,12 +172,8 @@
 
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
-    const na_fe_p_o = loaded_data.get(
-      `/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`,
-    )
-    const li_co_ni_o = loaded_data.get(
-      `/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`,
-    )
+    const na_fe_p_o = loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`)
+    const li_co_ni_o = loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`)
     if (!na_fe_p_o || !li_co_ni_o) return []
 
     return [
@@ -193,8 +201,10 @@
       const has_magnetic_elem = [`Fe`, `Co`, `Ni`].some(
         (elem) => (entry.composition[elem as ElementSymbol] ?? 0) > 0,
       )
-      const id_hash = [...(entry.entry_id ?? ``)]
-        .reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      const id_hash = [...(entry.entry_id ?? ``)].reduce(
+        (acc, char) => acc + char.charCodeAt(0),
+        0,
+      )
       const magnetic_ordering: MagneticOrdering = has_magnetic_elem
         ? ([`FM`, `FiM`, `AFM`] as const)[id_hash % 3]
         : `NM`
@@ -284,9 +294,7 @@
       })),
   )
   const selected_quinary_entries = $derived(
-    selected_quinary_path
-      ? loaded_data.get(selected_quinary_path) ?? []
-      : [],
+    selected_quinary_path ? (loaded_data.get(selected_quinary_path) ?? []) : [],
   )
   const quinary_stats_result = $derived(
     selected_quinary_entries.length > 0
@@ -318,20 +326,27 @@
     // Pure elements
     ...[`Li`, `Fe`, `Ni`, `O`].map((el, idx) => make_phase({ [el]: 1 }, idx)),
     // All binary pairs
-    ...[[`Li`, `Fe`], [`Li`, `Ni`], [`Li`, `O`], [`Fe`, `Ni`], [`Fe`, `O`], [
-      `Ni`,
-      `O`,
-    ]]
-      .flatMap(([a, b], idx) => [
-        make_phase({ [a]: 0.5, [b]: 0.5 }, 500 + idx),
-        make_phase({ [a]: 0.5, [b]: 0.5 }, 600 + idx, 2.5),
-      ]),
+    ...[
+      [`Li`, `Fe`],
+      [`Li`, `Ni`],
+      [`Li`, `O`],
+      [`Fe`, `Ni`],
+      [`Fe`, `O`],
+      [`Ni`, `O`],
+    ].flatMap(([a, b], idx) => [
+      make_phase({ [a]: 0.5, [b]: 0.5 }, 500 + idx),
+      make_phase({ [a]: 0.5, [b]: 0.5 }, 600 + idx, 2.5),
+    ]),
     // Ternary faces (4 faces × 2 polymorphs)
-    ...[[`Li`, `Fe`, `Ni`], [`Li`, `Fe`, `O`], [`Li`, `Ni`, `O`], [`Fe`, `Ni`, `O`]]
-      .flatMap(([a, b, c], idx) => [
-        make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 700 + idx),
-        make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 800 + idx, 3.5),
-      ]),
+    ...[
+      [`Li`, `Fe`, `Ni`],
+      [`Li`, `Fe`, `O`],
+      [`Li`, `Ni`, `O`],
+      [`Fe`, `Ni`, `O`],
+    ].flatMap(([a, b, c], idx) => [
+      make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 700 + idx),
+      make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 800 + idx, 3.5),
+    ]),
     // Quaternary interior with dramatic order-disorder transitions
     ...[
       { Li: 0.25, Fe: 0.25, Ni: 0.25, O: 0.25 },
@@ -431,16 +446,8 @@
     <h2>Quaternary Chemical Systems</h2>
     {@render feature_list(quaternary_features)}
     <div class="quaternary-grid">
-      {#each [...loaded_data.entries()].filter(([p]) =>
-          p.includes(`quaternaries`)
-        ) as
-        [path, data]
-        (path)
-      }
-        {@const title = path.split(`/`).pop()?.split(`.`).shift()?.replace(
-          `.json`,
-          ``,
-        )}
+      {#each [...loaded_data.entries()].filter( ([p]) => p.includes(`quaternaries`), ) as [path, data] (path)}
+        {@const title = path.split(`/`).pop()?.split(`.`).shift()?.replace(`.json`, ``)}
         <ConvexHull4D
           entries={entries_map.get(path) || data}
           controls={{ title }}
@@ -480,7 +487,7 @@
             {stable_entries}
             {unstable_entries}
             highlighted_entry_id={clicked_entry_id}
-            on_entry_click={(entry) => clicked_entry_id = entry.entry_id}
+            on_entry_click={(entry) => (clicked_entry_id = entry.entry_id)}
             entry_href={get_entry_href}
             style="--hull-stats-max-height: var(--hull-height, 500px)"
           />
@@ -513,156 +520,156 @@
 
   {#if section_mounted(`highlight`)}
     <section class="demo-section">
-    <h2>Highlighted Entries</h2>
-    {@render feature_list(highlighted_features)}
-    <div class="highlight-grid">
-      <ConvexHull2D
-        entries={binary_examples[1]?.entries ?? []}
-        controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
-        highlighted_entries={highlighted_fe_o}
-        highlight_style={{
-          effect: `pulse`,
-          color: `#22cc88`,
-          size_multiplier: 2.5,
-          pulse_speed: 4,
-        }}
-      />
-      <ConvexHull3D
-        entries={na_fe_o_entries}
-        controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
-        highlighted_entries={highlighted_na_fe_o}
-        highlight_style={{
-          effect: `pulse`,
-          color: `#ff3333`,
-          size_multiplier: 2,
-          pulse_speed: 3,
-        }}
-      />
-      <ConvexHull4D
-        entries={li_co_ni_o_quaternary}
-        controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
-        highlighted_entries={highlighted_li_co_ni_o}
-        highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
-      />
-    </div>
+      <h2>Highlighted Entries</h2>
+      {@render feature_list(highlighted_features)}
+      <div class="highlight-grid">
+        <ConvexHull2D
+          entries={binary_examples[1]?.entries ?? []}
+          controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
+          highlighted_entries={highlighted_fe_o}
+          highlight_style={{
+            effect: `pulse`,
+            color: `#22cc88`,
+            size_multiplier: 2.5,
+            pulse_speed: 4,
+          }}
+        />
+        <ConvexHull3D
+          entries={na_fe_o_entries}
+          controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
+          highlighted_entries={highlighted_na_fe_o}
+          highlight_style={{
+            effect: `pulse`,
+            color: `#ff3333`,
+            size_multiplier: 2,
+            pulse_speed: 3,
+          }}
+        />
+        <ConvexHull4D
+          entries={li_co_ni_o_quaternary}
+          controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
+          highlighted_entries={highlighted_li_co_ni_o}
+          highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
+        />
+      </div>
     </section>
   {/if}
 
   {#if section_mounted(`magnetic`)}
     <section class="demo-section">
-    <h2>Magnetic States & Custom Categories</h2>
-    {@render feature_list(magnetic_features)}
-    <p class="section-note">
-      Currently hidden orderings: {
-        hidden_orderings.length > 0 ? hidden_orderings.join(`, `) : `none`
-      } (synthetic demo data — categories assigned by entry ID hash. Missing pure element
-      references are automatically added with E<sub>form</sub> = 0 eV/atom.)
-    </p>
-    <div class="ternary-grid">
-      <div>
-        <div class="marker-legend">
-          {#each magnetic_marker_legend as item (item)}<span>{item}</span>{/each}
+      <h2>Magnetic States & Custom Categories</h2>
+      {@render feature_list(magnetic_features)}
+      <p class="section-note">
+        Currently hidden orderings: {hidden_orderings.length > 0
+          ? hidden_orderings.join(`, `)
+          : `none`} (synthetic demo data — categories assigned by entry ID hash. Missing pure element
+        references are automatically added with E<sub>form</sub> = 0 eV/atom.)
+      </p>
+      <div class="ternary-grid">
+        <div>
+          <div class="marker-legend">
+            {#each magnetic_marker_legend as item (item)}<span>{item}</span>{/each}
+          </div>
+          <ConvexHull3D
+            entries={magnetic_ternary_entries}
+            controls={{ title: `Na-Fe-O Magnetic Orderings` }}
+            bind:hidden_categories={hidden_orderings}
+          />
         </div>
-        <ConvexHull3D
-          entries={magnetic_ternary_entries}
-          controls={{ title: `Na-Fe-O Magnetic Orderings` }}
-          bind:hidden_categories={hidden_orderings}
-        />
-      </div>
-      <div>
-        <div class="marker-legend">
-          {#each crystallinity_marker_legend as item (item)}<span>{item}</span>{/each}
+        <div>
+          <div class="marker-legend">
+            {#each crystallinity_marker_legend as item (item)}<span>{item}</span>{/each}
+          </div>
+          <ConvexHull2D
+            entries={crystallinity_entries}
+            entry_category={crystallinity_category}
+            controls={{ title: `Co-O Crystallinity (custom entry_category)` }}
+            style="height: 100%"
+          />
         </div>
-        <ConvexHull2D
-          entries={crystallinity_entries}
-          entry_category={crystallinity_category}
-          controls={{ title: `Co-O Crystallinity (custom entry_category)` }}
-          style="height: 100%"
-        />
       </div>
-    </div>
     </section>
   {/if}
 
   {#if section_mounted(`temperature`)}
     <section class="demo-section">
-    <h2>Temperature-Dependent Free Energies</h2>
-    {@render feature_list(temp_features)}
-    <div class="temp-grid">
-      <ConvexHull2D
-        entries={temp_binary_entries}
-        controls={{ title: `Li-Fe with G(T)` }}
-        style="height: 500px"
-      />
-      <ConvexHull3D
-        entries={temp_ternary_entries}
-        controls={{ title: `Li-Fe-O with G(T)` }}
-      />
-      <ConvexHull4D
-        entries={temp_quaternary_entries}
-        controls={{ title: `Li-Fe-Ni-O with G(T)` }}
-      />
-    </div>
+      <h2>Temperature-Dependent Free Energies</h2>
+      {@render feature_list(temp_features)}
+      <div class="temp-grid">
+        <ConvexHull2D
+          entries={temp_binary_entries}
+          controls={{ title: `Li-Fe with G(T)` }}
+          style="height: 500px"
+        />
+        <ConvexHull3D
+          entries={temp_ternary_entries}
+          controls={{ title: `Li-Fe-O with G(T)` }}
+        />
+        <ConvexHull4D
+          entries={temp_quaternary_entries}
+          controls={{ title: `Li-Fe-Ni-O with G(T)` }}
+        />
+      </div>
     </section>
   {/if}
 
   {#if section_mounted(`gas`)}
     <section class="demo-section">
-    <h2>Gas Atmosphere Control</h2>
-    {@render feature_list(gas_features)}
-    <div class="gas-selector">
-      <label for="gas-select">Gas species:</label>
-      <select id="gas-select" bind:value={selected_demo_gas}>
-        {#each GAS_SPECIES as gas (gas)}
-          <option value={gas}>{gas}</option>
-        {/each}
-      </select>
-    </div>
-    <div class="gas-grid">
-      <ConvexHull2D
-        entries={gas_demo_fe_o_entries}
-        controls={{ title: `Fe-O with ${selected_demo_gas} Pressure` }}
-        gas_config={gas_demo_config}
-        bind:gas_pressures={gas_demo_pressures}
-        style="height: 500px"
-      />
-      <ConvexHull3D
-        entries={gas_demo_ternary_entries}
-        controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}
-        gas_config={gas_demo_config}
-        bind:gas_pressures={gas_demo_pressures}
-      />
-    </div>
-    <p class="section-note">
-      <strong>Tip:</strong> Try very low pressure (10⁻⁶ bar) for reducing or high (1 bar)
-      for oxidizing conditions.
-    </p>
+      <h2>Gas Atmosphere Control</h2>
+      {@render feature_list(gas_features)}
+      <div class="gas-selector">
+        <label for="gas-select">Gas species:</label>
+        <select id="gas-select" bind:value={selected_demo_gas}>
+          {#each GAS_SPECIES as gas (gas)}
+            <option value={gas}>{gas}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="gas-grid">
+        <ConvexHull2D
+          entries={gas_demo_fe_o_entries}
+          controls={{ title: `Fe-O with ${selected_demo_gas} Pressure` }}
+          gas_config={gas_demo_config}
+          bind:gas_pressures={gas_demo_pressures}
+          style="height: 500px"
+        />
+        <ConvexHull3D
+          entries={gas_demo_ternary_entries}
+          controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}
+          gas_config={gas_demo_config}
+          bind:gas_pressures={gas_demo_pressures}
+        />
+      </div>
+      <p class="section-note">
+        <strong>Tip:</strong> Try very low pressure (10⁻⁶ bar) for reducing or high (1 bar) for oxidizing
+        conditions.
+      </p>
     </section>
   {/if}
 
   {#if section_mounted(`quinary`)}
     <section class="demo-section">
-    <h2>Standalone Stats for Quinary Systems</h2>
-    {@render feature_list(quinary_stats_features)}
-    <div class="quinary-stats-controls">
-      <label for="quinary-select">Quinary dataset:</label>
-      <select id="quinary-select" bind:value={selected_quinary_path}>
-        {#each quinary_options as option (option.path)}
-          <option value={option.path}>{option.title}</option>
-        {/each}
-      </select>
-    </div>
-    {#if quinary_stats_result?.phase_stats}
-      <div class="quinary-stats-example">
-        <ConvexHullStats
-          phase_stats={quinary_stats_result.phase_stats}
-          stable_entries={quinary_stats_result.stable_entries}
-          unstable_entries={quinary_stats_result.unstable_entries}
-          layout="side-by-side"
-          style="width: min(100%, 980px); margin: 0 auto"
-        />
+      <h2>Standalone Stats for Quinary Systems</h2>
+      {@render feature_list(quinary_stats_features)}
+      <div class="quinary-stats-controls">
+        <label for="quinary-select">Quinary dataset:</label>
+        <select id="quinary-select" bind:value={selected_quinary_path}>
+          {#each quinary_options as option (option.path)}
+            <option value={option.path}>{option.title}</option>
+          {/each}
+        </select>
       </div>
-    {/if}
+      {#if quinary_stats_result?.phase_stats}
+        <div class="quinary-stats-example">
+          <ConvexHullStats
+            phase_stats={quinary_stats_result.phase_stats}
+            stable_entries={quinary_stats_result.stable_entries}
+            unstable_entries={quinary_stats_result.unstable_entries}
+            layout="side-by-side"
+            style="width: min(100%, 980px); margin: 0 auto"
+          />
+        </div>
+      {/if}
     </section>
   {/if}
 </main>

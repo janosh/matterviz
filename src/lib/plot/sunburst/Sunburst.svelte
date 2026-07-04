@@ -30,7 +30,11 @@
   import type { Sides } from '$lib/plot/core/layout'
   import { create_color_scale } from '$lib/plot/core/scales'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { arc_label_transform, arrow_nav_target, project_arcs } from '$lib/plot/sunburst/render'
+  import {
+    arc_label_transform,
+    arrow_nav_target,
+    project_arcs,
+  } from '$lib/plot/sunburst/render'
   import type { ScreenArc as ScreenArcOf } from '$lib/plot/sunburst/render'
   import { compute_sunburst_layout, type PositionedArc } from '$lib/plot/sunburst/sunburst'
   import { DEFAULTS } from '$lib/settings'
@@ -92,61 +96,60 @@
     header_controls,
     controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & Omit<BasePlotProps, `change`> & {
-    data?: SunburstNode<Metadata> | SunburstNode<Metadata>[]
-    shape?: SunburstShape // polar rings (sunburst) or stacked rows (icicle)
-    value_mode?: SunburstValueMode
-    sort?: SunburstSort
-    level_lighten?: number
-    // Aggregate sibling arcs below this fraction of the total into one 'Other' leaf
-    // per parent (only when >= 2 qualify); 0 disables
-    min_fraction?: number
-    other_label?: string
-    max_depth?: number // rings shown below the current zoom root (0 = all)
-    inner_radius?: number // center hole as fraction of outer radius
-    pad_angle?: number // degrees between sibling arcs
-    show_labels?: boolean
-    label_rotation?: SunburstLabelRotation
-    label_text?: SunburstLabelText // what labels display (plotly textinfo equivalent)
-    zoom_on_click?: boolean
-    zoom_root_id?: string | number | null // id of the arc the view is rooted on
-    show_breadcrumbs?: boolean // clickable ancestor trail when zoomed
-    // Color arcs by a numeric metric (continuous colormap) instead of categorical
-    // inheritance; return null to keep an arc's categorical color
-    color_values?: (arc: PositionedArc<Metadata>) => number | null
-    color_scale?: D3InterpolateName
-    color_range?: Vec2 // defaults to the metric's [min, max]
-    colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
-    export_buttons?: boolean // SVG/PNG download buttons in the controls pane
-    export_filename?: string
-    tween?: TweenOptions<{ x0: number; x1: number; y0: number; n_rings: number }>
-    value_format?: string
-    padding?: Sides
-    legend?: LegendConfig | null
-    show_legend?: boolean
-    tooltip?: Snippet<[SunburstNodeHandlerProps<Metadata>]>
-    // Fully replace the default arc path. NOTE: this also replaces the built-in
-    // hover/focus/click + tooltip wiring, so re-implement any interactivity you
-    // need inside the snippet.
-    arc_content?: Snippet<
-      [{ arc: PositionedArc<Metadata>; a0: number; a1: number; r0: number; r1: number }]
-    >
-    center_content?: Snippet<
-      [{ root: PositionedArc<Metadata> | null; radius: number; zoomed: boolean }]
-    >
-    change?: (data: SunburstNodeHandlerProps<Metadata> | null) => void
-    on_node_click?: (
-      data: SunburstNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
-    ) => void
-    on_node_hover?: (
-      data:
-        | (SunburstNodeHandlerProps<Metadata> & { event: MouseEvent | FocusEvent })
-        | null,
-    ) => void
-    on_zoom?: (data: { root: SunburstNodeHandlerProps<Metadata> | null }) => void
-    header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
-    controls_extra?: Snippet<[{ zoom_root_id: string | number | null }]>
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    Omit<BasePlotProps, `change`> & {
+      data?: SunburstNode<Metadata> | SunburstNode<Metadata>[]
+      shape?: SunburstShape // polar rings (sunburst) or stacked rows (icicle)
+      value_mode?: SunburstValueMode
+      sort?: SunburstSort
+      level_lighten?: number
+      // Aggregate sibling arcs below this fraction of the total into one 'Other' leaf
+      // per parent (only when >= 2 qualify); 0 disables
+      min_fraction?: number
+      other_label?: string
+      max_depth?: number // rings shown below the current zoom root (0 = all)
+      inner_radius?: number // center hole as fraction of outer radius
+      pad_angle?: number // degrees between sibling arcs
+      show_labels?: boolean
+      label_rotation?: SunburstLabelRotation
+      label_text?: SunburstLabelText // what labels display (plotly textinfo equivalent)
+      zoom_on_click?: boolean
+      zoom_root_id?: string | number | null // id of the arc the view is rooted on
+      show_breadcrumbs?: boolean // clickable ancestor trail when zoomed
+      // Color arcs by a numeric metric (continuous colormap) instead of categorical
+      // inheritance; return null to keep an arc's categorical color
+      color_values?: (arc: PositionedArc<Metadata>) => number | null
+      color_scale?: D3InterpolateName
+      color_range?: Vec2 // defaults to the metric's [min, max]
+      colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
+      export_buttons?: boolean // SVG/PNG download buttons in the controls pane
+      export_filename?: string
+      tween?: TweenOptions<{ x0: number; x1: number; y0: number; n_rings: number }>
+      value_format?: string
+      padding?: Sides
+      legend?: LegendConfig | null
+      show_legend?: boolean
+      tooltip?: Snippet<[SunburstNodeHandlerProps<Metadata>]>
+      // Fully replace the default arc path. NOTE: this also replaces the built-in
+      // hover/focus/click + tooltip wiring, so re-implement any interactivity you
+      // need inside the snippet.
+      arc_content?: Snippet<
+        [{ arc: PositionedArc<Metadata>; a0: number; a1: number; r0: number; r1: number }]
+      >
+      center_content?: Snippet<
+        [{ root: PositionedArc<Metadata> | null; radius: number; zoomed: boolean }]
+      >
+      change?: (data: SunburstNodeHandlerProps<Metadata> | null) => void
+      on_node_click?: (
+        data: SunburstNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
+      ) => void
+      on_node_hover?: (
+        data: (SunburstNodeHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
+      ) => void
+      on_zoom?: (data: { root: SunburstNodeHandlerProps<Metadata> | null }) => void
+      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      controls_extra?: Snippet<[{ zoom_root_id: string | number | null }]>
+    } = $props()
 
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
@@ -201,9 +204,7 @@
   // Hover/focus state is index-based, so a layout swap would otherwise leave a stale
   // tooltip and highlight whatever unrelated node now occupies the old index.
   $effect(() => {
-    const valid = new Set(
-      layout.arcs.filter((arc) => arc.depth === 1).map((arc) => arc.id),
-    )
+    const valid = new Set(layout.arcs.filter((arc) => arc.depth === 1).map((arc) => arc.id))
     untrack(() => {
       for (const id of muted_ids) if (!valid.has(id)) muted_ids.delete(id)
       set_arc_hover(null)
@@ -275,7 +276,7 @@
   const screen_path = (screen: ScreenArc): string =>
     shape === `icicle`
       ? `M${screen.a0},${screen.r0}H${screen.a1}V${screen.r1}H${screen.a0}Z`
-      : arc_gen(screen) ?? ``
+      : (arc_gen(screen) ?? ``)
 
   // The chart group's transform: sunburst draws around the center, icicle from the
   // top-left of the padded plot area
@@ -308,9 +309,7 @@
     const scale = create_color_scale({ scheme: color_scale, value_range: range }, range)
     return {
       range,
-      colors: vals.map((val, idx) =>
-        val == null ? layout.arcs[idx].color : `${scale(val)}`
-      ),
+      colors: vals.map((val, idx) => (val == null ? layout.arcs[idx].color : `${scale(val)}`)),
     }
   })
   const arc_color = (arc: PositionedArc<Metadata>): string =>
@@ -362,9 +361,7 @@
     arc.parent_idx != null ? layout.arcs[arc.parent_idx] : null
   const arc_name = (arc: PositionedArc<Metadata>): string => arc.label ?? `${arc.id}`
 
-  function make_node_props(
-    arc: PositionedArc<Metadata>,
-  ): SunburstNodeHandlerProps<Metadata> {
+  function make_node_props(arc: PositionedArc<Metadata>): SunburstNodeHandlerProps<Metadata> {
     // Handler props are the arc minus its screen geometry, plus the parent id
     const { x0, x1, y0, y1, subtree_end, parent_idx, ...node } = arc
     return {
@@ -380,10 +377,7 @@
   const event_pos = (event?: MouseEvent | FocusEvent): { x: number; y: number } | null =>
     event instanceof MouseEvent ? get_relative_coords(event, svg_element) : null
 
-  function set_arc_hover(
-    screen: ScreenArc | null,
-    event?: MouseEvent | FocusEvent,
-  ) {
+  function set_arc_hover(screen: ScreenArc | null, event?: MouseEvent | FocusEvent) {
     // Same arc as before: only the cursor anchor moves - skip rebuilding the handler
     // payload and re-firing change/on_node_hover on every mousemove within an arc.
     // Requires hover_info: legend item hover sets hovered_idx alone (for dimming), and
@@ -413,7 +407,7 @@
 
   const screen_arc_from_event = (event: Event): ScreenArc | null => {
     const idx = closest_data_idx(event, `data-sunburst-node-idx`, svg_element)
-    return idx == null ? null : screen_arcs[idx] ?? null
+    return idx == null ? null : (screen_arcs[idx] ?? null)
   }
 
   function handle_arc_hover_event(event: MouseEvent | FocusEvent) {
@@ -437,8 +431,10 @@
   function selection_in_chart(): boolean {
     const selection = globalThis.getSelection?.()
     return Boolean(
-      selection && !selection.isCollapsed && selection.anchorNode &&
-        wrapper?.contains(selection.anchorNode),
+      selection &&
+      !selection.isCollapsed &&
+      selection.anchorNode &&
+      wrapper?.contains(selection.anchorNode),
     )
   }
 
@@ -603,7 +599,7 @@
       label: arc_name(arc),
       visible: !muted_ids.has(arc.id),
       display_style: { symbol_type: `Square` as const, symbol_color: arc_color(arc) },
-    }))
+    })),
   )
 
   function toggle_category(series_idx: number) {
@@ -627,11 +623,8 @@
   let breadcrumb_arcs = $derived.by(() => {
     if (!zoom_root || zoom_root.depth === 0) return []
     const chain: PositionedArc<Metadata>[] = []
-    for (
-      let cur: PositionedArc<Metadata> | null = zoom_root;
-      cur;
-      cur = parent_of(cur)
-    ) chain.unshift(cur)
+    for (let cur: PositionedArc<Metadata> | null = zoom_root; cur; cur = parent_of(cur))
+      chain.unshift(cur)
     return chain
   })
 
@@ -665,7 +658,9 @@
     // only react when the user is interacting with this chart (pointer over it,
     // focus inside it, or fullscreen) - Escape zooms out one level, then exits
     // fullscreen once at the root
-    const within = fullscreen || Boolean(wrapper?.matches(`:hover`)) ||
+    const within =
+      fullscreen ||
+      Boolean(wrapper?.matches(`:hover`)) ||
       Boolean(wrapper && document.activeElement && wrapper.contains(document.activeElement))
     if (!within) return
     if (zoomed) {
@@ -732,7 +727,7 @@
             disabled={crumb_idx === breadcrumb_arcs.length - 1}
             onclick={() => zoom_to(crumb)}
           >
-            {crumb.depth === 0 ? `all` : crumb.label ?? crumb.id}
+            {crumb.depth === 0 ? `all` : (crumb.label ?? crumb.id)}
           </button>
         {/each}
       </nav>
@@ -774,7 +769,9 @@
                 fill-opacity={arc_opacity(screen.arc)}
                 role={clickable ? `button` : undefined}
                 tabindex={clickable
-                  ? (screen.arc.node_idx === roving_idx ? 0 : -1)
+                  ? screen.arc.node_idx === roving_idx
+                    ? 0
+                    : -1
                   : undefined}
                 aria-label={clickable ? arc_info[screen.arc.node_idx].aria : undefined}
                 style:cursor={clickable ? `pointer` : `default`}
@@ -858,14 +855,13 @@
       {#if tooltip}
         {@render tooltip(hover_info)}
       {:else}
-        <strong>{hover_info.label_path.join(` › `)}</strong>: {
-          format_value(hover_info.value, value_format)
-        }
-        ({format_value(hover_info.fraction, `.1%`)} of total{
-          hover_info.depth > 1
+        <strong>{hover_info.label_path.join(` › `)}</strong>: {format_value(
+          hover_info.value,
+          value_format,
+        )}
+        ({format_value(hover_info.fraction, `.1%`)} of total{hover_info.depth > 1
           ? `, ${format_value(hover_info.parent_fraction, `.1%`)} of parent`
-          : ``
-        })
+          : ``})
       {/if}
     </PlotTooltip>
   {/if}
@@ -879,9 +875,10 @@
       series_data={legend_data}
       on_toggle={legend?.on_toggle ?? toggle_category}
       on_item_hover={(item) =>
-      (hovered_idx = item != null && item.series_idx >= 0
-        ? depth1_arcs[item.series_idx]?.node_idx ?? null
-        : null)}
+        (hovered_idx =
+          item != null && item.series_idx >= 0
+            ? (depth1_arcs[item.series_idx]?.node_idx ?? null)
+            : null)}
       style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
         legend?.style ?? ``
       }`}
@@ -894,7 +891,7 @@
       style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
     >
       <ColorBar
-        color_scale={color_scale}
+        {color_scale}
         range={metric.range}
         {...colorbar}
         wrapper_style={`width: 100%; ${colorbar?.wrapper_style ?? ``}`}
@@ -987,7 +984,9 @@
   .sunburst :global(.pane-toggle),
   .sunburst .header-controls {
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
   .sunburst:hover :global(.pane-toggle),
   .sunburst:hover .header-controls,
@@ -1010,7 +1009,9 @@
     presentation attributes is not reliably supported across browsers */
     stroke: var(--sunburst-arc-stroke, var(--plot-bg, white));
     stroke-width: var(--sunburst-arc-stroke-width, 0.25);
-    transition: fill-opacity 0.15s ease, transform 0.15s ease;
+    transition:
+      fill-opacity 0.15s ease,
+      transform 0.15s ease;
     /* hover 'pull': scaling about the chart center offsets the arc radially */
     transform-origin: 0 0;
   }

@@ -73,20 +73,16 @@
       items: [
         {
           label: `a, b, c`,
-          value: `${
-            [structure.lattice.a, structure.lattice.b, structure.lattice.c]
-              .map((val) => format_num(val, `.3~f`))
-              .join(`, `)
-          } Å`,
+          value: `${[structure.lattice.a, structure.lattice.b, structure.lattice.c]
+            .map((val) => format_num(val, `.3~f`))
+            .join(`, `)} Å`,
           key: `real-lattice-abc`,
         },
         {
           label: `α, β, γ`,
-          value: `${
-            [structure.lattice.alpha, structure.lattice.beta, structure.lattice.gamma]
-              .map((val) => format_num(val, `.2~f`))
-              .join(`, `)
-          }°`,
+          value: `${[structure.lattice.alpha, structure.lattice.beta, structure.lattice.gamma]
+            .map((val) => format_num(val, `.2~f`))
+            .join(`, `)}°`,
           key: `real-lattice-angles`,
         },
       ],

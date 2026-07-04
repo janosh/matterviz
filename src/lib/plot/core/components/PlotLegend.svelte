@@ -46,10 +46,7 @@
     collapsed_groups?: Set<string>
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
-    on_fill_toggle?: (
-      source_type: `fill_region` | `error_band`,
-      source_idx: number,
-    ) => void
+    on_fill_toggle?: (source_type: `fill_region` | `error_band`, source_idx: number) => void
     on_fill_double_click?: (
       source_type: `fill_region` | `error_band`,
       source_idx: number,
@@ -100,9 +97,7 @@
 
   // Check if any grouping is present
   let has_groups = $derived(
-    grouped_series.some((group) =>
-      group.group_name !== null && group.items.length > 0
-    ),
+    grouped_series.some((group) => group.group_name !== null && group.items.length > 0),
   )
 
   let show_filter = $derived(filterable && series_data.length >= filter_threshold)
@@ -115,7 +110,7 @@
         group_name,
         all_items: items,
         items: items.filter((item) =>
-          `${group_name ?? ``} ${strip_html(item.label)}`.toLowerCase().includes(filter)
+          `${group_name ?? ``} ${strip_html(item.label)}`.toLowerCase().includes(filter),
         ),
       }))
       .filter(({ items }) => items.length > 0)
@@ -131,7 +126,10 @@
   }
 
   const handle_group_click = (group_name: string, items: LegendItem[]) =>
-    on_group_toggle?.(group_name, items.map((item) => item.series_idx))
+    on_group_toggle?.(
+      group_name,
+      items.map((item) => item.series_idx),
+    )
 
   function cleanup_drag_listeners() {
     if (is_dragging) {
@@ -192,15 +190,16 @@
   let div_style = $derived(
     {
       horizontal: `grid-template-columns: repeat(${layout_tracks}, auto);`,
-      vertical:
-        `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`,
+      vertical: `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`,
     }[layout] + style,
   )
 
   // Extracted toggle handlers to reduce duplication
   function toggle_item(item: LegendItem) {
     if (
-      item.item_type === `fill` && on_fill_toggle && item.fill_source_type &&
+      item.item_type === `fill` &&
+      on_fill_toggle &&
+      item.fill_source_type &&
       item.fill_source_idx !== undefined
     ) {
       on_fill_toggle(item.fill_source_type, item.fill_source_idx)
@@ -208,7 +207,9 @@
   }
   function double_click_item(item: LegendItem) {
     if (
-      item.item_type === `fill` && on_fill_double_click && item.fill_source_type &&
+      item.item_type === `fill` &&
+      on_fill_double_click &&
+      item.fill_source_type &&
       item.fill_source_idx !== undefined
     ) {
       on_fill_double_click(item.fill_source_type, item.fill_source_idx)
@@ -219,8 +220,8 @@
 {#snippet legend_item(series: LegendItem, indent: boolean = false)}
   {@const is_fill_item = series.item_type === `fill`}
   {@const is_active = is_fill_item
-  ? active_fill_idx === series.fill_idx
-  : active_series_idx === series.series_idx}
+    ? active_fill_idx === series.fill_idx
+    : active_series_idx === series.series_idx}
   <div
     class="legend-item"
     class:hidden={!series.visible}
@@ -255,8 +256,7 @@
   >
     <span class="legend-marker">
       <!-- Fill region swatch -->
-      {#if is_fill_item &&
-        (series.display_style.fill_color || series.display_style.fill_gradient)}
+      {#if is_fill_item && (series.display_style.fill_color || series.display_style.fill_gradient)}
         {@const gradient = series.display_style.fill_gradient}
         {@const gradient_id = `legend-grad-${instance_id}-${series.fill_idx}`}
         <svg width="16" height="12" viewBox="0 0 16 12" class="fill-swatch">
@@ -292,8 +292,8 @@
             height="10"
             rx="2"
             fill={gradient
-            ? `url(#${gradient_id})`
-            : add_alpha(series.display_style.fill_color ?? `steelblue`, 1)}
+              ? `url(#${gradient_id})`
+              : add_alpha(series.display_style.fill_color ?? `steelblue`, 1)}
             fill-opacity="0.7"
             stroke={series.display_style.edge_color ?? `none`}
             stroke-width="1"
@@ -387,7 +387,10 @@
         ondblclick={(event: MouseEvent) => {
           event.preventDefault()
           event.stopPropagation()
-          on_group_double_click?.(group_name, group_items.map((item) => item.series_idx))
+          on_group_double_click?.(
+            group_name,
+            group_items.map((item) => item.series_idx),
+          )
         }}
         onkeydown={(event) => {
           if ([`Enter`, ` `].includes(event.key)) {
@@ -425,23 +428,13 @@
       </div>
       <!-- Group items (collapsible) -->
       {#if !is_collapsed}
-        {#each items as
-          series
-          (series.item_type === `fill`
-      ? `fill-${series.fill_idx}`
-      : `series-${series.series_idx}`)
-        }
+        {#each items as series (series.item_type === `fill` ? `fill-${series.fill_idx}` : `series-${series.series_idx}`)}
           {@render legend_item(series, true)}
         {/each}
       {/if}
     {:else}
       <!-- Ungrouped items -->
-      {#each items as
-        series
-        (series.item_type === `fill`
-      ? `fill-${series.fill_idx}`
-      : `series-${series.series_idx}`)
-      }
+      {#each items as series (series.item_type === `fill` ? `fill-${series.fill_idx}` : `series-${series.series_idx}`)}
         {@render legend_item(series, false)}
       {/each}
     {/if}
@@ -511,7 +504,9 @@
   .legend-item.hidden {
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
-  .legend-item:hover, .legend-item:focus, .legend-item.active {
+  .legend-item:hover,
+  .legend-item:focus,
+  .legend-item.active {
     background-color: var(--plot-legend-item-hover-bg-color);
   }
   .legend-item.active {
@@ -553,7 +548,8 @@
   .legend-group-header.hidden {
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
-  .legend-group-header:hover, .legend-group-header:focus {
+  .legend-group-header:hover,
+  .legend-group-header:focus {
     background-color: var(--plot-legend-item-hover-bg-color);
   }
   .group-chevron {

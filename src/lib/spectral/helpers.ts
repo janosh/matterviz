@@ -278,28 +278,22 @@ export function normalize_densities(
   freqs_or_energies: number[],
   mode: types.NormalizationMode,
 ): number[] {
-  if (!mode) return densities
-
-  const normalized = [...densities]
-
   if (mode === `max`) {
-    const max_val = Math.max(...normalized)
-    if (max_val === 0) return normalized
-    return normalized.map((dens) => dens / max_val)
-  } else if (mode === `sum`) {
-    const sum = normalized.reduce((acc, dens) => acc + dens, 0)
-    if (sum === 0) return normalized
-    return normalized.map((dens) => dens / sum)
-  } else if (mode === `integral`) {
-    if (freqs_or_energies.length < 2) return normalized
-    const bin_width = freqs_or_energies[1] - freqs_or_energies[0]
-    if (bin_width === 0) return normalized
-    const sum = normalized.reduce((acc, dens) => acc + dens, 0)
-    if (sum === 0) return normalized
-    return normalized.map((dens) => dens / (sum * bin_width))
+    const max_val = Math.max(...densities)
+    return max_val === 0 ? densities : densities.map((dens) => dens / max_val)
   }
-
-  return normalized
+  if (mode === `sum`) {
+    const sum = densities.reduce((acc, dens) => acc + dens, 0)
+    return sum === 0 ? densities : densities.map((dens) => dens / sum)
+  }
+  if (mode === `integral`) {
+    if (freqs_or_energies.length < 2) return densities
+    const bin_width = freqs_or_energies[1] - freqs_or_energies[0]
+    const sum = densities.reduce((acc, dens) => acc + dens, 0)
+    if (bin_width === 0 || sum === 0) return densities
+    return densities.map((dens) => dens / (sum * bin_width))
+  }
+  return densities
 }
 
 // Simple LRU cache for Gaussian smearing results
@@ -346,21 +340,18 @@ function apply_gaussian_smearing_core(
   if (sigma <= 0 || orig_sum === 0) return densities
 
   const smeared = Array(densities.length).fill(0)
-  const truncation_width = 4 // Truncate Gaussian at ±4σ (contribution < 0.01%)
+  const cutoff = 4 * sigma // Truncate Gaussian at ±4σ (contribution < 0.01%)
+  const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
 
   for (let idx = 0; idx < freqs_or_energies.length; idx++) {
     const energy = freqs_or_energies[idx]
-    const cutoff = truncation_width * sigma
 
     for (let jdx = 0; jdx < freqs_or_energies.length; jdx++) {
-      const e_j = freqs_or_energies[jdx]
-      const delta = Math.abs(energy - e_j)
-
+      const delta = energy - freqs_or_energies[jdx]
       // Skip points beyond truncation width
-      if (delta > cutoff) continue
+      if (Math.abs(delta) > cutoff) continue
 
-      const gaussian = Math.exp(-((energy - e_j) ** 2) / (2 * sigma ** 2))
-      smeared[idx] += densities[jdx] * gaussian
+      smeared[idx] += densities[jdx] * Math.exp(-(delta ** 2) * inv_two_sigma_sq)
     }
   }
 
@@ -1231,7 +1222,7 @@ export function compute_frequency_range(
   const bs_list = band_structs
     ? is_single_bs
       ? [normalize_band_structure(band_structs)]
-      : Object.values(band_structs as object).map(normalize_band_structure)
+      : Object.values(band_structs).map(normalize_band_structure)
     : []
 
   // If band structures exist and aren't electronic, mark as phonon
@@ -1250,11 +1241,12 @@ export function compute_frequency_range(
     }
   }
 
-  const dos_list = doses
-    ? `densities` in (doses as object)
-      ? [normalize_dos(doses)]
-      : Object.values(doses as object).map((dos) => normalize_dos(dos))
-    : []
+  const dos_list =
+    doses && typeof doses === `object`
+      ? `densities` in doses
+        ? [normalize_dos(doses)]
+        : Object.values(doses).map((dos) => normalize_dos(dos))
+      : []
   for (const dos of dos_list) {
     if (!dos) continue
     // DOS type detection: explicit type field is authoritative

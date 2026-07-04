@@ -14,9 +14,12 @@
       r: Array.from({ length: 50 }, (_, idx) => (idx + 1) * 0.2),
       g_r: Array.from({ length: 50 }, (_, idx) => {
         const r_val = (idx + 1) * 0.2
-        return 1 - Math.exp(-r_val / 2) +
+        return (
+          1 -
+          Math.exp(-r_val / 2) +
           2.5 * Math.exp(-((r_val - 2) ** 2) / 0.3) +
           1.8 * Math.exp(-((r_val - 4) ** 2) / 0.3)
+        )
       }),
       element_pair: [`Li`, `O`],
     },
@@ -31,9 +34,12 @@
         r: Array.from({ length: 50 }, (_, idx) => (idx + 1) * 0.2),
         g_r: Array.from({ length: 50 }, (_, idx) => {
           const r_val = (idx + 1) * 0.2
-          return 1 - Math.exp(-r_val / 3) +
+          return (
+            1 -
+            Math.exp(-r_val / 3) +
             1.5 * Math.exp(-((r_val - 3) ** 2) / 0.4) +
             1.2 * Math.exp(-((r_val - 6) ** 2) / 0.4)
+          )
         }),
         element_pair: [`O`, `O`],
       },
@@ -127,10 +133,4 @@
 />
 
 <h2>Drag & Drop Enabled</h2>
-<RdfPlot
-  id="drag-drop"
-  mode="element_pairs"
-  enable_drop
-  cutoff={7}
-  style="height: 360px"
-/>
+<RdfPlot id="drag-drop" mode="element_pairs" enable_drop cutoff={7} style="height: 360px" />

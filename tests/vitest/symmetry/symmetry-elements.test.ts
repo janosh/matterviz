@@ -310,7 +310,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
             String(op.rotation) === `1,0,0,0,1,0,0,0,1` &&
             op.translation.some((val) => Math.abs(val - Math.round(val)) > 1e-6),
         )
-        .map((op) => op.translation as Vec3)
+        .map((op) => op.translation)
       for (const op of ops) {
         const elem = classify_symmetry_op(op.rotation, op.translation, centerings)
         if (elem === null) continue

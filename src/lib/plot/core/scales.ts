@@ -422,6 +422,14 @@ export function get_nice_data_range(
   let data_min = min ?? min_ext ?? 0
   let data_max = max ?? max_ext ?? 1
   const type_name = get_scale_type_name(scale_type)
+  const can_snap_zero =
+    min_ext !== undefined &&
+    max_ext !== undefined &&
+    min_ext < max_ext &&
+    !is_time &&
+    type_name !== `log`
+  const snap_zero_min = can_snap_zero && min === null && min_ext === 0
+  const snap_zero_max = can_snap_zero && max === null && max_ext === 0
 
   // Apply padding *only if* limits were NOT provided
   if (min === null && max === null && points.length > 0) {
@@ -482,7 +490,7 @@ export function get_nice_data_range(
   // Use D3's nice() to create pretty boundaries
   // For arcsinh, we don't use D3's nice() - just return padded domain
   if (type_name === `arcsinh`) {
-    return [data_min, data_max]
+    return [snap_zero_min ? 0 : data_min, snap_zero_max ? 0 : data_max]
   }
 
   // Create the scale with the *padded* data domain
@@ -496,7 +504,7 @@ export function get_nice_data_range(
 
   scale.nice()
   const [nice_min = data_min, nice_max = data_max] = scale.domain()
-  return [nice_min, nice_max]
+  return [snap_zero_min ? 0 : nice_min, snap_zero_max ? 0 : nice_max]
 }
 
 // Generate logarithmic ticks (from ScatterPlot)

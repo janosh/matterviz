@@ -10,10 +10,10 @@
   // vite-plugin-json-gz decompresses each .json.gz at build time.
   // Lazy chunks are code-split and loaded on demand.
   // Do NOT use query:'?url' here: Rolldown doesn't emit .json.gz as assets for globs.
-  const chempot_files = import.meta.glob<PhaseData[]>(
-    `/src/site/chempot-diagram/*.json.gz`,
-    { eager: true, import: `default` },
-  )
+  const chempot_files = import.meta.glob<PhaseData[]>(`/src/site/chempot-diagram/*.json.gz`, {
+    eager: true,
+    import: `default`,
+  })
   const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
     `$site/convex-hull/quaternaries/*.json.gz`,
     { eager: false },
@@ -64,7 +64,7 @@
   async function load_quaternary_entries(): Promise<void> {
     try {
       const li_co_ni_o_path = Object.keys(quaternary_files).find((path) =>
-        path.includes(`Li-Co-Ni-O`)
+        path.includes(`Li-Co-Ni-O`),
       )
       if (!li_co_ni_o_path) {
         quaternary_error = `Li-Co-Ni-O data file not found`
@@ -73,9 +73,7 @@
 
       all_entries = (await quaternary_files[li_co_ni_o_path]()).default
     } catch (error) {
-      quaternary_error = `Failed to load data: ${
-        to_error(error).message
-      }`
+      quaternary_error = `Failed to load data: ${to_error(error).message}`
     } finally {
       quaternary_loading = false
     }
@@ -87,7 +85,7 @@
     return entries.filter((entry) =>
       Object.entries(entry.composition)
         .filter(([, amt]) => amt > 0)
-        .every(([el]) => element_set.has(el))
+        .every(([el]) => element_set.has(el)),
     )
   }
 
@@ -107,8 +105,8 @@
 
 <h1>Chemical Potential Diagram</h1>
 <p>
-  The chemical potential diagram is the mathematical dual of the compositional phase
-  diagram, related by a
+  The chemical potential diagram is the mathematical dual of the compositional phase diagram,
+  related by a
   <a
     href="https://en.wikipedia.org/wiki/Legendre_transformation"
     target="_blank"
@@ -116,9 +114,9 @@
   >
     Legendre transform
   </a>
-  that swaps composition variables for their conjugate chemical potentials. Each phase
-  becomes a convex polytope domain in chemical potential (mu) space, showing the region
-  where that phase is thermodynamically most stable.
+  that swaps composition variables for their conjugate chemical potentials. Each phase becomes a
+  convex polytope domain in chemical potential (mu) space, showing the region where that phase is
+  thermodynamically most stable.
 </p>
 
 <section data-demo-id="binary">
@@ -129,10 +127,9 @@
   </p>
   <p>
     <strong>Features in this demo:</strong>
-    interactive hover + click-to-pin tooltips, control pane for formal potentials and
-    bounds/padding, and export options (SVG, PNG, JSON). This panel also supports the
-    full 2D color modes (none, energy/atom, formation energy, arity, entry count) with
-    color bar/legend where applicable.
+    interactive hover + click-to-pin tooltips, control pane for formal potentials and bounds/padding,
+    and export options (SVG, PNG, JSON). This panel also supports the full 2D color modes (none,
+    energy/atom, formation energy, arity, entry count) with color bar/legend where applicable.
   </p>
   {#if !visible_demo_ids.has(`binary`)}
     <div class="deferred-diagram" style:height="550px"></div>
@@ -152,15 +149,12 @@
 
 <section data-demo-id="ternary">
   <h2>Ternary System (Li-Co-O) &mdash; 3D</h2>
-  <p>
-    For a ternary system, stability domains are 3D polytopes. Drag to rotate the view.
-  </p>
+  <p>For a ternary system, stability domains are 3D polytopes. Drag to rotate the view.</p>
   <p>
     <strong>Features in this demo:</strong>
-    3D hull rendering with domain boundaries, hover + click-to-pin tooltips, camera and
-    display controls, color modes/scales, and export options (PNG, SVG snapshot, JSON,
-    view JSON, GLB). Projection switching is intentionally hidden here because this is a
-    true ternary system.
+    3D hull rendering with domain boundaries, hover + click-to-pin tooltips, camera and display controls,
+    color modes/scales, and export options (PNG, SVG snapshot, JSON, view JSON, GLB). Projection
+    switching is intentionally hidden here because this is a true ternary system.
   </p>
   {#if !visible_demo_ids.has(`ternary`)}
     <div class="deferred-diagram" style:height="500px"></div>
@@ -183,8 +177,8 @@
   <p>Li-Fe-O ternary from pymatgen test data. Axes: x=Li, y=Fe, z=O.</p>
   <p>
     <strong>Features in this demo:</strong>
-    same core 3D interactions as Li-Co-O, useful as a parity/reference dataset against
-    pymatgen expectations (domain topology, labels, and energy-aware coloring).
+    same core 3D interactions as Li-Co-O, useful as a parity/reference dataset against pymatgen expectations
+    (domain topology, labels, and energy-aware coloring).
   </p>
   {#if !visible_demo_ids.has(`li_fe_o`)}
     <div class="deferred-diagram" style:height="500px"></div>
@@ -203,8 +197,8 @@
 <section data-demo-id="temp_li_fe_o">
   <h2>Ternary System (Li-Fe-O) with Temperature Slider &mdash; 3D</h2>
   <p>
-    This demo uses the same synthetic G(T) dataset recipe as the convex-hull demo page.
-    Drag the temperature slider to recompute stability domains from free energies.
+    This demo uses the same synthetic G(T) dataset recipe as the convex-hull demo page. Drag
+    the temperature slider to recompute stability domains from free energies.
   </p>
   {#if visible_demo_ids.has(`temp_li_fe_o`)}
     <ChemPotDiagram3D
@@ -224,9 +218,9 @@
 <section data-demo-id="quaternary">
   <h2>Quaternary System (Li-Co-Ni-O) &mdash; All Ternary Projections</h2>
   <p>
-    For quaternary and higher systems, a single 3D diagram projects onto 3 chosen
-    elements, hiding assumptions about the remaining chemical potentials. Grid mode
-    shows all C(n,3) ternary projections simultaneously for a complete picture.
+    For quaternary and higher systems, a single 3D diagram projects onto 3 chosen elements,
+    hiding assumptions about the remaining chemical potentials. Grid mode shows all C(n,3)
+    ternary projections simultaneously for a complete picture.
   </p>
   {#if !visible_demo_ids.has(`quaternary`)}
     <div class="deferred-diagram" style:height="700px"></div>
@@ -249,14 +243,15 @@
 <section data-demo-id="ytos_ti_s_y">
   <h2>YTOS Quaternary &mdash; Ti-S-Y Projection</h2>
   <p>
-    Full Y-Ti-O-S quaternary projected onto Ti-S-Y axes with Y<sub>2</sub>Ti<sub
-    >2</sub>S<sub>2</sub>O<sub>5</sub> overlay.
+    Full Y-Ti-O-S quaternary projected onto Ti-S-Y axes with Y<sub>2</sub>Ti<sub>2</sub>S<sub
+      >2</sub
+    >O<sub>5</sub> overlay.
   </p>
   <p>
     <strong>Features in this demo:</strong>
-    multinary projection mode (4D system projected into 3D), runtime projection axis
-    switching in the 3D controls pane (X/Y/Z selectors + presets), and formula overlay
-    tooling (searchable picker, surface/neighbor quick-select actions).
+    multinary projection mode (4D system projected into 3D), runtime projection axis switching in
+    the 3D controls pane (X/Y/Z selectors + presets), and formula overlay tooling (searchable picker,
+    surface/neighbor quick-select actions).
   </p>
   {#if !visible_demo_ids.has(`ytos_ti_s_y`)}
     <div class="deferred-diagram" style:height="500px"></div>
@@ -277,14 +272,12 @@
 
 <section data-demo-id="ytos_ti_y_o">
   <h2>YTOS &mdash; Ti-Y-O with Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub></h2>
-  <p>
-    Same quaternary data projected onto Ti-Y-O axes.
-  </p>
+  <p>Same quaternary data projected onto Ti-Y-O axes.</p>
   <p>
     <strong>Features in this demo:</strong>
-    alternative projection of the same multinary dataset, showing how domain geometry
-    and visible phase relationships change with axis selection while preserving the same
-    underlying computed chemical-potential domains.
+    alternative projection of the same multinary dataset, showing how domain geometry and visible
+    phase relationships change with axis selection while preserving the same underlying computed
+    chemical-potential domains.
   </p>
   {#if !visible_demo_ids.has(`ytos_ti_y_o`)}
     <div class="deferred-diagram" style:height="500px"></div>

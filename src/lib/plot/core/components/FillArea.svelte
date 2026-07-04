@@ -4,11 +4,7 @@
   import { interpolatePath } from 'd3-interpolate-path'
   import { untrack } from 'svelte'
   import { Tween, type TweenOptions } from 'svelte/motion'
-  import type {
-    FillGradient,
-    FillHandlerEvent,
-    FillRegion,
-  } from '$lib/plot/core/types'
+  import type { FillGradient, FillHandlerEvent, FillRegion } from '$lib/plot/core/types'
   import { unique_id } from '$lib/plot/core/utils'
 
   let {
@@ -37,22 +33,20 @@
 
   // Stable instance ID for gradient uniqueness (generated once per component instance)
   const instance_id = unique_id()
-  let gradient_id = $derived(
-    `fill-gradient-${region.id ?? region_idx}-${instance_id}`,
-  )
+  let gradient_id = $derived(`fill-gradient-${region.id ?? region_idx}-${instance_id}`)
 
   // On hover (without an explicit hover_style), noticeably raise opacity. A faint fill (e.g. a
   // low-alpha rgba color at the default 0.3 fill-opacity) is otherwise nearly invisible, so a mere
   // brightness filter reads as "no change". An explicit hover_style.fill_opacity always wins.
   let effective_opacity = $derived(
     is_hovered
-      ? region.hover_style?.fill_opacity ?? Math.min(1, (region.fill_opacity ?? 0.3) + 0.4)
-      : region.fill_opacity ?? 0.3,
+      ? (region.hover_style?.fill_opacity ?? Math.min(1, (region.fill_opacity ?? 0.3) + 0.4))
+      : (region.fill_opacity ?? 0.3),
   )
   let effective_fill = $derived(
     is_hovered && region.hover_style?.fill
       ? region.hover_style.fill
-      : region.fill ?? `steelblue`,
+      : (region.fill ?? `steelblue`),
   )
   let path_fill = $derived(
     typeof effective_fill === `object` ? `url(#${gradient_id})` : effective_fill,
@@ -137,8 +131,9 @@
   // Construct FillHandlerEvent from MouseEvent
   function construct_event(event: MouseEvent): FillHandlerEvent {
     const current = event.currentTarget
-    const rect = (current instanceof SVGElement ? current.ownerSVGElement : null)
-      ?.getBoundingClientRect()
+    const rect = (
+      current instanceof SVGElement ? current.ownerSVGElement : null
+    )?.getBoundingClientRect()
     const px = event.clientX - (rect?.left ?? 0)
     const py = event.clientY - (rect?.top ?? 0)
     const raw_x = x_scale_fn.invert?.(px) ?? 0
@@ -159,9 +154,7 @@
   }
 
   // Type guard for gradient fill
-  const is_gradient = (
-    fill: string | FillGradient | undefined,
-  ): fill is FillGradient =>
+  const is_gradient = (fill: string | FillGradient | undefined): fill is FillGradient =>
     typeof fill === `object` && fill !== null && `type` in fill
 </script>
 
@@ -220,7 +213,7 @@
     fill={path_fill}
     fill-opacity={effective_opacity}
     stroke={hover_stroke ?? `none`}
-    stroke-width={hover_stroke ? region.hover_style?.stroke_width ?? 1.5 : 0}
+    stroke-width={hover_stroke ? (region.hover_style?.stroke_width ?? 1.5) : 0}
   />
 </g>
 

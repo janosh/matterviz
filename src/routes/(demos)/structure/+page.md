@@ -61,11 +61,7 @@
   </h3>
 </Structure>
 
-<FilePicker
-  files={all_files}
-  show_category_filters
-  style="margin-block: 2em"
-/>
+<FilePicker files={all_files} show_category_filters style="margin-block: 2em" />
 ```
 
 ## Explicit Bond Orders
@@ -158,12 +154,7 @@ Showcasing structures with different crystal systems.
 </script>
 
 <ul class="crystal-systems">
-  {#each structures.filter((struct) =>
-      CRYSTAL_SYSTEMS.some((system) => struct.id.includes(system))
-    ) as
-    structure
-    (structure.id)
-  }
+  {#each structures.filter( (struct) => CRYSTAL_SYSTEMS.some( (system) => struct.id.includes(system), ), ) as structure (structure.id)}
     {@const mp_id = structure.id.split(`-`).slice(0, 2).join(`-`)}
     {@const href = `https://materialsproject.org/materials/${mp_id}`}
     {@const crystal_system = structure.id.split(`-`).at(-1) || 'unknown'}
@@ -252,13 +243,10 @@ You can load structures directly from text content using the `structure_string` 
       <option value={idx}>{file.name}</option>
     {/each}
   </select>
-  &ensp;(parsed <strong>{parsed_structure?.sites?.length || 0}</strong> atoms from {
-    format_num(selected_file.content.length)
-  }B)
+  &ensp;(parsed <strong>{parsed_structure?.sites?.length || 0}</strong> atoms from {format_num(
+    selected_file.content.length,
+  )}B)
 </label>
 
-<Structure
-  structure_string={selected_file.content}
-  bind:structure={parsed_structure}
-/>
+<Structure structure_string={selected_file.content} bind:structure={parsed_structure} />
 ```

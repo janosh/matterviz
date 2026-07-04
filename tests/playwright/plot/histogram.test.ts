@@ -166,7 +166,7 @@ test.describe(`Histogram Component Tests`, () => {
     expect(series_bars.length).toBeGreaterThan(0)
 
     const stroke_width = await series_bars[0].getAttribute(`stroke-width`)
-    expect(parseFloat(stroke_width ?? `0`)).toBeGreaterThan(0)
+    expect(Number(stroke_width ?? `0`)).toBeGreaterThan(0)
 
     // Verify histogram remains functional after initial render
     await expect(histogram.locator(`g.x-axis`)).toBeVisible()

@@ -1,5 +1,19 @@
-import { decode_url_safe_base64, merge_nested } from '$lib'
+import { decode_url_safe_base64, merge_nested, parse_leading_num, parse_num_token } from '$lib'
 import { describe, expect, test } from 'vitest'
+
+describe(`parse_num_token / parse_leading_num`, () => {
+  test.each([
+    // [input, whole-token result, first-token result]
+    [` 1.5 `, 1.5, 1.5],
+    [``, NaN, NaN], // blank must be NaN, not 0 (unlike Number(``))
+    [`2.0 ! scale`, NaN, 2], // leading_num keeps first token like parseFloat
+    [`6 methane`, NaN, 6], // Tinker-style XYZ count line
+    [`abc`, NaN, NaN],
+  ])(`%j -> %s / %s`, (input, whole, leading) => {
+    expect(parse_num_token(input)).toBe(whole)
+    expect(parse_leading_num(input)).toBe(leading)
+  })
+})
 
 describe(`merge_nested`, () => {
   test(`merges flat and nested objects`, () => {
@@ -31,7 +45,7 @@ describe(`merge_nested`, () => {
       ),
     ).toEqual({ list: [4], nested: { arr: [5] } })
     expect(
-      merge_nested({ a: 1 as number | null, nested: { b: 2 as number | null } }, {
+      merge_nested({ a: 1, nested: { b: 2 } }, {
         a: null,
         nested: { b: null },
       } as never),
@@ -63,7 +77,7 @@ describe(`merge_nested`, () => {
     { user: { a: false }, expected: { a: false }, desc: `false` },
     { user: { a: `` }, expected: { a: `` }, desc: `empty string` },
   ])(`handles falsy $desc`, ({ user, expected }) => {
-    expect(merge_nested({ a: 1 as number | string | boolean }, user)).toEqual(expected)
+    expect(merge_nested({ a: 1 }, user as never)).toEqual(expected)
   })
 
   test(`does not mutate inputs`, () => {

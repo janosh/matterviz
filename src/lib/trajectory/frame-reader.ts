@@ -154,29 +154,19 @@ export class TrajFrameReader implements FrameLoader {
       const lines = (data as string).trim().split(/\r?\n/)
       let current_frame = 0
 
-      for (const { start, comment } of iter_xyz_frames(lines)) {
+      for (const { comment } of iter_xyz_frames(lines)) {
         if (current_frame >= total_frames) break
 
         if (current_frame % sample_rate === 0) {
-          let frame_metadata: TrajectoryMetadata | null = null
-          try {
-            const { step, properties: props } = parse_xyz_comment_metadata(comment)
-            frame_metadata = {
-              frame_number: current_frame,
-              step: step ?? current_frame,
-              properties: props,
-            }
-          } catch (error) {
-            console.warn(
-              `Failed to parse XYZ metadata for frame ${current_frame} at line ${start + 1}:`,
-              error,
-            )
+          // parse_xyz_comment_metadata is pure regex/parseFloat and never throws
+          const { step, properties: props } = parse_xyz_comment_metadata(comment)
+          const frame_metadata: TrajectoryMetadata = {
+            frame_number: current_frame,
+            step: step ?? current_frame,
+            properties: props,
           }
-
-          if (frame_metadata) {
-            filter_properties(frame_metadata, properties)
-            metadata_list.push(frame_metadata)
-          }
+          filter_properties(frame_metadata, properties)
+          metadata_list.push(frame_metadata)
         }
 
         current_frame++
@@ -245,7 +235,7 @@ export class TrajFrameReader implements FrameLoader {
     const start = frame_starts[frame_number]
     if (start === undefined) return null // out-of-range frame
 
-    const num_atoms = parseInt(lines[start]?.trim(), 10)
+    const num_atoms = Math.trunc(Number(lines[start]?.trim()))
     const comment = lines[start + 1] ?? ``
     return build_xyz_frame(
       lines,

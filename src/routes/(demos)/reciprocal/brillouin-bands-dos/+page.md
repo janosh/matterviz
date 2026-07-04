@@ -76,11 +76,11 @@ Compare phonon predictions from DFT and machine learning potentials:
 <BrillouinBandsDos
   band_structs={{
     'DFT (PBE)': phonon_bands['mp-2667-Cs1Au1-pbe'],
-    'CHGNet': phonon_bands['mp-2667-Cs1Au1-chgnet-v0.3.0'],
+    CHGNet: phonon_bands['mp-2667-Cs1Au1-chgnet-v0.3.0'],
   }}
   doses={{
     'DFT (PBE)': phonon_dos['mp-2667-Cs1Au1-pbe'],
-    'CHGNet': phonon_dos['mp-2667-Cs1Au1-chgnet-v0.3.0'],
+    CHGNet: phonon_dos['mp-2667-Cs1Au1-chgnet-v0.3.0'],
   }}
   structure={phonon_data['mp-2667-Cs1Au1-pbe']?.primitive}
   dos_props={{ normalize: 'max', sigma: 0.15 }}
@@ -102,13 +102,13 @@ Customize the Brillouin zone appearance (colors, opacity, edges) via `bz_props`.
 <BrillouinBandsDos
   band_structs={{
     'DFT (PBE)': phonon_bands['mp-2758-Sr4Se4-pbe'],
-    'M3GNet': phonon_bands['mp-2758-Sr4Se4-m3gnet'],
-    'CHGNet': phonon_bands['mp-2758-Sr4Se4-chgnet-v0.3.0'],
+    M3GNet: phonon_bands['mp-2758-Sr4Se4-m3gnet'],
+    CHGNet: phonon_bands['mp-2758-Sr4Se4-chgnet-v0.3.0'],
   }}
   doses={{
     'DFT (PBE)': phonon_dos['mp-2758-Sr4Se4-pbe'],
-    'M3GNet': phonon_dos['mp-2758-Sr4Se4-m3gnet'],
-    'CHGNet': phonon_dos['mp-2758-Sr4Se4-chgnet-v0.3.0'],
+    M3GNet: phonon_dos['mp-2758-Sr4Se4-m3gnet'],
+    CHGNet: phonon_dos['mp-2758-Sr4Se4-chgnet-v0.3.0'],
   }}
   structure={phonon_data['mp-2758-Sr4Se4-pbe']?.primitive}
   dos_props={{ normalize: 'max', sigma: 0.15 }}

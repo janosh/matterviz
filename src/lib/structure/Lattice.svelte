@@ -36,7 +36,7 @@
 
   let hovered_idx = $state<number | null>(null) // track hovered vector
   let lattice_center: Vec3 = $derived(
-    matrix ? (math.scale(math.add(...matrix), 0.5)) : ([0, 0, 0])
+    matrix ? math.scale(math.add(...matrix), 0.5) : [0, 0, 0],
   )
 
   // Build the sheared box geometry in an effect so the previous one is disposed on
@@ -114,8 +114,8 @@
         shaft_radius={0.1}
         arrow_head_radius={0.2}
         arrow_head_length={0.8}
-        onpointerenter={() => hovered_idx = idx}
-        onpointerleave={() => hovered_idx = null}
+        onpointerenter={() => (hovered_idx = idx)}
+        onpointerleave={() => (hovered_idx = null)}
       />
     {/each}
 

@@ -2,10 +2,16 @@
   import Icon from '$lib/Icon.svelte'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
-  let { copied = false, label, title = label, onclick, ...rest }: Omit<
-    HTMLButtonAttributes,
-    `type` | `aria-label`
-  > & { copied?: boolean; label: string } = $props()
+  let {
+    copied = false,
+    label,
+    title = label,
+    onclick,
+    ...rest
+  }: Omit<HTMLButtonAttributes, `type` | `aria-label`> & {
+    copied?: boolean
+    label: string
+  } = $props()
 </script>
 
 <button

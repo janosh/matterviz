@@ -70,9 +70,9 @@
 
     let random_idx = 0
     for (let idx = 0; idx < count; idx++) {
-      const grid_z = Math.trunc((idx / sites_per_layer))
+      const grid_z = Math.trunc(idx / sites_per_layer)
       const remainder = idx - grid_z * sites_per_layer
-      const grid_y = Math.trunc((remainder / sites_per_edge))
+      const grid_y = Math.trunc(remainder / sites_per_edge)
       const grid_x = remainder - grid_y * sites_per_edge
 
       const frac_x = (grid_x + 1) * spacing + randoms[random_idx++]
@@ -112,7 +112,7 @@
     const parse_int = (key: string, min: number, max: number, fallback: number) => {
       const val = params.get(key)
       if (!val) return fallback
-      const parsed = parseInt(val, 10)
+      const parsed = Math.trunc(Number(val))
       return !isNaN(parsed) && parsed >= min && parsed <= max ? parsed : fallback
     }
 
@@ -124,19 +124,16 @@
     atom_count = parse_int(`atoms`, 1, 50000, atom_count)
     sphere_segments = parse_int(`sphere_segments`, 3, 64, sphere_segments)
     supercell_scaling = params.get(`supercell`) || supercell_scaling
-    performance_mode =
-      [`quality`, `speed`].includes(params.get(`performance_mode`) || ``)
-        ? (params.get(`performance_mode`) as typeof performance_mode)
-        : performance_mode
-    const valid_strategies = Object.keys(
-      SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
-    )
+    performance_mode = [`quality`, `speed`].includes(params.get(`performance_mode`) || ``)
+      ? (params.get(`performance_mode`) as typeof performance_mode)
+      : performance_mode
+    const valid_strategies = Object.keys(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {})
     bonding_strategy = valid_strategies.includes(params.get(`bonding_strategy`) || ``)
       ? (params.get(`bonding_strategy`) as typeof bonding_strategy)
       : bonding_strategy
     show_bonds = (SHOW_BONDS_OPTIONS as readonly string[]).includes(
-        params.get(`show_bonds`) || ``,
-      )
+      params.get(`show_bonds`) || ``,
+    )
       ? (params.get(`show_bonds`) as typeof show_bonds)
       : show_bonds
     show_atoms = parse_bool(`show_atoms`, show_atoms)
@@ -204,22 +201,13 @@
 
   <label>
     Segments:
-    <input
-      type="number"
-      bind:value={sphere_segments}
-      min="3"
-      max="64"
-      onchange={update_url}
-    />
+    <input type="number" bind:value={sphere_segments} min="3" max="64" onchange={update_url} />
   </label>
 
   <label>
     Bonding:
     <select bind:value={bonding_strategy} onchange={update_url}>
-      {#each Object.entries(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}) as
-        [value, label]
-        (value)
-      }
+      {#each Object.entries(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}) as [value, label] (value)}
         <option {value}>{label}</option>
       {/each}
     </select>
@@ -254,12 +242,7 @@
 
   {#each SHOW_BONDS_OPTIONS as option (option)}
     <label>
-      <input
-        type="radio"
-        bind:group={show_bonds}
-        value={option}
-        onchange={update_url}
-      />
+      <input type="radio" bind:group={show_bonds} value={option} onchange={update_url} />
       {option}
     </label>
   {/each}
@@ -267,16 +250,7 @@
 
 <div class="controls">
   <h2>Quick Presets</h2>
-  {#each [
-      [100, `Small`],
-      [500, `Medium`],
-      [1000, `Large`],
-      [2500, `Very Large`],
-      [5000, `Huge`],
-    ] as
-    [count, label]
-    (count)
-  }
+  {#each [[100, `Small`], [500, `Medium`], [1000, `Large`], [2500, `Very Large`], [5000, `Huge`]] as [count, label] (count)}
     <button
       onclick={() => {
         atom_count = count as number

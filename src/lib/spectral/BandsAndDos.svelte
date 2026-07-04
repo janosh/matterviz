@@ -44,10 +44,12 @@
   const bands_default_axis = (range = shared_frequency_range): AxisConfig =>
     shared_y_axis ? axis_with_range(bands_props.y_axis, range) : { ...bands_props.y_axis }
   const dos_default_axis = (range = shared_frequency_range): AxisConfig =>
-    shared_y_axis ? axis_with_range(dos_props.y_axis, range, ``) : {
-      label: ``,
-      ...dos_props.y_axis,
-    }
+    shared_y_axis
+      ? axis_with_range(dos_props.y_axis, range, ``)
+      : {
+          label: ``,
+          ...dos_props.y_axis,
+        }
 
   let synced_zoom_range = $state<Vec2 | null>(null)
   let bands_y_axis = $state<AxisConfig>(bands_default_axis())
@@ -88,14 +90,14 @@
   $effect(() =>
     propagate_synced_range(
       untrack(() => bands_y_axis.range) as Vec2 | undefined,
-      (base_range) => bands_y_axis = bands_default_axis(base_range),
-    )
+      (base_range) => (bands_y_axis = bands_default_axis(base_range)),
+    ),
   )
   $effect(() =>
     propagate_synced_range(
       untrack(() => dos_y_axis.range) as Vec2 | undefined,
-      (base_range) => dos_y_axis = dos_default_axis(base_range),
-    )
+      (base_range) => (dos_y_axis = dos_default_axis(base_range)),
+    ),
   )
 
   let hovered_frequency = $state<number | null>(null)

@@ -2,11 +2,15 @@
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
-  import {
-    ELEMENT_ORDERINGS,
-    ORDERING_LABELS,
+  import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
+  import type {
+    ElementAxisOrderingKey,
+    DomainMode,
+    HeatmapExportFormat,
+    LegendPosition,
+    NormalizeMode,
+    SymmetricMode,
   } from './index'
-  import type { ElementAxisOrderingKey, DomainMode, HeatmapExportFormat, LegendPosition, NormalizeMode, SymmetricMode } from './index'
 
   let {
     ordering = $bindable(`atomic_number`),
@@ -53,9 +57,7 @@
   } = $props()
 
   function merge_styles(base_style: string, override_style: unknown): string {
-    const override_style_str = typeof override_style === `string`
-      ? override_style
-      : ``
+    const override_style_str = typeof override_style === `string` ? override_style : ``
     return override_style_str ? `${base_style}; ${override_style_str}` : base_style
   }
 

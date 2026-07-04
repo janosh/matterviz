@@ -35,7 +35,7 @@
 
 <!-- Expose camera position for test assertions -->
 <div data-testid="camera-position" style="margin-top: 1em">
-  Camera: x={camera_position[0].toFixed(2)}, y={camera_position[1].toFixed(2)}, z={
-    camera_position[2].toFixed(2)
-  }
+  Camera: x={camera_position[0].toFixed(2)}, y={camera_position[1].toFixed(2)}, z={camera_position[2].toFixed(
+    2,
+  )}
 </div>

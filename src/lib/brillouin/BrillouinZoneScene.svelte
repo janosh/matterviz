@@ -90,18 +90,20 @@
     camera_position || default_camera_position(bz_size),
   )
 
-  const orbit_controls_props = $derived(build_orbit_props({
-    camera_projection,
-    target: rotation_target,
-    rotate_speed,
-    zoom_speed,
-    zoom_to_cursor,
-    pan_speed,
-    max_zoom,
-    min_zoom,
-    auto_rotate,
-    rotation_damping,
-  }))
+  const orbit_controls_props = $derived(
+    build_orbit_props({
+      camera_projection,
+      target: rotation_target,
+      rotate_speed,
+      zoom_speed,
+      zoom_to_cursor,
+      pan_speed,
+      max_zoom,
+      min_zoom,
+      auto_rotate,
+      rotation_damping,
+    }),
+  )
 
   // K-path styling. The invisible hover proxy is twice the visible thickness so the cursor
   // snaps to the path even when it isn't directly over the thin visible segment.
@@ -124,9 +126,7 @@
     bz_data ? polyhedron_geometry(bz_data.vertices, bz_data.faces) : null,
   )
   const ibz_geometry = $derived(
-    show_ibz && ibz_data
-      ? polyhedron_geometry(ibz_data.vertices, ibz_data.faces)
-      : null,
+    show_ibz && ibz_data ? polyhedron_geometry(ibz_data.vertices, ibz_data.faces) : null,
   )
 
   // Separate effects to avoid disposing one geometry when only the other changes
@@ -166,10 +166,7 @@
   })
 
   // Create hover data from pointer event
-  function create_hover_data(
-    event: ThreltePointerEvent,
-    is_ibz: boolean,
-  ): BZHoverData | null {
+  function create_hover_data(event: ThreltePointerEvent, is_ibz: boolean): BZHoverData | null {
     if (!bz_data) return null
 
     const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
@@ -178,9 +175,8 @@
     const { clientX, clientY } = event.nativeEvent
     const ibz_vol = ibz_data?.volume ?? null
     // Round to nearest integer since symmetry multiplicity is the point group order
-    const symmetry_multiplicity = ibz_vol != null && ibz_vol > 0
-      ? Math.round(bz_data.volume / ibz_vol)
-      : null
+    const symmetry_multiplicity =
+      ibz_vol != null && ibz_vol > 0 ? Math.round(bz_data.volume / ibz_vol) : null
 
     return {
       position_cartesian,
@@ -295,17 +291,12 @@
 
     <!-- K-path visualization -->
     {#if k_path_points && k_path_points.length > 1}
-      {#each k_path_points.slice(0, -1) as
-        from_point,
-        idx
-        (`${from_point}-${k_path_points[idx + 1]}#${idx}`)
-      }
+      {#each k_path_points.slice(0, -1) as from_point, idx (`${from_point}-${k_path_points[idx + 1]}#${idx}`)}
         {@const to_point = k_path_points[idx + 1]}
-        {@const seg_len = Math.hypot(
-      ...math.subtract(to_point as Vec3, from_point as Vec3),
-    )}
-        {@const is_hovered = hovered_qpoint_index !== null &&
-      (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
+        {@const seg_len = Math.hypot(...math.subtract(to_point as Vec3, from_point as Vec3))}
+        {@const is_hovered =
+          hovered_qpoint_index !== null &&
+          (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
         {#if seg_len <= k_path_seg_cutoff}
           <Cylinder
             from={from_point as Vec3}
@@ -357,11 +348,7 @@
     {#if hovered_k_point}
       <T.Mesh position={hovered_k_point}>
         <T.SphereGeometry args={[0.03, 16, 16]} />
-        <T.MeshStandardMaterial
-          color="#ff0000"
-          emissive="#ff0000"
-          emissiveIntensity={1.2}
-        />
+        <T.MeshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
       </T.Mesh>
     {/if}
   {/if}

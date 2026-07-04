@@ -1,10 +1,13 @@
 // Component tests for JsonTree, JsonNode, and JsonValue
 import { JsonTree } from '$lib/layout'
 import { serialize_for_copy } from '$lib/layout/json-tree/utils'
-import { flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 import JsonTreeReplacementHarness from './JsonTreeReplacementHarness.svelte'
+
+const mount_tree = (props: ComponentProps<typeof JsonTree>): unknown =>
+  mount(JsonTree, { target: document.body, props })
 
 describe(`JsonTree`, () => {
   const get_tree = (): HTMLDivElement => doc_query(`.json-tree`)
@@ -20,55 +23,43 @@ describe(`JsonTree`, () => {
 
   describe(`rendering`, () => {
     it(`renders with required value prop`, () => {
-      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      mount_tree({ value: { a: 1 } })
       expect(get_tree()).toBeInstanceOf(HTMLDivElement)
       expect(get_content()).toBeInstanceOf(HTMLDivElement)
     })
 
     it(`renders header by default`, () => {
-      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      mount_tree({ value: { a: 1 } })
       expect(get_header()).toBeInstanceOf(HTMLElement)
       expect(get_search_input()).toBeInstanceOf(HTMLElement)
     })
 
     it(`hides header when show_header=false`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { a: 1 }, show_header: false },
-      })
+      mount_tree({ value: { a: 1 }, show_header: false })
       expect(get_header()).toBeNull()
     })
 
     it(`renders root label when provided`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: [1, 2, 3], root_label: `items`, show_header: false },
-      })
+      mount_tree({ value: [1, 2, 3], root_label: `items`, show_header: false })
       expect(document.body.textContent).toContain(`"items"`)
     })
 
     it(`renders without root label when not provided`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { a: 1 }, show_header: false },
-      })
+      mount_tree({ value: { a: 1 }, show_header: false })
       // Should not have a key for the root
       const first_node = get_nodes()[0]
       expect(first_node.querySelector(`.node-key`)).toBeInstanceOf(HTMLElement)
     })
 
     it(`has correct ARIA attributes`, () => {
-      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      mount_tree({ value: { a: 1 } })
       const tree = get_tree()
       expect(tree.getAttribute(`role`)).toBe(`tree`)
       expect(tree.getAttribute(`aria-label`)).toBe(`JSON tree viewer`)
     })
 
     it(`spreads additional attributes`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: {}, style: `max-height: 300px`, 'data-testid': `json-tree` },
-      })
+      mount_tree({ value: {}, style: `max-height: 300px`, 'data-testid': `json-tree` })
       const tree = doc_query(`[data-testid="json-tree"]`)
       expect(tree.style.maxHeight).toBe(`300px`)
       expect(tree.classList.contains(`json-tree`)).toBe(true)
@@ -87,10 +78,7 @@ describe(`JsonTree`, () => {
     ])(
       `renders primitive $expected_class correctly`,
       ({ value, expected_class, expected_text }) => {
-        mount(JsonTree, {
-          target: document.body,
-          props: { value: { test: value }, show_header: false },
-        })
+        mount_tree({ value: { test: value }, show_header: false })
         const value_el = get_values()[0]
         expect(value_el.classList.contains(expected_class)).toBe(true)
         expect(value_el.textContent?.trim()).toBe(expected_text)
@@ -112,10 +100,7 @@ describe(`JsonTree`, () => {
       },
       { value: Symbol(`description`), css: `symbol`, expected: `Symbol(description)` },
     ])(`renders $css type containing "$expected"`, ({ value, css, expected }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { test: value }, show_header: false },
-      })
+      mount_tree({ value: { test: value }, show_header: false })
       expect(get_values()[0].classList.contains(css)).toBe(true)
       expect(document.body.textContent).toContain(expected)
     })
@@ -124,32 +109,23 @@ describe(`JsonTree`, () => {
       function example_fn() {
         return 42
       }
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { fn: example_fn }, show_header: false },
-      })
+      mount_tree({ value: { fn: example_fn }, show_header: false })
       expect(document.body.textContent).toContain(`ƒ example_fn()`)
     })
 
     it.each([`Infinity`, `-Infinity`, `NaN`])(`renders special number %s`, (expected) => {
       const value = expected === `NaN` ? NaN : expected === `Infinity` ? Infinity : -Infinity
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { num: value }, show_header: false },
-      })
+      mount_tree({ value: { num: value }, show_header: false })
       expect(document.body.textContent).toContain(expected)
     })
   })
 
   describe(`arrays and objects`, () => {
     it(`uses square brackets for arrays and braces for objects`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { arr: [1], obj: { a: 1 } },
-          show_header: false,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: { arr: [1], obj: { a: 1 } },
+        show_header: false,
+        default_fold_level: 5,
       })
       const brackets = document.querySelectorAll(`.bracket`)
       const bracket_text = Array.from(brackets).map((el) => el.textContent)
@@ -167,28 +143,22 @@ describe(`JsonTree`, () => {
       { show_array_indices: true, expected_count: 2 },
       { show_array_indices: false, expected_count: 0 },
     ])(`show_array_indices=$show_array_indices`, ({ show_array_indices, expected_count }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: [`a`, `b`],
-          show_header: false,
-          show_array_indices,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: [`a`, `b`],
+        show_header: false,
+        show_array_indices,
+        default_fold_level: 5,
       })
       const indices = document.querySelectorAll(`.array-index .index`)
       expect(indices).toHaveLength(expected_count)
     })
 
     it(`sorts object keys when sort_keys=true`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { zebra: 1, apple: 2, mango: 3 },
-          show_header: false,
-          sort_keys: true,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: { zebra: 1, apple: 2, mango: 3 },
+        show_header: false,
+        sort_keys: true,
+        default_fold_level: 5,
       })
       const keys = Array.from(document.querySelectorAll(`.node-key`)).map((el) =>
         el.textContent?.replaceAll('"', ``).trim(),
@@ -202,36 +172,27 @@ describe(`JsonTree`, () => {
       { value: { empty: [] }, expected: `Array(0)` },
       { value: { empty: {} }, expected: `{0 keys}` },
     ])(`shows collapsed preview: $expected`, ({ value, expected }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value, show_header: false, default_fold_level: 1 },
-      })
+      mount_tree({ value, show_header: false, default_fold_level: 1 })
       expect(document.body.textContent).toContain(expected)
     })
   })
 
   describe(`folding/collapsing`, () => {
     it(`respects default_fold_level`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { level1: { level2: { level3: `deep` } } },
-          show_header: false,
-          default_fold_level: 1,
-        },
+      mount_tree({
+        value: { level1: { level2: { level3: `deep` } } },
+        show_header: false,
+        default_fold_level: 1,
       })
       // At level 1, level2 should be collapsed
       expect(document.body.textContent).toContain(`{1 key}`)
     })
 
     it(`clicking toggle changes aria-expanded`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { nested: { a: 1 } },
-          show_header: false,
-          default_fold_level: 1,
-        },
+      mount_tree({
+        value: { nested: { a: 1 } },
+        show_header: false,
+        default_fold_level: 1,
       })
       const toggle = get_collapse_toggles()[0]
       const node = toggle.closest(`.json-node`)
@@ -262,22 +223,16 @@ describe(`JsonTree`, () => {
         expected: `{25 keys}`,
       },
     ])(`auto-folds large $desc`, ({ value, props, expected }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value, show_header: false, default_fold_level: 5, ...props },
-      })
+      mount_tree({ value, show_header: false, default_fold_level: 5, ...props })
       expect(document.body.textContent).toContain(expected)
     })
 
     it(`clicking auto-folded node expands it`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: Array.from({ length: 15 }, (_, idx) => idx),
-          show_header: false,
-          auto_fold_arrays: 10,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: Array.from({ length: 15 }, (_, idx) => idx),
+        show_header: false,
+        auto_fold_arrays: 10,
+        default_fold_level: 5,
       })
       // Initially auto-collapsed
       expect(document.body.textContent).toContain(`Array(15)`)
@@ -294,12 +249,9 @@ describe(`JsonTree`, () => {
     })
 
     it(`expand all button expands collapsed nodes`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { a: { b: 1 } },
-          default_fold_level: 5, // High level so nothing auto-collapses
-        },
+      mount_tree({
+        value: { a: { b: 1 } },
+        default_fold_level: 5, // High level so nothing auto-collapses
       })
 
       // Second controls group has expand/collapse buttons
@@ -328,12 +280,9 @@ describe(`JsonTree`, () => {
     })
 
     it(`collapse all button collapses expanded nodes`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { a: { b: 1 }, c: 2 },
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: { a: { b: 1 }, c: 2 },
+        default_fold_level: 5,
       })
 
       // Initially expanded - nested value visible
@@ -353,12 +302,9 @@ describe(`JsonTree`, () => {
     })
 
     it(`collapse to level buttons work`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { a: { b: { c: 1 } } },
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: { a: { b: { c: 1 } } },
+        default_fold_level: 5,
       })
 
       // Second controls group has expand/collapse buttons
@@ -375,7 +321,7 @@ describe(`JsonTree`, () => {
 
   describe(`header controls`, () => {
     it(`has all control button groups with dividers`, () => {
-      mount(JsonTree, { target: document.body, props: { value: { name: `test` } } })
+      mount_tree({ value: { name: `test` } })
       const btns = document.querySelectorAll(`.controls button`)
       // 2 toggles (T, #) + 5 expand/collapse (expand, collapse, 1, 2, 3) + 2 copy/download
       expect(btns).toHaveLength(9)
@@ -384,7 +330,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`has toggle buttons for data types and array indices`, () => {
-      mount(JsonTree, { target: document.body, props: { value: { arr: [1, 2] } } })
+      mount_tree({ value: { arr: [1, 2] } })
       const toggle_btns = document.querySelectorAll(`.controls button`)
       const type_toggle = toggle_btns[0] as HTMLButtonElement
       const index_toggle = toggle_btns[1] as HTMLButtonElement
@@ -393,7 +339,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`has copy and download buttons with icons`, () => {
-      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      mount_tree({ value: { a: 1 } })
       const control_groups = document.querySelectorAll(`.controls`)
       const last_group = control_groups[control_groups.length - 1]
       const btns = last_group.querySelectorAll(`button`)
@@ -413,10 +359,7 @@ describe(`JsonTree`, () => {
         value: { writeText: write_text },
         writable: true,
       })
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { my_key: 42 }, show_header: false },
-      })
+      mount_tree({ value: { my_key: 42 }, show_header: false })
       const key_el = document.querySelector(`.node-key`) as HTMLButtonElement
       expect(key_el.tagName).toBe(`BUTTON`)
       key_el.click()
@@ -449,7 +392,7 @@ describe(`JsonTree`, () => {
 
     it(`copies entire JSON to clipboard`, async () => {
       const test_value = { name: `test`, count: 42, nested: { a: 1 } }
-      mount(JsonTree, { target: document.body, props: { value: test_value } })
+      mount_tree({ value: test_value })
 
       get_copy_btn().click()
       flushSync()
@@ -460,7 +403,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`shows copy feedback after copying`, async () => {
-      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      mount_tree({ value: { a: 1 } })
 
       get_copy_btn().click()
       await vi.waitFor(() => expect(write_text_mock).toHaveBeenCalled())
@@ -474,7 +417,7 @@ describe(`JsonTree`, () => {
 
     it(`shows error feedback when clipboard fails`, async () => {
       mock_clipboard_error()
-      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      mount_tree({ value: { a: 1 } })
 
       get_copy_btn().click()
       await vi.waitFor(() => expect(write_text_mock).toHaveBeenCalled())
@@ -488,7 +431,7 @@ describe(`JsonTree`, () => {
 
     it(`calls oncopy callback when copying all`, async () => {
       const oncopy = vi.fn()
-      mount(JsonTree, { target: document.body, props: { value: { test: 123 }, oncopy } })
+      mount_tree({ value: { test: 123 }, oncopy })
 
       get_copy_btn().click()
       flushSync()
@@ -504,7 +447,7 @@ describe(`JsonTree`, () => {
       { value: 42, desc: `primitive number` },
       { value: null, desc: `null` },
     ])(`copies $desc correctly`, async ({ value }) => {
-      mount(JsonTree, { target: document.body, props: { value } })
+      mount_tree({ value })
 
       get_copy_btn().click()
       flushSync()
@@ -533,7 +476,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`creates download with correct filename format`, async () => {
-      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      mount_tree({ value: { a: 1 } })
 
       get_download_btn().click()
       flushSync()
@@ -546,7 +489,7 @@ describe(`JsonTree`, () => {
 
     it(`creates download with JSON content and correct mime type`, async () => {
       const test_value = { name: `test`, count: 42 }
-      mount(JsonTree, { target: document.body, props: { value: test_value } })
+      mount_tree({ value: test_value })
 
       get_download_btn().click()
       flushSync()
@@ -567,7 +510,7 @@ describe(`JsonTree`, () => {
       { value: `string value`, desc: `string`, is_json: false },
       { value: 42, desc: `number`, is_json: false },
     ])(`downloads $desc correctly`, async ({ value, is_json }) => {
-      mount(JsonTree, { target: document.body, props: { value } })
+      mount_tree({ value })
 
       get_download_btn().click()
       flushSync()
@@ -579,10 +522,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`uses custom download_filename when provided`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { a: 1 }, download_filename: `my-custom-data.json` },
-      })
+      mount_tree({ value: { a: 1 }, download_filename: `my-custom-data.json` })
 
       get_download_btn().click()
       flushSync()
@@ -595,10 +535,7 @@ describe(`JsonTree`, () => {
 
   describe(`keyboard navigation`, () => {
     it(`collapse toggles have aria-label`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 },
-      })
+      mount_tree({ value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 })
       const toggles = get_collapse_toggles()
       expect(toggles.length).toBeGreaterThan(0)
       expect(toggles[0].getAttribute(`aria-label`)).not.toBeNull()
@@ -610,10 +547,7 @@ describe(`JsonTree`, () => {
       { show_data_types: true, expected_min: 1 },
       { show_data_types: false, expected_min: 0 },
     ])(`show_data_types=$show_data_types`, ({ show_data_types, expected_min }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { str: `hello` }, show_header: false, show_data_types },
-      })
+      mount_tree({ value: { str: `hello` }, show_header: false, show_data_types })
       const count = document.querySelectorAll(`.type-annotation`).length
       if (expected_min > 0) expect(count).toBeGreaterThan(0)
       else expect(count).toBe(0)
@@ -627,10 +561,7 @@ describe(`JsonTree`, () => {
     }
 
     it(`data types toggle button toggles show_data_types`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { str: `hello` }, show_data_types: false },
-      })
+      mount_tree({ value: { str: `hello` }, show_data_types: false })
 
       // Initially no type annotations
       expect(document.querySelectorAll(`.type-annotation`)).toHaveLength(0)
@@ -657,13 +588,10 @@ describe(`JsonTree`, () => {
     })
 
     it(`array indices toggle button toggles show_array_indices`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: [`a`, `b`, `c`],
-          show_array_indices: true,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: [`a`, `b`, `c`],
+        show_array_indices: true,
+        default_fold_level: 5,
       })
 
       // Initially indices are shown
@@ -691,10 +619,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`toggle buttons have correct titles`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { a: 1 }, show_data_types: false, show_array_indices: true },
-      })
+      mount_tree({ value: { a: 1 }, show_data_types: false, show_array_indices: true })
 
       const toggle_btns = get_toggle_btns()
       const type_toggle = toggle_btns[0]
@@ -707,10 +632,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`toggle button active state updates when toggled`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { a: 1 }, show_data_types: false },
-      })
+      mount_tree({ value: { a: 1 }, show_data_types: false })
 
       let type_toggle = get_toggle_btns()[0]
       expect(type_toggle.classList.contains(`active`)).toBe(false)
@@ -733,14 +655,11 @@ describe(`JsonTree`, () => {
     })
 
     it(`toggle states are independent`, async () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: [`item`],
-          show_data_types: false,
-          show_array_indices: true,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: [`item`],
+        show_data_types: false,
+        show_array_indices: true,
+        default_fold_level: 5,
       })
 
       const toggle_btns = get_toggle_btns()
@@ -765,10 +684,7 @@ describe(`JsonTree`, () => {
     })
 
     it(`respects initial prop values`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { a: 1 }, show_data_types: true, show_array_indices: false },
-      })
+      mount_tree({ value: { a: 1 }, show_data_types: true, show_array_indices: false })
 
       const toggle_btns = get_toggle_btns()
       expect(toggle_btns[0].classList.contains(`active`)).toBe(true)
@@ -778,13 +694,10 @@ describe(`JsonTree`, () => {
 
   describe(`string truncation`, () => {
     it(`truncates long strings and shows expand button`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { long: `a`.repeat(300) },
-          show_header: false,
-          max_string_length: 50,
-        },
+      mount_tree({
+        value: { long: `a`.repeat(300) },
+        show_header: false,
+        max_string_length: 50,
       })
       const value_el = get_values()[0]
       expect(value_el.textContent?.length).toBeLessThan(100)
@@ -798,10 +711,7 @@ describe(`JsonTree`, () => {
       { collection: new Map([[`key1`, `value1`]]), expected: [`key1`, `value1`] },
       { collection: new Set([1, 2, 3]), expected: [`1`, `2`, `3`] },
     ])(`renders collection entries`, ({ collection, expected }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { collection }, show_header: false, default_fold_level: 5 },
-      })
+      mount_tree({ value: { collection }, show_header: false, default_fold_level: 5 })
       expected.forEach((text) => expect(document.body.textContent).toContain(text))
     })
 
@@ -815,19 +725,13 @@ describe(`JsonTree`, () => {
       },
       { collection: new Set([1, 2, 3, 4]), expected: `Set(4)` },
     ])(`shows $expected in preview`, ({ collection, expected }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { collection }, show_header: false, default_fold_level: 1 },
-      })
+      mount_tree({ value: { collection }, show_header: false, default_fold_level: 1 })
       expect(document.body.textContent).toContain(expected)
     })
 
     it(`renders nested Map containing Set`, () => {
       const nested = new Map([[`inner`, new Set([{ deep: true }])]])
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { nested }, show_header: false, default_fold_level: 10 },
-      })
+      mount_tree({ value: { nested }, show_header: false, default_fold_level: 10 })
       const text = document.body.textContent
       expect(text).toContain(`inner`)
       expect(text).toContain(`deep`)
@@ -838,14 +742,11 @@ describe(`JsonTree`, () => {
   describe(`callbacks`, () => {
     it(`calls onselect when node is clicked`, async () => {
       const onselect = vi.fn()
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { name: `test` },
-          show_header: false,
-          default_fold_level: 5,
-          onselect,
-        },
+      mount_tree({
+        value: { name: `test` },
+        show_header: false,
+        default_fold_level: 5,
+        onselect,
       })
 
       // Click the child node (index 1), not root (index 0 has empty path)
@@ -865,10 +766,7 @@ describe(`JsonTree`, () => {
         writable: true,
       })
 
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { name: `test` }, show_header: false, oncopy },
-      })
+      mount_tree({ value: { name: `test` }, show_header: false, oncopy })
 
       const value_el = get_values()[0]
       value_el.click()
@@ -882,14 +780,11 @@ describe(`JsonTree`, () => {
   describe(`bindable collapsed_paths`, () => {
     it(`accepts external collapsed_paths`, () => {
       const collapsed = new Set([`nested`])
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { nested: { a: 1 }, other: 2 },
-          show_header: false,
-          collapsed_paths: collapsed,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: { nested: { a: 1 }, other: 2 },
+        show_header: false,
+        collapsed_paths: collapsed,
+        default_fold_level: 5,
       })
 
       // nested should be collapsed, other should be visible
@@ -931,10 +826,7 @@ describe(`JsonTree`, () => {
 
 describe(`accessibility`, () => {
   it(`has correct ARIA roles and attributes`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 })
     // Tree structure
     expect(document.querySelectorAll(`[role="treeitem"]`).length).toBeGreaterThan(0)
     expect(document.querySelector(`[aria-expanded]`)).toBeInstanceOf(HTMLElement)
@@ -966,10 +858,7 @@ describe(`search navigation`, () => {
   }
 
   it(`shows prev/next buttons when search has matches`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 })
     expect(get_match_nav()).toBeNull()
 
     await type_search(`ba`)
@@ -979,10 +868,7 @@ describe(`search navigation`, () => {
   })
 
   it(`shows "X of Y" match count format`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 })
 
     await type_search(`ba`)
 
@@ -992,10 +878,7 @@ describe(`search navigation`, () => {
   })
 
   it(`next button increments match index and wraps around`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
 
     await type_search(`ba`)
 
@@ -1018,10 +901,7 @@ describe(`search navigation`, () => {
   })
 
   it(`prev button decrements match index with wrap-around`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
 
     await type_search(`ba`)
 
@@ -1038,10 +918,7 @@ describe(`search navigation`, () => {
   })
 
   it(`clamps match index when search results shrink`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 })
 
     await type_search(`ba`)
     expect(get_match_count()?.textContent).toContain(`1 of 3`)
@@ -1059,10 +936,7 @@ describe(`search navigation`, () => {
   })
 
   it(`highlights current match with distinct class`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
 
     await type_search(`ba`)
 
@@ -1072,10 +946,7 @@ describe(`search navigation`, () => {
   })
 
   it(`navigating to next match updates current-match class`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
 
     await type_search(`ba`)
 
@@ -1101,10 +972,7 @@ describe(`search navigation`, () => {
   ])(
     `$key (shift=$shift) on $target navigates matches`,
     async ({ key, shift, target, from, to }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 },
-      })
+      mount_tree({ value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 })
 
       await type_search(`ba`)
 
@@ -1121,10 +989,7 @@ describe(`search navigation`, () => {
   )
 
   it(`Escape clears search`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { foo: 1 }, default_fold_level: 5 },
-    })
+    mount_tree({ value: { foo: 1 }, default_fold_level: 5 })
 
     await type_search(`foo`)
 
@@ -1141,12 +1006,9 @@ describe(`search navigation`, () => {
   })
 
   it(`auto-expands collapsed nodes to show matches`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { outer: { inner: { target: `findme` } } },
-        default_fold_level: 1, // Only root expanded
-      },
+    mount_tree({
+      value: { outer: { inner: { target: `findme` } } },
+      default_fold_level: 1, // Only root expanded
     })
 
     // Initially collapsed
@@ -1169,10 +1031,7 @@ describe(`path breadcrumb`, () => {
     { path: `a.b.c.d`, value: { a: { b: { c: { d: 1 } } } }, expected_val: 1 },
   ])(`onselect receives correct path: $path`, async ({ path, value, expected_val }) => {
     const onselect = vi.fn()
-    mount(JsonTree, {
-      target: document.body,
-      props: { value, default_fold_level: 10, onselect },
-    })
+    mount_tree({ value, default_fold_level: 10, onselect })
 
     const target_node = document.querySelector(`[data-path="${path}"]`) as HTMLElement
     expect(target_node).toBeInstanceOf(HTMLElement)
@@ -1192,13 +1051,10 @@ describe(`copy path functionality`, () => {
       writable: true,
     })
 
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { outer: { inner: 42 } },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { outer: { inner: 42 } },
+      show_header: false,
+      default_fold_level: 5,
     })
 
     // Find the "inner" key button
@@ -1214,13 +1070,10 @@ describe(`copy path functionality`, () => {
   })
 
   it(`key has no obtrusive title tooltip`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { parent: { child: 1 } },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { parent: { child: 1 } },
+      show_header: false,
+      default_fold_level: 5,
     })
 
     const keys = document.querySelectorAll(`.node-key`)
@@ -1245,13 +1098,10 @@ describe(`double-click recursive expand/collapse`, () => {
       after: { contains: [`{2 keys}`], notContains: [`"b"`, `"c"`] },
     },
   ])(`double-click $desc all descendants`, async ({ fold_level, before, after }) => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: { b: { c: 1 }, d: 2 } },
-        show_header: false,
-        default_fold_level: fold_level,
-      },
+    mount_tree({
+      value: { a: { b: { c: 1 }, d: 2 } },
+      show_header: false,
+      default_fold_level: fold_level,
     })
 
     before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
@@ -1277,14 +1127,11 @@ describe(`double-click recursive expand/collapse`, () => {
       after: { contains: [], notContains: [`"b"`, `"c"`] },
     },
   ])(`double-click root (empty path) $desc`, async ({ fold_level, before, after }) => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: { b: { c: 1 }, d: 2 } },
-        show_header: false,
-        default_fold_level: fold_level,
-        // No root_label means root path is empty string
-      },
+    mount_tree({
+      value: { a: { b: { c: 1 }, d: 2 } },
+      show_header: false,
+      default_fold_level: fold_level,
+      // No root_label means root path is empty string
     })
 
     before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
@@ -1303,13 +1150,10 @@ describe(`double-click recursive expand/collapse`, () => {
 
   it(`double-click root (empty path) expands after collapse all`, async () => {
     // Start with everything expanded, collapse all, then double-click root to expand
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: { b: { c: 1 }, d: 2 } },
-        show_header: false,
-        default_fold_level: 10, // Everything expanded initially
-      },
+    mount_tree({
+      value: { a: { b: { c: 1 }, d: 2 } },
+      show_header: false,
+      default_fold_level: 10, // Everything expanded initially
     })
 
     // Initially everything is visible
@@ -1336,10 +1180,7 @@ describe(`double-click recursive expand/collapse`, () => {
   })
 
   it(`nodes have data-path attribute`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { foo: { bar: 1 } }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { foo: { bar: 1 } }, show_header: false, default_fold_level: 5 })
     const paths = Array.from(document.querySelectorAll(`.json-node[data-path]`)).map((node) =>
       node.getAttribute(`data-path`),
     )
@@ -1366,10 +1207,7 @@ describe(`edge cases`, () => {
       expected: [`key-with-dash`, `key with spaces`],
     },
   ])(`handles $desc`, ({ value, expected }) => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value, show_header: false, default_fold_level: 10 },
-    })
+    mount_tree({ value, show_header: false, default_fold_level: 10 })
     expected.forEach((text) => expect(document.body.textContent).toContain(text))
   })
 
@@ -1377,7 +1215,7 @@ describe(`edge cases`, () => {
     { value: `just a string`, expected: `"just a string"` },
     { value: null, expected: `null` },
   ])(`handles primitive root: $expected`, ({ value, expected }) => {
-    mount(JsonTree, { target: document.body, props: { value, show_header: false } })
+    mount_tree({ value, show_header: false })
     expect(document.body.textContent).toContain(expected)
   })
 
@@ -1386,10 +1224,7 @@ describe(`edge cases`, () => {
     { value: ``, expected: `""` },
     { value: false, expected: `false` },
   ])(`handles falsy value: $expected`, ({ value, expected }) => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { test: value }, show_header: false },
-    })
+    mount_tree({ value: { test: value }, show_header: false })
     expect(document.body.textContent).toContain(expected)
   })
 
@@ -1401,10 +1236,7 @@ describe(`edge cases`, () => {
     [`   `, `"   "`],
     [`<div>html</div>`, `<div>html</div>`],
   ])(`renders unicode/special content: %p`, (content, expected) => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { text: content }, show_header: false },
-    })
+    mount_tree({ value: { text: content }, show_header: false })
     expect(document.body.textContent).toContain(expected)
   })
 
@@ -1420,17 +1252,14 @@ describe(`edge cases`, () => {
       expected: [`6.022e+23`, `1e-10`],
     },
   ])(`renders $desc correctly`, ({ value, expected }) => {
-    mount(JsonTree, { target: document.body, props: { value, show_header: false } })
+    mount_tree({ value, show_header: false })
     expected.forEach((text) => expect(document.body.textContent).toContain(text))
   })
 })
 
 describe(`context menu`, () => {
   it(`opens on right-click and shows menu items`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { key: `val` }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { key: `val` }, show_header: false, default_fold_level: 5 })
     const node = document.querySelector(`.json-node`) as HTMLDivElement
     node.dispatchEvent(
       new MouseEvent(`contextmenu`, { bubbles: true, clientX: 100, clientY: 200 }),
@@ -1446,10 +1275,7 @@ describe(`context menu`, () => {
   })
 
   it(`closes on backdrop click`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1 }, show_header: false },
-    })
+    mount_tree({ value: { a: 1 }, show_header: false })
     const node = document.querySelector(`.json-node`) as HTMLDivElement
     node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
     flushSync()
@@ -1464,10 +1290,7 @@ describe(`context menu`, () => {
   })
 
   it(`closes on Escape key`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1 }, show_header: false },
-    })
+    mount_tree({ value: { a: 1 }, show_header: false })
     const node = document.querySelector(`.json-node`) as HTMLDivElement
     node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
     flushSync()
@@ -1482,10 +1305,7 @@ describe(`context menu`, () => {
   })
 
   it(`shows expand/collapse options for expandable nodes`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 })
     // Right-click on the root node (expandable, expanded)
     const root_node = document.querySelector(`.json-node`) as HTMLDivElement
     root_node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
@@ -1500,10 +1320,7 @@ describe(`context menu`, () => {
 
 describe(`pinned paths panel`, () => {
   it(`shows pinned panel after pinning via context menu`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 })
     // Right-click to open context menu
     const node = document.querySelector(`.json-node`) as HTMLDivElement
     node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
@@ -1526,10 +1343,7 @@ describe(`pinned paths panel`, () => {
   })
 
   it(`clears all pins with Clear button`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1 }, show_header: false },
-    })
+    mount_tree({ value: { a: 1 }, show_header: false })
     // Pin a node via context menu
     const node = document.querySelector(`.json-node`) as HTMLDivElement
     node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
@@ -1554,10 +1368,7 @@ describe(`pinned paths panel`, () => {
 
 describe(`selection`, () => {
   it(`Ctrl+click selects a node`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 })
     const nodes = document.querySelectorAll(`.json-node`)
     // Ctrl+click on the "a" node (index 1, since index 0 is root)
     nodes[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
@@ -1567,10 +1378,7 @@ describe(`selection`, () => {
   })
 
   it(`Ctrl+click again deselects`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { a: 1 }, show_header: false, default_fold_level: 5 })
     const node = document.querySelectorAll(`.json-node`)[1]
     // Select
     node.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
@@ -1585,10 +1393,7 @@ describe(`selection`, () => {
   })
 
   it(`Escape clears all selections`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 })
     const tree = document.querySelector(`.json-tree`) as HTMLDivElement
     const nodes = document.querySelectorAll(`.json-node`)
     // Select node
@@ -1606,13 +1411,10 @@ describe(`selection`, () => {
 
 describe(`key click behavior`, () => {
   it(`clicking collapsed key expands node`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { nested: { deep: 42 } },
-        show_header: false,
-        default_fold_level: 1,
-      },
+    mount_tree({
+      value: { nested: { deep: 42 } },
+      show_header: false,
+      default_fold_level: 1,
     })
     // "nested" is collapsed at fold level 1
     expect(document.body.textContent).not.toContain(`"deep"`)
@@ -1632,10 +1434,7 @@ describe(`key click behavior`, () => {
       value: { writeText: write_text },
       writable: true,
     })
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { my_key: 42 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { my_key: 42 }, show_header: false, default_fold_level: 5 })
     const key_btn = document.querySelector(`.node-key`) as HTMLButtonElement
     key_btn.dispatchEvent(new MouseEvent(`click`, { bubbles: true, shiftKey: true }))
     flushSync()
@@ -1646,13 +1445,10 @@ describe(`key click behavior`, () => {
 
 describe(`node visual hints`, () => {
   it(`shows byte size next to collapsed preview`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { data: { a: 1, b: 2 } },
-        show_header: false,
-        default_fold_level: 1,
-      },
+    mount_tree({
+      value: { data: { a: 1, b: 2 } },
+      show_header: false,
+      default_fold_level: 1,
     })
     const size_hint = document.querySelector(`.size-hint`)
     expect(size_hint).toBeInstanceOf(HTMLElement)
@@ -1660,20 +1456,14 @@ describe(`node visual hints`, () => {
   })
 
   it(`shows ▸ hint for collapsed keys, copy icon for expanded`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 1 },
-    })
+    mount_tree({ value: { nested: { a: 1 } }, show_header: false, default_fold_level: 1 })
     // Collapsed expandable key shows expand hint
     const hint = document.querySelector(`.action-hint`)
     expect(hint?.textContent?.trim()).toBe(`▸`)
   })
 
   it(`renders action hint on expanded leaf keys`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { key: 42 }, show_header: false, default_fold_level: 5 })
     // Expanded/leaf key shows copy icon (SVG renders as empty text)
     expect(document.querySelector(`.action-hint`)).toBeInstanceOf(HTMLElement)
   })
@@ -1681,13 +1471,10 @@ describe(`node visual hints`, () => {
 
 describe(`collapse-to-level button`, () => {
   it(`shows ⊟ button on expanded nodes`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { nested: { a: 1 } },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { nested: { a: 1 } },
+      show_header: false,
+      default_fold_level: 5,
     })
     const btn = document.querySelector(`.collapse-level-btn`)
     expect(btn).toBeInstanceOf(HTMLElement)
@@ -1695,13 +1482,10 @@ describe(`collapse-to-level button`, () => {
   })
 
   it(`collapses children when clicked`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { outer: { inner: { deep: 1 } } },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { outer: { inner: { deep: 1 } } },
+      show_header: false,
+      default_fold_level: 5,
     })
     expect(document.body.textContent).toContain(`"deep"`)
 
@@ -1719,13 +1503,10 @@ describe(`collapse-to-level button`, () => {
 
 describe(`URL auto-linking`, () => {
   it(`renders URL strings as clickable links`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { link: `https://example.com` },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { link: `https://example.com` },
+      show_header: false,
+      default_fold_level: 5,
     })
     const link = document.querySelector(`.url-link`) as HTMLAnchorElement
     expect(link).toBeInstanceOf(HTMLElement)
@@ -1735,13 +1516,10 @@ describe(`URL auto-linking`, () => {
   })
 
   it(`does not render non-URL strings as links`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { text: `not a url` },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { text: `not a url` },
+      show_header: false,
+      default_fold_level: 5,
     })
     expect(document.querySelector(`.url-link`)).toBeNull()
   })
@@ -1751,13 +1529,10 @@ describe(`color swatch`, () => {
   it.each([`#ff0000`, `#fff`, `rgb(255, 0, 0)`, `hsl(120, 100%, 50%)`])(
     `renders swatch for CSS color %p`,
     (color) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { color },
-          show_header: false,
-          default_fold_level: 5,
-        },
+      mount_tree({
+        value: { color },
+        show_header: false,
+        default_fold_level: 5,
       })
       const swatch = document.querySelector(`.color-swatch`) as HTMLSpanElement
       expect(swatch).toBeInstanceOf(HTMLElement)
@@ -1766,13 +1541,10 @@ describe(`color swatch`, () => {
   )
 
   it(`does not render swatch for non-color strings`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { text: `hello` },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { text: `hello` },
+      show_header: false,
+      default_fold_level: 5,
     })
     expect(document.querySelector(`.color-swatch`)).toBeNull()
   })
@@ -1780,42 +1552,33 @@ describe(`color swatch`, () => {
 
 describe(`diff mode`, () => {
   it(`highlights added keys with diff-added class`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: 1, b: 2 },
-        compare_value: { a: 1 },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { a: 1, b: 2 },
+      compare_value: { a: 1 },
+      show_header: false,
+      default_fold_level: 5,
     })
     const added_nodes = document.querySelectorAll(`.diff-added`)
     expect(added_nodes.length).toBeGreaterThan(0)
   })
 
   it(`highlights changed values with diff-changed class`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: 99 },
-        compare_value: { a: 1 },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { a: 99 },
+      compare_value: { a: 1 },
+      show_header: false,
+      default_fold_level: 5,
     })
     const changed_nodes = document.querySelectorAll(`.diff-changed`)
     expect(changed_nodes.length).toBeGreaterThan(0)
   })
 
   it(`shows ghost nodes for removed keys`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: 1 },
-        compare_value: { a: 1, removed_key: `gone` },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { a: 1 },
+      compare_value: { a: 1, removed_key: `gone` },
+      show_header: false,
+      default_fold_level: 5,
     })
     await tick()
     const ghost = document.querySelector(`.ghost`)
@@ -1824,13 +1587,10 @@ describe(`diff mode`, () => {
   })
 
   it(`does not show diff classes when compare_value is undefined`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: 1, b: 2 },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { a: 1, b: 2 },
+      show_header: false,
+      default_fold_level: 5,
     })
     expect(document.querySelectorAll(`.diff-added`)).toHaveLength(0)
     expect(document.querySelectorAll(`.diff-changed`)).toHaveLength(0)
@@ -1841,13 +1601,10 @@ describe(`diff mode`, () => {
 
 describe(`sticky headers`, () => {
   it(`adds sticky-header class to expanded nodes at depth <= 2`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: { b: { c: 1 } } },
-        show_header: false,
-        default_fold_level: 5,
-      },
+    mount_tree({
+      value: { a: { b: { c: 1 } } },
+      show_header: false,
+      default_fold_level: 5,
     })
     const sticky_nodes = document.querySelectorAll(`.sticky-header`)
     // root (depth 0), a (depth 1), b (depth 2) should all be sticky
@@ -1855,13 +1612,10 @@ describe(`sticky headers`, () => {
   })
 
   it(`does not add sticky-header to collapsed or leaf nodes`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { a: { b: 1 } },
-        show_header: false,
-        default_fold_level: 1, // only root expanded
-      },
+    mount_tree({
+      value: { a: { b: 1 } },
+      show_header: false,
+      default_fold_level: 1, // only root expanded
     })
     // Only the root node should be sticky (depth 0, expanded)
     const sticky = document.querySelectorAll(`.sticky-header`)
@@ -1871,10 +1625,7 @@ describe(`sticky headers`, () => {
 
 describe(`clipboard interactions`, () => {
   it(`right-click on leaf value opens context menu`, async () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { key: 42 }, show_header: false, default_fold_level: 5 })
     const json_value = document.querySelector(`.json-value`) as HTMLSpanElement
     json_value.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
     flushSync()
@@ -1892,10 +1643,7 @@ describe(`clipboard interactions`, () => {
       value: { writeText: write_text },
       writable: true,
     })
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { key: 42 }, show_header: false, default_fold_level: 5 })
     const value_el = document.querySelector(`.json-value`) as HTMLSpanElement
     value_el.click()
     flushSync()
@@ -1913,10 +1661,7 @@ describe(`clipboard interactions`, () => {
       value: { writeText: write_text },
       writable: true,
     })
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
-    })
+    mount_tree({ value: { key: 42 }, show_header: false, default_fold_level: 5 })
     const tree = document.querySelector(`.json-tree`) as HTMLDivElement
     // ArrowDown twice: first focuses root, second focuses leaf "key: 42"
     tree.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))

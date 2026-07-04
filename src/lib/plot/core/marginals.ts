@@ -4,6 +4,7 @@
 // its data to MarginalSeriesInput and folds reserve_marginal_pad into its `pad`.
 
 import type { Vec2 } from '$lib/math'
+import { sorted_range } from '$lib/plot/core/interactions'
 import type { Rect, Sides } from '$lib/plot/core/layout'
 import type { LineCurve, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
@@ -617,10 +618,7 @@ export function compute_marginal_curve(
 ): MarginalCurve {
   // Canonicalize to an ascending range so a reversed (inverted-axis) range doesn't crash
   // d3.bin (negative-length bin array) or empty the kde grid
-  const range: Vec2 =
-    positional_range[0] <= positional_range[1]
-      ? positional_range
-      : [positional_range[1], positional_range[0]]
+  const range = sorted_range(positional_range[0], positional_range[1])
   const { positions: pos, weights: wts } = clean_pairs(positions, weights, range, scale_type)
   // rug returns the raw positions (empty or not); other types short-circuit on empty input
   if (config.type === `rug`) return { kind: `rug`, positions: pos }

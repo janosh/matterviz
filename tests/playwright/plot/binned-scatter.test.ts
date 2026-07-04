@@ -48,7 +48,7 @@ async function measure_plot_interaction(page: Page, click_target: `center` | `kn
       if (target === `known-point`) {
         if (!area) throw new Error(`Binned scatter plot area not found`)
         const data_x = 0.5
-        const data_y = ((5_000 * pseudo_random_multiplier) % 1_000_000) / 1_000_000
+        const data_y = ((5000 * pseudo_random_multiplier) % 1_000_000) / 1_000_000
         clientX = rect.left + area.left + ((data_x + 0.05) / 1.1) * area.width
         clientY = rect.top + area.top + (1 - (data_y + 0.05) / 1.1) * area.height
       }

@@ -16,15 +16,11 @@
   let last_update_time = 0
   const THROTTLE_MS = 100
 
-  const temp_index = $derived(
-    Math.max(0, available_temperatures.indexOf(temperature)),
-  )
+  const temp_index = $derived(Math.max(0, available_temperatures.indexOf(temperature)))
   const display_index = $derived(preview_index ?? temp_index)
   const display_temp = $derived(available_temperatures[display_index] ?? temperature)
 
-  function handle_slider_input(
-    event: Event & { currentTarget: HTMLInputElement },
-  ): void {
+  function handle_slider_input(event: Event & { currentTarget: HTMLInputElement }): void {
     const new_index = Number(event.currentTarget.value)
     preview_index = new_index
     // Throttle parent updates during drag to prevent scene flashing
@@ -35,9 +31,7 @@
     }
   }
 
-  function handle_slider_end(
-    event: Event & { currentTarget: HTMLInputElement },
-  ): void {
+  function handle_slider_end(event: Event & { currentTarget: HTMLInputElement }): void {
     const new_temp = available_temperatures[Number(event.currentTarget.value)]
     if (new_temp !== undefined) temperature = new_temp
     preview_index = null

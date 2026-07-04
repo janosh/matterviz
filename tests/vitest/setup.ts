@@ -82,11 +82,18 @@ export const doc_query = <T extends HTMLElement>(
 
 export const svg_query = (selector: string): SVGElement => query_required(selector)
 
-// Extract the rotation pivot-y from an axis label's enclosing foreignObject
-// `rotate(-90, x, pivot)` transform. Used to assert y/y2 axis titles share a pivot.
+// Extract the rotation pivot-y from an axis label's nearest rotated SVG ancestor.
+// Used to assert y/y2 axis titles share a pivot.
 export const axis_label_pivot_y = (root: ParentNode, selector: string): number => {
-  const transform =
-    root.querySelector(selector)?.closest(`foreignObject`)?.getAttribute(`transform`) ?? ``
+  let transform = ``
+  for (
+    let node = root.querySelector(selector)?.parentElement;
+    node;
+    node = node.parentElement
+  ) {
+    transform = node.getAttribute(`transform`) ?? ``
+    if (transform) break
+  }
   const match = /rotate\(-90,\s*[\d.-]+,\s*(?<pivot>[\d.-]+)\)/.exec(transform)
   if (!match) throw new Error(`no rotate transform on ${selector}: "${transform}"`)
   return Number(match[1])
@@ -288,7 +295,7 @@ export const make_trajectory_frame = (
   structure: {
     charge: 0,
     sites: Array.from({ length: site_count }, (_, idx) => ({
-      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
       xyz: [idx, 0, 0] as Vec3,
       abc: [idx / 10, 0, 0] as Vec3,
       label: `H${idx + 1}`,

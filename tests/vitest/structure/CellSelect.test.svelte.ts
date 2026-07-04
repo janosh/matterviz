@@ -209,7 +209,7 @@ describe(`CellSelect`, () => {
     ] as const)(
       `clicking Prim button with sym_data=%s results in cell_type=%s`,
       async (sym_data, expected) => {
-        const state = $state({ cell_type: `original` as CellType })
+        const state: { cell_type: CellType } = $state({ cell_type: `original` })
         await mount_and_open(
           bind_props(
             {
@@ -364,9 +364,9 @@ describe(`CellSelect`, () => {
     })
 
     test(`toggle button updates when props change`, async () => {
-      const state = $state({
+      const state: { supercell_scaling: string; cell_type: CellType } = $state({
         supercell_scaling: `1x1x1`,
-        cell_type: `original` as CellType,
+        cell_type: `original`,
       })
       mount(CellSelect, {
         target: document.body,

@@ -8,6 +8,7 @@ import {
   XDATCAR_REGEX,
 } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io'
+import { parse_leading_num } from '$lib/utils'
 import { count_xyz_frames } from './helpers'
 
 // Extensions that explicitly identify a format — when present, format detection trusts
@@ -56,7 +57,7 @@ export const FORMAT_PATTERNS = {
     return (
       lines.length >= 10 &&
       lines.some((line) => line.includes(`Direct configuration=`)) &&
-      !isNaN(parseFloat(lines[1])) &&
+      !isNaN(parse_leading_num(lines[1])) &&
       lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
     )
   },

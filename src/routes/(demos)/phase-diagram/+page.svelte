@@ -4,11 +4,7 @@
   import { page } from '$app/state'
   import FilePicker from '$lib/FilePicker.svelte'
   import { decompress_data } from '$lib/io/decompress'
-  import type {
-    DiagramInput,
-    PhaseDiagramData,
-    TdbParseResult,
-  } from '$lib/phase-diagram'
+  import type { DiagramInput, PhaseDiagramData, TdbParseResult } from '$lib/phase-diagram'
   import {
     build_diagram,
     IsobaricBinaryPhaseDiagram,
@@ -122,18 +118,17 @@
         if (update_url_param) update_url(filename)
         return true
       }
-        // JSON files: load directly
-        const data = await load_binary_phase_diagram(url)
-        if (is_stale(token)) return false
-        if (!data) {
-          error_message = `Failed to parse phase diagram data`
-          return false
-        }
-        current_data = data
-        current_file = filename
-        if (update_url_param) update_url(filename)
-        return true
-
+      // JSON files: load directly
+      const data = await load_binary_phase_diagram(url)
+      if (is_stale(token)) return false
+      if (!data) {
+        error_message = `Failed to parse phase diagram data`
+        return false
+      }
+      current_data = data
+      current_file = filename
+      if (update_url_param) update_url(filename)
+      return true
     } catch (exc) {
       if (is_stale(token)) return false
       error_message = format_error(`Failed to load`, exc)
@@ -151,10 +146,7 @@
   }
 
   // Parse TDB content and set up state (used by both load_file and parse_file_content)
-  async function parse_tdb_content(
-    content: string,
-    filename: string,
-  ): Promise<boolean> {
+  async function parse_tdb_content(content: string, filename: string): Promise<boolean> {
     const { parse_tdb, get_system_name } = await import(`$lib/phase-diagram/parse.js`)
     const result = parse_tdb(content)
     if (!result.success || !result.data) {
@@ -202,9 +194,8 @@
         return
       }
       // Handle JSON/gzipped JSON files
-      const json_string = typeof content === `string`
-        ? content
-        : await decompress_data(content, `gzip`)
+      const json_string =
+        typeof content === `string` ? content : await decompress_data(content, `gzip`)
       current_data = JSON.parse(json_string) as PhaseDiagramData
       current_file = filename
       update_url(filename)
@@ -285,8 +276,8 @@
   const example_file_name = `A-B.json`
   $effect(() => {
     if (browser && !current_data && !loading) {
-      const example_file = all_phase_diagram_files.find((file) =>
-        file.name === example_file_name
+      const example_file = all_phase_diagram_files.find(
+        (file) => file.name === example_file_name,
       )
       if (example_file?.url) load_file(example_file.url, example_file_name, false)
     }
@@ -296,8 +287,8 @@
 <h1>Isobaric Binary Phase Diagram</h1>
 
 <p>
-  Interactive binary temperature-composition phase diagram. Hover over different regions
-  to see phase information. Drag and drop phase diagram files (<code>.json</code>,
+  Interactive binary temperature-composition phase diagram. Hover over different regions to see
+  phase information. Drag and drop phase diagram files (<code>.json</code>,
   <code>.json.gz</code>) onto the viewer to load them.
 </p>
 
@@ -315,17 +306,16 @@
   <p>
     The phase diagrams shown here use <strong>simplified/approximate data</strong> for
     demonstration purposes. They illustrate typical phase diagram features (eutectics,
-    peritectics, intermetallic compounds) but are not thermodynamically accurate. For
-    research applications, compute phase diagrams from validated TDB files using
+    peritectics, intermetallic compounds) but are not thermodynamically accurate. For research
+    applications, compute phase diagrams from validated TDB files using
     <a href="https://pycalphad.org">pycalphad</a> or similar CALPHAD software.
   </p>
   <p>
-    <strong>TDB files</strong> contain CALPHAD model parameters (Gibbs energy functions
-    and interaction coefficients) but not the phase diagram itself. Computing phase
-    boundaries requires Gibbs energy minimization at thousands of temperature-composition
-    points. When you drop a TDB file here, we parse it and display any matching
-    pre-computed diagram. The included TDB files (Al-Fe, Al-Mg, Pb-Sn) have demo data
-    available.
+    <strong>TDB files</strong> contain CALPHAD model parameters (Gibbs energy functions and interaction
+    coefficients) but not the phase diagram itself. Computing phase boundaries requires Gibbs energy
+    minimization at thousands of temperature-composition points. When you drop a TDB file here, we
+    parse it and display any matching pre-computed diagram. The included TDB files (Al-Fe, Al-Mg,
+    Pb-Sn) have demo data available.
   </p>
 </details>
 

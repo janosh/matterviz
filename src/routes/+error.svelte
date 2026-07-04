@@ -17,8 +17,7 @@
   {#if page.status >= 500}
     <p>
       If page reloading doesn't help, please raise an issue on
-      <a href="{pkg.homepage}/issues" target="_blank" rel="noreferrer">GitHub</a>. Thanks!
-      🙏
+      <a href="{pkg.homepage}/issues" target="_blank" rel="noreferrer">GitHub</a>. Thanks! 🙏
     </p>
   {/if}
   {#if online === false}
@@ -28,8 +27,6 @@
   {/if}
 
   <p>
-    Back to <a href=".">
-      landing page
-    </a>.
+    Back to <a href="."> landing page </a>.
   </p>
 </div>

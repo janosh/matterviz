@@ -18,10 +18,14 @@
   } from '$lib/plot'
   import { DEFAULT_SERIES_COLORS, PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
   import { closest_data_idx } from '$lib/plot/core/interactions'
-  import { compute_element_placement, constrain_tooltip_position, filter_padding } from '$lib/plot/core/layout'
+  import {
+    compute_element_placement,
+    constrain_tooltip_position,
+    filter_padding,
+  } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { compute_sankey_layout } from '$lib/plot/sankey/sankey'
-  import type { PositionedLink, PositionedNode} from '$lib/plot/sankey/sankey'
+  import type { PositionedLink, PositionedNode } from '$lib/plot/sankey/sankey'
   import { unique_id } from '$lib/plot/core/utils'
   import { DEFAULTS } from '$lib/settings'
   import { type Snippet, untrack } from 'svelte'
@@ -64,47 +68,44 @@
     header_controls,
     controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & Omit<BasePlotProps, `change`> & {
-    data?: SankeyData<Metadata>
-    orientation?: SankeyOrientation
-    node_width?: number
-    node_padding?: number
-    node_align?: SankeyNodeAlign
-    iterations?: number
-    link_opacity?: number
-    link_color_mode?: SankeyLinkColorMode
-    show_node_labels?: boolean
-    node_label?: (node: PositionedNode) => string
-    value_format?: string
-    padding?: Sides
-    legend?: LegendConfig | null
-    show_legend?: boolean
-    tooltip?: Snippet<[SankeyHandlerProps<Metadata>]>
-    // Fully replace the default node rect / link ribbon. NOTE: this also replaces the
-    // built-in hover/focus/click + tooltip wiring, so re-implement any interactivity
-    // you need inside the snippet.
-    node_content?: Snippet<[{ node: PositionedNode; color: string }]>
-    link_content?: Snippet<[{ link: PositionedLink; color: string }]>
-    change?: (data: SankeyHandlerProps<Metadata> | null) => void
-    on_node_click?: (
-      data: SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
-    ) => void
-    on_node_hover?: (
-      data:
-        | (SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | FocusEvent })
-        | null,
-    ) => void
-    on_link_click?: (
-      data: SankeyLinkHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
-    ) => void
-    on_link_hover?: (
-      data:
-        | (SankeyLinkHandlerProps<Metadata> & { event: MouseEvent | FocusEvent })
-        | null,
-    ) => void
-    header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
-    controls_extra?: Snippet<[{ orientation: SankeyOrientation }]>
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    Omit<BasePlotProps, `change`> & {
+      data?: SankeyData<Metadata>
+      orientation?: SankeyOrientation
+      node_width?: number
+      node_padding?: number
+      node_align?: SankeyNodeAlign
+      iterations?: number
+      link_opacity?: number
+      link_color_mode?: SankeyLinkColorMode
+      show_node_labels?: boolean
+      node_label?: (node: PositionedNode) => string
+      value_format?: string
+      padding?: Sides
+      legend?: LegendConfig | null
+      show_legend?: boolean
+      tooltip?: Snippet<[SankeyHandlerProps<Metadata>]>
+      // Fully replace the default node rect / link ribbon. NOTE: this also replaces the
+      // built-in hover/focus/click + tooltip wiring, so re-implement any interactivity
+      // you need inside the snippet.
+      node_content?: Snippet<[{ node: PositionedNode; color: string }]>
+      link_content?: Snippet<[{ link: PositionedLink; color: string }]>
+      change?: (data: SankeyHandlerProps<Metadata> | null) => void
+      on_node_click?: (
+        data: SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
+      ) => void
+      on_node_hover?: (
+        data: (SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
+      ) => void
+      on_link_click?: (
+        data: SankeyLinkHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
+      ) => void
+      on_link_hover?: (
+        data: (SankeyLinkHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
+      ) => void
+      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      controls_extra?: Snippet<[{ orientation: SankeyOrientation }]>
+    } = $props()
 
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
@@ -126,8 +127,8 @@
 
   // Resolved node colors (per node_idx), explicit color or cycled palette
   let node_colors = $derived(
-    data.nodes.map((node, idx) =>
-      node.color ?? DEFAULT_SERIES_COLORS[idx % DEFAULT_SERIES_COLORS.length]
+    data.nodes.map(
+      (node, idx) => node.color ?? DEFAULT_SERIES_COLORS[idx % DEFAULT_SERIES_COLORS.length],
     ),
   )
 
@@ -160,9 +161,7 @@
   })
 
   // node_idx -> positioned node (array order is preserved by d3-sankey, but map is safer)
-  let node_by_idx = $derived(
-    new Map(layout.nodes.map((node) => [node.node_idx, node])),
-  )
+  let node_by_idx = $derived(new Map(layout.nodes.map((node) => [node.node_idx, node])))
 
   const node_id_at = (node_idx: number): string | number =>
     node_by_idx.get(node_idx)?.id ?? node_idx
@@ -220,7 +219,10 @@
 
   const link_stroke_opacity = (link: PositionedLink): number => {
     if (link_dim(link)) return link_opacity * 0.15
-    if (active) return active.links.has(link.link_idx) ? Math.min(1, link_opacity + 0.35) : link_opacity * 0.25
+    if (active)
+      return active.links.has(link.link_idx)
+        ? Math.min(1, link_opacity + 0.35)
+        : link_opacity * 0.25
     return link_opacity
   }
 
@@ -271,7 +273,8 @@
       hover_info = make_node_props(node)
       hover_pos = event_pos(event) ?? node_center(node)
       change(hover_info)
-      if (event) on_node_hover?.({ ...(hover_info as SankeyNodeHandlerProps<Metadata>), event })
+      if (event)
+        on_node_hover?.({ ...(hover_info as SankeyNodeHandlerProps<Metadata>), event })
     } else {
       hovered_node = null
       hover_info = null
@@ -288,7 +291,8 @@
       hover_info = make_link_props(link)
       hover_pos = event_pos(event) ?? { x: pad.l + link.mid.x, y: pad.t + link.mid.y }
       change(hover_info)
-      if (event) on_link_hover?.({ ...(hover_info as SankeyLinkHandlerProps<Metadata>), event })
+      if (event)
+        on_link_hover?.({ ...(hover_info as SankeyLinkHandlerProps<Metadata>), event })
     } else {
       hovered_link = null
       hover_info = null
@@ -299,12 +303,12 @@
 
   const link_from_event = (event: Event): PositionedLink | null => {
     const idx = closest_data_idx(event, `data-sankey-link-idx`, svg_element)
-    return idx == null ? null : layout.links[idx] ?? null
+    return idx == null ? null : (layout.links[idx] ?? null)
   }
 
   const node_from_event = (event: Event): PositionedNode | null => {
     const idx = closest_data_idx(event, `data-sankey-node-idx`, svg_element)
-    return idx == null ? null : node_by_idx.get(idx) ?? null
+    return idx == null ? null : (node_by_idx.get(idx) ?? null)
   }
 
   function handle_link_hover_event(event: MouseEvent | FocusEvent) {
@@ -364,7 +368,7 @@
         label: node.label ?? `${node.id ?? idx}`,
         visible: !muted_nodes.has(node.id ?? idx),
         display_style: { symbol_type: `Square` as const, symbol_color: node_colors[idx] },
-      }))
+      })),
   )
 
   function toggle_node(series_idx: number) {
@@ -517,7 +521,9 @@
                   rx="1"
                   role={on_node_click ? `button` : undefined}
                   tabindex={on_node_click ? 0 : undefined}
-                  aria-label={on_node_click ? `${node.label ?? node.id}: ${node.value}` : undefined}
+                  aria-label={on_node_click
+                    ? `${node.label ?? node.id}: ${node.value}`
+                    : undefined}
                   style:cursor={on_node_click ? `pointer` : `default`}
                 />
               {/if}
@@ -528,8 +534,8 @@
                   x={lbl.x}
                   y={lbl.y}
                   text-anchor={lbl.anchor}
-                  dominant-baseline={lbl.baseline}
-                >{node_text(node)}</text>
+                  dominant-baseline={lbl.baseline}>{node_text(node)}</text
+                >
               {/if}
             </g>
           {/each}
@@ -550,9 +556,10 @@
     )}
     <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use the source node
     color so gradient/static ribbons (url(...)/var(...)) still get a readable color. -->
-    {@const tip_bg = hover_info.type === `node`
-    ? hover_info.color
-    : node_colors[hover_info.source_idx] ?? `rgba(0, 0, 0, 0.7)`}
+    {@const tip_bg =
+      hover_info.type === `node`
+        ? hover_info.color
+        : (node_colors[hover_info.source_idx] ?? `rgba(0, 0, 0, 0.7)`)}
     <PlotTooltip
       x={tip.x}
       y={tip.y}
@@ -563,13 +570,13 @@
       {#if tooltip}
         {@render tooltip(hover_info)}
       {:else if hover_info.type === `node`}
-        <strong>{hover_info.label ?? hover_info.id}</strong>: {
-          format_value(hover_info.value, value_format)
-        }
+        <strong>{hover_info.label ?? hover_info.id}</strong>: {format_value(
+          hover_info.value,
+          value_format,
+        )}
       {:else}
-        {hover_info.source_label ?? hover_info.source_idx} &rarr; {
-          hover_info.target_label ?? hover_info.target_idx
-        }: {format_value(hover_info.value, value_format)}
+        {hover_info.source_label ?? hover_info.source_idx} &rarr; {hover_info.target_label ??
+          hover_info.target_idx}: {format_value(hover_info.value, value_format)}
       {/if}
     </PlotTooltip>
   {/if}
@@ -583,7 +590,7 @@
       series_data={legend_data}
       on_toggle={legend?.on_toggle ?? toggle_node}
       on_item_hover={(item) =>
-      (hovered_node = item != null && item.series_idx >= 0 ? item.series_idx : null)}
+        (hovered_node = item != null && item.series_idx >= 0 ? item.series_idx : null)}
       style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
         legend?.style ?? ``
       }`}
@@ -663,7 +670,9 @@
   .sankey :global(.pane-toggle),
   .sankey .header-controls {
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
   .sankey:hover :global(.pane-toggle),
   .sankey:hover .header-controls,

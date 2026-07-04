@@ -78,15 +78,18 @@
   const render_height = $derived(Math.round(render_width * base_aspect_ratio))
 
   // === Control overrides (override ?? config ?? default, cleared by Reset) ===
-  const overrides = create_chempot_overrides(() => config, [
-    `formal_chempots`,
-    `label_stable`,
-    `element_padding`,
-    `default_min_limit`,
-    `color_mode`,
-    `color_scale`,
-    `reverse_color_scale`,
-  ])
+  const overrides = create_chempot_overrides(
+    () => config,
+    [
+      `formal_chempots`,
+      `label_stable`,
+      `element_padding`,
+      `default_min_limit`,
+      `color_mode`,
+      `color_scale`,
+      `reverse_color_scale`,
+    ],
+  )
   const formal_chempots = $derived(overrides.resolve(`formal_chempots`))
   const label_stable = $derived(overrides.resolve(`label_stable`))
   const element_padding = $derived(overrides.resolve(`element_padding`))
@@ -120,10 +123,7 @@
     if (next_temperature !== temperature) temperature = next_temperature
   })
 
-  const show_temperature_slider = $derived(
-    has_temp_data && available_temperatures.length > 0,
-  )
-
+  const show_temperature_slider = $derived(has_temp_data && available_temperatures.length > 0)
 
   // === Diagram computation (off main thread via Web Worker) ===
   let diagram_data = $state<ChemPotDiagramData | null>(null)
@@ -148,12 +148,12 @@
         diagram_data = null
         diagram_computing = false
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   })
 
-  const plot_elements = $derived(
-    (diagram_data?.elements ?? config.elements ?? []).slice(0, 2),
-  )
+  const plot_elements = $derived((diagram_data?.elements ?? config.elements ?? []).slice(0, 2))
 
   const draw_domains = $derived.by(() => {
     if (!diagram_data || plot_elements.length < 2) return {}
@@ -191,9 +191,7 @@
   }
   type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
 
-  const raw_el_refs = $derived(
-    get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
-  )
+  const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
   const entry_energy_stats_by_formula = $derived.by(
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats = new SvelteMap<string, FormulaEnergyStats>()
@@ -229,11 +227,7 @@
       return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
     }
     if (active_color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(
-        temp_filtered_entries,
-        formula,
-        raw_el_refs,
-      ) ?? null
+      return best_form_energy_for_formula(temp_filtered_entries, formula, raw_el_refs) ?? null
     }
     return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
   }
@@ -275,24 +269,22 @@
     }
     return colors
   })
-  const color_range = $derived.by(
-    (): { min: number; max: number; label: string } | null => {
-      const values = domain_color_values?.values ?? []
-      if (values.length === 0) return null
-      let min_val = values[0], max_val = values[0]
-      for (let idx = 1; idx < values.length; idx++) {
-        if (values[idx] < min_val) min_val = values[idx]
-        if (values[idx] > max_val) max_val = values[idx]
-      }
-      return {
-        min: min_val,
-        max: Math.max(max_val, min_val + 1e-6),
-        label: color_mode === `none` || color_mode === `arity`
-          ? ``
-          : color_mode_labels[color_mode],
-      }
-    },
-  )
+  const color_range = $derived.by((): { min: number; max: number; label: string } | null => {
+    const values = domain_color_values?.values ?? []
+    if (values.length === 0) return null
+    let min_val = values[0],
+      max_val = values[0]
+    for (let idx = 1; idx < values.length; idx++) {
+      if (values[idx] < min_val) min_val = values[idx]
+      if (values[idx] > max_val) max_val = values[idx]
+    }
+    return {
+      min: min_val,
+      max: Math.max(max_val, min_val + 1e-6),
+      label:
+        color_mode === `none` || color_mode === `arity` ? `` : color_mode_labels[color_mode],
+    }
+  })
 
   // === Convert domains to ScatterPlot DataSeries ===
   const series = $derived<DataSeries[]>(
@@ -350,11 +342,7 @@
   // === Hover info for external consumers ===
   let locked_hover_formula = $state<string | null>(null)
 
-  function set_hover_info(
-    formula: string,
-    pts: number[][],
-    event: MouseEvent,
-  ): void {
+  function set_hover_info(formula: string, pts: number[][], event: MouseEvent): void {
     const bounds = wrapper?.getBoundingClientRect()
     hover_info = with_hover_pointer<ChemPotHoverInfo>(
       {
@@ -387,9 +375,7 @@
     set_hover_info(formula, pts, data.event)
   }
 
-  function handle_click(
-    data: { point: { series_idx: number }; event: MouseEvent },
-  ): void {
+  function handle_click(data: { point: { series_idx: number }; event: MouseEvent }): void {
     const entry = domain_entries[data.point.series_idx]
     if (!entry) return
     const [formula, pts] = entry
@@ -406,10 +392,12 @@
     const pointer = hover_info?.pointer
     if (!pointer) return { x: 4, y: 4 }
     return constrain_tooltip_position(
-      pointer.x, pointer.y,
+      pointer.x,
+      pointer.y,
       tooltip_el?.offsetWidth ?? 150,
       tooltip_el?.offsetHeight ?? 40,
-      render_width, render_height,
+      render_width,
+      render_height,
       { offset: 0 },
     )
   })
@@ -447,11 +435,13 @@
     },
     {
       title: `Export Data`,
-      items: [{
-        label: `JSON`,
-        on_download: () => export_json_file(json_payload, export_basename),
-        copy_text: () => get_json_string(json_payload),
-      }],
+      items: [
+        {
+          label: `JSON`,
+          on_download: () => export_json_file(json_payload, export_basename),
+          copy_text: () => get_json_string(json_payload),
+        },
+      ],
     },
   ])
 </script>
@@ -477,8 +467,7 @@
     toggle_props={{
       class: `chempot-export-toggle`,
       title: `Export chemical potential diagram`,
-      style:
-        `position: absolute; top: var(--ctrl-btn-top, 5pt); right: 36px; z-index: 10`,
+      style: `position: absolute; top: var(--ctrl-btn-top, 5pt); right: 36px; z-index: 10`,
     }}
   />
 {/snippet}
@@ -509,7 +498,7 @@
       step="0.1"
       value={element_padding}
       oninput={(event) =>
-      overrides.set(`element_padding`, Number(event.currentTarget.value) || 0)}
+        overrides.set(`element_padding`, Number(event.currentTarget.value) || 0)}
     />
   </label>
   <label>
@@ -534,7 +523,7 @@
     <select
       value={color_mode}
       onchange={(event) =>
-      overrides.set(`color_mode`, event.currentTarget.value as typeof color_mode)}
+        overrides.set(`color_mode`, event.currentTarget.value as typeof color_mode)}
     >
       {#each CHEMPOT_COLOR_MODE_OPTIONS as [value, label] (value)}
         <option {value}>{label}</option>
@@ -547,7 +536,7 @@
       <select
         value={color_scale}
         onchange={(event) =>
-        overrides.set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
+          overrides.set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
       >
         {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
           <option {value}>{label}</option>
@@ -589,9 +578,9 @@
     onpointerdown={(event) => {
       const target = event.target
       if (!locked_hover_formula) return
-      const is_background_click = target === wrapper ||
-        (target instanceof SVGElement &&
-          target.closest(`g[data-series-id]`) === null)
+      const is_background_click =
+        target === wrapper ||
+        (target instanceof SVGElement && target.closest(`g[data-series-id]`) === null)
       if (is_background_click) {
         clear_hover_lock()
       }
@@ -614,9 +603,9 @@
     />
     {#if color_mode !== `none` && color_mode !== `arity` && color_range}
       {@const color_bar_config = get_chempot_color_bar_config(
-      color_scale,
-      reverse_color_scale,
-    )}
+        color_scale,
+        reverse_color_scale,
+      )}
       <ColorBar
         title={color_range.label}
         range={[color_range.min, color_range.max]}
@@ -669,7 +658,9 @@
   }
   .chempot-diagram-2d > :global(.pane-toggle) {
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
   .chempot-diagram-2d:hover > :global(.pane-toggle),
   .chempot-diagram-2d > :global(.pane-toggle:focus-visible),
@@ -716,10 +707,7 @@
   }
   .tooltip {
     position: absolute;
-    background: var(
-      --tooltip-bg,
-      light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9))
-    );
+    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9)));
     color: var(--tooltip-text, var(--text-color, #fff));
     padding: 4px 8px;
     border-radius: 4px;

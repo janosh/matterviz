@@ -20,9 +20,7 @@
   } = $props()
 
   const is_snippet = $derived(typeof tooltip === `function`)
-  const config = $derived(
-    !is_snippet && tooltip ? (tooltip as TooltipConfig<T>) : null,
-  )
+  const config = $derived(!is_snippet && tooltip ? (tooltip as TooltipConfig<T>) : null)
   const prefix = $derived(
     typeof config?.prefix === `function` ? config.prefix(data) : config?.prefix,
   )
@@ -47,8 +45,7 @@
   .tooltip-prefix {
     margin-bottom: 6px;
     padding-bottom: 6px;
-    border-bottom: 1px solid
-      var(--tooltip-border, var(--border, rgba(128, 128, 128, 0.3)));
+    border-bottom: 1px solid var(--tooltip-border, var(--border, rgba(128, 128, 128, 0.3)));
   }
   .tooltip-suffix {
     margin-top: 6px;

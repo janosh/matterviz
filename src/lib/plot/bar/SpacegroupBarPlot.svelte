@@ -10,10 +10,7 @@
   import { SvelteMap } from 'svelte/reactivity'
 
   // Merge tick config with default rotation, preserving user overrides
-  const with_rotation = (
-    tick: TickConfig | undefined,
-    default_rot: number,
-  ): TickConfig => ({
+  const with_rotation = (tick: TickConfig | undefined, default_rot: number): TickConfig => ({
     ...tick,
     label: { ...tick?.label, rotation: tick?.label?.rotation ?? default_rot },
   })
@@ -51,10 +48,7 @@
 
   // Group counts by crystal system
   const crystal_system_stats = $derived.by(() => {
-    const stats = new SvelteMap<
-      CrystalSystem,
-      { count: number; spacegroups: number[] }
-    >()
+    const stats = new SvelteMap<CrystalSystem, { count: number; spacegroups: number[] }>()
 
     for (const system of symmetry.CRYSTAL_SYSTEMS) {
       stats.set(system, { count: 0, spacegroups: [] })
@@ -73,9 +67,7 @@
   })
 
   // Create sorted list of space groups for x-axis
-  const sorted_spacegroups = $derived(
-    Array.from(histogram.keys()).sort((a, b) => a - b),
-  )
+  const sorted_spacegroups = $derived(Array.from(histogram.keys()).sort((a, b) => a - b))
 
   // Smart tick selection: thin out ticks for dense data
   const x_axis_ticks = $derived.by(() => {
@@ -91,10 +83,7 @@
 
   // Build BarSeries - one series per crystal system for proper coloring
   const bar_series = $derived.by<BarSeries[]>(() => {
-    const series_by_system = new SvelteMap<
-      CrystalSystem,
-      { x: number[]; y: number[] }
-    >()
+    const series_by_system = new SvelteMap<CrystalSystem, { x: number[]; y: number[] }>()
 
     // Group data by crystal system
     for (const sg of sorted_spacegroups) {
@@ -145,25 +134,27 @@
 
   // Build axis configurations based on orientation
   const x_axis_config = $derived(
-    orientation === `horizontal` ? { ...x_axis, label: x_axis.label ?? `Counts` } : {
-      ...x_axis,
-      label: x_axis.label ?? `International Spacegroup Number`,
-      range: x_range,
-      ticks: x_axis_ticks,
-      tick: with_rotation(x_axis.tick, 90), // Rotate ticks 90° to avoid overlap
-      label_shift: { x: 0, y: 20, ...x_axis.label_shift }, // Move label down for rotated ticks
-    },
+    orientation === `horizontal`
+      ? { ...x_axis, label: x_axis.label ?? `Counts` }
+      : {
+          ...x_axis,
+          label: x_axis.label ?? `International Spacegroup Number`,
+          range: x_range,
+          ticks: x_axis_ticks,
+          tick: with_rotation(x_axis.tick, 90), // Rotate ticks 90° to avoid overlap
+          label_shift: { x: 0, y: 20, ...x_axis.label_shift }, // Move label down for rotated ticks
+        },
   )
 
   const y_axis_config = $derived(
     orientation === `horizontal`
       ? {
-        ...y_axis,
-        label: y_axis.label ?? `International Spacegroup Number`,
-        range: x_range,
-        ticks: x_axis_ticks,
-        tick: with_rotation(y_axis.tick, 0),
-      }
+          ...y_axis,
+          label: y_axis.label ?? `International Spacegroup Number`,
+          range: x_range,
+          ticks: x_axis_ticks,
+          tick: with_rotation(y_axis.tick, 0),
+        }
       : { ...y_axis, label: y_axis.label ?? `Counts` },
   )
 </script>
@@ -178,7 +169,13 @@
   Count: {format_value(count, `.0f`)}
 {/snippet}
 
-{#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad }: {
+{#snippet user_content({
+  width,
+  height,
+  x_scale_fn,
+  y_scale_fn,
+  pad,
+}: {
   width: number
   height: number
   x_scale_fn: (x: number) => number
@@ -226,9 +223,7 @@
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {format_num(region.count, `,~`)} ({
-              format_num(region.count / total_count, `.1~%`)
-            })
+            {format_num(region.count, `,~`)} ({format_num(region.count / total_count, `.1~%`)})
           </text>
         {/if}
       {:else}
@@ -270,9 +265,7 @@
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {format_num(region.count, `,~`)} ({
-              format_num(region.count / total_count, `.1~%`)
-            })
+            {format_num(region.count, `,~`)} ({format_num(region.count / total_count, `.1~%`)})
           </text>
         {/if}
       {/if}

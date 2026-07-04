@@ -65,7 +65,7 @@ describe(`SymmetryStats`, () => {
 
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
       expect(symprec_input.value).toBe(`0.0001`) // 1e-4
-      expect(parseFloat(symprec_input.step)).toBeCloseTo(1e-4, 12)
+      expect(Number(symprec_input.step)).toBeCloseTo(1e-4, 12)
 
       const algo_select = doc_query<HTMLSelectElement>(`.controls select`)
       expect(algo_select.value).toBe(`Moyo`)
@@ -178,12 +178,12 @@ describe(`SymmetryStats`, () => {
         })
 
         const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
-        expect(parseFloat(symprec_input.step)).toBeCloseTo(1e-4, 12)
+        expect(Number(symprec_input.step)).toBeCloseTo(1e-4, 12)
 
         symprec_input.value = symprec_input_value
         symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
         flushSync()
-        expect(parseFloat(symprec_input.step)).toBeCloseTo(expected_step, 12)
+        expect(Number(symprec_input.step)).toBeCloseTo(expected_step, 12)
       },
     )
 
@@ -356,7 +356,7 @@ describe(`SymmetryStats`, () => {
       props: { sym_data: create_mock_sym_data(), settings: { symprec, algo: `Moyo` } },
     })
     expect(
-      parseFloat(doc_query<HTMLInputElement>(`.controls input[type="number"]`).value),
+      Number(doc_query<HTMLInputElement>(`.controls input[type="number"]`).value),
     ).toBeCloseTo(symprec, 10)
   })
 })

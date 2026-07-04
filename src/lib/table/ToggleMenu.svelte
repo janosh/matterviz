@@ -115,9 +115,7 @@
 
   // Grid template for section items
   let grid_template = $derived(
-    n_columns
-      ? `repeat(${n_columns}, max-content)`
-      : `repeat(auto-fill, minmax(135px, 1fr))`,
+    n_columns ? `repeat(${n_columns}, max-content)` : `repeat(auto-fill, minmax(135px, 1fr))`,
   )
 
   // Reposition dropdown: left-aligned by default, switch to right if it overflows viewport
@@ -128,9 +126,7 @@
     void n_columns
     void collapsed_sections
     void sections
-    const dropdown = details_el.querySelector<HTMLElement>(
-      `.column-menu, .sections-container`,
-    )
+    const dropdown = details_el.querySelector<HTMLElement>(`.column-menu, .sections-container`)
     if (!dropdown) return
     // Reset to left-aligned
     dropdown.style.left = `0`
@@ -198,8 +194,8 @@
   {#if has_sections}
     <div class="sections-container" role="group">
       {#each sections as section (section.name)}
-        {@const is_collapsed = section.name !== `` &&
-        collapsed_sections.includes(section.name)}
+        {@const is_collapsed =
+          section.name !== `` && collapsed_sections.includes(section.name)}
         <div class="section">
           {#if section.name}
             <div class="section-header-row">
@@ -325,10 +321,7 @@
     margin-bottom: 4pt;
     padding: 2pt 4pt;
     border-radius: var(--tgl-border-radius, 3pt);
-    background: var(
-      --tgl-section-header-bg,
-      color-mix(in srgb, currentColor 5%, transparent)
-    );
+    background: var(--tgl-section-header-bg, color-mix(in srgb, currentColor 5%, transparent));
     &:hover {
       background: var(
         --tgl-section-header-hover-bg,

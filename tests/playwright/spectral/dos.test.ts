@@ -45,7 +45,7 @@ test.describe(`DOS Component Tests`, () => {
     ).toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
     const nums = y_ticks
-      .map((tick) => Number.parseFloat(tick.replaceAll(/[^\d.\-+eE]/g, ``)))
+      .map((tick) => Number(tick.replaceAll(/[^\d.\-+eE]/g, ``)))
       .filter(Number.isFinite)
     const max_val = Math.max(...nums)
     expect(max_val).toBeLessThanOrEqual(1.01) // Small margin for tick rounding
@@ -98,8 +98,8 @@ test.describe(`DOS Component Tests`, () => {
     // For horizontal: X should have numeric density values, Y should have frequency values
     const x_ticks = await plot.locator(`g.x-axis text`).allTextContents()
     const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
-    expect(x_ticks.some((tick) => !Number.isNaN(Number.parseFloat(tick)))).toBe(true)
-    expect(y_ticks.some((tick) => !Number.isNaN(Number.parseFloat(tick)))).toBe(true)
+    expect(x_ticks.some((tick) => !Number.isNaN(Number(tick)))).toBe(true)
+    expect(y_ticks.some((tick) => !Number.isNaN(Number(tick)))).toBe(true)
 
     // Assert axis labels reflect horizontal swap
     await expect(plot.locator(`.x-label`)).toContainText(/Density/i)

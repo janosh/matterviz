@@ -7,14 +7,8 @@ Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
   import { ColorBar } from 'matterviz'
 </script>
 
-{#each [
-    // [color_scale, tick_side, tick_labels, range, label_text]
-    [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]],
-    [`Magma`, `secondary`, 10, [100, 1631]],
-    [`Cividis`, `primary`, 4, [-99.9812, -10]],
-  ] as
-  [color_scale, tick_side, tick_labels, range]
-}
+{#each [// [color_scale, tick_side, tick_labels, range, label_text]
+  [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]], [`Magma`, `secondary`, 10, [100, 1631]], [`Cividis`, `primary`, 4, [-99.9812, -10]]] as [color_scale, tick_side, tick_labels, range]}
   <ColorBar
     title="color_scale={color_scale} &emsp; tick_side={tick_side} &emsp; range={range}"
     {color_scale}
@@ -61,9 +55,7 @@ You can make fat and skinny bars:
   let color_scale = $state(`interpolateCividis`)
   let heatmap_key = $state(``)
   let heat_label = $state(``)
-  let heatmap_values = $derived(
-    heatmap_key ? element_data.map((el) => el[heatmap_key]) : [],
-  )
+  let heatmap_values = $derived(heatmap_key ? element_data.map((el) => el[heatmap_key]) : [])
 </script>
 
 <form>
@@ -136,12 +128,12 @@ Example demonstrating `title_side` and `tick_side` interaction:
 <section>
   {#each title_sides as title_side, l_idx (title_side)}
     {#each tick_sides as tick_side, t_idx (tick_side)}
-      {@const orientation = title_side === `top` || title_side === `bottom`
-      ? `horizontal`
-      : `vertical`}
-      {@const bar_style = orientation === `horizontal`
-      ? `width: 150px; height: 20px;`
-      : `width: 20px; height: 150px;`}
+      {@const orientation =
+        title_side === `top` || title_side === `bottom` ? `horizontal` : `vertical`}
+      {@const bar_style =
+        orientation === `horizontal`
+          ? `width: 150px; height: 20px;`
+          : `width: 20px; height: 150px;`}
       {@const num_ticks = l_idx + t_idx + 2}
       {@const current_range = [l_idx * 10, (l_idx + 1) * 10 + t_idx * 20]}
       <div>
@@ -440,9 +432,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both pos
   let threshold = $state(1)
 </script>
 
-<div
-  style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center; flex-wrap: wrap"
->
+<div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center; flex-wrap: wrap">
   <fieldset>
     <legend>Scale Type</legend>
     {#each scale_types as scale (scale)}

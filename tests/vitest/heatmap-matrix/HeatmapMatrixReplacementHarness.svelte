@@ -16,12 +16,10 @@
   Replace axis
 </button>
 <span data-testid="selected-count">{selected_cells.length}</span>
-<span data-testid="active-cell">{active_cell ? `${active_cell.x_idx}:${active_cell.y_idx}` : `none`}</span>
-<span data-testid="pinned-cell">{pinned_cell ? `${pinned_cell.x_idx}:${pinned_cell.y_idx}` : `none`}</span>
-<HeatmapMatrix
-  {x_items}
-  {y_items}
-  bind:selected_cells
-  bind:active_cell
-  bind:pinned_cell
-/>
+<span data-testid="active-cell"
+  >{active_cell ? `${active_cell.x_idx}:${active_cell.y_idx}` : `none`}</span
+>
+<span data-testid="pinned-cell"
+  >{pinned_cell ? `${pinned_cell.x_idx}:${pinned_cell.y_idx}` : `none`}</span
+>
+<HeatmapMatrix {x_items} {y_items} bind:selected_cells bind:active_cell bind:pinned_cell />

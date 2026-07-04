@@ -14,7 +14,6 @@ function get_attr(tag: string, attr: `limit` | `range` | `key`): string {
 
 describe(`InstancedMesh limits`, () => {
   it.each([
-    { file_path: `src/lib/structure/StructureScene.svelte`, expected_tags: 1 },
     { file_path: `src/lib/plot/scatter-3d/ScatterPlot3DScene.svelte`, expected_tags: 2 },
   ])(`sets limit equal to range in $file_path`, ({ file_path, expected_tags }) => {
     const tags = get_tags(readFileSync(file_path, `utf8`))
@@ -25,25 +24,14 @@ describe(`InstancedMesh limits`, () => {
     }
   })
 
-  it(`keys StructureScene atom mesh with shared group identity`, () => {
+  it(`renders StructureScene atoms via direct InstancedAtoms meshes, not per-atom Instance components`, () => {
     const source = readFileSync(`src/lib/structure/StructureScene.svelte`, `utf8`)
-    const [tag] = get_tags(source)
-    if (!tag) throw new Error(`StructureScene InstancedMesh tag not found`)
-
-    expect(get_attr(tag, `key`)).toBe(`instanced_atom_group_key(atom_group,measure_mode)`)
-    expect(
-      source.match(/instanced_atom_group_key\(atom_group,\s*measure_mode\)/g),
-    ).toHaveLength(2)
-    // match up to the closing brace at the function's own indent (group 1), so the
-    // pattern tolerates reindentation and skips deeper-nested braces (e.g. template literals)
-    const key_fn =
-      /\n(?<indent> *)function instanced_atom_group_key\([\s\S]*?\n\k<indent>\}/.exec(
-        source,
-      )?.[0]
-    if (!key_fn) throw new Error(`instanced_atom_group_key function not found`)
-    for (const token of [`format_num(radius, \`.3~\`)`, `edit_mode_image`, `atoms.length`]) {
-      expect(key_fn).toContain(token)
-    }
-    expect(source).toContain(`limit={atoms.length}`)
+    // Per-atom <extras.Instance> components caused multi-second mount storms on
+    // supercells; atoms must render through the imperative InstancedAtoms wrapper
+    expect(get_tags(source)).toHaveLength(0)
+    expect(source).not.toContain(`extras.Instance`)
+    expect(source.match(/<InstancedAtoms\b/g)).toHaveLength(2)
+    // per-site vector arrows are instanced too (2 draw calls per layer)
+    expect(source.match(/<ArrowInstances\b/g)).toHaveLength(1)
   })
 })

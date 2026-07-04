@@ -110,8 +110,23 @@
   // also work without a lattice when show_polyhedra is 'always' or 'molecules'
   const sf6: Molecule = {
     sites: [
-      { species: [{ element: `S`, occu: 1, oxidation_state: 6 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `S`, properties: {} },
-      ...([[1.56, 0, 0], [-1.56, 0, 0], [0, 1.56, 0], [0, -1.56, 0], [0, 0, 1.56], [ 0, 0, -1.56]] as const).map((xyz, idx) => ({
+      {
+        species: [{ element: `S`, occu: 1, oxidation_state: 6 }],
+        abc: [0, 0, 0],
+        xyz: [0, 0, 0],
+        label: `S`,
+        properties: {},
+      },
+      ...(
+        [
+          [1.56, 0, 0],
+          [-1.56, 0, 0],
+          [0, 1.56, 0],
+          [0, -1.56, 0],
+          [0, 0, 1.56],
+          [0, 0, -1.56],
+        ] as const
+      ).map((xyz, idx) => ({
         species: [{ element: `F` as const, occu: 1, oxidation_state: -1 }],
         abc: [0, 0, 0] as Vec3,
         xyz: [...xyz] as Vec3,
@@ -134,12 +149,12 @@
   centers, following VESTA-style conventions: vertices must be non-metal neighbors more
   electronegative than the center, lying within 30% of the shortest such bond (so noisy
   over-long bonds don't inflate e.g. PO₄ tetrahedra). To keep the structural framework
-  readable, spectator A-site cations (alkali metals, Ca/Sr/Ba), very high-coordination
-  hulls (CN &gt; 8), and weakly-bound lone-pair cations (e.g. Bi³⁺) are skipped whenever
-  framework polyhedra exist — toggle any element back on via the Centers checkboxes in
-  the controls pane. Vertices come from the same bond graph as the rendered bonds, so
-  polyhedra respect the bonding strategy, bond edits, and hidden elements, and
-  boundary-truncated copies in supercells are skipped automatically.
+  readable, spectator A-site cations (alkali metals, Ca/Sr/Ba), very high-coordination hulls
+  (CN &gt; 8), and weakly-bound lone-pair cations (e.g. Bi³⁺) are skipped whenever framework
+  polyhedra exist — toggle any element back on via the Centers checkboxes in the controls pane.
+  Vertices come from the same bond graph as the rendered bonds, so polyhedra respect the
+  bonding strategy, bond edits, and hidden elements, and boundary-truncated copies in
+  supercells are skipped automatically.
 </p>
 
 <div class="bleed-1400">
@@ -203,10 +218,10 @@
 <h2>Molecules</h2>
 
 <p>
-  Polyhedra default to crystals only (<code>show_polyhedra: 'crystals'</code>) but also
-  work for molecules when set to <code>'always'</code> or <code>'molecules'</code>, like
-  this SF₆ octahedron. Methane shows none: carbon is <em>more</em> electronegative than
-  hydrogen, so CH₄ is not treated as a coordination environment.
+  Polyhedra default to crystals only (<code>show_polyhedra: 'crystals'</code>) but also work
+  for molecules when set to <code>'always'</code> or <code>'molecules'</code>, like this SF₆
+  octahedron. Methane shows none: carbon is <em>more</em> electronegative than hydrogen, so CH₄ is
+  not treated as a coordination environment.
 </p>
 
 <Structure

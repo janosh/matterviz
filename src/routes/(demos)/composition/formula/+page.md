@@ -54,10 +54,14 @@ Control element ordering and apply different color schemes:
 <div style="display: flex; gap: 1em; flex-wrap: wrap; margin: 1em 0">
   <strong>Ordering:</strong>
   <label><input type="radio" bind:group={ordering} value="original" /> Original</label>
-  <label><input type="radio" bind:group={ordering} value="alphabetical" />
-    Alphabetical</label>
-  <label><input type="radio" bind:group={ordering} value="electronegativity" />
-    Electronegativity</label>
+  <label
+    ><input type="radio" bind:group={ordering} value="alphabetical" />
+    Alphabetical</label
+  >
+  <label
+    ><input type="radio" bind:group={ordering} value="electronegativity" />
+    Electronegativity</label
+  >
   <label><input type="radio" bind:group={ordering} value="hill" /> Hill Notation</label>
 </div>
 
@@ -97,9 +101,7 @@ Click element symbols to trigger custom actions:
   }
 </script>
 
-<div
-  style="display: flex; gap: 2em; flex-wrap: wrap; font-size: 1.8em; margin-bottom: 1em"
->
+<div style="display: flex; gap: 2em; flex-wrap: wrap; font-size: 1.8em; margin-bottom: 1em">
   <Formula formula="H2O" on_click={handle_click} />
   <Formula formula="Fe[3+]2O[2-]3" on_click={handle_click} />
   <Formula formula="Ca(OH)2" on_click={handle_click} />
@@ -239,12 +241,12 @@ Battery materials, minerals, and organic compounds:
       { name: `LiCoO₂ (LCO)`, formula: `LiCoO2` },
       { name: `NMC 111`, formula: `LiNi0.33Mn0.33Co0.33O2` },
     ],
-    'Minerals': [
+    Minerals: [
       { name: `Quartz`, formula: `SiO2` },
       { name: `Magnetite`, formula: `Fe3O4` },
       { name: `Calcite`, formula: `CaCO3` },
     ],
-    'Organic': [
+    Organic: [
       { name: `Glucose`, formula: `C6H12O6` },
       { name: `Caffeine`, formula: `C8H10N4O2` },
       { name: `Ethanol`, formula: `C2H6O` },
@@ -299,12 +301,16 @@ Build formulas dynamically with live preview:
 
 <div style="margin-bottom: 1em">
   <button
-    onclick={() => (elements = [...elements, {
-      id: next_id++,
-      symbol: `H`,
-      amount: 1,
-      oxidation: 0,
-    }])}
+    onclick={() =>
+      (elements = [
+        ...elements,
+        {
+          id: next_id++,
+          symbol: `H`,
+          amount: 1,
+          oxidation: 0,
+        },
+      ])}
   >
     Add Element
   </button>
@@ -320,12 +326,7 @@ Build formulas dynamically with live preview:
       style="width: 70px"
       placeholder="Amt"
     />
-    <input
-      type="number"
-      bind:value={element.oxidation}
-      style="width: 60px"
-      placeholder="Ox"
-    />
+    <input type="number" bind:value={element.oxidation} style="width: 60px" placeholder="Ox" />
     <button onclick={() => (elements = elements.filter((el) => el.id !== element.id))}>
       ×
     </button>

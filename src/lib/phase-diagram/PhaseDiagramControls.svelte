@@ -79,9 +79,7 @@
   }
 
   // Helper to update nested config properties
-  function update_nested<
-    K extends keyof Pick<PhaseDiagramConfig, `colors` | `tie_line`>,
-  >(
+  function update_nested<K extends keyof Pick<PhaseDiagramConfig, `colors` | `tie_line`>>(
     key: K,
     prop: string,
     value: string | number,
@@ -159,9 +157,7 @@
           Special Pts
         </label>
       {/if}
-      <label
-        {@attach tooltip({ content: `Show component labels at axes` })}
-      >
+      <label {@attach tooltip({ content: `Show component labels at axes` })}>
         <input type="checkbox" bind:checked={show_component_labels} />
         Comp. Labels
       </label>
@@ -177,10 +173,7 @@
     }}
     on_reset={() => {
       update_config(`font_size`, PHASE_DIAGRAM_DEFAULTS.font_size)
-      update_config(
-        `special_point_radius`,
-        PHASE_DIAGRAM_DEFAULTS.special_point_radius,
-      )
+      update_config(`special_point_radius`, PHASE_DIAGRAM_DEFAULTS.special_point_radius)
     }}
   >
     <NumberRangeInput
@@ -188,11 +181,9 @@
       max={20}
       step={1}
       title="Font size for axis labels and tick marks"
-      bind:value={
-        () => merged_config.font_size,
-        (val) => update_config(`font_size`, val)
-      }
-    >Font size</NumberRangeInput>
+      bind:value={() => merged_config.font_size, (val) => update_config(`font_size`, val)}
+      >Font size</NumberRangeInput
+    >
     {#if has_special_points}
       <NumberRangeInput
         min={2}
@@ -202,20 +193,20 @@
         bind:value={
           () => merged_config.special_point_radius,
           (val) => update_config(`special_point_radius`, val)
-        }
-      >Special pt radius</NumberRangeInput>
+        }>Special pt radius</NumberRangeInput
+      >
     {/if}
   </SettingsSection>
 
   <!-- Colors Section -->
   {@const color_options = [
-      [`background`, `#ffffff`, `Background`, `Background color of the plot area`],
-      [`grid`, `#888888`, `Grid`, `Color of grid lines`],
-      [`boundary`, `#333333`, `Boundaries`, `Color of phase boundary lines`],
-      [`special_point`, `#d32f2f`, `Special Pts`, `Color of special point markers`],
-      [`axis`, `#333333`, `Axis`, `Color of axis lines`],
-      [`text`, `#333333`, `Text`, `Color of text labels`],
-    ] as const}
+    [`background`, `#ffffff`, `Background`, `Background color of the plot area`],
+    [`grid`, `#888888`, `Grid`, `Color of grid lines`],
+    [`boundary`, `#333333`, `Boundaries`, `Color of phase boundary lines`],
+    [`special_point`, `#d32f2f`, `Special Pts`, `Color of special point markers`],
+    [`axis`, `#333333`, `Axis`, `Color of axis lines`],
+    [`text`, `#333333`, `Text`, `Color of text labels`],
+  ] as const}
   <SettingsSection
     title="Colors"
     current_values={{ ...merged_config.colors }}
@@ -273,8 +264,8 @@
       bind:value={
         () => merged_config.tie_line.stroke_width,
         (val) => update_nested(`tie_line`, `stroke_width`, val)
-      }
-    >Line width</NumberRangeInput>
+      }>Line width</NumberRangeInput
+    >
     <NumberRangeInput
       min={2}
       max={10}
@@ -283,8 +274,8 @@
       bind:value={
         () => merged_config.tie_line.endpoint_radius,
         (val) => update_nested(`tie_line`, `endpoint_radius`, val)
-      }
-    >Endpoint radius</NumberRangeInput>
+      }>Endpoint radius</NumberRangeInput
+    >
     <NumberRangeInput
       min={2}
       max={10}
@@ -293,15 +284,15 @@
       bind:value={
         () => merged_config.tie_line.cursor_radius,
         (val) => update_nested(`tie_line`, `cursor_radius`, val)
-      }
-    >Cursor radius</NumberRangeInput>
+      }>Cursor radius</NumberRangeInput
+    >
   </SettingsSection>
 
   <!-- Axis Configuration Section -->
   {@const axis_configs = [
-      [x_axis, `x`, comp_unit, `composition`],
-      [y_axis, `y`, temp_unit, `temperature`],
-    ] as const}
+    [x_axis, `x`, comp_unit, `composition`],
+    [y_axis, `y`, temp_unit, `temperature`],
+  ] as const}
   <SettingsSection
     title="Axes"
     current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
@@ -340,7 +331,9 @@
       }}
     >
       <label
-        {@attach tooltip({ content: `DPI (dots per inch) for PNG export. Higher values produce larger, higher-quality images.` })}
+        {@attach tooltip({
+          content: `DPI (dots per inch) for PNG export. Higher values produce larger, higher-quality images.`,
+        })}
       >
         PNG DPI
         <input
@@ -351,15 +344,11 @@
           style="width: 3.5em"
           bind:value={png_dpi}
         />
-        <input
-          type="range"
-          min={72}
-          max={600}
-          step={50}
-          bind:value={png_dpi}
-        />
-        <span style="font-size: 0.85em; opacity: 0.7">{format_num(png_dpi, `d`)}
-          dpi</span>
+        <input type="range" min={72} max={600} step={50} bind:value={png_dpi} />
+        <span style="font-size: 0.85em; opacity: 0.7"
+          >{format_num(png_dpi, `d`)}
+          dpi</span
+        >
       </label>
     </SettingsSection>
   {/if}

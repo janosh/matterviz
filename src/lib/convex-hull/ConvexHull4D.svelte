@@ -29,12 +29,7 @@
   import TemperatureSlider from './TemperatureSlider.svelte'
   import type { Point4D } from './thermodynamics'
   import * as thermo from './thermodynamics'
-  import type {
-    ConvexHullEntry,
-    HighlightStyle,
-    HullFaceColorMode,
-    PhaseData,
-  } from './types'
+  import type { ConvexHullEntry, HighlightStyle, HullFaceColorMode, PhaseData } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
   import { compute_hull_stability } from './helpers'
 
@@ -61,9 +56,7 @@
     ),
     element_colors = vesta_hex,
     color_mode = $bindable(DEFAULTS.convex_hull.quaternary.color_mode),
-    color_scale = $bindable(
-      DEFAULTS.convex_hull.quaternary.color_scale as D3InterpolateName,
-    ),
+    color_scale = $bindable(DEFAULTS.convex_hull.quaternary.color_scale as D3InterpolateName),
     info_pane_open = $bindable(DEFAULTS.convex_hull.quaternary.info_pane_open),
     controls_open = $bindable(DEFAULTS.convex_hull.quaternary.legend_pane_open),
     max_hull_dist_show_phases = $bindable(
@@ -72,12 +65,8 @@
     max_hull_dist_show_labels = $bindable(
       DEFAULTS.convex_hull.quaternary.max_hull_dist_show_labels,
     ),
-    show_stable_labels = $bindable(
-      DEFAULTS.convex_hull.quaternary.show_stable_labels,
-    ),
-    show_unstable_labels = $bindable(
-      DEFAULTS.convex_hull.quaternary.show_unstable_labels,
-    ),
+    show_stable_labels = $bindable(DEFAULTS.convex_hull.quaternary.show_stable_labels),
+    show_unstable_labels = $bindable(DEFAULTS.convex_hull.quaternary.show_unstable_labels),
     on_file_drop,
     enable_click_selection = true,
     enable_structure_preview = true,
@@ -96,9 +85,10 @@
     children,
     tooltip,
     ...rest
-  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
-    highlight_style?: HighlightStyle
-  } = $props()
+  }: BaseConvexHullProps<ConvexHullEntry> &
+    Hull3DProps & {
+      highlight_style?: HighlightStyle
+    } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
@@ -111,7 +101,7 @@
 
   // Reactive dark mode detection for canvas text color
   let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => dark_mode = dark))
+  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
   const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
 
   // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
@@ -132,10 +122,10 @@
     entry_category: () => entry_category,
     hidden_categories: () => hidden_categories,
     keep_plot_entry: helpers.entry_within_hull_dist,
-    set_temperature: (next_temp) => temperature = next_temp,
-    set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
-    set_stable_entries: (value) => stable_entries = value,
-    set_unstable_entries: (value) => unstable_entries = value,
+    set_temperature: (next_temp) => (temperature = next_temp),
+    set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
+    set_stable_entries: (value) => (stable_entries = value),
+    set_unstable_entries: (value) => (unstable_entries = value),
   })
   const merged_gas_config = $derived(hull_data.merged_gas_config)
   const pd_data = $derived(hull_data.pd_data)
@@ -148,8 +138,9 @@
 
     try {
       // Get coords with formation energies, excluding entries that don't participate in hull
-      const coords = compute_4d_coords(pd_data.entries, elements)
-        .filter((ent) => !ent.exclude_from_hull)
+      const coords = compute_4d_coords(pd_data.entries, elements).filter(
+        (ent) => !ent.exclude_from_hull,
+      )
 
       // Convert to 4D points for hull computation using barycentric coordinates (composition fractions)
       const points_4d: Point4D[] = coords
@@ -189,16 +180,20 @@
         if (
           !Number.isFinite(entry.e_form_per_atom) ||
           ![entry.x, entry.y, entry.z].every(Number.isFinite)
-        ) return []
+        )
+          return []
         const amounts = elements.map((el) => entry.composition[el] || 0)
-          const total = amounts.reduce((sum, amt) => sum + amt, 0)
+        const total = amounts.reduce((sum, amt) => sum + amt, 0)
         if (!(total > 0)) return []
-          const [x, y, z] = amounts.map((amt) => amt / total)
+        const [x, y, z] = amounts.map((amt) => amt / total)
         return [x, y, z].every(Number.isFinite)
           ? [{ idx, pt: { x, y, z, w: entry.e_form_per_atom ?? NaN } }]
           : []
       })
-      const raw_dists = thermo.compute_e_above_hull_4d(valid.map((item) => item.pt), hull_4d)
+      const raw_dists = thermo.compute_e_above_hull_4d(
+        valid.map((item) => item.pt),
+        hull_4d,
+      )
       const hull_map = new Map(valid.map((item, hull_idx) => [item.idx, raw_dists[hull_idx]]))
       // missing/non-finite distance (no energy or point outside hull projection) -> unknown
       return coords.map((entry, idx) => ({
@@ -231,12 +226,12 @@
     canvas: () => canvas,
     wrapper: () => wrapper,
     ctx: () => ctx,
-    set_ctx: (context) => ctx = context,
-    set_canvas_dims: (dims) => canvas_dims = dims,
+    set_ctx: (context) => (ctx = context),
+    set_canvas_dims: (dims) => (canvas_dims = dims),
     visible_entries: () => hull_data.visible_entries,
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
-    set_selected_entry: (entry) => selected_entry = entry,
+    set_selected_entry: (entry) => (selected_entry = entry),
     fullscreen: () => fullscreen,
     enable_click_selection: () => enable_click_selection,
     enable_structure_preview: () => enable_structure_preview,
@@ -245,7 +240,7 @@
     on_file_drop: () => on_file_drop,
     entry_category: () => entry_category,
     zoom: () => camera.zoom,
-    set_zoom: (zoom) => camera.zoom = zoom,
+    set_zoom: (zoom) => (camera.zoom = zoom),
     project_point: project_3d_point,
     extract_structure: extract_structure_from_entry,
     render_frame,
@@ -268,11 +263,11 @@
     },
     actions: () => ({
       r: reset_camera,
-      b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
-      s: () => show_stable = !show_stable,
-      u: () => show_unstable = !show_unstable,
-      h: () => show_hull_faces = !show_hull_faces,
-      l: () => show_stable_labels = !show_stable_labels,
+      b: () => (color_mode = color_mode === `stability` ? `energy` : `stability`),
+      s: () => (show_stable = !show_stable),
+      u: () => (show_unstable = !show_unstable),
+      h: () => (show_hull_faces = !show_hull_faces),
+      l: () => (show_stable_labels = !show_stable_labels),
     }),
   })
   const { render_once } = interactions
@@ -289,9 +284,7 @@
   let pulse_opacity = $derived(0.3 + 0.4 * pulse.unit)
 
   // Merge highlight style with defaults
-  const merged_highlight_style = $derived(
-    helpers.merge_highlight_style(highlight_style),
-  )
+  const merged_highlight_style = $derived(helpers.merge_highlight_style(highlight_style))
 
   // Helper to check if entry is highlighted
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
@@ -344,8 +337,7 @@
     show_unstable_labels = DEFAULTS.convex_hull.quaternary.show_unstable_labels
     // Use auto-computed threshold based on entry count instead of static default
     max_hull_dist_show_phases = hull_data.auto_default_threshold
-    max_hull_dist_show_labels =
-      DEFAULTS.convex_hull.quaternary.max_hull_dist_show_labels
+    max_hull_dist_show_labels = DEFAULTS.convex_hull.quaternary.max_hull_dist_show_labels
     show_hull_faces = DEFAULTS.convex_hull.quaternary.show_hull_faces
     hull_face_color = DEFAULTS.convex_hull.quaternary.hull_face_color
     hull_face_opacity = DEFAULTS.convex_hull.quaternary.hull_face_opacity
@@ -363,7 +355,7 @@
 
   // Cache energy color scale per frame/setting
   const energy_color_scale = $derived.by(() =>
-    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
+    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries),
   )
 
   // Convex hull statistics - compute internally and expose via bindable prop
@@ -524,30 +516,10 @@
       const [p0, p1, p2, p3] = tet.vertices
 
       // Convert barycentric coordinates to tetrahedral 3D coordinates
-      const tet0 = barycentric_to_tetrahedral([
-        p0.x,
-        p0.y,
-        p0.z,
-        1 - p0.x - p0.y - p0.z,
-      ])
-      const tet1 = barycentric_to_tetrahedral([
-        p1.x,
-        p1.y,
-        p1.z,
-        1 - p1.x - p1.y - p1.z,
-      ])
-      const tet2 = barycentric_to_tetrahedral([
-        p2.x,
-        p2.y,
-        p2.z,
-        1 - p2.x - p2.y - p2.z,
-      ])
-      const tet3 = barycentric_to_tetrahedral([
-        p3.x,
-        p3.y,
-        p3.z,
-        1 - p3.x - p3.y - p3.z,
-      ])
+      const tet0 = barycentric_to_tetrahedral([p0.x, p0.y, p0.z, 1 - p0.x - p0.y - p0.z])
+      const tet1 = barycentric_to_tetrahedral([p1.x, p1.y, p1.z, 1 - p1.x - p1.y - p1.z])
+      const tet2 = barycentric_to_tetrahedral([p2.x, p2.y, p2.z, 1 - p2.x - p2.y - p2.z])
+      const tet3 = barycentric_to_tetrahedral([p3.x, p3.y, p3.z, 1 - p3.x - p3.y - p3.z])
 
       // Project to 2D screen space
       const proj0 = project_3d_point(tet0.x, tet0.y, tet0.z)
@@ -561,8 +533,14 @@
         (p0.x + p1.x + p2.x + p3.x) / 4,
         (p0.y + p1.y + p2.y + p3.y) / 4,
         (p0.z + p1.z + p2.z + p3.z) / 4,
-        ((1 - p0.x - p0.y - p0.z) + (1 - p1.x - p1.y - p1.z) +
-          (1 - p2.x - p2.y - p2.z) + (1 - p3.x - p3.y - p3.z)) / 4,
+        (1 -
+          p0.x -
+          p0.y -
+          p0.z +
+          (1 - p1.x - p1.y - p1.z) +
+          (1 - p2.x - p2.y - p2.z) +
+          (1 - p3.x - p3.y - p3.z)) /
+          4,
       ]
 
       // Each tetrahedron has 4 triangular faces
@@ -636,9 +614,10 @@
     for (const tri of triangles) {
       const [v0, v1, v2] = tri.vertices
       // Uniform mode uses variable opacity; other modes use fixed opacity
-      const alpha = hull_face_color_mode === `uniform`
-        ? (norm_alpha?.(tri.avg_w) ?? hull_face_opacity)
-        : hull_face_opacity
+      const alpha =
+        hull_face_color_mode === `uniform`
+          ? (norm_alpha?.(tri.avg_w) ?? hull_face_opacity)
+          : hull_face_opacity
       const face_color = get_face_color(tri)
 
       ctx.save()
@@ -680,9 +659,12 @@
         .filter((entry) => {
           if (entry.is_element) return false
           const is_stable = helpers.entry_is_stable(entry)
-          return (is_stable && show_stable_labels) ||
-            (!is_stable && show_unstable_labels &&
+          return (
+            (is_stable && show_stable_labels) ||
+            (!is_stable &&
+              show_unstable_labels &&
               (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
+          )
         }),
     )
 
@@ -773,11 +755,11 @@
   aria-label="Convex hull visualization"
 >
   {@render children?.({
-      stable_entries,
-      unstable_entries,
-      highlighted_entries,
-      selected_entry,
-    })}
+    stable_entries,
+    unstable_entries,
+    highlighted_entries,
+    selected_entry,
+  })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
     {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
   </h3>
@@ -850,7 +832,10 @@
   />
 
   {#if hull_data.has_temp_data && temperature !== undefined}
-    <TemperatureSlider available_temperatures={hull_data.available_temperatures} bind:temperature />
+    <TemperatureSlider
+      available_temperatures={hull_data.available_temperatures}
+      bind:temperature
+    />
   {/if}
 
   {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
@@ -860,7 +845,6 @@
       temperature={temperature ?? 300}
     />
   {/if}
-
 </div>
 
 <style>

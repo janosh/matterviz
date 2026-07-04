@@ -37,7 +37,7 @@ beforeEach(() => {
   observers.length = 0
   observed_targets.length = 0
   prefers_dark = false
-  globalThis.MutationObserver = FakeMutationObserver as unknown as typeof MutationObserver
+  globalThis.MutationObserver = FakeMutationObserver
   globalThis.matchMedia = ((query: string) => ({
     matches: query.includes(`dark`) ? prefers_dark : !prefers_dark,
     media: query,
@@ -62,7 +62,7 @@ const make_shadow_element = (): { host: HTMLElement; inner: HTMLElement } => {
 const trigger_dom_mutation = (): void => {
   const record = { type: `attributes`, attributeName: `class` } as unknown as MutationRecord
   for (const observer of observers) {
-    if (!observer.disconnected) observer.cb([record], observer as unknown as MutationObserver)
+    if (!observer.disconnected) observer.cb([record], observer)
   }
 }
 

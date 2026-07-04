@@ -417,7 +417,7 @@ describe(`layout utility functions`, () => {
         default_padding: defaults,
         x2_axis: { tick_values: [0, 1, 2] },
       })
-      expect(result.t).toBeGreaterThanOrEqual(TICK_LABEL_HEIGHT + 30)
+      expect(result.t).toBeGreaterThanOrEqual(TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT)
     })
 
     it(`does not expand top padding when x2 has no ticks`, () => {

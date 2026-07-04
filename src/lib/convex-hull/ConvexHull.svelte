@@ -12,10 +12,11 @@
   // Union type combining all possible props from 2D, 3D, and 4D components
   // each specific component will only use its relevant props from this super set
   // (gas_config/gas_pressures already come from BaseConvexHullProps)
-  type ConvexHullProps = BaseConvexHullProps & Hull3DProps & {
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-  }
+  type ConvexHullProps = BaseConvexHullProps &
+    Hull3DProps & {
+      x_axis?: AxisConfig
+      y_axis?: AxisConfig
+    }
 
   let {
     entries = [],
@@ -26,9 +27,7 @@
     show_unstable = $bindable(true),
     hidden_categories = $bindable([]),
     show_hull_faces = $bindable(true),
-    hull_face_opacity: hull_face_opacity_prop = $bindable(
-      undefined as number | undefined,
-    ),
+    hull_face_opacity: hull_face_opacity_prop = $bindable(undefined as number | undefined),
     color_mode = $bindable(`energy`),
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
@@ -88,8 +87,7 @@
   // while each component declares only its dimension's props (2D lacks Hull3DProps, 3D/4D
   // lack x/y_axis), so a constructor union wouldn't compile. Svelte ignores extra props.
   const ConvexHullComponent = $derived(
-    { 2: ConvexHull2D, 3: ConvexHull3D, 4: ConvexHull4D }[element_count] ??
-      null,
+    { 2: ConvexHull2D, 3: ConvexHull3D, 4: ConvexHull4D }[element_count] ?? null,
   ) as Component<ConvexHullProps> | null
 </script>
 
@@ -125,14 +123,13 @@
 {:else}
   <!-- Error state for unsupported dimensionalities -->
   <div class="convex-hull-error">
-    <div
-      style="text-align: center; padding: 2em; color: var(--convex-hull-text-color, #666)"
-    >
+    <div style="text-align: center; padding: 2em; color: var(--convex-hull-text-color, #666)">
       <h3 style="margin: 0 0 1em 0">Unsupported Chemical System</h3>
       <p style="margin: 0">
-        Convex hulls require 2, 3, or 4 elements. Found {element_count} element{
-          element_count === 1 ? `` : `s`
-        }:
+        Convex hulls require 2, 3, or 4 elements. Found {element_count} element{element_count ===
+        1
+          ? ``
+          : `s`}:
       </p>
       <p style="margin: 0.5em 0 0 0; font-weight: bold">
         {elements.join(`, `)}

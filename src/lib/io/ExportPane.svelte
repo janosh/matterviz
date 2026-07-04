@@ -73,7 +73,9 @@
         {@attach section.tooltip
           ? tooltip({ allow_html: true, content: sanitize_html(section.tooltip) })
           : () => {}}
-      >{section.title}</h4>
+      >
+        {section.title}
+      </h4>
     {/if}
     <div class="export-grid">
       {#each section.items as item, item_idx (item.label)}
@@ -81,9 +83,9 @@
         <!-- not a <label>: it would forward label-text clicks to the first (download) button -->
         <span class="export-item">
           {#if item.hint}
-            <span
-              {@attach tooltip({ allow_html: true, content: sanitize_html(item.hint) })}
-            >{item.label}</span>
+            <span {@attach tooltip({ allow_html: true, content: sanitize_html(item.hint) })}
+              >{item.label}</span
+            >
           {:else}
             {item.label}
           {/if}
@@ -110,14 +112,16 @@
             </button>
           {/if}
           {#if item.show_dpi}
-            <span class="dpi-input">(DPI: <input
+            <span class="dpi-input"
+              >(DPI: <input
                 type="number"
                 min={dpi_range[0]}
                 max={dpi_range[1]}
                 bind:value={png_dpi}
                 onchange={clamp_dpi}
                 title="Export resolution in dots per inch"
-              />)</span>
+              />)</span
+            >
           {/if}
         </span>
       {/each}

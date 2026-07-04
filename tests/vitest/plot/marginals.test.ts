@@ -676,7 +676,8 @@ describe(`marginal_hit`, () => {
     [`NaN edges`, [{ pos0: NaN, pos1: NaN, value: 5 }]],
     [`Infinity value`, [{ pos0: 0, pos1: 5, value: Infinity }]],
   ])(`bars: a non-finite bin is skipped (%s)`, (_desc, bins) => {
-    expect(marginal_hit(make_ctx([bars_curve(bins)]), 25, 60)).toBeNull()
+    const ctx = make_ctx([bars_curve(bins)])
+    expect(marginal_hit(ctx, 25, 60)).toBeNull()
   })
 
   // each series is the outermost fill where it peaks, so each remains selectable there

@@ -3,6 +3,7 @@ import type { XrdPattern } from '$lib/xrd'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { resize_element } from '../setup'
+import XrdPlotHarness from './XrdPlotHarness.svelte'
 
 const pattern: XrdPattern = {
   x: [10, 20, 30, 40, 50],
@@ -31,6 +32,15 @@ async function wait_for_plot_render(target: HTMLElement): Promise<void> {
   const bar_plot = target.querySelector<HTMLElement>(`.bar-plot`)
   if (bar_plot) await resize_element(bar_plot, 800, 600)
   else await tick()
+}
+
+// Mounts XrdPlot in a sized container and waits for the plot to render
+// (tolerates empty states where no .bar-plot exists).
+const mount_xrd = async (props: ComponentProps<typeof XrdPlot>): Promise<HTMLDivElement> => {
+  const target = create_sized_container()
+  mount(XrdPlot, { target, props })
+  await wait_for_plot_render(target)
+  return target
 }
 
 describe(`XrdPlot`, () => {
@@ -69,17 +79,12 @@ describe(`XrdPlot`, () => {
   })
 
   test(`all-empty patterns produce valid axis ticks from [0, 90] fallback`, async () => {
-    const target = create_sized_container()
-    mount(XrdPlot, {
-      target,
-      props: {
-        patterns: {
-          A: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
-          B: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
-        },
+    const target = await mount_xrd({
+      patterns: {
+        A: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+        B: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
       },
     })
-    await wait_for_plot_render(target)
     // With correct [0, 90] fallback, x-axis should have tick elements.
     // With the bug (angle_range = [Infinity, 0]), isFinite guard skips all ticks.
     const x_axis_ticks = target.querySelectorAll(`.x-axis .tick`)
@@ -121,9 +126,7 @@ describe(`XrdPlot`, () => {
   ] as const)(
     `format/orientation=$param`,
     async ({ props, expected_labels, expected_x_axis, expected_y_axis }) => {
-      const target = create_sized_container()
-      mount(XrdPlot, { target, props: { patterns: pattern, ...props } })
-      await wait_for_plot_render(target)
+      const target = await mount_xrd({ patterns: pattern, ...props })
 
       const bar_label_text = Array.from(target.querySelectorAll(`.bar-label`)).map(
         (el) => el.textContent?.trim() ?? ``,
@@ -171,18 +174,12 @@ describe(`XrdPlot`, () => {
       d_hkls: [5.9, 3.6, 2.8],
     }
 
-    const target = create_sized_container()
-    mount(XrdPlot, {
-      target,
-      props: {
-        patterns: pattern_with_negatives,
-        hkl_format: `compact`,
-        annotate_peaks: 3,
-        show_angles: false,
-      },
+    const target = await mount_xrd({
+      patterns: pattern_with_negatives,
+      hkl_format: `compact`,
+      annotate_peaks: 3,
+      show_angles: false,
     })
-
-    await wait_for_plot_render(target)
 
     const text_content = target.textContent || ``
     const overbar = `\u0305`
@@ -227,15 +224,11 @@ describe(`XrdPlot`, () => {
   ])(
     `axis labels: $desc`,
     async ({ orientation, x_axis, y_axis, expect_x_axis, expect_y_axis }) => {
-      const target = create_sized_container()
       const props: ComponentProps<typeof XrdPlot> = { patterns: pattern }
       if (orientation !== undefined) props.orientation = orientation
       if (x_axis !== undefined) props.x_axis = x_axis
       if (y_axis !== undefined) props.y_axis = y_axis
-
-      mount(XrdPlot, { target, props })
-
-      await wait_for_plot_render(target)
+      const target = await mount_xrd(props)
 
       // Axis labels are now in .axis-label divs (inside foreignObject), not SVG text
       const x_label = target.querySelector(`.x-axis .axis-label`)
@@ -245,6 +238,23 @@ describe(`XrdPlot`, () => {
       expect(y_label?.textContent).toContain(expect_y_axis)
     },
   )
+
+  test(`updates axis titles when orientation changes after mount`, async () => {
+    const target = create_sized_container()
+    mount(XrdPlotHarness, { target, props: { pattern } })
+    await wait_for_plot_render(target)
+    expect(target.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`2θ (degrees)`)
+    expect(target.querySelector(`.y-axis .axis-label`)?.textContent).toContain(
+      `Intensity (a.u.)`,
+    )
+
+    target.querySelector<HTMLButtonElement>(`.change-xrd-orientation`)?.click()
+    await wait_for_plot_render(target)
+    expect(target.querySelector(`.x-axis .axis-label`)?.textContent).toContain(
+      `Intensity (a.u.)`,
+    )
+    expect(target.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`2θ (degrees)`)
+  })
 
   test.each([
     {
@@ -267,9 +277,7 @@ describe(`XrdPlot`, () => {
       not_expects: [`0`, `10`, `20`, `30`], // should NOT show low values
     },
   ])(`axis ranges: $desc`, async ({ pattern: test_pattern, axis, expects, not_expects }) => {
-    const target = create_sized_container()
-    mount(XrdPlot, { target, props: { patterns: test_pattern } })
-    await wait_for_plot_render(target)
+    const target = await mount_xrd({ patterns: test_pattern })
 
     const axis_el = target.querySelector(axis)
     for (const expect_val of expects) {
@@ -296,17 +304,12 @@ describe(`XrdPlot`, () => {
       d_hkls: [],
     }
 
-    const target = create_sized_container()
-    mount(XrdPlot, {
-      target,
-      props: {
-        patterns: overlapping_pattern,
-        annotate_peaks: 5, // Request 5 annotations
-        show_angles: true,
-        hkl_format: null,
-      },
+    const target = await mount_xrd({
+      patterns: overlapping_pattern,
+      annotate_peaks: 5, // Request 5 annotations
+      show_angles: true,
+      hkl_format: null,
     })
-    await wait_for_plot_render(target)
 
     const bar_labels = target.querySelectorAll(`.bar-label`)
     const label_texts = Array.from(bar_labels)
@@ -343,9 +346,7 @@ describe(`XrdPlot`, () => {
       expects: { min_bar_labels: 1, text_match: /[12][01]{2}/ }, // hkl pattern
     },
   ])(`rendering: $desc`, async ({ props, expects }) => {
-    const target = create_sized_container()
-    mount(XrdPlot, { target, props })
-    await wait_for_plot_render(target)
+    const target = await mount_xrd(props)
 
     const text_content = target.textContent || ``
     if (expects.labels) {
@@ -379,14 +380,9 @@ describe(`XrdPlot`, () => {
       d_hkls: [],
     }
 
-    const target = create_sized_container()
-    mount(XrdPlot, {
-      target,
-      props: {
-        patterns: { 'Pattern 1': pattern1, 'Pattern 2': pattern2 },
-      },
+    const target = await mount_xrd({
+      patterns: { 'Pattern 1': pattern1, 'Pattern 2': pattern2 },
     })
-    await wait_for_plot_render(target)
 
     // Should have 2 bar series for 2 patterns
     const bar_series = target.querySelectorAll(`.bar-series`)
@@ -400,25 +396,14 @@ describe(`XrdPlot`, () => {
 
   test(`single pattern renders single bar series`, async () => {
     // Single pattern should render without transparency
-    const target = create_sized_container()
-    mount(XrdPlot, {
-      target,
-      props: { patterns: pattern },
-    })
-    await wait_for_plot_render(target)
+    const target = await mount_xrd({ patterns: pattern })
 
     const bar_series = target.querySelectorAll(`.bar-series`)
     expect(bar_series).toHaveLength(1)
   })
 
   test(`dragover class toggles correctly`, async () => {
-    const target = create_sized_container()
-    mount(XrdPlot, {
-      target,
-      props: { patterns: pattern, allow_file_drop: true },
-    })
-
-    await wait_for_plot_render(target)
+    const target = await mount_xrd({ patterns: pattern, allow_file_drop: true })
 
     // Verify dragover class toggles
     const bar_plot = target.querySelector(`.bar-plot`)

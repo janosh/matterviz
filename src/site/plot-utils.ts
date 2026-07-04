@@ -96,10 +96,7 @@ export const generate_mixture = (count: number) =>
 // Generate large dataset for performance testing
 export const generate_large_dataset = (count: number, type: `normal` | `uniform`) => {
   if (count <= 0) throw new Error(`Count must be positive`)
-
-  if (type === `normal`) return generate_normal(count, 50, 15)
-  else if (type === `uniform`) return generate_uniform(count, 0, 100)
-  return generate_normal(count, 50, 15)
+  return type === `uniform` ? generate_uniform(count, 0, 100) : generate_normal(count, 50, 15)
 }
 
 // Generate sparse data with many zeros

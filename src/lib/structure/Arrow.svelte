@@ -26,26 +26,20 @@
   } = $props()
 
   const mag = $derived(Math.hypot(...vector))
-  const dir = $derived(
-    mag > math.EPS ? math.scale(vector, 1 / mag) : ([0, 1, 0] as Vec3),
-  )
+  const dir = $derived(mag > math.EPS ? math.scale(vector, 1 / mag) : ([0, 1, 0] as Vec3))
   const vec_len = $derived(mag * scale)
 
   const head_len = $derived(
     arrow_head_length < 0 ? vec_len * -arrow_head_length : arrow_head_length,
   )
   const shaft_len = $derived(Math.max(0, vec_len - head_len * 0.5))
-  const shaft_r = $derived(
-    shaft_radius < 0 ? shaft_len * -shaft_radius : shaft_radius,
-  )
+  const shaft_r = $derived(shaft_radius < 0 ? shaft_len * -shaft_radius : shaft_radius)
   const head_r = $derived(
     arrow_head_radius < 0 ? shaft_len * -arrow_head_radius : arrow_head_radius,
   )
 
   const shaft_pos = $derived(math.add(position, math.scale(dir, shaft_len * 0.5)))
-  const head_pos = $derived(
-    math.add(position, math.scale(dir, shaft_len + head_len * 0.5)),
-  )
+  const head_pos = $derived(math.add(position, math.scale(dir, shaft_len + head_len * 0.5)))
 
   const rotation = $derived(rotation_from_direction(vector))
 </script>

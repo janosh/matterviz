@@ -24,9 +24,7 @@ export function create_chempot_overrides<Key extends keyof ChemPotDiagramConfig>
   let overrides = $state<{ [P in Key]?: NonNullable<ChemPotDiagramConfig[P]> }>({})
   return {
     resolve: <P extends Key>(key: P): NonNullable<ChemPotDiagramConfig[P]> =>
-      (overrides[key] ?? config()[key] ?? defaults[key]) as NonNullable<
-        ChemPotDiagramConfig[P]
-      >,
+      overrides[key] ?? config()[key] ?? defaults[key],
     set: <P extends Key>(key: P, value: NonNullable<ChemPotDiagramConfig[P]>): void => {
       overrides[key] = value
     },

@@ -35,6 +35,15 @@ export const normalize_unicode_minus = (value: string): string => value.replaceA
 export const normalize_scientific_notation = (value: string): string =>
   normalize_unicode_minus(value).toLowerCase().replaceAll('d', `e`).replaceAll('*^', `e`)
 
+// Number(token) that treats blank strings as NaN, not 0 like Number(``) does
+export const parse_num_token = (token: string): number =>
+  token.trim() === `` ? NaN : Number(token)
+
+// Parse a line's first whitespace-separated token: tolerates trailing
+// tokens/comments (`1.0 ! scale` -> 1.0) like parseFloat, blank lines are NaN
+export const parse_leading_num = (line: string): number =>
+  parse_num_token(line.trim().split(/\s+/)[0])
+
 // Coerce an unknown thrown value into an Error (for typed Promise rejections / error callbacks).
 export const to_error = (value: unknown): Error =>
   value instanceof Error ? value : new Error(String(value))

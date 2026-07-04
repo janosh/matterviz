@@ -5,24 +5,25 @@
   import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { element, ...rest }: HTMLAttributes<HTMLDivElement> & {
+  let {
+    element,
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     element: ChemicalElement | null
   } = $props()
 </script>
 
 {#if element}
   <div {...rest}>
-    <ElementHeading
-      {element}
-      style="font-size: 6cqw; grid-column: 1/-1; margin: auto 0 0"
-    />
+    <ElementHeading {element} style="font-size: 6cqw; grid-column: 1/-1; margin: auto 0 0" />
     <section>
       <p>
         Atomic Mass
         <abbr title="Dalton aka atomic mass unit">(u)</abbr>
       </p>
       <strong>
-        <Icon icon="Weight" /> {format_num(element.atomic_mass)}
+        <Icon icon="Weight" />
+        {format_num(element.atomic_mass)}
       </strong>
     </section>
     <section>
@@ -31,18 +32,19 @@
         <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
       </p>
       <strong>
-        <Icon icon="Scale" /> {format_num(element.density)}
+        <Icon icon="Scale" />
+        {format_num(element.density)}
       </strong>
     </section>
     <section>
       <p>Phase</p>
-      <strong>
-        <Icon icon={element.phase} /> {element.phase}</strong>
+      <strong> <Icon icon={element.phase} /> {element.phase}</strong>
     </section>
     <section>
       <p>Year of Discovery</p>
       <strong>
-        <Icon icon="CalendarBlank" /> {element.year}
+        <Icon icon="CalendarBlank" />
+        {element.year}
       </strong>
     </section>
   </div>

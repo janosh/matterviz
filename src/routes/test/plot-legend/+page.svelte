@@ -70,8 +70,8 @@
     last_isolated_idx = double_clicked_idx
 
     const visible_count = series_data.filter((item) => item.visible).length
-    const is_currently_isolated = visible_count === 1 &&
-      series_data[double_clicked_idx]?.visible
+    const is_currently_isolated =
+      visible_count === 1 && series_data[double_clicked_idx]?.visible
 
     if (is_currently_isolated && prev_visibility) {
       // Restore previous visibility state

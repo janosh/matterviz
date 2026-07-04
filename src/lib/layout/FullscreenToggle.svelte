@@ -4,7 +4,10 @@
   import Icon from '$lib/Icon.svelte'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
-  let { fullscreen = $bindable(false), ...rest }: HTMLButtonAttributes & {
+  let {
+    fullscreen = $bindable(false),
+    ...rest
+  }: HTMLButtonAttributes & {
     fullscreen?: boolean
   } = $props()
 </script>
@@ -33,9 +36,12 @@
     background-color: transparent;
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
-  .fullscreen-toggle:hover, .fullscreen-toggle:focus {
+  .fullscreen-toggle:hover,
+  .fullscreen-toggle:focus {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
     opacity: var(--fullscreen-btn-hover-opacity, 1);
   }

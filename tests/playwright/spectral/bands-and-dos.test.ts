@@ -32,7 +32,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const bands_x_ticks = await plots.first().locator(`g.x-axis text`).allTextContents()
     const dos_x_ticks = await plots.nth(1).locator(`g.x-axis text`).allTextContents()
     expect(bands_x_ticks.join(``)).toMatch(/[ΓXM]/)
-    expect(dos_x_ticks.some((tick) => !isNaN(parseFloat(tick)))).toBe(true)
+    expect(dos_x_ticks.some((tick) => !isNaN(Number(tick)))).toBe(true)
   })
 
   test(`shares y-axis and uses grid layout`, async ({ page }) => {
@@ -60,10 +60,8 @@ test.describe(`BandsAndDos Component Tests`, () => {
       expect(common_ticks.length).toBeGreaterThan(bands_y_ticks.length / 2)
 
       // Both should have numeric y-axis ticks
-      expect(bands_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(
-        2,
-      )
-      expect(dos_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
+      expect(bands_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
+      expect(dos_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
     }).toPass({ timeout: 15_000 })
   })
 
@@ -105,8 +103,8 @@ test.describe(`BandsAndDos Component Tests`, () => {
     expect(Math.abs(bands_max - dos_max)).toBeGreaterThan(5) // Should differ significantly
 
     // Both should have numeric y-ticks
-    expect(bands_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
-    expect(dos_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
+    expect(bands_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
+    expect(dos_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
   })
 
   test(`maintains responsive layout`, async ({ page }) => {
@@ -196,9 +194,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
           dos_fermi.getAttribute(`y1`),
         ])
         if (!bands_y1 || !dos_y1) throw new Error(`Fermi level y-coordinates not found`)
-        expect(Math.abs(parseFloat(bands_y1) - parseFloat(dos_y1))).toBeLessThanOrEqual(
-          tolerance,
-        )
+        expect(Math.abs(Number(bands_y1) - Number(dos_y1))).toBeLessThanOrEqual(tolerance)
       }).toPass({ timeout: 15_000 })
     })
   }

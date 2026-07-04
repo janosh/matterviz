@@ -17,7 +17,12 @@
   import { format_num } from '$lib/labels'
   import { to_radians, type Point3D, type Vec2, type Vec3 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
-  import { centered_rect, pad_rect, rects_overlap, rect_within_rect } from '$lib/plot/core/layout'
+  import {
+    centered_rect,
+    pad_rect,
+    rects_overlap,
+    rect_within_rect,
+  } from '$lib/plot/core/layout'
   import type { Rect } from '$lib/plot/core/layout'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import { DEFAULTS } from '$lib/settings'
@@ -76,9 +81,7 @@
     ),
     element_colors = vesta_hex,
     color_mode = $bindable(DEFAULTS.convex_hull.ternary.color_mode),
-    color_scale = $bindable(
-      DEFAULTS.convex_hull.ternary.color_scale as D3InterpolateName,
-    ),
+    color_scale = $bindable(DEFAULTS.convex_hull.ternary.color_scale as D3InterpolateName),
     info_pane_open = $bindable(DEFAULTS.convex_hull.ternary.info_pane_open),
     controls_open = $bindable(DEFAULTS.convex_hull.ternary.legend_pane_open),
     max_hull_dist_show_phases = $bindable(
@@ -88,9 +91,7 @@
       DEFAULTS.convex_hull.ternary.max_hull_dist_show_labels,
     ),
     show_stable_labels = $bindable(DEFAULTS.convex_hull.ternary.show_stable_labels),
-    show_unstable_labels = $bindable(
-      DEFAULTS.convex_hull.ternary.show_unstable_labels,
-    ),
+    show_unstable_labels = $bindable(DEFAULTS.convex_hull.ternary.show_unstable_labels),
     on_file_drop,
     enable_click_selection = true,
     enable_structure_preview = true,
@@ -110,9 +111,10 @@
     children,
     tooltip,
     ...rest
-  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
-    highlight_style?: HighlightStyle
-  } = $props()
+  }: BaseConvexHullProps<ConvexHullEntry> &
+    Hull3DProps & {
+      highlight_style?: HighlightStyle
+    } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
@@ -141,10 +143,10 @@
     entry_category: () => entry_category,
     hidden_categories: () => hidden_categories,
     keep_plot_entry: helpers.entry_within_hull_dist,
-    set_temperature: (next_temp) => temperature = next_temp,
-    set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
-    set_stable_entries: (value) => stable_entries = value,
-    set_unstable_entries: (value) => unstable_entries = value,
+    set_temperature: (next_temp) => (temperature = next_temp),
+    set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
+    set_stable_entries: (value) => (stable_entries = value),
+    set_unstable_entries: (value) => (unstable_entries = value),
   })
   const has_temp_data = $derived(hull_data.has_temp_data)
   const gas_analysis = $derived(hull_data.gas_analysis)
@@ -159,11 +161,7 @@
     if (elements.length !== 3) return []
     try {
       // Pass precomputed el_refs to avoid recomputing in error diagnostics
-      const coords = get_ternary_3d_coordinates(
-        pd_data.entries,
-        elements,
-        pd_data.el_refs,
-      )
+      const coords = get_ternary_3d_coordinates(pd_data.entries, elements, pd_data.el_refs)
       return coords
     } catch (error) {
       console.error(`Error computing ternary coordinates:`, error)
@@ -226,23 +224,11 @@
   let gizmo_active = $state(false)
 
   // Convert elevation/azimuth (degrees) to Three.js camera position + up vector.
-  function gizmo_camera(
-    elev_deg: number,
-    azim_deg: number,
-  ): { position: Vec3; up: Vec3 } {
+  function gizmo_camera(elev_deg: number, azim_deg: number): { position: Vec3; up: Vec3 } {
     const [elev, azim] = [to_radians(elev_deg), to_radians(azim_deg)]
-    const [se, ce, sa, ca] = [
-      Math.sin(elev),
-      Math.cos(elev),
-      Math.sin(azim),
-      Math.cos(azim),
-    ]
+    const [se, ce, sa, ca] = [Math.sin(elev), Math.cos(elev), Math.sin(azim), Math.cos(azim)]
     return {
-      position: [
-        -sa * se * GIZMO_CAM_DIST,
-        -ca * se * GIZMO_CAM_DIST,
-        ce * GIZMO_CAM_DIST,
-      ],
+      position: [-sa * se * GIZMO_CAM_DIST, -ca * se * GIZMO_CAM_DIST, ce * GIZMO_CAM_DIST],
       up: [sa * ce, ca * ce, se],
     }
   }
@@ -258,7 +244,7 @@
     camera.center_x = 0
     // 0.6 matches the draw_data_points() scale factor that maps data coords to canvas pixels
     const scale = Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom
-    camera.center_y = Math.sqrt(3) / 12 * scale * Math.cos(to_radians(elev_deg))
+    camera.center_y = (Math.sqrt(3) / 12) * scale * Math.cos(to_radians(elev_deg))
   }
 
   // Sync: ConvexHull3D → Three.js gizmo camera (on main canvas drag)
@@ -282,10 +268,11 @@
     if (dist < 1e-6) return
     const elev_rad = Math.acos(Math.max(-1, Math.min(1, cz / dist)))
     const sin_elev = Math.sin(elev_rad)
-    const azim_deg = Math.abs(sin_elev) > 1e-6
-      ? Math.atan2(-cx / (dist * sin_elev), -cy / (dist * sin_elev)) * 180 / Math.PI
-      : 0
-    const elev_deg = elev_rad * 180 / Math.PI
+    const azim_deg =
+      Math.abs(sin_elev) > 1e-6
+        ? (Math.atan2(-cx / (dist * sin_elev), -cy / (dist * sin_elev)) * 180) / Math.PI
+        : 0
+    const elev_deg = (elev_rad * 180) / Math.PI
     camera.elevation = elev_deg
     camera.azimuth = azim_deg
     center_camera(elev_deg)
@@ -293,14 +280,15 @@
 
   // Gizmo axis colors (constant — AXIS_COLORS/NEG_AXIS_COLORS never change)
   const gizmo_axis_options = Object.fromEntries(
-    [...AXIS_COLORS, ...NEG_AXIS_COLORS].map((
-      [axis, color, hover_color],
-    ) => [axis, {
-      color,
-      labelColor: `#111`,
-      opacity: 0.85,
-      hover: { color: hover_color, labelColor: `#222`, opacity: 1 },
-    }]),
+    [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover_color]) => [
+      axis,
+      {
+        color,
+        labelColor: `#111`,
+        opacity: 0.85,
+        hover: { color: hover_color, labelColor: `#222`, opacity: 1 },
+      },
+    ]),
   )
 
   // Extract placement from gizmo options (not a Threlte Gizmo prop)
@@ -330,12 +318,12 @@
     canvas: () => canvas,
     wrapper: () => wrapper,
     ctx: () => ctx,
-    set_ctx: (context) => ctx = context,
-    set_canvas_dims: (dims) => canvas_dims = dims,
+    set_ctx: (context) => (ctx = context),
+    set_canvas_dims: (dims) => (canvas_dims = dims),
     visible_entries: () => visible_entries,
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
-    set_selected_entry: (entry) => selected_entry = entry,
+    set_selected_entry: (entry) => (selected_entry = entry),
     fullscreen: () => fullscreen,
     enable_click_selection: () => enable_click_selection,
     enable_structure_preview: () => enable_structure_preview,
@@ -344,7 +332,7 @@
     on_file_drop: () => on_file_drop,
     entry_category: () => entry_category,
     zoom: () => camera.zoom,
-    set_zoom: (zoom) => camera.zoom = zoom,
+    set_zoom: (zoom) => (camera.zoom = zoom),
     project_point: project_3d_point,
     extract_structure: extract_structure_from_entry,
     render_frame,
@@ -371,11 +359,11 @@
         camera.azimuth = 0
         center_camera(0)
       },
-      b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
-      s: () => show_stable = !show_stable,
-      u: () => show_unstable = !show_unstable,
-      h: () => show_hull_faces = !show_hull_faces,
-      l: () => show_stable_labels = !show_stable_labels,
+      b: () => (color_mode = color_mode === `stability` ? `energy` : `stability`),
+      s: () => (show_stable = !show_stable),
+      u: () => (show_unstable = !show_unstable),
+      h: () => (show_hull_faces = !show_hull_faces),
+      l: () => (show_stable_labels = !show_stable_labels),
     }),
   })
   const { render_once } = interactions
@@ -392,9 +380,7 @@
   let pulse_opacity = $derived(0.3 + 0.4 * pulse.unit)
 
   // Merge highlight style with defaults
-  const merged_highlight_style = $derived(
-    helpers.merge_highlight_style(highlight_style),
-  )
+  const merged_highlight_style = $derived(helpers.merge_highlight_style(highlight_style))
 
   // Helper to check if entry is highlighted
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
@@ -446,7 +432,7 @@
 
   // Cache energy color scale per frame/setting
   const energy_color_scale = $derived.by(() =>
-    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
+    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries),
   )
 
   // Convex hull statistics - compute internally and expose via bindable prop
@@ -462,10 +448,7 @@
   ): { x: number; y: number; depth: number } {
     if (!canvas) return { x: 0, y: 0, depth: 0 }
 
-    const [elev, azim] = [
-      (camera.elevation * Math.PI) / 180,
-      (camera.azimuth * Math.PI) / 180,
-    ]
+    const [elev, azim] = [(camera.elevation * Math.PI) / 180, (camera.azimuth * Math.PI) / 180]
     const [cos_az, sin_az, cos_el, sin_el] = [
       Math.cos(azim),
       Math.sin(azim),
@@ -520,10 +503,7 @@
     ctx.stroke()
 
     // Draw vertical edges from corners (from most negative to 0 formation energy)
-    const vertical_edges = get_triangle_vertical_edges(
-      e_form_min,
-      e_form_max,
-    )
+    const vertical_edges = get_triangle_vertical_edges(e_form_min, e_form_max)
     ctx.beginPath()
     for (const [v1, v2] of vertical_edges) {
       const proj1 = project_3d_point(v1.x, v1.y, v1.z)
@@ -564,11 +544,7 @@
     ctx.textAlign = `center`
     ctx.textBaseline = `middle`
 
-    for (
-      let idx = 0;
-      idx < TRIANGLE_VERTICES.length && idx < elements.length;
-      idx++
-    ) {
+    for (let idx = 0; idx < TRIANGLE_VERTICES.length && idx < elements.length; idx++) {
       const [x, y] = TRIANGLE_VERTICES[idx]
       const dx = x - centroid.x
       const dy = y - centroid.y
@@ -598,14 +574,10 @@
 
     // Find the vertex that projects to the leftmost x-position (changes with rotation)
     const projected_vertices = TRIANGLE_VERTICES.map(([vx, vy]) =>
-      project_3d_point(vx, vy, e_mid)
+      project_3d_point(vx, vy, e_mid),
     )
     const leftmost_idx = projected_vertices.reduce(
-      (
-        min_idx,
-        proj,
-        idx,
-      ) => (proj.x < projected_vertices[min_idx].x ? idx : min_idx),
+      (min_idx, proj, idx) => (proj.x < projected_vertices[min_idx].x ? idx : min_idx),
       0,
     )
     const [axis_x, axis_y] = TRIANGLE_VERTICES[leftmost_idx]
@@ -669,9 +641,7 @@
     let energy_face_scale: ((val: number) => string) | null = null
     let min_face_e_form = 0
     if (hull_face_color_mode === `formation_energy`) {
-      const all_e_form = hull_faces.flatMap((tri) =>
-        tri.vertices.map((vertex) => vertex.z)
-      )
+      const all_e_form = hull_faces.flatMap((tri) => tri.vertices.map((vertex) => vertex.z))
       min_face_e_form = helpers.array_min(all_e_form)
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
@@ -683,10 +653,7 @@
     }
 
     // Helper to get face color based on mode
-    const get_face_color = (
-      tri: typeof hull_faces[0],
-      tri_idx: number,
-    ): string => {
+    const get_face_color = (tri: (typeof hull_faces)[0], tri_idx: number): string => {
       if (hull_face_color_mode === `uniform`) {
         return hull_face_color
       }
@@ -713,11 +680,7 @@
 
     // Sort faces by depth for proper rendering
     const faces_with_depth = hull_faces.map((tri, tri_idx) => {
-      const centroid_proj = project_3d_point(
-        tri.centroid.x,
-        tri.centroid.y,
-        tri.centroid.z,
-      )
+      const centroid_proj = project_3d_point(tri.centroid.x, tri.centroid.y, tri.centroid.z)
       return { tri, tri_idx, depth: centroid_proj.depth }
     })
 
@@ -742,16 +705,21 @@
         const a3 = norm_alpha?.(p3.z) ?? 0
 
         // Solve a*x + b*y + c = alpha at the three projected vertices
-        const x1 = proj1.x, y1 = proj1.y
-        const x2 = proj2.x, y2 = proj2.y
-        const x3 = proj3.x, y3 = proj3.y
+        const x1 = proj1.x,
+          y1 = proj1.y
+        const x2 = proj2.x,
+          y2 = proj2.y
+        const x3 = proj3.x,
+          y3 = proj3.y
         const det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
-        let coef_a = 0, coef_b = 0, coef_c = (a1 + a2 + a3) / 3
+        let coef_a = 0,
+          coef_b = 0,
+          coef_c = (a1 + a2 + a3) / 3
         if (Math.abs(det) > 1e-9) {
           coef_a = (a1 * (y2 - y3) + a2 * (y3 - y1) + a3 * (y1 - y2)) / det
           coef_b = (a1 * (x3 - x2) + a2 * (x1 - x3) + a3 * (x2 - x1)) / det
-          coef_c = (a1 * (x2 * y3 - x3 * y2) + a2 * (x3 * y1 - x1 * y3) +
-            a3 * (x1 * y2 - x2 * y1)) /
+          coef_c =
+            (a1 * (x2 * y3 - x3 * y2) + a2 * (x3 * y1 - x1 * y3) + a3 * (x1 * y2 - x2 * y1)) /
             det
         }
 
@@ -942,18 +910,21 @@
     ctx.textBaseline = `top`
     const label_height = hull_label_font_size + 2
 
-    const label_entries = helpers.get_composition_label_entries(
-      visible_entries.filter((entry) => {
-        if (entry.is_element) return false
-        const is_stable_point = helpers.entry_is_stable(entry)
-        return (is_stable_point && show_stable_labels) ||
-          (!is_stable_point && show_unstable_labels &&
-            (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
-      }),
-    )
+    const label_entries = helpers
+      .get_composition_label_entries(
+        visible_entries.filter((entry) => {
+          if (entry.is_element) return false
+          const is_stable_point = helpers.entry_is_stable(entry)
+          return (
+            (is_stable_point && show_stable_labels) ||
+            (!is_stable_point &&
+              show_unstable_labels &&
+              (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
+          )
+        }),
+      )
       .sort((entry_1, entry_2) => {
-        const energy_diff = label_priority_energy(entry_1) -
-          label_priority_energy(entry_2)
+        const energy_diff = label_priority_energy(entry_1) - label_priority_energy(entry_2)
         if (energy_diff !== 0) return energy_diff
         return (entry_1.e_above_hull ?? 0) - (entry_2.e_above_hull ?? 0)
       })
@@ -973,17 +944,13 @@
       const is_stable_point = helpers.entry_is_stable(entry)
       const point_size = (entry.size || (is_stable_point ? 6 : 4)) * canvas_dims.scale
       const text_width = measure_formula_segments(ctx, formula_segments)
-      const placements = get_label_placements(
-        projected,
-        point_size,
-        text_width,
-        label_height,
-      )
-      const placement = placements.find((candidate) =>
-        rect_within_rect(candidate.rect, canvas_rect) &&
-        !occupied_rects.some((occupied_rect) =>
-          rects_overlap(candidate.rect, occupied_rect)
-        )
+      const placements = get_label_placements(projected, point_size, text_width, label_height)
+      const placement = placements.find(
+        (candidate) =>
+          rect_within_rect(candidate.rect, canvas_rect) &&
+          !occupied_rects.some((occupied_rect) =>
+            rects_overlap(candidate.rect, occupied_rect),
+          ),
       )
       if (!placement) continue
 
@@ -1031,7 +998,7 @@
 
   // Reactive dark mode detection for canvas text color
   let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => dark_mode = dark))
+  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
   const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
 
   // Performance: Cache canvas dimensions and formation energy range
@@ -1075,11 +1042,11 @@
   aria-label="Ternary convex hull visualization"
 >
   {@render children?.({
-      stable_entries,
-      unstable_entries,
-      highlighted_entries,
-      selected_entry,
-    })}
+    stable_entries,
+    unstable_entries,
+    highlighted_entries,
+    selected_entry,
+  })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; font-weight: 500">
     {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
   </h3>
@@ -1111,9 +1078,7 @@
 
   <!-- Formation Energy Faces Color Bar (bottom-right corner) -->
   <!-- Only show for uniform/formation_energy modes where face color relates to E_form -->
-  {#if plot_entries.length > 0 && show_hull_faces &&
-      (hull_face_color_mode === `uniform` ||
-        hull_face_color_mode === `formation_energy`)}
+  {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
     <ColorBar
       title="Formation energy (eV/atom)"
       color_scale_fn={e_form_color_scale_fn}
@@ -1171,7 +1136,7 @@
     <div class="gizmo-wrapper {controls_config.class}" data-placement={gizmo_placement}>
       <Canvas
         createRenderer={(cvs: HTMLCanvasElement) =>
-        new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
+          new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
       >
         <T.PerspectiveCamera
           makeDefault
@@ -1201,11 +1166,13 @@
     </div>
   {/if}
 
-  {#if (has_temp_data && temperature !== undefined) ||
-      (gas_analysis.has_gas_dependent_elements && merged_gas_config)}
+  {#if (has_temp_data && temperature !== undefined) || (gas_analysis.has_gas_dependent_elements && merged_gas_config)}
     <div class="right-controls">
       {#if has_temp_data && temperature !== undefined}
-        <TemperatureSlider available_temperatures={hull_data.available_temperatures} bind:temperature />
+        <TemperatureSlider
+          available_temperatures={hull_data.available_temperatures}
+          bind:temperature
+        />
       {/if}
       {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
         <GasPressureControls
@@ -1216,7 +1183,6 @@
       {/if}
     </div>
   {/if}
-
 </div>
 
 <style>

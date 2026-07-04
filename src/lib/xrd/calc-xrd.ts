@@ -322,7 +322,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
       const fam = get_unique_families(item.hkls)
       const fam_array: HklObj[] = []
       for (const [repr_key, multiplicity] of fam.entries()) {
-        const repr = repr_key.split(`,`).map((num_str) => parseInt(num_str, 10)) as Hkl
+        const repr = repr_key.split(`,`).map(Number) as Hkl
         fam_array.push({ hkl: repr, multiplicity })
       }
       hkls_out.push(fam_array)
@@ -380,7 +380,7 @@ export async function add_xrd_pattern(
 
     // Otherwise, try to parse as a structure file and compute XRD pattern
     const text_content =
-      typeof content === `string` ? content : new TextDecoder().decode(content as BufferSource)
+      typeof content === `string` ? content : new TextDecoder().decode(content)
     const parsed_structure = parse_any_structure(text_content, filename)
     if (is_crystal(parsed_structure)) {
       const pattern = compute_xrd_pattern(parsed_structure, {

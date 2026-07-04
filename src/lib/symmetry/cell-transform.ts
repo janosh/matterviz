@@ -1,5 +1,4 @@
 // Cell transformation utilities for converting between original, conventional, and primitive cells
-import type { Vec3 } from '$lib/math'
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import * as math from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
@@ -41,7 +40,7 @@ export function moyo_cell_to_structure(
     }
 
     // Wrap fractional coordinates to [0, 1) range (moyo-wasm may return outside)
-    const wrapped_abc = wrap_to_unit_cell(abc as Vec3)
+    const wrapped_abc = wrap_to_unit_cell(abc)
 
     const xyz = frac_to_cart(wrapped_abc)
 

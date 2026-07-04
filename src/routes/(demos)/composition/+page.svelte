@@ -23,19 +23,16 @@
   <label><input type="checkbox" bind:checked={show_amounts} /> Amounts</label>
   <label><input type="checkbox" bind:checked={show_percentages} /> %</label>
   <label>Size: <input type="range" min={100} max={400} bind:value={chart_size} /></label>
-  <label>Bar height: <input
-      type="range"
-      min={15}
-      max={60}
-      bind:value={bar_height}
-    /></label>
-  <label>Donut: <input
+  <label>Bar height: <input type="range" min={15} max={60} bind:value={bar_height} /></label>
+  <label
+    >Donut: <input
       type="range"
       min={0}
       max={0.8}
       step={0.05}
       bind:value={inner_radius}
-    /></label>
+    /></label
+  >
 </div>
 
 <div class="chart-row">
@@ -50,7 +47,7 @@
   <PieChart
     {composition}
     size={chart_size}
-    inner_radius={inner_radius * chart_size / 2}
+    inner_radius={(inner_radius * chart_size) / 2}
     {show_labels}
     {show_amounts}
     {show_percentages}

@@ -4,7 +4,7 @@ import process from 'node:process'
 
 // Timeout constants for different environments
 // CI environments are slower due to shared resources, virtualization, and WebGL software rendering
-const LOCAL_CANVAS_TIMEOUT = 5_000
+const LOCAL_CANVAS_TIMEOUT = 5000
 const CI_CANVAS_TIMEOUT = 15_000
 
 // Centralized CI detection - use this instead of inline process.env.CI checks
@@ -162,7 +162,7 @@ export async function get_tick_range(
 ): Promise<{ ticks: number[]; range: number }> {
   const tick_texts = await axis_locator.locator(`.tick text`).allTextContents()
   const ticks = tick_texts
-    .map((text) => (text ? parseFloat(text) : NaN))
+    .map((text) => (text ? Number(text) : NaN))
     .filter((num) => !isNaN(num))
   if (ticks.length < 2) return { ticks, range: 0 }
   return { ticks, range: Math.abs(Math.max(...ticks) - Math.min(...ticks)) }

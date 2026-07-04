@@ -210,6 +210,48 @@ describe(`scales`, () => {
         check(range)
       },
     )
+
+    test(`keeps an observed zero lower bound even with requested padding`, () => {
+      const [min, max] = get_nice_data_range(
+        [
+          { x: 0, y: 0 },
+          { x: 4.7, y: 0 },
+        ],
+        (point) => point.x,
+        [null, null],
+        `linear`,
+        0.05,
+      )
+      expect(min).toBe(0)
+      expect(max).toBeGreaterThanOrEqual(4.7)
+    })
+
+    test(`keeps an observed zero upper bound even with requested padding`, () => {
+      const [min, max] = get_nice_data_range(
+        [
+          { x: -4.7, y: 0 },
+          { x: 0, y: 0 },
+        ],
+        (point) => point.x,
+        [null, null],
+        `linear`,
+        0.05,
+      )
+      expect(min).toBeLessThanOrEqual(-4.7)
+      expect(max).toBe(0)
+    })
+
+    test(`does not collapse an all-zero range when snapping observed zero edges`, () => {
+      const [min, max] = get_nice_data_range(
+        [{ x: 0, y: 0 }],
+        (point) => point.x,
+        [null, null],
+        `linear`,
+        0,
+      )
+      expect(min).toBeLessThan(0)
+      expect(max).toBeGreaterThan(0)
+    })
   })
 
   describe(`generate_log_ticks`, () => {
@@ -265,30 +307,26 @@ describe(`scales`, () => {
       {
         name: `filters out-of-domain, sorts`,
         domain: [0, 100] as Vec2,
-        ticks: { 50: `A`, 10: `B`, 150: `C`, 90: `D`, [-10]: `E`, 30: `F` } as Record<
-          number,
-          string
-        >,
+        ticks: { 50: `A`, 10: `B`, 150: `C`, 90: `D`, [-10]: `E`, 30: `F` },
         expected: [10, 30, 50, 90],
       },
       {
         name: `filters non-finite values`,
         domain: [0, 100] as Vec2,
-        ticks: { 25: `A`, 50: `B`, NaN: `C`, 75: `D`, [Infinity]: `E` } as Record<
-          number,
-          string
-        >,
+        ticks: { 25: `A`, 50: `B`, NaN: `C`, 75: `D`, [Infinity]: `E` },
         expected: [25, 50, 75],
       },
       {
         name: `handles reversed domain`,
         domain: [100, 0] as Vec2,
-        ticks: { 80: `A`, 20: `B`, 150: `C`, 50: `D` } as Record<number, string>,
+        ticks: { 80: `A`, 20: `B`, 150: `C`, 50: `D` },
         expected: [20, 50, 80],
       },
     ])(`object input - $name`, ({ domain, ticks, expected }) => {
       const scale = scaleLinear().domain(domain).range([0, 500])
-      expect(generate_ticks(domain, `linear`, ticks, scale)).toEqual(expected)
+      expect(generate_ticks(domain, `linear`, ticks as Record<number, string>, scale)).toEqual(
+        expected,
+      )
     })
 
     test(`time-based ticks with % format`, () => {
@@ -594,7 +632,7 @@ describe(`scales`, () => {
       [`arcsinh`, `arcsinh`],
       [`time`, `time`],
       [undefined, `linear`],
-      [{ type: `arcsinh`, threshold: 10 } as ArcsinhScaleConfig, `arcsinh`],
+      [{ type: `arcsinh`, threshold: 10 }, `arcsinh`],
     ])(`get_scale_type_name(%s) = %s`, (input, expected) => {
       expect(get_scale_type_name(input as ScaleType | undefined)).toBe(expected)
     })
@@ -632,8 +670,8 @@ describe(`scales`, () => {
     )
 
     test.each([
-      [{ type: `arcsinh`, threshold: 42 } as ArcsinhScaleConfig, 42],
-      [{ type: `arcsinh` } as ArcsinhScaleConfig, 1],
+      [{ type: `arcsinh`, threshold: 42 }, 42],
+      [{ type: `arcsinh` }, 1],
       [`arcsinh`, 1],
       [`linear`, 1],
       [undefined, 1],
@@ -649,9 +687,7 @@ describe(`scales`, () => {
       [Infinity, `arcsinh threshold must be a positive finite number, got Infinity`],
       [-Infinity, `arcsinh threshold must be a positive finite number, got -Infinity`],
     ])(`get_arcsinh_threshold throws for invalid threshold %s`, (threshold, error_msg) => {
-      expect(() =>
-        get_arcsinh_threshold({ type: `arcsinh`, threshold } as ArcsinhScaleConfig),
-      ).toThrow(error_msg)
+      expect(() => get_arcsinh_threshold({ type: `arcsinh`, threshold })).toThrow(error_msg)
     })
   })
 

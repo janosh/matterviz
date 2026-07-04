@@ -70,7 +70,7 @@ test.describe(`ScatterPlot3D`, () => {
         prop,
       )
       if (compare === `gte`) {
-        expect(parseInt(value as string, 10)).toBeGreaterThanOrEqual(expected as number)
+        expect(Number(value as string)).toBeGreaterThanOrEqual(expected)
       } else {
         expect(value).toBe(expected)
       }

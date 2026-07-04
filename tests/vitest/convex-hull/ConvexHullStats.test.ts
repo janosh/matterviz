@@ -415,7 +415,7 @@ describe(`ConvexHullStats`, () => {
     test.each([
       {
         desc: `shown when available`,
-        energy_per_atom: -5.2 as number | undefined,
+        energy_per_atom: -5.2,
         expected: true,
       },
       {

@@ -14,6 +14,7 @@
   } from '$lib/plot/core/types'
   import { calculate_domain } from '$lib/plot/core/scales'
   import { unique_id } from '$lib/plot/core/utils'
+  import { parse_num_token } from '$lib/utils'
   import type { ComponentProps, Snippet } from 'svelte'
 
   // Unique ID prefix to avoid conflicts when multiple instances on same page
@@ -69,8 +70,8 @@
 
   // Helpers to update display properties - avoids verbose inline handlers
   const update_display = (key: keyof DisplayConfig3D) => (event: InputControlEvent) => {
-    const parsed = parseFloat(get_input_value(event))
-    // Guard against NaN when input is cleared - preserve existing value
+    const parsed = parse_num_token(get_input_value(event))
+    // Guard against cleared/invalid input - preserve existing value
     if (!Number.isNaN(parsed)) display = { ...display, [key]: parsed }
   }
   const toggle_display = (key: keyof DisplayConfig3D) => () => {
@@ -356,9 +357,11 @@
   {#if series.length > 0 || surfaces.length > 0}
     <div class="data-summary">
       {#if series.length > 0}
-        <span>{series.length} series · {
-            series.reduce((sum, srs) => sum + srs.x.length, 0).toLocaleString()
-          } points</span>
+        <span
+          >{series.length} series · {series
+            .reduce((sum, srs) => sum + srs.x.length, 0)
+            .toLocaleString()} points</span
+        >
       {/if}
       {#if surfaces.length > 0}
         <span>{surfaces.length} {surfaces.length === 1 ? `surface` : `surfaces`}</span>

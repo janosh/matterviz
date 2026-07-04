@@ -494,7 +494,7 @@ export function symmetry_elements_from_ops(
   const centerings: Vec3[] = []
   for (const { rotation, translation } of operations) {
     if (!is_identity(mat_round(mat3_from_flat_col_major(rotation)))) continue
-    const wrapped = wrap_point(translation as Vec3)
+    const wrapped = wrap_point(translation)
     if (is_zero_vec(wrapped)) continue
     const key = wrapped.map((val) => val.toFixed(6)).join(`,`)
     if (centering_keys.has(key)) continue

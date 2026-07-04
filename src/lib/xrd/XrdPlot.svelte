@@ -34,11 +34,7 @@
     const pattern_obj = obj as { x?: unknown; y?: unknown }
     const x_vals = pattern_obj.x
     const y_vals = pattern_obj.y
-    return (
-      Array.isArray(x_vals) &&
-      Array.isArray(y_vals) &&
-      x_vals.length === y_vals.length
-    )
+    return Array.isArray(x_vals) && Array.isArray(y_vals) && x_vals.length === y_vals.length
   }
 
   function format_hkl(hkl: Hkl, format: HklFormat): string {
@@ -82,10 +78,8 @@
     broadening_params = $bindable({ ...DEFAULT_BROADENING }),
     controls = {},
     ...rest
-  }:
-    & ComponentProps<typeof BarPlot>
-    & ComponentProps<typeof ScatterPlot>
-    & {
+  }: ComponentProps<typeof BarPlot> &
+    ComponentProps<typeof ScatterPlot> & {
       patterns:
         | XrdPattern
         | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
@@ -115,25 +109,18 @@
     const base_entries = Array.isArray(patterns)
       ? (patterns as PatternEntry[])
       : is_xrd_pattern(patterns)
-      ? [{ label: `XRD Pattern`, pattern: patterns as XrdPattern }]
-      : Object.entries(
-        patterns as Record<
-          string,
-          XrdPattern | { pattern: XrdPattern; color?: string }
-        >,
-      ).map(([label, value]) =>
-        `pattern` in value
-          ? { label, ...value }
-          : { label, pattern: value as XrdPattern }
-      )
+        ? [{ label: `XRD Pattern`, pattern: patterns as XrdPattern }]
+        : Object.entries(
+            patterns as Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>,
+          ).map(([label, value]) =>
+            `pattern` in value ? { label, ...value } : { label, pattern: value as XrdPattern },
+          )
     // Merge user-provided patterns with any dropped-on-the-fly entries
     return [...base_entries, ...dropped_entries]
   })
 
   // Decide default show_angles
-  const actual_show_angles = $derived(
-    show_angles ?? pattern_entries.length <= 2,
-  )
+  const actual_show_angles = $derived(show_angles ?? pattern_entries.length <= 2)
 
   // Compute global max intensity for normalization (as in pymatviz xrd_pattern)
   const global_max_intensity = $derived.by(() => {
@@ -221,12 +208,11 @@
         metadata.push({ hkls, d: d_hkl, label: entry.label })
 
         if (selected_indices.includes(idx)) {
-          const angle_text = actual_show_angles
-            ? `${format_value(xs[idx], `.2f`)}°`
-            : ``
-          const hkl_text = hkls && hkl_format
-            ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `)
-            : ``
+          const angle_text = actual_show_angles ? `${format_value(xs[idx], `.2f`)}°` : ``
+          const hkl_text =
+            hkls && hkl_format
+              ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `)
+              : ``
           // Use @ separator between hkl and angle for better clarity
           const separator = hkl_text && angle_text ? ` @ ` : ``
           const text = [hkl_text, angle_text].filter(Boolean).join(separator)
@@ -305,10 +291,7 @@
     loading = true
     error_msg = undefined
 
-    const compute_and_add = async (
-      content: string | ArrayBuffer,
-      filename: string,
-    ) => {
+    const compute_and_add = async (content: string | ArrayBuffer, filename: string) => {
       const result = await add_xrd_pattern(content, filename, wavelength)
       if (result.error) {
         error_msg = result.error
@@ -319,10 +302,9 @@
 
     try {
       // Handle URL-based drops
-      const handled = await handle_url_drop(
-        event,
-        on_file_drop || compute_and_add,
-      ).catch(() => false)
+      const handled = await handle_url_drop(event, on_file_drop || compute_and_add).catch(
+        () => false,
+      )
       if (handled) return
 
       const file = event.dataTransfer?.files?.[0]
@@ -353,9 +335,7 @@
             if (content) await (on_file_drop || compute_and_add)(content, filename)
           }
         } catch (exc) {
-          error_msg = `Failed to load file ${file.name}: ${
-            to_error(exc).message
-          }`
+          error_msg = `Failed to load file ${file.name}: ${to_error(exc).message}`
         }
       }
     } finally {
@@ -381,11 +361,9 @@
     </label>
 
     {#if broadening_enabled}
-      <div
-        class="pane-grid"
-        style="display: grid; grid-template-columns: 1fr 1fr; gap: 1ex"
-      >
-        <label title="Caglioti U parameter">U:
+      <div class="pane-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1ex">
+        <label title="Caglioti U parameter"
+          >U:
           <input
             type="number"
             step="0.001"
@@ -393,7 +371,8 @@
             class="param-input"
           />
         </label>
-        <label title="Caglioti V parameter">V:
+        <label title="Caglioti V parameter"
+          >V:
           <input
             type="number"
             step="0.001"
@@ -401,7 +380,8 @@
             class="param-input"
           />
         </label>
-        <label title="Caglioti W parameter">W:
+        <label title="Caglioti W parameter"
+          >W:
           <input
             type="number"
             step="0.001"
@@ -409,7 +389,8 @@
             class="param-input"
           />
         </label>
-        <label title="Pseudo-Voigt shape factor (0=Gaussian, 1=Lorentzian)">η:
+        <label title="Pseudo-Voigt shape factor (0=Gaussian, 1=Lorentzian)"
+          >η:
           <input
             type="number"
             min="0"
@@ -438,8 +419,8 @@
     {:else}
       <StatusMessage
         message={allow_file_drop
-        ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .csv, .ras, .uxd, .gsas, .xrdml, .brml, .raw, + .gz) here`
-        : `No XRD data to display`}
+          ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .csv, .ras, .uxd, .gsas, .xrdml, .brml, .raw, + .gz) here`
+          : `No XRD data to display`}
       />
     {/if}
   </EmptyState>
@@ -475,7 +456,10 @@
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+        {...drag_over_handlers({
+          allow: () => allow_file_drop,
+          set_dragover: (over) => (dragover = over),
+        })}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         {controls}
@@ -483,16 +467,15 @@
       />
     {:else}
       <!-- Discrete Stick View -->
-      {#snippet tooltip(
-    info: BarHandlerProps<{ label?: string; hkls?: Hkl[]; d?: number }>,
-  )}
+      {#snippet tooltip(info: BarHandlerProps<{ label?: string; hkls?: Hkl[]; d?: number }>)}
         {@const angle_text = `${format_value(info.x, `.2f`)}°`}
         {@const intensity_text = `${format_value(info.y, `.1f`)}`}
         {@const hkls = info.metadata?.hkls}
         {@const d_spacing = info.metadata?.d}
-        {@const hkl_text = hkls && hkl_format
-      ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
-      : ``}
+        {@const hkl_text =
+          hkls && hkl_format
+            ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
+            : ``}
         {@const d_text = d_spacing != null ? `${format_value(d_spacing, `.3f`)} Å` : ``}
         {@html sanitize_html(info.metadata?.label ?? ``)}<br />
         2θ: {angle_text}<br />
@@ -526,7 +509,10 @@
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+        {...drag_over_handlers({
+          allow: () => allow_file_drop,
+          set_dragover: (over) => (dragover = over),
+        })}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         show_controls={controls.show}

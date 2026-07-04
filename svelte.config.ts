@@ -5,7 +5,6 @@ import katex from 'rehype-katex'
 import math from 'remark-math' // remark-math@3.0.0 pinned due to mdsvex https://github.com/kwshi/rehype-katex-svelte#usage
 import { heading_ids } from 'svelte-multiselect/heading-anchors'
 import { mdsvex_transform, starry_night_highlighter } from 'svelte-multiselect/live-examples'
-import type { PreprocessorGroup } from 'svelte/compiler'
 
 const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },
@@ -26,7 +25,7 @@ export default {
       rehypePlugins: [katex],
       extensions: [`.svx`, `.md`],
       highlight: { highlighter: starry_night_highlighter },
-    }) as PreprocessorGroup,
+    }),
     heading_ids(), // runs after mdsvex converts markdown to HTML
   ],
 

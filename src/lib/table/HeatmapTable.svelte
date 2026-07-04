@@ -9,6 +9,7 @@
   import type {
     CellSnippet,
     CellVal,
+    DateTimeFormatMode,
     ExportData,
     InitialSort,
     Label,
@@ -84,8 +85,32 @@
     }
   }
 
+  const close_datetime_select_on_outside_pointerdown = (event: PointerEvent) => {
+    if (datetime_select_open_col_id === null) return
+    if (event.target instanceof Element && event.target.closest(`.datetime-format-control`))
+      return
+    datetime_select_open_col_id = null
+  }
+
   const NUMERIC_WITH_ERROR_RE =
     /^(?<numeric>[-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
+  const DATA_SORT_VALUE_RE = /data-sort-value="(?<value>[^"]*)"/
+  const DATE_ONLY_RE = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/
+  const DATE_TIME_RE =
+    /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
+  type DateTimeColumnKind = `date` | `time` | `datetime`
+  const datetime_format_modes_by_kind: Record<DateTimeColumnKind, DateTimeFormatMode[]> = {
+    date: [`date`, `relative`],
+    time: [`time`],
+    datetime: [`date`, `time`, `datetime`, `iso`, `relative`],
+  }
+  const datetime_format_labels: Record<DateTimeFormatMode, string> = {
+    date: `Date`,
+    time: `Time`,
+    datetime: `Date + time`,
+    iso: `ISO`,
+    relative: `Since now`,
+  }
 
   const parse_numeric_string = (val: string): number | null => {
     const numeric_str = val.match(NUMERIC_WITH_ERROR_RE)?.[1] ?? val
@@ -94,20 +119,27 @@
     return isNaN(num) ? null : num
   }
 
+  const get_data_sort_value = (val: string): string | null =>
+    val.match(DATA_SORT_VALUE_RE)?.groups?.value ?? null
+
   // Get sort value from a cell (handles HTML data-sort-value and numbers with errors)
   const get_sort_val = (val: CellVal): string | number => {
+    if (val instanceof Date) return val.getTime()
     if (typeof val === `string`) {
       // Check for HTML data-sort-value attribute first
-      const sort_attr_match = val.match(/data-sort-value="(?<value>[^"]*)"/)
-      if (sort_attr_match) {
-        const num = Number(sort_attr_match[1])
-        return isNaN(num) ? sort_attr_match[1] : num
+      const sort_attr = get_data_sort_value(val)
+      if (sort_attr != null) {
+        const num = Number(sort_attr)
+        return isNaN(num) ? sort_attr : num
       }
       const num = parse_numeric_string(val)
       if (num !== null) return num
     }
     return val as string | number
   }
+
+  const get_cell_sort_attr = (val: CellVal): CellVal | number | null =>
+    is_html_str(val) ? null : val instanceof Date ? val.getTime() : val
 
   let {
     data = $bindable([]),
@@ -122,6 +154,7 @@
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     heatmap_class = `heatmap`,
+    onrowpointerdown,
     onrowclick,
     onrowdblclick,
     column_order = $bindable([]),
@@ -160,6 +193,7 @@
     default_num_format?: string
     show_heatmap?: boolean
     heatmap_class?: string
+    onrowpointerdown?: (event: PointerEvent, row: RowData) => void
     onrowclick?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
     // Array of column IDs to control display order. IDs are derived as:
@@ -215,8 +249,7 @@
     if (!container_el) return
     const read_page_bg = () => {
       if (!container_el) return
-      const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`)
-        .trim()
+      const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`).trim()
       page_bg_lum = luminance(page_bg || `white`)
     }
     read_page_bg()
@@ -251,17 +284,17 @@
       : null,
   )
 
-  // Mutable page size — writable $derived allows user to change via dropdown
+  // Mutable page size: user can change it, but parent pagination.page_size changes still resync.
   let effective_page_size = $derived(pagination_config?.page_size ?? 25)
 
   // Normalize search config
   let search_config = $derived(
     search
       ? {
-        placeholder: `Filter...`,
-        expanded: false,
-        ...(typeof search === `object` ? search : {}),
-      }
+          placeholder: `Filter...`,
+          expanded: false,
+          ...(typeof search === `object` ? search : {}),
+        }
       : null,
   )
 
@@ -271,10 +304,10 @@
   let export_config = $derived(
     export_data
       ? {
-        formats: default_formats,
-        filename: `table-export`,
-        ...(typeof export_data === `object` ? export_data : {}),
-      }
+          formats: default_formats,
+          filename: `table-export`,
+          ...(typeof export_data === `object` ? export_data : {}),
+        }
       : null,
   )
 
@@ -282,9 +315,7 @@
   // This ensures immediate sorting on first render without waiting for effects
   let sort_state = $derived<SortState>({
     column: sort.column || initial_sort_config?.column || ``,
-    ascending: sort.column
-      ? sort.dir !== `desc`
-      : initial_sort_config?.direction !== `desc`,
+    ascending: sort.column ? sort.dir !== `desc` : initial_sort_config?.direction !== `desc`,
   })
 
   // Multi-column sort state (for Shift+click)
@@ -307,6 +338,10 @@
   // Per-column color scale overrides
   let color_scale_overrides = new SvelteMap<string, string>()
 
+  // Per-column date/time display overrides (user-toggled via header)
+  let datetime_format_overrides = new SvelteMap<string, DateTimeFormatMode>()
+  let datetime_select_open_col_id = $state<string | null>(null)
+
   const color_scale_options = [
     `interpolateViridis`,
     `interpolatePlasma`,
@@ -321,9 +356,7 @@
 
   // Columns that have a color gradient
   let colored_columns = $derived(
-    columns.filter((col) =>
-      col.color_scale !== null && col.color_scale !== undefined
-    ),
+    columns.filter((col) => col.color_scale !== null && col.color_scale !== undefined),
   )
 
   // Column resize state
@@ -347,6 +380,169 @@
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
   const get_col_id = (col: Label) =>
     col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
+  const get_datetime_label_id = (col_id: string) =>
+    `datetime-format-label-${encodeURIComponent(col_id)}`
+
+  const has_explicit_datetime_format = (col: Label): boolean =>
+    col.format_type === `datetime` || Boolean(col.datetime_format)
+
+  const normalize_timestamp = (val: number): number | null => {
+    if (!Number.isFinite(val)) return null
+    const abs = Math.abs(val)
+    if (abs >= 1_000_000_000_000 && abs < 100_000_000_000_000) return val
+    if (abs >= 1_000_000_000 && abs < 1_000_000_000_000) return val * 1000
+    return null
+  }
+
+  const parse_datetime_string = (val: string): number | null => {
+    const clean = strip_html(val).trim()
+    const date_only = clean.match(DATE_ONLY_RE)
+    if (date_only?.groups) {
+      const year = Number(date_only.groups.year)
+      const month = Number(date_only.groups.month)
+      const day = Number(date_only.groups.day)
+      return new Date(year, month - 1, day).getTime()
+    }
+    if (!DATE_TIME_RE.test(clean)) return null
+    const parsed = Date.parse(
+      clean.replace(` `, `T`).replace(/\.(?<millis>\d{3})\d+/, `.$<millis>`),
+    )
+    return Number.isNaN(parsed) ? null : parsed
+  }
+
+  const value_datetime_kind = (val: CellVal, col: Label): DateTimeColumnKind | null => {
+    if (typeof val === `string` && DATE_ONLY_RE.test(strip_html(val).trim())) {
+      return `date`
+    }
+    return parse_datetime_val(val, col) === null ? null : `datetime`
+  }
+
+  const parse_datetime_val = (val: CellVal, col: Label): number | null => {
+    if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
+    if (typeof val === `number`) {
+      return has_explicit_datetime_format(col) ? normalize_timestamp(val) : null
+    }
+    if (typeof val !== `string`) return null
+
+    const parsed_text = parse_datetime_string(val)
+    if (parsed_text !== null) return parsed_text
+    if (!has_explicit_datetime_format(col)) return null
+
+    const sort_attr = get_data_sort_value(val)
+    return normalize_timestamp(Number(sort_attr ?? strip_html(val).trim()))
+  }
+
+  const infer_datetime_column_kind = (col: Label): DateTimeColumnKind | null => {
+    if (col.datetime_format === `date`) return `date`
+    if (col.datetime_format === `time`) return `time`
+    if (col.datetime_format || col.format_type === `datetime`) return `datetime`
+
+    const col_id = get_col_id(col)
+    let has_date_value = false
+    for (const row of data.slice(0, 25)) {
+      const kind = value_datetime_kind(row[col_id], col)
+      if (kind === `datetime`) return `datetime`
+      if (kind === `date`) has_date_value = true
+    }
+    if (has_date_value) return `date`
+    return null
+  }
+
+  let datetime_column_kinds = $derived.by(() => {
+    const kinds = new SvelteMap<string, DateTimeColumnKind>()
+    for (const col of columns) {
+      const kind = infer_datetime_column_kind(col)
+      if (kind) kinds.set(get_col_id(col), kind)
+    }
+    return kinds
+  })
+
+  const is_datetime_column = (col: Label): boolean =>
+    datetime_column_kinds.has(get_col_id(col))
+
+  const datetime_column_kind = (col: Label): DateTimeColumnKind =>
+    datetime_column_kinds.get(get_col_id(col)) ?? `datetime`
+
+  const datetime_format_options = (col: Label): DateTimeFormatMode[] =>
+    datetime_format_modes_by_kind[datetime_column_kind(col)]
+
+  const datetime_mode = (col: Label): DateTimeFormatMode => {
+    const options = datetime_format_options(col)
+    const selected =
+      datetime_format_overrides.get(get_col_id(col)) ??
+      col.datetime_format ??
+      datetime_column_kind(col)
+    return options.includes(selected) ? selected : options[0]
+  }
+
+  function set_datetime_format(col: Label, mode: DateTimeFormatMode) {
+    if (datetime_format_options(col).includes(mode)) {
+      datetime_format_overrides.set(get_col_id(col), mode)
+    }
+  }
+
+  const pad2 = (val: number): string => String(val).padStart(2, `0`)
+
+  function format_date(date: Date): string {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+  }
+
+  function format_time(date: Date): string {
+    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  }
+
+  function format_datetime(date: Date): string {
+    return `${format_date(date)} ${format_time(date)}`
+  }
+
+  // Ticks once a minute while any column shows relative times, so "Xm ago"
+  // cells don't go stale (format granularity is minutes).
+  let relative_now_ms = $state(Date.now())
+  $effect(() => {
+    const shows_relative = columns.some(
+      (col) => is_datetime_column(col) && datetime_mode(col) === `relative`,
+    )
+    if (!shows_relative) return
+    relative_now_ms = Date.now() // refresh immediately when relative mode turns on
+    const interval = setInterval(() => (relative_now_ms = Date.now()), 60_000)
+    return () => clearInterval(interval)
+  })
+
+  function format_since_now(timestamp: number): string {
+    const diff = relative_now_ms - timestamp
+    let remaining_minutes = Math.max(0, Math.floor(Math.abs(diff) / 60_000))
+    const parts: string[] = []
+    const units = [
+      [`y`, 365 * 24 * 60],
+      [`mo`, 30 * 24 * 60],
+      [`w`, 7 * 24 * 60],
+      [`d`, 24 * 60],
+      [`h`, 60],
+      [`m`, 1],
+    ] as const
+
+    for (const [suffix, minutes_per_unit] of units) {
+      const value = Math.floor(remaining_minutes / minutes_per_unit)
+      if (value === 0 && parts.length === 0 && suffix !== `m`) continue
+      if (value > 0 || suffix === `m`) parts.push(`${value}${suffix}`)
+      remaining_minutes -= value * minutes_per_unit
+      if (parts.length >= 3) break
+    }
+
+    return `${parts.join(` `)} ${diff >= 0 ? `ago` : `from now`}`
+  }
+
+  function format_datetime_cell(val: CellVal, col: Label): string | null {
+    const timestamp = parse_datetime_val(val, col)
+    if (timestamp === null) return null
+    const date = new Date(timestamp)
+    const mode = datetime_mode(col)
+    if (mode === `date`) return format_date(date)
+    if (mode === `time`) return format_time(date)
+    if (mode === `datetime`) return format_datetime(date)
+    if (mode === `iso`) return date.toISOString()
+    return format_since_now(timestamp)
+  }
 
   // Sync column_order with columns: initialize if empty, remove stale IDs, append new IDs
   $effect(() => {
@@ -369,8 +565,11 @@
     // After drag reorder, column_order differs from col_ids (default order) but the
     // computed new_order equals the current column_order — assigning a new array
     // reference would re-trigger this effect endlessly.
-    if (new_order.length === column_order.length &&
-      new_order.every((id, idx) => id === column_order[idx])) return
+    if (
+      new_order.length === column_order.length &&
+      new_order.every((id, idx) => id === column_order[idx])
+    )
+      return
 
     column_order = new_order
   })
@@ -492,9 +691,8 @@
 
   // Filter data based on search query
   let filtered_data = $derived.by(() => {
-    const base_data = data?.filter?.((row) =>
-      Object.values(row).some((val) => val !== undefined)
-    ) ?? []
+    const base_data =
+      data?.filter?.((row) => Object.values(row).some((val) => val !== undefined)) ?? []
 
     if (!search_query.trim()) return base_data
 
@@ -504,7 +702,7 @@
         if (val == null) return false
         const clean_val = strip_html(String(val)).toLowerCase()
         return clean_val.includes(query)
-      })
+      }),
     )
   })
 
@@ -515,11 +713,8 @@
     if (!sort_state.column && multi_sort.length === 0) return filtered_data
 
     // Build sort criteria: multi_sort takes precedence, fallback to single sort
-    const sort_criteria = multi_sort.length > 0
-      ? multi_sort
-      : sort_state.column
-      ? [sort_state]
-      : []
+    const sort_criteria =
+      multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
 
     if (sort_criteria.length === 0) return filtered_data
 
@@ -567,9 +762,7 @@
     return sorted_data.slice(start, start + effective_page_size)
   })
 
-  let total_pages = $derived(
-    Math.ceil(sorted_data.length / effective_page_size),
-  )
+  let total_pages = $derived(Math.ceil(sorted_data.length / effective_page_size))
 
   // Track previous values to detect actual changes
   let prev_search_query = $state(``)
@@ -620,15 +813,20 @@
         } else {
           // Toggle direction
           multi_sort = multi_sort.map((sort_entry, idx) =>
-            idx === existing_idx ? { ...sort_entry, ascending: !sort_entry.ascending } : sort_entry
+            idx === existing_idx
+              ? { ...sort_entry, ascending: !sort_entry.ascending }
+              : sort_entry,
           )
         }
       } else {
         // Add to multi-sort
-        multi_sort = [...multi_sort, {
-          column: col_id,
-          ascending: col.better === `lower`,
-        }]
+        multi_sort = [
+          ...multi_sort,
+          {
+            column: col_id,
+            ascending: col.better === `lower`,
+          },
+        ]
       }
       // Clear single sort when using multi-sort
       sort = { column: ``, dir: `asc` }
@@ -636,9 +834,14 @@
       // Regular click - single column sort
       multi_sort = [] // Clear multi-sort
       // Use sort_state.column for comparison since it includes initial_sort fallback
-      const new_dir = sort_state.column !== col_id
-        ? (col.better === `lower` ? `asc` : `desc`)
-        : (sort_state.ascending ? `desc` : `asc`)
+      const new_dir =
+        sort_state.column !== col_id
+          ? col.better === `lower`
+            ? `asc`
+            : `desc`
+          : sort_state.ascending
+            ? `desc`
+            : `asc`
 
       // Save previous sort state in case we need to revert on error
       const prev_sort = { ...sort }
@@ -683,7 +886,10 @@
     for (const col of ordered_columns) {
       if (col.color_scale === null) continue
       const col_id = get_col_id(col)
-      result.set(col_id, sorted_data.map((row) => parse_numeric_val(row[col_id])))
+      result.set(
+        col_id,
+        sorted_data.map((row) => parse_numeric_val(row[col_id])),
+      )
     }
     return result
   })
@@ -702,7 +908,8 @@
     const numeric_vals = parsed_column_values.get(col_id) ?? []
 
     const better = better_overrides.get(col_id) ?? col.better
-    const scale = (color_scale_overrides.get(col_id) ?? col.color_scale ??
+    const scale = (color_scale_overrides.get(col_id) ??
+      col.color_scale ??
       `interpolateViridis`) as Parameters<typeof calc_cell_color>[3]
     const color = calc_cell_color(
       numeric_val,
@@ -715,22 +922,22 @@
     // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
     // Approximation: blend luminances directly; accurate enough for black/white text choice.
     if (color.bg && heatmap_opacity < 1) {
-      const blended_lum = luminance(color.bg) * heatmap_opacity +
-        page_bg_lum * (1 - heatmap_opacity)
+      const blended_lum =
+        luminance(color.bg) * heatmap_opacity + page_bg_lum * (1 - heatmap_opacity)
       color.text = blended_lum > 0.7 ? `black` : `white`
     }
     return color
   }
 
   let visible_columns = $derived(
-    ordered_columns.filter((col) =>
-      col.visible !== false && !hidden_columns.includes(get_col_id(col))
+    ordered_columns.filter(
+      (col) => col.visible !== false && !hidden_columns.includes(get_col_id(col)),
     ),
   )
 
   const sort_indicator = (col: Label, current_sort_state: SortState) => {
-    const hide_sort_indicator = col.show_sort_indicator === false ||
-      col.style?.includes(`--hide-sort-indicator`)
+    const hide_sort_indicator =
+      col.show_sort_indicator === false || col.style?.includes(`--hide-sort-indicator`)
     if (hide_sort_indicator) return ``
 
     const col_id = get_col_id(col)
@@ -818,7 +1025,7 @@
         const val = row[get_col_id(col)]
         if (val == null) return ``
         return quote(strip_html(String(val)))
-      })
+      }),
     )
     return [headers.join(delimiter), ...rows.map((row) => row.join(delimiter))].join(`\n`)
   }
@@ -833,17 +1040,11 @@
       for (const col of visible_columns) {
         const col_id = get_col_id(col)
         const val = row[col_id]
-        clean_row[strip_html(col.label)] = typeof val === `string`
-          ? strip_html(val)
-          : val
+        clean_row[strip_html(col.label)] = typeof val === `string` ? strip_html(val) : val
       }
       return clean_row
     })
-    download(
-      JSON.stringify(rows, null, 2),
-      `${filename}.json`,
-      `application/json`,
-    )
+    download(JSON.stringify(rows, null, 2), `${filename}.json`, `application/json`)
   }
 
   function copy_to_clipboard() {
@@ -889,13 +1090,15 @@
   let hint_config = $derived(
     sort_hint
       ? {
-        position: `bottom` as const,
-        permanent: false,
-        ...(typeof sort_hint === `string` ? { text: sort_hint } : sort_hint),
-      }
+          position: `bottom` as const,
+          permanent: false,
+          ...(typeof sort_hint === `string` ? { text: sort_hint } : sort_hint),
+        }
       : null,
   )
 </script>
+
+<svelte:window onpointerdown={close_datetime_select_on_outside_pointerdown} />
 
 {#snippet sort_hint_element(pos: `top` | `bottom`)}
   {#if hint_config?.position === pos}
@@ -947,7 +1150,7 @@
       {:else}
         <button
           class="icon-btn"
-          onclick={() => search_expanded = true}
+          onclick={() => (search_expanded = true)}
           {@attach tooltip({ content: `Search`, placement: `top` })}
         >
           <Icon icon="Search" style="width: 14px" />
@@ -960,7 +1163,7 @@
         <button
           class="icon-btn"
           class:active={show_column_dropdown}
-          onclick={() => show_column_dropdown = !show_column_dropdown}
+          onclick={() => (show_column_dropdown = !show_column_dropdown)}
           {@attach tooltip({ content: `Columns`, placement: `top` })}
         >
           <Icon icon="Columns" style="width: 14px" />
@@ -988,7 +1191,7 @@
         <button
           class="icon-btn"
           class:active={show_export_dropdown}
-          onclick={() => show_export_dropdown = !show_export_dropdown}
+          onclick={() => (show_export_dropdown = !show_export_dropdown)}
           {@attach tooltip({ content: `Export`, placement: `top` })}
         >
           <Icon icon="Export" style="width: 14px" />
@@ -1034,7 +1237,7 @@
     {#if show_row_select && selected_rows.length > 0}
       <button
         class="icon-btn selection-badge"
-        onclick={() => selected_rows = []}
+        onclick={() => (selected_rows = [])}
         title="Clear {selected_rows.length} selected rows"
       >
         <span class="badge">{selected_rows.length}</span>
@@ -1070,13 +1273,7 @@
         {#if show_heatmap}
           <label>
             Opacity
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              bind:value={heatmap_opacity}
-            />
+            <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
             <input
               type="number"
               min="0"
@@ -1096,8 +1293,7 @@
           show_row_numbers = false
         }}
       >
-        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row
-          numbers</label>
+        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
       </SettingsSection>
 
       {#if colored_columns.length > 0}
@@ -1114,13 +1310,13 @@
             <div class="col-color-row">
               <span class="col-color-label">{@html sanitize_html(col.label)}</span>
               <select
-                value={color_scale_overrides.get(col_id) ?? col.color_scale ??
-                `interpolateViridis`}
+                value={color_scale_overrides.get(col_id) ??
+                  col.color_scale ??
+                  `interpolateViridis`}
                 onchange={(event) => {
                   const val = event.currentTarget.value
-                  if (
-                    val === (col.color_scale ?? `interpolateViridis`)
-                  ) color_scale_overrides.delete(col_id)
+                  if (val === (col.color_scale ?? `interpolateViridis`))
+                    color_scale_overrides.delete(col_id)
                   else color_scale_overrides.set(col_id, val)
                 }}
               >
@@ -1149,11 +1345,7 @@
 
   {@render sort_hint_element(`top`)}
 
-  <div
-    class="table-scroll"
-    style={scroll_style}
-    class:has-scroll={scroll_style}
-  >
+  <div class="table-scroll" style={scroll_style} class:has-scroll={scroll_style}>
     {#if loading}
       <div class="loading-overlay">
         <div class="loading-spinner"></div>
@@ -1175,14 +1367,11 @@
               {#if !col.group}
                 <th class:sticky-col={col.sticky}></th>
               {:else}
-                {@const group_cols = visible_columns.filter((column) =>
-              column.group === col.group
-            )}
+                {@const group_cols = visible_columns.filter(
+                  (column) => column.group === col.group,
+                )}
                 <!-- Only render the group header once for each group by checking if this is the first column of this group -->
-                {#if visible_columns.findIndex((column) => column.group === col.group) ===
-              visible_columns.findIndex((column) =>
-                column.group === col.group && column.label === col.label
-              )}
+                {#if visible_columns.findIndex((column) => column.group === col.group) === visible_columns.findIndex((column) => column.group === col.group && column.label === col.label)}
                   <th title={col.description} colspan={group_cols.length}>
                     {@html sanitize_html(col.group)}
                   </th>
@@ -1210,9 +1399,10 @@
           {/if}
           {#each visible_columns as col (get_col_id(col))}
             {@const col_id = get_col_id(col)}
-            {@const drag_side = drag_over_col_id === col_id
-              ? get_drag_side(col_id)
-              : null}
+            {@const is_datetime = is_datetime_column(col)}
+            {@const dt_mode = datetime_mode(col)}
+            {@const datetime_label_id = get_datetime_label_id(col_id)}
+            {@const drag_side = drag_over_col_id === col_id ? get_drag_side(col_id) : null}
             {@const col_width = column_widths[col_id]}
             <th
               title={col.description}
@@ -1220,9 +1410,11 @@
               role={col.sortable === false ? undefined : `button`}
               oncontextmenu={(event) => {
                 if (
-                  !allow_better_toggle || col.color_scale === null ||
+                  !allow_better_toggle ||
+                  col.color_scale === null ||
                   col.color_scale === undefined
-                ) return
+                )
+                  return
                 event.preventDefault()
                 event.stopPropagation()
                 context_menu_col = col_id
@@ -1234,37 +1426,35 @@
               }}
               onclick={(event) => {
                 if (!drag_col_id && !resize_col_id) {
-                  sort_rows(
-                    col.label,
-                    col.group,
-                    event,
-                  )
+                  sort_rows(col.label, col.group, event)
                 }
               }}
               onkeydown={(event) => {
                 if (
                   (event.key === `Enter` || event.key === ` `) &&
-                  !drag_col_id && !resize_col_id
+                  !drag_col_id &&
+                  !resize_col_id
                 ) {
                   event.preventDefault()
                   sort_rows(col.label, col.group, event)
                 }
               }}
               style={`${col.style ?? ``}${
-                col_width
-                  ? `; width: ${col_width}px; min-width: ${col_width}px`
-                  : ``
+                col_width ? `; width: ${col_width}px; min-width: ${col_width}px` : ``
               }`}
               class:sticky-col={col.sticky}
               class:not-sortable={col.sortable === false}
               class:dragging={drag_col_id === col_id}
               class:resizing={resize_col_id === col_id}
+              class:datetime-select-open={datetime_select_open_col_id === col_id}
               data-drag-side={drag_side}
               draggable="true"
               aria-dropeffect="move"
               aria-sort={sort_state.column === col_id
-              ? (sort_state.ascending ? `ascending` : `descending`)
-              : `none`}
+                ? sort_state.ascending
+                  ? `ascending`
+                  : `descending`
+                : `none`}
               ondragstart={(event: DragEvent & { currentTarget: HTMLElement }) => {
                 handle_drag_start(event, col)
                 event.currentTarget.setAttribute(`aria-grabbed`, `true`)
@@ -1283,6 +1473,67 @@
                 {@html sanitize_html(col.label)}
               {/if}
               {@html sanitize_html(sort_indicator(col, sort_state))}
+              {#if is_datetime}
+                <span class="datetime-format-control">
+                  <button
+                    type="button"
+                    class="datetime-format-trigger"
+                    aria-labelledby={datetime_label_id}
+                    aria-haspopup="listbox"
+                    aria-expanded={datetime_select_open_col_id === col_id}
+                    data-mode={dt_mode}
+                    onkeydown={(event) => event.stopPropagation()}
+                    onmousedown={(event) => event.stopPropagation()}
+                    onpointerdown={(event) => event.stopPropagation()}
+                    onclick={(event) => {
+                      event.stopPropagation()
+                      datetime_select_open_col_id =
+                        datetime_select_open_col_id === col_id ? null : col_id
+                    }}
+                    {@attach tooltip({
+                      content: `Date/time format: ${datetime_format_labels[dt_mode]}`,
+                      placement: `top`,
+                    })}
+                  >
+                    <Icon icon="Calendar" />
+                    <span id={datetime_label_id} class="sr-only">
+                      Date/time format for {strip_html(col.label)}
+                    </span>
+                  </button>
+                  {#if datetime_select_open_col_id === col_id}
+                    <select
+                      class="datetime-format-select"
+                      aria-labelledby={datetime_label_id}
+                      value={dt_mode}
+                      size={datetime_format_options(col).length}
+                      onclick={(event) => {
+                        event.stopPropagation()
+                        if (event.currentTarget.value === dt_mode) {
+                          datetime_select_open_col_id = null
+                        }
+                      }}
+                      onkeydown={(event) => {
+                        event.stopPropagation()
+                        if (event.key === `Escape`) datetime_select_open_col_id = null
+                      }}
+                      onmousedown={(event) => event.stopPropagation()}
+                      onpointerdown={(event) => event.stopPropagation()}
+                      oninput={(event) => {
+                        event.stopPropagation()
+                        set_datetime_format(
+                          col,
+                          event.currentTarget.value as DateTimeFormatMode,
+                        )
+                        datetime_select_open_col_id = null
+                      }}
+                    >
+                      {#each datetime_format_options(col) as mode (mode)}
+                        <option value={mode}>{datetime_format_labels[mode]}</option>
+                      {/each}
+                    </select>
+                  {/if}
+                </span>
+              {/if}
               <!-- Column resize handle -->
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
@@ -1307,24 +1558,27 @@
             class={row.class}
             class:selected={row_selected}
             tabindex={onrowclick ? 0 : undefined}
+            onpointerdown={onrowpointerdown
+              ? (event) => onrowpointerdown(event, row)
+              : undefined}
             onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
             onkeydown={onrowclick
-            ? (event) => {
-              if (event.key === `Enter` || event.key === ` `) {
-                event.preventDefault()
-                onrowclick(event, row)
-              } else if (event.key === `ArrowDown`) {
-                event.preventDefault()
-                const next = event.currentTarget.nextElementSibling
-                if (next instanceof HTMLElement) next.focus()
-              } else if (event.key === `ArrowUp`) {
-                event.preventDefault()
-                const prev = event.currentTarget.previousElementSibling
-                if (prev instanceof HTMLElement) prev.focus()
-              }
-            }
-            : undefined}
+              ? (event) => {
+                  if (event.key === `Enter` || event.key === ` `) {
+                    event.preventDefault()
+                    onrowclick(event, row)
+                  } else if (event.key === `ArrowDown`) {
+                    event.preventDefault()
+                    const next = event.currentTarget.nextElementSibling
+                    if (next instanceof HTMLElement) next.focus()
+                  } else if (event.key === `ArrowUp`) {
+                    event.preventDefault()
+                    const prev = event.currentTarget.previousElementSibling
+                    if (prev instanceof HTMLElement) prev.focus()
+                  }
+                }
+              : undefined}
           >
             {#if show_row_select}
               <td class="select-col">
@@ -1344,28 +1598,29 @@
               {@const val = row[get_col_id(col)]}
               {@const color = calc_color(val, col)}
               {@const col_width = column_widths[get_col_id(col)]}
+              {@const date_val = is_datetime_column(col)
+                ? format_datetime_cell(val, col)
+                : null}
               <td
                 data-col={col.label}
-                data-sort-value={is_html_str(val) ? null : val}
+                data-sort-value={get_cell_sort_attr(val)}
                 class:sticky-col={col.sticky}
                 style:--cell-bg={color.bg}
                 style:color={color.text}
                 style={`${col.cell_style ?? col.style ?? ``}${
-                  col_width
-                    ? `; width: ${col_width}px; max-width: ${col_width}px`
-                    : ``
+                  col_width ? `; width: ${col_width}px; max-width: ${col_width}px` : ``
                 }`}
               >
                 {#if special_cells?.[col.label]}
                   {@render special_cells[col.label]({ row, col, val })}
                 {:else if cell}
                   {@render cell({ row, col, val })}
+                {:else if date_val != null}
+                  {date_val}
                 {:else if typeof val === `number` && !Number.isNaN(val)}
                   {format_num(val, col.format ?? default_num_format)}
                 {:else if val === undefined || val === null || Number.isNaN(val)}
-                  <span {@attach tooltip({ content: `Not available` })}>
-                    n/a
-                  </span>
+                  <span {@attach tooltip({ content: `Not available` })}> n/a </span>
                 {:else}
                   {@html sanitize_html(val)}
                 {/if}
@@ -1376,8 +1631,9 @@
           {#if empty_message}
             <tr class="empty-row">
               <td
-                colspan={visible_columns.length + (show_row_select ? 1 : 0) +
-                (show_row_numbers ? 1 : 0)}
+                colspan={visible_columns.length +
+                  (show_row_select ? 1 : 0) +
+                  (show_row_numbers ? 1 : 0)}
               >
                 {empty_message}
               </td>
@@ -1400,7 +1656,7 @@
       <button
         class="page-btn"
         disabled={current_page === 1}
-        onclick={() => current_page = 1}
+        onclick={() => (current_page = 1)}
         title="First page"
       >
         «
@@ -1441,7 +1697,7 @@
       <button
         class="page-btn"
         disabled={current_page === total_pages}
-        onclick={() => current_page = total_pages}
+        onclick={() => (current_page = total_pages)}
         title="Last page"
       >
         »
@@ -1450,8 +1706,10 @@
         <select
           class="page-size-select"
           onchange={(event) => {
-            effective_page_size = parseInt(event.currentTarget.value, 10)
+            const page_size = parseInt(event.currentTarget.value, 10)
+            effective_page_size = page_size
             current_page = 1
+            pagination_config.on_page_size_change?.(page_size)
           }}
         >
           {#each pagination_config.page_sizes as size (size)}
@@ -1466,10 +1724,12 @@
 
   <ContextMenu
     sections={better_sections}
-    selected_values={{ 'Gradient direction': better_overrides.get(context_menu_col ?? ``) ?? `` }}
+    selected_values={{
+      'Gradient direction': better_overrides.get(context_menu_col ?? ``) ?? ``,
+    }}
     position={context_menu_pos}
     visible={context_menu_col !== null}
-    on_close={() => context_menu_col = null}
+    on_close={() => (context_menu_col = null)}
     style={[
       `--surface-bg: light-dark(#fff, #1e1e1e)`,
       `--border-color: light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
@@ -1507,15 +1767,15 @@
   .table-scroll.has-scroll {
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.12));
     border-radius: var(--border-radius, 3pt);
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: auto;
   }
   table {
     border-collapse: separate;
     border-spacing: 0;
     display: table; /* Override global display: block to enable sticky headers */
   }
-  th, td {
+  th,
+  td {
     padding: var(--heatmap-cell-padding, 1pt 5pt);
     text-align: var(--heatmap-text-align, left);
     border: var(--heatmap-cell-border, none);
@@ -1540,6 +1800,83 @@
   }
   th:hover {
     background: var(--heatmap-header-hover-bg, var(--nav-bg));
+  }
+  th.datetime-select-open {
+    overflow: visible;
+    z-index: 30;
+  }
+  .datetime-format-control {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 3px;
+    position: relative;
+    vertical-align: middle;
+  }
+  .datetime-format-trigger {
+    display: inline-grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .datetime-format-trigger:hover,
+  .datetime-format-trigger[aria-expanded='true'] {
+    background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
+  }
+  .datetime-format-trigger :global(svg) {
+    width: 10px;
+    height: 10px;
+    opacity: 0.75;
+    transform: translateY(-1px);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .datetime-format-select {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 0;
+    z-index: 20;
+    min-width: max-content;
+    max-width: 10em;
+    padding: 2px;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
+    border-radius: 3px;
+    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.9em;
+    line-height: 1.35;
+    outline: none;
+  }
+  .datetime-format-select:hover,
+  .datetime-format-select:focus,
+  .datetime-format-select:focus-visible {
+    outline: none;
+  }
+  .datetime-format-select option {
+    padding: 3px 8px;
+  }
+  .datetime-format-select option:checked {
+    background: light-dark(rgba(74, 158, 255, 0.18), rgba(122, 179, 255, 0.28));
+    box-shadow: 0 0 0 100vmax light-dark(rgba(74, 158, 255, 0.18), rgba(122, 179, 255, 0.28))
+      inset;
+    color: inherit;
   }
   th.dragging {
     opacity: 0.4;
@@ -1627,7 +1964,8 @@
     background: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2));
   }
   .icon-btn.active {
-    background: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.25));
+    background: color-mix(in srgb, var(--active-color, #4a9eff) 82%, transparent);
+    color: white;
   }
   .selection-badge {
     position: relative;
@@ -1716,7 +2054,8 @@
   tr.highlight {
     background-color: var(--nav-bg) !important;
   }
-  tr.highlight, tr.highlight :global(a) {
+  tr.highlight,
+  tr.highlight :global(a) {
     color: var(--highlight) !important;
   }
 

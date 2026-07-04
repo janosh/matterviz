@@ -1,5 +1,6 @@
 import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
+import { normalize_unicode_minus } from '$lib/utils'
 import { format } from 'd3-format'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
@@ -43,8 +44,7 @@ export function format_value(value: number, formatter?: string): string {
   if (value === Infinity) return `Infinity`
   if (Number.isNaN(value)) return `NaN`
 
-  // Format and normalize unicode minus
-  const formatted = format(formatter)(value).replaceAll('−', `-`)
+  const formatted = normalize_unicode_minus(format(formatter)(value))
 
   // Handle percentage formatting - remove trailing zeros
   if (formatter.includes(`%`)) {
@@ -217,11 +217,12 @@ export function parse_si_float<T extends string | number | null | undefined>(
         multiplier = 1000 ** (index - 8)
       }
     }
-    return parseFloat(num_part) * multiplier
+    return Number(num_part) * multiplier
   }
 
-  // If it's a number without SI suffix, try parsing it
-  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) return parseFloat(cleaned)
+  // If it's a number without SI suffix, try parsing it (dropping stray commas
+  // not already stripped above, e.g. trailing ones)
+  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) return Number(cleaned.replaceAll(`,`, ``))
 
   // If the value is not a formatted number, return as is
   return value

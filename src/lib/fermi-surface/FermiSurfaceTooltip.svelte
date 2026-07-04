@@ -5,7 +5,10 @@
   import { KCoords, TooltipContent } from '$lib/tooltip'
   import type { FermiHoverData, FermiTooltipProp } from './types'
 
-  let { hover_data, tooltip }: {
+  let {
+    hover_data,
+    tooltip,
+  }: {
     hover_data: FermiHoverData
     tooltip?: FermiTooltipProp
   } = $props()
@@ -27,15 +30,15 @@
 
     {#if hover_data.property_value != null}
       <div class="property-row">
-        {hover_data.property_name || `Property`}: {
-          format_num(hover_data.property_value, `.4~`)
-        }
+        {hover_data.property_name || `Property`}: {format_num(
+          hover_data.property_value,
+          `.4~`,
+        )}
         <span class="nearest-note">(nearest)</span>
       </div>
     {/if}
 
-    {#if hover_data.is_tiled && hover_data.symmetry_index != null &&
-        hover_data.symmetry_index > 0}
+    {#if hover_data.is_tiled && hover_data.symmetry_index != null && hover_data.symmetry_index > 0}
       <div class="tiling-info">
         Symmetry copy #{hover_data.symmetry_index + 1}/48
       </div>

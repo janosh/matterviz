@@ -73,11 +73,11 @@ export function parse_lammps_trajectory(
   while (idx < lines.length) {
     if (!skip_to(`ITEM: TIMESTEP`)) break
     idx++
-    const timestep = parseInt(read_line(), 10) || 0
+    const timestep = Math.trunc(Number(read_line())) || 0
 
     if (!skip_to(`ITEM: NUMBER OF ATOMS`)) break
     idx++
-    const num_atoms = parseInt(read_line(), 10)
+    const num_atoms = Math.trunc(Number(read_line()))
     if (!num_atoms || num_atoms <= 0) continue
 
     // BOX BOUNDS: orthogonal="pp pp pp", triclinic="xy xz yz pp pp pp"
@@ -132,7 +132,7 @@ export function parse_lammps_trajectory(
 
     for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
       const parts = read_line().split(/\s+/)
-      const coords = pos_cols.map((col_idx) => parseFloat(parts[col_idx]))
+      const coords = pos_cols.map((col_idx) => Number(parts[col_idx]))
       if (coords.some(isNaN) || parts.length <= max_col_idx) continue
 
       // Convert scaled coordinates to Cartesian if needed
@@ -141,7 +141,7 @@ export function parse_lammps_trajectory(
 
       if (type_col !== undefined) {
         // Map atom type to element using custom mapping or default (type 1 -> H, etc.)
-        const atom_type = parseInt(parts[type_col], 10) || 1
+        const atom_type = Math.trunc(Number(parts[type_col])) || 1
         atom_types_found.add(atom_type)
         element_symbol = get_element(atom_type)
       } else if (element_col !== undefined) {
@@ -155,7 +155,7 @@ export function parse_lammps_trajectory(
           continue
         }
       } else if (id_col !== undefined) {
-        const atom_id = parseInt(parts[id_col], 10) || 1
+        const atom_id = Math.trunc(Number(parts[id_col])) || 1
         atom_types_found.add(atom_id)
         if (!id_fallback_warning_emitted) {
           traj_warn(

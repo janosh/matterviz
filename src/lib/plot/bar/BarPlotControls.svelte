@@ -26,9 +26,7 @@
     mode?: BarMode
     show_controls?: boolean
     controls_open?: boolean
-    children?: Snippet<
-      [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
-    >
+    children?: Snippet<[{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]>
   } = $props()
 </script>
 

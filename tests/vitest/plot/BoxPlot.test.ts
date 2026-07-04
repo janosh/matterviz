@@ -131,7 +131,7 @@ describe(`BoxPlot`, () => {
     const series: BoxPlotSeries[] = [{ y: [...cluster, 500], label: `Tail` }]
     const plot = await mount_sized_box_plot({ series })
     const tick_vals = [...plot.querySelectorAll(`g.y-axis .tick`)]
-      .map((tick_el) => parseFloat(tick_el.textContent ?? ``))
+      .map((tick_el) => Number(tick_el.textContent?.trim() || NaN))
       .filter(Number.isFinite)
     // axis reaches up toward the outlier at 500, far beyond the cluster
     expect(Math.max(...tick_vals)).toBeGreaterThan(100)
@@ -302,8 +302,7 @@ describe(`BoxPlot`, () => {
         mount_sized_box_plot({ series: [{ ...basic, box_width: 0.8 }], kind: `violin+box` }),
     },
   ])(`$name`, async ({ narrow, wide }) => {
-    const rect_w = (plot: HTMLElement) =>
-      parseFloat(iqr_box(plot)[0].getAttribute(`width`) ?? `0`)
+    const rect_w = (plot: HTMLElement) => Number(iqr_box(plot)[0].getAttribute(`width`) ?? `0`)
     const narrow_plot = await narrow()
     document.body.innerHTML = ``
     const wide_plot = await wide()

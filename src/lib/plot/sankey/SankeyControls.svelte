@@ -79,22 +79,22 @@
         max={60}
         step={1}
         bind:value={node_width}
-        style="flex: 1 1 100%"
-      >Node width:</NumberRangeInput>
+        style="flex: 1 1 100%">Node width:</NumberRangeInput
+      >
       <NumberRangeInput
         min={0}
         max={40}
         step={1}
         bind:value={node_padding}
-        style="flex: 1 1 100%"
-      >Node padding:</NumberRangeInput>
+        style="flex: 1 1 100%">Node padding:</NumberRangeInput
+      >
       <NumberRangeInput
         min={0.05}
         max={1}
         step={0.05}
         bind:value={link_opacity}
-        style="flex: 1 1 100%"
-      >Link opacity:</NumberRangeInput>
+        style="flex: 1 1 100%">Link opacity:</NumberRangeInput
+      >
       <label style="flex: 1 1 100%">
         <input type="checkbox" bind:checked={show_node_labels} />
         Show node labels

@@ -146,7 +146,8 @@ Create surfaces using parametric equations. This example shows a torus:
 
   const [major_radius, minor_radius] = [0.4, 0.15]
 
-  const torus_surface = { // Parametric torus surface
+  const torus_surface = {
+    // Parametric torus surface
     type: `parametric`,
     u_range: [0, Math.PI * 2],
     v_range: [0, Math.PI * 2],
@@ -156,9 +157,10 @@ Create surfaces using parametric equations. This example shows a torus:
       y: (major_radius + minor_radius * Math.cos(v)) * Math.sin(u),
       z: minor_radius * Math.sin(v),
     }),
-    color_fn: (x, y, z) => { // Color by angle around the tube
-      const hue = (Math.atan2(z, Math.sqrt(x * x + y * y) - major_radius) + Math.PI) /
-        (2 * Math.PI)
+    color_fn: (x, y, z) => {
+      // Color by angle around the tube
+      const hue =
+        (Math.atan2(z, Math.sqrt(x * x + y * y) - major_radius) + Math.PI) / (2 * Math.PI)
       return `hsl(${hue * 360}, 70%, 50%)`
     },
     opacity: 0.85,
@@ -358,7 +360,7 @@ Combine multiple surfaces in the same plot:
     x_range: [-1, 1],
     y_range: [-1, 1],
     resolution: 25,
-    z_fn: (x, y) => (x * x + y * y) - 0.5,
+    z_fn: (x, y) => x * x + y * y - 0.5,
     color: `#3498db`,
     opacity: 0.6,
   }

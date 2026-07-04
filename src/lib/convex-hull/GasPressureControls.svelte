@@ -59,8 +59,7 @@
 
   // Convert pressure to log scale slider position (0-100)
   const pressure_to_slider = (P: number): number =>
-    ((Math.max(LOG_P_MIN, Math.min(LOG_P_MAX, Math.log10(P))) - LOG_P_MIN) /
-      LOG_P_RANGE) * 100
+    ((Math.max(LOG_P_MIN, Math.min(LOG_P_MAX, Math.log10(P))) - LOG_P_MIN) / LOG_P_RANGE) * 100
 
   // Convert slider position (0-100) to pressure
   const slider_to_pressure = (value: number): number =>
@@ -102,10 +101,7 @@
   }
 
   function set_pressure_direct(gas: GasSpecies, value: number): void {
-    const clamped = Math.max(
-      10 ** LOG_P_MIN,
-      Math.min(10 ** LOG_P_MAX, value),
-    )
+    const clamped = Math.max(10 ** LOG_P_MIN, Math.min(10 ** LOG_P_MAX, value))
     pressures = { ...pressures, [gas]: clamped }
   }
 </script>
@@ -116,10 +112,7 @@
       {@const P = get_pressure(gas)}
       {@const mu = get_mu(gas)}
       {@const tooltip_content = `${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mu, 3)}`}
-      <div
-        class="pressure-slider"
-        {@attach tooltip({ content: tooltip_content })}
-      >
+      <div class="pressure-slider" {@attach tooltip({ content: tooltip_content })}>
         <label class="pressure-label">
           <input
             type="text"

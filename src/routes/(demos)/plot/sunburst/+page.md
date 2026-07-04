@@ -16,7 +16,10 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; branch a
       children: [
         {
           label: `Solar`,
-          children: [{ label: `PV`, value: 24 }, { label: `CSP`, value: 4 }],
+          children: [
+            { label: `PV`, value: 24 },
+            { label: `CSP`, value: 4 },
+          ],
         },
         { label: `Wind`, value: 30 },
         { label: `Hydro`, value: 17 },
@@ -24,7 +27,10 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; branch a
     },
     {
       label: `Fossil`,
-      children: [{ label: `Coal`, value: 22 }, { label: `Gas`, value: 28 }],
+      children: [
+        { label: `Coal`, value: 22 },
+        { label: `Gas`, value: 28 },
+      ],
     },
     { label: `Nuclear`, value: 18 },
   ]
@@ -109,11 +115,12 @@ Deeply nested trees are easiest to build from path rows via `sunburst_from_paths
 </script>
 
 <div style="display: flex; gap: 1em; align-items: center; flex-wrap: wrap">
-  <button onclick={() => zoom_root_id = null} disabled={zoom_root_id === null}>
+  <button onclick={() => (zoom_root_id = null)} disabled={zoom_root_id === null}>
     Reset zoom
   </button>
   <span>current root: <code>{zoom_root_id ?? `all`}</code></span>
-  <label>Rings:
+  <label
+    >Rings:
     <select bind:value={max_depth}>
       <option value={0}>all</option>
       <option value={3}>3</option>
@@ -213,10 +220,13 @@ Chalcogenides/Tellurides/Bi₂Te₃,26
 Chalcogenides/Tellurides/Sb₂Te₃,14
 `
   const data = sunburst_from_paths(
-    csv.trim().split(`\n`).map((row) => {
-      const [path, value] = row.split(`,`)
-      return { path: path.split(`/`), value: Number(value) }
-    }),
+    csv
+      .trim()
+      .split(`\n`)
+      .map((row) => {
+        const [path, value] = row.split(`,`)
+        return { path: path.split(`/`), value: Number(value) }
+      }),
   )
 </script>
 
@@ -290,8 +300,18 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
     [2, 95], // P-1
     [1, 25], // P1
     // long tail of rare spacegroups
-    [19, 18], [33, 15], [61, 12], [88, 10], [122, 9], [148, 14], [161, 8], [176, 11],
-    [198, 7], [205, 13], [215, 6], [230, 9],
+    [19, 18],
+    [33, 15],
+    [61, 12],
+    [88, 10],
+    [122, 9],
+    [148, 14],
+    [161, 8],
+    [176, 11],
+    [198, 7],
+    [205, 13],
+    [215, 6],
+    [230, 9],
   ]
   const spacegroups = distribution.flatMap(([spg, count]) => Array(count).fill(spg))
 </script>
@@ -326,13 +346,28 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 
   // synthetic dataset: [formula or chemical system, occurrence count]
   const distribution: [string, number][] = [
-    [`Si`, 18], [`Fe`, 12], [`C`, 8], // unary
-    [`Fe2O3`, 45], [`Li2O`, 30], [`GaN`, 25], [`Mo-S`, 20], [`Bi-Te`, 14], // binary
-    [`LiCoO2`, 32], [`BaTiO3`, 28], [`MgAl2O4`, 22], [`Li-Mn-O`, 16], [`CsPbBr3`, 12], // ternary
-    [`LiFePO4`, 38], [`Cu2ZnSnS4`, 9], // quaternary
+    [`Si`, 18],
+    [`Fe`, 12],
+    [`C`, 8], // unary
+    [`Fe2O3`, 45],
+    [`Li2O`, 30],
+    [`GaN`, 25],
+    [`Mo-S`, 20],
+    [`Bi-Te`, 14], // binary
+    [`LiCoO2`, 32],
+    [`BaTiO3`, 28],
+    [`MgAl2O4`, 22],
+    [`Li-Mn-O`, 16],
+    [`CsPbBr3`, 12], // ternary
+    [`LiFePO4`, 38],
+    [`Cu2ZnSnS4`, 9], // quaternary
   ]
   const entries = distribution.flatMap(([sys, count]) => Array(count).fill(sys))
 </script>
 
-<Sunburst data={chem_sys_sunburst_data(entries)} label_text="label+value" style="height: 450px" />
+<Sunburst
+  data={chem_sys_sunburst_data(entries)}
+  label_text="label+value"
+  style="height: 450px"
+/>
 ```

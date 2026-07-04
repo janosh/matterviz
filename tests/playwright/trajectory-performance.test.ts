@@ -54,7 +54,7 @@ test.describe(`Trajectory Performance Tests`, () => {
 
     const step_text = await step_info.textContent()
     const max_step_match = step_text?.match(/\/ (?<max>\d+)/)
-    const max_step = max_step_match ? parseInt(max_step_match[1], 10) : 0
+    const max_step = max_step_match ? Number(max_step_match[1]) : 0
 
     expect(max_step).toBeGreaterThanOrEqual(200)
 
@@ -99,7 +99,7 @@ test.describe(`Trajectory Performance Tests`, () => {
       (target) => {
         const step_input_el = document.querySelector(`.step-input`) as HTMLInputElement
         if (!step_input_el) return false
-        const current_step = parseInt(step_input_el.value, 10)
+        const current_step = Number(step_input_el.value)
         return current_step >= target
       },
       target_step,
@@ -235,7 +235,7 @@ test.describe(`Trajectory Performance Tests`, () => {
 
     // Wait for playback to start and progress a few steps
     const initial_step = await step_input.inputValue()
-    const start_step = parseInt(initial_step, 10)
+    const start_step = Number(initial_step)
     expect(start_step).toBeGreaterThanOrEqual(0)
 
     // Wait for progression observing step change
@@ -243,14 +243,14 @@ test.describe(`Trajectory Performance Tests`, () => {
     await page.waitForFunction(
       (start_step_value) => {
         const step_input_el = document.querySelector(`.step-input`) as HTMLInputElement
-        return step_input_el && parseInt(step_input_el.value, 10) > start_step_value
+        return step_input_el && Number(step_input_el.value) > start_step_value
       },
       start_step,
       { timeout: 30000 },
     )
 
     const current_step = await step_input.inputValue()
-    const progressed_step = parseInt(current_step, 10)
+    const progressed_step = Number(current_step)
     expect(progressed_step).toBeGreaterThan(start_step)
 
     await play_button.click() // Stop playback

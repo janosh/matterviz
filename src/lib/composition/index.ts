@@ -1,4 +1,5 @@
 import type { ElementSymbol } from '$lib/element'
+import { format_num } from '$lib/labels'
 
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'
@@ -22,6 +23,19 @@ export type ChartSegmentData = {
   font_scale: number
   text_color: string
 }
+
+// Segment label shared by bar/pie charts: element symbol plus optional
+// amount and percentage suffixes
+export const chart_segment_label = (
+  element: string,
+  amount: number | undefined,
+  fraction: number,
+  show_amounts: boolean,
+  show_percentages: boolean,
+): string =>
+  element +
+  (show_amounts ? (amount?.toString() ?? ``) : ``) +
+  (show_percentages ? format_num(fraction, `.1~%`) : ``)
 
 export function get_chart_font_scale(
   base_scale: number,

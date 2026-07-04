@@ -434,6 +434,21 @@ describe(`VASP XDATCAR Parser`, () => {
     )
   })
 
+  it(`should reject blank scale lines but tolerate trailing comments like parseFloat`, async () => {
+    const xdatcar_with_scale = (scale: string) =>
+      `title\n${scale}\n5 0 0\n0 5 0\n0 0 5\nH\n1\nDirect configuration= 1\n0.5 0.5 0.5\nDirect configuration= 2\n0.5 0.5 0.5`
+    // Number(``) is 0, not NaN - a blank scale line must be a parse error
+    await expect(parse_trajectory_data(xdatcar_with_scale(``), `XDATCAR`)).rejects.toThrow(
+      `Invalid scale factor`,
+    )
+    const trajectory = await parse_trajectory_data(
+      xdatcar_with_scale(`2.0 ! scale`),
+      `XDATCAR`,
+    )
+    const structure = trajectory.frames[0].structure
+    expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(10, 5)
+  })
+
   it(`should re-read repeated headers in variable-cell (NPT) XDATCAR`, async () => {
     const frame = (lat_a: number, idx: number) =>
       `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5`

@@ -91,72 +91,68 @@
     on_point_hover,
     on_hover,
     ...rest
-  }:
-    & {
-      structure?: Crystal
-      bz_order?: number
-      bz_data?: BrillouinZoneData
-      controls_open?: boolean
-      info_pane_open?: boolean
-      surface_color?: string
-      surface_opacity?: number
-      edge_color?: string
-      edge_width?: number
-      show_vectors?: boolean
-      vector_scale?: number
-      camera_projection?: CameraProjection
-      // Irreducible BZ options
-      show_ibz?: boolean
-      ibz_color?: string
-      ibz_opacity?: number
-      ibz_data?: IrreducibleBZData | null
-      // Controls visibility configuration.
-      // - 'always': controls always visible
-      // - 'hover': controls visible on component hover (default)
-      // - 'never': controls never visible
-      // - object: { mode, hidden, style } for fine-grained control
-      //
-      // Control names: 'filename', 'fullscreen', 'info-pane', 'export-pane', 'controls'
-      show_controls?: ShowControlsProp
-      fullscreen?: boolean
-      width?: number
-      height?: number
-      wrapper?: HTMLDivElement
-      png_dpi?: number
-      hovered?: boolean
-      dragover?: boolean
-      allow_file_drop?: boolean
-      fullscreen_toggle?: FullscreenToggleProp
-      data_url?: string
-      on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
-      spinner_props?: ComponentProps<typeof Spinner>
-      loading?: boolean
-      error_msg?: string
-      structure_string?: string
-      // K-path points in Cartesian reciprocal space coordinates (not fractional coords)
-      // Should be computed using the reciprocal lattice matrix (includes 2π factor)
-      k_path_points?: Vec3[]
-      // K-path labels with positions in Cartesian reciprocal space coordinates
-      // Each position should match a corresponding point in k_path_points
-      k_path_labels?: { position: Vec3; label: string | null }[]
-      // Currently hovered k-point in Cartesian reciprocal space coordinates
-      hovered_k_point?: Vec3 | null
-      // Index of the currently hovered q-point in the band structure
-      hovered_qpoint_index?: number | null
-      // Called with the q-point index when the user hovers the k-path in the BZ (null on leave)
-      on_kpath_hover?: (qpoint_index: number | null) => void
-      children?: Snippet<
-        [{ structure?: Crystal; bz_data?: BrillouinZoneData }]
-      >
-      tooltip_config?: BZTooltipProp
-      on_file_load?: (data: BZHandlerData) => void
-      on_error?: (data: BZHandlerData) => void
-      on_fullscreen_change?: (data: BZHandlerData) => void
-      on_point_hover?: (data: BZHoverData | null) => void
-      // Deprecated alias for on_point_hover (honored when on_point_hover is unset)
-      on_hover?: (data: BZHoverData | null) => void
-    }
-    & HTMLAttributes<HTMLDivElement> = $props()
+  }: {
+    structure?: Crystal
+    bz_order?: number
+    bz_data?: BrillouinZoneData
+    controls_open?: boolean
+    info_pane_open?: boolean
+    surface_color?: string
+    surface_opacity?: number
+    edge_color?: string
+    edge_width?: number
+    show_vectors?: boolean
+    vector_scale?: number
+    camera_projection?: CameraProjection
+    // Irreducible BZ options
+    show_ibz?: boolean
+    ibz_color?: string
+    ibz_opacity?: number
+    ibz_data?: IrreducibleBZData | null
+    // Controls visibility configuration.
+    // - 'always': controls always visible
+    // - 'hover': controls visible on component hover (default)
+    // - 'never': controls never visible
+    // - object: { mode, hidden, style } for fine-grained control
+    //
+    // Control names: 'filename', 'fullscreen', 'info-pane', 'export-pane', 'controls'
+    show_controls?: ShowControlsProp
+    fullscreen?: boolean
+    width?: number
+    height?: number
+    wrapper?: HTMLDivElement
+    png_dpi?: number
+    hovered?: boolean
+    dragover?: boolean
+    allow_file_drop?: boolean
+    fullscreen_toggle?: FullscreenToggleProp
+    data_url?: string
+    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    spinner_props?: ComponentProps<typeof Spinner>
+    loading?: boolean
+    error_msg?: string
+    structure_string?: string
+    // K-path points in Cartesian reciprocal space coordinates (not fractional coords)
+    // Should be computed using the reciprocal lattice matrix (includes 2π factor)
+    k_path_points?: Vec3[]
+    // K-path labels with positions in Cartesian reciprocal space coordinates
+    // Each position should match a corresponding point in k_path_points
+    k_path_labels?: { position: Vec3; label: string | null }[]
+    // Currently hovered k-point in Cartesian reciprocal space coordinates
+    hovered_k_point?: Vec3 | null
+    // Index of the currently hovered q-point in the band structure
+    hovered_qpoint_index?: number | null
+    // Called with the q-point index when the user hovers the k-path in the BZ (null on leave)
+    on_kpath_hover?: (qpoint_index: number | null) => void
+    children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
+    tooltip_config?: BZTooltipProp
+    on_file_load?: (data: BZHandlerData) => void
+    on_error?: (data: BZHandlerData) => void
+    on_fullscreen_change?: (data: BZHandlerData) => void
+    on_point_hover?: (data: BZHoverData | null) => void
+    // Deprecated alias for on_point_hover (honored when on_point_hover is unset)
+    on_hover?: (data: BZHoverData | null) => void
+  } & HTMLAttributes<HTMLDivElement> = $props()
 
   let scene = $state(undefined)
   let camera = $state(undefined)
@@ -181,9 +177,7 @@
 
   // Parse and load structure from content
   function parse_structure(content: string | ArrayBuffer, filename: string) {
-    const text = content instanceof ArrayBuffer
-      ? new TextDecoder().decode(content)
-      : content
+    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
     const parsed = parse_any_structure(text, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
 
@@ -198,9 +192,7 @@
     try {
       parse_structure(content, filename)
     } catch (err) {
-      error_msg = `Failed to parse ${filename}: ${
-        to_error(err).message
-      }`
+      error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename })
     }
   }
@@ -241,9 +233,7 @@
     analyze_structure_symmetry(structure, {})
       .then((sym_data) => {
         if (stale) return
-        const point_group_ops = extract_point_group_from_operations(
-          sym_data.operations,
-        )
+        const point_group_ops = extract_point_group_from_operations(sym_data.operations)
         ibz_data = compute_irreducible_bz(captured_bz, point_group_ops)
       })
       .catch((err) => {
@@ -267,12 +257,8 @@
     if (data_url && !structure) {
       loading = true
       error_msg = undefined
-      load_from_url(
-        data_url,
-        (content, filename) =>
-          on_file_drop
-            ? on_file_drop(content, filename)
-            : safe_parse(content, filename),
+      load_from_url(data_url, (content, filename) =>
+        on_file_drop ? on_file_drop(content, filename) : safe_parse(content, filename),
       )
         .catch((err) => handle_error(err, data_url))
         .finally(() => (loading = false))
@@ -307,7 +293,8 @@
     if (
       target instanceof HTMLElement &&
       (target.tagName === `INPUT` || target.tagName === `TEXTAREA`)
-    ) return
+    )
+      return
 
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     else if (event.key === `i`) info_pane_open = !info_pane_open
@@ -338,7 +325,10 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+  {...drag_over_handlers({
+    allow: () => allow_file_drop,
+    set_dragover: (over) => (dragover = over),
+  })}
   {onkeydown}
   {...rest}
   class={[`brillouin-zone`, rest.class]}

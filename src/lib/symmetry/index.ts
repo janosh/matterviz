@@ -183,7 +183,7 @@ function build_moyo_cell(structure: Crystal, positions: Vec3[], numbers: number[
 
 export function to_cell_json(structure: Crystal): string {
   const { positions, numbers } = build_moyo_input_cell(structure)
-  return JSON.stringify(build_moyo_cell(structure, positions as Vec3[], numbers))
+  return JSON.stringify(build_moyo_cell(structure, positions, numbers))
 }
 
 const fractional_sq_dist = (pos_1: Vec3, pos_2: Vec3): number =>
@@ -252,7 +252,7 @@ export async function analyze_structure_symmetry(
   const cell_json = JSON.stringify(
     build_moyo_cell(
       struct_or_mol,
-      moyo_input_cell.positions as Vec3[],
+      moyo_input_cell.positions,
       moyo_input_cell.numbers,
     ) satisfies MoyoCell,
   )
@@ -261,9 +261,9 @@ export async function analyze_structure_symmetry(
   const moyo_algo = algo === `Moyo` ? `Standard` : algo
   const sym_data = analyze_cell(cell_json, symprec, moyo_algo)
   const orig_site_indices_by_std_idx = map_std_to_orig_site_indices(
-    sym_data.std_cell.positions as Vec3[],
+    sym_data.std_cell.positions,
     sym_data.std_cell.numbers,
-    moyo_input_cell.positions as Vec3[],
+    moyo_input_cell.positions,
     moyo_input_cell.numbers,
     moyo_input_cell.orig_site_indices_by_input_idx,
     { std_linear: sym_data.std_linear, std_origin_shift: sym_data.std_origin_shift },
@@ -334,7 +334,7 @@ function wyckoff_rows_from_input_orbits(sym_data: SymmetryDataset): WyckoffPos[]
 
     // Representative coordinate in the standardized frame, simplest first
     const best_pos = simplest_position(
-      members.map((idx) => wrap_frac(mapper.to_std(input_cell.positions[idx] as Vec3))),
+      members.map((idx) => wrap_frac(mapper.to_std(input_cell.positions[idx]))),
     )
 
     const orig_site_indices = members.flatMap(
@@ -356,11 +356,18 @@ function wyckoff_rows_from_input_orbits(sym_data: SymmetryDataset): WyckoffPos[]
 // always index the input cell and analyze_structure_symmetry always attaches input_cell, so
 // the orbit grouping is the single source of truth for any input cell setting.
 // Rows sort by ascending multiplicity, then Wyckoff label.
+// Numeric multiplicity prefix of a Wyckoff label like `4a` (NaN when absent)
+export const wyckoff_multiplicity = (label: string): number =>
+  Number(/^\d+/.exec(label)?.[0] ?? NaN)
+
 export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): WyckoffPos[] {
   if (!sym_data) return []
   const orbit_rows = wyckoff_rows_from_input_orbits(sym_data)
   return (orbit_rows ?? []).sort((w1, w2) => {
-    const [w1_mult, w2_mult] = [parseInt(w1.wyckoff, 10), parseInt(w2.wyckoff, 10)]
+    const [w1_mult, w2_mult] = [
+      wyckoff_multiplicity(w1.wyckoff),
+      wyckoff_multiplicity(w2.wyckoff),
+    ]
     if (w1_mult !== w2_mult) return w1_mult - w2_mult
     return w1.wyckoff.localeCompare(w2.wyckoff)
   })
@@ -452,7 +459,8 @@ class WrappedPositionIndex {
     positions: Vec3[],
     private readonly tolerance: number,
   ) {
-    this.n_cells = Math.min(64, Math.max(1, Math.floor(1 / Math.max(tolerance, 1e-9))))
+    const inv_tolerance = Math.floor(1 / Math.max(tolerance, 1e-9))
+    this.n_cells = Math.min(64, Math.max(1, inv_tolerance))
     this.coords = positions
     positions.forEach((pos, idx) => {
       const key = this.cell_key(pos, 0, 0, 0)

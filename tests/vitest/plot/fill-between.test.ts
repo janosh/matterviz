@@ -191,11 +191,16 @@ describe(`resolve_boundary_points`, () => {
   })
 
   it.each([
-    [`number shorthand`, 42 as FillBoundary, 42],
-    [`constant`, { type: `constant`, value: 50 } as FillBoundary, 50],
-    [`axis`, { type: `axis`, axis: `y`, value: 7 } as FillBoundary, 7],
+    [`number shorthand`, 42, 42],
+    [`constant`, { type: `constant`, value: 50 }, 50],
+    [`axis`, { type: `axis`, axis: `y`, value: 7 }, 7],
   ])(`resolves %s to a flat linear edge spanning the companion x`, (_, boundary, y) => {
-    const result = resolve_boundary_points(boundary, series, domains, companion)
+    const result = resolve_boundary_points(
+      boundary as FillBoundary,
+      series,
+      domains,
+      companion,
+    )
     expect(result?.curve).toBe(`linear`)
     expect(result?.points).toEqual([
       { x: 0, y },

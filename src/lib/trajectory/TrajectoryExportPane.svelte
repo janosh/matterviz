@@ -62,7 +62,7 @@
     if (!canvas) return 0
     const pixels = canvas.width * canvas.height * resolution_multiplier ** 2
     const bitrate = estimate_video_bitrate(pixels, video_fps)
-    return (bitrate * export_frame_count / video_fps) / 8 / 1024 / 1024
+    return (bitrate * export_frame_count) / video_fps / 8 / 1024 / 1024
   })
 
   // Initialize end_frame when trajectory changes
@@ -84,9 +84,7 @@
     }
   })
 
-  let export_frame_count = $derived(
-    end_frame >= start_frame ? end_frame - start_frame + 1 : 0,
-  )
+  let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
 
   async function handle_video_export(format: `webm` | `mp4` = `webm`) {
     export_error = null
@@ -96,8 +94,8 @@
       export_error = !trajectory
         ? `No trajectory`
         : !canvas
-        ? `Canvas not ready`
-        : `Invalid frame range`
+          ? `Canvas not ready`
+          : `Invalid frame range`
       return
     }
 
@@ -172,13 +170,7 @@
       <label>
         Frame Rate (FPS)
         <input type="number" min={10} max={60} bind:value={video_fps} />
-        <input
-          type="range"
-          min={10}
-          max={60}
-          bind:value={video_fps}
-          style="accent-color: var(--accent-color)"
-        />
+        <input type="range" min={10} max={60} bind:value={video_fps} />
       </label>
 
       <span class="field-label">
@@ -192,7 +184,9 @@
               class:active={resolution_multiplier === multiplier}
               onclick={() => (resolution_multiplier = multiplier)}
               {@attach tooltip({
-                content: canvas ? `${multiplier}x (${width_px}×${height_px})` : `${multiplier}x`,
+                content: canvas
+                  ? `${multiplier}x (${width_px}×${height_px})`
+                  : `${multiplier}x`,
               })}
             >
               {multiplier}x
@@ -214,7 +208,6 @@
           min={0}
           max={Math.max(0, total_frames_available - 1)}
           bind:value={start_frame}
-          style="accent-color: var(--accent-color)"
         />
       </label>
 
@@ -231,7 +224,6 @@
           min={start_frame}
           max={Math.max(0, total_frames_available - 1)}
           bind:value={end_frame}
-          style="accent-color: var(--accent-color)"
         />
       </label>
     </SettingsSection>
@@ -243,13 +235,7 @@
     {/if}
 
     <div class="export-buttons">
-      {#each [
-        { label: `WebM`, format: `webm`, hint: `Export as WebM video` },
-        { label: `MP4`, format: `mp4`, hint: `WebM + ffmpeg command` },
-      ] as const as
-        { label, format, hint }
-        (format)
-      }
+      {#each [{ label: `WebM`, format: `webm`, hint: `Export as WebM video` }, { label: `MP4`, format: `mp4`, hint: `WebM + ffmpeg command` }] as const as { label, format, hint } (format)}
         <div style="display: flex; align-items: center; gap: 4pt">
           {label}
           <button
@@ -267,15 +253,11 @@
     </div>
 
     <div class="export-info">
-      {(export_frame_count / video_fps).toFixed(1)}s ({export_frame_count} frames: {
-        start_frame
-      }–{end_frame})
+      {(export_frame_count / video_fps).toFixed(1)}s ({export_frame_count} frames: {start_frame}–{end_frame})
       {#if file_size_mb > 0}
-        • ~{
-          file_size_mb < 1
+        • ~{file_size_mb < 1
           ? `${(file_size_mb * 1024).toFixed(0)} KB`
-          : `${file_size_mb.toFixed(1)} MB`
-        }
+          : `${file_size_mb.toFixed(1)} MB`}
       {/if}
     </div>
 
@@ -292,7 +274,8 @@
     gap: 6pt;
     white-space: nowrap;
   }
-  .warning, .error-message {
+  .warning,
+  .error-message {
     padding: 1ex;
     border-radius: var(--traj-border-radius, var(--border-radius, 3pt));
     font-size: 0.9em;

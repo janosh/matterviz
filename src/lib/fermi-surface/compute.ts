@@ -9,6 +9,8 @@ import {
   SPANNING_THRESHOLD,
 } from './constants'
 import { marching_cubes } from '$lib/marching-cubes'
+// clamp01 guards float jitter at the cell boundary
+import { clamp01 } from '$lib/utils'
 import type {
   BandGridData,
   FermiSliceData,
@@ -310,9 +312,6 @@ function compute_fermi_velocities(
   const k_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_lattice))
   // Grid point i sits at frac i/(n−1) (endpoint-inclusive BXSF) or i/n (periodic)
   const [sx, sy, sz] = periodic ? [nx, ny, nz] : [nx - 1, ny - 1, nz - 1]
-  // Clamp guards float jitter at the cell boundary
-  const clamp01 = (val: number) => Math.min(Math.max(val, 0), 1)
-
   for (const vertex of surface.vertices) {
     const frac = math.mat3x3_vec3_multiply(k_inv, vertex) // centered, in [-0.5, 0.5]
     const gx = clamp01(frac[0] + 0.5) * sx

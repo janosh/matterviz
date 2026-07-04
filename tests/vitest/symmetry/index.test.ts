@@ -8,6 +8,7 @@ import {
   map_wyckoff_to_all_atoms,
   simplicity_score,
   to_cell_json,
+  wyckoff_multiplicity,
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
 import { structures } from '$site/structures'
@@ -601,7 +602,7 @@ describe(`site coverage verification`, () => {
 
       const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
       const total_multiplicity = wyckoff_positions.reduce((sum, pos) => {
-        const multiplicity = parseInt(pos.wyckoff, 10) || 1
+        const multiplicity = wyckoff_multiplicity(pos.wyckoff) || 1
         return sum + multiplicity
       }, 0)
 

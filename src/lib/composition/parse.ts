@@ -35,7 +35,7 @@ const is_atomic_number_composition = (obj: Record<string | number, number>): boo
 }
 
 const format_state = (state: number) => (state > 0 ? `+` : ``) + state
-const parse_count = (count?: string): number => (count ? parseFloat(count) : 1)
+const parse_count = (count?: string): number => (count ? Number(count) : 1)
 const format_count = (count: number): string => {
   if (!Number.isFinite(count)) return `${count}`
   return Number(count.toPrecision(12)).toLocaleString(`en-US`, {
@@ -108,7 +108,7 @@ export const parse_formula = (formula: string): CompositionType => {
   for (const [seg_idx, segment] of segments.entries()) {
     // only hydrate segments (after a separator) carry a leading multiplier
     const coeff = seg_idx > 0 ? /^(?:\d+(?:\.\d+)?|\.\d+)/.exec(segment)?.[0] : undefined
-    const multiplier = coeff ? parseFloat(coeff) : 1
+    const multiplier = coeff ? Number(coeff) : 1
     const expanded = expand_parentheses(segment.slice(coeff?.length ?? 0))
     for (const match of expanded.matchAll(
       /(?<element>[A-Z][a-z]?)(?<count>\d+(?:\.\d+)?|\.\d+)?/g,
@@ -126,7 +126,7 @@ export const normalize_composition = (
   composition: CompositionType | Record<number, number> | Record<string | number, number>,
 ): CompositionType => {
   if (is_atomic_number_composition(composition)) {
-    return normalize_composition(atomic_num_to_symbols(composition as Record<number, number>))
+    return normalize_composition(atomic_num_to_symbols(composition))
   }
 
   const normalized: CompositionType = {}
@@ -273,7 +273,7 @@ const parse_oxidation_state = (oxidation_str: string): number => {
 
   const [, sign_before, number, sign_after] = ox_match
   const sign = sign_before || sign_after || `+`
-  return sign === `-` ? -parseInt(number, 10) : parseInt(number, 10)
+  return sign === `-` ? -Number(number) : Number(number)
 }
 
 // Parse chemical formula string with oxidation states into structured data.

@@ -29,15 +29,11 @@
 
   const is_element = $derived(is_unary_entry(entry))
   const elem_symbol = $derived(
-    is_element
-      ? (Object.entries(entry.composition).find(([, n]) => n > 0)?.[0] ?? ``)
-      : ``,
+    is_element ? (Object.entries(entry.composition).find(([, n]) => n > 0)?.[0] ?? ``) : ``,
   ) as ElementSymbol | ``
   const elem_name = $derived(elem_symbol && ELEM_SYMBOL_TO_NAME[elem_symbol])
   const polymorph_stats = $derived(
-    entry.entry_id && polymorph_stats_map
-      ? polymorph_stats_map.get(entry.entry_id)
-      : null,
+    entry.entry_id && polymorph_stats_map ? polymorph_stats_map.get(entry.entry_id) : null,
   )
   const category_value = $derived(get_entry_category(entry, entry_category))
 </script>
@@ -80,14 +76,11 @@
     {/if}
 
     {#if show_fractional && !is_element}
-      {@const total = Object.values(entry.composition).reduce(
-        (sum, amt) => sum + amt,
-        0,
-      )}
+      {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
       {#if total > 0}
         {@const fractions = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .map(([el, amt]) => `${el}<sub>${format_num(amt / total, `.2~`)}</sub>`)}
+          .filter(([, amt]) => amt > 0)
+          .map(([el, amt]) => `${el}<sub>${format_num(amt / total, `.2~`)}</sub>`)}
         {#if fractions.length > 1}
           <div>Fractional: {@html sanitize_html(fractions.join(` `))}</div>
         {/if}

@@ -11,27 +11,133 @@ A simple table with sortable columns and automatic heatmap coloring based on cel
   import { HeatmapTable } from 'matterviz'
 
   const data = [
-    [`Fe₂O₃`, 0.0, 2.2, -8.5],
-    [`TiO₂`, 0.0, 3.2, -9.8],
-    [`ZnO`, 0.02, 3.4, -3.6],
-    [`Cu₂O`, 0.05, 2.1, -1.7],
-    [`SiO₂`, 0.0, 8.9, -9.1],
-    [`Al₂O₃`, 0.0, 8.8, -17.4],
-    [`MgO`, 0.0, 7.8, -6.2],
-    [`CaTiO₃`, 0.03, 3.5, -16.1],
-  ].map(([v1, v2, v3, v4]) => ({
+    [
+      `Fe₂O₃`,
+      0.0,
+      2.2,
+      -8.5,
+      `2026-06-21`,
+      `2026-06-22T09:30:00Z`,
+      Date.parse(`2026-06-23T14:15:00Z`),
+      new Date(`2026-06-23T08:00:00Z`),
+    ],
+    [
+      `TiO₂`,
+      0.0,
+      3.2,
+      -9.8,
+      `2026-06-20`,
+      `2026-06-22T10:05:00Z`,
+      Date.parse(`2026-06-23T16:45:00Z`),
+      new Date(`2026-06-23T08:45:00Z`),
+    ],
+    [
+      `ZnO`,
+      0.02,
+      3.4,
+      -3.6,
+      `2026-06-19`,
+      `2026-06-22T11:20:00Z`,
+      Date.parse(`2026-06-24T08:30:00Z`),
+      new Date(`2026-06-24T09:15:00Z`),
+    ],
+    [
+      `Cu₂O`,
+      0.05,
+      2.1,
+      -1.7,
+      `2026-06-18`,
+      `2026-06-22T13:10:00Z`,
+      Date.parse(`2026-06-24T12:00:00Z`),
+      new Date(`2026-06-24T10:30:00Z`),
+    ],
+    [
+      `SiO₂`,
+      0.0,
+      8.9,
+      -9.1,
+      `2026-06-17`,
+      `2026-06-22T14:25:00Z`,
+      Date.parse(`2026-06-24T15:40:00Z`),
+      new Date(`2026-06-24T11:20:00Z`),
+    ],
+    [
+      `Al₂O₃`,
+      0.0,
+      8.8,
+      -17.4,
+      `2026-06-16`,
+      `2026-06-22T15:50:00Z`,
+      Date.parse(`2026-06-25T09:10:00Z`),
+      new Date(`2026-06-25T13:05:00Z`),
+    ],
+    [
+      `MgO`,
+      0.0,
+      7.8,
+      -6.2,
+      `2026-06-15`,
+      `2026-06-22T17:35:00Z`,
+      Date.parse(`2026-06-25T11:25:00Z`),
+      new Date(`2026-06-25T14:35:00Z`),
+    ],
+    [
+      `CaTiO₃`,
+      0.03,
+      3.5,
+      -16.1,
+      `2026-06-14`,
+      `2026-06-22T18:45:00Z`,
+      Date.parse(`2026-06-25T18:05:00Z`),
+      new Date(`2026-06-25T16:10:00Z`),
+    ],
+  ].map(([v1, v2, v3, v4, v5, v6, v7, v8]) => ({
     Formula: v1,
     'E<sub>above hull</sub>': v2,
     'E<sub>gap</sub>': v3,
     'E<sub>form</sub>': v4,
+    'Created Date': v5,
+    'Calculated At': v6,
+    'Last Updated': v7,
+    'Synthesis Time': v8,
   }))
 
   // oxfmt-ignore
   const columns = [
     { label: `Formula` },
-    { label: `E<sub>above hull</sub>`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f` },
-    { label: `E<sub>gap</sub>`, better: `higher`, color_scale: `interpolateViridis`, format: `.1f` },
-    { label: `E<sub>form</sub>`, better: `lower`, color_scale: `interpolateBlues`, format: `.1f` },
+    {
+      label: `E<sub>above hull</sub>`,
+      better: `lower`,
+      color_scale: `interpolateRdYlGn`,
+      format: `.2f`,
+    },
+    {
+      label: `E<sub>gap</sub>`,
+      better: `higher`,
+      color_scale: `interpolateViridis`,
+      format: `.1f`,
+    },
+    {
+      label: `E<sub>form</sub>`,
+      better: `lower`,
+      color_scale: `interpolateBlues`,
+      format: `.1f`,
+    },
+    { label: `Created Date`, description: `ISO date string with automatic date formatting` },
+    {
+      label: `Calculated At`,
+      description: `ISO date-time string with automatic date/time formatting`,
+    },
+    {
+      label: `Last Updated`,
+      format_type: `datetime`,
+      description: `Millisecond timestamp; click the calendar button to show age since now`,
+    },
+    {
+      label: `Synthesis Time`,
+      datetime_format: `time`,
+      description: `Date object rendered as time by default`,
+    },
   ]
 </script>
 
@@ -67,7 +173,7 @@ All 118 chemical elements with physical and chemical properties. Features column
       .map((el) => ({
         Symbol: el.radioactive ? `☢️ ${el.symbol}` : el.symbol,
         Name: el.name,
-        'Z': el.number,
+        Z: el.number,
         'Mass (u)': el.atomic_mass,
         Category: el.category,
         Period: el.period,
@@ -76,7 +182,7 @@ All 118 chemical elements with physical and chemical properties. Features column
         'ρ (g/cm³)': el.density,
         'r<sub>atom</sub> (Å)': el.atomic_radius,
         'r<sub>cov</sub> (Å)': el.covalent_radius,
-        'χ': el.electronegativity,
+        χ: el.electronegativity,
         'EA (kJ/mol)': el.electron_affinity,
         'IE<sub>1</sub> (eV)': el.first_ionization,
         'C<sub>p</sub>': el.specific_heat,
@@ -113,28 +219,96 @@ All 118 chemical elements with physical and chemical properties. Features column
     // Structure
     { label: `Period`, group: `Structure`, color_scale: `interpolatePurples`, format: `d` },
     { label: `Group`, group: `Structure`, color_scale: `interpolateGreens`, format: `d` },
-    { label: `n<sub>val</sub>`, group: `Structure`, color_scale: `interpolateCool`, format: `d`, description: `Valence electrons` },
+    {
+      label: `n<sub>val</sub>`,
+      group: `Structure`,
+      color_scale: `interpolateCool`,
+      format: `d`,
+      description: `Valence electrons`,
+    },
     // Physical
-    { label: `ρ (g/cm³)`, group: `Physical`, better: `higher`, color_scale: `interpolateOranges`, format: `.3~`, scale_type: `log`, description: `Density` },
-    { label: `r<sub>atom</sub> (Å)`, group: `Physical`, color_scale: `interpolatePlasma`, format: `.2f`, description: `Atomic radius` },
-    { label: `r<sub>cov</sub> (Å)`, group: `Physical`, color_scale: `interpolateMagma`, format: `.2f`, description: `Covalent radius` },
+    {
+      label: `ρ (g/cm³)`,
+      group: `Physical`,
+      better: `higher`,
+      color_scale: `interpolateOranges`,
+      format: `.3~`,
+      scale_type: `log`,
+      description: `Density`,
+    },
+    {
+      label: `r<sub>atom</sub> (Å)`,
+      group: `Physical`,
+      color_scale: `interpolatePlasma`,
+      format: `.2f`,
+      description: `Atomic radius`,
+    },
+    {
+      label: `r<sub>cov</sub> (Å)`,
+      group: `Physical`,
+      color_scale: `interpolateMagma`,
+      format: `.2f`,
+      description: `Covalent radius`,
+    },
     { label: `Phase`, group: `Physical`, style: `min-width: 60px;` },
     // Chemical
-    { label: `χ`, group: `Chemical`, better: `higher`, color_scale: `interpolateRdYlBu`, format: `.2f`, description: `Electronegativity (Pauling)` },
-    { label: `EA (kJ/mol)`, group: `Chemical`, color_scale: `interpolateRdYlGn`, format: `.1f`, description: `Electron affinity` },
-    { label: `IE<sub>1</sub> (eV)`, group: `Chemical`, better: `higher`, color_scale: `interpolateInferno`, format: `.2f`, description: `First ionization energy` },
+    {
+      label: `χ`,
+      group: `Chemical`,
+      better: `higher`,
+      color_scale: `interpolateRdYlBu`,
+      format: `.2f`,
+      description: `Electronegativity (Pauling)`,
+    },
+    {
+      label: `EA (kJ/mol)`,
+      group: `Chemical`,
+      color_scale: `interpolateRdYlGn`,
+      format: `.1f`,
+      description: `Electron affinity`,
+    },
+    {
+      label: `IE<sub>1</sub> (eV)`,
+      group: `Chemical`,
+      better: `higher`,
+      color_scale: `interpolateInferno`,
+      format: `.2f`,
+      description: `First ionization energy`,
+    },
     // Thermal
-    { label: `C<sub>p</sub>`, group: `Thermal`, color_scale: `interpolateYlOrRd`, format: `.2f`, description: `Specific heat (J/g·K)` },
-    { label: `T<sub>m</sub> (K)`, group: `Thermal`, color_scale: `interpolateCool`, format: `,.0f`, description: `Melting point` },
-    { label: `T<sub>b</sub> (K)`, group: `Thermal`, color_scale: `interpolateWarm`, format: `,.0f`, description: `Boiling point` },
+    {
+      label: `C<sub>p</sub>`,
+      group: `Thermal`,
+      color_scale: `interpolateYlOrRd`,
+      format: `.2f`,
+      description: `Specific heat (J/g·K)`,
+    },
+    {
+      label: `T<sub>m</sub> (K)`,
+      group: `Thermal`,
+      color_scale: `interpolateCool`,
+      format: `,.0f`,
+      description: `Melting point`,
+    },
+    {
+      label: `T<sub>b</sub> (K)`,
+      group: `Thermal`,
+      color_scale: `interpolateWarm`,
+      format: `,.0f`,
+      description: `Boiling point`,
+    },
     // Discovery
-    { label: `Year`, group: `Discovery`, color_scale: `interpolateGreys`, format: `d`, description: `Year of discovery` },
+    {
+      label: `Year`,
+      group: `Discovery`,
+      color_scale: `interpolateGreys`,
+      format: `d`,
+      description: `Year of discovery`,
+    },
   ]
 </script>
 
-<div
-  style="display: flex; gap: 1em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
->
+<div style="display: flex; gap: 1em; margin-bottom: 1em; flex-wrap: wrap; align-items: center">
   <label>
     Category:
     <select bind:value={category_filter}>
@@ -157,11 +331,9 @@ All 118 chemical elements with physical and chemical properties. Features column
   </label>
   {#if stats}
     <span style="font-size: 0.9em; opacity: 0.8; margin-left: auto">
-      Selected: <strong>{stats.count}</strong> | Avg mass: <strong>{
-        stats.avg_mass
-      }</strong> u | Avg ρ: <strong>{stats.avg_density}</strong> g/cm³ | Avg χ: <strong>{
-        stats.avg_electronegativity
-      }</strong>
+      Selected: <strong>{stats.count}</strong> | Avg mass: <strong>{stats.avg_mass}</strong> u
+      | Avg ρ: <strong>{stats.avg_density}</strong> g/cm³ | Avg χ:
+      <strong>{stats.avg_electronegativity}</strong>
     </span>
   {/if}
 </div>
@@ -183,9 +355,9 @@ All 118 chemical elements with physical and chemical properties. Features column
 
 {#if selected_rows.length > 0}
   <p style="margin-top: 0.5em; font-size: 0.9em; color: var(--text-muted)">
-    Double-click a row to open element page. Selected: {
-      selected_rows.map((row) => row._symbol).join(`, `)
-    }
+    Double-click a row to open element page. Selected: {selected_rows
+      .map((row) => row._symbol)
+      .join(`, `)}
   </p>
 {/if}
 ```
@@ -243,41 +415,48 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
   import { HeatmapTable } from 'matterviz'
 
   const models = [
-    [`MACE-MP-0`, 0.83, 0.91, 0.88, 0.79, 0.92, 0.85, 0.87, 0.90, 0.82, 0.86],
+    [`MACE-MP-0`, 0.83, 0.91, 0.88, 0.79, 0.92, 0.85, 0.87, 0.9, 0.82, 0.86],
     [`CHGNet`, 0.79, 0.88, 0.84, 0.76, 0.89, 0.81, 0.83, 0.86, 0.78, 0.82],
-    [`M3GNet`, 0.75, 0.84, 0.80, 0.72, 0.85, 0.77, 0.79, 0.82, 0.74, 0.78],
-    [`ALIGNN`, 0.81, 0.89, 0.86, 0.77, 0.90, 0.83, 0.85, 0.88, 0.80, 0.84],
-    [`SchNet`, 0.68, 0.76, 0.72, 0.65, 0.77, 0.70, 0.72, 0.75, 0.67, 0.71],
-    [`DimeNet++`, 0.77, 0.86, 0.82, 0.74, 0.87, 0.79, 0.81, 0.84, 0.76, 0.80],
-    [`GemNet-T`, 0.80, 0.88, 0.85, 0.76, 0.89, 0.82, 0.84, 0.87, 0.79, 0.83],
-    [`NequIP`, 0.82, 0.90, 0.87, 0.78, 0.91, 0.84, 0.86, 0.89, 0.81, 0.85],
-    [`PaiNN`, 0.76, 0.85, 0.81, 0.73, 0.86, 0.78, 0.80, 0.83, 0.75, 0.79],
+    [`M3GNet`, 0.75, 0.84, 0.8, 0.72, 0.85, 0.77, 0.79, 0.82, 0.74, 0.78],
+    [`ALIGNN`, 0.81, 0.89, 0.86, 0.77, 0.9, 0.83, 0.85, 0.88, 0.8, 0.84],
+    [`SchNet`, 0.68, 0.76, 0.72, 0.65, 0.77, 0.7, 0.72, 0.75, 0.67, 0.71],
+    [`DimeNet++`, 0.77, 0.86, 0.82, 0.74, 0.87, 0.79, 0.81, 0.84, 0.76, 0.8],
+    [`GemNet-T`, 0.8, 0.88, 0.85, 0.76, 0.89, 0.82, 0.84, 0.87, 0.79, 0.83],
+    [`NequIP`, 0.82, 0.9, 0.87, 0.78, 0.91, 0.84, 0.86, 0.89, 0.81, 0.85],
+    [`PaiNN`, 0.76, 0.85, 0.81, 0.73, 0.86, 0.78, 0.8, 0.83, 0.75, 0.79],
     [`CGCNN`, 0.65, 0.73, 0.69, 0.62, 0.74, 0.67, 0.69, 0.72, 0.64, 0.68],
-    [`MEGNet`, 0.71, 0.79, 0.75, 0.68, 0.80, 0.73, 0.75, 0.78, 0.70, 0.74],
-    [`BOWSR`, 0.58, 0.66, 0.62, 0.55, 0.67, 0.60, 0.62, 0.65, 0.57, 0.61],
-    [`Wrenformer`, 0.73, 0.81, 0.77, 0.70, 0.82, 0.75, 0.77, 0.80, 0.72, 0.76],
-    [`SevenNet`, 0.84, 0.92, 0.89, 0.80, 0.93, 0.86, 0.88, 0.91, 0.83, 0.87],
-    [`EquiformerV2`, 0.85, 0.93, 0.90, 0.81, 0.94, 0.87, 0.89, 0.92, 0.84, 0.88],
-    [`Graphormer`, 0.72, 0.80, 0.76, 0.69, 0.81, 0.74, 0.76, 0.79, 0.71, 0.75],
-    [`TorchMD-NET`, 0.78, 0.87, 0.83, 0.75, 0.88, 0.80, 0.82, 0.85, 0.77, 0.81],
+    [`MEGNet`, 0.71, 0.79, 0.75, 0.68, 0.8, 0.73, 0.75, 0.78, 0.7, 0.74],
+    [`BOWSR`, 0.58, 0.66, 0.62, 0.55, 0.67, 0.6, 0.62, 0.65, 0.57, 0.61],
+    [`Wrenformer`, 0.73, 0.81, 0.77, 0.7, 0.82, 0.75, 0.77, 0.8, 0.72, 0.76],
+    [`SevenNet`, 0.84, 0.92, 0.89, 0.8, 0.93, 0.86, 0.88, 0.91, 0.83, 0.87],
+    [`EquiformerV2`, 0.85, 0.93, 0.9, 0.81, 0.94, 0.87, 0.89, 0.92, 0.84, 0.88],
+    [`Graphormer`, 0.72, 0.8, 0.76, 0.69, 0.81, 0.74, 0.76, 0.79, 0.71, 0.75],
+    [`TorchMD-NET`, 0.78, 0.87, 0.83, 0.75, 0.88, 0.8, 0.82, 0.85, 0.77, 0.81],
     [`SpookyNet`, 0.74, 0.83, 0.79, 0.71, 0.84, 0.76, 0.78, 0.81, 0.73, 0.77],
     [`ForceNet`, 0.69, 0.77, 0.73, 0.66, 0.78, 0.71, 0.73, 0.76, 0.68, 0.72],
-    [`SphereNet`, 0.75, 0.84, 0.80, 0.72, 0.85, 0.77, 0.79, 0.82, 0.74, 0.78],
-    [`ComENet`, 0.70, 0.78, 0.74, 0.67, 0.79, 0.72, 0.74, 0.77, 0.69, 0.73],
-    [`EGNN`, 0.66, 0.74, 0.70, 0.63, 0.75, 0.68, 0.70, 0.73, 0.65, 0.69],
-    [`VisNet`, 0.77, 0.86, 0.82, 0.74, 0.87, 0.79, 0.81, 0.84, 0.76, 0.80],
-    [`Allegro`, 0.81, 0.89, 0.86, 0.77, 0.90, 0.83, 0.85, 0.88, 0.80, 0.84],
-    [`SO3krates`, 0.76, 0.85, 0.81, 0.73, 0.86, 0.78, 0.80, 0.83, 0.75, 0.79],
-    [`MACE-OFF`, 0.86, 0.94, 0.91, 0.82, 0.95, 0.88, 0.90, 0.93, 0.85, 0.89],
+    [`SphereNet`, 0.75, 0.84, 0.8, 0.72, 0.85, 0.77, 0.79, 0.82, 0.74, 0.78],
+    [`ComENet`, 0.7, 0.78, 0.74, 0.67, 0.79, 0.72, 0.74, 0.77, 0.69, 0.73],
+    [`EGNN`, 0.66, 0.74, 0.7, 0.63, 0.75, 0.68, 0.7, 0.73, 0.65, 0.69],
+    [`VisNet`, 0.77, 0.86, 0.82, 0.74, 0.87, 0.79, 0.81, 0.84, 0.76, 0.8],
+    [`Allegro`, 0.81, 0.89, 0.86, 0.77, 0.9, 0.83, 0.85, 0.88, 0.8, 0.84],
+    [`SO3krates`, 0.76, 0.85, 0.81, 0.73, 0.86, 0.78, 0.8, 0.83, 0.75, 0.79],
+    [`MACE-OFF`, 0.86, 0.94, 0.91, 0.82, 0.95, 0.88, 0.9, 0.93, 0.85, 0.89],
     [`Orb`, 0.79, 0.88, 0.84, 0.76, 0.89, 0.81, 0.83, 0.86, 0.78, 0.82],
-    [`FAENet`, 0.67, 0.75, 0.71, 0.64, 0.76, 0.69, 0.71, 0.74, 0.66, 0.70],
+    [`FAENet`, 0.67, 0.75, 0.71, 0.64, 0.76, 0.69, 0.71, 0.74, 0.66, 0.7],
   ]
 
-  const benchmarks = `MP JARVIS OQMD AFLOW MC3D GNoME WBM COD ICSD Perovskites`
-    .split(` `)
+  const benchmarks = `MP JARVIS OQMD AFLOW MC3D GNoME WBM COD ICSD Perovskites`.split(` `)
 
-  const data = models.map(([name, ...scores]) => {
-    const row = { Model: name }
+  const run_epoch = Date.parse(`2026-06-25T12:00:00Z`)
+
+  const data = models.map(([name, ...scores], model_idx) => {
+    const row = {
+      Model: name,
+      'Published Date': `202${model_idx % 6}-${String((model_idx % 12) + 1).padStart(2, `0`)}-15`,
+      'Scheduled Time': new Date(run_epoch + model_idx * 23 * 60 * 1000),
+      'Last Run': run_epoch - model_idx * 3.5 * 60 * 60 * 1000,
+      'Queued At': new Date(run_epoch - model_idx * 47 * 60 * 1000).toISOString(),
+    }
     benchmarks.forEach((bench, idx) => {
       row[bench] = scores[idx]
     })
@@ -286,6 +465,24 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
 
   const columns = [
     { label: `Model`, sticky: true, style: `min-width: 120px; font-weight: 600;` },
+    { label: `Published Date`, style: `min-width: 115px;` },
+    {
+      label: `Scheduled Time`,
+      datetime_format: `time`,
+      style: `min-width: 115px;`,
+      description: `Date object rendered as time by default`,
+    },
+    {
+      label: `Last Run`,
+      format_type: `datetime`,
+      style: `min-width: 115px;`,
+      description: `Numeric timestamp from the latest benchmark run`,
+    },
+    {
+      label: `Queued At`,
+      style: `min-width: 125px;`,
+      description: `ISO timestamp for the queued benchmark job`,
+    },
     ...benchmarks.map((bench) => ({
       label: bench,
       better: `higher`,
@@ -297,8 +494,8 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
 </script>
 
 <p style="color: var(--text-muted); margin-bottom: 0.5em; font-size: 0.9em">
-  ↔️ Scroll horizontally to see all datasets &nbsp;|&nbsp; ↕️ Scroll vertically for all
-  models &nbsp;|&nbsp; Model column stays pinned
+  ↔️ Scroll horizontally to see all datasets &nbsp;|&nbsp; ↕️ Scroll vertically for all models
+  &nbsp;|&nbsp; Model column stays pinned
 </p>
 
 <HeatmapTable
@@ -341,9 +538,23 @@ The table correctly handles numeric strings with uncertainty notation for both s
   const columns = [
     { label: `ID` },
     { label: `Formula` },
-    { label: `E<sub>gap</sub> (eV)`, better: `higher`, color_scale: `interpolateViridis`, description: `Band gap with measurement uncertainty` },
-    { label: `ρ (g/cm³)`, color_scale: `interpolateBlues`, description: `Density with uncertainty` },
-    { label: `κ (W/m·K)`, better: `higher`, color_scale: `interpolateOranges`, description: `Thermal conductivity with uncertainty` },
+    {
+      label: `E<sub>gap</sub> (eV)`,
+      better: `higher`,
+      color_scale: `interpolateViridis`,
+      description: `Band gap with measurement uncertainty`,
+    },
+    {
+      label: `ρ (g/cm³)`,
+      color_scale: `interpolateBlues`,
+      description: `Density with uncertainty`,
+    },
+    {
+      label: `κ (W/m·K)`,
+      better: `higher`,
+      color_scale: `interpolateOranges`,
+      description: `Thermal conductivity with uncertainty`,
+    },
   ]
 </script>
 
@@ -352,12 +563,7 @@ The table correctly handles numeric strings with uncertainty notation for both s
   uncertainty
 </p>
 
-<HeatmapTable
-  {data}
-  {columns}
-  initial_sort="E<sub>gap</sub> (eV)"
-  style="margin: 0 auto"
-/>
+<HeatmapTable {data} {columns} initial_sort="E<sub>gap</sub> (eV)" style="margin: 0 auto" />
 ```
 
 ## Color Scales
@@ -399,10 +605,10 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
     [`GaAs`, 1.42, 1e-8, 55],
     [`ZnO`, 3.44, 1e-6, 60],
     [`SiC`, 3.26, 1e-6, 490],
-    [`GaN`, 3.40, 1e-10, 130],
-    [`Al₂O₃`, 8.80, 1e-14, 30],
-    [`MgO`, 7.80, 1e-15, 60],
-    [`TiO₂`, 3.20, 1e-12, 8.5],
+    [`GaN`, 3.4, 1e-10, 130],
+    [`Al₂O₃`, 8.8, 1e-14, 30],
+    [`MgO`, 7.8, 1e-15, 60],
+    [`TiO₂`, 3.2, 1e-12, 8.5],
   ].map(([v1, v2, v3, v4]) => ({
     Material: v1,
     'E<sub>gap</sub> (eV)': v2,
@@ -466,10 +672,5 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
   </label>
 </div>
 
-<HeatmapTable
-  {data}
-  {columns}
-  bind:heatmap_opacity
-  style="margin: 0 auto"
-/>
+<HeatmapTable {data} {columns} bind:heatmap_opacity style="margin: 0 auto" />
 ```

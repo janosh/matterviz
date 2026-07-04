@@ -3,16 +3,10 @@ import { describe, expect, test } from 'vitest'
 
 // Note: stochastic functions are tested with shape/invariants, not exact values
 describe(`plot-utils random generators`, () => {
-  test(`box_muller returns finite numbers`, () => {
-    for (let idx = 0; idx < 10; idx++) {
-      const val = utils.box_muller(0, 1)
-      expect(Number.isFinite(val)).toBe(true)
-    }
-  })
-
   test(`generators produce correct length and finite values`, () => {
     const size = 10
     const thunks: readonly (() => number[])[] = [
+      () => Array.from({ length: size }, () => utils.box_muller(0, 1)),
       () => utils.generate_normal(size, 0, 1),
       () => utils.generate_exponential(size, 1),
       () => utils.generate_uniform(size, 0, 1),

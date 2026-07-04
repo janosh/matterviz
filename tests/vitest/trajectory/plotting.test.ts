@@ -103,6 +103,8 @@ describe(`generate_plot_series`, () => {
     expect(force_series?.visible).toBe(true)
 
     expect(volume_series?.visible).toBe(false) // Hidden (max 2 unit groups)
+    expect(energy_series?.point_style).toMatchObject({ stroke_width: 1 })
+    expect(energy_series?.point_style).not.toHaveProperty(`radius`)
     assert_unit_group_constraints(series)
   })
 

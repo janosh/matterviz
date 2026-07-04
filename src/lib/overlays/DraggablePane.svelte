@@ -29,12 +29,14 @@
     show?: boolean
     show_pane?: boolean
     children: Snippet<
-      [{
-        show: boolean
-        show_control_buttons: boolean
-        has_been_dragged: boolean
-        currently_dragging: boolean
-      }]
+      [
+        {
+          show: boolean
+          show_control_buttons: boolean
+          has_been_dragged: boolean
+          currently_dragging: boolean
+        },
+      ]
     >
     // Toggle button
     toggle_props?: HTMLAttributes<HTMLButtonElement>
@@ -83,9 +85,7 @@
         pane_div.style.width = `${Math.max(200, start_w + evt.clientX - start_x)}px`
       }
       if (resizable !== `width`) {
-        pane_div.style.maxHeight = `${
-          Math.max(100, start_h + evt.clientY - start_y)
-        }px`
+        pane_div.style.maxHeight = `${Math.max(100, start_h + evt.clientY - start_y)}px`
       }
     }
     function on_up() {
@@ -150,7 +150,8 @@
     const positioned_ancestor = toggle_pane_btn.offsetParent
     const ancestor_rect = positioned_ancestor?.getBoundingClientRect()
 
-    if (!ancestor_rect) { // Fallback to document positioning
+    if (!ancestor_rect) {
+      // Fallback to document positioning
       const scroll_x = window.scrollX || document.documentElement.scrollLeft
       const scroll_y = window.scrollY || document.documentElement.scrollTop
       return {
@@ -173,10 +174,11 @@
     if (Date.now() - resize_end_time < 200) return
 
     const target = event.target
-    const is_toggle_button = target instanceof Node &&
+    const is_toggle_button =
+      target instanceof Node &&
       (target === toggle_pane_btn || (toggle_pane_btn?.contains(target) ?? false))
-    const is_inside_pane = target instanceof Node &&
-      (target === pane_div || (pane_div?.contains(target) ?? false))
+    const is_inside_pane =
+      target instanceof Node && (target === pane_div || (pane_div?.contains(target) ?? false))
 
     if (!is_toggle_button && !is_inside_pane && !currently_dragging && !resizing) {
       close_pane()
@@ -186,7 +188,8 @@
   // Debounced resize handler for better performance
   let resize_timeout: ReturnType<typeof setTimeout> | undefined = $state(undefined)
 
-  function handle_resize() { // Only reposition if pane is visible and hasn't been manually dragged
+  function handle_resize() {
+    // Only reposition if pane is visible and hasn't been manually dragged
     if (!show || has_been_dragged || currently_dragging) return
 
     if (resize_timeout) clearTimeout(resize_timeout)
@@ -329,16 +332,17 @@
     box-sizing: border-box;
     box-shadow: var(
       --pane-box-shadow,
-      light-dark(
-        0 4px 20px -4px rgba(0, 0, 0, 0.15),
-        0 8px 16px -4px rgba(0, 0, 0, 0.3)
-      )
+      light-dark(0 4px 20px -4px rgba(0, 0, 0, 0.15), 0 8px 16px -4px rgba(0, 0, 0, 0.3))
     );
     z-index: var(--pane-z-index, 10);
     display: grid;
     text-align: left;
     /* Exclude position from being transitioned to prevent sluggish dragging */
-    transition: opacity 0.3s, background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+    transition:
+      opacity 0.3s,
+      background-color 0.3s,
+      border-color 0.3s,
+      box-shadow 0.3s;
     width: 28em;
     max-width: var(--pane-max-width, 80cqw);
     overflow: visible; /* Allow control-tab to protrude above the pane border */
@@ -368,10 +372,7 @@
   }
   .draggable-pane :global(hr) {
     border: none;
-    background: var(
-      --pane-hr-bg,
-      light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1))
-    );
+    background: var(--pane-hr-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     margin: var(--pane-hr-margin, 4pt 0);
     height: 1px;
   }

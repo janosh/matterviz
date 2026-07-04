@@ -575,7 +575,7 @@ test.each([
       structure = {
         sites: parsed.sites,
         lattice: { ...parsed.lattice, pbc: [true, true, true] },
-      } as Crystal
+      }
     }
 
     // Test find_image_atoms
@@ -652,7 +652,7 @@ test(`edge detection should be precise for atoms at boundaries`, () => {
   // Check that we get the expected corner images (with some tolerance)
   for (const expected_pos of expected_corner_images) {
     const found = corner_image_positions.some((actual_pos) => {
-      const dist = euclidean_dist(actual_pos, expected_pos as Vec3)
+      const dist = euclidean_dist(actual_pos, expected_pos)
       return dist < 0.001
     })
     expect(found).toBe(true)

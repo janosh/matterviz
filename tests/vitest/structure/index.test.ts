@@ -187,7 +187,7 @@ describe(`get_center_of_mass`, () => {
       xyz: site.xyz,
       label: `${site.element}${idx + 1}`,
       properties: {},
-    })) as Site[],
+    })),
     charge: 0,
   })
 

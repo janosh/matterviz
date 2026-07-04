@@ -298,10 +298,13 @@ describe(`marginal hover tooltips`, () => {
     expect(root.querySelector(`.plot-tooltip`)).toBeNull() // none before hover
     const hit = root.querySelector(`.marginal-hit`)
     if (!hit) throw new Error(`expected a .marginal-hit rect`)
+    const [hit_x, hit_y, hit_width] = [`x`, `y`, `width`].map((attr) =>
+      Number(hit.getAttribute(attr)),
+    )
     hit.dispatchEvent(
       new MouseEvent(`pointermove`, {
-        clientX: Number(hit.getAttribute(`x`)) + Number(hit.getAttribute(`width`)) / 2,
-        clientY: Number(hit.getAttribute(`y`)) + 1,
+        clientX: hit_x + hit_width / 2,
+        clientY: hit_y + 1,
         bubbles: true,
       }),
     )

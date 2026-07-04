@@ -32,15 +32,13 @@
   }
 
   // Convert glob results to FileInfo array
-  const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map(
-    (path) => {
-      const name = path.split(`/`).pop() || path
-      const url = path.replace(`/static`, ``) // e.g. /xrd/cao.xy
-      const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
-      const [category, category_icon] = ext_categories[ext] ?? [`Powder XRD`, `📊`]
-      return { name, url, type: ext, category, category_icon }
-    },
-  )
+  const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map((path) => {
+    const name = path.split(`/`).pop() || path
+    const url = path.replace(`/static`, ``) // e.g. /xrd/cao.xy
+    const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
+    const [category, category_icon] = ext_categories[ext] ?? [`Powder XRD`, `📊`]
+    return { name, url, type: ext, category, category_icon }
+  })
 
   // Custom colors for XRD data file types
   const xrd_file_colors: Record<string, string> = {
@@ -63,8 +61,7 @@
 
   // Cache computed XRD patterns to avoid recomputation when navigating structures
   const xrd_cache = new SvelteMap<string, XrdPattern>()
-  const get_struct_id = (struct: Crystal): string =>
-    struct.id || JSON.stringify(struct)
+  const get_struct_id = (struct: Crystal): string => struct.id || JSON.stringify(struct)
 
   // Map structures by id for O(1) lookup
   const structures_by_id = $derived<Record<string, Crystal>>(
@@ -82,9 +79,7 @@
   // On-the-fly computed patterns
   const compute_ids = structures.map(get_struct_id)
   let compute_id = $state<string>(compute_ids[0] || ``)
-  const computed_struct = $derived<Crystal | null>(
-    structures_by_id[compute_id] ?? null,
-  )
+  const computed_struct = $derived<Crystal | null>(structures_by_id[compute_id] ?? null)
   let compute_error = $state<string | null>(null)
   let computed_pattern = $state<XrdPattern | null>(null)
   $effect(() => {
@@ -175,11 +170,13 @@
   <section>
     <XrdPlot
       patterns={computed_pattern
-      ? [{
-        label: `${compute_id} ${formula_for(compute_id)}`,
-        pattern: computed_pattern,
-      }]
-      : []}
+        ? [
+            {
+              label: `${compute_id} ${formula_for(compute_id)}`,
+              pattern: computed_pattern,
+            },
+          ]
+        : []}
       annotate_peaks={3}
       hkl_format="compact"
       style="height: 600px"
@@ -198,9 +195,7 @@
     {#each structures as struct (get_struct_id(struct))}
       {@const struct_id = get_struct_id(struct)}
       {@const sel_idx = selected_ids.indexOf(struct_id)}
-      {@const series_color = sel_idx >= 0
-        ? PLOT_COLORS[sel_idx % PLOT_COLORS.length]
-        : null}
+      {@const series_color = sel_idx >= 0 ? PLOT_COLORS[sel_idx % PLOT_COLORS.length] : null}
       {@const btn_bg = series_color ? hex_with_alpha(series_color, 0.15) : null}
       <button
         class:active={sel_idx >= 0}
@@ -246,12 +241,14 @@
   <h2>XRD File Drop Demo</h2>
   <p>
     Drag and drop XRD data files directly onto the plot. Supported formats include:
-    <code>.xy</code>, <code>.xye</code>, <code>.csv</code>, <code>.dat</code>, <code
-    >.asc</code>, <code>.txt</code> (ASCII),
+    <code>.xy</code>, <code>.xye</code>, <code>.csv</code>, <code>.dat</code>,
+    <code>.asc</code>, <code>.txt</code> (ASCII),
     <code>.ras</code> (Rigaku), <code>.uxd</code> (Siemens), <code>.gsas</code>/<code
-    >.gsa</code> (GSAS),
-    <code>.xrdml</code> (PANalytical), <code>.brml</code>/<code>.raw</code> (Bruker).
-    Gzipped versions (<code>.xy.gz</code>, etc.) are also supported.
+      >.gsa</code
+    >
+    (GSAS),
+    <code>.xrdml</code> (PANalytical), <code>.brml</code>/<code>.raw</code> (Bruker). Gzipped
+    versions (<code>.xy.gz</code>, etc.) are also supported.
   </p>
   <section>
     <FilePicker

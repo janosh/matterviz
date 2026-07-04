@@ -76,7 +76,7 @@ test.describe(`Atom Radius Controls`, () => {
     const canvas_before_change = await canvas.screenshot()
 
     // Change radius to a different valid value - reset button appears
-    const new_value = parseFloat(initial_value) < 1 ? `1.5` : `0.5`
+    const new_value = Number(initial_value) < 1 ? `1.5` : `0.5`
     await set_input_value(radius_input, new_value)
     await expect(reset_btn).toBeVisible()
     await expect(radius_input).toHaveValue(new_value)

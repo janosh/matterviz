@@ -22,9 +22,7 @@
   let ibz_opacity = $state(0.5)
   let ibz_data = $state<IrreducibleBZData | null>(null)
 
-  let structure = $state<Crystal | undefined>(
-    mp1_struct as unknown as Crystal,
-  )
+  let structure = $state<Crystal | undefined>(mp1_struct as unknown as Crystal)
   let data_url = $state<string | undefined>(undefined)
   let event_calls = $state<{ event: string; data: unknown }[]>([])
 
@@ -45,7 +43,7 @@
     }
 
     if (params.has(`bz_order`)) {
-      const order = parseInt(params.get(`bz_order`) || `1`, 10)
+      const order = Math.trunc(Number(params.get(`bz_order`) || `1`))
       if (!isNaN(order)) bz_order = order
     }
 
@@ -71,59 +69,68 @@
 
 <section>
   <h2>Controls</h2>
-  <label>Controls Open: <input
+  <label
+    >Controls Open: <input
       id="controls-open"
       type="checkbox"
       bind:checked={controls_open}
-    /></label><br />
-  <label>Info Pane Open: <input
+    /></label
+  ><br />
+  <label
+    >Info Pane Open: <input
       id="info-pane-open"
       type="checkbox"
       bind:checked={info_pane_open}
-    /></label><br />
-  <label>BZ Order: <input
+    /></label
+  ><br />
+  <label
+    >BZ Order: <input
       id="bz-order"
       type="number"
       bind:value={bz_order}
       min="1"
       max="5"
-    /></label><br />
-  <label>Show Controls: <select
-      id="show-controls"
-      bind:value={show_controls}
-    >
+    /></label
+  ><br />
+  <label
+    >Show Controls: <select id="show-controls" bind:value={show_controls}>
       <option value="always">always</option>
       <option value="hover">hover</option>
       <option value="never">never</option>
-    </select></label><br />
-  <label>Camera Projection: <select id="camera-projection" bind:value={camera_projection}>
+    </select></label
+  ><br />
+  <label
+    >Camera Projection: <select id="camera-projection" bind:value={camera_projection}>
       <option value="perspective">perspective</option>
       <option value="orthographic">orthographic</option>
-    </select></label><br />
-  <label>Fullscreen: <input
+    </select></label
+  ><br />
+  <label
+    >Fullscreen: <input
       data-testid="fullscreen-checkbox"
       type="checkbox"
       bind:checked={fullscreen}
-    /></label><br />
-  <label>Show IBZ: <input
+    /></label
+  ><br />
+  <label
+    >Show IBZ: <input
       id="show-ibz"
       data-testid="show-ibz-checkbox"
       type="checkbox"
       bind:checked={show_ibz}
-    /></label><br />
-  <label>IBZ Color: <input
-      id="ibz-color"
-      type="color"
-      bind:value={ibz_color}
-    /></label><br />
-  <label>IBZ Opacity: <input
+    /></label
+  ><br />
+  <label>IBZ Color: <input id="ibz-color" type="color" bind:value={ibz_color} /></label><br />
+  <label
+    >IBZ Opacity: <input
       id="ibz-opacity"
       type="range"
       min="0"
       max="1"
       step="0.1"
       bind:value={ibz_opacity}
-    /></label>
+    /></label
+  >
 </section>
 
 <section>

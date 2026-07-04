@@ -2,7 +2,7 @@
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { CameraProjection } from '$lib/settings'
-  import { make_change_detector } from '$lib/utils'
+  import { make_change_detector, parse_num_token } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type {
     BandGridData,
@@ -90,8 +90,8 @@
   let available_bands = $derived(
     fermi_data
       ? [...new Set(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
-        (a, b) => a - b,
-      )
+          (a, b) => a - b,
+        )
       : [],
   )
   let available_bands_key = $derived(available_bands.join(`,`))
@@ -119,8 +119,7 @@
   }
 
   function handle_mu_change(event: Event & { currentTarget: HTMLInputElement }) {
-    const trimmed = event.currentTarget.value.trim()
-    const parsed = parseFloat(trimmed)
+    const parsed = parse_num_token(event.currentTarget.value)
     // Only update mu when input is valid; keep last valid value during transient
     // invalid states (e.g. empty string while user is typing a new value)
     if (Number.isFinite(parsed)) {
@@ -147,14 +146,7 @@
   >
     <label>
       <span>μ offset (eV):</span>
-      <input
-        type="range"
-        min="-1"
-        max="1"
-        step="0.01"
-        value={mu}
-        oninput={handle_mu_change}
-      />
+      <input type="range" min="-1" max="1" step="0.01" value={mu} oninput={handle_mu_change} />
       <input
         type="number"
         step="0.01"
@@ -300,13 +292,7 @@
       </label>
       <label>
         <span>Position:</span>
-        <input
-          type="range"
-          min="-1"
-          max="1"
-          step="0.01"
-          bind:value={clip_position}
-        />
+        <input type="range" min="-1" max="1" step="0.01" bind:value={clip_position} />
         <span class="value">{clip_position.toFixed(2)}</span>
       </label>
       <label>

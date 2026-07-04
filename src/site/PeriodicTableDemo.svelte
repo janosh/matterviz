@@ -30,10 +30,10 @@
   let heatmap_values = $derived(
     heatmap_key
       ? element_data.map((el) => {
-        if (!heatmap_key || !(heatmap_key in el)) return 0
-        const value = el[heatmap_key]
-        return typeof value === `number` ? value : 0
-      })
+          if (!heatmap_key || !(heatmap_key in el)) return 0
+          const value = el[heatmap_key]
+          return typeof value === `number` ? value : 0
+        })
       : [],
   )
 
@@ -68,7 +68,7 @@
     <br />
     <small>{element.symbol} • {element.number}</small>
     <br />
-    <em>{heatmap_key}: {Array.isArray(value) ? value.join(`, `) : value ?? `N/A`}</em>
+    <em>{heatmap_key}: {Array.isArray(value) ? value.join(`, `) : (value ?? `N/A`)}</em>
     <br />
     <small class="position">Position: {element.column},{element.row}</small>
     {#if heatmap_key && value != null}

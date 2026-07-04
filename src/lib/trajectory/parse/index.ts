@@ -70,16 +70,13 @@ export async function parse_trajectory_data(
     // e.g. blob: object URLs whose basenames are UUIDs)
     const xyz_hint = ext_hint(filename, /\.(?:xyz|extxyz)$/)
     if (xyz_hint || (xyz_hint === null && count_xyz_frames(content) === 1)) {
-      try {
-        const structure = parse_xyz(content)
-        if (structure) {
-          return {
-            frames: [{ structure, step: 0, metadata: {} }],
-            metadata: { source_format: `single_xyz`, frame_count: 1 },
-          }
+      // parse_xyz never throws (it returns null); fall through to JSON parsing.
+      const structure = parse_xyz(content)
+      if (structure) {
+        return {
+          frames: [{ structure, step: 0, metadata: {} }],
+          metadata: { source_format: `single_xyz`, frame_count: 1 },
         }
-      } catch {
-        // Single-frame XYZ parsing failed, continue to JSON parsing.
       }
     }
 

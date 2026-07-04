@@ -74,20 +74,16 @@
     }}
   >
     <div class="pane-row">
-      <label>Bins:
-        <input
-          type="range"
-          min="5"
-          max="100"
-          step="5"
-          bind:value={bins}
-        />
+      <label
+        >Bins:
+        <input type="range" min="5" max="100" step="5" bind:value={bins} />
       </label>
       <input type="number" min="5" max="100" step="5" bind:value={bins} />
     </div>
     {#if has_multiple_series}
       <div class="pane-row">
-        <label>Mode:
+        <label
+          >Mode:
           <select bind:value={mode}>
             <option value="single">Single</option>
             <option value="overlay">Overlay</option>
@@ -96,7 +92,8 @@
       </div>
       {#if mode === `single`}
         <div class="pane-row">
-          <label>Property:
+          <label
+            >Property:
             <select bind:value={selected_property}>
               <option value="">All</option>
               {#each series_options as option (option)}
@@ -125,15 +122,18 @@
       {#if visible_series.length === 1}
         <label>Fill: <input type="color" bind:value={bar.color} /></label>
       {/if}
-      <label>Opacity:
+      <label
+        >Opacity:
         <input type="range" min="0" max="1" step="0.05" bind:value={bar.opacity} />
         <input type="number" min="0" max="1" step="0.05" bind:value={bar.opacity} />
       </label>
-      <label>Stroke Width:
+      <label
+        >Stroke Width:
         <input type="range" min="0" max="5" step="0.1" bind:value={bar.stroke_width} />
         <input type="number" min="0" max="5" step="0.1" bind:value={bar.stroke_width} />
       </label>
-      <label>Stroke Color:
+      <label
+        >Stroke Color:
         <input type="color" bind:value={bar.stroke_color} />
         <input
           type="range"
@@ -143,13 +143,7 @@
           bind:value={bar.stroke_opacity}
           title="Opacity"
         />
-        <input
-          type="number"
-          min="0"
-          max="1"
-          step="0.05"
-          bind:value={bar.stroke_opacity}
-        />
+        <input type="number" min="0" max="1" step="0.05" bind:value={bar.stroke_opacity} />
       </label>
     {/if}
   </SettingsSection>
@@ -188,25 +182,33 @@
     class="pane-grid"
     style="grid-template-columns: 1fr 1fr"
   >
-    <label>X: <select bind:value={x_axis.scale_type}>
+    <label
+      >X: <select bind:value={x_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
-      </select></label>
+      </select></label
+    >
     {#if has_x2_points}
-      <label>X2: <select bind:value={x2_axis.scale_type}>
+      <label
+        >X2: <select bind:value={x2_axis.scale_type}>
           <option value="linear">Linear</option>
           <option value="log">Log</option>
-        </select></label>
+        </select></label
+      >
     {/if}
-    <label>Y: <select bind:value={y_axis.scale_type}>
+    <label
+      >Y: <select bind:value={y_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
-      </select></label>
+      </select></label
+    >
     {#if has_y2_points}
-      <label>Y2: <select bind:value={y2_axis.scale_type}>
+      <label
+        >Y2: <select bind:value={y2_axis.scale_type}>
           <option value="linear">Linear</option>
           <option value="log">Log</option>
-        </select></label>
+        </select></label
+      >
     {/if}
   </SettingsSection>
 </PlotControls>

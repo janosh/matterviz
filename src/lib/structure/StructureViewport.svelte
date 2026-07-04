@@ -144,15 +144,15 @@
   // stay proportional. Single view keeps the default size.
   let gizmo_prop = $derived.by(() => {
     if (!gizmo || !in_grid) return gizmo
-    const size = Math.round(Math.max(34, Math.min(72, Math.min(width, height) * 0.2)))
+    const fifth_of_min_dim = Math.min(width, height) * 0.2
+    const size = Math.round(Math.max(34, Math.min(72, fifth_of_min_dim)))
     return { ...(typeof gizmo === `object` ? gizmo : {}), size }
   })
 
   // Internal orbit controls are bound from StructureScene; camera_position/target are
   // bindable above so the primary viewport can persist moves into scene_props.
-  let orbit_controls = $state<
-    ComponentProps<typeof StructureScene>[`orbit_controls`]
-  >(undefined)
+  let orbit_controls =
+    $state<ComponentProps<typeof StructureScene>[`orbit_controls`]>(undefined)
   let rotation_target_ref = $state<Vec3 | undefined>(undefined)
   let initial_computed_zoom = $state<number | undefined>(undefined)
   let camera_is_moving = $state(false)
@@ -245,7 +245,8 @@
     if (
       target instanceof HTMLElement &&
       [`BUTTON`, `INPUT`, `SELECT`].includes(target.tagName)
-    ) return
+    )
+      return
     reset_camera()
   }
 </script>
@@ -267,7 +268,7 @@
       {structure}
       {base_structure}
       {...scene_props}
-      {...(in_grid ? { auto_rotate: 0 } : {})}
+      {...in_grid ? { auto_rotate: 0 } : {}}
       {camera_position}
       {camera_target}
       {camera_projection}
@@ -348,7 +349,10 @@
     padding: 1px 5px;
     border-radius: var(--border-radius, 3pt);
     color: var(--struct-viewport-label-color, var(--text-color, currentColor));
-    background: var(--struct-viewport-label-bg, color-mix(in srgb, var(--page-bg, Canvas) 65%, transparent));
+    background: var(
+      --struct-viewport-label-bg,
+      color-mix(in srgb, var(--page-bg, Canvas) 65%, transparent)
+    );
   }
   .viewport-cell :global(canvas) {
     cursor: var(--canvas-cursor, default);

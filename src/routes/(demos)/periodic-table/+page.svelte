@@ -29,9 +29,9 @@
   ] as Vec2)
   let electronegativity_range = $derived([
     Math.min(
-      ...element_data.map((el) => (el.electronegativity || 0) * 100).filter((
-        elec_neg,
-      ) => elec_neg > 0),
+      ...element_data
+        .map((el) => (el.electronegativity || 0) * 100)
+        .filter((elec_neg) => elec_neg > 0),
     ),
     Math.max(...element_data.map((el) => (el.electronegativity || 0) * 100)),
   ] as Vec2)
@@ -86,16 +86,7 @@
   })
 
   // Active elements border demo
-  let active_elements: ElementSymbol[] = $state([
-    `H`,
-    `C`,
-    `N`,
-    `O`,
-    `Fe`,
-    `Cu`,
-    `Au`,
-    `Ag`,
-  ])
+  let active_elements: ElementSymbol[] = $state([`H`, `C`, `N`, `O`, `Fe`, `Cu`, `Au`, `Ag`])
   let active_tile_border = $state({ width: `2px`, style: `solid`, color: `#ff0000` })
 </script>
 
@@ -168,8 +159,8 @@
 
 <h2>Missing Color Demo</h2>
 <p>
-  The <code>missing</code> prop (<code>{`{ color, label, style }`}</code>) styles tiles with
-  no heatmap value. <code>color</code> takes any CSS color or
+  The <code>missing</code> prop (<code>{`{ color, label, style }`}</code>) styles tiles with no
+  heatmap value. <code>color</code> takes any CSS color or
   <code>'element-category'</code> (default: category colors for a plain table, gray for a
   heatmap); <code>label</code> and <code>style</code> further decorate missing tiles (e.g.
   <code>style="opacity: 0.4"</code> to dim them). Note <code>0</code> is a real value mapped
@@ -237,7 +228,8 @@
 <h2>Active Elements Border Styling</h2>
 <p>
   Customize active element borders with CSS custom property <code
-  >--elem-tile-active-border</code>.
+    >--elem-tile-active-border</code
+  >.
 </p>
 
 <PeriodicTable
@@ -262,7 +254,9 @@
       </select>
       <input type="color" bind:value={active_tile_border.color} style="height: 1.5em" />
       <code style="background: var(--sms-ui-bg); padding: 4px 8px; border-radius: 4px">
-        {active_tile_border.width} {active_tile_border.style} {active_tile_border.color}
+        {active_tile_border.width}
+        {active_tile_border.style}
+        {active_tile_border.color}
       </code>
     </TableInset>
   {/snippet}
@@ -270,29 +264,13 @@
 
 <h2>Auto-Scaling Color Bar</h2>
 <p>
-  When <code>show_color_bar</code> is enabled (the default) and no custom inset is
-  provided, the periodic table automatically displays a color bar that scales with the
-  table size. The color bar font and bar width adapt to container width using container
-  queries.
+  When <code>show_color_bar</code> is enabled (the default) and no custom inset is provided, the
+  periodic table automatically displays a color bar that scales with the table size. The color bar
+  font and bar width adapt to container width using container queries.
 </p>
 
 <div class="auto-colorbar-grid">
-  {#each [
-      {
-        title: `Atomic Mass`,
-        property: `atomic_mass`,
-        color_scale: `interpolatePlasma`,
-      },
-      { title: `Density`, property: `density`, color_scale: `interpolateCividis` },
-      {
-        title: `Boiling Point`,
-        property: `boiling_point`,
-        color_scale: `interpolateTurbo`,
-      },
-    ] as const as
-    { title, property, color_scale }
-    (title)
-  }
+  {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolatePlasma` }, { title: `Density`, property: `density`, color_scale: `interpolateCividis` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateTurbo` }] as const as { title, property, color_scale } (title)}
     <div>
       <h3 style="margin: 0 0 0.5em; text-align: center; font-size: 0.9em">{title}</h3>
       <PeriodicTable
@@ -309,27 +287,7 @@
 <h2>2×2 Grid Layout</h2>
 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2em">
-  {#each [
-      {
-        title: `Atomic Mass`,
-        property: `atomic_mass`,
-        color_scale: `interpolateBlues`,
-      },
-      { title: `Density`, property: `density`, color_scale: `interpolateReds` },
-      {
-        title: `Melting Point`,
-        property: `melting_point`,
-        color_scale: `interpolateOranges`,
-      },
-      {
-        title: `Boiling Point`,
-        property: `boiling_point`,
-        color_scale: `interpolateGreens`,
-      },
-    ] as const as
-    { title, property, color_scale }
-    (title)
-  }
+  {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolateBlues` }, { title: `Density`, property: `density`, color_scale: `interpolateReds` }, { title: `Melting Point`, property: `melting_point`, color_scale: `interpolateOranges` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateGreens` }] as const as { title, property, color_scale } (title)}
     <PeriodicTable
       tile_props={{ show_name: false, show_number: false }}
       heatmap_values={element_data.map((el) => el[property] || 0)}

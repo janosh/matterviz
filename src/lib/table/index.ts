@@ -1,7 +1,7 @@
-import { pick_contrast_color } from '$lib/colors'
+import { type D3InterpolateName, get_d3_interpolator, pick_contrast_color } from '$lib/colors'
 import { max, min } from 'd3-array'
 import { scaleLog, scaleSequential } from 'd3-scale'
-import * as d3sc from 'd3-scale-chromatic'
+import type * as d3sc from 'd3-scale-chromatic'
 import type { Snippet } from 'svelte'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
@@ -12,6 +12,7 @@ export type CellVal =
   | string
   | number
   | boolean
+  | Date
   | undefined
   | null
   | Record<string, unknown>
@@ -19,6 +20,8 @@ export type CellVal =
 
 // Row data for table entries
 export type RowData = { style?: string; class?: string; [key: string]: CellVal }
+
+export type DateTimeFormatMode = `date` | `time` | `datetime` | `iso` | `relative`
 
 // Column configuration for HeatmapTable
 export type Label = {
@@ -32,6 +35,8 @@ export type Label = {
   group?: string
   description?: string
   format?: string
+  format_type?: `datetime`
+  datetime_format?: DateTimeFormatMode
   better?: `higher` | `lower`
   color_scale?: keyof typeof d3sc | null
   scale_type?: `linear` | `log`
@@ -79,7 +84,13 @@ export type SortHint =
 export type InitialSort = string | { column: string; direction?: `asc` | `desc` }
 
 // Pagination configuration (boolean to enable, object for full control)
-export type Pagination = boolean | { page_size?: number; page_sizes?: number[] }
+export type Pagination =
+  | boolean
+  | {
+      page_size?: number
+      page_sizes?: number[]
+      on_page_size_change?: (page_size: number) => void
+    }
 
 // Search configuration (boolean to enable, object for full control)
 export type Search = boolean | { placeholder?: string; expanded?: boolean }
@@ -123,11 +134,7 @@ export function calc_cell_color(
   // Reverse the range if lower values are better
   if (better === `lower`) range.reverse()
 
-  // Get interpolator function, fallback to viridis if not a valid function
-  const scale_fn = d3sc[color_scale]
-  const interpolator = (
-    typeof scale_fn === `function` ? scale_fn : d3sc.interpolateViridis
-  ) as (t: number) => string
+  const interpolator = get_d3_interpolator(color_scale as D3InterpolateName)
 
   // Use log scale for positive values, otherwise linear/sequential scale
   const bg =

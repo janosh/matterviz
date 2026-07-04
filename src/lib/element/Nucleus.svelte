@@ -64,7 +64,8 @@
     y={radius + (radius / 2) * Math.sin(Math.PI * -proton_frac)}
     {...text}
   >
-    {protons} {proton_label}
+    {protons}
+    {proton_label}
   </text>
 
   <text
@@ -72,7 +73,8 @@
     y={radius + (radius / 2) * Math.sin(Math.PI * neutron_frac)}
     {...text}
   >
-    {neutrons} {neutron_label}
+    {neutrons}
+    {neutron_label}
   </text>
 
   {#if symbol}
