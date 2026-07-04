@@ -21,7 +21,7 @@ type VisibleProp = Readonly<{ property: string; unit: string }>
 // Shared per-series line/point styling derived from a single color
 const series_color_styles = (color: string) => ({
   line_style: { stroke: color, stroke_width: 2 },
-  point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+  point_style: { fill: color, stroke: color, stroke_width: 1 },
 })
 
 export interface PlotSeriesOptions {
@@ -407,10 +407,16 @@ export function generate_streaming_plot_series(
     max_points = 10_000, // 10,000 plot points provides good visual fidelity while maintaining browser performance
   } = options
 
+  const ordered_metadata = [...metadata_list]
+    .sort((metadata_a, metadata_b) => metadata_a.frame_number - metadata_b.frame_number)
+    .filter(
+      (metadata, idx, sorted_metadata) =>
+        idx === 0 || metadata.frame_number !== sorted_metadata[idx - 1].frame_number,
+    )
   const sampled_metadata =
-    metadata_list.length > max_points
-      ? downsample_metadata(metadata_list, max_points)
-      : metadata_list
+    ordered_metadata.length > max_points
+      ? downsample_metadata(ordered_metadata, max_points)
+      : ordered_metadata
 
   const all_properties = new Set<string>()
   sampled_metadata.forEach((metadata) => {
@@ -424,7 +430,10 @@ export function generate_streaming_plot_series(
   for (const property_key of all_properties) {
     const data_points = sampled_metadata
       .filter((metadata) => property_key in metadata.properties)
-      .map((metadata) => ({ x: metadata.step, y: metadata.properties[property_key] }))
+      .map((metadata) => ({
+        x: metadata.frame_number,
+        y: metadata.properties[property_key],
+      }))
 
     if (data_points.length < 2) continue
 

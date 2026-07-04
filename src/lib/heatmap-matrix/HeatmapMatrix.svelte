@@ -6,6 +6,7 @@
   import type { AxisConfig } from '$lib/plot'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { quickselect } from '$lib/plot/box/quantile'
+  import { clamp01 } from '$lib/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -346,7 +347,7 @@
   // Interpolated quantile via quickselect (O(n) avg vs full sort); reorders `scratch_values` in place so callers must pass a copy they own
   function get_quantile(scratch_values: number[], quantile: number): number {
     if (scratch_values.length === 0) return 0
-    const clipped_quantile = Math.max(0, Math.min(1, quantile))
+    const clipped_quantile = clamp01(quantile)
     const float_idx = (scratch_values.length - 1) * clipped_quantile
     const low_idx = Math.floor(float_idx)
     const high_idx = Math.ceil(float_idx)
@@ -451,7 +452,7 @@
       normalized = is_descending_range ? 1 - log_normalized : log_normalized
     }
     if (!Number.isFinite(normalized)) return missing_fill || null
-    return color_scale_fn(Math.max(0, Math.min(1, normalized)))
+    return color_scale_fn(clamp01(normalized))
   }
 
   // Batch compute background colors as a flat array indexed by y_idx * n_x + x_idx.

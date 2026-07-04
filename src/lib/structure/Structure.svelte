@@ -1917,16 +1917,14 @@
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
-      {#if multi_view}
-        <div class="viewport-grid">
-          {@render primary_viewport(views[0] ?? {})}
+      <div class:multi={multi_view} class="viewport-stage">
+        {@render primary_viewport(multi_view ? views[0] ?? {} : {})}
+        {#if multi_view}
           {#each views.slice(1) as view, idx (idx)}
             {@render extra_viewport(view, idx + 1)}
           {/each}
-        </div>
-      {:else}
-        {@render primary_viewport({})}
-      {/if}
+        {/if}
+      </div>
     {/if}
 
     <div class="bottom-left">
@@ -1982,16 +1980,18 @@
     background: var(--struct-dragover-bg, var(--dragover-bg));
     border: var(--struct-dragover-border, var(--dragover-border));
   }
+  .viewport-stage {
+    height: 100%;
+    width: 100%;
+  }
   /* 2x2 multi-side view grid: four equal subcanvases. grid-auto-rows keeps rows
     equal-height if a custom `views` array supplies more than four entries. */
-  .viewport-grid {
+  .viewport-stage.multi {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
     grid-auto-rows: 1fr;
     gap: var(--struct-viewport-gap, 2px);
-    height: 100%;
-    width: 100%;
   }
   .multi-view-toggle.active {
     color: var(--accent-color, #4a9eff);

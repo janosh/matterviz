@@ -1403,7 +1403,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     display: DISPLAY_CONFIG,
     point: {
       size: {
-        value: 4,
+        value: 3,
         description: `Point size for scatter plots`,
         minimum: 1,
         maximum: 20,
@@ -1879,8 +1879,16 @@ const extract_values = (
 // Runtime defaults - extracted values for use in components
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 
+// Partial settings where nested groups (structure, trajectory, ...) may also
+// be partial; merge() fills gaps from DEFAULTS at both levels.
+export type PartialSettings = {
+  [Key in keyof DefaultSettings]?: DefaultSettings[Key] extends Record<string, unknown>
+    ? Partial<DefaultSettings[Key]>
+    : DefaultSettings[Key]
+}
+
 // Helper to merge with defaults - handles nested structure
-export const merge = (user?: Partial<DefaultSettings>): DefaultSettings =>
+export const merge = (user?: PartialSettings): DefaultSettings =>
   ({
     ...DEFAULTS,
     ...user,

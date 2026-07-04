@@ -9,6 +9,7 @@
   import type {
     CellSnippet,
     CellVal,
+    DateTimeFormatMode,
     ExportData,
     InitialSort,
     Label,
@@ -84,8 +85,34 @@
     }
   }
 
+  const close_datetime_select_on_outside_pointerdown = (event: PointerEvent) => {
+    if (datetime_select_open_col_id === null) return
+    if (
+      event.target instanceof Element &&
+      event.target.closest(`.datetime-format-control`)
+    ) return
+    datetime_select_open_col_id = null
+  }
+
   const NUMERIC_WITH_ERROR_RE =
     /^(?<numeric>[-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
+  const DATA_SORT_VALUE_RE = /data-sort-value="(?<value>[^"]*)"/
+  const DATE_ONLY_RE = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/
+  const DATE_TIME_RE =
+    /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
+  type DateTimeColumnKind = `date` | `time` | `datetime`
+  const datetime_format_modes_by_kind: Record<DateTimeColumnKind, DateTimeFormatMode[]> = {
+    date: [`date`, `relative`],
+    time: [`time`],
+    datetime: [`date`, `time`, `datetime`, `iso`, `relative`],
+  }
+  const datetime_format_labels: Record<DateTimeFormatMode, string> = {
+    date: `Date`,
+    time: `Time`,
+    datetime: `Date + time`,
+    iso: `ISO`,
+    relative: `Since now`,
+  }
 
   const parse_numeric_string = (val: string): number | null => {
     const numeric_str = val.match(NUMERIC_WITH_ERROR_RE)?.[1] ?? val
@@ -94,20 +121,27 @@
     return isNaN(num) ? null : num
   }
 
+  const get_data_sort_value = (val: string): string | null =>
+    val.match(DATA_SORT_VALUE_RE)?.groups?.value ?? null
+
   // Get sort value from a cell (handles HTML data-sort-value and numbers with errors)
   const get_sort_val = (val: CellVal): string | number => {
+    if (val instanceof Date) return val.getTime()
     if (typeof val === `string`) {
       // Check for HTML data-sort-value attribute first
-      const sort_attr_match = val.match(/data-sort-value="(?<value>[^"]*)"/)
-      if (sort_attr_match) {
-        const num = Number(sort_attr_match[1])
-        return isNaN(num) ? sort_attr_match[1] : num
+      const sort_attr = get_data_sort_value(val)
+      if (sort_attr != null) {
+        const num = Number(sort_attr)
+        return isNaN(num) ? sort_attr : num
       }
       const num = parse_numeric_string(val)
       if (num !== null) return num
     }
     return val as string | number
   }
+
+  const get_cell_sort_attr = (val: CellVal): CellVal | number | null =>
+    is_html_str(val) ? null : val instanceof Date ? val.getTime() : val
 
   let {
     data = $bindable([]),
@@ -122,6 +156,7 @@
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     heatmap_class = `heatmap`,
+    onrowpointerdown,
     onrowclick,
     onrowdblclick,
     column_order = $bindable([]),
@@ -160,6 +195,7 @@
     default_num_format?: string
     show_heatmap?: boolean
     heatmap_class?: string
+    onrowpointerdown?: (event: PointerEvent, row: RowData) => void
     onrowclick?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
     // Array of column IDs to control display order. IDs are derived as:
@@ -251,7 +287,7 @@
       : null,
   )
 
-  // Mutable page size — writable $derived allows user to change via dropdown
+  // Mutable page size: user can change it, but parent pagination.page_size changes still resync.
   let effective_page_size = $derived(pagination_config?.page_size ?? 25)
 
   // Normalize search config
@@ -307,6 +343,10 @@
   // Per-column color scale overrides
   let color_scale_overrides = new SvelteMap<string, string>()
 
+  // Per-column date/time display overrides (user-toggled via header)
+  let datetime_format_overrides = new SvelteMap<string, DateTimeFormatMode>()
+  let datetime_select_open_col_id = $state<string | null>(null)
+
   const color_scale_options = [
     `interpolateViridis`,
     `interpolatePlasma`,
@@ -347,6 +387,167 @@
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
   const get_col_id = (col: Label) =>
     col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
+  const get_datetime_label_id = (col_id: string) =>
+    `datetime-format-label-${encodeURIComponent(col_id)}`
+
+  const has_explicit_datetime_format = (col: Label): boolean =>
+    col.format_type === `datetime` || Boolean(col.datetime_format)
+
+  const normalize_timestamp = (val: number): number | null => {
+    if (!Number.isFinite(val)) return null
+    const abs = Math.abs(val)
+    if (abs >= 1_000_000_000_000 && abs < 100_000_000_000_000) return val
+    if (abs >= 1_000_000_000 && abs < 1_000_000_000_000) return val * 1000
+    return null
+  }
+
+  const parse_datetime_string = (val: string): number | null => {
+    const clean = strip_html(val).trim()
+    const date_only = clean.match(DATE_ONLY_RE)
+    if (date_only?.groups) {
+      const year = Number(date_only.groups.year)
+      const month = Number(date_only.groups.month)
+      const day = Number(date_only.groups.day)
+      return new Date(year, month - 1, day).getTime()
+    }
+    if (!DATE_TIME_RE.test(clean)) return null
+    const parsed = Date.parse(
+      clean.replace(` `, `T`).replace(/\.(?<millis>\d{3})\d+/, `.$<millis>`),
+    )
+    return Number.isNaN(parsed) ? null : parsed
+  }
+
+  const value_datetime_kind = (val: CellVal, col: Label): DateTimeColumnKind | null => {
+    if (typeof val === `string` && DATE_ONLY_RE.test(strip_html(val).trim())) {
+      return `date`
+    }
+    return parse_datetime_val(val, col) === null ? null : `datetime`
+  }
+
+  const parse_datetime_val = (val: CellVal, col: Label): number | null => {
+    if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
+    if (typeof val === `number`) {
+      return has_explicit_datetime_format(col) ? normalize_timestamp(val) : null
+    }
+    if (typeof val !== `string`) return null
+
+    const parsed_text = parse_datetime_string(val)
+    if (parsed_text !== null) return parsed_text
+    if (!has_explicit_datetime_format(col)) return null
+
+    const sort_attr = get_data_sort_value(val)
+    return normalize_timestamp(Number(sort_attr ?? strip_html(val).trim()))
+  }
+
+  const infer_datetime_column_kind = (col: Label): DateTimeColumnKind | null => {
+    if (col.datetime_format === `date`) return `date`
+    if (col.datetime_format === `time`) return `time`
+    if (col.datetime_format || col.format_type === `datetime`) return `datetime`
+
+    const col_id = get_col_id(col)
+    let has_date_value = false
+    for (const row of data.slice(0, 25)) {
+      const kind = value_datetime_kind(row[col_id], col)
+      if (kind === `datetime`) return `datetime`
+      if (kind === `date`) has_date_value = true
+    }
+    if (has_date_value) return `date`
+    return null
+  }
+
+  let datetime_column_kinds = $derived.by(() => {
+    const kinds = new SvelteMap<string, DateTimeColumnKind>()
+    for (const col of columns) {
+      const kind = infer_datetime_column_kind(col)
+      if (kind) kinds.set(get_col_id(col), kind)
+    }
+    return kinds
+  })
+
+  const is_datetime_column = (col: Label): boolean =>
+    datetime_column_kinds.has(get_col_id(col))
+
+  const datetime_column_kind = (col: Label): DateTimeColumnKind =>
+    datetime_column_kinds.get(get_col_id(col)) ?? `datetime`
+
+  const datetime_format_options = (col: Label): DateTimeFormatMode[] =>
+    datetime_format_modes_by_kind[datetime_column_kind(col)]
+
+  const datetime_mode = (col: Label): DateTimeFormatMode => {
+    const options = datetime_format_options(col)
+    const selected = datetime_format_overrides.get(get_col_id(col)) ??
+      col.datetime_format ?? datetime_column_kind(col)
+    return options.includes(selected) ? selected : options[0]
+  }
+
+  function set_datetime_format(col: Label, mode: DateTimeFormatMode) {
+    if (datetime_format_options(col).includes(mode)) {
+      datetime_format_overrides.set(get_col_id(col), mode)
+    }
+  }
+
+  const pad2 = (val: number): string => String(val).padStart(2, `0`)
+
+  function format_date(date: Date): string {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+  }
+
+  function format_time(date: Date): string {
+    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  }
+
+  function format_datetime(date: Date): string {
+    return `${format_date(date)} ${format_time(date)}`
+  }
+
+  // Ticks once a minute while any column shows relative times, so "Xm ago"
+  // cells don't go stale (format granularity is minutes).
+  let relative_now_ms = $state(Date.now())
+  $effect(() => {
+    const shows_relative = columns.some(
+      (col) => is_datetime_column(col) && datetime_mode(col) === `relative`,
+    )
+    if (!shows_relative) return
+    relative_now_ms = Date.now() // refresh immediately when relative mode turns on
+    const interval = setInterval(() => (relative_now_ms = Date.now()), 60_000)
+    return () => clearInterval(interval)
+  })
+
+  function format_since_now(timestamp: number): string {
+    const diff = relative_now_ms - timestamp
+    let remaining_minutes = Math.max(0, Math.floor(Math.abs(diff) / 60_000))
+    const parts: string[] = []
+    const units = [
+      [`y`, 365 * 24 * 60],
+      [`mo`, 30 * 24 * 60],
+      [`w`, 7 * 24 * 60],
+      [`d`, 24 * 60],
+      [`h`, 60],
+      [`m`, 1],
+    ] as const
+
+    for (const [suffix, minutes_per_unit] of units) {
+      const value = Math.floor(remaining_minutes / minutes_per_unit)
+      if (value === 0 && parts.length === 0 && suffix !== `m`) continue
+      if (value > 0 || suffix === `m`) parts.push(`${value}${suffix}`)
+      remaining_minutes -= value * minutes_per_unit
+      if (parts.length >= 3) break
+    }
+
+    return `${parts.join(` `)} ${diff >= 0 ? `ago` : `from now`}`
+  }
+
+  function format_datetime_cell(val: CellVal, col: Label): string | null {
+    const timestamp = parse_datetime_val(val, col)
+    if (timestamp === null) return null
+    const date = new Date(timestamp)
+    const mode = datetime_mode(col)
+    if (mode === `date`) return format_date(date)
+    if (mode === `time`) return format_time(date)
+    if (mode === `datetime`) return format_datetime(date)
+    if (mode === `iso`) return date.toISOString()
+    return format_since_now(timestamp)
+  }
 
   // Sync column_order with columns: initialize if empty, remove stale IDs, append new IDs
   $effect(() => {
@@ -897,6 +1098,8 @@
   )
 </script>
 
+<svelte:window onpointerdown={close_datetime_select_on_outside_pointerdown} />
+
 {#snippet sort_hint_element(pos: `top` | `bottom`)}
   {#if hint_config?.position === pos}
     <div
@@ -1210,6 +1413,9 @@
           {/if}
           {#each visible_columns as col (get_col_id(col))}
             {@const col_id = get_col_id(col)}
+            {@const is_datetime = is_datetime_column(col)}
+            {@const dt_mode = datetime_mode(col)}
+            {@const datetime_label_id = get_datetime_label_id(col_id)}
             {@const drag_side = drag_over_col_id === col_id
               ? get_drag_side(col_id)
               : null}
@@ -1259,6 +1465,7 @@
               class:not-sortable={col.sortable === false}
               class:dragging={drag_col_id === col_id}
               class:resizing={resize_col_id === col_id}
+              class:datetime-select-open={datetime_select_open_col_id === col_id}
               data-drag-side={drag_side}
               draggable="true"
               aria-dropeffect="move"
@@ -1283,6 +1490,67 @@
                 {@html sanitize_html(col.label)}
               {/if}
               {@html sanitize_html(sort_indicator(col, sort_state))}
+              {#if is_datetime}
+                <span class="datetime-format-control">
+                  <button
+                    type="button"
+                    class="datetime-format-trigger"
+                    aria-labelledby={datetime_label_id}
+                    aria-haspopup="listbox"
+                    aria-expanded={datetime_select_open_col_id === col_id}
+                    data-mode={dt_mode}
+                    onkeydown={(event) => event.stopPropagation()}
+                    onmousedown={(event) => event.stopPropagation()}
+                    onpointerdown={(event) => event.stopPropagation()}
+                    onclick={(event) => {
+                      event.stopPropagation()
+                      datetime_select_open_col_id =
+                        datetime_select_open_col_id === col_id ? null : col_id
+                    }}
+                    {@attach tooltip({
+                      content: `Date/time format: ${datetime_format_labels[dt_mode]}`,
+                      placement: `top`,
+                    })}
+                  >
+                    <Icon icon="Calendar" />
+                    <span id={datetime_label_id} class="sr-only">
+                      Date/time format for {strip_html(col.label)}
+                    </span>
+                  </button>
+                  {#if datetime_select_open_col_id === col_id}
+                    <select
+                      class="datetime-format-select"
+                      aria-labelledby={datetime_label_id}
+                      value={dt_mode}
+                      size={datetime_format_options(col).length}
+                      onclick={(event) => {
+                        event.stopPropagation()
+                        if (event.currentTarget.value === dt_mode) {
+                          datetime_select_open_col_id = null
+                        }
+                      }}
+                      onkeydown={(event) => {
+                        event.stopPropagation()
+                        if (event.key === `Escape`) datetime_select_open_col_id = null
+                      }}
+                      onmousedown={(event) => event.stopPropagation()}
+                      onpointerdown={(event) => event.stopPropagation()}
+                      oninput={(event) => {
+                        event.stopPropagation()
+                        set_datetime_format(
+                          col,
+                          event.currentTarget.value as DateTimeFormatMode,
+                        )
+                        datetime_select_open_col_id = null
+                      }}
+                    >
+                      {#each datetime_format_options(col) as mode (mode)}
+                        <option value={mode}>{datetime_format_labels[mode]}</option>
+                      {/each}
+                    </select>
+                  {/if}
+                </span>
+              {/if}
               <!-- Column resize handle -->
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
@@ -1307,6 +1575,9 @@
             class={row.class}
             class:selected={row_selected}
             tabindex={onrowclick ? 0 : undefined}
+            onpointerdown={onrowpointerdown
+              ? (event) => onrowpointerdown(event, row)
+              : undefined}
             onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
             onkeydown={onrowclick
@@ -1344,9 +1615,10 @@
               {@const val = row[get_col_id(col)]}
               {@const color = calc_color(val, col)}
               {@const col_width = column_widths[get_col_id(col)]}
+              {@const date_val = is_datetime_column(col) ? format_datetime_cell(val, col) : null}
               <td
                 data-col={col.label}
-                data-sort-value={is_html_str(val) ? null : val}
+                data-sort-value={get_cell_sort_attr(val)}
                 class:sticky-col={col.sticky}
                 style:--cell-bg={color.bg}
                 style:color={color.text}
@@ -1360,6 +1632,8 @@
                   {@render special_cells[col.label]({ row, col, val })}
                 {:else if cell}
                   {@render cell({ row, col, val })}
+                {:else if date_val != null}
+                  {date_val}
                 {:else if typeof val === `number` && !Number.isNaN(val)}
                   {format_num(val, col.format ?? default_num_format)}
                 {:else if val === undefined || val === null || Number.isNaN(val)}
@@ -1450,8 +1724,10 @@
         <select
           class="page-size-select"
           onchange={(event) => {
-            effective_page_size = parseInt(event.currentTarget.value, 10)
+            const page_size = parseInt(event.currentTarget.value, 10)
+            effective_page_size = page_size
             current_page = 1
+            pagination_config.on_page_size_change?.(page_size)
           }}
         >
           {#each pagination_config.page_sizes as size (size)}
@@ -1507,8 +1783,7 @@
   .table-scroll.has-scroll {
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.12));
     border-radius: var(--border-radius, 3pt);
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: auto;
   }
   table {
     border-collapse: separate;
@@ -1540,6 +1815,83 @@
   }
   th:hover {
     background: var(--heatmap-header-hover-bg, var(--nav-bg));
+  }
+  th.datetime-select-open {
+    overflow: visible;
+    z-index: 30;
+  }
+  .datetime-format-control {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 3px;
+    position: relative;
+    vertical-align: middle;
+  }
+  .datetime-format-trigger {
+    display: inline-grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .datetime-format-trigger:hover,
+  .datetime-format-trigger[aria-expanded='true'] {
+    background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
+  }
+  .datetime-format-trigger :global(svg) {
+    width: 10px;
+    height: 10px;
+    opacity: 0.75;
+    transform: translateY(-1px);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .datetime-format-select {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 0;
+    z-index: 20;
+    min-width: max-content;
+    max-width: 10em;
+    padding: 2px;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
+    border-radius: 3px;
+    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.9em;
+    line-height: 1.35;
+    outline: none;
+  }
+  .datetime-format-select:hover,
+  .datetime-format-select:focus,
+  .datetime-format-select:focus-visible {
+    outline: none;
+  }
+  .datetime-format-select option {
+    padding: 3px 8px;
+  }
+  .datetime-format-select option:checked {
+    background: light-dark(rgba(74, 158, 255, 0.18), rgba(122, 179, 255, 0.28));
+    box-shadow: 0 0 0 100vmax
+      light-dark(rgba(74, 158, 255, 0.18), rgba(122, 179, 255, 0.28)) inset;
+    color: inherit;
   }
   th.dragging {
     opacity: 0.4;
@@ -1627,7 +1979,8 @@
     background: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2));
   }
   .icon-btn.active {
-    background: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.25));
+    background: color-mix(in srgb, var(--active-color, #4a9eff) 82%, transparent);
+    color: white;
   }
   .selection-badge {
     position: relative;

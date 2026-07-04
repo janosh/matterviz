@@ -72,7 +72,7 @@ export interface ParseResult {
   data: unknown
   filename: string
   // For trajectories that support VS Code streaming
-  streaming_info?: { supports_streaming: boolean; file_path: string }
+  streaming_info?: { file_path: string }
 }
 
 export interface MatterVizApp {
@@ -89,9 +89,10 @@ export interface FileChangeMessage {
 }
 
 // VS Code Frame Loader - streams frames via extension communication
-class VSCodeFrameLoader implements FrameLoader {
+export class VSCodeFrameLoader implements FrameLoader {
   constructor(
     private readonly file_path: string,
+    private readonly filename: string,
     private readonly vscode_api: VSCodeAPI,
   ) {}
 
@@ -119,6 +120,7 @@ class VSCodeFrameLoader implements FrameLoader {
         command: `request_frame`,
         request_id,
         file_path: this.file_path,
+        filename: this.filename,
         frame_index,
       })
 
@@ -164,6 +166,7 @@ declare global {
 // Store VSCode API instance to avoid multiple acquisitions
 let vscode_api: VSCodeAPI | null = null
 let current_app: MatterVizApp | null = null
+let file_change_listener_registered = false
 
 // Initialize VSCode API at module level
 try {
@@ -275,8 +278,26 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
 // Type for parsed trajectory response from large file requests
 type ParsedTrajectoryResponse = {
   trajectory: TrajectoryType
-  supports_streaming: boolean
   file_path: string
+}
+
+export const parse_large_file_marker = (
+  content: string,
+): { file_path: string; file_size: number } | null => {
+  const prefix = `LARGE_FILE:`
+  if (!content.startsWith(prefix)) return null
+  const payload = content.slice(prefix.length)
+  const size_separator_idx = payload.lastIndexOf(`:`)
+  if (size_separator_idx <= 0) throw new Error(`Malformed large file marker`)
+
+  const file_path = payload.slice(0, size_separator_idx)
+  const size_text = payload.slice(size_separator_idx + 1)
+  const file_size = Number(size_text)
+  // reject empty/whitespace size segments explicitly since Number(``) === 0
+  if (!size_text.trim() || !Number.isSafeInteger(file_size) || file_size < 0) {
+    throw new Error(`Malformed large file size`)
+  }
+  return { file_path, file_size }
 }
 
 // Request large file content from the extension using chunked streaming
@@ -284,7 +305,7 @@ function request_large_file_content(
   file_path: string,
   filename: string,
   is_compressed: boolean,
-  timeout: number = 30_000, // 30 seconds
+  timeout: number = 120_000, // large host-side indexing can take longer than eager reads
 ): Promise<string | ParsedTrajectoryResponse> {
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
@@ -307,7 +328,6 @@ function request_large_file_content(
         if (is_parsed && parsed_trajectory) {
           return resolve({
             trajectory: parsed_trajectory,
-            supports_streaming: true,
             file_path,
           })
         }
@@ -339,10 +359,9 @@ export const parse_file_content = async (
     )
   }
 
-  // Check if this is a large file marker from the extension
-  if (content.startsWith(`LARGE_FILE:`)) {
-    const [, file_path, file_size_str] = content.split(`:`)
-    const file_size = parseInt(file_size_str, 10)
+  const large_file_marker = parse_large_file_marker(content)
+  if (large_file_marker) {
+    const { file_path, file_size } = large_file_marker
 
     console.info(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
 
@@ -357,14 +376,10 @@ export const parse_file_content = async (
       parsed_trajectory &&
       typeof parsed_trajectory === `object` &&
       `trajectory` in parsed_trajectory &&
-      `supports_streaming` in parsed_trajectory
+      `file_path` in parsed_trajectory
     ) {
-      const {
-        trajectory,
-        supports_streaming,
-        file_path: streaming_file_path,
-      } = parsed_trajectory
-      const streaming_info = { supports_streaming, file_path: streaming_file_path }
+      const { trajectory, file_path: streaming_file_path } = parsed_trajectory
+      const streaming_info = { file_path: streaming_file_path }
       return { type: `trajectory`, data: trajectory, filename, streaming_info }
     }
 
@@ -391,12 +406,6 @@ export const parse_file_content = async (
     }
   }
 
-  // Try trajectory parsing first if it looks like a trajectory
-  if (is_trajectory_file(filename, content)) {
-    const data = await parse_trajectory_data(content, filename)
-    return { type: `trajectory`, data, filename }
-  }
-
   // Fermi surface files (.bxsf, .frmsf)
   // Use basename for regex matching in case filename retains a directory prefix
   const basename = filename.split(`/`).pop() ?? filename
@@ -412,12 +421,17 @@ export const parse_file_content = async (
     throw new Error(`Failed to parse volumetric file: ${filename}`)
   }
 
-  // JSON files: use smart detection + JSON browser
+  let parsed_json: unknown
+  let has_parsed_json = false
+
+  // JSON files: render typed JSON before filename heuristics. Otherwise names like
+  // convex-hull.json can be mistaken for trajectory keywords such as nve.
   if (/\.json$/i.test(filename)) {
     try {
-      const parsed = JSON.parse(content)
+      parsed_json = JSON.parse(content)
+      has_parsed_json = true
       // Check if the top-level value matches a known visualization type
-      const detected = detect_view_type(parsed)
+      const detected = detect_view_type(parsed_json)
       if (detected) {
         // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.)
         if (detected === `structure`) {
@@ -435,25 +449,38 @@ export const parse_file_content = async (
         }
         // Volumetric JSON needs wrapping in { structure, volumes } for the isosurface renderer
         if (detected === `volumetric`) {
-          const vol = parsed as { lattice?: unknown }
+          const vol = parsed_json as { lattice?: unknown }
           return {
             type: `isosurface`,
-            data: { structure: { sites: [], lattice: vol.lattice }, volumes: [parsed] },
+            data: { structure: { sites: [], lattice: vol.lattice }, volumes: [parsed_json] },
             filename,
           }
         }
         return {
           type: DETECTION_TO_VIEW_TYPE[detected] ?? `json_browser`,
-          data: parsed,
+          data: parsed_json,
           filename,
         }
       }
-      // No top-level match -- show JSON browser for navigation
-      return { type: `json_browser`, data: parsed, filename }
     } catch {
       // JSON parse failed, fall through to structure parser
     }
   }
+
+  // Try trajectory parsing if it looks like a trajectory
+  if (is_trajectory_file(filename, content)) {
+    try {
+      const data = await parse_trajectory_data(content, filename)
+      return { type: `trajectory`, data, filename }
+    } catch (error) {
+      // Trajectory-looking filename but not trajectory-shaped JSON (e.g. nve-config.json):
+      // fall through to the JSON browser instead of failing the render
+      if (!has_parsed_json) throw error
+    }
+  }
+
+  // No top-level match -- show JSON browser for navigation
+  if (has_parsed_json) return { type: `json_browser`, data: parsed_json, filename }
 
   // Parse as structure (CIF, POSCAR, XYZ, etc.) — throws descriptive reasons on failure
   const structure = parse_structure_file(content, filename)
@@ -487,7 +514,7 @@ const create_error_display = (
 }
 
 // Mount Svelte component and create display
-const create_display = (
+export const create_display = (
   container: HTMLElement,
   result: ParseResult,
   filename: string,
@@ -525,15 +552,17 @@ const create_display = (
     // Prepare trajectory data for VS Code streaming if supported
     let final_trajectory: TrajectoryType | StreamingTrajectory = result.data as TrajectoryType
 
-    if (result.streaming_info?.supports_streaming) {
+    if (vscode_api && result.streaming_info?.file_path) {
       const trajectory = result.data as TrajectoryType
-      if (vscode_api && result.streaming_info.file_path) {
-        final_trajectory = {
-          ...trajectory,
-          is_indexed: true,
-          frames: trajectory.frames || [],
-          frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode_api),
-        }
+      final_trajectory = {
+        ...trajectory,
+        is_indexed: true,
+        frames: trajectory.frames || [],
+        frame_loader: new VSCodeFrameLoader(
+          result.streaming_info.file_path,
+          filename,
+          vscode_api,
+        ),
       }
     }
 
@@ -682,13 +711,14 @@ async function initialize() {
   current_app = app
 
   // Set up file change monitoring
-  if (vscode_api) {
+  if (vscode_api && !file_change_listener_registered) {
     // Listen for file change messages from extension
     globalThis.addEventListener(`message`, (event) => {
       if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
         void handle_file_change(event.data)
       }
     })
+    file_change_listener_registered = true
   }
 
   return app
@@ -713,9 +743,8 @@ async function cleanup_matterviz(): Promise<void> {
   }
 
   try {
-    const app = await initialize()
-    current_app = app
-    return app
+    // initialize() already records the app in current_app
+    return await initialize()
   } catch (error) {
     const err = to_error(error)
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)

@@ -182,39 +182,34 @@
 
   {@render children?.({ sym_data, settings })}
   {#if sym_data}
+    {@const stat_tiles = [
+      {
+        label: `Space Group`,
+        title:
+          `${tooltips?.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${tooltips?.hermann_mauguin}`,
+        value: `${sym_data.number} (${display_hm_symbol})`,
+      },
+      { label: `Crystal System`, title: tooltips?.crystal_system, value: crystal_system_label },
+      {
+        label: `Hall Number`,
+        title: tooltips?.hall_number,
+        value: `${sym_data.hall_number}${
+          current_setting ? ` (${current_setting.hall_symbol})` : ``
+        }`,
+      },
+      { label: `Pearson`, title: tooltips?.pearson_symbol, value: sym_data.pearson_symbol },
+      { label: `Wyckoff Positions`, title: tooltips?.distinct_orbits, value: wyckoff_count },
+      wyckoff_seq &&
+      { label: `Wyckoff Sequence`, title: tooltips?.wyckoff_sequence, value: wyckoff_seq },
+      free_params !== null &&
+      { label: `Free Parameters`, title: tooltips?.free_params, value: free_params },
+    ].filter((tile) => typeof tile === `object`)}
     <div class="stats-grid">
-      <div
-        title="{tooltips?.space_group} at {settings.symprec} (using {settings.algo} algo). {tooltips?.hermann_mauguin}"
-        {@attach tooltip()}
-      >
-        Space Group <strong>{sym_data.number} ({display_hm_symbol})</strong>
-      </div>
-      <div title={tooltips?.crystal_system} {@attach tooltip()}>
-        Crystal System <strong>{crystal_system_label}</strong>
-      </div>
-      <div title={tooltips?.hall_number} {@attach tooltip()}>
-        Hall Number <strong>
-          {sym_data.hall_number}{
-            current_setting ? ` (${current_setting.hall_symbol})` : ``
-          }
-        </strong>
-      </div>
-      <div title={tooltips?.pearson_symbol} {@attach tooltip()}>
-        Pearson <strong>{sym_data.pearson_symbol}</strong>
-      </div>
-      <div title={tooltips?.distinct_orbits} {@attach tooltip()}>
-        Wyckoff Positions <strong>{wyckoff_count}</strong>
-      </div>
-      {#if wyckoff_seq}
-        <div title={tooltips?.wyckoff_sequence} {@attach tooltip()}>
-          Wyckoff Sequence <strong>{wyckoff_seq}</strong>
+      {#each stat_tiles as tile (tile.label)}
+        <div title={tile.title} {@attach tooltip()}>
+          {tile.label} <strong>{tile.value}</strong>
         </div>
-      {/if}
-      {#if free_params !== null}
-        <div title={tooltips?.free_params} {@attach tooltip()}>
-          Free Parameters <strong>{free_params}</strong>
-        </div>
-      {/if}
+      {/each}
       <div
         class="sym-ops-summary"
         title="{sym_ops_counts.translations} translations + {sym_ops_counts.rotations} rotations + {sym_ops_counts.roto_translations} roto-translations"

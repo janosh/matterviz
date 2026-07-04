@@ -177,7 +177,6 @@
           min={10}
           max={60}
           bind:value={video_fps}
-          style="accent-color: var(--accent-color)"
         />
       </label>
 
@@ -214,7 +213,6 @@
           min={0}
           max={Math.max(0, total_frames_available - 1)}
           bind:value={start_frame}
-          style="accent-color: var(--accent-color)"
         />
       </label>
 
@@ -231,7 +229,6 @@
           min={start_frame}
           max={Math.max(0, total_frames_available - 1)}
           bind:value={end_frame}
-          style="accent-color: var(--accent-color)"
         />
       </label>
     </SettingsSection>

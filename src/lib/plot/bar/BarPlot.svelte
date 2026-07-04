@@ -73,6 +73,7 @@
     placed_coords,
   } from '$lib/plot/core/auto-place'
   import {
+    AXIS_TITLE_OFFSET,
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
@@ -111,7 +112,7 @@
     y_axis = $bindable({}),
     y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
-    range_padding = 0.05,
+    range_padding = 0,
     padding = DEFAULT_PLOT_PADDING,
     legend = {},
     show_legend,
@@ -221,7 +222,7 @@
     format: ``,
     scale_type: `linear`,
     ticks: 5,
-    label_shift: { x: 0, y: 40 },
+    label_shift: { x: 0, y: AXIS_TITLE_OFFSET },
     tick: { label: { shift: { x: 0, y: 0 } } },
     range: [null, null],
     ...x2_axis_prop,
@@ -239,8 +240,7 @@
   let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
 
   // === Categorical Normalization (string x values -> integer indices, see ./data) ===
   let cat_norm = $derived(normalize_categorical(series, x_axis.categories))
@@ -935,7 +935,7 @@
         tick_label={(tick) =>
         get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
         label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
-        label_y={height - pad.b / 3 + (x_axis.label_shift?.y ?? 0)}
+        label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `x`}
         on_axis_change={(key) => handle_axis_change(`x`, key)}
       />
@@ -955,7 +955,7 @@
           show_grid={display.x2_grid}
           tick_label={(tick) => get_tick_label(tick, x2_axis.ticks)}
           label_x={pad.l + chart_width / 2 + (x2_axis.label_shift?.x ?? 0)}
-          label_y={Math.max(12, pad.t - (x2_axis.label_shift?.y ?? 40))}
+          label_y={Math.max(12, pad.t - (x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
           axis_loading={axis_loading === `x2`}
           on_axis_change={(key) => handle_axis_change(`x2`, key)}
         />

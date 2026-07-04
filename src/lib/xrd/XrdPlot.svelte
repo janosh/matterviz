@@ -451,90 +451,90 @@
       </div>
     {/if}
     {#if broadening_enabled}
-      <!-- Broadened Profile View -->
-      {#snippet tooltip(info: ScatterHandlerProps)}
-        {@const angle_text = `${format_value(info.x, `.2f`)}°`}
-        {@const intensity_text = `${format_value(info.y, `.1f`)}`}
-        {@html sanitize_html(info.label ?? ``)}<br />
-        2θ: {angle_text}<br />
-        Intensity: {intensity_text}
-      {/snippet}
+        <!-- Broadened Profile View -->
+        {#snippet tooltip(info: ScatterHandlerProps)}
+          {@const angle_text = `${format_value(info.x, `.2f`)}°`}
+          {@const intensity_text = `${format_value(info.y, `.1f`)}`}
+          {@html sanitize_html(info.label ?? ``)}<br />
+          2θ: {angle_text}<br />
+          Intensity: {intensity_text}
+        {/snippet}
 
-      <ScatterPlot
-        {...rest}
-        series={scatter_series}
-        x_axis={{
-          label: angle_label,
-          ...x_axis,
-          range: angle_range,
-        }}
-        y_axis={{
-          label: intensity_label,
-          ...y_axis,
-          range: intensity_range,
-        }}
-        {tooltip}
-        ondrop={handle_file_drop}
-        {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
-        class={[rest.class, dragover && `dragover`]}
-        style={`overflow: visible; ${rest.style ?? ``}`}
-        {controls}
-        controls_extra={broadening_controls_snippet}
-      />
-    {:else}
-      <!-- Discrete Stick View -->
-      {#snippet tooltip(
-    info: BarHandlerProps<{ label?: string; hkls?: Hkl[]; d?: number }>,
-  )}
-        {@const angle_text = `${format_value(info.x, `.2f`)}°`}
-        {@const intensity_text = `${format_value(info.y, `.1f`)}`}
-        {@const hkls = info.metadata?.hkls}
-        {@const d_spacing = info.metadata?.d}
-        {@const hkl_text = hkls && hkl_format
-      ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
-      : ``}
-        {@const d_text = d_spacing != null ? `${format_value(d_spacing, `.3f`)} Å` : ``}
-        {@html sanitize_html(info.metadata?.label ?? ``)}<br />
-        2θ: {angle_text}<br />
-        Intensity: {intensity_text}
-        {#if hkl_text}<br />hkl: {hkl_text}{/if}
-        {#if d_text}<br />d: {d_text}{/if}
-      {/snippet}
+        <ScatterPlot
+          {...rest}
+          series={scatter_series}
+          x_axis={{
+            label: angle_label,
+            ...x_axis,
+            range: angle_range,
+          }}
+          y_axis={{
+            label: intensity_label,
+            ...y_axis,
+            range: intensity_range,
+          }}
+          {tooltip}
+          ondrop={handle_file_drop}
+          {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+          class={[rest.class, dragover && `dragover`]}
+          style={`overflow: visible; ${rest.style ?? ``}`}
+          {controls}
+          controls_extra={broadening_controls_snippet}
+        />
+      {:else}
+        <!-- Discrete Stick View -->
+        {#snippet tooltip(
+      info: BarHandlerProps<{ label?: string; hkls?: Hkl[]; d?: number }>,
+    )}
+          {@const angle_text = `${format_value(info.x, `.2f`)}°`}
+          {@const intensity_text = `${format_value(info.y, `.1f`)}`}
+          {@const hkls = info.metadata?.hkls}
+          {@const d_spacing = info.metadata?.d}
+          {@const hkl_text = hkls && hkl_format
+        ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
+        : ``}
+          {@const d_text = d_spacing != null ? `${format_value(d_spacing, `.3f`)} Å` : ``}
+          {@html sanitize_html(info.metadata?.label ?? ``)}<br />
+          2θ: {angle_text}<br />
+          Intensity: {intensity_text}
+          {#if hkl_text}<br />hkl: {hkl_text}{/if}
+          {#if d_text}<br />d: {d_text}{/if}
+        {/snippet}
 
-      <BarPlot
-        {...rest}
-        series={bar_series}
-        bind:orientation
-        x_axis={{
-          label: orientation === `horizontal` ? intensity_label : angle_label,
+        <BarPlot
+          {...rest}
+          series={bar_series}
+          bind:orientation
+          x_axis={{
+            label: orientation === `horizontal` ? intensity_label : angle_label,
 
-          ...(orientation === `horizontal` ? y_axis : x_axis),
-          label_shift: {
-            y: 20,
-            ...(orientation === `horizontal` ? y_axis : x_axis).label_shift,
-          },
-          range: orientation === `horizontal` ? intensity_range : angle_range,
-        }}
-        y_axis={{
-          label: orientation === `horizontal` ? angle_label : intensity_label,
-          ...(orientation === `horizontal` ? x_axis : y_axis),
-          label_shift: {
-            x: 2,
-            ...(orientation === `horizontal` ? x_axis : y_axis).label_shift,
-          },
-          range: orientation === `horizontal` ? angle_range : intensity_range,
-        }}
-        {tooltip}
-        ondrop={handle_file_drop}
-        {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
-        class={[rest.class, dragover && `dragover`]}
-        style={`overflow: visible; ${rest.style ?? ``}`}
-        show_controls={controls.show}
-        controls_open={controls.open}
-        controls_toggle_props={controls.toggle_props}
-        controls_pane_props={controls.pane_props}
-        controls_extra={broadening_controls_snippet}
-      />
+            ...(orientation === `horizontal` ? y_axis : x_axis),
+            label_shift: {
+              y: 20,
+              ...(orientation === `horizontal` ? y_axis : x_axis).label_shift,
+            },
+            range: orientation === `horizontal` ? intensity_range : angle_range,
+          }}
+          y_axis={{
+            label: orientation === `horizontal` ? angle_label : intensity_label,
+            ...(orientation === `horizontal` ? x_axis : y_axis),
+            label_shift: {
+              x: 2,
+              ...(orientation === `horizontal` ? x_axis : y_axis).label_shift,
+            },
+            range: orientation === `horizontal` ? angle_range : intensity_range,
+          }}
+          {tooltip}
+          ondrop={handle_file_drop}
+          {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+          class={[rest.class, dragover && `dragover`]}
+          style={`overflow: visible; ${rest.style ?? ``}`}
+          show_controls={controls.show}
+          controls_open={controls.open}
+          controls_toggle_props={controls.toggle_props}
+          controls_pane_props={controls.pane_props}
+          controls_extra={broadening_controls_snippet}
+        />
     {/if}
   </div>
 {/if}

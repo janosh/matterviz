@@ -359,7 +359,6 @@
     range: y_range,
     ...y_axis,
   })
-
   // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
   // Also clears parent range when internal range becomes invalid (auto-range reset)
   $effect(() => {

@@ -20,7 +20,7 @@
   import Structure from '$lib/structure/Structure.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -29,10 +29,16 @@
     ParseProgress,
     TrajectoryDataExtractor,
     TrajectoryFrame,
+    TrajectoryMetadata,
     TrajectoryType,
     TrajHandlerData,
   } from './index'
-  import { TrajectoryError, TrajectoryExportPane, TrajectoryInfoPane } from './index'
+  import {
+    FRAME_LOAD_DEBOUNCE_MS,
+    TrajectoryError,
+    TrajectoryExportPane,
+    TrajectoryInfoPane,
+  } from './index'
   import type { AtomTypeMapping, LoadingOptions } from './parse'
   import {
     get_unsupported_format_message,
@@ -64,6 +70,12 @@
     current_step_idx: number
     total_frames: number
     on_step_change: (idx: number) => void
+  }
+  type PlotMetadataStreamMessage = {
+    command?: string
+    file_path?: string
+    plot_metadata?: TrajectoryMetadata[]
+    is_complete?: boolean
   }
 
   let {
@@ -207,11 +219,8 @@
 
   // Ensure fps is within the allowed range
   $effect(() => {
-    if (fps < fps_range[0]) {
-      fps = fps_range[0]
-    } else if (fps > fps_range[1]) {
-      fps = fps_range[1]
-    }
+    const clamped = Math.max(fps_range[0], Math.min(fps_range[1], fps))
+    if (clamped !== fps) fps = clamped
   })
   let current_filename = $state<string | undefined>(undefined)
   let current_file_path = $state<string | null>(null)
@@ -242,6 +251,7 @@
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
   let frame_load_request_id = 0
+  let frame_load_timeout: ReturnType<typeof setTimeout> | undefined
 
   // Auto-play when trajectory changes (handles both props and file loading)
   $effect(() => {
@@ -255,8 +265,9 @@
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
       if (trajectory.frame_loader) {
         // Load frame on demand (works for both indexed files and external streaming)
-        load_frame_on_demand(current_step_idx)
+        schedule_frame_load_on_demand(current_step_idx)
       } else {
+        clear_frame_load_timeout()
         // Use in-memory frame for regular trajectories
         current_frame = trajectory.frames[current_step_idx] || null
       }
@@ -274,6 +285,49 @@
   let frame_cache_owner: TrajectoryType | undefined
   // Frames currently being read (direct or prefetch) so we don't kick off duplicate loads
   const inflight_frames = new Set<number>()
+  let streaming_file_path = $derived(
+    trajectory?.metadata?.streaming_file_path as string | undefined,
+  )
+  let plot_metadata_loading = $derived(
+    trajectory?.metadata?.plot_metadata_loading === true,
+  )
+
+  const clear_frame_load_timeout = () => {
+    if (frame_load_timeout) clearTimeout(frame_load_timeout)
+    frame_load_timeout = undefined
+  }
+
+  const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
+    if (!trajectory || batch.length === 0) return
+    trajectory = {
+      ...trajectory,
+      plot_metadata: [...(trajectory.plot_metadata ?? []), ...batch],
+    }
+  }
+
+  const finish_plot_metadata_loading = () => {
+    if (!trajectory) return
+    trajectory = {
+      ...trajectory,
+      metadata: { ...trajectory.metadata, plot_metadata_loading: false },
+    }
+  }
+
+  onMount(() => {
+    const handle_plot_metadata_stream = (event: MessageEvent<PlotMetadataStreamMessage>) => {
+      // Global listener: other code posts arbitrary messages (including null data)
+      if (typeof event.data !== `object` || event.data === null) return
+      const { command, file_path, is_complete, plot_metadata } = event.data
+      if (command !== `plot_metadata_stream` || file_path !== streaming_file_path) return
+      if (Array.isArray(plot_metadata)) merge_plot_metadata(plot_metadata)
+      if (is_complete) finish_plot_metadata_loading()
+    }
+    globalThis.addEventListener(`message`, handle_plot_metadata_stream)
+    return () => {
+      globalThis.removeEventListener(`message`, handle_plot_metadata_stream)
+      clear_frame_load_timeout()
+    }
+  })
 
   // Reset per-trajectory caches when the trajectory changes (frames belong to the old one)
   function ensure_frame_cache_owner() {
@@ -312,6 +366,7 @@
   function prefetch_frames(from_idx: number) {
     const frame_loader = trajectory?.frame_loader
     if (!frame_loader) return
+    if (trajectory?.indexed_frames && trajectory.indexed_frames.length < total_frames) return
     const owner = trajectory
     for (const ahead of [1, 2]) {
       const idx = from_idx + ahead
@@ -327,6 +382,55 @@
     }
   }
 
+  function use_cached_or_in_memory_frame(
+    load_trajectory: TrajectoryType,
+    frame_idx: number,
+  ): boolean {
+    const cached = cache_get(frame_idx)
+    if (cached) {
+      current_frame = cached
+      prefetch_frames(frame_idx)
+      return true
+    }
+
+    const in_memory_frame = load_trajectory.frames[frame_idx]
+    if (in_memory_frame) {
+      cache_put(frame_idx, in_memory_frame)
+      current_frame = in_memory_frame
+      prefetch_frames(frame_idx)
+      return true
+    }
+    return false
+  }
+
+  function schedule_frame_load_on_demand(frame_idx: number) {
+    const load_trajectory = trajectory
+    if (!load_trajectory?.frame_loader) return
+    ensure_frame_cache_owner()
+    frame_load_request_id++
+
+    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) return
+
+    clear_frame_load_timeout()
+    // Debouncing during playback would keep resetting the timer at fps above
+    // ~1000/FRAME_LOAD_DEBOUNCE_MS and stall uncached streamed frames entirely.
+    if (is_playing) {
+      void load_frame_on_demand(frame_idx)
+      return
+    }
+    const request_id = frame_load_request_id
+    frame_load_timeout = setTimeout(() => {
+      frame_load_timeout = undefined
+      if (
+        request_id === frame_load_request_id &&
+        trajectory === load_trajectory &&
+        current_step_idx === frame_idx
+      ) {
+        load_frame_on_demand(frame_idx)
+      }
+    }, FRAME_LOAD_DEBOUNCE_MS)
+  }
+
   // Load frame on demand - works for both indexed files and external streaming
   async function load_frame_on_demand(frame_idx: number) {
     const load_trajectory = trajectory
@@ -340,12 +444,7 @@
       trajectory === load_trajectory &&
       current_step_idx === frame_idx
 
-    const cached = cache_get(frame_idx) // synchronous cache hit -> no await, no stale race
-    if (cached) {
-      current_frame = cached
-      prefetch_frames(frame_idx)
-      return
-    }
+    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) return
     inflight_frames.add(frame_idx) // let concurrent prefetch skip the frame we're already loading
     try {
       const frame = await frame_loader.load_frame(
@@ -485,8 +584,10 @@
     plot_series = toggle_series_visibility(plot_series, series_idx)
   }
 
+  // Streamed trajectories plot sampled per-frame metadata, so x values are frame numbers
+  let x_axis_quantity = $derived(trajectory?.plot_metadata ? `Frame` : `Step`)
   let x_axis = $derived({
-    label: `Step`,
+    label: x_axis_quantity,
     // ~g (not ~s) so sub-1 values read as 0.8 rather than SI "800m"; integer steps stay clean
     format: `~g`,
     ticks: step_label_positions,
@@ -503,10 +604,10 @@
     format: `~g`,
     label_shift: { y: 80 },
   })
-
   // hide plot if all plotted values are constant (no variation)
   let show_plot = $derived(
-    display_mode !== `structure` && !should_hide_plot(trajectory, plot_series),
+    display_mode !== `structure` &&
+      (plot_metadata_loading || !should_hide_plot(trajectory, plot_series)),
   )
 
   // Determine what to show based on display mode
@@ -517,7 +618,6 @@
   let has_y2_series = $derived(
     plot_series.some((srs) => srs.y_axis === `y2` && srs.visible),
   )
-
   // Step navigation functions
   function next_step() {
     if (current_step_idx < total_frames - 1) {
@@ -1139,7 +1239,7 @@
                 max={fps_range[1]}
                 bind:value={fps}
                 title="Frame rate: {format_num(fps, `.2~s`)} fps"
-                style="width: clamp(60px, 8cqw, 90px); accent-color: var(--accent-color)"
+                style="width: clamp(60px, 8cqw, 90px)"
               />
               <input
                 type="number"
@@ -1279,7 +1379,11 @@
       {/if}
 
       {#if actual_show_plot}
-        {#if display_mode === `scatter` || display_mode === `structure+scatter`}
+        {#if plot_metadata_loading}
+          <div class="plot-metadata-loading plot">
+            <Spinner text="Sampling trajectory plot data..." style="--spinner-size: 1.4em" />
+          </div>
+        {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
             series={plot_series}
             {x_axis}
@@ -1308,7 +1412,7 @@
               label,
             }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
-              Step: {Math.round(x)}<br />
+              {x_axis_quantity}: {Math.round(x)}<br />
               {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
             {/snippet}
           </ScatterPlot>
@@ -1434,6 +1538,15 @@
       grid-template-rows: 1fr !important;
     }
   }
+  .plot-metadata-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6em;
+    min-height: 0;
+    color: var(--text-muted, currentColor);
+    background: var(--surface-bg);
+  }
   .trajectory-controls {
     display: flex;
     align-items: center;
@@ -1501,7 +1614,6 @@
   }
   .step-slider {
     width: 100%;
-    accent-color: var(--accent-color);
     position: relative;
     z-index: 1; /* keep the slider knob above the step labels (which follow it in the DOM) */
   }
@@ -1622,14 +1734,18 @@
   .view-mode-dropdown-wrapper {
     display: flex;
     position: relative;
+    z-index: var(--trajectory-view-mode-z-index, 20);
   }
   .view-mode-dropdown {
     position: absolute;
     top: 115%;
     right: 0;
-    background: var(--surface-bg);
+    z-index: 1;
+    min-width: max-content;
+    background: var(--trajectory-view-mode-bg, light-dark(#fff, #2f3137));
     border-radius: 4px;
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+    pointer-events: auto;
   }
   .view-mode-option {
     display: flex;
