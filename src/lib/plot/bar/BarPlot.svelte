@@ -38,7 +38,13 @@
     ScatterPoint,
   } from '$lib/plot'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
+  import {
+    add_sides,
+    marginal_axis,
+    marginal_axis_presence,
+    normalize_marginals,
+    reserve_marginal_pad,
+  } from '$lib/plot/core/marginals'
   import { type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
@@ -147,61 +153,63 @@
     pan = {},
     marginals = false,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
-    series?: BarSeries<Metadata>[]
-    // Component-specific props
-    orientation?: Orientation
-    mode?: BarMode
-    legend?: LegendConfig | null
-    show_legend?: boolean
-    bar?: BarStyle
-    line?: LineStyle
-    tooltip?: Snippet<[BarHandlerProps<Metadata>]>
-    user_content?: Snippet<[UserContentProps]>
-    header_controls?: Snippet<
-      [{ height: number; width: number; fullscreen: boolean }]
-    >
-    controls_extra?: Snippet<
-      [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
-    >
-    change?: (data: BarHandlerProps<Metadata> | null) => void
-    on_bar_click?: (
-      data: BarHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
-    ) => void
-    on_bar_hover?: (
-      data: (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent }) | null,
-    ) => void
-    // Line marker props (matching ScatterPlot)
-    // Note: For line series with markers, BOTH on_bar_* AND on_point_* events fire.
-    // Use on_point_* for marker-specific data (includes `point` with InternalPoint details)
-    // or on_bar_* for backward compatibility with bar-style event handling.
-    color_scale?: ColorScaleConfig | D3InterpolateName
-    size_scale?: SizeScaleConfig
-    point_tween?: TweenOptions<Point2D>
-    on_point_click?: (
-      data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
-    ) => void
-    on_point_hover?: (
-      data:
-        | (LineMarkerHandlerProps & {
-          event: MouseEvent | FocusEvent | KeyboardEvent
-        })
-        | null,
-    ) => void
-    ref_lines?: RefLine[]
-    on_ref_line_click?: (event: RefLineEvent) => void
-    on_ref_line_hover?: (event: RefLineEvent | null) => void
-    // Interactive axis props
-    data_loader?: DataLoaderFn<Metadata, BarSeries<Metadata>>
-    on_axis_change?: (
-      axis: `x` | `x2` | `y` | `y2`,
-      key: string,
-      new_series: BarSeries<Metadata>[],
-    ) => void
-    on_error?: (error: AxisLoadError) => void
-    pan?: PanConfig
-    marginals?: MarginalsProp
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    BasePlotProps &
+    PlotConfig & {
+      series?: BarSeries<Metadata>[]
+      // Component-specific props
+      orientation?: Orientation
+      mode?: BarMode
+      legend?: LegendConfig | null
+      show_legend?: boolean
+      bar?: BarStyle
+      line?: LineStyle
+      tooltip?: Snippet<[BarHandlerProps<Metadata>]>
+      user_content?: Snippet<[UserContentProps]>
+      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      controls_extra?: Snippet<
+        [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
+      >
+      change?: (data: BarHandlerProps<Metadata> | null) => void
+      on_bar_click?: (
+        data: BarHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
+      ) => void
+      on_bar_hover?: (
+        data:
+          | (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
+          | null,
+      ) => void
+      // Line marker props (matching ScatterPlot)
+      // Note: For line series with markers, BOTH on_bar_* AND on_point_* events fire.
+      // Use on_point_* for marker-specific data (includes `point` with InternalPoint details)
+      // or on_bar_* for backward compatibility with bar-style event handling.
+      color_scale?: ColorScaleConfig | D3InterpolateName
+      size_scale?: SizeScaleConfig
+      point_tween?: TweenOptions<Point2D>
+      on_point_click?: (
+        data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
+      ) => void
+      on_point_hover?: (
+        data:
+          | (LineMarkerHandlerProps & {
+              event: MouseEvent | FocusEvent | KeyboardEvent
+            })
+          | null,
+      ) => void
+      ref_lines?: RefLine[]
+      on_ref_line_click?: (event: RefLineEvent) => void
+      on_ref_line_hover?: (event: RefLineEvent | null) => void
+      // Interactive axis props
+      data_loader?: DataLoaderFn<Metadata, BarSeries<Metadata>>
+      on_axis_change?: (
+        axis: `x` | `x2` | `y` | `y2`,
+        key: string,
+        new_series: BarSeries<Metadata>[],
+      ) => void
+      on_error?: (error: AxisLoadError) => void
+      pan?: PanConfig
+      marginals?: MarginalsProp
+    } = $props()
 
   // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
   let bar_state = $derived({ ...DEFAULTS.bar.bar, ...bar })
@@ -258,52 +266,44 @@
     const axis_px = (orientation === `horizontal` ? height : width) || 0
     const max_ticks = Math.max(1, Math.floor(axis_px / 28)) // ~28px per category label
     const step = Math.ceil(category_indices.length / max_ticks)
-    return step <= 1
-      ? category_indices
-      : category_indices.filter((_, idx) => idx % step === 0)
+    return step <= 1 ? category_indices : category_indices.filter((_, idx) => idx % step === 0)
   })
 
   // Compute auto ranges from visible series
-  let visible_series = $derived(
-    internal_series.filter((srs) => srs?.visible ?? true),
-  )
+  let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
 
   // Separate series by y-axis
-  let y1_series = $derived(
-    visible_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`),
-  )
-  let y2_series = $derived(
-    visible_series.filter((srs) => srs.y_axis === `y2`),
-  )
-  let x2_series = $derived(
-    visible_series.filter((srs) => srs.x_axis === `x2`),
-  )
+  let y1_series = $derived(visible_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`))
+  let y2_series = $derived(visible_series.filter((srs) => srs.y_axis === `y2`))
+  let x2_series = $derived(visible_series.filter((srs) => srs.x_axis === `x2`))
   // Whether the secondary x2 (top) / y2 (right) axis actually renders: BarPlot only supports
   // them in vertical orientation. Derive once so ticks, padding, axis rendering, and marginal
   // placement stay in sync. (Data-existence checks below use the bare `*_series.length` instead.)
   let show_x2 = $derived(x2_series.length > 0 && orientation === `vertical`)
   let show_y2 = $derived(y2_series.length > 0 && orientation === `vertical`)
 
-  let auto_ranges = $derived(compute_bar_auto_ranges({
-    visible_series,
-    y1_series,
-    y2_series,
-    x2_series,
-    mode,
-    orientation,
-    range_padding,
-    category_count: category_list.length,
-    x_range: x_axis.range ?? [null, null],
-    x_scale_type: x_axis.scale_type ?? `linear`,
-    x_is_time: x_axis.format?.startsWith(`%`) || false,
-    x2_range: x2_axis.range ?? [null, null],
-    x2_scale_type: x2_axis.scale_type ?? `linear`,
-    x2_is_time: x2_axis.format?.startsWith(`%`) || false,
-    y_range: y_axis.range ?? [null, null],
-    y_scale_type: y_axis.scale_type ?? `linear`,
-    y2_range: y2_axis.range ?? [null, null],
-    y2_scale_type: y2_axis.scale_type ?? `linear`,
-  }))
+  let auto_ranges = $derived(
+    compute_bar_auto_ranges({
+      visible_series,
+      y1_series,
+      y2_series,
+      x2_series,
+      mode,
+      orientation,
+      range_padding,
+      category_count: category_list.length,
+      x_range: x_axis.range ?? [null, null],
+      x_scale_type: x_axis.scale_type ?? `linear`,
+      x_is_time: x_axis.format?.startsWith(`%`) || false,
+      x2_range: x2_axis.range ?? [null, null],
+      x2_scale_type: x2_axis.scale_type ?? `linear`,
+      x2_is_time: x2_axis.format?.startsWith(`%`) || false,
+      y_range: y_axis.range ?? [null, null],
+      y_scale_type: y_axis.scale_type ?? `linear`,
+      y2_range: y2_axis.range ?? [null, null],
+      y2_scale_type: y2_axis.scale_type ?? `linear`,
+    }),
+  )
 
   // Initialize and current ranges
   let ranges = $state<{
@@ -314,10 +314,14 @@
     current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
   })
 
-  $effect(() => { // handle x_axis.range / x2_axis.range / y_axis.range / y2_axis.range changes
+  $effect(() => {
+    // handle x_axis.range / x2_axis.range / y_axis.range / y2_axis.range changes
     // resolve_axis_ranges returns null for transient non-finite bounds (skip: writing
     // NaN breaks scales and, since NaN !== NaN, loops the effect)
-    const next = resolve_axis_ranges({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis }, auto_ranges)
+    const next = resolve_axis_ranges(
+      { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
+      auto_ranges,
+    )
     if (!next) return
     // Only update if the initial (data-driven) ranges changed, not when user pans.
     // untrack the read of `ranges` so the assignment below can't re-trigger this effect
@@ -334,15 +338,16 @@
 
   // Update padding when format or ticks change
   $effect(() => {
-    const new_pad = width && height && ticks.y.length > 0
-      ? calc_auto_padding({
-        padding,
-        default_padding: DEFAULT_PLOT_PADDING,
-        x2_axis: { ...x2_axis, tick_values: ticks.x2 },
-        y_axis: { ...y_axis, tick_values: ticks.y },
-        y2_axis: { ...y2_axis, tick_values: ticks.y2 },
-      })
-      : filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const new_pad =
+      width && height && ticks.y.length > 0
+        ? calc_auto_padding({
+            padding,
+            default_padding: DEFAULT_PLOT_PADDING,
+            x2_axis: { ...x2_axis, tick_values: ticks.x2 },
+            y_axis: { ...y_axis, tick_values: ticks.y },
+            y2_axis: { ...y2_axis, tick_values: ticks.y2 },
+          })
+        : filter_padding(padding, DEFAULT_PLOT_PADDING)
     // Expand right padding if y2 ticks are shown (only for vertical orientation)
     if (width && height && show_y2 && ticks.y2.length > 0) {
       // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
@@ -351,10 +356,7 @@
       const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
       const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
       const label_space = y2_axis.label ? 20 : 0
-      new_pad.r = Math.max(
-        new_pad.r,
-        tick_shift + tick_width_contribution + 30 + label_space,
-      )
+      new_pad.r = Math.max(new_pad.r, tick_shift + tick_width_contribution + 30 + label_space)
     }
     // Expand top padding if x2 ticks are shown (only for vertical orientation)
     if (width && height && show_x2 && ticks.x2.length > 0) {
@@ -367,13 +369,18 @@
 
     // Only update if padding actually changed (prevents infinite loop)
     if (
-      base_pad.t !== new_pad.t || base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l || base_pad.r !== new_pad.r
-    ) base_pad = new_pad
+      base_pad.t !== new_pad.t ||
+      base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l ||
+      base_pad.r !== new_pad.r
+    )
+      base_pad = new_pad
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
-  const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 60 }))
+  const legend_footprint = $derived(
+    measured_footprint(legend_element, { width: 120, height: 60 }),
+  )
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each bar is modeled as a segment
@@ -402,8 +409,18 @@
         const value = base + srs.y[bar_idx]
         // vertical: category on x, value rises on y (inverted). horizontal: category on y, value on x
         const seg = vertical
-          ? clip_bar(true, (x_val - ax0) / x_span, 1 - (value - vy0) / y_span, 1 - (base - vy0) / y_span)
-          : clip_bar(false, 1 - (x_val - cy0) / cy_span, (value - ax0) / x_span, (base - ax0) / x_span)
+          ? clip_bar(
+              true,
+              (x_val - ax0) / x_span,
+              1 - (value - vy0) / y_span,
+              1 - (base - vy0) / y_span,
+            )
+          : clip_bar(
+              false,
+              1 - (x_val - cy0) / cy_span,
+              (value - ax0) / x_span,
+              (base - ax0) / x_span,
+            )
         if (seg) bars.push(seg)
       })
     })
@@ -418,12 +435,14 @@
       height,
       obstacles_norm,
       // gate on legend_element (the render signal) not legend_data, whose entries can read pad
-      legend: legend != null &&
-          (show_legend !== undefined ? show_legend : series.length > 1) &&
-          legend_element != null && !legend_has_explicit_pos
-        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-        : null,
-    })
+      legend:
+        legend != null &&
+        (show_legend !== undefined ? show_legend : series.length > 1) &&
+        legend_element != null &&
+        !legend_has_explicit_pos
+          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+          : null,
+    }),
   )
   // Resolve marginals: a cumulative/Pareto CDF over the CATEGORY axis weighted by bar height.
   // Categories sit on x (vertical) or y (horizontal), so the default side and the value array
@@ -442,8 +461,10 @@
       y: marginal_is_vertical ? undefined : (srs?.x ?? []),
       // magnitude weights so negative bars still yield a monotonic cumulative (CDF) marginal
       weight: srs?.y?.map((value) => Math.abs(value)) ?? [],
-      color: srs?.color ??
-        (srs?.render_mode === `line` ? line_state.color : bar_state.color) ?? `steelblue`,
+      color:
+        srs?.color ??
+        (srs?.render_mode === `line` ? line_state.color : bar_state.color) ??
+        `steelblue`,
       label: srs?.label,
       visible: srs?.visible ?? true,
       x_axis: srs?.x_axis,
@@ -476,9 +497,7 @@
     visible_series
       .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
       .flatMap((srs: BarSeries<Metadata>) =>
-        (srs.color_values ?? []).filter(
-          (val): val is number => typeof val === `number`,
-        )
+        (srs.color_values ?? []).filter((val): val is number => typeof val === `number`),
       ),
   )
 
@@ -494,9 +513,7 @@
     visible_series
       .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
       .flatMap((srs: BarSeries<Metadata>) =>
-        [...(srs.size_values ?? [])].filter(
-          (val): val is number => typeof val === `number`,
-        )
+        [...(srs.size_values ?? [])].filter((val): val is number => typeof val === `number`),
       ),
   )
 
@@ -514,13 +531,9 @@
     // Only respect user ticks when they're a Record (custom label mapping),
     // not a number (tick count) or array (tick positions)
     const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
-    if (
-      user_ticks != null && typeof user_ticks === `object` &&
-      !Array.isArray(user_ticks)
-    ) return user_ticks
-    return Object.fromEntries(
-      category_list.map((cat, idx): [number, string] => [idx, cat]),
-    )
+    if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks))
+      return user_ticks
+    return Object.fromEntries(category_list.map((cat, idx): [number, string] => [idx, cat]))
   })
 
   let ticks = $derived.by(() => {
@@ -532,16 +545,20 @@
       show = true,
     ) =>
       width && height && show
-        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, { default_count })
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
+            default_count,
+          })
         : []
     // categorical axes show one tick per category instead of generated numeric ticks
     return {
-      x: category_indices && cat_axis === `x` && width && height
-        ? cat_tick_indices
-        : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
-      y: category_indices && cat_axis === `y` && width && height
-        ? cat_tick_indices
-        : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
+      x:
+        category_indices && cat_axis === `x` && width && height
+          ? cat_tick_indices
+          : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
+      y:
+        category_indices && cat_axis === `y` && width && height
+          ? cat_tick_indices
+          : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
       y2: axis_ticks(y2_axis, ranges.current.y2, scales.y2, 6, show_y2),
       x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
     }
@@ -558,7 +575,8 @@
   // Shared pan/zoom/touch/drag-rect interaction controller
   const pan_zoom = create_pan_zoom({
     ranges: () => ranges.current,
-    scale_type: (axis) => ({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })[axis].scale_type,
+    scale_type: (axis) =>
+      ({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })[axis].scale_type,
     plot_dims: () => ({ width: chart_width, height: chart_height }),
     pan: () => pan,
     set_range: (axis, range) => (ranges.current[axis] = range),
@@ -600,8 +618,7 @@
       const is_line = srs.render_mode === `line`
       const series_markers = srs.markers ?? DEFAULT_MARKERS
       const has_line = series_markers === `line` || series_markers === `line+points`
-      const has_points = series_markers === `points` ||
-        series_markers === `line+points`
+      const has_points = series_markers === `points` || series_markers === `line+points`
       const series_color = srs.color ?? (is_line ? line_state.color : bar_state.color)
 
       // Get point style for symbol color (handle array or single object)
@@ -609,9 +626,10 @@
         ? srs.point_style[0]
         : srs.point_style
       const first_color_value = srs.color_values?.[0]
-      const point_color = first_color_value != null
-        ? color_scale_fn(first_color_value)
-        : first_point_style?.fill ?? series_color
+      const point_color =
+        first_color_value != null
+          ? color_scale_fn(first_color_value)
+          : (first_point_style?.fill ?? series_color)
 
       if (is_line) {
         // Line series: show line and/or symbol based on markers
@@ -623,16 +641,15 @@
           display_style: {
             ...(has_line
               ? {
-                line_color: series_color,
-                line_dash: srs.line_style?.line_dash,
-              }
+                  line_color: series_color,
+                  line_dash: srs.line_style?.line_dash,
+                }
               : {}),
             ...(has_points
               ? {
-                symbol_type: first_point_style?.symbol_type ??
-                  DEFAULTS.scatter.symbol_type,
-                symbol_color: point_color,
-              }
+                  symbol_type: first_point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
+                  symbol_color: point_color,
+                }
               : {}),
           },
         }
@@ -648,10 +665,13 @@
           symbol_color: series_color,
         },
       }
-    })
+    }),
   )
 
-  const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series = next),
+  )
 
   // Collect bar and line positions for legend placement
   let bar_points_for_placement = $derived.by(() => {
@@ -668,12 +688,11 @@
       return srs.x
         .map((x_val, bar_idx) => {
           const y_val = srs.y[bar_idx]
-          const base = !is_line && mode === `stacked`
-            ? (series_offsets[bar_idx] ?? 0)
-            : 0
-          const [bar_x, bar_y] = orientation === `vertical`
-            ? [x_scale_pl(x_val), y_scale(base + y_val)]
-            : [x_scale_pl(base + y_val), scales.y(x_val)]
+          const base = !is_line && mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
+          const [bar_x, bar_y] =
+            orientation === `vertical`
+              ? [x_scale_pl(x_val), y_scale(base + y_val)]
+              : [x_scale_pl(base + y_val), scales.y(x_val)]
           return { x: bar_x, y: bar_y }
         })
         .filter(({ x, y }) => isFinite(x) && isFinite(y))
@@ -720,9 +739,7 @@
     const srs = internal_series[series_idx]
     const [x, y] = [srs.x[bar_idx], srs.y[bar_idx]]
     const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
-    const metadata = Array.isArray(srs.metadata)
-      ? srs.metadata[bar_idx]
-      : srs.metadata
+    const metadata = Array.isArray(srs.metadata) ? srs.metadata[bar_idx] : srs.metadata
     const label = srs.labels?.[bar_idx] ?? null
     const active_y_axis = srs.y_axis ?? `y1`
     const active_x_axis = srs.x_axis ?? `x1`
@@ -777,7 +794,7 @@
   const line_point_fill = (pt: LineSeriesPoint, series_color: string): string =>
     pt.color_value != null
       ? color_scale_fn(pt.color_value)
-      : pt.point_style?.fill ?? series_color
+      : (pt.point_style?.fill ?? series_color)
 
   const handle_bar_hover =
     (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
@@ -804,19 +821,26 @@
   const axis_state: AxisChangeState<BarSeries<Metadata>> = {
     axes: {
       x: { get: () => x_axis, set: (config) => (x_axis = { ...x_axis, ...config }) },
-      x2: { get: () => x2_axis, set: (config) => (x2_axis_prop = { ...x2_axis_prop, ...config }) },
+      x2: {
+        get: () => x2_axis,
+        set: (config) => (x2_axis_prop = { ...x2_axis_prop, ...config }),
+      },
       y: { get: () => y_axis, set: (config) => (y_axis = { ...y_axis, ...config }) },
-      y2: { get: () => y2_axis, set: (config) => (y2_axis_prop = { ...y2_axis_prop, ...config }) },
+      y2: {
+        get: () => y2_axis,
+        set: (config) => (y2_axis_prop = { ...y2_axis_prop, ...config }),
+      },
     },
     series: { get: () => series, set: (next) => (series = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
   // Shared handler + one-shot auto-load bound to this component's state
-  const { handle_axis_change, try_auto_load } = create_axis_loader(
-    axis_state,
-    () => ({ data_loader, on_axis_change, on_error }),
-  )
+  const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
+    data_loader,
+    on_axis_change,
+    on_error,
+  }))
   $effect(try_auto_load)
 </script>
 
@@ -880,7 +904,7 @@
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ??
-      ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Bar chart`)}
+        ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Bar chart`)}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}
@@ -933,7 +957,7 @@
         {height}
         show_grid={display.x_grid}
         tick_label={(tick) =>
-        get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
+          get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
         label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
         label_y={height - pad.b / 3 + (x_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `x`}
@@ -973,10 +997,11 @@
         {height}
         show_grid={display.y_grid}
         tick_label={(tick) =>
-        get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
+          get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
         label_x={Math.max(
           12,
-          pad.l - (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
+          pad.l -
+            (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
             LABEL_GAP_DEFAULT,
         ) + (y_axis.label_shift?.x ?? 0)}
         label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
@@ -1052,7 +1077,7 @@
               class={is_line ? `line-series` : `bar-series`}
               data-series-idx={series_idx}
               opacity={hovered_legend_series_idx !== null &&
-                  hovered_legend_series_idx !== series_idx
+              hovered_legend_series_idx !== series_idx
                 ? 0.25
                 : 1}
             >
@@ -1066,21 +1091,22 @@
                 {@const use_x2 = srs.x_axis === `x2`}
                 {@const x_scale = use_x2 ? scales.x2 : scales.x}
                 {@const series_markers = srs.markers ?? DEFAULT_MARKERS}
-                {@const show_line = series_markers === `line` ||
-            series_markers === `line+points`}
-                {@const show_points = series_markers === `points` ||
-            series_markers === `line+points`}
+                {@const show_line =
+                  series_markers === `line` || series_markers === `line+points`}
+                {@const show_points =
+                  series_markers === `points` || series_markers === `line+points`}
                 {@const points = compute_line_points({
-            series: srs,
-            series_idx,
-            orientation,
-            x_scale,
-            y_scale,
-            cat_y_scale: scales.y,
-          })}
-                {@const polyline_str = show_line && points.length > 1
-            ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
-            : ``}
+                  series: srs,
+                  series_idx,
+                  orientation,
+                  x_scale,
+                  y_scale,
+                  cat_y_scale: scales.y,
+                })}
+                {@const polyline_str =
+                  show_line && points.length > 1
+                    ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
+                    : ``}
                 {#if polyline_str}
                   <polyline
                     points={polyline_str}
@@ -1129,44 +1155,41 @@
                 {#if show_points}
                   {@const clickable = on_bar_click || on_point_click}
                   {@const get_pt = (evt: Event) => {
-            const attr = evt.target instanceof Element
-              ? evt.target.closest(`[data-bar-idx]`)?.getAttribute(
-                `data-bar-idx`,
-              )
-              : null
-            return points.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
-          }}
+                    const attr =
+                      evt.target instanceof Element
+                        ? evt.target.closest(`[data-bar-idx]`)?.getAttribute(`data-bar-idx`)
+                        : null
+                    return points.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
+                  }}
                   {@const set_hover = (
-            pt: LineSeriesPoint | null,
-            evt: MouseEvent | FocusEvent,
-          ) => {
-            if (pt) {
-              hovered = true
-              const fill = line_point_fill(pt, color)
-              hover_info = get_bar_data(series_idx, pt.idx, fill)
-              change(hover_info)
-            } else {
-              change(null)
-              hover_info = null
-            }
-            on_bar_hover?.(pt ? { ...hover_info!, event: evt } : null)
-            on_point_hover?.(
-              pt ? { ...hover_info!, event: evt, point: pt } : null,
-            )
-          }}
+                    pt: LineSeriesPoint | null,
+                    evt: MouseEvent | FocusEvent,
+                  ) => {
+                    if (pt) {
+                      hovered = true
+                      const fill = line_point_fill(pt, color)
+                      hover_info = get_bar_data(series_idx, pt.idx, fill)
+                      change(hover_info)
+                    } else {
+                      change(null)
+                      hover_info = null
+                    }
+                    on_bar_hover?.(pt ? { ...hover_info!, event: evt } : null)
+                    on_point_hover?.(pt ? { ...hover_info!, event: evt, point: pt } : null)
+                  }}
                   {@const do_click = (
-            pt: LineSeriesPoint,
-            evt: MouseEvent | KeyboardEvent,
-          ) => {
-            const fill = line_point_fill(pt, color)
-            const bar_data = get_bar_data(series_idx, pt.idx, fill)
-            on_bar_click?.({ ...bar_data, event: evt })
-            on_point_click?.({ ...bar_data, event: evt, point: pt })
-          }}
+                    pt: LineSeriesPoint,
+                    evt: MouseEvent | KeyboardEvent,
+                  ) => {
+                    const fill = line_point_fill(pt, color)
+                    const bar_data = get_bar_data(series_idx, pt.idx, fill)
+                    on_bar_click?.({ ...bar_data, event: evt })
+                    on_point_click?.({ ...bar_data, event: evt, point: pt })
+                  }}
                   {@const leaving = (evt: MouseEvent | FocusEvent) =>
-            (evt.relatedTarget instanceof Element
-              ? evt.relatedTarget.closest(`.line-points`)
-              : null) !== evt.currentTarget}
+                    (evt.relatedTarget instanceof Element
+                      ? evt.relatedTarget.closest(`.line-points`)
+                      : null) !== evt.currentTarget}
                   <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_mouse_events_have_key_events -->
                   <g
                     class="line-points"
@@ -1200,11 +1223,13 @@
                     {#each points as pt (pt.idx)}
                       {@const sty = pt.point_style}
                       {@const fl = line_point_fill(pt, color)}
-                      {@const rad = pt.size_value != null
-              ? size_scale_fn(pt.size_value)
-              : sty?.radius ?? 4}
-                      {@const hov = hover_info?.series_idx === series_idx &&
-              hover_info?.bar_idx === pt.idx}
+                      {@const rad =
+                        pt.size_value != null
+                          ? size_scale_fn(pt.size_value)
+                          : (sty?.radius ?? 4)}
+                      {@const hov =
+                        hover_info?.series_idx === series_idx &&
+                        hover_info?.bar_idx === pt.idx}
                       <ScatterPoint
                         x={pt.x}
                         y={pt.y}
@@ -1235,31 +1260,30 @@
                 <!-- Render as bars -->
                 {#each srs.x as x_val, bar_idx (bar_idx)}
                   {@const y_val = srs.y[bar_idx]}
-                  {@const base = mode === `stacked`
-            ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0)
-            : 0}
+                  {@const base =
+                    mode === `stacked` ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0) : 0}
                   {@const color = srs.color ?? bar_state.color ?? `steelblue`}
                   {@const bar_width_val = Array.isArray(srs.bar_width)
-            ? (srs.bar_width[bar_idx] ?? 0.5)
-            : (srs.bar_width ?? 0.5)}
+                    ? (srs.bar_width[bar_idx] ?? 0.5)
+                    : (srs.bar_width ?? 0.5)}
                   {@const is_vertical = orientation === `vertical`}
                   {@const x_scale_bar = srs.x_axis === `x2` ? scales.x2 : scales.x}
                   {@const [cat_scale, val_scale] = is_vertical
-            ? [x_scale_bar, srs.y_axis === `y2` ? scales.y2 : scales.y]
-            : [scales.y, x_scale_bar]}
+                    ? [x_scale_bar, srs.y_axis === `y2` ? scales.y2 : scales.y]
+                    : [scales.y, x_scale_bar]}
                   {@const { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h } =
-            compute_bar_rect({
-              cat_val: x_val,
-              val: y_val,
-              base,
-              bar_width_val,
-              series_idx,
-              mode,
-              orientation,
-              group_info,
-              cat_scale,
-              val_scale,
-            })}
+                    compute_bar_rect({
+                      cat_val: x_val,
+                      val: y_val,
+                      base,
+                      bar_width_val,
+                      series_idx,
+                      mode,
+                      orientation,
+                      group_info,
+                      cat_scale,
+                      val_scale,
+                    })}
                   {#if (is_vertical ? rect_h : rect_w) > 0}
                     <path
                       d={bar_path(
@@ -1286,10 +1310,10 @@
                         on_bar_hover?.(null)
                       }}
                       onclick={(evt) =>
-                      on_bar_click?.({
-                        ...get_bar_data(series_idx, bar_idx, color),
-                        event: evt,
-                      })}
+                        on_bar_click?.({
+                          ...get_bar_data(series_idx, bar_idx, color),
+                          event: evt,
+                        })}
                       onkeydown={(evt) => {
                         if (evt.key === `Enter` || evt.key === ` `) {
                           evt.preventDefault()
@@ -1331,9 +1355,19 @@
         {pad}
         has_axis={marginal_has_axis}
         axes={{
-          x1: marginal_axis(scales.x, ranges.current.x, x_axis, cat_axis === `x` ? (pos) => category_list[Math.round(pos)] : undefined),
+          x1: marginal_axis(
+            scales.x,
+            ranges.current.x,
+            x_axis,
+            cat_axis === `x` ? (pos) => category_list[Math.round(pos)] : undefined,
+          ),
           x2: marginal_axis(scales.x2, ranges.current.x2, x2_axis),
-          y1: marginal_axis(scales.y, ranges.current.y, y_axis, cat_axis === `y` ? (pos) => category_list[Math.round(pos)] : undefined),
+          y1: marginal_axis(
+            scales.y,
+            ranges.current.y,
+            y_axis,
+            cat_axis === `y` ? (pos) => category_list[Math.round(pos)] : undefined,
+          ),
           y2: marginal_axis(scales.y2, ranges.current.y2, y2_axis),
         }}
         id={clip_path_id}
@@ -1343,12 +1377,12 @@
     <!-- Legend -->
     {#if legend && (show_legend !== undefined ? show_legend : series.length > 1)}
       {@const legend_pos = placed_coords(
-      legend_auto_outside,
-      { x: legend_outside_x, y: legend_outside_y },
-      legend_placement,
-      legend_tween.coords.current,
-      { x: pad.l + 10, y: pad.t + 10 },
-    )}
+        legend_auto_outside,
+        { x: legend_outside_x, y: legend_outside_y },
+        legend_placement,
+        legend_tween.coords.current,
+        { x: pad.l + 10, y: pad.t + 10 },
+      )}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
@@ -1358,9 +1392,8 @@
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_hover_change={legend_tween.set_locked}
         on_item_hover={(item) =>
-          (hovered_legend_series_idx = item != null && item.series_idx >= 0
-            ? item.series_idx
-            : null)}
+          (hovered_legend_series_idx =
+            item != null && item.series_idx >= 0 ? item.series_idx : null)}
         active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
         style={`
           position: absolute;
@@ -1374,11 +1407,11 @@
 
     {#if hover_info && hovered}
       {@const cx = (hover_info.active_x_axis === `x2` ? scales.x2 : scales.x)(
-      hover_info.orient_x,
-    )}
+        hover_info.orient_x,
+      )}
       {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
-      hover_info.orient_y,
-    )}
+        hover_info.orient_y,
+      )}
       <PlotTooltip
         x={cx}
         y={cy}
@@ -1395,16 +1428,16 @@
             <div><strong>{series_label}</strong></div>
           {/if}
           <div>
-            {@html sanitize_html(hover_info.x_axis.label || `x`)}: {
-              (cat_axis === `x` ? hover_info.category_label : undefined) ??
-              format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)
-            }
+            {@html sanitize_html(hover_info.x_axis.label || `x`)}: {(cat_axis === `x`
+              ? hover_info.category_label
+              : undefined) ??
+              format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)}
           </div>
           <div>
-            {@html sanitize_html(hover_info.y_axis.label || `y`)}: {
-              (cat_axis === `y` ? hover_info.category_label : undefined) ??
-              format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)
-            }
+            {@html sanitize_html(hover_info.y_axis.label || `y`)}: {(cat_axis === `y`
+              ? hover_info.category_label
+              : undefined) ??
+              format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)}
           </div>
         {/if}
       </PlotTooltip>
@@ -1493,7 +1526,9 @@
   .bar-plot :global(.pane-toggle),
   .bar-plot .header-controls {
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
   .bar-plot:hover :global(.pane-toggle),
   .bar-plot:hover .header-controls,

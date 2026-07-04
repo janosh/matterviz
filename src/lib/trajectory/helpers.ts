@@ -202,7 +202,7 @@ export function* iter_xyz_frames(
 ): Generator<{ start: number; num_atoms: number; comment: string }> {
   let line_idx = 0
   while (line_idx < lines.length) {
-    const num_atoms = parseInt(lines[line_idx]?.trim(), 10)
+    const num_atoms = Math.trunc(Number(lines[line_idx]?.trim()))
     if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 2 > lines.length) {
       line_idx++ // skip blank/invalid lines until the next frame's atom-count line
       continue
@@ -213,9 +213,9 @@ export function* iter_xyz_frames(
       const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
       if (
         parts?.length >= 4 &&
-        isNaN(parseInt(parts[0], 10)) &&
+        isNaN(Number(parts[0])) &&
         parts[0].length <= 3 &&
-        parts.slice(1, 4).every((coord) => !isNaN(parseFloat(coord)))
+        parts.slice(1, 4).every((coord) => !isNaN(Number(coord)))
       )
         valid_coords++
     }

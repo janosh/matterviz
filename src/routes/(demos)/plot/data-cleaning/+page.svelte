@@ -17,15 +17,8 @@
   // --- Synthetic Data Generators ---
 
   // Generate smooth baseline data
-  const generate_smooth = (
-    length: number,
-    amplitude = 10,
-    frequency = 0.2,
-  ): number[] =>
-    Array.from(
-      { length },
-      (_, idx) => amplitude * Math.sin(idx * frequency) + amplitude,
-    )
+  const generate_smooth = (length: number, amplitude = 10, frequency = 0.2): number[] =>
+    Array.from({ length }, (_, idx) => amplitude * Math.sin(idx * frequency) + amplitude)
 
   // Add random noise
   const add_noise = (data: number[], noise_level: number): number[] =>
@@ -36,15 +29,9 @@
     data.map((val) => (Math.random() < probability ? NaN : val))
 
   // Add outliers (spike values)
-  const add_outliers = (
-    data: number[],
-    probability: number,
-    magnitude: number,
-  ): number[] =>
+  const add_outliers = (data: number[], probability: number, magnitude: number): number[] =>
     data.map((val) =>
-      Math.random() < probability
-        ? val + (Math.random() > 0.5 ? 1 : -1) * magnitude
-        : val
+      Math.random() < probability ? val + (Math.random() > 0.5 ? 1 : -1) * magnitude : val,
     )
 
   // Generate oscillating/unstable data
@@ -58,10 +45,7 @@
     const y_vals = x_vals.map((val, idx) => {
       if (idx < stable_length) return val * 0.5 + 10
       const unstable_idx = idx - stable_length
-      return (
-        val * 0.5 + 10 +
-        Math.exp(growth_rate * unstable_idx) * Math.sin(unstable_idx * 2)
-      )
+      return val * 0.5 + 10 + Math.exp(growth_rate * unstable_idx) * Math.sin(unstable_idx * 2)
     })
     return { x: x_vals, y: y_vals }
   }
@@ -83,13 +67,7 @@
   // --- State Variables ---
 
   // Data type selection
-  type DataType =
-    | `unstable`
-    | `noisy`
-    | `outliers`
-    | `nan_values`
-    | `jumpy`
-    | `combined`
+  type DataType = `unstable` | `noisy` | `outliers` | `nan_values` | `jumpy` | `combined`
   let data_type = $state<DataType>(`unstable`)
 
   // Filter controls
@@ -125,9 +103,10 @@
     }
 
     if (apply_smoothing) {
-      config.smooth = smoothing_type === `savgol`
-        ? { type: `savgol`, window: smoothing_window, polynomial_order: 2 }
-        : { type: `moving_avg`, window: smoothing_window }
+      config.smooth =
+        smoothing_type === `savgol`
+          ? { type: `savgol`, window: smoothing_window, polynomial_order: 2 }
+          : { type: `moving_avg`, window: smoothing_window }
     }
 
     if (apply_bounds) {
@@ -144,10 +123,7 @@
     const x_vals = Array.from({ length: data_length }, (_, idx) => idx)
 
     if (data_type === `unstable`) {
-      return generate_unstable(
-        Math.floor(data_length * 0.5),
-        Math.ceil(data_length * 0.5),
-      )
+      return generate_unstable(Math.floor(data_length * 0.5), Math.ceil(data_length * 0.5))
     } else if (data_type === `noisy`) {
       const smooth = generate_smooth(data_length)
       return { x: x_vals, y: add_noise(smooth, noise_level) }
@@ -163,17 +139,12 @@
     } else if (data_type === `jumpy`) {
       return { x: x_vals, y: generate_jumpy(data_length, 4) }
     }
-      // combined
-      let y_vals = generate_smooth(data_length)
-      y_vals = add_noise(y_vals, noise_level * 0.5)
-      y_vals = add_outliers(
-        y_vals,
-        outlier_probability * 0.5,
-        outlier_magnitude * 0.7,
-      )
-      y_vals = add_nan_values(y_vals, nan_probability * 0.5)
-      return { x: x_vals, y: y_vals }
-
+    // combined
+    let y_vals = generate_smooth(data_length)
+    y_vals = add_noise(y_vals, noise_level * 0.5)
+    y_vals = add_outliers(y_vals, outlier_probability * 0.5, outlier_magnitude * 0.7)
+    y_vals = add_nan_values(y_vals, nan_probability * 0.5)
+    return { x: x_vals, y: y_vals }
   })
 
   // Derived: cleaned data
@@ -195,12 +166,9 @@
 
   // Shared helper: find interpolated value at an index by averaging nearest valid neighbors
   // Used by removed_points, find_nan_positions, and find_trajectory_nan_positions
-  function interpolate_at_index(
-    values: number[],
-    idx: number,
-    fallback: number,
-  ): number {
-    let prev = fallback, next = fallback
+  function interpolate_at_index(values: number[], idx: number, fallback: number): number {
+    let prev = fallback,
+      next = fallback
     for (let jdx = idx - 1; jdx >= 0; jdx--) {
       if (Number.isFinite(values[jdx])) {
         prev = values[jdx]
@@ -223,17 +191,13 @@
     const cleaned_x = cleaned_result.series.x
 
     for (let raw_idx = 0, cleaned_idx = 0; raw_idx < raw_data.x.length; raw_idx++) {
-      if (
-        cleaned_idx < cleaned_x.length &&
-        raw_data.x[raw_idx] === cleaned_x[cleaned_idx]
-      ) cleaned_idx++
+      if (cleaned_idx < cleaned_x.length && raw_data.x[raw_idx] === cleaned_x[cleaned_idx])
+        cleaned_idx++
       else {
         removed_x.push(raw_data.x[raw_idx])
         const raw_y = raw_data.y[raw_idx]
         removed_y.push(
-          Number.isFinite(raw_y)
-            ? raw_y
-            : interpolate_at_index(raw_data.y, raw_idx, 10),
+          Number.isFinite(raw_y) ? raw_y : interpolate_at_index(raw_data.y, raw_idx, 10),
         )
       }
     }
@@ -279,12 +243,8 @@
   let multi_series_data = $derived.by(() => {
     void regenerate_counter
     const time = Array.from({ length: 50 }, (_, idx) => idx) // timestamps
-    const temperature = time.map(
-      (t) => 25 + 5 * Math.sin(t * 0.2) + (Math.random() - 0.5) * 3,
-    )
-    const pressure = time.map(
-      (t) => 101 + 4 * Math.cos(t * 0.15) + (Math.random() - 0.5) * 4,
-    )
+    const temperature = time.map((t) => 25 + 5 * Math.sin(t * 0.2) + (Math.random() - 0.5) * 3)
+    const pressure = time.map((t) => 101 + 4 * Math.cos(t * 0.15) + (Math.random() - 0.5) * 4)
     // Sensor glitches at different times - if one reading is bad, both are suspect
     temperature[10] = NaN
     temperature[25] = NaN
@@ -315,16 +275,8 @@
   }
 
   let multi_series_nan_markers = $derived({
-    temp_nan: find_nan_positions(
-      multi_series_data.x,
-      multi_series_data.y_arrays[0],
-      25,
-    ),
-    pressure_nan: find_nan_positions(
-      multi_series_data.x,
-      multi_series_data.y_arrays[1],
-      101,
-    ),
+    temp_nan: find_nan_positions(multi_series_data.x, multi_series_data.y_arrays[0], 25),
+    pressure_nan: find_nan_positions(multi_series_data.x, multi_series_data.y_arrays[1], 101),
   })
 
   // Trajectory demo data - a spiral path where NaN in any coordinate removes that point from all
@@ -333,12 +285,8 @@
     const length = 50
     // Spiral trajectory: x and y are coordinates, t is the parameter (like time)
     const t_vals = Array.from({ length }, (_, idx) => idx)
-    const x_vals = t_vals.map((t) =>
-      10 + 8 * Math.cos(t * 0.25) * (1 + t * 0.02)
-    )
-    const y_vals = t_vals.map((t) =>
-      10 + 8 * Math.sin(t * 0.25) * (1 + t * 0.02)
-    )
+    const x_vals = t_vals.map((t) => 10 + 8 * Math.cos(t * 0.25) * (1 + t * 0.02))
+    const y_vals = t_vals.map((t) => 10 + 8 * Math.sin(t * 0.25) * (1 + t * 0.02))
     // Add NaN at different positions - these points will be removed from BOTH x and y
     x_vals[15] = NaN // NaN in x at t=15
     y_vals[35] = NaN // NaN in y at t=35
@@ -370,9 +318,7 @@
     return result
   }
 
-  let trajectory_nan_markers = $derived(
-    find_trajectory_nan_positions(xyz_data.x, xyz_data.y),
-  )
+  let trajectory_nan_markers = $derived(find_trajectory_nan_positions(xyz_data.x, xyz_data.y))
 
   // Reference lines for instability marker
   let ref_lines = $derived.by(() => {
@@ -422,49 +368,49 @@
     // Build config lines with highlighting
     const config_lines: string[] = []
     config_lines.push(`  ${prop(`invalid_values`)}: ${str(invalid_mode)},`)
-    config_lines.push(
-      `  ${prop(`oscillation_threshold`)}: ${num(oscillation_threshold)},`,
-    )
+    config_lines.push(`  ${prop(`oscillation_threshold`)}: ${num(oscillation_threshold)},`)
     config_lines.push(`  ${prop(`window_size`)}: ${num(window_size)},`)
     config_lines.push(`  ${prop(`truncation_mode`)}: ${str(truncation_mode)},`)
 
     if (apply_bounds) {
       config_lines.push(
-        `  ${prop(`bounds`)}: { ${prop(`min`)}: ${num(bounds_min)}, ${prop(`max`)}: ${
-          num(bounds_max)
-        }, ${prop(`mode`)}: ${str(bounds_mode)} },`,
+        `  ${prop(`bounds`)}: { ${prop(`min`)}: ${num(bounds_min)}, ${prop(`max`)}: ${num(
+          bounds_max,
+        )}, ${prop(`mode`)}: ${str(bounds_mode)} },`,
       )
     }
 
     if (apply_smoothing) {
       if (smoothing_type === `savgol`) {
         config_lines.push(
-          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`savgol`)}, ${
-            prop(`window`)
-          }: ${num(smoothing_window)}, ${prop(`polynomial_order`)}: ${num(2)} },`,
+          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`savgol`)}, ${prop(
+            `window`,
+          )}: ${num(smoothing_window)}, ${prop(`polynomial_order`)}: ${num(2)} },`,
         )
       } else {
         config_lines.push(
-          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`moving_avg`)}, ${
-            prop(`window`)
-          }: ${num(smoothing_window)} },`,
+          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`moving_avg`)}, ${prop(
+            `window`,
+          )}: ${num(smoothing_window)} },`,
         )
       }
     }
 
     config_lines.push(`  ${prop(`in_place`)}: ${kw(`false`)},`)
 
-    const x_preview = raw_data.x.slice(0, 5).map((val) => num(val)).join(`, `)
-    const y_preview = raw_data.y.slice(0, 5)
-      .map((val) => Number.isFinite(val) ? num(val.toFixed(1)) : kw(`NaN`))
+    const x_preview = raw_data.x
+      .slice(0, 5)
+      .map((val) => num(val))
+      .join(`, `)
+    const y_preview = raw_data.y
+      .slice(0, 5)
+      .map((val) => (Number.isFinite(val) ? num(val.toFixed(1)) : kw(`NaN`)))
       .join(`, `)
 
-    return `${kw(`import`)} { ${fn(`clean_series`)} } ${kw(`from`)} ${
-      str(`$lib/plot`)
-    }
-${kw(`import type`)} { ${typ(`DataSeries`)}, ${typ(`CleaningConfig`)} } ${
-      kw(`from`)
-    } ${str(`$lib/plot`)}
+    return `${kw(`import`)} { ${fn(`clean_series`)} } ${kw(`from`)} ${str(`$lib/plot`)}
+${kw(`import type`)} { ${typ(`DataSeries`)}, ${typ(`CleaningConfig`)} } ${kw(
+      `from`,
+    )} ${str(`$lib/plot`)}
 
 ${kw(`const`)} series: ${typ(`DataSeries`)} = {
   ${prop(`x`)}: [${x_preview}, ...],
@@ -486,8 +432,8 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 
 <p class="intro">
   Interactive demonstration of data cleaning utilities for handling noisy, erratic, or
-  unreliable scientific data. Generate various types of problematic data and experiment
-  with different filtering strategies.
+  unreliable scientific data. Generate various types of problematic data and experiment with
+  different filtering strategies.
 </p>
 
 <section class="controls-panel">
@@ -529,13 +475,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     <div class="control-row">
       <label>
         NaN Probability: {(nan_probability * 100).toFixed(0)}%
-        <input
-          type="range"
-          bind:value={nan_probability}
-          min="0.02"
-          max="0.3"
-          step="0.02"
-        />
+        <input type="range" bind:value={nan_probability} min="0.02" max="0.3" step="0.02" />
       </label>
     </div>
   {/if}
@@ -583,13 +523,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
   <div class="control-row">
     <label>
       Oscillation Threshold: {oscillation_threshold.toFixed(1)}
-      <input
-        type="range"
-        bind:value={oscillation_threshold}
-        min="0.5"
-        max="5"
-        step="0.1"
-      />
+      <input type="range" bind:value={oscillation_threshold} min="0.5" max="5" step="0.1" />
     </label>
 
     <label>
@@ -685,17 +619,17 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 <section class="plot-section">
   <h2>Multi-Series Cleaning (Correlated Data)</h2>
   <p class="description">
-    For <em>correlated</em> measurements (e.g., temperature and pressure from the same
-    sensor at each timestep), if one reading is invalid, the comparison at that point is
-    meaningless. Here, synchronized filtering removes the entire row when <em>any</em>
+    For <em>correlated</em> measurements (e.g., temperature and pressure from the same sensor
+    at each timestep), if one reading is invalid, the comparison at that point is meaningless.
+    Here, synchronized filtering removes the entire row when <em>any</em>
     series has a bad value.
   </p>
 
   <div class="quality-report">
     <strong>Result:</strong>
-    {multi_series_data.x.length} → {multi_series_cleaned.x.length} timesteps (Temp: {
-      multi_series_cleaned.quality[0].invalid_values_found
-    } glitches, Pressure: {multi_series_cleaned.quality[1].invalid_values_found} glitches)
+    {multi_series_data.x.length} → {multi_series_cleaned.x.length} timesteps (Temp: {multi_series_cleaned
+      .quality[0].invalid_values_found} glitches, Pressure: {multi_series_cleaned.quality[1]
+      .invalid_values_found} glitches)
   </div>
 
   <div class="multi-series-grid">
@@ -705,7 +639,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
         series={[
           {
             x: multi_series_data.x.filter((_, idx) =>
-              Number.isFinite(multi_series_data.y_arrays[0][idx])
+              Number.isFinite(multi_series_data.y_arrays[0][idx]),
             ),
             y: multi_series_data.y_arrays[0].filter((y_val) => Number.isFinite(y_val)),
             label: `Temperature`,
@@ -715,7 +649,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
           },
           {
             x: multi_series_data.x.filter((_, idx) =>
-              Number.isFinite(multi_series_data.y_arrays[1][idx])
+              Number.isFinite(multi_series_data.y_arrays[1][idx]),
             ),
             y: multi_series_data.y_arrays[1].filter((y_val) => Number.isFinite(y_val)),
             label: `Pressure`,
@@ -724,31 +658,34 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
             markers: `line+points`,
           },
           ...(multi_series_nan_markers.temp_nan.length > 0
-            ? [{
-              x: multi_series_nan_markers.temp_nan.map((point) => point.x),
-              y: multi_series_nan_markers.temp_nan.map((point) => point.y),
-              label: `Temp NaN (${multi_series_nan_markers.temp_nan.length})`,
-              point_style: {
-                fill: `#9b59b6`,
-                radius: 8,
-                symbol_type: `Cross` as const,
-              },
-              markers: `points` as const,
-            }]
+            ? [
+                {
+                  x: multi_series_nan_markers.temp_nan.map((point) => point.x),
+                  y: multi_series_nan_markers.temp_nan.map((point) => point.y),
+                  label: `Temp NaN (${multi_series_nan_markers.temp_nan.length})`,
+                  point_style: {
+                    fill: `#9b59b6`,
+                    radius: 8,
+                    symbol_type: `Cross` as const,
+                  },
+                  markers: `points` as const,
+                },
+              ]
             : []),
           ...(multi_series_nan_markers.pressure_nan.length > 0
-            ? [{
-              x: multi_series_nan_markers.pressure_nan.map((point) => point.x),
-              y: multi_series_nan_markers.pressure_nan.map((point) => point.y),
-              label:
-                `Pressure NaN (${multi_series_nan_markers.pressure_nan.length})`,
-              point_style: {
-                fill: `#8e44ad`,
-                radius: 8,
-                symbol_type: `Cross` as const,
-              },
-              markers: `points` as const,
-            }]
+            ? [
+                {
+                  x: multi_series_nan_markers.pressure_nan.map((point) => point.x),
+                  y: multi_series_nan_markers.pressure_nan.map((point) => point.y),
+                  label: `Pressure NaN (${multi_series_nan_markers.pressure_nan.length})`,
+                  point_style: {
+                    fill: `#8e44ad`,
+                    radius: 8,
+                    symbol_type: `Cross` as const,
+                  },
+                  markers: `points` as const,
+                },
+              ]
             : []),
         ]}
         x_axis={{ label: `Time (s)` }}
@@ -788,16 +725,14 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 <section class="plot-section">
   <h2>Trajectory Alignment</h2>
   <p class="description">
-    A spiral trajectory with NaN values at t=15, 35, and 42. When <em>any</em> coordinate
-    (x or y) has NaN, that entire point is removed from <em>both</em> arrays, keeping the
-    trajectory synchronized.
+    A spiral trajectory with NaN values at t=15, 35, and 42. When <em>any</em> coordinate (x or
+    y) has NaN, that entire point is removed from <em>both</em> arrays, keeping the trajectory synchronized.
   </p>
 
   <div class="quality-report">
     <strong>Result:</strong>
-    {xyz_data.x.length} → {xyz_cleaned.x.length} points ({
-      xyz_cleaned.quality.invalid_values_found
-    } invalid values removed from all coordinates)
+    {xyz_data.x.length} → {xyz_cleaned.x.length} points ({xyz_cleaned.quality
+      .invalid_values_found} invalid values removed from all coordinates)
   </div>
 
   <div class="multi-series-grid">
@@ -806,11 +741,11 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
       <ScatterPlot
         series={[
           {
-            x: xyz_data.x.filter((x, idx) =>
-              Number.isFinite(x) && Number.isFinite(xyz_data.y[idx])
+            x: xyz_data.x.filter(
+              (x, idx) => Number.isFinite(x) && Number.isFinite(xyz_data.y[idx]),
             ),
-            y: xyz_data.y.filter((y, idx) =>
-              Number.isFinite(y) && Number.isFinite(xyz_data.x[idx])
+            y: xyz_data.y.filter(
+              (y, idx) => Number.isFinite(y) && Number.isFinite(xyz_data.x[idx]),
             ),
             label: `Trajectory`,
             point_style: { fill: `#e74c3c`, radius: 4 },
@@ -818,17 +753,19 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
             markers: `line+points`,
           },
           ...(trajectory_nan_markers.length > 0
-            ? [{
-              x: trajectory_nan_markers.map((point) => point.x),
-              y: trajectory_nan_markers.map((point) => point.y),
-              label: `NaN points (${trajectory_nan_markers.length})`,
-              point_style: {
-                fill: `#9b59b6`,
-                radius: 10,
-                symbol_type: `Cross` as const,
-              },
-              markers: `points` as const,
-            }]
+            ? [
+                {
+                  x: trajectory_nan_markers.map((point) => point.x),
+                  y: trajectory_nan_markers.map((point) => point.y),
+                  label: `NaN points (${trajectory_nan_markers.length})`,
+                  point_style: {
+                    fill: `#9b59b6`,
+                    radius: 10,
+                    symbol_type: `Cross` as const,
+                  },
+                  markers: `points` as const,
+                },
+              ]
             : []),
         ]}
         x_axis={{ label: `X position` }}
@@ -872,14 +809,13 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     </li>
     <li>
       <strong>Bounds:</strong>
-      <a href="https://en.wikipedia.org/wiki/Clamping_(graphics)">Clamp</a>, filter, or
-      nullify out-of-range values
+      <a href="https://en.wikipedia.org/wiki/Clamping_(graphics)">Clamp</a>, filter, or nullify
+      out-of-range values
     </li>
     <li>
       <strong>Smoothing:</strong>
       <a href="https://en.wikipedia.org/wiki/Moving_average">Moving average</a> or
-      <a href="https://en.wikipedia.org/wiki/Savitzky%E2%80%93Golay_filter"
-      >Savitzky-Golay</a> filtering
+      <a href="https://en.wikipedia.org/wiki/Savitzky%E2%80%93Golay_filter">Savitzky-Golay</a> filtering
     </li>
     <li><strong>Alignment:</strong> Multi-series and 3D data stay synchronized</li>
     <li>
@@ -998,12 +934,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     }
     code {
       font-family:
-        ui-monospace,
-        'Cascadia Code',
-        'Source Code Pro',
-        Menlo,
-        Consolas,
-        'DejaVu Sans Mono',
+        ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono',
         monospace;
       font-size: 0.85em;
       line-height: 1.6;

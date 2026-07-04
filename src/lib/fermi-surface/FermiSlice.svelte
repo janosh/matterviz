@@ -86,7 +86,10 @@
     const isolines = slice_data?.isolines
     if (!isolines?.length) return { min: [-1, -1], max: [1, 1] }
 
-    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity
+    let xmin = Infinity,
+      xmax = -Infinity,
+      ymin = Infinity,
+      ymax = -Infinity
     for (const iso of isolines) {
       for (const pt of iso.points_2d) {
         if (pt[0] < xmin) xmin = pt[0]
@@ -97,7 +100,9 @@
     }
     if (!isFinite(xmin)) return { min: [-1, -1], max: [1, 1] }
 
-    const pad = 0.1, rx = xmax - xmin || 1, ry = ymax - ymin || 1
+    const pad = 0.1,
+      rx = xmax - xmin || 1,
+      ry = ymax - ymin || 1
     return {
       min: [xmin - rx * pad, ymin - ry * pad],
       max: [xmax + rx * pad, ymax + ry * pad],
@@ -114,9 +119,7 @@
   function isolate_band(series_idx: number) {
     const band = slice_data?.isolines[series_idx]?.band_index
     if (band === undefined) return
-    const all_bands = [
-      ...new Set(slice_data?.isolines.map((iso) => iso.band_index)),
-    ]
+    const all_bands = [...new Set(slice_data?.isolines.map((iso) => iso.band_index))]
     const is_solo = all_bands.every((bid) => bid === band || hidden_bands.has(bid))
     hidden_bands.clear()
     if (!is_solo) {
@@ -127,8 +130,7 @@
   }
 
   // Returns null if SVG not found, making export failures explicit
-  const export_svg = (): string | null =>
-    wrapper?.querySelector(`svg`)?.outerHTML ?? null
+  const export_svg = (): string | null => wrapper?.querySelector(`svg`)?.outerHTML ?? null
 </script>
 
 <ScatterPlot
@@ -143,14 +145,14 @@
   controls={{ show: false }}
   fullscreen_toggle={false}
   legend={show_legend && series.length > 0
-  ? {
-    on_toggle: toggle_band,
-    on_double_click: isolate_band,
-    draggable: false,
-    // pin bottom-right so it clears the top-left title/controls overlay (e.g. in the demo)
-    style: `left: auto; top: auto; right: 8px; bottom: 8px`,
-  }
-  : null}
+    ? {
+        on_toggle: toggle_band,
+        on_double_click: isolate_band,
+        draggable: false,
+        // pin bottom-right so it clears the top-left title/controls overlay (e.g. in the demo)
+        style: `left: auto; top: auto; right: 8px; bottom: 8px`,
+      }
+    : null}
   padding={{ t: 5, b: 5, l: 5, r: 5 }}
   class={[`fermi-slice`, rest.class]}
   style={rest.style}
@@ -192,6 +194,8 @@
   }
   .fermi-label {
     fill: var(--fermi-surface-axis-color, #888);
-    font: 12px system-ui, sans-serif;
+    font:
+      12px system-ui,
+      sans-serif;
   }
 </style>

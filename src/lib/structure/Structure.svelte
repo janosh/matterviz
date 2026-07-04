@@ -905,9 +905,10 @@
     } else {
       // For large supercells, show loading state and use async generation
       const sites_count = base_structure.sites?.length || 0
-      const [nx_str, ny_str, nz_str] = supercell_scaling.split(/[x×]/)
-      const scaling_mult =
-        (parseInt(nx_str, 10) || 1) * (parseInt(ny_str, 10) || 1) * (parseInt(nz_str, 10) || 1)
+      // lenient parse just for a size estimate (invalid factors count as 1)
+      const scaling_mult = supercell_scaling
+        .split(/[x×]/)
+        .reduce((product, factor) => product * (Number(factor) || 1), 1)
       const estimated_sites = sites_count * scaling_mult
 
       // Show spinner for supercells with >1000 estimated sites or scaling >8

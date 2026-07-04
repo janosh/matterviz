@@ -31,9 +31,7 @@
 
   // Extract max_string_length threshold for reuse
   let max_len = $derived(ctx?.settings.max_string_length ?? 200)
-  let is_long_string = $derived(
-    value_type === `string` && (value as string).length > max_len,
-  )
+  let is_long_string = $derived(value_type === `string` && (value as string).length > max_len)
 
   // Check for changes on mount and when value changes
   $effect(() => {
@@ -89,9 +87,7 @@
     if (value_type === `circular`) return `[Circular]`
     if (value_type === `string`) {
       const str = value as string
-      return is_long_string && !is_expanded
-        ? `"${str.slice(0, max_len)}..."`
-        : `"${str}"`
+      return is_long_string && !is_expanded ? `"${str.slice(0, max_len)}..."` : `"${str}"`
     }
     return format_preview(value)
   })
@@ -200,17 +196,11 @@
         ...
       </button>
     {:else if is_long_string && is_expanded}
-      <button
-        type="button"
-        class="expand-btn"
-        onclick={toggle_expand}
-        title="Collapse string"
-      >
+      <button type="button" class="expand-btn" onclick={toggle_expand} title="Collapse string">
         ▲
       </button>
     {/if}
-    {#if ctx?.settings.show_data_types && value_type !== `null` &&
-      value_type !== `undefined`}
+    {#if ctx?.settings.show_data_types && value_type !== `null` && value_type !== `undefined`}
       <span class="type-annotation">{value_type}</span>
     {/if}
   </span>
@@ -235,7 +225,9 @@
   .json-value {
     cursor: pointer;
     border-radius: 2px;
-    transition: background-color 0.15s, color 0.15s;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
     &:hover {
       background: var(
         --jt-hover-bg,

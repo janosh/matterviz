@@ -71,18 +71,18 @@
 
     const base_entries = Array.isArray(structures)
       ? (structures as StructureEntry[])
-      : (is_crystal(structures)
+      : is_crystal(structures)
         ? [{ label: `Structure`, structure: structures as AnyStructure }]
         : Object.entries(
-          structures as Record<
-            string,
-            AnyStructure | { structure: AnyStructure; color?: string }
-          >,
-        ).map(([label, value]) =>
-          `structure` in value
-            ? { label, ...value }
-            : { label, structure: value as AnyStructure }
-        ))
+            structures as Record<
+              string,
+              AnyStructure | { structure: AnyStructure; color?: string }
+            >,
+          ).map(([label, value]) =>
+            `structure` in value
+              ? { label, ...value }
+              : { label, structure: value as AnyStructure },
+          )
 
     // Merge user-provided structures with dropped structures
     return [...base_entries, ...dropped_entries]
@@ -90,10 +90,12 @@
 
   // Compute coordination data for each structure via the shared PBC-aware helper so
   // boundary-atom coordination matches the 3D viewer (which uses the same path).
-  const entries_with_data = $derived(structure_entries.map((entry) => ({
-    ...entry,
-    data: calc_structure_coordination(entry.structure, strategy),
-  })))
+  const entries_with_data = $derived(
+    structure_entries.map((entry) => ({
+      ...entry,
+      data: calc_structure_coordination(entry.structure, strategy),
+    })),
+  )
 
   // Compute appropriate ranges
   const ranges = $derived.by(() => {
@@ -210,29 +212,28 @@
 
   const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
     try {
-      const text_content = content instanceof ArrayBuffer
-        ? new TextDecoder().decode(content)
-        : content
+      const text_content =
+        content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
       const parsed_structure = parse_any_structure(text_content, filename)
       if (is_crystal(parsed_structure)) {
-        dropped_entries = [{
-          label: filename || `Dropped structure`,
-          structure: parsed_structure,
-        }, ...dropped_entries]
+        dropped_entries = [
+          {
+            label: filename || `Dropped structure`,
+            structure: parsed_structure,
+          },
+          ...dropped_entries,
+        ]
       } else {
         error_msg = `Structure has no lattice or sites; cannot compute coordination`
       }
     } catch (exc) {
-      error_msg = `Failed to process structure: ${
-        to_error(exc).message
-      }`
+      error_msg = `Failed to process structure: ${to_error(exc).message}`
     }
   }
 
   const handle_file_drop = create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: (content, filename) =>
-      (on_file_drop || compute_and_add)(content, filename),
+    on_drop: (content, filename) => (on_file_drop || compute_and_add)(content, filename),
     on_error: (msg) => {
       error_msg = msg
     },
@@ -258,8 +259,8 @@
 {#if bar_series.length === 0}
   <StatusMessage
     message={allow_file_drop
-    ? `Drag and drop structure files here to compute coordination numbers`
-    : `No coordination data to display`}
+      ? `Drag and drop structure files here to compute coordination numbers`
+      : `No coordination data to display`}
   />
 {:else}
   {#snippet tooltip(info: BarHandlerProps<CoordinationMetadata>)}
@@ -300,7 +301,10 @@
     bind:display
     {tooltip}
     ondrop={handle_file_drop}
-    {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+    {...drag_over_handlers({
+      allow: () => allow_file_drop,
+      set_dragover: (over) => (dragover = over),
+    })}
     class={[rest.class, dragover && `dragover`]}
   />
 {/if}

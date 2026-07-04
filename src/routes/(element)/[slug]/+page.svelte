@@ -1,6 +1,12 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import { BohrAtom, element_data, ElementHeading, ElementPhoto, ElementTile } from '$lib/element'
+  import {
+    BohrAtom,
+    element_data,
+    ElementHeading,
+    ElementPhoto,
+    ElementTile,
+  } from '$lib/element'
   import type { ChemicalElement } from '$lib/element'
   import Icon from '$lib/Icon.svelte'
   import { ColorScaleSelect, ElementScatter } from '$lib/plot'
@@ -15,16 +21,21 @@
 
   const assert_chemical_element = (value: unknown): ChemicalElement => {
     const elem = value as Partial<ChemicalElement> | null
-    if (elem && typeof elem.number === `number` && typeof elem.symbol === `string` && typeof elem.name === `string`) {
+    if (
+      elem &&
+      typeof elem.number === `number` &&
+      typeof elem.symbol === `string` &&
+      typeof elem.name === `string`
+    ) {
       return elem as ChemicalElement
     }
-    throw new Error(`Invalid element data: expected numeric number, string symbol, and string name`)
+    throw new Error(
+      `Invalid element data: expected numeric number, string symbol, and string name`,
+    )
   }
 
   let element = $derived.by(() => {
-    const data = element_data.find((elem) =>
-      elem.name.toLowerCase() === page.params.slug
-    )
+    const data = element_data.find((elem) => elem.name.toLowerCase() === page.params.slug)
     if (!data) throw error(404, `Page '${page.params.slug}' not found`)
     return data
   })
@@ -67,9 +78,10 @@
         // if value has a unit, append it
         if (unit) value = `${value} &thinsp;${unit}`
 
-        const icon = label && (label in icon_property_map)
-          ? icon_property_map[label as keyof typeof icon_property_map]
-          : `Info`
+        const icon =
+          label && label in icon_property_map
+            ? icon_property_map[label as keyof typeof icon_property_map]
+            : `Info`
         return [label, value, icon] as const
       }),
   )
@@ -110,8 +122,7 @@
 
 <ElementHeading {element} />
 
-{#if (element?.discoverer && !element.discoverer.startsWith(`unknown`)) ||
-    element?.year}
+{#if (element?.discoverer && !element.discoverer.startsWith(`unknown`)) || element?.year}
   <p style="text-align: center">
     Discovered
     {#if element?.discoverer && !element.discoverer.startsWith(`unknown`)}
@@ -168,9 +179,7 @@
         {@const shell_orbitals = element.electron_configuration
           .split(` `)
           .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
-          .map((orbital) =>
-            `${orbital.substring(2)} in ${orbital.substring(0, 2)}`
-          )}
+          .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
         <tr
           onmouseenter={() => (active_shell = shell_idx + 1)}
           onmouseleave={() => (active_shell = null)}

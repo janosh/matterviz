@@ -52,7 +52,9 @@
     border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
     &:hover {
       border-color: color-mix(in srgb, currentColor 35%, transparent);
       box-shadow: 0 2px 12px color-mix(in srgb, currentColor 8%, transparent);

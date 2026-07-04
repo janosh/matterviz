@@ -4,8 +4,7 @@
   let { start, current }: { start: Point2D | null; current: Point2D | null } = $props()
 </script>
 
-{#if start && current && isFinite(start.x) && isFinite(start.y) &&
-    isFinite(current.x) && isFinite(current.y)}
+{#if start && current && isFinite(start.x) && isFinite(start.y) && isFinite(current.x) && isFinite(current.y)}
   {@const x = Math.min(start.x, current.x)}
   {@const y = Math.min(start.y, current.y)}
   {@const rect_width = Math.abs(start.x - current.x)}

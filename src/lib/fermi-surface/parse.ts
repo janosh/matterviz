@@ -20,7 +20,7 @@ const parse_floats = (line: string): number[] => parse_number_tokens(line).map(N
 
 // Parse whitespace-separated integers from a line
 const parse_ints = (line: string): number[] =>
-  parse_number_tokens(line).map((part) => parseInt(part, 10))
+  parse_number_tokens(line).map((part) => Math.trunc(Number(part)))
 
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.
 // Format specification: http://www.xcrysden.org/doc/XSF.html
@@ -59,7 +59,7 @@ function parse_bxsf(content: string): BandGridData {
   }
 
   // Parse number of bands
-  const n_bands = parseInt(next_line(), 10)
+  const n_bands = Math.trunc(Number(next_line()))
   if (isNaN(n_bands) || n_bands <= 0) {
     throw new Error(`Invalid number of bands in BXSF file`)
   }
@@ -147,7 +147,7 @@ function parse_bxsf(content: string): BandGridData {
       // Match patterns like "Fermi Energy = 5.123" or "fermi_energy: -0.5"
       const match = /(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i.exec(line)
       if (match) {
-        fermi_energy = parseFloat(match[1])
+        fermi_energy = Number(match[1])
         break
       }
     }
@@ -184,13 +184,13 @@ function parse_frmsf(content: string): BandGridData {
   // 0 = Monkhorst-Pack grid (shifted)
   // 1 = Gamma-centered grid
   // 2 = Gamma + half grid shift
-  const lshift = parseInt(lines[line_idx++], 10)
+  const lshift = Math.trunc(Number(lines[line_idx++]))
   if (isNaN(lshift) || lshift < 0 || lshift > 2) {
     throw new Error(`FRMSF: Invalid lshift value (expected 0, 1, or 2)`)
   }
 
   // Line 3: number of bands
-  const n_bands = parseInt(lines[line_idx++], 10)
+  const n_bands = Math.trunc(Number(lines[line_idx++]))
   if (isNaN(n_bands) || n_bands <= 0) {
     throw new Error(`FRMSF: Invalid number of bands`)
   }
@@ -228,8 +228,8 @@ function parse_frmsf(content: string): BandGridData {
       while (energy_values.length < total_points && line_idx < lines.length) {
         const line = lines[line_idx]
         const first_token = line?.split(/\s+/)[0]
-        if (first_token && !isNaN(parseFloat(first_token))) {
-          energy_values.push(parseFloat(first_token))
+        if (first_token && !isNaN(Number(first_token))) {
+          energy_values.push(Number(first_token))
           line_idx++
         } else {
           break
@@ -428,7 +428,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   let has_spin = false
 
   for (const [band_key, iso_list] of Object.entries(isosurfaces_obj)) {
-    const band_index = parseInt(band_key, 10)
+    const band_index = Math.trunc(Number(band_key))
     // spin is determined by sign: positive = up, negative = down
     const spin: SpinChannel = band_index < 0 ? `down` : `up`
     const abs_band_idx = Math.abs(band_index)

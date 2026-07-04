@@ -565,7 +565,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         vertex: `Vertex Atoms`,
         center: `Center Atom`,
         uniform: `Custom Color`,
-      } as Readonly<Record<PolyhedraColorMode, string>>,
+      },
     },
     polyhedra_color: {
       value: `#4a90d9`,
@@ -747,7 +747,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
     // Site Vectors (force, magmom, spin) & Lattice
     vector_configs: {
-      value: {} as Record<string, VectorLayerConfig>,
+      value: {},
       description: `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
     },
     vector_scale: {
@@ -761,11 +761,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Color for site vector arrows (used in uniform mode and as fallback)`,
     },
     vector_color_mode: {
-      value: `auto` as VectorColorMode,
+      value: `auto`,
       description: `How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).`,
     },
     vector_color_scale: {
-      value: `interpolateViridis` as D3InterpolateName,
+      value: `interpolateViridis`,
       description: `D3 color scale for magnitude coloring mode`,
     },
     vector_normalize: {
@@ -1880,20 +1880,19 @@ const extract_values = (
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 
 // Helper to merge with defaults - handles nested structure
-export const merge = (user?: Partial<DefaultSettings>): DefaultSettings =>
-  ({
-    ...DEFAULTS,
-    ...user,
-    symmetry: merge_nested(DEFAULTS.symmetry, user?.symmetry),
-    structure: merge_nested(DEFAULTS.structure, user?.structure),
-    trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
-    composition: merge_nested(DEFAULTS.composition, user?.composition),
-    plot: merge_nested(DEFAULTS.plot, user?.plot),
-    scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
-    histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
-    bar: merge_nested(DEFAULTS.bar, user?.bar),
-    box: merge_nested(DEFAULTS.box, user?.box),
-    sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
-    sunburst: merge_nested(DEFAULTS.sunburst, user?.sunburst),
-    convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
-  }) as DefaultSettings
+export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
+  ...DEFAULTS,
+  ...user,
+  symmetry: merge_nested(DEFAULTS.symmetry, user?.symmetry),
+  structure: merge_nested(DEFAULTS.structure, user?.structure),
+  trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
+  composition: merge_nested(DEFAULTS.composition, user?.composition),
+  plot: merge_nested(DEFAULTS.plot, user?.plot),
+  scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
+  histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
+  bar: merge_nested(DEFAULTS.bar, user?.bar),
+  box: merge_nested(DEFAULTS.box, user?.box),
+  sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
+  sunburst: merge_nested(DEFAULTS.sunburst, user?.sunburst),
+  convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
+})

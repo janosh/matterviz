@@ -144,23 +144,24 @@
 
     // Detect single band structure by checking for characteristic fields
     // - matterviz format: has qpoints + branches (no pymatgen markers)
-    const has_qpoints = `qpoints` in band_structs &&
+    const has_qpoints =
+      `qpoints` in band_structs &&
       Array.isArray(band_structs.qpoints) &&
       band_structs.qpoints.length > 0
-    const has_kpoints = `kpoints` in band_structs &&
+    const has_kpoints =
+      `kpoints` in band_structs &&
       Array.isArray(band_structs.kpoints) &&
       band_structs.kpoints.length > 0
     const has_bands = `bands` in band_structs
-    const has_frequencies_cm = `frequencies_cm` in band_structs &&
-      Array.isArray(band_structs.frequencies_cm)
+    const has_frequencies_cm =
+      `frequencies_cm` in band_structs && Array.isArray(band_structs.frequencies_cm)
     const has_branches = `branches` in band_structs
     // Pymatgen structures have explicit class/module markers
     const is_pymatgen = `@class` in band_structs || `@module` in band_structs
 
     // Pymatgen single: has markers and point/band data (may have branches too)
-    const is_pymatgen_single = is_pymatgen &&
-      (has_qpoints || has_kpoints) &&
-      (has_bands || has_frequencies_cm)
+    const is_pymatgen_single =
+      is_pymatgen && (has_qpoints || has_kpoints) && (has_bands || has_frequencies_cm)
     // Matterviz single: has qpoints + branches but NO pymatgen markers
     const is_matterviz_single = !is_pymatgen && has_qpoints && has_branches
     const is_single = is_matterviz_single || is_pymatgen_single
@@ -185,8 +186,11 @@
     if (!band_structs) return `phonon`
 
     // Single structure has marker fields; dict of structures has label keys
-    const is_single = `@class` in band_structs || `@module` in band_structs ||
-      `kpoints` in band_structs || `qpoints` in band_structs
+    const is_single =
+      `@class` in band_structs ||
+      `@module` in band_structs ||
+      `kpoints` in band_structs ||
+      `qpoints` in band_structs
     const source = (is_single ? band_structs : Object.values(band_structs)[0]) as
       | Record<string, unknown>
       | undefined
@@ -195,12 +199,11 @@
     // Electronic: has kpoints, BandStructure* class (not Phonon*), or electronic_structure module
     const py_class_name = String(source[`@class`] ?? ``)
     if (
-      (`kpoints` in source && Array.isArray(source.kpoints) &&
-        source.kpoints.length > 0) ||
-      (py_class_name.startsWith(`BandStructure`) &&
-        !py_class_name.startsWith(`Phonon`)) ||
+      (`kpoints` in source && Array.isArray(source.kpoints) && source.kpoints.length > 0) ||
+      (py_class_name.startsWith(`BandStructure`) && !py_class_name.startsWith(`Phonon`)) ||
       String(source[`@module`] ?? ``).includes(`electronic_structure`)
-    ) return `electronic`
+    )
+      return `electronic`
 
     return `phonon`
   })
@@ -211,16 +214,15 @@
     if (detected_band_type !== `electronic`) return undefined
 
     // Check raw input for efermi field
-    const source = `efermi` in (band_structs as object)
-      ? band_structs
-      : Object.values(band_structs)[0]
+    const source =
+      `efermi` in (band_structs as object) ? band_structs : Object.values(band_structs)[0]
     const efermi = (source as Record<string, unknown>)?.efermi
     return typeof efermi === `number` ? efermi : undefined
   })
 
   let effective_spin_mode = $derived.by((): BandsSpinMode => {
     if (detected_band_type !== `electronic`) return null
-    return (band_spin_mode === `up_only` || band_spin_mode === `down_only`)
+    return band_spin_mode === `up_only` || band_spin_mode === `down_only`
       ? band_spin_mode
       : `overlay`
   })
@@ -251,13 +253,15 @@
   let common_segment_keys = $derived.by(() =>
     all_segment_keys.filter(
       (segment_key) => all_segments[segment_key].length === num_structures,
-    )
+    ),
   )
   let empty_state_attrs = $derived.by(() => {
     const attrs: Record<string, Dom_attr_value> = {}
     for (const [attr_name, attr_value] of Object.entries(rest)) {
       if (
-        (attr_name === `class` || attr_name === `style` || attr_name === `role` ||
+        (attr_name === `class` ||
+          attr_name === `style` ||
+          attr_name === `role` ||
           attr_name.startsWith(`aria-`)) &&
         is_dom_attr_value(attr_value)
       ) {
@@ -320,8 +324,8 @@
             // Place at same x position as current, no advancement
             positions[segment_key] = [current_x, current_x]
           } else {
-            const segment_len = bs.distance[matching_branch.end_index] -
-              bs.distance[matching_branch.start_index]
+            const segment_len =
+              bs.distance[matching_branch.end_index] - bs.distance[matching_branch.start_index]
             positions[segment_key] = [current_x, current_x + segment_len]
             current_x += segment_len
           }
@@ -334,130 +338,130 @@
   })
 
   // Convert band structures to scatter plot series + track max slope in one pass
-  let { series_data, max_abs_slope } = $derived.by((): {
-    series_data: DataSeries[]
-    max_abs_slope: number
-  } => {
-    if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
-      return { series_data: [], max_abs_slope: 1 }
-    }
+  let { series_data, max_abs_slope } = $derived.by(
+    (): {
+      series_data: DataSeries[]
+      max_abs_slope: number
+    } => {
+      if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
+        return { series_data: [], max_abs_slope: 1 }
+      }
 
-    const all_series: DataSeries[] = []
-    let max_slope = 0
+      const all_series: DataSeries[] = []
+      let max_slope = 0
 
-    for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
-      const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
-      const structure_label = label || `Structure ${bs_idx + 1}`
-      const gamma_indices = detected_band_type === `phonon`
-        ? helpers.find_gamma_indices(bs)
-        : []
+      for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
+        const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
+        const structure_label = label || `Structure ${bs_idx + 1}`
+        const gamma_indices =
+          detected_band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
 
-      for (const branch of bs.branches) {
-        const start_idx = branch.start_index
-        const end_idx = branch.end_index + 1
-        const start_label = bs.qpoints[start_idx]?.label ?? undefined
-        const end_label = bs.qpoints[end_idx - 1]?.label ?? undefined
-        const segment_key = helpers.get_segment_key(start_label, end_label)
+        for (const branch of bs.branches) {
+          const start_idx = branch.start_index
+          const end_idx = branch.end_index + 1
+          const start_label = bs.qpoints[start_idx]?.label ?? undefined
+          const end_label = bs.qpoints[end_idx - 1]?.label ?? undefined
+          const segment_key = helpers.get_segment_key(start_label, end_label)
 
-        if (!segments_to_plot.has(segment_key)) continue
+          if (!segments_to_plot.has(segment_key)) continue
 
-        // Skip discontinuous segments (consecutive labeled points)
-        const is_discontinuity = branch.end_index - branch.start_index === 1
-        if (is_discontinuity) continue
+          // Skip discontinuous segments (consecutive labeled points)
+          const is_discontinuity = branch.end_index - branch.start_index === 1
+          if (is_discontinuity) continue
 
-        const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
+          const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
 
-        // Scale distances for this segment
-        const segment_distances = bs.distance.slice(start_idx, end_idx)
-        const scaled_distances = helpers.scale_segment_distances(
-          segment_distances,
-          x_start,
-          x_end,
-        )
-
-        // Create series for each band (and spin channel for electronic structures)
-        for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
-          const frequencies = convert_band_values(
-            bs.bands[band_idx].slice(start_idx, end_idx),
-          )
-          const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
-
-          const line_style_up = get_line_style(
-            color,
-            is_acoustic === true,
-            frequencies,
-            band_idx,
+          // Scale distances for this segment
+          const segment_distances = bs.distance.slice(start_idx, end_idx)
+          const scaled_distances = helpers.scale_segment_distances(
+            segment_distances,
+            x_start,
+            x_end,
           )
 
-          const spin_down_band = bs.spin_down_bands?.[band_idx]
-          const has_spin_down_channel = detected_band_type === `electronic` &&
-            Array.isArray(spin_down_band) &&
-            spin_down_band.length >= end_idx
+          // Create series for each band (and spin channel for electronic structures)
+          for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
+            const frequencies = convert_band_values(
+              bs.bands[band_idx].slice(start_idx, end_idx),
+            )
+            const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
 
-          const track_max_slope = (meta: helpers.BandPointMeta[]) => {
-            for (const pt of meta) {
-              if (typeof pt.slope === `number` && Number.isFinite(pt.slope)) {
-                max_slope = Math.max(max_slope, Math.abs(pt.slope))
+            const line_style_up = get_line_style(
+              color,
+              is_acoustic === true,
+              frequencies,
+              band_idx,
+            )
+
+            const spin_down_band = bs.spin_down_bands?.[band_idx]
+            const has_spin_down_channel =
+              detected_band_type === `electronic` &&
+              Array.isArray(spin_down_band) &&
+              spin_down_band.length >= end_idx
+
+            const track_max_slope = (meta: helpers.BandPointMeta[]) => {
+              for (const pt of meta) {
+                if (typeof pt.slope === `number` && Number.isFinite(pt.slope)) {
+                  max_slope = Math.max(max_slope, Math.abs(pt.slope))
+                }
               }
             }
-          }
 
-          if (effective_spin_mode !== `down_only`) {
-            const meta = helpers.build_point_metadata({
-              x_vals: scaled_distances,
-              y_vals: frequencies,
-              band_idx,
-              spin: `up`,
-              is_acoustic,
-              bs,
-              start_idx,
-            })
-            track_max_slope(meta)
-            all_series.push({
-              x: scaled_distances,
-              y: frequencies,
-              markers: `line`,
-              label: has_spin_down_channel
-                ? `${structure_label} (↑)`
-                : structure_label,
-              line_style: line_style_up,
-              metadata: meta,
-            })
-          }
+            if (effective_spin_mode !== `down_only`) {
+              const meta = helpers.build_point_metadata({
+                x_vals: scaled_distances,
+                y_vals: frequencies,
+                band_idx,
+                spin: `up`,
+                is_acoustic,
+                bs,
+                start_idx,
+              })
+              track_max_slope(meta)
+              all_series.push({
+                x: scaled_distances,
+                y: frequencies,
+                markers: `line`,
+                label: has_spin_down_channel ? `${structure_label} (↑)` : structure_label,
+                line_style: line_style_up,
+                metadata: meta,
+              })
+            }
 
-          if (has_spin_down_channel && effective_spin_mode !== `up_only`) {
-            const spin_down_frequencies = convert_band_values(
-              spin_down_band.slice(start_idx, end_idx),
-            )
-            const meta = helpers.build_point_metadata({
-              x_vals: scaled_distances,
-              y_vals: spin_down_frequencies,
-              band_idx,
-              spin: `down`,
-              is_acoustic,
-              bs,
-              start_idx,
-            })
-            track_max_slope(meta)
-            all_series.push({
-              x: scaled_distances,
-              y: spin_down_frequencies,
-              markers: `line`,
-              label: `${structure_label} (↓)`,
-              line_style: {
-                ...line_style_up,
-                line_dash: `4,2`,
-                stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
-              },
-              metadata: meta,
-            })
+            if (has_spin_down_channel && effective_spin_mode !== `up_only`) {
+              const spin_down_frequencies = convert_band_values(
+                spin_down_band.slice(start_idx, end_idx),
+              )
+              const meta = helpers.build_point_metadata({
+                x_vals: scaled_distances,
+                y_vals: spin_down_frequencies,
+                band_idx,
+                spin: `down`,
+                is_acoustic,
+                bs,
+                start_idx,
+              })
+              track_max_slope(meta)
+              all_series.push({
+                x: scaled_distances,
+                y: spin_down_frequencies,
+                markers: `line`,
+                label: `${structure_label} (↓)`,
+                line_style: {
+                  ...line_style_up,
+                  line_dash: `4,2`,
+                  stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
+                },
+                metadata: meta,
+              })
+            }
           }
         }
       }
-    }
 
-    return { series_data: all_series, max_abs_slope: max_slope || 1 }
-  })
+      return { series_data: all_series, max_abs_slope: max_slope || 1 }
+    },
+  )
 
   // Compute ribbon data for bands with width information
   let ribbon_data = $derived.by((): RibbonData[] => {
@@ -507,9 +511,7 @@
           // Skip if all widths are zero or missing
           if (width_values.every((wv) => !wv || wv <= 0)) continue
 
-          const y_values = convert_band_values(
-            bs.bands[band_idx].slice(start_idx, end_idx),
-          )
+          const y_values = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
 
           all_ribbons.push({
             x_values: scaled_distances,
@@ -546,9 +548,7 @@
       .sort(([, [a]], [, [b]]) => a - b)
       .forEach(([segment_key, [x_start, x_end]]) => {
         const [start_lbl, end_lbl] = segment_key.split(`_`)
-        const pretty_start = start_lbl !== `null`
-          ? helpers.pretty_sym_point(start_lbl)
-          : ``
+        const pretty_start = start_lbl !== `null` ? helpers.pretty_sym_point(start_lbl) : ``
         const pretty_end = end_lbl !== `null` ? helpers.pretty_sym_point(end_lbl) : ``
 
         // Check if this is a discontinuity (zero-length segment)
@@ -567,10 +567,7 @@
 
     // Merge labels at same position with pipe separator
     return Object.fromEntries(
-      Array.from(tick_map.entries()).map(([pos, labels]) => [
-        pos,
-        labels.join(` | `),
-      ]),
+      Array.from(tick_map.entries()).map(([pos, labels]) => [pos, labels.join(` | `)]),
     )
   })
 
@@ -586,16 +583,17 @@
       ...(bs.spin_down_bands?.flat() ?? []),
     ])
     // Keep electronic y-range independent of phonon unit conversion options.
-    const display_values = detected_band_type === `phonon`
-      ? convert_band_values(all_freqs)
-      : all_freqs
+    const display_values =
+      detected_band_type === `phonon` ? convert_band_values(all_freqs) : all_freqs
     if (display_values.length === 0) return undefined
     const finite = display_values.filter(Number.isFinite)
     if (finite.length === 0) return undefined
-    let min_val = Math.min(...finite), max_val = Math.max(...finite)
+    let min_val = Math.min(...finite),
+      max_val = Math.max(...finite)
     if (
       // clamp phonon min to 0 if negatives are noise
-      detected_band_type === `phonon` && min_val < 0 &&
+      detected_band_type === `phonon` &&
+      min_val < 0 &&
       helpers.negative_fraction(finite) < helpers.IMAGINARY_MODE_NOISE_THRESHOLD
     ) {
       min_val = 0
@@ -629,48 +627,47 @@
       !shade_imaginary_modes ||
       !y_range ||
       y_range[0] >= 0
-    ) return []
-    return [{
-      lower: y_range[0],
-      upper: 0,
-      fill: `var(--bands-imaginary-region-color, light-dark(#f8d7da, #5a1a1f))`,
-      fill_opacity: 0.2,
-      label: `Imaginary modes`,
-      show_in_legend: false,
-      z_index: `below-lines`,
-    }]
+    )
+      return []
+    return [
+      {
+        lower: y_range[0],
+        upper: 0,
+        fill: `var(--bands-imaginary-region-color, light-dark(#f8d7da, #5a1a1f))`,
+        fill_opacity: 0.2,
+        label: `Imaginary modes`,
+        show_in_legend: false,
+        z_index: `below-lines`,
+      },
+    ]
   })
 
   let custom_highlight_regions = $derived.by((): FillRegion[] =>
     (highlight_regions ?? [])
-      .filter((region) =>
-        Number.isFinite(region.y_min) && Number.isFinite(region.y_max)
-      )
+      .filter((region) => Number.isFinite(region.y_min) && Number.isFinite(region.y_max))
       .map((region) => ({
         lower: Math.min(region.y_min, region.y_max),
         upper: Math.max(region.y_min, region.y_max),
-        fill: region.color ??
-          `var(--bands-highlight-region-color, light-dark(#f6e8c3, #4d3f20))`,
+        fill:
+          region.color ?? `var(--bands-highlight-region-color, light-dark(#f6e8c3, #4d3f20))`,
         fill_opacity: region.opacity ?? 0.2,
         label: region.label,
         show_in_legend: Boolean(region.label),
         z_index: `below-lines` as const,
-      }))
+      })),
   )
 
-  let fill_regions = $derived([
-    ...imaginary_mode_region,
-    ...custom_highlight_regions,
-  ])
+  let fill_regions = $derived([...imaginary_mode_region, ...custom_highlight_regions])
 
   let electronic_gap_annotation = $derived.by(() => {
     if (
       !show_gap_annotation ||
       detected_band_type !== `electronic` ||
       effective_fermi_level === undefined
-    ) return null
+    )
+      return null
     const all_energies = series_data.flatMap((series_item) =>
-      series_item.y.filter(Number.isFinite)
+      series_item.y.filter(Number.isFinite),
     )
     const occupied = all_energies.filter((energy) => energy <= effective_fermi_level)
     const unoccupied = all_energies.filter((energy) => energy > effective_fermi_level)
@@ -699,11 +696,14 @@
   let highlight_x = $derived.by(() => {
     if (highlighted_qpoint_index == null) return null
     const bs = Object.values(band_structs_dict)[0]
-    return bs ? helpers.qpoint_x_position(bs, highlighted_qpoint_index, x_positions ?? {}) : null
+    return bs
+      ? helpers.qpoint_x_position(bs, highlighted_qpoint_index, x_positions ?? {})
+      : null
   })
 
   let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
 </script>
+
 {#if has_series && !is_strict_path_error}
   <ScatterPlot
     {id}
@@ -726,32 +726,37 @@
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const y_label_full = internal_y_axis.label ?? ``}
-      {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ??
-      [, y_label_full, ``]}
-      {@const segment = Object.entries(x_positions ?? {}).find(([, [start, end]]) =>
-      x >= start && x <= end
-    )}
-      {@const path = segment?.[0].split(`_`).map((lbl) =>
-      lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``
-    ).filter(Boolean).join(` → `) || null}
+      {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ?? [
+        ,
+        y_label_full,
+        ``,
+      ]}
+      {@const segment = Object.entries(x_positions ?? {}).find(
+        ([, [start, end]]) => x >= start && x <= end,
+      )}
+      {@const path =
+        segment?.[0]
+          .split(`_`)
+          .map((lbl) => (lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``))
+          .filter(Boolean)
+          .join(` → `) || null}
       {@const {
-      band_idx,
-      spin,
-      is_acoustic,
-      nb_bands,
-      frac_coords,
-      qpoint_label,
-      band_width,
-      slope,
-    } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
+        band_idx,
+        spin,
+        is_acoustic,
+        nb_bands,
+        frac_coords,
+        qpoint_label,
+        band_width,
+        slope,
+      } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
       {@const num_structs = Object.keys(band_structs_dict).length}
       {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
-      {@html sanitize_html(y_label || `Value`)}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
+      {@html sanitize_html(y_label || `Value`)}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br
+      />
       {#if path}Path: {path}<br />{/if}
       {#if typeof band_idx === `number`}
-        Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{
-            nb_bands
-          }{/if}
+        Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{nb_bands}{/if}
         {#if typeof is_acoustic === `boolean`}
           ({is_acoustic ? `acoustic` : `optical`})
         {:else if detected_band_type === `electronic` && effective_fermi_level !== undefined}
@@ -765,9 +770,9 @@
         <br />At: {helpers.pretty_sym_point(qpoint_label)}
       {/if}
       {#if Array.isArray(frac_coords)}
-        <br />{detected_band_type === `electronic` ? `k` : `q`}: [{
-          frac_coords.map((coord: number) => format_num(coord, `.3f`)).join(`, `)
-        }]
+        <br />{detected_band_type === `electronic` ? `k` : `q`}: [{frac_coords
+          .map((coord: number) => format_num(coord, `.3f`))
+          .join(`, `)}]
       {/if}
       {#if typeof band_width === `number` && band_width > 0}
         <br />Projection: {format_num(band_width, `.3~g`)}
@@ -852,19 +857,16 @@
 
     {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
       <!-- Fat band ribbons (rendered behind band lines) -->
-      {#each ribbon_data as
-        ribbon
-        (`${ribbon.structure_label}-${ribbon.segment_key}-${ribbon.band_idx}`)
-      }
+      {#each ribbon_data as ribbon (`${ribbon.structure_label}-${ribbon.segment_key}-${ribbon.band_idx}`)}
         {@const path_d = helpers.generate_ribbon_path(
-      ribbon.x_values,
-      ribbon.y_values,
-      ribbon.width_values,
-      x_scale_fn,
-      y_scale_fn,
-      ribbon.max_width,
-      ribbon.scale,
-    )}
+          ribbon.x_values,
+          ribbon.y_values,
+          ribbon.width_values,
+          x_scale_fn,
+          y_scale_fn,
+          ribbon.max_width,
+          ribbon.scale,
+        )}
         {#if path_d}
           <path
             d={path_d}
@@ -877,12 +879,10 @@
       {/each}
 
       <!-- Symmetry point vertical lines (filter NaN from scale) -->
-      {#each Object.keys(x_axis_ticks).map(Number).map((tick) => x_scale_fn(tick)).filter(
-      Number.isFinite,
-    ) as
-        scaled_x
-        (scaled_x)
-      }
+      {#each Object.keys(x_axis_ticks)
+        .map(Number)
+        .map((tick) => x_scale_fn(tick))
+        .filter(Number.isFinite) as scaled_x (scaled_x)}
         <line
           x1={scaled_x}
           x2={scaled_x}
@@ -912,19 +912,22 @@
       {/if}
 
       <!-- Shared geometry for Fermi level and gap annotations -->
-      {@const fermi_y = effective_fermi_level !== undefined
-      ? y_scale_fn(effective_fermi_level)
-      : NaN}
-      {@const bands_x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+      {@const fermi_y =
+        effective_fermi_level !== undefined ? y_scale_fn(effective_fermi_level) : NaN}
+      {@const bands_x_end = x_scale_fn(
+        Object.values(x_positions ?? {})
+          .flat()
+          .at(-1) ?? 1,
+      )}
       {@const gap_data = electronic_gap_annotation}
       {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm) : NaN}
       {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
       {@const gap_mid_y = (vbm_y + cbm_y) / 2}
-      {@const ef_needs_offset = Number.isFinite(gap_mid_y) &&
-      Math.abs(fermi_y - gap_mid_y) < 16}
+      {@const ef_needs_offset =
+        Number.isFinite(gap_mid_y) && Math.abs(fermi_y - gap_mid_y) < 16}
       {@const ef_label_y = ef_needs_offset
-      ? gap_mid_y + (fermi_y >= gap_mid_y ? 16 : -16)
-      : fermi_y}
+        ? gap_mid_y + (fermi_y >= gap_mid_y ? 16 : -16)
+        : fermi_y}
 
       <!-- Fermi level line for electronic bands -->
       {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
@@ -964,9 +967,8 @@
       {/if}
 
       <!-- Reference frequency horizontal line -->
-      {@const ref_freq = reference_frequency != null
-      ? convert_band_values([reference_frequency])[0]
-      : NaN}
+      {@const ref_freq =
+        reference_frequency != null ? convert_band_values([reference_frequency])[0] : NaN}
       {@const ref_y = Number.isFinite(ref_freq) ? y_scale_fn(ref_freq) : NaN}
       {#if Number.isFinite(ref_y) && Number.isFinite(bands_x_end)}
         <line
@@ -982,15 +984,8 @@
       {/if}
 
       <!-- Electronic band edge and gap annotation -->
-      {#if gap_data && Number.isFinite(vbm_y) && Number.isFinite(cbm_y) &&
-      Number.isFinite(bands_x_end)}
-        {#each [
-      [vbm_y, `var(--bands-gap-vbm-color, light-dark(#1f77b4, #7db7ff))`],
-      [cbm_y, `var(--bands-gap-cbm-color, light-dark(#2ca02c, #7ddc7d))`],
-    ] as [number, string][] as
-          [edge_y, color]
-          (edge_y)
-        }
+      {#if gap_data && Number.isFinite(vbm_y) && Number.isFinite(cbm_y) && Number.isFinite(bands_x_end)}
+        {#each [[vbm_y, `var(--bands-gap-vbm-color, light-dark(#1f77b4, #7db7ff))`], [cbm_y, `var(--bands-gap-cbm-color, light-dark(#2ca02c, #7ddc7d))`]] as [number, string][] as [edge_y, color] (edge_y)}
           <line
             x1={pad.l}
             x2={bands_x_end + 3}

@@ -371,7 +371,7 @@ function normalize_to_hex(color: string): string {
   const match = /rgb\((?<red>\d+),\s*(?<green>\d+),\s*(?<blue>\d+)\)/.exec(color)
   if (!match) return color
   const [, red, green, blue] = match
-  const to_hex = (num_str: string) => parseInt(num_str, 10).toString(16).padStart(2, `0`)
+  const to_hex = (num_str: string) => Number(num_str).toString(16).padStart(2, `0`)
   return `#${to_hex(red)}${to_hex(green)}${to_hex(blue)}`
 }
 

@@ -342,7 +342,7 @@ export const parse_file_content = async (
   // Check if this is a large file marker from the extension
   if (content.startsWith(`LARGE_FILE:`)) {
     const [, file_path, file_size_str] = content.split(`:`)
-    const file_size = parseInt(file_size_str, 10)
+    const file_size = Math.trunc(Number(file_size_str))
 
     console.info(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
 

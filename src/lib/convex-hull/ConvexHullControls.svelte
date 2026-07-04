@@ -28,19 +28,18 @@
   }
 
   // Face color mode display labels and tooltips
-  const FACE_COLOR_MODES: Record<HullFaceColorMode, { label: string; tip: string }> =
-    {
-      uniform: { label: `Uniform`, tip: `Single uniform color for all faces` },
-      formation_energy: {
-        label: `Energy`,
-        tip: `Color by average formation energy of face vertices`,
-      },
-      dominant_element: {
-        label: `Element`,
-        tip: `Color by element with highest concentration at face centroid`,
-      },
-      facet_index: { label: `Index`, tip: `Distinct categorical color per facet` },
-    }
+  const FACE_COLOR_MODES: Record<HullFaceColorMode, { label: string; tip: string }> = {
+    uniform: { label: `Uniform`, tip: `Single uniform color for all faces` },
+    formation_energy: {
+      label: `Energy`,
+      tip: `Color by average formation energy of face vertices`,
+    },
+    dominant_element: {
+      label: `Element`,
+      tip: `Color by element with highest concentration at face centroid`,
+    },
+    facet_index: { label: `Index`, tip: `Distinct categorical color per facet` },
+  }
 
   let {
     color_mode = $bindable(`stability`),
@@ -118,9 +117,7 @@
   } = $props()
 
   // Focus the multiselect input next to the "Color scale" label
-  function focus_multiselect(
-    evt: Event & { currentTarget: HTMLElement },
-  ): void {
+  function focus_multiselect(evt: Event & { currentTarget: HTMLElement }): void {
     evt.currentTarget.nextElementSibling?.querySelector<HTMLInputElement>(`input`)?.focus()
   }
 
@@ -173,13 +170,12 @@
   </h4>
 
   <!-- Energy source selection (only if both options are available) -->
-  {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form &&
-      can_compute_hull}
+  {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form && can_compute_hull}
     <div class="control-row">
       <span class="control-label">Energy source</span>
       <button
         class="toggle-btn {energy_source_mode === `precomputed` ? `active` : ``}"
-        onclick={() => energy_source_mode = `precomputed`}
+        onclick={() => (energy_source_mode = `precomputed`)}
         {@attach tooltip({
           allow_html: true,
           content: `Use precomputed formation energies (E<sub>form</sub>)`,
@@ -189,11 +185,10 @@
       </button>
       <button
         class="toggle-btn {energy_source_mode === `on-the-fly` ? `active` : ``}"
-        onclick={() => energy_source_mode = `on-the-fly`}
+        onclick={() => (energy_source_mode = `on-the-fly`)}
         {@attach tooltip({
           allow_html: true,
-          content:
-            `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
+          content: `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
         })}
       >
         On the fly
@@ -206,14 +201,14 @@
     <span class="control-label">Color mode</span>
     <button
       class="toggle-btn {color_mode === `stability` ? `active` : ``}"
-      onclick={() => color_mode = `stability`}
+      onclick={() => (color_mode = `stability`)}
       {@attach tooltip({ content: `Color points by stable/unstable` })}
     >
       Stability
     </button>
     <button
       class="toggle-btn {color_mode === `energy` ? `active` : ``}"
-      onclick={() => color_mode = `energy`}
+      onclick={() => (color_mode = `energy`)}
       {@attach tooltip({ content: `Color points by energy above hull` })}
     >
       Energy
@@ -253,33 +248,31 @@
       <div class="legend-items-container">
         <div
           class="legend-item clickable {show_stable ? `active` : `inactive`}"
-          onclick={() => show_stable = !show_stable}
-          onkeydown={legend_keydown(() => show_stable = !show_stable)}
+          onclick={() => (show_stable = !show_stable)}
+          onkeydown={legend_keydown(() => (show_stable = !show_stable))}
           role="button"
           tabindex="0"
           aria-pressed={show_stable}
           {@attach tooltip({ content: `Toggle visibility of stable points` })}
         >
           <div class="marker stable"></div>
-          <span>Stable{
-              merged_controls.show_counts ? ` (${stable_entries.length})` : ``
-            }</span>
+          <span>Stable{merged_controls.show_counts ? ` (${stable_entries.length})` : ``}</span>
         </div>
         <div
           class="legend-item clickable {show_unstable ? `active` : `inactive`}"
-          onclick={() => show_unstable = !show_unstable}
-          onkeydown={legend_keydown(() => show_unstable = !show_unstable)}
+          onclick={() => (show_unstable = !show_unstable)}
+          onkeydown={legend_keydown(() => (show_unstable = !show_unstable))}
           role="button"
           tabindex="0"
           aria-pressed={show_unstable}
           {@attach tooltip({ content: `Toggle visibility of above-hull points` })}
         >
           <div class="marker unstable"></div>
-          <span>Above hull{
-              merged_controls.show_counts
+          <span
+            >Above hull{merged_controls.show_counts
               ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
-              : ``
-            }</span>
+              : ``}</span
+          >
         </div>
       </div>
     </div>
@@ -294,8 +287,8 @@
         }}
         role="button"
         tabindex="0"
-        style="cursor: pointer"
-      >Color scale</span>
+        style="cursor: pointer">Color scale</span
+      >
       <ColorScaleSelect
         bind:value={color_scale}
         selected={[color_scale]}
@@ -331,11 +324,11 @@
             <svg viewBox="-6 -6 12 12" width="12" height="12" aria-hidden="true">
               <path d={marker_path_data(SWATCH_RADIUS, entry_category.markers[value]) ?? ``} />
             </svg>
-            <span>{value}{
-                merged_controls.show_counts
+            <span
+              >{value}{merged_controls.show_counts
                 ? ` (${hidden ? `0/${count}` : count})`
-                : ``
-              }</span>
+                : ``}</span
+            >
           </div>
         {/each}
       </div>
@@ -372,8 +365,10 @@
       >
         <span class="control-label">Label threshold</span>
         <label style="display: flex; align-items: center; gap: 4px; flex: 1">
-          <span style="white-space: nowrap">{max_hull_dist_show_labels.toFixed(2)}
-            eV/atom</span>
+          <span style="white-space: nowrap"
+            >{max_hull_dist_show_labels.toFixed(2)}
+            eV/atom</span
+          >
           <input
             type="range"
             min="0"
@@ -421,9 +416,9 @@
           class="threshold-slider"
           style="flex: 1; min-width: 80px"
         />
-        <span style="font-size: 0.9em; min-width: 2em; text-align: right">{
-          format_num(hull_face_opacity, `.1%`)
-        }</span>
+        <span style="font-size: 0.9em; min-width: 2em; text-align: right"
+          >{format_num(hull_face_opacity, `.1%`)}</span
+        >
       </div>
     </div>
 
@@ -451,7 +446,9 @@
         <!-- Ternary camera controls (elevation/azimuth) -->
         <label
           class="angle-input"
-          {@attach tooltip({ content: `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)` })}
+          {@attach tooltip({
+            content: `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
+          })}
         >
           <span>Elev</span>
           <input
@@ -541,7 +538,8 @@
   button {
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
   }
-  .toggle-btn.active, .toggle-btn:hover.active {
+  .toggle-btn.active,
+  .toggle-btn:hover.active {
     background: light-dark(rgba(25, 118, 210, 0.15), rgba(100, 180, 255, 0.2));
   }
   .legend-items-container {

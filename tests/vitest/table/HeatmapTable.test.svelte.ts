@@ -1129,7 +1129,7 @@ describe(`HeatmapTable`, () => {
       },
     )
 
-    it.each([
+    it.each<{ desc: string; value_col: Label }>([
       {
         desc: `show_sort_indicator=false`,
         value_col: {
@@ -1137,7 +1137,7 @@ describe(`HeatmapTable`, () => {
           better: `lower`,
           show_sort_indicator: false,
           description: ``,
-        } as Label,
+        },
       },
       {
         desc: `--hide-sort-indicator style token`,
@@ -1146,7 +1146,7 @@ describe(`HeatmapTable`, () => {
           better: `lower`,
           style: `--hide-sort-indicator:1;`,
           description: ``,
-        } as Label,
+        },
       },
     ])(`hides indicator for $desc but still sorts rows`, async ({ value_col }) => {
       const columns: Label[] = [{ label: `Model`, description: `` }, value_col]

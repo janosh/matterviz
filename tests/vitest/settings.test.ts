@@ -139,7 +139,7 @@ describe(`Settings`, () => {
 
   describe(`Edge cases and robustness`, () => {
     test(`handles undefined structure input without throwing`, () => {
-      expect(() => merge({ structure: undefined } as Partial<DefaultSettings>)).not.toThrow()
+      expect(() => merge({ structure: undefined })).not.toThrow()
     })
 
     test(`merge preserves immutability of DEFAULTS`, () => {

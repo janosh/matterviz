@@ -2,8 +2,7 @@
   import type { Label } from '$lib/table'
   import ToggleMenu from '$lib/table/ToggleMenu.svelte'
 
-  const clone_columns = (columns: Label[]): Label[] =>
-    columns.map((column) => ({ ...column }))
+  const clone_columns = (columns: Label[]): Label[] => columns.map((column) => ({ ...column }))
 
   const initial_columns: Label[] = [
     { key: `col1`, label: `Column 1`, visible: true },

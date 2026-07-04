@@ -2,7 +2,11 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { message, children, ...rest }: {
+  let {
+    message,
+    children,
+    ...rest
+  }: {
     // Simple text message to display. Ignored if children snippet is provided.
     message?: string
     // Custom content to render. Takes precedence over message prop.
@@ -34,10 +38,12 @@
   .empty-state :global(.status-message) {
     --status-message-border: none; /* Remove inner border from StatusMessage */
   }
-  .empty-state > :global(:is(p, h3, ul, strong)), .empty-state > .message {
+  .empty-state > :global(:is(p, h3, ul, strong)),
+  .empty-state > .message {
     max-width: var(--empty-state-max-width, 500px);
   }
-  .empty-state :global(p), .empty-state > .message {
+  .empty-state :global(p),
+  .empty-state > .message {
     color: var(--text-color-muted);
     margin: 0;
   }

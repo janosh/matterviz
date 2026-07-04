@@ -21,7 +21,7 @@ function parse_extxyz_columns(comment: string) {
   let layout: Record<string, { offset: number; ncols: number }> | null =
     fields.length % 3 === 0 ? {} : null
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
-    const ncols = parseInt(fields[idx + 2], 10)
+    const ncols = Math.trunc(Number(fields[idx + 2]))
     if (Number.isInteger(ncols) && ncols > 0) {
       layout[fields[idx].toLowerCase()] = { offset, ncols }
       offset += ncols
@@ -65,10 +65,10 @@ export function parse_xyz_comment_metadata(comment: string): {
   const properties: Record<string, number> = {}
   for (const [key, pattern] of Object.entries(METADATA_PATTERNS)) {
     const match = pattern.exec(comment)
-    if (match) properties[key] = parseFloat(match[1])
+    if (match) properties[key] = Number(match[1])
   }
   const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(?<step>\d+)/i.exec(comment)?.[1]
-  return { step: step ? parseInt(step, 10) : undefined, properties }
+  return { step: step ? Math.trunc(Number(step)) : undefined, properties }
 }
 
 type ForceStats = { forces: number[][]; force_max: number; force_norm: number }

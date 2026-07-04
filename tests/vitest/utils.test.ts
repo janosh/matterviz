@@ -31,7 +31,7 @@ describe(`merge_nested`, () => {
       ),
     ).toEqual({ list: [4], nested: { arr: [5] } })
     expect(
-      merge_nested({ a: 1 as number | null, nested: { b: 2 as number | null } }, {
+      merge_nested({ a: 1, nested: { b: 2 } }, {
         a: null,
         nested: { b: null },
       } as never),
@@ -63,7 +63,7 @@ describe(`merge_nested`, () => {
     { user: { a: false }, expected: { a: false }, desc: `false` },
     { user: { a: `` }, expected: { a: `` }, desc: `empty string` },
   ])(`handles falsy $desc`, ({ user, expected }) => {
-    expect(merge_nested({ a: 1 as number | string | boolean }, user)).toEqual(expected)
+    expect(merge_nested({ a: 1 }, user as never)).toEqual(expected)
   })
 
   test(`does not mutate inputs`, () => {

@@ -1,4 +1,4 @@
-import type { CompositionType, ElementSymbol, Species } from '$lib'
+import type { ElementSymbol, Species } from '$lib'
 import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
@@ -109,7 +109,8 @@ describe(`AtomLegend Component`, () => {
     [{}, 0, undefined], // Empty elements
     [{ Fe: 0 }, 1, `Fe 0`], // Zero amount
     [{ Fe: 0.0001 }, 1, `Fe 0`], // Very small decimal (trimmed by .3~f format)
-    [{ Xx: 1 } as unknown as CompositionType, 1, `Xx 1`], // Non-existent element
+    // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
+    [{ Xx: 1 } as never, 1, `Xx 1`], // Non-existent element
   ])(`handles edge cases correctly`, (elements, expected_count, expected_text) => {
     mount(AtomLegend, { target: document.body, props: { elements } })
 

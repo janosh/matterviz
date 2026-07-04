@@ -3,7 +3,10 @@
   import { format_vec3 } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
 
-  let { cartesian, fractional = null }: {
+  let {
+    cartesian,
+    fractional = null,
+  }: {
     cartesian: Vec3
     fractional?: Vec3 | null
   } = $props()

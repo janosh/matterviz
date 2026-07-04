@@ -395,7 +395,7 @@ describe(`calculate_e_above_hull`, () => {
 
   // Quinary (5-element) system tests
   const make_quinary_elem = (el: string, energy = -1.0) =>
-    make_phase({ [el]: 1 } as Partial<Record<ElementSymbol, number>>, energy, {
+    make_phase({ [el]: 1 }, energy, {
       entry_id: el,
     })
 
@@ -452,7 +452,7 @@ describe(`calculate_e_above_hull`, () => {
   ])(`quinary batch: $id at e=$energy → e_above=$expected`, ({ id, energy, expected }) => {
     const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
     const el = id.split(`-`)[0] as ElementSymbol
-    const entry = make_phase({ [el]: 1 } as Partial<Record<ElementSymbol, number>>, energy, {
+    const entry = make_phase({ [el]: 1 }, energy, {
       entry_id: id,
     })
     expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(expected, 5)

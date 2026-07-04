@@ -5,12 +5,7 @@
   import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  type SplitLayout =
-    | `diagonal`
-    | `horizontal`
-    | `vertical`
-    | `triangular`
-    | `quadrant`
+  type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
   let {
     element,
     bg_color = undefined,
@@ -56,9 +51,7 @@
   } = $props()
 
   // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
-  let fallback_bg_color = $derived(
-    bg_color ?? colors.category[element.category] ?? `#cccccc`,
-  )
+  let fallback_bg_color = $derived(bg_color ?? colors.category[element.category] ?? `#cccccc`)
 
   // Compute contrast text color from background when in heatmap mode (single bg_color)
   let computed_text_color = $derived(
@@ -85,7 +78,7 @@
 
     // Handle string values - check if it's a numeric string
     if (typeof val === `string`) {
-      const parsed_num = parseFloat(val)
+      const parsed_num = Number(val)
       if (isFinite(parsed_num)) return format_num(parsed_num, float_fmt)
       // If show_values is true, return the string as-is to preserve non-numeric strings
       return show_values === true ? val : ``
@@ -107,11 +100,13 @@
 
     const count = value.length
     // Use explicit split_layout or auto-determine based on count
-    const layout = split_layout ?? {
-      2: `diagonal`,
-      3: `horizontal`,
-      4: `quadrant`,
-    }[count] as SplitLayout | undefined
+    const layout =
+      split_layout ??
+      ({
+        2: `diagonal`,
+        3: `horizontal`,
+        4: `quadrant`,
+      }[count] as SplitLayout | undefined)
 
     if (!layout) return null
 
@@ -139,9 +134,7 @@
     if (layout === `triangular` && count === 4) {
       return {
         segments: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}`),
-        positions: [`top`, `right`, `bottom`, `left`].map((pos) =>
-          `triangle-${pos}-pos`
-        ),
+        positions: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}-pos`),
       }
     }
 
@@ -158,16 +151,18 @@
 <svelte:element
   this={href ? `a` : `div`}
   bind:this={node}
-  {...(href ? { href } : {})}
+  {...href ? { href } : {}}
   class="element-tile"
   data-category={element.category}
   class:active
   class:last-active={selected.last_element === element}
   class:clickable={Boolean(onclick)}
-  style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
+  style:background-color={Array.isArray(value) && bg_colors?.length > 1
+    ? `transparent`
+    : fallback_bg_color}
   style:color={computed_text_color}
   {@attach computed_text_color ? null : contrast_color()}
-  {...(href ? { role: `link`, tabindex: 0 } : {})}
+  {...href ? { role: `link`, tabindex: 0 } : {}}
   onclick={(event: MouseEvent) => onclick?.({ element, event })}
   {...rest}
 >
@@ -189,11 +184,11 @@
           <span
             class="value multi-value {layout_config.positions[idx]}"
             style:color={bg_colors?.[idx]
-            ? pick_contrast_color({
-              bg_color: bg_colors[idx] ?? fallback_bg_color,
-              luminance_threshold,
-            })
-            : null}
+              ? pick_contrast_color({
+                  bg_color: bg_colors[idx] ?? fallback_bg_color,
+                  luminance_threshold,
+                })
+              : null}
           >
             {format_value(val)}
           </span>
@@ -219,8 +214,7 @@
         <div
           class="segment {layout_config.segments[idx]}"
           style:background-color={bg_color}
-        >
-        </div>
+        ></div>
       {/if}
     {/each}
   {/if}
@@ -247,7 +241,8 @@
   .element-tile span {
     line-height: 1em;
   }
-  .element-tile.active, .element-tile:hover {
+  .element-tile.active,
+  .element-tile:hover {
     border: var(--elem-tile-active-border, 1px solid currentColor);
   }
   .element-tile.clickable {

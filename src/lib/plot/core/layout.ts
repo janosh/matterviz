@@ -31,11 +31,10 @@ export function y2_axis_label_x(
 export const filter_padding = (
   padding: Partial<Sides> | undefined | null,
   defaults: Required<Sides>,
-): Required<Sides> =>
-  ({
-    ...defaults,
-    ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, v]) => v !== undefined)),
-  }) as Required<Sides>
+): Required<Sides> => ({
+  ...defaults,
+  ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, v]) => v !== undefined)),
+})
 
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null

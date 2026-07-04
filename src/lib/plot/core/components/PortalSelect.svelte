@@ -14,9 +14,7 @@
     selected_key = $bindable(),
     on_select,
     disabled = false,
-    format_option = (
-      opt: Option,
-    ) => (opt.unit ? `${opt.label} (${opt.unit})` : opt.label),
+    format_option = (opt: Option) => (opt.unit ? `${opt.label} (${opt.unit})` : opt.label),
     ...rest
   }: Omit<HTMLButtonAttributes, `onclick`> & {
     options: Option[]
@@ -59,11 +57,9 @@
   // Inline styles for portal elements (can't use scoped CSS for elements in document.body)
   const portal_styles = {
     container: `position: fixed; transform: translateX(-50%); z-index: 10000;`,
-    ul:
-      `margin: 0; padding: 0; list-style: none; background: var(--dropdown-bg, white); border: 1px solid var(--dropdown-border, #ccc); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); min-width: max-content; max-height: 300px; overflow-y: auto; font-size: 14px;`,
+    ul: `margin: 0; padding: 0; list-style: none; background: var(--dropdown-bg, white); border: 1px solid var(--dropdown-border, #ccc); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); min-width: max-content; max-height: 300px; overflow-y: auto; font-size: 14px;`,
     li: `margin: 0;`,
-    btn:
-      `display: block; width: 100%; padding: var(--dropdown-padding-v, 3px) var(--dropdown-padding-h, 10px); border: none; background: transparent; font: inherit; color: var(--dropdown-color, black); text-align: left; cursor: pointer; white-space: nowrap;`,
+    btn: `display: block; width: 100%; padding: var(--dropdown-padding-v, 3px) var(--dropdown-padding-h, 10px); border: none; background: transparent; font: inherit; color: var(--dropdown-color, black); text-align: left; cursor: pointer; white-space: nowrap;`,
     btn_selected: `font-weight: 500; background: rgba(0, 100, 200, 0.15);`,
   }
 

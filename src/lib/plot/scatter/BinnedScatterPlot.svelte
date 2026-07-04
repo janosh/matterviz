@@ -16,11 +16,21 @@
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
-  import { compute_element_placement, DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
+  import {
+    compute_element_placement,
+    DEFAULT_PLOT_PADDING,
+    filter_padding,
+  } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
+  import {
+    add_sides,
+    marginal_axis,
+    marginal_axis_presence,
+    normalize_marginals,
+    reserve_marginal_pad,
+  } from '$lib/plot/core/marginals'
   import {
     build_pick_index,
     bin_points,
@@ -33,9 +43,23 @@
     series_extents,
     should_render_points,
   } from '$lib/plot/scatter/adaptive-density'
-  import type { DensityBin, DenseInternalPoint, DensePointSeries } from '$lib/plot/scatter/adaptive-density'
-  import { create_color_scale, create_scale, create_size_scale, generate_ticks } from '$lib/plot/core/scales'
-  import type { AxisConfig, DataSeries, InternalPoint, ScatterHandlerProps } from '$lib/plot/core/types'
+  import type {
+    DensityBin,
+    DenseInternalPoint,
+    DensePointSeries,
+  } from '$lib/plot/scatter/adaptive-density'
+  import {
+    create_color_scale,
+    create_scale,
+    create_size_scale,
+    generate_ticks,
+  } from '$lib/plot/core/scales'
+  import type {
+    AxisConfig,
+    DataSeries,
+    InternalPoint,
+    ScatterHandlerProps,
+  } from '$lib/plot/core/types'
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import {
     compute_label_positions,
@@ -160,10 +184,14 @@
   let density_settings = $derived({
     bin_px: density_config.bin_px ?? 2.8,
     color_scale: density_config.color_scale ?? SCALE_DEFAULTS.color,
-    color_bar: density_config.color_bar === undefined ? default_density_color_bar : density_config.color_bar,
-    auto_point_mode: density_config.auto_point_mode === undefined
-      ? default_density_auto_point_mode
-      : density_config.auto_point_mode,
+    color_bar:
+      density_config.color_bar === undefined
+        ? default_density_color_bar
+        : density_config.color_bar,
+    auto_point_mode:
+      density_config.auto_point_mode === undefined
+        ? default_density_auto_point_mode
+        : density_config.auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
   let ref_lines = $derived(overlays_config.ref_lines ?? [])
@@ -230,14 +258,8 @@
     width: plot_width,
     height: plot_height,
   })
-  let x_scale_fn = $derived(create_scale(x_scale_type, x_range, [
-    pad.l,
-    width - pad.r,
-  ]))
-  let y_scale_fn = $derived(create_scale(y_scale_type, y_range, [
-    height - pad.b,
-    pad.t,
-  ]))
+  let x_scale_fn = $derived(create_scale(x_scale_type, x_range, [pad.l, width - pad.r]))
+  let y_scale_fn = $derived(create_scale(y_scale_type, y_range, [height - pad.b, pad.t]))
   let x_ticks = $derived(
     generate_ticks(x_range, x_scale_type, x_axis.ticks, x_scale_fn, {
       default_count: 7,
@@ -264,10 +286,14 @@
   const bin_at = (coords: Point2D) =>
     density_bin_at_point(density_result, coords, plot_rect, x_range, y_range, bin_transforms)
   let auto_color_range = $derived<Vec2>([1, Math.max(1, density_result.max_count)])
-  let color_scale_fn = $derived(create_color_scale(density_settings.color_scale, auto_color_range))
+  let color_scale_fn = $derived(
+    create_color_scale(density_settings.color_scale, auto_color_range),
+  )
   let hovered_bin_color = $derived(hovered_bin ? color_scale_fn(hovered_bin.count) : undefined)
   let color_scale_type = $derived(
-    typeof density_settings.color_scale === `string` ? undefined : density_settings.color_scale.type,
+    typeof density_settings.color_scale === `string`
+      ? undefined
+      : density_settings.color_scale.type,
   )
   let color_bar_props = $derived.by((): ComponentProps<typeof ColorBar> | null => {
     const color_bar = density_settings.color_bar
@@ -279,7 +305,8 @@
       tick_format: color_bar.tick_format ?? `.2~s`,
       tick_labels: color_bar.tick_labels ?? 4,
       tick_side: color_bar.tick_side ?? `primary`,
-      bar_style: color_bar.bar_style ??
+      bar_style:
+        color_bar.bar_style ??
         `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.binned_bar_height}px; ${color_bar.style ?? ``}`,
     }
   })
@@ -339,11 +366,11 @@
     const auto_point_mode = density_settings.auto_point_mode
     if (auto_point_mode === false) return render_mode
     return should_render_points(
-        density_result.visible_count,
-        plot_width * plot_height,
-        auto_point_mode.max_points ?? default_density_auto_point_mode.max_points,
-        auto_point_mode.max_points_per_px ?? default_density_auto_point_mode.max_points_per_px,
-      )
+      density_result.visible_count,
+      plot_width * plot_height,
+      auto_point_mode.max_points ?? default_density_auto_point_mode.max_points,
+      auto_point_mode.max_points_per_px ?? default_density_auto_point_mode.max_points_per_px,
+    )
       ? `points`
       : `density`
   })
@@ -359,12 +386,16 @@
     return values
   })
   let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
-  let min_point_radius = $derived(size_scale.radius_range?.[0] ?? SCALE_DEFAULTS.binned_radius[0])
-  let max_point_radius = $derived(size_scale.radius_range?.[1] ?? SCALE_DEFAULTS.binned_radius[1])
+  let min_point_radius = $derived(
+    size_scale.radius_range?.[0] ?? SCALE_DEFAULTS.binned_radius[0],
+  )
+  let max_point_radius = $derived(
+    size_scale.radius_range?.[1] ?? SCALE_DEFAULTS.binned_radius[1],
+  )
   let pick_radius_px = $derived(
     size_scale.pick_radius === `auto`
       ? max_point_radius
-      : size_scale.pick_radius ?? SCALE_DEFAULTS.binned_radius[1],
+      : (size_scale.pick_radius ?? SCALE_DEFAULTS.binned_radius[1]),
   )
 
   $effect(() => {
@@ -423,7 +454,10 @@
         if (!style) {
           style = {
             fill: color_scale_fn(count),
-            alpha: Math.min(0.95, 0.2 + Math.log1p(count) / Math.log1p(density_result.max_count)),
+            alpha: Math.min(
+              0.95,
+              0.2 + Math.log1p(count) / Math.log1p(density_result.max_count),
+            ),
           }
           style_cache.set(count, style)
         }
@@ -566,7 +600,7 @@
     payload: BinnedPointPayload<Metadata, PointData>,
   ): LabelSize =>
     label_sizes.get(point_label_key(payload.point)) ??
-      estimate_label_size(label_measure_text(payload), point_labels_settings.font_size)
+    estimate_label_size(label_measure_text(payload), point_labels_settings.font_size)
 
   let point_label_payloads = $derived.by(() => {
     if (!point_labels_settings.render || render_mode !== `points`) return []
@@ -587,7 +621,8 @@
           x > x_max ||
           y < y_min ||
           y > y_max
-        ) continue
+        )
+          continue
         payloads.push(point_payload(make_point(series_idx, point_idx)))
         if (payloads.length > point_labels_settings.max_count) return []
       }
@@ -598,20 +633,19 @@
   let point_label_positions = $derived.by(() => {
     if (point_label_payloads.length === 0) return {}
 
-    const filtered_data: InternalPoint<Metadata>[] = point_label_payloads.map(
-      (payload) => ({
-        ...payload.point,
-        point_label: {
-          text: label_measure_text(payload),
-          auto_placement: true,
-          font_size: point_labels_settings.font_size,
-          size: label_sizes.get(point_label_key(payload.point)),
-        },
-        point_style: {
-          radius: point_radius_for_value(payload.point.size_value) + point_labels_settings.gap_px,
-        },
-      }),
-    )
+    const filtered_data: InternalPoint<Metadata>[] = point_label_payloads.map((payload) => ({
+      ...payload.point,
+      point_label: {
+        text: label_measure_text(payload),
+        auto_placement: true,
+        font_size: point_labels_settings.font_size,
+        size: label_sizes.get(point_label_key(payload.point)),
+      },
+      point_style: {
+        radius:
+          point_radius_for_value(payload.point.size_value) + point_labels_settings.gap_px,
+      },
+    }))
     const label_series: DataSeries<Metadata>[] = [{ x: [], y: [], filtered_data }]
 
     return compute_label_positions(
@@ -627,7 +661,8 @@
     if (!label_measure_root) return
 
     const active_keys = new SvelteSet<string>()
-    const measured_elements = label_measure_root.querySelectorAll<HTMLElement>(`[data-label-key]`)
+    const measured_elements =
+      label_measure_root.querySelectorAll<HTMLElement>(`[data-label-key]`)
     for (const element of measured_elements) {
       const label_key = element.dataset.labelKey
       if (!label_key) continue
@@ -653,7 +688,10 @@
     payload: BinnedPointPayload<Metadata, PointData>,
     label_position: Point2D,
   ): { x1: number; y1: number; x2: number; y2: number } | null {
-    const displacement = Math.hypot(label_position.x - payload.cx, label_position.y - payload.cy)
+    const displacement = Math.hypot(
+      label_position.x - payload.cx,
+      label_position.y - payload.cy,
+    )
     if (displacement <= (actual_label_placement_config.leader_line_threshold ?? 15)) {
       return null
     }
@@ -682,7 +720,8 @@
         hovered_bin?.x_bin !== bin?.x_bin ||
         hovered_bin?.y_bin !== bin?.y_bin ||
         hovered_bin?.count !== bin?.count
-      ) hovered_bin = bin
+      )
+        hovered_bin = bin
       return
     }
 
@@ -691,7 +730,8 @@
     if (
       hovered_point?.series_idx !== point?.series_idx ||
       hovered_point?.point_idx !== point?.point_idx
-    ) hovered_point = point
+    )
+      hovered_point = point
   }
 
   function emit_point_click(
@@ -732,13 +772,7 @@
       }
       if (bin.count > 1 && density_settings.bin_click !== `point`) return
 
-      const point = first_point_in_bin(
-        series,
-        density_result,
-        bin,
-        x_scale_fn,
-        y_scale_fn,
-      )
+      const point = first_point_in_bin(series, density_result, bin, x_scale_fn, y_scale_fn)
       if (point) emit_point_click(point, event, color_scale_fn(bin.count))
       return
     }
@@ -853,7 +887,7 @@
 
   <canvas bind:this={canvas}></canvas>
 
-  <svg width={width} height={height} aria-hidden="true">
+  <svg {width} {height} aria-hidden="true">
     <defs>
       <clipPath id={clip_path_id}>
         <rect x={pad.l} y={pad.t} width={plot_width} height={plot_height} />
@@ -906,7 +940,9 @@
       <g class="point-label-leaders" clip-path="url(#{clip_path_id})">
         {#each point_label_payloads as payload (point_label_key(payload.point))}
           {@const label_position = point_label_positions[point_label_key(payload.point)]}
-          {@const leader_line = label_position ? label_leader_line(payload, label_position) : null}
+          {@const leader_line = label_position
+            ? label_leader_line(payload, label_position)
+            : null}
           {#if leader_line}
             <line
               x1={leader_line.x1}
@@ -974,7 +1010,7 @@
     >
       <ColorBar
         {...color_bar_props}
-        color_scale_fn={color_scale_fn}
+        {color_scale_fn}
         color_scale_domain={auto_color_range}
         range={auto_color_range}
       />
@@ -988,9 +1024,9 @@
       offset={{ x: 0, y: 0 }}
       bg_color={hovered_bin_color}
     >
-      {hovered_bin.count.toLocaleString()} samples<br>
+      {hovered_bin.count.toLocaleString()} samples<br />
       x: {format_value(hovered_bin.x_range[0], x_axis.format ?? `.3~g`)}
-      - {format_value(hovered_bin.x_range[1], x_axis.format ?? `.3~g`)}<br>
+      - {format_value(hovered_bin.x_range[1], x_axis.format ?? `.3~g`)}<br />
       y: {format_value(hovered_bin.y_range[0], y_axis.format ?? `.3~g`)}
       - {format_value(hovered_bin.y_range[1], y_axis.format ?? `.3~g`)}
     </PlotTooltip>
@@ -1000,7 +1036,7 @@
       {#if tooltip}
         {@render tooltip(props)}
       {:else}
-        {x_axis.label ?? `x`}: {props.x_formatted}<br>
+        {x_axis.label ?? `x`}: {props.x_formatted}<br />
         {y_axis.label ?? `y`}: {props.y_formatted}
       {/if}
     </PlotTooltip>
@@ -1056,7 +1092,9 @@
     position: absolute;
     right: var(--fullscreen-btn-right, 4px);
     top: var(--ctrl-btn-top, 5pt);
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
     z-index: var(--fullscreen-btn-z-index, 10);
   }
   .header-controls :global(.fullscreen-toggle) {
@@ -1096,7 +1134,10 @@
     opacity: 0.75;
   }
   .point-label-leaders line {
-    stroke: var(--binned-scatter-label-leader-color, color-mix(in srgb, currentColor 60%, transparent));
+    stroke: var(
+      --binned-scatter-label-leader-color,
+      color-mix(in srgb, currentColor 60%, transparent)
+    );
     stroke-dasharray: var(--binned-scatter-label-leader-dash, 2 2);
     stroke-width: var(--binned-scatter-label-leader-width, 0.8);
   }

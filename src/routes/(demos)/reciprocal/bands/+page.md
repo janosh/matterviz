@@ -83,7 +83,7 @@ Compare multiple band structures on the same plot with interactive controls:
 
   // Create multiple versions with slight variations for demo
   const band_structs = {
-    'DFT': band_struct,
+    DFT: band_struct,
     'Model A': {
       ...band_struct,
       bands: band_struct.bands.map((band) => band.map((freq) => freq * 1.05)),
@@ -177,7 +177,7 @@ Add `band_widths` to your band structure data - a 2D array matching the shape of
       const pos = q_idx / band.length
       const envelope = Math.sin(pos * Math.PI) ** 0.5 // smooth peak at zone boundary
       return coupled_bands.includes(idx) ? envelope * (0.6 + 0.4 * Math.cos(idx)) : 0
-    })
+    }),
   )
 
   const band_struct = { ...base_bs, band_widths }
@@ -205,7 +205,7 @@ Customize the ribbon appearance with `ribbon_config`. You can set color, opacity
       if (idx === 5) return Math.exp(-8 * (pos - 0.7) ** 2) // Peak near zone edge
       if (idx === 8) return 0.5 * Math.sin(pos * Math.PI) ** 2 // Weaker, broad
       return 0
-    })
+    }),
   )
 
   const band_struct = { ...base_bs, band_widths }
@@ -237,8 +237,8 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
       band.map((_, q_idx) =>
         active_bands.includes(idx)
           ? gauss(q_idx / band.length, centers[idx % centers.length], 0.08)
-          : 0
-      )
+          : 0,
+      ),
     )
 
   const band_structs = {

@@ -288,7 +288,7 @@ export const make_trajectory_frame = (
   structure: {
     charge: 0,
     sites: Array.from({ length: site_count }, (_, idx) => ({
-      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
       xyz: [idx, 0, 0] as Vec3,
       abc: [idx / 10, 0, 0] as Vec3,
       label: `H${idx + 1}`,

@@ -175,17 +175,18 @@
         }
 
         // Check for spin-down data (only for electronic DOS)
-        const has_spin_down = dos.type === `electronic` &&
-          dos.spin_down_densities?.length === dos.densities.length
+        const has_spin_down =
+          dos.type === `electronic` && dos.spin_down_densities?.length === dos.densities.length
         const should_show_spin_up = effective_spin_mode !== `down_only`
-        const should_show_spin_down = has_spin_down &&
-          effective_spin_mode !== `up_only` && effective_spin_mode !== null
+        const should_show_spin_down =
+          has_spin_down && effective_spin_mode !== `up_only` && effective_spin_mode !== null
 
         // Process spin-up (or total) densities
         if (should_show_spin_up) {
-          let densities_up = sigma > 0
-            ? apply_gaussian_smearing(x_values, dos.densities, sigma)
-            : [...dos.densities]
+          let densities_up =
+            sigma > 0
+              ? apply_gaussian_smearing(x_values, dos.densities, sigma)
+              : [...dos.densities]
 
           densities_up = normalize_densities(densities_up, x_values, normalize)
 
@@ -194,8 +195,8 @@
 
           // For stacked plots, accumulate densities (only if array lengths match)
           if (stack && cumulative_spin_up?.length === densities_up.length) {
-            densities_up = densities_up.map((density, idx) =>
-              density + (cumulative_spin_up?.[idx] ?? 0)
+            densities_up = densities_up.map(
+              (density, idx) => density + (cumulative_spin_up?.[idx] ?? 0),
             )
           } else if (stack && cumulative_spin_up) {
             console.warn(`DOS stacking: length mismatch for "${label}"`)
@@ -212,9 +213,10 @@
             cumulative_spin_up = densities_up
           }
 
-          const spin_label = has_spin_down && effective_spin_mode
-            ? `${label || `DOS ${dos_idx + 1}`} (↑)`
-            : (label || `DOS ${dos_idx + 1}`)
+          const spin_label =
+            has_spin_down && effective_spin_mode
+              ? `${label || `DOS ${dos_idx + 1}`} (↑)`
+              : label || `DOS ${dos_idx + 1}`
 
           const series_up: DataSeries = {
             x: is_horizontal ? densities_up : x_values,
@@ -228,13 +230,11 @@
         }
 
         // Process spin-down densities if available
-        if (
-          should_show_spin_down && dos.type === `electronic` &&
-          dos.spin_down_densities
-        ) {
-          let densities_down = sigma > 0
-            ? apply_gaussian_smearing(x_values, dos.spin_down_densities, sigma)
-            : [...dos.spin_down_densities]
+        if (should_show_spin_down && dos.type === `electronic` && dos.spin_down_densities) {
+          let densities_down =
+            sigma > 0
+              ? apply_gaussian_smearing(x_values, dos.spin_down_densities, sigma)
+              : [...dos.spin_down_densities]
 
           densities_down = normalize_densities(densities_down, x_values, normalize)
 
@@ -246,12 +246,10 @@
           // For stacked plots with overlay mode, use separate spin-down cumulative
           // This prevents spin-down from stacking on top of spin-up within the same DOS
           if (stack && effective_spin_mode === `overlay`) {
-            const prev_spin_down = cumulative_spin_down
-              ? [...cumulative_spin_down]
-              : null
+            const prev_spin_down = cumulative_spin_down ? [...cumulative_spin_down] : null
             if (cumulative_spin_down?.length === densities_down.length) {
-              densities_down = densities_down.map((density, idx) =>
-                density + (cumulative_spin_down?.[idx] ?? 0)
+              densities_down = densities_down.map(
+                (density, idx) => density + (cumulative_spin_down?.[idx] ?? 0),
               )
             } else if (cumulative_spin_down) {
               console.warn(`DOS stacking (spin-down): length mismatch for "${label}"`)
@@ -268,9 +266,10 @@
           }
 
           // Use a slightly different shade for spin-down in overlay mode
-          const spin_down_color = effective_spin_mode === `overlay`
-            ? PLOT_COLORS[(dos_idx * 2 + 1) % PLOT_COLORS.length]
-            : color
+          const spin_down_color =
+            effective_spin_mode === `overlay`
+              ? PLOT_COLORS[(dos_idx * 2 + 1) % PLOT_COLORS.length]
+              : color
 
           const series_down: DataSeries = {
             x: is_horizontal ? densities_down : x_values,
@@ -291,9 +290,10 @@
     },
   )
 
-  let all_freqs = $derived( // for clamping phonon noise
+  let all_freqs = $derived(
+    // for clamping phonon noise
     Object.values(doses_dict).flatMap((dos) =>
-      dos.type === `phonon` ? dos.frequencies : dos.energies
+      dos.type === `phonon` ? dos.frequencies : dos.energies,
     ),
   )
   let clamp_to_zero = $derived(
@@ -304,14 +304,13 @@
   )
 
   // Check if we have mirrored spin-down data (negative densities)
-  let has_mirrored_spin = $derived(
-    effective_spin_mode === `mirror` && has_spin_polarized,
-  )
+  let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 
   let x_range = $derived.by((): Vec2 | undefined => {
     if (series_data.length === 0) return undefined
     const all_x = series_data.flatMap((srs) => srs.x)
-    const min_x = Math.min(...all_x), max_x = Math.max(...all_x)
+    const min_x = Math.min(...all_x),
+      max_x = Math.max(...all_x)
     // For horizontal orientation with mirror mode, allow negative values (mirrored densities)
     if (is_horizontal && has_mirrored_spin) return [min_x, max_x]
     if (is_horizontal || clamp_to_zero) return [0, max_x]
@@ -321,7 +320,8 @@
   let y_range = $derived.by((): Vec2 | undefined => {
     if (series_data.length === 0) return undefined
     const all_y = series_data.flatMap((srs) => srs.y)
-    const min_y = Math.min(...all_y), max_y = Math.max(...all_y)
+    const min_y = Math.min(...all_y),
+      max_y = Math.max(...all_y)
     // For vertical orientation with mirror mode, allow negative values (mirrored densities)
     if (!is_horizontal && has_mirrored_spin) return [min_y, max_y]
     if (!is_horizontal || clamp_to_zero) return [0, max_y]
@@ -330,16 +330,10 @@
 
   // Get axis labels based on orientation
   let x_label = $derived(
-    is_horizontal
-      ? `Density of States`
-      : is_phonon
-      ? `Frequency (${units})`
-      : `Energy (eV)`,
+    is_horizontal ? `Density of States` : is_phonon ? `Frequency (${units})` : `Energy (eV)`,
   )
   let y_label = $derived(
-    is_horizontal
-      ? (is_phonon ? `Frequency (${units})` : `Energy (eV)`)
-      : `Density of States`,
+    is_horizontal ? (is_phonon ? `Frequency (${units})` : `Energy (eV)`) : `Density of States`,
   )
 
   // Compute final axis configurations with default labels
@@ -420,9 +414,13 @@
       lower_coords.push(`${lower_x.toFixed(2)},${lower_y.toFixed(2)}`)
     }
     // Trace upper edge forward, lower edge backward, close path
-    return `M${upper_coords[0]} ${
-      upper_coords.slice(1).map((coord) => `L${coord}`).join(` `)
-    } ${lower_coords.toReversed().map((coord) => `L${coord}`).join(` `)} Z`
+    return `M${upper_coords[0]} ${upper_coords
+      .slice(1)
+      .map((coord) => `L${coord}`)
+      .join(` `)} ${lower_coords
+      .toReversed()
+      .map((coord) => `L${coord}`)
+      .join(` `)} Z`
   }
 </script>
 
@@ -436,24 +434,22 @@
     hover_config={{ threshold_px: 50 }}
     controls={{ show: show_controls }}
     on_point_hover={(event) => {
-      hovered_frequency = is_horizontal
-        ? (event?.point?.y ?? null)
-        : (event?.point?.x ?? null)
+      hovered_frequency = is_horizontal ? (event?.point?.y ?? null) : (event?.point?.x ?? null)
     }}
     {...{ range_padding: 0, ...rest }}
   >
     {#snippet tooltip({ x_formatted, y_formatted, label })}
       {@const tooltip_data = format_dos_tooltip(
-      x_formatted,
-      y_formatted,
-      label ?? null,
-      is_horizontal,
-      is_phonon,
-      units,
-      final_x_axis.label ?? ``,
-      internal_y_axis.label ?? ``,
-      Object.keys(doses_dict).length,
-    )}
+        x_formatted,
+        y_formatted,
+        label ?? null,
+        is_horizontal,
+        is_phonon,
+        units,
+        final_x_axis.label ?? ``,
+        internal_y_axis.label ?? ``,
+        Object.keys(doses_dict).length,
+      )}
       {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
       {#each tooltip_data.lines as line, line_idx (line_idx)}
         {line}{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
@@ -559,15 +555,16 @@
       {/if}
 
       <!-- Fermi level line for electronic DOS -->
-      {@const fermi_pos = effective_fermi_level !== undefined
-      ? (is_horizontal
-        ? y_scale_fn(effective_fermi_level)
-        : x_scale_fn(effective_fermi_level))
-      : NaN}
+      {@const fermi_pos =
+        effective_fermi_level !== undefined
+          ? is_horizontal
+            ? y_scale_fn(effective_fermi_level)
+            : x_scale_fn(effective_fermi_level)
+          : NaN}
       {#if Number.isFinite(fermi_pos)}
         {@const [x1, x2, y1, y2] = is_horizontal
-      ? [pad.l, width - pad.r, fermi_pos, fermi_pos]
-      : [fermi_pos, fermi_pos, pad.t, height - pad.b]}
+          ? [pad.l, width - pad.r, fermi_pos, fermi_pos]
+          : [fermi_pos, fermi_pos, pad.t, height - pad.b]}
         <line
           class="fermi-level-line"
           {x1}
@@ -608,15 +605,16 @@
       {/if}
 
       <!-- Reference frequency line -->
-      {@const ref_pos = reference_frequency !== null
-      ? (is_horizontal
-        ? y_scale_fn(reference_frequency)
-        : x_scale_fn(reference_frequency))
-      : NaN}
+      {@const ref_pos =
+        reference_frequency !== null
+          ? is_horizontal
+            ? y_scale_fn(reference_frequency)
+            : x_scale_fn(reference_frequency)
+          : NaN}
       {#if Number.isFinite(ref_pos)}
         {@const [x1, x2, y1, y2] = is_horizontal
-      ? [pad.l, width - pad.r, ref_pos, ref_pos]
-      : [ref_pos, ref_pos, pad.t, height - pad.b]}
+          ? [pad.l, width - pad.r, ref_pos, ref_pos]
+          : [ref_pos, ref_pos, pad.t, height - pad.b]}
         <line
           {x1}
           {x2}

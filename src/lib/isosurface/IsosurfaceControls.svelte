@@ -45,7 +45,7 @@
   function update_layer(idx: number, updates: Partial<IsosurfaceLayer>) {
     if (!settings.layers) return
     settings.layers = settings.layers.map((layer, layer_idx) =>
-      layer_idx === idx ? { ...layer, ...updates } : layer
+      layer_idx === idx ? { ...layer, ...updates } : layer,
     )
   }
 </script>
@@ -68,7 +68,9 @@
   <div class="pane-row compact-row">
     {#if volumes.length > 1}
       <label
-        {@attach tooltip({ content: `Select which volume to display (e.g. charge vs magnetization)` })}
+        {@attach tooltip({
+          content: `Select which volume to display (e.g. charge vs magnetization)`,
+        })}
       >
         <span>Volume:</span>
         <select bind:value={active_volume_idx}>
@@ -79,13 +81,14 @@
       </label>
     {/if}
     <label
-      {@attach tooltip({ content: `Number of isosurface shells at different density thresholds` })}
+      {@attach tooltip({
+        content: `Number of isosurface shells at different density thresholds`,
+      })}
     >
       <span>Layers:</span>
       <select
         value={n_layers}
-        onchange={(event) =>
-        set_layer_count(Number(event.currentTarget.value))}
+        onchange={(event) => set_layer_count(Number(event.currentTarget.value))}
       >
         {#each [1, 2, 3, 4, 5] as count (count)}
           <option value={count}>{count}</option>
@@ -95,14 +98,16 @@
     <!-- Sync both settings.show_negative (single-layer fallback) and all layer entries
     so the toggle works consistently regardless of which mode is active -->
     <label
-      {@attach tooltip({ content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)` })}
+      {@attach tooltip({
+        content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,
+      })}
     >
       <span>Neg. lobe</span>
       <input
         type="checkbox"
         checked={is_multi_layer
-        ? settings.layers?.some((layer) => layer.show_negative) ?? false
-        : settings.show_negative}
+          ? (settings.layers?.some((layer) => layer.show_negative) ?? false)
+          : settings.show_negative}
         onchange={(event) => {
           const checked = event.currentTarget.checked
           settings.show_negative = checked
@@ -115,9 +120,7 @@
         }}
       />
     </label>
-    <label
-      {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}
-    >
+    <label {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}>
       <span>Wireframe</span>
       <input type="checkbox" bind:checked={settings.wireframe} />
     </label>
@@ -135,8 +138,7 @@
         <input
           type="color"
           value={layer.color}
-          onchange={(event) =>
-          update_layer(idx, { color: event.currentTarget.value })}
+          onchange={(event) => update_layer(idx, { color: event.currentTarget.value })}
         />
         <input
           type="range"
@@ -145,9 +147,9 @@
           {step}
           value={layer.isovalue}
           oninput={(event) =>
-          update_layer(idx, {
-            isovalue: Number(event.currentTarget.value),
-          })}
+            update_layer(idx, {
+              isovalue: Number(event.currentTarget.value),
+            })}
           style="flex: 1; min-width: 60px"
         />
         <span class="layer-value">{format_num(layer.isovalue, `.3~g`)}</span>
@@ -158,9 +160,9 @@
           step={0.05}
           value={layer.opacity}
           oninput={(event) =>
-          update_layer(idx, {
-            opacity: Number(event.currentTarget.value),
-          })}
+            update_layer(idx, {
+              opacity: Number(event.currentTarget.value),
+            })}
           style="width: 50px"
           title="Opacity: {format_num(layer.opacity, `.2f`)}"
         />
@@ -169,23 +171,21 @@
   {:else}
     <!-- Single-layer: isovalue slider full width -->
     <label
-      {@attach tooltip({ content: `Density threshold — surface is drawn where grid values equal this` })}
+      {@attach tooltip({
+        content: `Density threshold — surface is drawn where grid values equal this`,
+      })}
     >
       <span>Isovalue:</span>
-      <input
-        type="range"
-        min={step}
-        max={slider_max}
-        {step}
-        bind:value={settings.isovalue}
-      />
+      <input type="range" min={step} max={slider_max} {step} bind:value={settings.isovalue} />
       <span class="value">{format_num(settings.isovalue, `.4~g`)}</span>
     </label>
 
     <!-- Opacity + colors on one row -->
     <div class="pane-row compact-row">
       <label
-        {@attach tooltip({ content: `Surface transparency — lower values reveal inner structure` })}
+        {@attach tooltip({
+          content: `Surface transparency — lower values reveal inner structure`,
+        })}
       >
         <span>Opacity:</span>
         <input
@@ -203,9 +203,7 @@
         <input type="color" bind:value={settings.positive_color} />
       </label>
       {#if settings.show_negative}
-        <label
-          {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}
-        >
+        <label {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}>
           <span>&minus; Color</span>
           <input type="color" bind:value={settings.negative_color} />
         </label>
@@ -215,24 +213,21 @@
 
   {#if volumes?.[active_volume_idx]?.periodic}
     <label
-      {@attach tooltip({ content: `Extend isosurface beyond cell boundaries to close partial spheres (fraction of cell)` })}
+      {@attach tooltip({
+        content: `Extend isosurface beyond cell boundaries to close partial spheres (fraction of cell)`,
+      })}
     >
       Halo: {format_num(settings.halo, `.2f`)}
-      <input
-        type="range"
-        min={0}
-        max={0.5}
-        step={0.01}
-        bind:value={settings.halo}
-      />
+      <input type="range" min={0} max={0.5} step={0.01} bind:value={settings.halo} />
     </label>
   {/if}
 
   {#if volumes[active_volume_idx]}
     <div class="grid-info">
-      {volumes[active_volume_idx].grid_dims.join(` × `)} grid &nbsp;|&nbsp; [{
-        format_num(data_range.min, `.3~g`)
-      }, {format_num(data_range.max, `.3~g`)}]
+      {volumes[active_volume_idx].grid_dims.join(` × `)} grid &nbsp;|&nbsp; [{format_num(
+        data_range.min,
+        `.3~g`,
+      )}, {format_num(data_range.max, `.3~g`)}]
     </div>
   {/if}
 </SettingsSection>

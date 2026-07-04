@@ -11,7 +11,11 @@
   import type { Vec2 } from '$lib/math'
   import type { AxisKey, PlotControlsProps } from '$lib/plot/core/types'
   import { normalize_y2_sync } from '$lib/plot/core/interactions'
-  import { get_scale_type_name, is_scale_type_name, is_y2_sync_mode } from '$lib/plot/core/types'
+  import {
+    get_scale_type_name,
+    is_scale_type_name,
+    is_y2_sync_mode,
+  } from '$lib/plot/core/types'
 
   let {
     show_controls = $bindable(false),
@@ -37,9 +41,12 @@
   }: PlotControlsProps = $props()
 
   // Range input state
-  let range_inputs: Record<AxisKey, [number | null, number | null]> = $state(
-    { x: [null, null], x2: [null, null], y: [null, null], y2: [null, null] },
-  )
+  let range_inputs: Record<AxisKey, [number | null, number | null]> = $state({
+    x: [null, null],
+    x2: [null, null],
+    y: [null, null],
+    y2: [null, null],
+  })
   let range_els = $state<Record<string, HTMLInputElement>>({})
 
   // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
@@ -53,7 +60,8 @@
     ),
   )
   let x2_includes_zero = $derived(
-    has_x2_points && auto_x2_range != null &&
+    has_x2_points &&
+      auto_x2_range != null &&
       range_spans_zero(
         x2_axis.range?.[0] ?? auto_x2_range[0],
         x2_axis.range?.[1] ?? auto_x2_range[1],
@@ -66,7 +74,8 @@
     ),
   )
   let y2_includes_zero = $derived(
-    has_y2_points && auto_y2_range != null &&
+    has_y2_points &&
+      auto_y2_range != null &&
       range_spans_zero(
         y2_axis.range?.[0] ?? auto_y2_range[0],
         y2_axis.range?.[1] ?? auto_y2_range[1],
@@ -108,16 +117,18 @@
     const parsed = value === `` ? null : Number(value)
     range_inputs[axis][bound] = Number.isFinite(parsed) ? parsed : null
     const [min, max] = range_inputs[axis]
-    const auto =
-      { x: auto_x_range, x2: auto_x2_range, y: auto_y_range, y2: auto_y2_range }[axis]
+    const auto = { x: auto_x_range, x2: auto_x2_range, y: auto_y_range, y2: auto_y2_range }[
+      axis
+    ]
     const invalid = min !== null && max !== null && min >= max
     range_els[`${axis}-min`]?.classList.toggle(`invalid`, invalid)
     range_els[`${axis}-max`]?.classList.toggle(`invalid`, invalid)
     if (invalid) return
     const axis_config = { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis }[axis]
-    const next_range = min === null && max === null
-      ? undefined
-      : [min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2
+    const next_range =
+      min === null && max === null
+        ? undefined
+        : ([min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2)
     // If auto range is undefined, only set if both min and max are provided
     if (!auto && (min === null || max === null)) return
     if (axis === `x`) x_axis = { ...axis_config, range: next_range }
@@ -149,7 +160,7 @@
 {#if show_controls}
   <ControlPane
     bind:controls_open
-    controls_class={controls_class}
+    {controls_class}
     title={controls_title}
     {toggle_props}
     {pane_props}
@@ -182,24 +193,30 @@
       style="display: flex; flex-wrap: wrap; gap: 1ex; align-items: center"
     >
       {#if x_includes_zero || x2_includes_zero || y_includes_zero || y2_includes_zero}
-        <span class="control-group" data-label="zero line">Zero line:
+        <span class="control-group" data-label="zero line"
+          >Zero line:
           {#if x_includes_zero}
             <label><input type="checkbox" bind:checked={display.x_zero_line} /> X</label>
           {/if}
           {#if x2_includes_zero}
-            <label><input type="checkbox" bind:checked={display.x2_zero_line} />
-              X2</label>
+            <label
+              ><input type="checkbox" bind:checked={display.x2_zero_line} />
+              X2</label
+            >
           {/if}
           {#if y_includes_zero}
             <label><input type="checkbox" bind:checked={display.y_zero_line} /> Y</label>
           {/if}
           {#if y2_includes_zero}
-            <label><input type="checkbox" bind:checked={display.y2_zero_line} />
-              Y2</label>
+            <label
+              ><input type="checkbox" bind:checked={display.y2_zero_line} />
+              Y2</label
+            >
           {/if}
         </span>
       {/if}
-      <span class="control-group" data-label="grid">Grid:
+      <span class="control-group" data-label="grid"
+        >Grid:
         <label><input type="checkbox" bind:checked={display.x_grid} /> X</label>
         {#if has_x2_points}
           <label><input type="checkbox" bind:checked={display.x2_grid} /> X2</label>
@@ -229,17 +246,10 @@
       }}
       style="display: flex; flex-wrap: wrap; gap: 2pt"
     >
-      {#each [
-        [`x`, `X`],
-        ...(has_x2_points ? [[`x2`, `X2`]] : []),
-        [`y`, `Y`],
-        ...(has_y2_points ? [[`y2`, `Y2`]] : []),
-      ] as
-        [axis_key, label]
-        (axis_key)
-      }
+      {#each [[`x`, `X`], ...(has_x2_points ? [[`x2`, `X2`]] : []), [`y`, `Y`], ...(has_y2_points ? [[`y2`, `Y2`]] : [])] as [axis_key, label] (axis_key)}
         {@const axis = axis_key as AxisKey}
-        <label>{label}:
+        <label
+          >{label}:
           <input
             type="number"
             value={range_inputs[axis][0] ?? ``}
@@ -248,7 +258,9 @@
             class="range-input"
             oninput={(evt) => update_range(axis, 0, evt.currentTarget.value)}
             onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget?.blur()}
-          /> to <input
+          />
+          to
+          <input
             type="number"
             value={range_inputs[axis][1] ?? ``}
             bind:this={range_els[`${axis}-max`]}
@@ -273,7 +285,8 @@
         }}
         style="display: flex; flex-wrap: wrap; gap: 1ex"
       >
-        <label>X-axis:
+        <label
+          >X-axis:
           <input
             type="number"
             min={min_ticks}
@@ -290,7 +303,8 @@
             }}
           />
         </label>
-        <label>Y-axis:
+        <label
+          >Y-axis:
           <input
             type="number"
             min={min_ticks}
@@ -327,7 +341,8 @@
       }}
       style="display: flex; flex-wrap: wrap; gap: 1ex"
     >
-      <label>X:
+      <label
+        >X:
         <select
           value={get_scale_type_name(x_axis.scale_type)}
           onchange={(evt) => {
@@ -344,7 +359,8 @@
         </select>
       </label>
       {#if has_x2_points}
-        <label>X2:
+        <label
+          >X2:
           <select
             value={get_scale_type_name(x2_axis.scale_type)}
             onchange={(evt) => {
@@ -361,7 +377,8 @@
           </select>
         </label>
       {/if}
-      <label>Y:
+      <label
+        >Y:
         <select
           value={get_scale_type_name(y_axis.scale_type)}
           onchange={(evt) => {
@@ -378,7 +395,8 @@
         </select>
       </label>
       {#if has_y2_points}
-        <label>Y2:
+        <label
+          >Y2:
           <select
             value={get_scale_type_name(y2_axis.scale_type)}
             onchange={(evt) => {
@@ -412,7 +430,8 @@
         }}
         style="display: flex; gap: 1ex; align-items: center; flex-wrap: wrap"
       >
-        <label {@attach tooltip({ content: y2_sync_tip })}>Mode:
+        <label {@attach tooltip({ content: y2_sync_tip })}
+          >Mode:
           <select
             value={current_sync.mode}
             aria-label="Y2 axis synchronization mode"
@@ -437,7 +456,8 @@
           </select>
         </label>
         {#if current_sync.mode === `align`}
-          <label>Align at:
+          <label
+            >Align at:
             <input
               type="number"
               value={current_sync.align_value ?? 0}
@@ -478,7 +498,8 @@
       class="pane-grid"
       style="grid-template-columns: 1fr 1fr"
     >
-      <label style="white-space: nowrap">X-axis:
+      <label style="white-space: nowrap"
+        >X-axis:
         <input
           type="text"
           value={x_axis.format ?? DEFAULTS.plot.x_format}
@@ -487,7 +508,8 @@
         />
       </label>
       {#if has_x2_points}
-        <label style="white-space: nowrap">X2-axis:
+        <label style="white-space: nowrap"
+          >X2-axis:
           <input
             type="text"
             value={x2_axis.format ?? DEFAULTS.plot.x2_format}
@@ -497,7 +519,8 @@
           />
         </label>
       {/if}
-      <label style="white-space: nowrap">Y-axis:
+      <label style="white-space: nowrap"
+        >Y-axis:
         <input
           type="text"
           value={y_axis.format ?? DEFAULTS.plot.y_format}
@@ -507,7 +530,8 @@
         />
       </label>
       {#if has_y2_points}
-        <label style="white-space: nowrap">Y2-axis:
+        <label style="white-space: nowrap"
+          >Y2-axis:
           <input
             type="text"
             value={y2_axis.format ?? DEFAULTS.plot.y2_format}

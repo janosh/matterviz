@@ -1,7 +1,12 @@
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { message = $bindable(), type = `info`, dismissible = false, ...rest }: {
+  let {
+    message = $bindable(),
+    type = `info`,
+    dismissible = false,
+    ...rest
+  }: {
     message?: string
     type?: `info` | `error` | `warning`
     dismissible?: boolean
@@ -17,9 +22,7 @@
   >
     {message}
     {#if dismissible}
-      <button onclick={() => (message = undefined)} aria-label="Dismiss message">
-        ✕
-      </button>
+      <button onclick={() => (message = undefined)} aria-label="Dismiss message"> ✕ </button>
     {/if}
   </div>
 {/if}

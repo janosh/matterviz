@@ -53,7 +53,11 @@
     }
 
     const lattice = {
-      matrix: [[box_size, 0, 0], [0, box_size, 0], [0, 0, box_size]] as Matrix3x3,
+      matrix: [
+        [box_size, 0, 0],
+        [0, box_size, 0],
+        [0, 0, box_size],
+      ] as Matrix3x3,
       pbc: [true, true, true] as Pbc,
       a: box_size,
       b: box_size,
@@ -71,15 +75,14 @@
 
 <p>
   g(r) describes the probability of finding an atom at distance r from a reference atom,
-  normalized by bulk density. The line at g(r) = 1 represents uniform distribution (ideal
-  gas).
+  normalized by bulk density. The line at g(r) = 1 represents uniform distribution (ideal gas).
 </p>
 
 <div class="bleed-1400">
   <h2>Element-Pair RDFs</h2>
   <p>
-    Partial RDFs show correlations between specific element pairs in NaCl: Na-Na, Na-Cl,
-    and Cl-Cl reveal the crystal structure.
+    Partial RDFs show correlations between specific element pairs in NaCl: Na-Na, Na-Cl, and
+    Cl-Cl reveal the crystal structure.
   </p>
   <section class="grid">
     <Structure structure={structures.NaCl} />
@@ -94,18 +97,12 @@
 
   <h2>Full RDF</h2>
   <p>The full RDF averages all element pairs, like experimental measurements.</p>
-  <RdfPlot
-    structures={structures.NaCl}
-    mode="full"
-    {cutoff}
-    {n_bins}
-    style="height: 500px"
-  />
+  <RdfPlot structures={structures.NaCl} mode="full" {cutoff} {n_bins} style="height: 500px" />
 
   <h2>Complex: Bi₂Zr₂O₈</h2>
   <p>
-    Cubic oxide structure (Fm3m) with partial occupancy, showing multiple element pairs
-    (Bi-Bi, Bi-Zr, Bi-O, Zr-Zr, Zr-O, O-O).
+    Cubic oxide structure (Fm3m) with partial occupancy, showing multiple element pairs (Bi-Bi,
+    Bi-Zr, Bi-O, Zr-Zr, Zr-O, O-O).
   </p>
   <section class="grid">
     <Structure structure={structures[`Bi₂Zr₂O₈`]} />
@@ -123,30 +120,26 @@
     {#each Object.keys(structures) as key, idx (key)}
       <button
         class:active={selected.includes(key)}
-        onclick={() => (selected = selected.includes(key)
-        ? selected.filter((selected_key) => selected_key !== key)
-        : [...selected, key])}
+        onclick={() =>
+          (selected = selected.includes(key)
+            ? selected.filter((selected_key) => selected_key !== key)
+            : [...selected, key])}
         style:background={selected.includes(key) ? `${PLOT_COLORS[idx]}20` : null}
       >
         {key}
       </button>
     {/each}
     <span class="separator">|</span>
-    <button
-      class:active={mode === `element_pairs`}
-      onclick={() => (mode = `element_pairs`)}
-    >
+    <button class:active={mode === `element_pairs`} onclick={() => (mode = `element_pairs`)}>
       Element Pairs
     </button>
-    <button class:active={mode === `full`} onclick={() => (mode = `full`)}>
-      Full RDF
-    </button>
+    <button class:active={mode === `full`} onclick={() => (mode = `full`)}> Full RDF </button>
     <span class="separator">|</span>
-    <label>Cutoff: <input type="range" min="3" max="12" step="0.5" bind:value={cutoff} />
-      {cutoff} Å</label>
-    <label>Bins: <input type="range" min="30" max="200" bind:value={n_bins} /> {
-        n_bins
-      }</label>
+    <label
+      >Cutoff: <input type="range" min="3" max="12" step="0.5" bind:value={cutoff} />
+      {cutoff} Å</label
+    >
+    <label>Bins: <input type="range" min="30" max="200" bind:value={n_bins} /> {n_bins}</label>
   </div>
 
   <RdfPlot
@@ -166,22 +159,21 @@
   </p>
 
   <div class="controls">
-    {#each [[`element_pairs`, `Element Pairs`], [`full`, `Full`]] as const as
-      [mode, label]
-      (mode)
-    }
-      <button
-        class:active={amorphous_mode === mode}
-        onclick={() => (amorphous_mode = mode)}
-      >
+    {#each [[`element_pairs`, `Element Pairs`], [`full`, `Full`]] as const as [mode, label] (mode)}
+      <button class:active={amorphous_mode === mode} onclick={() => (amorphous_mode = mode)}>
         {label}
       </button>
     {/each}
     <span class="separator">|</span>
-    <label>Atoms: <input type="range" min="50" max="500" step="50" bind:value={n_atoms} />
-      {n_atoms}</label>
-    <label>Box: <input type="range" min="15" max="30" bind:value={box_size} /> {box_size}
-      Å</label>
+    <label
+      >Atoms: <input type="range" min="50" max="500" step="50" bind:value={n_atoms} />
+      {n_atoms}</label
+    >
+    <label
+      >Box: <input type="range" min="15" max="30" bind:value={box_size} />
+      {box_size}
+      Å</label
+    >
   </div>
 
   <section class="grid">
@@ -205,7 +197,8 @@
   .bleed-1400 > section {
     margin: 2em 0;
   }
-  h2, p {
+  h2,
+  p {
     text-align: center;
   }
   .grid {

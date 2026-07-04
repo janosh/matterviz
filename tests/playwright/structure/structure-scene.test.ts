@@ -349,7 +349,7 @@ test.describe(`StructureScene Component Tests`, () => {
       const species = el.querySelector(`.species`) as HTMLElement
       return {
         width: tip.getBoundingClientRect().width,
-        max_width: parseFloat(getComputedStyle(tip).maxWidth),
+        max_width: Number(getComputedStyle(tip).maxWidth.replace(`px`, ``)),
         // rows = total height / single species (one-line) height
         line_count: Math.round(el.clientHeight / species.clientHeight),
       }
@@ -516,7 +516,7 @@ test.describe(`StructureScene Component Tests`, () => {
           found_disordered = true
 
           // Test partial sphere capping (closing partial spheres with flat circles) for sites with occupancy < 1
-          if (occupancy_text && parseFloat(occupancy_text) < 1) {
+          if (occupancy_text && Number(occupancy_text) < 1) {
             // Verify scene renders correctly with partial spheres (no errors)
             await expect_canvas_renders(canvas)
           }

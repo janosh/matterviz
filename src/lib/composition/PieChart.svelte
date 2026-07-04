@@ -81,14 +81,15 @@
           const outer_arc = `M ${center} ${center - radius} A ${radius} ${radius} 0 1 1 ${center} ${
             center + radius
           } A ${radius} ${radius} 0 1 1 ${center} ${center - radius} Z`
-          const path = ir > 0
-            ? `${outer_arc} M ${center} ${
-              center - ir
-            } A ${ir} ${ir} 0 1 0 ${center} ${
-              center + ir
-            } A ${ir} ${ir} 0 1 0 ${center} ${center - ir} Z`
-            : outer_arc
-          const label_text = element + (show_amounts ? String(amount) : ``) +
+          const path =
+            ir > 0
+              ? `${outer_arc} M ${center} ${center - ir} A ${ir} ${ir} 0 1 0 ${center} ${
+                  center + ir
+                } A ${ir} ${ir} 0 1 0 ${center} ${center - ir} Z`
+              : outer_arc
+          const label_text =
+            element +
+            (show_amounts ? String(amount) : ``) +
             (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
           return {
             element,
@@ -132,14 +133,15 @@
         const large_arc = angle_span > 180 ? 1 : 0
 
         // Create donut path if inner radius > 0, otherwise regular pie slice
-        const path = inner_radius_adjusted > 0
-          ? `M ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} L ${x2_inner} ${y2_inner} A ${inner_radius_adjusted} ${inner_radius_adjusted} 0 ${large_arc} 0 ${x1_inner} ${y1_inner} Z`
-          : `M ${center} ${center} L ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} Z`
+        const path =
+          inner_radius_adjusted > 0
+            ? `M ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} L ${x2_inner} ${y2_inner} A ${inner_radius_adjusted} ${inner_radius_adjusted} 0 ${large_arc} 0 ${x1_inner} ${y1_inner} Z`
+            : `M ${center} ${center} L ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} Z`
 
         // Position labels with three-tier strategy
         const is_very_thin_slice = angle_span < VERY_THIN_SLICE_THRESHOLD // Place outside
-        const is_medium_slice = angle_span >= VERY_THIN_SLICE_THRESHOLD &&
-          angle_span < MEDIUM_SLICE_THRESHOLD // Near outer edge
+        const is_medium_slice =
+          angle_span >= VERY_THIN_SLICE_THRESHOLD && angle_span < MEDIUM_SLICE_THRESHOLD // Near outer edge
 
         let label_radius: number
         let is_outside_slice = false
@@ -159,22 +161,19 @@
         // Calculate font scale based on slice size and smart text fitting
         const [min_font_scale, max_font_scale] = [1.4, 2] as const
         const scale_factor = angle_span / MAX_ANGLE_FOR_FULL_SCALE
-        const base_scale = min_font_scale +
-          scale_factor * (max_font_scale - min_font_scale)
-        const label_text = element + (show_amounts ? amount?.toString() ?? `` : ``) +
+        const base_scale = min_font_scale + scale_factor * (max_font_scale - min_font_scale)
+        const label_text =
+          element +
+          (show_amounts ? (amount?.toString() ?? ``) : ``) +
           (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
         const available_space = is_very_thin_slice
           ? outer_radius * 0.8 // More space outside the slice
           : Math.min(
-            outer_radius - inner_radius_adjusted, // Radial space
-            (angle_span * Math.PI / 180) * label_radius * 0.8, // Arc space at label radius
-          )
+              outer_radius - inner_radius_adjusted, // Radial space
+              ((angle_span * Math.PI) / 180) * label_radius * 0.8, // Arc space at label radius
+            )
 
-        const font_scale = get_chart_font_scale(
-          base_scale,
-          label_text,
-          available_space,
-        )
+        const font_scale = get_chart_font_scale(base_scale, label_text, available_space)
 
         return {
           element,
@@ -211,10 +210,10 @@
       fill={segment.color}
       stroke="white"
       stroke-width={segments.length === 1
-      ? 0
-      : hovered_element === segment.element
-      ? stroke_width + 1
-      : stroke_width}
+        ? 0
+        : hovered_element === segment.element
+          ? stroke_width + 1
+          : stroke_width}
       class="pie-segment"
       class:interactive
       class:hovered={hovered_element === segment.element}
@@ -254,15 +253,15 @@
           class:outside-slice={segment.is_outside_slice}
           style:color={segment.text_color}
         >
-          <span class="element-symbol" style:font-size="{14 * segment.font_scale}px">{
-            segment.element
-          }</span>
+          <span class="element-symbol" style:font-size="{14 * segment.font_scale}px"
+            >{segment.element}</span
+          >
           {#if show_amounts || show_percentages}
-            <sub class="amount" style:font-size="{8 * segment.font_scale}px">{
-              show_amounts ? segment.amount : ``
-            }{show_amounts && show_percentages ? `=` : ``}{
-              show_percentages ? format_num(segment.fraction, `.1~%`) : ``
-            }</sub>
+            <sub class="amount" style:font-size="{8 * segment.font_scale}px"
+              >{show_amounts ? segment.amount : ``}{show_amounts && show_percentages
+                ? `=`
+                : ``}{show_percentages ? format_num(segment.fraction, `.1~%`) : ``}</sub
+            >
           {/if}
         </div>
       </foreignObject>
@@ -285,7 +284,8 @@
   .pie-segment.interactive {
     cursor: pointer;
   }
-  .pie-segment.interactive:hover, .pie-segment.hovered {
+  .pie-segment.interactive:hover,
+  .pie-segment.hovered {
     filter: brightness(1.1);
   }
   .pie-segment.interactive:focus {

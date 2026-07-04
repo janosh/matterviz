@@ -6,11 +6,7 @@
   import ElementTile from '$lib/element/ElementTile.svelte'
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'
-  import {
-    format_oxi_state,
-    sort_by_electronegativity,
-    sort_by_hill_notation,
-  } from './format'
+  import { format_oxi_state, sort_by_electronegativity, sort_by_hill_notation } from './format'
   import type { ElementWithOxidation, OxiComposition } from './parse'
   import { oxi_composition_to_elements, parse_formula_with_oxidation } from './parse'
 
@@ -63,9 +59,7 @@
       return sorted[0] === el1.element ? -1 : 1
     },
   }
-  const sorted_elements = $derived(
-    [...parsed_elements].sort(COMPARATORS[ordering]),
-  )
+  const sorted_elements = $derived([...parsed_elements].sort(COMPARATORS[ordering]))
 
   let hovered_element = $state<ElementSymbol | null>(null)
   let tooltip_pos = $state({ x: 0, y: 0 })
@@ -97,7 +91,8 @@
     if (
       !formula_el.contains(selection.anchorNode) ||
       !formula_el.contains(selection.focusNode)
-    ) return // Selection extends outside formula, let browser handle normally
+    )
+      return // Selection extends outside formula, let browser handle normally
     event.preventDefault()
     event.clipboardData?.setData(`text/plain`, plain_text_formula)
   }
@@ -106,8 +101,8 @@
     element: ElementSymbol,
     event: MouseEvent & { currentTarget: HTMLElement },
   ) {
-    const { left, width, top, bottom, right, height } = event.currentTarget
-      .getBoundingClientRect()
+    const { left, width, top, bottom, right, height } =
+      event.currentTarget.getBoundingClientRect()
     hovered_element = element
 
     const positions = {
@@ -121,12 +116,7 @@
   }
 </script>
 
-<svelte:element
-  this={as}
-  {...rest}
-  class={[`formula`, rest.class]}
-  oncopy={handle_copy}
->
+<svelte:element this={as} {...rest} class={[`formula`, rest.class]} oncopy={handle_copy}>
   {#each sorted_elements as { element, amount, oxidation_state } (element)}
     {@const color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`}
     {@const lum = luminance(color)}
@@ -151,14 +141,16 @@
         class:light-border={lum < 0.15}
         style:color
       >
-        {element}</span>
-      <span class="script-wrapper">{#if has_oxidation}
+        {element}</span
+      >
+      <span class="script-wrapper"
+        >{#if has_oxidation}
           <sup class="oxi">{format_oxi_state(oxidation_state)}</sup>
         {/if}
         {#if amount !== 1}
-          <sub class="amt" class:no-sup={!has_oxidation}>{
-            format_num(amount, amount_format)
-          }</sub>
+          <sub class="amt" class:no-sup={!has_oxidation}
+            >{format_num(amount, amount_format)}</sub
+          >
         {/if}
       </span>
     </span>
@@ -167,8 +159,8 @@
 
 {#if hovered_elem_data}
   {@const { x, y } = tooltip_pos}
-  {@const tile_color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[hovered_elem_data.symbol] ??
-    `#666666`}
+  {@const tile_color =
+    ELEMENT_COLOR_SCHEMES[color_scheme]?.[hovered_elem_data.symbol] ?? `#666666`}
   {@const transforms = {
     top: `translate(-50%, -100%)`,
     bottom: `translateX(-50%)`,
@@ -250,7 +242,8 @@
   .script-wrapper:empty {
     display: none;
   }
-  .amt, .oxi {
+  .amt,
+  .oxi {
     font-size: var(--formula-script-font-size, 0.7em);
     line-height: var(--formula-script-inner-line-height, 1);
   }

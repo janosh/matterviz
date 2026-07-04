@@ -52,7 +52,7 @@ Items with `condition: false` or `null`/`undefined` values are hidden. Use `fmt`
   const data = [
     { title: `Melting Point`, value: 1687, unit: `K` },
     { title: `Boiling Point`, value: 3538, unit: `K` },
-    { title: `Electronegativity`, value: 1.90 },
+    { title: `Electronegativity`, value: 1.9 },
   ]
 </script>
 

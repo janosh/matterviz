@@ -107,85 +107,86 @@
     wrapper = $bindable(),
     fullscreen = $bindable(false),
     ...rest
-  }: EventHandlers & HTMLAttributes<HTMLDivElement> & {
-    // trajectory data - can be provided directly or loaded from file
-    trajectory?: TrajectoryType
-    // URL to load trajectory from (alternative to providing trajectory directly)
-    data_url?: string
-    // current step index being displayed
-    current_step_idx?: number
-    // custom function to extract plot data from trajectory frames
-    data_extractor?: TrajectoryDataExtractor
+  }: EventHandlers &
+    HTMLAttributes<HTMLDivElement> & {
+      // trajectory data - can be provided directly or loaded from file
+      trajectory?: TrajectoryType
+      // URL to load trajectory from (alternative to providing trajectory directly)
+      data_url?: string
+      // current step index being displayed
+      current_step_idx?: number
+      // custom function to extract plot data from trajectory frames
+      data_extractor?: TrajectoryDataExtractor
 
-    // file drop handlers
-    allow_file_drop?: boolean
-    // layout configuration - 'auto' (default) adapts to element size, 'horizontal'/'vertical' forces layout
-    layout?: `auto` | Orientation
-    // structure viewer props (passed to Structure component)
-    structure_props?: ComponentProps<typeof Structure>
-    // plot props (passed to ScatterPlot component)
-    scatter_props?: ComponentProps<typeof ScatterPlot>
-    // histogram props (passed to Histogram component, excluding series which is handled separately)
-    histogram_props?: Omit<ComponentProps<typeof Histogram>, `series`>
-    // spinner props (passed to Spinner component)
-    spinner_props?: ComponentProps<typeof Spinner>
-    // custom snippets for additional UI elements
-    trajectory_controls?: Snippet<[ControlsProps]>
-    // Custom error snippet for advanced error handling
-    error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
-    // Controls visibility configuration.
-    // - 'always': controls always visible
-    // - 'hover': controls visible on component hover (default)
-    // - 'never': controls never visible
-    // - object: { mode, hidden, style } for fine-grained control
-    // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'view-mode', 'fullscreen'
-    show_controls?: ShowControlsProp
-    // show/hide the fullscreen button
-    fullscreen_toggle?: FullscreenToggleProp
-    // automatically start playing when trajectory data is loaded
-    auto_play?: boolean
-    // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
-    display_mode?:
-      | `structure+scatter`
-      | `structure`
-      | `scatter`
-      | `histogram`
-      | `structure+histogram`
-    // step labels configuration for slider
-    // - positive number: number of evenly spaced ticks
-    // - negative number: spacing between ticks (e.g. -10 = every 10th step)
-    // - array: exact step indices to label
-    // - undefined: no labels
-    step_labels?: number | number[]
-    // visible properties - bindable array of property keys currently shown in the plot
-    // - controls which trajectory properties are plotted (e.g. ['energy', 'volume', 'force_max'])
-    // - bindable: reflects current visibility state and can be used for external control
-    // - if not provided, uses default visible properties (energy, force_max, stress_frobenius)
-    // - if specified properties don't exist in data, falls back to automatic selection
-    visible_properties?: string[]
-    // custom labels for trajectory properties - maps property keys to display labels
-    // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
-    // - merged with built-in trajectory_property_config
-    ELEM_PROPERTY_LABELS?: Record<string, string>
-    fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
-    fps?: number // frame rate for playback
-    // Loading options for large files
-    loading_options?: LoadingOptions
-    // Map LAMMPS atom types to element symbols (e.g. {1: 'Na', 2: 'Cl'})
-    atom_type_mapping?: AtomTypeMapping
-    // Disable plot skimming (mouse over plot doesn't update structure/step slider)
-    plot_skimming?: boolean
-    // bindable: true while the pointer is over the viewer (drives hover-scoped shortcuts)
-    hovered?: boolean
-    // bindable: whether the (structure) controls pane is currently open
-    controls_open?: boolean
-    // bindable: whether the trajectory info pane is currently open
-    info_pane_open?: boolean
-    // bindable: top-level wrapper element
-    wrapper?: HTMLDivElement
-    // bindable: fullscreen state
-    fullscreen?: boolean
-  } = $props()
+      // file drop handlers
+      allow_file_drop?: boolean
+      // layout configuration - 'auto' (default) adapts to element size, 'horizontal'/'vertical' forces layout
+      layout?: `auto` | Orientation
+      // structure viewer props (passed to Structure component)
+      structure_props?: ComponentProps<typeof Structure>
+      // plot props (passed to ScatterPlot component)
+      scatter_props?: ComponentProps<typeof ScatterPlot>
+      // histogram props (passed to Histogram component, excluding series which is handled separately)
+      histogram_props?: Omit<ComponentProps<typeof Histogram>, `series`>
+      // spinner props (passed to Spinner component)
+      spinner_props?: ComponentProps<typeof Spinner>
+      // custom snippets for additional UI elements
+      trajectory_controls?: Snippet<[ControlsProps]>
+      // Custom error snippet for advanced error handling
+      error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
+      // Controls visibility configuration.
+      // - 'always': controls always visible
+      // - 'hover': controls visible on component hover (default)
+      // - 'never': controls never visible
+      // - object: { mode, hidden, style } for fine-grained control
+      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'view-mode', 'fullscreen'
+      show_controls?: ShowControlsProp
+      // show/hide the fullscreen button
+      fullscreen_toggle?: FullscreenToggleProp
+      // automatically start playing when trajectory data is loaded
+      auto_play?: boolean
+      // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
+      display_mode?:
+        | `structure+scatter`
+        | `structure`
+        | `scatter`
+        | `histogram`
+        | `structure+histogram`
+      // step labels configuration for slider
+      // - positive number: number of evenly spaced ticks
+      // - negative number: spacing between ticks (e.g. -10 = every 10th step)
+      // - array: exact step indices to label
+      // - undefined: no labels
+      step_labels?: number | number[]
+      // visible properties - bindable array of property keys currently shown in the plot
+      // - controls which trajectory properties are plotted (e.g. ['energy', 'volume', 'force_max'])
+      // - bindable: reflects current visibility state and can be used for external control
+      // - if not provided, uses default visible properties (energy, force_max, stress_frobenius)
+      // - if specified properties don't exist in data, falls back to automatic selection
+      visible_properties?: string[]
+      // custom labels for trajectory properties - maps property keys to display labels
+      // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
+      // - merged with built-in trajectory_property_config
+      ELEM_PROPERTY_LABELS?: Record<string, string>
+      fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
+      fps?: number // frame rate for playback
+      // Loading options for large files
+      loading_options?: LoadingOptions
+      // Map LAMMPS atom types to element symbols (e.g. {1: 'Na', 2: 'Cl'})
+      atom_type_mapping?: AtomTypeMapping
+      // Disable plot skimming (mouse over plot doesn't update structure/step slider)
+      plot_skimming?: boolean
+      // bindable: true while the pointer is over the viewer (drives hover-scoped shortcuts)
+      hovered?: boolean
+      // bindable: whether the (structure) controls pane is currently open
+      controls_open?: boolean
+      // bindable: whether the trajectory info pane is currently open
+      info_pane_open?: boolean
+      // bindable: top-level wrapper element
+      wrapper?: HTMLDivElement
+      // bindable: fullscreen state
+      fullscreen?: boolean
+    } = $props()
 
   let dragover = $state(false)
   let loading = $state(false)
@@ -194,11 +195,12 @@
   let parse_warning_msg = $state<string | undefined>(undefined)
   $effect(() => {
     const warnings = trajectory?.metadata?.parse_warnings
-    parse_warning_msg = Array.isArray(warnings) && warnings.length > 0
-      ? `${warnings.length} parse warning${warnings.length > 1 ? `s` : ``}: ${
-        warnings.join(`; `)
-      }`
-      : undefined
+    parse_warning_msg =
+      Array.isArray(warnings) && warnings.length > 0
+        ? `${warnings.length} parse warning${warnings.length > 1 ? `s` : ``}: ${warnings.join(
+            `; `,
+          )}`
+        : undefined
   })
   let is_playing = $state(false)
   // requestAnimationFrame handle for the playback loop (rAF auto-pauses in background tabs and
@@ -235,9 +237,7 @@
   })
 
   // Get total frame count (supports both regular and indexed trajectories)
-  let total_frames = $derived(
-    trajectory?.total_frames || trajectory?.frames.length || 0,
-  )
+  let total_frames = $derived(trajectory?.total_frames || trajectory?.frames.length || 0)
 
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
@@ -295,7 +295,8 @@
   function cache_put(frame_idx: number, frame: TrajectoryFrame) {
     frame_cache.set(frame_idx, frame)
     let total_atoms = 0
-    for (const cached of frame_cache.values()) total_atoms += cached.structure?.sites?.length ?? 0
+    for (const cached of frame_cache.values())
+      total_atoms += cached.structure?.sites?.length ?? 0
     while (
       frame_cache.size > 1 &&
       (frame_cache.size > FRAME_CACHE_MAX || total_atoms > FRAME_CACHE_MAX_ATOMS)
@@ -388,11 +389,14 @@
 
     if (typeof step_labels === `number`) {
       if (step_labels > 0) {
-        return scaleLinear().domain([0, total_frames - 1]).nice()
+        return scaleLinear()
+          .domain([0, total_frames - 1])
+          .nice()
           .ticks(Math.min(step_labels, total_frames))
           .map((tick) => Math.round(tick))
-          .filter((tick, idx, ticks) =>
-            tick >= 0 && tick < total_frames && ticks.indexOf(tick) === idx
+          .filter(
+            (tick, idx, ticks) =>
+              tick >= 0 && tick < total_frames && ticks.indexOf(tick) === idx,
           )
       }
       if (step_labels < 0) {
@@ -415,8 +419,8 @@
 
     const custom_config: Record<string, { label: string; unit: string }> = {}
     for (const [key, label] of Object.entries(ELEM_PROPERTY_LABELS)) {
-      const existing = trajectory_property_config[key] ||
-        trajectory_property_config[key.toLowerCase()]
+      const existing =
+        trajectory_property_config[key] || trajectory_property_config[key.toLowerCase()]
       custom_config[key] = { label, unit: existing?.unit || `` }
     }
     return { ...trajectory_property_config, ...custom_config }
@@ -470,7 +474,8 @@
 
     // Only update if changed (use untrack to avoid circular dependency)
     const current = untrack(() => visible_properties) || []
-    const has_changed = visible_keys.length !== current.length ||
+    const has_changed =
+      visible_keys.length !== current.length ||
       !visible_keys.every((key, idx) => key === current[idx])
 
     if (has_changed) {
@@ -514,9 +519,7 @@
   let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
   // Check if there are any Y2 series to determine padding
-  let has_y2_series = $derived(
-    plot_series.some((srs) => srs.y_axis === `y2` && srs.visible),
-  )
+  let has_y2_series = $derived(plot_series.some((srs) => srs.y_axis === `y2` && srs.visible))
 
   // Step navigation functions
   function next_step() {
@@ -667,10 +670,7 @@
           const array_buffer = await response.arrayBuffer()
           await load_trajectory_data(array_buffer, file_info.name)
         } else {
-          console.warn(
-            `Binary file without ArrayBuffer or blob URL:`,
-            file_info.name,
-          )
+          console.warn(`Binary file without ArrayBuffer or blob URL:`, file_info.name)
         }
       } else {
         await load_trajectory_data(file_info.content, file_info.name)
@@ -692,9 +692,7 @@
 
     try {
       // Check for our custom internal file format first
-      const internal_data = event.dataTransfer?.getData(
-        `application/x-matterviz-file`,
-      )
+      const internal_data = event.dataTransfer?.getData(`application/x-matterviz-file`)
       if (internal_data) {
         const handled = await handle_internal_file_drop(internal_data)
         if (handled) return
@@ -703,9 +701,8 @@
       // Handle URL-based files (e.g. from FilePicker)
       const handled = await handle_url_drop(event, async (content, filename) => {
         current_filename = filename
-        file_size = content instanceof ArrayBuffer
-          ? content.byteLength
-          : new Blob([content]).size
+        file_size =
+          content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
         await load_trajectory_data(content, filename)
       }).catch(() => false)
 
@@ -743,16 +740,16 @@
     }
   }
 
-  $effect(() => { // Load trajectory from URL when data_url is provided
+  $effect(() => {
+    // Load trajectory from URL when data_url is provided
     if (data_url && !trajectory) {
       loading = true
       error_msg = null
 
       load_from_url(data_url, async (content, filename) => {
         current_filename = filename
-        file_size = content instanceof ArrayBuffer
-          ? content.byteLength
-          : new Blob([content]).size
+        file_size =
+          content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
         await load_trajectory_data(content, filename)
       })
         .then(() => {
@@ -790,30 +787,34 @@
       const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
 
       // Determine loading strategy based on file size
-      const bin_file_threshold = loading_options.bin_file_threshold ??
-        MAX_BIN_FILE_SIZE
-      const text_file_threshold = loading_options.text_file_threshold ??
-        MAX_TEXT_FILE_SIZE
+      const bin_file_threshold = loading_options.bin_file_threshold ?? MAX_BIN_FILE_SIZE
+      const text_file_threshold = loading_options.text_file_threshold ?? MAX_TEXT_FILE_SIZE
       if (
         (data instanceof ArrayBuffer && data_size > bin_file_threshold) ||
         (typeof data === `string` && data_size > text_file_threshold)
-      ) { // Large files: Use indexed loading
+      ) {
+        // Large files: Use indexed loading
         await load_with_indexing(data, filename)
       } else {
         // Small files: Use regular loading
         const merged_options = { ...loading_options, atom_type_mapping }
-        trajectory = await parse_trajectory_async(data, filename, (progress) => {
-          parsing_progress = progress
-        }, merged_options)
+        trajectory = await parse_trajectory_async(
+          data,
+          filename,
+          (progress) => {
+            parsing_progress = progress
+          },
+          merged_options,
+        )
       }
 
       current_step_idx = 0
       current_filename = filename
 
-      const file_size_bytes = data instanceof ArrayBuffer
-        ? data.byteLength
-        : new Blob([data]).size
-      on_file_load?.({ // emit file load event
+      const file_size_bytes =
+        data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
+      on_file_load?.({
+        // emit file load event
         trajectory,
         frame_count: trajectory?.frames.length ?? 0,
         total_atoms: trajectory?.frames[0]?.structure.sites.length ?? 0,
@@ -829,7 +830,8 @@
       current_filename = undefined
       file_size = undefined
 
-      on_error?.({ // emit error event
+      on_error?.({
+        // emit error event
         error_msg,
         filename: current_filename || undefined,
         file_size: file_size || undefined,
@@ -842,15 +844,21 @@
 
   // Load using indexed parsing for large files
   async function load_with_indexing(data: string | ArrayBuffer, filename: string) {
-    try { // Use indexed parsing for efficient large file handling
+    try {
+      // Use indexed parsing for efficient large file handling
       const merged_options = {
         use_indexing: true,
         ...loading_options,
         atom_type_mapping,
       }
-      trajectory = await parse_trajectory_async(data, filename, (progress) => {
-        parsing_progress = progress
-      }, merged_options)
+      trajectory = await parse_trajectory_async(
+        data,
+        filename,
+        (progress) => {
+          parsing_progress = progress
+        },
+        merged_options,
+      )
 
       // Keep original data for on-demand frame loads only when indexed parsing attached a
       // frame_loader. Direct-parse fallbacks (e.g. large JSON or extensionless blob:
@@ -893,8 +901,7 @@
     // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
     const target = event.target instanceof HTMLElement ? event.target : null
     const is_step_input = target?.classList.contains(`step-input`) ?? false
-    const is_input_focused =
-      target?.tagName === `INPUT` || target?.tagName === `TEXTAREA`
+    const is_input_focused = target?.tagName === `INPUT` || target?.tagName === `TEXTAREA`
 
     // Skip if typing in an input that's not our step input
     if (is_input_focused && !is_step_input) return false
@@ -933,7 +940,7 @@
       go_to_step(Math.max(0, current_step_idx - 25))
     } else if (event.key === `PageDown`) {
       go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
-    } // Interface shortcuts
+    }  // Interface shortcuts
     else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     // 'i' key handled by the TrajectoryInfoPane's built-in toggle
     // Playback speed shortcuts (only when playing)
@@ -943,14 +950,14 @@
     } else if (event.key === `-` && is_playing) {
       fps = Math.max(fps_range[0], fps - 0.2)
       on_frame_rate_change?.({ trajectory, fps })
-    } // System shortcuts
+    }  // System shortcuts
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
       // Escape key for info pane handled by DraggablePane
-    } // Number keys 0-9 - jump to percentage of trajectory
+    }  // Number keys 0-9 - jump to percentage of trajectory
     else if (event.key >= `0` && event.key <= `9`) {
-      go_to_step(Math.floor((parseInt(event.key, 10) / 10) * (total_frames - 1)))
+      go_to_step(Math.floor((Number(event.key) / 10) * (total_frames - 1)))
     } else handled = false
 
     return handled
@@ -974,8 +981,12 @@
 
 <div
   class:dragover
-  class:active={is_playing || structure_info_open || controls_open ||
-  scatter_controls.open || trajectory_export_open || info_pane_open}
+  class:active={is_playing ||
+    structure_info_open ||
+    controls_open ||
+    scatter_controls.open ||
+    trajectory_export_open ||
+    info_pane_open}
   bind:this={wrapper}
   bind:clientWidth={element_size.width}
   bind:clientHeight={element_size.height}
@@ -985,13 +996,17 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({ allow: () => allow_file_drop, set_dragover: (over) => dragover = over })}
+  {...drag_over_handlers({
+    allow: () => allow_file_drop,
+    set_dragover: (over) => (dragover = over),
+  })}
   onclick={handle_click_outside}
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   class={[`trajectory`, actual_layout, rest.class]}
   class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&
-  actual_show_plot && show_structure}
+    actual_show_plot &&
+    show_structure}
 >
   {#if loading}
     {@const text = parsing_progress
@@ -1003,11 +1018,7 @@
       {...spinner_props}
     />
   {:else if error_msg}
-    <TrajectoryError
-      {error_msg}
-      on_dismiss={() => (error_msg = null)}
-      {error_snippet}
-    />
+    <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} {error_snippet} />
   {:else if trajectory}
     {#if parse_warning_msg}
       <StatusMessage
@@ -1019,17 +1030,14 @@
     {/if}
     <!-- Trajectory Controls -->
     {#if controls_config.mode !== `never`}
-      <div
-        class="trajectory-controls {controls_config.class}"
-        style={controls_config.style}
-      >
+      <div class="trajectory-controls {controls_config.class}" style={controls_config.style}>
         {#if trajectory_controls}
           {@render trajectory_controls({
-        trajectory,
-        current_step_idx,
-        total_frames: total_frames,
-        on_step_change: go_to_step,
-      })}
+            trajectory,
+            current_step_idx,
+            total_frames: total_frames,
+            on_step_change: go_to_step,
+          })}
         {:else}
           {#if current_filename && controls_config.visible(`filename`)}
             <button
@@ -1040,7 +1048,7 @@
                 if (current_filename) {
                   navigator.clipboard.writeText(current_filename)
                   filename_copied = true
-                  setTimeout(() => filename_copied = false, 1000)
+                  setTimeout(() => (filename_copied = false), 1000)
                 }
               }}
             >
@@ -1111,9 +1119,8 @@
                 {#if step_label_positions.length > 0}
                   <div class="step-labels">
                     {#each step_label_positions as step_idx (step_idx)}
-                      {@const position_percent = total_frames > 1
-              ? (step_idx / (total_frames - 1)) * 100
-              : 0}
+                      {@const position_percent =
+                        total_frames > 1 ? (step_idx / (total_frames - 1)) * 100 : 0}
                       {@const adjusted_position = 1.5 + (position_percent * (100 - 2)) / 100}
                       <div class="step-tick" style:left="{adjusted_position}%"></div>
                       <div class="step-label" style:left="{adjusted_position}%">
@@ -1178,8 +1185,7 @@
               />
             {/if}
             <!-- Display mode dropdown -->
-            {#if plot_series.length > 0 &&
-          controls_config.visible(`view-mode`)}
+            {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
               <div class="view-mode-dropdown-wrapper">
                 <button
                   onclick={() => (view_mode_dropdown_open = !view_mode_dropdown_open)}
@@ -1189,40 +1195,21 @@
                   style="background-color: transparent; padding: 0"
                 >
                   <Icon
-                    icon={({
-                      structure: `Atom`,
-                      'structure+scatter': `TwoColumns`,
-                      'structure+histogram': `TwoColumns`,
-                      scatter: `ScatterPlot`,
-                      histogram: `Histogram`,
-                    } as const)[display_mode]}
+                    icon={(
+                      {
+                        structure: `Atom`,
+                        'structure+scatter': `TwoColumns`,
+                        'structure+histogram': `TwoColumns`,
+                        scatter: `ScatterPlot`,
+                        histogram: `Histogram`,
+                      } as const
+                    )[display_mode]}
                   />
                   <Icon icon={view_mode_dropdown_open ? `ArrowUp` : `ArrowDown`} />
                 </button>
                 {#if view_mode_dropdown_open}
                   <div class="view-mode-dropdown">
-                    {#each [
-              { mode: `structure`, icon: `Atom`, label: `Structure-only` },
-              {
-                mode: `structure+scatter`,
-                icon: `TwoColumns`,
-                label: `Structure + Scatter`,
-              },
-              {
-                mode: `structure+histogram`,
-                icon: `TwoColumns`,
-                label: `Structure + Histogram`,
-              },
-              { mode: `scatter`, icon: `ScatterPlot`, label: `Scatter-only` },
-              {
-                mode: `histogram`,
-                icon: `Histogram`,
-                label: `Histogram-only`,
-              },
-            ] as const as
-                      option
-                      (option.mode)
-                    }
+                    {#each [{ mode: `structure`, icon: `Atom`, label: `Structure-only` }, { mode: `structure+scatter`, icon: `TwoColumns`, label: `Structure + Scatter` }, { mode: `structure+histogram`, icon: `TwoColumns`, label: `Structure + Histogram` }, { mode: `scatter`, icon: `ScatterPlot`, label: `Scatter-only` }, { mode: `histogram`, icon: `Histogram`, label: `Histogram-only` }] as const as option (option.mode)}
                       <button
                         class="view-mode-option"
                         class:selected={display_mode === option.mode}
@@ -1293,7 +1280,7 @@
             style="height: 100%"
             {...scatter_props}
             legend={{
-              ...scatter_props.legend ?? {},
+              ...(scatter_props.legend ?? {}),
               on_toggle: (series_idx: number) => {
                 handle_legend_toggle(series_idx)
                 scatter_props.legend?.on_toggle?.(series_idx)
@@ -1301,12 +1288,7 @@
             }}
             class={[`plot`, scatter_props.class]}
           >
-            {#snippet tooltip({
-              x,
-              y,
-              metadata,
-              label,
-            }: ScatterHandlerProps)}
+            {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
               Step: {Math.round(x)}<br />
               {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
@@ -1353,8 +1335,8 @@
     <EmptyState class="trajectory-empty-state">
       <h3>Load Trajectory</h3>
       <p>
-        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, .traj, .h5)
-        or provide trajectory data via props
+        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, .traj, .h5) or
+        provide trajectory data via props
       </p>
       <strong style="display: block; margin-block: 1em 1ex">Supported formats:</strong>
       <ul>
@@ -1366,9 +1348,7 @@
         <li>HDF5 trajectory files (.h5, .hdf5)</li>
         <li>Compressed files (.gz)</li>
       </ul>
-      <p>
-        💡 Force vectors will be automatically displayed when present in trajectory data
-      </p>
+      <p>💡 Force vectors will be automatically displayed when present in trajectory data</p>
     </EmptyState>
   {/if}
 </div>
@@ -1478,7 +1458,8 @@
   /* nudge control-button icons slightly larger via transform */
   .nav-section button,
   .view-mode-button,
-  .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle, .fullscreen-button)) {
+  .info-section
+    :global(:is(.trajectory-info-toggle, .trajectory-export-toggle, .fullscreen-button)) {
     transform: scale(1.15);
   }
   .step-section {
@@ -1571,10 +1552,7 @@
     &.playing {
       background: var(--traj-pause-btn-bg, var(--btn-bg, rgba(0, 0, 0, 0.1)));
       &:hover:not(:disabled) {
-        background: var(
-          --traj-pause-btn-bg-hover,
-          var(--btn-bg-hover, rgba(0, 0, 0, 0.1))
-        );
+        background: var(--traj-pause-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.1)));
       }
     }
   }
@@ -1629,7 +1607,9 @@
     right: 0;
     background: var(--surface-bg);
     border-radius: 4px;
-    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+    box-shadow:
+      0 8px 16px -4px rgba(0, 0, 0, 0.3),
+      0 4px 8px -2px rgba(0, 0, 0, 0.1);
   }
   .view-mode-option {
     display: flex;

@@ -10,12 +10,12 @@ import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/he
 // Parse the 7-line XDATCAR header at lines[start]: title, scale factor, 3 lattice rows
 // (multiplied by scale), element names, element counts
 function parse_xdatcar_header(lines: string[], start: number) {
-  const scale = parseFloat(lines[start + 1])
+  const scale = Number(lines[start + 1])
   const rows = lines.slice(start + 2, start + 5).map((line) =>
     line
       .trim()
       .split(/\s+/)
-      .map((val) => parseFloat(val) * scale),
+      .map((val) => Number(val) * scale),
   )
   const names = lines[start + 5].trim().split(/\s+/)
   const counts = lines[start + 6].trim().split(/\s+/).map(Number)
@@ -83,7 +83,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     const config_line = lines[config_idx]
     line_idx = config_idx + 1
     const step_match = /configuration=\s*(?<step>\d+)/.exec(config_line)
-    const step = step_match ? parseInt(step_match[1], 10) : frames.length + 1
+    const step = step_match ? Math.trunc(Number(step_match[1])) : frames.length + 1
 
     const positions = []
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {

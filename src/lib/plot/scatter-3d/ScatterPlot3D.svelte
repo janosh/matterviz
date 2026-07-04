@@ -111,7 +111,7 @@
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
     color_scale?: ColorScaleConfig | D3InterpolateName
-    color_bar?: ComponentProps<typeof ColorBar> & { margin?: number | Sides } | null
+    color_bar?: (ComponentProps<typeof ColorBar> & { margin?: number | Sides }) | null
     size_scale?: SizeScaleConfig
     legend?: LegendConfig | null
     camera_position?: Vec3
@@ -142,9 +142,7 @@
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
-    header_controls?: Snippet<
-      [{ height: number; width: number; fullscreen: boolean }]
-    >
+    header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     controls_extra?: Snippet
   } = $props()
 
@@ -152,7 +150,7 @@
 
   // Track mounted state to avoid SSR/hydration mismatch with Canvas
   let mounted = $state(false)
-  onMount(() => mounted = true)
+  onMount(() => (mounted = true))
 
   const series_visibility_keys = $derived.by((): string[] => {
     const id_counts = new Map<string | number, number>()
@@ -182,8 +180,9 @@
     }
   })
   let series_visibility = $derived(
-    series.map((srs, idx) =>
-      visibility_overrides.get(series_visibility_keys[idx]) ?? srs?.visible ?? true
+    series.map(
+      (srs, idx) =>
+        visibility_overrides.get(series_visibility_keys[idx]) ?? srs?.visible ?? true,
     ),
   )
 
@@ -211,16 +210,14 @@
 
   // Collect all color values for color bar
   let all_color_values = $derived(
-    series.filter(Boolean).flatMap((srs) =>
-      srs.color_values?.filter((val): val is number => val != null) ?? []
-    ),
+    series
+      .filter(Boolean)
+      .flatMap((srs) => srs.color_values?.filter((val): val is number => val != null) ?? []),
   )
 
   let auto_color_range = $derived(calculate_domain(all_color_values))
 
-  let color_scale_fn = $derived(
-    create_color_scale(normalized_color_scale, auto_color_range),
-  )
+  let color_scale_fn = $derived(create_color_scale(normalized_color_scale, auto_color_range))
 
   // Legend data
   let legend_data = $derived(
@@ -236,10 +233,9 @@
         display_style: {
           symbol_type: `Circle` as const,
           symbol_color: srs?.point_style
-            ? (Array.isArray(srs.point_style)
-              ? srs.point_style[0]?.fill
-              : srs.point_style?.fill) ??
-              series_color
+            ? ((Array.isArray(srs.point_style)
+                ? srs.point_style[0]?.fill
+                : srs.point_style?.fill) ?? series_color)
             : series_color,
         },
         has_explicit_label: Boolean(srs?.label),
@@ -383,9 +379,9 @@
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0}
       {@const color_domain = [
-      normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
-      normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
-    ] as Vec2}
+        normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
+        normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
+      ] as Vec2}
       <ColorBar
         tick_labels={4}
         tick_side="primary"
@@ -393,7 +389,8 @@
         color_scale_domain={color_domain}
         scale_type={normalized_color_scale.type}
         range={color_domain?.every((val) => val != null) ? color_domain : undefined}
-        wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ?? ``}"
+        wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ??
+          ``}"
         bar_style="width: 200px; height: 16px; {color_bar?.style ?? ``}"
         {...color_bar}
       />
@@ -500,7 +497,9 @@
   div.scatter-3d :global(.pane-toggle),
   div.scatter-3d .header-controls {
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
   div.scatter-3d:hover :global(.pane-toggle),
   div.scatter-3d:hover .header-controls,

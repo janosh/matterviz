@@ -68,7 +68,8 @@
       !(current_target instanceof Node) ||
       !(next_target instanceof Node) ||
       !current_target.contains(next_target)
-    ) menu_open = false
+    )
+      menu_open = false
   }
 
   function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
@@ -113,9 +114,9 @@
         style="--spinner-border-width: 2px; --spinner-size: 1em; --spinner-margin: 0; display: inline-block; vertical-align: middle"
       />
     {:else}
-      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{
-        format_supercell_label(supercell_scaling)
-      }
+      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{format_supercell_label(
+        supercell_scaling,
+      )}
     {/if}
   </button>
 
@@ -131,8 +132,8 @@
           {@const disabled = type !== `original` && !sym_data}
           {@const label = cell_labels[type]}
           {@const tooltip_text = disabled
-          ? `${cell_tooltips[type]} - requires symmetry data`
-          : cell_tooltips[type]}
+            ? `${cell_tooltips[type]} - requires symmetry data`
+            : cell_tooltips[type]}
           <button
             class="cell-type-btn"
             class:selected={cell_type === type}
@@ -282,16 +283,8 @@
   }
   .cell-type-btn.selected {
     color: var(--cell-select-accent);
-    background: color-mix(
-      in srgb,
-      var(--cell-select-accent) 18%,
-      var(--cell-select-surface)
-    );
-    border-color: color-mix(
-      in srgb,
-      var(--cell-select-accent) 45%,
-      var(--cell-select-border)
-    );
+    background: color-mix(in srgb, var(--cell-select-accent) 18%, var(--cell-select-surface));
+    border-color: color-mix(in srgb, var(--cell-select-accent) 45%, var(--cell-select-border));
   }
   .cell-type-btn.disabled {
     opacity: 0.4;
@@ -319,16 +312,8 @@
   }
   .preset-btn.selected {
     color: var(--cell-select-accent);
-    background: color-mix(
-      in srgb,
-      var(--cell-select-accent) 18%,
-      var(--cell-select-surface)
-    );
-    border-color: color-mix(
-      in srgb,
-      var(--cell-select-accent) 45%,
-      var(--cell-select-border)
-    );
+    background: color-mix(in srgb, var(--cell-select-accent) 18%, var(--cell-select-surface));
+    border-color: color-mix(in srgb, var(--cell-select-accent) 45%, var(--cell-select-border));
   }
 
   .custom-input-row {

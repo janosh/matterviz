@@ -144,8 +144,10 @@
 
   // Derive visibility counts for display (reactive without effects)
   let basic_visible = $derived(
-    basic_columns.filter((col) => col.visible !== false).map((col) => col.label).join(`, `) ||
-      `none`,
+    basic_columns
+      .filter((col) => col.visible !== false)
+      .map((col) => col.label)
+      .join(`, `) || `none`,
   )
 </script>
 
@@ -155,8 +157,7 @@
 
 <h1>ToggleMenu Component Demo</h1>
 <p>
-  A flexible toggle menu supporting grouped sections, collapsible headers, and disabled
-  states.
+  A flexible toggle menu supporting grouped sections, collapsible headers, and disabled states.
 </p>
 
 <section class="demo-grid">
@@ -167,7 +168,8 @@
       <ToggleMenu bind:columns={basic_columns} bind:column_panel_open={basic_open} />
     </div>
     <div class="state-display">
-      <strong>Visible:</strong> {basic_visible}
+      <strong>Visible:</strong>
+      {basic_visible}
     </div>
   </div>
 
@@ -182,7 +184,8 @@
       />
     </div>
     <div class="state-display">
-      <strong>Collapsed sections:</strong> {grouped_collapsed.join(`, `) || `none`}
+      <strong>Collapsed sections:</strong>
+      {grouped_collapsed.join(`, `) || `none`}
     </div>
   </div>
 
@@ -190,18 +193,14 @@
     <h2>3. With Disabled Items</h2>
     <p>Some toggles are disabled and cannot be changed. Hover for tooltips.</p>
     <div class="demo-container">
-      <ToggleMenu
-        bind:columns={disabled_columns}
-        bind:column_panel_open={disabled_open}
-      />
+      <ToggleMenu bind:columns={disabled_columns} bind:column_panel_open={disabled_open} />
     </div>
     <div class="state-display">
       <strong>Disabled:</strong>
-      {
-        disabled_columns.filter((col) => col.disabled).map((col) => col.label).join(
-          `, `,
-        ) || `none`
-      }
+      {disabled_columns
+        .filter((col) => col.disabled)
+        .map((col) => col.label)
+        .join(`, `) || `none`}
     </div>
   </div>
 
@@ -240,15 +239,16 @@
       />
     </div>
     <div class="state-display">
-      <strong>Collapsed:</strong> {many_groups_collapsed.join(`, `) || `none`}
+      <strong>Collapsed:</strong>
+      {many_groups_collapsed.join(`, `) || `none`}
     </div>
   </div>
 
   <div class="demo-card wide">
     <h2>7. Multi-column Sections</h2>
     <p>
-      With n_columns=3, each section header spans the full width and items fill a 3-column
-      grid below it.
+      With n_columns=3, each section header spans the full width and items fill a 3-column grid
+      below it.
     </p>
     <div class="demo-container">
       <ToggleMenu
@@ -259,7 +259,8 @@
       />
     </div>
     <div class="state-display">
-      <strong>Collapsed:</strong> {multicolumn_collapsed.join(`, `) || `none`}
+      <strong>Collapsed:</strong>
+      {multicolumn_collapsed.join(`, `) || `none`}
     </div>
   </div>
 </section>

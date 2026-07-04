@@ -44,18 +44,16 @@
       .map((card) => ({
         ...card,
         rows: card.rows.filter(({ label, value }) =>
-          `${card.title} ${label} ${value}`.toLowerCase().includes(filter)
+          `${card.title} ${label} ${value}`.toLowerCase().includes(filter),
         ),
       }))
       .filter(({ rows }) => rows.length > 0)
   })
 
-  const copy_row = (
-    card_title: string,
-    row: InfoPaneRow,
-    row_idx: number,
-  ): Promise<void> => copy(`${row.label}: ${row.value}`, row_key(card_title, row, row_idx))
+  const copy_row = (card_title: string, row: InfoPaneRow, row_idx: number): Promise<void> =>
+    copy(`${row.label}: ${row.value}`, row_key(card_title, row, row_idx))
 </script>
+
 {#if show_filter}
   <input
     class="info-filter"
@@ -120,10 +118,9 @@
   }
   .info-row {
     display: grid;
-    grid-template-columns: minmax(var(--row-label-min), var(--row-label-max, 0.8fr)) minmax(
-        0,
-        1fr
-      ) auto;
+    grid-template-columns:
+      minmax(var(--row-label-min), var(--row-label-max, 0.8fr)) minmax(0, 1fr)
+      auto;
     align-items: center;
     gap: 5pt;
     padding: var(--info-row-padding, 1pt 0);

@@ -80,7 +80,7 @@ export function normalize_spacegroup(spacegroup: number | string): number | null
   }
   const from_symbol = SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
   if (from_symbol !== undefined) return from_symbol
-  const parsed = parseInt(spacegroup, 10)
+  const parsed = Math.trunc(Number(spacegroup))
   return isNaN(parsed) ? null : normalize_spacegroup(parsed)
 }
 

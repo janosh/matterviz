@@ -3437,7 +3437,7 @@ describe(`Coordinate Normalization`, () => {
     const result = parse_any_structure(JSON.stringify(make_raw_structure(abc)), `test.json`)
     expect(result).not.toBeNull()
     expected.forEach((val, idx) => expect(result?.sites[0].abc[idx]).toBeCloseTo(val, 10))
-    expect_abc_in_unit_cell(result?.sites[0] as { abc: number[] })
+    expect_abc_in_unit_cell(result?.sites[0])
   })
 
   // Test nested pymatgen structures from Materials Project API format
@@ -3524,7 +3524,7 @@ describe(`Coordinate Normalization`, () => {
     }
     const result = parse_any_structure(JSON.stringify(hexagonal), `hex.json`)
     expect(result).not.toBeNull()
-    expect_abc_in_unit_cell(result?.sites[0] as { abc: number[] })
+    expect_abc_in_unit_cell(result?.sites[0])
     if (result && `lattice` in result && result.lattice) {
       expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
     }

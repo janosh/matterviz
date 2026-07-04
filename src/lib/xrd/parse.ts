@@ -40,7 +40,8 @@ const query_first_number = (
   ok: (val: number) => boolean = () => true,
 ): number | null => {
   for (const tag of tags) {
-    const val = parseFloat(doc.querySelector(tag)?.textContent ?? ``)
+    const text = doc.querySelector(tag)?.textContent?.trim()
+    const val = text ? Number(text) : NaN
     if (!isNaN(val) && ok(val)) return val
   }
   return null
@@ -52,7 +53,7 @@ function extract_header_value(lines: string[], key_pattern: RegExp): number | nu
   for (const line of lines) {
     const match = line.match(key_pattern)
     if (match?.[1]) {
-      const val = parseFloat(match[1])
+      const val = Number(match[1])
       if (!isNaN(val)) return val
     }
   }
@@ -154,8 +155,8 @@ export function parse_xy_file(content: string): XrdPattern | null {
     const parts = trimmed.split(/[\s,]+/).filter(Boolean)
     if (parts.length < 2) continue
 
-    const two_theta = parseFloat(parts[0])
-    const intensity = parseFloat(parts[1])
+    const two_theta = Number(parts[0])
+    const intensity = Number(parts[1])
 
     if (!isNaN(two_theta) && !isNaN(intensity)) {
       x_values.push(two_theta)
@@ -321,8 +322,8 @@ export function parse_gsas_file(content: string): XrdPattern | null {
       bin_type = bank_match[2].toUpperCase()
       // For CONST type: BCOEF1 is start*100 (centidegrees), BCOEF2 is step*100
       if (bin_type === `CONST`) {
-        start = parseFloat(bank_match[3]) / 100 // Convert centidegrees to degrees
-        step = parseFloat(bank_match[4]) / 100
+        start = Number(bank_match[3]) / 100 // Convert centidegrees to degrees
+        step = Number(bank_match[4]) / 100
       } else if (bin_type !== `FXYE`) {
         // Other bin types like RALF (time-of-flight) are not fully supported
         console.warn(
@@ -418,13 +419,13 @@ function parse_bruker_raw_v1(view: DataView, bytes: Uint8Array): XrdPattern | nu
     const step_match = /STEP\s*=\s*(?<value>[\d.+-]+)/i.exec(header_text)
     const count_match = /(?:COUNT|POINTS|NPTS)\s*=\s*(?<value>\d+)/i.exec(header_text)
 
-    const start = start_match ? parseFloat(start_match[1]) : 0
-    const step = step_match ? parseFloat(step_match[1]) : DEFAULT_STEP_SIZE
+    const start = start_match ? Number(start_match[1]) : 0
+    const step = step_match ? Number(step_match[1]) : DEFAULT_STEP_SIZE
 
     // Find where binary data starts (after header)
     let data_offset = 512
     if (count_match) {
-      const expected_count = parseInt(count_match[1], 10)
+      const expected_count = Math.trunc(Number(count_match[1]))
       // Binary data is typically 4 bytes per intensity (float32)
       data_offset = bytes.length - expected_count * 4
     }
@@ -497,9 +498,9 @@ function parse_rigaku_raw_file(data: ArrayBuffer): XrdPattern | null {
 
     if (!start_match && !step_match && !count_match) return null // Not a recognizable Rigaku format
 
-    const start = start_match ? parseFloat(start_match[1]) : 0
-    const step = step_match ? parseFloat(step_match[1]) : DEFAULT_STEP_SIZE
-    const expected_count = count_match ? parseInt(count_match[1], 10) : 0
+    const start = start_match ? Number(start_match[1]) : 0
+    const step = step_match ? Number(step_match[1]) : DEFAULT_STEP_SIZE
+    const expected_count = count_match ? Math.trunc(Number(count_match[1])) : 0
 
     // Find binary data section
     // Rigaku typically stores intensities as 32-bit floats or integers
@@ -645,7 +646,7 @@ function extract_scan_parameters_xml(
     const intensity_elements = doc.querySelectorAll(`I, Count`)
     if (intensity_elements.length > 0) {
       intensities = Array.from(intensity_elements)
-        .map((el) => parseFloat(el.textContent || ``))
+        .map((el) => Number(el.textContent?.trim() || NaN))
         .filter((val) => !isNaN(val))
     }
   }
@@ -666,9 +667,9 @@ function extract_scan_parameters_xml(
         const parts = text.split(`,`)
         // Need at least 5 columns: time, flag, 2Theta, Theta/Omega, Intensity
         if (parts.length >= 5) {
-          const two_theta = parseFloat(parts[2])
+          const two_theta = Number(parts[2])
           // Intensity is always the last column
-          const intensity = parseFloat(parts[parts.length - 1])
+          const intensity = Number(parts[parts.length - 1])
           if (!isNaN(two_theta) && !isNaN(intensity)) {
             two_theta_values.push(two_theta)
             intensities.push(intensity)
@@ -718,7 +719,7 @@ function extract_scan_parameters_xml(
     for (const tag of end_candidates) {
       const el = doc.querySelector(tag)
       if (el?.textContent) {
-        const end_val = parseFloat(el.textContent)
+        const end_val = Number(el.textContent)
         if (!isNaN(end_val) && end_val > start_angle && intensities.length > 1) {
           step_size = (end_val - start_angle) / (intensities.length - 1)
           break
@@ -753,8 +754,8 @@ export function parse_xrdml_file(content: string): XrdPattern | null {
     const end_el = two_theta_positions.querySelector(`endPosition`)
     if (!start_el?.textContent || !end_el?.textContent) return null
 
-    const start_angle = parseFloat(start_el.textContent)
-    const end_angle = parseFloat(end_el.textContent)
+    const start_angle = Number(start_el.textContent)
+    const end_angle = Number(end_el.textContent)
     if (isNaN(start_angle) || isNaN(end_angle)) return null
 
     // Extract intensities
@@ -811,7 +812,7 @@ export async function parse_xrd_file(
 
   // Helper to get text content
   const get_text = (): string =>
-    typeof content === `string` ? content : new TextDecoder().decode(content as BufferSource)
+    typeof content === `string` ? content : new TextDecoder().decode(content)
 
   // Helper to get binary content
   const get_buffer = (): ArrayBuffer => {

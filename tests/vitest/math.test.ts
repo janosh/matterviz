@@ -130,7 +130,7 @@ describe(`euclidean_dist`, () => {
       desc: `identical points`,
     },
   ])(`should calculate $desc correctly`, ({ point1, point2, expected }) => {
-    const result = math.euclidean_dist(point1 as Vec3, point2 as Vec3)
+    const result = math.euclidean_dist(point1, point2)
     expect(result).toBeCloseTo(expected, 6)
   })
 })
@@ -141,8 +141,9 @@ test.each([
   [[1, 2, 3], [4, 5, 6], [5, 7, 9]],
   [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [8, 10, 12, 14, 16, 18]],
 ])(`add vectors`, (vec1, vec2, expected) => {
-  expect(math.add(vec1, vec2)).toEqual(expected)
-  expect(Math.hypot(...math.subtract(math.add(vec1, vec2), expected))).toBe(0)
+  const sum = math.add(vec1, vec2)
+  expect(sum).toEqual(expected)
+  expect(Math.hypot(...math.subtract(sum, expected))).toBe(0)
 })
 
 test(`add function comprehensive`, () => {

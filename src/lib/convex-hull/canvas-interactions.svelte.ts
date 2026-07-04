@@ -181,9 +181,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   const handle_wheel = (event: WheelEvent) => {
     event.preventDefault()
-    inputs.set_zoom(
-      Math.max(zoom_min, Math.min(zoom_max, inputs.zoom() * (event.deltaY > 0 ? 0.98 : 1.02))),
-    )
+    const zoomed = inputs.zoom() * (event.deltaY > 0 ? 0.98 : 1.02)
+    inputs.set_zoom(Math.max(zoom_min, Math.min(zoom_max, zoomed)))
   }
 
   const handle_hover = (event: MouseEvent) => {

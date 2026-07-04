@@ -159,7 +159,7 @@ export interface PhonopyData {
 // Parse a coordinate value that might be in various scientific notation formats
 function parse_coordinate(str: string): number {
   const normalized = normalize_scientific_notation(str.trim())
-  const value = parseFloat(normalized)
+  const value = Number(normalized)
   if (isNaN(value)) throw new Error(`Invalid coordinate value: ${str}`)
   return value
 }
@@ -322,7 +322,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
     // Detect if this is VASP 5+ format (has element symbols)
     // Try to parse the first token as a number - if it succeeds, it's VASP 4 format
     const first_token = lines[line_index].trim().split(/\s+/)[0]
-    const first_token_as_number = parseInt(first_token, 10)
+    const first_token_as_number = Number(first_token)
     const has_element_symbols = isNaN(first_token_as_number)
 
     if (has_element_symbols) {
@@ -333,7 +333,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       for (let lookahead_idx = 1; lookahead_idx < 10; lookahead_idx++) {
         if (line_index + lookahead_idx >= lines.length) break
         const next_line_first_token = lines[line_index + lookahead_idx].trim().split(/\s+/)[0]
-        const next_token_as_number = parseInt(next_line_first_token, 10)
+        const next_token_as_number = Number(next_line_first_token)
         if (!isNaN(next_token_as_number)) {
           symbol_lines = lookahead_idx
           break
@@ -490,7 +490,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
     }
 
     // Parse number of atoms (line 1)
-    const num_atoms = parseInt(lines[0].trim(), 10)
+    const num_atoms = Math.trunc(Number(lines[0].trim()))
     if (isNaN(num_atoms) || num_atoms <= 0) {
       diag_error(`Invalid number of atoms in XYZ file`)
       return null
@@ -629,15 +629,15 @@ const parse_symmetry_expression = (
       // Fraction
       const parts = num_str.split(`/`)
       if (parts.length === 2) {
-        const numerator = parseFloat(parts[0])
-        const denominator = parseFloat(parts[1])
+        const numerator = Number(parts[0])
+        const denominator = Number(parts[1])
         if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
           translation += sign * (numerator / denominator)
         }
       }
     } else {
       // Integer or decimal
-      const val = parseFloat(num_str)
+      const val = Number(num_str)
       if (!isNaN(val)) {
         translation += sign * val
       }
@@ -709,7 +709,7 @@ const extract_cif_cell_parameters = (text: string, type: string, strict = true):
         if (strict) throw new Error(`Invalid CIF cell parameter line format: ${line}`)
         return null
       }
-      const value = parseFloat(tokens[1].split(`(`)[0])
+      const value = Number(tokens[1].split(`(`)[0])
       if (isNaN(value)) {
         if (strict) throw new Error(`Invalid CIF cell parameter in line: ${line}`)
         return null // Return null for invalid values in non-strict mode
@@ -816,7 +816,7 @@ const parse_cif_atom_data = (
       if (idx === undefined) throw new Error(`Invalid coordinate index`)
       const coord_str = raw_data[idx]
       if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
-      const coord = parseFloat(coord_str.split(`(`)[0])
+      const coord = Number(coord_str.split(`(`)[0])
       if (isNaN(coord)) throw new Error(`Invalid coordinate: ${coord_str}`)
       return coord
     }),
@@ -825,7 +825,7 @@ const parse_cif_atom_data = (
 
   const occu =
     occupancy >= 0 && raw_data[occupancy]
-      ? parseFloat(raw_data[occupancy].split(`(`)[0]) || 1.0
+      ? Number(raw_data[occupancy].split(`(`)[0]) || 1.0
       : 1.0
 
   const from_symbol =
@@ -1003,7 +1003,7 @@ export function parse_cif(
           // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
           const match = /^(?<element>[A-Z][a-z]*)/.exec(toks[sym_idx])
           const sym = match ? match[1] : toks[sym_idx]
-          const num = parseInt(toks[num_idx], 10)
+          const num = Math.trunc(Number(toks[num_idx]))
           // sum rows that normalize to the same element (e.g. Fe2+ and Fe3+ → Fe)
           if (sym && !Number.isNaN(num)) {
             atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + num
@@ -1379,7 +1379,7 @@ function parse_structure_file_impl(
   }
 
   // XYZ format detection: first line should be a number, second line is comment
-  const first_line_number = parseInt(lines[0].trim(), 10)
+  const first_line_number = Math.trunc(Number(lines[0].trim()))
   if (!isNaN(first_line_number) && first_line_number > 0) {
     // Check if this looks like XYZ format
     if (lines.length >= first_line_number + 2) {
@@ -1394,8 +1394,9 @@ function parse_structure_file_impl(
 
           // Check if first token looks like an element symbol (not a number)
           // and the next 3 tokens look like coordinates (numbers)
-          const is_element_symbol = isNaN(parseInt(first_token, 10)) && first_token.length <= 3
-          const are_coordinates = coords.every((coord) => !isNaN(parseFloat(coord)))
+          const is_element_symbol =
+            isNaN(Math.trunc(Number(first_token))) && first_token.length <= 3
+          const are_coordinates = coords.every((coord) => !isNaN(Number(coord)))
 
           if (is_element_symbol && are_coordinates) {
             // First token is likely an element symbol, likely XYZ
@@ -1408,9 +1409,10 @@ function parse_structure_file_impl(
 
   // POSCAR format detection: look for typical structure
   if (lines.length >= 8) {
-    const second_line_number = parseFloat(lines[1].trim())
+    // Guard against blank lines: Number(``) is 0, not NaN
+    const second_line = lines[1].trim()
     // Second line is a number (scale factor), likely POSCAR
-    if (!isNaN(second_line_number)) return parse_poscar(content)
+    if (second_line && !isNaN(Number(second_line))) return parse_poscar(content)
   }
 
   // CIF format detection: look for CIF-specific keywords

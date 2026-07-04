@@ -5,11 +5,7 @@
   import type { FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import type {
-    BandGridData,
-    FermiFileLoadData,
-    FermiSurfaceData,
-  } from '$lib/fermi-surface'
+  import type { BandGridData, FermiFileLoadData, FermiSurfaceData } from '$lib/fermi-surface'
   import {
     extract_fermi_surface,
     FermiSlice,
@@ -63,9 +59,8 @@
       const { load_from_url } = await import(`$lib/io`)
 
       await load_from_url(file.url, (content, filename) => {
-        const text = content instanceof ArrayBuffer
-          ? new TextDecoder().decode(content)
-          : content
+        const text =
+          content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
 
         const parsed = parse_fermi_file(text, filename)
         if (is_fermi_surface_data(parsed)) {
@@ -95,7 +90,8 @@
     // Default to IFermi JSON files (pre-computed meshes, fastest to load)
     // Then pb.bxsf.gz (17³ grid, ~5K points) - fast baseline for marching cubes
     // Avoid cu_fs.bxsf.gz (31³ grid, ~30K points) which is slow to parse/render
-    const target_file = file_from_url ??
+    const target_file =
+      file_from_url ??
       fermi_surface_files.find((file) => file.name.startsWith(`fs_`)) ??
       fermi_surface_files.find((file) => file.name === `pb.bxsf.gz`) ??
       fermi_surface_files.find((file) => file.name.endsWith(`.bxsf.gz`))

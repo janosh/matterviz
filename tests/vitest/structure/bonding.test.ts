@@ -382,10 +382,10 @@ describe(`Explicit Bond Metadata`, () => {
     expect(missing_result).toMatchObject({ action: `not-visible`, changed: false })
   })
 
-  test.each([
-    { selected_order: 2 as BondOrder, expected_overrides: [] },
+  test.each<{ selected_order: BondOrder; expected_overrides: StructureBond[] }>([
+    { selected_order: 2, expected_overrides: [] },
     {
-      selected_order: 1 as BondOrder,
+      selected_order: 1,
       expected_overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
     },
   ])(

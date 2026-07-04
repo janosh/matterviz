@@ -12,7 +12,7 @@ import {
   SPIN_MODES,
   validate_sigma_range,
 } from '$lib/spectral/helpers'
-import type { DosData, ElectronicDos, PhononDos, SpinMode } from '$lib/spectral/types'
+import type { ElectronicDos, PhononDos, SpinMode } from '$lib/spectral/types'
 import { mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -123,7 +123,7 @@ describe(`Dos component`, () => {
     (spin_mode) => {
       mount(Dos, {
         target: document.body,
-        props: { doses: spin_polarized_dos, spin_mode: spin_mode as SpinMode },
+        props: { doses: spin_polarized_dos, spin_mode },
       })
       expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     },
@@ -135,7 +135,7 @@ describe(`Dos component`, () => {
     [`empty object`, {}],
     [`invalid data`, { invalid: true }],
   ])(`shows EmptyState for %s`, (_desc, doses) => {
-    mount(Dos, { target: document.body, props: { doses: doses as unknown as DosData } })
+    mount(Dos, { target: document.body, props: { doses: doses as never } })
     expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
   })
 

@@ -206,7 +206,7 @@ describe(`Export functionality`, () => {
           lattice: {
             ...(ps.lattice as Omit<LatticeType, `pbc`>),
             pbc: [true, true, true],
-          } as LatticeType,
+          },
         }),
       }) as AnyStructure
 
@@ -398,7 +398,7 @@ describe(`Export functionality`, () => {
             label: `H`,
             properties: {},
           })),
-        } as AnyStructure,
+        },
         extension: `xyz`,
         should_contain: [`water_molecule`, `2sites`, `.xyz`],
       },
@@ -413,12 +413,12 @@ describe(`Export functionality`, () => {
             label: `Si`,
             properties: {},
           })),
-        } as AnyStructure,
+        },
         extension: `json`,
         should_contain: [`complex_crystal`, `24sites`, `.json`],
       },
     ])(`generates filename for $name`, ({ structure, extension, should_contain }) => {
-      const result = create_structure_filename(structure, extension)
+      const result = create_structure_filename(structure as AnyStructure, extension)
       should_contain.forEach((part) => expect(result).toContain(part))
     })
 

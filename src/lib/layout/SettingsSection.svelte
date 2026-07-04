@@ -14,11 +14,13 @@
     title: string
     current_values: Record<string, unknown>
     children: Snippet<
-      [{
-        current_values: Record<string, unknown>
-        has_changes: boolean
-        reference_values: Record<string, unknown>
-      }]
+      [
+        {
+          current_values: Record<string, unknown>
+          has_changes: boolean
+          reference_values: Record<string, unknown>
+        },
+      ]
     >
     on_reset?: () => void
   } = $props()
@@ -30,23 +32,19 @@
     if (obj instanceof RegExp) return new RegExp(obj)
     if (Array.isArray(obj)) {
       return obj.map((item) =>
-        typeof item === `object` && item !== null ? deep_copy(item) : item
+        typeof item === `object` && item !== null ? deep_copy(item) : item,
       )
     }
 
     const copy: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-      copy[key] = typeof value === `object` && value !== null
-        ? deep_copy(value)
-        : value
+      copy[key] = typeof value === `object` && value !== null ? deep_copy(value) : value
     }
     return copy
   }
 
   // Capture initial values once at mount - must NOT be $derived or it tracks changes
-  const reference_values = untrack(() =>
-    deep_copy(current_values) as Record<string, unknown>
-  )
+  const reference_values = untrack(() => deep_copy(current_values) as Record<string, unknown>)
 
   // unique per-instance id so aria-labelledby stays valid with multiple sections on a page
   const title_id = `settings-section-title-${crypto.randomUUID()}`
@@ -64,9 +62,12 @@
             const curr_val = current_value[idx]
             // Handle nested objects/arrays in arrays
             if (
-              typeof val === `object` && val !== null &&
-              typeof curr_val === `object` && curr_val !== null
-            ) return JSON.stringify(val) !== JSON.stringify(curr_val) // Quick deep comparison fallback
+              typeof val === `object` &&
+              val !== null &&
+              typeof curr_val === `object` &&
+              curr_val !== null
+            )
+              return JSON.stringify(val) !== JSON.stringify(curr_val) // Quick deep comparison fallback
             return val !== curr_val
           })
         ) {

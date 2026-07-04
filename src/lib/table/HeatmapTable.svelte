@@ -215,8 +215,7 @@
     if (!container_el) return
     const read_page_bg = () => {
       if (!container_el) return
-      const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`)
-        .trim()
+      const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`).trim()
       page_bg_lum = luminance(page_bg || `white`)
     }
     read_page_bg()
@@ -258,10 +257,10 @@
   let search_config = $derived(
     search
       ? {
-        placeholder: `Filter...`,
-        expanded: false,
-        ...(typeof search === `object` ? search : {}),
-      }
+          placeholder: `Filter...`,
+          expanded: false,
+          ...(typeof search === `object` ? search : {}),
+        }
       : null,
   )
 
@@ -271,10 +270,10 @@
   let export_config = $derived(
     export_data
       ? {
-        formats: default_formats,
-        filename: `table-export`,
-        ...(typeof export_data === `object` ? export_data : {}),
-      }
+          formats: default_formats,
+          filename: `table-export`,
+          ...(typeof export_data === `object` ? export_data : {}),
+        }
       : null,
   )
 
@@ -282,9 +281,7 @@
   // This ensures immediate sorting on first render without waiting for effects
   let sort_state = $derived<SortState>({
     column: sort.column || initial_sort_config?.column || ``,
-    ascending: sort.column
-      ? sort.dir !== `desc`
-      : initial_sort_config?.direction !== `desc`,
+    ascending: sort.column ? sort.dir !== `desc` : initial_sort_config?.direction !== `desc`,
   })
 
   // Multi-column sort state (for Shift+click)
@@ -321,9 +318,7 @@
 
   // Columns that have a color gradient
   let colored_columns = $derived(
-    columns.filter((col) =>
-      col.color_scale !== null && col.color_scale !== undefined
-    ),
+    columns.filter((col) => col.color_scale !== null && col.color_scale !== undefined),
   )
 
   // Column resize state
@@ -369,8 +364,11 @@
     // After drag reorder, column_order differs from col_ids (default order) but the
     // computed new_order equals the current column_order — assigning a new array
     // reference would re-trigger this effect endlessly.
-    if (new_order.length === column_order.length &&
-      new_order.every((id, idx) => id === column_order[idx])) return
+    if (
+      new_order.length === column_order.length &&
+      new_order.every((id, idx) => id === column_order[idx])
+    )
+      return
 
     column_order = new_order
   })
@@ -492,9 +490,8 @@
 
   // Filter data based on search query
   let filtered_data = $derived.by(() => {
-    const base_data = data?.filter?.((row) =>
-      Object.values(row).some((val) => val !== undefined)
-    ) ?? []
+    const base_data =
+      data?.filter?.((row) => Object.values(row).some((val) => val !== undefined)) ?? []
 
     if (!search_query.trim()) return base_data
 
@@ -504,7 +501,7 @@
         if (val == null) return false
         const clean_val = strip_html(String(val)).toLowerCase()
         return clean_val.includes(query)
-      })
+      }),
     )
   })
 
@@ -515,11 +512,8 @@
     if (!sort_state.column && multi_sort.length === 0) return filtered_data
 
     // Build sort criteria: multi_sort takes precedence, fallback to single sort
-    const sort_criteria = multi_sort.length > 0
-      ? multi_sort
-      : sort_state.column
-      ? [sort_state]
-      : []
+    const sort_criteria =
+      multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
 
     if (sort_criteria.length === 0) return filtered_data
 
@@ -567,9 +561,7 @@
     return sorted_data.slice(start, start + effective_page_size)
   })
 
-  let total_pages = $derived(
-    Math.ceil(sorted_data.length / effective_page_size),
-  )
+  let total_pages = $derived(Math.ceil(sorted_data.length / effective_page_size))
 
   // Track previous values to detect actual changes
   let prev_search_query = $state(``)
@@ -620,15 +612,20 @@
         } else {
           // Toggle direction
           multi_sort = multi_sort.map((sort_entry, idx) =>
-            idx === existing_idx ? { ...sort_entry, ascending: !sort_entry.ascending } : sort_entry
+            idx === existing_idx
+              ? { ...sort_entry, ascending: !sort_entry.ascending }
+              : sort_entry,
           )
         }
       } else {
         // Add to multi-sort
-        multi_sort = [...multi_sort, {
-          column: col_id,
-          ascending: col.better === `lower`,
-        }]
+        multi_sort = [
+          ...multi_sort,
+          {
+            column: col_id,
+            ascending: col.better === `lower`,
+          },
+        ]
       }
       // Clear single sort when using multi-sort
       sort = { column: ``, dir: `asc` }
@@ -636,9 +633,14 @@
       // Regular click - single column sort
       multi_sort = [] // Clear multi-sort
       // Use sort_state.column for comparison since it includes initial_sort fallback
-      const new_dir = sort_state.column !== col_id
-        ? (col.better === `lower` ? `asc` : `desc`)
-        : (sort_state.ascending ? `desc` : `asc`)
+      const new_dir =
+        sort_state.column !== col_id
+          ? col.better === `lower`
+            ? `asc`
+            : `desc`
+          : sort_state.ascending
+            ? `desc`
+            : `asc`
 
       // Save previous sort state in case we need to revert on error
       const prev_sort = { ...sort }
@@ -683,7 +685,10 @@
     for (const col of ordered_columns) {
       if (col.color_scale === null) continue
       const col_id = get_col_id(col)
-      result.set(col_id, sorted_data.map((row) => parse_numeric_val(row[col_id])))
+      result.set(
+        col_id,
+        sorted_data.map((row) => parse_numeric_val(row[col_id])),
+      )
     }
     return result
   })
@@ -702,7 +707,8 @@
     const numeric_vals = parsed_column_values.get(col_id) ?? []
 
     const better = better_overrides.get(col_id) ?? col.better
-    const scale = (color_scale_overrides.get(col_id) ?? col.color_scale ??
+    const scale = (color_scale_overrides.get(col_id) ??
+      col.color_scale ??
       `interpolateViridis`) as Parameters<typeof calc_cell_color>[3]
     const color = calc_cell_color(
       numeric_val,
@@ -715,22 +721,22 @@
     // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
     // Approximation: blend luminances directly; accurate enough for black/white text choice.
     if (color.bg && heatmap_opacity < 1) {
-      const blended_lum = luminance(color.bg) * heatmap_opacity +
-        page_bg_lum * (1 - heatmap_opacity)
+      const blended_lum =
+        luminance(color.bg) * heatmap_opacity + page_bg_lum * (1 - heatmap_opacity)
       color.text = blended_lum > 0.7 ? `black` : `white`
     }
     return color
   }
 
   let visible_columns = $derived(
-    ordered_columns.filter((col) =>
-      col.visible !== false && !hidden_columns.includes(get_col_id(col))
+    ordered_columns.filter(
+      (col) => col.visible !== false && !hidden_columns.includes(get_col_id(col)),
     ),
   )
 
   const sort_indicator = (col: Label, current_sort_state: SortState) => {
-    const hide_sort_indicator = col.show_sort_indicator === false ||
-      col.style?.includes(`--hide-sort-indicator`)
+    const hide_sort_indicator =
+      col.show_sort_indicator === false || col.style?.includes(`--hide-sort-indicator`)
     if (hide_sort_indicator) return ``
 
     const col_id = get_col_id(col)
@@ -818,7 +824,7 @@
         const val = row[get_col_id(col)]
         if (val == null) return ``
         return quote(strip_html(String(val)))
-      })
+      }),
     )
     return [headers.join(delimiter), ...rows.map((row) => row.join(delimiter))].join(`\n`)
   }
@@ -833,17 +839,11 @@
       for (const col of visible_columns) {
         const col_id = get_col_id(col)
         const val = row[col_id]
-        clean_row[strip_html(col.label)] = typeof val === `string`
-          ? strip_html(val)
-          : val
+        clean_row[strip_html(col.label)] = typeof val === `string` ? strip_html(val) : val
       }
       return clean_row
     })
-    download(
-      JSON.stringify(rows, null, 2),
-      `${filename}.json`,
-      `application/json`,
-    )
+    download(JSON.stringify(rows, null, 2), `${filename}.json`, `application/json`)
   }
 
   function copy_to_clipboard() {
@@ -889,10 +889,10 @@
   let hint_config = $derived(
     sort_hint
       ? {
-        position: `bottom` as const,
-        permanent: false,
-        ...(typeof sort_hint === `string` ? { text: sort_hint } : sort_hint),
-      }
+          position: `bottom` as const,
+          permanent: false,
+          ...(typeof sort_hint === `string` ? { text: sort_hint } : sort_hint),
+        }
       : null,
   )
 </script>
@@ -947,7 +947,7 @@
       {:else}
         <button
           class="icon-btn"
-          onclick={() => search_expanded = true}
+          onclick={() => (search_expanded = true)}
           {@attach tooltip({ content: `Search`, placement: `top` })}
         >
           <Icon icon="Search" style="width: 14px" />
@@ -960,7 +960,7 @@
         <button
           class="icon-btn"
           class:active={show_column_dropdown}
-          onclick={() => show_column_dropdown = !show_column_dropdown}
+          onclick={() => (show_column_dropdown = !show_column_dropdown)}
           {@attach tooltip({ content: `Columns`, placement: `top` })}
         >
           <Icon icon="Columns" style="width: 14px" />
@@ -988,7 +988,7 @@
         <button
           class="icon-btn"
           class:active={show_export_dropdown}
-          onclick={() => show_export_dropdown = !show_export_dropdown}
+          onclick={() => (show_export_dropdown = !show_export_dropdown)}
           {@attach tooltip({ content: `Export`, placement: `top` })}
         >
           <Icon icon="Export" style="width: 14px" />
@@ -1034,7 +1034,7 @@
     {#if show_row_select && selected_rows.length > 0}
       <button
         class="icon-btn selection-badge"
-        onclick={() => selected_rows = []}
+        onclick={() => (selected_rows = [])}
         title="Clear {selected_rows.length} selected rows"
       >
         <span class="badge">{selected_rows.length}</span>
@@ -1070,13 +1070,7 @@
         {#if show_heatmap}
           <label>
             Opacity
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              bind:value={heatmap_opacity}
-            />
+            <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
             <input
               type="number"
               min="0"
@@ -1096,8 +1090,7 @@
           show_row_numbers = false
         }}
       >
-        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row
-          numbers</label>
+        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
       </SettingsSection>
 
       {#if colored_columns.length > 0}
@@ -1114,13 +1107,13 @@
             <div class="col-color-row">
               <span class="col-color-label">{@html sanitize_html(col.label)}</span>
               <select
-                value={color_scale_overrides.get(col_id) ?? col.color_scale ??
-                `interpolateViridis`}
+                value={color_scale_overrides.get(col_id) ??
+                  col.color_scale ??
+                  `interpolateViridis`}
                 onchange={(event) => {
                   const val = event.currentTarget.value
-                  if (
-                    val === (col.color_scale ?? `interpolateViridis`)
-                  ) color_scale_overrides.delete(col_id)
+                  if (val === (col.color_scale ?? `interpolateViridis`))
+                    color_scale_overrides.delete(col_id)
                   else color_scale_overrides.set(col_id, val)
                 }}
               >
@@ -1149,11 +1142,7 @@
 
   {@render sort_hint_element(`top`)}
 
-  <div
-    class="table-scroll"
-    style={scroll_style}
-    class:has-scroll={scroll_style}
-  >
+  <div class="table-scroll" style={scroll_style} class:has-scroll={scroll_style}>
     {#if loading}
       <div class="loading-overlay">
         <div class="loading-spinner"></div>
@@ -1175,14 +1164,11 @@
               {#if !col.group}
                 <th class:sticky-col={col.sticky}></th>
               {:else}
-                {@const group_cols = visible_columns.filter((column) =>
-              column.group === col.group
-            )}
+                {@const group_cols = visible_columns.filter(
+                  (column) => column.group === col.group,
+                )}
                 <!-- Only render the group header once for each group by checking if this is the first column of this group -->
-                {#if visible_columns.findIndex((column) => column.group === col.group) ===
-              visible_columns.findIndex((column) =>
-                column.group === col.group && column.label === col.label
-              )}
+                {#if visible_columns.findIndex((column) => column.group === col.group) === visible_columns.findIndex((column) => column.group === col.group && column.label === col.label)}
                   <th title={col.description} colspan={group_cols.length}>
                     {@html sanitize_html(col.group)}
                   </th>
@@ -1210,9 +1196,7 @@
           {/if}
           {#each visible_columns as col (get_col_id(col))}
             {@const col_id = get_col_id(col)}
-            {@const drag_side = drag_over_col_id === col_id
-              ? get_drag_side(col_id)
-              : null}
+            {@const drag_side = drag_over_col_id === col_id ? get_drag_side(col_id) : null}
             {@const col_width = column_widths[col_id]}
             <th
               title={col.description}
@@ -1220,9 +1204,11 @@
               role={col.sortable === false ? undefined : `button`}
               oncontextmenu={(event) => {
                 if (
-                  !allow_better_toggle || col.color_scale === null ||
+                  !allow_better_toggle ||
+                  col.color_scale === null ||
                   col.color_scale === undefined
-                ) return
+                )
+                  return
                 event.preventDefault()
                 event.stopPropagation()
                 context_menu_col = col_id
@@ -1234,26 +1220,21 @@
               }}
               onclick={(event) => {
                 if (!drag_col_id && !resize_col_id) {
-                  sort_rows(
-                    col.label,
-                    col.group,
-                    event,
-                  )
+                  sort_rows(col.label, col.group, event)
                 }
               }}
               onkeydown={(event) => {
                 if (
                   (event.key === `Enter` || event.key === ` `) &&
-                  !drag_col_id && !resize_col_id
+                  !drag_col_id &&
+                  !resize_col_id
                 ) {
                   event.preventDefault()
                   sort_rows(col.label, col.group, event)
                 }
               }}
               style={`${col.style ?? ``}${
-                col_width
-                  ? `; width: ${col_width}px; min-width: ${col_width}px`
-                  : ``
+                col_width ? `; width: ${col_width}px; min-width: ${col_width}px` : ``
               }`}
               class:sticky-col={col.sticky}
               class:not-sortable={col.sortable === false}
@@ -1263,8 +1244,10 @@
               draggable="true"
               aria-dropeffect="move"
               aria-sort={sort_state.column === col_id
-              ? (sort_state.ascending ? `ascending` : `descending`)
-              : `none`}
+                ? sort_state.ascending
+                  ? `ascending`
+                  : `descending`
+                : `none`}
               ondragstart={(event: DragEvent & { currentTarget: HTMLElement }) => {
                 handle_drag_start(event, col)
                 event.currentTarget.setAttribute(`aria-grabbed`, `true`)
@@ -1310,21 +1293,21 @@
             onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
             onkeydown={onrowclick
-            ? (event) => {
-              if (event.key === `Enter` || event.key === ` `) {
-                event.preventDefault()
-                onrowclick(event, row)
-              } else if (event.key === `ArrowDown`) {
-                event.preventDefault()
-                const next = event.currentTarget.nextElementSibling
-                if (next instanceof HTMLElement) next.focus()
-              } else if (event.key === `ArrowUp`) {
-                event.preventDefault()
-                const prev = event.currentTarget.previousElementSibling
-                if (prev instanceof HTMLElement) prev.focus()
-              }
-            }
-            : undefined}
+              ? (event) => {
+                  if (event.key === `Enter` || event.key === ` `) {
+                    event.preventDefault()
+                    onrowclick(event, row)
+                  } else if (event.key === `ArrowDown`) {
+                    event.preventDefault()
+                    const next = event.currentTarget.nextElementSibling
+                    if (next instanceof HTMLElement) next.focus()
+                  } else if (event.key === `ArrowUp`) {
+                    event.preventDefault()
+                    const prev = event.currentTarget.previousElementSibling
+                    if (prev instanceof HTMLElement) prev.focus()
+                  }
+                }
+              : undefined}
           >
             {#if show_row_select}
               <td class="select-col">
@@ -1351,9 +1334,7 @@
                 style:--cell-bg={color.bg}
                 style:color={color.text}
                 style={`${col.cell_style ?? col.style ?? ``}${
-                  col_width
-                    ? `; width: ${col_width}px; max-width: ${col_width}px`
-                    : ``
+                  col_width ? `; width: ${col_width}px; max-width: ${col_width}px` : ``
                 }`}
               >
                 {#if special_cells?.[col.label]}
@@ -1363,9 +1344,7 @@
                 {:else if typeof val === `number` && !Number.isNaN(val)}
                   {format_num(val, col.format ?? default_num_format)}
                 {:else if val === undefined || val === null || Number.isNaN(val)}
-                  <span {@attach tooltip({ content: `Not available` })}>
-                    n/a
-                  </span>
+                  <span {@attach tooltip({ content: `Not available` })}> n/a </span>
                 {:else}
                   {@html sanitize_html(val)}
                 {/if}
@@ -1376,8 +1355,9 @@
           {#if empty_message}
             <tr class="empty-row">
               <td
-                colspan={visible_columns.length + (show_row_select ? 1 : 0) +
-                (show_row_numbers ? 1 : 0)}
+                colspan={visible_columns.length +
+                  (show_row_select ? 1 : 0) +
+                  (show_row_numbers ? 1 : 0)}
               >
                 {empty_message}
               </td>
@@ -1400,7 +1380,7 @@
       <button
         class="page-btn"
         disabled={current_page === 1}
-        onclick={() => current_page = 1}
+        onclick={() => (current_page = 1)}
         title="First page"
       >
         «
@@ -1441,7 +1421,7 @@
       <button
         class="page-btn"
         disabled={current_page === total_pages}
-        onclick={() => current_page = total_pages}
+        onclick={() => (current_page = total_pages)}
         title="Last page"
       >
         »
@@ -1466,10 +1446,12 @@
 
   <ContextMenu
     sections={better_sections}
-    selected_values={{ 'Gradient direction': better_overrides.get(context_menu_col ?? ``) ?? `` }}
+    selected_values={{
+      'Gradient direction': better_overrides.get(context_menu_col ?? ``) ?? ``,
+    }}
     position={context_menu_pos}
     visible={context_menu_col !== null}
-    on_close={() => context_menu_col = null}
+    on_close={() => (context_menu_col = null)}
     style={[
       `--surface-bg: light-dark(#fff, #1e1e1e)`,
       `--border-color: light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
@@ -1515,7 +1497,8 @@
     border-spacing: 0;
     display: table; /* Override global display: block to enable sticky headers */
   }
-  th, td {
+  th,
+  td {
     padding: var(--heatmap-cell-padding, 1pt 5pt);
     text-align: var(--heatmap-text-align, left);
     border: var(--heatmap-cell-border, none);
@@ -1716,7 +1699,8 @@
   tr.highlight {
     background-color: var(--nav-bg) !important;
   }
-  tr.highlight, tr.highlight :global(a) {
+  tr.highlight,
+  tr.highlight :global(a) {
     color: var(--highlight) !important;
   }
 

@@ -35,7 +35,8 @@
   } = $props()
 
   const formula_html = $derived.by(() =>
-    sanitize_formula(get_electro_neg_formula(stats?.formula ?? structure, true)))
+    sanitize_formula(get_electro_neg_formula(stats?.formula ?? structure, true)),
+  )
   const context = $derived({ structure, stats, formula_html })
 </script>
 
@@ -72,13 +73,13 @@
           {@render top_left(context)}
         {:else if stats}
           {#if stats.id}
-            ID = {stats.id}<br>
+            ID = {stats.id}<br />
           {/if}
           {#if formula_html}
-            {@html formula_html}<br>
+            {@html formula_html}<br />
           {/if}
           {#if stats.e_above_hull != null}
-            E<sub>above hull</sub> = {format_num(stats.e_above_hull, `.3~`)} eV/atom<br>
+            E<sub>above hull</sub> = {format_num(stats.e_above_hull, `.3~`)} eV/atom<br />
           {/if}
           {#if stats.e_form != null}
             E<sub>form</sub> = {format_num(stats.e_form, `.3~`)}

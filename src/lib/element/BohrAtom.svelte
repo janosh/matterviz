@@ -33,11 +33,7 @@
     electron_props?: Record<string, string | number>
     highlight_shell?: number | null
     // if function, it'll be called with electron index and should return a string
-    number_electrons?:
-      | boolean
-      | `hierarchical`
-      | `sequential`
-      | ((idx: number) => string)
+    number_electrons?: boolean | `hierarchical` | `sequential` | ((idx: number) => string)
     electron_label_props?: Record<string, string | number>
   } = $props()
 
@@ -68,7 +64,7 @@
   fill={base_fill}
   {viewBox}
   role={name || symbol ? `img` : undefined}
-  aria-label={(name || symbol) || undefined}
+  aria-label={name || symbol || undefined}
   aria-hidden={name || symbol ? undefined : `true`}
   {...rest}
 >
@@ -116,8 +112,9 @@
               <!-- {:else if [`sequential`, true].includes(number_electrons)} -->
             {:else}
               {@const nth_electron =
-          shells.slice(0, shell_idx).reduce((sum, count) => sum + count, 0) +
-          elec_idx + 1}
+                shells.slice(0, shell_idx).reduce((sum, count) => sum + count, 0) +
+                elec_idx +
+                1}
               {nth_electron}
             {/if}
           </text>

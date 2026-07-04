@@ -32,7 +32,13 @@
     ReferenceLine,
   } from '$lib/plot'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
+  import {
+    add_sides,
+    marginal_axis,
+    marginal_axis_presence,
+    normalize_marginals,
+    reserve_marginal_pad,
+  } from '$lib/plot/core/marginals'
   import {
     build_obstacles_norm,
     clip_bar,
@@ -164,51 +170,53 @@
     pan = {},
     marginals = false,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
-    series?: BoxPlotSeries<Metadata>[]
-    orientation?: Orientation
-    legend?: LegendConfig | null
-    show_legend?: boolean
-    box?: BoxStyle
-    whisker?: WhiskerStyle
-    median_style?: BoxLineStyle
-    outlier_style?: OutlierStyle
-    whisker_mode?: WhiskerMode
-    whisker_range?: number
-    whisker_percentiles?: Vec2
-    show_outliers?: boolean
-    show_mean?: boolean
-    show_value_labels?: boolean
-    value_label_stat?: `median` | `mean`
-    value_label_format?: string
-    kind?: ViolinKind
-    side?: ViolinSide
-    bandwidth?: BandwidthOption
-    violin_width?: number
-    violin_style?: ViolinStyle
-    kde_points?: number
-    kde_cut?: number
-    kde_max_samples?: number
-    kde_clip?: [number | null, number | null]
-    tooltip?: Snippet<[BoxHandlerProps<Metadata>]>
-    user_content?: Snippet<[UserContentProps]>
-    header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
-    controls_extra?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
-    change?: (data: BoxHandlerProps<Metadata> | null) => void
-    on_box_click?: (
-      data: BoxHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
-    ) => void
-    on_box_hover?: (
-      data:
-        | (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
-        | null,
-    ) => void
-    ref_lines?: RefLine[]
-    on_ref_line_click?: (event: RefLineEvent) => void
-    on_ref_line_hover?: (event: RefLineEvent | null) => void
-    pan?: PanConfig
-    marginals?: MarginalsProp
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    BasePlotProps &
+    PlotConfig & {
+      series?: BoxPlotSeries<Metadata>[]
+      orientation?: Orientation
+      legend?: LegendConfig | null
+      show_legend?: boolean
+      box?: BoxStyle
+      whisker?: WhiskerStyle
+      median_style?: BoxLineStyle
+      outlier_style?: OutlierStyle
+      whisker_mode?: WhiskerMode
+      whisker_range?: number
+      whisker_percentiles?: Vec2
+      show_outliers?: boolean
+      show_mean?: boolean
+      show_value_labels?: boolean
+      value_label_stat?: `median` | `mean`
+      value_label_format?: string
+      kind?: ViolinKind
+      side?: ViolinSide
+      bandwidth?: BandwidthOption
+      violin_width?: number
+      violin_style?: ViolinStyle
+      kde_points?: number
+      kde_cut?: number
+      kde_max_samples?: number
+      kde_clip?: [number | null, number | null]
+      tooltip?: Snippet<[BoxHandlerProps<Metadata>]>
+      user_content?: Snippet<[UserContentProps]>
+      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      controls_extra?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
+      change?: (data: BoxHandlerProps<Metadata> | null) => void
+      on_box_click?: (
+        data: BoxHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
+      ) => void
+      on_box_hover?: (
+        data:
+          | (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
+          | null,
+      ) => void
+      ref_lines?: RefLine[]
+      on_ref_line_click?: (event: RefLineEvent) => void
+      on_ref_line_hover?: (event: RefLineEvent | null) => void
+      pan?: PanConfig
+      marginals?: MarginalsProp
+    } = $props()
 
   let box_state = $derived({ ...DEFAULTS.box.box, ...box })
   let whisker_state = $derived({ ...DEFAULTS.box.whisker, ...whisker })
@@ -218,24 +226,20 @@
 
   // Merge secondary-axis defaults as deriveds instead of assigning back into the
   // $bindable props (which would push library defaults into the parent's bound state)
-  let y2_axis = $derived(
-    {
-      format: ``,
-      scale_type: `linear`,
-      ticks: 5,
-      range: [null, null],
-      ...y2_axis_prop,
-    } as typeof y2_axis_prop,
-  )
-  let x2_axis = $derived(
-    {
-      format: ``,
-      scale_type: `linear`,
-      ticks: 5,
-      range: [null, null],
-      ...x2_axis_prop,
-    } as typeof x2_axis_prop,
-  )
+  let y2_axis = $derived({
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    range: [null, null],
+    ...y2_axis_prop,
+  } as typeof y2_axis_prop)
+  let x2_axis = $derived({
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    range: [null, null],
+    ...x2_axis_prop,
+  } as typeof x2_axis_prop)
 
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
@@ -262,7 +266,7 @@
         whisker_range: srs.whisker_range ?? whisker_range,
         whisker_percentiles: srs.whisker_percentiles ?? whisker_percentiles,
         collect_outliers: show_outliers && draws_box(srs) && (srs.visible ?? true),
-      })
+      }),
     ),
   )
 
@@ -315,9 +319,8 @@
   // KDE per visible violin series, keyed by series index (bandwidth from the full sample)
   let violin_kdes = $derived.by(() => {
     const map = new SvelteMap<number, KdeResult>()
-    const [val_axis, val_axis2] = orientation === `vertical`
-      ? [y_axis, y2_axis]
-      : [x_axis, x2_axis]
+    const [val_axis, val_axis2] =
+      orientation === `vertical` ? [y_axis, y2_axis] : [x_axis, x2_axis]
     for (const box_item of visible_boxes) {
       if (!draws_violin(box_item.series)) continue
       const samples = box_item.series.y ?? []
@@ -325,7 +328,10 @@
       // On a log value axis the KDE grid tail (data_min - cut*bandwidth) is usually <= 0 →
       // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
       if ((is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type === `log`) {
-        const min_pos = samples.reduce((min, val) => (val > 0 && val < min ? val : min), Infinity)
+        const min_pos = samples.reduce(
+          (min, val) => (val > 0 && val < min ? val : min),
+          Infinity,
+        )
         // Guard: no positive samples → min_pos is Infinity; leave clip unchanged so the KDE
         // never receives a non-finite lower bound
         if (Number.isFinite(min_pos)) {
@@ -349,7 +355,11 @@
   // The horizontal category pixel axis is inverted, so flip the half-violin side to keep
   // `positive` meaning "above the center line" (vertical/`both` pass through unchanged)
   const to_screen_side = (eff_side: ViolinSide, vertical: boolean): ViolinSide =>
-    vertical || eff_side === `both` ? eff_side : eff_side === `positive` ? `negative` : `positive`
+    vertical || eff_side === `both`
+      ? eff_side
+      : eff_side === `positive`
+        ? `negative`
+        : `positive`
 
   // Peak density per violin, computed once on data change (avoids spreading kde.density into
   // Math.max — unsafe for large kde_points — and re-deriving it on every render/hover).
@@ -366,7 +376,9 @@
   // Which boxes live on the secondary value axis (y2 for vertical, x2 for horizontal)
   const is_secondary = (srs: BoxPlotSeries<Metadata>): boolean =>
     orientation === `vertical` ? srs.y_axis === `y2` : srs.x_axis === `x2`
-  let secondary_boxes = $derived(visible_boxes.filter((box_item) => is_secondary(box_item.series)))
+  let secondary_boxes = $derived(
+    visible_boxes.filter((box_item) => is_secondary(box_item.series)),
+  )
   let has_secondary = $derived(secondary_boxes.length > 0)
   // The secondary value axis renders transposed by orientation: x2 (top) when horizontal, y2
   // (right) when vertical. Derive once so axis rendering, ticks, range writes, point picking, and
@@ -418,8 +430,8 @@
     )
 
     return vertical
-      ? ({ x: cat_range, x2: [0, 1] as Vec2, y: value_primary, y2: value_secondary })
-      : ({ x: value_primary, x2: value_secondary, y: cat_range, y2: [0, 1] as Vec2 })
+      ? { x: cat_range, x2: [0, 1] as Vec2, y: value_primary, y2: value_secondary }
+      : { x: value_primary, x2: value_secondary, y: cat_range, y2: [0, 1] as Vec2 }
   })
 
   let ranges = $state<{
@@ -430,10 +442,14 @@
     current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
   })
 
-  $effect(() => { // sync ranges from axis.range overrides / auto ranges
+  $effect(() => {
+    // sync ranges from axis.range overrides / auto ranges
     // resolve_axis_ranges returns null for transient non-finite bounds (skip: writing
     // NaN breaks scales and, since NaN !== NaN, loops the effect)
-    const next = resolve_axis_ranges({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis }, auto_ranges)
+    const next = resolve_axis_ranges(
+      { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
+      auto_ranges,
+    )
     if (!next) return
     // untrack the read of `ranges` so the assignment can't re-trigger this effect
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
@@ -445,16 +461,18 @@
 
   let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
 
-  $effect(() => { // dynamic padding from tick label widths
-    const new_pad = width && height && ticks.y.length > 0
-      ? calc_auto_padding({
-        padding,
-        default_padding: DEFAULT_PLOT_PADDING,
-        x2_axis: { ...x2_axis, tick_values: ticks.x2 },
-        y_axis: { ...y_axis, tick_values: ticks.y },
-        y2_axis: { ...y2_axis, tick_values: ticks.y2 },
-      })
-      : filter_padding(padding, DEFAULT_PLOT_PADDING)
+  $effect(() => {
+    // dynamic padding from tick label widths
+    const new_pad =
+      width && height && ticks.y.length > 0
+        ? calc_auto_padding({
+            padding,
+            default_padding: DEFAULT_PLOT_PADDING,
+            x2_axis: { ...x2_axis, tick_values: ticks.x2 },
+            y_axis: { ...y_axis, tick_values: ticks.y },
+            y2_axis: { ...y2_axis, tick_values: ticks.y2 },
+          })
+        : filter_padding(padding, DEFAULT_PLOT_PADDING)
     if (width && height && show_y2 && ticks.y2.length > 0) {
       const inside = y2_axis.tick?.label?.inside ?? false
       const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
@@ -462,12 +480,19 @@
       const label_space = y2_axis.label ? 20 : 0
       new_pad.r = Math.max(new_pad.r, tick_shift + tick_width_contribution + 30 + label_space)
     }
-    if (base_pad.t !== new_pad.t || base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l || base_pad.r !== new_pad.r) base_pad = new_pad
+    if (
+      base_pad.t !== new_pad.t ||
+      base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l ||
+      base_pad.r !== new_pad.r
+    )
+      base_pad = new_pad
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
-  const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 60 }))
+  const legend_footprint = $derived(
+    measured_footprint(legend_element, { width: 120, height: 60 }),
+  )
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Obstacle field in normalized [0,1] coords: each box modeled as a whisker-spanning segment
@@ -484,8 +509,12 @@
       const secondary = is_secondary(box_item.series)
       const cat_rng = vertical ? ranges.current.x : ranges.current.y
       const val_rng = vertical
-        ? (secondary ? ranges.current.y2 : ranges.current.y)
-        : (secondary ? ranges.current.x2 : ranges.current.x)
+        ? secondary
+          ? ranges.current.y2
+          : ranges.current.y
+        : secondary
+          ? ranges.current.x2
+          : ranges.current.x
       const cat_span = cat_rng[1] - cat_rng[0]
       const val_span = val_rng[1] - val_rng[0]
       if (cat_span === 0 || val_span === 0) continue
@@ -507,11 +536,14 @@
       width,
       height,
       obstacles_norm,
-      legend: legend != null && should_show_legend && legend_element != null &&
-          !legend_has_explicit_pos
-        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-        : null,
-    })
+      legend:
+        legend != null &&
+        should_show_legend &&
+        legend_element != null &&
+        !legend_has_explicit_pos
+          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+          : null,
+    }),
   )
   // Marginals are opt-in (default prop `false`) and bind to the VALUE axis, pooling each box's
   // raw samples. The default side follows orientation (value axis = y when vertical, x when
@@ -531,7 +563,7 @@
         color: box_color(box_item.idx),
         label: box_item.series.label,
         visible: true,
-        x_axis: marginal_vertical ? `x1` : (secondary ? `x2` : `x1`),
+        x_axis: marginal_vertical ? `x1` : secondary ? `x2` : `x1`,
         y_axis: marginal_vertical ? (secondary ? `y2` : `y1`) : `y1`,
       }
     }),
@@ -557,13 +589,17 @@
   // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
   // outliers) have no finite pixel. Clamp to LOG_EPS so whiskers/boxes/labels draw
   // toward the plot edge (the clip group crops the overshoot) instead of NaN coords.
-  const box_val_scale = (srs: BoxPlotSeries<Metadata>): (val: number) => number => {
+  const box_val_scale = (srs: BoxPlotSeries<Metadata>): ((val: number) => number) => {
     const vertical = orientation === `vertical`
     const secondary = is_secondary(srs)
     const scale = vertical
-      ? (secondary ? scales.y2 : scales.y)
-      : (secondary ? scales.x2 : scales.x)
-    const axis = vertical ? (secondary ? y2_axis : y_axis) : (secondary ? x2_axis : x_axis)
+      ? secondary
+        ? scales.y2
+        : scales.y
+      : secondary
+        ? scales.x2
+        : scales.x
+    const axis = vertical ? (secondary ? y2_axis : y_axis) : secondary ? x2_axis : x_axis
     return axis.scale_type === `log` ? (val) => scale(Math.max(val, LOG_EPS)) : scale
   }
 
@@ -586,16 +622,20 @@
       show = true,
     ) =>
       width && height && show
-        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, { default_count })
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
+            default_count,
+          })
         : []
     // categorical axes show one tick per slot instead of generated numeric ticks
     return {
-      x: cat_axis === `x` && width && height
-        ? slot_indices
-        : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
-      y: cat_axis === `y` && width && height
-        ? slot_indices
-        : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
+      x:
+        cat_axis === `x` && width && height
+          ? slot_indices
+          : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
+      y:
+        cat_axis === `y` && width && height
+          ? slot_indices
+          : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
       y2: axis_ticks(y2_axis, ranges.current.y2, scales.y2, 6, show_y2),
       x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
     }
@@ -610,7 +650,8 @@
   // Shared pan/zoom/touch/drag-rect interaction controller
   const pan_zoom = create_pan_zoom({
     ranges: () => ranges.current,
-    scale_type: (axis) => ({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })[axis].scale_type,
+    scale_type: (axis) =>
+      ({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })[axis].scale_type,
     plot_dims: () => ({ width: chart_width, height: chart_height }),
     pan: () => pan,
     set_range: (axis, range) => (ranges.current[axis] = range),
@@ -655,7 +696,10 @@
     })),
   )
 
-  const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series = next),
+  )
 
   let box_points_for_placement = $derived.by(() => {
     if (!width || !height || visible_boxes.length === 0) return []
@@ -751,13 +795,7 @@
     format_value(value_label_stat === `mean` ? stats.mean : stats.median, value_label_format)
 </script>
 
-{#snippet seg(
-  p1: Vec2,
-  p2: Vec2,
-  stroke: string,
-  sw: number,
-  dash?: string,
-)}
+{#snippet seg(p1: Vec2, p2: Vec2, stroke: string, sw: number, dash?: string)}
   <line
     x1={p1[0]}
     y1={p1[1]}
@@ -829,7 +867,7 @@
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ??
-      ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Box plot`)}
+        ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Box plot`)}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}
@@ -879,7 +917,7 @@
         {height}
         show_grid={display.x_grid}
         tick_label={(tick) =>
-        get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
+          get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
         tick_color={cat_axis === `x` ? (tick) => slot_colors.get(tick) : undefined}
         label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
         label_y={height - pad.b / 3 + (x_axis.label_shift?.y ?? 0)}
@@ -913,11 +951,13 @@
         {height}
         show_grid={display.y_grid}
         tick_label={(tick) =>
-        get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
+          get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
         tick_color={cat_axis === `y` ? (tick) => slot_colors.get(tick) : undefined}
         label_x={Math.max(
           12,
-          pad.l - (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
+          pad.l -
+            (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
+            LABEL_GAP_DEFAULT,
         ) + (y_axis.label_shift?.x ?? 0)}
         label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
       />
@@ -986,12 +1026,13 @@
             {@const draw_box = draws_box(box_item.series)}
             {@const kde = violin_kdes.get(box_item.idx)}
             {@const eff_side = box_item.series.side ?? side}
-            {@const bw = box_item.series.box_width ??
-            (kde ? DEFAULTS.box.violin_box_width : DEFAULTS.box.box_width)}
+            {@const bw =
+              box_item.series.box_width ??
+              (kde ? DEFAULTS.box.violin_box_width : DEFAULTS.box.box_width)}
             {@const c_lo = cat_scale(box_item.slot - bw / 2)}
             {@const c_hi = cat_scale(box_item.slot + bw / 2)}
             {@const c_center = cat_scale(box_item.slot)}
-            {@const cap = Math.abs(c_hi - c_lo) * (whisker_state.cap_fraction ?? 0.5) / 2}
+            {@const cap = (Math.abs(c_hi - c_lo) * (whisker_state.cap_fraction ?? 0.5)) / 2}
             {@const cap_lo = c_center - cap}
             {@const cap_hi = c_center + cap}
             {@const v_q1 = val_scale(stats.q1)}
@@ -1001,7 +1042,7 @@
             {@const v_wh = val_scale(stats.whisker_high)}
             {@const v_mean = val_scale(stats.mean)}
             {@const pt = (cross: number, val: number): Vec2 =>
-            vertical ? [cross, val] : [val, cross]}
+              vertical ? [cross, val] : [val, cross]}
             {@const [q1x, q1y] = pt(c_lo, v_q1)}
             {@const [q3x, q3y] = pt(c_hi, v_q3)}
             {@const [wlx, wly] = pt(c_lo, v_wl)}
@@ -1015,12 +1056,12 @@
             {@const hit_w = Math.abs(whx - wlx)}
             {@const hit_h = Math.abs(why - wly)}
             {@const [label_x, label_y] = vertical
-            ? [c_center, Math.min(v_wh, v_wl) - 6]
-            : [Math.max(v_wh, v_wl) + 6, c_center]}
+              ? [c_center, Math.min(v_wh, v_wl) - 6]
+              : [Math.max(v_wh, v_wl) + 6, c_center]}
             {@const violin_half = Math.abs(
-            cat_scale(box_item.slot + (box_item.series.violin_width ?? violin_width) / 2) -
-              c_center,
-          )}
+              cat_scale(box_item.slot + (box_item.series.violin_width ?? violin_width) / 2) -
+                c_center,
+            )}
             {@const max_density = kde ? (violin_max_density.get(box_item.idx) ?? 0) : 0}
             <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
             <g
@@ -1031,7 +1072,7 @@
               aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}`}
               style:cursor={on_box_click ? `pointer` : undefined}
               opacity={hovered_legend_series_idx !== null &&
-                  hovered_legend_series_idx !== box_item.idx
+              hovered_legend_series_idx !== box_item.idx
                 ? 0.25
                 : 1}
               onmousemove={handle_box_hover(box_item, color)}
@@ -1040,7 +1081,8 @@
                 change(null)
                 on_box_hover?.(null)
               }}
-              onclick={(evt) => on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
+              onclick={(evt) =>
+                on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
               onkeydown={(evt) => {
                 if (evt.key === `Enter` || evt.key === ` `) {
                   evt.preventDefault()
@@ -1087,7 +1129,12 @@
                   stroke-width={box_state.stroke_width}
                 />
                 <!-- median (solid) and mean (dashed) -->
-                {@render seg(pt(c_lo, v_med), pt(c_hi, v_med), median_state.color, median_state.width)}
+                {@render seg(
+                  pt(c_lo, v_med),
+                  pt(c_hi, v_med),
+                  median_state.color,
+                  median_state.width,
+                )}
                 {#if show_mean}
                   {@render seg(
                     pt(c_lo, v_mean),
@@ -1164,12 +1211,12 @@
 
     {#if legend && should_show_legend}
       {@const legend_pos = placed_coords(
-      legend_auto_outside,
-      { x: legend_outside_x, y: legend_outside_y },
-      legend_placement,
-      legend_tween.coords.current,
-      { x: pad.l + 10, y: pad.t + 10 },
-    )}
+        legend_auto_outside,
+        { x: legend_outside_x, y: legend_outside_y },
+        legend_placement,
+        legend_tween.coords.current,
+        { x: pad.l + 10, y: pad.t + 10 },
+      )}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
@@ -1179,9 +1226,8 @@
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_hover_change={legend_tween.set_locked}
         on_item_hover={(item) =>
-          (hovered_legend_series_idx = item != null && item.series_idx >= 0
-            ? item.series_idx
-            : null)}
+          (hovered_legend_series_idx =
+            item != null && item.series_idx >= 0 ? item.series_idx : null)}
         active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
         style={`position: absolute; left: ${legend_pos.x}px; top: ${legend_pos.y}px; pointer-events: auto; ${
           legend?.style || ``
@@ -1308,7 +1354,9 @@
   .box-plot :global(.pane-toggle),
   .box-plot .header-controls {
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
   .box-plot:hover :global(.pane-toggle),
   .box-plot:hover .header-controls,

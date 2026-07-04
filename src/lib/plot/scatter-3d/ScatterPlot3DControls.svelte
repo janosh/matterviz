@@ -69,7 +69,7 @@
 
   // Helpers to update display properties - avoids verbose inline handlers
   const update_display = (key: keyof DisplayConfig3D) => (event: InputControlEvent) => {
-    const parsed = parseFloat(get_input_value(event))
+    const parsed = Number(get_input_value(event))
     // Guard against NaN when input is cleared - preserve existing value
     if (!Number.isNaN(parsed)) display = { ...display, [key]: parsed }
   }
@@ -356,9 +356,11 @@
   {#if series.length > 0 || surfaces.length > 0}
     <div class="data-summary">
       {#if series.length > 0}
-        <span>{series.length} series · {
-            series.reduce((sum, srs) => sum + srs.x.length, 0).toLocaleString()
-          } points</span>
+        <span
+          >{series.length} series · {series
+            .reduce((sum, srs) => sum + srs.x.length, 0)
+            .toLocaleString()} points</span
+        >
       {/if}
       {#if surfaces.length > 0}
         <span>{surfaces.length} {surfaces.length === 1 ? `surface` : `surfaces`}</span>

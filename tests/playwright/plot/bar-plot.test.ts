@@ -61,7 +61,7 @@ test.describe(`BarPlot Component Tests`, () => {
     }
     const get_tick_values = async (axis: `x` | `y`) => {
       const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
-      return tick_texts.map((tick) => parseFloat(tick)).filter((tick) => Number.isFinite(tick))
+      return tick_texts.map(Number).filter((tick) => Number.isFinite(tick))
     }
 
     const initial_x = await get_range(`x`)

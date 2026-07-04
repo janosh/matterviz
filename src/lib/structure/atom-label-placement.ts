@@ -83,8 +83,8 @@ export type LabelPlacement = {
 // camera's right axis, which for both projections equals
 // visual_radius * projection[5] * (height/2) / clip_w.
 export class LabelProjector {
-  #mvp = new Matrix4() // projection * view * anchor (local -> clip space)
-  #view = new Matrix4() // view * anchor (local -> view space, for behind-camera test)
+  readonly #mvp = new Matrix4() // projection * view * anchor (local -> clip space)
+  readonly #view = new Matrix4() // view * anchor (local -> view space, for behind-camera test)
   #half_width = 0
   #half_height = 0
   #radius_scale = 0 // clip-space multiplier for projected atom radius

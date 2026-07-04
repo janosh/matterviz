@@ -32,12 +32,7 @@
   import StructurePopup from './StructurePopup.svelte'
   import TemperatureSlider from './TemperatureSlider.svelte'
   import * as thermo from './thermodynamics'
-  import type {
-    ConvexHullEntry,
-    HighlightStyle,
-    HoverData3D,
-    PhaseData,
-  } from './types'
+  import type { ConvexHullEntry, HighlightStyle, HoverData3D, PhaseData } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
@@ -58,9 +53,7 @@
     entry_category = MAGNETIC_ORDERING_CATEGORY,
     hidden_categories = $bindable([]),
     color_mode = $bindable(DEFAULTS.convex_hull.binary.color_mode),
-    color_scale = $bindable(
-      DEFAULTS.convex_hull.binary.color_scale as D3InterpolateName,
-    ),
+    color_scale = $bindable(DEFAULTS.convex_hull.binary.color_scale as D3InterpolateName),
     info_pane_open = $bindable(DEFAULTS.convex_hull.binary.info_pane_open),
     controls_open = $bindable(DEFAULTS.convex_hull.binary.legend_pane_open),
     max_hull_dist_show_phases = $bindable(
@@ -70,9 +63,7 @@
       DEFAULTS.convex_hull.binary.max_hull_dist_show_labels,
     ),
     show_stable_labels = $bindable(DEFAULTS.convex_hull.binary.show_stable_labels),
-    show_unstable_labels = $bindable(
-      DEFAULTS.convex_hull.binary.show_unstable_labels,
-    ),
+    show_unstable_labels = $bindable(DEFAULTS.convex_hull.binary.show_unstable_labels),
     on_file_drop,
     enable_click_selection = true,
     enable_structure_preview = true,
@@ -117,9 +108,7 @@
   const show_hull_line = $derived(merged_config.show_hull)
 
   // Merge highlight style with defaults (consistent with 3D/4D)
-  const merged_highlight_style = $derived(
-    helpers.merge_highlight_style(highlight_style),
-  )
+  const merged_highlight_style = $derived(helpers.merge_highlight_style(highlight_style))
 
   // Helper to check if entry is highlighted
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
@@ -143,10 +132,10 @@
     entry_category: () => entry_category,
     hidden_categories: () => hidden_categories,
     keep_plot_entry: helpers.entry_within_hull_dist,
-    set_temperature: (next_temp) => temperature = next_temp,
-    set_max_hull_dist_show_phases: (value) => max_hull_dist_show_phases = value,
-    set_stable_entries: (value) => stable_entries = value,
-    set_unstable_entries: (value) => unstable_entries = value,
+    set_temperature: (next_temp) => (temperature = next_temp),
+    set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
+    set_stable_entries: (value) => (stable_entries = value),
+    set_unstable_entries: (value) => (unstable_entries = value),
   })
   const merged_gas_config = $derived(hull_data.merged_gas_config)
   const elements = $derived(hull_data.elements)
@@ -209,31 +198,35 @@
         return { all_enriched_entries: [], hull_points: [] }
       }
 
-    // Build lower hull input: one minimum-energy point per composition x.
-    // Excluded entries don't participate in hull construction.
-    const min_y_by_x = new SvelteMap<number, number>()
-    for (const entry of coords_entries) {
-      if (entry.exclude_from_hull) continue
-      const current_min_y = min_y_by_x.get(entry.x)
-      if (current_min_y === undefined || entry.y < current_min_y) {
-        min_y_by_x.set(entry.x, entry.y)
+      // Build lower hull input: one minimum-energy point per composition x.
+      // Excluded entries don't participate in hull construction.
+      const min_y_by_x = new SvelteMap<number, number>()
+      for (const entry of coords_entries) {
+        if (entry.exclude_from_hull) continue
+        const current_min_y = min_y_by_x.get(entry.x)
+        if (current_min_y === undefined || entry.y < current_min_y) {
+          min_y_by_x.set(entry.x, entry.y)
+        }
       }
-    }
 
-    const hull_input = [...min_y_by_x].map(([x_coord, min_y]) => ({
-      x: x_coord,
-      y: min_y,
-    }))
-    const computed_hull_points = thermo.compute_lower_hull_2d(hull_input)
+      const hull_input = [...min_y_by_x].map(([x_coord, min_y]) => ({
+        x: x_coord,
+        y: min_y,
+      }))
+      const computed_hull_points = thermo.compute_lower_hull_2d(hull_input)
 
-    const enriched_entries = coords_entries.map((entry) => {
-      const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
-      // degenerate hull (<2 points): y_hull null -> unknown distance (not 0/stable)
-      const raw_dist = y_hull == null ? undefined : entry.y - y_hull
-      return { ...entry, ...helpers.compute_hull_stability(raw_dist, entry.exclude_from_hull) }
-    })
-    return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
-  })
+      const enriched_entries = coords_entries.map((entry) => {
+        const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
+        // degenerate hull (<2 points): y_hull null -> unknown distance (not 0/stable)
+        const raw_dist = y_hull == null ? undefined : entry.y - y_hull
+        return {
+          ...entry,
+          ...helpers.compute_hull_stability(raw_dist, entry.exclude_from_hull),
+        }
+      })
+      return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
+    },
+  )
 
   let reset_counter = $state(0)
   // Drag and drop state (to match 3D/4D components)
@@ -296,15 +289,19 @@
       const hl = is_highlighted(entry) ? merged_highlight_style : null
 
       point_style[idx] = {
-        fill: hl?.effect === `color` || hl?.effect === `both`
-          ? hl?.color
-          : is_energy_mode
-          ? undefined
-          : (is_stable ? stable_color : unstable_color),
+        fill:
+          hl?.effect === `color` || hl?.effect === `both`
+            ? hl?.color
+            : is_energy_mode
+              ? undefined
+              : is_stable
+                ? stable_color
+                : unstable_color,
         stroke: is_stable ? `#ffffff` : `#000000`,
-        radius: hl?.effect === `size` || hl?.effect === `both`
-          ? base_radius * (hl?.size_multiplier ?? 1)
-          : base_radius,
+        radius:
+          hl?.effect === `size` || hl?.effect === `both`
+            ? base_radius * (hl?.size_multiplier ?? 1)
+            : base_radius,
         symbol_type: marker_to_d3_symbol(entry.marker),
         is_highlighted: Boolean(hl),
         highlight_effect: hl?.effect,
@@ -400,8 +397,7 @@
       show_unstable_labels !== DEFAULTS.convex_hull.binary.show_unstable_labels ||
       // Compare with auto-computed threshold, with small tolerance for floating point
       Math.abs(max_hull_dist_show_phases - auto_default_threshold) > 0.001 ||
-      max_hull_dist_show_labels !==
-        DEFAULTS.convex_hull.binary.max_hull_dist_show_labels,
+      max_hull_dist_show_labels !== DEFAULTS.convex_hull.binary.max_hull_dist_show_labels,
   )
 
   // Custom hover tooltip state used with ScatterPlot events
@@ -422,11 +418,13 @@
     const current_popup = helpers.current_entry(structure_popup.entry, plot_entries)
     if (structure_popup.open) {
       const structure = current_popup && extract_structure_from_entry(current_popup)
-      if (!structure) structure_popup = { open: false, structure: null, entry: null, place_right: true }
+      if (!structure)
+        structure_popup = { open: false, structure: null, entry: null, place_right: true }
       else if (
         current_popup !== structure_popup.entry ||
         structure !== structure_popup.structure
-      ) structure_popup = { ...structure_popup, entry: current_popup, structure }
+      )
+        structure_popup = { ...structure_popup, entry: current_popup, structure }
     }
   })
 
@@ -434,10 +432,10 @@
     const target = event.target
     if (target instanceof HTMLElement && target.tagName.match(/INPUT|TEXTAREA/)) return
     const actions: Record<string, () => void> = {
-      b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
-      s: () => show_stable = !show_stable,
-      u: () => show_unstable = !show_unstable,
-      l: () => show_stable_labels = !show_stable_labels,
+      b: () => (color_mode = color_mode === `stability` ? `energy` : `stability`),
+      s: () => (show_stable = !show_stable),
+      u: () => (show_unstable = !show_unstable),
+      l: () => (show_stable_labels = !show_stable_labels),
     }
     actions[event.key.toLowerCase()]?.()
   }
@@ -448,14 +446,16 @@
     if (data) on_file_drop?.(data)
   }
 
-  async function copy_entry_data(
-    entry: ConvexHullEntry,
-    position: { x: number; y: number },
-  ) {
-    await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
-      copy_feedback.visible = visible
-      copy_feedback.position = pos
-    }, entry_category)
+  async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
+    await helpers.copy_entry_to_clipboard(
+      entry,
+      position,
+      (visible, pos) => {
+        copy_feedback.visible = visible
+        copy_feedback.position = pos
+      },
+      entry_category,
+    )
   }
 
   function close_structure_popup() {
@@ -472,8 +472,7 @@
     if (!entry) return
 
     const now = Date.now()
-    const is_double_click = last_clicked_entry === entry &&
-      now - last_click_time < 300
+    const is_double_click = last_clicked_entry === entry && now - last_click_time < 300
 
     if (is_double_click) {
       // Double-click: copy to clipboard
@@ -524,9 +523,8 @@
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: ScatterHandlerProps<ConvexHullEntry>)}
   {@const entry = point.metadata}
-  {@const entry_highlight = entry && is_highlighted(entry)
-    ? merged_highlight_style
-    : undefined}
+  {@const entry_highlight =
+    entry && is_highlighted(entry) ? merged_highlight_style : undefined}
   {#if entry}
     <ConvexHullTooltip
       {entry}
@@ -600,9 +598,14 @@
   {/if}
 {/snippet}
 
-{#snippet user_content(
-  { x_scale_fn, pad, height, y_scale_fn, y_range, width }: UserContentProps,
-)}
+{#snippet user_content({
+  x_scale_fn,
+  pad,
+  height,
+  y_scale_fn,
+  y_range,
+  width,
+}: UserContentProps)}
   {@const [x0, x1, y0] = [x_scale_fn(0), x_scale_fn(1), y_scale_fn(y_range[0])]}
   {@const stroke = {
     stroke: `var(--scatter-grid-stroke, gray)`,
@@ -668,9 +671,7 @@
         return
       }
       const { metadata: entry, event } = data
-      hover_data = entry
-        ? { entry, position: { x: event.clientX, y: event.clientY } }
-        : null
+      hover_data = entry ? { entry, position: { x: event.clientX, y: event.clientY } } : null
       on_point_hover?.(hover_data)
     }}
     padding={{ t: 30, b: 60, l: 60, r: 30 }}
@@ -685,14 +686,14 @@
       {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
     </h3>
 
-    <ClickFeedback
-      bind:visible={copy_feedback.visible}
-      position={copy_feedback.position}
-    />
+    <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
     <DragOverlay visible={drag_over} message="Drop JSON file to load phase diagram data" />
 
     {#if hull_data.has_temp_data && temperature !== undefined}
-      <TemperatureSlider available_temperatures={hull_data.available_temperatures} bind:temperature />
+      <TemperatureSlider
+        available_temperatures={hull_data.available_temperatures}
+        bind:temperature
+      />
     {/if}
 
     {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
@@ -720,8 +721,7 @@
 
 <style>
   :global(.convex-hull-2d:fullscreen) {
-    background: var(--hull-2d-bg-fullscreen, var(--hull-2d-bg, var(--hull-bg)))
-      !important;
+    background: var(--hull-2d-bg-fullscreen, var(--hull-2d-bg, var(--hull-bg))) !important;
     overflow: hidden;
   }
   :global(.convex-hull-2d.dragover) {
@@ -736,7 +736,9 @@
     cursor: pointer;
     border-radius: 3px;
     color: var(--text-color, currentColor);
-    transition: background-color 0.2s, opacity 0.2s;
+    transition:
+      background-color 0.2s,
+      opacity 0.2s;
     display: flex;
     font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
   }

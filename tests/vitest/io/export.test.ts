@@ -206,9 +206,7 @@ describe(`svg_to_png_blob`, () => {
       height: 0,
     } as unknown as HTMLCanvasElement
 
-    vi.spyOn(document, `createElement`).mockReturnValue(
-      mock_canvas_element as unknown as HTMLElement,
-    )
+    vi.spyOn(document, `createElement`).mockReturnValue(mock_canvas_element)
     globalThis.URL.createObjectURL = vi.fn().mockReturnValue(`blob:test-url`)
     globalThis.URL.revokeObjectURL = vi.fn()
   })
@@ -418,9 +416,7 @@ describe(`export_svg_as_png`, () => {
       width: 0,
       height: 0,
     } as unknown as HTMLCanvasElement
-    vi.spyOn(document, `createElement`).mockReturnValue(
-      mock_canvas_element as unknown as HTMLElement,
-    )
+    vi.spyOn(document, `createElement`).mockReturnValue(mock_canvas_element)
     globalThis.URL.createObjectURL = vi.fn().mockReturnValue(`blob:test-url`)
     globalThis.URL.revokeObjectURL = vi.fn()
   })

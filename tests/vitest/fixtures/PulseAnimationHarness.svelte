@@ -1,7 +1,10 @@
 <script lang="ts">
   import { create_pulse_animation } from '$lib/effects.svelte'
 
-  let { active, on_tick }: {
+  let {
+    active,
+    on_tick,
+  }: {
     active: () => boolean
     on_tick?: () => void
   } = $props()

@@ -89,8 +89,7 @@
   const subtitles: Partial<Record<keyof typeof ELEMENT_COLOR_SCHEMES, string>> = {
     Vesta:
       'From the <a href="https://jp-minerals.org/vesta/en/" target="_blank" rel="noopener">VESTA</a> crystallographic visualization software',
-    Jmol:
-      'From the <a href="http://jmol.sourceforge.net/" target="_blank" rel="noopener">Jmol</a> molecular visualizer, based on <a href="https://en.wikipedia.org/wiki/CPK_coloring" target="_blank" rel="noopener">CPK coloring</a> (Corey-Pauling-Koltun)',
+    Jmol: 'From the <a href="http://jmol.sourceforge.net/" target="_blank" rel="noopener">Jmol</a> molecular visualizer, based on <a href="https://en.wikipedia.org/wiki/CPK_coloring" target="_blank" rel="noopener">CPK coloring</a> (Corey-Pauling-Koltun)',
     Alloy:
       'Custom high-contrast scheme optimized for contrast between elements commonly co-occurring in metal alloys',
     Pastel: 'Custom pastel scheme with bright, less saturated colors',

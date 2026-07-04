@@ -14,11 +14,7 @@
   import { parse_any_structure } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
   import type { AnyStructure, IsosurfaceSettings, VolumetricData } from 'matterviz'
-  import {
-    auto_isosurface_settings,
-    DEFAULT_ISOSURFACE_SETTINGS,
-    Structure,
-  } from 'matterviz'
+  import { auto_isosurface_settings, DEFAULT_ISOSURFACE_SETTINGS, Structure } from 'matterviz'
   import { onMount } from 'svelte'
   import { to_error } from '$lib/utils'
 
@@ -51,9 +47,7 @@
   let active_volume = $derived(volumetric_data?.[active_volume_idx])
 
   const decode_content = (content: string | ArrayBuffer): string =>
-    content instanceof ArrayBuffer
-      ? new TextDecoder().decode(content)
-      : content
+    content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
 
   function reset_loaded_content() {
     structure = undefined
@@ -87,9 +81,7 @@
     if (isosurface_settings.isovalue !== DEFAULT_ISOSURFACE_SETTINGS.isovalue) {
       params.set(`isovalue`, isosurface_settings.isovalue.toPrecision(4))
     }
-    if (
-      isosurface_settings.show_negative !== DEFAULT_ISOSURFACE_SETTINGS.show_negative
-    ) {
+    if (isosurface_settings.show_negative !== DEFAULT_ISOSURFACE_SETTINGS.show_negative) {
       params.set(`show_negative`, String(isosurface_settings.show_negative))
     }
     // Use window.location instead of page.url to avoid creating a reactive
@@ -229,7 +221,7 @@
 
       load_file(target.name, target.url).then(() => {
         if (isovalue_param) {
-          const parsed = parseFloat(isovalue_param)
+          const parsed = Number(isovalue_param)
           if (!isNaN(parsed)) {
             isosurface_settings.isovalue = parsed
           }
@@ -262,8 +254,8 @@
 <p>
   Render isosurfaces from volumetric data overlaid on atomic structures. Supports VASP
   <code>CHGCAR</code>/<code>AECCAR</code>/<code>ELFCAR</code>/<code>LOCPOT</code>/
-  <code>PARCHG</code> and Gaussian <code>.cube</code> file formats. Drag and drop your
-  own files onto the viewer.
+  <code>PARCHG</code> and Gaussian <code>.cube</code> file formats. Drag and drop your own files
+  onto the viewer.
 </p>
 
 <FilePicker
@@ -348,20 +340,8 @@
       <MillerIndexInput bind:value={miller_indices} />
       <label class="slice-control">
         d =
-        <input
-          type="number"
-          min={0}
-          max={1}
-          step={0.01}
-          bind:value={slice_position}
-        />
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          bind:value={slice_position}
-        />
+        <input type="number" min={0} max={1} step={0.01} bind:value={slice_position} />
+        <input type="range" min={0} max={1} step={0.01} bind:value={slice_position} />
       </label>
       <label class="slice-control">
         Resolution
@@ -406,29 +386,24 @@
   <h2>Features</h2>
   <ul>
     <li>
-      <strong>CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG</strong> &ndash; VASP charge density,
-      partial charge density, ELF, and local potential
+      <strong>CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG</strong> &ndash; VASP charge density, partial charge
+      density, ELF, and local potential
     </li>
     <li>
-      <strong>.cube</strong> &ndash; Gaussian/CP2K molecular orbitals, electron density,
-      ESP
+      <strong>.cube</strong> &ndash; Gaussian/CP2K molecular orbitals, electron density, ESP
     </li>
     <li>
-      <strong>Dual lobes</strong> &ndash; Positive and negative isosurfaces with
-      independent colors
+      <strong>Dual lobes</strong> &ndash; Positive and negative isosurfaces with independent colors
     </li>
     <li>
-      <strong>Interactive controls</strong> &ndash; Adjust isovalue, opacity, colors, and
-      wireframe
+      <strong>Interactive controls</strong> &ndash; Adjust isovalue, opacity, colors, and wireframe
     </li>
     <li>
-      <strong>Transparency</strong> &ndash; Two-pass rendering for correct transparent
-      surfaces
+      <strong>Transparency</strong> &ndash; Two-pass rendering for correct transparent surfaces
     </li>
     <li><strong>Drag & drop</strong> &ndash; Load your own volumetric data files</li>
     <li>
-      <strong>Spin-polarized</strong> &ndash; Switch between charge density and
-      magnetization volumes
+      <strong>Spin-polarized</strong> &ndash; Switch between charge density and magnetization volumes
     </li>
     <li>
       <strong>Cross-section</strong> &ndash; 2D heatmap slices through volumetric data

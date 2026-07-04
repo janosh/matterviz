@@ -3,7 +3,7 @@
 // Note: Most symmetry tests use mocks (see index.test.ts, symmetry-utils.test.ts)
 
 import type { Vec3 } from '$lib/math'
-import type { Crystal, ElementSymbol } from '$lib'
+import type { Crystal } from '$lib'
 import {
   analyze_structure_symmetry,
   apply_symmetry_operations,
@@ -13,6 +13,7 @@ import {
   SPACEGROUP_SYMBOL_TO_NUM,
   spacegroup_num_to_crystal_sys,
   spacegroup_num_to_lattice_system,
+  wyckoff_multiplicity,
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
 import { structure_map } from '$site/structures'
@@ -212,8 +213,8 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
       [0.5, 0.5, 0],
     ]
     const crystal = make_crystal(5.64, [
-      ...cl_sites.map((abc) => ({ element: `Cl` as ElementSymbol, abc })),
-      ...na_sites.map((abc) => ({ element: `Na` as ElementSymbol, abc })),
+      ...cl_sites.map((abc) => ({ element: `Cl`, abc })),
+      ...na_sites.map((abc) => ({ element: `Na`, abc })),
     ])
     const sym_data = await analyze_crystal(crystal)
     expect(sym_data.number).toBe(225)
@@ -291,7 +292,10 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
   ])(`%s: Wyckoff multiplicities sum to std cell atom count`, async (id) => {
     const sym_data = await analyze(id)
     const rows = wyckoff_positions_from_moyo(sym_data)
-    const total_multiplicity = rows.reduce((sum, row) => sum + parseInt(row.wyckoff, 10), 0)
+    const total_multiplicity = rows.reduce(
+      (sum, row) => sum + wyckoff_multiplicity(row.wyckoff),
+      0,
+    )
     expect(total_multiplicity).toBe(sym_data.std_cell.positions.length)
   })
 })

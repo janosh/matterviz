@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 
 // CI environments are slower - use longer timeouts
-const LOAD_TIMEOUT = IS_CI ? 20_000 : 8_000
+const LOAD_TIMEOUT = IS_CI ? 20_000 : 8000
 
 // Fixture-like helper returning both diagram and svg
 function get_diagram_elements(page: Page): { diagram: Locator; svg: Locator } {
@@ -149,8 +149,10 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     // X-axis: composition 0-100
     const x_ticks = svg.locator(`g.x-axis > g text`)
-    expect(parseFloat((await x_ticks.first().textContent()) ?? ``)).toBe(0)
-    expect(parseFloat((await x_ticks.last().textContent()) ?? ``)).toBeGreaterThanOrEqual(80)
+    const first_tick = (await x_ticks.first().textContent())?.trim()
+    expect(first_tick ? Number(first_tick) : NaN).toBe(0)
+    const last_tick = (await x_ticks.last().textContent())?.trim()
+    expect(last_tick ? Number(last_tick) : NaN).toBeGreaterThanOrEqual(80)
 
     // Y-axis: temperature label
     await expect(

@@ -19,8 +19,18 @@
     ReferenceLine,
   } from '$lib/plot'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { add_sides, marginal_axis, marginal_axis_presence, normalize_marginals, reserve_marginal_pad } from '$lib/plot/core/marginals'
-  import { AXIS_DEFAULTS, type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import {
+    add_sides,
+    marginal_axis,
+    marginal_axis_presence,
+    normalize_marginals,
+    reserve_marginal_pad,
+  } from '$lib/plot/core/marginals'
+  import {
+    AXIS_DEFAULTS,
+    type AxisChangeState,
+    create_axis_loader,
+  } from '$lib/plot/core/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/core/data-transform'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
@@ -115,49 +125,45 @@
     pan = {},
     marginals = false,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
-    series: DataSeries[]
-    // Component-specific props
-    bins?: number
-    show_legend?: boolean
-    legend?: LegendConfig | null
-    bar?: BarStyle
-    selected_property?: string
-    mode?: `single` | `overlay`
-    tooltip?: Snippet<[HistogramHandlerProps]>
-    header_controls?: Snippet<
-      [{ height: number; width: number; fullscreen: boolean }]
-    >
-    controls_extra?: Snippet<[Required<PlotConfig>]>
-    change?: (data: { value: number; count: number; property: string } | null) => void
-    on_bar_click?: (
-      data: {
+  }: HTMLAttributes<HTMLDivElement> &
+    BasePlotProps &
+    PlotConfig & {
+      series: DataSeries[]
+      // Component-specific props
+      bins?: number
+      show_legend?: boolean
+      legend?: LegendConfig | null
+      bar?: BarStyle
+      selected_property?: string
+      mode?: `single` | `overlay`
+      tooltip?: Snippet<[HistogramHandlerProps]>
+      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      controls_extra?: Snippet<[Required<PlotConfig>]>
+      change?: (data: { value: number; count: number; property: string } | null) => void
+      on_bar_click?: (data: {
         value: number
         count: number
         property: string
         event: MouseEvent | KeyboardEvent
-      },
-    ) => void
-    on_bar_hover?: (
-      data:
-        | { value: number; count: number; property: string; event: MouseEvent }
-        | null,
-    ) => void
-    ref_lines?: RefLine[]
-    on_ref_line_click?: (event: RefLineEvent) => void
-    on_ref_line_hover?: (event: RefLineEvent | null) => void
-    on_series_toggle?: (series_idx: number) => void
-    // Interactive axis props
-    data_loader?: DataLoaderFn
-    on_axis_change?: (
-      axis: `x` | `x2` | `y` | `y2`,
-      key: string,
-      new_series: DataSeries[],
-    ) => void
-    on_error?: (error: AxisLoadError) => void
-    pan?: PanConfig
-    marginals?: MarginalsProp
-  } = $props()
+      }) => void
+      on_bar_hover?: (
+        data: { value: number; count: number; property: string; event: MouseEvent } | null,
+      ) => void
+      ref_lines?: RefLine[]
+      on_ref_line_click?: (event: RefLineEvent) => void
+      on_ref_line_hover?: (event: RefLineEvent | null) => void
+      on_series_toggle?: (series_idx: number) => void
+      // Interactive axis props
+      data_loader?: DataLoaderFn
+      on_axis_change?: (
+        axis: `x` | `x2` | `y` | `y2`,
+        key: string,
+        new_series: DataSeries[],
+      ) => void
+      on_error?: (error: AxisLoadError) => void
+      pan?: PanConfig
+      marginals?: MarginalsProp
+    } = $props()
 
   // Local state for controls (initialized from props, owned by this component)
   // Include key AXIS_DEFAULTS props (range, ticks, scale_type) that PlotControls needs
@@ -167,21 +173,23 @@
   let bar = $state(untrack(() => ({ ...DEFAULTS.histogram.bar, ...bar_init })))
   let x_axis = $state(untrack(() => ({ ...axis_state_defaults, ...x_axis_init })))
   // x2-axis needs different default label_shift for top-side positioning
-  let x2_axis = $state(untrack(() => ({
-    ...axis_state_defaults,
-    label_shift: { x: 0, y: 40 },
-    ...x2_axis_init,
-  })))
+  let x2_axis = $state(
+    untrack(() => ({
+      ...axis_state_defaults,
+      label_shift: { x: 0, y: 40 },
+      ...x2_axis_init,
+    })),
+  )
   let y_axis = $state(untrack(() => ({ ...axis_state_defaults, ...y_axis_init })))
   // y2 title stays vertically centered; its x position is computed by y2_axis_label_x
-  let y2_axis = $state(untrack(() => ({
-    ...axis_state_defaults,
-    label_shift: { x: 0, y: 0 },
-    ...y2_axis_init,
-  })))
-  let display = $state(
-    untrack(() => ({ ...DEFAULTS.histogram.display, ...display_init })),
+  let y2_axis = $state(
+    untrack(() => ({
+      ...axis_state_defaults,
+      label_shift: { x: 0, y: 0 },
+      ...y2_axis_init,
+    })),
   )
+  let display = $state(untrack(() => ({ ...DEFAULTS.histogram.display, ...display_init })))
 
   // Merge component-specific defaults with local state (format comes from here, not AXIS_DEFAULTS)
   const final_x_axis = $derived({ label: `Value`, format: `.2~s`, ...x_axis })
@@ -227,29 +235,24 @@
   let selected_series_entries = $derived<IndexedSeries[]>(
     series
       .map((series_data: DataSeries, series_idx: number) => ({ series_data, series_idx }))
-      .filter(({ series_data }) =>
-        (series_data.visible ?? true) &&
-        (mode !== `single` || !selected_property || series_data.label === selected_property)
+      .filter(
+        ({ series_data }) =>
+          (series_data.visible ?? true) &&
+          (mode !== `single` || !selected_property || series_data.label === selected_property),
       ),
   )
-  let selected_series = $derived(
-    selected_series_entries.map(({ series_data }) => series_data),
-  )
+  let selected_series = $derived(selected_series_entries.map(({ series_data }) => series_data))
 
   // Separate series by y-axis
   let y1_series = $derived(
     selected_series.filter((srs: DataSeries) => (srs.y_axis ?? `y1`) === `y1`),
   )
-  let y2_series = $derived(
-    selected_series.filter((srs: DataSeries) => srs.y_axis === `y2`),
-  )
-  let x2_series = $derived(
-    selected_series.filter((srs: DataSeries) => srs.x_axis === `x2`),
-  )
+  let y2_series = $derived(selected_series.filter((srs: DataSeries) => srs.y_axis === `y2`))
+  let x2_series = $derived(selected_series.filter((srs: DataSeries) => srs.x_axis === `x2`))
 
   let auto_ranges = $derived.by(() => {
     // Only x1 series contribute to the x1 auto-range (x2 series get their own domain below)
-    const x1_values = selected_series.flatMap((srs) => srs.x_axis === `x2` ? [] : srs.y)
+    const x1_values = selected_series.flatMap((srs) => (srs.x_axis === `x2` ? [] : srs.y))
     const auto_x = get_nice_data_range(
       x1_values.map((val) => ({ x: val, y: 0 })),
       ({ x }) => x,
@@ -260,16 +263,17 @@
     )
 
     const x2_values = x2_series.flatMap((srs: DataSeries) => srs.y)
-    const auto_x2 = x2_values.length > 0
-      ? get_nice_data_range(
-        x2_values.map((val) => ({ x: val, y: 0 })),
-        ({ x }) => x,
-        final_x2_axis.range ?? [null, null],
-        final_x2_axis.scale_type ?? `linear`,
-        range_padding,
-        false,
-      )
-      : [0, 1] as Vec2
+    const auto_x2 =
+      x2_values.length > 0
+        ? get_nice_data_range(
+            x2_values.map((val) => ({ x: val, y: 0 })),
+            ({ x }) => x,
+            final_x2_axis.range ?? [null, null],
+            final_x2_axis.scale_type ?? `linear`,
+            range_padding,
+            false,
+          )
+        : ([0, 1] as Vec2)
 
     const count_cfg = { x_domain: auto_x, x2_domain: auto_x2, bin_count: bins, range_padding }
     const y1_range = compute_count_range(y1_series, {
@@ -321,9 +325,11 @@
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
     const init = untrack(() => ranges.initial)
     if (!vec2_equal(init.x, next.x)) [ranges.initial.x, ranges.current.x] = [next.x, next.x]
-    if (!vec2_equal(init.x2, next.x2)) [ranges.initial.x2, ranges.current.x2] = [next.x2, next.x2]
+    if (!vec2_equal(init.x2, next.x2))
+      [ranges.initial.x2, ranges.current.x2] = [next.x2, next.x2]
     if (!vec2_equal(init.y, next.y)) [ranges.initial.y, ranges.current.y] = [next.y, next.y]
-    if (!vec2_equal(init.y2, next.y2)) [ranges.initial.y2, ranges.current.y2] = [next.y2, next.y2]
+    if (!vec2_equal(init.y2, next.y2))
+      [ranges.initial.y2, ranges.current.y2] = [next.y2, next.y2]
   })
 
   // Layout: dynamic padding based on tick label widths
@@ -336,19 +342,23 @@
     const current_ticks_y = untrack(() => ticks.y)
     const current_ticks_y2 = untrack(() => ticks.y2)
 
-    const new_pad = width && height && current_ticks_y.length > 0
-      ? calc_auto_padding({
-        padding,
-        default_padding: DEFAULT_PLOT_PADDING,
-        x2_axis: { ...final_x2_axis, tick_values: current_ticks_x2 },
-        y_axis: { ...final_y_axis, tick_values: current_ticks_y },
-        y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },
-      })
-      : filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const new_pad =
+      width && height && current_ticks_y.length > 0
+        ? calc_auto_padding({
+            padding,
+            default_padding: DEFAULT_PLOT_PADDING,
+            x2_axis: { ...final_x2_axis, tick_values: current_ticks_x2 },
+            y_axis: { ...final_y_axis, tick_values: current_ticks_y },
+            y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },
+          })
+        : filter_padding(padding, DEFAULT_PLOT_PADDING)
 
     // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
     if (
-      width && height && y2_series.length > 0 && current_ticks_y2.length > 0 &&
+      width &&
+      height &&
+      y2_series.length > 0 &&
+      current_ticks_y2.length > 0 &&
       final_y2_axis.label
     ) {
       const inside = final_y2_axis.tick?.label?.inside ?? false
@@ -364,28 +374,31 @@
 
     // Add x2 axis label space (mirroring y2 logic for top padding)
     if (
-      width && height && x2_series.length > 0 && current_ticks_x2.length > 0 &&
+      width &&
+      height &&
+      x2_series.length > 0 &&
+      current_ticks_x2.length > 0 &&
       final_x2_axis.label
     ) {
       const inside = final_x2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside
-        ? 0
-        : Math.abs(final_x2_axis.tick?.label?.shift?.y ?? 0) + 8
+      const tick_shift = inside ? 0 : Math.abs(final_x2_axis.tick?.label?.shift?.y ?? 0) + 8
       const label_thickness = Math.round(12 * 1.2)
-      new_pad.t = Math.max(
-        new_pad.t,
-        tick_shift + LABEL_GAP_DEFAULT + label_thickness,
-      )
+      new_pad.t = Math.max(new_pad.t, tick_shift + LABEL_GAP_DEFAULT + label_thickness)
     }
 
     // Only update if padding actually changed
     if (
-      base_pad.t !== new_pad.t || base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l || base_pad.r !== new_pad.r
-    ) base_pad = new_pad
+      base_pad.t !== new_pad.t ||
+      base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l ||
+      base_pad.r !== new_pad.r
+    )
+      base_pad = new_pad
   })
 
-  const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 60 }))
+  const legend_footprint = $derived(
+    measured_footprint(legend_element, { width: 120, height: 60 }),
+  )
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each filled bar is modeled as a
@@ -423,11 +436,15 @@
       height,
       obstacles_norm,
       // gate on legend_element (the render signal) not legend_data, whose entries can read pad
-      legend: show_legend && legend != null && series.length > 1 &&
-          legend_element != null && !legend_has_explicit_pos
-        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-        : null,
-    })
+      legend:
+        show_legend &&
+        legend != null &&
+        series.length > 1 &&
+        legend_element != null &&
+        !legend_has_explicit_pos
+          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+          : null,
+    }),
   )
   // Resolve marginals (default: CDF strip on top) and reserve outer-band padding. Pass the
   // histogram's `bins` as the marginal's histogram bin count (NOT `size`/thickness) so a
@@ -498,7 +515,9 @@
       show = true,
     ) =>
       width && height && show
-        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, { default_count })
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
+            default_count,
+          })
         : []
     const x = axis_ticks(final_x_axis, ranges.current.x, scales.x, 8)
     const x2 = axis_ticks(final_x2_axis, ranges.current.x2, scales.x2, 8, x2_series.length > 0)
@@ -590,11 +609,13 @@
       x_axis = { ...x_axis, range: next_x }
       // gate x2/y2 on series presence: their scales are [0, 1] sentinels otherwise,
       // so inverting would store a phantom range in the bindable prop
-      const next_x2 = x2_series.length > 0 ? invert_rect_range(scales.x2, start.x, current.x) : null
+      const next_x2 =
+        x2_series.length > 0 ? invert_rect_range(scales.x2, start.x, current.x) : null
       if (next_x2) x2_axis = { ...x2_axis, range: next_x2 }
       const next_y = invert_rect_range(scales.y, start.y, current.y)
       if (next_y) y_axis = { ...y_axis, range: next_y }
-      const next_y2 = y2_series.length > 0 ? invert_rect_range(scales.y2, start.y, current.y) : null
+      const next_y2 =
+        y2_series.length > 0 ? invert_rect_range(scales.y2, start.y, current.y) : null
       if (next_y2) y2_axis = { ...y2_axis, range: next_y2 }
     },
     on_reset: () => {
@@ -644,7 +665,10 @@
     on_bar_hover?.({ value, count, property, event: evt })
   }
 
-  const legend_vis = create_legend_visibility(() => series, (next) => (series = next))
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series = next),
+  )
 
   // Set theme-aware background when entering fullscreen
   $effect(() => {
@@ -665,10 +689,11 @@
   }
 
   // Shared handler + one-shot auto-load bound to this component's state
-  const { handle_axis_change, try_auto_load } = create_axis_loader(
-    axis_state,
-    () => ({ data_loader, on_axis_change, on_error }),
-  )
+  const { handle_axis_change, try_auto_load } = create_axis_loader(axis_state, () => ({
+    data_loader,
+    on_axis_change,
+    on_error,
+  }))
   $effect(try_auto_load)
 </script>
 
@@ -733,8 +758,7 @@
     bind:this={svg_element}
     role="application"
     aria-label={rest[`aria-label`] ??
-    ([final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
-      `Histogram`)}
+      ([final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) || `Histogram`)}
     tabindex="0"
     onfocusin={() => pan_zoom.set_focused(true)}
     onfocusout={() => pan_zoom.set_focused(false)}
@@ -850,7 +874,8 @@
       tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
       label_x={Math.max(
         12,
-        pad.l - (final_y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
+        pad.l -
+          (final_y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
           LABEL_GAP_DEFAULT,
       ) + (final_y_axis.label_shift?.x ?? 0)}
       label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
@@ -879,24 +904,19 @@
     {/if}
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
-    {#each histogram_data as
-      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis, series_idx },
-      idx
-      (id ?? idx)
-    }
+    {#each histogram_data as { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis, series_idx }, idx (id ?? idx)}
       <g
         class="histogram-series"
         data-series-idx={series_idx}
         clip-path="url(#{clip_path_id})"
-        opacity={hovered_legend_series_idx !== null &&
-            hovered_legend_series_idx !== series_idx
+        opacity={hovered_legend_series_idx !== null && hovered_legend_series_idx !== series_idx
           ? 0.25
           : 1}
       >
         {#each bins as bin, bin_idx (bin_idx)}
           {@const bar_x = x_scale(bin.x0!)}
           {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1!) - bar_x))}
-          {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
+          {@const bar_height = Math.max(0, height - pad.b - y_scale(bin.length))}
           {@const bar_y = y_scale(bin.length)}
           {@const value = (bin.x0! + bin.x1!) / 2}
           {#if bar_height > 0}
@@ -916,22 +936,22 @@
               role="button"
               tabindex="0"
               onmousemove={(evt) =>
-              handle_mouse_move(
-                evt,
-                value,
-                bin.length,
-                label,
-                (y_axis ?? `y1`) as `y1` | `y2`,
-                series_idx,
-                (srs_x_axis ?? `x1`) as `x1` | `x2`,
-              )}
+                handle_mouse_move(
+                  evt,
+                  value,
+                  bin.length,
+                  label,
+                  (y_axis ?? `y1`) as `y1` | `y2`,
+                  series_idx,
+                  (srs_x_axis ?? `x1`) as `x1` | `x2`,
+                )}
               onmouseleave={() => {
                 hover_info = null
                 change(null)
                 on_bar_hover?.(null)
               }}
               onclick={(event) =>
-              on_bar_click?.({ value, count: bin.length, property: label, event })}
+                on_bar_click?.({ value, count: bin.length, property: label, event })}
               onkeydown={(event: KeyboardEvent) => {
                 if ([`Enter`, ` `].includes(event.key)) {
                   event.preventDefault()
@@ -1022,27 +1042,27 @@
 
   {#if show_legend && legend != null && series.length > 1}
     {@const legend_pos = placed_coords(
-    legend_auto_outside,
-    { x: legend_outside_x, y: legend_outside_y },
-    legend_placement,
-    legend_tween.coords.current,
-    { x: pad.l + 10, y: pad.t + 10 },
-  )}
+      legend_auto_outside,
+      { x: legend_outside_x, y: legend_outside_y },
+      legend_placement,
+      legend_tween.coords.current,
+      { x: pad.l + 10, y: pad.t + 10 },
+    )}
     <PlotLegend
       bind:root_element={legend_element}
       {...legend}
       series_data={legend_data}
-      on_toggle={legend?.on_toggle ?? ((series_idx: number) => {
-        if (series_idx < 0 || series_idx >= series.length) return
-        legend_vis.on_toggle(series_idx)
-        on_series_toggle(series_idx)
-      })}
+      on_toggle={legend?.on_toggle ??
+        ((series_idx: number) => {
+          if (series_idx < 0 || series_idx >= series.length) return
+          legend_vis.on_toggle(series_idx)
+          on_series_toggle(series_idx)
+        })}
       on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
       on_hover_change={legend_tween.set_locked}
       on_item_hover={(item) =>
-        (hovered_legend_series_idx = item != null && item.series_idx >= 0
-          ? item.series_idx
-          : null)}
+        (hovered_legend_series_idx =
+          item != null && item.series_idx >= 0 ? item.series_idx : null)}
       active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
       style={`
         position: absolute;
@@ -1108,7 +1128,9 @@
   .histogram :global(.pane-toggle),
   .histogram .header-controls {
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
   .histogram:hover :global(.pane-toggle),
   .histogram:hover .header-controls,

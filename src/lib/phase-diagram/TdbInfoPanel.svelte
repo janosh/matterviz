@@ -20,12 +20,8 @@
     style = ``,
   }: Props = $props()
 
-  const reference = $derived(
-    result.data ? extract_tdb_reference(result.data.comments) : null,
-  )
-  const model_summary = $derived(
-    result.data ? summarize_models(result.data.phases) : null,
-  )
+  const reference = $derived(result.data ? extract_tdb_reference(result.data.comments) : null)
+  const model_summary = $derived(result.data ? summarize_models(result.data.phases) : null)
 </script>
 
 <div class="tdb-info-panel" {style}>
@@ -38,23 +34,30 @@
       <dt>System</dt>
       <dd>{sys}</dd>
       <dt>Phases</dt>
-      <dd class="phases">{#each phases as { name } (name)}<span>{name}</span>{/each}</dd>
-      {#if model_summary}<dt>Models</dt><dd>{model_summary}</dd>{/if}
+      <dd class="phases">
+        {#each phases as { name } (name)}<span>{name}</span>{/each}
+      </dd>
+      {#if model_summary}<dt>Models</dt>
+        <dd>{model_summary}</dd>{/if}
       <dt>Funcs / Params</dt>
       <dd>{functions.length} / {parameters.length}</dd>
       {#if result.temperature_range}
         {@const [t_min, t_max] = result.temperature_range}
-        <dt>T Range</dt><dd>{t_min} – {t_max} K</dd>
+        <dt>T Range</dt>
+        <dd>{t_min} – {t_max} K</dd>
       {/if}
-      {#if reference}<dt>Ref</dt><dd class="ref" title={reference}>{reference}</dd>{/if}
+      {#if reference}<dt>Ref</dt>
+        <dd class="ref" title={reference}>{reference}</dd>{/if}
     </dl>
 
     {#if has_precomputed}
       <p class="notice success">
         ✓ {#if is_precomputed_loaded}
           <strong>Phase diagram loaded</strong> ({sys}.json)
-          <small>TDB contains model parameters. Boundaries computed offline via
-            <a href="https://pycalphad.org" target="_blank">pycalphad</a>.</small>
+          <small
+            >TDB contains model parameters. Boundaries computed offline via
+            <a href="https://pycalphad.org" target="_blank">pycalphad</a>.</small
+          >
         {:else}
           Pre-computed diagram available!
           {#if on_load_precomputed}
@@ -71,16 +74,19 @@
       <div class="notice warning">
         <p>
           ℹ No pre-computed diagram. Use <a href="https://pycalphad.org" target="_blank"
-          >pycalphad</a>:
+            >pycalphad</a
+          >:
         </p>
         <pre>
-<code>from pycalphad import Database, binplot
+<code
+            >from pycalphad import Database, binplot
 import pycalphad.variables as v
 
 db = Database('{tdb}.tdb')
 binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
     v.X('{el_b}'): (0, 1, 0.01), v.T: (300, 2000, 10), v.P: 101325, v.N: 1
-})</code></pre>
+})</code
+          ></pre>
       </div>
     {/if}
   {:else}

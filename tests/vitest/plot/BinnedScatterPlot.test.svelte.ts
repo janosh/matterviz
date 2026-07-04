@@ -628,8 +628,8 @@ describe(`BinnedScatterPlot`, () => {
     if (!first_label) throw new Error(`missing first point label`)
     const point_center = { x: 420, y: 280 }
     const label_center = {
-      x: parseFloat(first_label.style.left),
-      y: parseFloat(first_label.style.top),
+      x: Number(first_label.style.left.replace(`px`, ``)),
+      y: Number(first_label.style.top.replace(`px`, ``)),
     }
     const delta_x = label_center.x - point_center.x
     const delta_y = label_center.y - point_center.y
@@ -753,7 +753,9 @@ describe(`BinnedScatterPlot`, () => {
     mock_label_measurement(40, 10)
     const label_distance = (): number => {
       const label = doc_query<HTMLElement>(`.point-labels .point-label`)
-      return Math.hypot(parseFloat(label.style.left) - 420, parseFloat(label.style.top) - 284)
+      const left = Number(label.style.left.replace(`px`, ``))
+      const top = Number(label.style.top.replace(`px`, ``))
+      return Math.hypot(left - 420, top - 284)
     }
     const base_props = {
       series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
@@ -861,7 +863,7 @@ describe(`BinnedScatterPlot`, () => {
 
     expect(foreign_object?.getAttribute(`x`)).toBe(`-78`)
     expect(subscript.textContent).toBe(`form`)
-    expect(parseFloat(getComputedStyle(subscript).top)).toBeGreaterThan(0)
+    expect(Number(getComputedStyle(subscript).top.replace(`px`, ``))).toBeGreaterThan(0)
   })
 
   test(`waits for plot dimensions before scanning explicit-range data`, async () => {
@@ -873,7 +875,7 @@ describe(`BinnedScatterPlot`, () => {
           return Reflect.get(target, prop, receiver)
         },
       })
-    const n_points = 1_000
+    const n_points = 1000
 
     mount(BinnedScatterPlot, {
       target: document.body,

@@ -74,7 +74,8 @@
     prev?.dispose()
     untrack(() => head_mesh)?.dispose()
     if (count === 0) {
-      shaft_mesh = head_mesh = null
+      shaft_mesh = null
+      head_mesh = null
       return
     }
     ;[shaft_mesh, head_mesh] = [

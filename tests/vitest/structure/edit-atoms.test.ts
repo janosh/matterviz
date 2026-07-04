@@ -71,7 +71,7 @@ function scene_to_structure_indices(
 
 describe(`edit-atoms: scene-to-structure index mapping`, () => {
   const base_site = (idx: number, props: Record<string, unknown> = {}): DisplayedSite => ({
-    species: [{ element: `Si` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+    species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
     xyz: [idx, 0, 0] as Vec3,
     abc: [idx * 0.2, 0, 0] as Vec3,
     label: `Si${idx}`,
@@ -429,7 +429,7 @@ describe(`edit-atoms: change element`, () => {
     const struct: AnyStructure = {
       sites: [
         {
-          species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 3 }],
+          species: [{ element: `Fe`, occu: 1, oxidation_state: 3 }],
           xyz: [0, 0, 0] as Vec3,
           abc: [0, 0, 0] as Vec3,
           label: `Fe`,

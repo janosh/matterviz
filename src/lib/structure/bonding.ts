@@ -773,11 +773,7 @@ function get_neighbors_from_grid(pos: Vec3, grid: SpatialGrid, cell_size: number
     for (let dy = -1; dy <= 1; dy++) {
       for (let dz = -1; dz <= 1; dz++) {
         const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
-        if (cell) {
-          for (let cell_idx = 0; cell_idx < cell.length; cell_idx++) {
-            scratch_neighbors.push(cell[cell_idx])
-          }
-        }
+        if (cell) for (const site_idx of cell) scratch_neighbors.push(site_idx)
       }
     }
   }

@@ -59,32 +59,30 @@
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
     energy_source_mode = $bindable(`precomputed`),
-  }:
-    & Pick<
-      ControlsProps,
-      | `camera`
-      | `merged_controls`
-      | `stable_entries`
-      | `unstable_entries`
-      | `color_mode`
-      | `color_scale`
-      | `show_stable`
-      | `show_unstable`
-      | `entry_category`
-      | `hidden_categories`
-      | `show_stable_labels`
-      | `show_unstable_labels`
-      | `max_hull_dist_show_phases`
-      | `max_hull_dist_show_labels`
-      | `energy_source_mode`
-      | `controls_open`
-      | `show_hull_faces`
-      | `hull_face_color`
-      | `hull_face_opacity`
-      | `hull_face_color_mode`
-    >
-    & Pick<ComponentProps<typeof ConvexHullInfoPane>, `phase_stats` | `label_threshold`>
-    & {
+  }: Pick<
+    ControlsProps,
+    | `camera`
+    | `merged_controls`
+    | `stable_entries`
+    | `unstable_entries`
+    | `color_mode`
+    | `color_scale`
+    | `show_stable`
+    | `show_unstable`
+    | `entry_category`
+    | `hidden_categories`
+    | `show_stable_labels`
+    | `show_unstable_labels`
+    | `max_hull_dist_show_phases`
+    | `max_hull_dist_show_labels`
+    | `energy_source_mode`
+    | `controls_open`
+    | `show_hull_faces`
+    | `hull_face_color`
+    | `hull_face_opacity`
+    | `hull_face_color_mode`
+  > &
+    Pick<ComponentProps<typeof ConvexHullInfoPane>, `phase_stats` | `label_threshold`> & {
       interactions: ReturnType<typeof create_canvas_interactions>
       hull_data: ReturnType<typeof create_hull_data_pipeline<ConvexHullEntry>>
       controls_config: ShowControlsState
@@ -107,12 +105,7 @@
 {#if controls_config.mode !== `never`}
   <section class="control-buttons {controls_config.class}">
     {#if controls_config.visible(`reset`)}
-      <button
-        type="button"
-        onclick={reset_all}
-        title={reset_title}
-        class="reset-camera-btn"
-      >
+      <button type="button" onclick={reset_all} title={reset_title} class="reset-camera-btn">
         <Icon icon="Reset" />
       </button>
     {/if}
@@ -159,14 +152,14 @@
         {merged_controls}
         toggle_props={{ class: `legend-controls-btn` }}
         {show_hull_faces}
-        on_hull_faces_change={(value: boolean) => show_hull_faces = value}
+        on_hull_faces_change={(value: boolean) => (show_hull_faces = value)}
         {hull_face_color}
-        on_hull_face_color_change={(value: string) => hull_face_color = value}
+        on_hull_face_color_change={(value: string) => (hull_face_color = value)}
         {hull_face_opacity}
-        on_hull_face_opacity_change={(value: number) => hull_face_opacity = value}
+        on_hull_face_opacity_change={(value: number) => (hull_face_opacity = value)}
         {hull_face_color_mode}
         on_hull_face_color_mode_change={(value: HullFaceColorMode) =>
-        hull_face_color_mode = value}
+          (hull_face_color_mode = value)}
         bind:energy_source_mode
         has_precomputed_e_form={hull_data.has_precomputed_e_form}
         can_compute_e_form={hull_data.can_compute_e_form}
@@ -181,8 +174,7 @@
 {#if interactions.hover_data}
   {@const { entry, position } = interactions.hover_data}
   {@const entry_highlight = is_highlighted(entry) ? merged_highlight_style : undefined}
-  {@const tooltip_style =
-    `z-index: ${CONVEX_HULL_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
+  {@const tooltip_style = `z-index: ${CONVEX_HULL_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);`}
   <PlotTooltip
     x={position.x}

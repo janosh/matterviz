@@ -44,7 +44,6 @@ const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, mount_spec } = anywidget_module
 
 type ModelArg = Parameters<typeof mount_spec>[0]
-type RenderArg = Parameters<typeof anywidget_module.default.render>[0]
 // Cast the mock to the bridge's model type rather than importing anywidget/types.
 const as_model = (mock: MockModel) => mock as unknown as ModelArg
 
@@ -356,7 +355,7 @@ describe(`render() lifecycle`, () => {
     const dispose = anywidget_module.default.render({
       model: as_model(model),
       el,
-    } as unknown as RenderArg) as () => void
+    }) as () => void
     flushSync()
     expect(listener_count()).toBeGreaterThan(0) // drive listeners registered
 

@@ -89,10 +89,10 @@ describe(`PlotAxis`, () => {
   )
 
   test.each([
-    [`x` as Side, { y1: `-60`, y2: `0` }],
-    [`x2` as Side, { y1: `0`, y2: `${plot_h}` }],
-    [`y` as Side, { x1: `0`, x2: `${plot_w}` }],
-    [`y2` as Side, { x1: `${-plot_w}`, x2: `0` }],
+    [`x`, { y1: `-60`, y2: `0` }],
+    [`x2`, { y1: `0`, y2: `${plot_h}` }],
+    [`y`, { x1: `0`, x2: `${plot_w}` }],
+    [`y2`, { x1: `${-plot_w}`, x2: `0` }],
   ])(`%s axis: grid line spans plot when show_grid`, async (side, expected) => {
     const svg = await mount_axis({ side, ticks: [50], show_grid: true })
     const lines = query(svg, `g.tick`).querySelectorAll(`line`)
@@ -208,8 +208,8 @@ describe(`PlotAxis`, () => {
 
   // Regression guard: x and x2 rotate their tick labels to opposite anchors.
   test.each([
-    [`x` as Side, `start`],
-    [`x2` as Side, `end`],
+    [`x`, `start`],
+    [`x2`, `end`],
   ])(`%s rotated tick label anchors to %s`, async (side, anchor) => {
     const svg = await mount_axis({
       side,

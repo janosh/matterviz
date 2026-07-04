@@ -51,8 +51,7 @@
   const safe_formula = (comp: string) => sanitize_formula(comp, use_subscripts)
 
   // Convert a temperature from data unit to display unit
-  const to_display = (temp: number): number =>
-    convert_temp(temp, data_unit, temperature_unit)
+  const to_display = (temp: number): number => convert_temp(temp, data_unit, temperature_unit)
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
   const wt_fraction_b = $derived.by(() => {
@@ -136,14 +135,8 @@
         phase_b: vlr.top_phase,
         fraction_a: vlr.fraction_bottom,
         fraction_b: vlr.fraction_top,
-        detail_a: format_temperature(
-          to_display(vlr.bottom_temperature),
-          temperature_unit,
-        ),
-        detail_b: format_temperature(
-          to_display(vlr.top_temperature),
-          temperature_unit,
-        ),
+        detail_a: format_temperature(to_display(vlr.bottom_temperature), temperature_unit),
+        detail_b: format_temperature(to_display(vlr.top_temperature), temperature_unit),
       }
     }
     if (lever_rule_mode === `horizontal` && hover_info.lever_rule) {
@@ -165,10 +158,14 @@
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
     <header>
-      <strong>{@html sanitize_html(format_label_html(hover_info.region.name, use_subscripts))}</strong>
-      {#if special_point_info}<span class="special-point-badge">{
-          special_point_info.badge
-        }</span>{/if}
+      <strong
+        >{@html sanitize_html(
+          format_label_html(hover_info.region.name, use_subscripts),
+        )}</strong
+      >
+      {#if special_point_info}<span class="special-point-badge"
+          >{special_point_info.badge}</span
+        >{/if}
     </header>
 
     {#if special_point_info?.description}
@@ -178,54 +175,51 @@
     <dl>
       <dt>Temperature</dt>
       <dd>
-        {
-          format_temperature(
-            to_display(hover_info.temperature),
-            temperature_unit,
-          )
-        }
+        {format_temperature(to_display(hover_info.temperature), temperature_unit)}
         {#if temperature_unit !== `°C`}
-          <small>({
-              format_temperature(
-                convert_temp(hover_info.temperature, data_unit, `°C`),
-                `°C`,
-              )
-            })</small>
+          <small
+            >({format_temperature(
+              convert_temp(hover_info.temperature, data_unit, `°C`),
+              `°C`,
+            )})</small
+          >
         {/if}
       </dd>
       <dt>Composition</dt>
       <dd>
         {format_composition(hover_info.composition, composition_unit)}
         {@html safe_formula(component_b)}
-        <small>({format_composition(1 - hover_info.composition, composition_unit)}
-          {@html safe_formula(component_a)})</small>
+        <small
+          >({format_composition(1 - hover_info.composition, composition_unit)}
+          {@html safe_formula(component_a)})</small
+        >
       </dd>
       {#if wt_fraction_b !== null}
         <dt>Weight</dt>
         <dd>
           {format_num(wt_fraction_b * 100, `.1f`)}%
           {@html safe_formula(component_b)}
-          <small>({format_num((1 - wt_fraction_b) * 100, `.1f`)}%
-            {@html safe_formula(component_a)})</small>
+          <small
+            >({format_num((1 - wt_fraction_b) * 100, `.1f`)}%
+            {@html safe_formula(component_a)})</small
+          >
         </dd>
       {/if}
       {#if stability}
-        <dt>Stable</dt><dd>
-          {format_num(to_display(stability.t_min), `.0f`)} – {
-            format_num(to_display(stability.t_max), `.0f`)
-          } {temperature_unit}
+        <dt>Stable</dt>
+        <dd>
+          {format_num(to_display(stability.t_min), `.0f`)} – {format_num(
+            to_display(stability.t_max),
+            `.0f`,
+          )}
+          {temperature_unit}
           {#if temperature_unit !== `°C`}
-            <small>({
-                format_num(
-                  convert_temp(stability.t_min, data_unit, `°C`),
-                  `.0f`,
-                )
-              } – {
-                format_num(
-                  convert_temp(stability.t_max, data_unit, `°C`),
-                  `.0f`,
-                )
-              } °C)</small>
+            <small
+              >({format_num(convert_temp(stability.t_min, data_unit, `°C`), `.0f`)} – {format_num(
+                convert_temp(stability.t_max, data_unit, `°C`),
+                `.0f`,
+              )} °C)</small
+            >
           {/if}
         </dd>
       {/if}
@@ -239,22 +233,22 @@
           <div
             style:width="{ld.fraction_a * 100}%"
             title="{ld.phase_a}: {format_num(ld.fraction_a * 100, `.1f`)}%"
-          >
-          </div>
+          ></div>
           <div
             style:width="{ld.fraction_b * 100}%"
             title="{ld.phase_b}: {format_num(ld.fraction_b * 100, `.1f`)}%"
-          >
-          </div>
+          ></div>
           <i style:left="{ld.fraction_a * 100}%"></i>
         </div>
         <div class="phase-info">
-          <span>{@html safe_formula(ld.phase_a)}: {
-              format_num(ld.fraction_a * 100, `.0f`)
-            }% <small>at {ld.detail_a}</small></span>
-          <span>{@html safe_formula(ld.phase_b)}: {
-              format_num(ld.fraction_b * 100, `.0f`)
-            }% <small>at {ld.detail_b}</small></span>
+          <span
+            >{@html safe_formula(ld.phase_a)}: {format_num(ld.fraction_a * 100, `.0f`)}%
+            <small>at {ld.detail_a}</small></span
+          >
+          <span
+            >{@html safe_formula(ld.phase_b)}: {format_num(ld.fraction_b * 100, `.0f`)}%
+            <small>at {ld.detail_b}</small></span
+          >
         </div>
       </div>
     {/if}
@@ -263,11 +257,13 @@
       {@const { type, delta_t } = boundary_distance}
       {@const label = delta_t > 0 ? `above` : `below`}
       {@const display_delta = Math.abs(
-        to_display(hover_info.temperature) -
-          to_display(hover_info.temperature - delta_t),
+        to_display(hover_info.temperature) - to_display(hover_info.temperature - delta_t),
       )}
       <div class="boundary-info">
-        {Math.round(display_delta)} {temperature_unit} {label} {type}
+        {Math.round(display_delta)}
+        {temperature_unit}
+        {label}
+        {type}
       </div>
     {/if}
   </div>

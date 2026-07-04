@@ -125,9 +125,7 @@ export function calc_cell_color(
 
   // Get interpolator function, fallback to viridis if not a valid function
   const scale_fn = d3sc[color_scale]
-  const interpolator = (
-    typeof scale_fn === `function` ? scale_fn : d3sc.interpolateViridis
-  ) as (t: number) => string
+  const interpolator = typeof scale_fn === `function` ? scale_fn : d3sc.interpolateViridis
 
   // Use log scale for positive values, otherwise linear/sequential scale
   const bg =

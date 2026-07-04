@@ -56,7 +56,7 @@ export const FORMAT_PATTERNS = {
     return (
       lines.length >= 10 &&
       lines.some((line) => line.includes(`Direct configuration=`)) &&
-      !isNaN(parseFloat(lines[1])) &&
+      !isNaN(Number(lines[1])) &&
       lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
     )
   },

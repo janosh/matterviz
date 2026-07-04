@@ -451,7 +451,7 @@ describe(`ScatterPlot`, () => {
     ])(`$desc overrides auto styling`, async ({ props }) => {
       const series: DataSeries[] = [
         { x: [1, 2, 3], y: [1, 2, 3] },
-        { x: [1, 2, 3], y: [3, 2, 1], ...props } as DataSeries,
+        { x: [1, 2, 3], y: [3, 2, 1], ...props },
       ]
       const plot = await mount_sized_scatter_plot({ series })
       expect(plot.querySelectorAll(`.marker`)).toHaveLength(visible_marker_count(series))
@@ -698,7 +698,7 @@ describe(`ScatterPlot`, () => {
     // default interior placement would be top-left (~10px); auto-outside drops it into the
     // reserved bottom margin (~height - footprint - gap), well below mid-plot
     const legend = doc_query<HTMLElement>(`.legend`)
-    expect(parseFloat(legend.style.top)).toBeGreaterThan(150)
+    expect(Number(legend.style.top.replace(`px`, ``))).toBeGreaterThan(150)
   })
 
   // rect-zoom must zoom y2 series too when sync is 'none' (the default) - BarPlot,

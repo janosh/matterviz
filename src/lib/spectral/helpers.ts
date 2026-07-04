@@ -1231,7 +1231,7 @@ export function compute_frequency_range(
   const bs_list = band_structs
     ? is_single_bs
       ? [normalize_band_structure(band_structs)]
-      : Object.values(band_structs as object).map(normalize_band_structure)
+      : Object.values(band_structs).map(normalize_band_structure)
     : []
 
   // If band structures exist and aren't electronic, mark as phonon
@@ -1250,11 +1250,12 @@ export function compute_frequency_range(
     }
   }
 
-  const dos_list = doses
-    ? `densities` in (doses as object)
-      ? [normalize_dos(doses)]
-      : Object.values(doses as object).map((dos) => normalize_dos(dos))
-    : []
+  const dos_list =
+    doses && typeof doses === `object`
+      ? `densities` in doses
+        ? [normalize_dos(doses)]
+        : Object.values(doses).map((dos) => normalize_dos(dos))
+      : []
   for (const dos of dos_list) {
     if (!dos) continue
     // DOS type detection: explicit type field is authoritative

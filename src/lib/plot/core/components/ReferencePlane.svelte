@@ -7,7 +7,11 @@
   import { create_to_threejs, span_or } from '$lib/plot/core/reference-line'
   import type { RefPlane } from '$lib/plot/core/types'
 
-  let { ref_plane, scene_size = [10, 10, 5], ranges }: {
+  let {
+    ref_plane,
+    scene_size = [10, 10, 5],
+    ranges,
+  }: {
     ref_plane: RefPlane
     scene_size?: Vec3
     ranges: { x: Vec2; y: Vec2; z: Vec2 }
@@ -101,10 +105,7 @@
     const geo = new THREE.BufferGeometry()
     const [c0, c1, c2, c3] = corners
     const verts = [c0, c1, c2, c0, c2, c3].flatMap((corner) => [corner.x, corner.y, corner.z])
-    geo.setAttribute(
-      `position`,
-      new THREE.BufferAttribute(new Float32Array(verts), 3),
-    )
+    geo.setAttribute(`position`, new THREE.BufferAttribute(new Float32Array(verts), 3))
     geo.computeVertexNormals()
     return geo
   }
@@ -148,9 +149,7 @@
   let wireframe_geometry: THREE.WireframeGeometry | null = $state(null)
 
   $effect(() => {
-    const wf_geo = geometry && style.wireframe
-      ? new THREE.WireframeGeometry(geometry)
-      : null
+    const wf_geo = geometry && style.wireframe ? new THREE.WireframeGeometry(geometry) : null
     wireframe_geometry = wf_geo
     return () => wf_geo?.dispose()
   })

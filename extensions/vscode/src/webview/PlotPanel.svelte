@@ -15,7 +15,11 @@
   } from './plot-utils'
   import type { PlotType, AxisMapping } from './plot-utils'
 
-  let { data, initial_type, onclose, }: {
+  let {
+    data,
+    initial_type,
+    onclose,
+  }: {
     data: unknown
     initial_type?: PlotType
     onclose?: () => void

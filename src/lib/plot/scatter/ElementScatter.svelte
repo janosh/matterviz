@@ -58,6 +58,9 @@
   {#snippet tooltip({ x, y })}
     {@const elem = element_data[x - 1]}
     <strong>{elem ? `${x} ${elem.symbol} - ${elem.name}` : `Element ${x}`}</strong><br />
-    {@html sanitize_html(y_axis.label || `Value`)}: {format_num(y, y_axis.format ?? `~s`)}{y_unit ?? ``}
+    {@html sanitize_html(y_axis.label || `Value`)}: {format_num(
+      y,
+      y_axis.format ?? `~s`,
+    )}{y_unit ?? ``}
   {/snippet}
 </ScatterPlot>

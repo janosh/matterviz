@@ -155,9 +155,9 @@ const LINE_PARSERS: LineParser[] = [
       data.elements.push({
         symbol: match[1].toUpperCase(),
         reference_phase: match[2],
-        mass: parseFloat(match[3]),
-        enthalpy: parseFloat(match[4]),
-        entropy: parseFloat(match[5]),
+        mass: Number(match[3]),
+        enthalpy: Number(match[4]),
+        entropy: Number(match[5]),
       })
     },
   },
@@ -169,12 +169,12 @@ const LINE_PARSERS: LineParser[] = [
       const sublattice_sites = match[4]
         .trim()
         .split(/\s+/)
-        .map((val) => parseFloat(val))
+        .map(Number)
         .filter((val) => !isNaN(val))
       data.phases.push({
         name: match[1],
         model_hints: match[2],
-        sublattice_count: parseInt(match[3], 10),
+        sublattice_count: Math.trunc(Number(match[3])),
         sublattice_sites,
       })
     },
@@ -223,7 +223,7 @@ const LINE_PARSERS: LineParser[] = [
           type: match[1],
           phase: spec_match[1],
           constituents: spec_match[2].split(`,`).map((name) => name.trim()),
-          order: parseInt(spec_match[3], 10),
+          order: Math.trunc(Number(spec_match[3])),
           expression: match[3],
         })
       }
@@ -239,7 +239,7 @@ function parse_temperature_ranges(body: string): { min: number; max: number; exp
     if (!trimmed) continue
     const temp_match = /^(?<temp>[\d.E+-]+)\s+(?<expr>.+)/i.exec(trimmed)
     if (temp_match) {
-      const next_temp = parseFloat(temp_match[1])
+      const next_temp = Number(temp_match[1])
       const expr = temp_match[2].replace(/\s+[YN]\s*$/, ``).trim()
       if (ranges.length > 0) ranges[ranges.length - 1].max = next_temp
       ranges.push({ min: next_temp, max: TDB_TEMP_DEFAULTS.max_range, expr })

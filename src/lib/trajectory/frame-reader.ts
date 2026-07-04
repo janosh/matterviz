@@ -245,7 +245,7 @@ export class TrajFrameReader implements FrameLoader {
     const start = frame_starts[frame_number]
     if (start === undefined) return null // out-of-range frame
 
-    const num_atoms = parseInt(lines[start]?.trim(), 10)
+    const num_atoms = Math.trunc(Number(lines[start]?.trim()))
     const comment = lines[start + 1] ?? ``
     return build_xyz_frame(
       lines,

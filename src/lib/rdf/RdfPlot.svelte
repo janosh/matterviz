@@ -56,9 +56,7 @@
 
   const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
     try {
-      const text = content instanceof ArrayBuffer
-        ? new TextDecoder().decode(content)
-        : content
+      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
       const parsed_struct = parse_any_structure(text, filename)
       if (is_crystal(parsed_struct)) {
         drag_dropped = [...drag_dropped, parsed_struct]
@@ -66,16 +64,13 @@
         error_msg = `Crystal has no lattice or sites; cannot compute RDF`
       }
     } catch (exc) {
-      error_msg = `Failed to process structure: ${
-        to_error(exc).message
-      }`
+      error_msg = `Failed to process structure: ${to_error(exc).message}`
     }
   }
 
   const handle_drop = create_file_drop_handler({
     allow: () => enable_drop,
-    on_drop: (content, filename) =>
-      (on_file_drop || compute_and_add)(content, filename),
+    on_drop: (content, filename) => (on_file_drop || compute_and_add)(content, filename),
     on_error: (msg) => {
       error_msg = msg
     },
@@ -108,7 +103,7 @@
           struct_list.push({
             struct,
             label: format_structure_label(struct, `Crystal ${idx + 1}`),
-          })
+          }),
         )
       } else if (is_crystal(structures)) {
         struct_list.push({
@@ -117,7 +112,7 @@
         })
       } else {
         Object.entries(structures).forEach(([label, struct]) =>
-          struct_list.push({ struct, label: format_structure_label(struct, label) })
+          struct_list.push({ struct, label: format_structure_label(struct, label) }),
         )
       }
     }
@@ -125,17 +120,21 @@
       struct_list.push({
         struct,
         label: format_structure_label(struct, `Dropped ${idx + 1}`),
-      })
+      }),
     )
 
     for (const { struct, label } of struct_list) {
       if (mode === `element_pairs`) {
         const pairs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
-        result.push(...pairs.map((pair) => ({
-          label: pair.element_pair ? `${pair.element_pair[0]}-${pair.element_pair[1]}` : label,
-          legend_group: label, // Group by structure name for multi-structure plots
-          pattern: pair,
-        })))
+        result.push(
+          ...pairs.map((pair) => ({
+            label: pair.element_pair
+              ? `${pair.element_pair[0]}-${pair.element_pair[1]}`
+              : label,
+            legend_group: label, // Group by structure name for multi-structure plots
+            pattern: pair,
+          })),
+        )
       } else {
         const pattern = calculate_rdf(struct, { cutoff, n_bins, pbc })
         result.push({ label, pattern })
@@ -182,8 +181,8 @@
   >
     <StatusMessage
       message={enable_drop
-      ? `Drag and drop structure files here to visualize RDFs`
-      : `No RDF data to display`}
+        ? `Drag and drop structure files here to visualize RDFs`
+        : `No RDF data to display`}
       style="border: none"
     />
   </div>
@@ -207,9 +206,7 @@
           {@const [x1, x2] = [pad.l, width - pad.r]}
           {@const [x, y] = [width - pad.r - 5, y1 - 5]}
           <line {x1} {x2} {y1} y2={y1} stroke="gray" stroke-dasharray="4" opacity="0.5" />
-          <text {x} {y} text-anchor="end" fill="gray" font-size="0.8em">
-            g(r) = 1
-          </text>
+          <text {x} {y} text-anchor="end" fill="gray" font-size="0.8em"> g(r) = 1 </text>
         {/if}
       {/if}
     {/snippet}

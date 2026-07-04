@@ -217,11 +217,12 @@ export function parse_si_float<T extends string | number | null | undefined>(
         multiplier = 1000 ** (index - 8)
       }
     }
-    return parseFloat(num_part) * multiplier
+    return Number(num_part) * multiplier
   }
 
-  // If it's a number without SI suffix, try parsing it
-  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) return parseFloat(cleaned)
+  // If it's a number without SI suffix, try parsing it (dropping stray commas
+  // not already stripped above, e.g. trailing ones)
+  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) return Number(cleaned.replaceAll(`,`, ``))
 
   // If the value is not a formatted number, return as is
   return value

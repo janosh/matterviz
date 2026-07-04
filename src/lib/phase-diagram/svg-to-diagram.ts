@@ -128,7 +128,7 @@ function extract_simple_ticks(
 ): void {
   // Y-axis ticks: class="tick-text" with text-anchor: end
   for (const text_el of Array.from(doc.querySelectorAll(`.tick-text`))) {
-    const value = parseFloat(text_el.textContent?.trim() ?? ``)
+    const value = Number(text_el.textContent?.trim() || NaN)
     if (isNaN(value)) continue
 
     // Find the immediately preceding sibling tick line (not just any line in parent)
@@ -143,7 +143,7 @@ function extract_simple_ticks(
 
   // X-axis ticks: class="tick-text-x"
   for (const text_el of Array.from(doc.querySelectorAll(`.tick-text-x`))) {
-    const value = parseFloat(text_el.textContent?.trim() ?? ``)
+    const value = Number(text_el.textContent?.trim() || NaN)
     if (isNaN(value)) continue
 
     const px_x = parse_float_attr(text_el, `x`)
@@ -165,7 +165,7 @@ function extract_mpds_scales(doc: Document): {
   // Extract all numeric text values to infer axis ranges
   const numbers: number[] = []
   for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
-    const val = parseFloat(text_el.textContent?.trim() ?? ``)
+    const val = Number(text_el.textContent?.trim() || NaN)
     if (!isNaN(val)) numbers.push(val)
   }
 
@@ -824,16 +824,16 @@ function infer_mpds_components(doc: Document): [string, string] {
 // Parse stroke-width from style attribute or direct attribute (returns 0 if not found)
 function parse_stroke_width(el: Element): number {
   const style_match = /stroke-width:\s*(?<width>[\d.]+)/.exec(el.getAttribute(`style`) ?? ``)
-  if (style_match) return parseFloat(style_match[1])
+  if (style_match) return Number(style_match[1])
   const attr = el.getAttribute(`stroke-width`)
-  return attr ? parseFloat(attr) || 0 : 0
+  return attr ? Number(attr) || 0 : 0
 }
 
 // Parse a float attribute from an SVG element
 function parse_float_attr(el: Element, attr: string): number | null {
   const val = el.getAttribute(attr)
   if (val === null) return null
-  const parsed = parseFloat(val)
+  const parsed = Number(val)
   return isNaN(parsed) ? null : parsed
 }
 
@@ -842,7 +842,7 @@ function extract_comment_number(group: Element): number | null {
   const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
   let node: Comment | null
   while ((node = walker.nextNode() as Comment | null)) {
-    const value = parseFloat(node.textContent?.trim() ?? ``)
+    const value = Number(node.textContent?.trim() || NaN)
     if (!isNaN(value)) return value
   }
   return null
@@ -898,7 +898,7 @@ function parse_path_segments(path_str: string): Vec4[] {
 
   let idx = 0
   const peek = () => tokens[idx]
-  const next_num = () => parseFloat(tokens[idx++] ?? `0`)
+  const next_num = () => Number(tokens[idx++] || `0`)
 
   while (idx < tokens.length) {
     let cmd = peek() ?? ``
@@ -983,7 +983,7 @@ function parse_translate(el: Element | null): Vec2 | null {
     el?.getAttribute(`transform`) ?? ``,
   )
   if (!match) return null
-  return [parseFloat(match[1]), match[2] ? parseFloat(match[2]) : 0]
+  return [Number(match[1]), match[2] ? Number(match[2]) : 0]
 }
 
 // Get translate X or Y from a group's transform attribute

@@ -29,7 +29,11 @@
           ],
           charge: 0,
           lattice: {
-            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            matrix: [
+              [2, 0, 0],
+              [0, 2, 0],
+              [0, 0, 2],
+            ],
             ...lattice_params,
             pbc: [true, true, true],
           },
@@ -57,7 +61,11 @@
           ],
           charge: 0,
           lattice: {
-            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            matrix: [
+              [2, 0, 0],
+              [0, 2, 0],
+              [0, 0, 2],
+            ],
             ...lattice_params,
             pbc: [true, true, true],
           },
@@ -85,7 +93,11 @@
           ],
           charge: 0,
           lattice: {
-            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            matrix: [
+              [2, 0, 0],
+              [0, 2, 0],
+              [0, 0, 2],
+            ],
             ...lattice_params,
             pbc: [true, true, true],
           },
@@ -290,11 +302,7 @@
   {/snippet}
 </Trajectory>
 
-<Trajectory
-  id="error-snippet"
-  trajectory={undefined}
-  data_url="/non-existent-file.json"
->
+<Trajectory id="error-snippet" trajectory={undefined} data_url="/non-existent-file.json">
   {#snippet error_snippet({ error_msg, on_dismiss })}
     <h2>Custom Error Handler</h2>
     <p>{error_msg}</p>
@@ -302,11 +310,7 @@
   {/snippet}
 </Trajectory>
 
-<Trajectory
-  id="constant-values"
-  trajectory={constant_trajectory}
-  layout="horizontal"
-/>
+<Trajectory id="constant-values" trajectory={constant_trajectory} layout="horizontal" />
 
 <Trajectory
   id="dual-axis"
@@ -320,26 +324,31 @@
   layout="horizontal"
 />
 
-<Trajectory
-  id="single-frame"
-  trajectory={single_frame_trajectory}
-  layout="horizontal"
-/>
+<Trajectory id="single-frame" trajectory={single_frame_trajectory} layout="horizontal" />
 
 <Trajectory
   id="event-handlers"
   trajectory={test_trajectory}
   layout="horizontal"
-  on_play={(data) => window.dispatchEvent(new CustomEvent(`trajectory-play`, { detail: data }))}
-  on_pause={(data) => window.dispatchEvent(new CustomEvent(`trajectory-pause`, { detail: data }))}
-  on_step_change={(data) => window.dispatchEvent(new CustomEvent(`trajectory-step-change`, { detail: data }))}
+  on_play={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-play`, { detail: data }))}
+  on_pause={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-pause`, { detail: data }))}
+  on_step_change={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-step-change`, { detail: data }))}
   on_end={(data) => window.dispatchEvent(new CustomEvent(`trajectory-end`, { detail: data }))}
-  on_loop={(data) => window.dispatchEvent(new CustomEvent(`trajectory-loop`, { detail: data }))}
-  on_frame_rate_change={(data) => window.dispatchEvent(new CustomEvent(`trajectory-frame-rate-change`, { detail: data }))}
-  on_display_mode_change={(data) => window.dispatchEvent(new CustomEvent(`trajectory-display-mode-change`, { detail: data }))}
-  on_fullscreen_change={(data) => window.dispatchEvent(new CustomEvent(`trajectory-fullscreen-change`, { detail: data }))}
-  on_file_load={(data) => window.dispatchEvent(new CustomEvent(`trajectory-file-load`, { detail: data }))}
-  on_error={(data) => window.dispatchEvent(new CustomEvent(`trajectory-error`, { detail: data }))}
+  on_loop={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-loop`, { detail: data }))}
+  on_frame_rate_change={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-frame-rate-change`, { detail: data }))}
+  on_display_mode_change={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-display-mode-change`, { detail: data }))}
+  on_fullscreen_change={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-fullscreen-change`, { detail: data }))}
+  on_file_load={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-file-load`, { detail: data }))}
+  on_error={(data) =>
+    window.dispatchEvent(new CustomEvent(`trajectory-error`, { detail: data }))}
 />
 
 <Trajectory

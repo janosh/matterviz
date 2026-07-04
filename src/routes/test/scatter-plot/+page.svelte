@@ -2,13 +2,7 @@
   import { format_num, symbol_names } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
-  import type {
-    DataSeries,
-    InternalPoint,
-    LabelStyle,
-    PointStyle,
-    ScaleType,
-  } from '$lib/plot'
+  import type { DataSeries, InternalPoint, LabelStyle, PointStyle, ScaleType } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
 
   // === Basic Example Data ===
@@ -280,17 +274,17 @@
   let auto_placement_test_series = $derived(
     auto_placement_series_data.map((series) => ({
       ...series,
-      point_label:
-        (Array.isArray(series.point_label)
-          ? series.point_label
-          : series.point_label
+      point_label: (Array.isArray(series.point_label)
+        ? series.point_label
+        : series.point_label
           ? [series.point_label]
-          : []).map(
-            (lbl): LabelStyle => ({
-              ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
-              auto_placement: enable_auto_placement,
-            }),
-          ),
+          : []
+      ).map(
+        (lbl): LabelStyle => ({
+          ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
+          auto_placement: enable_auto_placement,
+        }),
+      ),
     })),
   )
 
@@ -337,11 +331,7 @@
   })
 
   // Function to generate points within a specific quadrant for the demo
-  const make_quadrant_points = (
-    count: number,
-    x_range: Vec2,
-    y_range: Vec2,
-  ) => {
+  const make_quadrant_points = (count: number, x_range: Vec2, y_range: Vec2) => {
     const points = []
     for (let idx = 0; idx < count; idx++) {
       const x_val = x_range[0] + Math.random() * (x_range[1] - x_range[0])
@@ -563,13 +553,11 @@
   let last_double_clicked_point_id = $state<string | null>(null)
 
   function on_point_click({ point }: { point: InternalPoint }) {
-    last_clicked_point_id =
-      `Point: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
+    last_clicked_point_id = `Point: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
   }
 
   function on_point_double_click({ point }: { point: InternalPoint }) {
-    last_double_clicked_point_id =
-      `DblClick: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
+    last_double_clicked_point_id = `DblClick: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
   }
 
   const point_event_data: DataSeries[] = [
@@ -795,8 +783,8 @@
 >
   <h2>Leader Line Test</h2>
   <p>
-    Dense cluster where SA displaces labels far enough to trigger dotted leader lines.
-    Verify that lines connect each displaced label back to its marker.
+    Dense cluster where SA displaces labels far enough to trigger dotted leader lines. Verify
+    that lines connect each displaced label back to its marker.
   </p>
   <ScatterPlot
     series={leader_line_series.map((srs) => ({ ...srs, markers: `points` }))}
@@ -829,18 +817,9 @@
 
 <section id="auto-colorbar-placement">
   <h2>Automatic Color Bar Placement</h2>
-  This example demonstrates how the color bar automatically positions itself based on
-  point density.
+  This example demonstrates how the color bar automatically positions itself based on point density.
   <div>
-    {#each [
-        [`top_left`, `Top Left`],
-        [`top_right`, `Top Right`],
-        [`bottom_left`, `Bottom Left`],
-        [`bottom_right`, `Bottom Right`],
-      ] as const as
-      [quadrant, label]
-      (label)
-    }
+    {#each [[`top_left`, `Top Left`], [`top_right`, `Top Right`], [`bottom_left`, `Bottom Left`], [`bottom_right`, `Bottom Right`]] as const as [quadrant, label] (label)}
       <label>
         {label}: {auto_placement_density[quadrant]}
         <input
@@ -919,21 +898,17 @@
 <section id="auto-cycling-test">
   <h2>Auto-Cycling Colors and Symbols Test</h2>
   <p>
-    Series without explicit colors or symbols should automatically get different colors
-    and marker shapes to distinguish them.
+    Series without explicit colors or symbols should automatically get different colors and
+    marker shapes to distinguish them.
   </p>
-  <ScatterPlot
-    series={auto_cycle_series}
-    legend={{ draggable: false }}
-    id="auto-cycle-plot"
-  />
+  <ScatterPlot series={auto_cycle_series} legend={{ draggable: false }} id="auto-cycle-plot" />
 </section>
 
 <section id="lin-log-transition">
   <h2>Linear-to-Log Scale Transition Test</h2>
   <p>
-    Test switching between linear and log scales. Values near zero previously caused NaN
-    errors during the tweening animation.
+    Test switching between linear and log scales. Values near zero previously caused NaN errors
+    during the tweening animation.
   </p>
   <div style="display: flex; justify-content: center; gap: 1em; margin-bottom: 1em">
     {#each [`linear`, `log`] as scale_type (scale_type)}
@@ -1094,9 +1069,7 @@
 <!-- Axis Color Test -->
 <section id="axis-color-test">
   <h2>Axis Label Coloring Test</h2>
-  <p>
-    Tests axis label coloring behavior with different configurations.
-  </p>
+  <p>Tests axis label coloring behavior with different configurations.</p>
 
   <h3>Single Axis (No Coloring)</h3>
   <ScatterPlot
@@ -1191,7 +1164,7 @@
         point_style: { fill: `#7c3aed`, radius: 4 },
       },
       {
-        x: [1.55, 1.77, 2.07, 2.48, 3.10],
+        x: [1.55, 1.77, 2.07, 2.48, 3.1],
         y: [0.35, 0.6, 0.9, 0.75, 0.15],
         label: `Energy`,
         x_axis: `x2`,
@@ -1230,9 +1203,7 @@
 <!-- Color-mapped Line Legend Test -->
 <section id="color-mapped-line-legend-test">
   <h2>Color-mapped Line Legend Test</h2>
-  <p>
-    Tests that legend line color reflects the color scale for series with color_values.
-  </p>
+  <p>Tests that legend line color reflects the color scale for series with color_values.</p>
   <ScatterPlot
     id="color-mapped-line-plot"
     series={[
@@ -1258,13 +1229,13 @@
 <section id="control-precedence-test">
   <h2>Control Precedence Test</h2>
   <p>
-    Tests that explicit per-series styling (point_style, line_style) is preserved on page
-    load. Control defaults should NOT override explicit props until user actually modifies
-    a specific control.
+    Tests that explicit per-series styling (point_style, line_style) is preserved on page load.
+    Control defaults should NOT override explicit props until user actually modifies a specific
+    control.
   </p>
   <p>
-    Expected on page load: Crimson points with radius=12 and stroke_width=3, Green points
-    with radius=8 and stroke_width=2, limegreen line with width=4.
+    Expected on page load: Crimson points with radius=12 and stroke_width=3, Green points with
+    radius=8 and stroke_width=2, limegreen line with width=4.
   </p>
   <ScatterPlot
     id="control-precedence-plot"

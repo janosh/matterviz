@@ -69,10 +69,7 @@
     top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--viewer-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: var(--viewer-buttons-gap, clamp(6pt, 1cqmin, 9pt));
-    z-index: var(
-      --viewer-buttons-z-index,
-      var(--z-index-overlay-controls, 100000000)
-    );
+    z-index: var(--viewer-buttons-z-index, var(--z-index-overlay-controls, 100000000));
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;

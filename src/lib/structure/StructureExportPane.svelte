@@ -34,26 +34,22 @@
     {
       label: `JSON`,
       format: `json`,
-      hint:
-        `<a href="https://pymatgen.org" target="_blank">Pymatgen</a> JSON format - Python Materials Genomics structure serialization, widely used in computational materials science`,
+      hint: `<a href="https://pymatgen.org" target="_blank">Pymatgen</a> JSON format - Python Materials Genomics structure serialization, widely used in computational materials science`,
     },
     {
       label: `XYZ`,
       format: `xyz`,
-      hint:
-        `<a href="https://wiki.fysik.dtu.dk/ase" target="_blank">ASE</a> extended XYZ format - human-readable atomic coordinates used by the Atomic Simulation Environment`,
+      hint: `<a href="https://wiki.fysik.dtu.dk/ase" target="_blank">ASE</a> extended XYZ format - human-readable atomic coordinates used by the Atomic Simulation Environment`,
     },
     {
       label: `CIF`,
       format: `cif`,
-      hint:
-        `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange`,
+      hint: `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange`,
     },
     {
       label: `POSCAR`,
       format: `poscar`,
-      hint:
-        `<a href="https://vasp.at" target="_blank">VASP</a> POSCAR format - input geometry file for the Vienna Ab initio Simulation Package`,
+      hint: `<a href="https://vasp.at" target="_blank">VASP</a> POSCAR format - input geometry file for the Vienna Ab initio Simulation Package`,
     },
   ] as const
 
@@ -61,14 +57,12 @@
     {
       label: `GLB`,
       format: `glb`,
-      hint:
-        `Export as GLB (binary GLTF) - preserves element colors and materials, ideal for visualization in Blender, Unity, web viewers`,
+      hint: `Export as GLB (binary GLTF) - preserves element colors and materials, ideal for visualization in Blender, Unity, web viewers`,
     },
     {
       label: `OBJ`,
       format: `obj`,
-      hint:
-        `Export as OBJ (Wavefront Object) - widely supported 3D format with material references, works in most 3D applications`,
+      hint: `Export as OBJ (Wavefront Object) - widely supported 3D format with material references, works in most 3D applications`,
     },
   ] as const
 
@@ -113,16 +107,18 @@
     },
     {
       title: `Export as image`,
-      items: [{
-        label: `PNG`,
-        disabled: !has_canvas,
-        show_dpi: true,
-        on_download: () => {
-          const canvas = wrapper?.querySelector(`canvas`)
-          if (canvas) export_canvas_as_png(canvas, structure, png_dpi, scene, camera)
-          else console.warn(`Canvas element not found for PNG export`)
+      items: [
+        {
+          label: `PNG`,
+          disabled: !has_canvas,
+          show_dpi: true,
+          on_download: () => {
+            const canvas = wrapper?.querySelector(`canvas`)
+            if (canvas) export_canvas_as_png(canvas, structure, png_dpi, scene, camera)
+            else console.warn(`Canvas element not found for PNG export`)
+          },
         },
-      }],
+      ],
     },
     {
       title: `Export as 3D model`,

@@ -402,7 +402,7 @@ describe(`scale`, () => {
     while (node.children?.length) [depth, node] = [depth + 1, node.children[0]]
     expect(depth).toBe(n_nodes - 1)
 
-    parents[2_500] = `node-2501` // splice a 2-cycle into the middle
+    parents[2500] = `node-2501` // splice a 2-cycle into the middle
     expect(() => sunburst_from_labels_parents(labels, parents)).toThrow(/cycle/)
   })
 })

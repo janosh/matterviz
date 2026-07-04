@@ -9,7 +9,10 @@
   } as const
   const components = { '2d': ConvexHull2D, '3d': ConvexHull3D, '4d': ConvexHull4D }
 
-  let { dim, include_element_refs = true }: {
+  let {
+    dim,
+    include_element_refs = true,
+  }: {
     dim: keyof typeof elements_by_dim
     include_element_refs?: boolean
   } = $props()
@@ -57,8 +60,10 @@
   type="button"
   data-testid="select-entry"
   onclick={() =>
-    (selected_entry = (include_element_refs ? unstable_entries[0] : stable_entries[0]) ??
-      stable_entries[0] ?? null)}
+    (selected_entry =
+      (include_element_refs ? unstable_entries[0] : stable_entries[0]) ??
+      stable_entries[0] ??
+      null)}
 >
   Select Entry
 </button>
