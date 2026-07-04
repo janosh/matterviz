@@ -28,16 +28,7 @@
   ]
 
   // === Marker Types Data ===
-  const points_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [10, 15, 13, 17, 20, 18, 22, 25, 23, 28],
-    point_style: {
-      fill: `steelblue`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
-  }
+  const points_data = basic_data
 
   const line_data = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -574,7 +565,7 @@
       // Explicit styling that should NOT be overridden by control defaults on page load
       point_style: {
         fill: `crimson`,
-        radius: 12, // Explicitly large - should not become default size (4)
+        radius: 12, // Explicitly large - should not become default size (3)
         stroke: `darkred`,
         stroke_width: 3, // Explicitly thick stroke
       },

@@ -17,9 +17,11 @@
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
   import {
+    AXIS_TITLE_OFFSET,
     compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    LABEL_GAP_DEFAULT,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -918,7 +920,7 @@
       show_grid
       tick_label={(tick) => format_value(tick, x_axis.format ?? `.2~g`)}
       label_x={pad.l + plot_width / 2}
-      label_y={height - 12}
+      label_y={height - pad.b + AXIS_TITLE_OFFSET}
     />
     <PlotAxis
       side="y"
@@ -930,7 +932,7 @@
       {height}
       show_grid
       tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
-      label_x={22}
+      label_x={Math.max(12, pad.l - LABEL_GAP_DEFAULT)}
       label_y={pad.t + plot_height / 2}
     />
 

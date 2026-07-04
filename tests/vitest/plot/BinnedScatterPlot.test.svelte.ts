@@ -4,7 +4,7 @@ import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, svg_query } from '../setup'
 
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 // Shared deterministic point cloud; spreads y values without RNG overhead.
@@ -845,7 +845,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(getComputedStyle(doc_query(`.point-label-measure`)).fontSize).toBe(`20px`)
   })
 
-  test(`keeps y-axis label close to axis and lowers HTML subscripts`, async () => {
+  test(`renders rotated y-axis label as SVG text with subscript tspans`, async () => {
     mount(BinnedScatterPlot, {
       target: document.body,
       props: {
@@ -857,13 +857,13 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const foreign_object =
-      doc_query<HTMLElement>(`.axis-label.y-label`).closest(`foreignObject`)
-    const subscript = doc_query<HTMLElement>(`.axis-label.y-label sub`)
+    const label = svg_query(`.axis-label.y-label`)
+    const subscript = label.querySelector(`tspan[baseline-shift="sub"]`)
 
-    expect(foreign_object?.getAttribute(`x`)).toBe(`-78`)
-    expect(subscript.textContent).toBe(`form`)
-    expect(Number(getComputedStyle(subscript).top.replace(`px`, ``))).toBeGreaterThan(0)
+    expect(label.tagName.toLowerCase()).toBe(`text`)
+    expect(label.closest(`foreignObject`)).toBeNull()
+    expect(label.parentElement?.getAttribute(`transform`)).toContain(`rotate(-90`)
+    expect(subscript?.textContent).toBe(`form`)
   })
 
   test(`waits for plot dimensions before scanning explicit-range data`, async () => {

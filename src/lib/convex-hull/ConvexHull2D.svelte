@@ -258,7 +258,6 @@
     const pad = 0.05 * span
     return [min_y_data - pad, max_y_data + pad]
   })
-
   // Build ScatterPlot series --------------------------------------------------
 
   // Map MarkerSymbol to D3SymbolName (type-safe via symbol_map lookup)

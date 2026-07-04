@@ -145,7 +145,6 @@
 
   const max_r = $derived(Math.max(...entries.flatMap((entry) => entry.pattern.r), 0))
   const max_g = $derived(Math.max(1.2, ...entries.flatMap((entry) => entry.pattern.g_r)))
-
   const series = $derived<DataSeries[]>(
     entries.map((ent, idx) => ({
       x: ent.pattern.r,

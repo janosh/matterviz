@@ -1,49 +1,55 @@
 import type { StructurePopupContext } from '$lib/convex-hull'
 import StructurePopup from '$lib/convex-hull/StructurePopup.svelte'
-import { createRawSnippet, flushSync, mount } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, make_crystal, svg_query } from '../setup'
 
 const mock_structure = make_crystal(3, [[`Li`, [0, 0, 0], 1]])
 
+const mount_popup = (props: Partial<ComponentProps<typeof StructurePopup>> = {}): void => {
+  mount(StructurePopup, {
+    target: document.body,
+    props: { structure: mock_structure, ...props },
+  })
+  flushSync()
+}
+
 describe(`StructurePopup`, () => {
-  test(`closes on Escape key`, () => {
+  test.each([
+    {
+      name: `closes on Escape key`,
+      act: () => globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` })),
+      expect_close: true,
+    },
+    {
+      name: `closes on click outside`,
+      act: () => document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true })),
+      expect_close: true,
+    },
+    {
+      name: `can keep popups open on outside click`,
+      props: { close_on_outside: false },
+      act: () => document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true })),
+      expect_close: false,
+    },
+    {
+      name: `does not close on click inside`,
+      act: () =>
+        doc_query(`.structure-popup`).dispatchEvent(
+          new MouseEvent(`mousedown`, { bubbles: true }),
+        ),
+      expect_close: false,
+    },
+  ])(`$name`, ({ props = {}, act, expect_close }) => {
     const onclose = vi.fn()
-    mount(StructurePopup, {
-      target: document.body,
-      props: { structure: mock_structure, onclose },
-    })
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-    expect(onclose).toHaveBeenCalledOnce()
-  })
-
-  test(`closes on click outside`, () => {
-    const onclose = vi.fn()
-    mount(StructurePopup, {
-      target: document.body,
-      props: { structure: mock_structure, onclose },
-    })
-    flushSync()
-    document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
-    expect(onclose).toHaveBeenCalledOnce()
-  })
-
-  test(`does not close on click inside`, () => {
-    const onclose = vi.fn()
-    mount(StructurePopup, {
-      target: document.body,
-      props: { structure: mock_structure, onclose },
-    })
-    doc_query(`.structure-popup`).dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
-    expect(onclose).not.toHaveBeenCalled()
+    mount_popup({ onclose, ...props })
+    act()
+    if (expect_close) expect(onclose).toHaveBeenCalledOnce()
+    else expect(onclose).not.toHaveBeenCalled()
   })
 
   test(`requests hover-visible structure controls`, () => {
-    mount(StructurePopup, {
-      target: document.body,
-      props: { structure: mock_structure, width: 360, height: 360 },
-    })
-    flushSync()
+    mount_popup({ width: 360, height: 360 })
 
     const controls = doc_query(`.structure-popup .control-buttons`)
     expect(controls.classList.contains(`hover-visible`)).toBe(true)
@@ -54,21 +60,13 @@ describe(`StructurePopup`, () => {
   })
 
   test(`preserves custom popup classes`, () => {
-    mount(StructurePopup, {
-      target: document.body,
-      props: { structure: mock_structure, class: `custom-popup-class` },
-    })
-    flushSync()
+    mount_popup({ class: `custom-popup-class` })
 
     expect(doc_query(`.structure-popup`).classList.contains(`custom-popup-class`)).toBe(true)
   })
 
   test(`reuses draggable pane handle for dragging`, () => {
-    mount(StructurePopup, {
-      target: document.body,
-      props: { structure: mock_structure },
-    })
-    flushSync()
+    mount_popup()
 
     const popup = doc_query(`.structure-popup`)
     const handle = svg_query(`.structure-popup .control-tab .drag-handle`)
@@ -86,12 +84,16 @@ describe(`StructurePopup`, () => {
     expect(popup.style.transform).toBe(``)
   })
 
+  test(`can hide the drag handle`, () => {
+    mount_popup({ show_drag_handle: false })
+
+    const popups = [...document.querySelectorAll(`.structure-popup`)]
+    const popup_children = [...(popups.at(-1)?.children ?? [])]
+    expect(popup_children.some((child) => child.classList.contains(`control-tab`))).toBe(false)
+  })
+
   test(`clips popup content while leaving drag handle visible`, () => {
-    mount(StructurePopup, {
-      target: document.body,
-      props: { structure: mock_structure },
-    })
-    flushSync()
+    mount_popup()
 
     expect(getComputedStyle(doc_query(`.structure-popup`)).overflow).toBe(`visible`)
     const content_style = getComputedStyle(doc_query(`.structure-popup-content`))
@@ -110,11 +112,7 @@ describe(`StructurePopup`, () => {
         [`Li`, [0.5, 0.5, 0.5], 1],
         [`O`, [0.25, 0.25, 0.25], -2],
       ])
-      mount(StructurePopup, {
-        target: document.body,
-        props: { structure, stats: popup_stats },
-      })
-      flushSync()
+      mount_popup({ structure, stats: popup_stats })
 
       const stats_box = doc_query(`.structure-stats`)
       expect(stats_box.textContent).toContain(`test-id`)
@@ -132,15 +130,7 @@ describe(`StructurePopup`, () => {
       }
     })
 
-    mount(StructurePopup, {
-      target: document.body,
-      props: {
-        structure: mock_structure,
-        stats: { id: `custom-id`, formula: `Li2O` },
-        top_left,
-      },
-    })
-    flushSync()
+    mount_popup({ stats: { id: `custom-id`, formula: `Li2O` }, top_left })
 
     const stats = doc_query(`.structure-stats`)
     expect(stats.textContent).toBe(`custom-id custom`)
@@ -155,15 +145,7 @@ describe(`StructurePopup`, () => {
       render: () => `<div class="popup-children">${context().stats?.id} extra</div>`,
     }))
 
-    mount(StructurePopup, {
-      target: document.body,
-      props: {
-        structure: mock_structure,
-        stats: { id: `mp-1` },
-        children,
-      },
-    })
-    flushSync()
+    mount_popup({ stats: { id: `mp-1` }, children })
 
     const extra = doc_query(`.structure-popup-content .popup-children`)
     expect(extra.textContent).toBe(`mp-1 extra`)

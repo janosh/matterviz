@@ -58,6 +58,7 @@
     resolve_axis_ranges,
   } from '$lib/plot/core/interactions'
   import {
+    AXIS_TITLE_OFFSET,
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
@@ -124,7 +125,7 @@
     y_axis = $bindable({}),
     y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.box.display),
-    range_padding = 0.05,
+    range_padding = 0,
     padding = DEFAULT_PLOT_PADDING,
     legend = {},
     show_legend,
@@ -920,7 +921,7 @@
           get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
         tick_color={cat_axis === `x` ? (tick) => slot_colors.get(tick) : undefined}
         label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
-        label_y={height - pad.b / 3 + (x_axis.label_shift?.y ?? 0)}
+        label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
       />
 
       {#if show_x2}
@@ -936,7 +937,7 @@
           show_grid={display.x2_grid}
           tick_label={(tick) => get_tick_label(tick, x2_axis.ticks)}
           label_x={pad.l + chart_width / 2 + (x2_axis.label_shift?.x ?? 0)}
-          label_y={Math.max(12, pad.t - (x2_axis.label_shift?.y ?? 40))}
+          label_y={Math.max(12, pad.t - (x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
         />
       {/if}
 

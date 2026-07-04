@@ -460,9 +460,14 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   const formula = get_electro_neg_formula(structure, true)
   if (formula && formula !== `Unknown`) comment_parts.push(formula)
 
+  const lattice_matrix =
+    `lattice` in structure && structure.lattice?.matrix?.length === 3
+      ? structure.lattice.matrix
+      : null
+
   // Include extended XYZ lattice information when available so round-trips preserve lattice
-  if (`lattice` in structure && structure.lattice?.matrix?.length === 3) {
-    const lattice_values = structure.lattice.matrix
+  if (lattice_matrix) {
+    const lattice_values = lattice_matrix
       .flatMap((row) =>
         row.map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8)),
       )
@@ -475,10 +480,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   lines.push(comment)
 
   // Cache converter for fractional→Cartesian (if lattice available)
-  const frac_to_cart =
-    `lattice` in structure && structure.lattice?.matrix?.length === 3
-      ? math.create_frac_to_cart(structure.lattice.matrix)
-      : null
+  const frac_to_cart = lattice_matrix ? math.create_frac_to_cart(lattice_matrix) : null
 
   // Atom lines: element symbol followed by x, y, z coordinates
   for (const site of structure.sites) {

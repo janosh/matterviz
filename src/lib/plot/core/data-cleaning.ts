@@ -163,15 +163,9 @@ export function apply_bounds(
   for (let idx = 0; idx < result.length; idx++) {
     const x_val = x_values[idx]
     const y_val = result[idx]
+    const { min: min_bound, max: max_bound } = resolve_physical_bounds(x_val, bounds)
 
-    const min_bound = typeof bounds.min === `function` ? bounds.min(x_val) : bounds.min
-    const max_bound = typeof bounds.max === `function` ? bounds.max(x_val) : bounds.max
-
-    let violated = false
-    if (min_bound !== undefined && y_val < min_bound) violated = true
-    if (max_bound !== undefined && y_val > max_bound) violated = true
-
-    if (violated) {
+    if (!is_in_bounds(y_val, x_val, bounds)) {
       violations++
       const mode = bounds.mode ?? `clamp`
 
@@ -204,10 +198,21 @@ export function sync_metadata<M>(
 const filter_by_indices = <T>(arr: readonly T[], kept_indices: number[]): T[] =>
   kept_indices.map((idx) => arr[idx])
 
-// Check if value is within bounds (static or x-dependent)
+// Resolve static or x-dependent min/max bounds at a given x value
+function resolve_physical_bounds(
+  x_val: number,
+  bounds: PhysicalBounds,
+): { min: number | undefined; max: number | undefined } {
+  return {
+    min: typeof bounds.min === `function` ? bounds.min(x_val) : bounds.min,
+    max: typeof bounds.max === `function` ? bounds.max(x_val) : bounds.max,
+  }
+}
+
+// Check if value is within bounds (static or x-dependent).
+// NB: NaN values compare false on both checks and therefore count as in-bounds.
 function is_in_bounds(val: number, x_val: number, bounds: PhysicalBounds): boolean {
-  const min = typeof bounds.min === `function` ? bounds.min(x_val) : bounds.min
-  const max = typeof bounds.max === `function` ? bounds.max(x_val) : bounds.max
+  const { min, max } = resolve_physical_bounds(x_val, bounds)
   if (min !== undefined && val < min) return false
   if (max !== undefined && val > max) return false
   return true

@@ -48,9 +48,10 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
   }
   const bad_element = element_names.find((name) => !is_elem_symbol(name))
   if (bad_element) throw new Error(`Invalid element symbol in XDATCAR: ${bad_element}`)
-  let elements: ElementSymbol[] = element_names.flatMap((name, idx) =>
-    Array(element_counts[idx]).fill(name),
-  )
+  // "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl]
+  const expand_element_counts = (names: string[], counts: number[]): ElementSymbol[] =>
+    names.flatMap((name, idx) => Array(counts[idx]).fill(name))
+  let elements = expand_element_counts(element_names, element_counts)
 
   const frames: TrajectoryFrame[] = []
   let line_idx = 7
@@ -76,7 +77,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
           hdr.names.every(is_elem_symbol) &&
           hdr.counts.every((count) => Number.isInteger(count) && count > 0)
         ) {
-          elements = hdr.names.flatMap((name, idx) => Array(hdr.counts[idx]).fill(name))
+          elements = expand_element_counts(hdr.names, hdr.counts)
         }
       }
     }

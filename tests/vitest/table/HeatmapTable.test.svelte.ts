@@ -3,6 +3,15 @@ import { type ComponentProps, mount, tick } from 'svelte'
 import { assert, describe, expect, it, vi } from 'vitest'
 import { bind_props } from '../setup'
 
+const mount_table = (props: ComponentProps<typeof HeatmapTable>): unknown =>
+  mount(HeatmapTable, { target: document.body, props })
+
+/** Trimmed text of every cell in the given column. */
+const col_values = (col_name: string): (string | undefined)[] =>
+  [...document.querySelectorAll(`td[data-col="${col_name}"]`)].map((cell) =>
+    cell.textContent?.trim(),
+  )
+
 describe(`HeatmapTable`, () => {
   const sample_data = [
     { Model: `Model A`, Score: 0.95, Value: 100 },
@@ -25,10 +34,7 @@ describe(`HeatmapTable`, () => {
 
   it(`renders table with correct structure and handles hidden columns`, () => {
     const columns = [...sample_columns, { label: `Hidden`, visible: false, description: `` }]
-    mount(HeatmapTable, {
-      target: document.body,
-      props: { data: sample_data, columns },
-    })
+    mount_table({ data: sample_data, columns })
 
     const headers = document.querySelectorAll(`th`)
     expect(headers).toHaveLength(3)
@@ -50,7 +56,7 @@ describe(`HeatmapTable`, () => {
       { label: `Model`, description: `` },
       { label: `Score`, description: `` },
     ]
-    mount(HeatmapTable, { target: document.body, props: { data: rows, columns } })
+    mount_table({ data: rows, columns })
     await tick()
 
     const alpha_orig = () =>
@@ -72,10 +78,7 @@ describe(`HeatmapTable`, () => {
   it(`handles empty data and filters undefined rows`, async () => {
     const state = $state({ data: [{ Model: undefined, Score: undefined }, ...sample_data] })
 
-    mount(HeatmapTable, {
-      target: document.body,
-      props: bind_props({ columns: sample_columns }, state),
-    })
+    mount_table(bind_props({ columns: sample_columns }, state))
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
 
@@ -92,10 +95,7 @@ describe(`HeatmapTable`, () => {
         { Model: `C`, Score: 0.75, Value: 300 },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: sample_columns },
-      })
+      mount_table({ data, columns: sample_columns })
 
       // Test initial sort
       const value_header = document.querySelectorAll(`th`)[2]
@@ -118,10 +118,7 @@ describe(`HeatmapTable`, () => {
 
     it(`maintains sort state on data updates`, async () => {
       const state = $state({ data: sample_data })
-      mount(HeatmapTable, {
-        target: document.body,
-        props: bind_props({ columns: sample_columns }, state),
-      })
+      mount_table(bind_props({ columns: sample_columns }, state))
 
       const score_header = document.querySelectorAll(`th`)[1]
       score_header.click() // Sort by Score
@@ -145,10 +142,7 @@ describe(`HeatmapTable`, () => {
 
       const date_columns: Label[] = [{ label: `Date`, description: `` }]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: dates, columns: date_columns },
-      })
+      mount_table({ data: dates, columns: date_columns })
 
       // Initial data should already be in order
       const initial_dates = Array.from(document.querySelectorAll(`td`)).map((cell) =>
@@ -156,6 +150,99 @@ describe(`HeatmapTable`, () => {
       )
 
       expect(initial_dates).toEqual([`2021-05-14`, `2023-05-25`, `2024-05-07`])
+    })
+
+    it(`selects valid date/time column display modes`, async () => {
+      const created = new Date(2024, 0, 2, 3, 4)
+      const now = new Date(2024, 0, 3, 5, 34).getTime()
+      const date_now = vi.spyOn(Date, `now`).mockReturnValue(now)
+      try {
+        const data = [
+          {
+            Observed: `2024-01-02`,
+            'Start Time': created,
+            Created: created,
+            Ancient: new Date(2017, 6, 23, 9, 57),
+            Unix: new Date(2024, 0, 2, 12, 0).getTime(),
+          },
+        ]
+        const columns: Label[] = [
+          { label: `Observed`, description: `` },
+          { label: `Start Time`, datetime_format: `time`, description: `` },
+          { label: `Created`, datetime_format: `datetime`, description: `` },
+          { label: `Ancient`, datetime_format: `datetime`, description: `` },
+          { label: `Unix`, format_type: `datetime`, description: `` },
+        ]
+
+        mount_table({ data, columns })
+
+        const cells = () =>
+          [...document.querySelectorAll(`tbody td`)].map((cell) => cell.textContent?.trim())
+        const triggers = document.querySelectorAll<HTMLButtonElement>(
+          `.datetime-format-trigger`,
+        )
+        const options = (select: HTMLSelectElement) =>
+          [...select.options].map((option) => option.value)
+        const open_select = async (idx: number): Promise<HTMLSelectElement> => {
+          if (triggers[idx].getAttribute(`aria-expanded`) !== `true`) {
+            triggers[idx].click()
+            await tick()
+          }
+          const select = document.querySelector<HTMLSelectElement>(`.datetime-format-select`)
+          expect(select).not.toBeNull()
+          return select as HTMLSelectElement
+        }
+        const select_mode = async (idx: number, value: string) => {
+          const select = await open_select(idx)
+          select.value = value
+          select.dispatchEvent(new Event(`input`, { bubbles: true }))
+          await tick()
+        }
+
+        expect(cells()).toEqual([
+          `2024-01-02`,
+          `03:04`,
+          `2024-01-02 03:04`,
+          `2017-07-23 09:57`,
+          `2024-01-02 12:00`,
+        ])
+        expect(document.querySelector(`.datetime-format-select`)).toBeNull()
+        expect([...triggers].map((trigger) => trigger.dataset.mode)).toEqual([
+          `date`,
+          `time`,
+          `datetime`,
+          `datetime`,
+          `datetime`,
+        ])
+
+        expect(options(await open_select(0))).toEqual([`date`, `relative`])
+        expect(options(await open_select(1))).toEqual([`time`])
+        expect(options(await open_select(2))).toEqual([
+          `date`,
+          `time`,
+          `datetime`,
+          `iso`,
+          `relative`,
+        ])
+        const active_select = await open_select(2)
+        active_select.click()
+        await tick()
+        expect(document.querySelector(`.datetime-format-select`)).toBeNull()
+
+        await select_mode(2, `relative`)
+        expect(document.querySelector(`.datetime-format-select`)).toBeNull()
+        expect(triggers[2].dataset.mode).toBe(`relative`)
+        expect(cells()[2]).toBe(`1d 2h 30m ago`)
+
+        await select_mode(3, `relative`)
+        expect(cells()[3]).toBe(`6y 5mo 2w ago`)
+
+        await select_mode(2, `time`)
+        expect(cells()[2]).toBe(`03:04`)
+        expect(cells()[1]).toBe(`03:04`)
+      } finally {
+        date_now.mockRestore()
+      }
     })
 
     it(`sorts using data-sort-value attributes for numeric values`, async () => {
@@ -167,10 +254,7 @@ describe(`HeatmapTable`, () => {
 
       const columns: Label[] = [{ label: `Number`, description: `` }]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: formatted_data, columns },
-      })
+      mount_table({ data: formatted_data, columns })
 
       // Click to sort ascending by data-sort-value
       document.querySelector(`th`)?.click()
@@ -186,10 +270,8 @@ describe(`HeatmapTable`, () => {
     it(`sorts mixed number/string columns: numbers first, desc reverses`, async () => {
       const data = [`10`, `abc`, `9`, `def`, `2`, `a1`].map((Mixed) => ({ Mixed }))
       const columns: Label[] = [{ label: `Mixed`, description: `` }]
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns, initial_sort: `Mixed` }, // string shorthand defaults to asc
-      })
+      // string shorthand defaults to asc
+      mount_table({ data, columns, initial_sort: `Mixed` })
       await tick()
       const get_cells = () =>
         Array.from(document.querySelectorAll(`td`)).map((cell) => cell.textContent?.trim())
@@ -211,7 +293,7 @@ describe(`HeatmapTable`, () => {
         { Name: `Charlie`, Value: `300`, Actions: `Delete` },
       ]
 
-      mount(HeatmapTable, { target: document.body, props: { data, columns } })
+      mount_table({ data, columns })
 
       const get_values = () =>
         Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map((cell) =>
@@ -242,10 +324,7 @@ describe(`HeatmapTable`, () => {
         desc: `string shorthand defaults to asc`,
       },
     ] as const)(`initial_sort $desc`, ({ initial_sort, expected }) => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, initial_sort },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, initial_sort })
 
       const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
         (cell) => cell.textContent?.trim(),
@@ -296,7 +375,7 @@ describe(`HeatmapTable`, () => {
         { label: `Value`, better: `lower`, description: `` },
       ]
 
-      mount(HeatmapTable, { target: document.body, props: { data, columns } })
+      mount_table({ data, columns })
 
       document.querySelectorAll(`th`)[1].click()
       await tick()
@@ -322,10 +401,7 @@ describe(`HeatmapTable`, () => {
         Value: val,
       }))
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: [{ label: `Name`, description: `` }, heatmap_col] },
-      })
+      mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_col] })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
       const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
@@ -343,10 +419,7 @@ describe(`HeatmapTable`, () => {
         { Name: `C`, Value: `test` },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: [{ label: `Name`, description: `` }, heatmap_col] },
-      })
+      mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_col] })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
       const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
@@ -363,10 +436,7 @@ describe(`HeatmapTable`, () => {
         { Name: `C`, Value: 100 },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: [{ label: `Name`, description: `` }, heatmap_col] },
-      })
+      mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_col] })
 
       const cells = Array.from(document.querySelectorAll(`td[data-col="Value"]`))
       const style_attrs = cells.map((cell) => cell.getAttribute(`style`) ?? ``)
@@ -394,10 +464,7 @@ describe(`HeatmapTable`, () => {
       { Num: 1.234, Val: 100 },
     ]
 
-    mount(HeatmapTable, {
-      target: document.body,
-      props: { data, columns },
-    })
+    mount_table({ data, columns })
 
     // Check number formatting
     const num_cell = document.querySelector(`td[data-col="Num"]`)
@@ -429,7 +496,7 @@ describe(`HeatmapTable`, () => {
     }
     const data = [10, 100, 1000].map((val) => ({ [c1.label]: val, [c2.label]: val }))
 
-    mount(HeatmapTable, { target: document.body, props: { data, columns: [c1, c2] } })
+    mount_table({ data, columns: [c1, c2] })
 
     // Get cells for both columns
     const linear_cells = document.querySelectorAll(`td[data-col="Linear"]`)
@@ -454,13 +521,10 @@ describe(`HeatmapTable`, () => {
   })
 
   it(`handles accessibility features`, () => {
-    mount(HeatmapTable, {
-      target: document.body,
-      props: {
-        data: sample_data,
-        columns: [{ label: `Col`, description: `Description`, sticky: true }],
-        sort_hint: `Click to sort`,
-      },
+    mount_table({
+      data: sample_data,
+      columns: [{ label: `Col`, description: `Description`, sticky: true }],
+      sort_hint: `Click to sort`,
     })
 
     const header = document.querySelector(`th`)
@@ -475,10 +539,7 @@ describe(`HeatmapTable`, () => {
   it(`handles undefined and null values`, () => {
     const data = [{ Model: `Empty Model`, Score: undefined, Value: undefined }]
 
-    mount(HeatmapTable, {
-      target: document.body,
-      props: { data, columns: sample_columns },
-    })
+    mount_table({ data, columns: sample_columns })
 
     const cells = document.querySelectorAll(`td`)
     expect(cells).toHaveLength(3)
@@ -493,10 +554,7 @@ describe(`HeatmapTable`, () => {
       { Model: `Model B`, Score: NaN, Value: 2.7 },
     ]
 
-    mount(HeatmapTable, {
-      target: document.body,
-      props: { data, columns: sample_columns },
-    })
+    mount_table({ data, columns: sample_columns })
 
     const all_text = Array.from(document.querySelectorAll(`td`)).map((cell) =>
       cell.textContent?.trim(),
@@ -526,10 +584,7 @@ describe(`HeatmapTable`, () => {
       { label: `Complex`, description: `` },
     ]
 
-    mount(HeatmapTable, {
-      target: document.body,
-      props: { data: html_data, columns: html_columns },
-    })
+    mount_table({ data: html_data, columns: html_columns })
 
     // Get the cells with HTML content
     const html_cell = document.querySelector(`td[data-col="HTML"]`)
@@ -584,10 +639,7 @@ describe(`HeatmapTable`, () => {
       { show_heatmap: false, desc: `does not set --cell-bg when show_heatmap is false` },
     ])(`$desc`, ({ show_heatmap }) => {
       const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: [heatmap_val_col], show_heatmap },
-      })
+      mount_table({ data, columns: [heatmap_val_col], show_heatmap })
 
       for (const cell of Array.from(document.querySelectorAll(`td[data-col="Val"]`))) {
         const style_attr = cell.getAttribute(`style`) ?? ``
@@ -604,10 +656,7 @@ describe(`HeatmapTable`, () => {
         { Name: `foo`, Val: 10 },
         { Name: `bar`, Val: 20 },
       ]
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: [{ label: `Name`, description: `` }, heatmap_val_col] },
-      })
+      mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_val_col] })
 
       for (const cell of Array.from(document.querySelectorAll(`td[data-col="Name"]`))) {
         expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
@@ -642,10 +691,7 @@ describe(`HeatmapTable`, () => {
         },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: grouped_data, columns: grouped_columns },
-      })
+      mount_table({ data: grouped_data, columns: grouped_columns })
 
       // Should have two rows in the header
       const header_rows = document.querySelectorAll(`thead tr`)
@@ -701,10 +747,7 @@ describe(`HeatmapTable`, () => {
 
       const mixed_data = [{ Name: `Test`, Regular: 1, 'Group 1': 2, 'Group 2': 3, Another: 4 }]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: mixed_data, columns: mixed_columns },
-      })
+      mount_table({ data: mixed_data, columns: mixed_columns })
 
       // Should have two rows in the header
       const header_rows = document.querySelectorAll(`thead tr`)
@@ -735,10 +778,7 @@ describe(`HeatmapTable`, () => {
         { label: `Col2`, description: `` },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: [{ Col1: `a`, Col2: `b` }], columns: styled_columns },
-      })
+      mount_table({ data: [{ Col1: `a`, Col2: `b` }], columns: styled_columns })
 
       const header = document.querySelector(`th`)
       expect(header?.getAttribute(`style`)).toContain(`color: red`)
@@ -751,12 +791,9 @@ describe(`HeatmapTable`, () => {
     it(`applies row styles from data`, () => {
       const data_with_styles = [{ col: `value`, style: `background-color: yellow;` }]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: data_with_styles,
-          columns: [{ label: `col`, description: `` }],
-        },
+      mount_table({
+        data: data_with_styles,
+        columns: [{ label: `col`, description: `` }],
       })
 
       const row = document.querySelector(`tbody tr`)
@@ -764,13 +801,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`applies container style from props`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: [{ col: `value` }],
-          columns: [{ label: `col`, description: `` }],
-          style: `max-height: 200px; border: 1px solid blue;`,
-        },
+      mount_table({
+        data: [{ col: `value` }],
+        columns: [{ label: `col`, description: `` }],
+        style: `max-height: 200px; border: 1px solid blue;`,
       })
 
       const container = document.querySelector(`.table-container`)
@@ -781,10 +815,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Search and Filter`, () => {
     it(`renders search button when search is enabled`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, search: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, search: true })
 
       const control_buttons = document.querySelector(`.control-buttons`)
       expect(control_buttons).not.toBeNull()
@@ -792,10 +823,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`expands search input when toggle clicked`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, search: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, search: true })
 
       const search_btn = document.querySelector(
         `.control-buttons .icon-btn`,
@@ -808,13 +836,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`respects search.placeholder configuration`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          search: { placeholder: `Search materials...` },
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        search: { placeholder: `Search materials...` },
       })
 
       // Click to expand search
@@ -829,13 +854,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`respects search.expanded configuration to auto-expand`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          search: { expanded: true },
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        search: { expanded: true },
       })
 
       // Search input should be visible immediately without clicking
@@ -854,10 +876,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Export Functionality`, () => {
     it(`renders export dropdown when export_data is enabled`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, export_data: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, export_data: true })
 
       // Find export dropdown (second dropdown-wrapper when column toggle is not present)
       const control_buttons = document.querySelector(`.control-buttons`)
@@ -877,23 +896,17 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`does not render export button when export_data is false`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, export_data: false },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, export_data: false })
 
       const dropdown_wrappers = document.querySelectorAll(`.dropdown-wrapper`)
       expect(dropdown_wrappers).toHaveLength(0)
     })
 
     it(`respects export_data.formats to show only specified formats`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          export_data: { formats: [`csv`] },
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        export_data: { formats: [`csv`] },
       })
 
       const export_btn = document.querySelector(
@@ -910,10 +923,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Column Visibility Toggle`, () => {
     it(`renders toggle button and shows dropdown with all columns`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_column_toggle: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, show_column_toggle: true })
 
       const dropdown_wrapper = document.querySelector(`.dropdown-wrapper`)
       expect(dropdown_wrapper).not.toBeNull()
@@ -928,10 +938,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`hides column when unchecked`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_column_toggle: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, show_column_toggle: true })
 
       // Initial: all 3 columns visible
       expect(document.querySelectorAll(`th`)).toHaveLength(3)
@@ -954,23 +961,17 @@ describe(`HeatmapTable`, () => {
 
   describe(`Row Selection`, () => {
     it(`renders checkbox column when show_row_select is true`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_row_select: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, show_row_select: true })
 
       const checkboxes = document.querySelectorAll(`td.select-col input[type="checkbox"]`)
       expect(checkboxes).toHaveLength(3) // One per row
     })
 
     it(`selects row when checkbox clicked`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          show_row_select: true,
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        show_row_select: true,
       })
 
       // Verify checkbox exists and check it
@@ -992,13 +993,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`shows selection count in header`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          show_row_select: true,
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        show_row_select: true,
       })
 
       // Select two rows
@@ -1012,13 +1010,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`clears selection when clear button clicked`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          show_row_select: true,
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        show_row_select: true,
       })
 
       // Select a row
@@ -1039,10 +1034,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Multi-Column Sorting`, () => {
     it(`adds secondary sort with Shift+click and shows numbered badges`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns },
-      })
+      mount_table({ data: sample_data, columns: sample_columns })
 
       const headers = document.querySelectorAll(`th`)
 
@@ -1059,10 +1051,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`clears multi-sort on regular click`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns },
-      })
+      mount_table({ data: sample_data, columns: sample_columns })
 
       const headers = document.querySelectorAll(`th`)
 
@@ -1088,17 +1077,11 @@ describe(`HeatmapTable`, () => {
       columns: Label[] = sample_columns,
       data: RowData[] = sample_data,
     ) => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns },
-      })
+      mount_table({ data, columns })
       return document.querySelectorAll(`th`)
     }
 
-    const get_col_values = (col_name: string) =>
-      Array.from(document.querySelectorAll(`td[data-col="${col_name}"]`)).map((cell) =>
-        cell.textContent?.trim(),
-      )
+    const get_col_values = col_values
 
     it(`does not render arrows for unsorted columns by default`, () => {
       const headers = render_table()
@@ -1173,13 +1156,10 @@ describe(`HeatmapTable`, () => {
     }))
 
     it(`renders pagination controls when pagination is enabled`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: large_data,
-          columns: sample_columns,
-          pagination: { page_size: 10 },
-        },
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10 },
       })
 
       const pagination = document.querySelector(`.pagination`)
@@ -1194,30 +1174,41 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`limits rows to pagination.page_size`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: large_data,
-          columns: sample_columns,
-          pagination: { page_size: 10 },
-        },
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10 },
       })
 
       const rows = document.querySelectorAll(`tbody tr`)
       expect(rows).toHaveLength(10)
     })
 
+    it(`updates visible rows when parent changes pagination.page_size`, async () => {
+      const state = $state({
+        pagination: { page_size: 10, page_sizes: [10, 25, 50] },
+      })
+      mount_table(bind_props({ data: large_data, columns: sample_columns }, state))
+
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(10)
+
+      state.pagination = { page_size: 25, page_sizes: [10, 25, 50] }
+      await tick()
+
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(25)
+      expect((document.querySelector(`.page-size-select`) as HTMLSelectElement).value).toBe(
+        `25`,
+      )
+    })
+
     // Note: Test for navigation between pages skipped in happy-dom due to:
     // happy-dom doesn't support getAnimations() which animate:flip uses when rows change
 
     it(`disables prev/first buttons on first page`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: large_data,
-          columns: sample_columns,
-          pagination: { page_size: 10 },
-        },
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10 },
       })
 
       const buttons = document.querySelectorAll(`.page-btn`)
@@ -1228,13 +1219,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`shows total row count`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: large_data,
-          columns: sample_columns,
-          pagination: { page_size: 10 },
-        },
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10 },
       })
 
       const row_count = document.querySelector(`.row-count`)
@@ -1242,13 +1230,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`does not render pagination for small datasets`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data, // Only 3 rows
-          columns: sample_columns,
-          pagination: { page_size: 10 },
-        },
+      mount_table({
+        data: sample_data, // Only 3 rows
+        columns: sample_columns,
+        pagination: { page_size: 10 },
       })
 
       // Pagination should not appear when data fits on one page
@@ -1258,10 +1243,7 @@ describe(`HeatmapTable`, () => {
   })
 
   it(`renders resize handles on headers with correct ARIA role`, () => {
-    mount(HeatmapTable, {
-      target: document.body,
-      props: { data: sample_data, columns: sample_columns },
-    })
+    mount_table({ data: sample_data, columns: sample_columns })
 
     const resize_handles = document.querySelectorAll(`.resize-handle`)
     expect(resize_handles).toHaveLength(3) // One per column
@@ -1277,10 +1259,7 @@ describe(`HeatmapTable`, () => {
         { Model: `Model B`, Score: 0.85, Value: 200 },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: sample_columns },
-      })
+      mount_table({ data, columns: sample_columns })
 
       const rows = document.querySelectorAll(`tbody tr`)
       expect(rows[0].classList.contains(`custom-row`)).toBe(true)
@@ -1290,13 +1269,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`sort_hint renders as string with default position bottom`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          sort_hint: `Click to sort`,
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        sort_hint: `Click to sort`,
       })
 
       const hint = document.querySelector(`.sort-hint`)
@@ -1307,12 +1283,9 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`sort_hint does not render when undefined`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
       })
 
       const hint = document.querySelector(`.sort-hint`)
@@ -1320,13 +1293,10 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`sort_hint renders with object config and permanent class`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          sort_hint: { text: `Sort hint text`, position: `top`, permanent: true },
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        sort_hint: { text: `Sort hint text`, position: `top`, permanent: true },
       })
 
       const hint = document.querySelector(`.sort-hint`)
@@ -1338,13 +1308,10 @@ describe(`HeatmapTable`, () => {
     it.each([`top`, `bottom`] as const)(
       `sort_hint position=%s renders hint in correct location`,
       (position) => {
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: sample_data,
-            columns: sample_columns,
-            sort_hint: { text: `Positioned hint`, position },
-          },
+        mount_table({
+          data: sample_data,
+          columns: sample_columns,
+          sort_hint: { text: `Positioned hint`, position },
         })
 
         const container = document.querySelector(`.table-container`)
@@ -1373,18 +1340,15 @@ describe(`HeatmapTable`, () => {
     )
 
     it(`sort_hint applies custom style, class, position, and permanent together`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          sort_hint: {
-            text: `Full config hint`,
-            position: `top`,
-            permanent: true,
-            style: `font-weight: bold; color: red;`,
-            class: `custom-hint-class another-class`,
-          },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        sort_hint: {
+          text: `Full config hint`,
+          position: `top`,
+          permanent: true,
+          style: `font-weight: bold; color: red;`,
+          class: `custom-hint-class another-class`,
         },
       })
 
@@ -1421,10 +1385,7 @@ describe(`HeatmapTable`, () => {
         { Name: `Item 3`, 'Value (Group A)': 5, 'Value (Group B)': 75 },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: grouped_columns },
-      })
+      mount_table({ data, columns: grouped_columns })
 
       // Click on the second "Value" header (Group B)
       const headers = document.querySelectorAll(`thead tr:last-child th`)
@@ -1454,10 +1415,7 @@ describe(`HeatmapTable`, () => {
         Name: String.fromCharCode(65 + idx),
         Value: val,
       }))
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data, columns: [{ label: `Name`, description: `` }, heatmap_col] },
-      })
+      mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_col] })
 
       for (const cell of Array.from(document.querySelectorAll(`td[data-col="Value"]`))) {
         expect(cell.getAttribute(`style`) ?? ``).toContain(`--cell-bg:`)
@@ -1481,10 +1439,7 @@ describe(`HeatmapTable`, () => {
       it(`calls onsort with correct column and direction`, async () => {
         const onsort_mock = vi.fn().mockResolvedValue(initial_data)
 
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
-        })
+        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
 
         const headers = document.querySelectorAll(`th`)
 
@@ -1501,10 +1456,7 @@ describe(`HeatmapTable`, () => {
 
       it(`toggles sort direction on subsequent clicks`, async () => {
         const onsort_mock = vi.fn().mockResolvedValue(initial_data)
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
-        })
+        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
 
         const score_header = document.querySelectorAll(`th`)[1]
 
@@ -1525,10 +1477,7 @@ describe(`HeatmapTable`, () => {
           { Model: `Server C`, Score: 0.77, Value: 777 },
         ]
         const onsort_mock = vi.fn().mockResolvedValue(server_data)
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
-        })
+        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
 
         const table = document.body.lastElementChild as HTMLElement
         const tbody = table.querySelector(`tbody`)
@@ -1550,10 +1499,7 @@ describe(`HeatmapTable`, () => {
           { label: `Model`, sortable: false, description: `` },
           { label: `Score`, better: `higher`, description: `` },
         ]
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: cols, onsort: onsort_mock },
-        })
+        mount_table({ data: initial_data, columns: cols, onsort: onsort_mock })
 
         const headers = document.querySelectorAll(`th`)
 
@@ -1575,16 +1521,13 @@ describe(`HeatmapTable`, () => {
           { label: `Value`, group: `Group A`, description: `` },
           { label: `Value`, group: `Group B`, description: `` },
         ]
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: [
-              { Name: `Item 1`, 'Value (Group A)': 10, 'Value (Group B)': 100 },
-              { Name: `Item 2`, 'Value (Group A)': 20, 'Value (Group B)': 50 },
-            ],
-            columns: grouped_columns,
-            onsort: onsort_mock,
-          },
+        mount_table({
+          data: [
+            { Name: `Item 1`, 'Value (Group A)': 10, 'Value (Group B)': 100 },
+            { Name: `Item 2`, 'Value (Group A)': 20, 'Value (Group B)': 50 },
+          ],
+          columns: grouped_columns,
+          onsort: onsort_mock,
         })
 
         // Click on Group B's "Value" header
@@ -1603,10 +1546,7 @@ describe(`HeatmapTable`, () => {
         [true, `shows overlay and spinner`],
         [false, `hides overlay`],
       ])(`loading=%s %s`, (loading) => {
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: sample_columns, loading },
-        })
+        mount_table({ data: initial_data, columns: sample_columns, loading })
         const container = document.body.lastElementChild as HTMLElement
         const overlay = container.querySelector(`.loading-overlay`)
         if (loading) {
@@ -1625,10 +1565,7 @@ describe(`HeatmapTable`, () => {
             resolve_sort = resolve
           }),
         )
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
-        })
+        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
 
         const container = document.body.lastElementChild as HTMLElement
         expect(container.querySelector(`.loading-overlay`)).toBeNull()
@@ -1657,10 +1594,7 @@ describe(`HeatmapTable`, () => {
           { Model: `Y`, Score: 0.5, Value: 200 },
           { Model: `Z`, Score: 0.9, Value: 300 },
         ]
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: unsorted, columns: sample_columns, sort_data },
-        })
+        mount_table({ data: unsorted, columns: sample_columns, sort_data })
 
         const table = document.body.lastElementChild as HTMLElement
         table.querySelectorAll(`th`)[1].click()
@@ -1682,10 +1616,7 @@ describe(`HeatmapTable`, () => {
           { Model: `C`, Score: 0.99, Value: 300 },
         ]
         const onsort_mock = vi.fn().mockResolvedValue(server_ordered)
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
-        })
+        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
 
         const table = document.body.lastElementChild as HTMLElement
         table.querySelectorAll(`th`)[1].click()
@@ -1703,14 +1634,11 @@ describe(`HeatmapTable`, () => {
 
     describe(`integration scenarios`, () => {
       it(`sort hint works with onsort`, () => {
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: initial_data,
-            columns: sample_columns,
-            onsort: vi.fn().mockResolvedValue(initial_data),
-            sort_hint: { text: `Server-side sort`, permanent: true },
-          },
+        mount_table({
+          data: initial_data,
+          columns: sample_columns,
+          onsort: vi.fn().mockResolvedValue(initial_data),
+          sort_hint: { text: `Server-side sort`, permanent: true },
         })
 
         const hint = document.querySelector(`.sort-hint`)
@@ -1724,16 +1652,13 @@ describe(`HeatmapTable`, () => {
           Score: Math.random(),
           Value: idx * 10,
         }))
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: paginated_data,
-            columns: sample_columns,
-            onsort: vi.fn().mockResolvedValue(paginated_data),
-            pagination: { page_size: 10 },
-            search: { expanded: true },
-            sort_data: false,
-          },
+        mount_table({
+          data: paginated_data,
+          columns: sample_columns,
+          onsort: vi.fn().mockResolvedValue(paginated_data),
+          pagination: { page_size: 10 },
+          search: { expanded: true },
+          sort_data: false,
         })
 
         const table = document.body.lastElementChild as HTMLElement
@@ -1770,10 +1695,7 @@ describe(`HeatmapTable`, () => {
           })
         })
 
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
-        })
+        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
 
         const table = document.body.lastElementChild as HTMLElement
         const headers = table.querySelectorAll(`th`)
@@ -1812,13 +1734,10 @@ describe(`HeatmapTable`, () => {
           .mockResolvedValueOnce(initial_data) // First sort succeeds
           .mockRejectedValueOnce(new Error(`Network error`)) // Second sort fails
 
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: initial_data,
-            columns: sample_columns,
-            onsort: onsort_mock,
-          },
+        mount_table({
+          data: initial_data,
+          columns: sample_columns,
+          onsort: onsort_mock,
         })
 
         const headers = document.querySelectorAll(`th`)
@@ -1848,14 +1767,11 @@ describe(`HeatmapTable`, () => {
         const onsort_mock = vi.fn().mockRejectedValue(error)
         const onsorterror_mock = vi.fn()
 
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: initial_data,
-            columns: sample_columns,
-            onsort: onsort_mock,
-            onsorterror: onsorterror_mock,
-          },
+        mount_table({
+          data: initial_data,
+          columns: sample_columns,
+          onsort: onsort_mock,
+          onsorterror: onsorterror_mock,
         })
 
         // Click Score header (better: higher → first click = desc)
@@ -1886,10 +1802,7 @@ describe(`HeatmapTable`, () => {
         visible: false,
       },
     ])(`$desc`, ({ props, text, visible }) => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: [], columns: sample_columns, ...props },
-      })
+      mount_table({ data: [], columns: sample_columns, ...props })
 
       const empty_row = document.querySelector(`.empty-row`)
       if (visible) {
@@ -1900,34 +1813,25 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`colspan covers all columns including select and row-number`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: [],
-          columns: sample_columns,
-          show_row_select: true,
-          show_row_numbers: true,
-        },
+      mount_table({
+        data: [],
+        columns: sample_columns,
+        show_row_select: true,
+        show_row_numbers: true,
       })
       // 3 data columns + 1 select + 1 row number = 5
       expect(document.querySelector(`.empty-row td`)?.getAttribute(`colspan`)).toBe(`5`)
     })
 
     it(`not shown when data is present`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns },
-      })
+      mount_table({ data: sample_data, columns: sample_columns })
       expect(document.querySelector(`.empty-row`)).toBeNull()
     })
   })
 
   describe(`Row Numbers`, () => {
     it(`shows 1-indexed numbers and # header when enabled`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_row_numbers: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, show_row_numbers: true })
 
       const headers = Array.from(document.querySelectorAll(`th`)).map((th) =>
         th.textContent?.trim(),
@@ -1944,20 +1848,14 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`hidden by default`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns },
-      })
+      mount_table({ data: sample_data, columns: sample_columns })
       expect(document.querySelectorAll(`td.row-num-col`)).toHaveLength(0)
     })
   })
 
   describe(`Select All`, () => {
     it(`badge shows all-selected count after selecting every row`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_row_select: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, show_row_select: true })
 
       for (const cb of Array.from(
         document.querySelectorAll(`td.select-col input[type="checkbox"]`),
@@ -1970,10 +1868,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`header checkbox unchecked on partial selection`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_row_select: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, show_row_select: true })
       ;(
         document.querySelector(`td.select-col input[type="checkbox"]`) as HTMLInputElement
       ).click()
@@ -1992,13 +1887,10 @@ describe(`HeatmapTable`, () => {
       { desc: `with onrowclick`, has_click: true, expected_tabindex: `0` },
       { desc: `without onrowclick`, has_click: false, expected_tabindex: null },
     ])(`tabindex $desc`, ({ has_click, expected_tabindex }) => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          ...(has_click ? { onrowclick: () => {} } : {}),
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        ...(has_click ? { onrowclick: () => {} } : {}),
       })
 
       for (const row of Array.from(document.querySelectorAll(`tbody tr`))) {
@@ -2010,14 +1902,11 @@ describe(`HeatmapTable`, () => {
       `triggers onrowclick on $key key`,
       async ({ key }) => {
         const clicked: unknown[] = []
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: sample_data,
-            columns: sample_columns,
-            onrowclick: (_event: KeyboardEvent | MouseEvent, row: Record<string, unknown>) =>
-              clicked.push(row),
-          },
+        mount_table({
+          data: sample_data,
+          columns: sample_columns,
+          onrowclick: (_event: KeyboardEvent | MouseEvent, row: Record<string, unknown>) =>
+            clicked.push(row),
         })
 
         const first_row = document.querySelector(`tbody tr`) as HTMLElement
@@ -2028,6 +1917,29 @@ describe(`HeatmapTable`, () => {
         expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
       },
     )
+
+    it(`triggers row pointerdown before row click`, () => {
+      const pointer_down = vi.fn()
+      const click = vi.fn()
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        onrowpointerdown: pointer_down,
+        onrowclick: click,
+      })
+
+      const first_row = document.querySelector(`tbody tr`) as HTMLElement
+      const event = new Event(`pointerdown`, { bubbles: true }) as PointerEvent
+      Object.defineProperty(event, `button`, { value: 0 })
+      first_row.dispatchEvent(event)
+      first_row.click()
+
+      expect(pointer_down).toHaveBeenCalledWith(event, sample_data[0])
+      expect(click).toHaveBeenCalledWith(expect.any(MouseEvent), sample_data[0])
+      expect(pointer_down.mock.invocationCallOrder[0]).toBeLessThan(
+        click.mock.invocationCallOrder[0],
+      )
+    })
   })
 
   describe(`Export Enhancements`, () => {
@@ -2044,10 +1956,7 @@ describe(`HeatmapTable`, () => {
       const append_spy = vi.spyOn(document.body, `append`)
 
       try {
-        mount(HeatmapTable, {
-          target: document.body,
-          props: { export_data: true, ...props } as ComponentProps<typeof HeatmapTable>,
-        })
+        mount_table({ export_data: true, ...props } as ComponentProps<typeof HeatmapTable>)
         if (before_export) await before_export()
         ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement).click()
         await tick()
@@ -2067,10 +1976,7 @@ describe(`HeatmapTable`, () => {
     }
 
     it(`copy to clipboard writes TSV`, async () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, export_data: true },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, export_data: true })
       ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement).click()
       await tick()
 
@@ -2133,22 +2039,16 @@ describe(`HeatmapTable`, () => {
   })
 
   it(`does not render tfoot when footer is not provided`, () => {
-    mount(HeatmapTable, {
-      target: document.body,
-      props: { data: sample_data, columns: sample_columns },
-    })
+    mount_table({ data: sample_data, columns: sample_columns })
     expect(document.querySelector(`tfoot`)).toBeNull()
   })
 
   describe(`root_style prop`, () => {
     it(`applies root_style to container`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          root_style: `margin: 0; max-width: 500px`,
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        root_style: `margin: 0; max-width: 500px`,
       })
 
       const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ?? ``
@@ -2157,14 +2057,11 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`merges root_style with rest style`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          root_style: `flex: 1`,
-          style: `color: red`,
-        },
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        root_style: `flex: 1`,
+        style: `color: red`,
       })
 
       const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ?? ``
@@ -2179,10 +2076,7 @@ describe(`HeatmapTable`, () => {
       [false, null],
       [true, `.pane-toggle`],
     ] as const)(`show_controls=%s -> gear icon %s`, (show_controls, expected_selector) => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_controls },
-      })
+      mount_table({ data: sample_data, columns: sample_columns, show_controls })
       const toggle = document.querySelector(`.pane-toggle`)
       if (expected_selector) expect(toggle).not.toBeNull()
       else expect(toggle).toBeNull()
@@ -2197,13 +2091,10 @@ describe(`HeatmapTable`, () => {
     }))
 
     it(`renders dropdown with correct options when page_sizes provided`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: large_data,
-          columns: sample_columns,
-          pagination: { page_size: 10, page_sizes: [10, 25, 50] },
-        },
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10, page_sizes: [10, 25, 50] },
       })
 
       const options = document.querySelectorAll(`.page-size-select option`)
@@ -2215,14 +2106,28 @@ describe(`HeatmapTable`, () => {
       ])
     })
 
+    it(`notifies parent when page size changes`, async () => {
+      const on_page_size_change = vi.fn()
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10, page_sizes: [10, 25, 50], on_page_size_change },
+      })
+
+      const select = document.querySelector(`.page-size-select`) as HTMLSelectElement
+      select.value = `25`
+      select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+
+      expect(on_page_size_change).toHaveBeenCalledWith(25)
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(25)
+    })
+
     it(`hidden when page_sizes not provided`, () => {
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: large_data,
-          columns: sample_columns,
-          pagination: { page_size: 10 },
-        },
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10 },
       })
       expect(document.querySelector(`.page-size-select`)).toBeNull()
     })

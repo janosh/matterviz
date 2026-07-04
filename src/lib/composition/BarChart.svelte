@@ -6,7 +6,7 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import { type ChartSegmentData, get_chart_font_scale } from './index'
+  import { chart_segment_label, type ChartSegmentData, get_chart_font_scale } from './index'
   import { fractional_composition } from './parse'
 
   type BarSegmentData = ChartSegmentData & {
@@ -85,10 +85,13 @@
 
       const segment_size = Math.min(width, size)
       const base_scale = Math.min(2, Math.max(1, segment_size / 40))
-      const label_text =
-        element +
-        (show_amounts ? (amount?.toString() ?? ``) : ``) +
-        (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
+      const label_text = chart_segment_label(
+        element,
+        amount,
+        fraction,
+        show_amounts,
+        show_percentages,
+      )
       const font_scale = get_chart_font_scale(
         base_scale,
         label_text,

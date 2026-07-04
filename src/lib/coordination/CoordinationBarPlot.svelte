@@ -120,7 +120,6 @@
     }
     return Array.from(all_cns).sort((cn1, cn2) => cn1 - cn2)
   })
-
   // Build BarPlot series based on split_mode
   const bar_series = $derived.by<BarSeries<CoordinationMetadata>[]>(() => {
     if (split_mode === `by_element`) {

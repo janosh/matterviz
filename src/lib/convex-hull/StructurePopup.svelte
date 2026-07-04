@@ -17,6 +17,8 @@
     width = 500,
     height = 400,
     onclose,
+    close_on_outside = true,
+    show_drag_handle = true,
     stats,
     top_left,
     children,
@@ -28,6 +30,8 @@
     width?: number
     height?: number
     onclose?: () => void
+    close_on_outside?: boolean
+    show_drag_handle?: boolean
     stats?: StructurePopupStats
     top_left?: Snippet<[StructurePopupContext]>
     children?: Snippet<[StructurePopupContext]>
@@ -49,6 +53,7 @@
 <svelte:window
   onkeydown={(event) => event.key === `Escape` && onclose?.()}
   onmousedown={(event) => {
+    if (!close_on_outside) return
     if (!popup_div || !(event.target instanceof Node)) return
     if (!popup_div.contains(event.target)) onclose?.()
   }}
@@ -65,7 +70,9 @@
   tabindex="-1"
   bind:this={popup_div}
 >
-  <DragControlTab />
+  {#if show_drag_handle}
+    <DragControlTab />
+  {/if}
   <div class="structure-popup-content">
     {#if top_left || stats}
       <div class="structure-stats">

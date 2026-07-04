@@ -22,6 +22,14 @@ const visible_marker_count = (series: DataSeries[]): number =>
     const markers = srs.markers ?? `line+points`
     return markers.includes(`points`) ? sum + srs.y.length : sum
   }, 0)
+const marker_radius = (marker: Element): number => {
+  const path = marker.getAttribute(`d`) ?? ``
+  const match = /^M(?<radius>-?\d*\.?\d+(?:e-?\d+)?),0/i.exec(path)
+  if (!match?.groups?.radius) {
+    throw new Error(`Could not read marker radius from path "${path}"`)
+  }
+  return Math.abs(Number(match.groups.radius))
+}
 const hover = async (element: Element): Promise<void> => {
   element.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
   await tick()
@@ -70,6 +78,43 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot(props)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(expected_markers)
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
+  })
+
+  test.each([
+    [`points only`, `points`, 5, 3],
+    [`line+points`, `line+points`, 5, 2.5],
+    [`dense points only`, `points`, 101, 2.5],
+    [`dense line+points`, `line+points`, 101, 2],
+  ] as const)(
+    `uses smaller default marker radius for %s`,
+    async (_desc, markers, count, radius) => {
+      const series = [
+        {
+          x: Array.from({ length: count }, (_, idx) => idx),
+          y: Array.from({ length: count }, (_, idx) => idx % 10),
+          markers,
+        },
+      ]
+      const plot = await mount_sized_scatter_plot({ series, legend: null })
+      expect(marker_radius(plot.querySelector(`.marker`) as Element)).toBeCloseTo(radius, 6)
+    },
+  )
+
+  test(`keeps explicit marker radius`, async () => {
+    const count = 101
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: Array.from({ length: count }, (_, idx) => idx),
+          y: Array.from({ length: count }, (_, idx) => idx % 10),
+          markers: `line+points`,
+          point_style: { radius: 6 },
+        },
+      ],
+      legend: null,
+    })
+
+    expect(marker_radius(plot.querySelector(`.marker`) as Element)).toBeCloseTo(6, 6)
   })
 
   // guards the line_style.curve -> <Line> wiring (the Line unit test alone wouldn't catch

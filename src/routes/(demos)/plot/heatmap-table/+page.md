@@ -11,19 +11,95 @@ A simple table with sortable columns and automatic heatmap coloring based on cel
   import { HeatmapTable } from 'matterviz'
 
   const data = [
-    [`Fe₂O₃`, 0.0, 2.2, -8.5],
-    [`TiO₂`, 0.0, 3.2, -9.8],
-    [`ZnO`, 0.02, 3.4, -3.6],
-    [`Cu₂O`, 0.05, 2.1, -1.7],
-    [`SiO₂`, 0.0, 8.9, -9.1],
-    [`Al₂O₃`, 0.0, 8.8, -17.4],
-    [`MgO`, 0.0, 7.8, -6.2],
-    [`CaTiO₃`, 0.03, 3.5, -16.1],
-  ].map(([v1, v2, v3, v4]) => ({
+    [
+      `Fe₂O₃`,
+      0.0,
+      2.2,
+      -8.5,
+      `2026-06-21`,
+      `2026-06-22T09:30:00Z`,
+      Date.parse(`2026-06-23T14:15:00Z`),
+      new Date(`2026-06-23T08:00:00Z`),
+    ],
+    [
+      `TiO₂`,
+      0.0,
+      3.2,
+      -9.8,
+      `2026-06-20`,
+      `2026-06-22T10:05:00Z`,
+      Date.parse(`2026-06-23T16:45:00Z`),
+      new Date(`2026-06-23T08:45:00Z`),
+    ],
+    [
+      `ZnO`,
+      0.02,
+      3.4,
+      -3.6,
+      `2026-06-19`,
+      `2026-06-22T11:20:00Z`,
+      Date.parse(`2026-06-24T08:30:00Z`),
+      new Date(`2026-06-24T09:15:00Z`),
+    ],
+    [
+      `Cu₂O`,
+      0.05,
+      2.1,
+      -1.7,
+      `2026-06-18`,
+      `2026-06-22T13:10:00Z`,
+      Date.parse(`2026-06-24T12:00:00Z`),
+      new Date(`2026-06-24T10:30:00Z`),
+    ],
+    [
+      `SiO₂`,
+      0.0,
+      8.9,
+      -9.1,
+      `2026-06-17`,
+      `2026-06-22T14:25:00Z`,
+      Date.parse(`2026-06-24T15:40:00Z`),
+      new Date(`2026-06-24T11:20:00Z`),
+    ],
+    [
+      `Al₂O₃`,
+      0.0,
+      8.8,
+      -17.4,
+      `2026-06-16`,
+      `2026-06-22T15:50:00Z`,
+      Date.parse(`2026-06-25T09:10:00Z`),
+      new Date(`2026-06-25T13:05:00Z`),
+    ],
+    [
+      `MgO`,
+      0.0,
+      7.8,
+      -6.2,
+      `2026-06-15`,
+      `2026-06-22T17:35:00Z`,
+      Date.parse(`2026-06-25T11:25:00Z`),
+      new Date(`2026-06-25T14:35:00Z`),
+    ],
+    [
+      `CaTiO₃`,
+      0.03,
+      3.5,
+      -16.1,
+      `2026-06-14`,
+      `2026-06-22T18:45:00Z`,
+      Date.parse(`2026-06-25T18:05:00Z`),
+      new Date(`2026-06-25T16:10:00Z`),
+    ],
+  ].map(([v1, v2, v3, v4, v5, v6, v7, v8]) => ({
     Formula: v1,
     'E<sub>above hull</sub>': v2,
     'E<sub>gap</sub>': v3,
     'E<sub>form</sub>': v4,
+    'Created Date': v5,
+    'Calculated At': v6,
+    'Last Updated': v7,
+    'Synthesis Time': v8,
   }))
 
   // oxfmt-ignore
@@ -46,6 +122,21 @@ A simple table with sortable columns and automatic heatmap coloring based on cel
       better: `lower`,
       color_scale: `interpolateBlues`,
       format: `.1f`,
+    },
+    { label: `Created Date`, description: `ISO date string with automatic date formatting` },
+    {
+      label: `Calculated At`,
+      description: `ISO date-time string with automatic date/time formatting`,
+    },
+    {
+      label: `Last Updated`,
+      format_type: `datetime`,
+      description: `Millisecond timestamp; click the calendar button to show age since now`,
+    },
+    {
+      label: `Synthesis Time`,
+      datetime_format: `time`,
+      description: `Date object rendered as time by default`,
     },
   ]
 </script>
@@ -356,8 +447,16 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
 
   const benchmarks = `MP JARVIS OQMD AFLOW MC3D GNoME WBM COD ICSD Perovskites`.split(` `)
 
-  const data = models.map(([name, ...scores]) => {
-    const row = { Model: name }
+  const run_epoch = Date.parse(`2026-06-25T12:00:00Z`)
+
+  const data = models.map(([name, ...scores], model_idx) => {
+    const row = {
+      Model: name,
+      'Published Date': `202${model_idx % 6}-${String((model_idx % 12) + 1).padStart(2, `0`)}-15`,
+      'Scheduled Time': new Date(run_epoch + model_idx * 23 * 60 * 1000),
+      'Last Run': run_epoch - model_idx * 3.5 * 60 * 60 * 1000,
+      'Queued At': new Date(run_epoch - model_idx * 47 * 60 * 1000).toISOString(),
+    }
     benchmarks.forEach((bench, idx) => {
       row[bench] = scores[idx]
     })
@@ -366,6 +465,24 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
 
   const columns = [
     { label: `Model`, sticky: true, style: `min-width: 120px; font-weight: 600;` },
+    { label: `Published Date`, style: `min-width: 115px;` },
+    {
+      label: `Scheduled Time`,
+      datetime_format: `time`,
+      style: `min-width: 115px;`,
+      description: `Date object rendered as time by default`,
+    },
+    {
+      label: `Last Run`,
+      format_type: `datetime`,
+      style: `min-width: 115px;`,
+      description: `Numeric timestamp from the latest benchmark run`,
+    },
+    {
+      label: `Queued At`,
+      style: `min-width: 125px;`,
+      description: `ISO timestamp for the queued benchmark job`,
+    },
     ...benchmarks.map((bench) => ({
       label: bench,
       better: `higher`,

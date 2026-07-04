@@ -10,6 +10,7 @@ import {
   parse_trajectory_async,
   TrajFrameReader,
 } from '$lib/trajectory/parse'
+import { FRAME_LOAD_DEBOUNCE_MS } from '$lib/trajectory'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
 import process from 'node:process'
 import { flushSync, mount, tick } from 'svelte'
@@ -128,11 +129,16 @@ describe(`Trajectory Streaming`, () => {
       flushSync()
       await tick()
     }
+    const wait_for_frame_load_debounce = async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, FRAME_LOAD_DEBOUNCE_MS + 15))
+      await settle_frame_load()
+    }
     await tick()
 
     document.querySelector<HTMLButtonElement>(`[data-testid="step-1"]`)?.click()
     flushSync()
     await tick()
+    await wait_for_frame_load_debounce()
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-1"]`)?.click()
     await settle_frame_load()
@@ -655,6 +661,37 @@ describe(`Trajectory Streaming`, () => {
       // No series should have generic names like "Series 1"
       const generic_series = series.filter((srs) => srs.label?.startsWith(`Series `))
       expect(generic_series).toHaveLength(0)
+    })
+
+    it(`should use frame numbers for sampled plot x values`, () => {
+      const metadata = [
+        { frame_number: 0, step: 0, properties: { energy: -10 } },
+        { frame_number: 10, step: 20_000, properties: { energy: -11 } },
+        { frame_number: 20, step: 40_000, properties: { energy: -12 } },
+      ]
+
+      const series = generate_streaming_plot_series(metadata, {
+        property_config: trajectory_property_config,
+      })
+
+      expect(series.find((srs) => srs.label === `Energy`)?.x).toEqual([0, 10, 20])
+    })
+
+    it(`sorts streamed plot points by frame number`, () => {
+      const metadata = [
+        { frame_number: 20, step: 40_000, properties: { energy: -12 } },
+        { frame_number: 0, step: 0, properties: { energy: -10 } },
+        { frame_number: 10, step: 20_000, properties: { energy: -11 } },
+      ]
+
+      const series = generate_streaming_plot_series(metadata, {
+        property_config: trajectory_property_config,
+      })
+
+      expect(series.find((srs) => srs.label === `Energy`)).toMatchObject({
+        x: [0, 10, 20],
+        y: [-10, -11, -12],
+      })
     })
   })
 })

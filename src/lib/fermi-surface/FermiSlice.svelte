@@ -108,7 +108,6 @@
       max: [xmax + rx * pad, ymax + ry * pad],
     }
   })
-
   function toggle_band(series_idx: number) {
     const band = slice_data?.isolines[series_idx]?.band_index
     if (band === undefined) return

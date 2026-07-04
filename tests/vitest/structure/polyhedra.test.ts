@@ -377,6 +377,16 @@ describe(`compute_polyhedra`, () => {
     expect(compute_polyhedra({ sites: [] }, octahedral_bonds)).toHaveLength(0)
   })
 
+  test(`recomputes when same structure coordinates mutate`, () => {
+    const structure = make_nacl_cluster()
+    expect(compute_polyhedra(structure, octahedral_bonds)).toHaveLength(1)
+
+    structure.sites[1].xyz = [100, 100, 100] as Vec3
+    structure.sites[2].xyz = [-100, -100, -100] as Vec3
+    structure.sites[3].xyz = [100, -100, 100] as Vec3
+    expect(compute_polyhedra(structure, octahedral_bonds)).toHaveLength(0)
+  })
+
   test(`performance: 10x10x10 rocksalt supercell (8000 sites) stays fast`, () => {
     const supercell = make_supercell(make_rocksalt(), [10, 10, 10])
     const bonds = electroneg_ratio(supercell)

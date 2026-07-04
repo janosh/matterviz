@@ -178,6 +178,20 @@ describe(`PlotAxis`, () => {
     expect(no_coords.querySelector(`.axis-label`)).toBeNull()
   })
 
+  test(`renders static rotated y-axis label as SVG text`, async () => {
+    const svg = await mount_axis({
+      side: `y`,
+      ticks: [50],
+      axis: { label: `Energy` },
+      label_x: 20,
+      label_y: 50,
+    })
+    const label = query(svg, `.axis-label.y-label`)
+    expect(label.tagName.toLowerCase()).toBe(`text`)
+    expect(label.closest(`foreignObject`)).toBeNull()
+    expect(label.parentElement?.getAttribute(`transform`)).toBe(`rotate(-90, 20, 50)`)
+  })
+
   // Regression guard: AxisLabel offsets its foreignObject by `-width/2` and sets its width to the
   // same value, so the (CSS-centered) label content always lands on label_x — even when PlotAxis
   // grows the container to plot_w (> the 200px default). A wider plot must NOT push the label

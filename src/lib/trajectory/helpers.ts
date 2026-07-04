@@ -192,6 +192,16 @@ export function calc_force_stats(
 }
 
 // Walk concatenated (ext)XYZ frames in `lines`, yielding each frame's atom-count line
+// True when a whitespace-split line looks like an XYZ atom line: a short
+// non-numeric element token followed by three numeric coordinates. Shared by
+// trajectory frame iteration and structure-format sniffing so both stay in sync.
+export const is_xyz_atom_line = (parts: string[] | undefined): boolean =>
+  parts !== undefined &&
+  parts.length >= 4 &&
+  isNaN(Number(parts[0])) &&
+  parts[0].length <= 3 &&
+  parts.slice(1, 4).every((coord) => coord !== `` && !isNaN(Number(coord)))
+
 // index, parsed atom count, and comment line. A candidate frame is accepted only when its
 // first few atom lines look like "<element> <x> <y> <z>"; otherwise we advance one line and
 // rescan. That validation doubles as content sniffing so numeric-leading non-XYZ formats
@@ -210,14 +220,7 @@ export function* iter_xyz_frames(
     let valid_coords = 0
     const sample = Math.min(num_atoms, 3)
     for (let idx = 0; idx < sample; idx++) {
-      const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
-      if (
-        parts?.length >= 4 &&
-        isNaN(Number(parts[0])) &&
-        parts[0].length <= 3 &&
-        parts.slice(1, 4).every((coord) => !isNaN(Number(coord)))
-      )
-        valid_coords++
+      if (is_xyz_atom_line(lines[line_idx + 2 + idx]?.trim().split(/\s+/))) valid_coords++
     }
     if (valid_coords < sample) {
       line_idx++ // count line looks valid but atom lines don't — likely non-XYZ content

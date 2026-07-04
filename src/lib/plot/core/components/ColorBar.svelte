@@ -3,6 +3,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
+  import { clamp01 } from '$lib/utils'
   import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
   import { format } from 'd3-format'
@@ -122,25 +123,39 @@
         : 5,
   )
 
+  // Log scales need positive bounds: a non-positive max falls back to linear
+  // (with a warning), a non-positive min is clamped to LOG_EPS.
+  const prepare_log_domain = (
+    min: number,
+    max: number,
+    context: string,
+  ): { min: number; use_log: boolean } => {
+    if (max <= 0) {
+      console.warn(
+        `Log scale requires a positive max value ${context}. Received max=${max}. Falling back to linear.`,
+      )
+      return { min, use_log: false }
+    }
+    if (min <= 0) {
+      console.warn(
+        `Log scale received non-positive min value (${min}) ${context}. Using epsilon=${math.LOG_EPS} instead.`,
+      )
+      return { min: math.LOG_EPS, use_log: true }
+    }
+    return { min, use_log: true }
+  }
+
   // Scale for ticks - based *only* on 'range' prop and 'scale_type' for ticks
   let scale_for_ticks = $derived.by(() => {
     const type_name = get_scale_type_name(scale_type)
-    let use_log_for_ticks = type_name === `log`
     let [scale_min, scale_max] = range
-
-    // Validate range for log scale ticks and apply epsilon if needed
+    let use_log_for_ticks = type_name === `log`
     if (use_log_for_ticks) {
-      if (scale_max <= 0) {
-        console.warn(
-          `Log scale requires a positive max value for ticks. Received max=${scale_max}. Using linear scale for ticks instead.`,
-        )
-        use_log_for_ticks = false
-      } else if (scale_min <= 0) {
-        console.warn(
-          `Log scale received non-positive min value (${scale_min}) for ticks. Using epsilon=${math.LOG_EPS} instead.`,
-        )
-        scale_min = math.LOG_EPS // Substitute with epsilon
-      }
+      ;({ min: scale_min, use_log: use_log_for_ticks } = prepare_log_domain(
+        scale_min,
+        scale_max,
+        `for ticks`,
+      ))
     }
 
     // For arcsinh, use our custom scale
@@ -287,17 +302,11 @@
     // Use scale_type for fallback scale creation too. Validate domain for log.
     let use_log_fallback = type_name === `log`
     if (use_log_fallback) {
-      if (max_val <= 0) {
-        console.warn(
-          `Log scale requires a positive max value for fallback scale. Received max=${max_val}. Using linear scale for colors.`,
-        )
-        use_log_fallback = false
-      } else if (min_val <= 0) {
-        console.warn(
-          `Log scale received non-positive min value (${min_val}) for fallback scale. Using epsilon=${math.LOG_EPS} instead.`,
-        )
-        min_val = math.LOG_EPS // Substitute with epsilon
-      }
+      ;({ min: min_val, use_log: use_log_fallback } = prepare_log_domain(
+        min_val,
+        max_val,
+        `for fallback scale`,
+      ))
     }
 
     // Use potentially adjusted min/max for domain (ascending)
@@ -314,7 +323,7 @@
       return (value: number): string => {
         const t_val = Math.asinh(value / threshold)
         const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
-        return interpolator(Math.max(0, Math.min(1, normalized)))
+        return interpolator(clamp01(normalized))
       }
     }
 
@@ -337,20 +346,13 @@
     // Validate domain for log interpolation and apply epsilon if needed
     let use_log_interp = type_name === `log`
     let adjusted_min_ramp = min_ramp_domain
-    let adjusted_max_ramp = max_ramp_domain
-
+    const adjusted_max_ramp = max_ramp_domain
     if (use_log_interp) {
-      if (max_ramp_domain <= 0) {
-        console.warn(
-          `Log scale specified for gradient, but max domain value (${max_ramp_domain}) is not positive. Using linear interpolation.`,
-        )
-        use_log_interp = false
-      } else if (min_ramp_domain <= 0) {
-        console.warn(
-          `Log scale specified for gradient, but min domain value (${min_ramp_domain}) is not positive. Using epsilon=${math.LOG_EPS} instead.`,
-        )
-        adjusted_min_ramp = math.LOG_EPS // Substitute with epsilon
-      }
+      ;({ min: adjusted_min_ramp, use_log: use_log_interp } = prepare_log_domain(
+        min_ramp_domain,
+        max_ramp_domain,
+        `for gradient`,
+      ))
     }
 
     const n_steps = Math.max(2, Math.floor(steps)) // guard against steps <= 1 to avoid NaN/degenerate gradients

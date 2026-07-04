@@ -11,6 +11,10 @@ export { default as TrajectoryInfoPane } from './TrajectoryInfoPane.svelte'
 export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
 export type { AtomTypeMapping } from './types'
 
+// Debounce for on-demand frame loads while scrubbing: skips fetches for steps
+// the user slides past. Exported so tests stay in sync with the real delay.
+export const FRAME_LOAD_DEBOUNCE_MS = 75
+
 // Core trajectory types
 export interface ParseProgress {
   current: number

@@ -1,4 +1,4 @@
-import { DEFAULTS, type DefaultSettings, merge, SETTINGS_CONFIG } from '$lib/settings'
+import { DEFAULTS, merge, SETTINGS_CONFIG } from '$lib/settings'
 import { describe, expect, test } from 'vitest'
 
 describe(`Settings`, () => {
@@ -107,7 +107,7 @@ describe(`Settings`, () => {
         color_scheme: `Jmol`,
         structure: { atom_radius: 1.5 },
         trajectory: { auto_play: true },
-      } as Partial<DefaultSettings>)
+      })
 
       // Overrides applied
       expect(result.color_scheme).toBe(`Jmol`)
@@ -121,7 +121,7 @@ describe(`Settings`, () => {
     })
 
     test(`merges symmetry overrides while preserving symmetry defaults`, () => {
-      const result = merge({ symmetry: { symprec: 1e-2 } } as Partial<DefaultSettings>)
+      const result = merge({ symmetry: { symprec: 1e-2 } })
       expect(result.symmetry.symprec).toBe(1e-2)
       expect(result.symmetry.algo).toBe(DEFAULTS.symmetry.algo)
     })
@@ -129,7 +129,7 @@ describe(`Settings`, () => {
     test(`partial updates don't affect other sections`, () => {
       const result = merge({
         structure: { atom_radius: 2.0 },
-      } as Partial<DefaultSettings>)
+      })
 
       expect(result.structure.atom_radius).toBe(2.0)
       expect(result.trajectory).toEqual(DEFAULTS.trajectory)
@@ -144,7 +144,7 @@ describe(`Settings`, () => {
 
     test(`merge preserves immutability of DEFAULTS`, () => {
       const original = { ...DEFAULTS }
-      merge({ structure: { atom_radius: 999 } } as Partial<DefaultSettings>)
+      merge({ structure: { atom_radius: 999 } })
       expect(DEFAULTS).toEqual(original)
     })
 

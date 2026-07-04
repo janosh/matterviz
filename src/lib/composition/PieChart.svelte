@@ -6,7 +6,7 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import { type ChartSegmentData, get_chart_font_scale } from './index'
+  import { chart_segment_label, type ChartSegmentData, get_chart_font_scale } from './index'
   import { count_atoms_in_composition, fractional_composition } from './parse'
 
   // Constants for pie chart calculations
@@ -87,10 +87,13 @@
                   center + ir
                 } A ${ir} ${ir} 0 1 0 ${center} ${center - ir} Z`
               : outer_arc
-          const label_text =
-            element +
-            (show_amounts ? String(amount) : ``) +
-            (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
+          const label_text = chart_segment_label(
+            element,
+            amount,
+            fraction,
+            show_amounts,
+            show_percentages,
+          )
           return {
             element,
             amount,
@@ -162,10 +165,13 @@
         const [min_font_scale, max_font_scale] = [1.4, 2] as const
         const scale_factor = angle_span / MAX_ANGLE_FOR_FULL_SCALE
         const base_scale = min_font_scale + scale_factor * (max_font_scale - min_font_scale)
-        const label_text =
-          element +
-          (show_amounts ? (amount?.toString() ?? ``) : ``) +
-          (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
+        const label_text = chart_segment_label(
+          element,
+          amount,
+          fraction,
+          show_amounts,
+          show_percentages,
+        )
         const available_space = is_very_thin_slice
           ? outer_radius * 0.8 // More space outside the slice
           : Math.min(

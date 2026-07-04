@@ -318,9 +318,8 @@
     dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
     volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
-    // When false, disable edit-mode-only scene affordances (TransformControls, add-atom
-    // click-plane, edit-bond hit meshes). Used by multi-side view to keep these in the
-    // active pane only. Selection/hover/measurement overlays stay active in all panes.
+    // When false, render the scene without hover/edit raycast helpers. Used by multi-side
+    // view so inactive panes skip interaction-only work while the active pane stays editable.
     interactive?: boolean
   } = $props()
 
@@ -376,20 +375,18 @@
     }, ATOM_HOVER_CLEAR_DELAY_MS)
   }
 
-  const atom_hover_props = (site_idx: number | null, disabled = false) => ({
-    onpointerenter: () => {
-      if (!disabled && site_idx != null) set_atom_hover(site_idx)
-    },
-    onpointermove: () => {
-      if (!disabled && site_idx != null) set_atom_hover(site_idx)
-    },
-    onpointerleave: () => {
-      if (!disabled && site_idx != null) schedule_atom_hover_clear(site_idx)
-    },
-  })
+  const atom_hover_props = (site_idx: number | null) =>
+    !interactive || site_idx == null
+      ? {}
+      : {
+          onpointerenter: () => set_atom_hover(site_idx),
+          onpointermove: () => set_atom_hover(site_idx),
+          onpointerleave: () => schedule_atom_hover_clear(site_idx),
+        }
 
   // Cursor style for the canvas, derived from mode and hover state
   let canvas_cursor = $derived.by(() => {
+    if (!interactive) return `default`
     if (measure_mode === `edit-atoms` && add_atom_mode) return `crosshair`
     if (measure_mode === `edit-bonds` && hovered_bond_key != null) {
       return bond_edits_enabled ? `pointer` : `not-allowed`
@@ -759,13 +756,14 @@
 
   // Pointer handlers for an instanced atom mesh: intersection events carry the
   // hit `instanceId`, which indexes into the mesh's `atoms` array. One handler
-  // set per mesh instead of one per atom.
+  // set per mesh instead of one per atom. Inactive grid panes render without
+  // raycast handlers; ghosted edit-mode image atoms are non-interactive.
   type InstanceEvent = { instanceId?: number }
   const atom_instance_events = (
     instance_atoms: { site_idx: number }[],
     is_edit_image: boolean,
   ) => {
-    if (is_edit_image) return {}
+    if (!interactive || is_edit_image) return {}
     const wrap =
       <Event_ extends InstanceEvent>(handler: (site_idx: number, event: Event_) => void) =>
       (event: Event_) => {
@@ -782,16 +780,15 @@
   }
 
   // Pointer props (hover + select) for per-site hit-target meshes (partial-occupancy
-  // sites). is_edit_image disables interaction for ghosted PBC image atoms.
-  const atom_pointer_props = (site_idx: number, is_edit_image: boolean) => ({
-    ...atom_hover_props(site_idx, is_edit_image),
-    onpointerdown(event: PointerEvent) {
-      if (!is_edit_image) handle_atom_pointerdown(site_idx, event)
-    },
-    onclick(event: MouseEvent) {
-      if (!is_edit_image) handle_atom_click(site_idx, event)
-    },
-  })
+  // sites), with the same interactivity gating as atom_instance_events
+  const atom_pointer_props = (site_idx: number, is_edit_image: boolean) =>
+    !interactive || is_edit_image
+      ? {}
+      : {
+          ...atom_hover_props(site_idx),
+          onpointerdown: (event: PointerEvent) => handle_atom_pointerdown(site_idx, event),
+          onclick: (event: MouseEvent) => handle_atom_click(site_idx, event),
+        }
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
@@ -1182,7 +1179,9 @@
   })
 
   let editable_perceived_bond_pairs = $derived(
-    perceived_bond_pairs.map((bond) => ({ ...bond, ...canonical_bond_target(bond) })),
+    interactive && bond_edits_enabled
+      ? perceived_bond_pairs.map((bond) => ({ ...bond, ...canonical_bond_target(bond) }))
+      : [],
   )
 
   let filtered_bond_pairs = $derived.by(() => {
@@ -1228,7 +1227,7 @@
   })
 
   let editable_bond_pairs = $derived(
-    bond_edits_enabled ? bonds_to_render.filter(can_edit_bond) : [],
+    interactive && bond_edits_enabled ? bonds_to_render.filter(can_edit_bond) : [],
   )
 
   // Coordination polyhedra around cation-like centers, derived from the same
@@ -1283,6 +1282,7 @@
   // Publish which elements currently anchor polyhedra (consumed by controls so
   // per-element toggles reflect the actual render state incl. spectator hiding)
   $effect(() => {
+    if (!interactive) return
     const elems = [...new Set(polyhedra.map((poly) => poly.center_element))].sort()
     if (elems.join(`,`) !== polyhedra_rendered_elements.join(`,`)) {
       polyhedra_rendered_elements = elems
@@ -1394,6 +1394,7 @@
   // angles. Give each such site one invisible full-sphere hit target so it's as
   // reliably hoverable as an ordered atom (single solid sphere). One per site.
   let partial_hit_targets = $derived.by(() => {
+    if (!interactive) return []
     const targets = new Map<number, EditableAtomHitTarget & { is_image_atom: boolean }>()
     for (const atom of atom_data) {
       if (!atom.has_partial_occupancy || targets.has(atom.site_idx)) continue
@@ -1408,7 +1409,12 @@
   })
 
   let editable_atom_hit_targets = $derived.by(() => {
-    if (measure_mode !== `edit-bonds` || bond_edit_mode !== `add` || !bond_edits_enabled) {
+    if (
+      !interactive ||
+      measure_mode !== `edit-bonds` ||
+      bond_edit_mode !== `add` ||
+      !bond_edits_enabled
+    ) {
       return []
     }
 

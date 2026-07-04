@@ -41,6 +41,7 @@
     vec2_equal,
   } from '$lib/plot/core/interactions'
   import {
+    AXIS_TITLE_OFFSET,
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
@@ -93,7 +94,7 @@
     y_axis: y_axis_init = {},
     y2_axis: y2_axis_init = {},
     display: display_init = DEFAULTS.histogram.display,
-    range_padding = 0.05,
+    range_padding = 0,
     padding = DEFAULT_PLOT_PADDING,
     bins = $bindable(100),
     show_legend = $bindable(true),
@@ -176,7 +177,7 @@
   let x2_axis = $state(
     untrack(() => ({
       ...axis_state_defaults,
-      label_shift: { x: 0, y: 40 },
+      label_shift: { x: 0, y: AXIS_TITLE_OFFSET },
       ...x2_axis_init,
     })),
   )
@@ -212,8 +213,7 @@
   let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -835,7 +835,7 @@
       show_grid={display.x_grid}
       tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
       label_x={(pad.l + width - pad.r) / 2 + (final_x_axis.label_shift?.x ?? 0)}
-      label_y={height - 10 + (final_x_axis.label_shift?.y ?? 0)}
+      label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
       axis_loading={axis_loading === `x`}
       on_axis_change={(key) => handle_axis_change(`x`, key)}
     />
@@ -854,7 +854,7 @@
         show_grid={display.x2_grid}
         tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
         label_x={(pad.l + width - pad.r) / 2 + (final_x2_axis.label_shift?.x ?? 0)}
-        label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? 40))}
+        label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
         axis_loading={axis_loading === `x2`}
         on_axis_change={(key) => handle_axis_change(`x2`, key)}
       />

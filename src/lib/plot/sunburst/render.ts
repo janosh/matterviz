@@ -4,6 +4,7 @@
 // Sunburst.svelte wires them to reactive state and the DOM.
 
 import { to_degrees } from '$lib/math'
+import { clamp01 } from '$lib/utils'
 import type {
   PositionedArc,
   SunburstLabelRotation,
@@ -40,8 +41,6 @@ export interface ScreenGeometry {
   radius: number // outer radius in px (sunburst only)
   hole_r: number // center hole radius in px (sunburst only)
 }
-
-const clamp01 = (val: number) => Math.min(1, Math.max(0, val))
 
 // Project all arcs through a view window into screen space. The two shapes share the
 // same window-mapping math, only the scale constants differ. Returns `all` (indexed

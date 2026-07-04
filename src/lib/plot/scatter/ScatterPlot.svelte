@@ -102,6 +102,7 @@
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
+    AXIS_TITLE_OFFSET,
     calc_auto_padding,
     filter_padding,
     LABEL_GAP_DEFAULT,
@@ -122,6 +123,9 @@
   import { resolve_line_tween, unique_id } from '$lib/plot/core/utils'
   import { build_legend_data, filter_series_to_ranges, pick_tooltip_bg } from './scatter-data'
 
+  // Plots with at least this many visible markers get smaller default point radii
+  const DENSE_MARKER_COUNT = 100
+
   let {
     series = $bindable([]),
     x_axis = $bindable({}),
@@ -132,7 +136,7 @@
     styles: styles_init = {},
     controls: controls_init = {},
     padding = {},
-    range_padding = 0.05,
+    range_padding = 0,
     current_x_value = null,
     tooltip_point = $bindable(null),
     selected_point = null,
@@ -232,13 +236,13 @@
   // Merged axis/display values with defaults (use $derived to avoid breaking $bindable)
   const final_x_axis = $derived({
     ...AXIS_DEFAULTS,
-    label_shift: { x: 0, y: -40 }, // x-axis needs different label position
+    label_shift: { x: 0, y: 0 },
     ...x_axis,
   })
   const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...y_axis })
   const final_x2_axis = $derived({
     ...AXIS_DEFAULTS,
-    label_shift: { x: 0, y: 40 }, // x2-axis label above top edge
+    label_shift: { x: 0, y: AXIS_TITLE_OFFSET }, // x2-axis label above top edge
     ...x2_axis,
   })
   const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
@@ -745,6 +749,22 @@
   })
   let effective_line_tween = $derived(resolve_line_tween(line_tween, line_tween_load))
 
+  let visible_marker_count = $derived.by(() => {
+    if (!styles.show_points) return 0
+    let count = 0
+    for (const series_data of filtered_series ?? []) {
+      if ((series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) {
+        count += series_data.filtered_data.length
+      }
+    }
+    return count
+  })
+
+  const default_point_radius = (markers: string): number => {
+    const [sparse_radius, dense_radius] = markers.includes(`line`) ? [2.5, 2] : [3, 2.5]
+    return visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
+  }
+
   // Obstacle field for legend/colorbar auto-placement. Sampling only data points lets the
   // legend land on top of a steep connecting line whose markers are sparse (e.g. y=x^2), so
   // sample_series_obstacle_points also walks each drawn segment at a fixed pixel cadence.
@@ -913,8 +933,7 @@
   })
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
 
   // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
@@ -975,19 +994,10 @@
     })
   })
 
-  // Active legend placement (null if user set explicit position)
-  let active_legend_placement = $derived.by(() => {
-    if (!legend_placement) return null
-
-    // Skip auto-placement if user set explicit position in style
-    const legend_style = legend?.style ?? ``
-    if (
-      /(?:^|[;{]\s*)(?:top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(legend_style)
-    )
-      return null
-
-    return legend_placement
-  })
+  // Active legend placement (null if user set explicit position in style)
+  let active_legend_placement = $derived(
+    legend_placement && !legend_has_explicit_pos ? legend_placement : null,
+  )
 
   // Tweened colorbar/legend coordinates with shared placement stability gating
   const colorbar_tween = create_placed_tween({
@@ -1518,7 +1528,7 @@
         domain={[x_min, x_max]}
         tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
         label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
-        label_y={height - pad.b - (final_x_axis.label_shift?.y ?? -40)}
+        label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `x`}
         on_axis_change={(key) => handle_axis_change(`x`, key)}
       />
@@ -1607,7 +1617,7 @@
           domain={[x2_min, x2_max]}
           tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
           label_x={width / 2 + (final_x2_axis.label_shift?.x ?? 0)}
-          label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? 40))}
+          label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
           axis_loading={axis_loading === `x2`}
           on_axis_change={(key) => handle_axis_change(`x2`, key)}
         />
@@ -1765,7 +1775,9 @@
                 {@const computed_radius =
                   point.size_value != null
                     ? size_scale_fn(point.size_value)
-                    : ((tc(`point.size`) ? styles.point?.size : null) ?? pt?.radius ?? 4)}
+                    : ((tc(`point.size`) ? styles.point?.size : null) ??
+                      pt?.radius ??
+                      default_point_radius(series_markers))}
                 <ScatterPoint
                   x={screen_x}
                   y={screen_y}

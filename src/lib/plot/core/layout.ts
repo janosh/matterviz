@@ -5,7 +5,7 @@ import type { AxisConfig } from '$lib/plot/core/types'
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Default gap between tick labels and axis labels
-export const LABEL_GAP_DEFAULT = 30
+export const LABEL_GAP_DEFAULT = 20
 
 // Default plot padding (px) reserved for axis ticks/labels, shared by
 // Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
@@ -91,6 +91,8 @@ export const measure_max_tick_width = (ticks: (string | number)[], format: strin
 export const TICK_LABEL_HEIGHT = 16
 // Estimated height of an axis label (font-size ~14px + margin)
 export const AXIS_LABEL_HEIGHT = 20
+// Distance from an x/x2 axis baseline to the title center.
+export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
 export const calc_auto_padding = ({
   padding,

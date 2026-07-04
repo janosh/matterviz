@@ -210,6 +210,48 @@ describe(`scales`, () => {
         check(range)
       },
     )
+
+    test(`keeps an observed zero lower bound even with requested padding`, () => {
+      const [min, max] = get_nice_data_range(
+        [
+          { x: 0, y: 0 },
+          { x: 4.7, y: 0 },
+        ],
+        (point) => point.x,
+        [null, null],
+        `linear`,
+        0.05,
+      )
+      expect(min).toBe(0)
+      expect(max).toBeGreaterThanOrEqual(4.7)
+    })
+
+    test(`keeps an observed zero upper bound even with requested padding`, () => {
+      const [min, max] = get_nice_data_range(
+        [
+          { x: -4.7, y: 0 },
+          { x: 0, y: 0 },
+        ],
+        (point) => point.x,
+        [null, null],
+        `linear`,
+        0.05,
+      )
+      expect(min).toBeLessThanOrEqual(-4.7)
+      expect(max).toBe(0)
+    })
+
+    test(`does not collapse an all-zero range when snapping observed zero edges`, () => {
+      const [min, max] = get_nice_data_range(
+        [{ x: 0, y: 0 }],
+        (point) => point.x,
+        [null, null],
+        `linear`,
+        0,
+      )
+      expect(min).toBeLessThan(0)
+      expect(max).toBeGreaterThan(0)
+    })
   })
 
   describe(`generate_log_ticks`, () => {
