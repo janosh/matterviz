@@ -73,8 +73,8 @@
     mesh = next
   })
   // Unmount-only cleanup (a cleanup on the effect above would dispose the mesh
-  // on every re-run, including runs that keep it)
-  $effect(() => () => untrack(() => mesh)?.dispose())
+  // on every re-run, including runs that keep it; cleanups run untracked)
+  $effect(() => () => mesh?.dispose())
 
   $effect(() => {
     if (mesh && geometry && mesh.geometry !== geometry) {
@@ -97,7 +97,7 @@
         .makeScale(radius, radius, radius)
         .setPosition(position[0], position[1], position[2])
       current.setMatrixAt(idx, scratch_matrix)
-      scratch_color.set(color ?? `#999999`)
+      scratch_color.set(color ?? gray)
       if (ghost) scratch_color.lerp(gray, 0.4)
       current.setColorAt(idx, scratch_color)
     }

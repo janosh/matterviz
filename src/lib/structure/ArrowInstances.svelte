@@ -78,16 +78,14 @@
       head_mesh = null
       return
     }
-    ;[shaft_mesh, head_mesh] = [
-      make_mesh(shaft_geometry, shaft_material, count),
-      make_mesh(head_geometry, head_material, count),
-    ]
+    shaft_mesh = make_mesh(shaft_geometry, shaft_material, count)
+    head_mesh = make_mesh(head_geometry, head_material, count)
   })
   // Unmount-only cleanup (a cleanup on the effect above would dispose meshes
-  // on every re-run, including runs that keep them)
+  // on every re-run, including runs that keep them; cleanups run untracked)
   $effect(() => () => {
-    untrack(() => shaft_mesh)?.dispose()
-    untrack(() => head_mesh)?.dispose()
+    shaft_mesh?.dispose()
+    head_mesh?.dispose()
   })
 
   const up_axis = new Vector3(0, 1, 0)

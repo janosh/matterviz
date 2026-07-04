@@ -719,8 +719,8 @@
     )
   }
 
-  // Shared undo/redo: pop from `source`, push current state onto `target`.
-  // Stacks are $state.raw so all updates go through reassignment.
+  // Shared undo/redo: restore the top of that direction's stack, pushing the
+  // current state onto the opposite one ($state.raw stacks update by reassignment)
   function apply_history(direction: `undo` | `redo`) {
     // Check the stack before snapshotting: $state.snapshot deep-clones the structure
     if (!structure || (direction === `undo` ? undo_stack : redo_stack).length === 0) return

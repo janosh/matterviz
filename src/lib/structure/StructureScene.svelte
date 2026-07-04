@@ -769,10 +769,7 @@
     const wrap =
       <Event_ extends InstanceEvent>(handler: (site_idx: number, event: Event_) => void) =>
       (event: Event_) => {
-        const site_idx =
-          event.instanceId == null
-            ? null
-            : (instance_atoms[event.instanceId]?.site_idx ?? null)
+        const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
         if (site_idx != null) handler(site_idx, event)
       }
     return {
