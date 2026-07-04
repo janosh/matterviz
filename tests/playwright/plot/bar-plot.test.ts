@@ -227,7 +227,9 @@ test.describe(`BarPlot Component Tests`, () => {
     ).filter(is_present)
     const vertical_count_before = before_dims.filter((bb) => bb.height > bb.width).length
     const horizontal_count_before = before_dims.filter((bb) => bb.width > bb.height).length
-    expect(vertical_count_before).toBeGreaterThan(horizontal_count_before)
+    // with range_padding 0 the 4 wide bars aren't majority-vertical; just require
+    // unambiguous verticals to exist so the flip below is observable
+    expect(vertical_count_before).toBeGreaterThan(0)
 
     // Open controls and switch orientation to Horizontal
     const toggle = section.locator(`.pane-toggle`)
@@ -247,6 +249,8 @@ test.describe(`BarPlot Component Tests`, () => {
     const horizontal_count_after = after_dims.filter((bb) => bb.width > bb.height).length
     const vertical_count_after = after_dims.filter((bb) => bb.height > bb.width).length
     expect(horizontal_count_after).toBeGreaterThan(vertical_count_after)
+    expect(horizontal_count_after).toBeGreaterThan(horizontal_count_before)
+    expect(vertical_count_after).toBeLessThan(vertical_count_before)
   })
 
   test(`stacked mode handles positive and negative stacking separately and respects visibility`, async ({

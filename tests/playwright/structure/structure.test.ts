@@ -3295,7 +3295,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
 
     // Single view: one viewport cell, no grid
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
-    await expect(structure_div.locator(`.viewport-grid`)).toHaveCount(0)
+    await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
 
     const toggle = structure_div.locator(`button.multi-view-toggle`)
     await expect(toggle).toBeVisible()
@@ -3303,9 +3303,9 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
 
     // Multi view: 2x2 grid with 4 cells, 4 canvases, 4 labels
     await expect(structure_div).toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-grid`)).toBeVisible()
+    await expect(structure_div.locator(`.viewport-stage.multi`)).toBeVisible()
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
-    await expect(structure_div.locator(`.viewport-grid canvas`)).toHaveCount(4, {
+    await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
       timeout: get_canvas_timeout(),
     })
     const labels = structure_div.locator(`.viewport-label`)
@@ -3329,7 +3329,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // Toggle back to single view
     await toggle.click()
     await expect(structure_div).not.toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-grid`)).toHaveCount(0)
+    await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
     await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
       timeout: get_canvas_timeout(),
@@ -3398,7 +3398,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     for (let cycle = 0; cycle < 3; cycle++) {
       await toggle.click()
       await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
-      await expect(structure_div.locator(`.viewport-grid canvas`)).toHaveCount(4, {
+      await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
         timeout: canvas_timeout,
       })
       await toggle.click()
