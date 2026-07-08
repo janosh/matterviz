@@ -63,6 +63,28 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
   return data
 }
 
+// Data extractor for SCF/electronic-convergence properties. Parsers emit these
+// per frame (per ionic step, or per SCF step for static single-point runs) —
+// e.g. the vaspout.h5 parser fills them from VASP's OSZICAR data.
+const scf_data_extractor: TrajectoryDataExtractor = (
+  frame: TrajectoryFrame,
+): Record<string, number> => {
+  const data: Record<string, number> = {
+    Step: frame.step,
+  }
+
+  if (frame.metadata) {
+    copy_numeric_fields(data, frame.metadata, [
+      `n_scf_steps`,
+      `scf_energy_delta`,
+      `scf_rms`,
+      `scf_charge_rms`,
+    ])
+  }
+
+  return data
+}
+
 // Data extractor for structural properties
 export const structural_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
@@ -165,6 +187,7 @@ export const full_data_extractor: TrajectoryDataExtractor = (
   const result: Record<string, number> = {
     ...energy_data_extractor(frame, trajectory),
     ...force_stress_data_extractor(frame, trajectory),
+    ...scf_data_extractor(frame, trajectory),
     ...structural_data_extractor(frame, trajectory),
   }
 

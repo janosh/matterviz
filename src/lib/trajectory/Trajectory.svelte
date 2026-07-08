@@ -48,6 +48,7 @@
   } from './parse'
   import {
     generate_axis_labels,
+    generate_axis_scale_types,
     generate_plot_series,
     generate_streaming_plot_series,
     should_hide_plot,
@@ -248,6 +249,20 @@
   // Get total frame count (supports both regular and indexed trajectories)
   let total_frames = $derived(trajectory?.total_frames || trajectory?.frames.length || 0)
 
+  // Clamp out-of-range step indices (e.g. an initial current_step_idx of
+  // Number.MAX_SAFE_INTEGER means "jump to the last frame", used by hosts
+  // restoring viewer position across trajectory reloads). Hosts are notified
+  // of the correction so their recorded position matches the shown frame.
+  $effect(() => {
+    if (total_frames > 0 && current_step_idx > total_frames - 1) {
+      current_step_idx = total_frames - 1
+      notify_step_change()
+    } else if (current_step_idx < 0) {
+      current_step_idx = 0
+      notify_step_change()
+    }
+  })
+
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
   let frame_load_request_id = 0
@@ -413,7 +428,10 @@
     clear_frame_load_timeout()
     // Debouncing during playback would keep resetting the timer at fps above
     // ~1000/FRAME_LOAD_DEBOUNCE_MS and stall uncached streamed frames entirely.
-    if (is_playing) {
+    // untrack: this runs synchronously inside the step-change $effect, so tracking
+    // is_playing would re-run that effect on every play/pause toggle and kick off
+    // duplicate loads for a frame that's already in flight.
+    if (untrack(() => is_playing)) {
       void load_frame_on_demand(frame_idx)
       return
     }
@@ -597,15 +615,20 @@
   })
   // Generate axis labels based on first visible series on each axis
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
+  // Axes whose visible series are all-positive and span many decades (e.g. SCF
+  // convergence residuals) default to log scale instead of a linear hockey stick
+  let y_axis_scale_types = $derived(generate_axis_scale_types(plot_series))
   let y_axis = $derived({
     label: y_axis_labels.y1,
     format: `~g`,
     label_shift: { y: 10 },
+    scale_type: y_axis_scale_types.y1,
   })
   let y2_axis = $derived({
     label: y_axis_labels.y2,
     format: `~g`,
     label_shift: { y: 80 },
+    scale_type: y_axis_scale_types.y2,
   })
   // hide plot if all plotted values are constant (no variation)
   let show_plot = $derived(
@@ -619,19 +642,26 @@
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(plot_series.some((srs) => srs.y_axis === `y2` && srs.visible))
+  // Report the current step to on_step_change consumers. Also wired to the step
+  // slider/number input whose bind:value bypasses the navigation functions
+  // below — those handlers pass the event target's value explicitly because
+  // bind:value may not have written the binding yet when oninput fires.
+  function notify_step_change(step_idx: number = current_step_idx) {
+    if (!trajectory || !Number.isFinite(step_idx)) return
+    const last_frame = Math.max(total_frames - 1, 0)
+    on_step_change?.({
+      trajectory,
+      step_idx: Math.min(Math.max(Math.round(step_idx), 0), last_frame),
+      frame_count: total_frames,
+      frame: current_frame || undefined,
+    })
+  }
   // Step navigation functions
   function next_step() {
     if (current_step_idx < total_frames - 1) {
       current_step_idx++
       // Streaming frame loading handled by reactive effect
-      if (trajectory) {
-        on_step_change?.({
-          trajectory,
-          step_idx: current_step_idx,
-          frame_count: total_frames,
-          frame: current_frame || undefined,
-        })
-      }
+      notify_step_change()
     }
   }
 
@@ -639,14 +669,7 @@
     if (current_step_idx > 0) {
       current_step_idx--
       // Streaming frame loading handled by reactive effect
-      if (trajectory) {
-        on_step_change?.({
-          trajectory,
-          step_idx: current_step_idx,
-          frame_count: total_frames,
-          frame: current_frame || undefined,
-        })
-      }
+      notify_step_change()
     }
   }
 
@@ -655,14 +678,7 @@
       current_step_idx = idx
       // Note: streaming frame loading is handled by reactive effect
       // Handle callbacks for both traditional and streaming modes
-      if (trajectory) {
-        on_step_change?.({
-          trajectory,
-          step_idx: current_step_idx,
-          frame_count: total_frames,
-          frame: current_frame || undefined,
-        })
-      }
+      notify_step_change()
     }
   }
 
@@ -1199,6 +1215,7 @@
                 min="0"
                 max={total_frames - 1}
                 bind:value={current_step_idx}
+                oninput={(event) => notify_step_change(event.currentTarget.valueAsNumber)}
                 class="step-input"
                 title="Enter step number to jump to"
                 aria-label="Step input"
@@ -1211,6 +1228,7 @@
                   min="0"
                   max={total_frames - 1}
                   bind:value={current_step_idx}
+                  oninput={(event) => notify_step_change(event.currentTarget.valueAsNumber)}
                   class="step-slider"
                   title="Drag to navigate steps"
                 />

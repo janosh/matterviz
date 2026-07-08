@@ -560,7 +560,9 @@
     gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
   }
   .element-legend {
-    font-size: var(--struct-legend-font, clamp(7pt, 2.5cqmin, 12pt));
+    /* 9pt floor keeps chips legible in small embeds (carousel cards) where
+      the cqmin term collapses */
+    font-size: var(--struct-legend-font, clamp(9pt, 2.5cqmin, 12pt));
   }
   .atom-legend .legend-item {
     position: relative;
@@ -728,7 +730,7 @@
 
   /* Property Legend Styles */
   .property-legend {
-    font-size: var(--struct-legend-font, clamp(8pt, 3cqmin, 14pt));
+    font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt));
   }
   .mode-selector {
     position: relative;

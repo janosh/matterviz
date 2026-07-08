@@ -10,12 +10,14 @@ import { describe, expect, test, vi } from 'vitest'
 
 const close = (val: number) => expect.closeTo(val, 9)
 
-// Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20.
+// Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20. A and A1 are
+// hatched to check hatch passes through per-node without inheriting (A2/B stay unhatched).
 const tree: SunburstNode[] = [
   {
     label: `A`,
+    hatch: true,
     children: [
-      { label: `A1`, value: 4 },
+      { label: `A1`, value: 4, hatch: true },
       { label: `A2`, value: 6 },
     ],
   },
@@ -28,9 +30,10 @@ describe(`compute_sunburst_layout`, () => {
     expect(root).toBe(arcs[0])
     expect(max_depth).toBe(2)
     const [c0, c1] = DEFAULT_SERIES_COLORS
-    // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color] per arc:
-    // pre-order indexing gives contiguous subtree ranges, auto-ids slash-join labels,
-    // descendants inherit their depth-1 ancestor's palette color
+    // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color, hatch] per
+    // arc: pre-order indexing gives contiguous subtree ranges, auto-ids slash-join
+    // labels, descendants inherit their depth-1 ancestor's palette color, and hatch
+    // passes through per-node without inheriting
     const fields = ({ id, node_idx, subtree_end, parent_idx, ...arc }: (typeof arcs)[0]) => [
       id,
       node_idx,
@@ -40,13 +43,14 @@ describe(`compute_sunburst_layout`, () => {
       arc.value,
       arc.is_leaf,
       arc.color,
+      arc.hatch ?? false,
     ]
     expect(arcs.map(fields)).toEqual([
-      [``, 0, 4, null, 0, 20, false, `transparent`],
-      [`A`, 1, 3, 0, 1, 10, false, c0],
-      [`A/A1`, 2, 2, 1, 2, 4, true, c0],
-      [`A/A2`, 3, 3, 1, 2, 6, true, c0],
-      [`B`, 4, 4, 0, 1, 10, true, c1],
+      [``, 0, 4, null, 0, 20, false, `transparent`, false],
+      [`A`, 1, 3, 0, 1, 10, false, c0, true],
+      [`A/A1`, 2, 2, 1, 2, 4, true, c0, true],
+      [`A/A2`, 3, 3, 1, 2, 6, true, c0, false],
+      [`B`, 4, 4, 0, 1, 10, true, c1, false],
     ])
     // sort 'none' preserves input order (A first half, B second, closing the circle);
     // children subdivide the parent span proportionally (4:6); y0 === depth

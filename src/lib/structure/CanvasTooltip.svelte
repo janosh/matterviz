@@ -14,7 +14,12 @@
   } = $props()
 </script>
 
-<HTML {position} pointerEvents="none">
+<!-- Constant zIndexRange: threlte's default [16777271, 0] maps camera distance
+  over [near, far], which extrapolates to a NEGATIVE z-index for sites beyond
+  camera.far (common in zoomed-out carousel cards) — painting the tooltip
+  behind the canvas. A degenerate range pins z-index at 1000, always above the
+  canvas and sibling overlays. -->
+<HTML {position} pointerEvents="none" zIndexRange={[1000, 1000]}>
   <div {...rest} role="tooltip">
     {@render children({ position })}
   </div>

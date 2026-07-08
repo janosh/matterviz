@@ -155,6 +155,10 @@
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGSVGElement | null = $state(null)
   let center_el: SVGCircleElement | null = $state(null)
+  // Unique per instance so multiple sunbursts on one page don't collide on
+  // the hatch pattern's SVG id.
+  const uid = $props.id()
+  const hatch_pattern_id = `sunburst-hatch-${uid}`
 
   let hovered_idx = $state<number | null>(null)
   let hover_info = $state<SunburstNodeHandlerProps<Metadata> | null>(null)
@@ -191,11 +195,9 @@
       return { arcs: [], root: null, max_depth: 0 }
     }
   })
-  let arc_by_id = $derived(new Map(layout.arcs.map((arc) => [arc.id, arc])))
-
   // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
   let zoom_root = $derived(
-    (zoom_root_id != null ? arc_by_id.get(zoom_root_id) : null) ?? layout.root,
+    layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root,
   )
   let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
 
@@ -335,19 +337,25 @@
     arc.path.length > 0 && muted_ids.has(arc.path[0])
 
   const MUTED_OPACITY = 0.12
-  const arc_opacity = (arc: PositionedArc<Metadata>): number => {
-    if (is_muted(arc)) return MUTED_OPACITY
-    if (active && !active(arc)) return 0.3
-    return 1
-  }
+  // Legend muting + hover dimming per arc, indexed by node_idx. View-independent:
+  // recomputed only when hover/mute state changes, so during zoom tweens (where
+  // every arc attribute re-evaluates per frame) this is a plain array lookup.
+  let arc_dim = $derived(
+    layout.arcs.map((arc) => {
+      const muted = is_muted(arc)
+      return {
+        opacity: muted ? MUTED_OPACITY : active && !active(arc) ? 0.3 : 1,
+        // labels dim only when muted, not when hover-inactive (undefined omits the attr)
+        label_opacity: muted ? MUTED_OPACITY : undefined,
+      }
+    }),
+  )
 
   // Black/white label text, whichever contrasts with the arc's fill (light arcs from
   // explicit colors or level_lighten would hide white labels, esp. when highlighted).
-  // Memoized per color string - parsing/luminance would otherwise run per label per
-  // animation frame, and distinct arc colors are few.
+  // Memoized per color string - distinct arc colors are few.
   const contrast_cache = new Map<string, string>()
-  const label_color = (arc: PositionedArc<Metadata>): string => {
-    const fill = arc_color(arc)
+  const contrast_for = (fill: string): string => {
     let contrast = contrast_cache.get(fill)
     if (contrast === undefined) {
       contrast = pick_contrast_color({ bg_color: fill })
@@ -419,10 +427,11 @@
 
   // Re-root the view on the given arc (or the data root when null) and notify
   function zoom_to(arc: PositionedArc<Metadata> | null) {
-    zoom_root_id = arc && arc.depth > 0 ? arc.id : null
+    const root = arc && arc.depth > 0 ? arc : null
+    zoom_root_id = root?.id ?? null
     // The clicked arc collapses into the hole - drop the now-stale hover/tooltip
     set_arc_hover(null)
-    on_zoom?.({ root: arc && arc.depth > 0 ? make_node_props(arc) : null })
+    on_zoom?.({ root: root && make_node_props(root) })
   }
 
   // True while the user has an uncollapsed text selection inside this chart. Labels
@@ -552,16 +561,22 @@
     return label_text === `label+value` ? `${name} ${val}` : `${name} ${pct}`
   }
 
-  // Per-arc label text, measured width and aria string - all view-independent, so
-  // computed once per layout/label-option change instead of per animation frame
-  // (format_value + canvas measureText would otherwise run per visible arc per frame)
+  // Per-arc label text, measured width, fill/label colors, clickability and aria
+  // string - all view-independent, so computed once per layout/option change
+  // instead of per animation frame (format_value, canvas measureText, contrast
+  // picking and color resolution would otherwise run per visible arc per frame:
+  // zoom tweens rebuild every screen arc, re-running every template expression)
   let arc_info = $derived(
     layout.arcs.map((arc) => {
       const text = arc_label_str(arc)
+      const fill = arc_color(arc)
       return {
         text,
         width: cached_text_width(text, label_font),
         aria: `${arc_name(arc)}: ${arc.value}`,
+        fill,
+        label_fill: contrast_for(fill),
+        clickable: arc_clickable(arc),
       }
     }),
   )
@@ -593,7 +608,7 @@
       points: settled.map(arc_center),
     })
   })
-  let legend_data = $derived.by<LegendItem[]>(() =>
+  let legend_data: LegendItem[] = $derived(
     depth1_arcs.map((arc, idx) => ({
       series_idx: idx,
       label: arc_name(arc),
@@ -604,9 +619,7 @@
 
   function toggle_category(series_idx: number) {
     const id = depth1_arcs[series_idx]?.id
-    if (id === undefined) return
-    if (muted_ids.has(id)) muted_ids.delete(id)
-    else muted_ids.add(id)
+    if (id !== undefined && !muted_ids.delete(id)) muted_ids.add(id)
   }
 
   $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--sunburst-fullscreen-bg`))
@@ -644,11 +657,9 @@
 
   function export_chart(format: `svg` | `png`) {
     if (!svg_element) return
-    if (format === `svg`) {
-      export_svg_as_svg(svg_element, `${export_filename}.svg`, export_inline_styles)
-    } else {
-      export_svg_as_png(svg_element, `${export_filename}.png`, 150, export_inline_styles)
-    }
+    const filename = `${export_filename}.${format}`
+    if (format === `svg`) export_svg_as_svg(svg_element, filename, export_inline_styles)
+    else export_svg_as_png(svg_element, filename, 150, export_inline_styles)
   }
 </script>
 
@@ -658,10 +669,9 @@
     // only react when the user is interacting with this chart (pointer over it,
     // focus inside it, or fullscreen) - Escape zooms out one level, then exits
     // fullscreen once at the root
-    const within =
-      fullscreen ||
-      Boolean(wrapper?.matches(`:hover`)) ||
-      Boolean(wrapper && document.activeElement && wrapper.contains(document.activeElement))
+    const within = fullscreen ||
+      (wrapper != null &&
+        (wrapper.matches(`:hover`) || wrapper.contains(document.activeElement)))
     if (!within) return
     if (zoomed) {
       evt.preventDefault()
@@ -740,6 +750,12 @@
       aria-label={rest[`aria-label`] ?? `${shape === `icicle` ? `Icicle` : `Sunburst`} chart`}
       onmouseleave={() => set_arc_hover(null)}
     >
+      <!-- inert unless some arc references it via fill -->
+      <defs>
+        <pattern id={hatch_pattern_id} patternUnits="userSpaceOnUse" width="8" height="8">
+          <path class="hatch-pattern-line" d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" />
+        </pattern>
+      </defs>
       <!-- Hover/click delegation sits on the chart group (not the arcs group) so
       labels - which carry the same data-sunburst-node-idx and are selectable text -
       forward interactions to their arc instead of swallowing them -->
@@ -760,22 +776,37 @@
             {#if arc_content}
               {@render arc_content(screen)}
             {:else}
-              {@const clickable = arc_clickable(screen.arc)}
+              <!-- @const so the path is generated (and info looked up) once per
+              arc per frame, shared by the base path and the hatch overlay -->
+              {@const info = arc_info[screen.arc.node_idx]}
+              {@const opacity = arc_dim[screen.arc.node_idx].opacity}
+              {@const path_d = screen_path(screen)}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <path
-                d={screen_path(screen)}
+                d={path_d}
                 data-sunburst-node-idx={screen.arc.node_idx}
-                fill={arc_color(screen.arc)}
-                fill-opacity={arc_opacity(screen.arc)}
-                role={clickable ? `button` : undefined}
-                tabindex={clickable
+                fill={info.fill}
+                fill-opacity={opacity}
+                role={info.clickable ? `button` : undefined}
+                tabindex={info.clickable
                   ? screen.arc.node_idx === roving_idx
                     ? 0
                     : -1
                   : undefined}
-                aria-label={clickable ? arc_info[screen.arc.node_idx].aria : undefined}
-                style:cursor={clickable ? `pointer` : `default`}
+                aria-label={info.clickable ? info.aria : undefined}
+                style:cursor={info.clickable ? `pointer` : `default`}
               />
+              {#if screen.arc.hatch}
+                <!-- Decorative texture overlay (e.g. preemptible jobs); rendered as
+                the base path's next sibling so the hover 'pull' can track it -->
+                <path
+                  class="arc-hatch"
+                  aria-hidden="true"
+                  d={path_d}
+                  fill="url(#{hatch_pattern_id})"
+                  fill-opacity={opacity}
+                />
+              {/if}
             {/if}
           {/each}
         </g>
@@ -787,13 +818,14 @@
             {#each visible_arcs as screen (screen.arc.node_idx)}
               {@const lbl = label_attrs(screen)}
               {#if lbl}
+                {@const info = arc_info[screen.arc.node_idx]}
                 <text
                   class="arc-label"
                   data-sunburst-node-idx={screen.arc.node_idx}
                   transform={lbl.transform}
-                  fill={label_color(screen.arc)}
-                  fill-opacity={is_muted(screen.arc) ? MUTED_OPACITY : undefined}
-                  style:cursor={arc_clickable(screen.arc) ? `pointer` : `text`}
+                  fill={info.label_fill}
+                  fill-opacity={arc_dim[screen.arc.node_idx].label_opacity}
+                  style:cursor={info.clickable ? `pointer` : `text`}
                 >
                   {lbl.text}
                 </text>
@@ -1015,8 +1047,25 @@
     /* hover 'pull': scaling about the chart center offsets the arc radially */
     transform-origin: 0 0;
   }
-  .sunburst:not(.icicle) .arcs path:hover {
+  /* the hatch overlay (an arc's next sibling) rides along with its hover 'pull' */
+  .sunburst:not(.icicle) .arcs path:hover,
+  .sunburst:not(.icicle) .arcs path:hover + path.arc-hatch {
     transform: scale(var(--sunburst-hover-scale, 1.02));
+  }
+  /* decorative overlay: never intercepts pointer events, no border of its own */
+  .arcs path.arc-hatch {
+    stroke: none;
+    pointer-events: none;
+  }
+  /* subtle by default: thin stripes inheriting the arc border color (itself
+  defaulting to the chart bg) at low opacity, so hatching matches the gaps
+  between slices instead of reading as solid white */
+  .hatch-pattern-line {
+    stroke: var(
+      --sunburst-hatch-stroke,
+      color-mix(in srgb, var(--sunburst-arc-stroke, var(--plot-bg, white)) 30%, transparent)
+    );
+    stroke-width: var(--sunburst-hatch-stroke-width, 0.35);
   }
   .center-circle {
     fill: var(--sunburst-center-bg, transparent);

@@ -4,7 +4,7 @@ import { is_plain_object } from '$lib/utils'
 import type { AnyStructure } from '$lib/structure/index'
 import { is_parsed_structure, parse_xyz } from '$lib/structure/parse'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
-import { strip_compression_extensions } from '$lib/io'
+import { strip_compression_extensions } from '$lib/io/decompress'
 import { ext_hint, FORMAT_PATTERNS } from '$lib/trajectory/format-detect'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
@@ -18,7 +18,7 @@ import type {
 import type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
 import { parse_ase_trajectory } from './ase'
 import { get_traj_parse_warnings, reset_traj_parse_warnings, traj_warn } from './diagnostics'
-import { parse_torch_sim_hdf5 } from './hdf5'
+import { parse_hdf5_trajectory } from './hdf5'
 import { parse_lammps_trajectory } from './lammps'
 import { parse_pymatgen_trajectory } from './pymatgen'
 import { parse_vasp_xdatcar } from './vasp'
@@ -52,7 +52,7 @@ export async function parse_trajectory_data(
   reset_traj_parse_warnings()
   if (data instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
-    if (FORMAT_PATTERNS.hdf5(data, filename)) return parse_torch_sim_hdf5(data, filename)
+    if (FORMAT_PATTERNS.hdf5(data, filename)) return parse_hdf5_trajectory(data, filename)
     throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
   }
 

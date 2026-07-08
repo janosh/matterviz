@@ -246,29 +246,48 @@
   },
   "packageManager": "pnpm@11.5.0",
   "knip": {
-    "entry": [
-      "svelte.config.ts",
-      "src/site/**/*.{js,ts,svelte}"
-    ],
-    "paths": {
-      "$lib": [
-        "./src/lib"
-      ],
-      "$lib/*": [
-        "./src/lib/*"
-      ],
-      "$site": [
-        "./src/site"
-      ],
-      "$site/*": [
-        "./src/site/*"
-      ]
-    },
-    "ignore": [
-      "extensions/**"
-    ],
     "ignoreDependencies": [
       "svelte-check"
-    ]
+    ],
+    "workspaces": {
+      ".": {
+        "entry": [
+          "svelte.config.ts",
+          "src/site/**/*.{js,ts,svelte}"
+        ],
+        "paths": {
+          "$lib": [
+            "./src/lib"
+          ],
+          "$lib/*": [
+            "./src/lib/*"
+          ],
+          "$site": [
+            "./src/site"
+          ],
+          "$site/*": [
+            "./src/site/*"
+          ]
+        },
+        "ignore": [
+          "extensions/anywidget/**",
+          "extensions/dash/**"
+        ]
+      },
+      "extensions/vscode": {
+        "entry": [
+          "src/extension.ts",
+          "src/webview/main.ts"
+        ],
+        "paths": {
+          "$lib": [
+            "../../src/lib"
+          ],
+          "$lib/*": [
+            "../../src/lib/*"
+          ]
+        }
+      }
+    }
   }
 }

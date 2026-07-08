@@ -102,18 +102,12 @@ describe(`HeatmapTable`, () => {
       value_header.click()
       await tick()
 
-      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(values).toEqual([`100`, `300`, `n/a`])
+      expect(col_values(`Value`)).toEqual([`100`, `300`, `n/a`])
 
       // Test sort direction toggle
       value_header.click()
       await tick()
-      const reversed = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(reversed).toEqual([`300`, `100`, `n/a`])
+      expect(col_values(`Value`)).toEqual([`300`, `100`, `n/a`])
     })
 
     it(`maintains sort state on data updates`, async () => {
@@ -127,10 +121,7 @@ describe(`HeatmapTable`, () => {
       state.data = [{ Model: `D`, Score: 0.65, Value: 400 }, ...sample_data]
       await tick()
 
-      const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(scores).toEqual([`0.95`, `0.85`, `0.75`, `0.65`])
+      expect(col_values(`Score`)).toEqual([`0.95`, `0.85`, `0.75`, `0.65`])
     })
 
     it(`sorts date columns correctly`, () => {
@@ -145,11 +136,7 @@ describe(`HeatmapTable`, () => {
       mount_table({ data: dates, columns: date_columns })
 
       // Initial data should already be in order
-      const initial_dates = Array.from(document.querySelectorAll(`td`)).map((cell) =>
-        cell.textContent?.trim(),
-      )
-
-      expect(initial_dates).toEqual([`2021-05-14`, `2023-05-25`, `2024-05-07`])
+      expect(col_values(`Date`)).toEqual([`2021-05-14`, `2023-05-25`, `2024-05-07`])
     })
 
     it(`selects valid date/time column display modes`, async () => {
@@ -260,11 +247,8 @@ describe(`HeatmapTable`, () => {
       document.querySelector(`th`)?.click()
       await tick()
 
-      const sorted = Array.from(document.querySelectorAll(`td`)).map((cell) =>
-        cell.textContent?.trim(),
-      )
       // Default sort is descending (no `better` set), so largest first
-      expect(sorted).toEqual([`10,000`, `1,000`, `50`])
+      expect(col_values(`Number`)).toEqual([`10,000`, `1,000`, `50`])
     })
 
     it(`sorts mixed number/string columns: numbers first, desc reverses`, async () => {
@@ -273,12 +257,10 @@ describe(`HeatmapTable`, () => {
       // string shorthand defaults to asc
       mount_table({ data, columns, initial_sort: `Mixed` })
       await tick()
-      const get_cells = () =>
-        Array.from(document.querySelectorAll(`td`)).map((cell) => cell.textContent?.trim())
-      expect(get_cells()).toEqual([`2`, `9`, `10`, `a1`, `abc`, `def`])
+      expect(col_values(`Mixed`)).toEqual([`2`, `9`, `10`, `a1`, `abc`, `def`])
       document.querySelector(`th`)?.click() // toggle to descending
       await tick()
-      expect(get_cells()).toEqual([`def`, `abc`, `a1`, `10`, `9`, `2`])
+      expect(col_values(`Mixed`)).toEqual([`def`, `abc`, `a1`, `10`, `9`, `2`])
     })
 
     it(`respects unsortable columns`, async () => {
@@ -295,21 +277,17 @@ describe(`HeatmapTable`, () => {
 
       mount_table({ data, columns })
 
-      const get_values = () =>
-        Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map((cell) =>
-          cell.textContent?.trim(),
-        )
       const headers = document.querySelectorAll(`th`)
 
       // Clicking unsortable column has no effect
       headers[2].click()
       await tick()
-      expect(get_values()).toEqual([`100`, `200`, `300`])
+      expect(col_values(`Value`)).toEqual([`100`, `200`, `300`])
 
       // Clicking sortable column does sort
       headers[1].click()
       await tick()
-      expect(get_values()).not.toEqual([`100`, `200`, `300`])
+      expect(col_values(`Value`)).not.toEqual([`100`, `200`, `300`])
     })
 
     it.each([
@@ -326,10 +304,7 @@ describe(`HeatmapTable`, () => {
     ] as const)(`initial_sort $desc`, ({ initial_sort, expected }) => {
       mount_table({ data: sample_data, columns: sample_columns, initial_sort })
 
-      const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(scores).toEqual(expected)
+      expect(col_values(`Score`)).toEqual(expected)
     })
 
     // Tests for sorting numbers with error/uncertainty notation (±, +-, parenthetical)
@@ -380,10 +355,7 @@ describe(`HeatmapTable`, () => {
       document.querySelectorAll(`th`)[1].click()
       await tick()
 
-      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(values).toEqual(expected)
+      expect(col_values(`Value`)).toEqual(expected)
     })
 
     // Tests for heatmap coloring with uncertainty notation strings
@@ -865,10 +837,85 @@ describe(`HeatmapTable`, () => {
       expect(search_input).not.toBeNull()
     })
 
-    // Note: Tests for filtering functionality are skipped in happy-dom due to:
-    // 1. happy-dom doesn't fully support getAnimations() for animate:flip directive
-    // 2. Svelte 5's bind:value requires native input simulation that happy-dom doesn't support
-    // These should be tested in Playwright e2e tests instead.
+    // Filtering is tested through the bindable search_query prop (simulating typing
+    // via bind:value needs native input events that happy-dom doesn't support).
+
+    it.each([
+      [`substring match`, `model b`, [`Model B`]],
+      [`html is stripped before matching`, `bold`, [`Model C`]],
+      [`no match`, `no-such-model`, []],
+      [`empty query returns all rows`, `  `, [`Model A`, `Model B`, `Model C`]],
+    ])(`filters rows by search_query: %s`, async (_desc, query, expected) => {
+      const state = $state({ search_query: `` })
+      const data = [
+        { Model: `Model A`, Score: 0.95 },
+        { Model: `Model B`, Score: 0.85 },
+        { Model: `<b>bold</b> Model C`, Score: 0.75 },
+      ]
+      mount_table(bind_props({ data, columns: sample_columns, search: true }, state))
+
+      state.search_query = query
+      await tick()
+
+      const model_cells = col_values(`Model`)
+      expect(model_cells).toHaveLength(expected.length)
+      for (const [idx, name] of expected.entries()) {
+        expect(model_cells[idx]).toContain(name)
+      }
+    })
+
+    it(`search.keys restricts matching to the given columns`, async () => {
+      const state = $state({ search_query: `` })
+      const data = [
+        { Model: `Model A`, Note: `great` },
+        { Model: `Model B`, Note: `model a lookalike` },
+      ]
+      const columns: Label[] = [
+        { label: `Model`, description: `` },
+        { label: `Note`, description: `` },
+      ]
+      mount_table(bind_props({ data, columns, search: { keys: [`Model`] } }, state))
+
+      state.search_query = `model a`
+      await tick()
+
+      // without keys, "model a lookalike" in Note would also match
+      expect(col_values(`Model`)).toEqual([`Model A`])
+    })
+
+    it.each([
+      [true, [`Model A`]], // "mdla" is an in-order subsequence of "model a"
+      [false, []],
+    ])(`search.fuzzy=%s controls subsequence matching`, async (fuzzy, expected) => {
+      const state = $state({ search_query: `` })
+      mount_table(
+        bind_props({ data: sample_data, columns: sample_columns, search: { fuzzy } }, state),
+      )
+
+      state.search_query = `mdla`
+      await tick()
+
+      expect(col_values(`Model`)).toEqual(expected)
+    })
+
+    it(`clear button resets bound search_query`, async () => {
+      const state = $state({ search_query: `model b` })
+      mount_table(
+        bind_props({ data: sample_data, columns: sample_columns, search: true }, state),
+      )
+      await tick()
+      expect(col_values(`Model`)).toEqual([`Model B`])
+
+      // input is rendered (non-empty query implies expanded); clear button follows it
+      const clear_btn = document.querySelector(
+        `.control-buttons .icon-btn`,
+      ) as HTMLButtonElement
+      clear_btn.click()
+      await tick()
+
+      expect(state.search_query).toBe(``)
+      expect(col_values(`Model`)).toHaveLength(3)
+    })
 
     // Note: Test for closing search skipped due to happy-dom button click handling
     // issues with Svelte 5's onclick handlers
@@ -1081,8 +1128,6 @@ describe(`HeatmapTable`, () => {
       return document.querySelectorAll(`th`)
     }
 
-    const get_col_values = col_values
-
     it(`does not render arrows for unsorted columns by default`, () => {
       const headers = render_table()
       expect(headers).toHaveLength(3)
@@ -1144,7 +1189,7 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       expect(value_header.textContent).not.toMatch(/[↑↓]/)
-      expect(get_col_values(`Value`)).toEqual([`100`, `200`, `300`])
+      expect(col_values(`Value`)).toEqual([`100`, `200`, `300`])
     })
   })
 
@@ -1398,12 +1443,9 @@ describe(`HeatmapTable`, () => {
 
       // Should sort by Group B values (100, 50, 75)
       // data-col="Value" is used for both groups, so check Name column order instead
-      const sorted_names = Array.from(document.querySelectorAll(`td[data-col="Name"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
       // Group B values: Item 1=100, Item 2=50, Item 3=75
       // Default sort is descending: Item 1 (100), Item 3 (75), Item 2 (50)
-      expect(sorted_names).toEqual([`Item 1`, `Item 3`, `Item 2`])
+      expect(col_values(`Name`)).toEqual([`Item 1`, `Item 3`, `Item 2`])
     })
 
     // Regression: zero and negative values should be included in linear scale heatmap
@@ -2130,6 +2172,285 @@ describe(`HeatmapTable`, () => {
         pagination: { page_size: 10 },
       })
       expect(document.querySelector(`.page-size-select`)).toBeNull()
+    })
+  })
+
+  describe(`cell range selection and column copy`, () => {
+    const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement => {
+      const cell = document.querySelector<HTMLTableCellElement>(
+        `td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`,
+      )
+      if (!cell) throw new Error(`cell (${row_idx}, ${col_idx}) not found`)
+      return cell
+    }
+    const pointer = (type: string, init: MouseEventInit = {}) =>
+      new MouseEvent(type, { button: 0, bubbles: true, ...init })
+    const drag_cells = (
+      from: [number, number],
+      to: [number, number],
+      init: MouseEventInit = {},
+    ) => {
+      cell_at(...from).dispatchEvent(pointer(`pointerdown`, init))
+      cell_at(...to).dispatchEvent(pointer(`pointermove`))
+      globalThis.window.dispatchEvent(pointer(`pointerup`))
+    }
+    const copy_shortcut = () =>
+      globalThis.window.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `c`, metaKey: true }),
+      )
+    const written_text = (): string =>
+      (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]
+    const mount_sample_table = async (
+      props: Omit<ComponentProps<typeof HeatmapTable>, 'data' | 'columns'> = {},
+    ) => {
+      mount_table({ data: sample_data, columns: sample_columns, ...props })
+      await tick()
+    }
+
+    it(`drag selects a rectangle and Cmd+C copies it as TSV`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [1, 1])
+      await tick()
+
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+      copy_shortcut()
+      expect(written_text()).toBe(`Model A\t0.95\nModel B\t0.85`)
+    })
+
+    it(`shift+drag adds disjoint blocks that copy separated by newlines`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [0, 0])
+      drag_cells([2, 2], [2, 2], { shiftKey: true })
+      await tick()
+
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(2)
+      copy_shortcut()
+      expect(written_text()).toBe(`Model A\n300`)
+    })
+
+    it(`plain drag replaces the previous selection`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [1, 0])
+      drag_cells([2, 1], [2, 1])
+      await tick()
+
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+      expect(cell_at(2, 1).classList.contains(`cell-selected`)).toBe(true)
+    })
+
+    it(`Escape and outside pointerdown clear the selection`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      globalThis.window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      document.body.dispatchEvent(pointer(`pointerdown`))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+    })
+
+    it(`suppresses the row click that follows a cell drag`, async () => {
+      const onrowclick = vi.fn()
+      await mount_sample_table({ onrowclick })
+
+      // drag across cells -> the click on release must not fire the row action
+      drag_cells([0, 0], [1, 1])
+      cell_at(1, 1).dispatchEvent(pointer(`click`))
+      expect(onrowclick).not.toHaveBeenCalled()
+
+      // plain click (pointer never moved) still fires the row action
+      drag_cells([0, 0], [0, 0])
+      cell_at(0, 0).dispatchEvent(pointer(`click`))
+      expect(onrowclick).toHaveBeenCalledTimes(1)
+    })
+
+    it(`right-click copy column copies all filtered rows across pages`, async () => {
+      await mount_sample_table({ pagination: { page_size: 2 } })
+
+      cell_at(0, 0).dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      await tick()
+
+      const copy_option = [
+        ...document.querySelectorAll<HTMLButtonElement>(`.context-menu button`),
+      ].find((btn) => btn.textContent?.includes(`Copy column`))
+      expect(copy_option?.textContent).toContain(`3 values`)
+      copy_option?.click()
+      await tick()
+
+      // all rows, not just the 2 on the current page
+      expect(written_text()).toBe(`Model A\nModel B\nModel C`)
+      expect(document.querySelector(`.context-menu`)).toBeNull()
+    })
+
+    it(`context menu on headers offers copy for non-heatmap columns`, async () => {
+      await mount_sample_table()
+
+      const header = document.querySelector(`th`)
+      header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      await tick()
+
+      const options = [...document.querySelectorAll(`.context-menu button`)].map((btn) =>
+        btn.textContent?.trim(),
+      )
+      expect(options.some((text) => text?.includes(`Copy column`))).toBe(true)
+      // no color_scale on Model -> no gradient-direction section
+      expect(options.some((text) => text?.includes(`Higher is better`))).toBe(false)
+    })
+
+    it(`clears selection when the rendered data changes`, async () => {
+      const state = $state({ data: sample_data })
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: state.data, columns: sample_columns },
+      })
+      await tick()
+
+      drag_cells([0, 0], [1, 1])
+      // browsers fire a click on the release target after every drag; it is
+      // swallowed by the suppress guard (see previous test)
+      cell_at(1, 1).dispatchEvent(pointer(`click`))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+
+      // sorting reorders rows -> stale (row, col) coordinates must clear
+      document.querySelector(`th`)?.dispatchEvent(pointer(`click`))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+    })
+  })
+
+  describe(`Infinite scroll (virtualized rows)`, () => {
+    // happy-dom has no layout: clientHeight/offsetHeight are 0, so the window
+    // is driven by min_window (default 60) and the 33px row-height estimate
+    const many_rows = Array.from({ length: 200 }, (_, idx) => ({
+      Model: `Model ${idx}`,
+      Score: idx,
+    }))
+    const two_cols: Label[] = [
+      { label: `Model`, description: `` },
+      { label: `Score`, description: `` },
+    ]
+    const rendered_rows = () =>
+      document.querySelectorAll(`tbody tr:not(.virtual-spacer):not(.empty-row)`)
+    const spacers = () => [
+      ...document.querySelectorAll<HTMLTableRowElement>(`tr.virtual-spacer`),
+    ]
+
+    it(`caps rendered rows by default and shows shown-of-total count`, () => {
+      mount_table({ data: many_rows, columns: two_cols })
+
+      expect(rendered_rows()).toHaveLength(60) // min_window default
+      const [bottom_spacer] = spacers()
+      expect(spacers()).toHaveLength(1) // only below (window starts at top)
+      expect(bottom_spacer.style.height).toBe(`${(200 - 60) * 33}px`)
+      expect(document.querySelector(`.row-count-info`)?.textContent?.trim()).toBe(
+        `60 of 200 rows`,
+      )
+      expect(document.querySelector(`.pagination`)).toBeNull()
+    })
+
+    it(`moves the window and preserves absolute row numbers on scroll`, async () => {
+      mount_table({
+        data: many_rows,
+        columns: two_cols,
+        show_row_numbers: true,
+        sort_data: false,
+      })
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      scroller.scrollTop = 990 // 30 rows deep at the 33px estimate
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+
+      // start = 30 - overscan(10) = 20, end = max(30 + 10, 20 + 60) = 80
+      expect(rendered_rows()).toHaveLength(60)
+      expect(spacers()).toHaveLength(2)
+      expect(spacers()[0].style.height).toBe(`${20 * 33}px`)
+      expect(spacers()[1].style.height).toBe(`${(200 - 80) * 33}px`)
+      expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
+      expect(col_values(`Model`)[0]).toBe(`Model 20`)
+    })
+
+    it(`reports the rendered range via on_visible_range`, async () => {
+      const on_visible_range = vi.fn()
+      mount_table({ data: many_rows, columns: two_cols, on_visible_range })
+      await tick()
+      expect(on_visible_range).toHaveBeenLastCalledWith({ start: 0, end: 60, total: 200 })
+
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      scroller.scrollTop = 990
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+      expect(on_visible_range).toHaveBeenLastCalledWith({ start: 20, end: 80, total: 200 })
+    })
+
+    it.each([
+      [`virtual={false} renders every row`, { virtual: false as const }, 200],
+      [`custom min_window bounds the window`, { virtual: { min_window: 25 } }, 25],
+    ])(`%s`, (_desc, extra_props, expected_rows) => {
+      mount_table({ data: many_rows, columns: two_cols, ...extra_props })
+      expect(rendered_rows()).toHaveLength(expected_rows)
+      if (expected_rows === 200) {
+        expect(spacers()).toHaveLength(0)
+        expect(document.querySelector(`.row-count-info`)).toBeNull()
+      }
+    })
+
+    it(`pagination disables virtualization and its count line`, () => {
+      mount_table({
+        data: many_rows,
+        columns: two_cols,
+        pagination: { page_size: 10 },
+      })
+      expect(rendered_rows()).toHaveLength(10)
+      expect(spacers()).toHaveLength(0)
+      expect(document.querySelector(`.row-count-info`)).toBeNull()
+      expect(document.querySelector(`.pagination`)).not.toBeNull()
+    })
+  })
+
+  describe(`controls_target`, () => {
+    const rows = [
+      { Model: `A`, Score: 1 },
+      { Model: `B`, Score: 2 },
+    ]
+    const cols: Label[] = [
+      { label: `Model`, description: `` },
+      { label: `Score`, description: `` },
+    ]
+    const control_props = { search: true, export_data: true, show_controls: true }
+
+    it(`teleports control buttons into the host target, always visible`, async () => {
+      const target = document.createElement(`div`)
+      document.body.append(target)
+      mount_table({ data: rows, columns: cols, ...control_props, controls_target: target })
+      await tick() // attachments run in the effect phase
+
+      const section = target.querySelector(`.control-buttons`)
+      expect(section).not.toBeNull()
+      expect(section?.classList.contains(`portaled`)).toBe(true)
+      // settings gear travels with the row (it lives inside the section now)
+      expect(section?.querySelector(`.pane-toggle`)).not.toBeNull()
+      // no leftover controls row inside the table itself
+      expect(document.querySelector(`.table-container .control-buttons`)).toBeNull()
+    })
+
+    it(`renders controls inline (gear included) when no target is given`, () => {
+      mount_table({ data: rows, columns: cols, ...control_props })
+
+      const section = document.querySelector(`.table-container .control-buttons`)
+      expect(section).not.toBeNull()
+      expect(section?.classList.contains(`portaled`)).toBe(false)
+      expect(section?.querySelector(`.pane-toggle`)).not.toBeNull()
     })
   })
 })

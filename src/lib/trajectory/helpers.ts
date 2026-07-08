@@ -1,6 +1,6 @@
 // Shared utilities for trajectory parsing
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
-import { is_elem_symbol } from '$lib/element'
+import { is_elem_symbol } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -40,6 +40,13 @@ export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
     }
     return symbol
   })
+
+// Tally per-element atom counts for trajectory metadata.element_counts
+export const count_elements = (elements: readonly string[]): Record<string, number> => {
+  const counts: Record<string, number> = {}
+  for (const element of elements) counts[element] = (counts[element] || 0) + 1
+  return counts
+}
 
 export const create_structure = (
   positions: number[][],

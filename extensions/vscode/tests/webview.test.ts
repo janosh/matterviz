@@ -1,9 +1,16 @@
 import { parse_structure_file } from '$lib/structure/parse'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { gzipSync } from 'node:zlib'
+import { mount } from 'svelte'
+import type * as svelte_module from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   base64_to_array_buffer,
+  create_display,
   parse_file_content,
   parse_large_file_marker,
+  type ParseResult,
   VSCodeFrameLoader,
 } from '../src/webview/main'
 
@@ -12,12 +19,29 @@ import {
 // shape to exercise parse_file_content's no-atoms guard.
 vi.mock('$lib/structure/parse', () => ({ parse_structure_file: vi.fn() }))
 
+// Svelte components are stubbed out in test mode (see vite.config.ts svelte-mock), so
+// spy on mount to assert which props create_display passes to the mounted component.
+vi.mock('svelte', async (import_original) => ({
+  ...(await import_original<typeof svelte_module>()),
+  mount: vi.fn(() => ({})),
+}))
+
 declare global {
   // download function added by VSCode integration
   var download: (content: string | Blob, filename: string, contentType: string) => void
 }
 
 const uint8_as_base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
+
+const fixture_base64 = (name: string, gzip = false): string => {
+  const bytes = readFileSync(
+    resolve(import.meta.dirname, `../../../tests/vitest/fixtures/vasp-hdf5/${name}`),
+  )
+  return (gzip ? gzipSync(bytes) : bytes).toString(`base64`)
+}
+const make_container = () => ({ style: {}, innerHTML: `` }) as unknown as HTMLElement
+const last_mount_props = () =>
+  vi.mocked(mount).mock.calls.at(-1)?.[1]?.props as Record<string, unknown>
 
 describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
   test.each([
@@ -142,6 +166,86 @@ describe(`parse_file_content JSON renderable routing`, () => {
   })
 })
 
+describe(`vaspout.h5 electronic routing`, () => {
+  test(`bands-only vaspout.h5 parses to a vaspout_electronic result`, async () => {
+    const base64 = fixture_base64(`vaspout-tinisn-bands-only.h5`)
+    const result = await parse_file_content(base64, `vaspout.h5`, true)
+    expect(result.type).toBe(`vaspout_electronic`)
+    const data = result.data as { dos: unknown; bands: { nb_bands: number } | null }
+    expect(data.dos).toBeNull()
+    expect(data.bands?.nb_bands).toBe(24)
+  })
+
+  test(`create_display mounts electronic bands with band_type electronic`, async () => {
+    const base64 = fixture_base64(`vaspout-tinisn-bands-only.h5`)
+    const result = await parse_file_content(base64, `vaspout.h5`, true)
+    create_display(make_container(), result, `vaspout.h5`)
+    const mount_props = last_mount_props()
+    expect(mount_props.band_type).toBe(`electronic`)
+    expect(mount_props.band_structs).toBe((result.data as { bands: unknown }).bands)
+  })
+
+  test(`trajectories carrying a DOS mount the trajectory-with-DOS wrapper`, async () => {
+    const scf_base64 = fixture_base64(`vaspout-si-static-scf.h5`)
+    const result = await parse_file_content(scf_base64, `vaspout.h5`, true)
+    expect(result.type).toBe(`trajectory`)
+
+    create_display(make_container(), result, `vaspout.h5`)
+    const mount_props = last_mount_props() as {
+      dos?: { energies: number[] }
+      trajectory_props?: { trajectory: unknown }
+    }
+    expect(mount_props.dos?.energies).toHaveLength(25)
+    expect(mount_props.trajectory_props?.trajectory).toBe(result.data)
+  })
+
+  // Ferrox archives VASP HDF5 outputs gzipped on S3; the inner filename must
+  // drive routing after binary decompression.
+  test.each([
+    [`vaspout-tinisn-bands-only.h5`, `vaspout.h5.gz`, `vaspout_electronic`],
+    [`vaspwave-si-charge.h5`, `vaspwave.h5.gz`, `isosurface`],
+  ])(`gzipped %s routes as %s`, async (fixture_name, gz_filename, expected_type) => {
+    const gz_base64 = fixture_base64(fixture_name, true)
+    const result = await parse_file_content(gz_base64, gz_filename, true)
+    expect(result.type).toBe(expected_type)
+    expect(result.filename).toBe(gz_filename.replace(/\.gz$/, ``))
+  })
+})
+
+describe(`create_display trajectory display options`, () => {
+  const trajectory_result = (): ParseResult => ({
+    type: `trajectory`,
+    data: { frames: [], metadata: {} },
+    filename: `relax.h5`,
+  })
+
+  test(`initial_step_idx and on_step_change reach the mounted Trajectory component`, () => {
+    const on_step_change = vi.fn()
+    create_display(make_container(), trajectory_result(), `relax.h5`, {
+      initial_step_idx: 42,
+      on_step_change,
+    })
+    const mount_props = last_mount_props()
+    expect(mount_props.current_step_idx).toBe(42)
+    // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
+    ;(mount_props.on_step_change as (data: unknown) => void)({
+      step_idx: 7,
+      frame_count: 20,
+    })
+    expect(on_step_change).toHaveBeenCalledWith(7, 20)
+  })
+
+  test.each([[undefined], [{}]])(
+    `display options %o leave Trajectory props untouched`,
+    (display_options) => {
+      create_display(make_container(), trajectory_result(), `relax.h5`, display_options)
+      const mount_props = last_mount_props()
+      expect(mount_props.current_step_idx).toBeUndefined()
+      expect(mount_props.on_step_change).toBeUndefined()
+    },
+  )
+})
+
 describe(`large file marker parsing`, () => {
   test.each([
     [
@@ -170,7 +274,7 @@ describe(`large file marker parsing`, () => {
 })
 
 describe(`VS Code frame loader`, () => {
-  test(`includes filename in frame requests for desktop streaming bridge`, async () => {
+  test(`includes filename in frame requests for the host streaming bridge`, async () => {
     const post_message = vi.fn()
     const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
       postMessage: post_message,

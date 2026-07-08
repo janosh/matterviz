@@ -25,6 +25,7 @@
     has_been_dragged = $bindable(false),
     currently_dragging = $bindable(false),
     resizable = `none`,
+    position = `absolute`,
   }: {
     show?: boolean
     show_pane?: boolean
@@ -51,6 +52,10 @@
     persistent?: boolean
     // Resize mode: 'both' | 'width' | 'height' | 'none'
     resizable?: `both` | `width` | `height` | `none`
+    // 'fixed' renders the pane relative to the viewport so it escapes
+    // overflow-clipping ancestors (e.g. cards/tables with overflow: hidden)
+    // and clamps its max-height to the space below the toggle button.
+    position?: `absolute` | `fixed`
     // Callbacks
     onclose?: () => void
     on_drag_start?: () => void
@@ -147,6 +152,16 @@
     const pane_width = pane_div?.getBoundingClientRect().width || 450
     const ox = offset.x ?? 5
     const oy = offset.y ?? 5
+
+    if (position === `fixed`) {
+      // Viewport-relative: keep the pane on screen horizontally.
+      const left = Math.max(
+        8,
+        Math.min(toggle_rect.right - pane_width + ox, window.innerWidth - pane_width - 8),
+      )
+      return { left: `${left}px`, top: `${toggle_rect.bottom + oy}px` }
+    }
+
     const positioned_ancestor = toggle_pane_btn.offsetParent
     const ancestor_rect = positioned_ancestor?.getBoundingClientRect()
 
@@ -200,9 +215,20 @@
         initial_position = pos
         pane_div.style.left = pos.left
         pane_div.style.top = pos.top
+        apply_viewport_clamp()
       }
     }, 50) // Debounce resize events
     resize_timeout = current_timeout
+  }
+
+  // Fixed panes must never extend past the bottom viewport edge: cap the
+  // --pane-viewport-clamp var (combined with --pane-max-height via min() in
+  // CSS) to the space below the toggle, floored so the pane stays usable.
+  function apply_viewport_clamp(): void {
+    if (position !== `fixed` || !pane_div || !toggle_pane_btn) return
+    const toggle_bottom = toggle_pane_btn.getBoundingClientRect().bottom
+    const available = window.innerHeight - toggle_bottom - (offset.y ?? 5) - 12
+    pane_div.style.setProperty(`--pane-viewport-clamp`, `${Math.max(180, available)}px`)
   }
 
   // Position pane when shown
@@ -219,6 +245,7 @@
           width: ``,
           maxHeight: ``,
         })
+        apply_viewport_clamp()
       }
     }
   })
@@ -259,6 +286,7 @@
     role="dialog"
     aria-label="Draggable pane"
     aria-modal="false"
+    style:position
     style:max-width={max_width}
     style:top={initial_position.top}
     style:left={initial_position.left}
@@ -347,7 +375,9 @@
     max-width: var(--pane-max-width, 80cqw);
     overflow: visible; /* Allow control-tab to protrude above the pane border */
     min-height: var(--pane-min-height, auto);
-    max-height: var(--pane-max-height, 80vh);
+    /* --pane-viewport-clamp (set for position="fixed" panes) keeps the pane
+       above the bottom viewport edge even when the toggle sits low on screen */
+    max-height: min(var(--pane-max-height, 80vh), var(--pane-viewport-clamp, 200vh));
   }
   .draggable-pane .pane-content {
     padding: var(--pane-padding, 1ex);

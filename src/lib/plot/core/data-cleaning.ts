@@ -163,15 +163,20 @@ export function apply_bounds(
   for (let idx = 0; idx < result.length; idx++) {
     const x_val = x_values[idx]
     const y_val = result[idx]
+    // Resolve bounds once per point; is_in_bounds would redundantly re-resolve them
+    // (costly when min/max are functions of x). NaN compares false on both checks
+    // and thus counts as in-bounds, matching is_in_bounds semantics.
     const { min: min_bound, max: max_bound } = resolve_physical_bounds(x_val, bounds)
+    const below_min = min_bound !== undefined && y_val < min_bound
+    const above_max = max_bound !== undefined && y_val > max_bound
 
-    if (!is_in_bounds(y_val, x_val, bounds)) {
+    if (below_min || above_max) {
       violations++
       const mode = bounds.mode ?? `clamp`
 
       if (mode === `clamp`) {
-        if (min_bound !== undefined && y_val < min_bound) result[idx] = min_bound
-        if (max_bound !== undefined && y_val > max_bound) result[idx] = max_bound
+        if (below_min) result[idx] = min_bound
+        if (above_max) result[idx] = max_bound
       } else if (mode === `filter`) {
         filtered_indices.push(idx)
       } else if (mode === `null`) {

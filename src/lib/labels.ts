@@ -149,6 +149,12 @@ export const FRACTION_GLYPHS: readonly (readonly [number, string])[] = [
   [11 / 12, `¹¹⁄₁₂`],
 ]
 
+// format_value when an explicit format is given, else format_num's adaptive
+// default: SI prefixes for |value| >= 1 (4500 -> 4.5k) but plain decimals
+// below 1 (0.2 stays 0.2, never the SI milli form "200m")
+export const format_value_or_num = (value: number, fmt?: string): string =>
+  fmt ? format_value(value, fmt) : format_num(value)
+
 // fmt as number only allowed to support [].map(format_num) without type error
 export const format_num = (num: number, fmt?: string | number) => {
   if (num === null) return ``
@@ -292,8 +298,16 @@ export const superscript_digits = (input: string): string =>
     is_superscript_key(match) ? SUPERSCRIPT_MAP[match] : match,
   )
 
-// Trajectory property configuration: clean labels and units as structured data
-export const trajectory_property_config: Record<string, { label: string; unit: string }> = {
+// Trajectory property configuration: clean labels and units as structured data.
+// axis_group (optional) overrides the unit as the y-axis grouping key: series with
+// the same unit normally share an axis, but e.g. log-scaled |ΔE_SCF| (all-positive,
+// spanning many decades) must not share the linear energy axis despite both being eV.
+export interface TrajPropertyConfig {
+  label: string
+  unit: string
+  axis_group?: string
+}
+export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
   // Energy properties
   energy: { label: `Energy`, unit: `eV` },
   Energy: { label: `Energy`, unit: `eV` },
@@ -337,4 +351,10 @@ export const trajectory_property_config: Record<string, { label: string; unit: s
   Pressure: { label: `Pressure`, unit: `GPa` },
   stress_max: { label: `σ<sub>max</sub>`, unit: `GPa` },
   stress_frobenius: { label: `σ<sub>F</sub>`, unit: `GPa` },
+
+  // SCF/electronic convergence properties (e.g. from VASP vaspout.h5 OSZICAR data)
+  n_scf_steps: { label: `SCF steps`, unit: `steps` },
+  scf_energy_delta: { label: `|ΔE<sub>SCF</sub>|`, unit: `eV`, axis_group: `eV (SCF)` },
+  scf_rms: { label: `ρ residual (rms)`, unit: `a.u.` },
+  scf_charge_rms: { label: `ρ<sub>c</sub> residual (rms(c))`, unit: `a.u.` },
 }

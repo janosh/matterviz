@@ -5,8 +5,8 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
-import { coerce_elem_symbol } from '$lib/element'
-import { create_trajectory_frame } from '$lib/trajectory/helpers'
+import { coerce_elem_symbol } from '$lib/element/helpers'
+import { count_elements, create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
 import { traj_warn } from './diagnostics'
 
@@ -187,13 +187,8 @@ export function parse_lammps_trajectory(
   }
 
   const first_frame = frames[0]
-  const element_counts = first_frame.structure.sites.reduce<Record<string, number>>(
-    (counts, site) => {
-      const elem = site.species[0].element
-      counts[elem] = (counts[elem] || 0) + 1
-      return counts
-    },
-    {},
+  const element_counts = count_elements(
+    first_frame.structure.sites.map((site) => site.species[0].element),
   )
 
   return {
