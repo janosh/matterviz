@@ -32,10 +32,11 @@ describe(`HeatmapTable`, () => {
     description: ``,
   }
 
-  // 50-row dataset shared by Pagination, Page Size Selector, and async-sort tests
+  // 50-row dataset shared by Pagination, Page Size Selector, and async-sort tests.
+  // Scores are deterministic but shuffled (37 is coprime to 50, so all distinct)
   const large_data = Array.from({ length: 50 }, (_, idx) => ({
     Model: `Model ${idx + 1}`,
-    Score: Math.random(),
+    Score: ((idx * 37) % 50) / 50,
     Value: idx * 10,
   }))
 

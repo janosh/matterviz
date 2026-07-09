@@ -32,7 +32,6 @@ export type StructureCarouselItem = {
   label: string
   subtitle?: string
   structure: AnyStructure
-  duplicate_count?: number
 }
 export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureExportPane } from './StructureExportPane.svelte'

@@ -3,6 +3,7 @@
   import type { StructureCarouselItem } from '$lib/structure'
   import GlassChip from '$lib/overlays/GlassChip.svelte'
   import { portal } from '$lib/overlays/portal'
+  import { SvelteSet } from 'svelte/reactivity'
   import Structure from './Structure.svelte'
 
   type Layout = `horizontal` | `vertical`
@@ -91,20 +92,20 @@
     const viewport_size = layout === `horizontal` ? carousel_width : carousel_height
     return viewport_size > 0 ? Math.floor((viewport_size + gap) / item_stride) : 1
   })
-  const page_size = $derived(
-    Math.max(1, Math.min(visible_item_count || 1, measured_page_size)),
-  )
+  const page_size = $derived(Math.max(1, Math.min(visible_item_count, measured_page_size)))
   const max_page_start = $derived(Math.max(0, items.length - page_size))
   const page_start = $derived(Math.min(max_page_start, first_visible_idx))
   const page_end = $derived(Math.min(items.length, page_start + page_size))
-  // Keep one entering card warm without allocating WebGL contexts for the
-  // entire offscreen render budget.
+  // How many card ELEMENTS exist (canvas mount timing is live_ids' job below).
+  // Horizontal: the visible page plus one card per edge — an unaligned scroll
+  // position shows partial cards at BOTH edges, and measured_page_size floors,
+  // so up to page_size + 2 cards can intersect the viewport. Vertical tracks
+  // size their viewport to max_rendered cards (see max-block-size CSS), so
+  // there the page itself is the budget.
   const rendered_count = $derived(
-    Math.min(
-      items.length,
-      layout === `horizontal` ? page_size + 1 : max_rendered,
-      max_rendered,
-    ),
+    layout === `horizontal`
+      ? Math.min(items.length, page_size + 2, max_rendered)
+      : Math.min(items.length, max_rendered),
   )
   const window_start = $derived(
     Math.min(Math.max(0, items.length - rendered_count), first_visible_idx),
@@ -168,8 +169,41 @@
     on_prefetch_more()
   }
 
+  // Cards entering the render window mid-scroll render instantly as label
+  // shells and get their WebGL canvas (tracked in live_ids) later: mounting a
+  // Threlte scene (context creation + shader compile) takes long enough that a
+  // burst of simultaneous mounts stalls fast flings — the main source of
+  // scroll jank. While scrolling, at most one card is promoted to live per
+  // promote_interval_ms so structures still fill in mid-scroll without
+  // stacking several mounts into one frame; once scrolling settles, all
+  // remaining shells mount. Cards leaving the window always lose live status
+  // (window eviction destroys their canvas regardless) so re-entering cards go
+  // through the same throttle instead of burst-remounting from stale ids.
+  const scroll_settle_ms = 150
+  const promote_interval_ms = 200
+  let is_scrolling = $state(false)
+  let settle_timer: ReturnType<typeof setTimeout> | undefined
+  let last_promote_ms = Number.NEGATIVE_INFINITY
+  const live_ids = new SvelteSet<string>()
+  $effect(() => {
+    const window_ids = new Set(rendered_items.map(({ item }) => item.id))
+    for (const id of live_ids) if (!window_ids.has(id)) live_ids.delete(id)
+    if (!is_scrolling) {
+      for (const id of window_ids) live_ids.add(id)
+    } else {
+      const now = performance.now()
+      const entering = rendered_items.find(({ item }) => !live_ids.has(item.id))
+      if (!entering || now - last_promote_ms < promote_interval_ms) return
+      last_promote_ms = now
+      live_ids.add(entering.item.id)
+    }
+  })
+
   const on_scroll = (): void => {
     if (!track) return
+    is_scrolling = true
+    clearTimeout(settle_timer)
+    settle_timer = setTimeout(() => (is_scrolling = false), scroll_settle_ms)
     scroll_pos = layout === `horizontal` ? track.scrollLeft : track.scrollTop
     // first_visible_idx re-derives from the scroll offset just written above
     const remaining_items = Math.max(0, items.length - first_visible_idx - page_size)
@@ -192,9 +226,11 @@
     // unclamped above when max is 0 (track not yet measured); browser clamps anyway
     const max_scroll_left = Math.max(0, track.scrollWidth - track.clientWidth) || Infinity
     const next_scroll_left = Math.min(max_scroll_left, Math.max(0, track.scrollLeft + delta))
+    // already at the first/last card: leave the event alone so parent scroll
+    // containers can handle it instead of swallowing a no-op
+    if (next_scroll_left === track.scrollLeft) return
     event.preventDefault()
     event.stopPropagation()
-    if (next_scroll_left === track.scrollLeft) return
     track.scrollLeft = next_scroll_left
     on_scroll()
   }
@@ -206,6 +242,39 @@
       Math.max(0, first_visible_idx + direction * page_size),
     )
     track.scrollLeft = target_start * item_stride
+    on_scroll()
+  }
+
+  // Keyboard scrolling for the focused track: main-axis arrows move one card,
+  // PageUp/PageDown one viewport page, Home/End jump to the ends. Only keys
+  // targeting the track itself are handled — card content binds its own arrows
+  // (e.g. the info pane's site table) and must not be hijacked. Boundary no-ops
+  // fall through to the page, matching the wheel handler.
+  const on_track_keydown = (event: KeyboardEvent): void => {
+    if (!track || event.target !== track) return
+    const horizontal = layout === `horizontal`
+    const [back_key, fwd_key] = horizontal
+      ? [`ArrowLeft`, `ArrowRight`]
+      : [`ArrowUp`, `ArrowDown`]
+    const max_scroll = horizontal
+      ? Math.max(0, track.scrollWidth - track.clientWidth)
+      : Math.max(0, track.scrollHeight - track.clientHeight)
+    const current = horizontal ? track.scrollLeft : track.scrollTop
+    const deltas: Record<string, number> = {
+      [back_key]: -item_stride,
+      [fwd_key]: item_stride,
+      PageUp: -page_size * item_stride,
+      PageDown: page_size * item_stride,
+      Home: -current,
+      End: max_scroll - current,
+    }
+    const delta = deltas[event.key]
+    if (delta === undefined) return
+    const next_scroll = Math.min(max_scroll, Math.max(0, current + delta))
+    if (next_scroll === current) return // boundary: let the page handle it
+    event.preventDefault()
+    if (horizontal) track.scrollLeft = next_scroll
+    else track.scrollTop = next_scroll
     on_scroll()
   }
 
@@ -274,7 +343,10 @@
     return () => node.removeEventListener(`wheel`, on_wheel, true)
   })
 
-  $effect(() => () => stop_resize())
+  $effect(() => () => {
+    stop_resize()
+    clearTimeout(settle_timer)
+  })
 </script>
 
 <section
@@ -287,10 +359,18 @@
   {#if items.length === 0}
     <p class="empty-carousel">{empty_message}</p>
   {:else}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions
+      (focusable scroll region is a valid ARIA carousel pattern: arrows/PageUp/
+      PageDown/Home/End scroll it; see on_track_keydown) -->
     <div
       bind:this={track}
       class="structure-carousel-track"
+      role="group"
+      aria-roledescription="carousel"
+      aria-label="Structure carousel"
+      tabindex="0"
       onscroll={on_scroll}
+      onkeydown={on_track_keydown}
       style={track_style}
     >
       <div class="structure-carousel-spacer" style={spacer_style}>
@@ -302,19 +382,18 @@
                 <span>{item.subtitle}</span>
               {/if}
             </GlassChip>
-            {#if item.duplicate_count}
-              <span class="duplicate-badge">+{item.duplicate_count}</span>
+            {#if live_ids.has(item.id) || !is_scrolling}
+              <!-- Fill-the-card overrides for Structure's standalone defaults
+                (height 500px, min-width 300px — both larger than a card). -->
+              <Structure
+                structure={item.structure}
+                show_controls={show_controls ?? `never`}
+                scene_props={structure_scene_props}
+                allow_file_drop={false}
+                performance_mode="speed"
+                style="--struct-min-width: 0; --struct-height: 100%"
+              />
             {/if}
-            <!-- Fill-the-card overrides for Structure's standalone defaults
-              (height 500px, min-width 300px — both larger than a card). -->
-            <Structure
-              structure={item.structure}
-              show_controls={show_controls ?? `never`}
-              scene_props={structure_scene_props}
-              allow_file_drop={false}
-              performance_mode="speed"
-              style="--struct-min-width: 0; --struct-height: 100%"
-            />
           </article>
         {/each}
       </div>
@@ -371,41 +450,38 @@
     min-inline-size: 0;
     overflow: hidden;
   }
-
   .structure-carousel.horizontal {
     block-size: var(--structure-carousel-height);
   }
-
   /* reserve a lane for the resize handle below (horizontal) / beside
      (vertical) the cards so the grip never overlaps the structure canvases */
   .structure-carousel.horizontal.resizable {
     block-size: calc(var(--structure-carousel-height) + 8px);
   }
-
   .structure-carousel.vertical.resizable {
     padding-inline-end: 10px;
   }
-
   .structure-carousel-track {
     position: relative;
     min-inline-size: 0;
     scrollbar-width: thin;
     overscroll-behavior: contain;
   }
-
+  /* inset ring so it isn't clipped by the carousel's overflow: hidden */
+  .structure-carousel-track:focus-visible {
+    outline: 2px solid var(--accent-color, Highlight);
+    outline-offset: -2px;
+  }
   .horizontal .structure-carousel-track {
     inline-size: min(100%, var(--structure-carousel-track-width));
   }
-
   .vertical .structure-carousel-track {
     max-block-size: calc(var(--structure-carousel-height) * var(--structure-carousel-columns));
   }
-
   .structure-carousel-spacer {
     position: relative;
     min-block-size: 100%;
   }
-
   .structure-card {
     position: absolute;
     inset-block-start: 0;
@@ -417,7 +493,6 @@
     background: var(--structure-carousel-card-bg, light-dark(#e9edf2, #343941));
     contain: layout paint style;
   }
-
   /* element color chips stay visible at all times; the legend's extra chrome
      is already hover-gated elsewhere (mode chevron via Structure's
      viewer_active, cell-select via .structure:hover, chip × toggles via
@@ -428,11 +503,9 @@
     justify-content: flex-end;
     overflow: visible;
   }
-
   .structure-card :global(.element-legend sub) {
     display: none;
   }
-
   /* frosted label/subtitle chip, same look as StructurePopup's stats block */
   .structure-card :global(.card-info) {
     --glass-chip-top: 4px;
@@ -446,7 +519,6 @@
     line-height: 1.25;
     pointer-events: none;
   }
-
   .structure-card :global(.card-info strong),
   .structure-card :global(.card-info span) {
     display: block;
@@ -454,12 +526,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
   .structure-card :global(.card-info span) {
     color: light-dark(#5b6572, #b8c0cc);
     font-size: 0.92em;
   }
-
   .structure-carousel-pager {
     position: absolute;
     z-index: 6;
@@ -478,7 +548,6 @@
     font-variant-numeric: tabular-nums;
     transform: translateX(-50%);
   }
-
   /* hosted in a panel title bar instead of floating over the cards */
   .structure-carousel-pager.portaled {
     position: static;
@@ -487,7 +556,6 @@
     box-shadow: none;
     transform: none;
   }
-
   .structure-carousel-pager button {
     display: grid;
     place-items: center;
@@ -503,38 +571,19 @@
     font-size: 16px;
     line-height: 1;
   }
-
   .structure-carousel-pager button:hover:not(:disabled) {
     background: color-mix(in srgb, currentColor 12%, transparent);
   }
-
   .structure-carousel-pager button:disabled {
     opacity: 0.3;
     cursor: default;
   }
-
-  .duplicate-badge {
-    position: absolute;
-    z-index: 3;
-    inset-block-start: clamp(26px, calc(var(--structure-carousel-height) * 0.24), 40px);
-    inset-inline-end: clamp(4px, calc(var(--structure-carousel-height) * 0.045), 8px);
-    padding: 1px clamp(4px, calc(var(--structure-carousel-height) * 0.035), 7px);
-    border: 1px solid color-mix(in srgb, white 30%, transparent);
-    border-radius: 999px;
-    background: #4f7fbd;
-    color: #fff;
-    font-size: clamp(7px, calc(var(--structure-carousel-height) * 0.06), 11px);
-    font-weight: 700;
-    line-height: 1.2;
-  }
-
   .structure-carousel-resize-handle {
     position: absolute;
     z-index: 5;
     background: transparent;
     touch-action: none;
   }
-
   .structure-carousel-resize-handle::before {
     position: absolute;
     border-radius: 999px;
@@ -544,44 +593,37 @@
     opacity: 0;
     transition: opacity 0.15s ease;
   }
-
   .structure-carousel:hover .structure-carousel-resize-handle::before,
   .structure-carousel-resize-handle:focus-visible::before,
   .structure-carousel.resizing .structure-carousel-resize-handle::before {
     opacity: 1;
   }
-
   .structure-carousel-resize-handle:hover::before,
   .structure-carousel.resizing .structure-carousel-resize-handle::before {
     background: color-mix(in srgb, var(--active-color, #6ea8ff) 75%, white 10%);
   }
-
   .structure-carousel-resize-handle.horizontal {
     inset-block-end: 0;
     inset-inline: 0;
     block-size: 8px;
     cursor: ns-resize;
   }
-
   .structure-carousel-resize-handle.horizontal::before {
     inset-block-end: 2px;
     inset-inline: 42%;
     block-size: 2px;
   }
-
   .structure-carousel-resize-handle.vertical {
     inset-block: 0;
     inset-inline-end: 0;
     inline-size: 10px;
     cursor: ew-resize;
   }
-
   .structure-carousel-resize-handle.vertical::before {
     inset-block: 42%;
     inset-inline-end: 3px;
     inline-size: 2px;
   }
-
   .empty-carousel {
     margin: 0;
     padding: 16px;

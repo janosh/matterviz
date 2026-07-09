@@ -8,7 +8,6 @@ const items = Array.from({ length: 5 }, (_, idx) => ({
   id: `structure-${idx}`,
   label: `Structure ${idx}`,
   subtitle: `${idx + 1} sites`,
-  duplicate_count: idx === 0 ? 8 : 0,
   structure: make_crystal(3 + idx, [[`Li`, [0, 0, 0], 1]]),
 }))
 const many_items = Array.from({ length: 40 }, (_, idx) => ({
@@ -50,8 +49,8 @@ describe(`StructureCarousel`, () => {
 
     const carousel = doc_query(`.structure-carousel`)
     expect(carousel.classList.contains(`horizontal`)).toBe(true)
-    expect(document.querySelectorAll(`.structure-card`)).toHaveLength(4)
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
+    expect(document.querySelectorAll(`.structure-card`)).toHaveLength(5)
+    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(5)
     expect(doc_query(`.structure-card .structure`).getAttribute(`style`)).toContain(
       `--struct-min-width: 0`,
     )
@@ -74,7 +73,6 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-card`).getAttribute(`style`)).toContain(`translate3d(0px`)
     expect(doc_query(`.structure-card .card-info`)).not.toBeNull()
     expect(doc_query(`.structure-card strong`).textContent).toBe(`Structure 0`)
-    expect(doc_query(`.duplicate-badge`).textContent?.trim()).toBe(`+8`)
   })
 
   test(`shrinks horizontal viewport to loaded structures when fewer than render limit`, () => {
@@ -86,7 +84,7 @@ describe(`StructureCarousel`, () => {
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(3)
   })
 
-  test(`widens to the full budget without mounting offscreen contexts`, () => {
+  test(`widens to the full budget without mounting offscreen contexts`, async () => {
     mount_carousel({ items: many_items, layout: `horizontal`, min_card_width: 180 })
 
     expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
@@ -98,10 +96,10 @@ describe(`StructureCarousel`, () => {
     const rendered_before = [...document.querySelectorAll(`.structure-card strong`)].map(
       (node) => node.textContent,
     )
-    expect(rendered_before).toHaveLength(3)
+    expect(rendered_before).toHaveLength(4)
     expect(rendered_before[0]).toBe(`Many 0`)
-    expect(rendered_before.at(-1)).toBe(`Many 2`)
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(3)
+    expect(rendered_before.at(-1)).toBe(`Many 3`)
+    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
 
     const track = doc_query(`.structure-carousel-track`)
     track.scrollLeft = 1800
@@ -111,18 +109,25 @@ describe(`StructureCarousel`, () => {
     const rendered_after = [...document.querySelectorAll(`.structure-card strong`)].map(
       (node) => node.textContent,
     )
-    expect(rendered_after).toHaveLength(3)
+    expect(rendered_after).toHaveLength(4)
     expect(rendered_after[0]).toBe(`Many 4`)
-    expect(rendered_after.at(-1)).toBe(`Many 6`)
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(3)
+    expect(rendered_after.at(-1)).toBe(`Many 7`)
+    // entering cards render as label shells during the scroll, promoted to a
+    // live WebGL canvas one at a time (throttled, so mid-fling mounts don't
+    // stack into one frame): exactly one canvas right after the scroll event,
+    // the rest once scrolling settles
+    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(1)
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4),
+    )
   })
 
   test(`starts conservatively before its width is measured`, () => {
     mount_carousel({ items: many_items }, false)
 
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(2)
-    flushSync()
     expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(3)
+    flushSync()
+    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
   })
 
   test(`supports a larger width budget without mounting offscreen contexts`, () => {
@@ -131,7 +136,22 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
       `--structure-carousel-columns: 12`,
     )
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(3)
+    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
+  })
+
+  test(`renders the entering card at the right edge mid-scroll (no blank space)`, () => {
+    mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
+    const track = doc_query(`.structure-carousel-track`)
+    track.scrollLeft = 100 // unaligned: partial cards at BOTH viewport edges
+    track.dispatchEvent(new Event(`scroll`))
+    flushSync()
+
+    // 800px viewport at offset 100 with 208px stride intersects cards 0-4;
+    // all five must render or the right edge shows blank space while scrolling
+    const labels = [...document.querySelectorAll(`.structure-card strong`)].map(
+      (node) => node.textContent,
+    )
+    expect(labels).toEqual([`Many 0`, `Many 1`, `Many 2`, `Many 3`, `Many 4`])
   })
 
   test(`captures a nested viewer wheel and requests more structures immediately`, () => {
@@ -154,7 +174,7 @@ describe(`StructureCarousel`, () => {
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
   })
 
-  test(`suppresses horizontal wheel events at scroll boundaries`, () => {
+  test(`leaves wheel events for parent scrollers at scroll boundaries`, () => {
     mount_carousel({ items: many_items, layout: `horizontal` })
 
     const track = doc_query(`.structure-carousel-track`)
@@ -164,6 +184,8 @@ describe(`StructureCarousel`, () => {
     })
     track.scrollLeft = 0
 
+    // Already at the first card: scrolling further back is a no-op, so the
+    // event must not be swallowed (parent scroll containers handle it)
     const wheel = new WheelEvent(`wheel`, {
       bubbles: true,
       cancelable: true,
@@ -171,7 +193,88 @@ describe(`StructureCarousel`, () => {
     })
     track.dispatchEvent(wheel)
 
-    expect(wheel.defaultPrevented).toBe(true)
+    expect(wheel.defaultPrevented).toBe(false)
+    expect(track.scrollLeft).toBe(0)
+  })
+
+  // card width (= height 200 in horizontal layout, = card block-size vertically) + 8px gap
+  const stride = 208
+  const mock_track_size = (track: HTMLElement, horizontal: boolean): void => {
+    Object.defineProperties(
+      track,
+      horizontal
+        ? {
+            clientWidth: { configurable: true, value: 500 },
+            scrollWidth: { configurable: true, value: 2000 },
+          }
+        : {
+            clientHeight: { configurable: true, value: 500 },
+            scrollHeight: { configurable: true, value: 2000 },
+          },
+    )
+  }
+  const press = (target: HTMLElement, key: string): KeyboardEvent => {
+    const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
+    target.dispatchEvent(event)
+    return event
+  }
+
+  test.each([
+    { key: `ArrowRight`, start: 0, expected: stride, prevented: true },
+    { key: `ArrowLeft`, start: stride, expected: 0, prevented: true },
+    { key: `ArrowLeft`, start: 0, expected: 0, prevented: false }, // boundary: bubbles to page
+    { key: `End`, start: 0, expected: 1500, prevented: true },
+    { key: `Home`, start: 1500, expected: 0, prevented: true },
+    { key: `ArrowUp`, start: 0, expected: 0, prevented: false }, // cross-axis key ignored
+  ])(
+    `horizontal track keyboard: $key from $start scrolls to $expected`,
+    ({ key, start, expected, prevented }) => {
+      mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
+      const track = doc_query(`.structure-carousel-track`)
+      mock_track_size(track, true)
+      track.scrollLeft = start
+
+      const event = press(track, key)
+      expect(event.defaultPrevented).toBe(prevented)
+      expect(track.scrollLeft).toBe(expected)
+    },
+  )
+
+  test.each([
+    { key: `ArrowDown`, start: 0, expected: stride, prevented: true },
+    { key: `ArrowUp`, start: 0, expected: 0, prevented: false }, // boundary: bubbles to page
+    { key: `End`, start: 0, expected: 1500, prevented: true },
+  ])(
+    `vertical track keyboard: $key from $start scrolls to $expected`,
+    ({ key, start, expected, prevented }) => {
+      mount_carousel({ items: many_items, layout: `vertical`, height: 200 })
+      const track = doc_query(`.structure-carousel-track`)
+      mock_track_size(track, false)
+      track.scrollTop = start
+
+      const event = press(track, key)
+      expect(event.defaultPrevented).toBe(prevented)
+      expect(track.scrollTop).toBe(expected)
+    },
+  )
+
+  test(`PageDown/PageUp page the focusable track; keys from card content are ignored`, () => {
+    mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
+    const track = doc_query(`.structure-carousel-track`)
+    expect(track.getAttribute(`tabindex`)).toBe(`0`)
+    expect(track.getAttribute(`aria-roledescription`)).toBe(`carousel`)
+    mock_track_size(track, true)
+
+    expect(press(track, `PageDown`).defaultPrevented).toBe(true)
+    const paged_to = track.scrollLeft
+    expect(paged_to).toBeGreaterThanOrEqual(stride)
+    expect(paged_to % stride).toBe(0) // whole number of cards
+    expect(press(track, `PageUp`).defaultPrevented).toBe(true)
+    expect(track.scrollLeft).toBe(0)
+
+    // keys bubbling up from card content (e.g. info pane arrows) must not scroll
+    const bubbled = press(doc_query(`.structure-card`), `ArrowRight`)
+    expect(bubbled.defaultPrevented).toBe(false)
     expect(track.scrollLeft).toBe(0)
   })
 
