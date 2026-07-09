@@ -918,6 +918,7 @@
       return make_supercell(base, supercell_scaling)
     } catch (error) {
       console.error(`Failed to create supercell:`, error)
+      show_toast(`Failed to create supercell: ${to_error(error).message}`)
       return base
     }
   }

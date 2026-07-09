@@ -2241,6 +2241,28 @@ describe(`HeatmapTable`, () => {
       expect(cell_at(2, 1).classList.contains(`cell-selected`)).toBe(true)
     })
 
+    it(`clears the selection when columns are hidden or reordered`, async () => {
+      const state = $state({ hidden_columns: [] as string[], column_order: [] as string[] })
+      mount_table(bind_props({ data: sample_data, columns: sample_columns }, state))
+      await tick()
+
+      // hiding a column remaps col indices -> stale rects must clear
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+      state.hidden_columns = [`Value`]
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+
+      // reordering columns remaps col indices too
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+      state.column_order = [`Score`, `Model`, `Value`]
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+    })
+
     it(`Escape and outside pointerdown clear the selection`, async () => {
       await mount_sample_table()
 
@@ -2328,8 +2350,11 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Infinite scroll (virtualized rows)`, () => {
+    const row_height_px = 33
+    const overscan = 10
+    const min_window = 60
     // happy-dom has no layout: clientHeight/offsetHeight are 0, so the window
-    // is driven by min_window (default 60) and the 33px row-height estimate
+    // is driven by min_window and the row-height estimate
     const many_rows = Array.from({ length: 200 }, (_, idx) => ({
       Model: `Model ${idx}`,
       Score: idx,
@@ -2347,12 +2372,14 @@ describe(`HeatmapTable`, () => {
     it(`caps rendered rows by default and shows shown-of-total count`, () => {
       mount_table({ data: many_rows, columns: two_cols })
 
-      expect(rendered_rows()).toHaveLength(60) // min_window default
+      expect(rendered_rows()).toHaveLength(min_window)
       const [bottom_spacer] = spacers()
       expect(spacers()).toHaveLength(1) // only below (window starts at top)
-      expect(bottom_spacer.style.height).toBe(`${(200 - 60) * 33}px`)
+      expect(bottom_spacer.style.height).toBe(
+        `${(many_rows.length - min_window) * row_height_px}px`,
+      )
       expect(document.querySelector(`.row-count-info`)?.textContent?.trim()).toBe(
-        `60 of 200 rows`,
+        `${min_window} of ${many_rows.length} rows`,
       )
       expect(document.querySelector(`.pagination`)).toBeNull()
     })
@@ -2366,15 +2393,16 @@ describe(`HeatmapTable`, () => {
       })
       const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
       assert(scroller)
-      scroller.scrollTop = 990 // 30 rows deep at the 33px estimate
+      scroller.scrollTop = 30 * row_height_px
       scroller.dispatchEvent(new Event(`scroll`))
       await tick()
 
-      // start = 30 - overscan(10) = 20, end = max(30 + 10, 20 + 60) = 80
-      expect(rendered_rows()).toHaveLength(60)
+      const start = 30 - overscan
+      const end = start + min_window
+      expect(rendered_rows()).toHaveLength(min_window)
       expect(spacers()).toHaveLength(2)
-      expect(spacers()[0].style.height).toBe(`${20 * 33}px`)
-      expect(spacers()[1].style.height).toBe(`${(200 - 80) * 33}px`)
+      expect(spacers()[0].style.height).toBe(`${start * row_height_px}px`)
+      expect(spacers()[1].style.height).toBe(`${(many_rows.length - end) * row_height_px}px`)
       expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
       expect(col_values(`Model`)[0]).toBe(`Model 20`)
     })
@@ -2383,23 +2411,51 @@ describe(`HeatmapTable`, () => {
       const on_visible_range = vi.fn()
       mount_table({ data: many_rows, columns: two_cols, on_visible_range })
       await tick()
-      expect(on_visible_range).toHaveBeenLastCalledWith({ start: 0, end: 60, total: 200 })
+      expect(on_visible_range).toHaveBeenLastCalledWith({
+        start: 0,
+        end: min_window,
+        total: many_rows.length,
+      })
 
       const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
       assert(scroller)
-      scroller.scrollTop = 990
+      scroller.scrollTop = 30 * row_height_px
       scroller.dispatchEvent(new Event(`scroll`))
       await tick()
-      expect(on_visible_range).toHaveBeenLastCalledWith({ start: 20, end: 80, total: 200 })
+      expect(on_visible_range).toHaveBeenLastCalledWith({
+        start: 30 - overscan,
+        end: 30 - overscan + min_window,
+        total: many_rows.length,
+      })
+    })
+
+    it(`clamps the rendered window when data shrinks below the scroll position`, async () => {
+      const state = $state({ data: many_rows })
+      mount_table(bind_props({ columns: two_cols }, state))
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      scroller.scrollTop = 150 * row_height_px // deep into the 200 rows
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+      expect(rendered_rows().length).toBeGreaterThan(0)
+
+      // happy-dom never clamps scrollTop, so the stale offset (150 rows) now
+      // points far past the 20-row content. The window must clamp to the data:
+      // all 20 rows fit the 600px viewport, so everything renders, no spacers.
+      // (Unclamped, the window would start at row 140 and render zero rows.)
+      state.data = many_rows.slice(0, 20)
+      await tick()
+      expect(rendered_rows()).toHaveLength(20)
+      expect(spacers()).toHaveLength(0)
     })
 
     it.each([
-      [`virtual={false} renders every row`, { virtual: false as const }, 200],
+      [`virtual={false} renders every row`, { virtual: false as const }, many_rows.length],
       [`custom min_window bounds the window`, { virtual: { min_window: 25 } }, 25],
     ])(`%s`, (_desc, extra_props, expected_rows) => {
       mount_table({ data: many_rows, columns: two_cols, ...extra_props })
       expect(rendered_rows()).toHaveLength(expected_rows)
-      if (expected_rows === 200) {
+      if (expected_rows === many_rows.length) {
         expect(spacers()).toHaveLength(0)
         expect(document.querySelector(`.row-count-info`)).toBeNull()
       }

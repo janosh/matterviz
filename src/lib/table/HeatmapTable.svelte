@@ -810,7 +810,11 @@
     const total = sorted_data.length
     if (!virtual_config) return { start: 0, end: total }
     const { overscan, min_window } = virtual_config
-    const first_visible = Math.floor(scroll_top / avg_row_height)
+    // Shrinking data can leave scroll_top past the new content height (the
+    // browser only clamps the real scrollTop after a re-render); clamp here so
+    // the window and spacers never index past the data.
+    const max_scroll = Math.max(0, total * avg_row_height - viewport_height)
+    const first_visible = Math.floor(Math.min(scroll_top, max_scroll) / avg_row_height)
     const visible_count = Math.ceil(viewport_height / avg_row_height)
     const start = Math.max(0, first_visible - overscan)
     const end = Math.min(
@@ -994,11 +998,12 @@
   // change, instead of once per CELL per render (which made a 50-row page over
   // a 2,000-row snapshot rescan the full column 500+ times). Built from
   // filtered_data (not sorted_data) since min/max don't depend on row order,
-  // so re-sorting doesn't rebuild the scales.
+  // so re-sorting doesn't rebuild the scales. Only visible columns get scales
+  // since calc_color is only ever invoked for visible cells.
   let column_color_scales = $derived.by(() => {
     const scales = new SvelteMap<string, (val: number | null | undefined) => CellColor>()
     if (!show_heatmap) return scales
-    for (const col of ordered_columns) {
+    for (const col of visible_columns) {
       if (col.color_scale === null) continue
       const col_id = get_col_id(col)
       const parsed_vals = filtered_data.map((row) => parse_numeric_val(row[col_id]))
@@ -1088,8 +1093,8 @@
   // ---- Cell range selection: drag selects a rectangle of cells, Shift/Cmd+
   // drag adds disjoint rectangles, Cmd/Ctrl+C copies as TSV (blocks separated
   // by newlines), Escape or clicking outside clears. Selection coordinates
-  // are (page-relative row, visible-column) indices, cleared whenever the
-  // rendered data changes (sort, page, filter, refresh).
+  // are absolute sorted_data row indices plus visible-column indices, cleared
+  // whenever the rendered data changes (sort, page, filter, refresh).
   interface CellRect {
     start_row: number
     start_col: number
@@ -1121,12 +1126,14 @@
     return keys
   })
 
-  // Stale (row, col) coordinates must not survive sort/page/filter/refresh.
-  // Depends on sorted_data + current_page (not the virtual window) so plain
-  // scrolling in infinite mode doesn't wipe an active selection.
+  // Stale (row, col) coordinates must not survive sort/page/filter/refresh,
+  // nor column reorder/hide (col indices point into visible_columns). Depends
+  // on sorted_data + current_page + visible_columns (not the virtual window)
+  // so plain scrolling in infinite mode doesn't wipe an active selection.
   $effect(() => {
     void sorted_data
     void current_page
+    void visible_columns
     selected_cell_rects = []
   })
 
@@ -1871,7 +1878,7 @@
           {@const abs_idx = display_range.start + row_idx}
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
-            animate:flip={{ duration: 500 }}
+            animate:flip={{ duration: virtual_config ? 0 : 500 }}
             style={row.style}
             class={row.class}
             class:selected={row_selected}

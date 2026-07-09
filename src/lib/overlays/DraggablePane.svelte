@@ -70,6 +70,8 @@
   let show_control_buttons = $state(false)
   let resizing = $state(false)
   let resize_end_time = 0
+  const viewport_margin_px = 8
+  const min_reachable_pane_height_px = 180
 
   // Resize via bottom-right grip
   function handle_resize_start(event: PointerEvent) {
@@ -129,6 +131,10 @@
           width: ``,
           maxHeight: ``,
         })
+        // Refresh --pane-viewport-clamp for the new position (matches
+        // handle_resize and the mount effect; without this a reset after a
+        // drag + window resize keeps a stale bottom-edge cap)
+        apply_viewport_clamp()
       }
     }
     // Hide the control buttons after reset
@@ -154,12 +160,22 @@
     const oy = offset.y ?? 5
 
     if (position === `fixed`) {
-      // Viewport-relative: keep the pane on screen horizontally.
+      // Viewport-relative: keep the pane reachable within the screen.
       const left = Math.max(
-        8,
-        Math.min(toggle_rect.right - pane_width + ox, window.innerWidth - pane_width - 8),
+        viewport_margin_px,
+        Math.min(
+          toggle_rect.right - pane_width + ox,
+          window.innerWidth - pane_width - viewport_margin_px,
+        ),
       )
-      return { left: `${left}px`, top: `${toggle_rect.bottom + oy}px` }
+      const top = Math.max(
+        viewport_margin_px,
+        Math.min(
+          toggle_rect.bottom + oy,
+          window.innerHeight - min_reachable_pane_height_px - viewport_margin_px,
+        ),
+      )
+      return { left: `${left}px`, top: `${top}px` }
     }
 
     const positioned_ancestor = toggle_pane_btn.offsetParent
@@ -223,12 +239,14 @@
 
   // Fixed panes must never extend past the bottom viewport edge: cap the
   // --pane-viewport-clamp var (combined with --pane-max-height via min() in
-  // CSS) to the space below the toggle, floored so the pane stays usable.
+  // CSS) to the space below the pane's top edge. No minimum here — usability
+  // is handled by calculate_position, which clamps the top so at least
+  // min_reachable_pane_height_px of space remains below.
   function apply_viewport_clamp(): void {
     if (position !== `fixed` || !pane_div || !toggle_pane_btn) return
-    const toggle_bottom = toggle_pane_btn.getBoundingClientRect().bottom
-    const available = window.innerHeight - toggle_bottom - (offset.y ?? 5) - 12
-    pane_div.style.setProperty(`--pane-viewport-clamp`, `${Math.max(180, available)}px`)
+    const pane_top = Number.parseFloat(pane_div.style.top) || pane_div.getBoundingClientRect().top
+    const available = window.innerHeight - pane_top - viewport_margin_px
+    pane_div.style.setProperty(`--pane-viewport-clamp`, `${Math.max(0, available)}px`)
   }
 
   // Position pane when shown

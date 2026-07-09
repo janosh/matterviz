@@ -154,6 +154,27 @@ describe(`StructureCarousel`, () => {
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
   })
 
+  test(`suppresses horizontal wheel events at scroll boundaries`, () => {
+    mount_carousel({ items: many_items, layout: `horizontal` })
+
+    const track = doc_query(`.structure-carousel-track`)
+    Object.defineProperties(track, {
+      clientWidth: { configurable: true, value: 500 },
+      scrollWidth: { configurable: true, value: 1_000 },
+    })
+    track.scrollLeft = 0
+
+    const wheel = new WheelEvent(`wheel`, {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -80,
+    })
+    track.dispatchEvent(wheel)
+
+    expect(wheel.defaultPrevented).toBe(true)
+    expect(track.scrollLeft).toBe(0)
+  })
+
   test.each([[500], [2_000]])(
     `throttles repeat prefetches by prefetch_cooldown_ms=%i while items are unchanged`,
     (prefetch_cooldown_ms: number) => {
@@ -186,6 +207,30 @@ describe(`StructureCarousel`, () => {
       expect(on_prefetch_more).toHaveBeenCalledTimes(2)
     },
   )
+
+  test(`vertical layout prefetches from scrollTop when nearing the end`, () => {
+    vi.spyOn(performance, `now`).mockReturnValue(100)
+    const on_prefetch_more = vi.fn()
+    // height=200 → vertical item_stride = 208; unmeasured viewport → page_size 1;
+    // prefetch threshold = max(max_rendered=3, page_size*2) = 3 remaining items
+    mount_carousel({
+      items: many_items,
+      layout: `vertical`,
+      height: 200,
+      max_rendered_items: 3,
+      on_prefetch_more,
+    })
+
+    const track = doc_query(`.structure-carousel-track`)
+    track.scrollTop = 0
+    track.dispatchEvent(new Event(`scroll`))
+    expect(on_prefetch_more).not.toHaveBeenCalled()
+
+    // first_visible_idx = floor(7488 / 208) = 36 → remaining = 40 - 36 - 1 = 3
+    track.scrollTop = 7_488
+    track.dispatchEvent(new Event(`scroll`))
+    expect(on_prefetch_more).toHaveBeenCalledTimes(1)
+  })
 
   test(`offers page controls that move by the visible card count`, () => {
     mount_carousel({ items: many_items, layout: `horizontal` })
@@ -336,5 +381,18 @@ describe(`StructureCarousel`, () => {
     const carousel_style = doc_query(`.structure-carousel`).getAttribute(`style`)
     expect(carousel_style).toContain(`--structure-carousel-card-width: 680px`)
     expect(carousel_style).toContain(`inline-size: 680px`)
+  })
+
+  test(`respects min_card_width when shrinking vertical card width`, () => {
+    mount_carousel({ items, layout: `vertical`, min_card_width: 320, resizable: true })
+
+    const handle = doc_query(`.structure-carousel-resize-handle.vertical`)
+    handle.dispatchEvent(pointer_event(`pointerdown`, { clientX: 800 }))
+    window.dispatchEvent(pointer_event(`pointermove`, { clientX: 100 }))
+    flushSync()
+
+    const carousel_style = doc_query(`.structure-carousel`).getAttribute(`style`)
+    expect(carousel_style).toContain(`--structure-carousel-card-width: 320px`)
+    expect(carousel_style).toContain(`inline-size: 320px`)
   })
 })

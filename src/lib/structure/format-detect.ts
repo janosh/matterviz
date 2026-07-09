@@ -1,5 +1,4 @@
 import {
-  COMPRESSION_EXTENSIONS_REGEX,
   CONFIG_DIRS_REGEX,
   STRUCT_KEYWORDS_REGEX,
   STRUCT_KEYWORDS_STRICT_REGEX,
@@ -7,12 +6,13 @@ import {
   TRAJ_KEYWORDS_REGEX,
   VASP_FILES_REGEX,
 } from '$lib/constants'
+import { strip_compression_extensions } from '$lib/io/decompress'
 
 // Filename-only detection lives apart from the parsers so lightweight callers
 // (desktop recents, file pickers) do not load YAML, structure math, and element
 // data just to choose an icon.
 export function is_structure_file(filename: string): boolean {
-  const name = filename.toLowerCase()
+  const name = strip_compression_extensions(filename)
 
   if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
   if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) return true
@@ -25,7 +25,5 @@ export function is_structure_file(filename: string): boolean {
     !CONFIG_DIRS_REGEX.test(name)
   )
     return true
-  return COMPRESSION_EXTENSIONS_REGEX.test(name)
-    ? is_structure_file(name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
-    : false
+  return false
 }

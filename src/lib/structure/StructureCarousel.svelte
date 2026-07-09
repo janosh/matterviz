@@ -51,6 +51,7 @@
   let track: HTMLElement | undefined = $state()
   let carousel: HTMLElement | undefined = $state()
   let carousel_width = $state(0)
+  let carousel_height = $state(0)
   let resized_height: number | null = $state(null)
   let resized_width: number | null = $state(null)
   let scroll_left = $state(0)
@@ -98,8 +99,14 @@
   const first_visible_idx = $derived(
     Math.max(0, Math.floor((layout === `horizontal` ? scroll_left : scroll_top) / item_stride)),
   )
+  // Cards per viewport page, measured along the scroll axis: inline-size for
+  // horizontal layout, block-size for vertical (mixing axes here previously
+  // made vertical prefetch thresholds depend on the carousel's WIDTH)
+  const measured_viewport_size = $derived(
+    layout === `horizontal` ? carousel_width : carousel_height,
+  )
   const measured_page_size = $derived(
-    carousel_width > 0 ? Math.floor((carousel_width + gap) / item_stride) : 1,
+    measured_viewport_size > 0 ? Math.floor((measured_viewport_size + gap) / item_stride) : 1,
   )
   const page_size = $derived(
     Math.max(1, Math.min(visible_item_count || 1, measured_page_size)),
@@ -204,9 +211,9 @@
     // unclamped above when max is 0 (track not yet measured); browser clamps anyway
     const max_scroll_left = Math.max(0, track.scrollWidth - track.clientWidth) || Infinity
     const next_scroll_left = Math.min(max_scroll_left, Math.max(0, track.scrollLeft + delta))
-    if (next_scroll_left === track.scrollLeft) return
     event.preventDefault()
     event.stopPropagation()
+    if (next_scroll_left === track.scrollLeft) return
     track.scrollLeft = next_scroll_left
     on_scroll()
   }
@@ -231,10 +238,10 @@
   // Shared by pointer drags and keyboard resizes: clamps to the minimum size
   // and (for width) to the parent container.
   const set_resized_size = (axis: `height` | `width`, next_size: number): void => {
-    const clamped = Math.max(min_resize_size, next_size)
     if (axis === `height`) {
-      resized_height = clamped
+      resized_height = Math.max(min_resize_size, next_size)
     } else {
+      const clamped = Math.max(min_card_width, next_size)
       const parent_width = carousel?.parentElement?.clientWidth ?? Number.POSITIVE_INFINITY
       resized_width = Math.min(clamped, parent_width > 0 ? parent_width : clamped)
     }
@@ -294,6 +301,7 @@
   class={[`structure-carousel`, layout, resizable && `resizable`, resize_drag && `resizing`]}
   style={carousel_style}
   bind:clientWidth={carousel_width}
+  bind:clientHeight={carousel_height}
 >
   {#if items.length === 0}
     <p class="empty-carousel">{empty_message}</p>
