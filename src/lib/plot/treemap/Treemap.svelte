@@ -440,24 +440,17 @@
   )
 
   const LABEL_MARGIN = 6 // px clearance between label text and cell edges
-  // Label text + placement for a cell; null = doesn't fit, hide the label.
+  // Label text + placement for a cell; null = no variant fits, hide the label.
   // Branch cells label their header strip (top-left); leaves (and branches at the
   // depth cutoff, which render as plain cells) center their label, rotating 90°
-  // in thin-but-tall cells like the icicle shape does. Compound label modes try
-  // the full text first and degrade to the bare label when it doesn't fit.
+  // in thin-but-tall cells like the icicle shape does. Richest label variant
+  // that fits wins: extended -> label -> label_short.
   function label_attrs(
     arc: PositionedArc<Metadata>,
     rect: Rect,
   ): { x: number; y: number; text: string; transform?: string; header: boolean } | null {
-    const info = cell_info[arc.node_idx]
-    if (!info.text) return null
+    const { variants } = cell_info[arc.node_idx]
     const { x, y, width: cell_w, height: cell_h } = rect
-    const variants: { text: string; width: number }[] = [
-      ...(info.extended !== undefined && info.extended_width !== undefined
-        ? [{ text: info.extended, width: info.extended_width }]
-        : []),
-      { text: info.text, width: info.width },
-    ]
     // Branches with visible children only ever label their header strip: a
     // centered label would paint over the descendant cells that cover the rest
     // of the cell, so when the strip is missing/too thin the label is dropped

@@ -36,6 +36,9 @@ export type SunburstShape = `sunburst` | `icicle`
 export interface SunburstNode<Metadata = Record<string, unknown>> {
   id?: string | number // stable id (defaults to slash-joined label path, e.g. "cubic/Fm-3m")
   label?: string
+  // Compact last-resort label (e.g. a bare percentage) tried when the full
+  // label doesn't fit the node; without it the label is hidden entirely.
+  label_short?: string
   value?: number // required on leaves ('leaf-sum') / authoritative on all nodes ('total')
   color?: string // explicit color, inherited by descendants without their own
   // Overlay a diagonal-hatch texture on this node's arc (not inherited), e.g. to
@@ -65,6 +68,7 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   parent_idx: number | null
   id: string | number
   label?: string
+  label_short?: string // compact fallback from SunburstNode.label_short
   value: number
   color: string // resolved: explicit > inherited > depth-1 palette (root: transparent)
   depth: number // 0 = root; equals y0
@@ -265,6 +269,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     const arc = push_arc(parent, {
       id,
       label: node.data.label,
+      label_short: node.data.label_short,
       value: node.value ?? 0,
       color,
       depth,

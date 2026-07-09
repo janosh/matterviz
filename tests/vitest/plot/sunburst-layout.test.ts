@@ -94,6 +94,25 @@ describe(`compute_sunburst_layout`, () => {
     })
     expect(node_label_variants(node, `label`, `,`)).toEqual({ text: `A1` })
     expect(node_label_variants(node, `percent`, `,`)).toEqual({ text: `20%` })
+
+    // label_short is the compact last-resort variant in every mode
+    const with_short = { ...node, label_short: `41%` }
+    expect(node_label_variants(with_short, `label+parent-percent`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 (40%)`,
+      short: `41%`,
+    })
+    expect(node_label_variants(with_short, `label`, `,`)).toEqual({
+      text: `A1`,
+      short: `41%`,
+    })
+  })
+
+  test(`label_short passes through layout onto arcs`, () => {
+    const { arcs } = compute_sunburst_layout([
+      { label: `A`, children: [{ label: `A1`, label_short: `5%`, value: 4 }] },
+    ])
+    expect(arcs.map((arc) => arc.label_short)).toEqual([undefined, undefined, `5%`])
   })
 
   test(`explicit ids win over auto-generated ones; duplicates warn`, () => {

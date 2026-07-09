@@ -18,14 +18,15 @@
     chart,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    // defaults for the shared options are identical in DEFAULTS.sunburst/.treemap
-    value_mode = $bindable(DEFAULTS.sunburst.value_mode),
-    max_depth = $bindable(DEFAULTS.sunburst.max_depth),
-    min_fraction = $bindable(DEFAULTS.sunburst.min_fraction),
-    show_labels = $bindable(DEFAULTS.sunburst.show_labels),
-    label_text = $bindable(DEFAULTS.sunburst.label_text),
-    zoom_on_click = $bindable(DEFAULTS.sunburst.zoom_on_click),
-    show_breadcrumbs = $bindable(DEFAULTS.sunburst.show_breadcrumbs),
+    // shared-option defaults come from the bound chart's own settings (chart is
+    // destructured first so later prop defaults can reference it)
+    value_mode = $bindable(DEFAULTS[chart].value_mode),
+    max_depth = $bindable(DEFAULTS[chart].max_depth),
+    min_fraction = $bindable(DEFAULTS[chart].min_fraction),
+    show_labels = $bindable(DEFAULTS[chart].show_labels),
+    label_text = $bindable(DEFAULTS[chart].label_text),
+    zoom_on_click = $bindable(DEFAULTS[chart].zoom_on_click),
+    show_breadcrumbs = $bindable(DEFAULTS[chart].show_breadcrumbs),
     shape = $bindable(DEFAULTS.sunburst.shape),
     inner_radius = $bindable(DEFAULTS.sunburst.inner_radius),
     pad_angle = $bindable(DEFAULTS.sunburst.pad_angle),

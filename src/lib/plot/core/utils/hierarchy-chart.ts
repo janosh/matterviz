@@ -169,10 +169,10 @@ export function ancestor_chain<Metadata>(
 }
 
 export interface HierarchyNodeInfo {
-  text: string
-  width: number
-  extended?: string
-  extended_width?: number
+  // Fit-aware label fallback chain, richest first: extended -> base label ->
+  // compact label_short. Rendering picks the first variant whose measured
+  // width fits its node; empty when the node has no base label at all.
+  variants: { text: string; width: number }[]
   aria: string
   fill: string
   label_fill: string
@@ -198,14 +198,15 @@ export function compute_node_infos<Metadata>(
 ): HierarchyNodeInfo[] {
   const { label_text, value_format, label_font } = opts
   return arcs.map((arc) => {
-    const { text, extended } = node_label_variants(arc, label_text, value_format)
+    const { text, extended, short } = node_label_variants(arc, label_text, value_format)
     const fill = opts.color_for(arc)
+    const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
+      variant === undefined
+        ? []
+        : [{ text: variant, width: opts.text_width(variant, label_font) }],
+    )
     return {
-      text,
-      width: opts.text_width(text, label_font),
-      extended,
-      extended_width:
-        extended === undefined ? undefined : opts.text_width(extended, label_font),
+      variants,
       aria: `${node_display_name(arc)}: ${arc.value}`,
       fill,
       label_fill: opts.contrast(fill),

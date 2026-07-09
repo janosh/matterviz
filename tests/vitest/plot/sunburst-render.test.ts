@@ -126,6 +126,31 @@ describe(`arc_label_transform`, () => {
     const east = { a0: Math.PI / 2 - 0.7, a1: Math.PI / 2 + 0.7, r0: 88, r1: 102 }
     expect(arc_label_transform(east, 120, `sunburst`, `horizontal`, 100)).toBeNull()
   })
+
+  test(`auto rotation falls back to the other orientation before hiding`, () => {
+    // Wide shallow arc: tangential preferred (angular 149 > radial 14) but the
+    // text is too long for the tangent line, so auto falls back to radial —
+    // which also fails here (radial 14) -> null...
+    const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
+    expect(arc_label_transform(wide_outer, 200, `sunburst`, `auto`)).toBeNull()
+    // ...but a THICK wide arc (radial 120) keeps its label by reading radially
+    // when the tangent line would poke past the chart circle (max_radius 110 <
+    // hypot(100, 55) ~= 114)
+    const thick_wide = { a0: 0, a1: Math.PI / 2, r0: 40, r1: 160 }
+    expect(arc_label_transform(thick_wide, 110, `sunburst`, `auto`, 110)).toMatch(
+      /translate\(100, 0\)/,
+    )
+  })
+
+  test(`font_scale relaxes the one-line-height across requirement`, () => {
+    // 10px-across slice: full-size labels need >= 12px -> hidden; at 0.7 scale
+    // the requirement drops to 8.4px and the (scaled) text fits radially
+    const thin = { a0: 0, a1: 10 / 95, r0: 50, r1: 140 }
+    expect(arc_label_transform(thin, 70, `sunburst`, `radial`)).toBeNull()
+    expect(
+      arc_label_transform(thin, 70 * 0.7, `sunburst`, `radial`, undefined, 0.7),
+    ).not.toBeNull()
+  })
 })
 
 describe(`arrow_nav_target`, () => {

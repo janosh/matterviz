@@ -469,24 +469,30 @@
     }),
   )
 
-  // Label text + placement transform for an arc; null = doesn't fit, hide the
-  // label. Compound label modes try the full text first and degrade to the
-  // bare label when only the extended form doesn't fit.
-  function label_attrs(screen: ScreenArc): { transform: string; text: string } | null {
-    const { text, width: text_w, extended, extended_width } = arc_info[screen.arc.node_idx]
-    if (!text) return null
-    if (extended !== undefined && extended_width !== undefined) {
-      const transform = arc_label_transform(
-        screen,
-        extended_width,
-        shape,
-        label_rotation,
-        radius,
-      )
-      if (transform) return { transform, text: extended }
+  // Downscale steps tried when no label variant fits at full size: narrow
+  // slices keep a (smaller) label instead of losing it entirely.
+  const LABEL_FONT_SCALES = [1, 0.85, 0.7]
+
+  // Label text + placement transform for an arc; null = no variant fits, hide
+  // the label. Full font size wins over richer text: within each scale the
+  // richest variant that fits is used (extended -> label -> label_short).
+  function label_attrs(
+    screen: ScreenArc,
+  ): { transform: string; text: string; font_scale: number } | null {
+    for (const font_scale of LABEL_FONT_SCALES) {
+      for (const { text, width: text_w } of arc_info[screen.arc.node_idx].variants) {
+        const transform = arc_label_transform(
+          screen,
+          text_w * font_scale,
+          shape,
+          label_rotation,
+          radius,
+          font_scale,
+        )
+        if (transform) return { transform, text, font_scale }
+      }
     }
-    const transform = arc_label_transform(screen, text_w, shape, label_rotation, radius)
-    return transform ? { transform, text } : null
+    return null
   }
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
@@ -686,6 +692,7 @@
                   fill={info.label_fill}
                   fill-opacity={arc_dim[screen.arc.node_idx].label_opacity}
                   style:cursor={info.clickable ? `pointer` : `text`}
+                  style:font-size={lbl.font_scale === 1 ? undefined : `${lbl.font_scale}em`}
                 >
                   {lbl.text}
                 </text>

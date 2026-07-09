@@ -13,6 +13,7 @@ import type { SunburstLabelText } from '$lib/plot/sunburst/sunburst'
 interface LabeledNode {
   id: string | number
   label?: string
+  label_short?: string
   value: number
   fraction: number
   parent_fraction?: number
@@ -46,17 +47,19 @@ const COMPOUND_LABEL_MODES: ReadonlySet<SunburstLabelText> = new Set([
   `label+parent-percent`,
 ])
 
-// Base + optional richer variant for fit-aware rendering: compound modes
-// degrade to the bare label when the full text doesn't fit its node, instead
-// of hiding the label entirely.
+// Base + optional richer/compact variants for fit-aware rendering: compound
+// modes degrade to the bare label when the full text doesn't fit its node,
+// and nodes with a `label_short` degrade once more to that compact form
+// before the label is hidden entirely.
 export function node_label_variants(
   node: LabeledNode,
   label_text: SunburstLabelText,
   value_format: string,
-): { text: string; extended?: string } {
+): { text: string; extended?: string; short?: string } {
+  const short = node.label_short
   const text = node_label_str(node, label_text, value_format)
-  if (!COMPOUND_LABEL_MODES.has(label_text)) return { text }
-  return { text: node_display_name(node), extended: text }
+  if (!COMPOUND_LABEL_MODES.has(label_text)) return { text, short }
+  return { text: node_display_name(node), extended: text, short }
 }
 
 // Black/white label text, whichever contrasts with the given fill. Memoized per
