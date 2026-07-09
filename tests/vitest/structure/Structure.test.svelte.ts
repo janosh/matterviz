@@ -3,7 +3,9 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import { add, euclidean_dist, pbc_dist, scale } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { StructureBond, StructureHandlerData } from '$lib/structure'
+import { get_element_counts } from '$lib/structure'
 import * as exports from '$lib/structure/export'
+import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -14,6 +16,15 @@ import {
   press_window_key,
   read_maybe_gz,
 } from '../setup'
+
+// Passthrough spy so individual tests can make make_supercell throw
+vi.mock(`$lib/structure/supercell`, async (import_original) => {
+  const original = await import_original<Record<string, unknown>>()
+  return {
+    ...original,
+    make_supercell: vi.fn(original.make_supercell as typeof make_supercell),
+  }
+})
 
 const structure = structures[0]
 
@@ -215,6 +226,36 @@ describe(`Structure`, () => {
     edit_bonds_button?.click()
     await tick()
     expect(measure_mode).toBe(`distance`)
+  })
+
+  test(`falls back to untransformed structure when make_supercell throws`, async () => {
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    vi.mocked(make_supercell).mockImplementation(() => {
+      throw new Error(`malformed scaling matrix`)
+    })
+    try {
+      mount_structure({ structure, supercell_scaling: `2x2x2` })
+
+      await vi.waitFor(() => {
+        // error log proves make_supercell was called, threw, and was caught
+        expect(error_spy).toHaveBeenCalledWith(
+          `Failed to create supercell:`,
+          expect.any(Error),
+        )
+        // legend reflects the untransformed base structure, not 8x supercell counts
+        const legend_total = [
+          ...document.querySelectorAll(`.element-legend .legend-item sub`),
+        ].reduce((total, sub) => total + Number(sub.textContent), 0)
+        const base_total = Object.values(get_element_counts(structure)).reduce(
+          (total, amt) => total + amt,
+          0,
+        )
+        expect(legend_total).toBe(base_total)
+      })
+    } finally {
+      vi.mocked(make_supercell).mockReset()
+      error_spy.mockRestore()
+    }
   })
 
   test(`shows safe bond editing controls by default`, async () => {

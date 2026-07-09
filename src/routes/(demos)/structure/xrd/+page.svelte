@@ -9,7 +9,7 @@
   import { compute_xrd_pattern, XrdPlot } from '$lib/xrd'
   import { structures } from '$site/structures'
   import { SvelteMap } from 'svelte/reactivity'
-  import { to_error } from '$lib/utils'
+  import { clamp01, to_error } from '$lib/utils'
 
   // Auto-discover XRD data files from static/xrd/ (served at /xrd/<name>); restart the dev
   // server to pick up newly added files. Both plain and gzipped (.gz) formats are supported.
@@ -70,8 +70,7 @@
 
   // Helper: convert #rrggbb to #rrggbbaa
   function hex_with_alpha(hex_color: string, alpha_frac: number): string {
-    const clamped = Math.max(0, Math.min(1, alpha_frac))
-    const alpha_byte = Math.round(clamped * 255)
+    const alpha_byte = Math.round(clamp01(alpha_frac) * 255)
     const alpha_hex = alpha_byte.toString(16).padStart(2, `0`)
     return hex_color.length === 7 ? `${hex_color}${alpha_hex}` : hex_color
   }
@@ -90,11 +89,12 @@
     }
     try {
       compute_error = null
-      const cached = xrd_cache.get(get_struct_id(struct))
+      const struct_id = get_struct_id(struct)
+      const cached = xrd_cache.get(struct_id)
       if (cached) computed_pattern = cached
       else {
         const result = compute_xrd_pattern(struct)
-        xrd_cache.set(get_struct_id(struct), result)
+        xrd_cache.set(struct_id, result)
         computed_pattern = result
       }
     } catch (exc) {

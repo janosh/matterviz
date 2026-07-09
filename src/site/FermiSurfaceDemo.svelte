@@ -1,5 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment'
+  import { to_error } from '$lib/utils'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import type { FileInfo } from '$lib'
@@ -74,7 +75,7 @@
         }
       })
     } catch (error) {
-      error_msg = error instanceof Error ? error.message : String(error)
+      error_msg = to_error(error).message
     } finally {
       loading = false
     }

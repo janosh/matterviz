@@ -1,8 +1,12 @@
 // Plotting utilities for trajectory visualization
 import { PLOT_COLORS } from '$lib/colors'
-import { trajectory_property_config } from '$lib/labels'
+import {
+  SCF_AXIS_GROUP,
+  trajectory_property_config,
+  type TrajPropertyConfig,
+} from '$lib/labels'
 import { get_coefficient_of_variation } from '$lib/math'
-import type { DataSeries } from '$lib/plot/core/types'
+import type { DataSeries, ScaleType } from '$lib/plot/core/types'
 import type {
   TrajectoryDataExtractor,
   TrajectoryFrame,
@@ -14,9 +18,17 @@ import type {
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
 const ENERGY_PROPERTIES = [`energy`, `total_energy`, `potential_energy`]
 const FORCE_PROPERTIES = [`force`, `fmax`, `f`]
-const DEFAULT_VISIBLE = new Set([`energy`, `force_max`, `stress_frobenius`])
+// scf_energy_delta lives in its own axis group (see trajectory_property_config), so
+// listing it here only surfaces it when higher-priority groups (energy/force/stress)
+// don't fill both axes — i.e. single-point SCF convergence views.
+const DEFAULT_VISIBLE = new Set([
+  `energy`,
+  `force_max`,
+  `stress_frobenius`,
+  `scf_energy_delta`,
+])
 
-type VisibleProp = Readonly<{ property: string; unit: string }>
+type VisibleProp = Readonly<{ property: string; unit: string; axis_group?: string }>
 
 // Shared per-series line/point styling derived from a single color
 const series_color_styles = (color: string) => ({
@@ -25,7 +37,7 @@ const series_color_styles = (color: string) => ({
 })
 
 export interface PlotSeriesOptions {
-  property_config?: Record<string, { label: string; unit: string }>
+  property_config?: Record<string, TrajPropertyConfig>
   colors?: readonly string[]
   default_visible_properties?: Set<string>
 }
@@ -169,7 +181,7 @@ function create_series_from_stats(
       is_energy: boolean
     }
   >,
-  property_config: Record<string, { label: string; unit: string }>,
+  property_config: Record<string, TrajPropertyConfig>,
   colors: readonly string[],
 ): DataSeries[] {
   const all_series: DataSeries[] = []
@@ -178,7 +190,7 @@ function create_series_from_stats(
   for (const [key, stat] of property_stats) {
     if (!stat) continue
     const n_values = stat.values.length
-    const { clean_label, unit } = extract_label_and_unit(key, property_config)
+    const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
     const color = colors[color_idx % colors.length]
 
     // shared per-series metadata (consumers only read metadata[0]); one object, not n copies
@@ -191,6 +203,7 @@ function create_series_from_stats(
       y: stat.values,
       label: clean_label,
       unit,
+      ...(axis_group ? { axis_group } : {}),
       y_axis: `y1`, // Will be reassigned
       visible: false, // Will be assigned
       markers: n_values < 30 ? `line+points` : `line`,
@@ -208,10 +221,10 @@ function group_and_assign_series(
   series: DataSeries[],
   default_visible_properties: Set<string>,
 ): UnitGroup[] {
-  // Group by unit
+  // Group by axis_group when set (forces a dedicated axis), else by unit
   const unit_map = new Map<string, DataSeries[]>()
   for (const srs of series) {
-    const unit = srs.unit ?? `dimensionless`
+    const unit = srs.axis_group ?? srs.unit ?? `dimensionless`
     const group = unit_map.get(unit) ?? []
     group.push(srs)
     unit_map.set(unit, group)
@@ -271,10 +284,12 @@ function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[])
 // Helper functions
 function extract_label_and_unit(
   key: string,
-  property_config: Record<string, { label: string; unit: string }>,
-): { clean_label: string; unit: string } {
+  property_config: Record<string, TrajPropertyConfig>,
+): { clean_label: string; unit: string; axis_group?: string } {
   const config = property_config[key] || property_config[key.toLowerCase()]
-  if (config) return { clean_label: config.label, unit: config.unit }
+  if (config) {
+    return { clean_label: config.label, unit: config.unit, axis_group: config.axis_group }
+  }
   return {
     clean_label: key.charAt(0).toUpperCase() + key.slice(1).replaceAll('_', ` `),
     unit: ``,
@@ -386,9 +401,38 @@ export function generate_axis_labels(plot_series: DataSeries[]): {
   }
 }
 
+// Log-scale heuristic: a y-axis defaults to log scale when every visible series on
+// it is strictly positive AND their combined values span at least this many decades.
+// SCF convergence residuals (|ΔE|, density rms) span 6+ decades and degenerate into
+// hockey sticks on linear axes; plain energies (large negative) stay linear.
+const LOG_SCALE_MIN_DECADE_SPAN = 3
+const LOG_SCALE_AXIS_GROUPS = new Set([SCF_AXIS_GROUP])
+
+export function generate_axis_scale_types(plot_series: DataSeries[]): {
+  y1: ScaleType
+  y2: ScaleType
+} {
+  const scale_for_axis = (axis: `y1` | `y2`): ScaleType => {
+    let min_val = Infinity
+    let max_val = -Infinity
+    for (const srs of plot_series) {
+      if (!srs.visible || (srs.y_axis ?? `y1`) !== axis) continue
+      if (!srs.axis_group || !LOG_SCALE_AXIS_GROUPS.has(srs.axis_group)) return `linear`
+      for (const val of srs.y) {
+        if (!Number.isFinite(val)) continue
+        if (val < min_val) min_val = val
+        if (val > max_val) max_val = val
+      }
+    }
+    if (!Number.isFinite(min_val) || min_val <= 0) return `linear`
+    return max_val / min_val >= 10 ** LOG_SCALE_MIN_DECADE_SPAN ? `log` : `linear`
+  }
+  return { y1: scale_for_axis(`y1`), y2: scale_for_axis(`y2`) }
+}
+
 // Streaming plot generation (simplified)
 interface StreamingPlotOptions {
-  property_config?: Record<string, { label: string; unit: string }>
+  property_config?: Record<string, TrajPropertyConfig>
   colors?: readonly string[]
   default_visible_properties?: Set<string>
   max_points?: number
@@ -440,18 +484,22 @@ export function generate_streaming_plot_series(
     const is_energy = property_key.toLowerCase() === `energy`
     if (!is_energy && !has_significant_variation(data_points.map((point) => point.y))) continue
 
-    const { clean_label, unit } = extract_label_and_unit(property_key, property_config)
+    const { clean_label, unit, axis_group } = extract_label_and_unit(
+      property_key,
+      property_config,
+    )
     const is_visible =
       is_default_visible(property_key, default_visible_properties) || color_idx < 2
     const color = colors[color_idx % colors.length]
 
-    if (is_visible) visible_props.push({ property: property_key, unit })
+    if (is_visible) visible_props.push({ property: property_key, unit, axis_group })
 
     all_series.push({
       x: data_points.map((point) => point.x),
       y: data_points.map((point) => point.y),
       label: clean_label,
       unit,
+      ...(axis_group ? { axis_group } : {}),
       y_axis: determine_axis_from_groups(property_key, unit, visible_props),
       visible: is_visible,
       markers: data_points.length < 1000 ? `line+points` : `line`,
@@ -499,10 +547,13 @@ function determine_axis_from_groups(
   unit: string,
   visible_properties: VisibleProp[],
 ): `y1` | `y2` {
-  const mock_series = visible_properties.map(({ property: prop, unit: u }) => ({
-    label: prop,
-    unit: u,
-  })) as DataSeries[]
+  const mock_series = visible_properties.map(
+    ({ property: prop, unit: prop_unit, axis_group }) => ({
+      label: prop,
+      unit: prop_unit,
+      ...(axis_group ? { axis_group } : {}),
+    }),
+  ) as DataSeries[]
 
   const groups = group_and_assign_series(mock_series, new Set([property]))
   const target_group = groups.find((group) =>

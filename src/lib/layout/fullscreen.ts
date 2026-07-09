@@ -17,12 +17,10 @@ export type InfoItem = Readonly<{
 export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void> {
   if (!wrapper || !wrapper.isConnected) return
   try {
-    if (!document.fullscreenElement) {
-      await wrapper.requestFullscreen()
-    } else if (document.fullscreenElement === wrapper) {
+    if (document.fullscreenElement === wrapper) {
       await document.exitFullscreen()
     } else {
-      await document.exitFullscreen()
+      if (document.fullscreenElement) await document.exitFullscreen()
       await wrapper.requestFullscreen()
     }
   } catch (error) {

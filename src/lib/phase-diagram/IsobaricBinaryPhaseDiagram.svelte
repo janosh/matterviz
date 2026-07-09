@@ -656,7 +656,7 @@
               d={boundary.svg_path}
               fill="none"
               stroke={boundary.style?.color ?? merged_config.colors.boundary}
-              stroke-width={boundary.style?.width || 2}
+              stroke-width={boundary.style?.width ?? 2}
               stroke-dasharray={boundary.style?.dash || ``}
               stroke-linecap="round"
               stroke-linejoin="round"

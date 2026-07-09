@@ -22,6 +22,7 @@
     DEFAULT_PLOT_PADDING,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    measure_full_footprint,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -62,7 +63,12 @@
     InternalPoint,
     ScatterHandlerProps,
   } from '$lib/plot/core/types'
-  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import {
+    COLOR_BAR_DEFAULTS,
+    REF_LINE_STYLE_DEFAULTS,
+    SCALE_DEFAULTS,
+  } from '$lib/plot/core/types'
+  import { resolve_line_endpoints } from '$lib/plot/core/reference-line'
   import {
     compute_label_positions,
     estimate_label_size,
@@ -120,6 +126,7 @@
     fullscreen_toggle = true,
     children,
     header_controls,
+    annotation,
     marginals = false,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
@@ -142,6 +149,9 @@
     fullscreen_toggle?: boolean
     children?: Snippet<[OverlayContext]>
     header_controls?: Snippet<[OverlayContext]>
+    // auto-placed badge (e.g. MAE/R² stats): rendered inside the plot area wherever it
+    // overlaps the least data, while also avoiding the auto-placed colorbar
+    annotation?: Snippet<[OverlayContext]>
     marginals?: MarginalsProp
   } = $props()
 
@@ -158,6 +168,7 @@
   let hovered_point = $state<DenseInternalPoint<Metadata> | null>(null)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let colorbar_element = $state<HTMLDivElement>()
+  let annotation_element = $state<HTMLDivElement>()
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
   const clip_path_id = `binned-scatter-plot-area-${next_clip_id++}`
@@ -196,7 +207,38 @@
         : density_config.auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
-  let ref_lines = $derived(overlays_config.ref_lines ?? [])
+  // pixel-space endpoints + style per ref line. Declarative RefLine entries (with a
+  // `type` field) are resolved against the current axis ranges via the shared core
+  // resolver, so e.g. a parity diagonal spans the full plot area and stays correct
+  // under zoom; legacy explicit-endpoint entries are scaled as-is (clip path crops
+  // out-of-range parts). Annotation/legend/interaction RefLine fields are ignored.
+  let resolved_ref_lines = $derived.by(() => {
+    const [x_min, x_max] = range_bounds(x_range)
+    const [y_min, y_max] = range_bounds(y_range)
+    return (overlays_config.ref_lines ?? []).flatMap((line) => {
+      if (!(`type` in line)) {
+        return {
+          x1: x_scale_fn(line.x1),
+          y1: y_scale_fn(line.y1),
+          x2: x_scale_fn(line.x2),
+          y2: y_scale_fn(line.y2),
+          color: line.color ?? `currentColor`,
+          width: line.width ?? 1.5,
+          dash: line.dash ?? `5 4`,
+          opacity: 1,
+        }
+      }
+      if (line.visible === false) return []
+      const endpoints = resolve_line_endpoints(
+        line,
+        { x_min, x_max, y_min, y_max },
+        { x_scale: x_scale_fn, y_scale: y_scale_fn },
+      )
+      if (!endpoints) return []
+      const [x1, y1, x2, y2] = endpoints
+      return { x1, y1, x2, y2, ...REF_LINE_STYLE_DEFAULTS, ...line.style }
+    })
+  })
   let point_labels_settings = $derived({
     font_size: point_labels.font_size ?? `11px`,
     max_count: point_labels.max_count ?? 50,
@@ -334,6 +376,13 @@
     }
     return points
   })
+  // Fallback sizes (incl. room for tick labels) used before the colorbar first
+  // renders; compute_element_placement measures the real footprint once laid out
+  let colorbar_fallback_size = $derived(
+    color_bar_props?.orientation === `vertical`
+      ? COLOR_BAR_DEFAULTS.vertical_footprint
+      : COLOR_BAR_DEFAULTS.horizontal_footprint,
+  )
   let color_bar_placement = $derived.by(() => {
     if (
       !color_bar_props ||
@@ -345,20 +394,38 @@
       return null
     }
 
-    const is_vertical = color_bar_props?.orientation === `vertical`
-    // Fallback sizes (incl. room for tick labels) used before the colorbar first
-    // renders; compute_element_placement measures the real footprint once laid out
-    const fallback_size = is_vertical
-      ? { width: 56, height: 120 }
-      : { width: COLOR_BAR_DEFAULTS.width, height: 50 }
-
     return compute_element_placement({
       plot_bounds: plot_rect,
       element: colorbar_element,
-      element_size: fallback_size,
+      element_size: colorbar_fallback_size,
       // Small gap from the corner; the full-footprint measurement reserves the tick
       // labels, so this alone keeps the colorbar off the axes
       axis_clearance: 12,
+      points: density_placement_points,
+      grid_resolution: 12,
+    })
+  })
+  // Fallback footprint before the annotation snippet first renders; the real
+  // footprint is measured once laid out (mirrors colorbar_fallback_size above)
+  const annotation_fallback_size = { width: 120, height: 50 }
+  // Auto-place the annotation snippet like the colorbar, but with the already-placed
+  // colorbar's footprint as an exclusion zone so the two never overlap.
+  let annotation_placement = $derived.by(() => {
+    if (!annotation || !width || !height) return null
+
+    const colorbar_rect = color_bar_placement && {
+      ...(colorbar_element?.offsetWidth && colorbar_element?.offsetHeight
+        ? measure_full_footprint(colorbar_element)
+        : colorbar_fallback_size),
+      x: color_bar_placement.x,
+      y: color_bar_placement.y,
+    }
+    return compute_element_placement({
+      plot_bounds: plot_rect,
+      element: annotation_element,
+      element_size: annotation_fallback_size,
+      axis_clearance: 12,
+      exclude_rects: colorbar_rect ? [colorbar_rect] : [],
       points: density_placement_points,
       grid_resolution: 12,
     })
@@ -897,15 +964,16 @@
     </defs>
 
     <g class="reference-lines" clip-path="url(#{clip_path_id})">
-      {#each ref_lines as line}
+      {#each resolved_ref_lines as line}
         <line
-          x1={x_scale_fn(line.x1)}
-          x2={x_scale_fn(line.x2)}
-          y1={y_scale_fn(line.y1)}
-          y2={y_scale_fn(line.y2)}
-          stroke={line.color ?? `currentColor`}
-          stroke-width={line.width ?? 1.5}
-          stroke-dasharray={line.dash ?? `5 4`}
+          x1={line.x1}
+          x2={line.x2}
+          y1={line.y1}
+          y2={line.y2}
+          stroke={line.color}
+          stroke-width={line.width}
+          stroke-dasharray={line.dash || null}
+          stroke-opacity={line.opacity}
         />
       {/each}
     </g>
@@ -1016,6 +1084,17 @@
         color_scale_domain={auto_color_range}
         range={auto_color_range}
       />
+    </div>
+  {/if}
+
+  {#if annotation && annotation_placement}
+    <div
+      bind:this={annotation_element}
+      class="annotation"
+      style:left={`${annotation_placement.x}px`}
+      style:top={`${annotation_placement.y}px`}
+    >
+      {@render annotation({ height, width, fullscreen })}
     </div>
   {/if}
 
@@ -1180,5 +1259,10 @@
   .color-bar {
     pointer-events: auto;
     position: absolute;
+  }
+  .annotation {
+    pointer-events: none;
+    position: absolute;
+    width: max-content;
   }
 </style>

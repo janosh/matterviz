@@ -1,4 +1,5 @@
 export * from './render'
 export * from './sunburst'
 export { default as Sunburst } from './Sunburst.svelte'
-export { default as SunburstControls } from './SunburstControls.svelte'
+// Shared with Treemap; pass chart="sunburst"
+export { default as SunburstControls } from '$lib/plot/core/components/HierarchyControls.svelte'

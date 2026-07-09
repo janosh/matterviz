@@ -6,7 +6,12 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import { chart_segment_label, type ChartSegmentData, get_chart_font_scale } from './index'
+  import {
+    chart_segment_label,
+    chart_segment_suffix,
+    type ChartSegmentData,
+    get_chart_font_scale,
+  } from './index'
   import { count_atoms_in_composition, fractional_composition } from './parse'
 
   // Constants for pie chart calculations
@@ -264,9 +269,12 @@
           >
           {#if show_amounts || show_percentages}
             <sub class="amount" style:font-size="{8 * segment.font_scale}px"
-              >{show_amounts ? segment.amount : ``}{show_amounts && show_percentages
-                ? `=`
-                : ``}{show_percentages ? format_num(segment.fraction, `.1~%`) : ``}</sub
+              >{chart_segment_suffix(
+                segment.amount,
+                segment.fraction,
+                show_amounts,
+                show_percentages,
+              )}</sub
             >
           {/if}
         </div>

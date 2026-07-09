@@ -157,12 +157,9 @@
   })
 
   // Derived: instability detection result
-  let instability_result = $derived.by(() => {
-    return detect_instability(raw_data.x, raw_data.y, {
-      oscillation_threshold,
-      window_size,
-    })
-  })
+  let instability_result = $derived(
+    detect_instability(raw_data.x, raw_data.y, { oscillation_threshold, window_size }),
+  )
 
   // Shared helper: find interpolated value at an index by averaging nearest valid neighbors
   // Used by removed_points, find_nan_positions, and find_trajectory_nan_positions
@@ -253,12 +250,12 @@
     return { x: time, y_arrays: [temperature, pressure] }
   })
 
-  let multi_series_cleaned = $derived.by(() => {
-    return clean_multi_series(multi_series_data.x, multi_series_data.y_arrays, {
+  let multi_series_cleaned = $derived(
+    clean_multi_series(multi_series_data.x, multi_series_data.y_arrays, {
       invalid_values: invalid_mode,
       in_place: false,
-    })
-  })
+    }),
+  )
 
   // Helper: find interpolated y-value for NaN positions in an array
   function find_nan_positions(

@@ -3,7 +3,7 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
-  import { DragControlTab } from '$lib/overlays'
+  import { DragControlTab, GlassChip } from '$lib/overlays'
   import { sanitize_formula } from '$lib/sanitize'
   import { Structure } from '$lib/structure'
   import type { StructurePopupContext, StructurePopupStats } from './types'
@@ -75,7 +75,7 @@
   {/if}
   <div class="structure-popup-content">
     {#if top_left || stats}
-      <div class="structure-stats">
+      <GlassChip class="structure-stats">
         {#if top_left}
           {@render top_left(context)}
         {:else if stats}
@@ -93,7 +93,7 @@
             eV/atom
           {/if}
         {/if}
-      </div>
+      </GlassChip>
     {/if}
 
     <Structure
@@ -143,17 +143,5 @@
   }
   .close-btn:hover {
     background: var(--pane-btn-bg-hover);
-  }
-  .structure-stats {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background: transparent;
-    backdrop-filter: blur(8px);
-    color: var(--text-color);
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-size: 0.85em;
-    z-index: 2;
   }
 </style>

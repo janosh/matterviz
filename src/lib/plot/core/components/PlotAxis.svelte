@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_value } from '$lib/labels'
+  import { format_value_or_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
@@ -135,7 +135,7 @@
     !domain ||
     (is_x ? pos >= pad.l && pos <= width - pad.r : pos >= pad.t && pos <= height - pad.b)
   const tick_text = (tick: number): string =>
-    tick_label?.(tick) ?? format_value(tick, axis.format ?? ``)
+    tick_label?.(tick) ?? format_value_or_num(tick, axis.format)
 </script>
 
 <g class="{side}-axis">

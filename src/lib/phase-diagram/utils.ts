@@ -145,8 +145,7 @@ export function get_phase_color_key(name: string): PhaseColorKey {
 
 // Get phase color - returns rgba() by default, or RGB string if format='rgb'
 export function get_phase_color(name: string, format: `rgba` | `rgb` = `rgba`): string {
-  const lower = name.toLowerCase().trim()
-  const key: PhaseColorKey = lower.includes(`+`) ? `two_phase` : get_phase_color_key(name)
+  const key: PhaseColorKey = name.includes(`+`) ? `two_phase` : get_phase_color_key(name)
   return format === `rgb` ? PHASE_COLOR_RGB[key] : PHASE_COLORS[key]
 }
 

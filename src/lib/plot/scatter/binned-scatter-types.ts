@@ -4,6 +4,7 @@ import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
 import type {
   ColorScaleConfig,
   LabelPlacementConfig,
+  RefLine,
   ScatterHandlerProps,
   SizeScaleConfig,
 } from '$lib/plot/core/types'
@@ -28,6 +29,9 @@ export type BinnedDensityConfig = {
   bin_click?: `zoom` | `point` | `none`
 }
 
+// legacy explicit-endpoint form; prefer the declarative RefLine union (e.g.
+// { type: `diagonal`, slope: 1, intercept: 0 }), which is resolved against the
+// current axis ranges so lines span the full plot area and stay correct under zoom
 export type BinnedRefLine = {
   x1: number
   y1: number
@@ -39,7 +43,9 @@ export type BinnedRefLine = {
 }
 
 export type BinnedOverlaysConfig = {
-  ref_lines?: BinnedRefLine[]
+  // RefLine entries render geometry + style only for now: annotation, legend and
+  // interaction fields (label, on_click, ...) are ignored by BinnedScatterPlot
+  ref_lines?: (BinnedRefLine | RefLine)[]
 }
 
 export type BinnedPointBasePayload<

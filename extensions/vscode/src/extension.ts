@@ -2,6 +2,7 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import { to_error } from '$lib/utils'
 import { detect_compression_format } from '$lib/io/decompress'
 import { format_bytes } from '$lib/labels'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
@@ -182,17 +183,12 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     file_size = (await vscode.workspace.fs.stat(uri)).size
   } catch (error) {
     console.warn(`Failed to get file stats for ${filename}:`, error)
-    throw new Error(
-      `Failed to access file ${filename}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error },
-    )
+    throw new Error(`Failed to access file ${filename}: ${to_error(error).message}`, {
+      cause: error,
+    })
   }
 
-  const threshold = MAX_VSCODE_FILE_SIZE
-
-  if (file_size > threshold) {
+  if (file_size > MAX_VSCODE_FILE_SIZE) {
     return {
       filename,
       content: `LARGE_FILE:${file_path}:${file_size}`,
@@ -208,10 +204,9 @@ export const read_file = async (file_path: string): Promise<FileData> => {
       : Buffer.from(uint8array).toString(`utf8`)
     return { filename, content, is_base64: is_base64_payload }
   } catch (error) {
-    throw new Error(
-      `Failed to read file ${filename}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    )
+    throw new Error(`Failed to read file ${filename}: ${to_error(error).message}`, {
+      cause: error,
+    })
   }
 }
 
@@ -431,7 +426,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
         file_path,
       })
     } catch (error) {
-      const error_message = error instanceof Error ? error.message : String(error)
+      const error_message = to_error(error).message
       console.error(`Failed to setup indexed parsing:`, error_message)
       const { request_id } = msg
       webview.postMessage({ command, request_id, error: error_message })
@@ -454,7 +449,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
       const command = `frame_response`
       webview.postMessage({ command, request_id, frame, frame_index })
     } catch (error) {
-      const error_message = error instanceof Error ? error.message : String(error)
+      const error_message = to_error(error).message
       console.error(`Failed to load frame ${msg.frame_index}:`, error_message)
       webview.postMessage({
         command: `frame_response`,
@@ -471,7 +466,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
         filters: { Files: [`*`] },
       })
 
-      if (uri && msg.content) {
+      if (uri) {
         if (msg.is_binary) {
           is_binary_save = true
           const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
@@ -486,7 +481,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
         vscode.window.showInformationMessage(`Saved: ${path.basename(uri.fsPath)}`)
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = to_error(error).message
       const error_type = is_binary_save ? `binary data` : `text file`
       vscode.window.showErrorMessage(`Failed to save ${error_type}: ${message}`)
     }
@@ -597,10 +592,8 @@ function stop_watching_file(file_path: string): void {
     active_watchers.delete(file_path)
   }
 
-  // Also clean up frame loader for this file
-  if (active_frame_loaders.has(file_path)) {
-    active_frame_loaders.delete(file_path)
-  }
+  // Also clean up frame loader for this file (no-op when absent)
+  active_frame_loaders.delete(file_path)
 }
 
 // Resolve which ViewColumn to use based on user settings and explicit override
@@ -686,7 +679,7 @@ export const render = async (
 
     create_webview_panel(context, file, file_path)
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = to_error(error).message
     vscode.window.showErrorMessage(`Failed: ${message}`)
   }
 }
@@ -766,7 +759,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
       })
       // Note: webview_panel disposal is managed by VSCode for custom editors
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = to_error(error).message
       vscode.window.showErrorMessage(`Failed: ${message}`)
     }
   }
@@ -802,8 +795,9 @@ export const activate = (context: vscode.ExtensionContext) => {
           clearTimeout(existing_timer)
           auto_render_timers.delete(file_path)
         }
-        if (active_auto_render_panels.has(file_path)) {
-          active_auto_render_panels.get(file_path)?.reveal(vscode.ViewColumn.One)
+        const existing_panel = active_auto_render_panels.get(file_path)
+        if (existing_panel) {
+          existing_panel.reveal(vscode.ViewColumn.One)
           return
         }
 
@@ -962,7 +956,7 @@ async function report_bug(): Promise<void> {
       )
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = to_error(error).message
     vscode.window.showErrorMessage(`Failed to collect debug information: ${message}`)
   }
 }
