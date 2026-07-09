@@ -1,5 +1,31 @@
 # Changelog
 
+## [v0.4.2](https://github.com/janosh/matterviz/compare/v0.4.1...v0.4.2)
+
+> 9 July 2026
+
+### 🚀 New Features
+
+- Add zoomable `Treemap` hierarchical charts (squarified nested rectangles with click-to-zoom, breadcrumb pathbar, branch header strips, legend muting, metric coloring, and SVG/PNG export) sharing Sunburst tree semantics and data builders so switching charts is a one-line change https://github.com/janosh/matterviz/pull/372
+- Add VASP 6 HDF5 support: `vaspout.h5` trajectories (torn-file recovery, SCF pseudo-frames), electronic bands/DOS-only views, and `vaspwave` charge-density volumetrics, with VS Code webview routing for `vaspout_electronic` and `TrajectoryWithDos` https://github.com/janosh/matterviz/pull/372
+- Add `StructureCarousel` for browsable structure cards (virtualized WebGL mounts, keyboard/wheel paging, resizable track, portaled pager) plus a demo page https://github.com/janosh/matterviz/pull/372
+- Add opt-in `HeatmapTable` row virtualization with a `controls_target` portal for host-header search/export/settings https://github.com/janosh/matterviz/pull/372
+
+### 🛠 Enhancements
+
+- Fit-aware hierarchy labels: ordered fallback chain (`extended` → `label` → compact `label_short`), Sunburst font downscaling, and `auto` rotation that tries the other orientation before hiding text on narrow arcs/cells https://github.com/janosh/matterviz/pull/372
+- Smooth carousel scrolling by promoting entering cards to live WebGL canvases at most one per ~200ms mid-scroll (label shells first; remaining mounts on settle) https://github.com/janosh/matterviz/pull/372
+
+### 🐛 Bug Fixes
+
+- Harden HDF5 parsing against torn/corrupt files (keep frames before a bad trailing step as `dropped_steps`, constant-cell torch-sim normalization, vaspwave shape checks, gzipped `.traj` binary fast-path) https://github.com/janosh/matterviz/pull/372
+- Fix stale `DraggablePane` viewport clamps (including legitimate `top: 0px`), HeatmapTable virtual-scroll/selection edge cases, carousel vertical page sizing, and bond-deletion e2e framing after `ensure_lattice_params` https://github.com/janosh/matterviz/pull/372
+
+### 💡 Refactoring
+
+- Deduplicate Sunburst/Treemap into shared `hierarchy-chart` helpers and a single `HierarchyControls` keyed by chart type; collapse duplicated sunburst/treemap settings into one factory https://github.com/janosh/matterviz/pull/372
+- Split the VS Code webview parse path into worker-safe `parse.ts`, unify SCF frame metadata helpers, and trim carousel/table internals (opt-in virtualization, ID-indexed row selection) https://github.com/janosh/matterviz/pull/372
+
 ## [v0.4.1](https://github.com/janosh/matterviz/compare/v0.4.0...v0.4.1)
 
 > 15 June 2026
