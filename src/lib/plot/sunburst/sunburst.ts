@@ -138,19 +138,26 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   const root_data: SunburstNode<Metadata> = Array.isArray(data) ? { children: data } : data
   const root = hierarchy<SunburstNode<Metadata>>(root_data, (node) => node.children)
 
+  // Coerce non-finite/negative input values to 0 at the source so downstream
+  // consumers (partition angles, treemap tiling, fractions in aria/hover labels)
+  // never see NaN or negative values.
+  const clean_value = (val: number | undefined | null): number =>
+    typeof val === `number` && Number.isFinite(val) && val >= 0 ? val : 0
+
   // 'remainder': d3's .sum() adds the node's own value on top of its children's sum,
   // which is exactly plotly's branchvalues='remainder'. 'leaf-sum' ignores parent values.
   // 'total': every explicitly set value is authoritative (plotly branchvalues='total');
   // nodes without one get their children's sum. Children summing to less than their
   // parent leave a trailing angular gap; more than the parent overflows (plotly errors
   // here; we warn and the component clamps angles).
-  if (value_mode === `remainder`) root.sum((node) => node.value ?? 0)
+  if (value_mode === `remainder`) root.sum((node) => clean_value(node.value))
   else if (value_mode === `total`) {
     root.eachAfter((node) => {
       const child_sum = node.children?.reduce((sum, child) => sum + (child.value ?? 0), 0) ?? 0
       // HierarchyNode.value is typed readonly (normally set via .sum()), but manual
       // assignment is the documented d3 way to provide values without aggregation
-      ;(node as { value?: number }).value = node.data.value ?? child_sum
+      ;(node as { value?: number }).value =
+        node.data.value != null ? clean_value(node.data.value) : child_sum
       if (node.children && node.data.value != null && child_sum > node.data.value + 1e-9) {
         console.warn(
           `Sunburst: children of "${
@@ -159,7 +166,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         )
       }
     })
-  } else root.sum((node) => (node.children?.length ? 0 : (node.value ?? 0)))
+  } else root.sum((node) => (node.children?.length ? 0 : clean_value(node.value)))
 
   if (sort !== `none`) {
     const sign = sort === `descending` ? -1 : 1

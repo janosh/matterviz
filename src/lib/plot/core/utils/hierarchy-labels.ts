@@ -67,6 +67,9 @@ export function make_cached_contrast(): (fill: string) => string {
   return (fill) => {
     let contrast = cache.get(fill)
     if (contrast === undefined) {
+      // growth guard (same as make_cached_text_width): continuous metric coloring
+      // can emit unbounded distinct fills
+      if (cache.size > 10_000) cache.clear()
       contrast = pick_contrast_color({ bg_color: fill })
       cache.set(fill, contrast)
     }

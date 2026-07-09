@@ -15,21 +15,33 @@
     SunburstValueMode,
   } from '$lib/plot'
   import { ColorBar, PlotLegend, PlotTooltip, TreemapControls } from '$lib/plot'
-  import { closest_data_idx, get_relative_coords } from '$lib/plot/core/interactions'
+  import { closest_data_idx } from '$lib/plot/core/interactions'
   import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
+  import {
+    ancestor_chain,
+    compute_metric_colors,
+    compute_node_dim,
+    compute_node_infos,
+    handle_hierarchy_escape,
+    hierarchy_legend_items,
+    is_activation_key,
+    node_handler_props,
+    pointer_pos,
+    prune_muted_ids,
+    safe_hierarchy_layout,
+    selection_within,
+    svg_label_font,
+    toggle_muted,
+  } from '$lib/plot/core/utils/hierarchy-chart'
   import {
     export_hierarchy_chart,
     make_cached_contrast,
     make_cached_text_width,
-    node_display_name,
-    node_label_variants,
   } from '$lib/plot/core/utils/hierarchy-labels'
-  import { create_color_scale } from '$lib/plot/core/scales'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import { arrow_nav_target } from '$lib/plot/sunburst/render'
   import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
-  import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
   import type { TreemapNode, TreemapNodeHandlerProps } from '$lib/plot/treemap/treemap'
   import { lerp_rects, tile_rects } from '$lib/plot/treemap/treemap'
   import { DEFAULTS } from '$lib/settings'
@@ -164,26 +176,16 @@
   )
   let inner_height = $derived(avail_height - colorbar_reserve)
 
-  // Degrade to an empty layout (instead of crashing the host page) on invalid data.
   // Tree semantics (values, colors, ids, pre-order indexing) are shared with
   // Sunburst; only the pixel tiling below is treemap-specific.
-  let layout = $derived.by(() => {
-    try {
-      return compute_sunburst_layout(data, {
-        value_mode,
-        sort,
-        level_lighten,
-        min_fraction,
-        other_label,
-      })
-    } catch (err) {
-      console.error(err)
-      return { arcs: [], root: null, max_depth: 0 }
-    }
-  })
+  let layout = $derived(
+    safe_hierarchy_layout(data, { value_mode, sort, level_lighten, min_fraction, other_label }),
+  )
 
   // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
-  let zoom_root = $derived(layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root)
+  let zoom_root = $derived(
+    layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root,
+  )
   let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
 
   // Drop muted ids that no longer exist when data changes (untrack avoids a
@@ -191,9 +193,9 @@
   // Hover/focus state is index-based, so a layout swap would otherwise leave a stale
   // tooltip and highlight whatever unrelated node now occupies the old index.
   $effect(() => {
-    const valid = new Set(layout.arcs.filter((arc) => arc.depth === 1).map((arc) => arc.id))
+    const { arcs } = layout
     untrack(() => {
-      for (const id of muted_ids) if (!valid.has(id)) muted_ids.delete(id)
+      prune_muted_ids(arcs, muted_ids)
       set_cell_hover(null)
       focused_idx = null
     })
@@ -239,7 +241,9 @@
   let rects = $derived(rects_tween.current)
 
   // Deepest level rendered below the current zoom root (0 = unlimited)
-  let depth_cutoff = $derived(max_depth > 0 ? (zoom_root?.depth ?? 0) + max_depth : Infinity)
+  let depth_cutoff = $derived(
+    max_depth > 0 ? (zoom_root?.depth ?? 0) + max_depth : Infinity,
+  )
   // Shared by rendering and legend placement. The zoom root fills the viewport
   // and is represented by the breadcrumbs, not a cell — except when it's a leaf
   // (e.g. programmatic zoom_root_id onto a compound), which renders as one full-
@@ -273,26 +277,16 @@
   // focus outside the chart. role="button" stays limited to clickable cells.
   let focused_idx = $state<number | null>(null)
   let roving_idx = $derived(
-    focused_idx != null && idx_visible(focused_idx) ? focused_idx : (visible_idxs[0] ?? null),
+    focused_idx != null && idx_visible(focused_idx)
+      ? focused_idx
+      : (visible_idxs[0] ?? null),
   )
 
   // Continuous metric coloring: when color_values is given, cells are colored by
   // their metric on a d3 colormap (cells returning null keep their categorical color)
-  let metric = $derived.by<{ range: Vec2; colors: string[] } | null>(() => {
-    if (!color_values) return null
-    const vals = layout.arcs.map((arc) => {
-      const val = arc.depth === 0 ? null : color_values(arc)
-      return val != null && Number.isFinite(val) ? val : null
-    })
-    const finite = vals.filter((val) => val != null)
-    if (finite.length === 0) return null
-    const range = color_range ?? [Math.min(...finite), Math.max(...finite)]
-    const scale = create_color_scale({ scheme: color_scale, value_range: range }, range)
-    return {
-      range,
-      colors: vals.map((val, idx) => (val == null ? layout.arcs[idx].color : `${scale(val)}`)),
-    }
-  })
+  let metric = $derived(
+    compute_metric_colors(layout.arcs, color_values, color_scale, color_range),
+  )
   const cell_color = (arc: PositionedArc<Metadata>): string =>
     metric?.colors[arc.node_idx] ?? arc.color
   // release the colorbar's reserved chart space when it's not rendered
@@ -300,57 +294,13 @@
     if (!metric || colorbar == null) colorbar_height = 0
   })
 
-  // Predicate keeping the hovered cell + its ancestors/descendants fully opaque.
-  // Pre-order indexing makes both tests O(1): a subtree is the contiguous index
-  // range [node_idx, subtree_end].
-  let active = $derived.by(() => {
-    if (hovered_idx == null) return null
-    const hov = layout.arcs[hovered_idx]
-    if (!hov) return null
-    return (arc: PositionedArc<Metadata>): boolean =>
-      (arc.node_idx >= hov.node_idx && arc.node_idx <= hov.subtree_end) ||
-      (hov.node_idx >= arc.node_idx && hov.node_idx <= arc.subtree_end)
-  })
-
-  const is_muted = (arc: PositionedArc<Metadata>): boolean =>
-    arc.path.length > 0 && muted_ids.has(arc.path[0])
-
-  const MUTED_OPACITY = 0.12
-  // Legend muting + hover dimming per cell, indexed by node_idx. Zoom-independent:
-  // recomputed only when hover/mute state changes, so during zoom tweens this is
-  // a plain array lookup.
-  let cell_dim = $derived(
-    layout.arcs.map((arc) => {
-      const muted = is_muted(arc)
-      return {
-        opacity: muted ? MUTED_OPACITY : active && !active(arc) ? 0.3 : 1,
-        // labels dim only when muted, not when hover-inactive (undefined omits the attr)
-        label_opacity: muted ? MUTED_OPACITY : undefined,
-      }
-    }),
-  )
+  // Hovered cell + its ancestors/descendants stay fully opaque, others dim
+  let cell_dim = $derived(compute_node_dim(layout.arcs, muted_ids, hovered_idx))
 
   const contrast_for = make_cached_contrast()
 
-  // Parent arc of an arc (null for the root)
-  const parent_of = (arc: PositionedArc<Metadata>): PositionedArc<Metadata> | null =>
-    arc.parent_idx != null ? layout.arcs[arc.parent_idx] : null
-
-  function make_node_props(arc: PositionedArc<Metadata>): TreemapNodeHandlerProps<Metadata> {
-    // Handler props are the arc minus its layout geometry, plus the parent id
-    const { x0, x1, y0, y1, subtree_end, parent_idx, ...node } = arc
-    return {
-      ...node,
-      type: `node`,
-      color: cell_color(arc),
-      parent_id: parent_of(arc)?.id ?? null,
-    }
-  }
-
-  // Anchor the tooltip at the cursor (mouse hover) so it follows the pointer across
-  // wide cells; fall back to the cell center on keyboard focus (no cursor).
-  const event_pos = (event?: MouseEvent | FocusEvent): { x: number; y: number } | null =>
-    event instanceof MouseEvent ? get_relative_coords(event, svg_element) : null
+  const make_node_props = (arc: PositionedArc<Metadata>): TreemapNodeHandlerProps<Metadata> =>
+    node_handler_props(layout.arcs, arc, cell_color(arc))
 
   // Rect center in container (pad-offset) pixel space, for tooltip + legend placement
   const rect_center = (rect: Rect): { x: number; y: number } => ({
@@ -363,14 +313,15 @@
     // handler payload and re-firing change/on_node_hover on every mousemove.
     // Requires hover_info: legend item hover sets hovered_idx alone (for dimming).
     if (idx != null && idx === hovered_idx && hover_info) {
-      hover_pos = event_pos(event) ?? hover_pos
+      hover_pos = pointer_pos(event, svg_element) ?? hover_pos
       return
     }
     if (idx != null) {
       hovered = true
       hovered_idx = idx
       hover_info = make_node_props(layout.arcs[idx])
-      hover_pos = event_pos(event) ?? (rects[idx] ? rect_center(rects[idx]) : hover_pos)
+      hover_pos = pointer_pos(event, svg_element) ??
+        (rects[idx] ? rect_center(rects[idx]) : hover_pos)
       change(hover_info)
       if (event) on_node_hover?.({ ...hover_info, event })
     } else {
@@ -405,24 +356,11 @@
     on_zoom?.({ root: root && make_node_props(root) })
   }
 
-  // True while the user has an uncollapsed text selection inside this chart. Labels
-  // are selectable text, and the mouseup that ends a selection drag also fires a
-  // click - selecting a label must not zoom or fire on_node_click.
-  function selection_in_chart(): boolean {
-    const selection = globalThis.getSelection?.()
-    return Boolean(
-      selection &&
-      !selection.isCollapsed &&
-      selection.anchorNode &&
-      wrapper?.contains(selection.anchorNode),
-    )
-  }
-
   // Plotly semantics: clicking any cell (leaves included) zooms into it;
   // clicking the current zoom root (the full-viewport cell a leaf zoom renders)
   // zooms back out one level
   function handle_cell_click(event: MouseEvent | KeyboardEvent) {
-    if (event instanceof MouseEvent && selection_in_chart()) return
+    if (event instanceof MouseEvent && selection_within(wrapper)) return
     const idx = idx_from_event(event)
     if (idx == null) return
     const arc = layout.arcs[idx]
@@ -440,7 +378,7 @@
   // Double-clicking empty chart background resets the zoom to the root (double-
   // clicking a cell or label is click-to-zoom/text-selection territory, not a reset)
   function handle_dblclick(event: MouseEvent) {
-    if (idx_from_event(event) != null || selection_in_chart()) return
+    if (idx_from_event(event) != null || selection_within(wrapper)) return
     if (zoomed) zoom_to(null)
   }
 
@@ -459,8 +397,6 @@
     if (cur_idx == null) return null
     return arrow_nav_target(layout.arcs, idx_visible, cur_idx, event.key)
   }
-
-  const is_activation_key = (evt: KeyboardEvent) => [`Enter`, ` `].includes(evt.key)
 
   function handle_cell_keydown(event: KeyboardEvent) {
     const nav_target = nav_target_from_event(event)
@@ -487,33 +423,19 @@
   // Uniform now that any cell zooms (plotly semantics), not just branches
   let cells_clickable = $derived(Boolean(on_node_click) || zoom_on_click)
 
-  // Measure label fit in the font labels actually render in (respects the
-  // --treemap-font-size CSS var). Memoized because canvas measureText is far too
-  // slow to run for every visible cell on every tween frame.
-  let label_font = $derived.by(() => {
-    if (!svg_element) return `11px sans-serif`
-    const { fontSize, fontFamily } = getComputedStyle(svg_element)
-    return `${fontSize} ${fontFamily}`
-  })
+  let label_font = $derived(svg_label_font(svg_element))
   const cached_text_width = make_cached_text_width()
 
-  // Per-cell label text, measured width, fill/label colors, clickability and aria
-  // string - all zoom-independent, so computed once per layout/option change
-  // instead of per animation frame
+  // Per-cell label text, measured width, fill/label colors and aria string -
+  // all zoom-independent, so computed once per layout/option change
   let cell_info = $derived(
-    layout.arcs.map((arc) => {
-      const { text, extended } = node_label_variants(arc, label_text, value_format)
-      const fill = cell_color(arc)
-      return {
-        text,
-        width: cached_text_width(text, label_font),
-        extended,
-        extended_width:
-          extended === undefined ? undefined : cached_text_width(extended, label_font),
-        aria: `${node_display_name(arc)}: ${arc.value}`,
-        fill,
-        label_fill: contrast_for(fill),
-      }
+    compute_node_infos(layout.arcs, {
+      label_text,
+      value_format,
+      label_font,
+      color_for: cell_color,
+      text_width: cached_text_width,
+      contrast: contrast_for,
     }),
   )
 
@@ -568,7 +490,7 @@
     // is stable during zoom tweens. Same visibility rule as rendering so hidden
     // cells (zoom root, beyond max_depth) don't repel the legend.
     const settled = layout.arcs.flatMap((arc, idx) =>
-      cell_visible(arc, target_rects[idx]) ? [rect_center(target_rects[idx])] : [],
+      cell_visible(arc, target_rects[idx]) ? [rect_center(target_rects[idx])] : []
     )
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },
@@ -580,53 +502,29 @@
     })
   })
   let legend_data: LegendItem[] = $derived(
-    depth1_arcs.map((arc, idx) => ({
-      series_idx: idx,
-      label: node_display_name(arc),
-      visible: !muted_ids.has(arc.id),
-      display_style: { symbol_type: `Square` as const, symbol_color: cell_color(arc) },
-    })),
+    hierarchy_legend_items(depth1_arcs, muted_ids, cell_color),
   )
 
-  function toggle_category(series_idx: number) {
-    const id = depth1_arcs[series_idx]?.id
-    if (id !== undefined && !muted_ids.delete(id)) muted_ids.add(id)
-  }
+  const toggle_category = (series_idx: number) =>
+    toggle_muted(muted_ids, depth1_arcs[series_idx]?.id)
 
   $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--treemap-fullscreen-bg`))
 
-  // Ancestor chain from the root to the current zoom root (clickable breadcrumb trail)
-  let breadcrumb_arcs = $derived.by(() => {
-    if (!zoom_root || zoom_root.depth === 0) return []
-    const chain: PositionedArc<Metadata>[] = []
-    for (let cur: PositionedArc<Metadata> | null = zoom_root; cur; cur = parent_of(cur))
-      chain.unshift(cur)
-    return chain
-  })
+  let breadcrumb_arcs = $derived(ancestor_chain(layout.arcs, zoom_root))
 
   const export_chart = (format: `svg` | `png`) =>
     export_hierarchy_chart(svg_element, export_filename, format)
 </script>
 
 <svelte:window
-  onkeydown={(evt) => {
-    if (evt.key !== `Escape`) return
-    // only react when the user is interacting with this chart (pointer over it,
-    // focus inside it, or fullscreen) - Escape zooms out one level, then exits
-    // fullscreen once at the root
-    const within =
-      fullscreen ||
-      (wrapper != null &&
-        (wrapper.matches(`:hover`) || wrapper.contains(document.activeElement)))
-    if (!within) return
-    if (zoomed) {
-      evt.preventDefault()
-      zoom_out()
-    } else if (fullscreen) {
-      evt.preventDefault()
-      fullscreen = false
-    }
-  }}
+  onkeydown={(evt) =>
+    handle_hierarchy_escape(evt, {
+      wrapper,
+      fullscreen,
+      zoomed,
+      zoom_out,
+      exit_fullscreen: () => (fullscreen = false),
+    })}
 />
 
 <div
@@ -642,6 +540,7 @@
       {@render header_controls?.({ height, width, fullscreen })}
       {#if show_controls}
         <TreemapControls
+          chart="treemap"
           toggle_props={{
             ...controls_toggle_props,
             // join the header flex row instead of absolute positioning

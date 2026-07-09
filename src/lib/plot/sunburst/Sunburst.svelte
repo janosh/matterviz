@@ -19,17 +19,31 @@
     SunburstValueMode,
   } from '$lib/plot'
   import { ColorBar, PlotLegend, PlotTooltip, SunburstControls } from '$lib/plot'
-  import { closest_data_idx, get_relative_coords } from '$lib/plot/core/interactions'
+  import { closest_data_idx } from '$lib/plot/core/interactions'
   import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
-  import { create_color_scale } from '$lib/plot/core/scales'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import {
+    ancestor_chain,
+    compute_metric_colors,
+    compute_node_dim,
+    compute_node_infos,
+    handle_hierarchy_escape,
+    hierarchy_legend_items,
+    is_activation_key,
+    node_handler_props,
+    pointer_pos,
+    prune_muted_ids,
+    safe_hierarchy_layout,
+    selection_within,
+    svg_label_font,
+    toggle_muted,
+  } from '$lib/plot/core/utils/hierarchy-chart'
   import {
     export_hierarchy_chart,
     make_cached_contrast,
     make_cached_text_width,
     node_display_name,
-    node_label_variants,
   } from '$lib/plot/core/utils/hierarchy-labels'
   import {
     arc_label_transform,
@@ -180,24 +194,14 @@
   )
   let inner_height = $derived(avail_height - colorbar_reserve)
 
-  // Degrade to an empty layout (instead of crashing the host page) on invalid data.
   // Layout depends only on data/value semantics - not on size or zoom.
-  let layout = $derived.by(() => {
-    try {
-      return compute_sunburst_layout(data, {
-        value_mode,
-        sort,
-        level_lighten,
-        min_fraction,
-        other_label,
-      })
-    } catch (err) {
-      console.error(err)
-      return { arcs: [], root: null, max_depth: 0 }
-    }
-  })
+  let layout = $derived(
+    safe_hierarchy_layout(data, { value_mode, sort, level_lighten, min_fraction, other_label }),
+  )
   // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
-  let zoom_root = $derived(layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root)
+  let zoom_root = $derived(
+    layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root,
+  )
   let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
 
   // Drop muted ids that no longer exist when data changes (untrack avoids a
@@ -205,9 +209,9 @@
   // Hover/focus state is index-based, so a layout swap would otherwise leave a stale
   // tooltip and highlight whatever unrelated node now occupies the old index.
   $effect(() => {
-    const valid = new Set(layout.arcs.filter((arc) => arc.depth === 1).map((arc) => arc.id))
+    const { arcs } = layout
     untrack(() => {
-      for (const id of muted_ids) if (!valid.has(id)) muted_ids.delete(id)
+      prune_muted_ids(arcs, muted_ids)
       set_arc_hover(null)
       focused_idx = null
     })
@@ -296,23 +300,10 @@
   }
 
   // Continuous metric coloring: when color_values is given, arcs are colored by their
-  // metric on a d3 colormap (arcs returning null keep their categorical color).
-  // The user accessor runs exactly once per arc.
-  let metric = $derived.by<{ range: Vec2; colors: string[] } | null>(() => {
-    if (!color_values) return null
-    const vals = layout.arcs.map((arc) => {
-      const val = arc.depth === 0 ? null : color_values(arc)
-      return val != null && Number.isFinite(val) ? val : null
-    })
-    const finite = vals.filter((val) => val != null)
-    if (finite.length === 0) return null
-    const range = color_range ?? [Math.min(...finite), Math.max(...finite)]
-    const scale = create_color_scale({ scheme: color_scale, value_range: range }, range)
-    return {
-      range,
-      colors: vals.map((val, idx) => (val == null ? layout.arcs[idx].color : `${scale(val)}`)),
-    }
-  })
+  // metric on a d3 colormap (arcs returning null keep their categorical color)
+  let metric = $derived(
+    compute_metric_colors(layout.arcs, color_values, color_scale, color_range),
+  )
   const arc_color = (arc: PositionedArc<Metadata>): string =>
     metric?.colors[arc.node_idx] ?? arc.color
   // release the colorbar's reserved chart space when it's not rendered
@@ -320,59 +311,15 @@
     if (!metric || colorbar == null) colorbar_height = 0
   })
 
-  // Predicate keeping the hovered arc + its ancestors/descendants fully opaque.
-  // Pre-order indexing makes both tests O(1): a subtree is the contiguous index
-  // range [node_idx, subtree_end].
-  let active = $derived.by(() => {
-    if (hovered_idx == null) return null
-    const hov = layout.arcs[hovered_idx]
-    if (!hov) return null
-    return (arc: PositionedArc<Metadata>): boolean =>
-      (arc.node_idx >= hov.node_idx && arc.node_idx <= hov.subtree_end) ||
-      (hov.node_idx >= arc.node_idx && hov.node_idx <= arc.subtree_end)
-  })
-
-  const is_muted = (arc: PositionedArc<Metadata>): boolean =>
-    arc.path.length > 0 && muted_ids.has(arc.path[0])
-
-  const MUTED_OPACITY = 0.12
-  // Legend muting + hover dimming per arc, indexed by node_idx. View-independent:
-  // recomputed only when hover/mute state changes, so during zoom tweens (where
-  // every arc attribute re-evaluates per frame) this is a plain array lookup.
-  let arc_dim = $derived(
-    layout.arcs.map((arc) => {
-      const muted = is_muted(arc)
-      return {
-        opacity: muted ? MUTED_OPACITY : active && !active(arc) ? 0.3 : 1,
-        // labels dim only when muted, not when hover-inactive (undefined omits the attr)
-        label_opacity: muted ? MUTED_OPACITY : undefined,
-      }
-    }),
-  )
+  // Hovered arc + its ancestors/descendants stay fully opaque, others dim
+  let arc_dim = $derived(compute_node_dim(layout.arcs, muted_ids, hovered_idx))
 
   // Black/white label text, whichever contrasts with the arc's fill (light arcs from
   // explicit colors or level_lighten would hide white labels, esp. when highlighted)
   const contrast_for = make_cached_contrast()
 
-  // Parent arc of an arc (null for the root)
-  const parent_of = (arc: PositionedArc<Metadata>): PositionedArc<Metadata> | null =>
-    arc.parent_idx != null ? layout.arcs[arc.parent_idx] : null
-
-  function make_node_props(arc: PositionedArc<Metadata>): SunburstNodeHandlerProps<Metadata> {
-    // Handler props are the arc minus its screen geometry, plus the parent id
-    const { x0, x1, y0, y1, subtree_end, parent_idx, ...node } = arc
-    return {
-      ...node,
-      type: `node`,
-      color: arc_color(arc),
-      parent_id: parent_of(arc)?.id ?? null,
-    }
-  }
-
-  // Anchor the tooltip at the cursor (mouse hover) so it follows the pointer across
-  // wide arcs; fall back to the arc centroid on keyboard focus (no cursor).
-  const event_pos = (event?: MouseEvent | FocusEvent): { x: number; y: number } | null =>
-    event instanceof MouseEvent ? get_relative_coords(event, svg_element) : null
+  const make_node_props = (arc: PositionedArc<Metadata>): SunburstNodeHandlerProps<Metadata> =>
+    node_handler_props(layout.arcs, arc, arc_color(arc))
 
   function set_arc_hover(screen: ScreenArc | null, event?: MouseEvent | FocusEvent) {
     // Same arc as before: only the cursor anchor moves - skip rebuilding the handler
@@ -380,14 +327,14 @@
     // Requires hover_info: legend item hover sets hovered_idx alone (for dimming), and
     // skipping then would leave the arc's own tooltip permanently suppressed.
     if (screen && screen.arc.node_idx === hovered_idx && hover_info) {
-      hover_pos = event_pos(event) ?? hover_pos
+      hover_pos = pointer_pos(event, svg_element) ?? hover_pos
       return
     }
     if (screen) {
       hovered = true
       hovered_idx = screen.arc.node_idx
       hover_info = make_node_props(screen.arc)
-      hover_pos = event_pos(event) ?? arc_center(screen)
+      hover_pos = pointer_pos(event, svg_element) ?? arc_center(screen)
       change(hover_info)
       if (event) on_node_hover?.({ ...hover_info, event })
     } else {
@@ -423,21 +370,8 @@
     on_zoom?.({ root: root && make_node_props(root) })
   }
 
-  // True while the user has an uncollapsed text selection inside this chart. Labels
-  // are selectable text, and the mouseup that ends a selection drag also fires a
-  // click - selecting a label must not zoom or fire on_node_click.
-  function selection_in_chart(): boolean {
-    const selection = globalThis.getSelection?.()
-    return Boolean(
-      selection &&
-      !selection.isCollapsed &&
-      selection.anchorNode &&
-      wrapper?.contains(selection.anchorNode),
-    )
-  }
-
   function handle_arc_click(event: MouseEvent | KeyboardEvent) {
-    if (event instanceof MouseEvent && selection_in_chart()) return
+    if (event instanceof MouseEvent && selection_within(wrapper)) return
     const screen = screen_arc_from_event(event)
     if (!screen) return
     const { arc } = screen
@@ -446,7 +380,7 @@
   }
 
   function zoom_out(event?: Event) {
-    if (event instanceof MouseEvent && selection_in_chart()) return
+    if (event instanceof MouseEvent && selection_within(wrapper)) return
     if (!zoomed) return
     zoom_to(breadcrumb_arcs.at(-2) ?? null)
   }
@@ -456,7 +390,7 @@
   // the center zoom-out button already fired its own click action twice - compounding
   // a third full reset would teleport step-by-step zoom-outs straight to the root)
   function handle_dblclick(event: MouseEvent) {
-    if (screen_arc_from_event(event) || selection_in_chart()) return
+    if (screen_arc_from_event(event) || selection_within(wrapper)) return
     const target = event.target as Element | null
     if (target?.closest?.(`.center-circle, .center-label`)) return
     if (zoomed) zoom_to(null)
@@ -483,8 +417,6 @@
       event.key,
     )
   }
-
-  const is_activation_key = (evt: KeyboardEvent) => [`Enter`, ` `].includes(evt.key)
 
   function handle_arc_keydown(event: KeyboardEvent) {
     const nav_target = nav_target_from_event(event)
@@ -519,36 +451,21 @@
   const arc_clickable = (arc: PositionedArc<Metadata>): boolean =>
     Boolean(on_node_click) || (zoom_on_click && !arc.is_leaf)
 
-  // Measure label fit in the font labels actually render in (respects the
-  // --sunburst-font-size CSS var instead of assuming 11px). Memoized because canvas
-  // measureText is far too slow to run for every visible arc on every tween frame.
-  let label_font = $derived.by(() => {
-    if (!svg_element) return `11px sans-serif`
-    const { fontSize, fontFamily } = getComputedStyle(svg_element)
-    return `${fontSize} ${fontFamily}`
-  })
+  let label_font = $derived(svg_label_font(svg_element))
   const cached_text_width = make_cached_text_width()
 
   // Per-arc label text, measured width, fill/label colors, clickability and aria
   // string - all view-independent, so computed once per layout/option change
-  // instead of per animation frame (format_value, canvas measureText, contrast
-  // picking and color resolution would otherwise run per visible arc per frame:
-  // zoom tweens rebuild every screen arc, re-running every template expression)
+  // instead of per animation frame
   let arc_info = $derived(
-    layout.arcs.map((arc) => {
-      const { text, extended } = node_label_variants(arc, label_text, value_format)
-      const fill = arc_color(arc)
-      return {
-        text,
-        width: cached_text_width(text, label_font),
-        extended,
-        extended_width:
-          extended === undefined ? undefined : cached_text_width(extended, label_font),
-        aria: `${node_display_name(arc)}: ${arc.value}`,
-        fill,
-        label_fill: contrast_for(fill),
-        clickable: arc_clickable(arc),
-      }
+    compute_node_infos(layout.arcs, {
+      label_text,
+      value_format,
+      label_font,
+      color_for: arc_color,
+      text_width: cached_text_width,
+      contrast: contrast_for,
+      clickable: arc_clickable,
     }),
   )
 
@@ -592,18 +509,11 @@
     })
   })
   let legend_data: LegendItem[] = $derived(
-    depth1_arcs.map((arc, idx) => ({
-      series_idx: idx,
-      label: node_display_name(arc),
-      visible: !muted_ids.has(arc.id),
-      display_style: { symbol_type: `Square` as const, symbol_color: arc_color(arc) },
-    })),
+    hierarchy_legend_items(depth1_arcs, muted_ids, arc_color),
   )
 
-  function toggle_category(series_idx: number) {
-    const id = depth1_arcs[series_idx]?.id
-    if (id !== undefined && !muted_ids.delete(id)) muted_ids.add(id)
-  }
+  const toggle_category = (series_idx: number) =>
+    toggle_muted(muted_ids, depth1_arcs[series_idx]?.id)
 
   $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--sunburst-fullscreen-bg`))
 
@@ -615,38 +525,21 @@
     return parent.depth === 0 ? `full chart` : node_display_name(parent)
   })
 
-  // Ancestor chain from the root to the current zoom root (clickable breadcrumb trail)
-  let breadcrumb_arcs = $derived.by(() => {
-    if (!zoom_root || zoom_root.depth === 0) return []
-    const chain: PositionedArc<Metadata>[] = []
-    for (let cur: PositionedArc<Metadata> | null = zoom_root; cur; cur = parent_of(cur))
-      chain.unshift(cur)
-    return chain
-  })
+  let breadcrumb_arcs = $derived(ancestor_chain(layout.arcs, zoom_root))
 
   const export_chart = (format: `svg` | `png`) =>
     export_hierarchy_chart(svg_element, export_filename, format)
 </script>
 
 <svelte:window
-  onkeydown={(evt) => {
-    if (evt.key !== `Escape`) return
-    // only react when the user is interacting with this chart (pointer over it,
-    // focus inside it, or fullscreen) - Escape zooms out one level, then exits
-    // fullscreen once at the root
-    const within =
-      fullscreen ||
-      (wrapper != null &&
-        (wrapper.matches(`:hover`) || wrapper.contains(document.activeElement)))
-    if (!within) return
-    if (zoomed) {
-      evt.preventDefault()
-      zoom_out()
-    } else if (fullscreen) {
-      evt.preventDefault()
-      fullscreen = false
-    }
-  }}
+  onkeydown={(evt) =>
+    handle_hierarchy_escape(evt, {
+      wrapper,
+      fullscreen,
+      zoomed,
+      zoom_out: () => zoom_out(),
+      exit_fullscreen: () => (fullscreen = false),
+    })}
 />
 
 <div
@@ -663,6 +556,7 @@
       {@render header_controls?.({ height, width, fullscreen })}
       {#if show_controls}
         <SunburstControls
+          chart="sunburst"
           toggle_props={{
             ...controls_toggle_props,
             // join the header flex row instead of absolute positioning (overrides

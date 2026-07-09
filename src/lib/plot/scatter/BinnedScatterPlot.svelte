@@ -380,8 +380,8 @@
   // renders; compute_element_placement measures the real footprint once laid out
   let colorbar_fallback_size = $derived(
     color_bar_props?.orientation === `vertical`
-      ? { width: 56, height: 120 }
-      : { width: COLOR_BAR_DEFAULTS.width, height: 50 },
+      ? COLOR_BAR_DEFAULTS.vertical_footprint
+      : COLOR_BAR_DEFAULTS.horizontal_footprint,
   )
   let color_bar_placement = $derived.by(() => {
     if (
