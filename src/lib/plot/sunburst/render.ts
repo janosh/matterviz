@@ -123,15 +123,27 @@ export function arrow_nav_target<Metadata>(
 // in 'auto' mode); null = doesn't fit, hide the label. Angles are clockwise from 12
 // o'clock, so the point at (a, r) is (sin(a)*r, -cos(a)*r). Icicle cells label
 // horizontally, or rotated 90° when too narrow but tall enough to fit upright.
+// `max_radius` (chart outer radius) additionally keeps straight-line labels inside
+// the chart circle: tangential text on a wide arc has plenty of arc length but
+// renders as a straight tangent line whose ends would otherwise shoot past the
+// plot border.
 export function arc_label_transform(
   d: { a0: number; a1: number; r0: number; r1: number },
   text_w: number, // rendered text width in px
   shape: SunburstShape,
   rotation: SunburstLabelRotation,
+  max_radius?: number,
 ): string | null {
   // Text fits when it's shorter than the space along its reading direction and the
   // cell is at least one line-height across
   const fits = (along: number, across: number) => text_w <= along - 6 && across >= 12
+  // Farthest endpoint of a straight label centered `center_dist` from the chart
+  // center: text_w/2 perpendicular to the radius (tangential text, exact) plus an
+  // optional component along it (horizontal text at 3/9 o'clock reads radially)
+  const inside_chart = (center_dist: number, along_radius = 0) =>
+    max_radius === undefined ||
+    Math.sqrt(center_dist ** 2 + (text_w / 2) ** 2 + text_w * center_dist * along_radius) <=
+      max_radius
 
   if (shape === `icicle`) {
     const cell_w = d.a1 - d.a0
@@ -156,9 +168,11 @@ export function arc_label_transform(
     if (!fits(Math.max(angular_px, radial_px), Math.min(angular_px, radial_px))) {
       return null
     }
+    if (!inside_chart(mid_r, Math.abs(Math.sin(mid_a)))) return null
     return `translate(${Math.sin(mid_a) * mid_r}, ${-Math.cos(mid_a) * mid_r})`
   }
   if (mode === `radial`) {
+    // fits() bounds the text by the ring thickness, so it stays inside r1
     if (!fits(radial_px, angular_px)) return null
     // Read outward, flipped on the left half so text is never upside down
     const deg = to_degrees(mid_a) - 90
@@ -166,7 +180,7 @@ export function arc_label_transform(
     return `rotate(${deg}) translate(${mid_r}, 0) rotate(${flip})`
   }
   // tangential: follow the circumference, flipped on the bottom half
-  if (!fits(angular_px, radial_px)) return null
+  if (!fits(angular_px, radial_px) || !inside_chart(mid_r)) return null
   const upside_down = mid_a > Math.PI / 2 && mid_a < (3 * Math.PI) / 2
   return `rotate(${to_degrees(mid_a)}) translate(0, ${-mid_r}) rotate(${
     upside_down ? 180 : 0

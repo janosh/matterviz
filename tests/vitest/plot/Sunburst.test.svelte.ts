@@ -522,6 +522,8 @@ describe(`Sunburst display options`, () => {
     [`value`, `4`],
     [`label+value`, `A1 4`],
     [`label+percent`, `A1 20%`],
+    // % of PARENT: A1 is 4 of A's 10
+    [`label+parent-percent`, `A1 (40%)`],
   ] as const)(`label_text=%s renders %j`, async (label_text, expected) => {
     const plot = await mount_sized_sunburst({ data: tree, label_text })
     const labels = [...plot.querySelectorAll(`.arc-label`)].map((el) => el.textContent?.trim())

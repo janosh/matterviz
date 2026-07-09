@@ -108,6 +108,24 @@ describe(`arc_label_transform`, () => {
     if (expected === null) expect(transform).toBeNull()
     else expect(transform).toMatch(expected)
   })
+
+  test(`max_radius clips straight labels that would extend past the chart circle`, () => {
+    // Wide shallow outer arc -> tangential text. Arc length at mid radius
+    // (~149px) fits 120px of text, but the straight tangent line from a label
+    // centered at r=95 reaches hypot(95, 60) ~= 112px from the center.
+    const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
+    expect(arc_label_transform(wide_outer, 120, `sunburst`, `tangential`)).not.toBeNull()
+    expect(arc_label_transform(wide_outer, 120, `sunburst`, `tangential`, 100)).toBeNull()
+    // Shorter text stays within the circle and keeps its label
+    expect(arc_label_transform(wide_outer, 40, `sunburst`, `tangential`, 100)).not.toBeNull()
+    // Radial labels are bounded by their ring already: max_radius is a no-op
+    const tall = { a0: 0, a1: 0.4, r0: 50, r1: 150 }
+    expect(arc_label_transform(tall, 80, `sunburst`, `radial`, 150)).not.toBeNull()
+    // Horizontal at 3 o'clock reads along the radius: the far end lands
+    // sqrt(95^2 + 60^2 + 120*95) ~= 155px from the center, past radius 100
+    const east = { a0: Math.PI / 2 - 0.7, a1: Math.PI / 2 + 0.7, r0: 88, r1: 102 }
+    expect(arc_label_transform(east, 120, `sunburst`, `horizontal`, 100)).toBeNull()
+  })
 })
 
 describe(`arrow_nav_target`, () => {

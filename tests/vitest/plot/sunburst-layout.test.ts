@@ -5,6 +5,7 @@ import {
   sunburst_from_labels_parents,
   sunburst_from_paths,
 } from '$lib/plot'
+import { node_label_str, node_label_variants } from '$lib/plot/core/utils/hierarchy-labels'
 import { hsl } from 'd3-color'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -71,6 +72,28 @@ describe(`compute_sunburst_layout`, () => {
       fraction: close(0.2),
       parent_fraction: close(0.4),
     })
+  })
+
+  test(`label variants: parent-percent mode + compound-mode degradation`, () => {
+    const node = { id: `A/A1`, label: `A1`, value: 4, fraction: 0.2, parent_fraction: 0.4 }
+    expect(node_label_str(node, `label+parent-percent`, `,`)).toBe(`A1 (40%)`)
+    // parent_fraction falls back to fraction when absent (e.g. depth-1 nodes)
+    expect(
+      node_label_str({ ...node, parent_fraction: undefined }, `label+parent-percent`, `,`),
+    ).toBe(`A1 (20%)`)
+
+    // compound modes expose base + extended so rendering degrades to the bare
+    // label when the full text doesn't fit; simple modes have no fallback
+    expect(node_label_variants(node, `label+parent-percent`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 (40%)`,
+    })
+    expect(node_label_variants(node, `label+value`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 4`,
+    })
+    expect(node_label_variants(node, `label`, `,`)).toEqual({ text: `A1` })
+    expect(node_label_variants(node, `percent`, `,`)).toEqual({ text: `20%` })
   })
 
   test(`explicit ids win over auto-generated ones; duplicates warn`, () => {

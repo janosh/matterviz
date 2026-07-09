@@ -23,7 +23,13 @@ export type SunburstLabelRotation = `auto` | `radial` | `tangential` | `horizont
 // Sibling ordering: 'none' preserves input order (e.g. spacegroup number order)
 export type SunburstSort = `descending` | `ascending` | `none`
 // What arc labels display (plotly textinfo equivalent); percent is of the root total
-export type SunburstLabelText = `label` | `value` | `percent` | `label+value` | `label+percent`
+export type SunburstLabelText =
+  | `label`
+  | `value`
+  | `percent`
+  | `label+value`
+  | `label+percent`
+  | `label+parent-percent`
 // Chart geometry: polar rings (sunburst) or stacked horizontal rows (icicle)
 export type SunburstShape = `sunburst` | `icicle`
 

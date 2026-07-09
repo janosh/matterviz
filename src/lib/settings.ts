@@ -396,6 +396,20 @@ export interface SettingsConfig {
     show_breadcrumbs: SettingType<boolean>
   }
 
+  treemap: {
+    // Treemap chart settings (value semantics shared with sunburst)
+    value_mode: SettingType<SunburstValueMode>
+    max_depth: SettingType<number>
+    padding_inner: SettingType<number>
+    padding_top: SettingType<number>
+    padding_outer: SettingType<number>
+    min_fraction: SettingType<number>
+    show_labels: SettingType<boolean>
+    label_text: SettingType<SunburstLabelText>
+    zoom_on_click: SettingType<boolean>
+    show_breadcrumbs: SettingType<boolean>
+  }
+
   composition: {
     // Composition specific settings
     display_mode: SettingType<`pie` | `bubble` | `bar`>
@@ -438,6 +452,22 @@ const DISPLAY_CONFIG = {
     description: `Show Y-axis zero reference line`,
   },
 } as const
+
+// Shared by the sunburst + treemap sections below (both must cover
+// SunburstValueMode/SunburstLabelText) so the two charts' options can't drift
+const VALUE_MODE_SETTING = {
+  value: `leaf-sum`,
+  description: `How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children`,
+  enum: { 'leaf-sum': `Leaf sum`, total: `Total`, remainder: `Remainder` },
+} as const satisfies SettingType<SunburstValueMode>
+const LABEL_TEXT_ENUM: Record<SunburstLabelText, string> = {
+  label: `Label`,
+  value: `Value`,
+  percent: `Percent`,
+  'label+value': `Label + value`,
+  'label+percent': `Label + percent`,
+  'label+parent-percent': `Label + % of parent`,
+}
 
 // Complete settings configuration with values, descriptions, and constraints
 export const SETTINGS_CONFIG: SettingsConfig = {
@@ -1290,11 +1320,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Chart geometry: polar rings (sunburst) or stacked rows (icicle)`,
       enum: { sunburst: `Sunburst`, icicle: `Icicle` },
     },
-    value_mode: {
-      value: `leaf-sum` as const,
-      description: `How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children`,
-      enum: { 'leaf-sum': `Leaf sum`, total: `Total`, remainder: `Remainder` },
-    },
+    value_mode: VALUE_MODE_SETTING,
     max_depth: {
       value: 0,
       description: `Number of rings shown below the current zoom root (0 = all)`,
@@ -1335,14 +1361,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     label_text: {
       value: `label` as const,
-      description: `What arc labels display (percent is of the root total)`,
-      enum: {
-        label: `Label`,
-        value: `Value`,
-        percent: `Percent`,
-        'label+value': `Label + value`,
-        'label+percent': `Label + percent`,
-      },
+      description: `What arc labels display (percent is of the root total, parent-percent of the parent node)`,
+      enum: LABEL_TEXT_ENUM,
     },
     zoom_on_click: {
       value: true,
@@ -1351,6 +1371,58 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_breadcrumbs: {
       value: true,
       description: `Show a clickable trail of ancestors when zoomed into a subtree`,
+    },
+  },
+
+  // Treemap chart specific
+  treemap: {
+    value_mode: VALUE_MODE_SETTING,
+    max_depth: {
+      value: 0,
+      description: `Number of levels shown below the current zoom root (0 = all)`,
+      minimum: 0,
+      maximum: 10,
+    },
+    padding_inner: {
+      value: 0,
+      description: `Pixel gap between sibling cells (0 = cells share a single stroke divider; gaps > 0 show the parent's fill)`,
+      minimum: 0,
+      maximum: 10,
+    },
+    padding_top: {
+      value: 18,
+      description: `Pixel strip reserved at the top of branch cells for their label (0 = no headers)`,
+      minimum: 0,
+      maximum: 40,
+    },
+    padding_outer: {
+      value: 3,
+      description: `Pixel inset of child cells within their parent's left/right/bottom edges, so parents visibly enclose their subtree (plotly marker.pad)`,
+      minimum: 0,
+      maximum: 10,
+    },
+    min_fraction: {
+      value: 0,
+      description: `Group sibling cells smaller than this fraction of the total into one 'Other' cell per parent (0 = off)`,
+      minimum: 0,
+      maximum: 0.2,
+    },
+    show_labels: {
+      value: true,
+      description: `Show labels on cells large enough to fit them`,
+    },
+    label_text: {
+      value: `label` as const,
+      description: `What cell labels display (percent is of the root total, parent-percent of the parent node)`,
+      enum: LABEL_TEXT_ENUM,
+    },
+    zoom_on_click: {
+      value: true,
+      description: `Clicking any cell zooms into it, plotly-style (the breadcrumb pathbar zooms out)`,
+    },
+    show_breadcrumbs: {
+      value: true,
+      description: `Show a clickable pathbar of ancestors when zoomed into a subtree`,
     },
   },
 
@@ -1902,5 +1974,6 @@ export const merge = (user?: PartialSettings): DefaultSettings => ({
   box: merge_nested(DEFAULTS.box, user?.box),
   sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
   sunburst: merge_nested(DEFAULTS.sunburst, user?.sunburst),
+  treemap: merge_nested(DEFAULTS.treemap, user?.treemap),
   convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
 })

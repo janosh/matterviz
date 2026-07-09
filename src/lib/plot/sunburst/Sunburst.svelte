@@ -3,8 +3,6 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
-  import { pick_contrast_color } from '$lib/colors'
-  import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import { DEG_TO_RAD, type Vec2 } from '$lib/math'
@@ -22,14 +20,17 @@
   } from '$lib/plot'
   import { ColorBar, PlotLegend, PlotTooltip, SunburstControls } from '$lib/plot'
   import { closest_data_idx, get_relative_coords } from '$lib/plot/core/interactions'
-  import {
-    compute_element_placement,
-    filter_padding,
-    measure_text_width,
-  } from '$lib/plot/core/layout'
+  import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { create_color_scale } from '$lib/plot/core/scales'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import {
+    export_hierarchy_chart,
+    make_cached_contrast,
+    make_cached_text_width,
+    node_display_name,
+    node_label_variants,
+  } from '$lib/plot/core/utils/hierarchy-labels'
   import {
     arc_label_transform,
     arrow_nav_target,
@@ -352,22 +353,12 @@
   )
 
   // Black/white label text, whichever contrasts with the arc's fill (light arcs from
-  // explicit colors or level_lighten would hide white labels, esp. when highlighted).
-  // Memoized per color string - distinct arc colors are few.
-  const contrast_cache = new Map<string, string>()
-  const contrast_for = (fill: string): string => {
-    let contrast = contrast_cache.get(fill)
-    if (contrast === undefined) {
-      contrast = pick_contrast_color({ bg_color: fill })
-      contrast_cache.set(fill, contrast)
-    }
-    return contrast
-  }
+  // explicit colors or level_lighten would hide white labels, esp. when highlighted)
+  const contrast_for = make_cached_contrast()
 
-  // Parent arc of an arc (null for the root) and its display name
+  // Parent arc of an arc (null for the root)
   const parent_of = (arc: PositionedArc<Metadata>): PositionedArc<Metadata> | null =>
     arc.parent_idx != null ? layout.arcs[arc.parent_idx] : null
-  const arc_name = (arc: PositionedArc<Metadata>): string => arc.label ?? `${arc.id}`
 
   function make_node_props(arc: PositionedArc<Metadata>): SunburstNodeHandlerProps<Metadata> {
     // Handler props are the arc minus its screen geometry, plus the parent id
@@ -538,28 +529,7 @@
     const { fontSize, fontFamily } = getComputedStyle(svg_element)
     return `${fontSize} ${fontFamily}`
   })
-  const text_width_cache = new Map<string, number>()
-  function cached_text_width(text: string, font: string): number {
-    const key = `${font}|${text}`
-    let text_width = text_width_cache.get(key)
-    if (text_width === undefined) {
-      if (text_width_cache.size > 10_000) text_width_cache.clear() // growth guard
-      text_width = measure_text_width(text, font)
-      text_width_cache.set(key, text_width)
-    }
-    return text_width
-  }
-
-  // What an arc's label displays, per the label_text mode (plotly textinfo equivalent)
-  const arc_label_str = (arc: PositionedArc<Metadata>): string => {
-    const name = arc_name(arc)
-    if (label_text === `label`) return name
-    const val = format_value(arc.value, value_format)
-    if (label_text === `value`) return val
-    const pct = format_value(arc.fraction, `.1%`)
-    if (label_text === `percent`) return pct
-    return label_text === `label+value` ? `${name} ${val}` : `${name} ${pct}`
-  }
+  const cached_text_width = make_cached_text_width()
 
   // Per-arc label text, measured width, fill/label colors, clickability and aria
   // string - all view-independent, so computed once per layout/option change
@@ -568,12 +538,16 @@
   // zoom tweens rebuild every screen arc, re-running every template expression)
   let arc_info = $derived(
     layout.arcs.map((arc) => {
-      const text = arc_label_str(arc)
+      const { text, extended } = node_label_variants(arc, label_text, value_format)
       const fill = arc_color(arc)
       return {
         text,
         width: cached_text_width(text, label_font),
-        aria: `${arc_name(arc)}: ${arc.value}`,
+        extended,
+        extended_width: extended === undefined
+          ? undefined
+          : cached_text_width(extended, label_font),
+        aria: `${node_display_name(arc)}: ${arc.value}`,
         fill,
         label_fill: contrast_for(fill),
         clickable: arc_clickable(arc),
@@ -581,11 +555,23 @@
     }),
   )
 
-  // Label text + placement transform for an arc; null = doesn't fit, hide the label
+  // Label text + placement transform for an arc; null = doesn't fit, hide the
+  // label. Compound label modes try the full text first and degrade to the
+  // bare label when only the extended form doesn't fit.
   function label_attrs(screen: ScreenArc): { transform: string; text: string } | null {
-    const { text, width: text_w } = arc_info[screen.arc.node_idx]
+    const { text, width: text_w, extended, extended_width } = arc_info[screen.arc.node_idx]
     if (!text) return null
-    const transform = arc_label_transform(screen, text_w, shape, label_rotation)
+    if (extended !== undefined && extended_width !== undefined) {
+      const transform = arc_label_transform(
+        screen,
+        extended_width,
+        shape,
+        label_rotation,
+        radius,
+      )
+      if (transform) return { transform, text: extended }
+    }
+    const transform = arc_label_transform(screen, text_w, shape, label_rotation, radius)
     return transform ? { transform, text } : null
   }
 
@@ -611,7 +597,7 @@
   let legend_data: LegendItem[] = $derived(
     depth1_arcs.map((arc, idx) => ({
       series_idx: idx,
-      label: arc_name(arc),
+      label: node_display_name(arc),
       visible: !muted_ids.has(arc.id),
       display_style: { symbol_type: `Square` as const, symbol_color: arc_color(arc) },
     })),
@@ -629,7 +615,7 @@
   let zoom_out_label = $derived.by(() => {
     const parent = breadcrumb_arcs.at(-2)
     if (!parent) return ``
-    return parent.depth === 0 ? `full chart` : arc_name(parent)
+    return parent.depth === 0 ? `full chart` : node_display_name(parent)
   })
 
   // Ancestor chain from the root to the current zoom root (clickable breadcrumb trail)
@@ -641,26 +627,8 @@
     return chain
   })
 
-  // Styles the component applies via CSS that exported standalone SVGs must carry
-  // as presentation attributes (inlined onto a clone by the io/export helpers)
-  const export_inline_styles = [
-    `fill`,
-    `stroke`,
-    `stroke-width`,
-    `text-anchor`,
-    `dominant-baseline`,
-    `font-size`,
-    `font-family`,
-    `font-weight`,
-    `opacity`,
-  ]
-
-  function export_chart(format: `svg` | `png`) {
-    if (!svg_element) return
-    const filename = `${export_filename}.${format}`
-    if (format === `svg`) export_svg_as_svg(svg_element, filename, export_inline_styles)
-    else export_svg_as_png(svg_element, filename, 150, export_inline_styles)
-  }
+  const export_chart = (format: `svg` | `png`) =>
+    export_hierarchy_chart(svg_element, export_filename, format)
 </script>
 
 <svelte:window
@@ -920,7 +888,7 @@
   {#if metric && colorbar != null}
     <div
       bind:clientHeight={colorbar_height}
-      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
+      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
     >
       <ColorBar
         {color_scale}
