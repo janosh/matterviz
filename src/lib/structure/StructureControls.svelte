@@ -377,6 +377,7 @@
     </label>
     {#if available_vector_keys.length > 0}
       {#each available_vector_keys as key, idx (key)}
+        {@const key_visible = is_key_visible(key)}
         <label
           {@attach tooltip({
             content: `Toggle ${key} vectors`,
@@ -385,8 +386,8 @@
         >
           <input
             type="checkbox"
-            checked={is_key_visible(key)}
-            onchange={() => update_vector_config(key, { visible: !is_key_visible(key) })}
+            checked={key_visible}
+            onchange={() => update_vector_config(key, { visible: !key_visible })}
           />
           <input
             type="color"

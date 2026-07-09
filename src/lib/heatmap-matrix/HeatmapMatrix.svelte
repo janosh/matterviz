@@ -1210,7 +1210,10 @@
         {@const should_render = !is_hidden_cell(x_idx, y_idx)}
         {#if should_render}
           {@const raw = get_value(x_idx, y_idx)}
-          {@const cell_missing = cell_is_missing(raw)}
+          <!-- missing-state must match bg_flat, which colors from the transformed value -->
+          {@const cell_missing = cell_is_missing(
+            typeof raw === `number` ? get_transformed_value(x_idx, y_idx) : raw,
+          )}
           <svelte:element
             this={cell_tag_name}
             class={cell_class_name}

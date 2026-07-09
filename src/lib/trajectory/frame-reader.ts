@@ -14,7 +14,7 @@ import {
   iter_xyz_frames,
   validate_3x3_matrix,
 } from './helpers'
-import { strip_compression_extensions } from '$lib/io'
+import { strip_compression_extensions } from '$lib/io/decompress'
 import { decode_ase_frame, read_ase_header } from './parse/ase'
 import { build_xyz_frame, parse_xyz_comment_metadata } from './parse/xyz'
 

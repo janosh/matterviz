@@ -5,20 +5,19 @@
 // Import MatterViz parsing functions and components
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/app.css'
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
 import type { PhaseData } from '$lib/convex-hull/types'
 import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
-import { parse_fermi_file } from '$lib/fermi-surface/parse'
 import { is_fermi_surface_data } from '$lib/fermi-surface/types'
-import { decompress_data, detect_compression_format } from '$lib/io/decompress'
-import { parse_volumetric_file } from '$lib/isosurface/parse'
 import type { VolumetricData } from '$lib/isosurface/types'
 import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { PhaseDiagramData } from '$lib/phase-diagram/types'
 import { type DefaultSettings, merge } from '$lib/settings'
+import type { DosInput } from '$lib/spectral'
+import Bands from '$lib/spectral/Bands.svelte'
+import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
+import Dos from '$lib/spectral/Dos.svelte'
 import type { AnyStructure } from '$lib/structure'
-import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
@@ -30,34 +29,22 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryType,
+  TrajHandlerData,
 } from '$lib/trajectory'
-import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
+import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
-import type { ViewType } from '../types'
-import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '../types'
-import type { RenderableType } from './detect'
-import { detect_view_type, structure_props } from './detect'
+import TrajectoryWithDos from './TrajectoryWithDos.svelte'
+import { structure_props } from './detect'
 import JsonBrowser from './JsonBrowser.svelte'
+import type { FileData, ParsedTrajectoryResponse, ParseResult, ViewType } from './parse'
+import { parse_file_content, set_large_file_requester } from './parse'
 import { escape_html, to_error } from '$lib/utils'
 
-// Maps detect.ts RenderableType to ViewType for direct rendering.
-// Types not listed here fall through to json_browser (which can render all types
-// via its internal mount_into, giving the user a tree view alongside the viz).
-// structure and volumetric have special handling in parse_file_content below.
-const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
-  fermi_surface: `fermi_surface`,
-  band_grid: `fermi_surface`,
-  convex_hull: `convex_hull`,
-  phase_diagram: `phase_diagram`,
-}
-
-export type { ViewType } from '../types'
-export interface FileData {
-  filename: string
-  content: string
-  is_base64: boolean
-}
+// The parse-only path lives in ./parse (worker-safe, no Svelte imports);
+// re-export everything so existing importers of main.ts keep working.
+export { base64_to_array_buffer, parse_file_content, parse_large_file_marker } from './parse'
+export type { FileData, ParseResult, ViewType } from './parse'
 
 export interface MatterVizData {
   type: ViewType
@@ -67,17 +54,19 @@ export interface MatterVizData {
   moyo_wasm_url?: string
 }
 
-export interface ParseResult {
-  type: ViewType
-  data: unknown
-  filename: string
-  // For trajectories that support VS Code streaming
-  streaming_info?: { file_path: string }
-}
-
 export interface MatterVizApp {
   $on?(type: string, callback: (event: Event) => void): () => void
   $set?(props: Partial<Record<string, unknown>>): void
+}
+
+// Host-provided options for create_display. Only the trajectory branch consumes
+// them (viewer position restore across reloads); other result types ignore them.
+export interface DisplayOptions {
+  // Initial frame to show. Out-of-range values (e.g. Number.MAX_SAFE_INTEGER)
+  // are clamped by the Trajectory component to the last frame.
+  initial_step_idx?: number
+  // Reports every step change with the new index and the trajectory's frame count.
+  on_step_change?: (step_idx: number, total_frames: number) => void
 }
 
 export interface FileChangeMessage {
@@ -86,6 +75,39 @@ export interface FileChangeMessage {
   data?: FileData
   type?: ViewType
   theme?: ThemeName
+}
+
+// Shared postMessage request/response plumbing for talking to the extension
+// host: tags the request with a UUID, forwards responses carrying that id to
+// on_response (which returns true once it settled the promise), and rejects
+// on timeout. Always removes the listener + timer once settled.
+function post_request<T>(
+  api: VSCodeAPI,
+  message: Record<string, unknown>,
+  timeout_ms: number,
+  timeout_error: string,
+  on_response: (
+    data: Record<string, unknown>,
+    resolve: (value: T) => void,
+    reject: (error: Error) => void,
+  ) => boolean,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const request_id = crypto.randomUUID()
+    const timer = setTimeout(() => {
+      globalThis.removeEventListener(`message`, handler)
+      reject(new Error(timeout_error))
+    }, timeout_ms)
+    const handler = (event: MessageEvent) => {
+      if (event.data?.request_id !== request_id) return
+      if (on_response(event.data, resolve, reject)) {
+        globalThis.removeEventListener(`message`, handler)
+        clearTimeout(timer)
+      }
+    }
+    globalThis.addEventListener(`message`, handler)
+    api.postMessage({ ...message, request_id })
+  })
 }
 
 // VS Code Frame Loader - streams frames via extension communication
@@ -102,33 +124,24 @@ export class VSCodeFrameLoader implements FrameLoader {
     frame_index: number,
     timeout: number = 10, // 10 seconds
   ): Promise<TrajectoryFrame | null> {
-    return new Promise((resolve, reject) => {
-      const request_id = crypto.randomUUID()
-      let timer: ReturnType<typeof setTimeout> | null = null
-      const handler = (event: MessageEvent) => {
-        const { command, request_id: id, error, frame } = event.data
-        if (command === `frame_response` && id === request_id) {
-          globalThis.removeEventListener(`message`, handler)
-          if (timer) clearTimeout(timer)
-          if (error) reject(new Error(error))
-          else resolve(frame)
-        }
-      }
-
-      globalThis.addEventListener(`message`, handler)
-      this.vscode_api.postMessage({
-        command: `request_frame`,
-        request_id,
-        file_path: this.file_path,
-        filename: this.filename,
-        frame_index,
-      })
-
-      timer = setTimeout(() => {
-        globalThis.removeEventListener(`message`, handler)
-        reject(new Error(`Frame ${frame_index} timeout after ${timeout}s`))
-      }, timeout * 1000)
-    })
+    const message = {
+      command: `request_frame`,
+      file_path: this.file_path,
+      filename: this.filename,
+      frame_index,
+    }
+    return post_request(
+      this.vscode_api,
+      message,
+      timeout * 1000,
+      `Frame ${frame_index} timeout after ${timeout}s`,
+      (data, resolve, reject) => {
+        if (data.command !== `frame_response`) return false
+        if (data.error) reject(new Error(data.error as string))
+        else resolve(data.frame as TrajectoryFrame | null)
+        return true
+      },
+    )
   }
 
   // Unused methods - just throw errors
@@ -265,41 +278,6 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
   }
 }
 
-// Convert base64 to ArrayBuffer for binary files
-export function base64_to_array_buffer(base64: string): ArrayBuffer {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let idx = 0; idx < binary.length; idx++) {
-    bytes[idx] = binary.charCodeAt(idx)
-  }
-  return bytes.buffer
-}
-
-// Type for parsed trajectory response from large file requests
-type ParsedTrajectoryResponse = {
-  trajectory: TrajectoryType
-  file_path: string
-}
-
-export const parse_large_file_marker = (
-  content: string,
-): { file_path: string; file_size: number } | null => {
-  const prefix = `LARGE_FILE:`
-  if (!content.startsWith(prefix)) return null
-  const payload = content.slice(prefix.length)
-  const size_separator_idx = payload.lastIndexOf(`:`)
-  if (size_separator_idx <= 0) throw new Error(`Malformed large file marker`)
-
-  const file_path = payload.slice(0, size_separator_idx)
-  const size_text = payload.slice(size_separator_idx + 1)
-  const file_size = Number(size_text)
-  // reject empty/whitespace size segments explicitly since Number(``) === 0
-  if (!size_text.trim() || !Number.isSafeInteger(file_size) || file_size < 0) {
-    throw new Error(`Malformed large file size`)
-  }
-  return { file_path, file_size }
-}
-
 // Request large file content from the extension using chunked streaming
 function request_large_file_content(
   file_path: string,
@@ -309,187 +287,32 @@ function request_large_file_content(
 ): Promise<string | ParsedTrajectoryResponse> {
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
-  return new Promise((resolve, reject) => {
-    const request_id = crypto.randomUUID()
-
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const handler = (event: MessageEvent) => {
-      const { command, request_id: id, error, parsed_trajectory } = event.data
-      const { is_parsed, stage, progress } = event.data
-      if (command === `large_file_progress` && id === request_id) {
+  const message = { command: `request_large_file`, file_path, filename, is_compressed }
+  return post_request(
+    vscode_api,
+    message,
+    timeout,
+    `Large file timeout`,
+    (data, resolve, reject) => {
+      if (data.command === `large_file_progress`) {
         // TODO maybe forward file load progress to UI
-        console.info(`Progress: ${stage} - ${progress}%`)
-        return
+        console.info(`Progress: ${data.stage} - ${data.progress}%`)
+        return false
       }
-      if (command === `large_file_response` && id === request_id) {
-        globalThis.removeEventListener(`message`, handler)
-        if (timer) clearTimeout(timer)
-        if (error) return reject(new Error(error))
-        if (is_parsed && parsed_trajectory) {
-          return resolve({
-            trajectory: parsed_trajectory,
-            file_path,
-          })
-        }
-        resolve(event.data.content)
-      }
-    }
-
-    globalThis.addEventListener(`message`, handler)
-    const command = `request_large_file`
-    vscode_api.postMessage({ command, request_id, file_path, filename, is_compressed })
-
-    timer = setTimeout(() => {
-      globalThis.removeEventListener(`message`, handler)
-      reject(new Error(`Large file timeout`))
-    }, timeout)
-  })
+      if (data.command !== `large_file_response`) return false
+      if (data.error) reject(new Error(data.error as string))
+      else if (data.is_parsed && data.parsed_trajectory) {
+        resolve({ trajectory: data.parsed_trajectory as TrajectoryType, file_path })
+      } else resolve(data.content as string)
+      return true
+    },
+  )
 }
 
-// Parse file content and determine if it's a structure or trajectory
-export const parse_file_content = async (
-  content: string,
-  filename: string,
-  is_compressed: boolean = false,
-  recursion_depth: number = 0,
-): Promise<ParseResult> => {
-  if (recursion_depth > 2) {
-    throw new Error(
-      `parse_file_content exceeded max recursion depth=2 while parsing file ${filename}`,
-    )
-  }
-
-  const large_file_marker = parse_large_file_marker(content)
-  if (large_file_marker) {
-    const { file_path, file_size } = large_file_marker
-
-    console.info(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
-
-    const parsed_trajectory = await request_large_file_content(
-      file_path,
-      filename,
-      is_compressed,
-    )
-
-    // Check if we received a pre-parsed trajectory with VS Code streaming support
-    if (
-      parsed_trajectory &&
-      typeof parsed_trajectory === `object` &&
-      `trajectory` in parsed_trajectory &&
-      `file_path` in parsed_trajectory
-    ) {
-      const { trajectory, file_path: streaming_file_path } = parsed_trajectory
-      const streaming_info = { file_path: streaming_file_path }
-      return { type: `trajectory`, data: trajectory, filename, streaming_info }
-    }
-
-    // Fallback: if not pre-parsed, treat as raw content
-    return parse_file_content(parsed_trajectory, filename, is_compressed, recursion_depth + 1)
-  }
-
-  // Handle compressed/binary files by converting from base64 first
-  if (is_compressed) {
-    const buffer = base64_to_array_buffer(content)
-
-    // Binary trajectory formats: pass buffer directly to trajectory parser
-    if (/\.(?:h5|hdf5|traj)$/i.test(filename)) {
-      const data = await parse_trajectory_data(buffer, filename)
-      return { type: `trajectory`, filename, data }
-    }
-
-    // Unified handling for all supported compression formats
-    const format = detect_compression_format(filename)
-    if (format && format !== `zip`) {
-      // Skip ZIP as it's not supported in browser
-      content = await decompress_data(buffer, format)
-      filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    }
-  }
-
-  // Fermi surface files (.bxsf, .frmsf)
-  // Use basename for regex matching in case filename retains a directory prefix
-  const basename = filename.split(`/`).pop() ?? filename
-  if (FERMI_FILE_RE.test(basename)) {
-    // parse_fermi_file throws a descriptive error when parsing fails
-    return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
-  }
-
-  // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG)
-  if (VOLUMETRIC_EXT_RE.test(basename) || VOLUMETRIC_VASP_RE.test(basename)) {
-    const data = parse_volumetric_file(content, filename)
-    if (data) return { type: `isosurface`, data, filename }
-    throw new Error(`Failed to parse volumetric file: ${filename}`)
-  }
-
-  let parsed_json: unknown
-  let has_parsed_json = false
-
-  // JSON files: render typed JSON before filename heuristics. Otherwise names like
-  // convex-hull.json can be mistaken for trajectory keywords such as nve.
-  if (/\.json$/i.test(filename)) {
-    try {
-      parsed_json = JSON.parse(content)
-      has_parsed_json = true
-      // Check if the top-level value matches a known visualization type
-      const detected = detect_view_type(parsed_json)
-      if (detected) {
-        // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.)
-        if (detected === `structure`) {
-          try {
-            const structure = parse_structure_file(content, filename)
-            return {
-              type: `structure`,
-              data: { ...structure, id: filename.replace(/\.[^/.]+$/, ``) },
-              filename,
-            }
-          } catch {
-            // Detailed parse failed despite structure-like shape — fall through to
-            // generic JSON handling below
-          }
-        }
-        // Volumetric JSON needs wrapping in { structure, volumes } for the isosurface renderer
-        if (detected === `volumetric`) {
-          const vol = parsed_json as { lattice?: unknown }
-          return {
-            type: `isosurface`,
-            data: { structure: { sites: [], lattice: vol.lattice }, volumes: [parsed_json] },
-            filename,
-          }
-        }
-        return {
-          type: DETECTION_TO_VIEW_TYPE[detected] ?? `json_browser`,
-          data: parsed_json,
-          filename,
-        }
-      }
-    } catch {
-      // JSON parse failed, fall through to structure parser
-    }
-  }
-
-  // Try trajectory parsing if it looks like a trajectory
-  if (is_trajectory_file(filename, content)) {
-    try {
-      const data = await parse_trajectory_data(content, filename)
-      return { type: `trajectory`, data, filename }
-    } catch (error) {
-      // Trajectory-looking filename but not trajectory-shaped JSON (e.g. nve-config.json):
-      // fall through to the JSON browser instead of failing the render
-      if (!has_parsed_json) throw error
-    }
-  }
-
-  // No top-level match -- show JSON browser for navigation
-  if (has_parsed_json) return { type: `json_browser`, data: parsed_json, filename }
-
-  // Parse as structure (CIF, POSCAR, XYZ, etc.) — throws descriptive reasons on failure
-  const structure = parse_structure_file(content, filename)
-  // parse_structure_file throws on parse failure but can still return zero atoms (e.g. a
-  // CIF with cell params but no _atom_site records), which is invalid downstream
-  if (!structure.sites?.length) throw new Error(`No atoms found in ${filename}`)
-  const data = { ...structure, id: filename.replace(/\.[^/.]+$/, ``) }
-  return { type: `structure`, data, filename }
-}
+// Wire the parse path's LARGE_FILE handling to this webview's host transport.
+// Registered unconditionally: request_large_file_content itself throws when no
+// VS Code API is available, matching the pre-split behavior.
+set_large_file_requester(request_large_file_content)
 
 // Create error display in container
 const create_error_display = (
@@ -518,6 +341,7 @@ export const create_display = (
   container: HTMLElement,
   result: ParseResult,
   filename: string,
+  display_options?: DisplayOptions,
 ): MatterVizApp => {
   Object.assign(container.style, {
     width: `100%`,
@@ -566,17 +390,58 @@ export const create_display = (
       }
     }
 
-    app = mount(Trajectory, {
-      target: container,
-      props: {
-        trajectory: final_trajectory,
-        ...trajectory_props(defaults),
-        ...common_props,
-      },
-    })
+    const { initial_step_idx, on_step_change } = display_options ?? {}
+    const trajectory_mount_props = {
+      trajectory: final_trajectory,
+      ...trajectory_props(defaults),
+      ...common_props,
+      ...(initial_step_idx !== undefined && { current_step_idx: initial_step_idx }),
+      ...(on_step_change && {
+        on_step_change: (data: TrajHandlerData) =>
+          on_step_change(data.step_idx ?? 0, data.frame_count ?? 0),
+      }),
+    }
+    // vaspout.h5 files carrying results/electron_dos get a DOS panel below the trajectory
+    const traj_electronic = final_trajectory.metadata?.electronic as
+      | VaspoutElectronicData
+      | undefined
+    if (traj_electronic?.dos) {
+      app = mount(TrajectoryWithDos, {
+        target: container,
+        props: { dos: traj_electronic.dos, trajectory_props: trajectory_mount_props },
+      })
+    } else {
+      app = mount(Trajectory, { target: container, props: trajectory_mount_props })
+    }
     log_message = `Trajectory rendered: ${filename} (${
       final_trajectory.frames?.length ?? 0
     } initial frames, ${final_trajectory.total_frames ?? `unknown`} total)`
+  } else if (result.type === `vaspout_electronic`) {
+    const { dos, bands } = result.data as VaspoutElectronicData
+    const spectral_props = { style: `height: 100%`, class: `vaspout-electronic` }
+    if (bands && dos) {
+      app = mount(BandsAndDos, {
+        target: container,
+        props: {
+          band_structs: bands,
+          doses: dos,
+          bands_props: { band_type: `electronic` as const },
+          ...spectral_props,
+        },
+      })
+    } else if (bands) {
+      app = mount(Bands, {
+        target: container,
+        props: { band_structs: bands, band_type: `electronic` as const, ...spectral_props },
+      })
+    } else {
+      app = mount(Dos, {
+        target: container,
+        props: { doses: dos as DosInput, ...spectral_props },
+      })
+    }
+    const parts = [bands ? `bands` : null, dos ? `DOS` : null].filter(Boolean).join(` + `)
+    log_message = `Electronic structure rendered: ${filename} (${parts})`
   } else if (result.type === `fermi_surface`) {
     const fermi_props: Record<string, unknown> = { ...common_props }
     if (is_fermi_surface_data(result.data as Parameters<typeof is_fermi_surface_data>[0])) {

@@ -24,18 +24,32 @@ export type ChartSegmentData = {
   text_color: string
 }
 
-// Segment label shared by bar/pie charts: element symbol plus optional
-// amount and percentage suffixes
+// Amount/percentage suffix rendered after the element symbol in bar/pie chart
+// segments; `=` separates amount from percentage when both are shown (Fe2=20%).
+// format_num (not toString) so float noise like 0.30000000000000004 can't leak
+// into labels; same format convention as format_composition_formula subscripts
+// (`.3~s`, avoiding SI prefixes for sub-1 amounts where `s` renders 0.5 as 500m)
+export const chart_segment_suffix = (
+  amount: number | undefined,
+  fraction: number,
+  show_amounts: boolean,
+  show_percentages: boolean,
+): string =>
+  (show_amounts && amount !== undefined
+    ? format_num(amount, Math.abs(amount) < 1 ? `.3~g` : `.3~s`)
+    : ``) +
+  (show_amounts && show_percentages ? `=` : ``) +
+  (show_percentages ? format_num(fraction, `.1~%`) : ``)
+
+// Full segment label used to estimate label width for font scaling; must match
+// the text the charts actually render (element symbol + chart_segment_suffix)
 export const chart_segment_label = (
   element: string,
   amount: number | undefined,
   fraction: number,
   show_amounts: boolean,
   show_percentages: boolean,
-): string =>
-  element +
-  (show_amounts ? (amount?.toString() ?? ``) : ``) +
-  (show_percentages ? format_num(fraction, `.1~%`) : ``)
+): string => element + chart_segment_suffix(amount, fraction, show_amounts, show_percentages)
 
 export function get_chart_font_scale(
   base_scale: number,

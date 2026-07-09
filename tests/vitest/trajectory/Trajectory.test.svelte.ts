@@ -40,6 +40,43 @@ describe(`Trajectory`, () => {
     expect(plot.textContent).not.toContain(`Energy`)
   })
 
+  // Regression: hosts restore viewer position by passing an out-of-range
+  // current_step_idx (MAX_SAFE_INTEGER = "last frame"); the clamp must both
+  // write back the corrected index and notify on_step_change. Slider input
+  // must report the event target's value — bind:value may not have written
+  // the binding yet when oninput fires, so reading the bound state is stale.
+  test(`clamps out-of-range steps and reports slider values from the event`, async () => {
+    const step_events: { step_idx: number; frame_count: number }[] = []
+    const props = $state({
+      trajectory: make_traj([{ energy: -1 }, { energy: -2 }, { energy: -3 }]),
+      current_step_idx: Number.MAX_SAFE_INTEGER,
+      show_controls: `always` as const,
+      // TrajHandlerData's fields are optional; the assertions below pin the
+      // concrete values so `?? -1` can't mask a missing field
+      on_step_change: (data: { step_idx?: number; frame_count?: number }) => {
+        step_events.push({
+          step_idx: data.step_idx ?? -1,
+          frame_count: data.frame_count ?? -1,
+        })
+      },
+    })
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    mount(Trajectory, { target, props })
+    flushSync()
+    await tick()
+
+    expect(props.current_step_idx).toBe(2)
+    expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
+
+    const slider = target.querySelector<HTMLInputElement>(`.step-slider`)
+    if (!slider) throw new Error(`step slider not found`)
+    slider.value = `1`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    flushSync()
+    expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
+  })
+
   test(`view mode menu is layered and selectable`, async () => {
     const props = $state({
       trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),

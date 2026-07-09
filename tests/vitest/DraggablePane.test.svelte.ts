@@ -151,6 +151,56 @@ describe(`DraggablePane`, () => {
     expect(pane.style.maxWidth).toBe(`600px`)
   })
 
+  test(`fixed panes clamp below low toggle buttons`, async () => {
+    const original_inner_height = window.innerHeight
+    const original_inner_width = window.innerWidth
+    Object.defineProperties(window, {
+      innerHeight: { configurable: true, value: 800 },
+      innerWidth: { configurable: true, value: 900 },
+    })
+    try {
+      mount(DraggablePane, {
+        target: document.body,
+        props: { ...default_props, position: `fixed` },
+      })
+      const button = doc_query(`.pane-toggle`)
+      const pane = doc_query<HTMLElement>(`.draggable-pane`)
+      vi.spyOn(button, `getBoundingClientRect`).mockReturnValue({
+        bottom: 760,
+        height: 24,
+        left: 430,
+        right: 460,
+        top: 736,
+        width: 30,
+        x: 430,
+        y: 736,
+        toJSON: () => ({}),
+      })
+      vi.spyOn(pane, `getBoundingClientRect`).mockReturnValue({
+        bottom: 1000,
+        height: 320,
+        left: 0,
+        right: 450,
+        top: 760,
+        width: 450,
+        x: 0,
+        y: 760,
+        toJSON: () => ({}),
+      })
+
+      click(button)
+      await tick()
+
+      expect(pane.style.top).toBe(`612px`)
+      expect(pane.style.getPropertyValue(`--pane-viewport-clamp`)).toBe(`180px`)
+    } finally {
+      Object.defineProperties(window, {
+        innerHeight: { configurable: true, value: original_inner_height },
+        innerWidth: { configurable: true, value: original_inner_width },
+      })
+    }
+  })
+
   test(`ARIA defaults`, () => {
     mount(DraggablePane, { target: document.body, props: default_props })
     const button = doc_query(`.pane-toggle`)

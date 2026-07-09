@@ -3606,3 +3606,72 @@ describe(`Coordinate Normalization`, () => {
     expect(result?.sites[2].abc).toEqual([0.5, 0.5, 0.75])
   })
 })
+
+describe(`lattice params derived from matrix-only lattices`, () => {
+  // pymatgen's default Structure.as_dict() serializes the lattice as matrix+pbc
+  // only. Missing a/b/c/angles/volume used to flow NaN into camera auto-fit,
+  // rendering structures as blank canvases.
+  const matrix_only_structure = (extra_lattice: object = {}) => ({
+    '@class': `Structure`,
+    '@module': `pymatgen.core.structure`,
+    lattice: {
+      matrix: [
+        [3.887614, 0, 2e-16],
+        [2e-16, -3.887614, -2e-16],
+        [2.5e-15, 2.5e-15, -49.0954],
+      ],
+      pbc: [true, true, true],
+      ...extra_lattice,
+    },
+    sites: [
+      {
+        species: [{ element: `O`, occu: 1 }],
+        abc: [0.5, 0.5, 0.2],
+        xyz: [1.943807, -1.943807, -9.81908],
+        label: `O`,
+        properties: {},
+      },
+    ],
+  })
+
+  // parse_any_structure throws on failure, so only the lattice presence needs guarding
+  const parsed_lattice = (input: object) => {
+    const result = parse_any_structure(JSON.stringify(input), `test.json`)
+    if (!(`lattice` in result) || !result.lattice) throw new Error(`expected lattice`)
+    return result.lattice
+  }
+
+  test.each([
+    [`direct pymatgen dict (fast path)`, (struct: object) => struct],
+    [`nested under output.structure`, (struct: object) => ({ output: { structure: struct } })],
+  ])(`computes a/b/c/angles/volume for %s`, (_name, wrap) => {
+    const lattice = parsed_lattice(wrap(matrix_only_structure()))
+    expect(lattice.a).toBeCloseTo(3.887614, 5)
+    expect(lattice.b).toBeCloseTo(3.887614, 5)
+    expect(lattice.c).toBeCloseTo(49.0954, 4)
+    expect(lattice.alpha).toBeCloseTo(90, 5)
+    expect(lattice.beta).toBeCloseTo(90, 5)
+    expect(lattice.gamma).toBeCloseTo(90, 5)
+    expect(lattice.volume).toBeCloseTo(3.887614 * 3.887614 * 49.0954, 2)
+  })
+
+  // Deliberately wrong/junk partial params prove the matrix wins over them
+  test.each([
+    [`partial numeric params`, { a: 1, b: 2 }],
+    [`non-numeric params`, { a: `3.9`, b: null, volume: NaN }],
+  ])(`recomputes all params over %s`, (_name, extra_lattice) => {
+    const lattice = parsed_lattice(matrix_only_structure(extra_lattice))
+    expect(lattice.a).toBeCloseTo(3.887614, 5)
+    expect(lattice.b).toBeCloseTo(3.887614, 5)
+    expect(lattice.c).toBeCloseTo(49.0954, 4)
+    expect(lattice.volume).toBeCloseTo(3.887614 * 3.887614 * 49.0954, 2)
+  })
+
+  test(`leaves fully-specified lattices untouched`, () => {
+    const lattice_params = { a: 1, b: 2, c: 3, alpha: 90, beta: 90, gamma: 90, volume: 6 }
+    const lattice = parsed_lattice(matrix_only_structure(lattice_params))
+    // Deliberately inconsistent params prove the no-op path: matrix is not consulted
+    expect(lattice.a).toBe(1)
+    expect(lattice.volume).toBe(6)
+  })
+})

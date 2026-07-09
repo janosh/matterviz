@@ -1,17 +1,8 @@
 import type { OptimadeStructure } from '$lib/api/optimade'
-import {
-  COMPRESSION_EXTENSIONS_REGEX,
-  CONFIG_DIRS_REGEX,
-  STRUCT_KEYWORDS_REGEX,
-  STRUCT_KEYWORDS_STRICT_REGEX,
-  STRUCTURE_EXTENSIONS_REGEX,
-  TRAJ_KEYWORDS_REGEX,
-  VASP_FILES_REGEX,
-  XYZ_EXTXYZ_REGEX,
-} from '$lib/constants'
+import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
-import { FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element'
-import { strip_compression_extensions } from '$lib/io'
+import { FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element/helpers'
+import { strip_compression_extensions } from '$lib/io/decompress'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Site, StructureProperties } from '$lib/structure'
@@ -26,6 +17,8 @@ import {
   to_error,
 } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
+
+export { is_structure_file } from '$lib/structure/format-detect'
 
 // === Parse error contract ===
 // Individual format parsers (parse_poscar, parse_cif, parse_xyz, parse_phonopy_yaml,
@@ -1279,6 +1272,30 @@ export function is_parsed_structure(obj: unknown): obj is ParsedStructure {
   return has_species && has_coords
 }
 
+// Structure JSON serialized by pymatgen (default verbosity) stores only the lattice
+// matrix + pbc; derive the missing scalar params (a/b/c/angles/volume) from the matrix
+// so downstream consumers (camera auto-fit, density, export) never see NaN.
+export function ensure_lattice_params(structure: ParsedStructure): ParsedStructure {
+  const lattice = structure.lattice
+  if (!lattice?.matrix) return structure
+  const params = [
+    lattice.a,
+    lattice.b,
+    lattice.c,
+    lattice.alpha,
+    lattice.beta,
+    lattice.gamma,
+    lattice.volume,
+  ]
+  if (params.every(Number.isFinite)) return structure
+  // The matrix is authoritative: recompute all params from it rather than
+  // trusting a partially-populated (or non-numeric) set of values.
+  return {
+    ...structure,
+    lattice: { ...lattice, ...math.calc_lattice_params(lattice.matrix) },
+  }
+}
+
 // Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
 // Only normalizes when lattice matrix is available to ensure abc/xyz stay consistent
 export function normalize_fractional_coords(structure: ParsedStructure): ParsedStructure {
@@ -1315,7 +1332,7 @@ const detect_json_structure = (content: string): ParsedStructure | null => {
   }
   // Otherwise try parsing as pymatgen/nested structure JSON
   const structure = find_structure_in_json(parsed)
-  return structure ? normalize_fractional_coords(structure) : null
+  return structure ? ensure_lattice_params(normalize_fractional_coords(structure)) : null
 }
 
 // Internal: auto-detect file format, returns null on failure after recording reasons (see parse error contract at top)
@@ -1434,16 +1451,19 @@ export function parse_structure_file(content: string, filename?: string): Parsed
 // Universal parser for JSON and structure files; throws an Error aggregating per-format failure reasons when nothing parses
 export function parse_any_structure(content: string, filename: string): AnyStructure {
   reset_parse_diagnostics()
-  const finalize_structure = (structure: ParsedStructure): AnyStructure => ({
-    sites: structure.sites,
-    charge: 0,
-    ...(structure.properties && {
-      properties: structuredClone(structure.properties),
-    }),
-    ...(structure.lattice && {
-      lattice: { ...structure.lattice, pbc: [true, true, true] },
-    }),
-  })
+  const finalize_structure = (parsed_structure: ParsedStructure): AnyStructure => {
+    const structure = ensure_lattice_params(parsed_structure)
+    return {
+      sites: structure.sites,
+      charge: 0,
+      ...(structure.properties && {
+        properties: structuredClone(structure.properties),
+      }),
+      ...(structure.lattice && {
+        lattice: { ...structure.lattice, pbc: [true, true, true] },
+      }),
+    }
+  }
 
   // Fast path: content is already a serialized structure object
   try {
@@ -1671,40 +1691,6 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
     diag_error(`Error converting OPTIMADE to Crystal format`, err)
     return null
   }
-}
-
-// Check if filename indicates a structure file
-export function is_structure_file(filename: string): boolean {
-  const name = filename.toLowerCase()
-
-  // Trajectory-only formats (can't be structures)
-  if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
-
-  // Always structure formats
-  if (STRUCTURE_EXTENSIONS_REGEX.test(name)) return true
-  if (VASP_FILES_REGEX.test(name)) return true
-
-  // .xyz/.extxyz files: structure unless they have trajectory keywords
-  if (/\.(?:xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
-
-  // Keyword-based detection for YAML/XML
-  if (/\.(?:yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
-
-  // More restrictive keyword detection for JSON files
-  if (
-    /\.json$/i.test(name) &&
-    STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
-    !TRAJ_KEYWORDS_REGEX.test(name) &&
-    !CONFIG_DIRS_REGEX.test(name)
-  )
-    return true
-
-  // Compressed files - check base filename recursively
-  if (COMPRESSION_EXTENSIONS_REGEX.test(name)) {
-    return is_structure_file(name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
-  }
-
-  return false
 }
 
 export const detect_structure_type = (

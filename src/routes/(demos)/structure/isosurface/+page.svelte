@@ -70,7 +70,7 @@
       structure = parse_any_structure(text, filename)
       volumetric_data = undefined
     } catch (exc) {
-      error_msg = `Failed to parse ${filename}: ${exc instanceof Error ? exc.message : exc}`
+      error_msg = `Failed to parse ${filename}: ${to_error(exc).message}`
     }
   }
 

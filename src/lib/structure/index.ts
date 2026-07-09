@@ -22,6 +22,17 @@ export * from './pbc'
 export * from './polyhedra'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
+export { default as StructureCarousel } from './StructureCarousel.svelte'
+
+// defined here (not in StructureCarousel.svelte's module script) so plain-TS
+// consumers can import it from '$lib/structure' without a .svelte module
+// resolution, which type-aware lint can't see named exports of
+export type StructureCarouselItem = {
+  id: string
+  label: string
+  subtitle?: string
+  structure: AnyStructure
+}
 export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureExportPane } from './StructureExportPane.svelte'
 export { default as StructureInfoPane } from './StructureInfoPane.svelte'

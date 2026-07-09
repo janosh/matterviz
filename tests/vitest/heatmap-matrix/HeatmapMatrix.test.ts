@@ -183,6 +183,25 @@ describe(`values and colors`, () => {
     expect(cells[1].style.opacity).toBe(``)
   })
 
+  test(`missing decorations follow the transformed value, matching cell background`, () => {
+    // value_transform maps 1 -> null, so cell B must get BOTH the missing
+    // background and the missing label/style (they previously disagreed:
+    // background used the transformed value, decorations the raw value)
+    mount_matrix({
+      x: [`A`, `B`],
+      y: [`X`],
+      values: [[2, 1]],
+      value_transform: (val: number) => (val === 1 ? null : val),
+      missing: { color: `red`, label: `N/A`, style: `opacity: 0.4` },
+    })
+    const cells = get_data_cells()
+    expect(cells[1].style.backgroundColor).toBe(`red`)
+    expect(cells[1].textContent?.trim()).toBe(`N/A`)
+    expect(cells[1].style.opacity).toBe(`0.4`)
+    expect(cells[0].style.backgroundColor).not.toBe(`red`)
+    expect(cells[0].textContent).not.toContain(`N/A`)
+  })
+
   test(`record-based values resolve by key with null handling`, () => {
     mount_matrix({
       x: [`A`, `B`],

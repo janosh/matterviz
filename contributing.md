@@ -54,7 +54,7 @@ git checkout -b bug-fix-for-something
 
 ## Making a Release
 
-1. Update version in `package.json` (follows [semver](https://semver.org))
+1. Update version in `package.json` (follows [semver](https://semver.org)).
 1. Generate changelog:
 
    ```sh
@@ -70,4 +70,4 @@ git checkout -b bug-fix-for-something
    git push && git push --tags
    ```
 
-1. [Create GitHub release](https://github.com/janosh/matterviz/releases/new)
+1. [Create GitHub release](https://github.com/janosh/matterviz/releases/new).

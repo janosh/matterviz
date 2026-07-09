@@ -1,5 +1,6 @@
 <script lang="ts">
   import { sanitize_html } from '$lib/sanitize'
+  import { clamp01 } from '$lib/utils'
   import { type Crystal, SETTINGS_CONFIG } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
@@ -16,8 +17,7 @@
 
   // Helper: convert #rrggbb to #rrggbbaa
   function hex_with_alpha(hex_color: string, alpha_frac: number): string {
-    const clamped = Math.max(0, Math.min(1, alpha_frac))
-    const alpha_byte = Math.round(clamped * 255)
+    const alpha_byte = Math.round(clamp01(alpha_frac) * 255)
     const alpha_hex = alpha_byte.toString(16).padStart(2, `0`)
     return hex_color.length === 7 ? `${hex_color}${alpha_hex}` : hex_color
   }

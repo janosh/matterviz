@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { format_value } from '$lib/labels'
+  import { format_value_or_num } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import type {
@@ -140,7 +140,7 @@
     show_mean = $bindable(DEFAULTS.box.show_mean),
     show_value_labels = false,
     value_label_stat = `median`,
-    value_label_format = `.3~s`,
+    value_label_format = ``,
     kind = $bindable(DEFAULTS.box.kind),
     side = $bindable(DEFAULTS.box.side),
     bandwidth = DEFAULTS.box.bandwidth,
@@ -793,7 +793,10 @@
 
   // Value label helper
   const value_label_for = (stats: Box[`stats`]): string =>
-    format_value(value_label_stat === `mean` ? stats.mean : stats.median, value_label_format)
+    format_value_or_num(
+      value_label_stat === `mean` ? stats.mean : stats.median,
+      value_label_format,
+    )
 </script>
 
 {#snippet seg(p1: Vec2, p2: Vec2, stroke: string, sw: number, dash?: string)}
@@ -1248,7 +1251,7 @@
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
-          {@const fmt = (orientation === `vertical` ? y_axis.format : x_axis.format) || `.3~s`}
+          {@const fmt = orientation === `vertical` ? y_axis.format : x_axis.format}
           {@const stat = hover_info.stats}
           {@const rows = [
             [`max`, stat.whisker_high],
@@ -1262,7 +1265,7 @@
             <div><strong>{hover_info.category_label}</strong></div>
           {/if}
           {#each rows as [label, value] (label)}
-            <div>{label}: {format_value(value, fmt)}</div>
+            <div>{label}: {format_value_or_num(value, fmt)}</div>
           {/each}
           {#if show_outliers && stat.outliers.length > 0}
             <div>outliers: {stat.outliers.length}</div>

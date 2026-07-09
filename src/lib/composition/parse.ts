@@ -1,6 +1,7 @@
 import type { ElementSymbol } from '$lib/element'
 import type { CompositionType } from '$lib/composition'
-import { element_data, is_elem_symbol } from '$lib/element'
+import { default as element_data } from '$lib/element/data'
+import { is_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS } from '$lib/labels'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access

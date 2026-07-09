@@ -5,6 +5,8 @@ import type DraggablePane from './DraggablePane.svelte'
 export { default as ContextMenu } from './ContextMenu.svelte'
 export { default as DraggablePane } from './DraggablePane.svelte'
 export { default as DragControlTab } from './DragControlTab.svelte'
+export { default as GlassChip } from './GlassChip.svelte'
+export * from './portal'
 
 // Attribute types of DraggablePane's toggle button / pane div, for components forwarding
 // toggle_props/pane_props

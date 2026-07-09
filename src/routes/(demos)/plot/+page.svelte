@@ -63,6 +63,12 @@
       icon: `Graph`,
     },
     {
+      href: `/plot/treemap`,
+      title: `Treemap`,
+      description: `Zoomable squarified rectangles for hierarchical part-of-whole data, e.g. arity/chemical-system breakdowns.`,
+      icon: `Graph`,
+    },
+    {
       href: `/plot/spacegroup-bar-plot`,
       title: `Spacegroup Bar Plot`,
       description: `Crystallographic space group distributions with automatic crystal system coloring.`,

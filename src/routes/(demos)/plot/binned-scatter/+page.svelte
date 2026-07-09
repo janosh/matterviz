@@ -252,6 +252,13 @@
     on_point_click={handle_point_click}
     class="plot-card"
   >
+    {#snippet annotation()}
+      {@const n_points = series.reduce((sum, srs) => sum + srs.x.length, 0)}
+      <div class="stats-badge">
+        <strong>{n_points.toLocaleString()}</strong> materials<br />
+        {family_configs.length} families
+      </div>
+    {/snippet}
     {#if clicked_point}
       <StructurePopup
         structure={make_structure(clicked_point.elements, clicked_point.lattice_a)}
@@ -278,6 +285,10 @@
       <li>Click a density bin or point to open the draggable <code>StructurePopup</code>.</li>
       <li>Switch to point mode to see the same materials rendered individually.</li>
       <li>Use the mouse wheel or drag-select to zoom into crowded regions.</li>
+      <li>
+        The stats badge (an <code>annotation</code> snippet) auto-places itself away from both the
+        data and the colorbar — zoom around and watch it relocate.
+      </li>
     </ul>
   </section>
 </main>
@@ -304,5 +315,12 @@
   :global(.binned-scatter.plot-card .plot-tooltip) {
     display: grid;
     gap: 0.15rem;
+  }
+  .stats-badge {
+    background: color-mix(in srgb, var(--surface-bg, Canvas) 60%, transparent);
+    backdrop-filter: blur(4px);
+    border-radius: 4px;
+    font-size: 0.85em;
+    padding: 2pt 6pt;
   }
 </style>

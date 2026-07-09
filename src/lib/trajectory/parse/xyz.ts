@@ -1,7 +1,7 @@
 // XYZ / extxyz trajectory parsing
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
-import { coerce_elem_symbol } from '$lib/element'
+import { coerce_elem_symbol } from '$lib/element/helpers'
 import {
   calc_force_stats,
   create_trajectory_frame,

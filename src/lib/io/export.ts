@@ -8,6 +8,14 @@ import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
 export const renderer_registry = new WeakMap<HTMLCanvasElement, WebGLRenderer>()
 
+// Companion scene+camera mapping: WebGL buffers are cleared after present
+// (preserveDrawingBuffer is off), so any capture of a live canvas must
+// re-render synchronously first — which needs the scene and active camera.
+export const scene_registry = new WeakMap<
+  HTMLCanvasElement,
+  { scene: Scene; camera: Camera }
+>()
+
 // PNG DPI -> render scale relative to the 72 DPI baseline, capped at 10x. DPI floors
 // at 1 (non-finite -> 72) so bad inputs can't yield 0x0 canvases or NaN pixel ratios.
 export const dpi_to_scale = (png_dpi: number): number =>

@@ -5,17 +5,20 @@ import {
   sunburst_from_labels_parents,
   sunburst_from_paths,
 } from '$lib/plot'
+import { node_label_str, node_label_variants } from '$lib/plot/core/utils/hierarchy-labels'
 import { hsl } from 'd3-color'
 import { describe, expect, test, vi } from 'vitest'
 
 const close = (val: number) => expect.closeTo(val, 9)
 
-// Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20.
+// Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20. A and A1 are
+// hatched to check hatch passes through per-node without inheriting (A2/B stay unhatched).
 const tree: SunburstNode[] = [
   {
     label: `A`,
+    hatch: true,
     children: [
-      { label: `A1`, value: 4 },
+      { label: `A1`, value: 4, hatch: true },
       { label: `A2`, value: 6 },
     ],
   },
@@ -28,9 +31,10 @@ describe(`compute_sunburst_layout`, () => {
     expect(root).toBe(arcs[0])
     expect(max_depth).toBe(2)
     const [c0, c1] = DEFAULT_SERIES_COLORS
-    // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color] per arc:
-    // pre-order indexing gives contiguous subtree ranges, auto-ids slash-join labels,
-    // descendants inherit their depth-1 ancestor's palette color
+    // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color, hatch] per
+    // arc: pre-order indexing gives contiguous subtree ranges, auto-ids slash-join
+    // labels, descendants inherit their depth-1 ancestor's palette color, and hatch
+    // passes through per-node without inheriting
     const fields = ({ id, node_idx, subtree_end, parent_idx, ...arc }: (typeof arcs)[0]) => [
       id,
       node_idx,
@@ -40,13 +44,14 @@ describe(`compute_sunburst_layout`, () => {
       arc.value,
       arc.is_leaf,
       arc.color,
+      arc.hatch ?? false,
     ]
     expect(arcs.map(fields)).toEqual([
-      [``, 0, 4, null, 0, 20, false, `transparent`],
-      [`A`, 1, 3, 0, 1, 10, false, c0],
-      [`A/A1`, 2, 2, 1, 2, 4, true, c0],
-      [`A/A2`, 3, 3, 1, 2, 6, true, c0],
-      [`B`, 4, 4, 0, 1, 10, true, c1],
+      [``, 0, 4, null, 0, 20, false, `transparent`, false],
+      [`A`, 1, 3, 0, 1, 10, false, c0, true],
+      [`A/A1`, 2, 2, 1, 2, 4, true, c0, true],
+      [`A/A2`, 3, 3, 1, 2, 6, true, c0, false],
+      [`B`, 4, 4, 0, 1, 10, true, c1, false],
     ])
     // sort 'none' preserves input order (A first half, B second, closing the circle);
     // children subdivide the parent span proportionally (4:6); y0 === depth
@@ -67,6 +72,47 @@ describe(`compute_sunburst_layout`, () => {
       fraction: close(0.2),
       parent_fraction: close(0.4),
     })
+  })
+
+  test(`label variants: parent-percent mode + compound-mode degradation`, () => {
+    const node = { id: `A/A1`, label: `A1`, value: 4, fraction: 0.2, parent_fraction: 0.4 }
+    expect(node_label_str(node, `label+parent-percent`, `,`)).toBe(`A1 (40%)`)
+    // parent_fraction falls back to fraction when absent (e.g. depth-1 nodes)
+    expect(
+      node_label_str({ ...node, parent_fraction: undefined }, `label+parent-percent`, `,`),
+    ).toBe(`A1 (20%)`)
+
+    // compound modes expose base + extended so rendering degrades to the bare
+    // label when the full text doesn't fit; simple modes have no fallback
+    expect(node_label_variants(node, `label+parent-percent`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 (40%)`,
+    })
+    expect(node_label_variants(node, `label+value`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 4`,
+    })
+    expect(node_label_variants(node, `label`, `,`)).toEqual({ text: `A1` })
+    expect(node_label_variants(node, `percent`, `,`)).toEqual({ text: `20%` })
+
+    // label_short is the compact last-resort variant in every mode
+    const with_short = { ...node, label_short: `41%` }
+    expect(node_label_variants(with_short, `label+parent-percent`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 (40%)`,
+      short: `41%`,
+    })
+    expect(node_label_variants(with_short, `label`, `,`)).toEqual({
+      text: `A1`,
+      short: `41%`,
+    })
+  })
+
+  test(`label_short passes through layout onto arcs`, () => {
+    const { arcs } = compute_sunburst_layout([
+      { label: `A`, children: [{ label: `A1`, label_short: `5%`, value: 4 }] },
+    ])
+    expect(arcs.map((arc) => arc.label_short)).toEqual([undefined, undefined, `5%`])
   })
 
   test(`explicit ids win over auto-generated ones; duplicates warn`, () => {

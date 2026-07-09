@@ -24,9 +24,35 @@
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { Camera, OrthographicCamera, Scene } from 'three'
+  import { WebGLRenderer, type Camera, type OrthographicCamera, type Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
   import StructureScene from './StructureScene.svelte'
+
+  // WebGL contexts survive renderer.dispose() unless explicitly released.
+  class StructureRenderer extends WebGLRenderer {
+    constructor(parameters: ConstructorParameters<typeof WebGLRenderer>[0]) {
+      super(parameters)
+      globalThis.addEventListener(`pagehide`, this.release_context, { once: true })
+    }
+
+    private release_context = (): void => {
+      if (!this.getContext().isContextLost()) this.forceContextLoss()
+    }
+
+    override dispose() {
+      globalThis.removeEventListener(`pagehide`, this.release_context)
+      super.dispose()
+      this.release_context()
+    }
+  }
+
+  const create_renderer = (canvas: HTMLCanvasElement) =>
+    new StructureRenderer({
+      canvas,
+      powerPreference: `high-performance`,
+      antialias: true,
+      alpha: true,
+    })
 
   let {
     // Multi-view chrome
@@ -263,7 +289,7 @@
   ondblclick={handle_dblclick}
 >
   {#if label}<span class="viewport-label">{label}</span>{/if}
-  <Canvas>
+  <Canvas createRenderer={create_renderer}>
     <StructureScene
       {structure}
       {base_structure}

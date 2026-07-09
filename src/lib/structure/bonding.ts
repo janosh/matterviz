@@ -1,6 +1,6 @@
 // Bonding algorithms for structure visualization
 
-import { element_data } from '$lib/element'
+import { default as element_data } from '$lib/element/data'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'

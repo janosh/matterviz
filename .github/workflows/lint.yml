@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      # install extension deps too: vscode is type-aware linted by root oxlint (needs
-      # e.g. @types/vscode), anywidget is checked by root svelte-check (needs its
-      # matterviz/* subpath imports to resolve, else TS2882)
+      # install extension deps too: vscode is type-aware linted by root oxlint
+      # (needs e.g. @types/vscode), anywidget is checked by root svelte-check
+      # (needs its matterviz/* subpath imports to resolve, else TS2882)
       - uses: ./.github/actions/setup
         with:
           extensions: vscode anywidget

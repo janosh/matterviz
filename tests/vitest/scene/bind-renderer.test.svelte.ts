@@ -1,4 +1,4 @@
-import { renderer_registry } from '$lib/io/export'
+import { renderer_registry, scene_registry } from '$lib/io/export'
 import { bind_renderer } from '$lib/scene/bind-renderer.svelte'
 import { currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
@@ -48,7 +48,7 @@ describe(`bind_renderer`, () => {
     expect(on_bind).toHaveBeenCalledTimes(2)
   })
 
-  test(`reports the renderer and registers its canvas for export lookup`, () => {
+  test(`registers the renderer and scene for canvas lookup`, () => {
     const dom_element = document.createElement(`canvas`)
     const renderer = { domElement: dom_element } as unknown as WebGLRenderer
     fake_threlte = { scene: fake_scene, camera: currentWritable(fake_camera(1)), renderer }
@@ -61,6 +61,10 @@ describe(`bind_renderer`, () => {
 
     expect(on_renderer).toHaveBeenCalledExactlyOnceWith(renderer)
     expect(renderer_registry.get(dom_element)).toBe(renderer)
+    expect(scene_registry.get(dom_element)).toEqual({
+      scene: fake_scene,
+      camera: fake_threlte.camera.current,
+    })
     cleanup()
   })
 })

@@ -7,7 +7,7 @@ import {
   TRAJ_KEYWORDS_SIMPLE_REGEX,
   XDATCAR_REGEX,
 } from '$lib/constants'
-import { strip_compression_extensions } from '$lib/io'
+import { strip_compression_extensions } from '$lib/io/decompress'
 import { parse_leading_num } from '$lib/utils'
 import { count_xyz_frames } from './helpers'
 
@@ -90,9 +90,10 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   // Special exclusion for generic md_simulation pattern with certain extensions
   if (MD_SIM_EXCLUDE_REGEX.test(base_name)) return false
 
-  // For .h5/.hdf5 files, require trajectory keywords
+  // For .h5/.hdf5 files, require trajectory keywords. vaspout.h5 (VASP's
+  // HDF5 output) is always trajectory-shaped regardless of keywords.
   if (/\.(?:h5|hdf5)$/i.test(base_name)) {
-    return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
+    return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
   }
 
   // For other extensions, require both keywords and specific extensions

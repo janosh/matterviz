@@ -32,6 +32,19 @@ describe(`HeatmapTable`, () => {
     description: ``,
   }
 
+  // 50-row dataset shared by Pagination, Page Size Selector, and async-sort tests.
+  // Scores are deterministic but shuffled (37 is coprime to 50, so all distinct)
+  const large_data = Array.from({ length: 50 }, (_, idx) => ({
+    Model: `Model ${idx + 1}`,
+    Score: ((idx * 37) % 50) / 50,
+    Value: idx * 10,
+  }))
+
+  const open_export_menu = async (): Promise<void> => {
+    ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement).click()
+    await tick()
+  }
+
   it(`renders table with correct structure and handles hidden columns`, () => {
     const columns = [...sample_columns, { label: `Hidden`, visible: false, description: `` }]
     mount_table({ data: sample_data, columns })
@@ -102,18 +115,12 @@ describe(`HeatmapTable`, () => {
       value_header.click()
       await tick()
 
-      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(values).toEqual([`100`, `300`, `n/a`])
+      expect(col_values(`Value`)).toEqual([`100`, `300`, `n/a`])
 
       // Test sort direction toggle
       value_header.click()
       await tick()
-      const reversed = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(reversed).toEqual([`300`, `100`, `n/a`])
+      expect(col_values(`Value`)).toEqual([`300`, `100`, `n/a`])
     })
 
     it(`maintains sort state on data updates`, async () => {
@@ -127,29 +134,7 @@ describe(`HeatmapTable`, () => {
       state.data = [{ Model: `D`, Score: 0.65, Value: 400 }, ...sample_data]
       await tick()
 
-      const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(scores).toEqual([`0.95`, `0.85`, `0.75`, `0.65`])
-    })
-
-    it(`sorts date columns correctly`, () => {
-      const dates = [
-        { Date: `<span data-sort-value="1620950400000">2021-05-14</span>` },
-        { Date: `<span data-sort-value="1684966800000">2023-05-25</span>` },
-        { Date: `<span data-sort-value="1715089200000">2024-05-07</span>` },
-      ]
-
-      const date_columns: Label[] = [{ label: `Date`, description: `` }]
-
-      mount_table({ data: dates, columns: date_columns })
-
-      // Initial data should already be in order
-      const initial_dates = Array.from(document.querySelectorAll(`td`)).map((cell) =>
-        cell.textContent?.trim(),
-      )
-
-      expect(initial_dates).toEqual([`2021-05-14`, `2023-05-25`, `2024-05-07`])
+      expect(col_values(`Score`)).toEqual([`0.95`, `0.85`, `0.75`, `0.65`])
     })
 
     it(`selects valid date/time column display modes`, async () => {
@@ -260,11 +245,8 @@ describe(`HeatmapTable`, () => {
       document.querySelector(`th`)?.click()
       await tick()
 
-      const sorted = Array.from(document.querySelectorAll(`td`)).map((cell) =>
-        cell.textContent?.trim(),
-      )
       // Default sort is descending (no `better` set), so largest first
-      expect(sorted).toEqual([`10,000`, `1,000`, `50`])
+      expect(col_values(`Number`)).toEqual([`10,000`, `1,000`, `50`])
     })
 
     it(`sorts mixed number/string columns: numbers first, desc reverses`, async () => {
@@ -273,12 +255,10 @@ describe(`HeatmapTable`, () => {
       // string shorthand defaults to asc
       mount_table({ data, columns, initial_sort: `Mixed` })
       await tick()
-      const get_cells = () =>
-        Array.from(document.querySelectorAll(`td`)).map((cell) => cell.textContent?.trim())
-      expect(get_cells()).toEqual([`2`, `9`, `10`, `a1`, `abc`, `def`])
+      expect(col_values(`Mixed`)).toEqual([`2`, `9`, `10`, `a1`, `abc`, `def`])
       document.querySelector(`th`)?.click() // toggle to descending
       await tick()
-      expect(get_cells()).toEqual([`def`, `abc`, `a1`, `10`, `9`, `2`])
+      expect(col_values(`Mixed`)).toEqual([`def`, `abc`, `a1`, `10`, `9`, `2`])
     })
 
     it(`respects unsortable columns`, async () => {
@@ -295,21 +275,17 @@ describe(`HeatmapTable`, () => {
 
       mount_table({ data, columns })
 
-      const get_values = () =>
-        Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map((cell) =>
-          cell.textContent?.trim(),
-        )
       const headers = document.querySelectorAll(`th`)
 
       // Clicking unsortable column has no effect
       headers[2].click()
       await tick()
-      expect(get_values()).toEqual([`100`, `200`, `300`])
+      expect(col_values(`Value`)).toEqual([`100`, `200`, `300`])
 
       // Clicking sortable column does sort
       headers[1].click()
       await tick()
-      expect(get_values()).not.toEqual([`100`, `200`, `300`])
+      expect(col_values(`Value`)).not.toEqual([`100`, `200`, `300`])
     })
 
     it.each([
@@ -326,10 +302,7 @@ describe(`HeatmapTable`, () => {
     ] as const)(`initial_sort $desc`, ({ initial_sort, expected }) => {
       mount_table({ data: sample_data, columns: sample_columns, initial_sort })
 
-      const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(scores).toEqual(expected)
+      expect(col_values(`Score`)).toEqual(expected)
     })
 
     // Tests for sorting numbers with error/uncertainty notation (±, +-, parenthetical)
@@ -380,10 +353,7 @@ describe(`HeatmapTable`, () => {
       document.querySelectorAll(`th`)[1].click()
       await tick()
 
-      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
-      expect(values).toEqual(expected)
+      expect(col_values(`Value`)).toEqual(expected)
     })
 
     // Tests for heatmap coloring with uncertainty notation strings
@@ -412,40 +382,32 @@ describe(`HeatmapTable`, () => {
       expect(new Set(style_attrs).size).toBeGreaterThan(1)
     })
 
-    it(`does not apply heatmap colors to non-numeric strings`, () => {
-      const data = [
-        { Name: `A`, Value: `hello` },
-        { Name: `B`, Value: `world` },
-        { Name: `C`, Value: `test` },
-      ]
-
-      mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_col] })
-
-      const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
-
-      // No --cell-bg should be set for non-numeric strings
-      expect(style_attrs.every((style) => !style.includes(`--cell-bg:`))).toBe(true)
-    })
-
-    it(`does not apply heatmap colors to non-numeric values mixed with numeric`, () => {
-      // Tests that string cells in a column with valid numeric peers don't get colored
-      const data = [
-        { Name: `A`, Value: 10 },
-        { Name: `B`, Value: `not a number` },
-        { Name: `C`, Value: 100 },
-      ]
+    // Per-cell guard: only numeric cells get --cell-bg, strings never do
+    it.each([
+      {
+        desc: `all non-numeric strings`,
+        values: [`hello`, `world`, `test`],
+        colored: [false, false, false],
+      },
+      {
+        desc: `non-numeric values mixed with numeric`,
+        values: [10, `not a number`, 100],
+        colored: [true, false, true],
+      },
+    ])(`does not apply heatmap colors to $desc`, ({ values, colored }) => {
+      const data = values.map((val, idx) => ({
+        Name: String.fromCharCode(65 + idx),
+        Value: val,
+      }))
 
       mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_col] })
 
       const cells = Array.from(document.querySelectorAll(`td[data-col="Value"]`))
       const style_attrs = cells.map((cell) => cell.getAttribute(`style`) ?? ``)
-
-      // First and third rows (numeric 10 and 100) should have --cell-bg
-      expect(style_attrs[0]).toContain(`--cell-bg:`)
-      expect(style_attrs[2]).toContain(`--cell-bg:`)
-      // Second row (string "not a number") should NOT have --cell-bg
-      expect(style_attrs[1]).not.toContain(`--cell-bg:`)
+      colored.forEach((has_bg, idx) => {
+        if (has_bg) expect(style_attrs[idx]).toContain(`--cell-bg:`)
+        else expect(style_attrs[idx]).not.toContain(`--cell-bg:`)
+      })
     })
   })
 
@@ -521,52 +483,46 @@ describe(`HeatmapTable`, () => {
   })
 
   it(`handles accessibility features`, () => {
+    // sort_hint rendering is covered by the sort_hint it.each in regression tests
     mount_table({
       data: sample_data,
       columns: [{ label: `Col`, description: `Description`, sticky: true }],
-      sort_hint: `Click to sort`,
     })
 
     const header = document.querySelector(`th`)
     expect(header?.getAttribute(`title`) ?? header?.getAttribute(`data-title`)).toBe(
       `Description`,
     )
-    // sort_hint renders as a separate .sort-hint element, not inside the header
-    expect(document.querySelector(`.sort-hint`)).not.toBeNull()
     expect(header?.classList.contains(`sticky-col`)).toBe(true)
   })
 
-  it(`handles undefined and null values`, () => {
-    const data = [{ Model: `Empty Model`, Score: undefined, Value: undefined }]
-
-    mount_table({ data, columns: sample_columns })
-
-    const cells = document.querySelectorAll(`td`)
-    expect(cells).toHaveLength(3)
-    expect(cells[0].textContent?.trim()).toBe(`Empty Model`)
-    expect(cells[1].textContent?.trim()).toBe(`n/a`)
-    expect(cells[2].textContent?.trim()).toBe(`n/a`)
-  })
-
-  it(`handles NaN values by displaying them as 'n/a'`, () => {
-    const data = [
-      { Model: `Model A`, Score: 1.5, Value: NaN },
-      { Model: `Model B`, Score: NaN, Value: 2.7 },
-    ]
-
+  // Missing values displayed as 'n/a', never as literal 'NaN' or 'undefined'
+  it.each([
+    {
+      desc: `undefined values`,
+      data: [{ Model: `Empty Model`, Score: undefined, Value: undefined }],
+      present: [`Empty Model`],
+    },
+    {
+      desc: `NaN values`,
+      data: [
+        { Model: `Model A`, Score: 1.5, Value: NaN },
+        { Model: `Model B`, Score: NaN, Value: 2.7 },
+      ],
+      present: [`Model A`, `1.5`, `2.7`],
+    },
+  ])(`displays $desc as 'n/a'`, ({ data, present }) => {
     mount_table({ data, columns: sample_columns })
 
     const all_text = Array.from(document.querySelectorAll(`td`)).map((cell) =>
       cell.textContent?.trim(),
     )
-
-    // NaN displayed as 'n/a', never as literal 'NaN'
     expect(all_text.filter((text) => text === `n/a`)).toHaveLength(2)
     expect(all_text).not.toContain(`NaN`)
-    // Normal values still rendered
-    expect(all_text).toContain(`Model A`)
-    expect(all_text.some((text) => text?.includes(`1.5`))).toBe(true)
-    expect(all_text.some((text) => text?.includes(`2.7`))).toBe(true)
+    expect(all_text).not.toContain(`undefined`)
+    for (const value of present) {
+      expect(all_text.some((text) => text?.includes(value))).toBe(true)
+    }
   })
 
   it(`prevents HTML strings from being used as data-sort-value attributes`, () => {
@@ -814,61 +770,114 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Search and Filter`, () => {
-    it(`renders search button when search is enabled`, () => {
-      mount_table({ data: sample_data, columns: sample_columns, search: true })
-
-      const control_buttons = document.querySelector(`.control-buttons`)
-      expect(control_buttons).not.toBeNull()
-      expect(control_buttons?.querySelector(`.icon-btn`)).not.toBeNull()
-    })
-
-    it(`expands search input when toggle clicked`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns, search: true })
-
-      const search_btn = document.querySelector(
-        `.control-buttons .icon-btn`,
-      ) as HTMLButtonElement
-      search_btn.click()
+    const click_search_toggle = async (): Promise<void> => {
+      ;(document.querySelector(`.control-buttons .icon-btn`) as HTMLButtonElement).click()
       await tick()
+    }
 
-      const search_input = document.querySelector(`input[type="search"]`)
-      expect(search_input).not.toBeNull()
-    })
-
-    it(`respects search.placeholder configuration`, async () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
+    it.each([
+      { desc: `search=true expands input on toggle click`, search: true, click: true },
+      {
+        desc: `search.placeholder is applied to the input`,
         search: { placeholder: `Search materials...` },
-      })
+        click: true,
+        placeholder: `Search materials...`,
+      },
+      {
+        desc: `search.expanded auto-expands without clicking`,
+        search: { expanded: true },
+        click: false,
+      },
+    ])(`$desc`, async ({ search, click, placeholder }) => {
+      mount_table({ data: sample_data, columns: sample_columns, search })
 
-      // Click to expand search
-      const search_btn = document.querySelector(
-        `.control-buttons .icon-btn`,
-      ) as HTMLButtonElement
-      search_btn.click()
-      await tick()
+      expect(document.querySelector(`.control-buttons .icon-btn`)).not.toBeNull()
+      if (click) await click_search_toggle()
 
       const search_input = document.querySelector(`input[type="search"]`) as HTMLInputElement
-      expect(search_input?.placeholder).toBe(`Search materials...`)
-    })
-
-    it(`respects search.expanded configuration to auto-expand`, () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        search: { expanded: true },
-      })
-
-      // Search input should be visible immediately without clicking
-      const search_input = document.querySelector(`input[type="search"]`)
       expect(search_input).not.toBeNull()
+      if (placeholder) expect(search_input.placeholder).toBe(placeholder)
     })
 
-    // Note: Tests for filtering functionality are skipped in happy-dom due to:
-    // 1. happy-dom doesn't fully support getAnimations() for animate:flip directive
-    // 2. Svelte 5's bind:value requires native input simulation that happy-dom doesn't support
-    // These should be tested in Playwright e2e tests instead.
+    // Filtering is tested through the bindable search_query prop (simulating typing
+    // via bind:value needs native input events that happy-dom doesn't support).
+
+    it.each([
+      [`substring match`, `model b`, [`Model B`]],
+      [`html is stripped before matching`, `bold`, [`Model C`]],
+      [`no match`, `no-such-model`, []],
+      [`empty query returns all rows`, `  `, [`Model A`, `Model B`, `Model C`]],
+    ])(`filters rows by search_query: %s`, async (_desc, query, expected) => {
+      const state = $state({ search_query: `` })
+      const data = [
+        { Model: `Model A`, Score: 0.95 },
+        { Model: `Model B`, Score: 0.85 },
+        { Model: `<b>bold</b> Model C`, Score: 0.75 },
+      ]
+      mount_table(bind_props({ data, columns: sample_columns, search: true }, state))
+
+      state.search_query = query
+      await tick()
+
+      const model_cells = col_values(`Model`)
+      expect(model_cells).toHaveLength(expected.length)
+      for (const [idx, name] of expected.entries()) {
+        expect(model_cells[idx]).toContain(name)
+      }
+    })
+
+    it(`search.keys restricts matching to the given columns`, async () => {
+      const state = $state({ search_query: `` })
+      const data = [
+        { Model: `Model A`, Note: `great` },
+        { Model: `Model B`, Note: `model a lookalike` },
+      ]
+      const columns: Label[] = [
+        { label: `Model`, description: `` },
+        { label: `Note`, description: `` },
+      ]
+      mount_table(bind_props({ data, columns, search: { keys: [`Model`] } }, state))
+
+      state.search_query = `model a`
+      await tick()
+
+      // without keys, "model a lookalike" in Note would also match
+      expect(col_values(`Model`)).toEqual([`Model A`])
+    })
+
+    it.each([
+      [true, [`Model A`]], // "mdla" is an in-order subsequence of "model a"
+      [false, []],
+    ])(`search.fuzzy=%s controls subsequence matching`, async (fuzzy, expected) => {
+      const state = $state({ search_query: `` })
+      mount_table(
+        bind_props({ data: sample_data, columns: sample_columns, search: { fuzzy } }, state),
+      )
+
+      state.search_query = `mdla`
+      await tick()
+
+      expect(col_values(`Model`)).toEqual(expected)
+    })
+
+    it(`clear button resets bound search_query`, async () => {
+      const state = $state({ search_query: `model b` })
+      mount_table(
+        bind_props({ data: sample_data, columns: sample_columns, search: true }, state),
+      )
+      await tick()
+      expect(col_values(`Model`)).toEqual([`Model B`])
+
+      // input is rendered (non-empty query implies expanded); clear button follows it
+      const clear_btn = document.querySelector(
+        `.control-buttons .icon-btn`,
+      ) as HTMLButtonElement
+      clear_btn.click()
+      await tick()
+
+      expect(state.search_query).toBe(``)
+      expect(col_values(`Model`)).toHaveLength(3)
+    })
 
     // Note: Test for closing search skipped due to happy-dom button click handling
     // issues with Svelte 5's onclick handlers
@@ -878,16 +887,11 @@ describe(`HeatmapTable`, () => {
     it(`renders export dropdown when export_data is enabled`, async () => {
       mount_table({ data: sample_data, columns: sample_columns, export_data: true })
 
-      // Find export dropdown (second dropdown-wrapper when column toggle is not present)
-      const control_buttons = document.querySelector(`.control-buttons`)
-      const export_btn = control_buttons?.querySelector(
-        `.dropdown-wrapper .icon-btn`,
-      ) as HTMLButtonElement
-      expect(export_btn).not.toBeNull()
-
-      // Click to open
-      export_btn.click()
-      await tick()
+      // Export dropdown lives in the control buttons row
+      expect(
+        document.querySelector(`.control-buttons .dropdown-wrapper .icon-btn`),
+      ).not.toBeNull()
+      await open_export_menu()
 
       // Should show CSV and JSON options
       const dropdown = document.querySelector(`.dropdown-pane`)
@@ -908,12 +912,7 @@ describe(`HeatmapTable`, () => {
         columns: sample_columns,
         export_data: { formats: [`csv`] },
       })
-
-      const export_btn = document.querySelector(
-        `.dropdown-wrapper .icon-btn`,
-      ) as HTMLButtonElement
-      export_btn.click()
-      await tick()
+      await open_export_menu()
 
       const dropdown = document.querySelector(`.dropdown-pane`)
       expect(dropdown?.textContent).toContain(`CSV`)
@@ -960,67 +959,38 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Row Selection`, () => {
-    it(`renders checkbox column when show_row_select is true`, () => {
+    const mount_selectable = (): HTMLInputElement[] => {
       mount_table({ data: sample_data, columns: sample_columns, show_row_select: true })
+      return [
+        ...document.querySelectorAll<HTMLInputElement>(`td.select-col input[type="checkbox"]`),
+      ]
+    }
 
-      const checkboxes = document.querySelectorAll(`td.select-col input[type="checkbox"]`)
-      expect(checkboxes).toHaveLength(3) // One per row
+    it(`renders one unchecked checkbox per row`, () => {
+      const checkboxes = mount_selectable()
+      expect(checkboxes).toHaveLength(3)
+      expect(checkboxes.every((checkbox) => !checkbox.checked)).toBe(true)
     })
 
-    it(`selects row when checkbox clicked`, async () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        show_row_select: true,
-      })
+    it.each([
+      { clicks: 1, badge_count: `1` },
+      { clicks: 2, badge_count: `2` },
+      { clicks: 3, badge_count: `3` }, // all rows selected
+    ])(
+      `selection badge shows $badge_count after clicking $clicks checkbox(es)`,
+      async ({ clicks, badge_count }) => {
+        const checkboxes = mount_selectable()
+        for (const checkbox of checkboxes.slice(0, clicks)) checkbox.click()
+        await tick()
 
-      // Verify checkbox exists and check it
-      const checkbox = document.querySelector(
-        `td.select-col input[type="checkbox"]`,
-      ) as HTMLInputElement
-      expect(checkbox).not.toBeNull()
-      expect(checkbox.checked).toBe(false)
-
-      checkbox.click()
-      await tick()
-
-      // The checkbox should now be checked (verifies click worked)
-      expect(checkbox.checked).toBe(true)
-
-      // Selection badge should appear with count "1"
-      const badge = document.querySelector(`.selection-badge .badge`)
-      expect(badge?.textContent).toContain(`1`)
-    })
-
-    it(`shows selection count in header`, async () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        show_row_select: true,
-      })
-
-      // Select two rows
-      const checkboxes = document.querySelectorAll(`td.select-col input[type="checkbox"]`)
-      ;(checkboxes[0] as HTMLInputElement).click()
-      ;(checkboxes[1] as HTMLInputElement).click()
-      await tick()
-
-      const badge = document.querySelector(`.selection-badge .badge`)
-      expect(badge?.textContent).toContain(`2`)
-    })
+        expect(checkboxes[0].checked).toBe(true)
+        const badge = document.querySelector(`.selection-badge .badge`)
+        expect(badge?.textContent).toContain(badge_count)
+      },
+    )
 
     it(`clears selection when clear button clicked`, async () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        show_row_select: true,
-      })
-
-      // Select a row
-      const checkbox = document.querySelector(
-        `td.select-col input[type="checkbox"]`,
-      ) as HTMLInputElement
-      checkbox.click()
+      mount_selectable()[0].click()
       await tick()
 
       // Click clear button (now a selection-badge icon-btn)
@@ -1029,6 +999,17 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
+    })
+
+    it(`header checkbox unchecked on partial selection`, async () => {
+      mount_selectable()[0].click()
+      await tick()
+
+      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(`1`)
+      expect(
+        (document.querySelector(`th.select-col input[type="checkbox"]`) as HTMLInputElement)
+          .checked,
+      ).toBe(false)
     })
   })
 
@@ -1080,8 +1061,6 @@ describe(`HeatmapTable`, () => {
       mount_table({ data, columns })
       return document.querySelectorAll(`th`)
     }
-
-    const get_col_values = col_values
 
     it(`does not render arrows for unsorted columns by default`, () => {
       const headers = render_table()
@@ -1144,44 +1123,30 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       expect(value_header.textContent).not.toMatch(/[↑↓]/)
-      expect(get_col_values(`Value`)).toEqual([`100`, `200`, `300`])
+      expect(col_values(`Value`)).toEqual([`100`, `200`, `300`])
     })
   })
 
   describe(`Pagination`, () => {
-    const large_data = Array.from({ length: 50 }, (_, idx) => ({
-      Model: `Model ${idx + 1}`,
-      Score: Math.random(),
-      Value: idx * 10,
-    }))
-
-    it(`renders pagination controls when pagination is enabled`, () => {
+    it(`renders controls, caps rows at page_size, and disables prev/first on page 1`, () => {
       mount_table({
         data: large_data,
         columns: sample_columns,
         pagination: { page_size: 10 },
       })
 
-      const pagination = document.querySelector(`.pagination`)
-      expect(pagination).not.toBeNull()
-
+      expect(document.querySelector(`.pagination`)).not.toBeNull()
       // Check page input value (not textContent since it's in an input)
-      const page_input = document.querySelector(`.page-input`) as HTMLInputElement
-      expect(page_input?.value).toBe(`1`)
+      expect((document.querySelector(`.page-input`) as HTMLInputElement)?.value).toBe(`1`)
+      expect(document.querySelector(`.page-info`)?.textContent).toContain(`of 5`)
+      expect(document.querySelector(`.row-count`)?.textContent).toContain(`50 rows`)
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(10)
 
-      const page_info = document.querySelector(`.page-info`)
-      expect(page_info?.textContent).toContain(`of 5`)
-    })
-
-    it(`limits rows to pagination.page_size`, () => {
-      mount_table({
-        data: large_data,
-        columns: sample_columns,
-        pagination: { page_size: 10 },
-      })
-
-      const rows = document.querySelectorAll(`tbody tr`)
-      expect(rows).toHaveLength(10)
+      const buttons = document.querySelectorAll<HTMLButtonElement>(`.page-btn`)
+      expect(buttons[0].disabled).toBe(true) // First
+      expect(buttons[1].disabled).toBe(true) // Prev
+      expect(buttons[2].disabled).toBe(false) // Next
+      expect(buttons[3].disabled).toBe(false) // Last
     })
 
     it(`updates visible rows when parent changes pagination.page_size`, async () => {
@@ -1203,31 +1168,6 @@ describe(`HeatmapTable`, () => {
 
     // Note: Test for navigation between pages skipped in happy-dom due to:
     // happy-dom doesn't support getAnimations() which animate:flip uses when rows change
-
-    it(`disables prev/first buttons on first page`, () => {
-      mount_table({
-        data: large_data,
-        columns: sample_columns,
-        pagination: { page_size: 10 },
-      })
-
-      const buttons = document.querySelectorAll(`.page-btn`)
-      expect((buttons[0] as HTMLButtonElement).disabled).toBe(true) // First
-      expect((buttons[1] as HTMLButtonElement).disabled).toBe(true) // Prev
-      expect((buttons[2] as HTMLButtonElement).disabled).toBe(false) // Next
-      expect((buttons[3] as HTMLButtonElement).disabled).toBe(false) // Last
-    })
-
-    it(`shows total row count`, () => {
-      mount_table({
-        data: large_data,
-        columns: sample_columns,
-        pagination: { page_size: 10 },
-      })
-
-      const row_count = document.querySelector(`.row-count`)
-      expect(row_count?.textContent).toContain(`50 rows`)
-    })
 
     it(`does not render pagination for small datasets`, () => {
       mount_table({
@@ -1268,81 +1208,40 @@ describe(`HeatmapTable`, () => {
       }
     })
 
-    it(`sort_hint renders as string with default position bottom`, () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
+    type SortHintCase = {
+      desc: string
+      sort_hint?: ComponentProps<typeof HeatmapTable>[`sort_hint`]
+      text: string | null
+      permanent?: boolean
+      position?: `top` | `bottom`
+      classes?: string[]
+      style_includes?: string[]
+    }
+    it.each<SortHintCase>([
+      { desc: `does not render when undefined`, sort_hint: undefined, text: null },
+      {
+        desc: `renders as string with default position bottom, not permanent`,
         sort_hint: `Click to sort`,
-      })
-
-      const hint = document.querySelector(`.sort-hint`)
-      expect(hint).not.toBeNull()
-      expect(hint?.textContent).toBe(`Click to sort`)
-      // Should not have permanent class by default
-      expect(hint?.classList.contains(`permanent`)).toBe(false)
-    })
-
-    it(`sort_hint does not render when undefined`, () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-      })
-
-      const hint = document.querySelector(`.sort-hint`)
-      expect(hint).toBeNull()
-    })
-
-    it(`sort_hint renders with object config and permanent class`, () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        sort_hint: { text: `Sort hint text`, position: `top`, permanent: true },
-      })
-
-      const hint = document.querySelector(`.sort-hint`)
-      expect(hint).not.toBeNull()
-      expect(hint?.textContent).toBe(`Sort hint text`)
-      expect(hint?.classList.contains(`permanent`)).toBe(true)
-    })
-
-    it.each([`top`, `bottom`] as const)(
-      `sort_hint position=%s renders hint in correct location`,
-      (position) => {
-        mount_table({
-          data: sample_data,
-          columns: sample_columns,
-          sort_hint: { text: `Positioned hint`, position },
-        })
-
-        const container = document.querySelector(`.table-container`)
-        const table_scroll = container?.querySelector(`.table-scroll`)
-        const hint = container?.querySelector(`.sort-hint`)
-
-        expect(hint).not.toBeNull()
-        expect(table_scroll).not.toBeNull()
-        expect(hint?.textContent).toBe(`Positioned hint`)
-
-        // Check relative order in the DOM
-        if (hint && table_scroll) {
-          if (position === `top`) {
-            // Hint should come before the table-scroll div
-            expect(hint.compareDocumentPosition(table_scroll)).toBe(
-              Node.DOCUMENT_POSITION_FOLLOWING,
-            )
-          } else {
-            // Hint should come after the table-scroll div
-            expect(hint.compareDocumentPosition(table_scroll)).toBe(
-              Node.DOCUMENT_POSITION_PRECEDING,
-            )
-          }
-        }
+        text: `Click to sort`,
+        permanent: false,
+        position: `bottom`,
       },
-    )
-
-    it(`sort_hint applies custom style, class, position, and permanent together`, () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
+      {
+        desc: `renders object config with permanent class at position top`,
+        sort_hint: { text: `Sort hint text`, position: `top`, permanent: true },
+        text: `Sort hint text`,
+        permanent: true,
+        position: `top`,
+      },
+      {
+        desc: `renders at explicit position bottom`,
+        sort_hint: { text: `Positioned hint`, position: `bottom` },
+        text: `Positioned hint`,
+        permanent: false,
+        position: `bottom`,
+      },
+      {
+        desc: `applies custom style, class, position, and permanent together`,
         sort_hint: {
           text: `Full config hint`,
           position: `top`,
@@ -1350,26 +1249,44 @@ describe(`HeatmapTable`, () => {
           style: `font-weight: bold; color: red;`,
           class: `custom-hint-class another-class`,
         },
-      })
+        text: `Full config hint`,
+        permanent: true,
+        position: `top`,
+        classes: [`custom-hint-class`, `another-class`],
+        style_includes: [`font-weight: bold`, `color: red`],
+      },
+    ])(
+      `sort_hint $desc`,
+      ({ sort_hint, text, permanent, position, classes, style_includes }) => {
+        mount_table({ data: sample_data, columns: sample_columns, sort_hint })
 
-      const container = document.querySelector(`.table-container`)
-      const table_scroll = container?.querySelector(`.table-scroll`)
-      const hint = container?.querySelector(`.sort-hint`)
+        const container = document.querySelector(`.table-container`)
+        const hint = container?.querySelector(`.sort-hint`)
+        if (text === null) {
+          expect(hint).toBeNull()
+          return
+        }
 
-      expect(hint).not.toBeNull()
-      expect(hint?.textContent).toBe(`Full config hint`)
-      expect(hint?.classList.contains(`permanent`)).toBe(true)
-      expect(hint?.classList.contains(`custom-hint-class`)).toBe(true)
-      expect(hint?.classList.contains(`another-class`)).toBe(true)
-      expect(hint?.getAttribute(`style`)).toContain(`font-weight: bold`)
-      expect(hint?.getAttribute(`style`)).toContain(`color: red`)
-      // Hint should be above table (position: top)
-      if (hint && table_scroll) {
-        expect(hint.compareDocumentPosition(table_scroll)).toBe(
-          Node.DOCUMENT_POSITION_FOLLOWING,
-        )
-      }
-    })
+        expect(hint).not.toBeNull()
+        expect(hint?.textContent).toBe(text)
+        expect(hint?.classList.contains(`permanent`)).toBe(permanent)
+        for (const cls of classes ?? []) expect(hint?.classList.contains(cls)).toBe(true)
+        for (const fragment of style_includes ?? []) {
+          expect(hint?.getAttribute(`style`)).toContain(fragment)
+        }
+
+        // position=top -> hint precedes the table-scroll div, bottom -> follows it
+        const table_scroll = container?.querySelector(`.table-scroll`)
+        expect(table_scroll).not.toBeNull()
+        if (hint && table_scroll) {
+          expect(hint.compareDocumentPosition(table_scroll)).toBe(
+            position === `top`
+              ? Node.DOCUMENT_POSITION_FOLLOWING
+              : Node.DOCUMENT_POSITION_PRECEDING,
+          )
+        }
+      },
+    )
 
     it(`correctly matches grouped columns for sorting`, async () => {
       // Regression test: ungrouped column matching was incorrect
@@ -1398,12 +1315,9 @@ describe(`HeatmapTable`, () => {
 
       // Should sort by Group B values (100, 50, 75)
       // data-col="Value" is used for both groups, so check Name column order instead
-      const sorted_names = Array.from(document.querySelectorAll(`td[data-col="Name"]`)).map(
-        (cell) => cell.textContent?.trim(),
-      )
       // Group B values: Item 1=100, Item 2=50, Item 3=75
       // Default sort is descending: Item 1 (100), Item 3 (75), Item 2 (50)
-      expect(sorted_names).toEqual([`Item 1`, `Item 3`, `Item 2`])
+      expect(col_values(`Name`)).toEqual([`Item 1`, `Item 3`, `Item 2`])
     })
 
     // Regression: zero and negative values should be included in linear scale heatmap
@@ -1647,15 +1561,10 @@ describe(`HeatmapTable`, () => {
       })
 
       it(`other features work with async sort props`, () => {
-        const paginated_data = Array.from({ length: 50 }, (_, idx) => ({
-          Model: `Model ${idx + 1}`,
-          Score: Math.random(),
-          Value: idx * 10,
-        }))
         mount_table({
-          data: paginated_data,
+          data: large_data,
           columns: sample_columns,
-          onsort: vi.fn().mockResolvedValue(paginated_data),
+          onsort: vi.fn().mockResolvedValue(large_data),
           pagination: { page_size: 10 },
           search: { expanded: true },
           sort_data: false,
@@ -1853,35 +1762,6 @@ describe(`HeatmapTable`, () => {
     })
   })
 
-  describe(`Select All`, () => {
-    it(`badge shows all-selected count after selecting every row`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns, show_row_select: true })
-
-      for (const cb of Array.from(
-        document.querySelectorAll(`td.select-col input[type="checkbox"]`),
-      )) {
-        ;(cb as HTMLInputElement).click()
-      }
-      await tick()
-
-      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(`3`)
-    })
-
-    it(`header checkbox unchecked on partial selection`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns, show_row_select: true })
-      ;(
-        document.querySelector(`td.select-col input[type="checkbox"]`) as HTMLInputElement
-      ).click()
-      await tick()
-
-      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(`1`)
-      expect(
-        (document.querySelector(`th.select-col input[type="checkbox"]`) as HTMLInputElement)
-          .checked,
-      ).toBe(false)
-    })
-  })
-
   describe(`Keyboard Navigation`, () => {
     it.each([
       { desc: `with onrowclick`, has_click: true, expected_tabindex: `0` },
@@ -1958,8 +1838,7 @@ describe(`HeatmapTable`, () => {
       try {
         mount_table({ export_data: true, ...props } as ComponentProps<typeof HeatmapTable>)
         if (before_export) await before_export()
-        ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement).click()
-        await tick()
+        await open_export_menu()
         const csv_btn = Array.from(
           document.querySelectorAll(`.dropdown-pane .dropdown-option`),
         ).find((btn) => btn.textContent?.includes(`CSV`)) as HTMLButtonElement
@@ -1977,8 +1856,7 @@ describe(`HeatmapTable`, () => {
 
     it(`copy to clipboard writes TSV`, async () => {
       mount_table({ data: sample_data, columns: sample_columns, export_data: true })
-      ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement).click()
-      await tick()
+      await open_export_menu()
 
       const copy_btn = Array.from(
         document.querySelectorAll(`.dropdown-pane .dropdown-option`),
@@ -2044,30 +1922,25 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`root_style prop`, () => {
-    it(`applies root_style to container`, () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        root_style: `margin: 0; max-width: 500px`,
-      })
+    it.each([
+      {
+        desc: `applies root_style to container`,
+        props: { root_style: `margin: 0; max-width: 500px` },
+        fragments: [`margin: 0`, `max-width: 500px`],
+      },
+      {
+        desc: `merges root_style with rest style`,
+        props: { root_style: `flex: 1`, style: `color: red` },
+        fragments: [`color: red`],
+        // happy-dom normalizes `flex: 1` to longhand properties
+        pattern: /flex-grow:\s*1|flex:\s*1/,
+      },
+    ])(`$desc`, ({ props, fragments, pattern }) => {
+      mount_table({ data: sample_data, columns: sample_columns, ...props })
 
       const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ?? ``
-      expect(style).toContain(`margin: 0`)
-      expect(style).toContain(`max-width: 500px`)
-    })
-
-    it(`merges root_style with rest style`, () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        root_style: `flex: 1`,
-        style: `color: red`,
-      })
-
-      const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ?? ``
-      expect(style).toContain(`color: red`)
-      // happy-dom normalizes `flex: 1` to longhand properties
-      expect(style).toMatch(/flex-grow:\s*1|flex:\s*1/)
+      for (const fragment of fragments) expect(style).toContain(fragment)
+      if (pattern) expect(style).toMatch(pattern)
     })
   })
 
@@ -2084,12 +1957,6 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Page Size Selector`, () => {
-    const large_data = Array.from({ length: 50 }, (_, idx) => ({
-      Model: `Model ${idx}`,
-      Score: Math.random(),
-      Value: idx * 10,
-    }))
-
     it(`renders dropdown with correct options when page_sizes provided`, () => {
       mount_table({
         data: large_data,
@@ -2130,6 +1997,344 @@ describe(`HeatmapTable`, () => {
         pagination: { page_size: 10 },
       })
       expect(document.querySelector(`.page-size-select`)).toBeNull()
+    })
+  })
+
+  describe(`cell range selection and column copy`, () => {
+    const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement => {
+      const cell = document.querySelector<HTMLTableCellElement>(
+        `td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`,
+      )
+      if (!cell) throw new Error(`cell (${row_idx}, ${col_idx}) not found`)
+      return cell
+    }
+    const pointer = (type: string, init: MouseEventInit = {}) =>
+      new MouseEvent(type, { button: 0, bubbles: true, ...init })
+    const drag_cells = (
+      from: [number, number],
+      to: [number, number],
+      init: MouseEventInit = {},
+    ) => {
+      cell_at(...from).dispatchEvent(pointer(`pointerdown`, init))
+      cell_at(...to).dispatchEvent(pointer(`pointermove`))
+      globalThis.window.dispatchEvent(pointer(`pointerup`))
+    }
+    const copy_shortcut = () =>
+      globalThis.window.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `c`, metaKey: true }),
+      )
+    const written_text = (): string =>
+      (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]
+    const mount_sample_table = async (
+      props: Omit<ComponentProps<typeof HeatmapTable>, 'data' | 'columns'> = {},
+    ) => {
+      mount_table({ data: sample_data, columns: sample_columns, ...props })
+      await tick()
+    }
+
+    it(`drag selects a rectangle and Cmd+C copies it as TSV`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [1, 1])
+      await tick()
+
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+      copy_shortcut()
+      expect(written_text()).toBe(`Model A\t0.95\nModel B\t0.85`)
+    })
+
+    it(`shift+drag adds disjoint blocks that copy separated by newlines`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [0, 0])
+      drag_cells([2, 2], [2, 2], { shiftKey: true })
+      await tick()
+
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(2)
+      copy_shortcut()
+      expect(written_text()).toBe(`Model A\n300`)
+    })
+
+    it(`plain drag replaces the previous selection`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [1, 0])
+      drag_cells([2, 1], [2, 1])
+      await tick()
+
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+      expect(cell_at(2, 1).classList.contains(`cell-selected`)).toBe(true)
+    })
+
+    it(`clears the selection when columns are hidden or reordered`, async () => {
+      const state = $state({ hidden_columns: [] as string[], column_order: [] as string[] })
+      mount_table(bind_props({ data: sample_data, columns: sample_columns }, state))
+      await tick()
+
+      // hiding a column remaps col indices -> stale rects must clear
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+      state.hidden_columns = [`Value`]
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+
+      // reordering columns remaps col indices too
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+      state.column_order = [`Score`, `Model`, `Value`]
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+    })
+
+    it(`Escape and outside pointerdown clear the selection`, async () => {
+      await mount_sample_table()
+
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      globalThis.window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+
+      drag_cells([0, 0], [1, 1])
+      await tick()
+      document.body.dispatchEvent(pointer(`pointerdown`))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+    })
+
+    it(`suppresses the row click that follows a cell drag`, async () => {
+      const onrowclick = vi.fn()
+      await mount_sample_table({ onrowclick })
+
+      // drag across cells -> the click on release must not fire the row action
+      drag_cells([0, 0], [1, 1])
+      cell_at(1, 1).dispatchEvent(pointer(`click`))
+      expect(onrowclick).not.toHaveBeenCalled()
+
+      // plain click (pointer never moved) still fires the row action
+      drag_cells([0, 0], [0, 0])
+      cell_at(0, 0).dispatchEvent(pointer(`click`))
+      expect(onrowclick).toHaveBeenCalledTimes(1)
+    })
+
+    it(`right-click copy column copies all filtered rows across pages`, async () => {
+      await mount_sample_table({ pagination: { page_size: 2 } })
+
+      cell_at(0, 0).dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      await tick()
+
+      const copy_option = [
+        ...document.querySelectorAll<HTMLButtonElement>(`.context-menu button`),
+      ].find((btn) => btn.textContent?.includes(`Copy column`))
+      expect(copy_option?.textContent).toContain(`3 values`)
+      copy_option?.click()
+      await tick()
+
+      // all rows, not just the 2 on the current page
+      expect(written_text()).toBe(`Model A\nModel B\nModel C`)
+      expect(document.querySelector(`.context-menu`)).toBeNull()
+    })
+
+    it(`context menu on headers offers copy for non-heatmap columns`, async () => {
+      await mount_sample_table()
+
+      const header = document.querySelector(`th`)
+      header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      await tick()
+
+      const options = [...document.querySelectorAll(`.context-menu button`)].map((btn) =>
+        btn.textContent?.trim(),
+      )
+      expect(options.some((text) => text?.includes(`Copy column`))).toBe(true)
+      // no color_scale on Model -> no gradient-direction section
+      expect(options.some((text) => text?.includes(`Higher is better`))).toBe(false)
+    })
+
+    it(`clears selection when the rendered data changes`, async () => {
+      const state = $state({ data: sample_data })
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: state.data, columns: sample_columns },
+      })
+      await tick()
+
+      drag_cells([0, 0], [1, 1])
+      // browsers fire a click on the release target after every drag; it is
+      // swallowed by the suppress guard (see previous test)
+      cell_at(1, 1).dispatchEvent(pointer(`click`))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
+
+      // sorting reorders rows -> stale (row, col) coordinates must clear
+      document.querySelector(`th`)?.dispatchEvent(pointer(`click`))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
+    })
+  })
+
+  describe(`Infinite scroll (virtualized rows)`, () => {
+    const row_height_px = 33
+    const overscan = 10
+    const min_window = 60
+    // happy-dom has no layout: clientHeight/offsetHeight are 0, so the window
+    // is driven by min_window and the row-height estimate
+    const many_rows = Array.from({ length: 200 }, (_, idx) => ({
+      Model: `Model ${idx}`,
+      Score: idx,
+    }))
+    const two_cols: Label[] = [
+      { label: `Model`, description: `` },
+      { label: `Score`, description: `` },
+    ]
+    const rendered_rows = () =>
+      document.querySelectorAll(`tbody tr:not(.virtual-spacer):not(.empty-row)`)
+    const spacers = () => [
+      ...document.querySelectorAll<HTMLTableRowElement>(`tr.virtual-spacer`),
+    ]
+
+    it(`virtual={true} caps rendered rows and shows shown-of-total count`, () => {
+      mount_table({ data: many_rows, columns: two_cols, virtual: true })
+
+      expect(rendered_rows()).toHaveLength(min_window)
+      const [bottom_spacer] = spacers()
+      expect(spacers()).toHaveLength(1) // only below (window starts at top)
+      expect(bottom_spacer.style.height).toBe(
+        `${(many_rows.length - min_window) * row_height_px}px`,
+      )
+      expect(document.querySelector(`.row-count-info`)?.textContent?.trim()).toBe(
+        `${min_window} of ${many_rows.length} rows`,
+      )
+      expect(document.querySelector(`.pagination`)).toBeNull()
+    })
+
+    it(`moves the window and preserves absolute row numbers on scroll`, async () => {
+      mount_table({
+        data: many_rows,
+        columns: two_cols,
+        show_row_numbers: true,
+        sort_data: false,
+        virtual: true,
+      })
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      scroller.scrollTop = 30 * row_height_px
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+
+      const start = 30 - overscan
+      const end = start + min_window
+      expect(rendered_rows()).toHaveLength(min_window)
+      expect(spacers()).toHaveLength(2)
+      expect(spacers()[0].style.height).toBe(`${start * row_height_px}px`)
+      expect(spacers()[1].style.height).toBe(`${(many_rows.length - end) * row_height_px}px`)
+      expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
+      expect(col_values(`Model`)[0]).toBe(`Model 20`)
+    })
+
+    it(`reports the rendered range via on_visible_range`, async () => {
+      const on_visible_range = vi.fn()
+      mount_table({ data: many_rows, columns: two_cols, on_visible_range, virtual: true })
+      await tick()
+      expect(on_visible_range).toHaveBeenLastCalledWith({
+        start: 0,
+        end: min_window,
+        total: many_rows.length,
+      })
+
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      scroller.scrollTop = 30 * row_height_px
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+      expect(on_visible_range).toHaveBeenLastCalledWith({
+        start: 30 - overscan,
+        end: 30 - overscan + min_window,
+        total: many_rows.length,
+      })
+    })
+
+    it(`clamps the rendered window when data shrinks below the scroll position`, async () => {
+      const state = $state({ data: many_rows })
+      mount_table(bind_props({ columns: two_cols, virtual: true }, state))
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      scroller.scrollTop = 150 * row_height_px // deep into the 200 rows
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+      expect(rendered_rows().length).toBeGreaterThan(0)
+
+      // happy-dom never clamps scrollTop, so the stale offset (150 rows) now
+      // points far past the 20-row content. The window must clamp to the data:
+      // all 20 rows fit the 600px viewport, so everything renders, no spacers.
+      // (Unclamped, the window would start at row 140 and render zero rows.)
+      state.data = many_rows.slice(0, 20)
+      await tick()
+      expect(rendered_rows()).toHaveLength(20)
+      expect(spacers()).toHaveLength(0)
+    })
+
+    it.each([
+      [`virtualization is off by default: every row renders`, {}, many_rows.length],
+      [`virtual={false} renders every row`, { virtual: false as const }, many_rows.length],
+      [`custom min_window bounds the window`, { virtual: { min_window: 25 } }, 25],
+    ])(`%s`, (_desc, extra_props, expected_rows) => {
+      mount_table({ data: many_rows, columns: two_cols, ...extra_props })
+      expect(rendered_rows()).toHaveLength(expected_rows)
+      if (expected_rows === many_rows.length) {
+        expect(spacers()).toHaveLength(0)
+        expect(document.querySelector(`.row-count-info`)).toBeNull()
+      }
+    })
+
+    it(`pagination disables virtualization and its count line`, () => {
+      mount_table({
+        data: many_rows,
+        columns: two_cols,
+        pagination: { page_size: 10 },
+        virtual: true,
+      })
+      expect(rendered_rows()).toHaveLength(10)
+      expect(spacers()).toHaveLength(0)
+      expect(document.querySelector(`.row-count-info`)).toBeNull()
+      expect(document.querySelector(`.pagination`)).not.toBeNull()
+    })
+  })
+
+  describe(`controls_target`, () => {
+    const rows = [
+      { Model: `A`, Score: 1 },
+      { Model: `B`, Score: 2 },
+    ]
+    const cols: Label[] = [
+      { label: `Model`, description: `` },
+      { label: `Score`, description: `` },
+    ]
+    const control_props = { search: true, export_data: true, show_controls: true }
+
+    it(`teleports control buttons into the host target, always visible`, async () => {
+      const target = document.createElement(`div`)
+      document.body.append(target)
+      mount_table({ data: rows, columns: cols, ...control_props, controls_target: target })
+      await tick() // attachments run in the effect phase
+
+      const section = target.querySelector(`.control-buttons`)
+      expect(section).not.toBeNull()
+      expect(section?.classList.contains(`portaled`)).toBe(true)
+      // settings gear travels with the row (it lives inside the section now)
+      expect(section?.querySelector(`.pane-toggle`)).not.toBeNull()
+      // no leftover controls row inside the table itself
+      expect(document.querySelector(`.table-container .control-buttons`)).toBeNull()
+    })
+
+    it(`renders controls inline (gear included) when no target is given`, () => {
+      mount_table({ data: rows, columns: cols, ...control_props })
+
+      const section = document.querySelector(`.table-container .control-buttons`)
+      expect(section).not.toBeNull()
+      expect(section?.classList.contains(`portaled`)).toBe(false)
+      expect(section?.querySelector(`.pane-toggle`)).not.toBeNull()
     })
   })
 })

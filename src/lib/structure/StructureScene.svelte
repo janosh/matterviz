@@ -400,7 +400,6 @@
       if (measure_mode === `edit-atoms`) {
         const site = structure?.sites?.[hovered_idx]
         if (site?.properties?.orig_site_idx != null) return `not-allowed`
-        return `pointer`
       }
       return `pointer`
     }

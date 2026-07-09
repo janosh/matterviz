@@ -23,15 +23,28 @@ export type SunburstLabelRotation = `auto` | `radial` | `tangential` | `horizont
 // Sibling ordering: 'none' preserves input order (e.g. spacegroup number order)
 export type SunburstSort = `descending` | `ascending` | `none`
 // What arc labels display (plotly textinfo equivalent); percent is of the root total
-export type SunburstLabelText = `label` | `value` | `percent` | `label+value` | `label+percent`
+export type SunburstLabelText =
+  | `label`
+  | `value`
+  | `percent`
+  | `label+value`
+  | `label+percent`
+  | `label+parent-percent`
 // Chart geometry: polar rings (sunburst) or stacked horizontal rows (icicle)
 export type SunburstShape = `sunburst` | `icicle`
 
 export interface SunburstNode<Metadata = Record<string, unknown>> {
   id?: string | number // stable id (defaults to slash-joined label path, e.g. "cubic/Fm-3m")
   label?: string
+  // Compact last-resort label (e.g. a bare percentage) tried when the full
+  // label doesn't fit the node; without it the label is hidden entirely.
+  label_short?: string
   value?: number // required on leaves ('leaf-sum') / authoritative on all nodes ('total')
   color?: string // explicit color, inherited by descendants without their own
+  // Overlay a diagonal-hatch texture on this node's arc (not inherited), e.g. to
+  // mark a categorical flag like preemptible jobs. Styled via the
+  // --sunburst-hatch-* CSS vars.
+  hatch?: boolean
   children?: SunburstNode<Metadata>[]
   metadata?: Metadata
 }
@@ -55,6 +68,7 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   parent_idx: number | null
   id: string | number
   label?: string
+  label_short?: string // compact fallback from SunburstNode.label_short
   value: number
   color: string // resolved: explicit > inherited > depth-1 palette (root: transparent)
   depth: number // 0 = root; equals y0
@@ -64,6 +78,7 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   fraction: number // value / root total
   parent_fraction: number // value / parent value (1 for root)
   is_other?: boolean // synthetic arc aggregating small siblings (min_fraction bucketing)
+  hatch?: boolean // diagonal-hatch overlay from SunburstNode.hatch (not inherited)
   x0: number // angular extent as fraction of the full circle, in [0, 1]
   x1: number
   y0: number // radial extent in ring units: y0 === depth, y1 === depth + 1
@@ -127,19 +142,26 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   const root_data: SunburstNode<Metadata> = Array.isArray(data) ? { children: data } : data
   const root = hierarchy<SunburstNode<Metadata>>(root_data, (node) => node.children)
 
+  // Coerce non-finite/negative input values to 0 at the source so downstream
+  // consumers (partition angles, treemap tiling, fractions in aria/hover labels)
+  // never see NaN or negative values.
+  const clean_value = (val: number | undefined | null): number =>
+    typeof val === `number` && Number.isFinite(val) && val >= 0 ? val : 0
+
   // 'remainder': d3's .sum() adds the node's own value on top of its children's sum,
   // which is exactly plotly's branchvalues='remainder'. 'leaf-sum' ignores parent values.
   // 'total': every explicitly set value is authoritative (plotly branchvalues='total');
   // nodes without one get their children's sum. Children summing to less than their
   // parent leave a trailing angular gap; more than the parent overflows (plotly errors
   // here; we warn and the component clamps angles).
-  if (value_mode === `remainder`) root.sum((node) => node.value ?? 0)
+  if (value_mode === `remainder`) root.sum((node) => clean_value(node.value))
   else if (value_mode === `total`) {
     root.eachAfter((node) => {
       const child_sum = node.children?.reduce((sum, child) => sum + (child.value ?? 0), 0) ?? 0
       // HierarchyNode.value is typed readonly (normally set via .sum()), but manual
       // assignment is the documented d3 way to provide values without aggregation
-      ;(node as { value?: number }).value = node.data.value ?? child_sum
+      ;(node as { value?: number }).value =
+        node.data.value != null ? clean_value(node.data.value) : child_sum
       if (node.children && node.data.value != null && child_sum > node.data.value + 1e-9) {
         console.warn(
           `Sunburst: children of "${
@@ -148,7 +170,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         )
       }
     })
-  } else root.sum((node) => (node.children?.length ? 0 : (node.value ?? 0)))
+  } else root.sum((node) => (node.children?.length ? 0 : clean_value(node.value)))
 
   if (sort !== `none`) {
     const sign = sort === `descending` ? -1 : 1
@@ -247,10 +269,12 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     const arc = push_arc(parent, {
       id,
       label: node.data.label,
+      label_short: node.data.label_short,
       value: node.value ?? 0,
       color,
       depth,
       is_leaf: !node.children?.length,
+      hatch: node.data.hatch,
       x0,
       x1,
       y0,

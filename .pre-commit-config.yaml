@@ -63,7 +63,8 @@ repos:
         stages: [pre-commit, commit-msg]
         args:
           - --ignore-words-list
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac'
+          # statics: static (single-point) calculations
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli

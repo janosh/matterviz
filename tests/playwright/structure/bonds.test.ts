@@ -280,6 +280,18 @@ const dispatch_periodic_image_unbonded_structure = (page: Page) =>
     show_site_labels: true,
   })
 
+// Structure changes clear scene_props.camera_target (Structure.svelte re-frames the new
+// cell), wiping the camera passed alongside set-structure. Re-apply it once the canvas
+// settled so the C-O image bond midpoint [9.95, 5, 5] projects to the canvas center,
+// then give orbit-controls damping a moment to move the camera there.
+const apply_image_bond_camera = async (page: Page) => {
+  await set_scene_props(page, {
+    camera_position: [9.95, 5, 17],
+    camera_target: [9.95, 5, 5],
+  })
+  await page.waitForTimeout(1000)
+}
+
 const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
   page.evaluate(() => {
     const structure = {
@@ -585,6 +597,7 @@ test.describe(`Bond component`, () => {
     const console_errors = await goto_structure_page(page)
     await dispatch_periodic_image_bond_structure(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await apply_image_bond_camera(page)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
     await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
 
@@ -604,6 +617,7 @@ test.describe(`Bond component`, () => {
     const console_errors = await goto_structure_page(page)
     await dispatch_periodic_image_unbonded_structure(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await apply_image_bond_camera(page)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
     await select_atom_label_with_keyboard(page, `C`, `first`)

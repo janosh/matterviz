@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_value } from '$lib/labels'
+  import { format_value_or_num } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type {
     AxisLoadError,
@@ -193,8 +193,10 @@
   let display = $state(untrack(() => ({ ...DEFAULTS.histogram.display, ...display_init })))
 
   // Merge component-specific defaults with local state (format comes from here, not AXIS_DEFAULTS)
-  const final_x_axis = $derived({ label: `Value`, format: `.2~s`, ...x_axis })
-  const final_x2_axis = $derived({ label: `Value`, format: `.2~s`, ...x2_axis })
+  // No default tick format: PlotAxis falls back to format_num, which uses SI
+  // prefixes above 1 but plain decimals below (0.2 must not render as 200m)
+  const final_x_axis = $derived({ label: `Value`, ...x_axis })
+  const final_x2_axis = $derived({ label: `Value`, ...x2_axis })
   const final_y_axis = $derived({ label: `Count`, format: `d`, ...y_axis })
   const final_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
   const final_y2_axis = $derived({ label: `Count`, format: `d`, ...y2_axis })
@@ -1001,8 +1003,8 @@
       {#if tooltip}
         {@render tooltip({ ...hover_info, fullscreen })}
       {:else}
-        <div>Value: {format_value(value, hover_info.x_axis.format || `.3~s`)}</div>
-        <div>Count: {format_value(count, hover_info.y_axis.format || `.3~s`)}</div>
+        <div>Value: {format_value_or_num(value, hover_info.x_axis.format)}</div>
+        <div>Count: {format_value_or_num(count, hover_info.y_axis.format)}</div>
         {#if mode === `overlay`}<div>{property}</div>{/if}
       {/if}
     </PlotTooltip>

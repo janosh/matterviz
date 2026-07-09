@@ -6,7 +6,12 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import { chart_segment_label, type ChartSegmentData, get_chart_font_scale } from './index'
+  import {
+    chart_segment_label,
+    chart_segment_suffix,
+    type ChartSegmentData,
+    get_chart_font_scale,
+  } from './index'
   import { fractional_composition } from './parse'
 
   type BarSegmentData = ChartSegmentData & {
@@ -138,9 +143,7 @@
   </tspan>
   {#if show_amounts || show_percentages}
     <tspan class="amount" style:font-size="{6.5 * segment.font_scale}px" dx="1" dy="5">
-      {show_amounts ? segment.amount : ``}{show_amounts && show_percentages
-        ? `=`
-        : ``}{show_percentages ? format_num(segment.fraction, `.1~%`) : ``}
+      {chart_segment_suffix(segment.amount, segment.fraction, show_amounts, show_percentages)}
     </tspan>
   {/if}
 {/snippet}

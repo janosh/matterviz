@@ -2,6 +2,15 @@ import type { COMPRESSION_EXTENSIONS } from '$lib/constants'
 import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
 import { is_binary_payload } from './is-binary'
 
+// Lowercase a filename and strip all trailing compression extensions (.gz, .zip, ...)
+export function strip_compression_extensions(filename: string): string {
+  let base_name = filename.toLowerCase()
+  while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
+    base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  }
+  return base_name
+}
+
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
 
@@ -61,13 +70,14 @@ export async function decompress_file(
   file: File,
 ): Promise<{ content: string | ArrayBuffer; filename: string }> {
   const format = detect_compression_format(file.name)
-  const is_supported_compression =
-    format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
+  // zip/xz/bz2 are handled by their own code paths; null = not compressed
+  const decompressible =
+    format !== null && format !== `zip` && format !== `xz` && format !== `bz2` ? format : null
   const buffer = await file.arrayBuffer()
 
-  if (is_supported_compression && format) {
+  if (decompressible) {
     const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    const decompressed = await decompress_data_binary(buffer, format)
+    const decompressed = await decompress_data_binary(buffer, decompressible)
     return { content: to_content(filename, decompressed), filename }
   }
   return { content: to_content(file.name, buffer), filename: file.name }

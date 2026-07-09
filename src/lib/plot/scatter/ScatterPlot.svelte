@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
-  import { format_value } from '$lib/labels'
+  import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -966,8 +966,7 @@
 
     // Fallback estimate (with room for tick labels) used before the colorbar first
     // renders; compute_element_placement measures the real footprint once it's laid out
-    const is_horizontal = (color_bar.orientation ?? `horizontal`) === `horizontal`
-    const colorbar_size = is_horizontal
+    const colorbar_size = colorbar_is_horizontal
       ? COLOR_BAR_DEFAULTS.horizontal_footprint
       : COLOR_BAR_DEFAULTS.vertical_footprint
 
@@ -1332,8 +1331,8 @@
       metadata,
       label: hovered_series.label ?? null,
       series_idx,
-      x_formatted: format_value(x, active_x_config.format || `.3~s`),
-      y_formatted: format_value(y, active_y_config.format || `.3~s`),
+      x_formatted: format_value_or_num(x, active_x_config.format),
+      y_formatted: format_value_or_num(y, active_y_config.format),
       color_value: color_value ?? null,
       colorbar: {
         value: color_value ?? null,

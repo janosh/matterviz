@@ -1,7 +1,12 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { is_plain_object, normalize_scientific_notation, parse_leading_num } from '$lib/utils'
+import {
+  is_plain_object,
+  normalize_scientific_notation,
+  parse_leading_num,
+  to_error,
+} from '$lib/utils'
 import * as constants from './constants'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type {
@@ -522,7 +527,7 @@ export function parse_fermi_file(
     try {
       return parse()
     } catch (error) {
-      errors.push(`${format}: ${error instanceof Error ? error.message : String(error)}`)
+      errors.push(`${format}: ${to_error(error).message}`)
       console.error(`${format} parse error:`, error)
       return null
     }

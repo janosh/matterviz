@@ -1,5 +1,5 @@
 import type { Vec2 } from '$lib/math'
-import { BinnedScatterPlot, type BinnedDensityConfig } from '$lib/plot'
+import { BinnedScatterPlot, type BinnedDensityConfig, COLOR_BAR_DEFAULTS } from '$lib/plot'
 import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick } from 'svelte'
@@ -192,8 +192,82 @@ describe(`BinnedScatterPlot`, () => {
     expect(document.querySelector(`.mode-pill`)).toBeNull()
     expect(document.querySelector(`.colorbar .label`)?.textContent).toBe(`Density (2 points)`)
     const colorbar_style = (document.querySelector(`.colorbar .bar`) as HTMLElement).style
-    expect(colorbar_style.width).toBe(`220px`)
+    expect(colorbar_style.width).toBe(`${COLOR_BAR_DEFAULTS.width}px`)
     expect(colorbar_style.height).toBe(`10px`)
+  })
+
+  test(`auto-places annotation snippet without overlapping the colorbar`, async () => {
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        density: density_mode_with_colorbar(),
+        annotation: overlay_snippet(`custom-annotation`),
+        style: `width: 800px; height: 600px`,
+      },
+    })
+    await settle()
+
+    const anno_wrapper = doc_query<HTMLElement>(`.binned-scatter .annotation`)
+    expect(anno_wrapper.querySelector(`.custom-annotation`)?.textContent).toBe(`800x600:false`)
+    // style.left/top are `${n}px` strings, so strip the unit before Number()
+    const style_px = (value: string): number => Number(value.replace(/px$/, ``))
+    // both elements report zero offset size in the test DOM, so placement uses the
+    // documented fallback footprints (annotation 120x50, colorbar 220x50)
+    const anno_rect = {
+      x: style_px(anno_wrapper.style.left),
+      y: style_px(anno_wrapper.style.top),
+      width: 120,
+      height: 50,
+    }
+    const bar_wrapper = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
+    const bar_rect = {
+      x: style_px(bar_wrapper.style.left),
+      y: style_px(bar_wrapper.style.top),
+      width: COLOR_BAR_DEFAULTS.width,
+      height: 50,
+    }
+    for (const rect of [anno_rect, bar_rect]) {
+      expect(Number.isFinite(rect.x), `${rect.x}`).toBe(true)
+      expect(Number.isFinite(rect.y), `${rect.y}`).toBe(true)
+    }
+    // exclude_rects wiring: annotation must not intersect the colorbar footprint
+    const rects_intersect =
+      anno_rect.x < bar_rect.x + bar_rect.width &&
+      bar_rect.x < anno_rect.x + anno_rect.width &&
+      anno_rect.y < bar_rect.y + bar_rect.height &&
+      bar_rect.y < anno_rect.y + anno_rect.height
+    expect(rects_intersect, JSON.stringify({ anno_rect, bar_rect })).toBe(false)
+  })
+
+  test(`renders annotation in point mode (no colorbar) and skips wrapper when absent`, async () => {
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        density: point_mode(),
+        annotation: overlay_snippet(`custom-annotation`),
+        style: `width: 800px; height: 600px`,
+      },
+    })
+    await settle()
+
+    expect(document.querySelector(`.color-bar`)).toBeNull()
+    const anno_wrapper = doc_query<HTMLElement>(`.annotation`)
+    expect(anno_wrapper.style.left).toMatch(/px$/)
+    expect(anno_wrapper.style.top).toMatch(/px$/)
+
+    document.body.replaceChildren()
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        density: point_mode(),
+        style: `width: 800px; height: 600px`,
+      },
+    })
+    await settle()
+    expect(document.querySelector(`.annotation`)).toBeNull()
   })
 
   test(`clips reference lines to the plot area`, async () => {
@@ -218,6 +292,69 @@ describe(`BinnedScatterPlot`, () => {
 
     const ref_group = document.querySelector(`.reference-lines`)
     expect(ref_group?.getAttribute(`clip-path`)).toBe(`url(#${clip_path?.id})`)
+  })
+
+  test.each([
+    // y=x diagonal auto-fills the axis ranges: with x=y ranges [0,1] on an 800x600
+    // plot padded {l:80,r:20,t:30,b:60}, it runs corner to corner
+    [
+      { type: `diagonal`, slope: 1, intercept: 0 } as const,
+      { x1: 80, y1: 540, x2: 780, y2: 30 },
+      { stroke: `currentColor`, dash: null }, // RefLine default style is solid
+    ],
+    // horizontal line at mid-range spans the full x extent
+    [
+      { type: `horizontal`, y: 0.5, style: { color: `red`, dash: `4 4` } } as const,
+      { x1: 80, y1: 285, x2: 780, y2: 285 },
+      { stroke: `red`, dash: `4 4` },
+    ],
+  ])(
+    `resolves declarative RefLine %o against current axis ranges`,
+    async (ref_line, coords, style) => {
+      mount(BinnedScatterPlot, {
+        target: document.body,
+        props: {
+          series: [{ x: [0, 1], y: [0, 1] }],
+          x_axis: { range: [0, 1] as Vec2 },
+          y_axis: { range: [0, 1] as Vec2 },
+          overlays: { ref_lines: [ref_line] },
+          density: hidden_density,
+          padding: { l: 80, r: 20, t: 30, b: 60 },
+          style: `width: 800px; height: 600px`,
+        },
+      })
+      await settle()
+
+      const line = document.querySelector(`.reference-lines line`)
+      expect(line).toBeInstanceOf(SVGLineElement)
+      for (const [attr, expected] of Object.entries(coords)) {
+        expect(Number(line?.getAttribute(attr)), attr).toBeCloseTo(expected, 6)
+      }
+      expect(line?.getAttribute(`stroke`)).toBe(style.stroke)
+      expect(line?.getAttribute(`stroke-dasharray`)).toBe(style.dash)
+    },
+  )
+
+  test(`drops declarative RefLines that resolve outside the axis ranges`, async () => {
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        x_axis: { range: [0, 1] as Vec2 },
+        y_axis: { range: [0, 1] as Vec2 },
+        overlays: {
+          ref_lines: [
+            { type: `vertical`, x: 5 }, // outside x range -> dropped
+            { type: `horizontal`, y: 0.5, visible: false }, // explicitly hidden
+          ],
+        },
+        density: hidden_density,
+        style: `width: 800px; height: 600px`,
+      },
+    })
+    await settle()
+
+    expect(document.querySelectorAll(`.reference-lines line`)).toHaveLength(0)
   })
 
   test(`uses density color scale type for colorbar ticks`, async () => {
