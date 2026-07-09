@@ -92,7 +92,7 @@ export type Pagination =
       on_page_size_change?: (page_size: number) => void
     }
 
-// Infinite-scroll virtualization config (true by default; object for tuning).
+// Infinite-scroll virtualization config (off by default; true to enable, object for tuning).
 // overscan: extra rows rendered above/below the viewport for smooth scrolling.
 // min_window: minimum number of rows kept in the DOM (also the fallback render
 // count when the scroll container height is unknown, e.g. during SSR).

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import StructureCarousel, {
-    type StructureCarouselItem,
-  } from '$lib/structure/StructureCarousel.svelte'
+  import StructureCarousel from '$lib/structure/StructureCarousel.svelte'
+  import type { StructureCarouselItem } from '$lib/structure'
 
   interface Props {
     next_items: StructureCarouselItem[]

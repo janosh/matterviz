@@ -168,7 +168,7 @@
     search_query = $bindable(``),
     show_row_select = false,
     pagination = false,
-    virtual = true,
+    virtual = false,
     on_visible_range,
     controls_target = undefined,
     selected_rows = $bindable([]),
@@ -219,9 +219,10 @@
     search_query?: string
     show_row_select?: boolean
     pagination?: Pagination
-    // Infinite-scroll row virtualization (default). Renders only the rows near the
+    // Opt-in infinite-scroll row virtualization. Renders only the rows near the
     // viewport plus spacer rows, so DOM size stays bounded for any data length.
-    // Inactive when pagination is enabled. Set false to always render every row.
+    // Inactive when pagination is enabled. Off by default (every row renders);
+    // pass true (or a config object) to enable.
     virtual?: VirtualScroll
     // Notifies the parent which slice of the sorted+filtered rows is rendered
     // (e.g. to progressively fetch more data as the user scrolls near the end).
@@ -792,9 +793,9 @@
     })
   })
 
-  // --- Infinite scroll (virtualized rows). Default mode when pagination is off:
-  // only rows near the viewport render; spacer rows preserve scroll geometry so
-  // the DOM stays bounded no matter how many rows the data holds.
+  // --- Infinite scroll (virtualized rows). Opt-in via the `virtual` prop (and
+  // inactive under pagination): only rows near the viewport render; spacer rows
+  // preserve scroll geometry so the DOM stays bounded for any row count.
   let scroll_el = $state<HTMLDivElement>()
   let scroll_top = $state(0)
   let viewport_height = $state(0)
@@ -1138,7 +1139,8 @@
   })
 
   const is_interactive_cell_target = (target: EventTarget | null): boolean =>
-    target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
+    target instanceof Element &&
+    Boolean(target.closest(`button, a, input, select, textarea`))
 
   function start_cell_drag(event: PointerEvent, row_idx: number, col_idx: number) {
     if (event.button !== 0 || is_interactive_cell_target(event.target)) return
@@ -1151,10 +1153,9 @@
 
   function extend_cell_drag(event: PointerEvent) {
     if (!cell_drag_active) return
-    const target_cell =
-      event.target instanceof Element
-        ? event.target.closest<HTMLElement>(`td[data-row-idx]`)
-        : null
+    const target_cell = event.target instanceof Element
+      ? event.target.closest<HTMLElement>(`td[data-row-idx]`)
+      : null
     const active_rect = selected_cell_rects.at(-1)
     if (!target_cell || !active_rect) return
     const row_idx = Number(target_cell.dataset.rowIdx)
@@ -1216,9 +1217,7 @@
       for (let row_idx = row_lo; row_idx <= row_hi; row_idx++) {
         const cells: string[] = []
         for (let col_idx = col_lo; col_idx <= col_hi; col_idx++) {
-          cells.push(
-            cell_copy_text(sorted_data[row_idx][get_col_id(visible_columns[col_idx])]),
-          )
+          cells.push(cell_copy_text(sorted_data[row_idx][get_col_id(visible_columns[col_idx])]))
         }
         lines.push(cells.join(`\t`))
       }
@@ -1257,12 +1256,10 @@
       options: [
         { value: `copy_column`, label: `Copy column (${sorted_data.length} values)` },
         ...(selected_cell_keys.size > 0
-          ? [
-              {
-                value: `copy_selection`,
-                label: `Copy selection (${selected_cell_keys.size} cells)`,
-              },
-            ]
+          ? [{
+            value: `copy_selection`,
+            label: `Copy selection (${selected_cell_keys.size} cells)`,
+          }]
           : []),
       ],
     },
@@ -1289,26 +1286,27 @@
     context_menu_col = null
   }
 
-  // Row selection using WeakMap-based ID lookup instead of O(n) JSON.stringify comparison
+  // Row selection via an ID-indexed Set so per-row checks are O(1) instead of
+  // linear scans over selected_rows (matters for large virtualized datasets)
+  let selected_id_set = $derived(new Set(selected_rows.map((row) => get_row_id(row))))
+
   function toggle_row_select(row: RowData) {
     const row_id = get_row_id(row)
-    const idx = selected_rows.findIndex((selected_row) => get_row_id(selected_row) === row_id)
-    selected_rows =
-      idx === -1
-        ? [...selected_rows, row]
-        : selected_rows.filter((_, row_idx) => row_idx !== idx)
+    selected_rows = selected_id_set.has(row_id)
+      ? selected_rows.filter((selected_row) => get_row_id(selected_row) !== row_id)
+      : [...selected_rows, row]
   }
 
   function is_row_selected(row: RowData): boolean {
-    const row_id = get_row_id(row)
-    return selected_rows.some((selected_row) => get_row_id(selected_row) === row_id)
+    return selected_id_set.has(get_row_id(row))
   }
 
   // Select-all scope: the current page under pagination, every sorted+filtered
   // row in infinite-scroll mode (the virtual window is a rendering detail)
   let select_all_rows = $derived(pagination_config ? display_rows : sorted_data)
   let all_page_selected = $derived(
-    select_all_rows.length > 0 && select_all_rows.every((row) => is_row_selected(row)),
+    select_all_rows.length > 0 &&
+      select_all_rows.every((row) => selected_id_set.has(get_row_id(row))),
   )
 
   function toggle_select_all() {
@@ -1588,88 +1586,85 @@
           style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
         }}
       >
-        <SettingsSection
-          title="Heatmap"
-          current_values={{ show_heatmap, heatmap_opacity }}
-          on_reset={() => {
-            show_heatmap = true
-            heatmap_opacity = 1
-          }}
-        >
-          <label><input type="checkbox" bind:checked={show_heatmap} /> Show heatmap</label>
-          {#if show_heatmap}
-            <label>
-              Opacity
-              <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={heatmap_opacity}
-                style="width: 3.5em"
-              />
-            </label>
-          {/if}
-        </SettingsSection>
-
-        <SettingsSection
-          title="Display"
-          current_values={{ show_row_numbers }}
-          on_reset={() => {
-            show_row_numbers = false
-          }}
-        >
-          <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
-        </SettingsSection>
-
-        {#if colored_columns.length > 0}
-          <SettingsSection
-            title="Column Colors"
-            current_values={Object.fromEntries([
-              ...better_overrides,
-              ...color_scale_overrides,
-            ])}
-            on_reset={() => {
-              better_overrides.clear()
-              color_scale_overrides.clear()
-            }}
-          >
-            {#each colored_columns as col (get_col_id(col))}
-              {@const col_id = get_col_id(col)}
-              <div class="col-color-row">
-                <span class="col-color-label">{@html sanitize_html(col.label)}</span>
-                <select
-                  value={color_scale_overrides.get(col_id) ??
-                    col.color_scale ??
-                    `interpolateViridis`}
-                  onchange={(event) => {
-                    const val = event.currentTarget.value
-                    if (val === (col.color_scale ?? `interpolateViridis`))
-                      color_scale_overrides.delete(col_id)
-                    else color_scale_overrides.set(col_id, val)
-                  }}
-                >
-                  {#each color_scale_options as scale (scale)}
-                    <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
-                  {/each}
-                </select>
-                <select
-                  value={better_overrides.get(col_id) ?? col.better ?? ``}
-                  onchange={(event) => {
-                    const val = event.currentTarget.value
-                    if (!val) better_overrides.delete(col_id)
-                    else better_overrides.set(col_id, val as `higher` | `lower`)
-                  }}
-                >
-                  <option value="">Default</option>
-                  <option value="higher">▲ High</option>
-                  <option value="lower">▼ Low</option>
-                </select>
-              </div>
-            {/each}
-          </SettingsSection>
+      <SettingsSection
+        title="Heatmap"
+        current_values={{ show_heatmap, heatmap_opacity }}
+        on_reset={() => {
+          show_heatmap = true
+          heatmap_opacity = 1
+        }}
+      >
+        <label><input type="checkbox" bind:checked={show_heatmap} /> Show heatmap</label>
+        {#if show_heatmap}
+          <label>
+            Opacity
+            <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={heatmap_opacity}
+              style="width: 3.5em"
+            />
+          </label>
         {/if}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Display"
+        current_values={{ show_row_numbers }}
+        on_reset={() => {
+          show_row_numbers = false
+        }}
+      >
+        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
+      </SettingsSection>
+
+      {#if colored_columns.length > 0}
+        <SettingsSection
+          title="Column Colors"
+          current_values={Object.fromEntries([...better_overrides, ...color_scale_overrides])}
+          on_reset={() => {
+            better_overrides.clear()
+            color_scale_overrides.clear()
+          }}
+        >
+          {#each colored_columns as col (get_col_id(col))}
+            {@const col_id = get_col_id(col)}
+            <div class="col-color-row">
+              <span class="col-color-label">{@html sanitize_html(col.label)}</span>
+              <select
+                value={color_scale_overrides.get(col_id) ??
+                  col.color_scale ??
+                  `interpolateViridis`}
+                onchange={(event) => {
+                  const val = event.currentTarget.value
+                  if (val === (col.color_scale ?? `interpolateViridis`))
+                    color_scale_overrides.delete(col_id)
+                  else color_scale_overrides.set(col_id, val)
+                }}
+              >
+                {#each color_scale_options as scale (scale)}
+                  <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
+                {/each}
+              </select>
+              <select
+                value={better_overrides.get(col_id) ?? col.better ?? ``}
+                onchange={(event) => {
+                  const val = event.currentTarget.value
+                  if (!val) better_overrides.delete(col_id)
+                  else better_overrides.set(col_id, val as `higher` | `lower`)
+                }}
+              >
+                <option value="">Default</option>
+                <option value="higher">▲ High</option>
+                <option value="lower">▼ Low</option>
+              </select>
+            </div>
+          {/each}
+        </SettingsSection>
+      {/if}
       </DraggablePane>
     {/if}
 
@@ -1875,13 +1870,17 @@
           {/each}
         </tr>
       </thead>
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (drag cell-range selection; keyboard copy handled on window) -->
-      <tbody onpointermove={extend_cell_drag}>
-        {#if spacer_top > 0}
-          <tr class="virtual-spacer" aria-hidden="true" style:height="{spacer_top}px">
+      {#snippet virtual_spacer(height: number)}
+        <!-- preserves scroll geometry for the unrendered rows above/below the window -->
+        {#if height > 0}
+          <tr class="virtual-spacer" aria-hidden="true" style:height="{height}px">
             <td colspan={body_colspan}></td>
           </tr>
         {/if}
+      {/snippet}
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (drag cell-range selection; keyboard copy handled on window) -->
+      <tbody onpointermove={extend_cell_drag}>
+        {@render virtual_spacer(spacer_top)}
         {#each display_rows as row, row_idx (get_row_id(row))}
           {@const abs_idx = display_range.start + row_idx}
           {@const row_selected = show_row_select && is_row_selected(row)}
@@ -1942,7 +1941,11 @@
                 class:sticky-col={col.sticky}
                 class:cell-selected={selected_cell_keys.has(`${abs_idx}:${col_idx}`)}
                 onpointerdown={(event) => start_cell_drag(event, abs_idx, col_idx)}
-                oncontextmenu={(event) => open_column_context_menu(event, col_id)}
+                oncontextmenu={(event) => {
+                  // keep the native context menu for links/buttons/inputs inside cells
+                  if (is_interactive_cell_target(event.target)) return
+                  open_column_context_menu(event, col_id)
+                }}
                 style:--cell-bg={color.bg}
                 style:color={color.text}
                 style={`${col.cell_style ?? col.style ?? ``}${
@@ -1972,11 +1975,7 @@
             </tr>
           {/if}
         {/each}
-        {#if spacer_bottom > 0}
-          <tr class="virtual-spacer" aria-hidden="true" style:height="{spacer_bottom}px">
-            <td colspan={body_colspan}></td>
-          </tr>
-        {/if}
+        {@render virtual_spacer(spacer_bottom)}
       </tbody>
       {#if footer}
         <tfoot>
@@ -2123,8 +2122,7 @@
       color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent),
       color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent)
     );
-    box-shadow: inset 0 0 0 1px
-      color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent);
   }
   th,
   td {
