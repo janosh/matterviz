@@ -298,6 +298,10 @@ export const superscript_digits = (input: string): string =>
     is_superscript_key(match) ? SUPERSCRIPT_MAP[match] : match,
   )
 
+// Axis-group key for SCF convergence series: shared between the property config
+// below and the log-scale detection in trajectory/plotting.ts so the two can't drift
+export const SCF_AXIS_GROUP = `eV (SCF)`
+
 // Trajectory property configuration: clean labels and units as structured data.
 // axis_group (optional) overrides the unit as the y-axis grouping key: series with
 // the same unit normally share an axis, but e.g. log-scaled |ΔE_SCF| (all-positive,
@@ -354,7 +358,7 @@ export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
 
   // SCF/electronic convergence properties (e.g. from VASP vaspout.h5 OSZICAR data)
   n_scf_steps: { label: `SCF steps`, unit: `steps` },
-  scf_energy_delta: { label: `|ΔE<sub>SCF</sub>|`, unit: `eV`, axis_group: `eV (SCF)` },
+  scf_energy_delta: { label: `|ΔE<sub>SCF</sub>|`, unit: `eV`, axis_group: SCF_AXIS_GROUP },
   scf_rms: { label: `ρ residual (rms)`, unit: `a.u.` },
   scf_charge_rms: { label: `ρ<sub>c</sub> residual (rms(c))`, unit: `a.u.` },
 }

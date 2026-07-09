@@ -40,6 +40,7 @@ const FINAL_ION_COUNTS = `results/positions/number_ion_types`
 const FINAL_LATTICE = `results/positions/lattice_vectors`
 const FINAL_POSITIONS = `results/positions/position_ions`
 const FINAL_SCALE = `results/positions/scale`
+const TRAJ_SCALE = `intermediate/ion_dynamics/scale`
 const TRAJ_LATTICE = `intermediate/ion_dynamics/lattice_vectors`
 const TRAJ_POSITIONS = `intermediate/ion_dynamics/position_ions`
 const TRAJ_FORCES = `intermediate/ion_dynamics/forces`
@@ -151,21 +152,34 @@ const read_electronic_step_history = (h5_file: h5wasm.File): ScfIonicStep[] | nu
 const read_scf_history = (h5_file: h5wasm.File): ScfIonicStep[] | null =>
   read_oszicar_history(h5_file) ?? read_electronic_step_history(h5_file)
 
+// Convergence fields (|dE|, density residuals) for one SCF step; negative idx
+// counts from the end (-1 = final step). Shared by the per-frame summary below
+// and the SCF pseudo-frame expansion for single-point runs.
+const scf_step_metadata = (scf: ScfIonicStep, idx: number): Record<string, number> => {
+  const metadata: Record<string, number> = {}
+  const delta = scf.energy_deltas.at(idx)
+  if (delta != null) metadata.scf_energy_delta = Math.abs(delta)
+  const rms = scf.rms.at(idx)
+  if (rms != null) metadata.scf_rms = rms
+  const charge_rms = scf.charge_rms.at(idx)
+  if (charge_rms != null) metadata.scf_charge_rms = charge_rms
+  return metadata
+}
+
 // Final-SCF-step summary attached to each ionic frame so relax trajectories
 // plot SCF effort/residuals alongside energy and force_max.
 const scf_frame_metadata = (scf: ScfIonicStep | undefined): Record<string, number> => {
   if (!scf || scf.energies.length === 0) return {}
-  const metadata: Record<string, number> = { n_scf_steps: scf.energies.length }
-  const last_delta =
-    scf.energy_deltas.at(-1) ??
-    (scf.energies.length >= 2
-      ? (scf.energies.at(-1) as number) - (scf.energies.at(-2) as number)
-      : null)
-  if (last_delta !== null) metadata.scf_energy_delta = Math.abs(last_delta)
-  const last_rms = scf.rms.at(-1)
-  if (last_rms != null) metadata.scf_rms = last_rms
-  const last_charge_rms = scf.charge_rms.at(-1)
-  if (last_charge_rms != null) metadata.scf_charge_rms = last_charge_rms
+  const metadata: Record<string, number> = {
+    n_scf_steps: scf.energies.length,
+    ...scf_step_metadata(scf, -1),
+  }
+  // interrupted writers can drop the final dE entry: derive it from the last two energies
+  if (!(`scf_energy_delta` in metadata) && scf.energies.length >= 2) {
+    metadata.scf_energy_delta = Math.abs(
+      (scf.energies.at(-1) as number) - (scf.energies.at(-2) as number),
+    )
+  }
   return metadata
 }
 
@@ -198,16 +212,15 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
   if (!ion_types || !ion_counts) {
     return electronic_only_trajectory(h5_file, `${FINAL_ION_TYPES} / ${FINAL_ION_COUNTS}`)
   }
-  if (ion_types.length !== ion_counts.length) {
-    throw new Error(
-      `vaspout.h5 ion_types (${ion_types.length}) and number_ion_types (${ion_counts.length}) disagree`,
-    )
-  }
+  // expand_ion_types throws on length mismatch and unknown symbols (fail loudly)
   const elements = expand_ion_types(ion_types, ion_counts)
 
   // POSCAR-style universal scaling factor; scalar in real files, but some
-  // writers store it as a 1-element array.
+  // writers store it as a 1-element array. Intermediate ion-dynamics frames
+  // carry their own scale (py4vasp's trajectory Cell reads
+  // intermediate/ion_dynamics/scale), distinct from the final-structure scale.
   const scale = to_scalar_number(read_dataset(h5_file, FINAL_SCALE)) ?? 1
+  const traj_scale = to_scalar_number(read_dataset(h5_file, TRAJ_SCALE)) ?? scale
 
   const traj_positions = read_dataset(h5_file, TRAJ_POSITIONS) as number[][][] | null
   const traj_lattices = read_dataset(h5_file, TRAJ_LATTICE) as number[][][] | null
@@ -229,9 +242,10 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
     step: number,
     scf: ScfIonicStep | undefined,
     raw_energy: unknown,
-    forces?: unknown,
+    forces: unknown,
+    frame_scale: number, // traj_scale for ion-dynamics steps, scale for the final structure
   ) => {
-    const lattice = scale_matrix(validate_3x3_matrix(lattice_data), scale)
+    const lattice = scale_matrix(validate_3x3_matrix(lattice_data), frame_scale)
     const frac_to_cart = create_frac_to_cart(lattice)
     const positions = frac_positions.map((frac) => frac_to_cart(frac as Vec3))
     const metadata: Record<string, unknown> = {
@@ -265,6 +279,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
             scf_history?.[step],
             energies?.[step]?.[energy_col],
             traj_forces?.[step],
+            traj_scale,
           ),
         )
       } catch {
@@ -295,6 +310,8 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
           0,
           scf_history?.at(-1),
           energies?.at(-1)?.[energy_col],
+          undefined,
+          scale,
         ),
       )
     } catch {
@@ -319,13 +336,8 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
       const metadata: Record<string, unknown> = {
         energy: scf_energy,
         volume: base_frame.metadata?.volume,
+        ...scf_step_metadata(only_scf, scf_idx),
       }
-      const delta = only_scf.energy_deltas[scf_idx]
-      if (delta !== null) metadata.scf_energy_delta = Math.abs(delta)
-      const rms = only_scf.rms[scf_idx]
-      if (rms !== null) metadata.scf_rms = rms
-      const charge_rms = only_scf.charge_rms[scf_idx]
-      if (charge_rms !== null) metadata.scf_charge_rms = charge_rms
       frames.push({ structure: base_frame.structure, step: scf_idx, metadata })
     }
     frames_are_scf_steps = true

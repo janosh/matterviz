@@ -145,9 +145,11 @@ export const parse_file_content = async (
   if (is_compressed) {
     let buffer = base64_to_array_buffer(content)
 
-    // Gzipped HDF5 archives (e.g. vaspwave.h5.gz as ferrox stores them on S3):
-    // decompress to binary first so the HDF5 routing below sees the inner name.
-    if (/\.(?:h5|hdf5)\.gz$/i.test(filename)) {
+    // Gzipped binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
+    // or gzipped ASE .traj files): decompress to binary first — the generic text
+    // decompression below would corrupt their bytes — so the binary routing
+    // below sees the inner name.
+    if (/\.(?:h5|hdf5|traj)\.gz$/i.test(filename)) {
       buffer = await decompress_data_binary(buffer, `gzip`)
       filename = filename.replace(/\.gz$/i, ``)
     }

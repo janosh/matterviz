@@ -105,8 +105,10 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   if (!shape) {
     throw new Error(`vaspwave.h5 file has no charge density (missing ${CHARGE_PATH})`)
   }
+  // Only the dimension count is checked here — the spatial axis order (zyx vs
+  // xyz) is disambiguated later by charge_axis_order against CHARGE_GRID_PATH.
   if (shape.length !== 4) {
-    throw new Error(`${CHARGE_PATH} must have shape [components, nx, ny, nz], got [${shape}]`)
+    throw new Error(`${CHARGE_PATH} must have 4 dimensions, got [${shape}]`)
   }
   const n_components = shape[0]
   if (n_components < 1 || n_components > 2) {
@@ -129,37 +131,42 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
 
   const charge_data = read_dataset(h5_file, CHARGE_PATH) as number[][][][] | null
   if (!charge_data) throw new Error(`Failed to read ${CHARGE_PATH} data`)
+  // Metadata shape and decoded data can disagree in torn/corrupt files — fail
+  // loudly instead of silently rendering fewer components than the file claims
+  if (charge_data.length !== n_components) {
+    throw new Error(
+      `${CHARGE_PATH} decoded ${charge_data.length} components but its shape claims ${n_components}`,
+    )
+  }
 
   const component_labels = [`charge density`, `magnetization density`]
-  const volumes: VolumetricData[] = charge_data
-    .slice(0, n_components)
-    .map((component, component_idx) => {
-      const grid: number[][][] = Array(nx)
-      for (let x_idx = 0; x_idx < nx; x_idx++) {
-        const plane: number[][] = Array(ny)
-        for (let y_idx = 0; y_idx < ny; y_idx++) {
-          const row: number[] = Array(nz)
-          for (let z_idx = 0; z_idx < nz; z_idx++) {
-            row[z_idx] =
-              axis_order === `zyx`
-                ? component[z_idx][y_idx][x_idx]
-                : component[x_idx][y_idx][z_idx]
-          }
-          plane[y_idx] = row
+  const volumes: VolumetricData[] = charge_data.map((component, component_idx) => {
+    const grid: number[][][] = Array(nx)
+    for (let x_idx = 0; x_idx < nx; x_idx++) {
+      const plane: number[][] = Array(ny)
+      for (let y_idx = 0; y_idx < ny; y_idx++) {
+        const row: number[] = Array(nz)
+        for (let z_idx = 0; z_idx < nz; z_idx++) {
+          row[z_idx] =
+            axis_order === `zyx`
+              ? component[z_idx][y_idx][x_idx]
+              : component[x_idx][y_idx][z_idx]
         }
-        grid[x_idx] = plane
+        plane[y_idx] = row
       }
-      return {
-        grid,
-        grid_dims: [nx, ny, nz] as Vec3,
-        lattice,
-        origin: [0, 0, 0] as Vec3,
-        data_range: grid_data_range(grid),
-        data_order: `x_fastest` as const,
-        periodic: true,
-        label: component_labels[component_idx],
-      }
-    })
+      grid[x_idx] = plane
+    }
+    return {
+      grid,
+      grid_dims: [nx, ny, nz] as Vec3,
+      lattice,
+      origin: [0, 0, 0] as Vec3,
+      data_range: grid_data_range(grid),
+      data_order: `x_fastest` as const,
+      periodic: true,
+      label: component_labels[component_idx],
+    }
+  })
 
   return { structure, volumes }
 }

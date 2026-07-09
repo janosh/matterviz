@@ -102,13 +102,25 @@ function parse_torch_sim_h5_file(h5_file: h5wasm.File): TrajectoryType {
   const atomic_numbers = atomic_numbers_are_frames
     ? atomic_numbers_data
     : [atomic_numbers_data as number[]]
+  // A constant cell may be stored as a single 3x3 matrix; normalize to a
+  // per-frame array so cells[idx] always yields a full lattice (indexing a bare
+  // 3x3 with a frame index would hand a single row to validate_3x3_matrix)
+  const cells_are_frames = cells_data?.every(
+    (entry) => Array.isArray(entry) && entry.every((row) => Array.isArray(row)),
+  )
+  const cells = cells_data
+    ? cells_are_frames
+      ? cells_data
+      : [cells_data as unknown as number[][]]
+    : null
   const frames: TrajectoryType[`frames`] = []
   let dropped_steps = 0
   for (const [idx, frame_pos] of positions.entries()) {
     try {
       const frame_atomic_numbers = atomic_numbers[idx] || atomic_numbers[0]
       const frame_elements = convert_atomic_numbers(frame_atomic_numbers)
-      const cell = cells_data?.[idx]
+      // constant-cell files reuse the single normalized cell for every frame
+      const cell = cells_are_frames ? cells?.[idx] : cells?.[0]
       const lattice_mat = cell ? transpose_3x3_matrix(validate_3x3_matrix(cell)) : undefined
       const energy_entry = energies_data?.[idx]
       const energy = Array.isArray(energy_entry) ? energy_entry[0] : energy_entry

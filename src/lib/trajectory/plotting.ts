@@ -1,6 +1,10 @@
 // Plotting utilities for trajectory visualization
 import { PLOT_COLORS } from '$lib/colors'
-import { trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
+import {
+  SCF_AXIS_GROUP,
+  trajectory_property_config,
+  type TrajPropertyConfig,
+} from '$lib/labels'
 import { get_coefficient_of_variation } from '$lib/math'
 import type { DataSeries, ScaleType } from '$lib/plot/core/types'
 import type {
@@ -402,7 +406,7 @@ export function generate_axis_labels(plot_series: DataSeries[]): {
 // SCF convergence residuals (|ΔE|, density rms) span 6+ decades and degenerate into
 // hockey sticks on linear axes; plain energies (large negative) stay linear.
 const LOG_SCALE_MIN_DECADE_SPAN = 3
-const LOG_SCALE_AXIS_GROUPS = new Set([`eV (SCF)`])
+const LOG_SCALE_AXIS_GROUPS = new Set([SCF_AXIS_GROUP])
 
 export function generate_axis_scale_types(plot_series: DataSeries[]): {
   y1: ScaleType
