@@ -3,8 +3,6 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
-  import { pick_contrast_color } from '$lib/colors'
-  import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import { DEG_TO_RAD, type Vec2 } from '$lib/math'
@@ -21,15 +19,32 @@
     SunburstValueMode,
   } from '$lib/plot'
   import { ColorBar, PlotLegend, PlotTooltip, SunburstControls } from '$lib/plot'
-  import { closest_data_idx, get_relative_coords } from '$lib/plot/core/interactions'
-  import {
-    compute_element_placement,
-    filter_padding,
-    measure_text_width,
-  } from '$lib/plot/core/layout'
+  import { closest_data_idx } from '$lib/plot/core/interactions'
+  import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
-  import { create_color_scale } from '$lib/plot/core/scales'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import {
+    ancestor_chain,
+    compute_metric_colors,
+    compute_node_dim,
+    compute_node_infos,
+    handle_hierarchy_escape,
+    hierarchy_legend_items,
+    is_activation_key,
+    node_handler_props,
+    pointer_pos,
+    prune_muted_ids,
+    safe_hierarchy_layout,
+    selection_within,
+    svg_label_font,
+    toggle_muted,
+  } from '$lib/plot/core/utils/hierarchy-chart'
+  import {
+    export_hierarchy_chart,
+    make_cached_contrast,
+    make_cached_text_width,
+    node_display_name,
+  } from '$lib/plot/core/utils/hierarchy-labels'
   import {
     arc_label_transform,
     arrow_nav_target,
@@ -155,6 +170,10 @@
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGSVGElement | null = $state(null)
   let center_el: SVGCircleElement | null = $state(null)
+  // Unique per instance so multiple sunbursts on one page don't collide on
+  // the hatch pattern's SVG id.
+  const uid = $props.id()
+  const hatch_pattern_id = `sunburst-hatch-${uid}`
 
   let hovered_idx = $state<number | null>(null)
   let hover_info = $state<SunburstNodeHandlerProps<Metadata> | null>(null)
@@ -175,28 +194,18 @@
   )
   let inner_height = $derived(avail_height - colorbar_reserve)
 
-  // Degrade to an empty layout (instead of crashing the host page) on invalid data.
   // Layout depends only on data/value semantics - not on size or zoom.
-  let layout = $derived.by(() => {
-    try {
-      return compute_sunburst_layout(data, {
-        value_mode,
-        sort,
-        level_lighten,
-        min_fraction,
-        other_label,
-      })
-    } catch (err) {
-      console.error(err)
-      return { arcs: [], root: null, max_depth: 0 }
-    }
-  })
-  let arc_by_id = $derived(new Map(layout.arcs.map((arc) => [arc.id, arc])))
-
-  // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
-  let zoom_root = $derived(
-    (zoom_root_id != null ? arc_by_id.get(zoom_root_id) : null) ?? layout.root,
+  let layout = $derived(
+    safe_hierarchy_layout(data, {
+      value_mode,
+      sort,
+      level_lighten,
+      min_fraction,
+      other_label,
+    }),
   )
+  // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
+  let zoom_root = $derived(layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root)
   let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
 
   // Drop muted ids that no longer exist when data changes (untrack avoids a
@@ -204,9 +213,9 @@
   // Hover/focus state is index-based, so a layout swap would otherwise leave a stale
   // tooltip and highlight whatever unrelated node now occupies the old index.
   $effect(() => {
-    const valid = new Set(layout.arcs.filter((arc) => arc.depth === 1).map((arc) => arc.id))
+    const { arcs } = layout
     untrack(() => {
-      for (const id of muted_ids) if (!valid.has(id)) muted_ids.delete(id)
+      prune_muted_ids(arcs, muted_ids)
       set_arc_hover(null)
       focused_idx = null
     })
@@ -295,23 +304,10 @@
   }
 
   // Continuous metric coloring: when color_values is given, arcs are colored by their
-  // metric on a d3 colormap (arcs returning null keep their categorical color).
-  // The user accessor runs exactly once per arc.
-  let metric = $derived.by<{ range: Vec2; colors: string[] } | null>(() => {
-    if (!color_values) return null
-    const vals = layout.arcs.map((arc) => {
-      const val = arc.depth === 0 ? null : color_values(arc)
-      return val != null && Number.isFinite(val) ? val : null
-    })
-    const finite = vals.filter((val) => val != null)
-    if (finite.length === 0) return null
-    const range = color_range ?? [Math.min(...finite), Math.max(...finite)]
-    const scale = create_color_scale({ scheme: color_scale, value_range: range }, range)
-    return {
-      range,
-      colors: vals.map((val, idx) => (val == null ? layout.arcs[idx].color : `${scale(val)}`)),
-    }
-  })
+  // metric on a d3 colormap (arcs returning null keep their categorical color)
+  let metric = $derived(
+    compute_metric_colors(layout.arcs, color_values, color_scale, color_range),
+  )
   const arc_color = (arc: PositionedArc<Metadata>): string =>
     metric?.colors[arc.node_idx] ?? arc.color
   // release the colorbar's reserved chart space when it's not rendered
@@ -319,63 +315,15 @@
     if (!metric || colorbar == null) colorbar_height = 0
   })
 
-  // Predicate keeping the hovered arc + its ancestors/descendants fully opaque.
-  // Pre-order indexing makes both tests O(1): a subtree is the contiguous index
-  // range [node_idx, subtree_end].
-  let active = $derived.by(() => {
-    if (hovered_idx == null) return null
-    const hov = layout.arcs[hovered_idx]
-    if (!hov) return null
-    return (arc: PositionedArc<Metadata>): boolean =>
-      (arc.node_idx >= hov.node_idx && arc.node_idx <= hov.subtree_end) ||
-      (hov.node_idx >= arc.node_idx && hov.node_idx <= arc.subtree_end)
-  })
-
-  const is_muted = (arc: PositionedArc<Metadata>): boolean =>
-    arc.path.length > 0 && muted_ids.has(arc.path[0])
-
-  const MUTED_OPACITY = 0.12
-  const arc_opacity = (arc: PositionedArc<Metadata>): number => {
-    if (is_muted(arc)) return MUTED_OPACITY
-    if (active && !active(arc)) return 0.3
-    return 1
-  }
+  // Hovered arc + its ancestors/descendants stay fully opaque, others dim
+  let arc_dim = $derived(compute_node_dim(layout.arcs, muted_ids, hovered_idx))
 
   // Black/white label text, whichever contrasts with the arc's fill (light arcs from
-  // explicit colors or level_lighten would hide white labels, esp. when highlighted).
-  // Memoized per color string - parsing/luminance would otherwise run per label per
-  // animation frame, and distinct arc colors are few.
-  const contrast_cache = new Map<string, string>()
-  const label_color = (arc: PositionedArc<Metadata>): string => {
-    const fill = arc_color(arc)
-    let contrast = contrast_cache.get(fill)
-    if (contrast === undefined) {
-      contrast = pick_contrast_color({ bg_color: fill })
-      contrast_cache.set(fill, contrast)
-    }
-    return contrast
-  }
+  // explicit colors or level_lighten would hide white labels, esp. when highlighted)
+  const contrast_for = make_cached_contrast()
 
-  // Parent arc of an arc (null for the root) and its display name
-  const parent_of = (arc: PositionedArc<Metadata>): PositionedArc<Metadata> | null =>
-    arc.parent_idx != null ? layout.arcs[arc.parent_idx] : null
-  const arc_name = (arc: PositionedArc<Metadata>): string => arc.label ?? `${arc.id}`
-
-  function make_node_props(arc: PositionedArc<Metadata>): SunburstNodeHandlerProps<Metadata> {
-    // Handler props are the arc minus its screen geometry, plus the parent id
-    const { x0, x1, y0, y1, subtree_end, parent_idx, ...node } = arc
-    return {
-      ...node,
-      type: `node`,
-      color: arc_color(arc),
-      parent_id: parent_of(arc)?.id ?? null,
-    }
-  }
-
-  // Anchor the tooltip at the cursor (mouse hover) so it follows the pointer across
-  // wide arcs; fall back to the arc centroid on keyboard focus (no cursor).
-  const event_pos = (event?: MouseEvent | FocusEvent): { x: number; y: number } | null =>
-    event instanceof MouseEvent ? get_relative_coords(event, svg_element) : null
+  const make_node_props = (arc: PositionedArc<Metadata>): SunburstNodeHandlerProps<Metadata> =>
+    node_handler_props(layout.arcs, arc, arc_color(arc))
 
   function set_arc_hover(screen: ScreenArc | null, event?: MouseEvent | FocusEvent) {
     // Same arc as before: only the cursor anchor moves - skip rebuilding the handler
@@ -383,14 +331,14 @@
     // Requires hover_info: legend item hover sets hovered_idx alone (for dimming), and
     // skipping then would leave the arc's own tooltip permanently suppressed.
     if (screen && screen.arc.node_idx === hovered_idx && hover_info) {
-      hover_pos = event_pos(event) ?? hover_pos
+      hover_pos = pointer_pos(event, svg_element) ?? hover_pos
       return
     }
     if (screen) {
       hovered = true
       hovered_idx = screen.arc.node_idx
       hover_info = make_node_props(screen.arc)
-      hover_pos = event_pos(event) ?? arc_center(screen)
+      hover_pos = pointer_pos(event, svg_element) ?? arc_center(screen)
       change(hover_info)
       if (event) on_node_hover?.({ ...hover_info, event })
     } else {
@@ -419,27 +367,15 @@
 
   // Re-root the view on the given arc (or the data root when null) and notify
   function zoom_to(arc: PositionedArc<Metadata> | null) {
-    zoom_root_id = arc && arc.depth > 0 ? arc.id : null
+    const root = arc && arc.depth > 0 ? arc : null
+    zoom_root_id = root?.id ?? null
     // The clicked arc collapses into the hole - drop the now-stale hover/tooltip
     set_arc_hover(null)
-    on_zoom?.({ root: arc && arc.depth > 0 ? make_node_props(arc) : null })
-  }
-
-  // True while the user has an uncollapsed text selection inside this chart. Labels
-  // are selectable text, and the mouseup that ends a selection drag also fires a
-  // click - selecting a label must not zoom or fire on_node_click.
-  function selection_in_chart(): boolean {
-    const selection = globalThis.getSelection?.()
-    return Boolean(
-      selection &&
-      !selection.isCollapsed &&
-      selection.anchorNode &&
-      wrapper?.contains(selection.anchorNode),
-    )
+    on_zoom?.({ root: root && make_node_props(root) })
   }
 
   function handle_arc_click(event: MouseEvent | KeyboardEvent) {
-    if (event instanceof MouseEvent && selection_in_chart()) return
+    if (event instanceof MouseEvent && selection_within(wrapper)) return
     const screen = screen_arc_from_event(event)
     if (!screen) return
     const { arc } = screen
@@ -448,7 +384,7 @@
   }
 
   function zoom_out(event?: Event) {
-    if (event instanceof MouseEvent && selection_in_chart()) return
+    if (event instanceof MouseEvent && selection_within(wrapper)) return
     if (!zoomed) return
     zoom_to(breadcrumb_arcs.at(-2) ?? null)
   }
@@ -458,7 +394,7 @@
   // the center zoom-out button already fired its own click action twice - compounding
   // a third full reset would teleport step-by-step zoom-outs straight to the root)
   function handle_dblclick(event: MouseEvent) {
-    if (screen_arc_from_event(event) || selection_in_chart()) return
+    if (screen_arc_from_event(event) || selection_within(wrapper)) return
     const target = event.target as Element | null
     if (target?.closest?.(`.center-circle, .center-label`)) return
     if (zoomed) zoom_to(null)
@@ -485,8 +421,6 @@
       event.key,
     )
   }
-
-  const is_activation_key = (evt: KeyboardEvent) => [`Enter`, ` `].includes(evt.key)
 
   function handle_arc_keydown(event: KeyboardEvent) {
     const nav_target = nav_target_from_event(event)
@@ -521,57 +455,48 @@
   const arc_clickable = (arc: PositionedArc<Metadata>): boolean =>
     Boolean(on_node_click) || (zoom_on_click && !arc.is_leaf)
 
-  // Measure label fit in the font labels actually render in (respects the
-  // --sunburst-font-size CSS var instead of assuming 11px). Memoized because canvas
-  // measureText is far too slow to run for every visible arc on every tween frame.
-  let label_font = $derived.by(() => {
-    if (!svg_element) return `11px sans-serif`
-    const { fontSize, fontFamily } = getComputedStyle(svg_element)
-    return `${fontSize} ${fontFamily}`
-  })
-  const text_width_cache = new Map<string, number>()
-  function cached_text_width(text: string, font: string): number {
-    const key = `${font}|${text}`
-    let text_width = text_width_cache.get(key)
-    if (text_width === undefined) {
-      if (text_width_cache.size > 10_000) text_width_cache.clear() // growth guard
-      text_width = measure_text_width(text, font)
-      text_width_cache.set(key, text_width)
-    }
-    return text_width
-  }
+  let label_font = $derived(svg_label_font(svg_element))
+  const cached_text_width = make_cached_text_width()
 
-  // What an arc's label displays, per the label_text mode (plotly textinfo equivalent)
-  const arc_label_str = (arc: PositionedArc<Metadata>): string => {
-    const name = arc_name(arc)
-    if (label_text === `label`) return name
-    const val = format_value(arc.value, value_format)
-    if (label_text === `value`) return val
-    const pct = format_value(arc.fraction, `.1%`)
-    if (label_text === `percent`) return pct
-    return label_text === `label+value` ? `${name} ${val}` : `${name} ${pct}`
-  }
-
-  // Per-arc label text, measured width and aria string - all view-independent, so
-  // computed once per layout/label-option change instead of per animation frame
-  // (format_value + canvas measureText would otherwise run per visible arc per frame)
+  // Per-arc label text, measured width, fill/label colors, clickability and aria
+  // string - all view-independent, so computed once per layout/option change
+  // instead of per animation frame
   let arc_info = $derived(
-    layout.arcs.map((arc) => {
-      const text = arc_label_str(arc)
-      return {
-        text,
-        width: cached_text_width(text, label_font),
-        aria: `${arc_name(arc)}: ${arc.value}`,
-      }
+    compute_node_infos(layout.arcs, {
+      label_text,
+      value_format,
+      label_font,
+      color_for: arc_color,
+      text_width: cached_text_width,
+      contrast: contrast_for,
+      clickable: arc_clickable,
     }),
   )
 
-  // Label text + placement transform for an arc; null = doesn't fit, hide the label
-  function label_attrs(screen: ScreenArc): { transform: string; text: string } | null {
-    const { text, width: text_w } = arc_info[screen.arc.node_idx]
-    if (!text) return null
-    const transform = arc_label_transform(screen, text_w, shape, label_rotation)
-    return transform ? { transform, text } : null
+  // Downscale steps tried when no label variant fits at full size: narrow
+  // slices keep a (smaller) label instead of losing it entirely.
+  const LABEL_FONT_SCALES = [1, 0.85, 0.7]
+
+  // Label text + placement transform for an arc; null = no variant fits, hide
+  // the label. Full font size wins over richer text: within each scale the
+  // richest variant that fits is used (extended -> label -> label_short).
+  function label_attrs(
+    screen: ScreenArc,
+  ): { transform: string; text: string; font_scale: number } | null {
+    for (const font_scale of LABEL_FONT_SCALES) {
+      for (const { text, width: text_w } of arc_info[screen.arc.node_idx].variants) {
+        const transform = arc_label_transform(
+          screen,
+          text_w * font_scale,
+          shape,
+          label_rotation,
+          radius,
+          font_scale,
+        )
+        if (transform) return { transform, text, font_scale }
+      }
+    }
+    return null
   }
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
@@ -593,21 +518,12 @@
       points: settled.map(arc_center),
     })
   })
-  let legend_data = $derived.by<LegendItem[]>(() =>
-    depth1_arcs.map((arc, idx) => ({
-      series_idx: idx,
-      label: arc_name(arc),
-      visible: !muted_ids.has(arc.id),
-      display_style: { symbol_type: `Square` as const, symbol_color: arc_color(arc) },
-    })),
+  let legend_data: LegendItem[] = $derived(
+    hierarchy_legend_items(depth1_arcs, muted_ids, arc_color),
   )
 
-  function toggle_category(series_idx: number) {
-    const id = depth1_arcs[series_idx]?.id
-    if (id === undefined) return
-    if (muted_ids.has(id)) muted_ids.delete(id)
-    else muted_ids.add(id)
-  }
+  const toggle_category = (series_idx: number) =>
+    toggle_muted(muted_ids, depth1_arcs[series_idx]?.id)
 
   $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--sunburst-fullscreen-bg`))
 
@@ -616,61 +532,24 @@
   let zoom_out_label = $derived.by(() => {
     const parent = breadcrumb_arcs.at(-2)
     if (!parent) return ``
-    return parent.depth === 0 ? `full chart` : arc_name(parent)
+    return parent.depth === 0 ? `full chart` : node_display_name(parent)
   })
 
-  // Ancestor chain from the root to the current zoom root (clickable breadcrumb trail)
-  let breadcrumb_arcs = $derived.by(() => {
-    if (!zoom_root || zoom_root.depth === 0) return []
-    const chain: PositionedArc<Metadata>[] = []
-    for (let cur: PositionedArc<Metadata> | null = zoom_root; cur; cur = parent_of(cur))
-      chain.unshift(cur)
-    return chain
-  })
+  let breadcrumb_arcs = $derived(ancestor_chain(layout.arcs, zoom_root))
 
-  // Styles the component applies via CSS that exported standalone SVGs must carry
-  // as presentation attributes (inlined onto a clone by the io/export helpers)
-  const export_inline_styles = [
-    `fill`,
-    `stroke`,
-    `stroke-width`,
-    `text-anchor`,
-    `dominant-baseline`,
-    `font-size`,
-    `font-family`,
-    `font-weight`,
-    `opacity`,
-  ]
-
-  function export_chart(format: `svg` | `png`) {
-    if (!svg_element) return
-    if (format === `svg`) {
-      export_svg_as_svg(svg_element, `${export_filename}.svg`, export_inline_styles)
-    } else {
-      export_svg_as_png(svg_element, `${export_filename}.png`, 150, export_inline_styles)
-    }
-  }
+  const export_chart = (format: `svg` | `png`) =>
+    export_hierarchy_chart(svg_element, export_filename, format)
 </script>
 
 <svelte:window
-  onkeydown={(evt) => {
-    if (evt.key !== `Escape`) return
-    // only react when the user is interacting with this chart (pointer over it,
-    // focus inside it, or fullscreen) - Escape zooms out one level, then exits
-    // fullscreen once at the root
-    const within =
-      fullscreen ||
-      Boolean(wrapper?.matches(`:hover`)) ||
-      Boolean(wrapper && document.activeElement && wrapper.contains(document.activeElement))
-    if (!within) return
-    if (zoomed) {
-      evt.preventDefault()
-      zoom_out()
-    } else if (fullscreen) {
-      evt.preventDefault()
-      fullscreen = false
-    }
-  }}
+  onkeydown={(evt) =>
+    handle_hierarchy_escape(evt, {
+      wrapper,
+      fullscreen,
+      zoomed,
+      zoom_out: () => zoom_out(),
+      exit_fullscreen: () => (fullscreen = false),
+    })}
 />
 
 <div
@@ -687,6 +566,7 @@
       {@render header_controls?.({ height, width, fullscreen })}
       {#if show_controls}
         <SunburstControls
+          chart="sunburst"
           toggle_props={{
             ...controls_toggle_props,
             // join the header flex row instead of absolute positioning (overrides
@@ -740,6 +620,12 @@
       aria-label={rest[`aria-label`] ?? `${shape === `icicle` ? `Icicle` : `Sunburst`} chart`}
       onmouseleave={() => set_arc_hover(null)}
     >
+      <!-- inert unless some arc references it via fill -->
+      <defs>
+        <pattern id={hatch_pattern_id} patternUnits="userSpaceOnUse" width="8" height="8">
+          <path class="hatch-pattern-line" d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" />
+        </pattern>
+      </defs>
       <!-- Hover/click delegation sits on the chart group (not the arcs group) so
       labels - which carry the same data-sunburst-node-idx and are selectable text -
       forward interactions to their arc instead of swallowing them -->
@@ -760,22 +646,37 @@
             {#if arc_content}
               {@render arc_content(screen)}
             {:else}
-              {@const clickable = arc_clickable(screen.arc)}
+              <!-- @const so the path is generated (and info looked up) once per
+              arc per frame, shared by the base path and the hatch overlay -->
+              {@const info = arc_info[screen.arc.node_idx]}
+              {@const opacity = arc_dim[screen.arc.node_idx].opacity}
+              {@const path_d = screen_path(screen)}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <path
-                d={screen_path(screen)}
+                d={path_d}
                 data-sunburst-node-idx={screen.arc.node_idx}
-                fill={arc_color(screen.arc)}
-                fill-opacity={arc_opacity(screen.arc)}
-                role={clickable ? `button` : undefined}
-                tabindex={clickable
+                fill={info.fill}
+                fill-opacity={opacity}
+                role={info.clickable ? `button` : undefined}
+                tabindex={info.clickable
                   ? screen.arc.node_idx === roving_idx
                     ? 0
                     : -1
                   : undefined}
-                aria-label={clickable ? arc_info[screen.arc.node_idx].aria : undefined}
-                style:cursor={clickable ? `pointer` : `default`}
+                aria-label={info.clickable ? info.aria : undefined}
+                style:cursor={info.clickable ? `pointer` : `default`}
               />
+              {#if screen.arc.hatch}
+                <!-- Decorative texture overlay (e.g. preemptible jobs); rendered as
+                the base path's next sibling so the hover 'pull' can track it -->
+                <path
+                  class="arc-hatch"
+                  aria-hidden="true"
+                  d={path_d}
+                  fill="url(#{hatch_pattern_id})"
+                  fill-opacity={opacity}
+                />
+              {/if}
             {/if}
           {/each}
         </g>
@@ -787,13 +688,15 @@
             {#each visible_arcs as screen (screen.arc.node_idx)}
               {@const lbl = label_attrs(screen)}
               {#if lbl}
+                {@const info = arc_info[screen.arc.node_idx]}
                 <text
                   class="arc-label"
                   data-sunburst-node-idx={screen.arc.node_idx}
                   transform={lbl.transform}
-                  fill={label_color(screen.arc)}
-                  fill-opacity={is_muted(screen.arc) ? MUTED_OPACITY : undefined}
-                  style:cursor={arc_clickable(screen.arc) ? `pointer` : `text`}
+                  fill={info.label_fill}
+                  fill-opacity={arc_dim[screen.arc.node_idx].label_opacity}
+                  style:cursor={info.clickable ? `pointer` : `text`}
+                  style:font-size={lbl.font_scale === 1 ? undefined : `${lbl.font_scale}em`}
                 >
                   {lbl.text}
                 </text>
@@ -888,7 +791,7 @@
   {#if metric && colorbar != null}
     <div
       bind:clientHeight={colorbar_height}
-      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
+      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
     >
       <ColorBar
         {color_scale}
@@ -1015,8 +918,25 @@
     /* hover 'pull': scaling about the chart center offsets the arc radially */
     transform-origin: 0 0;
   }
-  .sunburst:not(.icicle) .arcs path:hover {
+  /* the hatch overlay (an arc's next sibling) rides along with its hover 'pull' */
+  .sunburst:not(.icicle) .arcs path:hover,
+  .sunburst:not(.icicle) .arcs path:hover + path.arc-hatch {
     transform: scale(var(--sunburst-hover-scale, 1.02));
+  }
+  /* decorative overlay: never intercepts pointer events, no border of its own */
+  .arcs path.arc-hatch {
+    stroke: none;
+    pointer-events: none;
+  }
+  /* subtle by default: thin stripes inheriting the arc border color (itself
+  defaulting to the chart bg) at low opacity, so hatching matches the gaps
+  between slices instead of reading as solid white */
+  .hatch-pattern-line {
+    stroke: var(
+      --sunburst-hatch-stroke,
+      color-mix(in srgb, var(--sunburst-arc-stroke, var(--plot-bg, white)) 30%, transparent)
+    );
+    stroke-width: var(--sunburst-hatch-stroke-width, 0.35);
   }
   .center-circle {
     fill: var(--sunburst-center-bg, transparent);

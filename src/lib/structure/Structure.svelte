@@ -62,7 +62,11 @@
   import { BOND_ORDER_OPTIONS, merge_bond_edits, remap_bonds_after_deletion } from './bonding'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
-  import { normalize_fractional_coords, parse_any_structure } from './parse'
+  import {
+    ensure_lattice_params,
+    normalize_fractional_coords,
+    parse_any_structure,
+  } from './parse'
   import StructureControls from './StructureControls.svelte'
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
@@ -832,10 +836,13 @@
   ])
 
   // Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
-  // This ensures atoms are rendered inside the unit cell regardless of data source
+  // This ensures atoms are rendered inside the unit cell regardless of data source.
+  // ensure_lattice_params covers structures that bypass parse_any_structure (direct
+  // props, trajectory JSON frames) with matrix-only pymatgen lattices, which would
+  // otherwise NaN the camera auto-fit and render blank.
   let normalized_structure = $derived.by(() => {
     if (!structure || !(`lattice` in structure)) return structure
-    return normalize_fractional_coords(structure) as AnyStructure
+    return ensure_lattice_params(normalize_fractional_coords(structure)) as AnyStructure
   })
 
   let structure_with_bonds = $derived.by(() => {
@@ -905,6 +912,16 @@
   })
 
   let supercell_timeout: ReturnType<typeof setTimeout> | undefined
+  // Compute the supercell, falling back to the unscaled structure on error
+  const make_supercell_safe = (base: Crystal): Crystal => {
+    try {
+      return make_supercell(base, supercell_scaling)
+    } catch (error) {
+      console.error(`Failed to create supercell:`, error)
+      show_toast(`Failed to create supercell: ${to_error(error).message}`)
+      return base
+    }
+  }
   $effect(() => {
     const base_structure = cell_transformed_structure
     clearTimeout(supercell_timeout)
@@ -930,24 +947,11 @@
         supercell_loading = true
         // Use setTimeout to allow UI to update before heavy computation
         supercell_timeout = setTimeout(() => {
-          try {
-            if (base_structure && `lattice` in base_structure) {
-              supercell_structure = make_supercell(
-                base_structure as Crystal,
-                supercell_scaling,
-              )
-            }
-          } catch (error) {
-            console.error(`Failed to create supercell:`, error)
-            supercell_structure = base_structure
-          } finally {
-            supercell_loading = false
-          }
+          supercell_structure = make_supercell_safe(base_structure as Crystal)
+          supercell_loading = false
         }, 10)
       } else {
-        if (base_structure && `lattice` in base_structure) {
-          supercell_structure = make_supercell(base_structure as Crystal, supercell_scaling)
-        }
+        supercell_structure = make_supercell_safe(base_structure as Crystal)
         supercell_loading = false
       }
     }

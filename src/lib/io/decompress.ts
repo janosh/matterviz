@@ -2,6 +2,15 @@ import type { COMPRESSION_EXTENSIONS } from '$lib/constants'
 import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
 import { is_binary_payload } from './is-binary'
 
+// Lowercase a filename and strip all trailing compression extensions (.gz, .zip, ...)
+export function strip_compression_extensions(filename: string): string {
+  let base_name = filename.toLowerCase()
+  while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
+    base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  }
+  return base_name
+}
+
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
 

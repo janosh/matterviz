@@ -6,7 +6,9 @@
   import { SettingsSection } from '$lib/layout'
   import ContextMenu from '$lib/overlays/ContextMenu.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { portal } from '$lib/overlays/portal'
   import type {
+    CellColor,
     CellSnippet,
     CellVal,
     DateTimeFormatMode,
@@ -15,13 +17,14 @@
     Label,
     MultiSortState,
     Pagination,
+    VirtualScroll,
     RowData,
     Search,
     SortHint,
     SortState,
     SpecialCells,
   } from '$lib/table'
-  import { calc_cell_color, strip_html } from '$lib/table'
+  import { make_cell_color_scale, strip_html } from '$lib/table'
   import { sanitize_html } from '$lib/sanitize'
   import { normalize_unicode_minus } from '$lib/utils'
   import type { Snippet } from 'svelte'
@@ -157,12 +160,17 @@
     onrowpointerdown,
     onrowclick,
     onrowdblclick,
+    row_title,
     column_order = $bindable([]),
     export_data = false,
     show_column_toggle = false,
     search = false,
+    search_query = $bindable(``),
     show_row_select = false,
     pagination = false,
+    virtual = false,
+    on_visible_range,
+    controls_target = undefined,
     selected_rows = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
@@ -196,6 +204,9 @@
     onrowpointerdown?: (event: PointerEvent, row: RowData) => void
     onrowclick?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
+    // Per-row hover tooltip content (rendered via the table tooltip
+    // attachment; `\r` breaks lines, HTML must be pre-escaped by the caller)
+    row_title?: (row: RowData) => string | null | undefined
     // Array of column IDs to control display order. IDs are derived as:
     // - Ungrouped columns: col.key ?? col.label
     // - Grouped columns: `${col.key ?? col.label} (${col.group})`
@@ -204,8 +215,22 @@
     export_data?: ExportData
     show_column_toggle?: boolean
     search?: Search
+    // Current search/filter query. Bindable so parents can control or persist it.
+    search_query?: string
     show_row_select?: boolean
     pagination?: Pagination
+    // Opt-in infinite-scroll row virtualization. Renders only the rows near the
+    // viewport plus spacer rows, so DOM size stays bounded for any data length.
+    // Inactive when pagination is enabled. Off by default (every row renders);
+    // pass true (or a config object) to enable.
+    virtual?: VirtualScroll
+    // Notifies the parent which slice of the sorted+filtered rows is rendered
+    // (e.g. to progressively fetch more data as the user scrolls near the end).
+    on_visible_range?: (range: { start: number; end: number; total: number }) => void
+    // Host element to render the search/export/settings buttons into (e.g. an
+    // embedding panel's own header) instead of a row above the table. When set,
+    // the buttons are always visible; when unset they render inline as usual.
+    controls_target?: HTMLElement | null
     selected_rows?: RowData[]
     hidden_columns?: string[]
     scroll_style?: string
@@ -293,6 +318,8 @@
       ? {
           placeholder: `Filter...`,
           expanded: false,
+          keys: undefined as string[] | undefined,
+          fuzzy: false,
           ...(typeof search === `object` ? search : {}),
         }
       : null,
@@ -321,8 +348,7 @@
   // Multi-column sort state (for Shift+click)
   let multi_sort = $state<MultiSortState>([])
 
-  // Search/filter state
-  let search_query = $state(``)
+  // Search/filter state (query itself is the bindable search_query prop)
   let search_expanded = $derived(search_config?.expanded ?? false)
 
   // Pagination state
@@ -657,23 +683,19 @@
   function handle_drop(event: DragEvent, target_col: Label) {
     event.preventDefault()
 
-    // Block cross-group (or group→ungroup) reorders to preserve group contiguity
-    if (!drag_col_id || drag_col_id === get_col_id(target_col)) {
-      reset_drag_state()
-      return
-    }
-
-    // Block cross-group reorders to preserve group contiguity
-    if (get_drag_col_group() !== target_col.group) {
-      reset_drag_state()
-      return
-    }
-
     const target_col_id = get_col_id(target_col)
-    const drag_idx = column_order.indexOf(drag_col_id)
+    const drag_idx = drag_col_id ? column_order.indexOf(drag_col_id) : -1
     const target_idx = column_order.indexOf(target_col_id)
 
-    if (drag_idx === -1 || target_idx === -1) {
+    // Block no-op drops and cross-group (or group→ungroup) reorders to
+    // preserve group contiguity
+    if (
+      !drag_col_id ||
+      drag_col_id === target_col_id ||
+      get_drag_col_group() !== target_col.group ||
+      drag_idx === -1 ||
+      target_idx === -1
+    ) {
       reset_drag_state()
       return
     }
@@ -689,21 +711,37 @@
     reset_drag_state()
   }
 
+  // True when every char of query appears in text in order (subsequence match),
+  // e.g. "mdla" matches "Model A". Cheap fuzzy matching for short filter queries.
+  const fuzzy_match = (text: string, query: string): boolean => {
+    let query_idx = 0
+    for (const char of text) {
+      if (char === query[query_idx] && ++query_idx === query.length) return true
+    }
+    return query.length === 0
+  }
+
+  const row_matches_query = (row: RowData, query: string): boolean => {
+    const values = search_config?.keys
+      ? search_config.keys.map((key) => row[key])
+      : Object.values(row)
+    return values.some((val) => {
+      if (val == null) return false
+      const clean_val = strip_html(String(val)).toLowerCase()
+      if (clean_val.includes(query)) return true
+      return (search_config?.fuzzy ?? false) && fuzzy_match(clean_val, query)
+    })
+  }
+
   // Filter data based on search query
   let filtered_data = $derived.by(() => {
     const base_data =
       data?.filter?.((row) => Object.values(row).some((val) => val !== undefined)) ?? []
 
-    if (!search_query.trim()) return base_data
-
     const query = search_query.toLowerCase().trim()
-    return base_data.filter((row) =>
-      Object.values(row).some((val) => {
-        if (val == null) return false
-        const clean_val = strip_html(String(val)).toLowerCase()
-        return clean_val.includes(query)
-      }),
-    )
+    if (!query) return base_data
+
+    return base_data.filter((row) => row_matches_query(row, query))
   })
 
   let sorted_data = $derived.by(() => {
@@ -755,11 +793,87 @@
     })
   })
 
-  // Paginated data
-  let paginated_data = $derived.by(() => {
-    if (!pagination_config) return sorted_data
+  // --- Infinite scroll (virtualized rows). Opt-in via the `virtual` prop (and
+  // inactive under pagination): only rows near the viewport render; spacer rows
+  // preserve scroll geometry so the DOM stays bounded for any row count.
+  let scroll_el = $state<HTMLDivElement>()
+  let scroll_top = $state(0)
+  let viewport_height = $state(0)
+  let avg_row_height = $state(33) // refined from rendered rows after mount
+
+  let virtual_config = $derived(
+    pagination_config || !virtual
+      ? null
+      : { overscan: 10, min_window: 60, ...(typeof virtual === `object` ? virtual : {}) },
+  )
+
+  let virtual_range = $derived.by(() => {
+    const total = sorted_data.length
+    if (!virtual_config) return { start: 0, end: total }
+    const { overscan, min_window } = virtual_config
+    // Shrinking data can leave scroll_top past the new content height (the
+    // browser only clamps the real scrollTop after a re-render); clamp here so
+    // the window and spacers never index past the data.
+    const max_scroll = Math.max(0, total * avg_row_height - viewport_height)
+    const first_visible = Math.floor(Math.min(scroll_top, max_scroll) / avg_row_height)
+    const visible_count = Math.ceil(viewport_height / avg_row_height)
+    const start = Math.max(0, first_visible - overscan)
+    const end = Math.min(
+      total,
+      Math.max(first_visible + visible_count + overscan, start + min_window),
+    )
+    return { start, end }
+  })
+
+  const sync_viewport = () => {
+    if (!scroll_el) return
+    scroll_top = scroll_el.scrollTop
+    viewport_height = scroll_el.clientHeight
+  }
+
+  // Refine the row-height estimate from actually rendered rows (needed for
+  // accurate spacer heights).
+  $effect(() => {
+    if (!virtual_config || !scroll_el) return
+    void virtual_range // re-measure whenever the rendered window changes
+    const rows = scroll_el.querySelectorAll<HTMLTableRowElement>(
+      `tbody tr:not(.virtual-spacer):not(.empty-row)`,
+    )
+    let height_sum = 0
+    for (const row of rows) height_sum += row.offsetHeight
+    const measured = rows.length ? height_sum / rows.length : 0
+    // threshold stops measure→window→measure feedback loops from tiny jitters
+    if (measured > 0 && Math.abs(measured - avg_row_height) > 0.5) {
+      avg_row_height = Math.min(400, Math.max(8, measured))
+    }
+    sync_viewport()
+  })
+
+  // Track scroll-container resizes (e.g. dashboard card resizing)
+  $effect(() => {
+    if (!virtual_config || !scroll_el || typeof ResizeObserver === `undefined`) return
+    const observer = new ResizeObserver(sync_viewport)
+    observer.observe(scroll_el)
+    return () => observer.disconnect()
+  })
+
+  // Window of sorted_data rendered in the DOM (one page, or the virtual window).
+  // start doubles as the absolute index of the first rendered row (for row
+  // numbering and stable cell-selection coordinates).
+  let display_range = $derived.by(() => {
+    if (!pagination_config) return virtual_range
     const start = (current_page - 1) * effective_page_size
-    return sorted_data.slice(start, start + effective_page_size)
+    return { start, end: Math.min(sorted_data.length, start + effective_page_size) }
+  })
+  let display_rows = $derived(sorted_data.slice(display_range.start, display_range.end))
+  let spacer_top = $derived(virtual_config ? virtual_range.start * avg_row_height : 0)
+  let spacer_bottom = $derived(
+    virtual_config ? (sorted_data.length - virtual_range.end) * avg_row_height : 0,
+  )
+
+  // Report the rendered slice so hosts can progressively fetch rows on demand
+  $effect(() => {
+    on_visible_range?.({ ...display_range, total: sorted_data.length })
   })
 
   let total_pages = $derived(Math.ceil(sorted_data.length / effective_page_size))
@@ -880,51 +994,45 @@
     return typeof val === `string` ? parse_numeric_string(val) : null
   }
 
-  // Memoize parsed column values to avoid O(N²) re-parsing in calc_color
-  let parsed_column_values = $derived.by(() => {
-    const result = new SvelteMap<string, (number | null)[]>()
-    for (const col of ordered_columns) {
+  // Memoized per-column color scales: the O(rows) numeric scan + min/max +
+  // d3 scale construction run once per column when data/filter/overrides
+  // change, instead of once per CELL per render (which made a 50-row page over
+  // a 2,000-row snapshot rescan the full column 500+ times). Built from
+  // filtered_data (not sorted_data) since min/max don't depend on row order,
+  // so re-sorting doesn't rebuild the scales. Only visible columns get scales
+  // since calc_color is only ever invoked for visible cells.
+  let column_color_scales = $derived.by(() => {
+    const scales = new SvelteMap<string, (val: number | null | undefined) => CellColor>()
+    if (!show_heatmap) return scales
+    for (const col of visible_columns) {
       if (col.color_scale === null) continue
       const col_id = get_col_id(col)
-      result.set(
+      const parsed_vals = filtered_data.map((row) => parse_numeric_val(row[col_id]))
+      const better = better_overrides.get(col_id) ?? col.better
+      const scale = (color_scale_overrides.get(col_id) ??
+        col.color_scale ??
+        `interpolateViridis`) as Parameters<typeof make_cell_color_scale>[2]
+      scales.set(
         col_id,
-        sorted_data.map((row) => parse_numeric_val(row[col_id])),
+        make_cell_color_scale(parsed_vals, better, scale, col.scale_type || `linear`),
       )
     }
-    return result
+    return scales
   })
 
-  function calc_color(val: CellVal, col: Label) {
-    if (!show_heatmap || col.color_scale === null) {
-      return { bg: null, text: null }
-    }
+  function calc_color(val: CellVal, col: Label): CellColor {
+    const color_fn = column_color_scales.get(get_col_id(col))
+    if (!color_fn) return { bg: null, text: null }
 
     // Parse numeric value from strings with uncertainty notation
-    const numeric_val = parse_numeric_val(val)
-    if (numeric_val === null) return { bg: null, text: null }
-
-    const col_id = get_col_id(col)
-    // Use memoized parsed values for the column
-    const numeric_vals = parsed_column_values.get(col_id) ?? []
-
-    const better = better_overrides.get(col_id) ?? col.better
-    const scale = (color_scale_overrides.get(col_id) ??
-      col.color_scale ??
-      `interpolateViridis`) as Parameters<typeof calc_cell_color>[3]
-    const color = calc_cell_color(
-      numeric_val,
-      numeric_vals,
-      better,
-      scale,
-      col.scale_type || `linear`,
-    )
+    const color = color_fn(parse_numeric_val(val))
 
     // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
     // Approximation: blend luminances directly; accurate enough for black/white text choice.
     if (color.bg && heatmap_opacity < 1) {
       const blended_lum =
         luminance(color.bg) * heatmap_opacity + page_bg_lum * (1 - heatmap_opacity)
-      color.text = blended_lum > 0.7 ? `black` : `white`
+      return { bg: color.bg, text: blended_lum > 0.7 ? `black` : `white` }
     }
     return color
   }
@@ -933,6 +1041,10 @@
     ordered_columns.filter(
       (col) => col.visible !== false && !hidden_columns.includes(get_col_id(col)),
     ),
+  )
+  // total cell count per body row (for spacer + empty-message colspans)
+  let body_colspan = $derived(
+    visible_columns.length + (show_row_select ? 1 : 0) + (show_row_numbers ? 1 : 0),
   )
 
   const sort_indicator = (col: Label, current_sort_state: SortState) => {
@@ -950,56 +1062,264 @@
       return `<span style="font-size: 0.8em;">${arrow}${badge}</span>`
     }
 
-    const is_sorted = current_sort_state.column === col_id
-    if (!is_sorted) return ``
     // Show indicator only for actively sorted columns.
+    if (current_sort_state.column !== col_id) return ``
     const arrow = current_sort_state.ascending ? `↓` : `↑`
-
-    return arrow ? `<span style="font-size: 0.8em;">${arrow}</span>` : ``
+    return `<span style="font-size: 0.8em;">${arrow}</span>`
   }
 
-  // Context menu state for column header right-click
+  // Context menu state for column right-click (headers and body cells)
   let context_menu_col = $state<string | null>(null)
   let context_menu_pos = $state({ x: 0, y: 0 })
 
-  const better_sections = [
-    {
-      title: `Gradient direction`,
-      options: [
-        { value: `higher`, label: `▲ Higher is better` },
-        { value: `lower`, label: `▼ Lower is better` },
-      ],
-    },
-  ] as const
+  const better_section = {
+    title: `Gradient direction`,
+    options: [
+      { value: `higher`, label: `▲ Higher is better` },
+      { value: `lower`, label: `▼ Lower is better` },
+    ],
+  }
 
-  // Row selection using WeakMap-based ID lookup instead of O(n) JSON.stringify comparison
-  function toggle_row_select(row: RowData) {
-    const row_id = get_row_id(row)
-    const idx = selected_rows.findIndex((selected_row) => get_row_id(selected_row) === row_id)
-    if (idx !== -1) {
-      selected_rows = selected_rows.filter((_, row_idx) => row_idx !== idx)
-    } else {
-      selected_rows = [...selected_rows, row]
+  function open_column_context_menu(event: MouseEvent, col_id: string) {
+    event.preventDefault()
+    event.stopPropagation()
+    context_menu_col = col_id
+    const rect = container_el?.getBoundingClientRect()
+    context_menu_pos = {
+      x: event.clientX - (rect?.left ?? 0),
+      y: event.clientY - (rect?.top ?? 0),
     }
   }
 
-  function is_row_selected(row: RowData): boolean {
-    const row_id = get_row_id(row)
-    return selected_rows.some((selected_row) => get_row_id(selected_row) === row_id)
+  // ---- Cell range selection: drag selects a rectangle of cells, Shift/Cmd+
+  // drag adds disjoint rectangles, Cmd/Ctrl+C copies as TSV (blocks separated
+  // by newlines), Escape or clicking outside clears. Selection coordinates
+  // are absolute sorted_data row indices plus visible-column indices, cleared
+  // whenever the rendered data changes (sort, page, filter, refresh).
+  interface CellRect {
+    start_row: number
+    start_col: number
+    end_row: number
+    end_col: number
+  }
+  let selected_cell_rects = $state<CellRect[]>([])
+  let cell_drag_active = $state(false)
+  let cell_drag_moved = false
+  let suppress_row_click = false
+
+  const rect_bounds = (rect: CellRect) => ({
+    row_lo: Math.min(rect.start_row, rect.end_row),
+    row_hi: Math.max(rect.start_row, rect.end_row),
+    col_lo: Math.min(rect.start_col, rect.end_col),
+    col_hi: Math.max(rect.start_col, rect.end_col),
+  })
+
+  let selected_cell_keys = $derived.by(() => {
+    const keys = new Set<string>()
+    for (const rect of selected_cell_rects) {
+      const { row_lo, row_hi, col_lo, col_hi } = rect_bounds(rect)
+      for (let row_idx = row_lo; row_idx <= row_hi; row_idx++) {
+        for (let col_idx = col_lo; col_idx <= col_hi; col_idx++) {
+          keys.add(`${row_idx}:${col_idx}`)
+        }
+      }
+    }
+    return keys
+  })
+
+  // Stale (row, col) coordinates must not survive sort/page/filter/refresh,
+  // nor column reorder/hide (col indices point into visible_columns). Depends
+  // on sorted_data + current_page + visible_columns (not the virtual window)
+  // so plain scrolling in infinite mode doesn't wipe an active selection.
+  $effect(() => {
+    void sorted_data
+    void current_page
+    void visible_columns
+    selected_cell_rects = []
+  })
+
+  const is_interactive_cell_target = (target: EventTarget | null): boolean =>
+    target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
+
+  function start_cell_drag(event: PointerEvent, row_idx: number, col_idx: number) {
+    if (event.button !== 0 || is_interactive_cell_target(event.target)) return
+    const additive = event.shiftKey || event.metaKey || event.ctrlKey
+    const rect = { start_row: row_idx, start_col: col_idx, end_row: row_idx, end_col: col_idx }
+    selected_cell_rects = additive ? [...selected_cell_rects, rect] : [rect]
+    cell_drag_active = true
+    cell_drag_moved = false
   }
 
-  // Select-all: checks if every row on the current page is selected
+  function extend_cell_drag(event: PointerEvent) {
+    if (!cell_drag_active) return
+    const target_cell =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>(`td[data-row-idx]`)
+        : null
+    const active_rect = selected_cell_rects.at(-1)
+    if (!target_cell || !active_rect) return
+    const row_idx = Number(target_cell.dataset.rowIdx)
+    const col_idx = Number(target_cell.dataset.colIdx)
+    if (row_idx === active_rect.end_row && col_idx === active_rect.end_col) return
+    if (!cell_drag_moved) {
+      cell_drag_moved = true
+      // A native text selection may have started before user-select: none
+      // kicked in; drop it so the cell selection is the only visible one.
+      globalThis.getSelection()?.removeAllRanges()
+    }
+    selected_cell_rects = [
+      ...selected_cell_rects.slice(0, -1),
+      { ...active_rect, end_row: row_idx, end_col: col_idx },
+    ]
+  }
+
+  function end_cell_drag() {
+    if (!cell_drag_active) return
+    cell_drag_active = false
+    // A drag that crossed cells must not fire the row click on release
+    if (cell_drag_moved) suppress_row_click = true
+  }
+
+  function suppress_click_after_cell_drag(event: MouseEvent) {
+    if (!suppress_row_click) return
+    suppress_row_click = false
+    event.stopPropagation()
+    event.preventDefault()
+  }
+
+  function clear_cell_selection_on_outside_pointerdown(event: PointerEvent) {
+    // A drag's suppress flag is consumed by the click right after pointerup;
+    // if that click never fired (released outside the table), any NEW
+    // interaction must not inherit it.
+    suppress_row_click = false
+    if (selected_cell_rects.length === 0) return
+    if (event.target instanceof Node && container_el?.contains(event.target)) return
+    selected_cell_rects = []
+  }
+
+  // Raw cell value as clipboard text (numbers keep full precision, dates go
+  // ISO, HTML cells lose their markup)
+  const cell_copy_text = (val: CellVal): string => {
+    if (val == null || (typeof val === `number` && Number.isNaN(val))) return ``
+    if (val instanceof Date) return val.toISOString()
+    if (typeof val === `object`) return JSON.stringify(val)
+    return strip_html(String(val)).trim()
+  }
+
+  function copy_selected_cells() {
+    const blocks = selected_cell_rects.map((rect) => {
+      const bounds = rect_bounds(rect)
+      const { row_lo, col_lo } = bounds
+      // rects hold absolute indices into the sorted+filtered rows
+      const row_hi = Math.min(bounds.row_hi, sorted_data.length - 1)
+      const col_hi = Math.min(bounds.col_hi, visible_columns.length - 1)
+      const lines: string[] = []
+      for (let row_idx = row_lo; row_idx <= row_hi; row_idx++) {
+        const cells: string[] = []
+        for (let col_idx = col_lo; col_idx <= col_hi; col_idx++) {
+          cells.push(
+            cell_copy_text(sorted_data[row_idx][get_col_id(visible_columns[col_idx])]),
+          )
+        }
+        lines.push(cells.join(`\t`))
+      }
+      return lines.join(`\n`)
+    })
+    void navigator.clipboard?.writeText(blocks.join(`\n`))
+  }
+
+  // Every sorted+filtered value of one column (all pages), one per line
+  function copy_column_values(col_id: string) {
+    void navigator.clipboard?.writeText(
+      sorted_data.map((row) => cell_copy_text(row[col_id])).join(`\n`),
+    )
+  }
+
+  function handle_cell_selection_keydown(event: KeyboardEvent) {
+    if (selected_cell_rects.length === 0) return
+    if (event.key === `Escape`) {
+      selected_cell_rects = []
+      return
+    }
+    if (event.key !== `c` || !(event.metaKey || event.ctrlKey)) return
+    // Native text selections and focused form fields keep native copy
+    if (is_interactive_cell_target(event.target)) return
+    if (globalThis.getSelection()?.toString()) return
+    event.preventDefault()
+    copy_selected_cells()
+  }
+
+  let context_menu_column = $derived(
+    visible_columns.find((col) => get_col_id(col) === context_menu_col),
+  )
+  let context_menu_sections = $derived([
+    {
+      title: `Copy`,
+      options: [
+        { value: `copy_column`, label: `Copy column (${sorted_data.length} values)` },
+        ...(selected_cell_keys.size > 0
+          ? [
+              {
+                value: `copy_selection`,
+                label: `Copy selection (${selected_cell_keys.size} cells)`,
+              },
+            ]
+          : []),
+      ],
+    },
+    // Gradient direction only applies to heatmap-colored columns
+    ...(allow_better_toggle && context_menu_column?.color_scale != null
+      ? [better_section]
+      : []),
+  ])
+
+  function handle_context_menu_select(section_title: string, option: { value: string }) {
+    if (section_title === `Copy`) {
+      if (option.value === `copy_column` && context_menu_col) {
+        copy_column_values(context_menu_col)
+      } else if (option.value === `copy_selection`) {
+        copy_selected_cells()
+      }
+    } else if (context_menu_col) {
+      const current = better_overrides.get(context_menu_col)
+      if (current === option.value) better_overrides.delete(context_menu_col)
+      else {
+        better_overrides.set(context_menu_col, option.value as `higher` | `lower`)
+      }
+    }
+    context_menu_col = null
+  }
+
+  // Row selection via an ID-indexed Set so per-row checks are O(1) instead of
+  // linear scans over selected_rows (matters for large virtualized datasets)
+  let selected_id_set = $derived(new Set(selected_rows.map((row) => get_row_id(row))))
+
+  function toggle_row_select(row: RowData) {
+    const row_id = get_row_id(row)
+    selected_rows = selected_id_set.has(row_id)
+      ? selected_rows.filter((selected_row) => get_row_id(selected_row) !== row_id)
+      : [...selected_rows, row]
+  }
+
+  function is_row_selected(row: RowData): boolean {
+    return selected_id_set.has(get_row_id(row))
+  }
+
+  // Select-all scope: the current page under pagination, every sorted+filtered
+  // row in infinite-scroll mode (the virtual window is a rendering detail)
+  let select_all_rows = $derived(pagination_config ? display_rows : sorted_data)
   let all_page_selected = $derived(
-    paginated_data.length > 0 && paginated_data.every((row) => is_row_selected(row)),
+    select_all_rows.length > 0 &&
+      select_all_rows.every((row) => selected_id_set.has(get_row_id(row))),
   )
 
   function toggle_select_all() {
     if (all_page_selected) {
-      const page_ids = new Set(paginated_data.map(get_row_id))
-      selected_rows = selected_rows.filter((row) => !page_ids.has(get_row_id(row)))
+      const scope_ids = new Set(select_all_rows.map(get_row_id))
+      selected_rows = selected_rows.filter((row) => !scope_ids.has(get_row_id(row)))
     } else {
       const already = new Set(selected_rows.map(get_row_id))
-      const new_rows = paginated_data.filter((row) => !already.has(get_row_id(row)))
+      const new_rows = select_all_rows.filter((row) => !already.has(get_row_id(row)))
       selected_rows = [...selected_rows, ...new_rows]
     }
   }
@@ -1030,11 +1350,11 @@
     return [headers.join(delimiter), ...rows.map((row) => row.join(delimiter))].join(`\n`)
   }
 
-  function export_csv(filename = `table-export`) {
+  function export_csv(filename: string) {
     download(serialize_table(`,`, true), `${filename}.csv`, `text/csv`)
   }
 
-  function export_json(filename = `table-export`) {
+  function export_json(filename: string) {
     const rows = export_rows.map((row) => {
       const clean_row: Record<string, unknown> = {}
       for (const col of visible_columns) {
@@ -1053,11 +1373,9 @@
 
   // Column visibility toggle
   function toggle_column(col_id: string) {
-    if (hidden_columns.includes(col_id)) {
-      hidden_columns = hidden_columns.filter((id) => id !== col_id)
-    } else {
-      hidden_columns = [...hidden_columns, col_id]
-    }
+    hidden_columns = hidden_columns.includes(col_id)
+      ? hidden_columns.filter((id) => id !== col_id)
+      : [...hidden_columns, col_id]
   }
 
   // Column resize handlers
@@ -1098,7 +1416,14 @@
   )
 </script>
 
-<svelte:window onpointerdown={close_datetime_select_on_outside_pointerdown} />
+<svelte:window
+  onpointerdown={(event) => {
+    close_datetime_select_on_outside_pointerdown(event)
+    clear_cell_selection_on_outside_pointerdown(event)
+  }}
+  onpointerup={end_cell_drag}
+  onkeydown={handle_cell_selection_keydown}
+/>
 
 {#snippet sort_hint_element(pos: `top` | `bottom`)}
   {#if hint_config?.position === pos}
@@ -1112,20 +1437,29 @@
   {/if}
 {/snippet}
 
+<!-- svelte-ignore a11y_no_static_element_interactions (capture-phase guard swallowing the click that follows a cell-range drag) -->
 <div
   {@attach table_tooltips}
   {...rest_props}
   bind:this={container_el}
   class={[`table-container`, rest_props.class]}
+  class:cell-dragging={cell_drag_active}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
+  onclickcapture={suppress_click_after_cell_drag}
   onmouseleave={() => {
     show_column_dropdown = false
     show_export_dropdown = false
     context_menu_col = null
   }}
 >
-  <!-- Floating control buttons -->
-  <section class="control-buttons">
+  <!-- Control buttons: render inline above the table, or teleport into a host
+       toolbar (controls_target) so embedding panels reuse their own header row -->
+  <section
+    class="control-buttons"
+    class:portaled={Boolean(controls_target)}
+    class:force-visible={controls_open || show_column_dropdown || show_export_dropdown}
+    {@attach portal(controls_target)}
+  >
     {#if search_config}
       {#if search_expanded || search_query}
         <input
@@ -1145,7 +1479,7 @@
           }}
           {@attach tooltip({ content: `Clear`, placement: `top` })}
         >
-          <Icon icon="Cross" style="width: 10px" />
+          <Icon icon="Cross" />
         </button>
       {:else}
         <button
@@ -1153,7 +1487,7 @@
           onclick={() => (search_expanded = true)}
           {@attach tooltip({ content: `Search`, placement: `top` })}
         >
-          <Icon icon="Search" style="width: 14px" />
+          <Icon icon="Search" />
         </button>
       {/if}
     {/if}
@@ -1166,7 +1500,7 @@
           onclick={() => (show_column_dropdown = !show_column_dropdown)}
           {@attach tooltip({ content: `Columns`, placement: `top` })}
         >
-          <Icon icon="Columns" style="width: 14px" />
+          <Icon icon="Columns" />
         </button>
         {#if show_column_dropdown}
           <div class="dropdown-pane">
@@ -1194,7 +1528,7 @@
           onclick={() => (show_export_dropdown = !show_export_dropdown)}
           {@attach tooltip({ content: `Export`, placement: `top` })}
         >
-          <Icon icon="Export" style="width: 14px" />
+          <Icon icon="Export" />
         </button>
         {#if show_export_dropdown}
           <div class="dropdown-pane">
@@ -1241,8 +1575,104 @@
         title="Clear {selected_rows.length} selected rows"
       >
         <span class="badge">{selected_rows.length}</span>
-        <Icon icon="Cross" style="width: 10px" />
+        <Icon icon="Cross" />
       </button>
+    {/if}
+
+    {#if show_controls}
+      <DraggablePane
+        bind:show={controls_open}
+        closed_icon="Settings"
+        open_icon="Cross"
+        toggle_props={{ title: `${controls_open ? `Close` : `Open`} table controls` }}
+        position="fixed"
+        pane_props={{
+          style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
+        }}
+      >
+        <SettingsSection
+          title="Heatmap"
+          current_values={{ show_heatmap, heatmap_opacity }}
+          on_reset={() => {
+            show_heatmap = true
+            heatmap_opacity = 1
+          }}
+        >
+          <label><input type="checkbox" bind:checked={show_heatmap} /> Show heatmap</label>
+          {#if show_heatmap}
+            <label>
+              Opacity
+              <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={heatmap_opacity}
+                style="width: 3.5em"
+              />
+            </label>
+          {/if}
+        </SettingsSection>
+
+        <SettingsSection
+          title="Display"
+          current_values={{ show_row_numbers }}
+          on_reset={() => {
+            show_row_numbers = false
+          }}
+        >
+          <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
+        </SettingsSection>
+
+        {#if colored_columns.length > 0}
+          <SettingsSection
+            title="Column Colors"
+            current_values={Object.fromEntries([
+              ...better_overrides,
+              ...color_scale_overrides,
+            ])}
+            on_reset={() => {
+              better_overrides.clear()
+              color_scale_overrides.clear()
+            }}
+          >
+            {#each colored_columns as col (get_col_id(col))}
+              {@const col_id = get_col_id(col)}
+              <div class="col-color-row">
+                <span class="col-color-label">{@html sanitize_html(col.label)}</span>
+                <select
+                  value={color_scale_overrides.get(col_id) ??
+                    col.color_scale ??
+                    `interpolateViridis`}
+                  onchange={(event) => {
+                    const val = event.currentTarget.value
+                    if (val === (col.color_scale ?? `interpolateViridis`))
+                      color_scale_overrides.delete(col_id)
+                    else color_scale_overrides.set(col_id, val)
+                  }}
+                >
+                  {#each color_scale_options as scale (scale)}
+                    <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
+                  {/each}
+                </select>
+                <select
+                  value={better_overrides.get(col_id) ?? col.better ?? ``}
+                  onchange={(event) => {
+                    const val = event.currentTarget.value
+                    if (!val) better_overrides.delete(col_id)
+                    else better_overrides.set(col_id, val as `higher` | `lower`)
+                  }}
+                >
+                  <option value="">Default</option>
+                  <option value="higher">▲ High</option>
+                  <option value="lower">▼ Low</option>
+                </select>
+              </div>
+            {/each}
+          </SettingsSection>
+        {/if}
+      </DraggablePane>
     {/if}
 
     {#if controls}
@@ -1250,102 +1680,15 @@
     {/if}
   </section>
 
-  {#if show_controls}
-    <DraggablePane
-      bind:show={controls_open}
-      closed_icon="Settings"
-      open_icon="Cross"
-      toggle_props={{
-        title: `${controls_open ? `Close` : `Open`} table controls`,
-        style: `position: absolute; top: 5pt; right: 1ex; z-index: 10`,
-      }}
-      pane_props={{ style: `max-height: 60vh; overflow-y: auto; font-size: 0.85em` }}
-    >
-      <SettingsSection
-        title="Heatmap"
-        current_values={{ show_heatmap, heatmap_opacity }}
-        on_reset={() => {
-          show_heatmap = true
-          heatmap_opacity = 1
-        }}
-      >
-        <label><input type="checkbox" bind:checked={show_heatmap} /> Show heatmap</label>
-        {#if show_heatmap}
-          <label>
-            Opacity
-            <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.05"
-              bind:value={heatmap_opacity}
-              style="width: 3.5em"
-            />
-          </label>
-        {/if}
-      </SettingsSection>
-
-      <SettingsSection
-        title="Display"
-        current_values={{ show_row_numbers }}
-        on_reset={() => {
-          show_row_numbers = false
-        }}
-      >
-        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
-      </SettingsSection>
-
-      {#if colored_columns.length > 0}
-        <SettingsSection
-          title="Column Colors"
-          current_values={Object.fromEntries([...better_overrides, ...color_scale_overrides])}
-          on_reset={() => {
-            better_overrides.clear()
-            color_scale_overrides.clear()
-          }}
-        >
-          {#each colored_columns as col (get_col_id(col))}
-            {@const col_id = get_col_id(col)}
-            <div class="col-color-row">
-              <span class="col-color-label">{@html sanitize_html(col.label)}</span>
-              <select
-                value={color_scale_overrides.get(col_id) ??
-                  col.color_scale ??
-                  `interpolateViridis`}
-                onchange={(event) => {
-                  const val = event.currentTarget.value
-                  if (val === (col.color_scale ?? `interpolateViridis`))
-                    color_scale_overrides.delete(col_id)
-                  else color_scale_overrides.set(col_id, val)
-                }}
-              >
-                {#each color_scale_options as scale (scale)}
-                  <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
-                {/each}
-              </select>
-              <select
-                value={better_overrides.get(col_id) ?? col.better ?? ``}
-                onchange={(event) => {
-                  const val = event.currentTarget.value
-                  if (!val) better_overrides.delete(col_id)
-                  else better_overrides.set(col_id, val as `higher` | `lower`)
-                }}
-              >
-                <option value="">Default</option>
-                <option value="higher">▲ High</option>
-                <option value="lower">▼ Low</option>
-              </select>
-            </div>
-          {/each}
-        </SettingsSection>
-      {/if}
-    </DraggablePane>
-  {/if}
-
   {@render sort_hint_element(`top`)}
 
-  <div class="table-scroll" style={scroll_style} class:has-scroll={scroll_style}>
+  <div
+    class="table-scroll"
+    style={scroll_style}
+    class:has-scroll={scroll_style}
+    bind:this={scroll_el}
+    onscroll={virtual_config ? sync_viewport : undefined}
+  >
     {#if loading}
       <div class="loading-overlay">
         <div class="loading-spinner"></div>
@@ -1408,22 +1751,7 @@
               title={col.description}
               tabindex={col.sortable === false ? undefined : 0}
               role={col.sortable === false ? undefined : `button`}
-              oncontextmenu={(event) => {
-                if (
-                  !allow_better_toggle ||
-                  col.color_scale === null ||
-                  col.color_scale === undefined
-                )
-                  return
-                event.preventDefault()
-                event.stopPropagation()
-                context_menu_col = col_id
-                const rect = container_el?.getBoundingClientRect()
-                context_menu_pos = {
-                  x: event.clientX - (rect?.left ?? 0),
-                  y: event.clientY - (rect?.top ?? 0),
-                }
-              }}
+              oncontextmenu={(event) => open_column_context_menu(event, col_id)}
               onclick={(event) => {
                 if (!drag_col_id && !resize_col_id) {
                   sort_rows(col.label, col.group, event)
@@ -1541,7 +1869,7 @@
                 onmousedown={(event) => start_resize(event, col)}
                 role="separator"
                 aria-orientation="vertical"
-                aria-valuenow={column_widths[get_col_id(col)] ?? 100}
+                aria-valuenow={col_width ?? 100}
                 aria-valuemin={50}
                 aria-valuemax={500}
               ></span>
@@ -1549,14 +1877,26 @@
           {/each}
         </tr>
       </thead>
-      <tbody>
-        {#each paginated_data as row, row_idx (get_row_id(row))}
+      {#snippet virtual_spacer(height: number)}
+        <!-- preserves scroll geometry for the unrendered rows above/below the window -->
+        {#if height > 0}
+          <tr class="virtual-spacer" aria-hidden="true" style:height="{height}px">
+            <td colspan={body_colspan}></td>
+          </tr>
+        {/if}
+      {/snippet}
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (drag cell-range selection; keyboard copy handled on window) -->
+      <tbody onpointermove={extend_cell_drag}>
+        {@render virtual_spacer(spacer_top)}
+        {#each display_rows as row, row_idx (get_row_id(row))}
+          {@const abs_idx = display_range.start + row_idx}
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
-            animate:flip={{ duration: 500 }}
+            animate:flip={{ duration: virtual_config ? 0 : 500 }}
             style={row.style}
             class={row.class}
             class:selected={row_selected}
+            data-title={row_title?.(row) || undefined}
             tabindex={onrowclick ? 0 : undefined}
             onpointerdown={onrowpointerdown
               ? (event) => onrowpointerdown(event, row)
@@ -1590,21 +1930,29 @@
               </td>
             {/if}
             {#if show_row_numbers}
-              <td class="row-num-col">
-                {(current_page - 1) * effective_page_size + row_idx + 1}
-              </td>
+              <td class="row-num-col">{abs_idx + 1}</td>
             {/if}
-            {#each visible_columns as col (get_col_id(col))}
-              {@const val = row[get_col_id(col)]}
+            {#each visible_columns as col, col_idx (get_col_id(col))}
+              {@const col_id = get_col_id(col)}
+              {@const val = row[col_id]}
               {@const color = calc_color(val, col)}
-              {@const col_width = column_widths[get_col_id(col)]}
+              {@const col_width = column_widths[col_id]}
               {@const date_val = is_datetime_column(col)
                 ? format_datetime_cell(val, col)
                 : null}
               <td
                 data-col={col.label}
                 data-sort-value={get_cell_sort_attr(val)}
+                data-row-idx={abs_idx}
+                data-col-idx={col_idx}
                 class:sticky-col={col.sticky}
+                class:cell-selected={selected_cell_keys.has(`${abs_idx}:${col_idx}`)}
+                onpointerdown={(event) => start_cell_drag(event, abs_idx, col_idx)}
+                oncontextmenu={(event) => {
+                  // keep the native context menu for links/buttons/inputs inside cells
+                  if (is_interactive_cell_target(event.target)) return
+                  open_column_context_menu(event, col_id)
+                }}
                 style:--cell-bg={color.bg}
                 style:color={color.text}
                 style={`${col.cell_style ?? col.style ?? ``}${
@@ -1630,16 +1978,11 @@
         {:else}
           {#if empty_message}
             <tr class="empty-row">
-              <td
-                colspan={visible_columns.length +
-                  (show_row_select ? 1 : 0) +
-                  (show_row_numbers ? 1 : 0)}
-              >
-                {empty_message}
-              </td>
+              <td colspan={body_colspan}>{empty_message}</td>
             </tr>
           {/if}
         {/each}
+        {@render virtual_spacer(spacer_bottom)}
       </tbody>
       {#if footer}
         <tfoot>
@@ -1650,6 +1993,12 @@
   </div>
 
   {@render sort_hint_element(`bottom`)}
+
+  {#if virtual_config && sorted_data.length > display_rows.length}
+    <div class="row-count-info">
+      {display_rows.length} of {sorted_data.length} rows
+    </div>
+  {/if}
 
   {#if pagination_config && total_pages > 1}
     <div class="pagination">
@@ -1723,7 +2072,7 @@
   {/if}
 
   <ContextMenu
-    sections={better_sections}
+    sections={context_menu_sections}
     selected_values={{
       'Gradient direction': better_overrides.get(context_menu_col ?? ``) ?? ``,
     }}
@@ -1739,13 +2088,7 @@
       `--accent-color: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
       `z-index: 200`,
     ].join(`; `)}
-    on_select={(_, option) => {
-      if (!context_menu_col) return
-      const current = better_overrides.get(context_menu_col)
-      if (current === option.value) better_overrides.delete(context_menu_col)
-      else better_overrides.set(context_menu_col, option.value as `higher` | `lower`)
-      context_menu_col = null
-    }}
+    on_select={handle_context_menu_select}
   />
 </div>
 
@@ -1767,12 +2110,27 @@
   .table-scroll.has-scroll {
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.12));
     border-radius: var(--border-radius, 3pt);
-    overflow: auto;
   }
   table {
     border-collapse: separate;
     border-spacing: 0;
     display: table; /* Override global display: block to enable sticky headers */
+  }
+  /* during a cell-range drag, native text selection would fight the
+     rectangle highlight */
+  .table-container.cell-dragging {
+    cursor: cell;
+    user-select: none;
+  }
+  /* background-image stacks on top of the per-cell heatmap background-color,
+     so selected heatmap cells stay tinted underneath */
+  td.cell-selected {
+    background-image: linear-gradient(
+      color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent),
+      color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent)
+    );
+    box-shadow: inset 0 0 0 1px
+      color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent);
   }
   th,
   td {
@@ -1864,11 +2222,6 @@
     line-height: 1.35;
     outline: none;
   }
-  .datetime-format-select:hover,
-  .datetime-format-select:focus,
-  .datetime-format-select:focus-visible {
-    outline: none;
-  }
   .datetime-format-select option {
     padding: 3px 8px;
   }
@@ -1902,9 +2255,19 @@
   td.sticky-col {
     position: sticky;
     left: 0;
-    background: var(--page-bg, Canvas);
+    background: var(--heatmap-sticky-cell-bg, var(--page-bg, Canvas));
     z-index: 1;
     border-right: 1px solid var(--border, #ddd);
+  }
+  /* separate odd-row var so consumers with striped rows can composite their stripe
+  color over the opaque sticky background (which must stay opaque to occlude columns
+  scrolling beneath it), e.g.
+  --heatmap-sticky-cell-odd-bg: linear-gradient(var(--stripe), var(--stripe)), var(--page-bg) */
+  tbody tr:nth-child(odd) td.sticky-col {
+    background: var(
+      --heatmap-sticky-cell-odd-bg,
+      var(--heatmap-sticky-cell-bg, var(--page-bg, Canvas))
+    );
   }
   tbody tr:hover {
     filter: var(--heatmap-row-hover-filter, brightness(1.1));
@@ -1939,36 +2302,57 @@
     transition: opacity 0.15s;
   }
   .table-container:hover .control-buttons,
-  .control-buttons:focus-within {
+  .control-buttons:focus-within,
+  /* keep visible while a dropdown/pane is open or when hosted in a panel
+     toolbar (portaled out of the table, so container hover can't reveal it) */
+  .control-buttons.force-visible,
+  .control-buttons.portaled {
     opacity: 1;
     pointer-events: auto;
   }
-  .icon-btn {
-    padding: 2px 4px;
+  .control-buttons.portaled {
+    margin: 0;
+  }
+  /* .pane-toggle = the settings-pane gear, which sits in the control row and
+     must match the other .icon-btn buttons: uniform square ghost buttons */
+  .icon-btn,
+  .control-buttons > :global(button.pane-toggle) {
+    box-sizing: border-box;
+    inline-size: 22px;
+    block-size: 22px;
+    padding: 0;
     border: none;
     border-radius: 3px;
-    background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-    color: light-dark(#333, #ddd);
+    background: transparent;
+    /* dim resting color so the hover jump to full contrast reads clearly */
+    color: light-dark(#6b7280, #98a0ae);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 2px;
     font-size: 0.8em;
+    transition: color 0.02s linear;
   }
-  .icon-btn :global(svg) {
-    width: 12px;
-    height: 12px;
+  .icon-btn :global(svg),
+  .control-buttons > :global(button.pane-toggle svg) {
+    width: 14px;
+    height: 14px;
   }
-  .icon-btn:hover {
-    background: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2));
+  /* toolbar buttons give color-only hover feedback — no background shading */
+  .icon-btn:hover,
+  .control-buttons > :global(button.pane-toggle:hover) {
+    background: transparent;
+    color: light-dark(#000, #fff);
   }
   .icon-btn.active {
-    background: color-mix(in srgb, var(--active-color, #4a9eff) 82%, transparent);
-    color: white;
+    color: var(--active-color, #4a9eff);
   }
   .selection-badge {
     position: relative;
+    /* row-count badge next to the clear icon makes this one wider */
+    inline-size: auto;
+    padding: 0 4px;
   }
   .selection-badge .badge {
     background: var(--highlight, #4a9eff);
@@ -2076,6 +2460,18 @@
   tr.selected td {
     border-top: 1px solid var(--highlight, #4a9eff);
     border-bottom: 1px solid var(--highlight, #4a9eff);
+  }
+  /* Virtualized rows: spacers keep scroll geometry; the count line replaces
+     pagination in infinite-scroll mode */
+  .virtual-spacer td {
+    padding: 0;
+    border: none;
+  }
+  .row-count-info {
+    padding: 4px 8px;
+    font-size: 0.8em;
+    text-align: right;
+    opacity: 0.6;
   }
   /* Pagination */
   .pagination {
@@ -2196,11 +2592,13 @@
     font-style: italic;
   }
   .row-num-col {
-    text-align: right;
+    text-align: var(--heatmap-row-num-align, right);
     color: var(--text-muted, #888);
     font-size: 0.85em;
     width: 2em;
-    padding-right: 8px !important;
+    /* left default matches the th,td --heatmap-cell-padding fallback */
+    padding-left: var(--heatmap-row-num-padding-left, 5pt);
+    padding-right: var(--heatmap-row-num-padding-right, 8px) !important;
   }
   .page-size-select {
     padding: 2px 4px;

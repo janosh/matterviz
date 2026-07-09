@@ -4,7 +4,7 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
-import { is_elem_symbol } from '$lib/element'
+import { is_elem_symbol } from '$lib/element/helpers'
 import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
 import { parse_leading_num } from '$lib/utils'
 

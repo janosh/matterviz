@@ -235,7 +235,7 @@
     "svelte-check": "^4.7.1",
     "typescript": "6.0.3",
     "vite": "^8.0.16",
-    "vite-plus": "^0.2.1",
+    "vite-plus": "^0.2.4",
     "vitest": "4.1.9"
   },
   "peerDependencies": {
@@ -246,29 +246,48 @@
   },
   "packageManager": "pnpm@11.5.0",
   "knip": {
-    "entry": [
-      "svelte.config.ts",
-      "src/site/**/*.{js,ts,svelte}"
-    ],
-    "paths": {
-      "$lib": [
-        "./src/lib"
-      ],
-      "$lib/*": [
-        "./src/lib/*"
-      ],
-      "$site": [
-        "./src/site"
-      ],
-      "$site/*": [
-        "./src/site/*"
-      ]
-    },
-    "ignore": [
-      "extensions/**"
-    ],
     "ignoreDependencies": [
       "svelte-check"
-    ]
+    ],
+    "workspaces": {
+      ".": {
+        "entry": [
+          "svelte.config.ts",
+          "src/site/**/*.{js,ts,svelte}"
+        ],
+        "paths": {
+          "$lib": [
+            "./src/lib"
+          ],
+          "$lib/*": [
+            "./src/lib/*"
+          ],
+          "$site": [
+            "./src/site"
+          ],
+          "$site/*": [
+            "./src/site/*"
+          ]
+        },
+        "ignore": [
+          "extensions/anywidget/**",
+          "extensions/dash/**"
+        ]
+      },
+      "extensions/vscode": {
+        "entry": [
+          "src/extension.ts",
+          "src/webview/main.ts"
+        ],
+        "paths": {
+          "$lib": [
+            "../../src/lib"
+          ],
+          "$lib/*": [
+            "../../src/lib/*"
+          ]
+        }
+      }
+    }
   }
 }

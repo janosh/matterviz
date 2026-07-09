@@ -161,6 +161,18 @@ type ConvexHullWith3DType = ConvexHullCommonType & {
   hull_face_color_mode: SettingType<HullFaceColorMode>
 }
 
+// Options shared by the hierarchy charts (sunburst + treemap), which consume the
+// same node trees and value semantics
+type HierarchyChartSettingsSchema = {
+  value_mode: SettingType<SunburstValueMode>
+  max_depth: SettingType<number>
+  min_fraction: SettingType<number>
+  show_labels: SettingType<boolean>
+  label_text: SettingType<SunburstLabelText>
+  zoom_on_click: SettingType<boolean>
+  show_breadcrumbs: SettingType<boolean>
+}
+
 export interface SettingsConfig {
   // General display settings
   color_scheme: SettingType<string>
@@ -381,19 +393,19 @@ export interface SettingsConfig {
     iterations: SettingType<number>
   }
 
-  sunburst: {
-    // Sunburst chart settings
+  // Settings shared by the hierarchy charts (sunburst geometry-only fields are
+  // added per chart below)
+  sunburst: HierarchyChartSettingsSchema & {
     shape: SettingType<SunburstShape>
-    value_mode: SettingType<SunburstValueMode>
-    max_depth: SettingType<number>
     inner_radius: SettingType<number>
     pad_angle: SettingType<number>
-    min_fraction: SettingType<number>
-    show_labels: SettingType<boolean>
     label_rotation: SettingType<SunburstLabelRotation>
-    label_text: SettingType<SunburstLabelText>
-    zoom_on_click: SettingType<boolean>
-    show_breadcrumbs: SettingType<boolean>
+  }
+
+  treemap: HierarchyChartSettingsSchema & {
+    padding_inner: SettingType<number>
+    padding_top: SettingType<number>
+    padding_outer: SettingType<number>
   }
 
   composition: {
@@ -438,6 +450,58 @@ const DISPLAY_CONFIG = {
     description: `Show Y-axis zero reference line`,
   },
 } as const
+
+// Settings shared by the sunburst + treemap sections below so the two charts'
+// options can't drift; `node` names the chart's visual unit (arc/cell) and
+// `levels` its depth unit (rings/levels) in descriptions.
+const hierarchy_chart_settings = (
+  node: `arc` | `cell`,
+  levels: `rings` | `levels`,
+  zoom_desc: string,
+): HierarchyChartSettingsSchema => ({
+  value_mode: {
+    value: `leaf-sum` as const,
+    description: `How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children`,
+    enum: { 'leaf-sum': `Leaf sum`, total: `Total`, remainder: `Remainder` },
+  },
+  max_depth: {
+    value: 0,
+    description: `Number of ${levels} shown below the current zoom root (0 = all)`,
+    minimum: 0,
+    maximum: 10,
+  },
+  min_fraction: {
+    value: 0,
+    description: `Group sibling ${node}s smaller than this fraction of the total into one 'Other' ${
+      node === `arc` ? `slice` : `cell`
+    } per parent (0 = off)`,
+    minimum: 0,
+    maximum: 0.2,
+  },
+  show_labels: {
+    value: true,
+    description: `Show labels on ${node}s large enough to fit them`,
+  },
+  label_text: {
+    value: `label` as const,
+    description: `What ${node} labels display (percent is of the root total, parent-percent of the parent node)`,
+    enum: {
+      label: `Label`,
+      value: `Value`,
+      percent: `Percent`,
+      'label+value': `Label + value`,
+      'label+percent': `Label + percent`,
+      'label+parent-percent': `Label + % of parent`,
+    },
+  },
+  zoom_on_click: { value: true, description: zoom_desc },
+  show_breadcrumbs: {
+    value: true,
+    description: `Show a clickable ${
+      node === `arc` ? `trail` : `pathbar`
+    } of ancestors when zoomed into a subtree`,
+  },
+})
 
 // Complete settings configuration with values, descriptions, and constraints
 export const SETTINGS_CONFIG: SettingsConfig = {
@@ -1285,21 +1349,15 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
   // Sunburst chart specific
   sunburst: {
+    ...hierarchy_chart_settings(
+      `arc`,
+      `rings`,
+      `Clicking a branch arc zooms into that subtree (center circle zooms out)`,
+    ),
     shape: {
       value: `sunburst` as const,
       description: `Chart geometry: polar rings (sunburst) or stacked rows (icicle)`,
       enum: { sunburst: `Sunburst`, icicle: `Icicle` },
-    },
-    value_mode: {
-      value: `leaf-sum` as const,
-      description: `How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children`,
-      enum: { 'leaf-sum': `Leaf sum`, total: `Total`, remainder: `Remainder` },
-    },
-    max_depth: {
-      value: 0,
-      description: `Number of rings shown below the current zoom root (0 = all)`,
-      minimum: 0,
-      maximum: 10,
     },
     inner_radius: {
       value: 0.25,
@@ -1313,16 +1371,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0,
       maximum: 4,
     },
-    min_fraction: {
-      value: 0,
-      description: `Group sibling arcs smaller than this fraction of the total into one 'Other' slice per parent (0 = off)`,
-      minimum: 0,
-      maximum: 0.2,
-    },
-    show_labels: {
-      value: true,
-      description: `Show labels on arcs large enough to fit them`,
-    },
     label_rotation: {
       value: `auto` as const,
       description: `Arc label orientation (auto picks radial/tangential per arc)`,
@@ -1333,24 +1381,32 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         horizontal: `Horizontal`,
       },
     },
-    label_text: {
-      value: `label` as const,
-      description: `What arc labels display (percent is of the root total)`,
-      enum: {
-        label: `Label`,
-        value: `Value`,
-        percent: `Percent`,
-        'label+value': `Label + value`,
-        'label+percent': `Label + percent`,
-      },
+  },
+
+  // Treemap chart specific
+  treemap: {
+    ...hierarchy_chart_settings(
+      `cell`,
+      `levels`,
+      `Clicking any cell zooms into it, plotly-style (the breadcrumb pathbar zooms out)`,
+    ),
+    padding_inner: {
+      value: 0,
+      description: `Pixel gap between sibling cells (0 = cells share a single stroke divider; gaps > 0 show the parent's fill)`,
+      minimum: 0,
+      maximum: 10,
     },
-    zoom_on_click: {
-      value: true,
-      description: `Clicking a branch arc zooms into that subtree (center circle zooms out)`,
+    padding_top: {
+      value: 18,
+      description: `Pixel strip reserved at the top of branch cells for their label (0 = no headers)`,
+      minimum: 0,
+      maximum: 40,
     },
-    show_breadcrumbs: {
-      value: true,
-      description: `Show a clickable trail of ancestors when zoomed into a subtree`,
+    padding_outer: {
+      value: 3,
+      description: `Pixel inset of child cells within their parent's left/right/bottom edges, so parents visibly enclose their subtree (plotly marker.pad)`,
+      minimum: 0,
+      maximum: 10,
     },
   },
 
@@ -1902,5 +1958,6 @@ export const merge = (user?: PartialSettings): DefaultSettings => ({
   box: merge_nested(DEFAULTS.box, user?.box),
   sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
   sunburst: merge_nested(DEFAULTS.sunburst, user?.sunburst),
+  treemap: merge_nested(DEFAULTS.treemap, user?.treemap),
   convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
 })

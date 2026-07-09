@@ -1168,6 +1168,56 @@ describe(`HDF5 Format`, () => {
     })
   })
 
+  // Build a minimal torch-sim-layout HDF5 file in h5wasm's in-memory FS and
+  // return its bytes, for torn-file scenarios no checked-in fixture covers
+  const make_h5_buffer = async (
+    datasets: { name: string; data: number[]; shape: number[] }[],
+  ): Promise<ArrayBuffer> => {
+    const h5wasm = await import(`h5wasm`)
+    const { FS } = await h5wasm.ready
+    const temp_filename = `torn-tail-${Math.random().toString(36).slice(2)}.h5`
+    const file = new h5wasm.File(temp_filename, `w`)
+    for (const { name, data, shape } of datasets) file.create_dataset({ name, data, shape })
+    file.close()
+    const bytes = FS.readFile(temp_filename)
+    FS.unlink(temp_filename)
+    // copy into a plain ArrayBuffer (bytes.buffer may be a SharedArrayBuffer view)
+    const buffer = new ArrayBuffer(bytes.byteLength)
+    new Uint8Array(buffer).set(bytes)
+    return buffer
+  }
+
+  // Interrupted writers zero-fill trailing chunks; atomic number 0 marks the
+  // torn tail. Same per-step resiliency contract as the vaspout.h5 parser.
+  const two_gold_atoms = [79, 79]
+  const frame_positions = [0, 0, 0, 1, 1, 1]
+
+  it(`keeps parsed frames and reports dropped_steps for a torn trailing frame`, async () => {
+    const buffer = await make_h5_buffer([
+      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
+      {
+        name: `atomic_numbers`,
+        data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
+        shape: [3, 2],
+      },
+    ])
+    const trajectory = await parse_trajectory_data(buffer, `torn-tail.h5`)
+
+    expect(trajectory.frames).toHaveLength(2)
+    expect(trajectory.metadata?.dropped_steps).toBe(1)
+    expect(trajectory.metadata?.frame_count).toBe(2)
+  })
+
+  it(`still throws when the very first frame is unparsable`, async () => {
+    const buffer = await make_h5_buffer([
+      { name: `positions`, data: frame_positions, shape: [1, 2, 3] },
+      { name: `atomic_numbers`, data: [0, 0], shape: [1, 2] },
+    ])
+    await expect(parse_trajectory_data(buffer, `torn-all.h5`)).rejects.toThrow(
+      /Unknown atomic number/,
+    )
+  })
+
   it(`should provide detailed error for missing positions`, async () => {
     // This would require a custom HDF5 file without positions - skip for now
     // but keep the test structure for when we have such a file

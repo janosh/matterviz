@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
-  import { format_value } from '$lib/labels'
+  import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -1431,13 +1431,13 @@
             {@html sanitize_html(hover_info.x_axis.label || `x`)}: {(cat_axis === `x`
               ? hover_info.category_label
               : undefined) ??
-              format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)}
+              format_value_or_num(hover_info.orient_x, hover_info.x_axis.format)}
           </div>
           <div>
             {@html sanitize_html(hover_info.y_axis.label || `y`)}: {(cat_axis === `y`
               ? hover_info.category_label
               : undefined) ??
-              format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)}
+              format_value_or_num(hover_info.orient_y, hover_info.y_axis.format)}
           </div>
         {/if}
       </PlotTooltip>

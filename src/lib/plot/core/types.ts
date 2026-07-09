@@ -170,6 +170,10 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   // visibility of all series in the group, or the chevron to collapse/expand.
   legend_group?: string
   unit?: string // Optional unit for the series (e.g. "eV", "eV/Å", "GPa")
+  // Optional y-axis grouping key. Series sharing a unit normally share an axis;
+  // a distinct axis_group forces a separate axis (e.g. log-scaled convergence
+  // residuals in eV must not share the linear energy axis).
+  axis_group?: string
   line_style?: {
     stroke?: string
     stroke_width?: number

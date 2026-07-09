@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
-  import { format_value } from '$lib/labels'
+  import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -1332,8 +1332,8 @@
       metadata,
       label: hovered_series.label ?? null,
       series_idx,
-      x_formatted: format_value(x, active_x_config.format || `.3~s`),
-      y_formatted: format_value(y, active_y_config.format || `.3~s`),
+      x_formatted: format_value_or_num(x, active_x_config.format),
+      y_formatted: format_value_or_num(y, active_y_config.format),
       color_value: color_value ?? null,
       colorbar: {
         value: color_value ?? null,
