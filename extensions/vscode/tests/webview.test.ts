@@ -65,23 +65,16 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
     expect(new TextDecoder().decode(result)).toBe(expected)
   })
 
-  test(`preserves byte order`, () => {
-    const test_bytes = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc])
-    const result = base64_to_array_buffer(uint8_as_base64(test_bytes))
-    expect(Array.from(new Uint8Array(result))).toEqual(Array.from(test_bytes))
-  })
-
   test.each([1024, 8192, 32768])(
     `handles typical ASE trajectory file size: %i bytes`,
     (size) => {
+      // bytes cycle through 0-255, so full equality also proves byte-order
+      // preservation for every possible byte value
       const data = new Uint8Array(size)
       for (let idx = 0; idx < size; idx++) data[idx] = idx % 256
       const result = base64_to_array_buffer(uint8_as_base64(data))
-      const result_array = new Uint8Array(result)
       expect(result.byteLength).toBe(size)
-      expect(result_array[0]).toBe(0)
-      expect(result_array[255]).toBe(255)
-      expect(result_array[size - 1]).toBe((size - 1) % 256)
+      expect(Array.from(new Uint8Array(result))).toEqual(Array.from(data))
     },
   )
 
@@ -175,13 +168,20 @@ describe(`parse_file_content JSON renderable routing`, () => {
 })
 
 describe(`vaspout.h5 electronic routing`, () => {
-  test(`bands-only vaspout.h5 parses to a vaspout_electronic result`, async () => {
+  // Parsed content details are covered by tests/vitest/trajectory/vaspout-h5.test.ts;
+  // these tests only check routing and the mount contract.
+  test(`bands-only vaspout.h5 routes to vaspout_electronic and mounts electronic bands`, async () => {
     const base64 = fixture_base64(`vaspout-tinisn-bands-only.h5`)
     const result = await parse_file_content(base64, `vaspout.h5`, true)
     expect(result.type).toBe(`vaspout_electronic`)
-    const data = result.data as { dos: unknown; bands: { nb_bands: number } | null }
+    const data = result.data as { dos: unknown; bands: unknown }
     expect(data.dos).toBeNull()
-    expect(data.bands?.nb_bands).toBe(24)
+    expect(data.bands).not.toBeNull()
+
+    create_display(make_container(), result, `vaspout.h5`)
+    const mount_props = last_mount_props()
+    expect(mount_props.band_type).toBe(`electronic`)
+    expect(mount_props.band_structs).toBe(data.bands)
   })
 
   test(`0-frame trajectory with all-null electronic falls through to trajectory`, async () => {
@@ -198,15 +198,6 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(result.type).toBe(`trajectory`)
   })
 
-  test(`create_display mounts electronic bands with band_type electronic`, async () => {
-    const base64 = fixture_base64(`vaspout-tinisn-bands-only.h5`)
-    const result = await parse_file_content(base64, `vaspout.h5`, true)
-    create_display(make_container(), result, `vaspout.h5`)
-    const mount_props = last_mount_props()
-    expect(mount_props.band_type).toBe(`electronic`)
-    expect(mount_props.band_structs).toBe((result.data as { bands: unknown }).bands)
-  })
-
   test(`trajectories carrying a DOS mount the trajectory-with-DOS wrapper`, async () => {
     const scf_base64 = fixture_base64(`vaspout-si-static-scf.h5`)
     const result = await parse_file_content(scf_base64, `vaspout.h5`, true)
@@ -214,10 +205,10 @@ describe(`vaspout.h5 electronic routing`, () => {
 
     create_display(make_container(), result, `vaspout.h5`)
     const mount_props = last_mount_props() as {
-      dos?: { energies: number[] }
+      dos?: unknown
       trajectory_props?: { trajectory: unknown }
     }
-    expect(mount_props.dos?.energies).toHaveLength(25)
+    expect(mount_props.dos).toBeDefined()
     expect(mount_props.trajectory_props?.trajectory).toBe(result.data)
   })
 
@@ -231,6 +222,24 @@ describe(`vaspout.h5 electronic routing`, () => {
     const result = await parse_file_content(gz_base64, gz_filename, true)
     expect(result.type).toBe(expected_type)
     expect(result.filename).toBe(gz_filename.replace(/\.gz$/, ``))
+  })
+
+  test(`gzipped .traj routes byte-identical binary data to the trajectory parser`, async () => {
+    const { parse_trajectory_data } = await import(`$lib/trajectory/parse`)
+    vi.mocked(parse_trajectory_data).mockResolvedValueOnce({ frames: [], metadata: {} })
+    // ULM magic + bytes that are invalid UTF-8: text decompression would corrupt them
+    const raw_bytes = new Uint8Array([
+      0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d, 0x00, 0xff, 0xfe, 0x80,
+    ])
+    const gz_base64 = uint8_as_base64(new Uint8Array(gzipSync(raw_bytes)))
+
+    const result = await parse_file_content(gz_base64, `relax.traj.gz`, true)
+
+    expect(result.type).toBe(`trajectory`)
+    expect(result.filename).toBe(`relax.traj`)
+    const [buffer, inner_name] = vi.mocked(parse_trajectory_data).mock.calls.at(-1) ?? []
+    expect(inner_name).toBe(`relax.traj`)
+    expect(Array.from(new Uint8Array(buffer as ArrayBuffer))).toEqual([...raw_bytes])
   })
 })
 

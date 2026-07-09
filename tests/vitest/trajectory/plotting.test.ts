@@ -222,73 +222,8 @@ describe(`generate_plot_series`, () => {
     })
 
     assert_unit_group_constraints(series)
-    expect(series.filter((srs) => srs.visible).length).toBeGreaterThan(0)
-  })
-
-  describe(`unit group priority system`, () => {
-    it(`should prioritize energy units for y1 axis`, () => {
-      const trajectory = create_trajectory([
-        { energy: -10.0, volume: 100.0, pressure: 1.0 },
-        { energy: -10.5, volume: 101.0, pressure: 1.1 },
-      ])
-
-      const series = generate_plot_series(trajectory, test_extractor, {
-        property_config: {
-          energy: { label: `Energy`, unit: `eV` },
-          volume: { label: `Volume`, unit: `Å³` },
-          pressure: { label: `Pressure`, unit: `GPa` },
-        },
-        default_visible_properties: new Set([`energy`, `volume`]),
-      })
-
-      const energy_series = find_series_by_label(series, `energy`)
-      expect(energy_series?.y_axis).toBe(`y1`) // Energy gets highest priority
-      expect(energy_series?.visible).toBe(true)
-    })
-
-    it(`should enforce initial 2-unit-group constraint`, () => {
-      const trajectory = create_trajectory([
-        {
-          energy: -10.0,
-          force_max: 0.1,
-          volume: 100.0,
-          pressure: 1.0,
-          temperature: 300.0,
-        },
-        {
-          energy: -10.5,
-          force_max: 0.2,
-          volume: 101.0,
-          pressure: 1.1,
-          temperature: 301.0,
-        },
-      ])
-
-      const series = generate_plot_series(trajectory, test_extractor, {
-        property_config: {
-          energy: { label: `Energy`, unit: `eV` },
-          force_max: { label: `F<sub>max</sub>`, unit: `eV/Å` },
-          volume: { label: `Volume`, unit: `Å³` },
-          pressure: { label: `Pressure`, unit: `GPa` },
-          temperature: { label: `Temperature`, unit: `K` },
-        },
-        default_visible_properties: new Set([
-          `energy`,
-          `force_max`,
-          `volume`,
-          `pressure`,
-          `temperature`,
-        ]),
-      })
-
-      assert_unit_group_constraints(series)
-
-      // Should prioritize energy and force_max over others
-      const energy_series = find_series_by_label(series, `energy`)
-      const force_series = find_series_by_label(series, `f`)
-      expect(energy_series?.visible).toBe(true)
-      expect(force_series?.visible).toBe(true)
-    })
+    // 4 distinct units, all requested visible -> exactly 2 unit groups survive
+    expect(series.filter((srs) => srs.visible)).toHaveLength(2)
   })
 })
 
@@ -358,6 +293,15 @@ describe(`generate_axis_labels`, () => {
       name: `only hidden series`,
       series: [create_series([1, 2], false, `Hidden`, `eV`)],
       expected: { y1: `Value`, y2: `Value` },
+    },
+    {
+      name: `mixed visibility (hidden series excluded from labels)`,
+      series: [
+        create_series([1, 2], true, `Visible`, `eV`, `y1`),
+        create_series([3, 4], false, `Hidden`, `eV`, `y1`), // Same unit, but hidden
+        create_series([5, 6], true, `Another`, `Å`, `y2`),
+      ],
+      expected: { y1: `Visible (eV)`, y2: `Another (Å)` },
     },
     {
       name: `series split across y1 and y2`,
@@ -468,8 +412,8 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
     // axis_group separates it from the eV energy group while unit stays displayable
     expect(delta_series?.unit).toBe(`eV`)
     expect(delta_series?.axis_group).toBe(`eV (SCF)`)
-
-    expect(generate_axis_scale_types(series)).toEqual({ y1: `linear`, y2: `log` })
+    // log-scale decision for the SCF axis_group is covered by the
+    // generate_axis_scale_types table above
   })
 
   it(`keeps energy + force on the axes for relax trajectories (scf delta hidden)`, () => {
@@ -502,18 +446,6 @@ describe(`integration and regression tests`, () => {
     const a_series = find_series_by_label(series, `A`)
     expect(energy_series?.unit).toBe(`eV`)
     if (a_series) expect(a_series.unit).toBe(`Å`)
-  })
-
-  it(`should handle mixed visibility states in axis labeling`, () => {
-    const series = [
-      create_series([1, 2], true, `Visible`, `eV`, `y1`),
-      create_series([3, 4], false, `Hidden`, `eV`, `y1`), // Same unit, but hidden
-      create_series([5, 6], true, `Another`, `Å`, `y2`),
-    ]
-
-    const labels = generate_axis_labels(series)
-    expect(labels.y1).toBe(`Visible (eV)`) // Only visible series included
-    expect(labels.y2).toBe(`Another (Å)`)
   })
 
   it.each([

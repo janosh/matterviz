@@ -288,12 +288,21 @@ describe(`StructureCarousel`, () => {
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
   })
 
-  test(`supports vertical layout and empty state`, () => {
-    mount_carousel({ items: [], layout: `vertical`, empty_message: `No recent structures` })
+  test.each([
+    [`vertical`, {}, `No recent structures`],
+    // horizontal empty state keeps its height-derived track width visible
+    [`horizontal`, { height: 160 }, `Loading`],
+  ] as const)(`shows %s empty state`, (layout, extra_props, message) => {
+    mount_carousel({ items: [], layout, empty_message: message, ...extra_props })
 
     const carousel = doc_query(`.structure-carousel`)
-    expect(carousel.classList.contains(`vertical`)).toBe(true)
-    expect(doc_query(`.empty-carousel`).textContent).toBe(`No recent structures`)
+    expect(carousel.classList.contains(layout)).toBe(true)
+    if (layout === `horizontal`) {
+      expect(carousel.getAttribute(`style`)).toContain(
+        `--structure-carousel-track-width: 160px`,
+      )
+    }
+    expect(doc_query(`.empty-carousel`).textContent).toBe(message)
   })
 
   test(`stacks vertical cards along the y axis`, () => {
@@ -320,15 +329,6 @@ describe(`StructureCarousel`, () => {
     )
   })
 
-  test(`keeps horizontal empty state visible`, () => {
-    mount_carousel({ items: [], layout: `horizontal`, height: 160, empty_message: `Loading` })
-
-    expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-      `--structure-carousel-track-width: 160px`,
-    )
-    expect(doc_query(`.empty-carousel`).textContent).toBe(`Loading`)
-  })
-
   test(`sizes horizontal cards from carousel height`, () => {
     mount_carousel({ items, layout: `horizontal`, height: 180, min_card_width: 220 })
 
@@ -340,59 +340,65 @@ describe(`StructureCarousel`, () => {
     )
   })
 
-  test(`resizes horizontal card height from the bottom handle`, () => {
-    mount_carousel({
-      items,
-      layout: `horizontal`,
-      height: 210,
-      min_card_width: 180,
-      resizable: true,
-    })
-
-    const handle = doc_query(`.structure-carousel-resize-handle.horizontal`)
-    expect(handle.getAttribute(`title`)).toBe(`Drag to resize carousel height`)
-    handle.dispatchEvent(pointer_event(`pointerdown`, { clientY: 10 }))
-    window.dispatchEvent(pointer_event(`pointermove`, { clientY: 90 }))
-    flushSync()
-
-    const carousel_style = doc_query(`.structure-carousel`).getAttribute(`style`)
-    expect(carousel_style).toContain(`--structure-carousel-height: 290px`)
-    expect(carousel_style).toContain(`--structure-carousel-card-width: 290px`)
-    expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
-      `block-size: 290px`,
+  // Drags the layout's resize handle and returns the resulting carousel style
+  const drag_resize = async (
+    layout: `horizontal` | `vertical`,
+    from: number,
+    to: number,
+  ): Promise<string> => {
+    if (layout === `vertical`) {
+      // vertical card width initializes async from the measured host width
+      await vi.waitFor(() => {
+        expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
+          `--structure-carousel-card-width: 800px`,
+        )
+      })
+    }
+    const handle = doc_query(`.structure-carousel-resize-handle.${layout}`)
+    expect(handle.getAttribute(`title`)).toBe(
+      layout === `horizontal`
+        ? `Drag to resize carousel height`
+        : `Drag to resize carousel width`,
     )
-  })
+    const axis = layout === `horizontal` ? `clientY` : `clientX`
+    handle.dispatchEvent(pointer_event(`pointerdown`, { [axis]: from }))
+    window.dispatchEvent(pointer_event(`pointermove`, { [axis]: to }))
+    flushSync()
+    return doc_query(`.structure-carousel`).getAttribute(`style`) ?? ``
+  }
 
-  test(`resizes vertical card width from the side handle`, async () => {
-    mount_carousel({ items, layout: `vertical`, resizable: true }, false)
+  test.each([
+    // [desc, extra_props, flush, drag from -> to, expected style fragments]
+    [
+      `resizes horizontal card height from the bottom handle`,
+      { layout: `horizontal`, height: 210, min_card_width: 180 },
+      true,
+      [10, 90],
+      [`--structure-carousel-height: 290px`, `--structure-carousel-card-width: 290px`],
+    ],
+    [
+      `resizes vertical card width from the side handle`,
+      { layout: `vertical` },
+      false, // mount unflushed so the async width measurement is exercised
+      [800, 680],
+      [`--structure-carousel-card-width: 680px`, `inline-size: 680px`],
+    ],
+    [
+      `respects min_card_width when shrinking vertical card width`,
+      { layout: `vertical`, min_card_width: 320 },
+      true,
+      [800, 100],
+      [`--structure-carousel-card-width: 320px`, `inline-size: 320px`],
+    ],
+  ] as const)(`%s`, async (_desc, extra_props, flush, [from, to], style_fragments) => {
+    mount_carousel({ items, resizable: true, ...extra_props }, flush)
 
-    await vi.waitFor(() => {
-      expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-        `--structure-carousel-card-width: 800px`,
+    const carousel_style = await drag_resize(extra_props.layout, from, to)
+    for (const fragment of style_fragments) expect(carousel_style).toContain(fragment)
+    if (extra_props.layout === `horizontal`) {
+      expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
+        `block-size: 290px`,
       )
-    })
-
-    const handle = doc_query(`.structure-carousel-resize-handle.vertical`)
-    expect(handle.getAttribute(`title`)).toBe(`Drag to resize carousel width`)
-    handle.dispatchEvent(pointer_event(`pointerdown`, { clientX: 800 }))
-    window.dispatchEvent(pointer_event(`pointermove`, { clientX: 680 }))
-    flushSync()
-
-    const carousel_style = doc_query(`.structure-carousel`).getAttribute(`style`)
-    expect(carousel_style).toContain(`--structure-carousel-card-width: 680px`)
-    expect(carousel_style).toContain(`inline-size: 680px`)
-  })
-
-  test(`respects min_card_width when shrinking vertical card width`, () => {
-    mount_carousel({ items, layout: `vertical`, min_card_width: 320, resizable: true })
-
-    const handle = doc_query(`.structure-carousel-resize-handle.vertical`)
-    handle.dispatchEvent(pointer_event(`pointerdown`, { clientX: 800 }))
-    window.dispatchEvent(pointer_event(`pointermove`, { clientX: 100 }))
-    flushSync()
-
-    const carousel_style = doc_query(`.structure-carousel`).getAttribute(`style`)
-    expect(carousel_style).toContain(`--structure-carousel-card-width: 320px`)
-    expect(carousel_style).toContain(`inline-size: 320px`)
+    }
   })
 })

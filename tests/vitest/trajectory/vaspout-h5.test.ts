@@ -81,13 +81,18 @@ describe(`vaspout.h5 parsing`, () => {
   })
 
   it(`returns an electronic-only zero-frame trajectory for bands-only vaspout files`, async () => {
-    const trajectory = await parse_fixture(`vaspout-tinisn-bands-only.h5`)
-
-    expect(trajectory.frames).toHaveLength(0)
-    expect(trajectory.metadata?.vaspout_electronic_only).toBe(true)
-    const electronic = trajectory.metadata?.electronic as VaspoutElectronicData
-    expect(electronic.dos).toBeNull()
-    expect(electronic.bands).not.toBeNull()
+    // Direct parser and generic parse_trajectory_data dispatch must agree
+    for (const parse of [parse_vaspout_h5, parse_trajectory_data]) {
+      const trajectory = await parse(
+        read_vaspout(`vaspout-tinisn-bands-only.h5`),
+        `vaspout.h5`,
+      )
+      expect(trajectory.frames).toHaveLength(0)
+      expect(trajectory.metadata?.vaspout_electronic_only).toBe(true)
+      const electronic = trajectory.metadata?.electronic as VaspoutElectronicData
+      expect(electronic.dos).toBeNull()
+      expect(electronic.bands).not.toBeNull()
+    }
   })
 
   // Second no-structure exit: ion species datasets exist but the geometry is
@@ -209,15 +214,6 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     const trajectory = await parse_fixture(fixture)
     expect(trajectory.frames.length).toBeGreaterThan(0)
     expect(trajectory.metadata?.electronic).toBeUndefined()
-  })
-
-  it(`routes bands-only files through parse_trajectory_data without error`, async () => {
-    const trajectory = await parse_trajectory_data(
-      read_vaspout(`vaspout-tinisn-bands-only.h5`),
-      `vaspout.h5`,
-    )
-    expect(trajectory.frames).toHaveLength(0)
-    expect(trajectory.metadata?.vaspout_electronic_only).toBe(true)
   })
 })
 

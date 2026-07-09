@@ -13,7 +13,7 @@ const parse_fixture = (fixture: string) =>
 // partly negative component 1, plus an embedded Si2 structure in a
 // diag(4, 5, 6) lattice.
 describe(`vaspwave.h5 charge density parsing`, () => {
-  it(`parses the embedded structure and both density components`, async () => {
+  it(`parses structure + components, reordering C-order values into grid[x][y][z]`, async () => {
     const { structure, volumes } = await parse_fixture(`vaspwave-si-charge.h5`)
 
     expect(structure.sites).toHaveLength(2)
@@ -33,10 +33,6 @@ describe(`vaspwave.h5 charge density parsing`, () => {
       expect(volume.periodic).toBe(true)
       expect(volume.lattice).toEqual(structure.lattice?.matrix)
     }
-  })
-
-  it(`reorders C-order [nz, ny, nx] values into grid[x][y][z]`, async () => {
-    const { volumes } = await parse_fixture(`vaspwave-si-charge.h5`)
 
     const charge = volumes[0]
     for (const [x_idx, y_idx, z_idx] of [
