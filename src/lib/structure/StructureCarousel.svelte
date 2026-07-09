@@ -36,7 +36,7 @@
     show_controls,
     empty_message = `No structures`,
     on_prefetch_more,
-    prefetch_cooldown_ms = 1_000,
+    prefetch_cooldown_ms = 1000,
     pager_target = undefined,
   }: Props = $props()
 
@@ -64,20 +64,18 @@
   // px per arrow-key press when resizing via keyboard
   const keyboard_resize_step_px = 16
   const effective_height = $derived(
-    layout === `horizontal` && resizable ? resized_height ?? height : height,
+    layout === `horizontal` && resizable ? (resized_height ?? height) : height,
   )
   const effective_width = $derived(
     layout === `vertical` && resizable
-      ? resized_width ?? (carousel_width > 0 ? carousel_width : min_card_width)
+      ? (resized_width ?? (carousel_width > 0 ? carousel_width : min_card_width))
       : min_card_width,
   )
   const card_width = $derived(layout === `horizontal` ? effective_height : effective_width)
   const max_rendered = $derived(Math.max(1, Math.floor(max_rendered_items)))
   const visible_item_count = $derived(Math.min(items.length, max_rendered))
   // stride follows the scroll axis: card inline-size horizontally, block-size vertically
-  const item_stride = $derived(
-    (layout === `horizontal` ? card_width : effective_height) + gap,
-  )
+  const item_stride = $derived((layout === `horizontal` ? card_width : effective_height) + gap)
   const total_scroll_extent = $derived(
     items.length === 0 ? 0 : items.length * item_stride - gap,
   )
@@ -123,11 +121,15 @@
       `--structure-carousel-height: ${effective_height}px`,
       `--structure-carousel-gap: ${gap}px`,
       `--structure-carousel-track-width: ${track_width}px`,
-      layout === `horizontal` ? `inline-size: min(100%, var(--structure-carousel-track-width))` : ``,
+      layout === `horizontal`
+        ? `inline-size: min(100%, var(--structure-carousel-track-width))`
+        : ``,
       layout === `vertical` && resized_width ? `inline-size: ${resized_width}px` : ``,
       resizable ? `max-inline-size: 100%` : ``,
       resizable ? `min-block-size: ${min_resize_size}px` : ``,
-    ].filter(Boolean).join(`; `),
+    ]
+      .filter(Boolean)
+      .join(`; `),
   )
   const track_style = $derived(
     layout === `horizontal`
@@ -145,12 +147,10 @@
       : `block-size: ${total_scroll_extent}px; inline-size: ${card_width}px`,
   )
   const card_style = (idx: number): string => {
-    const [x_shift, y_shift] = layout === `horizontal`
-      ? [idx * item_stride, 0]
-      : [0, idx * item_stride]
-    const cross_size = layout === `horizontal`
-      ? `inset-block: 0`
-      : `block-size: ${effective_height}px`
+    const [x_shift, y_shift] =
+      layout === `horizontal` ? [idx * item_stride, 0] : [0, idx * item_stride]
+    const cross_size =
+      layout === `horizontal` ? `inset-block: 0` : `block-size: ${effective_height}px`
     return `inline-size: ${card_width}px; ${cross_size}; transform: translate3d(${x_shift}px, ${y_shift}px, 0);`
   }
   const structure_scene_props = { gizmo: false }
@@ -213,15 +213,15 @@
 
   const on_wheel = (event: WheelEvent): void => {
     if (!track || layout !== `horizontal` || event.ctrlKey || items.length <= page_size) return
-    const dominant_delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
-      ? event.deltaX
-      : event.deltaY
+    const dominant_delta =
+      Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
     if (dominant_delta === 0) return
-    const delta_scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
-      ? wheel_line_height_px
-      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-        ? track.clientWidth
-        : 1
+    const delta_scale =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? wheel_line_height_px
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? track.clientWidth
+          : 1
     const delta = dominant_delta * delta_scale
     // unclamped above when max is 0 (track not yet measured); browser clamps anyway
     const max_scroll_left = Math.max(0, track.scrollWidth - track.clientWidth) || Infinity
@@ -312,9 +312,8 @@
   }
 
   const on_resize_keydown = (event: KeyboardEvent): void => {
-    const [grow, shrink] = layout === `horizontal`
-      ? [`ArrowDown`, `ArrowUp`]
-      : [`ArrowRight`, `ArrowLeft`]
+    const [grow, shrink] =
+      layout === `horizontal` ? [`ArrowDown`, `ArrowUp`] : [`ArrowRight`, `ArrowLeft`]
     if (event.key !== grow && event.key !== shrink) return
     event.preventDefault()
     resize_by(event.key === grow ? keyboard_resize_step_px : -keyboard_resize_step_px)
@@ -324,9 +323,10 @@
     if (!resizable) return
     event.preventDefault()
     event.stopPropagation()
-    resize_drag = layout === `horizontal`
-      ? { axis: `height`, start_position: event.clientY, start_size: effective_height }
-      : { axis: `width`, start_position: event.clientX, start_size: card_width }
+    resize_drag =
+      layout === `horizontal`
+        ? { axis: `height`, start_position: event.clientY, start_size: effective_height }
+        : { axis: `width`, start_position: event.clientX, start_size: card_width }
     ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
     window.addEventListener(`pointermove`, on_resize_move)
     window.addEventListener(`pointerup`, stop_resize)
@@ -409,15 +409,15 @@
           aria-label="Previous structures"
           disabled={page_start === 0}
           onclick={() => scroll_page(-1)}
-          type="button"
-        >‹</button>
+          type="button">‹</button
+        >
         <span aria-live="polite">{page_start + 1}–{page_end} / {items.length}</span>
         <button
           aria-label="Next structures"
           disabled={page_end >= items.length}
           onclick={() => scroll_page(1)}
-          type="button"
-        >›</button>
+          type="button">›</button
+        >
       </nav>
     {/if}
   {/if}
@@ -439,7 +439,9 @@
       onpointerdown={start_resize}
       role="separator"
       tabindex="0"
-      title={layout === `horizontal` ? `Drag to resize carousel height` : `Drag to resize carousel width`}
+      title={layout === `horizontal`
+        ? `Drag to resize carousel height`
+        : `Drag to resize carousel width`}
     ></div>
   {/if}
 </section>
@@ -511,11 +513,7 @@
     --glass-chip-top: 4px;
     --glass-chip-left: 4px;
     --glass-chip-max-width: calc(100% - 8px);
-    --glass-chip-font-size: clamp(
-      9px,
-      calc(var(--structure-carousel-height) * 0.062),
-      12px
-    );
+    --glass-chip-font-size: clamp(9px, calc(var(--structure-carousel-height) * 0.062), 12px);
     line-height: 1.25;
     pointer-events: none;
   }
@@ -588,7 +586,7 @@
     position: absolute;
     border-radius: 999px;
     background: color-mix(in srgb, currentColor 32%, transparent);
-    content: "";
+    content: '';
     /* grip only shows while the carousel is hovered, focused, or resizing */
     opacity: 0;
     transition: opacity 0.15s ease;

@@ -196,12 +196,16 @@
 
   // Layout depends only on data/value semantics - not on size or zoom.
   let layout = $derived(
-    safe_hierarchy_layout(data, { value_mode, sort, level_lighten, min_fraction, other_label }),
+    safe_hierarchy_layout(data, {
+      value_mode,
+      sort,
+      level_lighten,
+      min_fraction,
+      other_label,
+    }),
   )
   // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
-  let zoom_root = $derived(
-    layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root,
-  )
+  let zoom_root = $derived(layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root)
   let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
 
   // Drop muted ids that no longer exist when data changes (untrack avoids a

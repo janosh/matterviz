@@ -191,8 +191,7 @@
         step={0.005}
         bind:value={min_fraction}
         style="flex: 1 1 100%"
-        >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction of
-        total):</NumberRangeInput
+        >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction of total):</NumberRangeInput
       >
       <label style="flex: 1 1 100%">
         <input type="checkbox" bind:checked={show_labels} />

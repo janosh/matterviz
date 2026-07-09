@@ -47,7 +47,8 @@ Each item pairs a `structure` with a `label`/`subtitle` chip. `resizable` adds a
 
   const load_more = () => {
     if (items.length >= max_items) return
-    setTimeout(() => { // simulate fetch latency
+    setTimeout(() => {
+      // simulate fetch latency
       const next = Array.from({ length: 6 }, (_, idx) => make_item(items.length + idx))
       items = [...items, ...next].slice(0, max_items)
     }, 300)

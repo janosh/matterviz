@@ -179,13 +179,17 @@
   // Tree semantics (values, colors, ids, pre-order indexing) are shared with
   // Sunburst; only the pixel tiling below is treemap-specific.
   let layout = $derived(
-    safe_hierarchy_layout(data, { value_mode, sort, level_lighten, min_fraction, other_label }),
+    safe_hierarchy_layout(data, {
+      value_mode,
+      sort,
+      level_lighten,
+      min_fraction,
+      other_label,
+    }),
   )
 
   // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
-  let zoom_root = $derived(
-    layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root,
-  )
+  let zoom_root = $derived(layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root)
   let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
 
   // Drop muted ids that no longer exist when data changes (untrack avoids a
@@ -241,9 +245,7 @@
   let rects = $derived(rects_tween.current)
 
   // Deepest level rendered below the current zoom root (0 = unlimited)
-  let depth_cutoff = $derived(
-    max_depth > 0 ? (zoom_root?.depth ?? 0) + max_depth : Infinity,
-  )
+  let depth_cutoff = $derived(max_depth > 0 ? (zoom_root?.depth ?? 0) + max_depth : Infinity)
   // Shared by rendering and legend placement. The zoom root fills the viewport
   // and is represented by the breadcrumbs, not a cell — except when it's a leaf
   // (e.g. programmatic zoom_root_id onto a compound), which renders as one full-
@@ -277,9 +279,7 @@
   // focus outside the chart. role="button" stays limited to clickable cells.
   let focused_idx = $state<number | null>(null)
   let roving_idx = $derived(
-    focused_idx != null && idx_visible(focused_idx)
-      ? focused_idx
-      : (visible_idxs[0] ?? null),
+    focused_idx != null && idx_visible(focused_idx) ? focused_idx : (visible_idxs[0] ?? null),
   )
 
   // Continuous metric coloring: when color_values is given, cells are colored by
@@ -320,8 +320,8 @@
       hovered = true
       hovered_idx = idx
       hover_info = make_node_props(layout.arcs[idx])
-      hover_pos = pointer_pos(event, svg_element) ??
-        (rects[idx] ? rect_center(rects[idx]) : hover_pos)
+      hover_pos =
+        pointer_pos(event, svg_element) ?? (rects[idx] ? rect_center(rects[idx]) : hover_pos)
       change(hover_info)
       if (event) on_node_hover?.({ ...hover_info, event })
     } else {
@@ -483,7 +483,7 @@
     // is stable during zoom tweens. Same visibility rule as rendering so hidden
     // cells (zoom root, beyond max_depth) don't repel the legend.
     const settled = layout.arcs.flatMap((arc, idx) =>
-      cell_visible(arc, target_rects[idx]) ? [rect_center(target_rects[idx])] : []
+      cell_visible(arc, target_rects[idx]) ? [rect_center(target_rects[idx])] : [],
     )
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },

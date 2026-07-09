@@ -247,9 +247,10 @@
     // style.top is a `${n}px` string when set; "0px" is a valid position, so only
     // fall back to the live rect when the inline style is unset or non-numeric
     const parsed_top = Number(pane_div.style.top.replace(/px$/, ``))
-    const pane_top = pane_div.style.top && !Number.isNaN(parsed_top)
-      ? parsed_top
-      : pane_div.getBoundingClientRect().top
+    const pane_top =
+      pane_div.style.top && !Number.isNaN(parsed_top)
+        ? parsed_top
+        : pane_div.getBoundingClientRect().top
     const available = window.innerHeight - pane_top - viewport_margin_px
     pane_div.style.setProperty(`--pane-viewport-clamp`, `${Math.max(0, available)}px`)
   }

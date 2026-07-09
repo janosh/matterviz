@@ -1139,8 +1139,7 @@
   })
 
   const is_interactive_cell_target = (target: EventTarget | null): boolean =>
-    target instanceof Element &&
-    Boolean(target.closest(`button, a, input, select, textarea`))
+    target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
 
   function start_cell_drag(event: PointerEvent, row_idx: number, col_idx: number) {
     if (event.button !== 0 || is_interactive_cell_target(event.target)) return
@@ -1153,9 +1152,10 @@
 
   function extend_cell_drag(event: PointerEvent) {
     if (!cell_drag_active) return
-    const target_cell = event.target instanceof Element
-      ? event.target.closest<HTMLElement>(`td[data-row-idx]`)
-      : null
+    const target_cell =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>(`td[data-row-idx]`)
+        : null
     const active_rect = selected_cell_rects.at(-1)
     if (!target_cell || !active_rect) return
     const row_idx = Number(target_cell.dataset.rowIdx)
@@ -1217,7 +1217,9 @@
       for (let row_idx = row_lo; row_idx <= row_hi; row_idx++) {
         const cells: string[] = []
         for (let col_idx = col_lo; col_idx <= col_hi; col_idx++) {
-          cells.push(cell_copy_text(sorted_data[row_idx][get_col_id(visible_columns[col_idx])]))
+          cells.push(
+            cell_copy_text(sorted_data[row_idx][get_col_id(visible_columns[col_idx])]),
+          )
         }
         lines.push(cells.join(`\t`))
       }
@@ -1256,10 +1258,12 @@
       options: [
         { value: `copy_column`, label: `Copy column (${sorted_data.length} values)` },
         ...(selected_cell_keys.size > 0
-          ? [{
-            value: `copy_selection`,
-            label: `Copy selection (${selected_cell_keys.size} cells)`,
-          }]
+          ? [
+              {
+                value: `copy_selection`,
+                label: `Copy selection (${selected_cell_keys.size} cells)`,
+              },
+            ]
           : []),
       ],
     },
@@ -1586,85 +1590,88 @@
           style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
         }}
       >
-      <SettingsSection
-        title="Heatmap"
-        current_values={{ show_heatmap, heatmap_opacity }}
-        on_reset={() => {
-          show_heatmap = true
-          heatmap_opacity = 1
-        }}
-      >
-        <label><input type="checkbox" bind:checked={show_heatmap} /> Show heatmap</label>
-        {#if show_heatmap}
-          <label>
-            Opacity
-            <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.05"
-              bind:value={heatmap_opacity}
-              style="width: 3.5em"
-            />
-          </label>
-        {/if}
-      </SettingsSection>
-
-      <SettingsSection
-        title="Display"
-        current_values={{ show_row_numbers }}
-        on_reset={() => {
-          show_row_numbers = false
-        }}
-      >
-        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
-      </SettingsSection>
-
-      {#if colored_columns.length > 0}
         <SettingsSection
-          title="Column Colors"
-          current_values={Object.fromEntries([...better_overrides, ...color_scale_overrides])}
+          title="Heatmap"
+          current_values={{ show_heatmap, heatmap_opacity }}
           on_reset={() => {
-            better_overrides.clear()
-            color_scale_overrides.clear()
+            show_heatmap = true
+            heatmap_opacity = 1
           }}
         >
-          {#each colored_columns as col (get_col_id(col))}
-            {@const col_id = get_col_id(col)}
-            <div class="col-color-row">
-              <span class="col-color-label">{@html sanitize_html(col.label)}</span>
-              <select
-                value={color_scale_overrides.get(col_id) ??
-                  col.color_scale ??
-                  `interpolateViridis`}
-                onchange={(event) => {
-                  const val = event.currentTarget.value
-                  if (val === (col.color_scale ?? `interpolateViridis`))
-                    color_scale_overrides.delete(col_id)
-                  else color_scale_overrides.set(col_id, val)
-                }}
-              >
-                {#each color_scale_options as scale (scale)}
-                  <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
-                {/each}
-              </select>
-              <select
-                value={better_overrides.get(col_id) ?? col.better ?? ``}
-                onchange={(event) => {
-                  const val = event.currentTarget.value
-                  if (!val) better_overrides.delete(col_id)
-                  else better_overrides.set(col_id, val as `higher` | `lower`)
-                }}
-              >
-                <option value="">Default</option>
-                <option value="higher">▲ High</option>
-                <option value="lower">▼ Low</option>
-              </select>
-            </div>
-          {/each}
+          <label><input type="checkbox" bind:checked={show_heatmap} /> Show heatmap</label>
+          {#if show_heatmap}
+            <label>
+              Opacity
+              <input type="range" min="0" max="1" step="0.05" bind:value={heatmap_opacity} />
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={heatmap_opacity}
+                style="width: 3.5em"
+              />
+            </label>
+          {/if}
         </SettingsSection>
-      {/if}
+
+        <SettingsSection
+          title="Display"
+          current_values={{ show_row_numbers }}
+          on_reset={() => {
+            show_row_numbers = false
+          }}
+        >
+          <label><input type="checkbox" bind:checked={show_row_numbers} /> Row numbers</label>
+        </SettingsSection>
+
+        {#if colored_columns.length > 0}
+          <SettingsSection
+            title="Column Colors"
+            current_values={Object.fromEntries([
+              ...better_overrides,
+              ...color_scale_overrides,
+            ])}
+            on_reset={() => {
+              better_overrides.clear()
+              color_scale_overrides.clear()
+            }}
+          >
+            {#each colored_columns as col (get_col_id(col))}
+              {@const col_id = get_col_id(col)}
+              <div class="col-color-row">
+                <span class="col-color-label">{@html sanitize_html(col.label)}</span>
+                <select
+                  value={color_scale_overrides.get(col_id) ??
+                    col.color_scale ??
+                    `interpolateViridis`}
+                  onchange={(event) => {
+                    const val = event.currentTarget.value
+                    if (val === (col.color_scale ?? `interpolateViridis`))
+                      color_scale_overrides.delete(col_id)
+                    else color_scale_overrides.set(col_id, val)
+                  }}
+                >
+                  {#each color_scale_options as scale (scale)}
+                    <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
+                  {/each}
+                </select>
+                <select
+                  value={better_overrides.get(col_id) ?? col.better ?? ``}
+                  onchange={(event) => {
+                    const val = event.currentTarget.value
+                    if (!val) better_overrides.delete(col_id)
+                    else better_overrides.set(col_id, val as `higher` | `lower`)
+                  }}
+                >
+                  <option value="">Default</option>
+                  <option value="higher">▲ High</option>
+                  <option value="lower">▼ Low</option>
+                </select>
+              </div>
+            {/each}
+          </SettingsSection>
+        {/if}
       </DraggablePane>
     {/if}
 
@@ -2122,7 +2129,8 @@
       color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent),
       color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent)
     );
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent);
+    box-shadow: inset 0 0 0 1px
+      color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent);
   }
   th,
   td {
