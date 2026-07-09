@@ -145,7 +145,12 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
+          # upgrade npm only if the bundled one predates OIDC support (>= 11.5.1):
+          # an unconditional in-place self-update can corrupt npm's own install
+          # (Cannot find module 'sigstore' in libnpmpublish)
+          if [ "$(printf '%s\n' 11.5.1 "$(npm --version)" | sort -V | head -1)" != 11.5.1 ]; then
+            npm install -g npm@latest
+          fi
           if [ "$DRY_RUN" = true ]; then
             npm publish --ignore-scripts --access public --dry-run
           else
@@ -222,7 +227,12 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
+          # upgrade npm only if the bundled one predates OIDC support (>= 11.5.1):
+          # an unconditional in-place self-update can corrupt npm's own install
+          # (Cannot find module 'sigstore' in libnpmpublish)
+          if [ "$(printf '%s\n' 11.5.1 "$(npm --version)" | sort -V | head -1)" != 11.5.1 ]; then
+            npm install -g npm@latest
+          fi
           if [ "$DRY_RUN" = true ]; then
             npm publish --ignore-scripts --access public --dry-run
           else
