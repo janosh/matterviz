@@ -197,9 +197,7 @@
     }
   })
   // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
-  let zoom_root = $derived(
-    layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root,
-  )
+  let zoom_root = $derived(layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root)
   let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
 
   // Drop muted ids that no longer exist when data changes (untrack avoids a
@@ -544,9 +542,8 @@
         text,
         width: cached_text_width(text, label_font),
         extended,
-        extended_width: extended === undefined
-          ? undefined
-          : cached_text_width(extended, label_font),
+        extended_width:
+          extended === undefined ? undefined : cached_text_width(extended, label_font),
         aria: `${node_display_name(arc)}: ${arc.value}`,
         fill,
         label_fill: contrast_for(fill),
@@ -637,7 +634,8 @@
     // only react when the user is interacting with this chart (pointer over it,
     // focus inside it, or fullscreen) - Escape zooms out one level, then exits
     // fullscreen once at the root
-    const within = fullscreen ||
+    const within =
+      fullscreen ||
       (wrapper != null &&
         (wrapper.matches(`:hover`) || wrapper.contains(document.activeElement)))
     if (!within) return

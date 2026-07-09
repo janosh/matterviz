@@ -104,7 +104,7 @@ describe(`StructureCarousel`, () => {
     expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(3)
 
     const track = doc_query(`.structure-carousel-track`)
-    track.scrollLeft = 1_800
+    track.scrollLeft = 1800
     track.dispatchEvent(new Event(`scroll`))
     flushSync()
 
@@ -160,7 +160,7 @@ describe(`StructureCarousel`, () => {
     const track = doc_query(`.structure-carousel-track`)
     Object.defineProperties(track, {
       clientWidth: { configurable: true, value: 500 },
-      scrollWidth: { configurable: true, value: 1_000 },
+      scrollWidth: { configurable: true, value: 1000 },
     })
     track.scrollLeft = 0
 
@@ -175,7 +175,7 @@ describe(`StructureCarousel`, () => {
     expect(track.scrollLeft).toBe(0)
   })
 
-  test.each([[500], [2_000]])(
+  test.each([[500], [2000]])(
     `throttles repeat prefetches by prefetch_cooldown_ms=%i while items are unchanged`,
     (prefetch_cooldown_ms: number) => {
       const now_spy = vi.spyOn(performance, `now`).mockReturnValue(0)
@@ -227,7 +227,7 @@ describe(`StructureCarousel`, () => {
     expect(on_prefetch_more).not.toHaveBeenCalled()
 
     // first_visible_idx = floor(7488 / 208) = 36 → remaining = 40 - 36 - 1 = 3
-    track.scrollTop = 7_488
+    track.scrollTop = 7488
     track.dispatchEvent(new Event(`scroll`))
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
   })

@@ -58,7 +58,7 @@ function parse_torch_sim_h5_file(h5_file: h5wasm.File): TrajectoryType {
       }
     }
   }
-  discover(h5_file as unknown as Group)
+  discover(h5_file)
 
   const first_path = (names: string[]): string | undefined =>
     names.map((name) => found_paths[name]).find(Boolean)

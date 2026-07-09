@@ -235,7 +235,7 @@
     "svelte-check": "^4.7.1",
     "typescript": "6.0.3",
     "vite": "^8.0.16",
-    "vite-plus": "^0.2.1",
+    "vite-plus": "^0.2.4",
     "vitest": "4.1.9"
   },
   "peerDependencies": {

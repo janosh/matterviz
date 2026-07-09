@@ -651,9 +651,10 @@
   function notify_step_change(step_idx: number = current_step_idx) {
     if (!trajectory || !Number.isFinite(step_idx)) return
     const last_frame = Math.max(total_frames - 1, 0)
+    const clamped_step = Math.min(Math.max(Math.round(step_idx), 0), last_frame)
     on_step_change?.({
       trajectory,
-      step_idx: Math.min(Math.max(Math.round(step_idx), 0), last_frame),
+      step_idx: clamped_step,
       frame_count: total_frames,
       frame: current_frame || undefined,
     })

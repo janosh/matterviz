@@ -6,8 +6,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { children, ...rest }: HTMLAttributes<HTMLDivElement> & { children: Snippet } =
-    $props()
+  let { children, ...rest }: HTMLAttributes<HTMLDivElement> & { children: Snippet } = $props()
 </script>
 
 <div {...rest} class={[`glass-chip`, rest.class]}>

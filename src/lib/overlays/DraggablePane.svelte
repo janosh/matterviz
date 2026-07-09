@@ -244,7 +244,9 @@
   // min_reachable_pane_height_px of space remains below.
   function apply_viewport_clamp(): void {
     if (position !== `fixed` || !pane_div || !toggle_pane_btn) return
-    const pane_top = Number.parseFloat(pane_div.style.top) || pane_div.getBoundingClientRect().top
+    // style.top is a `${n}px` string, so strip the unit before Number()
+    const pane_top =
+      Number(pane_div.style.top.replace(/px$/, ``)) || pane_div.getBoundingClientRect().top
     const available = window.innerHeight - pane_top - viewport_margin_px
     pane_div.style.setProperty(`--pane-viewport-clamp`, `${Math.max(0, available)}px`)
   }

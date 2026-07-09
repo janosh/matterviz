@@ -175,9 +175,9 @@ describe(`DraggablePane`, () => {
         x: 430,
         y: 736,
         toJSON: () => ({}),
-      } as DOMRect)
+      })
       vi.spyOn(pane, `getBoundingClientRect`).mockReturnValue({
-        bottom: 1_000,
+        bottom: 1000,
         height: 320,
         left: 0,
         right: 450,
@@ -186,7 +186,7 @@ describe(`DraggablePane`, () => {
         x: 0,
         y: 760,
         toJSON: () => ({}),
-      } as DOMRect)
+      })
 
       click(button)
       await tick()

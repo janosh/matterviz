@@ -286,8 +286,8 @@
       <li>Switch to point mode to see the same materials rendered individually.</li>
       <li>Use the mouse wheel or drag-select to zoom into crowded regions.</li>
       <li>
-        The stats badge (an <code>annotation</code> snippet) auto-places itself away from
-        both the data and the colorbar — zoom around and watch it relocate.
+        The stats badge (an <code>annotation</code> snippet) auto-places itself away from both the
+        data and the colorbar — zoom around and watch it relocate.
       </li>
     </ul>
   </section>

@@ -210,18 +210,20 @@ describe(`BinnedScatterPlot`, () => {
 
     const anno_wrapper = doc_query<HTMLElement>(`.binned-scatter .annotation`)
     expect(anno_wrapper.querySelector(`.custom-annotation`)?.textContent).toBe(`800x600:false`)
+    // style.left/top are `${n}px` strings, so strip the unit before Number()
+    const style_px = (value: string): number => Number(value.replace(/px$/, ``))
     // both elements report zero offset size in the test DOM, so placement uses the
     // documented fallback footprints (annotation 120x50, colorbar 220x50)
     const anno_rect = {
-      x: parseFloat(anno_wrapper.style.left),
-      y: parseFloat(anno_wrapper.style.top),
+      x: style_px(anno_wrapper.style.left),
+      y: style_px(anno_wrapper.style.top),
       width: 120,
       height: 50,
     }
     const bar_wrapper = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
     const bar_rect = {
-      x: parseFloat(bar_wrapper.style.left),
-      y: parseFloat(bar_wrapper.style.top),
+      x: style_px(bar_wrapper.style.left),
+      y: style_px(bar_wrapper.style.top),
       width: COLOR_BAR_DEFAULTS.width,
       height: 50,
     }
