@@ -164,8 +164,11 @@ export const parse_file_content = async (
       const data = await parse_trajectory_data(buffer, filename)
       // DOS/bands-only vaspout.h5 (e.g. phelel band paths): no frames to animate,
       // route the electronic results to the spectral components instead.
+      // Require at least one renderable result rather than trusting the
+      // parser's invariant (the metadata cast is unchecked): an empty
+      // electronic object would otherwise mount <Dos doses={null}>.
       const electronic = data.metadata?.electronic as VaspoutElectronicData | undefined
-      if (data.frames.length === 0 && electronic) {
+      if (data.frames.length === 0 && (electronic?.dos || electronic?.bands)) {
         return { type: `vaspout_electronic`, filename, data: electronic }
       }
       return { type: `trajectory`, filename, data }

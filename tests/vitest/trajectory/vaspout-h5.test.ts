@@ -1,6 +1,6 @@
 import { full_data_extractor } from '$lib/trajectory/extract'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
-import { with_h5_file } from '$lib/trajectory/parse/h5-utils'
+import { expand_ion_types, with_h5_file } from '$lib/trajectory/parse/h5-utils'
 import {
   line_mode_labels,
   read_vaspout_bands,
@@ -116,8 +116,9 @@ describe(`line-mode k-path labels`, () => {
     [`explicit per-segment dataset`, 3],
     [`inferred from label/k-point counts when number_kpoints is absent`, null],
   ])(`places labels at segment endpoints (%s)`, (_case, per_segment) => {
-    const labels = line_mode_labels(seg_labels, per_segment, 6)
-    expect(labels).toEqual([`Γ`, null, `X`, `X`, null, `L`])
+    const result = line_mode_labels(seg_labels, per_segment, 6)
+    expect(result?.labels).toEqual([`Γ`, null, `X`, `X`, null, `L`])
+    expect(result?.per_segment).toBe(3)
   })
 
   it.each([
@@ -128,6 +129,27 @@ describe(`line-mode k-path labels`, () => {
     [`missing labels`, null, 3, 6],
   ])(`returns null for %s`, (_case, labels, per_segment, n_kpoints) => {
     expect(line_mode_labels(labels, per_segment, n_kpoints)).toBeNull()
+  })
+})
+
+describe(`HDF5 ion type expansion`, () => {
+  it.each([
+    [`negative`, -1],
+    [`fractional`, 1.5],
+    [`infinite`, Infinity],
+  ])(`rejects %s ion counts`, (_case, ion_count) => {
+    expect(() => expand_ion_types([`Si`], [ion_count])).toThrow(
+      `Invalid ion count for Si: ${ion_count}`,
+    )
+  })
+
+  it.each([
+    [[`Si`, `O`], [2]],
+    [[`Si`], [2, 1]],
+  ])(`rejects mismatched lengths (%j vs %j)`, (ion_types, ion_counts) => {
+    expect(() => expand_ion_types(ion_types, ion_counts)).toThrow(
+      `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
+    )
   })
 })
 

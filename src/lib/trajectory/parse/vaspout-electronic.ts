@@ -129,12 +129,11 @@ const reciprocal_lattice = (lattice: Matrix3x3 | null): Matrix3x3 => {
 // (null between endpoints) or null when the layout doesn't match. When the
 // input/kpoints*/number_kpoints dataset is absent (not all writers emit it),
 // the segment length is inferred from the label/k-point counts instead.
-// Exported for unit tests only.
 export const line_mode_labels = (
   labels: string[] | null,
   per_segment_dataset: number | null,
   n_kpoints: number,
-): (string | null)[] | null => {
+): { labels: (string | null)[]; per_segment: number } | null => {
   if (!labels || labels.length < 2 || labels.length % 2 !== 0) return null
   const n_segments = labels.length / 2
   const per_segment = per_segment_dataset ?? n_kpoints / n_segments
@@ -146,7 +145,7 @@ export const line_mode_labels = (
     per_kpoint[seg * per_segment] = pretty_sym_point(labels[2 * seg])
     per_kpoint[seg * per_segment + per_segment - 1] = pretty_sym_point(labels[2 * seg + 1])
   }
-  return per_kpoint
+  return { labels: per_kpoint, per_segment }
 }
 
 export const read_vaspout_bands = (
@@ -184,13 +183,14 @@ export const read_vaspout_bands = (
         : undefined
 
     const recip = reciprocal_lattice(read_lattice(h5_file))
-    const labels = line_mode_labels(
+    const line_mode = line_mode_labels(
       to_string_array(
         read_first_dataset(h5_file, [`${group}/kpoints_labels`, ...KPOINT_LABEL_PATHS]),
       ),
       to_scalar_number(read_first_dataset(h5_file, KPOINTS_PER_SEGMENT_PATHS)),
       n_kpoints,
     )
+    const labels = line_mode?.labels ?? null
 
     const distance: number[] = []
     const qpoints: QPoint[] = []
@@ -210,7 +210,7 @@ export const read_vaspout_bands = (
     }
 
     // One branch per labeled line-mode segment, else a single whole-path branch
-    const per_segment = labels ? n_kpoints / (labels.filter(Boolean).length / 2) : 0
+    const per_segment = line_mode?.per_segment ?? 0
     const branches: Branch[] = []
     if (labels && Number.isInteger(per_segment) && per_segment >= 2) {
       for (let start = 0; start < n_kpoints; start += per_segment) {

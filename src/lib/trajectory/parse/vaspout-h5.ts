@@ -287,15 +287,21 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
       // file can still render its electronic results.
       return electronic_only_trajectory(h5_file, `${TRAJ_POSITIONS} / ${FINAL_POSITIONS}`)
     }
-    frames.push(
-      build_frame(
-        final_lattice_data,
-        final_positions_data,
-        0,
-        scf_history?.at(-1),
-        energies?.at(-1)?.[energy_col],
-      ),
-    )
+    try {
+      frames.push(
+        build_frame(
+          final_lattice_data,
+          final_positions_data,
+          0,
+          scf_history?.at(-1),
+          energies?.at(-1)?.[energy_col],
+        ),
+      )
+    } catch {
+      // Geometry datasets present but malformed (file torn mid-write): same
+      // electronic-only fallback as when they're missing entirely.
+      return electronic_only_trajectory(h5_file, `${FINAL_LATTICE} / ${FINAL_POSITIONS}`)
+    }
   }
 
   // Static/single-point runs (one ionic step) get their SCF electronic steps

@@ -177,7 +177,7 @@ function create_series_from_stats(
       is_energy: boolean
     }
   >,
-  property_config: Record<string, { label: string; unit: string }>,
+  property_config: Record<string, TrajPropertyConfig>,
   colors: readonly string[],
 ): DataSeries[] {
   const all_series: DataSeries[] = []
@@ -402,6 +402,7 @@ export function generate_axis_labels(plot_series: DataSeries[]): {
 // SCF convergence residuals (|ΔE|, density rms) span 6+ decades and degenerate into
 // hockey sticks on linear axes; plain energies (large negative) stay linear.
 const LOG_SCALE_MIN_DECADE_SPAN = 3
+const LOG_SCALE_AXIS_GROUPS = new Set([`eV (SCF)`])
 
 export function generate_axis_scale_types(plot_series: DataSeries[]): {
   y1: ScaleType
@@ -412,6 +413,7 @@ export function generate_axis_scale_types(plot_series: DataSeries[]): {
     let max_val = -Infinity
     for (const srs of plot_series) {
       if (!srs.visible || (srs.y_axis ?? `y1`) !== axis) continue
+      if (!srs.axis_group || !LOG_SCALE_AXIS_GROUPS.has(srs.axis_group)) return `linear`
       for (const val of srs.y) {
         if (!Number.isFinite(val)) continue
         if (val < min_val) min_val = val

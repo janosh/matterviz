@@ -7,7 +7,7 @@
   import Icon from '$lib/Icon.svelte'
   import { drag_over_handlers, handle_url_drop, load_from_url } from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
-  import { format_num, trajectory_property_config } from '$lib/labels'
+  import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
@@ -532,11 +532,13 @@
   let extended_config = $derived.by(() => {
     if (!ELEM_PROPERTY_LABELS) return trajectory_property_config
 
-    const custom_config: Record<string, { label: string; unit: string }> = {}
+    const custom_config: Record<string, TrajPropertyConfig> = {}
     for (const [key, label] of Object.entries(ELEM_PROPERTY_LABELS)) {
       const existing =
         trajectory_property_config[key] || trajectory_property_config[key.toLowerCase()]
-      custom_config[key] = { label, unit: existing?.unit || `` }
+      // Spread the existing config so fields like axis_group survive the
+      // label override (losing axis_group would break dedicated-axis grouping)
+      custom_config[key] = { ...existing, label, unit: existing?.unit || `` }
     }
     return { ...trajectory_property_config, ...custom_config }
   })

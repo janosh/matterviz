@@ -69,17 +69,27 @@ export const scale_matrix = (matrix: Matrix3x3, scale: number): Matrix3x3 =>
   scale === 1 ? matrix : (matrix.map((row) => row.map((val) => val * scale)) as Matrix3x3)
 
 // Expand VASP's (ion_types, number_ion_types) pair into per-atom symbols,
-// e.g. ([Ga, Sb], [1, 1]) -> [Ga, Sb]. Throws on unknown symbols.
+// e.g. ([Ga, Sb], [1, 1]) -> [Ga, Sb]. Throws on unknown symbols and
+// malformed counts so torn/corrupt HDF5 input fails loudly, not by dropping atoms.
 export const expand_ion_types = (
   ion_types: string[],
   ion_counts: number[],
 ): ElementSymbol[] => {
+  if (ion_types.length !== ion_counts.length) {
+    throw new Error(
+      `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
+    )
+  }
   const elements: ElementSymbol[] = []
   for (const [type_idx, symbol] of ion_types.entries()) {
     if (!is_elem_symbol(symbol)) {
       throw new Error(`Unknown element symbol in ion_types: ${symbol}`)
     }
-    for (let count = 0; count < ion_counts[type_idx]; count++) elements.push(symbol)
+    const ion_count = ion_counts[type_idx]
+    if (!Number.isFinite(ion_count) || !Number.isInteger(ion_count) || ion_count < 0) {
+      throw new Error(`Invalid ion count for ${symbol}: ${ion_count}`)
+    }
+    for (let count = 0; count < ion_count; count++) elements.push(symbol)
   }
   return elements
 }

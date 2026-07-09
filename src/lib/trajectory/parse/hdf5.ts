@@ -2,7 +2,7 @@
 // torch-sim / generic dataset-alias layout after a single file open.
 import { calc_lattice_params, transpose_3x3_matrix } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
-import type { Dataset, Group } from 'h5wasm'
+import type { Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {
   convert_atomic_numbers,
@@ -11,7 +11,7 @@ import {
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryType } from '$lib/trajectory/index'
-import { is_hdf5_dataset, is_hdf5_group, with_h5_file } from './h5-utils'
+import { is_hdf5_dataset, is_hdf5_group, read_dataset, with_h5_file } from './h5-utils'
 import { is_vaspout_h5_file, parse_vaspout_h5_file } from './vaspout-h5'
 
 // Routes an opened HDF5 file to the right parser: vaspout.h5 has the VASP 6.x
@@ -35,42 +35,45 @@ const CELL_ALIASES = [`cell`, `cells`, `lattice`]
 const ENERGY_ALIASES = [`potential_energy`, `energy`]
 
 function parse_torch_sim_h5_file(h5_file: h5wasm.File): TrajectoryType {
+  const alias_groups = [POSITION_ALIASES, ATOMIC_NUMBER_ALIASES, CELL_ALIASES, ENERGY_ALIASES]
+  const all_aliases = new Set(alias_groups.flat())
   const found_paths: Record<string, string> = {}
-  const first_path = (names: string[]) => names.map((name) => found_paths[name]).find(Boolean)
+  const found_alias_groups = new Set<number>()
   let total_groups_found = 0
-  const find_dataset = (names: string[]) => {
-    const discover = (parent: Group, path = ``): Dataset | null => {
-      total_groups_found++
-      for (const name of parent.keys()) {
-        const item = parent.get(name)
-        const full_path = path ? `${path}/${name}` : `/${name}`
-        if (names.includes(name) && is_hdf5_dataset(item)) {
-          found_paths[name] = full_path
-          return item
+
+  const discover = (parent: Group, path = ``): void => {
+    total_groups_found++
+    for (const name of parent.keys()) {
+      const item = parent.get(name)
+      const full_path = path ? `${path}/${name}` : `/${name}`
+      if (is_hdf5_dataset(item) && all_aliases.has(name)) {
+        found_paths[name] ??= full_path
+        for (const [group_idx, aliases] of alias_groups.entries()) {
+          if (aliases.includes(name)) found_alias_groups.add(group_idx)
         }
-        if (is_hdf5_group(item)) {
-          const result = discover(item, full_path)
-          if (result) return result
-        }
+        if (found_alias_groups.size === alias_groups.length) return
+      } else if (is_hdf5_group(item)) {
+        discover(item, full_path)
+        if (found_alias_groups.size === alias_groups.length) return
       }
-      return null
     }
-    return discover(h5_file as unknown as Group)
+  }
+  discover(h5_file as unknown as Group)
+
+  const first_path = (names: string[]): string | undefined =>
+    names.map((name) => found_paths[name]).find(Boolean)
+  const find_dataset = (names: string[]): unknown => {
+    const path = first_path(names)
+    return path ? read_dataset(h5_file, path) : null
   }
 
-  const positions_data = find_dataset(POSITION_ALIASES)?.to_array() as
-    | number[][]
-    | number[][][]
-    | null
-  const atomic_numbers_data = find_dataset(ATOMIC_NUMBER_ALIASES)?.to_array() as
+  const positions_data = find_dataset(POSITION_ALIASES) as number[][] | number[][][] | null
+  const atomic_numbers_data = find_dataset(ATOMIC_NUMBER_ALIASES) as
     | number[]
     | number[][]
     | null
-  const cells_data = find_dataset(CELL_ALIASES)?.to_array() as number[][][] | null
-  const energies_data = find_dataset(ENERGY_ALIASES)?.to_array() as
-    | number[]
-    | number[][]
-    | null
+  const cells_data = find_dataset(CELL_ALIASES) as number[][][] | null
+  const energies_data = find_dataset(ENERGY_ALIASES) as number[] | number[][] | null
 
   if (!positions_data || !atomic_numbers_data) {
     const missing_datasets = []
@@ -99,22 +102,36 @@ function parse_torch_sim_h5_file(h5_file: h5wasm.File): TrajectoryType {
   const atomic_numbers = atomic_numbers_are_frames
     ? atomic_numbers_data
     : [atomic_numbers_data as number[]]
-  const frames = positions.map((frame_pos, idx) => {
-    const frame_atomic_numbers = atomic_numbers[idx] || atomic_numbers[0]
-    const frame_elements = convert_atomic_numbers(frame_atomic_numbers)
-    const cell = cells_data?.[idx]
-    const lattice_mat = cell ? transpose_3x3_matrix(validate_3x3_matrix(cell)) : undefined
-    const energy_entry = energies_data?.[idx]
-    const energy = Array.isArray(energy_entry) ? energy_entry[0] : energy_entry
-    const metadata: Record<string, unknown> = {}
-    if (energy !== undefined) metadata.energy = energy
-    if (lattice_mat) {
-      metadata.volume = calc_lattice_params(lattice_mat).volume
-    }
-    const pbc: Pbc = lattice_mat ? [true, true, true] : [false, false, false]
+  const frames: TrajectoryType[`frames`] = []
+  let dropped_steps = 0
+  for (const [idx, frame_pos] of positions.entries()) {
+    try {
+      const frame_atomic_numbers = atomic_numbers[idx] || atomic_numbers[0]
+      const frame_elements = convert_atomic_numbers(frame_atomic_numbers)
+      const cell = cells_data?.[idx]
+      const lattice_mat = cell ? transpose_3x3_matrix(validate_3x3_matrix(cell)) : undefined
+      const energy_entry = energies_data?.[idx]
+      const energy = Array.isArray(energy_entry) ? energy_entry[0] : energy_entry
+      const metadata: Record<string, unknown> = {}
+      if (energy !== undefined) metadata.energy = energy
+      if (lattice_mat) {
+        metadata.volume = calc_lattice_params(lattice_mat).volume
+      }
+      const pbc: Pbc = lattice_mat ? [true, true, true] : [false, false, false]
 
-    return create_trajectory_frame(frame_pos, frame_elements, lattice_mat, pbc, idx, metadata)
-  })
+      frames.push(
+        create_trajectory_frame(frame_pos, frame_elements, lattice_mat, pbc, idx, metadata),
+      )
+    } catch (err) {
+      // Same torn-tail resiliency as the vaspout parser: interrupted writers
+      // zero-fill trailing chunks (atomic number 0, degenerate cells), which
+      // fails validation — keep the frames parsed so far and report the rest
+      // as dropped. A file whose very first frame is unparsable still throws.
+      if (frames.length === 0) throw err
+      dropped_steps = positions.length - idx
+      break
+    }
+  }
 
   const first_frame_elements =
     frames[0]?.structure.sites.map((site) => site.species[0].element) ?? []
@@ -135,6 +152,7 @@ function parse_torch_sim_h5_file(h5_file: h5wasm.File): TrajectoryType {
       },
       total_groups_found,
       has_cell_info: Boolean(cells_data),
+      ...(dropped_steps > 0 ? { dropped_steps } : {}),
     },
   }
 }

@@ -56,11 +56,13 @@ const create_series = (
   label = `Test`,
   unit = ``,
   y_axis: `y1` | `y2` = `y1`,
+  axis_group?: string,
 ): DataSeries => ({
   x: y_values.map((_, idx) => idx),
   y: y_values,
   label,
   unit,
+  ...(axis_group ? { axis_group } : {}),
   visible,
   y_axis,
   markers: `line` as const,
@@ -383,8 +385,13 @@ describe(`generate_axis_labels`, () => {
 describe(`generate_axis_scale_types`, () => {
   it.each([
     {
-      name: `positive series spanning >=3 decades goes log`,
+      name: `positive non-SCF series spanning >=3 decades stays linear`,
       series: [create_series([1e-6, 1e-4, 1e-2, 1])],
+      expected: { y1: `linear`, y2: `linear` },
+    },
+    {
+      name: `positive SCF axis group spanning >=3 decades goes log`,
+      series: [create_series([1e-6, 1e-4, 1e-2, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
       expected: { y1: `log`, y2: `linear` },
     },
     {
@@ -414,7 +421,7 @@ describe(`generate_axis_scale_types`, () => {
       name: `per-axis decision: linear energy on y1, log residual on y2`,
       series: [
         create_series([-10, -11, -12], true, `Energy`, `eV`, `y1`),
-        create_series([1, 1e-3, 1e-7], true, `Residual`, `a.u.`, `y2`),
+        create_series([1, 1e-3, 1e-7], true, `Residual`, `eV`, `y2`, `eV (SCF)`),
       ],
       expected: { y1: `linear`, y2: `log` },
     },
@@ -429,7 +436,7 @@ describe(`generate_axis_scale_types`, () => {
     { name: `no series`, series: [], expected: { y1: `linear`, y2: `linear` } },
     {
       name: `NaN values are ignored for the decision`,
-      series: [create_series([NaN, 1e-5, 1])],
+      series: [create_series([NaN, 1e-5, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
       expected: { y1: `log`, y2: `linear` },
     },
   ])(`$name`, ({ series, expected }) => {

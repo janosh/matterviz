@@ -1,4 +1,5 @@
 import { parse_structure_file } from '$lib/structure/parse'
+import type * as TrajectoryParseModule from '$lib/trajectory/parse'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -18,6 +19,13 @@ import {
 // zero atoms (e.g. a CIF with cell params but no _atom_site records). Mock it to that
 // shape to exercise parse_file_content's no-atoms guard.
 vi.mock('$lib/structure/parse', () => ({ parse_structure_file: vi.fn() }))
+
+// Wrap (not replace) parse_trajectory_data so most tests hit the real parser
+// while individual tests can inject degenerate outputs via mockResolvedValueOnce.
+vi.mock('$lib/trajectory/parse', async (import_original) => {
+  const original = await import_original<typeof TrajectoryParseModule>()
+  return { ...original, parse_trajectory_data: vi.fn(original.parse_trajectory_data) }
+})
 
 // Svelte components are stubbed out in test mode (see vite.config.ts svelte-mock), so
 // spy on mount to assert which props create_display passes to the mounted component.
@@ -176,6 +184,20 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(data.bands?.nb_bands).toBe(24)
   })
 
+  test(`0-frame trajectory with all-null electronic falls through to trajectory`, async () => {
+    // The vaspout parser never emits { dos: null, bands: null } today, but the
+    // metadata cast in parse.ts is unchecked — an empty electronic object must
+    // not route to vaspout_electronic (create_display would mount Dos with
+    // doses: null, violating DosInput).
+    const { parse_trajectory_data } = await import(`$lib/trajectory/parse`)
+    vi.mocked(parse_trajectory_data).mockResolvedValueOnce({
+      frames: [],
+      metadata: { electronic: { dos: null, bands: null } },
+    })
+    const result = await parse_file_content(`ignored`, `vaspout.h5`, true)
+    expect(result.type).toBe(`trajectory`)
+  })
+
   test(`create_display mounts electronic bands with band_type electronic`, async () => {
     const base64 = fixture_base64(`vaspout-tinisn-bands-only.h5`)
     const result = await parse_file_content(base64, `vaspout.h5`, true)
@@ -275,27 +297,36 @@ describe(`large file marker parsing`, () => {
 
 describe(`VS Code frame loader`, () => {
   test(`includes filename in frame requests for the host streaming bridge`, async () => {
-    const post_message = vi.fn()
-    const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
-      postMessage: post_message,
-    })
-    const frame_promise = loader.load_frame(``, 7)
+    // post_request listens on globalThis, which is a real EventTarget in the
+    // webview but not in vitest's node environment — bridge it for the test
+    const message_bus = new EventTarget()
+    vi.stubGlobal(`addEventListener`, message_bus.addEventListener.bind(message_bus))
+    vi.stubGlobal(`removeEventListener`, message_bus.removeEventListener.bind(message_bus))
+    try {
+      const post_message = vi.fn()
+      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
+        postMessage: post_message,
+      })
+      const frame_promise = loader.load_frame(``, 7)
 
-    expect(post_message).toHaveBeenCalledWith({
-      command: `request_frame`,
-      request_id: expect.any(String),
-      file_path: `/tmp/movie.extxyz`,
-      filename: `movie.extxyz`,
-      frame_index: 7,
-    })
+      expect(post_message).toHaveBeenCalledWith({
+        command: `request_frame`,
+        request_id: expect.any(String),
+        file_path: `/tmp/movie.extxyz`,
+        filename: `movie.extxyz`,
+        frame_index: 7,
+      })
 
-    const [{ request_id }] = post_message.mock.calls[0]
-    globalThis.dispatchEvent(
-      new MessageEvent(`message`, {
-        data: { command: `frame_response`, request_id, frame: null },
-      }),
-    )
-    await expect(frame_promise).resolves.toBeNull()
+      const [{ request_id }] = post_message.mock.calls[0]
+      message_bus.dispatchEvent(
+        new MessageEvent(`message`, {
+          data: { command: `frame_response`, request_id, frame: null },
+        }),
+      )
+      await expect(frame_promise).resolves.toBeNull()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 
