@@ -20,7 +20,8 @@
   ],
   "type": "module",
   "sideEffects": [
-    "**/*.css"
+    "**/*.css",
+    "**/file-viewer/main.*"
   ],
   "exports": {
     ".": {
@@ -62,6 +63,14 @@
     "./feedback": {
       "types": "./dist/feedback/index.d.ts",
       "default": "./dist/feedback/index.js"
+    },
+    "./file-viewer": {
+      "types": "./dist/file-viewer/index.d.ts",
+      "default": "./dist/file-viewer/index.js"
+    },
+    "./file-viewer/parse": {
+      "types": "./dist/file-viewer/parse.d.ts",
+      "default": "./dist/file-viewer/parse.js"
     },
     "./fermi-surface": {
       "types": "./dist/fermi-surface/index.d.ts",
