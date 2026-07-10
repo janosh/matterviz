@@ -1217,7 +1217,7 @@
       {@const legend_pos = placed_coords(
         legend_auto_outside,
         { x: legend_outside_x, y: legend_outside_y },
-        legend_placement,
+        legend_tween.placed(),
         legend_tween.coords.current,
         { x: pad.l + 10, y: pad.t + 10 },
       )}

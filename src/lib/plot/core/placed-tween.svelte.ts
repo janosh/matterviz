@@ -26,7 +26,7 @@ export function create_placed_tween(opts: {
   suspended?: () => boolean
   // Manual override (e.g. user-dragged position): applied immediately, no animation
   manual_position?: () => Point | null
-}): { coords: Tween<Point>; set_locked: (locked: boolean) => void } {
+}): { coords: Tween<Point>; placed: () => boolean; set_locked: (locked: boolean) => void } {
   // Hover lock: placement updates pause while the element is hovered; release is
   // debounced so brief mouse-outs don't cause jumps
   let hover_locked = $state(false)
@@ -38,10 +38,9 @@ export function create_placed_tween(opts: {
     else unlock_timeout = setTimeout(() => (hover_locked = false), HOVER_DEBOUNCE_MS)
   }
 
-  // Plain (untracked) flags: only read/written inside the effect below, and outcomes
-  // don't depend on re-running when they flip
+  // Plain (untracked) dimensions only affect the next effect run
   let prev_dims: { width: number; height: number } | null = null
-  let has_initial_placement = false
+  let placed = $state(false)
 
   const coords = new Tween<Point>(
     { x: 0, y: 0 },
@@ -68,11 +67,14 @@ export function create_placed_tween(opts: {
     // Track dimensions for resize detection
     const dims_changed = !prev_dims || prev_dims.width !== width || prev_dims.height !== height
     if (dims_changed) prev_dims = { width, height }
+    const responsive = opts.responsive()
+    // A non-responsive tween tracks `placed` once so it immediately reruns and
+    // unsubscribes from the expensive placement chain after its first placement.
+    const has_initial_placement = responsive ? untrack(() => placed) : placed
 
     // Skip expensive DOM placement before evaluating it: non-responsive
     // elements stay fixed after their initial placement until the plot resizes.
-    if (!dims_changed && (hover_locked || (!opts.responsive() && has_initial_placement)))
-      return
+    if (!dims_changed && (hover_locked || (!responsive && has_initial_placement))) return
     const placement = opts.placement()
     if (!placement) return
 
@@ -82,8 +84,8 @@ export function create_placed_tween(opts: {
       has_initial_placement ? undefined : { duration: 0 },
     )
     // Only lock position after the element has an actual measured size
-    if (opts.element()) has_initial_placement = true
+    if (opts.element()) placed = true
   })
 
-  return { coords, set_locked }
+  return { coords, placed: () => placed, set_locked }
 }

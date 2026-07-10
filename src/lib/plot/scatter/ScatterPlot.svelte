@@ -61,6 +61,7 @@
     has_explicit_position,
     measured_footprint,
     place_decorations,
+    placed_coords,
   } from '$lib/plot/core/auto-place'
   import {
     AXIS_DEFAULTS,
@@ -105,9 +106,9 @@
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
     filter_padding,
+    full_footprint_or,
     LABEL_GAP_DEFAULT,
     y2_axis_label_x,
-    measure_full_footprint,
     measure_max_tick_width,
     sample_series_obstacle_points,
   } from '$lib/plot/core/layout'
@@ -417,12 +418,15 @@
   const colorbar_is_horizontal = $derived(
     (color_bar?.orientation ?? `horizontal`) === `horizontal`,
   )
+  // full footprint (not the offset box): colorbar tick labels are absolutely
+  // positioned outside the bar and must count toward reserved margins
   const colorbar_footprint = $derived(
-    colorbar_element?.offsetWidth && colorbar_element?.offsetHeight
-      ? measure_full_footprint(colorbar_element)
-      : colorbar_is_horizontal
+    full_footprint_or(
+      colorbar_element,
+      colorbar_is_horizontal
         ? COLOR_BAR_DEFAULTS.horizontal_footprint
         : COLOR_BAR_DEFAULTS.vertical_footprint,
+    ),
   )
   const legend_footprint = $derived(
     measured_footprint(legend_element, { width: 120, height: 80 }),
@@ -1928,7 +1932,7 @@
     {/if}
 
     <!-- Color Bar -->
-    {#if color_bar && all_color_values.length > 0 && color_bar_placement}
+    {#if color_bar && all_color_values.length > 0}
       {@const color_domain = [
         (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
           auto_color_range[0],
@@ -1968,22 +1972,15 @@
     {#if legend != null && legend_data.length > 0 && (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)}
       {@const default_x = pad.l + 10}
       {@const default_y = pad.t + 10}
-      {@const current_x =
-        legend_is_dragging && legend_manual_position
-          ? legend_manual_position.x
-          : legend_auto_outside
-            ? legend_outside_x
-            : legend_placement
-              ? legend_tween.coords.current.x
-              : default_x}
-      {@const current_y =
-        legend_is_dragging && legend_manual_position
-          ? legend_manual_position.y
-          : legend_auto_outside
-            ? legend_outside_y
-            : legend_placement
-              ? legend_tween.coords.current.y
-              : default_y}
+      {@const auto_position = placed_coords(
+        legend_auto_outside,
+        { x: legend_outside_x, y: legend_outside_y },
+        legend_tween.placed(),
+        legend_tween.coords.current,
+        { x: default_x, y: default_y },
+      )}
+      {@const current_position =
+        legend_is_dragging && legend_manual_position ? legend_manual_position : auto_position}
       <PlotLegend
         bind:root_element={legend_element}
         series_data={legend_data}
@@ -2046,8 +2043,8 @@
         }}
         style={`
           position: absolute;
-          left: ${current_x}px;
-          top: ${current_y}px;
+          left: ${current_position.x}px;
+          top: ${current_position.y}px;
           pointer-events: auto;
           ${legend?.style ?? ``}
         `}

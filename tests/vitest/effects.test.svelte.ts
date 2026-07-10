@@ -68,8 +68,9 @@ test.each([
   ({ responsive, expected_calls }) => {
     const state = $state({ placement_input: 0, width: 100 })
     const placement = vi.fn(() => ({ x: state.placement_input, y: 20 }))
+    let placed_tween: ReturnType<typeof create_placed_tween> | undefined
     const dispose = $effect.root(() => {
-      create_placed_tween({
+      placed_tween = create_placed_tween({
         placement,
         dims: () => ({ width: state.width, height: 100 }),
         responsive: () => responsive,
@@ -82,6 +83,7 @@ test.each([
     flushSync(() => (state.placement_input += 1))
     flushSync(() => (state.width += 1))
     expect(placement).toHaveBeenCalledTimes(expected_calls)
+    expect(placed_tween?.placed()).toBe(true)
     dispose()
   },
 )
