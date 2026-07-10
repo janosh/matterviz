@@ -64,26 +64,25 @@ export function create_placed_tween(opts: {
       void coords.set({ x: manual.x, y: manual.y }, { duration: 0 })
       return
     }
-    const placement = opts.placement()
-    if (!placement) return
 
     // Track dimensions for resize detection
     const dims_changed = !prev_dims || prev_dims.width !== width || prev_dims.height !== height
     if (dims_changed) prev_dims = { width, height }
 
-    // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not
-    // yet initially placed))
-    const should_update =
-      dims_changed || (!hover_locked && (opts.responsive() || !has_initial_placement))
-    if (should_update) {
-      void coords.set(
-        { x: placement.x, y: placement.y },
-        // Skip animation on initial placement to avoid jump from (0, 0)
-        has_initial_placement ? undefined : { duration: 0 },
-      )
-      // Only lock position after the element has an actual measured size
-      if (opts.element()) has_initial_placement = true
-    }
+    // Skip expensive DOM placement before evaluating it: non-responsive
+    // elements stay fixed after their initial placement until the plot resizes.
+    if (!dims_changed && (hover_locked || (!opts.responsive() && has_initial_placement)))
+      return
+    const placement = opts.placement()
+    if (!placement) return
+
+    void coords.set(
+      { x: placement.x, y: placement.y },
+      // Skip animation on initial placement to avoid jump from (0, 0)
+      has_initial_placement ? undefined : { duration: 0 },
+    )
+    // Only lock position after the element has an actual measured size
+    if (opts.element()) has_initial_placement = true
   })
 
   return { coords, set_locked }
