@@ -3,14 +3,12 @@
 // Would have caught the bug where H had larger atomic_radius than O.
 
 import type { ElementSymbol } from '$lib/element'
-import { element_data } from '$lib/element'
+import { element_by_symbol, element_data } from '$lib/element'
 import { CATEGORY_COUNTS as expected_counts } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
 
-// Precomputed lookup map for O(1) element access
-const elements_by_symbol = new Map(element_data.map((el) => [el.symbol, el]))
 const get_element = (symbol: ElementSymbol) => {
-  const element = elements_by_symbol.get(symbol)
+  const element = element_by_symbol.get(symbol)
   if (!element) throw new Error(`Element ${symbol} not found`)
   return element
 }
@@ -334,17 +332,17 @@ describe(`data completeness`, () => {
   })
 
   test(`main elements (Z <= 86) have required properties`, () => {
-    const NOBLE_GASES = new Set([`He`, `Ne`, `Ar`, `Kr`, `Xe`, `Rn`])
-    const NULL_RADIUS_OK = new Set([...NOBLE_GASES, `At`, `Fr`])
+    const noble_gases = new Set([`He`, `Ne`, `Ar`, `Kr`, `Xe`, `Rn`])
+    const null_radius_ok = new Set([...noble_gases, `At`, `Fr`])
 
     for (const element of element_data.filter((entry) => entry.number <= 86)) {
       // All main elements need first_ionization
       expect(element.first_ionization, `${element.symbol} first_ionization`).not.toBeNull()
 
       // Non-noble gases need electronegativity and atomic_radius
-      if (!NOBLE_GASES.has(element.symbol)) {
+      if (!noble_gases.has(element.symbol)) {
         expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
-        if (!NULL_RADIUS_OK.has(element.symbol)) {
+        if (!null_radius_ok.has(element.symbol)) {
           expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
         }
       }

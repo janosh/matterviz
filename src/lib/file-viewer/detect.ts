@@ -1,11 +1,10 @@
 // Data type detection for JSON values -- determines which visualization component to use.
-// Used by JsonBrowser to detect renderable items in JSON trees and by main.ts
-// to decide whether to show the browser or render directly.
+// Used by JsonBrowser and the file renderer to select visualization components.
 
 import type { DefaultSettings } from '$lib/settings'
 import { is_optimade_raw } from '$lib/structure/parse'
 
-// Visualization types that can be rendered in the extension
+// Visualization types supported by the file viewer.
 export type RenderableType =
   | `structure`
   | `fermi_surface`
@@ -448,19 +447,15 @@ export function scan_renderable_paths(
 // Handles dotted keys ["foo.bar"], array indices [0], and bare dotted paths a.b.c.
 export function resolve_path(root: unknown, path: string): unknown {
   if (!path) return root
-  const segments: string[] = []
   const segment_re =
     /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g
+  let current: unknown = root
   let match: RegExpExecArray | null
   while ((match = segment_re.exec(path)) !== null) {
-    segments.push(match[1] ?? match[2] ?? match[3])
-  }
-  let current: unknown = root
-  for (const segment of segments) {
     if (current === null || current === undefined || typeof current !== `object`) {
       return undefined
     }
-    current = (current as Record<string, unknown>)[segment]
+    current = (current as Record<string, unknown>)[match[1] ?? match[2] ?? match[3]]
   }
   return current
 }
@@ -468,7 +463,7 @@ export function resolve_path(root: unknown, path: string): unknown {
 // Map centralized settings defaults to Structure component props.
 // TIGHT COUPLING WARNING: this mapping ties the settings schema (src/lib/settings.ts)
 // to the Structure prop interface — changes on either side need a manual update here.
-// Shared by the webview entry (main.ts) and the JSON browser panel mounts (JsonBrowser.svelte).
+// Shared by the file renderer and JSON browser panel mounts.
 export const structure_props = (defaults: DefaultSettings) => {
   const { structure } = defaults
   return {

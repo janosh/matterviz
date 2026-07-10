@@ -2,14 +2,13 @@
 
 import { default as element_data } from '$lib/element/data'
 import type { ElementSymbol } from '$lib/element'
+import { element_by_symbol } from '$lib/element/groups'
 import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 
 type SpatialGrid = Map<number, number[]>
 
-// Shared per-symbol element data lookup (also used by pbc.ts and polyhedra.ts)
-export const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
 const covalent_radii = new Map<string, number>(
   element_data.flatMap((el) =>
     el.covalent_radius === null ? [] : [[el.symbol, el.covalent_radius]],
@@ -29,11 +28,10 @@ export const get_majority_element = (site: Site | undefined): ElementSymbol | nu
 // or when force-included via `included_center_elements`. Shared by polyhedra.ts
 // (vertex/center selection) and pbc.ts (phase-2 boundary completion) so the bond
 // graph and the polyhedra it feeds stay consistent.
-const SPECTATOR_CATEGORIES = new Set([`alkali metal`])
 const HEAVY_ALKALINE_EARTHS = new Set([`Ca`, `Sr`, `Ba`, `Ra`])
 
 export const is_spectator_center = (element: string): boolean =>
-  SPECTATOR_CATEGORIES.has(element_lookup.get(element as ElementSymbol)?.category ?? ``) ||
+  element_by_symbol.get(element as ElementSymbol)?.category === `alkali metal` ||
   HEAVY_ALKALINE_EARTHS.has(element)
 
 // True if the composition contains a framework cation: a non-spectator element
@@ -47,12 +45,12 @@ export function has_framework_potential(elements: Iterable<string>): boolean {
   const els = [...new Set(elements)] // dedupe so callers can pass per-site element lists
   let max_en = -Infinity
   for (const el of els) {
-    const en = element_lookup.get(el as ElementSymbol)?.electronegativity
+    const en = element_by_symbol.get(el as ElementSymbol)?.electronegativity
     if (en != null && en > max_en) max_en = en
   }
   return els.some((el) => {
     if (is_spectator_center(el)) return false
-    const en = element_lookup.get(el as ElementSymbol)?.electronegativity
+    const en = element_by_symbol.get(el as ElementSymbol)?.electronegativity
     return en != null && en < max_en
   })
 }
@@ -863,7 +861,7 @@ export function electroneg_ratio(
   const elem_id_lookup = new Map<string, number>()
   for (let idx = 0; idx < n_sites; idx++) {
     const elem = get_majority_element(sites[idx])
-    const data = elem ? element_lookup.get(elem) : undefined
+    const data = elem ? element_by_symbol.get(elem) : undefined
     electronegs[idx] = data?.electronegativity ?? 2.0
     metal_flags[idx] = data?.metal ? 1 : 0
     nonmetal_flags[idx] = data?.nonmetal ? 1 : 0

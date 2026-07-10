@@ -240,6 +240,29 @@ describe(`BinnedScatterPlot`, () => {
     expect(rects_intersect, JSON.stringify({ anno_rect, bar_rect })).toBe(false)
   })
 
+  test(`keeps colorbar placement frozen across data changes`, async () => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(100)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
+    const layout_spy = vi
+      .spyOn(Element.prototype, `getBoundingClientRect`)
+      .mockReturnValue(DOMRect.fromRect({ width: 100, height: 60 }))
+    const series = $state([{ x: [0, 1], y: [0, 1] }])
+    mount(BinnedScatterPlot, {
+      target: document.body,
+      props: {
+        series,
+        density: density_mode_with_colorbar(),
+        style: `width: 800px; height: 600px`,
+      },
+    })
+    await settle()
+    layout_spy.mockClear()
+
+    series[0].x = [0.2, 0.8]
+    await tick()
+    expect(layout_spy).not.toHaveBeenCalled()
+  })
+
   test(`renders annotation in point mode (no colorbar) and skips wrapper when absent`, async () => {
     mount(BinnedScatterPlot, {
       target: document.body,

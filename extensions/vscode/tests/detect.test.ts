@@ -1,4 +1,4 @@
-// Tests for data type detection used by JsonBrowser and main.ts
+// Tests for file-viewer data type detection.
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
@@ -7,7 +7,7 @@ import {
   is_plottable_data,
   resolve_path,
   scan_renderable_paths,
-} from '../src/webview/detect'
+} from '$lib/file-viewer/detect'
 
 const fixture = JSON.parse(
   gunzipSync(

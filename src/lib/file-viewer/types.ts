@@ -1,5 +1,4 @@
-// Shared types and constants between the extension host (extension.ts) and the webview (main.ts).
-// Both build pipelines import from this file to keep types in sync.
+// Shared file-viewer types and filename patterns.
 
 export type ViewType =
   | `trajectory`

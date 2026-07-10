@@ -65,6 +65,16 @@ export function measure_full_footprint(el: HTMLElement): { width: number; height
   return { width: right - root.left, height: bottom - root.top }
 }
 
+// Full footprint once the element is laid out, else `fallback` (offset dims read 0
+// before first render). NOT interchangeable with auto-place's measured_footprint:
+// that returns the offset box, which underestimates elements with overflowing
+// absolutely-positioned descendants like colorbar tick labels.
+export const full_footprint_or = (
+  el: HTMLElement | null | undefined,
+  fallback: { width: number; height: number },
+): { width: number; height: number } =>
+  el?.offsetWidth && el?.offsetHeight ? measure_full_footprint(el) : fallback
+
 // Calculate auto-adjusted padding based on tick label widths/heights
 // This ensures tick labels don't overlap with axis labels
 export interface AutoPaddingConfig {
@@ -330,10 +340,7 @@ export function compute_element_placement(
   // Measure the element's full footprint (incl. descendants that overflow its box,
   // such as colorbar tick labels) once it's laid out; fall back to element_size before
   // first render. Centralizing this keeps every plot's auto-placement overlap-free.
-  const { width: elem_width, height: elem_height } =
-    element?.offsetWidth && element?.offsetHeight
-      ? measure_full_footprint(element)
-      : element_size
+  const { width: elem_width, height: elem_height } = full_footprint_or(element, element_size)
 
   // Calculate valid placement region (plot bounds minus axis clearance)
   const valid_x_min = plot_bounds.x + axis_clearance

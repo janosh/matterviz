@@ -148,9 +148,12 @@ export function compute_treemap_layout<Metadata = Record<string, unknown>>(
     padding_inner = DEFAULTS.treemap.padding_inner,
     padding_top = DEFAULTS.treemap.padding_top,
     padding_outer = DEFAULTS.treemap.padding_outer,
+    // descending (matching the Treemap component): squarified tiling reads best
+    // with the largest cell top-left and smallest bottom-right
+    sort = `descending`,
     ...tree_opts
   } = opts
-  const { arcs, root, max_depth } = compute_sunburst_layout(data, tree_opts)
+  const { arcs, root, max_depth } = compute_sunburst_layout(data, { sort, ...tree_opts })
   const rects = tile_rects(arcs, 0, size, { padding_inner, padding_top, padding_outer })
   return { arcs, rects, root, max_depth }
 }
