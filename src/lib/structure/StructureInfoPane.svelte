@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { get_electro_neg_formula } from '$lib/composition'
-  import { element_data, type ElementSymbol } from '$lib/element'
+  import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
@@ -152,9 +152,6 @@
         : Math.max(current_idx - 1, 0)
     sibling_cards[next_idx]?.focus()
   }
-
-  const get_element_name = (element: string): string =>
-    element_data?.find((element_record) => element_record.symbol === element)?.name || element
 
   const site_summary = (card: SiteCard): string =>
     [card.element_name, ...card.details.map(({ label, value }) => `${label}: ${value}`)].join(
@@ -319,7 +316,7 @@
     if (!structure || !site_cards_visible) return []
     return structure.sites.map((site: Site, idx: number) => {
       const element = site.species?.[0]?.element || `Unknown`
-      const element_name = get_element_name(element)
+      const element_name = element_by_symbol.get(element as ElementSymbol)?.name ?? element
       const details: SiteDetail[] = []
       for (const [label, key, coords, unit] of [
         [`Fractional`, `fractional`, site.abc, ``],
