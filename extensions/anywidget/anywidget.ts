@@ -21,6 +21,7 @@ import {
   SpacegroupBarPlot,
   Structure,
   Trajectory,
+  Treemap,
   XrdPlot,
 } from 'matterviz'
 import app_css from 'matterviz/app.css?raw'
@@ -307,6 +308,9 @@ type WidgetSpec = {
   drive: readonly DrivenProp[]
   base_drive?: readonly DrivenProp[]
   interactions?: (model: AnyModel) => { props: Record<string, unknown>; cleanup?: () => void }
+  // Model traits written by interaction callbacks (not derivable from drive specs);
+  // listed so WIDGET_MODEL_KEYS reflects the full Python<->JS trait contract.
+  interaction_model_keys?: readonly string[]
 }
 
 // Base props every widget gets unless its spec sets base_drive. style is the notebook
@@ -405,6 +409,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     base_drive: style_base_drive,
     drive: [...scatter_plot_drive, drive_prop(`selected_point`)],
     interactions: scatter_interactions,
+    interaction_model_keys: [`active_point`, `hovered_point`],
   },
   scatter_plot_3d: {
     component: ScatterPlot3D,
@@ -597,7 +602,58 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     base_drive: style_base_drive,
     drive: drive_props([`entries`, `config`, `temperature`]),
   },
+  treemap: {
+    // Treemap exposes show_controls as a top-level prop, so the default
+    // top_level_base_drive applies. color_values/tooltip/cell_content are
+    // functions/snippets and cannot cross the JSON trait bridge.
+    component: Treemap,
+    drive: [
+      ...drive_props([
+        `data`,
+        `value_mode`,
+        `sort`,
+        `level_lighten`,
+        `min_fraction`,
+        `other_label`,
+        `max_depth`,
+        `padding_inner`,
+        `padding_top`,
+        `padding_outer`,
+        `show_labels`,
+        `label_text`,
+        `zoom_on_click`,
+        `show_breadcrumbs`,
+        `color_scale`,
+        `color_range`,
+        `colorbar`,
+        `legend`,
+        `show_legend`,
+        `value_format`,
+        `padding`,
+        `export_buttons`,
+        `export_filename`,
+        `fullscreen_toggle`,
+      ]),
+      // Two-way: click-zoom in the UI notifies Python; Python can re-root the view
+      writeback_prop(`zoom_root_id`),
+    ],
+  },
 }
+
+// Machine-readable trait contract: for each widget_type, every model trait the JS
+// side reads (drive/derived/writeback deps + base drive) or writes (interaction
+// callbacks). Consumed by pymatviz's prop-parity test to flag Python widget traits
+// the frontend would silently ignore (and frontend props Python cannot set).
+export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromEntries(
+  Object.entries(WIDGETS).map(([widget_type, spec]) => {
+    const driven_props = [...(spec.base_drive ?? top_level_base_drive), ...spec.drive]
+    const model_keys = driven_props.flatMap(({ deps }) => deps)
+    return [
+      widget_type,
+      [...new Set([...model_keys, ...(spec.interaction_model_keys ?? [])])].sort(),
+    ]
+  }),
+)
 
 // Detect widget type and render
 const render: Render = (props) => {

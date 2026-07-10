@@ -31,6 +31,7 @@ vi.mock(`matterviz`, async () => {
     `SpacegroupBarPlot`,
     `Structure`,
     `Trajectory`,
+    `Treemap`,
     `XrdPlot`,
   ]
   return Object.fromEntries(component_names.map((name) => [name, stub_module.default]))
@@ -41,7 +42,7 @@ vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 vi.mock(`matterviz/theme/themes`, () => ({}))
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
-const { WIDGETS, mount_spec } = anywidget_module
+const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
 
 type ModelArg = Parameters<typeof mount_spec>[0]
 // Cast the mock to the bridge's model type rather than importing anywidget/types.
@@ -166,34 +167,12 @@ describe(`scatter_plot wiring`, () => {
 })
 
 describe(`structure wiring`, () => {
-  test(`selected_sites + hovered_site_idx are two-way; highlighted_sites is drive-only`, () => {
+  test(`highlighted_sites is drive-only`, () => {
     const model = new MockModel({
       widget_type: `structure`,
-      selected_sites: [],
-      hovered_site_idx: null,
       highlighted_sites: [],
     })
     const stub = run_widget(`structure`, model)
-    expect(model.save_count).toBe(0) // initial writeback effects are no-ops
-
-    // component interaction -> model (writeback)
-    stub.write(`selected_sites`, [3])
-    flushSync()
-    expect(model.state.selected_sites).toEqual([3])
-
-    stub.write(`hovered_site_idx`, 2)
-    flushSync()
-    expect(model.state.hovered_site_idx).toBe(2)
-
-    // Python -> component (drive)
-    model.push_from_python(`selected_sites`, [5, 6])
-    flushSync()
-    expect(stub.read().selected_sites).toEqual([5, 6])
-
-    model.push_from_python(`hovered_site_idx`, 9)
-    flushSync()
-    expect(stub.read().hovered_site_idx).toBe(9)
-
     model.push_from_python(`highlighted_sites`, [1, 4])
     flushSync()
     expect(stub.read().highlighted_sites).toEqual([1, 4])
@@ -228,27 +207,6 @@ describe(`structure wiring`, () => {
 })
 
 describe(`trajectory wiring`, () => {
-  test.each([
-    [`current_step_idx`, 7, 3],
-    [`display_mode`, `scatter`, `structure`],
-  ] as const)(`%s is two-way (writeback + drive)`, (key, local_value, python_value) => {
-    const model = new MockModel({
-      widget_type: `trajectory`,
-      current_step_idx: 0,
-      display_mode: `structure+scatter`,
-    })
-    const stub = run_widget(`trajectory`, model)
-    expect(model.save_count).toBe(0)
-
-    stub.write(key, local_value)
-    flushSync()
-    expect(model.state[key]).toBe(local_value)
-
-    model.push_from_python(key, python_value)
-    flushSync()
-    expect(stub.read()[key]).toBe(python_value)
-  })
-
   test(`property_labels trait is delivered to the component as ELEM_PROPERTY_LABELS`, () => {
     // Trajectory.svelte consumes ELEM_PROPERTY_LABELS, not property_labels.
     const labels = { energy: `Energy (eV)` }
@@ -256,6 +214,20 @@ describe(`trajectory wiring`, () => {
     const stub = run_widget(`trajectory`, model)
     expect(stub.read().ELEM_PROPERTY_LABELS).toEqual(labels)
     expect(`property_labels` in stub.read()).toBe(false) // renamed, not passed raw
+  })
+})
+
+describe(`WIDGET_MODEL_KEYS contract`, () => {
+  test(`includes drive deps and interaction keys`, () => {
+    // spot-check: derived-prop deps, writeback traits and interaction-written
+    // traits all surface in the contract
+    expect(WIDGET_MODEL_KEYS.structure).toEqual(
+      expect.arrayContaining([`atom_radius`, `selected_sites`, `show_controls`]),
+    )
+    expect(WIDGET_MODEL_KEYS.scatter_plot).toEqual(
+      expect.arrayContaining([`active_point`, `hovered_point`, `selected_point`]),
+    )
+    expect(WIDGET_MODEL_KEYS.treemap).toEqual(expect.arrayContaining([`zoom_root_id`]))
   })
 })
 
@@ -314,25 +286,37 @@ describe(`plot-family config wiring`, () => {
 // A missing/None writeback trait must seed (and revert to) the component's own
 // fallback, not null -- null would crash components that call .length/.includes
 // or do arithmetic on these props (see reactive_widget writeback_prop fallback).
-describe(`writeback fallback defaults`, () => {
+describe(`writeback wiring`, () => {
   test.each([
-    [`structure`, `selected_sites`, [], [1, 2]],
-    [`trajectory`, `current_step_idx`, 0, 3],
-    [`trajectory`, `display_mode`, `structure+scatter`, `scatter`],
+    [`structure`, `selected_sites`, [], [3], [5, 6]],
+    [`structure`, `hovered_site_idx`, null, 2, 9],
+    [`trajectory`, `current_step_idx`, 0, 7, 3],
+    [`trajectory`, `display_mode`, `structure+scatter`, `scatter`, `structure`],
+    [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
   ] as const)(
-    `%s %s falls back to its default when missing/cleared`,
-    (widget_type, key, default_value, driven_value) => {
+    `%s %s round-trips and falls back when cleared`,
+    (widget_type, key, default_value, local_value, python_value) => {
       const model = new MockModel({ widget_type }) // omit trait -> bridge seeds default
       const stub = run_widget(widget_type, model)
       expect(stub.read()[key]).toEqual(default_value)
+      expect(model.save_count).toBe(0) // initial writeback effects are no-ops
 
-      model.push_from_python(key, driven_value) // Python -> component (drive)
+      // component interaction -> model (writeback)
+      stub.write(key, local_value)
       flushSync()
-      expect(stub.read()[key]).toEqual(driven_value)
+      expect(model.state[key]).toEqual(local_value)
 
-      model.push_from_python(key, null) // cleared -> revert to default
+      // Python -> component (drive), without a writeback echo
+      const save_count = model.save_count
+      model.push_from_python(key, python_value)
+      flushSync()
+      expect(stub.read()[key]).toEqual(python_value)
+      expect(model.save_count).toBe(save_count)
+
+      model.push_from_python(key, null) // cleared -> revert to default, still no echo
       flushSync()
       expect(stub.read()[key]).toEqual(default_value)
+      expect(model.save_count).toBe(save_count)
     },
   )
 })
