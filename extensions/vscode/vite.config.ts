@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: `dist`,
     rollupOptions: {
-      input: resolve(import.meta.dirname, `src/webview/main.ts`),
+      input: resolve(import.meta.dirname, `../../src/lib/file-viewer/main.ts`),
       output: { entryFileNames: `webview.js`, format: `es` },
     },
     emptyOutDir: false,

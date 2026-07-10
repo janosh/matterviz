@@ -17,10 +17,10 @@ type Size = { width: number; height: number }
 export const placed_coords = (
   auto_outside: boolean,
   outside: Pt,
-  placement: Pt | null,
+  placed: boolean,
   tweened: Pt,
   fallback: Pt,
-): Pt => (auto_outside ? outside : placement ? tweened : fallback)
+): Pt => (auto_outside ? outside : placed ? tweened : fallback)
 
 // True when the user pinned a decoration via its style (an edge property or position:absolute),
 // in which case auto-placement must leave it alone.

@@ -6,11 +6,12 @@ import {
   calc_coordination_nums,
   type CoordinationData,
 } from '$lib/coordination/calc-coordination'
+import { element_by_symbol } from '$lib/element/groups'
 import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { element_lookup, get_majority_element } from '$lib/structure/bonding'
+import { get_majority_element } from '$lib/structure/bonding'
 import { wrap_frac_coord } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
@@ -172,7 +173,7 @@ function expand_structure_for_pbc(
   // Covalent radius per atom (0 = unknown → forms no bonds → needs no images)
   const radii = cell_sites.map((site) => {
     const elem = get_majority_element(site)
-    return (elem ? element_lookup.get(elem)?.covalent_radius : undefined) ?? 0
+    return (elem ? element_by_symbol.get(elem)?.covalent_radius : undefined) ?? 0
   })
   let max_radius = 0
   for (const radius of radii) if (radius > max_radius) max_radius = radius

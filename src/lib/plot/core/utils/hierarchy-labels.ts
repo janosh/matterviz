@@ -108,6 +108,7 @@ const EXPORT_INLINE_STYLES = [
   `font-weight`,
   `opacity`,
 ]
+const EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
 
 export function export_hierarchy_chart(
   svg_element: SVGSVGElement | null,
@@ -116,6 +117,7 @@ export function export_hierarchy_chart(
 ): void {
   if (!svg_element) return
   const filename = `${base_filename}.${format}`
-  if (format === `svg`) export_svg_as_svg(svg_element, filename, EXPORT_INLINE_STYLES)
-  else export_svg_as_png(svg_element, filename, 150, EXPORT_INLINE_STYLES)
+  if (format === `svg`)
+    export_svg_as_svg(svg_element, filename, EXPORT_INLINE_STYLES, EXPORT_OPTIONS)
+  else export_svg_as_png(svg_element, filename, 150, EXPORT_INLINE_STYLES, EXPORT_OPTIONS)
 }

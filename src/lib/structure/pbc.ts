@@ -1,8 +1,8 @@
 // Periodic boundary conditions utilities
+import { element_by_symbol } from '$lib/element/groups'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
-  element_lookup,
   get_majority_element,
   has_framework_potential,
   is_spectator_center,
@@ -131,7 +131,7 @@ export function find_image_atoms(
   let max_radius = 0
   for (const site of structure.sites) {
     const elem = get_majority_element(site)
-    const data = elem === null ? undefined : element_lookup.get(elem)
+    const data = elem === null ? undefined : element_by_symbol.get(elem)
     const radius = data?.covalent_radius ?? null
     site_elements.push(elem)
     if (elem !== null) present_elements.add(elem)

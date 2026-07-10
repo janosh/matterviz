@@ -4,8 +4,10 @@ import type { DataSeries, FillRegion } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, mount_sized, resize_element, svg_query } from '../setup'
+
+afterEach(() => vi.restoreAllMocks())
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -744,6 +746,27 @@ describe(`ScatterPlot`, () => {
     // reserved bottom margin (~height - footprint - gap), well below mid-plot
     const legend = doc_query<HTMLElement>(`.legend`)
     expect(Number(legend.style.top.replace(`px`, ``))).toBeGreaterThan(150)
+  })
+
+  test(`non-responsive legend avoids layout reads when data changes`, async () => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(100)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
+    const layout_spy = vi
+      .spyOn(Element.prototype, `getBoundingClientRect`)
+      .mockReturnValue(DOMRect.fromRect({ width: 100, height: 60 }))
+    const series = $state<DataSeries[]>([
+      { ...basic, label: `A` },
+      { ...basic, label: `B` },
+    ])
+    const plot = await mount_sized_scatter_plot({ series, legend: { responsive: false } })
+    await resize_element(plot, 401, 300)
+    await tick()
+    layout_spy.mockClear()
+
+    series[0].y = [6, 4, 9, 3, 8]
+    flushSync()
+    await tick()
+    expect(layout_spy).not.toHaveBeenCalled()
   })
 
   // rect-zoom must zoom y2 series too when sync is 'none' (the default) - BarPlot,

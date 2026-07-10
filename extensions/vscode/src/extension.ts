@@ -2,6 +2,12 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import {
+  FERMI_FILE_RE,
+  VOLUMETRIC_EXT_RE,
+  VOLUMETRIC_VASP_RE,
+  type ViewType,
+} from '$lib/file-viewer/types'
 import { to_error } from '$lib/utils'
 import { detect_compression_format } from '$lib/io/decompress'
 import { format_bytes } from '$lib/labels'
@@ -21,8 +27,6 @@ import * as path from 'node:path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import { stream_file_to_buffer } from './node-io'
-import type { ViewType } from './types'
-import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
 
 interface FrameLoaderData {
   loader: FrameLoader

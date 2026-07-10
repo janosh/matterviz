@@ -17,7 +17,7 @@
 </script>
 
 <div class="trajectory-with-dos">
-  <Trajectory {...trajectory_props} />
+  <Trajectory {...trajectory_props} style={`${trajectory_props.style ?? ``}; min-height: 0`} />
   <Dos doses={dos} style="min-height: 0" />
 </div>
 

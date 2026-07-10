@@ -6,16 +6,12 @@
 
 import { rgb as parse_rgb } from 'd3-color'
 import type { ElementSymbol } from '$lib/element'
+import { element_by_symbol } from '$lib/element/groups'
 import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
 import { get_orig_site_idx } from './atom-properties'
-import {
-  element_lookup,
-  get_majority_element,
-  has_framework_potential,
-  is_spectator_center,
-} from './bonding'
+import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`
 
@@ -366,7 +362,7 @@ function is_anion_vertex(
   electronegativity_margin: number,
 ): boolean {
   if (!neighbor_element) return false
-  const n_data = element_lookup.get(neighbor_element)
+  const n_data = element_by_symbol.get(neighbor_element)
   if (n_data?.metal) return false
   const n_en = n_data?.electronegativity ?? null
   if (center_en !== null && n_en !== null) {
@@ -427,7 +423,7 @@ export function compute_polyhedra(
   const center_info = (element: ElementSymbol): CenterInfo => {
     let info = center_info_cache.get(element)
     if (!info) {
-      const data = element_lookup.get(element)
+      const data = element_by_symbol.get(element)
       const center_en = data?.electronegativity ?? null
       const r_center = data?.covalent_radius ?? null
       const accepts = new Set(
@@ -437,7 +433,7 @@ export function compute_polyhedra(
       )
       const radii_sums = new Map(
         unique_elements.map((n_elem) => {
-          const r_n = element_lookup.get(n_elem)?.covalent_radius ?? null
+          const r_n = element_by_symbol.get(n_elem)?.covalent_radius ?? null
           return [n_elem, r_center !== null && r_n !== null ? r_center + r_n : null] as const
         }),
       )

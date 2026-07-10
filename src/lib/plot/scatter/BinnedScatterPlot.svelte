@@ -16,13 +16,14 @@
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
+  import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
     compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
     LABEL_GAP_DEFAULT,
-    measure_full_footprint,
+    full_footprint_or,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -414,9 +415,7 @@
     if (!annotation || !width || !height) return null
 
     const colorbar_rect = color_bar_placement && {
-      ...(colorbar_element?.offsetWidth && colorbar_element?.offsetHeight
-        ? measure_full_footprint(colorbar_element)
-        : colorbar_fallback_size),
+      ...full_footprint_or(colorbar_element, colorbar_fallback_size),
       x: color_bar_placement.x,
       y: color_bar_placement.y,
     }
@@ -429,6 +428,18 @@
       points: density_placement_points,
       grid_resolution: 12,
     })
+  })
+  const colorbar_tween = create_placed_tween({
+    placement: () => color_bar_placement,
+    dims: () => ({ width, height }),
+    responsive: () => false,
+    element: () => colorbar_element,
+  })
+  const annotation_tween = create_placed_tween({
+    placement: () => annotation_placement,
+    dims: () => ({ width, height }),
+    responsive: () => false,
+    element: () => annotation_element,
   })
 
   let auto_render_mode = $derived.by((): RenderMode => {
@@ -1071,12 +1082,12 @@
     </div>
   {/if}
 
-  {#if color_bar_props && render_mode === `density` && density_result.max_count > 0 && color_bar_placement}
+  {#if width > 0 && height > 0 && color_bar_props && render_mode === `density` && density_result.max_count > 0}
     <div
       bind:this={colorbar_element}
       class="color-bar"
-      style:left={`${color_bar_placement.x}px`}
-      style:top={`${color_bar_placement.y}px`}
+      style:left={`${colorbar_tween.coords.current.x}px`}
+      style:top={`${colorbar_tween.coords.current.y}px`}
     >
       <ColorBar
         {...color_bar_props}
@@ -1087,12 +1098,12 @@
     </div>
   {/if}
 
-  {#if annotation && annotation_placement}
+  {#if width > 0 && height > 0 && annotation}
     <div
       bind:this={annotation_element}
       class="annotation"
-      style:left={`${annotation_placement.x}px`}
-      style:top={`${annotation_placement.y}px`}
+      style:left={`${annotation_tween.coords.current.x}px`}
+      style:top={`${annotation_tween.coords.current.y}px`}
     >
       {@render annotation({ height, width, fullscreen })}
     </div>

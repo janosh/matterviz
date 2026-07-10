@@ -24,7 +24,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@types/node": "^26.1.1",
-    "@types/vscode": "^1.125.0",
+    "@types/vscode": "~1.105.0",
     "svelte": "^5.56.4",
     "typescript": "^6.0.3",
     "vite": "^8.1.4",
@@ -537,7 +537,7 @@
         },
         "matterviz.structure.vector_scale": {
           "type": "number",
-          "default": 1,
+          "default": 0.75,
           "description": "Scale factor for site vector arrows",
           "minimum": 0.1,
           "maximum": 10
@@ -564,8 +564,8 @@
         },
         "matterviz.structure.vector_uniform_thickness": {
           "type": "boolean",
-          "default": false,
-          "description": "Use the same shaft and head size for all arrows regardless of length. When off (default), thickness scales with arrow length."
+          "default": true,
+          "description": "Use the same shaft and head size for all arrows regardless of length. Negative radii are scaled by characteristic atom spacing."
         },
         "matterviz.structure.vector_origin_gap": {
           "type": "number",
@@ -576,22 +576,22 @@
         },
         "matterviz.structure.vector_shaft_radius": {
           "type": "number",
-          "default": -0.03,
-          "description": "Radius of vector shaft (negative = relative to length, positive = absolute)",
+          "default": -0.01,
+          "description": "Radius of vector shaft (negative = relative to length or atom spacing with uniform thickness, positive = absolute)",
           "minimum": -0.1,
           "maximum": 0.1
         },
         "matterviz.structure.vector_arrow_head_radius": {
           "type": "number",
-          "default": -0.06,
-          "description": "Radius of vector arrow head (negative = relative to length, positive = absolute)",
+          "default": -0.04,
+          "description": "Radius of vector arrow head (negative = relative to length or atom spacing with uniform thickness, positive = absolute)",
           "minimum": -0.2,
           "maximum": 0.2
         },
         "matterviz.structure.vector_arrow_head_length": {
           "type": "number",
-          "default": -0.15,
-          "description": "Length of vector arrow head (negative = relative to length, positive = absolute)",
+          "default": -0.1,
+          "description": "Length of vector arrow head (negative = relative to length or atom spacing with uniform thickness, positive = absolute)",
           "minimum": -0.5,
           "maximum": 0.5
         },
@@ -1196,15 +1196,6 @@
           "minimum": 0,
           "maximum": 64
         },
-        "matterviz.sunburst.shape": {
-          "type": "string",
-          "default": "sunburst",
-          "description": "Chart geometry: polar rings (sunburst) or stacked rows (icicle)",
-          "enum": [
-            "sunburst",
-            "icicle"
-          ]
-        },
         "matterviz.sunburst.value_mode": {
           "type": "string",
           "default": "leaf-sum",
@@ -1222,6 +1213,50 @@
           "minimum": 0,
           "maximum": 10
         },
+        "matterviz.sunburst.min_fraction": {
+          "type": "number",
+          "default": 0,
+          "description": "Group sibling arcs smaller than this fraction of the total into one 'Other' slice per parent (0 = off)",
+          "minimum": 0,
+          "maximum": 0.2
+        },
+        "matterviz.sunburst.show_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show labels on arcs large enough to fit them"
+        },
+        "matterviz.sunburst.label_text": {
+          "type": "string",
+          "default": "label",
+          "description": "What arc labels display (percent is of the root total, parent-percent of the parent node)",
+          "enum": [
+            "label",
+            "value",
+            "percent",
+            "label+value",
+            "label+percent",
+            "label+parent-percent"
+          ]
+        },
+        "matterviz.sunburst.zoom_on_click": {
+          "type": "boolean",
+          "default": true,
+          "description": "Clicking a branch arc zooms into that subtree (center circle zooms out)"
+        },
+        "matterviz.sunburst.show_breadcrumbs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a clickable trail of ancestors when zoomed into a subtree"
+        },
+        "matterviz.sunburst.shape": {
+          "type": "string",
+          "default": "sunburst",
+          "description": "Chart geometry: polar rings (sunburst) or stacked rows (icicle)",
+          "enum": [
+            "sunburst",
+            "icicle"
+          ]
+        },
         "matterviz.sunburst.inner_radius": {
           "type": "number",
           "default": 0.25,
@@ -1236,18 +1271,6 @@
           "minimum": 0,
           "maximum": 4
         },
-        "matterviz.sunburst.min_fraction": {
-          "type": "number",
-          "default": 0,
-          "description": "Group sibling arcs smaller than this fraction of the total into one 'Other' slice per parent (0 = off)",
-          "minimum": 0,
-          "maximum": 0.2
-        },
-        "matterviz.sunburst.show_labels": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show labels on arcs large enough to fit them"
-        },
         "matterviz.sunburst.label_rotation": {
           "type": "string",
           "default": "auto",
@@ -1259,27 +1282,78 @@
             "horizontal"
           ]
         },
-        "matterviz.sunburst.label_text": {
+        "matterviz.treemap.value_mode": {
+          "type": "string",
+          "default": "leaf-sum",
+          "description": "How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children",
+          "enum": [
+            "leaf-sum",
+            "total",
+            "remainder"
+          ]
+        },
+        "matterviz.treemap.max_depth": {
+          "type": "number",
+          "default": 0,
+          "description": "Number of levels shown below the current zoom root (0 = all)",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "matterviz.treemap.min_fraction": {
+          "type": "number",
+          "default": 0,
+          "description": "Group sibling cells smaller than this fraction of the total into one 'Other' cell per parent (0 = off)",
+          "minimum": 0,
+          "maximum": 0.2
+        },
+        "matterviz.treemap.show_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show labels on cells large enough to fit them"
+        },
+        "matterviz.treemap.label_text": {
           "type": "string",
           "default": "label",
-          "description": "What arc labels display (percent is of the root total)",
+          "description": "What cell labels display (percent is of the root total, parent-percent of the parent node)",
           "enum": [
             "label",
             "value",
             "percent",
             "label+value",
-            "label+percent"
+            "label+percent",
+            "label+parent-percent"
           ]
         },
-        "matterviz.sunburst.zoom_on_click": {
+        "matterviz.treemap.zoom_on_click": {
           "type": "boolean",
           "default": true,
-          "description": "Clicking a branch arc zooms into that subtree (center circle zooms out)"
+          "description": "Clicking any cell zooms into it, plotly-style (the breadcrumb pathbar zooms out)"
         },
-        "matterviz.sunburst.show_breadcrumbs": {
+        "matterviz.treemap.show_breadcrumbs": {
           "type": "boolean",
           "default": true,
-          "description": "Show a clickable trail of ancestors when zoomed into a subtree"
+          "description": "Show a clickable pathbar of ancestors when zoomed into a subtree"
+        },
+        "matterviz.treemap.padding_inner": {
+          "type": "number",
+          "default": 0,
+          "description": "Pixel gap between sibling cells (0 = cells share a single stroke divider; gaps > 0 show the parent's fill)",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "matterviz.treemap.padding_top": {
+          "type": "number",
+          "default": 18,
+          "description": "Pixel strip reserved at the top of branch cells for their label (0 = no headers)",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "matterviz.treemap.padding_outer": {
+          "type": "number",
+          "default": 3,
+          "description": "Pixel inset of child cells within their parent's left/right/bottom edges, so parents visibly enclose their subtree (plotly marker.pad)",
+          "minimum": 0,
+          "maximum": 10
         },
         "matterviz.composition.display_mode": {
           "type": "string",
@@ -1366,7 +1440,7 @@
         },
         "matterviz.scatter.point.size": {
           "type": "number",
-          "default": 4,
+          "default": 3,
           "description": "Point size for scatter plots",
           "minimum": 1,
           "maximum": 20

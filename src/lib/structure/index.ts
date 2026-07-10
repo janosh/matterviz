@@ -1,7 +1,7 @@
 import type { CompositionType } from '$lib/composition'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
-import { element_data } from '$lib/element'
+import { element_by_symbol, element_data } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
@@ -149,17 +149,12 @@ export function format_chemical_formula(
   return formula.join(` `)
 }
 
-// Electronegativity by element symbol (0 when missing), for O(1) sort comparisons
-const electronegativity_by_symbol = new Map(
-  element_data.map((el) => [el.symbol, el.electronegativity ?? 0]),
-)
-
 export function format_formula_by_electronegativity(structure: AnyStructure): string {
   // concatenate elements in a structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) =>
     symbols.sort((el1, el2) => {
-      const elec_neg1 = electronegativity_by_symbol.get(el1) ?? 0
-      const elec_neg2 = electronegativity_by_symbol.get(el2) ?? 0
+      const elec_neg1 = element_by_symbol.get(el1)?.electronegativity ?? 0
+      const elec_neg2 = element_by_symbol.get(el2)?.electronegativity ?? 0
       // Sort by electronegativity (ascending), then alphabetically for ties
       if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
       return el1.localeCompare(el2)

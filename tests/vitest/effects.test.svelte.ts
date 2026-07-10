@@ -1,4 +1,5 @@
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
+import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -58,3 +59,31 @@ describe(`create_pulse_animation`, () => {
     void unmount(component)
   })
 })
+
+test.each([
+  { responsive: false, expected_calls: 2 },
+  { responsive: true, expected_calls: 3 },
+])(
+  `create_placed_tween gates placement work when responsive=$responsive`,
+  ({ responsive, expected_calls }) => {
+    const state = $state({ placement_input: 0, width: 100 })
+    const placement = vi.fn(() => ({ x: state.placement_input, y: 20 }))
+    let placed_tween: ReturnType<typeof create_placed_tween> | undefined
+    const dispose = $effect.root(() => {
+      placed_tween = create_placed_tween({
+        placement,
+        dims: () => ({ width: state.width, height: 100 }),
+        responsive: () => responsive,
+        element: () => document.body,
+        tween: () => ({ duration: 0 }),
+      })
+    })
+
+    flushSync()
+    flushSync(() => (state.placement_input += 1))
+    flushSync(() => (state.width += 1))
+    expect(placement).toHaveBeenCalledTimes(expected_calls)
+    expect(placed_tween?.placed()).toBe(true)
+    dispose()
+  },
+)

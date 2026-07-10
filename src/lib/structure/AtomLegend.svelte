@@ -1,8 +1,7 @@
 <script lang="ts">
   import { contrast_color, default_element_colors } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
-  import type { ElementSymbol } from '$lib/element'
-  import { element_data } from '$lib/element'
+  import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
   import Icon from '$lib/Icon.svelte'
   import { ELEM_SYMBOLS, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
@@ -161,12 +160,11 @@
     if (!remap_search) return ELEM_SYMBOLS
     const query = remap_search.toLowerCase()
     return ELEM_SYMBOLS.filter((elem) => {
-      const data = element_data?.find((el) => el.symbol === elem)
+      const data = element_by_symbol.get(elem)
       return elem.toLowerCase().includes(query) || data?.name?.toLowerCase().includes(query)
     })
   })
 
-  const known_element_symbols = new Set(ELEM_SYMBOLS)
   let sorted_element_entries = $derived.by(() => {
     if (!elements) return []
     const element_amounts = elements as Record<string, number>
@@ -175,9 +173,7 @@
       return amount === undefined ? [] : [[element_symbol, amount] as const]
     })
     const unknown_entries = Object.entries(element_amounts)
-      .filter(
-        ([element_symbol]) => !known_element_symbols.has(element_symbol as ElementSymbol),
-      )
+      .filter(([element_symbol]) => !is_elem_symbol(element_symbol))
       .sort(([element_a], [element_b]) => element_a.localeCompare(element_b))
     return [...ordered_known_entries, ...unknown_entries]
   })
@@ -332,7 +328,7 @@
       <div class="legend-item">
         <label
           bind:this={labels[idx]}
-          title="{element_data?.find((el) => el.symbol === displayed_elem)?.name ??
+          title="{element_by_symbol.get(displayed_elem as ElementSymbol)?.name ??
             ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
@@ -445,7 +441,7 @@
                 </button>
               {/if}
               {#each filtered_elements as target_elem (target_elem)}
-                {@const elem_info = element_data?.find((el) => el.symbol === target_elem)}
+                {@const elem_info = element_by_symbol.get(target_elem)}
                 <button
                   class="remap-option"
                   class:selected={displayed_elem === target_elem}

@@ -26,6 +26,7 @@
     hierarchy_legend_items,
     is_activation_key,
     node_handler_props,
+    observe_height,
     pointer_pos,
     prune_muted_ids,
     safe_hierarchy_layout,
@@ -42,6 +43,15 @@
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import { arrow_nav_target } from '$lib/plot/sunburst/render'
   import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
+  import {
+    normalize_treemap_label_lines,
+    place_treemap_label,
+    safe_font_size,
+    type TreemapLabelFit,
+    type TreemapLabelFormatter,
+    type TreemapLabelLine,
+    type TreemapLabelPlacement,
+  } from '$lib/plot/treemap/labels'
   import type { TreemapNode, TreemapNodeHandlerProps } from '$lib/plot/treemap/treemap'
   import { lerp_rects, tile_rects } from '$lib/plot/treemap/treemap'
   import { DEFAULTS } from '$lib/settings'
@@ -52,12 +62,16 @@
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
 
-  const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
+  // no outer inset by default: cells tile flush with the container (pass
+  // `padding` to reserve chart-edge space, e.g. for host-drawn annotations)
+  const DEFAULT_PADDING: Required<Sides> = { t: 0, b: 0, l: 0, r: 0 }
 
   let {
     data = $bindable([]),
     value_mode = $bindable(DEFAULTS.treemap.value_mode),
-    sort = `none`,
+    // descending (unlike Sunburst's input-order default): squarified tiling
+    // reads best with the largest cell top-left and smallest bottom-right
+    sort = `descending`,
     level_lighten = 0,
     min_fraction = $bindable(DEFAULTS.treemap.min_fraction),
     other_label = `Other`,
@@ -67,6 +81,11 @@
     padding_outer = $bindable(DEFAULTS.treemap.padding_outer),
     show_labels = $bindable(DEFAULTS.treemap.show_labels),
     label_text = $bindable(DEFAULTS.treemap.label_text),
+    label_formatter,
+    label_fit = `hide`,
+    label_min_font_size = 6,
+    label_max_font_size,
+    parent_label_font_size = 14,
     zoom_on_click = $bindable(DEFAULTS.treemap.zoom_on_click),
     zoom_root_id = $bindable(null),
     show_breadcrumbs = $bindable(DEFAULTS.treemap.show_breadcrumbs),
@@ -102,7 +121,7 @@
     Omit<BasePlotProps, `change`> & {
       data?: TreemapNode<Metadata> | TreemapNode<Metadata>[]
       value_mode?: SunburstValueMode
-      sort?: SunburstSort
+      sort?: SunburstSort // default 'descending' (largest top-left); 'none' keeps input order
       level_lighten?: number
       // Aggregate sibling cells below this fraction of the total into one 'Other'
       // cell per parent (only when >= 2 qualify); 0 disables
@@ -114,6 +133,13 @@
       padding_outer?: number // px inset of children within their parent (plotly marker.pad)
       show_labels?: boolean
       label_text?: SunburstLabelText // what labels display (plotly textinfo equivalent)
+      // Structured multiline labels. Unlike cell_content, this keeps built-in
+      // hover/focus/click and tooltip behavior on the underlying cell.
+      label_formatter?: TreemapLabelFormatter<Metadata>
+      label_fit?: TreemapLabelFit // hide (legacy), shrink-to-fit, or clip at max size
+      label_min_font_size?: number // px floor used by shrink mode
+      label_max_font_size?: number // px ceiling for leaf/cutoff labels
+      parent_label_font_size?: number // px size/ceiling for branch header labels
       zoom_on_click?: boolean
       zoom_root_id?: string | number | null // id of the cell the view is rooted on
       show_breadcrumbs?: boolean // clickable ancestor trail when zoomed
@@ -167,9 +193,9 @@
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
   let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // measured height of the bottom colorbar, reserved from the chart so it never
-  // overlaps the cells; reset to 0 when hidden (effect below); capped at half the
-  // area so a bad measurement can't collapse the chart
+  // measured height of the bottom colorbar (via observe_height, which resets it
+  // to 0 on unmount), reserved from the chart so it never overlaps the cells;
+  // capped at half the area so a bad measurement can't collapse the chart
   let colorbar_height = $state(0)
   let colorbar_reserve = $derived(
     colorbar_height > 0 ? Math.min(colorbar_height + 16, avail_height / 2) : 0,
@@ -289,11 +315,6 @@
   )
   const cell_color = (arc: PositionedArc<Metadata>): string =>
     metric?.colors[arc.node_idx] ?? arc.color
-  // release the colorbar's reserved chart space when it's not rendered
-  $effect(() => {
-    if (!metric || colorbar == null) colorbar_height = 0
-  })
-
   // Hovered cell + its ancestors/descendants stay fully opaque, others dim
   let cell_dim = $derived(compute_node_dim(layout.arcs, muted_ids, hovered_idx))
 
@@ -424,6 +445,12 @@
   let cells_clickable = $derived(Boolean(on_node_click) || zoom_on_click)
 
   let label_font = $derived(svg_label_font(svg_element))
+  // leading "<n>px" of the CSS font shorthand (e.g. "11px sans-serif")
+  let label_font_size = $derived.by(() => {
+    const leading_num = Number(label_font.match(/^[\d.]+/)?.[0])
+    return safe_font_size(leading_num, 11)
+  })
+  let resolved_parent_label_font_size = $derived(safe_font_size(parent_label_font_size, 14))
   const cached_text_width = make_cached_text_width()
 
   // Per-cell label text, measured width, fill/label colors and aria string -
@@ -440,38 +467,134 @@
   )
 
   const LABEL_MARGIN = 6 // px clearance between label text and cell edges
-  // Label text + placement for a cell; null = no variant fits, hide the label.
+  const label_clip_id = (idx: number) => `treemap-label-clip-${uid}-${idx}`
+  const font_for_line = (line: TreemapLabelLine, font_size: number): string => {
+    const sized_font = label_font.replace(/(?:\d+(?:\.\d+)?|\.\d+)px/, `${font_size}px`)
+    return line.font_weight == null ? sized_font : `${line.font_weight} ${sized_font}`
+  }
+  const measure_label_line = (line: TreemapLabelLine, font_size: number): number => {
+    const measured_width = cached_text_width(line.text, font_for_line(line, font_size))
+    // Canvas text metrics can be unavailable during SSR and in lightweight DOM
+    // environments. A conservative fallback keeps fitting deterministic there.
+    return measured_width > 0 ? measured_width : line.text.length * font_size * 0.6
+  }
+
+  // The default no-formatter hide mode keeps the legacy single-line rendering
+  // contract: labels walk cell_info's fallback variants and inherit the CSS
+  // font-size (no font-size attribute, no clipPaths). A formatter or a non-hide
+  // fit mode switches to the multiline fitter in labels.ts.
+  let legacy_label_mode = $derived(!label_formatter && label_fit === `hide`)
+
+  // Formatter output is layout-independent, so resolve it once per node instead
+  // of on every frame of a zoom tween. Without a formatter, fit modes use the
+  // richest built-in variant (compound text before its shorter fallbacks).
+  // The depth-0 root never renders a cell, so the formatter is never invoked
+  // for it (for array data it's synthetic and e.g. carries no metadata).
+  let label_lines = $derived(
+    legacy_label_mode
+      ? []
+      : layout.arcs.map((arc, idx) =>
+          arc.depth === 0
+            ? []
+            : normalize_treemap_label_lines(
+                label_formatter ? label_formatter(arc) : cell_info[idx].variants[0]?.text,
+              ),
+        ),
+  )
+
+  // Label text + placement for a cell; null means hide the label.
   // Branch cells label their header strip (top-left); leaves (and branches at the
   // depth cutoff, which render as plain cells) center their label, rotating 90°
-  // in thin-but-tall cells like the icicle shape does. Richest label variant
-  // that fits wins: extended -> label -> label_short.
-  function label_attrs(
+  // in thin-but-tall cells like the icicle shape does. The default hide mode
+  // preserves the legacy richest-fitting fallback chain. Custom labels and the
+  // shrink/clip modes use the shared multiline fitter.
+  function place_label(
     arc: PositionedArc<Metadata>,
     rect: Rect,
-  ): { x: number; y: number; text: string; transform?: string; header: boolean } | null {
+  ): TreemapLabelPlacement | null {
     const { variants } = cell_info[arc.node_idx]
-    const { x, y, width: cell_w, height: cell_h } = rect
     // Branches with visible children only ever label their header strip: a
     // centered label would paint over the descendant cells that cover the rest
     // of the cell, so when the strip is missing/too thin the label is dropped
     const has_visible_children = !arc.is_leaf && arc.depth < depth_cutoff
-    if (has_visible_children) {
-      if (padding_top < 12) return null
-      const fitting = variants.find((entry) => entry.width <= cell_w - 2 * LABEL_MARGIN)
-      if (!fitting) return null
-      return { x: x + LABEL_MARGIN, y: y + padding_top / 2, text: fitting.text, header: true }
-    }
-    const fits = (text_w: number, along: number, across: number) =>
-      text_w <= along - 2 * LABEL_MARGIN && across >= 12
-    const [cx, cy] = [x + cell_w / 2, y + cell_h / 2]
-    for (const { text, width: text_w } of variants) {
-      if (fits(text_w, cell_w, cell_h)) return { x: cx, y: cy, text, header: false }
-      if (fits(text_w, cell_h, cell_w)) {
-        return { x: cx, y: cy, text, transform: `rotate(-90, ${cx}, ${cy})`, header: false }
+
+    // Keep the existing single-line fallback behavior in the default case.
+    if (legacy_label_mode) {
+      if (has_visible_children) {
+        for (const { text } of variants) {
+          const placement = place_treemap_label({
+            rect,
+            lines: [{ text, font_weight: 600 }],
+            header: true,
+            fit: `hide`,
+            min_font_size: resolved_parent_label_font_size,
+            max_font_size: resolved_parent_label_font_size,
+            padding_top,
+            margin: LABEL_MARGIN,
+            measure_line: measure_label_line,
+          })
+          if (placement) return placement
+        }
+        return null
       }
+      const { x, y, width: cell_w, height: cell_h } = rect
+      const fits = (text_width: number, along: number, across: number) =>
+        text_width <= along - 2 * LABEL_MARGIN && across >= 12
+      const [center_x, center_y] = [x + cell_w / 2, y + cell_h / 2]
+      const place_leaf = (text: string, transform?: string): TreemapLabelPlacement => ({
+        x: center_x,
+        lines: [{ text, y: center_y }],
+        header: false,
+        transform,
+      })
+      for (const { text, width: text_width } of variants) {
+        if (fits(text_width, cell_w, cell_h)) return place_leaf(text)
+        if (fits(text_width, cell_h, cell_w)) {
+          return place_leaf(text, `rotate(-90, ${center_x}, ${center_y})`)
+        }
+      }
+      return null
     }
-    return null
+
+    return place_treemap_label({
+      rect,
+      lines: label_lines[arc.node_idx],
+      header: has_visible_children,
+      fit: label_fit,
+      min_font_size: label_min_font_size,
+      max_font_size: has_visible_children
+        ? resolved_parent_label_font_size
+        : (label_max_font_size ?? label_font_size),
+      padding_top,
+      margin: LABEL_MARGIN,
+      measure_line: (line, font_size) =>
+        measure_label_line(
+          has_visible_children && line.font_weight == null
+            ? { ...line, font_weight: 600 }
+            : line,
+          font_size,
+        ),
+    })
   }
+
+  // hide mode never overflows (unfitting labels return null), so clipPaths are
+  // only rendered/applied for the shrink/clip modes (with or without formatter)
+  let clip_labels = $derived(label_fit !== `hide`)
+  const label_clip_rect = (rect: Rect, header: boolean): Rect => {
+    const inset = 1
+    const clip_height = header ? Math.min(rect.height, padding_top) : rect.height
+    return {
+      x: rect.x + inset,
+      y: rect.y + inset,
+      width: Math.max(0, rect.width - 2 * inset),
+      height: Math.max(0, clip_height - 2 * inset),
+    }
+  }
+  // Defs and visible text share these placements, avoiding duplicate text
+  // measurement and fitting work on every frame of a zoom tween.
+  let label_placements = $derived(
+    new Map(visible_idxs.map((idx) => [idx, place_label(layout.arcs[idx], rects[idx])])),
+  )
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
   let depth1_arcs = $derived(layout.arcs.filter((arc) => arc.depth === 1))
@@ -591,6 +714,16 @@
         <pattern id={hatch_pattern_id} patternUnits="userSpaceOnUse" width="8" height="8">
           <path class="hatch-pattern-line" d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" />
         </pattern>
+        {#if show_labels && !cell_content && clip_labels}
+          {#each visible_idxs as idx (idx)}
+            {@const label = label_placements.get(idx)}
+            {#if label}
+              <clipPath id={label_clip_id(idx)}>
+                <rect {...label_clip_rect(rects[idx], label.header)} />
+              </clipPath>
+            {/if}
+          {/each}
+        {/if}
       </defs>
       <!-- Hover/click delegation sits on the chart group (not the cells group) so
       labels - which carry the same data-treemap-node-idx and are selectable text -
@@ -650,21 +783,40 @@
         {#if show_labels && !cell_content}
           <g class="cell-labels">
             {#each visible_idxs as idx (idx)}
-              {@const lbl = label_attrs(layout.arcs[idx], rects[idx])}
+              {@const lbl = label_placements.get(idx)}
               {#if lbl}
-                <text
-                  class="cell-label"
-                  class:header={lbl.header}
-                  data-treemap-node-idx={idx}
-                  x={lbl.x}
-                  y={lbl.y}
-                  transform={lbl.transform}
-                  fill={cell_info[idx].label_fill}
-                  fill-opacity={cell_dim[idx].label_opacity}
-                  style:cursor={cells_clickable ? `pointer` : `text`}
-                >
-                  {lbl.text}
-                </text>
+                <!-- Keep the clip on this untransformed wrapper. Applying it to
+                rotated text rotates the clipping region and crops the wrong area. -->
+                <g clip-path={clip_labels ? `url(#${label_clip_id(idx)})` : undefined}>
+                  <text
+                    class="cell-label"
+                    class:header={lbl.header}
+                    data-treemap-node-idx={idx}
+                    x={lbl.x}
+                    y={lbl.lines[0].y}
+                    transform={lbl.transform}
+                    fill={cell_info[idx].label_fill}
+                    fill-opacity={cell_dim[idx].label_opacity}
+                    font-size={lbl.font_size}
+                    style:cursor={cells_clickable ? `pointer` : `text`}
+                  >
+                    {#each lbl.lines as line}
+                      <tspan
+                        class={line.class}
+                        x={lbl.x}
+                        y={line.y}
+                        font-size={lbl.font_size == null
+                          ? undefined
+                          : lbl.font_size * (line.font_scale ?? 1)}
+                        font-weight={line.font_weight}
+                        opacity={line.opacity}
+                        fill={line.fill}
+                      >
+                        {line.text}
+                      </tspan>
+                    {/each}
+                  </text>
+                </g>
               {/if}
             {/each}
           </g>
@@ -716,17 +868,16 @@
   {/if}
 
   {#if metric && colorbar != null}
-    <div
-      bind:clientHeight={colorbar_height}
-      style="position: absolute; bottom: var(--treemap-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--treemap-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
-    >
-      <ColorBar
-        {color_scale}
-        range={metric.range}
-        {...colorbar}
-        wrapper_style={`width: 100%; ${colorbar?.wrapper_style ?? ``}`}
-      />
-    </div>
+    <!-- positioning + height measurement live on ColorBar's own root (via rest
+    props + attachment) instead of an extra wrapper div -->
+    <ColorBar
+      {color_scale}
+      range={metric.range}
+      {...colorbar}
+      style="position: absolute; bottom: var(--treemap-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--treemap-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
+        ``}"
+      {@attach observe_height((px) => (colorbar_height = px))}
+    />
   {/if}
 
   {@render children?.({ height, width, fullscreen })}
@@ -745,7 +896,9 @@
     flex: var(--treemap-flex, 1 1 auto);
     display: var(--treemap-display, flex);
     flex-direction: column;
-    background: var(--treemap-bg, var(--plot-bg));
+    /* no bg shading by default: the cells are the chart; set --treemap-bg to
+    add a panel background */
+    background: var(--treemap-bg, transparent);
     border-radius: var(--treemap-border-radius, var(--border-radius, 3pt));
   }
   .treemap.fullscreen {
@@ -787,7 +940,7 @@
     background: var(--treemap-btn-bg, light-dark(#e3e6ea, #33383f));
     color: inherit;
     border: none;
-    padding: 2px 14px 2px 12px;
+    padding: var(--treemap-breadcrumbs-padding, 0 14px 0 12px);
     cursor: pointer;
     font: inherit;
     clip-path: polygon(

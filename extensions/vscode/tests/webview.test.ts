@@ -1,19 +1,22 @@
 import { parse_structure_file } from '$lib/structure/parse'
 import type * as TrajectoryParseModule from '$lib/trajectory/parse'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { gzipSync } from 'node:zlib'
-import { mount } from 'svelte'
-import type * as svelte_module from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { create_display, VSCodeFrameLoader } from '$lib/file-viewer/main'
 import {
   base64_to_array_buffer,
-  create_display,
   parse_file_content,
   parse_large_file_marker,
   type ParseResult,
-  VSCodeFrameLoader,
-} from '../src/webview/main'
+} from '$lib/file-viewer/parse'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import {
+  deflateRawSync as deflate_raw_sync,
+  deflateSync as deflate_sync,
+  gzipSync as gzip_sync,
+} from 'node:zlib'
+import { mount } from 'svelte'
+import type * as svelte_module from 'svelte'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 // parse_structure_file throws on parse failure but can still return a structure with
 // zero atoms (e.g. a CIF with cell params but no _atom_site records). Mock it to that
@@ -45,7 +48,7 @@ const fixture_base64 = (name: string, gzip = false): string => {
   const bytes = readFileSync(
     resolve(import.meta.dirname, `../../../tests/vitest/fixtures/vasp-hdf5/${name}`),
   )
-  return (gzip ? gzipSync(bytes) : bytes).toString(`base64`)
+  return (gzip ? gzip_sync(bytes) : bytes).toString(`base64`)
 }
 const make_container = () => ({ style: {}, innerHTML: `` }) as unknown as HTMLElement
 const last_mount_props = () =>
@@ -224,23 +227,34 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(result.filename).toBe(gz_filename.replace(/\.gz$/, ``))
   })
 
-  test(`gzipped .traj routes byte-identical binary data to the trajectory parser`, async () => {
-    const { parse_trajectory_data } = await import(`$lib/trajectory/parse`)
-    vi.mocked(parse_trajectory_data).mockResolvedValueOnce({ frames: [], metadata: {} })
-    // ULM magic + bytes that are invalid UTF-8: text decompression would corrupt them
-    const raw_bytes = new Uint8Array([
-      0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d, 0x00, 0xff, 0xfe, 0x80,
-    ])
-    const gz_base64 = uint8_as_base64(new Uint8Array(gzipSync(raw_bytes)))
+  test.each([
+    [`.gz`, gzip_sync],
+    [`.deflate`, deflate_sync],
+    [`.z`, deflate_raw_sync],
+  ] as const)(
+    `%s-compressed .traj routes byte-identical data to the trajectory parser`,
+    async (extension, compress) => {
+      const { parse_trajectory_data } = await import(`$lib/trajectory/parse`)
+      vi.mocked(parse_trajectory_data).mockResolvedValueOnce({ frames: [], metadata: {} })
+      // ULM magic + bytes that are invalid UTF-8: text decompression would corrupt them
+      const raw_bytes = new Uint8Array([
+        0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d, 0x00, 0xff, 0xfe, 0x80,
+      ])
+      const compressed_base64 = uint8_as_base64(new Uint8Array(compress(raw_bytes)))
 
-    const result = await parse_file_content(gz_base64, `relax.traj.gz`, true)
+      const result = await parse_file_content(
+        compressed_base64,
+        `relax.traj${extension}`,
+        true,
+      )
 
-    expect(result.type).toBe(`trajectory`)
-    expect(result.filename).toBe(`relax.traj`)
-    const [buffer, inner_name] = vi.mocked(parse_trajectory_data).mock.calls.at(-1) ?? []
-    expect(inner_name).toBe(`relax.traj`)
-    expect(Array.from(new Uint8Array(buffer as ArrayBuffer))).toEqual([...raw_bytes])
-  })
+      expect(result.type).toBe(`trajectory`)
+      expect(result.filename).toBe(`relax.traj`)
+      const [buffer, inner_name] = vi.mocked(parse_trajectory_data).mock.calls.at(-1) ?? []
+      expect(inner_name).toBe(`relax.traj`)
+      expect(Array.from(new Uint8Array(buffer as ArrayBuffer))).toEqual([...raw_bytes])
+    },
+  )
 })
 
 describe(`create_display trajectory display options`, () => {
@@ -342,7 +356,7 @@ describe(`VS Code frame loader`, () => {
 describe(`VSCode Download Integration`, () => {
   afterEach(vi.useRealTimers)
 
-  // Reset modules (clears the cached vscode_api in webview/main.ts), mock the VS Code
+  // Reset modules (clears the cached vscode_api in file-viewer/main.ts), mock the VS Code
   // API, then install the download override. Returns the postMessage mock to assert on.
   const init_download = async () => {
     vi.resetModules()
@@ -352,7 +366,7 @@ describe(`VSCode Download Integration`, () => {
       setState: vi.fn(),
       getState: vi.fn(),
     }))
-    const { setup_vscode_download } = await import(`../src/webview/main`)
+    const { setup_vscode_download } = await import(`$lib/file-viewer/main`)
     setup_vscode_download()
     return mock_post_message
   }

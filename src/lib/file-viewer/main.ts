@@ -41,11 +41,6 @@ import type { FileData, ParsedTrajectoryResponse, ParseResult, ViewType } from '
 import { parse_file_content, set_large_file_requester } from './parse'
 import { escape_html, to_error } from '$lib/utils'
 
-// The parse-only path lives in ./parse (worker-safe, no Svelte imports);
-// re-export everything so existing importers of main.ts keep working.
-export { base64_to_array_buffer, parse_file_content, parse_large_file_marker } from './parse'
-export type { FileData, ParseResult, ViewType } from './parse'
-
 export interface MatterVizData {
   type: ViewType
   data: FileData
@@ -180,6 +175,7 @@ declare global {
 let vscode_api: VSCodeAPI | null = null
 let current_app: MatterVizApp | null = null
 let file_change_listener_registered = false
+const global_window = globalThis as unknown as Window
 
 // Initialize VSCode API at module level
 try {
@@ -192,10 +188,7 @@ try {
 // Set up VSCode-specific download override for file exports
 export const setup_vscode_download = (): void => {
   if (!vscode_api) return
-  ;(globalThis as unknown as Window).download = (
-    data: string | Blob,
-    filename: string,
-  ): void => {
+  global_window.download = (data: string | Blob, filename: string): void => {
     if (!filename?.trim()) {
       console.error(`Invalid filename provided to download`)
       return
@@ -239,6 +232,10 @@ export const setup_vscode_download = (): void => {
 const handle_file_change = async (message: FileChangeMessage): Promise<void> => {
   if (message.command === `fileDeleted`) {
     // File was deleted - show error message
+    if (current_app) {
+      await unmount(current_app)
+      current_app = null
+    }
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {
       container.innerHTML = `
@@ -596,12 +593,7 @@ async function cleanup_matterviz(): Promise<void> {
     current_app = null
   }
 } // Export initialization and cleanup functions to global scope
-;(
-  globalThis as unknown as {
-    initializeMatterViz?: () => Promise<MatterVizApp | null>
-    cleanupMatterViz?: () => Promise<void>
-  }
-).initializeMatterViz = async (): Promise<MatterVizApp | null> => {
+global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
   if (!globalThis.matterviz_data) {
     console.warn(`No matterviz_data found on window`)
     return null
@@ -629,5 +621,4 @@ async function cleanup_matterviz(): Promise<void> {
     return null
   }
 }
-;(globalThis as unknown as { cleanupMatterViz?: () => Promise<void> }).cleanupMatterViz =
-  cleanup_matterviz
+global_window.cleanupMatterViz = cleanup_matterviz

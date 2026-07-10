@@ -4,6 +4,8 @@ import {
   TRAJ_KEYWORDS,
   VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
+import type { FileData } from '$lib/file-viewer/parse'
+import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
@@ -23,8 +25,6 @@ import {
   render,
   should_auto_render,
 } from '../src/extension'
-import { VOLUMETRIC_VASP_RE } from '../src/types'
-import type { FileData } from '../src/webview/main'
 
 // Mock modules
 const mock_fs = vi.hoisted(() => ({

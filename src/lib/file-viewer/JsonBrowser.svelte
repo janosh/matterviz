@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Split-pane JSON browser for the VS Code extension.
+  // Split-pane browser for navigating and visualizing structured JSON data.
   // Left sidebar shows a JsonTree for navigating the file's JSON structure.
   // Right canvas renders one or more visualization panels in a split layout.
   // Users can click tree nodes to render in the main panel, or drag nodes

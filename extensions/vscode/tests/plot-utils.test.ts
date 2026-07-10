@@ -7,7 +7,7 @@ import {
   col_keys,
   extract_columns,
   suggest_mapping,
-} from '../src/webview/plot-utils'
+} from '$lib/file-viewer/plot-utils'
 
 describe(`extract_columns`, () => {
   test(`column-based: extracts numeric and string columns`, () => {
