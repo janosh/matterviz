@@ -1,5 +1,5 @@
 import { Treemap } from '$lib'
-import type { TreemapNode, TreemapNodeHandlerProps } from '$lib/plot'
+import type { TreemapArc, TreemapNode, TreemapNodeHandlerProps } from '$lib/plot'
 import { DEFAULT_SERIES_COLORS } from '$lib/plot'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -28,8 +28,10 @@ const mount_sized_treemap = (
     { selector: `.treemap`, width: 500, height: 360 },
   )
 
-// Pre-order node indices for the `tree` fixture (root=0)
-const IDX = { A: 1, A1: 2, A2: 3, B: 4 } as const
+// Pre-order node indices for the `tree` fixture (root=0). The default
+// descending sort places A2 (6) before its smaller sibling A1 (4); the equal-
+// value A/B pair keeps input order (stable sort).
+const IDX = { A: 1, A2: 2, A1: 3, B: 4 } as const
 
 const cell_rect = (plot: HTMLElement, label: keyof typeof IDX): SVGRectElement => {
   const rect = plot.querySelector<SVGRectElement>(
@@ -107,7 +109,7 @@ describe(`Treemap`, () => {
     expect(on_zoom.mock.calls[0][0].root.id).toBe(`A`)
     await tick()
     // zoomed into A: A itself and sibling B are hidden, A1/A2 fill the viewport
-    expect(shown_idxs(plot)).toEqual([IDX.A1, IDX.A2])
+    expect(shown_idxs(plot)).toEqual([IDX.A2, IDX.A1]) // ascending node_idx order
     // breadcrumbs show the zoom path
     const crumbs = [...plot.querySelectorAll(`.breadcrumb`)].map((btn) =>
       btn.textContent?.trim(),
@@ -151,10 +153,10 @@ describe(`Treemap`, () => {
   })
 
   // keyboard zoom must keep focus inside the chart: branch zoom focuses the new
-  // root's first child (even though plain leaves aren't clickable), leaf zoom
-  // focuses the full-viewport leaf cell itself
+  // root's first child in pre-order (A2, the larger sibling under descending
+  // sort), leaf zoom focuses the full-viewport leaf cell itself
   test.each([
-    [`branch`, `A`, IDX.A1, 2],
+    [`branch`, `A`, IDX.A2, 2],
     [`leaf`, `B`, IDX.B, 1],
   ] as const)(
     `keyboard Enter on a %s zooms and moves focus to cell %i`,
@@ -184,12 +186,12 @@ describe(`Treemap`, () => {
     {
       name: `zoom_root_id re-roots the view`,
       props: { zoom_root_id: `A` },
-      expected: [IDX.A1, IDX.A2],
+      expected: [IDX.A2, IDX.A1], // ascending node_idx order
     },
     {
       name: `stale zoom_root_id falls back to the root`,
       props: { zoom_root_id: `ghost` },
-      expected: [IDX.A, IDX.A1, IDX.A2, IDX.B],
+      expected: [IDX.A, IDX.A2, IDX.A1, IDX.B],
     },
     {
       name: `leaf zoom_root_id renders that leaf full-viewport, not a blank chart`,
@@ -243,8 +245,25 @@ describe(`Treemap`, () => {
     expect(texts).toEqual(expect.arrayContaining([`A`, `A1`, `A2`, `B`]))
     const header = labels.find((lbl) => lbl.textContent?.trim() === `A`)
     expect(header?.classList.contains(`header`)).toBe(true)
+    expect(header?.getAttribute(`font-size`)).toBe(`14`)
     const leaf = labels.find((lbl) => lbl.textContent?.trim() === `B`)
     expect(leaf?.classList.contains(`header`)).toBe(false)
+    expect(leaf?.getAttribute(`font-size`)).toBeNull()
+  })
+
+  test.each([
+    [`the header strip is absent`, { padding_top: 0 }],
+    [
+      `its font is taller than the header strip`,
+      { padding_top: 12, parent_label_font_size: 30 },
+    ],
+  ] as const)(`hide mode drops a parent label when %s`, async (_reason, props) => {
+    const plot = await mount_sized_treemap({ data: tree, ...props })
+    const texts = [...plot.querySelectorAll(`.cell-label`)].map((label) =>
+      label.textContent?.trim(),
+    )
+    expect(texts).not.toContain(`A`) // branch label suppressed
+    expect(texts).toEqual(expect.arrayContaining([`A1`, `A2`, `B`])) // leaves keep theirs
   })
 
   test(`show_labels=false renders no labels`, async () => {
@@ -252,13 +271,86 @@ describe(`Treemap`, () => {
     expect(plot.querySelectorAll(`.cell-label`)).toHaveLength(0)
   })
 
-  test(`padding_top=0 drops branch labels instead of painting over children`, async () => {
-    const plot = await mount_sized_treemap({ data: tree, padding_top: 0 })
-    const texts = [...plot.querySelectorAll(`.cell-label`)].map((lbl) =>
-      lbl.textContent?.trim(),
+  test(`label_formatter renders styled lines without replacing cell interactions`, async () => {
+    const plot = await mount_sized_treemap({
+      data: tree,
+      label_fit: `clip`,
+      label_formatter: (arc: TreemapArc) => [
+        {
+          text: arc.label_path.join(`/`),
+          class: `path-line`,
+          font_scale: 0.6,
+          font_weight: 300,
+          opacity: 0.7,
+        },
+        { text: arc.label ?? `${arc.id}`, class: `name-line`, font_weight: 700 },
+      ],
+    })
+    const a1_label = [...plot.querySelectorAll<SVGTextElement>(`.cell-label`)].find(
+      (label) => label.querySelector(`.name-line`)?.textContent === `A1`,
     )
-    expect(texts).not.toContain(`A`) // branch label suppressed
-    expect(texts).toEqual(expect.arrayContaining([`A1`, `A2`, `B`])) // leaves keep theirs
+    expect(a1_label?.querySelector(`.path-line`)?.textContent).toBe(`A/A1`)
+    expect(a1_label?.querySelector(`.path-line`)?.getAttribute(`font-weight`)).toBe(`300`)
+    expect(a1_label?.querySelector(`.path-line`)?.getAttribute(`opacity`)).toBe(`0.7`)
+    expect(a1_label?.querySelector(`.name-line`)?.getAttribute(`font-weight`)).toBe(`700`)
+    expect(cell_rect(plot, `A1`).getAttribute(`role`)).toBe(`button`)
+    expect(cell_rect(plot, `A1`).getAttribute(`aria-label`)).toBe(`A1: 4`)
+    // hovering a label tspan reaches the underlying cell via event delegation
+    await fire(a1_label?.querySelector(`.name-line`), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+  })
+
+  test(`label_formatter is never invoked for the hidden root`, async () => {
+    const label_formatter = vi.fn((arc: TreemapArc) => arc.label ?? `${arc.id}`)
+    await mount_sized_treemap({ data: tree, label_formatter })
+    const seen_depths = label_formatter.mock.calls.map(([arc]) => arc.depth)
+    expect(label_formatter).toHaveBeenCalledTimes(4) // A, A2, A1, B - not the root
+    expect(seen_depths).not.toContain(0)
+  })
+
+  test.each([
+    [`hide drops overflowing labels`, `hide`, `very-long-label-`.repeat(100), 30, null],
+    [
+      `shrink uses the minimum for overflow`,
+      `shrink`,
+      `very-long-label-`.repeat(100),
+      30,
+      `6`,
+    ],
+    [`clip keeps the maximum for overflow`, `clip`, `very-long-label-`.repeat(100), 30, `30`],
+    [`shrink grows labels to the maximum`, `shrink`, `large`, 32, `32`],
+  ] as const)(`%s`, async (_name, label_fit, label_text, label_max_font_size, font_size) => {
+    const plot = await mount_sized_treemap({
+      data: [{ label: label_text, value: 1 }],
+      label_fit,
+      label_formatter: (arc: TreemapArc) => arc.label,
+      label_min_font_size: 6,
+      label_max_font_size,
+    })
+    const label = plot.querySelector<SVGTextElement>(`.cell-label`)
+    expect(label?.getAttribute(`font-size`) ?? null).toBe(font_size)
+    const clip_path = label?.parentElement?.getAttribute(`clip-path`) ?? null
+    if (label_fit === `hide`) expect(clip_path).toBeNull()
+    else expect(clip_path).toContain(`treemap-label-clip`)
+  })
+
+  test(`rotated labels use an untransformed clipping wrapper`, async () => {
+    const plot = await mount_sized_treemap({
+      data: [
+        { label: `main`, value: 95 },
+        { label: `needle-file.ts`, value: 5 },
+      ],
+      label_fit: `clip`,
+      label_max_font_size: 20,
+    })
+    const labels = [...plot.querySelectorAll<SVGTextElement>(`.cell-label`)]
+    const needle_label = labels.find((label) => label.textContent?.trim() === `needle-file.ts`)
+    expect(labels).toHaveLength(n_cells(plot))
+    expect(needle_label?.getAttribute(`transform`)).toContain(`rotate(-90`)
+    expect(needle_label?.getAttribute(`clip-path`)).toBeNull()
+    expect(needle_label?.parentElement?.getAttribute(`clip-path`)).toContain(
+      `treemap-label-clip`,
+    )
   })
 
   test(`legend lists depth-1 categories and muting dims the subtree`, async () => {

@@ -105,6 +105,13 @@ export function export_canvas_as_png(
     .catch((error) => console.error(`Error exporting PNG:`, error))
 }
 
+export interface SvgExportOptions {
+  // Extra user-space units around the viewBox in the exported clone. Useful
+  // when strokes are centered on a chart edge and would otherwise be clipped.
+  // `stroke` derives the padding from half the largest rendered stroke width.
+  viewbox_padding?: number | `stroke`
+}
+
 // Helper to ensure font-family is set on SVG root
 function set_svg_font_family(svg: SVGElement) {
   const style = svg.getAttribute(`style`) ?? ``
@@ -113,6 +120,58 @@ function set_svg_font_family(svg: SVGElement) {
   }
   // Also set as attribute for extra robustness
   svg.setAttribute(`font-family`, `sans-serif`)
+}
+
+type SvgViewbox = [x: number, y: number, width: number, height: number]
+
+function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
+  const parts = svg
+    .getAttribute(`viewBox`)
+    ?.trim()
+    .split(/[\s,]+/)
+    .map(Number)
+  if (parts?.length !== 4 || !parts.every(Number.isFinite)) return null
+  const [x, y, width, height] = parts
+  if (width <= 0 || height <= 0) return null
+  const padded: SvgViewbox = [
+    x - padding,
+    y - padding,
+    width + 2 * padding,
+    height + 2 * padding,
+  ]
+  return padded.every(Number.isFinite) && padded[2] > 0 && padded[3] > 0 ? padded : null
+}
+
+function resolve_viewbox_padding(svg: SVGElement, options: SvgExportOptions): number {
+  if (options.viewbox_padding !== `stroke`) {
+    return Number.isFinite(options.viewbox_padding)
+      ? Math.max(0, options.viewbox_padding ?? 0)
+      : 0
+  }
+  let max_stroke_width = 0
+  for (const element of [svg, ...svg.querySelectorAll(`*`)]) {
+    const computed = getComputedStyle(element)
+    const inline_style = (element as SVGElement).style
+    const stroke =
+      [
+        inline_style.stroke,
+        computed.getPropertyValue(`stroke`),
+        element.getAttribute(`stroke`),
+      ].find(Boolean) ?? ``
+    if (!stroke || stroke === `none` || stroke === `transparent`) continue
+    // oxlint-disable-next-line unicorn/prefer-number-coercion -- CSS lengths include units
+    const stroke_width = Number.parseFloat(
+      [
+        inline_style.strokeWidth,
+        computed.getPropertyValue(`stroke-width`),
+        element.getAttribute(`stroke-width`),
+      ].find(Boolean) ?? ``,
+    )
+    if (Number.isFinite(stroke_width)) {
+      max_stroke_width = Math.max(max_stroke_width, stroke_width)
+    }
+  }
+  return max_stroke_width / 2
 }
 
 // Copy the given computed-style props from each live SVG element to its clone counterpart;
@@ -138,9 +197,17 @@ function inline_computed_styles(
 function serialize_svg_for_export(
   svg_element: SVGElement,
   inline_styles: readonly string[] = [],
+  viewbox_padding = 0,
+  strip_dimensions = false,
 ): string {
   const clone = svg_element.cloneNode(true) as SVGElement
   if (inline_styles.length) inline_computed_styles(svg_element, clone, inline_styles)
+  const padded_viewbox = viewbox_padding > 0 ? svg_viewbox(clone, viewbox_padding) : null
+  if (padded_viewbox) clone.setAttribute(`viewBox`, padded_viewbox.join(` `))
+  if (strip_dimensions) {
+    clone.removeAttribute(`width`)
+    clone.removeAttribute(`height`)
+  }
   set_svg_font_family(clone)
   if (!clone.hasAttribute(`xmlns`)) {
     clone.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
@@ -155,8 +222,10 @@ export function svg_to_svg_string(
   // CSS props to inline from computed styles as presentation attributes; a standalone SVG
   // drops page stylesheets (e.g. Svelte component styles), so class-based styling is lost.
   inline_styles: readonly string[] = [],
+  options: SvgExportOptions = {},
 ): string {
-  const svg_string = serialize_svg_for_export(svg_element, inline_styles)
+  const viewbox_padding = resolve_viewbox_padding(svg_element, options)
+  const svg_string = serialize_svg_for_export(svg_element, inline_styles, viewbox_padding)
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
 }
 
@@ -165,13 +234,14 @@ export function export_svg_as_svg(
   svg_element: SVGElement | null,
   filename: string,
   inline_styles: readonly string[] = [],
+  options: SvgExportOptions = {},
 ): void {
   if (!svg_element) {
     console.warn(`SVG element not found for export`)
     return
   }
   try {
-    const svg_content = svg_to_svg_string(svg_element, inline_styles)
+    const svg_content = svg_to_svg_string(svg_element, inline_styles, options)
     download(svg_content, filename, `image/svg+xml;charset=utf-8`)
   } catch (error) {
     console.error(`Error exporting SVG:`, error)
@@ -187,18 +257,16 @@ export function svg_to_png_blob(
   svg_element: SVGElement,
   png_dpi = 150,
   inline_styles: readonly string[] = [],
+  options: SvgExportOptions = {},
 ): Promise<Blob> {
-  const viewBox = svg_element.getAttribute(`viewBox`)?.trim()
-  if (!viewBox) return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
+  if (!svg_element.getAttribute(`viewBox`)?.trim())
+    return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
 
-  const parts = viewBox.split(/[\s,]+/).map(Number)
-  if (parts.length < 4 || !parts.every(Number.isFinite)) {
+  const padding = resolve_viewbox_padding(svg_element, options)
+  const padded_viewbox = svg_viewbox(svg_element, padding)
+  if (!padded_viewbox)
     return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
-  }
-  const [, , width, height] = parts
-  if (!(width > 0) || !(height > 0)) {
-    return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
-  }
+  const [, , width, height] = padded_viewbox
   if (!Number.isFinite(png_dpi) || png_dpi <= 0) {
     return Promise.reject(new Error(`Invalid PNG DPI for export`))
   }
@@ -215,7 +283,7 @@ export function svg_to_png_blob(
   canvas.width = pixel_width
   canvas.height = pixel_height
 
-  const serialized = serialize_svg_for_export(svg_element, inline_styles)
+  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, true)
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
 
@@ -253,12 +321,13 @@ export function export_svg_as_png(
   filename: string,
   png_dpi = 150,
   inline_styles: readonly string[] = [],
+  options: SvgExportOptions = {},
 ): void {
   if (!svg_element) {
     console.warn(`SVG element not found for PNG export`)
     return
   }
-  svg_to_png_blob(svg_element, png_dpi, inline_styles)
+  svg_to_png_blob(svg_element, png_dpi, inline_styles, options)
     .then((blob) => download(blob, filename, `image/png`))
     .catch((error) => console.error(`Error exporting PNG:`, error))
 }

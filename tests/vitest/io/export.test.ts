@@ -170,6 +170,33 @@ describe(`svg_to_svg_string`, () => {
     expect(svg.attributes).toHaveLength(original_attrs)
   })
 
+  test.each([
+    { name: `pads the export`, padding: 2, expected: `-2 -2 104 54` },
+    { name: `ignores overflowing padding`, padding: Number.MAX_VALUE, expected: `0 0 100 50` },
+  ])(`$name without mutating the source viewBox`, ({ padding, expected }) => {
+    const svg = make_svg(`0 0 100 50`)
+    const result = svg_to_svg_string(svg, [], { viewbox_padding: padding })
+    expect(result).toContain(`viewBox="${expected}"`)
+    expect(svg.getAttribute(`viewBox`)).toBe(`0 0 100 50`)
+  })
+
+  test.each([
+    { attribute_width: `4`, style_width: ``, expected: `-2 -2 104 54` },
+    { attribute_width: `2`, style_width: `8px`, expected: `-4 -4 108 58` },
+  ])(
+    `derives viewBox padding from rendered stroke width $style_width`,
+    ({ attribute_width, style_width, expected }) => {
+      const svg = make_svg(`0 0 100 50`)
+      const rect = document.createElementNS(`http://www.w3.org/2000/svg`, `rect`)
+      rect.setAttribute(`stroke`, `black`)
+      rect.setAttribute(`stroke-width`, attribute_width)
+      if (style_width) rect.style.strokeWidth = style_width
+      svg.append(rect)
+      const result = svg_to_svg_string(svg, [], { viewbox_padding: `stroke` })
+      expect(result).toContain(`viewBox="${expected}"`)
+    },
+  )
+
   test(`preserves xmlns if already set`, () => {
     const svg = make_svg(`0 0 100 100`)
     svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
@@ -231,6 +258,7 @@ describe(`svg_to_png_blob`, () => {
     [`0 0 -100 100`, `negative width`],
     [`0 0 100 -50`, `negative height`],
     [`0 0 Infinity 100`, `Infinity width`],
+    [`0 0 100 100 1`, `extra value`],
   ])(`rejects for invalid viewBox %s (%s)`, async (viewBox: string) => {
     await expect(svg_to_png_blob(make_svg(viewBox))).rejects.toThrow(`Invalid SVG dimensions`)
   })
@@ -252,6 +280,28 @@ describe(`svg_to_png_blob`, () => {
     void svg_to_png_blob(svg, 72)
     expect(mock_canvas_element.width).toBe(100)
     expect(mock_canvas_element.height).toBe(100)
+  })
+
+  test(`rejects padding that overflows PNG dimensions`, async () => {
+    await expect(
+      svg_to_png_blob(make_svg(`0 0 100 50`), 72, [], {
+        viewbox_padding: Number.MAX_VALUE,
+      }),
+    ).rejects.toThrow(`Invalid SVG dimensions`)
+  })
+
+  test(`strips explicit SVG dimensions before padded PNG rasterization`, async () => {
+    const svg = make_svg(`0 0 100 50`)
+    svg.setAttribute(`width`, `100`)
+    svg.setAttribute(`height`, `50`)
+    void svg_to_png_blob(svg, 72, [], { viewbox_padding: 2 })
+    expect(mock_canvas_element.width).toBe(104)
+    expect(mock_canvas_element.height).toBe(54)
+    const svg_blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob
+    const serialized = await svg_blob.text()
+    expect(serialized).toContain(`viewBox="-2 -2 104 54"`)
+    expect(serialized).not.toContain(`width="100"`)
+    expect(serialized).not.toContain(`height="50"`)
   })
 
   test(`rejects when canvas 2D context unavailable`, async () => {

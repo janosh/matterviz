@@ -4,7 +4,7 @@ Zoomable hierarchical part-of-whole charts as squarified nested rectangles (the 
 
 ## Basic Treemap
 
-Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell areas are the sum of their leaves by default. Depth-1 categories auto-cycle the default palette unless you set `color`, and descendants inherit their ancestor's color. Click any cell to zoom into it (plotly-style); the breadcrumb pathbar at the top (or <kbd>Escape</kbd> / double-clicking empty background) zooms back out.
+Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell areas are the sum of their leaves by default. Sibling cells tile largest-to-smallest from the top-left corner toward the bottom-right (pass `sort="none"` to keep input order instead). Depth-1 categories auto-cycle the default palette unless you set `color`, and descendants inherit their ancestor's color. Click any cell to zoom into it (plotly-style); the breadcrumb pathbar at the top (or <kbd>Escape</kbd> / double-clicking empty background) zooms back out.
 
 ```svelte example
 <script lang="ts">
@@ -37,6 +37,41 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell are
 </script>
 
 <Treemap {data} style="height: 420px" />
+```
+
+## Multiline labels and fitting
+
+`label_formatter` returns one or more independently styled lines while preserving the default cell hover, focus, click, zoom, and tooltip behavior. Parent header labels default to 14 px (`parent_label_font_size`) while leaf labels inherit `--treemap-font-size` (11 px by default). `label_fit="hide"` is the backward-compatible default. Use `"shrink"` to grow or shrink the label block's base font size between `label_min_font_size` and `label_max_font_size`, or `"clip"` to keep the maximum size and clip overflow (per-line `font_scale` multiplies on top of the fitted base size, so scaled lines can render outside those bounds). Parent headers use `parent_label_font_size` as their ceiling. Both non-default modes clip on an unrotated cell wrapper, so even rotated labels stay inside their cells.
+
+```svelte example
+<script lang="ts">
+  import { Treemap, sunburst_from_paths } from 'matterviz'
+
+  const data = sunburst_from_paths([
+    { path: [`src`, `App.svelte`], value: 320 },
+    { path: [`src`, `plot`, `Treemap.svelte`], value: 180 },
+    { path: [`src`, `plot`, `labels.ts`], value: 70 },
+    { path: [`README.md`], value: 90 },
+  ])
+</script>
+
+<Treemap
+  {data}
+  padding_top={30}
+  label_fit="shrink"
+  label_min_font_size={3}
+  label_max_font_size={28}
+  label_formatter={(arc) => [
+    {
+      text: arc.label_path.slice(0, -1).join(`/`) || `.`,
+      font_scale: 0.58,
+      font_weight: 300,
+      opacity: 0.72,
+    },
+    { text: arc.label ?? `${arc.id}`, font_weight: 650 },
+  ]}
+  style="height: 420px"
+/>
 ```
 
 ## Chemical system treemap
@@ -118,7 +153,7 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell are
   const spacegroups = distribution.flatMap(([spg, count]) => Array(count).fill(spg))
 </script>
 
-<label>
+<label style="display: block; margin-block: 0 1em">
   Group spacegroups below
   <select bind:value={min_fraction}>
     <option value={0}>0% (show all)</option>
@@ -143,7 +178,7 @@ Pass `color_values` to color cells by a numeric metric on a continuous d3 colorm
 
 ```svelte example
 <script lang="ts">
-  import { Treemap, sunburst_from_paths } from 'matterviz'
+  import { Treemap, type TreemapNode, sunburst_from_paths } from 'matterviz'
 
   let zoom_root_id = $state<string | number | null>(null)
 
@@ -169,9 +204,27 @@ Pass `color_values` to color cells by a numeric metric on a continuous d3 colorm
       metadata: { e_above_hull },
     })),
   )
+  // Only compound leaves carry e_above_hull, but max_depth=2 hides them at root
+  // zoom - attach the count-weighted mean to branch nodes so prototype/system
+  // cells are metric-colored at every zoom level.
+  const attach_mean_e_hull = (node: TreemapNode): [number, number] => {
+    if (!node.children?.length) {
+      const e_hull = (node.metadata?.e_above_hull as number) ?? 0
+      return [e_hull * (node.value ?? 0), node.value ?? 0]
+    }
+    let [sum, weight] = [0, 0]
+    for (const child of node.children) {
+      const [child_sum, child_weight] = attach_mean_e_hull(child)
+      sum += child_sum
+      weight += child_weight
+    }
+    node.metadata = { e_above_hull: weight > 0 ? sum / weight : 0 }
+    return [sum, weight]
+  }
+  data.forEach(attach_mean_e_hull)
 </script>
 
-<div style="display: flex; gap: 1em; align-items: center">
+<div style="display: flex; gap: 1em; align-items: center; margin-block: 0 1em">
   <button onclick={() => (zoom_root_id = null)} disabled={zoom_root_id === null}>
     Reset zoom
   </button>
