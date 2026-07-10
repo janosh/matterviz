@@ -1,20 +1,8 @@
-// The public parse-only entry stays worker-safe while the extension wrapper
-// re-exports the same functions for backward compatibility.
+// The public parse-only entry stays worker-safe.
 import { describe, expect, test } from 'vitest'
-import * as main_entry from '../src/webview/main'
 import * as parse_entry from '$lib/file-viewer/parse'
 
-describe(`webview parse entry points`, () => {
-  test.each([`parse_file_content`, `parse_large_file_marker`, `base64_to_array_buffer`])(
-    `main.ts re-exports %s from parse.ts by identity`,
-    (export_name) => {
-      const from_main = main_entry[export_name as keyof typeof main_entry]
-      const from_parse = parse_entry[export_name as keyof typeof parse_entry]
-      expect(typeof from_parse).toBe(`function`)
-      expect(from_main).toBe(from_parse)
-    },
-  )
-
+describe(`file-viewer parse entry`, () => {
   test(`parse.ts parses a structure without going through main.ts`, async () => {
     const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
     const result = await parse_entry.parse_file_content(poscar, `POSCAR`, false)

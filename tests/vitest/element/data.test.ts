@@ -3,12 +3,7 @@
 // Would have caught the bug where H had larger atomic_radius than O.
 
 import type { ElementSymbol } from '$lib/element'
-import {
-  element_by_symbol,
-  element_data,
-  element_group_by_key,
-  element_group_keys,
-} from '$lib/element'
+import { element_by_symbol, element_data } from '$lib/element'
 import { CATEGORY_COUNTS as expected_counts } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
 
@@ -51,18 +46,6 @@ test(`category counts`, () => {
     counts[category] = (counts[category] ?? 0) + 1
   }
   expect(counts).toEqual(expected_counts)
-})
-
-test.each([
-  [`H`, `nonmetal`],
-  [`F`, `halogen`],
-  [`Fe`, `transition`],
-  [`La`, `lanthanide`],
-  [`U`, `actinide`],
-] as const)(`%s belongs to the %s element group`, (symbol, group_key) => {
-  const group = element_group_by_key.get(group_key)
-  expect(group?.includes(get_element(symbol))).toBe(true)
-  expect(element_group_keys.has(group_key)).toBe(true)
 })
 
 describe(`atomic_radius`, () => {
@@ -349,17 +332,20 @@ describe(`data completeness`, () => {
   })
 
   test(`main elements (Z <= 86) have required properties`, () => {
-    const noble_gas_group = element_group_by_key.get(`noble_gas`)
+    const noble_gases = new Set([`He`, `Ne`, `Ar`, `Kr`, `Xe`, `Rn`])
+    const null_radius_ok = new Set([...noble_gases, `At`, `Fr`])
 
     for (const element of element_data.filter((entry) => entry.number <= 86)) {
       // All main elements need first_ionization
       expect(element.first_ionization, `${element.symbol} first_ionization`).not.toBeNull()
 
       // Non-noble gases need electronegativity and atomic_radius
-      if (noble_gas_group?.includes(element)) continue
-      expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
-      if (element.symbol === `At` || element.symbol === `Fr`) continue
-      expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
+      if (!noble_gases.has(element.symbol)) {
+        expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
+        if (!null_radius_ok.has(element.symbol)) {
+          expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
+        }
+      }
     }
   })
 })

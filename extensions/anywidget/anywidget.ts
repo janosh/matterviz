@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 // MatterViz AnyWidget Entry Point
 
 import type { AnyModel, Render } from 'anywidget/types'
@@ -621,6 +623,10 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `padding_outer`,
         `show_labels`,
         `label_text`,
+        `label_fit`,
+        `label_min_font_size`,
+        `label_max_font_size`,
+        `parent_label_font_size`,
         `zoom_on_click`,
         `show_breadcrumbs`,
         `color_scale`,

@@ -418,15 +418,17 @@
   const colorbar_is_horizontal = $derived(
     (color_bar?.orientation ?? `horizontal`) === `horizontal`,
   )
+  // Fallback estimate (with room for tick labels) used before the colorbar first
+  // renders; compute_element_placement measures the real footprint once it's laid out
+  const colorbar_fallback_size = $derived(
+    colorbar_is_horizontal
+      ? COLOR_BAR_DEFAULTS.horizontal_footprint
+      : COLOR_BAR_DEFAULTS.vertical_footprint,
+  )
   // full footprint (not the offset box): colorbar tick labels are absolutely
   // positioned outside the bar and must count toward reserved margins
   const colorbar_footprint = $derived(
-    full_footprint_or(
-      colorbar_element,
-      colorbar_is_horizontal
-        ? COLOR_BAR_DEFAULTS.horizontal_footprint
-        : COLOR_BAR_DEFAULTS.vertical_footprint,
-    ),
+    full_footprint_or(colorbar_element, colorbar_fallback_size),
   )
   const legend_footprint = $derived(
     measured_footprint(legend_element, { width: 120, height: 80 }),
@@ -968,12 +970,6 @@
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    // Fallback estimate (with room for tick labels) used before the colorbar first
-    // renders; compute_element_placement measures the real footprint once it's laid out
-    const colorbar_size = colorbar_is_horizontal
-      ? COLOR_BAR_DEFAULTS.horizontal_footprint
-      : COLOR_BAR_DEFAULTS.vertical_footprint
-
     // Build exclusion rects (avoid legend if it's placed)
     const exclude_rects: Rect[] = []
     if (legend_element && legend_placement) {
@@ -988,7 +984,7 @@
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
       element: colorbar_element,
-      element_size: colorbar_size,
+      element_size: colorbar_fallback_size,
       // Small gap from the corner; the full-footprint measurement reserves the tick
       // labels, so this alone keeps the colorbar off the axes
       axis_clearance: color_bar?.axis_clearance ?? 15,

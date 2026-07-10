@@ -114,7 +114,7 @@ export const parse_file_content = async (
 
     console.info(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
 
-    if (!large_file_requester) throw new Error(`VS Code API not available`)
+    if (!large_file_requester) throw new Error(`No large-file requester registered`)
     const parsed_trajectory = await large_file_requester(file_path, filename, is_compressed)
 
     // Check if we received a pre-parsed trajectory with VS Code streaming support
@@ -141,14 +141,17 @@ export const parse_file_content = async (
   // Handle compressed/binary files by converting from base64 first
   if (is_compressed) {
     let buffer = base64_to_array_buffer(content)
+    const compression_format = detect_compression_format(filename)
+    const uncompressed_filename = compression_format
+      ? filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+      : filename
 
-    // Gzipped binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
-    // or gzipped ASE .traj files): decompress to binary first — the generic text
-    // decompression below would corrupt their bytes — so the binary routing
-    // below sees the inner name.
-    if (/\.(?:h5|hdf5|traj)\.gz$/i.test(filename)) {
-      buffer = await decompress_data_binary(buffer, `gzip`)
-      filename = filename.replace(/\.gz$/i, ``)
+    // Compressed binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
+    // or compressed ASE .traj files): decompress to binary first — generic text
+    // decompression would corrupt their bytes — so routing sees the inner name.
+    if (compression_format && /\.(?:h5|hdf5|traj)$/i.test(uncompressed_filename)) {
+      buffer = await decompress_data_binary(buffer, compression_format)
+      filename = uncompressed_filename
     }
 
     // vaspwave.h5 holds charge density (+ wavefunctions), not a trajectory —
@@ -174,11 +177,10 @@ export const parse_file_content = async (
     }
 
     // Unified handling for all supported compression formats
-    const format = detect_compression_format(filename)
-    if (format && format !== `zip`) {
+    if (compression_format && compression_format !== `zip`) {
       // Skip ZIP as it's not supported in browser
-      content = await decompress_data(buffer, format)
-      filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+      content = await decompress_data(buffer, compression_format)
+      filename = uncompressed_filename
     }
   }
 

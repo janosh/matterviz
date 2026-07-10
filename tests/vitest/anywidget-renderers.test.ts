@@ -227,7 +227,15 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
     expect(WIDGET_MODEL_KEYS.scatter_plot).toEqual(
       expect.arrayContaining([`active_point`, `hovered_point`, `selected_point`]),
     )
-    expect(WIDGET_MODEL_KEYS.treemap).toEqual(expect.arrayContaining([`zoom_root_id`]))
+    expect(WIDGET_MODEL_KEYS.treemap).toEqual(
+      expect.arrayContaining([
+        `label_fit`,
+        `label_max_font_size`,
+        `label_min_font_size`,
+        `parent_label_font_size`,
+        `zoom_root_id`,
+      ]),
+    )
   })
 })
 

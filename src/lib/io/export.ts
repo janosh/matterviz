@@ -283,7 +283,7 @@ export function svg_to_png_blob(
   canvas.width = pixel_width
   canvas.height = pixel_height
 
-  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, true)
+  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, padding > 0)
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
 

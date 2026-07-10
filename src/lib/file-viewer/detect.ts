@@ -447,19 +447,15 @@ export function scan_renderable_paths(
 // Handles dotted keys ["foo.bar"], array indices [0], and bare dotted paths a.b.c.
 export function resolve_path(root: unknown, path: string): unknown {
   if (!path) return root
-  const segments: string[] = []
   const segment_re =
     /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g
+  let current: unknown = root
   let match: RegExpExecArray | null
   while ((match = segment_re.exec(path)) !== null) {
-    segments.push(match[1] ?? match[2] ?? match[3])
-  }
-  let current: unknown = root
-  for (const segment of segments) {
     if (current === null || current === undefined || typeof current !== `object`) {
       return undefined
     }
-    current = (current as Record<string, unknown>)[segment]
+    current = (current as Record<string, unknown>)[match[1] ?? match[2] ?? match[3]]
   }
   return current
 }

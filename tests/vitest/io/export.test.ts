@@ -290,19 +290,24 @@ describe(`svg_to_png_blob`, () => {
     ).rejects.toThrow(`Invalid SVG dimensions`)
   })
 
-  test(`strips explicit SVG dimensions before padded PNG rasterization`, async () => {
-    const svg = make_svg(`0 0 100 50`)
-    svg.setAttribute(`width`, `100`)
-    svg.setAttribute(`height`, `50`)
-    void svg_to_png_blob(svg, 72, [], { viewbox_padding: 2 })
-    expect(mock_canvas_element.width).toBe(104)
-    expect(mock_canvas_element.height).toBe(54)
-    const svg_blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob
-    const serialized = await svg_blob.text()
-    expect(serialized).toContain(`viewBox="-2 -2 104 54"`)
-    expect(serialized).not.toContain(`width="100"`)
-    expect(serialized).not.toContain(`height="50"`)
-  })
+  test.each([
+    { padding: 0, size: [100, 50], viewbox: `0 0 100 50`, keeps_dimensions: true },
+    { padding: 2, size: [104, 54], viewbox: `-2 -2 104 54`, keeps_dimensions: false },
+  ])(
+    `handles explicit SVG dimensions with $padding padding`,
+    async ({ padding, size, viewbox, keeps_dimensions }) => {
+      const svg = make_svg(`0 0 100 50`)
+      svg.setAttribute(`width`, `100`)
+      svg.setAttribute(`height`, `50`)
+      void svg_to_png_blob(svg, 72, [], { viewbox_padding: padding })
+      expect([mock_canvas_element.width, mock_canvas_element.height]).toEqual(size)
+      const svg_blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob
+      const serialized = await svg_blob.text()
+      expect(serialized).toContain(`viewBox="${viewbox}"`)
+      expect(serialized.includes(`width="100"`)).toBe(keeps_dimensions)
+      expect(serialized.includes(`height="50"`)).toBe(keeps_dimensions)
+    },
+  )
 
   test(`rejects when canvas 2D context unavailable`, async () => {
     vi.spyOn(document, `createElement`).mockReturnValue({

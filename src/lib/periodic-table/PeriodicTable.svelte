@@ -1,7 +1,7 @@
 <script lang="ts">
   import { get_d3_interpolator, is_color } from '$lib/colors'
   import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
-  import { element_data, element_group_by_key, ElementPhoto, ElementTile } from '$lib/element'
+  import { element_data, ElementPhoto, ElementTile } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
@@ -16,15 +16,9 @@
   // a tile's heat value: scalar or 1-4-segment array of numbers/colors
   type HeatValue = number | number[] | string | string[]
 
-  const group_label = (key: string): string => element_group_by_key.get(key)?.label ?? key
   const default_f_block_inset_tiles = [
-    {
-      name: group_label(`lanthanide`),
-      symbol: `La-Lu`,
-      number: `57-71`,
-      category: `lanthanide`,
-    },
-    { name: group_label(`actinide`), symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
+    { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
+    { name: `Actinides`, symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
   ] as const
   let {
     tile_props,

@@ -61,9 +61,8 @@
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
 
-  // no outer inset by default: the chart fills the container flush, matching
-  // Treemap (pass `padding` to reserve chart-edge space)
-  const DEFAULT_PADDING: Required<Sides> = { t: 0, b: 0, l: 0, r: 0 }
+  // Preserve the established outer inset; pass `padding` to override chart-edge space.
+  const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
 
   // An arc with its current screen-space geometry (angles in radians, radii in px)
   type ScreenArc = ScreenArcOf<Metadata>
@@ -815,8 +814,8 @@
     flex: var(--sunburst-flex, 1 1 auto);
     display: var(--sunburst-display, flex);
     flex-direction: column;
-    /* no bg shading by default (matches Treemap); set --sunburst-bg for a panel background */
-    background: var(--sunburst-bg, transparent);
+    /* Use the plot background by default; set --sunburst-bg to override it. */
+    background: var(--sunburst-bg, var(--plot-bg));
     border-radius: var(--sunburst-border-radius, var(--border-radius, 3pt));
   }
   .sunburst.fullscreen {
