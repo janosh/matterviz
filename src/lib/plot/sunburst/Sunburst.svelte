@@ -32,6 +32,7 @@
     hierarchy_legend_items,
     is_activation_key,
     node_handler_props,
+    observe_height,
     pointer_pos,
     prune_muted_ids,
     safe_hierarchy_layout,
@@ -60,6 +61,7 @@
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
 
+  // Preserve the established outer inset; pass `padding` to override chart-edge space.
   const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
 
   // An arc with its current screen-space geometry (angles in radians, radii in px)
@@ -184,10 +186,10 @@
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
   let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // measured height of the bottom colorbar, reserved from the chart so it never overlaps
-  // the arcs (16px covers its bottom offset + a small gap). reset to 0 when the colorbar
-  // is hidden (effect below) since bind:clientHeight doesn't clear on unmount; capped at
-  // half the area so a bad measurement can't collapse the chart
+  // measured height of the bottom colorbar (via observe_height, which resets it
+  // to 0 on unmount), reserved from the chart so it never overlaps the arcs
+  // (16px covers its bottom offset + a small gap); capped at half the area so a
+  // bad measurement can't collapse the chart
   let colorbar_height = $state(0)
   let colorbar_reserve = $derived(
     colorbar_height > 0 ? Math.min(colorbar_height + 16, avail_height / 2) : 0,
@@ -310,11 +312,6 @@
   )
   const arc_color = (arc: PositionedArc<Metadata>): string =>
     metric?.colors[arc.node_idx] ?? arc.color
-  // release the colorbar's reserved chart space when it's not rendered
-  $effect(() => {
-    if (!metric || colorbar == null) colorbar_height = 0
-  })
-
   // Hovered arc + its ancestors/descendants stay fully opaque, others dim
   let arc_dim = $derived(compute_node_dim(layout.arcs, muted_ids, hovered_idx))
 
@@ -789,17 +786,16 @@
   {/if}
 
   {#if metric && colorbar != null}
-    <div
-      bind:clientHeight={colorbar_height}
-      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;"
-    >
-      <ColorBar
-        {color_scale}
-        range={metric.range}
-        {...colorbar}
-        wrapper_style={`width: 100%; ${colorbar?.wrapper_style ?? ``}`}
-      />
-    </div>
+    <!-- positioning + height measurement live on ColorBar's own root (via rest
+    props + attachment) instead of an extra wrapper div -->
+    <ColorBar
+      {color_scale}
+      range={metric.range}
+      {...colorbar}
+      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
+        ``}"
+      {@attach observe_height((px) => (colorbar_height = px))}
+    />
   {/if}
 
   {@render children?.({ height, width, fullscreen })}
@@ -818,6 +814,7 @@
     flex: var(--sunburst-flex, 1 1 auto);
     display: var(--sunburst-display, flex);
     flex-direction: column;
+    /* Use the plot background by default; set --sunburst-bg to override it. */
     background: var(--sunburst-bg, var(--plot-bg));
     border-radius: var(--sunburst-border-radius, var(--border-radius, 3pt));
   }

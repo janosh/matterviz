@@ -145,11 +145,10 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
           if [ "$DRY_RUN" = true ]; then
-            npm publish --ignore-scripts --access public --dry-run
+            npx --yes npm@latest publish --ignore-scripts --access public --dry-run
           else
-            npm publish --ignore-scripts --access public
+            npx --yes npm@latest publish --ignore-scripts --access public
           fi
 
   # === Publish: VS Code extension to Open VSX (Marketplace upload is manual) ===
@@ -222,9 +221,8 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          npm install -g npm@latest # ensure OIDC-capable npm (>= 11.5.1)
           if [ "$DRY_RUN" = true ]; then
-            npm publish --ignore-scripts --access public --dry-run
+            npx --yes npm@latest publish --ignore-scripts --access public --dry-run
           else
-            npm publish --ignore-scripts --access public
+            npx --yes npm@latest publish --ignore-scripts --access public
           fi

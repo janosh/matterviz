@@ -2,7 +2,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { get_d3_interpolator } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
-  import { element_data } from '$lib/element'
+  import { element_by_symbol } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
@@ -2122,7 +2122,7 @@
           <div class="elements">
             {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}
               {@const element_name =
-                element_data.find((elem) => elem.symbol === element)?.name ?? ``}
+                element_by_symbol.get(element as ElementSymbol)?.name ?? ``}
               <span class="species">
                 {#if occu !== 1}<span class="occupancy">{format_num(occu, `.3~f`)}</span>{/if}
                 <strong>

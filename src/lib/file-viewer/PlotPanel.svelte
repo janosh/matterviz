@@ -173,6 +173,7 @@
         <span class="zoom-control">
           <input
             type="number"
+            aria-label="Zoom percentage"
             min="25"
             max="500"
             step="25"

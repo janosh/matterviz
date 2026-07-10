@@ -1,22 +1,8 @@
-// The parse-only path was extracted from webview/main.ts into webview/parse.ts
-// (so embedding hosts can run it inside a Web Worker). These tests pin the
-// compatibility contract: main.ts re-exports the exact same functions, and the
-// direct parse.ts entry parses files identically without any Svelte imports.
+// The public parse-only entry stays worker-safe.
 import { describe, expect, test } from 'vitest'
-import * as main_entry from '../src/webview/main'
-import * as parse_entry from '../src/webview/parse'
+import * as parse_entry from '$lib/file-viewer/parse'
 
-describe(`webview parse entry points`, () => {
-  test.each([`parse_file_content`, `parse_large_file_marker`, `base64_to_array_buffer`])(
-    `main.ts re-exports %s from parse.ts by identity`,
-    (export_name) => {
-      const from_main = main_entry[export_name as keyof typeof main_entry]
-      const from_parse = parse_entry[export_name as keyof typeof parse_entry]
-      expect(typeof from_parse).toBe(`function`)
-      expect(from_main).toBe(from_parse)
-    },
-  )
-
+describe(`file-viewer parse entry`, () => {
   test(`parse.ts parses a structure without going through main.ts`, async () => {
     const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
     const result = await parse_entry.parse_file_content(poscar, `POSCAR`, false)
@@ -34,7 +20,7 @@ describe(`webview parse entry points`, () => {
     const { existsSync, readFileSync } = await import(`node:fs`)
     const { dirname, resolve } = await import(`node:path`)
     const repo_root = resolve(import.meta.dirname, `../../..`)
-    const entry = resolve(import.meta.dirname, `../src/webview/parse.ts`)
+    const entry = resolve(repo_root, `src/lib/file-viewer/parse.ts`)
 
     const resolve_specifier = (specifier: string, from_file: string): string | null => {
       let base: string

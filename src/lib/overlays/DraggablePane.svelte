@@ -466,7 +466,7 @@
   .draggable-pane :global(input[type='number']) {
     box-sizing: border-box;
     text-align: center;
-    width: 2.2em;
+    width: 3.5em;
     margin: 0 3pt;
     flex-shrink: 0;
   }

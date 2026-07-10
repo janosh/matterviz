@@ -2,7 +2,7 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES, luminance } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
-  import { element_data } from '$lib/element'
+  import { element_by_symbol } from '$lib/element'
   import ElementTile from '$lib/element/ElementTile.svelte'
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -65,7 +65,7 @@
   let tooltip_pos = $state({ x: 0, y: 0 })
 
   const hovered_elem_data = $derived(
-    hovered_element ? element_data.find((el) => el.symbol === hovered_element) : null,
+    hovered_element ? (element_by_symbol.get(hovered_element) ?? null) : null,
   )
 
   // Format formula as plain text for clipboard: "Li2 O" or "Fe(+3)2 O(-2)3"
