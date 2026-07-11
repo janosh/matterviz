@@ -211,6 +211,8 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
+    active_volume_idx = 0,
+    volume_scaling = [1, 1, 1],
     interactive = true,
   }: SceneControlProps & {
     structure?: AnyStructure
@@ -316,8 +318,12 @@
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
     cursor?: string // cursor style for the 3D canvas
     dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
-    volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
+    // Loaded volumetric datasets for isosurface rendering (single volume accepted
+    // for backwards compatibility)
+    volumetric_data?: VolumetricData | VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
+    active_volume_idx?: number // Volume implicit single-isovalue settings apply to
+    volume_scaling?: Vec3 // Supercell tiling applied to isosurface geometry
     // When false, render the scene without hover/edit raycast helpers. Used by multi-side
     // view so inactive panes skip interaction-only work while the active pane stays editable.
     interactive?: boolean
@@ -2228,7 +2234,17 @@
 
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
       {#if volumetric_data && isosurface_settings}
-        <Isosurface volume={volumetric_data} settings={isosurface_settings} />
+        {@const volume_list = Array.isArray(volumetric_data)
+          ? volumetric_data
+          : [volumetric_data]}
+        {#if volume_list.length}
+          <Isosurface
+            volumes={volume_list}
+            settings={isosurface_settings}
+            {active_volume_idx}
+            tiling={volume_scaling}
+          />
+        {/if}
       {/if}
 
       <!-- Measurement overlays for measured sites -->

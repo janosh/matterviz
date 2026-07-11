@@ -74,6 +74,8 @@
     lattice_props = {},
     volumetric_data = undefined,
     isosurface_settings = undefined,
+    active_volume_idx = 0,
+    volume_scaling = [1, 1, 1],
     bond_edits_enabled = true,
     bond_edit_order = 1,
     measure_mode = `distance`,
@@ -126,8 +128,10 @@
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
     lattice_props?: ComponentProps<typeof StructureScene>[`lattice_props`]
-    volumetric_data?: VolumetricData
+    volumetric_data?: VolumetricData | VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
+    active_volume_idx?: number
+    volume_scaling?: Vec3
     bond_edits_enabled?: boolean
     bond_edit_order?: BondOrder
     measure_mode?: MeasureMode
@@ -304,6 +308,8 @@
       {lattice_props}
       {volumetric_data}
       {isosurface_settings}
+      {active_volume_idx}
+      {volume_scaling}
       bind:camera_is_moving
       bind:selected_sites
       {active_sites}

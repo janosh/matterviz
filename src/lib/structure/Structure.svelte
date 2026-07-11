@@ -13,7 +13,10 @@
   import {
     auto_isosurface_settings,
     DEFAULT_ISOSURFACE_SETTINGS,
-    tile_volumetric_data,
+    label_file_volumes,
+    lattices_match,
+    materialize_layers,
+    merge_imported_volumes,
   } from '$lib/isosurface/types'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
@@ -898,16 +901,16 @@
     })
   })
 
-  // Tile volumetric data to match supercell when active.
-  // Gate on !supercell_loading so the tiled volume and supercell structure update
-  // in the same frame (large supercells defer structure via setTimeout).
-  let supercell_volume = $derived.by(() => {
-    const vol = volumetric_data?.[active_volume_idx]
-    if (!vol || !has_supercell || supercell_loading) return vol
+  // Supercell tiling factors for isosurface geometry (tiling itself happens in
+  // the Isosurface component so color sampling can use the untiled full-res
+  // volumes). Gate on !supercell_loading so tiled surfaces and the supercell
+  // structure update in the same frame (large supercells defer via setTimeout).
+  let volume_scaling = $derived.by((): Vec3 => {
+    if (!has_supercell || supercell_loading) return [1, 1, 1]
     try {
-      return tile_volumetric_data(vol, parse_supercell_scaling(supercell_scaling))
+      return parse_supercell_scaling(supercell_scaling)
     } catch {
-      return vol
+      return [1, 1, 1]
     }
   })
 
@@ -1034,7 +1037,9 @@
     scene_props,
     gizmo: scene_gizmo,
     lattice_props,
-    volumetric_data: supercell_volume,
+    volumetric_data,
+    volume_scaling,
+    active_volume_idx,
     isosurface_settings,
     bond_edits_enabled,
     bond_edit_order,
@@ -1102,16 +1107,49 @@
 
   // Try to parse content as a volumetric file, setting both structure and volumetric data.
   // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
+  // When the file describes the same cell as already-loaded volumes, its volumes are
+  // APPENDED (or replaced in place on re-import of the same source file) so multiple
+  // fields — e.g. density + ESP — coexist and can cross-color each other's isosurfaces.
+  // A file with a different lattice replaces the current structure and volumes.
   // Returns the parsed structure on success, or null if the file isn't a volumetric format.
   function try_parse_volumetric(text_content: string, filename: string): AnyStructure | null {
     const vol_result = parse_volumetric_file(text_content, filename)
     if (!vol_result) return null
+
+    const incoming = label_file_volumes(vol_result.volumes, filename)
+    const current_lattice =
+      structure && `lattice` in structure ? structure.lattice.matrix : undefined
+    const can_append =
+      Boolean(volumetric_data?.length) &&
+      lattices_match(current_lattice, vol_result.structure.lattice?.matrix)
+
+    if (can_append && volumetric_data) {
+      // Materialize the implicit single surface into explicit layers so existing
+      // surfaces survive the transition to multi-volume mode
+      const merged = merge_imported_volumes(
+        volumetric_data,
+        materialize_layers(isosurface_settings, active_volume_idx),
+        incoming,
+      )
+      volumetric_data = merged.volumes
+      isosurface_settings = { ...isosurface_settings, layers: merged.layers }
+      active_volume_idx = merged.first_touched_idx
+      show_toast(
+        merged.n_added > 0
+          ? `Added ${merged.n_added} volume${merged.n_added > 1 ? `s` : ``} from ${filename}`
+          : `Reloaded volumes from ${filename}`,
+      )
+      return structure ?? null
+    }
+
+    // Replace: new system (or nothing loaded yet)
+    clear_camera_state()
     // parse_volumetric_file extracts structure from file header;
     // parsers set pbc so the lattice conforms to Crystal's LatticeType
     structure = vol_result.structure as AnyStructure
-    volumetric_data = vol_result.volumes
+    volumetric_data = incoming
     // Auto-compute reasonable isosurface settings from data range
-    const vol = vol_result.volumes[0]
+    const vol = incoming[0]
     if (vol) {
       isosurface_settings = auto_isosurface_settings(vol.data_range)
       active_volume_idx = 0
@@ -1122,9 +1160,9 @@
   // Parse file content, trying volumetric format first then falling back to plain structure.
   // Returns the parsed structure on success, throws on failure.
   function parse_file_content(text_content: string, filename: string): AnyStructure {
-    clear_camera_state()
     const vol_struct = try_parse_volumetric(text_content, filename)
     if (vol_struct) return vol_struct
+    clear_camera_state()
     // Clear stale volumetric data when loading a non-volumetric file
     volumetric_data = []
     const parsed = parse_any_structure(text_content, filename)
