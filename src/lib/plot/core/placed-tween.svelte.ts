@@ -14,7 +14,8 @@ type Point = { x: number; y: number }
 // hover lock), and track placement continuously only when `responsive`. Creates
 // $effects, so it must be called during component init.
 export function create_placed_tween(opts: {
-  // Auto-computed target position (null disables updates, e.g. legend hidden)
+  // Auto-computed target position (null disables updates, e.g. legend hidden).
+  // Must measure fresh on each call rather than return a memoized DOM measurement.
   placement: () => Point | null
   dims: () => { width: number; height: number }
   responsive: () => boolean
@@ -26,6 +27,10 @@ export function create_placed_tween(opts: {
   suspended?: () => boolean
   // Manual override (e.g. user-dragged position): applied immediately, no animation
   manual_position?: () => Point | null
+  // Notify related layout state when the observed decoration footprint changes.
+  on_element_resize?: () => void
+  // Recompute when another decoration that affects this placement changes.
+  placement_revision?: () => unknown
 }): { coords: Tween<Point>; placed: () => boolean; set_locked: (locked: boolean) => void } {
   // Hover lock: placement updates pause while the element is hovered; release is
   // debounced so brief mouse-outs don't cause jumps
@@ -42,7 +47,12 @@ export function create_placed_tween(opts: {
   let prev_dims: { width: number; height: number } | null = null
   let element_size_revision = $state(0)
   let prev_element_size_revision = 0
+  let previous_element: Element | null = null
+  let previous_placement_revision: unknown
   let placed = $state(false)
+  const invalidate_element_size = (): void => {
+    element_size_revision += 1
+  }
 
   const coords = new Tween<Point>(
     { x: 0, y: 0 },
@@ -59,15 +69,58 @@ export function create_placed_tween(opts: {
   $effect(() => {
     const element = opts.element()
     if (!element || typeof ResizeObserver === `undefined`) return undefined
+    if (previous_element && previous_element !== element) invalidate_element_size()
+    previous_element = element
+    const initialized_elements = new WeakSet<Element>()
     const observed_elements = new WeakSet<Element>()
     const observer = new ResizeObserver((entries) => {
-      const size_changed = entries.some(({ target }) => observed_elements.has(target))
-      for (const { target } of entries) observed_elements.add(target)
-      if (size_changed) element_size_revision += 1
+      const size_changed = entries.some(({ target }) => initialized_elements.has(target))
+      for (const { target } of entries) initialized_elements.add(target)
+      if (size_changed) invalidate_element_size()
     })
-    observer.observe(element)
-    for (const child of element.querySelectorAll(`*`)) observer.observe(child)
-    return () => observer.disconnect()
+    const observe_tree = (root: Element): void => {
+      for (const target of [root, ...root.querySelectorAll(`*`)]) {
+        if (observed_elements.has(target)) continue
+        observed_elements.add(target)
+        observer.observe(target)
+      }
+    }
+    const unobserve_tree = (root: Element): void => {
+      for (const target of [root, ...root.querySelectorAll(`*`)]) {
+        observer.unobserve(target)
+        observed_elements.delete(target)
+        initialized_elements.delete(target)
+      }
+    }
+    observe_tree(element)
+
+    const mutation_observer =
+      typeof MutationObserver === `undefined`
+        ? null
+        : new MutationObserver((records) => {
+            let footprint_changed = false
+            for (const record of records) {
+              if (record.type === `attributes` && record.target === element) continue
+              footprint_changed = true
+              for (const node of record.addedNodes) {
+                if (node instanceof Element) observe_tree(node)
+              }
+              for (const node of record.removedNodes) {
+                if (node instanceof Element) unobserve_tree(node)
+              }
+            }
+            if (footprint_changed) invalidate_element_size()
+          })
+    mutation_observer?.observe(element, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [`class`, `style`],
+    })
+    return () => {
+      observer.disconnect()
+      mutation_observer?.disconnect()
+    }
   })
 
   // Update position with stability checks
@@ -79,7 +132,6 @@ export function create_placed_tween(opts: {
     if (manual) {
       // Immediate update (no animation) for manually positioned elements
       void coords.set({ x: manual.x, y: manual.y }, { duration: 0 })
-      return
     }
     // Leave resize revisions pending so unlock recomputes the latest placement.
     if (hover_locked) return
@@ -88,7 +140,14 @@ export function create_placed_tween(opts: {
     const dims_changed = !prev_dims || prev_dims.width !== width || prev_dims.height !== height
     if (dims_changed) prev_dims = { width, height }
     const element_size_changed = prev_element_size_revision !== element_size_revision
-    if (element_size_changed) prev_element_size_revision = element_size_revision
+    if (element_size_changed) {
+      prev_element_size_revision = element_size_revision
+      opts.on_element_resize?.()
+    }
+    if (manual) return
+    const placement_revision = opts.placement_revision?.()
+    const placement_invalidated = !Object.is(previous_placement_revision, placement_revision)
+    previous_placement_revision = placement_revision
     const responsive = opts.responsive()
     // A non-responsive tween tracks `placed` once so it immediately reruns and
     // unsubscribes from the expensive placement chain after its first placement.
@@ -96,7 +155,14 @@ export function create_placed_tween(opts: {
 
     // Skip expensive DOM placement before evaluating it: non-responsive
     // elements stay fixed after their initial placement until the plot resizes.
-    if (!dims_changed && !element_size_changed && !responsive && has_initial_placement) return
+    if (
+      !dims_changed &&
+      !element_size_changed &&
+      !placement_invalidated &&
+      !responsive &&
+      has_initial_placement
+    )
+      return
     const placement = opts.placement()
     if (!placement) return
 

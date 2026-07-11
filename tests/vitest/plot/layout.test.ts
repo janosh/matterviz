@@ -5,6 +5,7 @@ import {
   compute_element_placement,
   constrain_tooltip_position,
   filter_padding,
+  full_footprint_or,
   LABEL_GAP_DEFAULT,
   measure_max_tick_width,
   measure_text_width,
@@ -163,6 +164,37 @@ describe(`layout utility functions`, () => {
       })
       expect(result.x).toBeGreaterThanOrEqual(base_config.plot_bounds.x + 60)
       expect(result.y).toBeGreaterThanOrEqual(base_config.plot_bounds.y + 60)
+    })
+
+    it(`keeps descendants overflowing left and top inside the valid region`, () => {
+      const element = document.createElement(`div`)
+      const child = document.createElement(`span`)
+      element.append(child)
+      Object.defineProperties(element, {
+        offsetWidth: { value: 100 },
+        offsetHeight: { value: 60 },
+      })
+      element.getBoundingClientRect = () =>
+        DOMRect.fromRect({ x: 100, y: 100, width: 100, height: 60 })
+      child.getBoundingClientRect = () =>
+        DOMRect.fromRect({ x: 80, y: 85, width: 140, height: 90 })
+
+      expect(full_footprint_or(element, { width: 1, height: 1 })).toEqual({
+        width: 140,
+        height: 90,
+      })
+      const result = compute_element_placement({
+        plot_bounds: { x: 0, y: 0, width: 300, height: 200 },
+        element,
+        element_size: { width: 1, height: 1 },
+        axis_clearance: 10,
+        points: [],
+      })
+
+      expect(result.x - 20).toBeGreaterThanOrEqual(10)
+      expect(result.y - 15).toBeGreaterThanOrEqual(10)
+      expect(result.x - 20 + 140).toBeLessThanOrEqual(290)
+      expect(result.y - 15 + 90).toBeLessThanOrEqual(190)
     })
 
     it(`defaults axis_clearance to 12 so legends hug the corner`, () => {

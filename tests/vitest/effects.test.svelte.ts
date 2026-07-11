@@ -91,41 +91,101 @@ test.each([
   },
 )
 
-test(`create_placed_tween repositions frozen decorations when they resize`, () => {
+test(`create_placed_tween repositions frozen decorations when descendants change`, async () => {
   let resize_callback: ResizeObserverCallback | undefined
+  const observed_targets = new Set<Element>()
   vi.stubGlobal(
     `ResizeObserver`,
     class {
       constructor(callback: ResizeObserverCallback) {
         resize_callback = callback
       }
-      observe(): void {}
+      observe(target: Element): void {
+        observed_targets.add(target)
+      }
+      unobserve(target: Element): void {
+        observed_targets.delete(target)
+      }
       disconnect(): void {}
     },
   )
+  const decoration = document.createElement(`div`)
+  const tick_label = document.createElement(`span`)
+  decoration.append(tick_label)
+  document.body.append(decoration)
   let placement_x = 10
+  let active_decoration = $state(decoration)
+  let placement_revision = $state(0)
+  let manual_position = $state<{ x: number; y: number } | null>(null)
+  const on_element_resize = vi.fn()
   let placed_tween: ReturnType<typeof create_placed_tween> | undefined
   const dispose = $effect.root(() => {
     placed_tween = create_placed_tween({
       placement: () => ({ x: placement_x, y: 20 }),
       dims: () => ({ width: 100, height: 100 }),
       responsive: () => false,
-      element: () => document.body,
+      element: () => active_decoration,
       tween: () => ({ duration: 0 }),
+      on_element_resize,
+      placement_revision: () => placement_revision,
+      manual_position: () => manual_position,
     })
   })
 
   flushSync()
+  expect(observed_targets).toEqual(new Set([decoration, tick_label]))
   const resize = (width: number): void => {
     const entry = {
-      target: document.body,
+      target: tick_label,
       contentRect: { width, height: 40 },
     } as unknown as ResizeObserverEntry
     flushSync(() => resize_callback?.([entry], {} as ResizeObserver))
   }
   resize(100)
+  flushSync(() => placed_tween?.set_locked(true))
   placement_x = 30
   resize(120)
-  expect(placed_tween?.coords.target).toEqual({ x: 30, y: 20 })
+  expect(placed_tween?.coords.target).toEqual({ x: 10, y: 20 })
+  expect(on_element_resize).not.toHaveBeenCalled()
+  flushSync(() => placed_tween?.set_locked(false))
+  await vi.waitFor(() => {
+    expect(placed_tween?.coords.target).toEqual({ x: 30, y: 20 })
+    expect(on_element_resize).toHaveBeenCalledTimes(1)
+  })
+
+  placement_x = 35
+  flushSync(() => (placement_revision += 1))
+  expect(placed_tween?.coords.target).toEqual({ x: 35, y: 20 })
+
+  placement_x = 40
+  tick_label.style.left = `10px`
+  await vi.waitFor(() => expect(placed_tween?.coords.target).toEqual({ x: 40, y: 20 }))
+  placement_x = 45
+  tick_label.className = `tick-secondary`
+  await vi.waitFor(() => expect(placed_tween?.coords.target).toEqual({ x: 45, y: 20 }))
+
+  const late_tick_label = document.createElement(`span`)
+  placement_x = 50
+  decoration.append(late_tick_label)
+  await vi.waitFor(() => {
+    expect(observed_targets).toContain(late_tick_label)
+    expect(placed_tween?.coords.target).toEqual({ x: 50, y: 20 })
+  })
+
+  late_tick_label.remove()
+  await vi.waitFor(() => expect(observed_targets).not.toContain(late_tick_label))
+  const resize_notifications = on_element_resize.mock.calls.length
+  flushSync(() => (manual_position = { x: 70, y: 20 }))
+  resize(130)
+  expect(placed_tween?.coords.target).toEqual({ x: 70, y: 20 })
+  expect(on_element_resize).toHaveBeenCalledTimes(resize_notifications + 1)
+  flushSync(() => (manual_position = null))
+  const replacement = document.createElement(`div`)
+  document.body.append(replacement)
+  placement_x = 60
+  flushSync(() => (active_decoration = replacement))
+  expect(placed_tween?.coords.target).toEqual({ x: 60, y: 20 })
   dispose()
+  decoration.remove()
+  replacement.remove()
 })

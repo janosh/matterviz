@@ -2,7 +2,10 @@ import {
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
 } from '$lib/file-viewer/eligibility'
-import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
+import {
+  indexed_trajectory_format,
+  is_indexable_trajectory_filename,
+} from '$lib/trajectory/format-detect'
 
 export interface LargeFileMarker {
   file_path: string
@@ -38,12 +41,13 @@ export type HostTransferRejectReason =
 export type HostFileTransferPlan =
   | { kind: `inline`; is_base64: boolean }
   | { kind: `marker`; content: string }
-  | { kind: `reject`; reason: HostTransferRejectReason }
+  | { kind: `reject`; reason: HostTransferRejectReason; max_file_size?: number }
 
 export interface HostFileTransferInput extends LargeFileMarker {
   filename: string
   large_file_threshold: number
   max_file_size: number
+  max_text_file_size: number
 }
 
 export const plan_host_file_transfer = ({
@@ -52,17 +56,27 @@ export const plan_host_file_transfer = ({
   file_size,
   large_file_threshold,
   max_file_size,
+  max_text_file_size,
 }: HostFileTransferInput): HostFileTransferPlan => {
-  if (file_size > max_file_size) return { kind: `reject`, reason: `file-too-large` }
-
-  const is_base64 = should_encode_filename_as_base64(filename)
-  if (file_size <= large_file_threshold) return { kind: `inline`, is_base64 }
-
   const normalized_filename = normalize_browser_supported_filename(filename)
+  const is_large_file = file_size > large_file_threshold
+  const trajectory_format =
+    normalized_filename !== null && is_indexable_trajectory_filename(normalized_filename)
+      ? indexed_trajectory_format(normalized_filename)
+      : null
+  const format_max_file_size =
+    is_large_file && trajectory_format === `xyz`
+      ? Math.min(max_text_file_size, max_file_size)
+      : max_file_size
+  if (file_size > format_max_file_size) {
+    return { kind: `reject`, reason: `file-too-large`, max_file_size: format_max_file_size }
+  }
+  if (!is_large_file)
+    return { kind: `inline`, is_base64: should_encode_filename_as_base64(filename) }
+
   if (normalized_filename === null)
     return { kind: `reject`, reason: `unsupported-compression` }
-  if (!is_indexable_trajectory_filename(normalized_filename))
-    return { kind: `reject`, reason: `unsupported-large-format` }
+  if (!trajectory_format) return { kind: `reject`, reason: `unsupported-large-format` }
   return {
     kind: `marker`,
     content: format_large_file_marker({ file_path, file_size }),

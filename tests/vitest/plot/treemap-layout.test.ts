@@ -270,8 +270,11 @@ describe(`place_treemap_label`, () => {
     expect(placement?.font_size).toBe(10)
   })
 
-  test(`leaf height is independent of horizontal margin`, () => {
-    expect(place_treemap_label({ ...base, rect: rect(40, 12), margin: 6 })).not.toBeNull()
+  test(`leaf fitting reserves margin on every edge`, () => {
+    const cell = rect(40, 12)
+    expect(place_treemap_label({ ...base, rect: cell })).not.toBeNull()
+    expect(place_treemap_label({ ...base, rect: cell, margin: 4 })).toBeNull()
+    expect(place_treemap_label({ ...base, rect: cell, margin: 6 })).toBeNull()
   })
 
   test.each([

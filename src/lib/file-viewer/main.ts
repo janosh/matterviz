@@ -31,6 +31,7 @@ import type {
   TrajectoryType,
   TrajHandlerData,
 } from '$lib/trajectory'
+import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { build_structure_props_from_settings as structure_props } from '$lib/structure/prop-groups'
@@ -162,8 +163,14 @@ let vscode_api: VSCodeAPI | null = null
 let current_app: MatterVizApp | null = null
 let file_change_listener_registered = false
 let file_change_generation = 0
+let file_change_queue: Promise<void> = Promise.resolve()
 let viewer_disposed = false
+let viewer_lifecycle_generation = 0
 const global_window = globalThis as unknown as Window
+const is_current_file_change = (generation: number): boolean =>
+  !viewer_disposed && generation === file_change_generation
+const is_current_lifecycle = (generation: number): boolean =>
+  !viewer_disposed && generation === viewer_lifecycle_generation
 
 // Initialize VSCode API at module level
 try {
@@ -228,11 +235,11 @@ const handle_file_change = async (
   message: FileChangeMessage,
   generation: number,
 ): Promise<void> => {
-  if (generation !== file_change_generation) return
+  if (!is_current_file_change(generation)) return
   if (message.command === `fileDeleted`) {
     // File was deleted - show error message
     await unmount_current_app()
-    if (generation !== file_change_generation) return
+    if (!is_current_file_change(generation)) return
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {
       container.innerHTML = `
@@ -251,19 +258,19 @@ const handle_file_change = async (
     }
 
     const result = await parse_file_data(message.data)
-    if (generation !== file_change_generation) return
+    if (!is_current_file_change(generation)) return
 
     // Update the display
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {
       await unmount_current_app()
-      if (generation !== file_change_generation) return
+      if (!is_current_file_change(generation)) return
       current_app = create_display(container, result)
     }
 
     vscode_api?.postMessage({ command: `info`, text: `File reloaded successfully` })
   } catch (error) {
-    if (generation !== file_change_generation) return
+    if (!is_current_file_change(generation)) return
     console.error(`Failed to reload file:`, error)
     vscode_api?.postMessage({
       command: `error`,
@@ -275,13 +282,16 @@ const handle_file_change = async (
 const process_file_change = (message: FileChangeMessage): void => {
   if (viewer_disposed) return
   const generation = ++file_change_generation
-  void handle_file_change(message, generation).catch((error) => {
-    console.error(`Failed to process file change:`, error)
-    vscode_api?.postMessage({
-      command: `error`,
-      text: `Failed to process file change: ${error}`,
+  file_change_queue = file_change_queue
+    .then(() => handle_file_change(message, generation))
+    .catch((error) => {
+      if (!is_current_file_change(generation)) return
+      console.error(`Failed to process file change:`, error)
+      vscode_api?.postMessage({
+        command: `error`,
+        text: `Failed to process file change: ${error}`,
+      })
     })
-  })
 }
 
 // Request host-side parsing for a file too large to copy into the webview.
@@ -322,6 +332,11 @@ async function parse_file_data({
 }: FileData): Promise<DisplayResult> {
   const marker = parse_large_file_marker(content)
   if (!marker) return parse_file_content(content, filename, is_base64)
+  if (!is_indexable_trajectory_filename(filename)) {
+    throw new Error(
+      `Large-file loading is only supported for indexed trajectories: ${filename}`,
+    )
+  }
 
   console.info(
     `Handling large file: ${filename} (${Math.round(marker.file_size / 1024 / 1024)}MB)`,
@@ -552,8 +567,7 @@ const trajectory_props = (defaults: DefaultSettings) => {
 }
 
 // Initialize the MatterViz application
-async function initialize() {
-  viewer_disposed = false
+async function initialize(lifecycle_generation: number): Promise<MatterVizApp | null> {
   // Get MatterViz data passed from extension
   const file_data = globalThis.matterviz_data?.data
   const theme = globalThis.matterviz_data?.theme
@@ -564,6 +578,7 @@ async function initialize() {
 
   // Initialize WASM early with URL from extension (for symmetry analysis)
   if (moyo_wasm_url) await ensure_moyo_wasm_ready(moyo_wasm_url)
+  if (!is_current_lifecycle(lifecycle_generation)) return null
 
   // Set up VSCode-specific download override
   setup_vscode_download()
@@ -575,6 +590,7 @@ async function initialize() {
   if (!container) throw new Error(`Target container not found in DOM`)
 
   const result = await parse_file_data(file_data)
+  if (!is_current_lifecycle(lifecycle_generation)) return null
   const app = create_display(container, result)
 
   // Store the app instance for file watching
@@ -598,6 +614,8 @@ async function initialize() {
 async function cleanup_matterviz(): Promise<void> {
   viewer_disposed = true
   file_change_generation++
+  viewer_lifecycle_generation++
+  file_change_queue = Promise.resolve()
   await unmount_current_app()
 } // Export initialization and cleanup functions to global scope
 global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
@@ -606,10 +624,13 @@ global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
     return null
   }
 
+  viewer_disposed = false
+  const lifecycle_generation = ++viewer_lifecycle_generation
   try {
     // initialize() already records the app in current_app
-    return await initialize()
+    return await initialize(lifecycle_generation)
   } catch (error) {
+    if (!is_current_lifecycle(lifecycle_generation)) return null
     const err = to_error(error)
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {

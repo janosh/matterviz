@@ -12,6 +12,7 @@ const plan = (filename: string, file_size: number) =>
     file_size,
     large_file_threshold: 100,
     max_file_size: 1000,
+    max_text_file_size: 500,
   })
 
 test.each([
@@ -19,13 +20,18 @@ test.each([
   [`movie.traj`, 100, { kind: `inline`, is_base64: true }],
   [
     `movie.extxyz.gz`,
-    101,
+    500,
     {
       kind: `marker`,
-      content: `LARGE_FILE:C:\\data\\movie.extxyz.gz:101`,
+      content: `LARGE_FILE:C:\\data\\movie.extxyz.gz:500`,
     },
   ],
-  [`movie.traj`, 1001, { kind: `reject`, reason: `file-too-large` }],
+  [`movie.extxyz.gz`, 501, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
+  [`movie.extxyz`, 500, { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.extxyz:500` }],
+  [`movie.extxyz`, 501, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
+  [`movie.extxyz`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
+  [`movie.traj`, 1000, { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.traj:1000` }],
+  [`movie.traj`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
   [`movie.h5`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
   [`movie.xyz.zip`, 101, { kind: `reject`, reason: `unsupported-compression` }],
   [`movie.xyz.gz.gz`, 101, { kind: `reject`, reason: `unsupported-compression` }],

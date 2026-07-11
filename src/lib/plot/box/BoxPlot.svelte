@@ -491,9 +491,11 @@
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
-  const legend_footprint = $derived(
-    measured_footprint(legend_element, { width: 120, height: 60 }),
-  )
+  let legend_size_revision = $state(0)
+  const legend_footprint = $derived.by(() => {
+    void legend_size_revision
+    return measured_footprint(legend_element, { width: 120, height: 60 })
+  })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Obstacle field in normalized [0,1] coords: each box modeled as a whisker-spanning segment
@@ -723,7 +725,7 @@
 
   let hovered_legend_series_idx = $state<number | null>(null)
 
-  let legend_placement = $derived.by(() => {
+  const get_legend_placement = () => {
     if (!should_show_legend || !width || !height) return null
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
@@ -733,15 +735,16 @@
       exclude_rects: [],
       points: box_points_for_placement,
     })
-  })
+  }
 
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
-    placement: () => legend_placement,
+    placement: get_legend_placement,
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
     tween: () => legend?.tween,
+    on_element_resize: () => (legend_size_revision += 1),
   })
 
   // === Tooltip / hover ===

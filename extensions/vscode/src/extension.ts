@@ -23,7 +23,11 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
-import { MAX_STREAMING_FILE_SIZE, read_indexed_trajectory_file } from './node-io'
+import {
+  MAX_STREAMING_FILE_SIZE,
+  MAX_TEXT_TRAJECTORY_SIZE,
+  read_indexed_trajectory_file,
+} from './node-io'
 
 interface FrameLoaderData {
   loader: FrameLoader
@@ -105,11 +109,12 @@ const host_transfer_error = (
   reason: HostTransferRejectReason,
   filename: string,
   file_size: number,
+  max_file_size: number = MAX_STREAMING_FILE_SIZE,
 ): Error => {
   if (reason === `file-too-large`) {
     return new Error(
       `File too large (${format_bytes(file_size)}). Maximum supported size: ${format_bytes(
-        MAX_STREAMING_FILE_SIZE,
+        max_file_size,
       )}`,
     )
   }
@@ -145,9 +150,10 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     file_size,
     large_file_threshold: LARGE_FILE_THRESHOLD,
     max_file_size: MAX_STREAMING_FILE_SIZE,
+    max_text_file_size: MAX_TEXT_TRAJECTORY_SIZE,
   })
   if (transfer.kind === `reject`)
-    throw host_transfer_error(transfer.reason, filename, file_size)
+    throw host_transfer_error(transfer.reason, filename, file_size, transfer.max_file_size)
   if (transfer.kind === `marker`) {
     return { filename, content: transfer.content, is_base64: false }
   }

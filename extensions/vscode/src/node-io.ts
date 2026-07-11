@@ -10,7 +10,10 @@ import {
   is_browser_decompressible_format,
   type BrowserCompressionFormat,
 } from '$lib/io/decompress'
-import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
+import {
+  indexed_trajectory_format,
+  is_indexable_trajectory_filename,
+} from '$lib/trajectory/format-detect'
 import { constants as buffer_constants } from 'node:buffer'
 import { Readable } from 'node:stream'
 import { createGunzip, createInflate, createInflateRaw } from 'node:zlib'
@@ -20,7 +23,7 @@ import * as vscode from 'vscode'
 // NOTE: vscode.workspace.fs.readFile() loads entire file into memory (no streaming support yet)
 // Consider making this a user setting: matterviz.max_file_size_mb (default 1024)
 export const MAX_STREAMING_FILE_SIZE = 1024 * 1024 * 1024 // set low at 1GB to prevent OOM
-const MAX_TEXT_TRAJECTORY_SIZE = buffer_constants.MAX_STRING_LENGTH
+export const MAX_TEXT_TRAJECTORY_SIZE = buffer_constants.MAX_STRING_LENGTH
 const LARGE_FILE_WARNING_SIZE = 512 * 1024 * 1024 // 512MB - warn user
 const TEXT_DECODING_BYTES_PER_OUTPUT_BYTE = 2
 
@@ -156,7 +159,7 @@ export const read_indexed_trajectory_file = async (
   if (!is_indexable_trajectory_filename(normalized_filename)) {
     throw new Error(`Indexed loading is not supported for ${filename}`)
   }
-  const is_text_trajectory = /\.(?:xyz|extxyz)$/i.test(normalized_filename)
+  const is_text_trajectory = indexed_trajectory_format(normalized_filename) === `xyz`
   let buffer = await stream_file_to_buffer(file_path, on_progress)
   if (compression_format) {
     buffer = await decompress_host_buffer(
