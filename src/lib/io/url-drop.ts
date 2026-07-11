@@ -56,7 +56,10 @@ export function dropped_file_url(drag_event: DragEvent): string | undefined {
   const json_data = drag_event.dataTransfer?.getData(`application/json`)
   if (!json_data) return undefined
   try {
-    return (JSON.parse(json_data) as FileInfo).url || undefined
+    // Runtime-check instead of trusting the FileInfo cast: drop payloads are
+    // external input and a truthy non-string url must not reach fetch()
+    const { url } = JSON.parse(json_data) as Partial<FileInfo>
+    return typeof url === `string` && url ? url : undefined
   } catch {
     return undefined
   }
