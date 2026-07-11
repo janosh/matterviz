@@ -9,6 +9,7 @@ import {
   measure_max_tick_width,
   measure_text_width,
   pad_rect,
+  point_in_rect,
   rect_within_rect,
   sample_series_obstacle_points,
   TICK_LABEL_HEIGHT,
@@ -42,6 +43,15 @@ describe(`layout utility functions`, () => {
       { name: `over bottom edge`, rect: { x: 1, y: 8, width: 8, height: 4 }, expected: false },
     ])(`rect_within_rect: $name`, ({ rect, expected }) => {
       expect(rect_within_rect(rect, bounds)).toBe(expected)
+    })
+
+    test.each([
+      [{ x: 5, y: 5 }, true],
+      [{ x: 0, y: 0 }, true],
+      [{ x: 10, y: 10 }, true],
+      [{ x: -1, y: 11 }, false],
+    ] as const)(`point_in_rect(%o) -> %s`, (point, expected) => {
+      expect(point_in_rect(point, bounds)).toBe(expected)
     })
   })
 

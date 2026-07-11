@@ -609,8 +609,9 @@
   })
 
   function pointer_coords(event: PointerEvent | MouseEvent): Point2D | null {
-    if (!wrapper) return null
-    const rect = wrapper.getBoundingClientRect()
+    if (!canvas) return null
+    // The fullscreen wrapper has a top border outside the canvas coordinate space.
+    const rect = canvas.getBoundingClientRect()
     return { x: event.clientX - rect.left, y: event.clientY - rect.top }
   }
 

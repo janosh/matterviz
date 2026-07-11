@@ -2,7 +2,7 @@ import type { Vec2 } from '$lib/math'
 import { BinnedScatterPlot, type BinnedDensityConfig, COLOR_BAR_DEFAULTS } from '$lib/plot'
 import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
-import { createRawSnippet, mount, tick } from 'svelte'
+import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, svg_query } from '../setup'
 
@@ -36,6 +36,9 @@ afterEach(() => {
 const settle = async () => {
   await tick()
   await tick()
+}
+const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>): void => {
+  mount(BinnedScatterPlot, { target: document.body, props })
 }
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
@@ -108,15 +111,12 @@ function mock_label_measurement(width: number, height: number) {
 
 describe(`BinnedScatterPlot`, () => {
   test(`supports ScatterPlot-style fullscreen controls and overlay snippets`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        density: hidden_density,
-        header_controls: overlay_snippet(`custom-header-controls`),
-        children: overlay_snippet(`custom-overlay`),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      density: hidden_density,
+      header_controls: overlay_snippet(`custom-header-controls`),
+      children: overlay_snippet(`custom-overlay`),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -147,14 +147,11 @@ describe(`BinnedScatterPlot`, () => {
       .spyOn(console, `error`)
       .mockImplementation((...args) => void errors.push(args))
     try {
-      mount(BinnedScatterPlot, {
-        target: document.body,
-        props: {
-          series: [{ x: [0, 1], y: [0, 1] }],
-          density: hidden_density,
-          x_axis: { range: [null, NaN] as [null, number] },
-          style: `width: 800px; height: 600px`,
-        },
+      mount_plot({
+        series: [{ x: [0, 1], y: [0, 1] }],
+        density: hidden_density,
+        x_axis: { range: [null, NaN] as [null, number] },
+        style: `width: 800px; height: 600px`,
       })
       await settle()
     } finally {
@@ -164,14 +161,11 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`can hide the fullscreen toggle`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        density: hidden_density,
-        fullscreen_toggle: false,
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      density: hidden_density,
+      fullscreen_toggle: false,
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -179,13 +173,10 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`puts visible point count in colorbar title without a mode pill`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        density: density_mode_with_colorbar(),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      density: density_mode_with_colorbar(),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -197,14 +188,11 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`auto-places annotation snippet without overlapping the colorbar`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        density: density_mode_with_colorbar(),
-        annotation: overlay_snippet(`custom-annotation`),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      density: density_mode_with_colorbar(),
+      annotation: overlay_snippet(`custom-annotation`),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -247,13 +235,10 @@ describe(`BinnedScatterPlot`, () => {
       .spyOn(Element.prototype, `getBoundingClientRect`)
       .mockReturnValue(DOMRect.fromRect({ width: 100, height: 60 }))
     const series = $state([{ x: [0, 1], y: [0, 1] }])
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series,
-        density: density_mode_with_colorbar(),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series,
+      density: density_mode_with_colorbar(),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
     const colorbar = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
@@ -267,14 +252,11 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`renders annotation in point mode (no colorbar) and skips wrapper when absent`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        density: point_mode(),
-        annotation: overlay_snippet(`custom-annotation`),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      density: point_mode(),
+      annotation: overlay_snippet(`custom-annotation`),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -284,28 +266,22 @@ describe(`BinnedScatterPlot`, () => {
     expect(anno_wrapper.style.top).toMatch(/px$/)
 
     document.body.replaceChildren()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
     expect(document.querySelector(`.annotation`)).toBeNull()
   })
 
   test(`clips reference lines to the plot area`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        overlays: { ref_lines: [{ x1: -100, y1: -100, x2: 100, y2: 100 }] },
-        density: hidden_density,
-        padding: { l: 80, r: 20, t: 30, b: 60 },
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      overlays: { ref_lines: [{ x1: -100, y1: -100, x2: 100, y2: 100 }] },
+      density: hidden_density,
+      padding: { l: 80, r: 20, t: 30, b: 60 },
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -337,17 +313,14 @@ describe(`BinnedScatterPlot`, () => {
   ])(
     `resolves declarative RefLine %o against current axis ranges`,
     async (ref_line, coords, style) => {
-      mount(BinnedScatterPlot, {
-        target: document.body,
-        props: {
-          series: [{ x: [0, 1], y: [0, 1] }],
-          x_axis: { range: [0, 1] as Vec2 },
-          y_axis: { range: [0, 1] as Vec2 },
-          overlays: { ref_lines: [ref_line] },
-          density: hidden_density,
-          padding: { l: 80, r: 20, t: 30, b: 60 },
-          style: `width: 800px; height: 600px`,
-        },
+      mount_plot({
+        series: [{ x: [0, 1], y: [0, 1] }],
+        x_axis: { range: [0, 1] as Vec2 },
+        y_axis: { range: [0, 1] as Vec2 },
+        overlays: { ref_lines: [ref_line] },
+        density: hidden_density,
+        padding: { l: 80, r: 20, t: 30, b: 60 },
+        style: `width: 800px; height: 600px`,
       })
       await settle()
 
@@ -362,21 +335,18 @@ describe(`BinnedScatterPlot`, () => {
   )
 
   test(`drops declarative RefLines that resolve outside the axis ranges`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        x_axis: { range: [0, 1] as Vec2 },
-        y_axis: { range: [0, 1] as Vec2 },
-        overlays: {
-          ref_lines: [
-            { type: `vertical`, x: 5 }, // outside x range -> dropped
-            { type: `horizontal`, y: 0.5, visible: false }, // explicitly hidden
-          ],
-        },
-        density: hidden_density,
-        style: `width: 800px; height: 600px`,
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      x_axis: { range: [0, 1] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+      overlays: {
+        ref_lines: [
+          { type: `vertical`, x: 5 }, // outside x range -> dropped
+          { type: `horizontal`, y: 0.5, visible: false }, // explicitly hidden
+        ],
       },
+      density: hidden_density,
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -384,15 +354,12 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`uses density color scale type for colorbar ticks`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: Array(100).fill(0), y: Array(100).fill(0) }],
-        density: density_mode_with_colorbar({
-          color_scale: { type: `log`, scheme: `interpolateMagma` },
-        }),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: Array(100).fill(0), y: Array(100).fill(0) }],
+      density: density_mode_with_colorbar({
+        color_scale: { type: `log`, scheme: `interpolateMagma` },
+      }),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -412,15 +379,12 @@ describe(`BinnedScatterPlot`, () => {
     })
     mock_canvas_context({ arc })
 
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, NaN, 0.5, Infinity], y: [0, 0.5, NaN, 0.8] }],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [{ x: [0, NaN, 0.5, Infinity], y: [0, 0.5, NaN, 0.8] }],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -433,15 +397,12 @@ describe(`BinnedScatterPlot`, () => {
     const arc = vi.fn((_x: number, _y: number, radius: number) => radii.push(radius))
     mock_canvas_context({ arc })
 
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.2, 0.5, 0.8], y: [0.5, 0.5, 0.5], size_values: [1, 4, 16] }],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [{ x: [0.2, 0.5, 0.8], y: [0.5, 0.5, 0.5], size_values: [1, 4, 16] }],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -459,16 +420,13 @@ describe(`BinnedScatterPlot`, () => {
     const arc = vi.fn((_x: number, _y: number, radius: number) => radii.push(radius))
     mock_canvas_context({ arc })
 
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.2, 0.8], y: [0.5, 0.5], size_values: [0, 32] }],
-        density: point_mode(),
-        size_scale,
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [{ x: [0.2, 0.8], y: [0.5, 0.5], size_values: [0, 32] }],
+      density: point_mode(),
+      size_scale,
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -477,17 +435,14 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`uses auto pick radius from configured size scale range`, async () => {
     const on_point_click = vi.fn()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.5], y: [0.5], size_values: [1] }],
-        density: point_mode(),
-        size_scale: { radius_range: [2, 18], pick_radius: `auto` },
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        on_point_click,
-      },
+    mount_plot({
+      series: [{ x: [0.5], y: [0.5], size_values: [1] }],
+      density: point_mode(),
+      size_scale: { radius_range: [2, 18], pick_radius: `auto` },
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      on_point_click,
     })
     await settle()
 
@@ -504,22 +459,19 @@ describe(`BinnedScatterPlot`, () => {
     const stroke = vi.fn()
     mock_canvas_context({ arc, stroke })
 
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          {
-            x: [0.4, 0.6],
-            y: [0.5, 0.5],
-            point_ids: [`selected`, `other`],
-          },
-        ],
-        density: point_mode(),
-        selected_point_id: `selected`,
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [
+        {
+          x: [0.4, 0.6],
+          y: [0.5, 0.5],
+          point_ids: [`selected`, `other`],
+        },
+      ],
+      density: point_mode(),
+      selected_point_id: `selected`,
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -527,49 +479,61 @@ describe(`BinnedScatterPlot`, () => {
     expect(Math.max(...radii)).toBeGreaterThan(4)
   })
 
-  test(`does not treat drag zoom as a bin click and can reset zoom`, async () => {
+  test(`gates drag zoom starts, suppresses its trailing click, and resets zoom`, async () => {
     const on_density_zoom = vi.fn()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
-        density: density_mode({ bin_px: 100 }),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        on_density_zoom,
-      },
+    mount_plot({
+      series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
+      density: density_mode({ bin_px: 100 }),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      on_density_zoom,
     })
     await settle()
 
     const plot = binned_plot()
-    expect(document.querySelector(`.reset-view`)).toBeNull()
-    const pointer = (type: string, clientX: number, clientY: number, button?: number) =>
+    const canvas = plot.querySelector(`canvas`)
+    if (!canvas) throw new Error(`binned scatter canvas not found`)
+    // Fullscreen adds a 32px wrapper border above the canvas. Pointer coordinates
+    // must remain canvas-relative rather than inheriting that wrapper offset.
+    const canvas_rect = DOMRect.fromRect({ x: 0, y: 32, width: 800, height: 600 })
+    vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(canvas_rect)
+    const client_coords = (x: number, y: number) => ({
+      clientX: canvas_rect.left + x,
+      clientY: canvas_rect.top + y,
+    })
+    const pointer = (type: string, x: number, y: number, button?: number) =>
       plot.dispatchEvent(
         new PointerEvent(type, {
           bubbles: true,
           button,
-          clientX,
-          clientY,
           pointerId: 1,
+          ...client_coords(x, y),
         }),
       )
-    pointer(`pointerdown`, 10, 10, 0)
-    pointer(`pointermove`, 200, 200)
-    pointer(`pointerup`, 200, 200)
-    await tick()
+    const click = (x: number, y: number) =>
+      plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ...client_coords(x, y) }))
+    const drag = async (start: Vec2, end: Vec2) => {
+      pointer(`pointerdown`, ...start, 0)
+      pointer(`pointermove`, ...end)
+      pointer(`pointerup`, ...end)
+      await tick()
+    }
+
+    // A drag starting in the fullscreen-only border above the canvas is outside.
+    await drag([400, -7], [200, 200])
     expect(document.querySelector(`.reset-view`)).toBeNull()
 
-    pointer(`pointerdown`, 206, 436, 0)
-    pointer(`pointermove`, 633, 124)
-    pointer(`pointerup`, 633, 124)
-    await tick()
+    // The bottom x-label margin must not initiate a drag zoom.
+    await drag([400, 590], [200, 200])
+    expect(document.querySelector(`.reset-view`)).toBeNull()
 
-    plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 247 }))
-    expect(on_density_zoom).not.toHaveBeenCalled()
+    await drag([206, 436], [633, 124])
 
-    plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 247 }))
-    expect(on_density_zoom).toHaveBeenCalledTimes(1)
+    for (const call_count of [0, 1]) {
+      click(420, 247)
+      expect(on_density_zoom).toHaveBeenCalledTimes(call_count)
+    }
     await tick()
 
     const reset_btn = doc_query<HTMLButtonElement>(`.reset-view`)
@@ -577,6 +541,10 @@ describe(`BinnedScatterPlot`, () => {
     reset_btn.click()
     await tick()
     expect(document.querySelector(`.reset-view`)).toBeNull()
+
+    // Only the start is gated: an interior start may end outside the plot.
+    await drag([400, 300], [10, 100])
+    expect(document.querySelector(`.reset-view`)).not.toBeNull()
   })
 
   test.each([
@@ -587,17 +555,14 @@ describe(`BinnedScatterPlot`, () => {
     async (bin_click, point_clicks, zoom_clicks) => {
       const on_density_zoom = vi.fn()
       const on_point_click = vi.fn()
-      mount(BinnedScatterPlot, {
-        target: document.body,
-        props: {
-          series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
-          density: density_mode({ bin_px: 100, bin_click }),
-          style: `width: 800px; height: 600px`,
-          x_axis: { range: [0, 1] },
-          y_axis: { range: [0, 1] },
-          on_density_zoom,
-          on_point_click,
-        },
+      mount_plot({
+        series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
+        density: density_mode({ bin_px: 100, bin_click }),
+        style: `width: 800px; height: 600px`,
+        x_axis: { range: [0, 1] },
+        y_axis: { range: [0, 1] },
+        on_density_zoom,
+        on_point_click,
       })
       await settle()
 
@@ -611,16 +576,13 @@ describe(`BinnedScatterPlot`, () => {
   )
 
   test(`can disable automatic point mode switching`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.5], y: [0.5] }],
-        density: { ...hidden_density, auto_point_mode: false },
-        render_mode: `density`,
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [{ x: [0.5], y: [0.5] }],
+      density: { ...hidden_density, auto_point_mode: false },
+      render_mode: `density`,
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -628,15 +590,12 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`keeps tooltip content width near plot edge`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.95, 0.96], y: [0.5, 0.5] }],
-        density: density_mode({ bin_px: 100 }),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [{ x: [0.95, 0.96], y: [0.5, 0.5] }],
+      density: density_mode({ bin_px: 100 }),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -651,19 +610,16 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`matches density tooltip background to hovered bin color`, async () => {
     const on_point_click = vi.fn()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.5], y: [0.5] }],
-        density: density_mode({
-          color_scale: { scheme: `interpolateViridis`, value_range: [1, 2] },
-          bin_px: 100,
-        }),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        on_point_click,
-      },
+    mount_plot({
+      series: [{ x: [0.5], y: [0.5] }],
+      density: density_mode({
+        color_scale: { scheme: `interpolateViridis`, value_range: [1, 2] },
+        bin_px: 100,
+      }),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      on_point_click,
     })
     await settle()
 
@@ -695,19 +651,16 @@ describe(`BinnedScatterPlot`, () => {
       get: () => fill_styles.at(-1) ?? ``,
       set: (value: string) => void fill_styles.push(value),
     })
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          { x: [0.2], y: [0.2] }, // series 0
-          { x: [0.5], y: [0.5] }, // series 1
-        ],
-        marginals: { top: { type: `histogram`, per_series: true } },
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [
+        { x: [0.2], y: [0.2] }, // series 0
+        { x: [0.5], y: [0.5] }, // series 1
+      ],
+      marginals: { top: { type: `histogram`, per_series: true } },
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
     expect(render_mode()).toBe(`points`)
@@ -728,19 +681,16 @@ describe(`BinnedScatterPlot`, () => {
   // isn't shrunk by a marginal reservation and the click maps to series 1 at (0.5, 0.5))
   test(`point click payload carries the per-index color`, async () => {
     const on_point_click = vi.fn()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          { x: [0.2], y: [0.2] }, // series 0, away from the click
-          { x: [0.5], y: [0.5] }, // series 1, under the click at (420, 280)
-        ],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        on_point_click,
-      },
+    mount_plot({
+      series: [
+        { x: [0.2], y: [0.2] }, // series 0, away from the click
+        { x: [0.5], y: [0.5] }, // series 1, under the click at (420, 280)
+      ],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      on_point_click,
     })
     await settle()
     binned_plot().dispatchEvent(
@@ -753,30 +703,27 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`renders point label snippets with auto-placed leader lines`, async () => {
     mock_label_measurement(80, 20)
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          {
-            x: [0.5, 0.502],
-            y: [0.5, 0.502],
-            point_ids: [`wbm-1`, `wbm-2`],
-          },
-        ],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        point_labels: {
-          render: point_label_snippet(),
-          gap_px: 20,
-          placement: { leader_line_threshold: 0 },
+    mount_plot({
+      series: [
+        {
+          x: [0.5, 0.502],
+          y: [0.5, 0.502],
+          point_ids: [`wbm-1`, `wbm-2`],
         },
-        point_data: ({ point }: { point: { point_id?: string | number } }) => ({
-          label: `${point.point_id} (Li2O-label)`,
-          measure_text: `${point.point_id}\nLi2O-label`,
-        }),
+      ],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      point_labels: {
+        render: point_label_snippet(),
+        gap_px: 20,
+        placement: { leader_line_threshold: 0 },
       },
+      point_data: ({ point }: { point: { point_id?: string | number } }) => ({
+        label: `${point.point_id} (Li2O-label)`,
+        measure_text: `${point.point_id}\nLi2O-label`,
+      }),
     })
     await settle()
     await settle()
@@ -828,22 +775,19 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`skips point label rendering above the configured label count`, async () => {
     const n_points = 51
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          {
-            x: Array.from({ length: n_points }, (_value, point_idx) => point_idx / n_points),
-            y: Array<number>(n_points).fill(0.5),
-          },
-        ],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        point_labels: {
-          render: point_label_snippet(),
+    mount_plot({
+      series: [
+        {
+          x: Array.from({ length: n_points }, (_value, point_idx) => point_idx / n_points),
+          y: Array<number>(n_points).fill(0.5),
         },
+      ],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      point_labels: {
+        render: point_label_snippet(),
       },
     })
     await settle()
@@ -853,28 +797,25 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`passes point data to point label snippet payloads`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          {
-            x: [0.2, 0.5, 0.8],
-            y: [0.5, 0.5, 0.5],
-            point_ids: [`wbm-1`, `wbm-2`, `wbm-3`],
-          },
-        ],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        point_labels: {
-          render: point_label_snippet(),
+    mount_plot({
+      series: [
+        {
+          x: [0.2, 0.5, 0.8],
+          y: [0.5, 0.5, 0.5],
+          point_ids: [`wbm-1`, `wbm-2`, `wbm-3`],
         },
-        point_data: ({ point }: { point: { point_id?: string | number } }) => ({
-          label: `label-${point.point_id}`,
-          measure_text: String(point.point_id),
-        }),
+      ],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      point_labels: {
+        render: point_label_snippet(),
       },
+      point_data: ({ point }: { point: { point_id?: string | number } }) => ({
+        label: `label-${point.point_id}`,
+        measure_text: String(point.point_id),
+      }),
     })
     await settle()
 
@@ -887,20 +828,17 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`passes point data to tooltips and click handlers`, async () => {
     const on_point_click = vi.fn()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
-        density: point_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-        tooltip: point_tooltip_snippet(),
-        point_data: ({ point }: { point: { point_id?: string | number } }) => ({
-          label: `label-${point.point_id}`,
-        }),
-        on_point_click,
-      },
+    mount_plot({
+      series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      tooltip: point_tooltip_snippet(),
+      point_data: ({ point }: { point: { point_id?: string | number } }) => ({
+        label: `label-${point.point_id}`,
+      }),
+      on_point_click,
     })
     await settle()
 
@@ -936,19 +874,13 @@ describe(`BinnedScatterPlot`, () => {
       y_axis: { range: [0, 1] as [number | null, number | null] },
     }
 
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: { ...base_props, point_labels: { ...base_props.point_labels, gap_px: 0 } },
-    })
+    mount_plot({ ...base_props, point_labels: { ...base_props.point_labels, gap_px: 0 } })
     await settle()
     await settle()
     const no_gap_distance = label_distance()
 
     document.body.replaceChildren()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: { ...base_props, point_labels: { ...base_props.point_labels, gap_px: 20 } },
-    })
+    mount_plot({ ...base_props, point_labels: { ...base_props.point_labels, gap_px: 20 } })
     await settle()
     await settle()
     expect(label_distance()).toBeGreaterThan(no_gap_distance + 15)
@@ -966,14 +898,11 @@ describe(`BinnedScatterPlot`, () => {
       y_axis: { range: [0, 1] as [number | null, number | null] },
     }
 
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        ...base_props,
-        point_labels: {
-          ...base_props.point_labels,
-          placement: { leader_line_threshold: 1000 },
-        },
+    mount_plot({
+      ...base_props,
+      point_labels: {
+        ...base_props.point_labels,
+        placement: { leader_line_threshold: 1000 },
       },
     })
     await settle()
@@ -981,14 +910,11 @@ describe(`BinnedScatterPlot`, () => {
     expect(document.querySelectorAll(`.point-label-leaders line`)).toHaveLength(0)
 
     document.body.replaceChildren()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        ...base_props,
-        point_labels: {
-          ...base_props.point_labels,
-          placement: { leader_line_threshold: 0 },
-        },
+    mount_plot({
+      ...base_props,
+      point_labels: {
+        ...base_props.point_labels,
+        placement: { leader_line_threshold: 0 },
       },
     })
     await settle()
@@ -997,16 +923,13 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`applies point label font size to rendered and measured labels`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
-        density: point_mode(),
-        point_labels: { render: point_label_snippet(), font_size: `20px` },
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
+      density: point_mode(),
+      point_labels: { render: point_label_snippet(), font_size: `20px` },
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -1015,14 +938,11 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`renders rotated y-axis label as SVG text with subscript tspans`, async () => {
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [0, 1], y: [0, 1] }],
-        y_axis: { label: `E<sub>form</sub>` },
-        density: hidden_density,
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      y_axis: { label: `E<sub>form</sub>` },
+      density: hidden_density,
+      style: `width: 800px; height: 600px`,
     })
     await settle()
 
@@ -1046,20 +966,17 @@ describe(`BinnedScatterPlot`, () => {
       })
     const n_points = 1000
 
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          {
-            x: counted(Array.from({ length: n_points }, (_, idx) => idx / n_points)),
-            y: counted(Array.from({ length: n_points }, (_, idx) => idx / n_points)),
-          },
-        ],
-        density: density_mode(),
-        style: `width: 800px; height: 600px`,
-        x_axis: { range: [0, 1] },
-        y_axis: { range: [0, 1] },
-      },
+    mount_plot({
+      series: [
+        {
+          x: counted(Array.from({ length: n_points }, (_, idx) => idx / n_points)),
+          y: counted(Array.from({ length: n_points }, (_, idx) => idx / n_points)),
+        },
+      ],
+      density: density_mode(),
+      style: `width: 800px; height: 600px`,
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
     })
     await settle()
 
@@ -1083,13 +1000,10 @@ describe(`BinnedScatterPlot`, () => {
     }
 
     const start = performance.now()
-    mount(BinnedScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x, y }],
-        density: density_mode_with_colorbar(),
-        style: `width: 800px; height: 600px`,
-      },
+    mount_plot({
+      series: [{ x, y }],
+      density: density_mode_with_colorbar(),
+      style: `width: 800px; height: 600px`,
     })
     await settle()
     const elapsed_ms = performance.now() - start
