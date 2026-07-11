@@ -21,7 +21,9 @@
   "type": "module",
   "sideEffects": [
     "**/*.css",
-    "**/file-viewer/main.*"
+    "**/file-viewer/main.*",
+    "**/theme/embedded.*",
+    "**/theme/themes.*"
   ],
   "exports": {
     ".": {
@@ -71,6 +73,18 @@
     "./file-viewer/parse": {
       "types": "./dist/file-viewer/parse.d.ts",
       "default": "./dist/file-viewer/parse.js"
+    },
+    "./file-viewer/eligibility": {
+      "types": "./dist/file-viewer/eligibility.d.ts",
+      "default": "./dist/file-viewer/eligibility.js"
+    },
+    "./file-viewer/host-protocol": {
+      "types": "./dist/file-viewer/host-protocol.d.ts",
+      "default": "./dist/file-viewer/host-protocol.js"
+    },
+    "./file-viewer/host-transfer": {
+      "types": "./dist/file-viewer/host-transfer.d.ts",
+      "default": "./dist/file-viewer/host-transfer.js"
     },
     "./file-viewer/webview": {
       "types": "./dist/file-viewer/main.d.ts",
@@ -159,6 +173,10 @@
     "./theme": {
       "types": "./dist/theme/index.d.ts",
       "default": "./dist/theme/index.js"
+    },
+    "./theme/embedded": {
+      "types": "./dist/theme/embedded.d.ts",
+      "default": "./dist/theme/embedded.js"
     },
     "./theme/themes": {
       "default": "./dist/theme/themes.mjs"

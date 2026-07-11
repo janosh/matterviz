@@ -1,9 +1,9 @@
-// Theme Detection for AnyWidget
+// Theme Detection for Embedded MatterViz Views
 
-import { luminance } from 'matterviz/colors'
-import { COLOR_THEMES, type ThemeType } from 'matterviz/theme'
+import { luminance } from '$lib/colors'
+import { COLOR_THEMES, type ThemeType } from '$lib/theme'
 // oxlint-disable-next-line import/no-unassigned-import -- registers built-in themes
-import 'matterviz/theme/themes'
+import '$lib/theme/themes.mjs'
 
 // Extend globalThis with our custom properties
 declare global {
@@ -12,8 +12,6 @@ declare global {
         application?: { shell?: { dataset?: { theme?: string } } }
       }
     | undefined
-  var MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
-  var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
 }
 
 type ThemeCallback = (theme_type: ThemeType) => void

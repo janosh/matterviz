@@ -7,16 +7,17 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
 } from './index'
-import { MAX_METADATA_SIZE } from './constants'
 import {
   copy_numeric_fields,
   count_xyz_frames,
   iter_xyz_frames,
   validate_3x3_matrix,
 } from './helpers'
-import { strip_compression_extensions } from '$lib/io/decompress'
+import { indexed_trajectory_format } from '$lib/trajectory/format-detect'
 import { decode_ase_frame, read_ase_header } from './parse/ase'
 import { build_xyz_frame, parse_xyz_comment_metadata } from './parse/xyz'
+
+const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
 
 // Restrict frame metadata to the requested property keys (no-op when unset)
 const filter_properties = (metadata: TrajectoryMetadata, properties?: string[]): void => {
@@ -34,8 +35,7 @@ export class TrajFrameReader implements FrameLoader {
   private xyz_cache?: { data: string; lines: string[]; frame_starts: number[] }
 
   constructor(filename: string) {
-    const base_filename = strip_compression_extensions(filename)
-    this.format = base_filename.endsWith(`.traj`) ? `ase` : `xyz`
+    this.format = indexed_trajectory_format(filename)
   }
 
   async get_total_frames(data: string | ArrayBuffer): Promise<number> {

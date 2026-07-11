@@ -4,18 +4,78 @@
 // Clean separation: this handles file I/O in NodeJs environments like VSCode,
 // while lib/trajectory/ handles parsing.
 
+import { normalize_browser_supported_filename } from '$lib/file-viewer/eligibility'
+import {
+  detect_compression_format,
+  is_browser_decompressible_format,
+  type BrowserCompressionFormat,
+} from '$lib/io/decompress'
+import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
+import { Buffer, constants as buffer_constants } from 'node:buffer'
+import { Readable } from 'node:stream'
+import { createGunzip, createInflate, createInflateRaw } from 'node:zlib'
 import * as vscode from 'vscode'
 
 // Memory management constants for streaming
 // NOTE: vscode.workspace.fs.readFile() loads entire file into memory (no streaming support yet)
 // Consider making this a user setting: matterviz.max_file_size_mb (default 1024)
 export const MAX_STREAMING_FILE_SIZE = 1 * 1024 * 1024 * 1024 // set low at 1GB to prevent OOM
+export const MAX_TEXT_TRAJECTORY_SIZE = buffer_constants.MAX_STRING_LENGTH
 const LARGE_FILE_WARNING_SIZE = 512 * 1024 * 1024 // 512MB - warn user
 
 export interface StreamingProgress {
   bytes_read: number
   total_size: number
   progress: number // 0-1
+}
+
+const to_array_buffer = (data: Uint8Array): ArrayBuffer =>
+  data.buffer instanceof ArrayBuffer &&
+  data.byteOffset === 0 &&
+  data.byteLength === data.buffer.byteLength
+    ? data.buffer
+    : Uint8Array.from(data).buffer
+
+export const decode_indexed_trajectory_text = (
+  data: ArrayBuffer,
+  max_byte_length: number = MAX_TEXT_TRAJECTORY_SIZE,
+): string => {
+  if (data.byteLength > max_byte_length) {
+    throw new Error(
+      `Text trajectory too large to decode (${data.byteLength} bytes). Maximum: ${max_byte_length} bytes`,
+    )
+  }
+  return new TextDecoder().decode(data)
+}
+
+export const decompress_host_buffer = async (
+  data: ArrayBuffer,
+  format: BrowserCompressionFormat,
+  max_output_size: number = MAX_STREAMING_FILE_SIZE,
+): Promise<ArrayBuffer> => {
+  const output_chunks: Uint8Array[] = []
+  let output_size = 0
+  const decompressor =
+    format === `gzip`
+      ? createGunzip()
+      : format === `deflate`
+        ? createInflate()
+        : createInflateRaw()
+  const decompressed_stream = Readable.from([new Uint8Array(data)]).pipe(decompressor)
+
+  for await (const chunk of decompressed_stream) {
+    const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk)
+    output_size += bytes.byteLength
+    if (output_size > max_output_size) {
+      decompressed_stream.destroy()
+      throw new Error(
+        `Decompressed file too large (${output_size} bytes). Maximum: ${max_output_size} bytes`,
+      )
+    }
+    output_chunks.push(bytes)
+  }
+
+  return to_array_buffer(Buffer.concat(output_chunks, output_size))
 }
 
 // Stream large files efficiently to avoid memory issues
@@ -56,10 +116,44 @@ export const stream_file_to_buffer = async (
   on_progress?.({ bytes_read: uint8array.length, total_size, progress: 1.0 }) // Report completion
 
   // Keep the return type a true ArrayBuffer. This intentionally excludes
-  // SharedArrayBuffer-backed views, which fall back to slice().buffer.
-  return uint8array.buffer instanceof ArrayBuffer &&
-    uint8array.byteOffset === 0 &&
-    uint8array.byteLength === uint8array.buffer.byteLength
-    ? uint8array.buffer
-    : uint8array.slice().buffer
+  // SharedArrayBuffer-backed or partial views, which are copied into an owned buffer.
+  return to_array_buffer(uint8array)
+}
+
+interface IndexedTrajectoryFile {
+  data: string | ArrayBuffer
+  filename: string
+}
+
+export const read_indexed_trajectory_file = async (
+  file_path: string,
+  filename: string,
+  on_progress?: (progress: StreamingProgress) => void,
+): Promise<IndexedTrajectoryFile> => {
+  const compression_format = detect_compression_format(filename)
+  if (compression_format && !is_browser_decompressible_format(compression_format)) {
+    throw new Error(`Unsupported compression for indexed trajectory: ${compression_format}`)
+  }
+
+  const normalized_filename = normalize_browser_supported_filename(filename)
+  if (normalized_filename === null) {
+    throw new Error(`Nested compression is not supported: ${filename}`)
+  }
+  if (!is_indexable_trajectory_filename(normalized_filename)) {
+    throw new Error(`Indexed loading is not supported for ${filename}`)
+  }
+  const is_text_trajectory = /\.(?:xyz|extxyz)$/i.test(normalized_filename)
+  let buffer = await stream_file_to_buffer(file_path, on_progress)
+  if (compression_format) {
+    buffer = await decompress_host_buffer(
+      buffer,
+      compression_format,
+      is_text_trajectory ? MAX_TEXT_TRAJECTORY_SIZE : MAX_STREAMING_FILE_SIZE,
+    )
+  }
+
+  return {
+    data: is_text_trajectory ? decode_indexed_trajectory_text(buffer) : buffer,
+    filename: normalized_filename,
+  }
 }

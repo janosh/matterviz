@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-// theme-detection.ts only pulls these from matterviz; mock them so the test
-// needs neither the built library nor the (CI-uninstalled) extension deps.
-vi.mock(`matterviz/colors`, () => ({ luminance: () => 1 }))
-vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: { light: `light`, dark: `dark` } }))
-vi.mock(`matterviz/theme/themes`, () => ({}))
+// Isolate watcher behavior from palette data and theme registration side effects.
+vi.mock(`$lib/colors`, () => ({ luminance: () => 1 }))
+vi.mock(`$lib/theme`, () => ({ COLOR_THEMES: { light: `light`, dark: `dark` } }))
+vi.mock(`$lib/theme/themes.mjs`, () => ({}))
 
 let live_observers = 0
 const observers: FakeMutationObserver[] = []
@@ -49,6 +48,9 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = ``
+  document.body.className = ``
+  globalThis.MATTERVIZ_THEMES = undefined
+  globalThis.MATTERVIZ_CSS_MAP = undefined
 })
 
 const make_shadow_element = (): { host: HTMLElement; inner: HTMLElement } => {
@@ -66,9 +68,33 @@ const trigger_dom_mutation = (): void => {
   }
 }
 
+describe(`embedded theme helpers`, () => {
+  test(`prefers a shadow host theme over document and system indicators`, async () => {
+    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+    document.body.classList.add(`light`)
+    const { host, inner } = make_shadow_element()
+    host.dataset.theme = `dark`
+
+    expect(detect_parent_theme(inner)).toBe(`dark`)
+  })
+
+  test.each([
+    [false, `:root`],
+    [true, `:host`],
+  ])(`generates theme CSS with shadow=%s`, async (is_shadow_dom, selector) => {
+    const { get_theme_css } = await import(`$lib/theme/embedded`)
+    globalThis.MATTERVIZ_THEMES = { dark: { surface: `#000` } }
+    globalThis.MATTERVIZ_CSS_MAP = { surface: `--surface-bg` }
+
+    expect(get_theme_css(`dark`, is_shadow_dom)).toBe(
+      `${selector} {\n\t--surface-bg: #000;\n}`,
+    )
+  })
+})
+
 describe(`watch_theme lifecycle`, () => {
   test(`Bug 2: every widget's Shadow DOM host is observed, not just the first`, async () => {
-    const { watch_theme } = await import(`../../extensions/anywidget/theme-detection`)
+    const { watch_theme } = await import(`$lib/theme/embedded`)
     const { host: host_a, inner: inner_a } = make_shadow_element()
     const { host: host_b, inner: inner_b } = make_shadow_element()
 
@@ -80,7 +106,7 @@ describe(`watch_theme lifecycle`, () => {
   })
 
   test(`Bug 1: shared observers are disconnected once the last widget is gone`, async () => {
-    const { watch_theme } = await import(`../../extensions/anywidget/theme-detection`)
+    const { watch_theme } = await import(`$lib/theme/embedded`)
     const { inner: inner_a } = make_shadow_element()
     const { inner: inner_b } = make_shadow_element()
 
@@ -97,7 +123,7 @@ describe(`watch_theme lifecycle`, () => {
   test(`debounces mutations and notifies every current widget, never a stale/disposed one`, async () => {
     vi.useFakeTimers()
     try {
-      const { watch_theme } = await import(`../../extensions/anywidget/theme-detection`)
+      const { watch_theme } = await import(`$lib/theme/embedded`)
       const el_a = document.createElement(`div`)
       const el_b = document.createElement(`div`)
       document.body.append(el_a, el_b)

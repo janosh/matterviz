@@ -661,13 +661,12 @@
   }
   .site-cards {
     display: grid;
-    gap: 3pt;
+    gap: 6pt;
   }
   .site-card {
     border-left: 3px solid var(--site-color, #888);
-    border-radius: var(--border-radius, 3pt);
     background: color-mix(in srgb, currentColor 4%, transparent);
-    padding: 3pt 4pt;
+    padding: 4pt 8pt;
     cursor: pointer;
     outline: none;
     &:is(:hover, :focus-visible, .highlighted) {
@@ -705,7 +704,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 1pt 4pt;
-    margin-top: 1pt;
+    margin-top: 2pt;
     font-size: 0.73em;
     line-height: 1.3;
   }

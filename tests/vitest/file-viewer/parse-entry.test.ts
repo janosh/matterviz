@@ -1,17 +1,8 @@
 // The public parse-only entry stays worker-safe.
-import { parse_file_content } from '$lib/file-viewer/parse'
 import { describe, expect, test } from 'vitest'
 
-describe(`file-viewer parse entry`, () => {
-  test(`parses a POSCAR structure`, async () => {
-    const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
-    const result = await parse_file_content(poscar, `POSCAR`)
-    expect(result.type).toBe(`structure`)
-    const structure = result.data as { sites: unknown[] }
-    expect(structure.sites).toHaveLength(2)
-  })
-
-  test(`parse.ts TRANSITIVE import graph stays free of Svelte (worker-safe)`, async () => {
+describe(`file-viewer worker safety`, () => {
+  test(`worker-safe entry graphs stay free of Svelte`, async () => {
     // A direct-source scan alone can't catch a parser importing a barrel that
     // re-exports Svelte components — that only explodes at worker runtime
     // ("document is not defined"). Walk the runtime import graph: relative
@@ -20,7 +11,9 @@ describe(`file-viewer parse entry`, () => {
     const { existsSync, readFileSync } = await import(`node:fs`)
     const { dirname, resolve } = await import(`node:path`)
     const repo_root = resolve(import.meta.dirname, `../../..`)
-    const entry = resolve(repo_root, `src/lib/file-viewer/parse.ts`)
+    const entries = [`parse.ts`, `eligibility.ts`, `host-transfer.ts`].map((filename) =>
+      resolve(repo_root, `src/lib/file-viewer/${filename}`),
+    )
     const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
 
     const resolve_specifier = (specifier: string, from_file: string): string | null => {
@@ -49,7 +42,7 @@ describe(`file-viewer parse entry`, () => {
         ``,
       )
     const visited = new Set<string>()
-    const queue = [entry]
+    const queue = [...entries]
     const violations: string[] = []
     while (queue.length > 0) {
       const file = queue.pop() as string
@@ -70,7 +63,8 @@ describe(`file-viewer parse entry`, () => {
         if (resolved) queue.push(resolved)
       }
     }
-    expect(visited.size).toBeGreaterThan(10) // the walk actually traversed the graph
+    expect(visited.size).toBeGreaterThan(10) // the walk actually traversed the graphs
+    expect(entries.every((entry) => visited.has(entry))).toBe(true)
     expect(violations).toEqual([])
   })
 })

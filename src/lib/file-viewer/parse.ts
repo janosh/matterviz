@@ -9,10 +9,10 @@ import {
 import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { parse_structure_file } from '$lib/structure/parse'
-import type { TrajectoryType } from '$lib/trajectory'
-import { parse_num_token } from '$lib/utils'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
+import type { ParsedTrajectoryResponse } from './host-protocol'
+import { parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
 import type { RenderableType } from './detect'
@@ -30,11 +30,6 @@ const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
 }
 
 export type { ViewType } from './types'
-export interface FileData {
-  filename: string
-  content: string
-  is_base64: boolean
-}
 
 export interface ParseResult {
   type: ViewType
@@ -52,30 +47,6 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
     bytes[idx] = binary.charCodeAt(idx)
   }
   return bytes.buffer
-}
-
-// Type for parsed trajectory response from large file requests
-export type ParsedTrajectoryResponse = {
-  trajectory: TrajectoryType
-  file_path: string
-}
-
-export const parse_large_file_marker = (
-  content: string,
-): { file_path: string; file_size: number } | null => {
-  const prefix = `LARGE_FILE:`
-  if (!content.startsWith(prefix)) return null
-  const payload = content.slice(prefix.length)
-  const size_separator_idx = payload.lastIndexOf(`:`)
-  if (size_separator_idx <= 0) throw new Error(`Malformed large file marker`)
-
-  const file_path = payload.slice(0, size_separator_idx)
-  // parse_num_token maps empty/whitespace size segments to NaN (Number(``) is 0)
-  const file_size = parse_num_token(payload.slice(size_separator_idx + 1))
-  if (!Number.isSafeInteger(file_size) || file_size < 0) {
-    throw new Error(`Malformed large file size`)
-  }
-  return { file_path, file_size }
 }
 
 // LARGE_FILE markers are resolved by streaming content from the embedding
@@ -142,7 +113,13 @@ export const parse_file_content = async (
   if (is_base64) {
     let buffer = base64_to_array_buffer(content)
     const compression_format = detect_compression_format(filename)
-    if (compression_format) filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    if (compression_format) {
+      const normalized_filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+      if (detect_compression_format(normalized_filename)) {
+        throw new Error(`Nested compression is not supported: ${filename}`)
+      }
+      filename = normalized_filename
+    }
 
     // Compressed binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
     // or compressed ASE .traj files): decompress to binary first — generic text

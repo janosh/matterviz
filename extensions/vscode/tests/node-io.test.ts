@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { MAX_STREAMING_FILE_SIZE, stream_file_to_buffer } from '../src/node-io'
+import { deflateRawSync, deflateSync, gzipSync } from 'node:zlib'
+import {
+  decode_indexed_trajectory_text,
+  decompress_host_buffer,
+  MAX_STREAMING_FILE_SIZE,
+  read_indexed_trajectory_file,
+  stream_file_to_buffer,
+} from '../src/node-io'
 
 const mock_vscode = vi.hoisted(() => ({
   Uri: {
@@ -14,10 +21,9 @@ const mock_vscode = vi.hoisted(() => ({
 }))
 
 vi.mock(`vscode`, () => mock_vscode)
+beforeEach(() => vi.clearAllMocks())
 
 describe(`stream_file_to_buffer`, () => {
-  beforeEach(() => vi.clearAllMocks())
-
   test(`returns the underlying buffer without copying for full-span file bytes`, async () => {
     const file_bytes = new Uint8Array([1, 2, 3])
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: file_bytes.byteLength })
@@ -44,5 +50,61 @@ describe(`stream_file_to_buffer`, () => {
 
     await expect(stream_file_to_buffer(`/tmp/too-large.traj`)).rejects.toThrow(`Maximum: 1GB`)
     expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+  })
+})
+
+describe(`read_indexed_trajectory_file`, () => {
+  test(`rejects text payloads above the decoder limit`, () => {
+    expect(() => decode_indexed_trajectory_text(new Uint8Array([1, 2]).buffer, 1)).toThrow(
+      `Text trajectory too large to decode`,
+    )
+  })
+
+  test.each([
+    [`movie.extxyz.gz`, gzipSync],
+    [`movie.xyz.gzip`, gzipSync],
+    [`movie.xyz.deflate`, deflateSync],
+    [`movie.xyz.z`, deflateRawSync],
+  ])(`decompresses and decodes indexed text trajectory %s`, async (filename, compress) => {
+    const text = `1\nframe\nH 0 0 0\n`
+    const compressed = new Uint8Array(compress(text))
+    mock_vscode.workspace.fs.stat.mockResolvedValue({ size: compressed.byteLength })
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(compressed)
+
+    await expect(read_indexed_trajectory_file(`/tmp/${filename}`, filename)).resolves.toEqual({
+      data: text,
+      filename: filename.replace(/\.(?:gz|gzip|deflate|z)$/, ``),
+    })
+  })
+
+  test(`keeps decompressed ASE trajectories binary`, async () => {
+    const raw = new Uint8Array([1, 2, 3, 4])
+    const compressed = new Uint8Array(gzipSync(raw))
+    mock_vscode.workspace.fs.stat.mockResolvedValue({ size: compressed.byteLength })
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(compressed)
+
+    const result = await read_indexed_trajectory_file(`/tmp/movie.traj.gz`, `movie.traj.gz`)
+
+    expect(result.filename).toBe(`movie.traj`)
+    expect(Array.from(new Uint8Array(result.data as ArrayBuffer))).toEqual([...raw])
+  })
+
+  test(`rejects decompressed output above the host limit`, async () => {
+    const compressed = new Uint8Array(gzipSync(`content larger than limit`))
+
+    await expect(decompress_host_buffer(compressed.slice().buffer, `gzip`, 5)).rejects.toThrow(
+      `Decompressed file too large`,
+    )
+  })
+
+  test.each([
+    [`movie.xyz.bz2`, `Unsupported compression`],
+    [`movie.xyz.gz.gz`, `Nested compression`],
+    [`movie.h5`, `Indexed loading is not supported`],
+  ])(`rejects unsupported indexed input %s before reading`, async (filename, error) => {
+    await expect(read_indexed_trajectory_file(`/tmp/${filename}`, filename)).rejects.toThrow(
+      error,
+    )
+    expect(mock_vscode.workspace.fs.stat).not.toHaveBeenCalled()
   })
 })

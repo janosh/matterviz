@@ -4,7 +4,6 @@ import { create_display, VSCodeFrameLoader } from '$lib/file-viewer/main'
 import {
   base64_to_array_buffer,
   parse_file_content,
-  parse_large_file_marker,
   type ParseResult,
 } from '$lib/file-viewer/parse'
 import { readFileSync } from 'node:fs'
@@ -30,8 +29,7 @@ vi.mock('$lib/trajectory/parse', async (import_original) => {
   return { ...original, parse_trajectory_data: vi.fn(original.parse_trajectory_data) }
 })
 
-// Svelte components are stubbed out in test mode (see vite.config.ts svelte-mock), so
-// spy on mount to assert which props create_display passes to the mounted component.
+// Spy on the mocked mount to assert which props create_display passes to components.
 vi.mock('svelte', async (import_original) => ({
   ...(await import_original<typeof svelte_module>()),
   mount: vi.fn(() => ({})),
@@ -45,9 +43,7 @@ declare global {
 const uint8_as_base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
 
 const fixture_base64 = (name: string, gzip = false): string => {
-  const bytes = readFileSync(
-    resolve(import.meta.dirname, `../../../tests/vitest/fixtures/vasp-hdf5/${name}`),
-  )
+  const bytes = readFileSync(resolve(import.meta.dirname, `../fixtures/vasp-hdf5/${name}`))
   return (gzip ? gzip_sync(bytes) : bytes).toString(`base64`)
 }
 const make_container = () => ({ style: {}, innerHTML: `` }) as unknown as HTMLElement
@@ -235,6 +231,16 @@ describe(`vaspout.h5 electronic routing`, () => {
   )
 })
 
+test.each([
+  [`fermi_surface`, { energies: [] }, `band_data`],
+  [`convex_hull`, [], `entries`],
+  [`phase_diagram`, {}, `data`],
+  [`structure`, { sites: [] }, `structure`],
+] as const)(`create_display mounts %s data`, (type, data, prop_name) => {
+  create_display(make_container(), { type, data, filename: `test.json` }, `test.json`)
+  expect(last_mount_props()[prop_name]).toBe(data)
+})
+
 describe(`create_display trajectory display options`, () => {
   const trajectory_result = (): ParseResult => ({
     type: `trajectory`,
@@ -267,33 +273,6 @@ describe(`create_display trajectory display options`, () => {
       expect(mount_props.on_step_change).toBeUndefined()
     },
   )
-})
-
-describe(`large file marker parsing`, () => {
-  test.each([
-    [
-      `LARGE_FILE:/tmp/movie.traj:536870912`,
-      { file_path: `/tmp/movie.traj`, file_size: 536870912 },
-    ],
-    [
-      `LARGE_FILE:C:\\Users\\janosh\\movie.traj:536870912`,
-      { file_path: `C:\\Users\\janosh\\movie.traj`, file_size: 536870912 },
-    ],
-    [`not-large`, null],
-  ])(`parses marker %s`, (marker, expected) => {
-    expect(parse_large_file_marker(marker)).toEqual(expected)
-  })
-
-  test.each([
-    `LARGE_FILE:missing-size`,
-    `LARGE_FILE:/tmp/file:not-a-number`,
-    `LARGE_FILE:/tmp/file:123abc`,
-    `LARGE_FILE:/tmp/file:-1`,
-    `LARGE_FILE:/tmp/file:`,
-    `LARGE_FILE:/tmp/file: `,
-  ])(`rejects malformed marker %s`, (marker) => {
-    expect(() => parse_large_file_marker(marker)).toThrow(`Malformed large file`)
-  })
 })
 
 describe(`VS Code frame loader`, () => {

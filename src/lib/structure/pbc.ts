@@ -1,5 +1,5 @@
 // Periodic boundary conditions utilities
-import { element_by_symbol } from '$lib/element/groups'
+import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {

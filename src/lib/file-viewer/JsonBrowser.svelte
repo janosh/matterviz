@@ -24,6 +24,7 @@
     normalize_fractional_coords,
     parse_optimade_from_raw,
   } from '$lib/structure/parse'
+  import { build_structure_props_from_settings as structure_props } from '$lib/structure/prop-groups'
   import Structure from '$lib/structure/Structure.svelte'
   import type { XrdPattern } from '$lib/xrd'
   import XrdPlot from '$lib/xrd/XrdPlot.svelte'
@@ -32,7 +33,6 @@
     detect_view_type,
     resolve_path,
     scan_renderable_paths,
-    structure_props,
     TYPE_COLORS,
     TYPE_LABELS,
   } from './detect'
@@ -466,46 +466,51 @@
     // Force layout so Three.js gets real dimensions
     void target.offsetHeight
 
-    const struct_common = {
+    const structure_mount_props = {
       allow_file_drop: false,
       enable_tips: false,
       ...structure_props(merged_defaults),
-      ...common_props,
     }
 
     try {
       if (detected_type === `structure`) {
         return mount(Structure, {
           target,
-          props: { structure: prepare_structure(val) as AnyStructure, ...struct_common },
+          props: {
+            structure: prepare_structure(val) as AnyStructure,
+            ...structure_mount_props,
+            ...common_props,
+          },
         })
-      } else if (detected_type === `fermi_surface` || detected_type === `band_grid`) {
-        const fermi_props: Record<string, unknown> = {
-          allow_file_drop: false,
-          ...common_props,
-        }
-        if (is_fermi_surface_data(val as Parameters<typeof is_fermi_surface_data>[0]))
-          fermi_props.fermi_data = val
-        else fermi_props.band_data = val
-        return mount(FermiSurface, { target, props: fermi_props })
-      } else if (detected_type === `convex_hull`) {
+      }
+      if (detected_type === `fermi_surface` || detected_type === `band_grid`) {
+        const props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
+        if (is_fermi_surface_data(val as Parameters<typeof is_fermi_surface_data>[0])) {
+          props.fermi_data = val
+        } else props.band_data = val
+        return mount(FermiSurface, { target, props })
+      }
+      if (detected_type === `convex_hull`) {
         return mount(ConvexHull, {
           target,
           props: { entries: val as PhaseData[], ...common_props },
         })
-      } else if (detected_type === `phase_diagram`) {
+      }
+      if (detected_type === `phase_diagram`) {
         return mount(IsobaricBinaryPhaseDiagram, {
           target,
           props: { data: val as PhaseDiagramData, ...common_props },
         })
-      } else if (detected_type === `volumetric`) {
+      }
+      if (detected_type === `volumetric`) {
         const vol_data = val as { lattice: LatticeType }
         return mount(Structure, {
           target,
           props: {
             structure: { sites: [], lattice: vol_data.lattice } as AnyStructure,
             volumetric_data: [val as VolumetricData],
-            ...struct_common,
+            ...structure_mount_props,
+            ...common_props,
           },
         })
       } else if (detected_type === `bands_and_dos`) {

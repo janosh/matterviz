@@ -6,7 +6,7 @@
 
 import { rgb as parse_rgb } from 'd3-color'
 import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol } from '$lib/element/groups'
+import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'

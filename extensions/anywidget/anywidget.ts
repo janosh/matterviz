@@ -27,7 +27,15 @@ import {
   XrdPlot,
 } from 'matterviz'
 import app_css from 'matterviz/app.css?raw'
+import {
+  build_widget_scene_props,
+  build_widget_structure_props,
+  STRUCTURE_LATTICE_PROP_KEYS,
+  STRUCTURE_SCENE_PROP_KEYS,
+  STRUCTURE_TOP_LEVEL_PROP_KEYS,
+} from 'matterviz/structure'
 import type { ThemeType } from 'matterviz/theme'
+import { detect_parent_theme, get_theme_css, watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
 import type { DrivenProp } from './reactive.svelte'
 import {
@@ -42,8 +50,6 @@ import {
   throttle,
   writeback_prop,
 } from './reactive.svelte'
-import { detect_parent_theme, get_theme_css, watch_theme } from './theme-detection'
-
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
 // Static widget chrome + bundled app styles. Only the theme-variable block
@@ -205,63 +211,14 @@ const histogram_drive: readonly DrivenProp[] = [
   ...drive_props([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
 ]
 
-// Scene traits forwarded verbatim into scene_props via pick_props.
-const scene_pick_keys = [
-  `atom_radius`,
-  `show_atoms`,
-  `same_size_atoms`,
-  `show_bonds`,
-  `bond_thickness`,
-  `bond_color`,
-  `bonding_strategy`,
-  `vector_configs`,
-  `vector_scale`,
-  `vector_color`,
-  `vector_normalize`,
-  `vector_uniform_thickness`,
-  `vector_origin_gap`,
-  // label settings live in scene_props: Structure forwards them to StructureScene
-  // via {...scene_props}, not as top-level Structure props
-  `show_site_labels`,
-  `show_site_indices`,
-] as const
-// All scene traits (deps for the reactive scene_props derived prop); auto_rotate
-// and show_gizmo get explicit defaults in get_scene_props rather than pick_props.
-const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `show_gizmo`] as const
-
-const lattice_prop_keys = [
-  `cell_edge_opacity`,
-  `cell_surface_opacity`,
-  `cell_edge_color`,
-  `cell_surface_color`,
-  `cell_edge_width`,
-  `show_cell_vectors`,
-] as const
-
-// Top-level Structure traits the trajectory forwards into its nested structure_props
-// (show_site_labels/show_site_indices are NOT here -- they ride inside scene_props).
-const traj_structure_prop_keys = [
-  `show_image_atoms`,
-  `color_scheme`,
-  `background_color`,
-  `background_opacity`,
-] as const
-
 // Build scene/lattice props shared by structure and trajectory renderers
-const get_scene_props = (model: AnyModel) => ({
-  ...pick_props(model, scene_pick_keys),
-  // defaults mirror the Structure component's own auto_rotate/gizmo defaults
-  auto_rotate: get_prop(model, `auto_rotate`) ?? 0.2,
-  gizmo: get_prop(model, `show_gizmo`) ?? true,
-})
+// Labels stay in scene_props, while auto_rotate/gizmo use Structure's defaults.
+const get_scene_props = (model: AnyModel) =>
+  build_widget_scene_props((key: string) => get_prop(model, key))
 
 // Trajectory forwards a fixed config object to its embedded Structure view.
-const get_structure_props = (model: AnyModel) => ({
-  scene_props: get_scene_props(model),
-  lattice_props: pick_props(model, lattice_prop_keys),
-  ...pick_props(model, traj_structure_prop_keys),
-  fullscreen_toggle: false,
-})
+const get_structure_props = (model: AnyModel) =>
+  build_widget_structure_props((key: string) => get_prop(model, key))
 
 // Shape pushed back to Python for scatter point click/hover interactions.
 type ScatterPointEvent = {
@@ -360,8 +317,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `structure`,
         `structure_string`,
         `data_url`,
-        // show_site_labels/show_site_indices are delivered via scene_props (see
-        // scene_pick_keys), not as top-level Structure props.
+        // show_site_labels/show_site_indices are delivered via scene_props.
         `show_image_atoms`,
         `color_scheme`,
         `background_color`,
@@ -377,8 +333,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       ]),
       writeback_prop(`selected_sites`, []),
       writeback_prop(`hovered_site_idx`),
-      derived_prop(`scene_props`, scene_prop_keys, get_scene_props),
-      picked_prop(`lattice_props`, lattice_prop_keys),
+      derived_prop(`scene_props`, STRUCTURE_SCENE_PROP_KEYS, get_scene_props),
+      picked_prop(`lattice_props`, STRUCTURE_LATTICE_PROP_KEYS),
     ],
   },
   trajectory: {
@@ -397,9 +353,15 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       // current_step_idx links widgets; display_mode changes from the view-mode menu.
       writeback_prop(`current_step_idx`, 0),
       writeback_prop(`display_mode`, `structure+scatter`),
+      // Top-level Structure traits the trajectory forwards into its nested structure_props
+      // (show_site_labels/show_site_indices are NOT here -- they ride inside scene_props).
       derived_prop(
         `structure_props`,
-        [...scene_prop_keys, ...lattice_prop_keys, ...traj_structure_prop_keys],
+        [
+          ...STRUCTURE_SCENE_PROP_KEYS,
+          ...STRUCTURE_LATTICE_PROP_KEYS,
+          ...STRUCTURE_TOP_LEVEL_PROP_KEYS,
+        ],
         get_structure_props,
       ),
     ],

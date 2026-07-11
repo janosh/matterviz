@@ -20,7 +20,7 @@ import Dos from '$lib/spectral/Dos.svelte'
 import type { AnyStructure } from '$lib/structure'
 import Structure from '$lib/structure/Structure.svelte'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
-import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
+import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/theme/themes.mjs'
 import type {
@@ -33,20 +33,20 @@ import type {
 } from '$lib/trajectory'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
+import { build_structure_props_from_settings as structure_props } from '$lib/structure/prop-groups'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
-import { structure_props } from './detect'
+import type {
+  FileChangeMessage,
+  ParsedTrajectoryResponse,
+  WebviewBootstrapData,
+} from './host-protocol'
 import JsonBrowser from './JsonBrowser.svelte'
-import type { FileData, ParsedTrajectoryResponse, ParseResult } from './parse'
+import type { ParseResult } from './parse'
 import { parse_file_content, set_large_file_requester } from './parse'
 import { escape_html, to_error } from '$lib/utils'
 
-export interface MatterVizData {
-  data: FileData
-  theme: ThemeName
-  defaults?: DefaultSettings
-  moyo_wasm_url?: string
-}
+export type MatterVizData = WebviewBootstrapData
 
 export interface MatterVizApp {
   $on?(type: string, callback: (event: Event) => void): () => void
@@ -61,13 +61,6 @@ export interface DisplayOptions {
   initial_step_idx?: number
   // Reports every step change with the new index and the trajectory's frame count.
   on_step_change?: (step_idx: number, total_frames: number) => void
-}
-
-export interface FileChangeMessage {
-  command: `fileUpdated` | `fileDeleted`
-  file_path?: string
-  data?: FileData
-  theme?: ThemeName
 }
 
 // Shared postMessage request/response plumbing for talking to the extension
@@ -391,11 +384,8 @@ export const create_display = (
   let log_message: string
 
   if (result.type === `trajectory`) {
-    // Type for trajectory with optional frame loader for streaming
-    type StreamingTrajectory = TrajectoryType & { frame_loader?: FrameLoader }
-
     // Prepare trajectory data for VS Code streaming if supported
-    let final_trajectory: TrajectoryType | StreamingTrajectory = result.data as TrajectoryType
+    let final_trajectory = result.data as TrajectoryType
 
     if (vscode_api && result.streaming_info?.file_path) {
       const trajectory = result.data as TrajectoryType
@@ -464,13 +454,11 @@ export const create_display = (
     const parts = [bands ? `bands` : null, dos ? `DOS` : null].filter(Boolean).join(` + `)
     log_message = `Electronic structure rendered: ${filename} (${parts})`
   } else if (result.type === `fermi_surface`) {
-    const fermi_props: Record<string, unknown> = { ...common_props }
+    const props: Record<string, unknown> = { ...common_props }
     if (is_fermi_surface_data(result.data as Parameters<typeof is_fermi_surface_data>[0])) {
-      fermi_props.fermi_data = result.data
-    } else {
-      fermi_props.band_data = result.data
-    }
-    app = mount(FermiSurface, { target: container, props: fermi_props })
+      props.fermi_data = result.data
+    } else props.band_data = result.data
+    app = mount(FermiSurface, { target: container, props })
     log_message = `Fermi surface rendered: ${filename}`
   } else if (result.type === `isosurface`) {
     // VolumetricFileData has structure + volumes; render via Structure with volumetric_data
@@ -487,10 +475,7 @@ export const create_display = (
     log_message = `Volumetric data rendered: ${filename}`
   } else if (result.type === `convex_hull`) {
     const entries = result.data as PhaseData[]
-    app = mount(ConvexHull, {
-      target: container,
-      props: { entries, ...common_props },
-    })
+    app = mount(ConvexHull, { target: container, props: { entries, ...common_props } })
     log_message = `Convex hull rendered: ${filename} (${entries.length} entries)`
   } else if (result.type === `phase_diagram`) {
     app = mount(IsobaricBinaryPhaseDiagram, {
@@ -509,11 +494,7 @@ export const create_display = (
     const structure = result.data as AnyStructure
     app = mount(Structure, {
       target: container,
-      props: {
-        structure,
-        ...structure_props(defaults),
-        ...common_props,
-      },
+      props: { structure, ...structure_props(defaults), ...common_props },
     })
     log_message = `Structure rendered: ${filename} (${structure.sites?.length ?? 0} sites)`
   }

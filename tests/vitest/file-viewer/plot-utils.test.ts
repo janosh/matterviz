@@ -41,6 +41,16 @@ describe(`extract_columns`, () => {
     expect(cols.get(`energy`)?.values).toEqual([-5.4, -4.6, -7.4])
   })
 
+  test(`row-based: tolerates null and non-object rows`, () => {
+    const cols = extract_columns([{ value: 1 }, null, 42, `text`, { value: 2 }])
+
+    expect(cols.get(`value`)).toEqual({
+      values: [1, undefined, undefined, undefined, 2],
+      type: `numeric`,
+      n_valid: 2,
+    })
+  })
+
   test.each([null, `hello`, 42, [null, { x: 1 }]])(
     `returns empty map for non-tabular data: %j`,
     (data) => expect(extract_columns(data).size).toBe(0),

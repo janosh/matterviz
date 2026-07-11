@@ -9,12 +9,14 @@ import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file, LARGE_FILE_THRESHOLD } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import type * as node_path from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import type { MessageData } from '../src/extension'
 import {
   activate,
+  active_frame_loaders,
   create_html,
   get_defaults,
   get_file,
@@ -322,6 +324,101 @@ describe(`MatterViz Extension`, () => {
 
     await expect(read_file(`/test/${filename}`)).rejects.toThrow(error)
     expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+  })
+
+  test(`large compressed EXTXYZ request is parsed and registered for frame loading`, async () => {
+    const file_path = `/test/movie.extxyz.gz`
+    const trajectory = [`1`, `frame=0`, `H 0 0 0`, `1`, `frame=1`, `H 1 0 0`, ``].join(`\n`)
+    const compressed = new Uint8Array(gzipSync(trajectory))
+    mock_vscode.workspace.fs.stat.mockResolvedValue({ size: compressed.byteLength, type: 1 })
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(compressed)
+
+    await handle_msg(
+      {
+        command: `request_large_file`,
+        request_id: `large-request`,
+        file_path,
+        filename: `movie.extxyz.gz`,
+        is_base64: true,
+      },
+      mock_webview,
+    )
+
+    expect(active_frame_loaders.get(file_path)).toMatchObject({
+      file_data: trajectory,
+    })
+    expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        command: `large_file_response`,
+        request_id: `large-request`,
+        is_parsed: true,
+      }),
+    )
+    const large_file_response = mock_webview.postMessage.mock.calls.at(-1)?.[0] as {
+      parsed_trajectory: object
+    }
+    expect(large_file_response.parsed_trajectory).not.toHaveProperty(`frame_loader`)
+
+    mock_webview.postMessage.mockClear()
+    await handle_msg(
+      {
+        command: `request_frame`,
+        request_id: `frame-request`,
+        file_path,
+        filename: `movie.extxyz`,
+        frame_index: 1,
+      },
+      mock_webview,
+    )
+    expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
+      command: `frame_response`,
+      request_id: `frame-request`,
+      frame: expect.any(Object),
+      frame_index: 1,
+    })
+  })
+
+  test(`large-file requests reject invalid request IDs before reading`, async () => {
+    await handle_msg(
+      {
+        command: `request_large_file`,
+        request_id: ``,
+        file_path: `/test/movie.extxyz`,
+        filename: `movie.extxyz`,
+        is_base64: false,
+      },
+      mock_webview,
+    )
+
+    expect(mock_vscode.workspace.fs.stat).not.toHaveBeenCalled()
+    expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
+      command: `large_file_response`,
+      request_id: ``,
+      error: `Invalid request_id`,
+    })
+  })
+
+  test.each([
+    [`negative frame index`, `/test/movie.extxyz`, -1, `Invalid request_id or frame_index`],
+    [`missing frame loader`, `/test/missing.extxyz`, 0, `No frame loader found`],
+  ])(`request_frame reports %s`, async (_label, file_path, frame_index, error) => {
+    await handle_msg(
+      {
+        command: `request_frame`,
+        request_id: `frame-request`,
+        file_path,
+        filename: `movie.extxyz`,
+        frame_index,
+      },
+      mock_webview,
+    )
+
+    expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
+      command: `frame_response`,
+      request_id: `frame-request`,
+      error: expect.stringContaining(error),
+      frame_index,
+    })
   })
 
   test.each([
