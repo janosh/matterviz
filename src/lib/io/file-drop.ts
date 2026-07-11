@@ -37,21 +37,23 @@ export const create_file_drop_handler = (
   async function process_batch(url: string | undefined, files: File[]) {
     opts.set_loading?.(true)
     try {
+      // One failing item must not abort the rest of the batch
+      const failures: string[] = []
       if (url) {
         try {
           return await load_from_url(url, opts.on_drop)
         } catch (exc) {
           // URL failed; if plain files were also dropped, still process them
+          // and fold the URL failure into the aggregate report
           if (files.length === 0) {
             opts.on_error?.(`Failed to load from URL: ${to_error(exc).message}`)
             return
           }
+          failures.push(`URL ${url}: ${to_error(exc).message}`)
         }
       }
       if (files.length === 0) return
 
-      // One failing file must not abort the rest of the batch
-      const failures: string[] = []
       for (const file of files) {
         try {
           const { content, filename } = await decompress_file(file)

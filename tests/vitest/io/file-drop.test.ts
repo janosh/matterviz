@@ -64,6 +64,17 @@ describe(`create_file_drop_handler`, () => {
     expect(decompress_file).not.toHaveBeenCalled()
   })
 
+  test(`URL failure with files present still processes files and reports both`, async () => {
+    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
+    vi.mocked(load_from_url).mockRejectedValue(new Error(`404`))
+    vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: `b.cube` })
+    await run({}, [new File([`y`], `b.cube.gz`)])
+    expect(on_drop).toHaveBeenCalledWith(`data`, `b.cube`)
+    expect(on_error).toHaveBeenCalledWith(
+      `Failed to load 1 file — URL https://example.com/f.cif: 404`,
+    )
+  })
+
   test(`decompresses file and calls on_drop`, async () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: `f.cif` })
     const file = new File([`data`], `f.cif.gz`)
