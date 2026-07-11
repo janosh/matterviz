@@ -20,7 +20,7 @@ import * as vscode from 'vscode'
 // NOTE: vscode.workspace.fs.readFile() loads entire file into memory (no streaming support yet)
 // Consider making this a user setting: matterviz.max_file_size_mb (default 1024)
 export const MAX_STREAMING_FILE_SIZE = 1 * 1024 * 1024 * 1024 // set low at 1GB to prevent OOM
-export const MAX_TEXT_TRAJECTORY_SIZE = buffer_constants.MAX_STRING_LENGTH
+const MAX_TEXT_TRAJECTORY_SIZE = buffer_constants.MAX_STRING_LENGTH
 const LARGE_FILE_WARNING_SIZE = 512 * 1024 * 1024 // 512MB - warn user
 
 export interface StreamingProgress {
