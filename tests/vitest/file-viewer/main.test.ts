@@ -13,6 +13,7 @@ import {
   deflateSync as deflate_sync,
   gzipSync as gzip_sync,
 } from 'node:zlib'
+import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -157,7 +158,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(data.dos).toBeNull()
     expect(data.bands).not.toBeNull()
 
-    create_display(make_container(), result, `vaspout.h5`)
+    create_display(make_container(), result)
     const mount_props = last_mount_props()
     expect(mount_props.band_type).toBe(`electronic`)
     expect(mount_props.band_structs).toBe(data.bands)
@@ -182,7 +183,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     const result = await parse_file_content(scf_base64, `vaspout.h5`, true)
     expect(result.type).toBe(`trajectory`)
 
-    create_display(make_container(), result, `vaspout.h5`)
+    create_display(make_container(), result)
     const mount_props = last_mount_props() as {
       dos?: unknown
       trajectory_props?: { trajectory: unknown }
@@ -207,6 +208,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     [`.gz`, gzip_sync],
     [`.deflate`, deflate_sync],
     [`.z`, deflate_raw_sync],
+    [`.zip`, (data: Uint8Array) => zipSync({ [`relax.traj`]: data })],
   ] as const)(
     `%s-compressed .traj routes byte-identical data to the trajectory parser`,
     async (extension, compress) => {
@@ -237,7 +239,7 @@ test.each([
   [`phase_diagram`, {}, `data`],
   [`structure`, { sites: [] }, `structure`],
 ] as const)(`create_display mounts %s data`, (type, data, prop_name) => {
-  create_display(make_container(), { type, data, filename: `test.json` }, `test.json`)
+  create_display(make_container(), { type, data, filename: `test.json` })
   expect(last_mount_props()[prop_name]).toBe(data)
 })
 
@@ -250,7 +252,7 @@ describe(`create_display trajectory display options`, () => {
 
   test(`initial_step_idx and on_step_change reach the mounted Trajectory component`, () => {
     const on_step_change = vi.fn()
-    create_display(make_container(), trajectory_result(), `relax.h5`, {
+    create_display(make_container(), trajectory_result(), {
       initial_step_idx: 42,
       on_step_change,
     })
@@ -267,7 +269,7 @@ describe(`create_display trajectory display options`, () => {
   test.each([[undefined], [{}]])(
     `display options %o leave Trajectory props untouched`,
     (display_options) => {
-      create_display(make_container(), trajectory_result(), `relax.h5`, display_options)
+      create_display(make_container(), trajectory_result(), display_options)
       const mount_props = last_mount_props()
       expect(mount_props.current_step_idx).toBeUndefined()
       expect(mount_props.on_step_change).toBeUndefined()
@@ -276,7 +278,7 @@ describe(`create_display trajectory display options`, () => {
 })
 
 describe(`VS Code frame loader`, () => {
-  test(`includes filename in frame requests for the host streaming bridge`, async () => {
+  test(`requests frames by host file path`, async () => {
     // post_request listens on globalThis, which is a real EventTarget in the
     // webview but not in vitest's node environment — bridge it for the test
     const message_bus = new EventTarget()
@@ -284,7 +286,7 @@ describe(`VS Code frame loader`, () => {
     vi.stubGlobal(`removeEventListener`, message_bus.removeEventListener.bind(message_bus))
     try {
       const post_message = vi.fn()
-      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
+      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, {
         postMessage: post_message,
       })
       const frame_promise = loader.load_frame(``, 7)
@@ -293,7 +295,6 @@ describe(`VS Code frame loader`, () => {
         command: `request_frame`,
         request_id: expect.any(String),
         file_path: `/tmp/movie.extxyz`,
-        filename: `movie.extxyz`,
         frame_index: 7,
       })
 

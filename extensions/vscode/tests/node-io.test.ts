@@ -89,10 +89,19 @@ describe(`read_indexed_trajectory_file`, () => {
     expect(Array.from(new Uint8Array(result.data as ArrayBuffer))).toEqual([...raw])
   })
 
-  test(`rejects decompressed output above the host limit`, async () => {
-    const compressed = new Uint8Array(gzipSync(`content larger than limit`))
+  test(`enforces decompression and text-decoding memory budgets`, async () => {
+    const text = `a`.repeat(100_000)
+    const compressed = new Uint8Array(gzipSync(text))
+    const data = compressed.buffer
 
-    await expect(decompress_host_buffer(compressed.slice().buffer, `gzip`, 5)).rejects.toThrow(
+    await expect(
+      decompress_host_buffer(data, `gzip`, compressed.byteLength + 100),
+    ).rejects.toThrow(`Decompressed file too large`)
+
+    const memory_budget = compressed.byteLength + text.length * 2
+    const output = await decompress_host_buffer(data, `gzip`, memory_budget)
+    expect(new TextDecoder().decode(output)).toBe(text)
+    await expect(decompress_host_buffer(data, `gzip`, memory_budget, true)).rejects.toThrow(
       `Decompressed file too large`,
     )
   })

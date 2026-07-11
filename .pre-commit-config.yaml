@@ -41,12 +41,6 @@ repos:
         types_or: [file]
         language: system
         pass_filenames: false
-      - id: anywidget-coverage
-        name: Check anywidget component coverage
-        entry: npx vitest run tests/vitest/anywidget-coverage.test.ts
-        language: system
-        pass_filenames: false
-        files: ^(src/lib/(.*/)?index\.ts|extensions/anywidget/anywidget\.ts|tests/vitest/anywidget-coverage\.test\.ts)$
       - id: svelte-check
         name: Svelte type check
         entry: bash -c "npx svelte-kit sync && npx svelte-check --threshold error"

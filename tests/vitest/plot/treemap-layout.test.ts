@@ -238,7 +238,7 @@ describe(`lerp_rects`, () => {
   })
 })
 
-test(`normalize_treemap_label_lines ignores nullish array entries`, () => {
+test(`normalize_treemap_label_lines ignores nullish and empty-label array entries`, () => {
   expect(normalize_treemap_label_lines([`kept`, null, undefined, { text: `` }])).toEqual([
     { text: `kept` },
   ])
@@ -268,6 +268,10 @@ describe(`place_treemap_label`, () => {
     expect(placement).not.toBeNull()
     expect(Boolean(placement?.transform?.includes(`rotate(-90`))).toBe(rotated)
     expect(placement?.font_size).toBe(10)
+  })
+
+  test(`leaf height is independent of horizontal margin`, () => {
+    expect(place_treemap_label({ ...base, rect: rect(40, 12), margin: 6 })).not.toBeNull()
   })
 
   test.each([

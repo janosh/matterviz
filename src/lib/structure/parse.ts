@@ -1,14 +1,5 @@
 import type { OptimadeStructure } from '$lib/api/optimade'
-import {
-  CONFIG_DIRS_REGEX,
-  STRUCT_KEYWORDS_REGEX,
-  STRUCT_KEYWORDS_STRICT_REGEX,
-  STRUCTURE_EXTENSIONS_REGEX,
-  TRAJ_KEYWORDS_REGEX,
-  VASP_FILES_REGEX,
-  XDATCAR_REGEX,
-  XYZ_EXTXYZ_REGEX,
-} from '$lib/constants'
+import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element/helpers'
 import { strip_compression_extensions } from '$lib/io/decompress'
@@ -27,21 +18,7 @@ import {
 } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
 
-// Filename-only detection avoids reading file contents just to choose a parser or icon.
-export function is_structure_file(filename: string): boolean {
-  const name = strip_compression_extensions(filename)
-
-  if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || XDATCAR_REGEX.test(name)) return false
-  if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) return true
-  if (XYZ_EXTXYZ_REGEX.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
-  if (/\.(?:yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
-  return (
-    /\.json$/i.test(name) &&
-    STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
-    !TRAJ_KEYWORDS_REGEX.test(name) &&
-    !CONFIG_DIRS_REGEX.test(name)
-  )
-}
+export { is_structure_file } from '$lib/structure/format-detect'
 
 // === Parse error contract ===
 // Individual format parsers (parse_poscar, parse_cif, parse_xyz, parse_phonopy_yaml,

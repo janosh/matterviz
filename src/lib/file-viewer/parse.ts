@@ -11,8 +11,6 @@ import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/par
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
-import type { ParsedTrajectoryResponse } from './host-protocol'
-import { parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
 import type { RenderableType } from './detect'
@@ -35,8 +33,6 @@ export interface ParseResult {
   type: ViewType
   data: unknown
   filename: string
-  // For trajectories that support VS Code streaming
-  streaming_info?: { file_path: string }
 }
 
 // Convert base64 to ArrayBuffer for binary files
@@ -49,66 +45,12 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
-// LARGE_FILE markers are resolved by streaming content from the embedding
-// host over postMessage. That transport only exists on the main thread, so
-// the host registers its requester here; contexts without one (e.g. a parse
-// Web Worker) throw on marker payloads and callers fall back to the main
-// thread.
-export type LargeFileRequester = (
-  file_path: string,
-  filename: string,
-  is_base64: boolean,
-) => Promise<string | ParsedTrajectoryResponse>
-
-let large_file_requester: LargeFileRequester | null = null
-
-export const set_large_file_requester = (requester: LargeFileRequester | null): void => {
-  large_file_requester = requester
-}
-
 // Parse file content and determine if it's a structure or trajectory
 export const parse_file_content = async (
   content: string,
   filename: string,
   is_base64: boolean = false,
-  recursion_depth: number = 0,
 ): Promise<ParseResult> => {
-  if (recursion_depth > 2) {
-    throw new Error(
-      `parse_file_content exceeded max recursion depth=2 while parsing file ${filename}`,
-    )
-  }
-
-  const large_file_marker = parse_large_file_marker(content)
-  if (large_file_marker) {
-    const { file_path, file_size } = large_file_marker
-
-    console.info(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
-
-    if (!large_file_requester) throw new Error(`No large-file requester registered`)
-    const parsed_trajectory = await large_file_requester(file_path, filename, is_base64)
-
-    // Check if we received a pre-parsed trajectory with VS Code streaming support
-    if (
-      parsed_trajectory &&
-      typeof parsed_trajectory === `object` &&
-      `trajectory` in parsed_trajectory &&
-      `file_path` in parsed_trajectory
-    ) {
-      const { trajectory, file_path: streaming_file_path } = parsed_trajectory
-      const streaming_info = { file_path: streaming_file_path }
-      return { type: `trajectory`, data: trajectory, filename, streaming_info }
-    }
-
-    // Fallback: if not pre-parsed, treat as raw content. The response is
-    // untyped postMessage data, so don't trust the declared union at runtime —
-    // a malformed host reply would otherwise crash deep in the recursive call.
-    if (typeof parsed_trajectory !== `string`) {
-      throw new TypeError(`Malformed large-file response for ${filename}`)
-    }
-    return parse_file_content(parsed_trajectory, filename, is_base64, recursion_depth + 1)
-  }
-
   // Handle base64-encoded compressed/binary files by converting them first
   if (is_base64) {
     let buffer = base64_to_array_buffer(content)
@@ -124,8 +66,20 @@ export const parse_file_content = async (
     // Compressed binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
     // or compressed ASE .traj files): decompress to binary first — generic text
     // decompression would corrupt their bytes — so routing sees the inner name.
-    if (compression_format && /\.(?:h5|hdf5|traj)$/i.test(filename)) {
-      buffer = await decompress_data_binary(buffer, compression_format)
+    const is_binary_format = /\.(?:h5|hdf5|traj)$/i.test(filename)
+    if (compression_format === `zip`) {
+      const { unzipSync } = await import(`fflate`)
+      const payload = Object.entries(unzipSync(new Uint8Array(buffer))).find(
+        ([entry_name]) => !entry_name.endsWith(`/`),
+      )?.[1]
+      if (!payload) throw new Error(`ZIP archive contains no files: ${filename}`)
+      if (is_binary_format) buffer = payload.slice().buffer
+      else content = new TextDecoder().decode(payload)
+    } else if (compression_format) {
+      // Unified handling for all supported compression formats
+      // Unsupported formats fail here with a clear extraction error
+      if (is_binary_format) buffer = await decompress_data_binary(buffer, compression_format)
+      else content = await decompress_data(buffer, compression_format)
     }
 
     // vaspwave.h5 holds charge density (+ wavefunctions), not a trajectory —
@@ -136,7 +90,7 @@ export const parse_file_content = async (
     }
 
     // Binary trajectory formats: pass buffer directly to trajectory parser
-    if (/\.(?:h5|hdf5|traj)$/i.test(filename)) {
+    if (is_binary_format) {
       const data = await parse_trajectory_data(buffer, filename)
       // DOS/bands-only vaspout.h5 (e.g. phelel band paths): no frames to animate,
       // route the electronic results to the spectral components instead.
@@ -148,12 +102,6 @@ export const parse_file_content = async (
         return { type: `vaspout_electronic`, filename, data: electronic }
       }
       return { type: `trajectory`, filename, data }
-    }
-
-    // Unified handling for all supported compression formats
-    if (compression_format) {
-      // Unsupported formats fail here with a clear extraction error
-      content = await decompress_data(buffer, compression_format)
     }
   }
 

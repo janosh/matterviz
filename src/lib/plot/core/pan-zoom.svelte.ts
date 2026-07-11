@@ -208,12 +208,27 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     const touch_enabled = pan_cfg?.enabled !== false && pan_cfg?.touch_enabled !== false
     if (!touch_enabled || evt.touches.length !== 2) return
 
+    const svg_bounds = opts.svg()?.getBoundingClientRect()
+    if (!svg_bounds) return
+    const plot_bounds = opts.plot_bounds()
+    const start_touches = Array.from(evt.touches).map((touch) => ({
+      x: touch.clientX,
+      y: touch.clientY,
+    }))
+    // Every contact must start in the data rectangle; touching an axis or label
+    // must not arm a gesture that later moves into the plot.
+    const starts_outside_plot = start_touches.some(
+      (touch) =>
+        !point_in_rect(
+          { x: touch.x - svg_bounds.left, y: touch.y - svg_bounds.top },
+          plot_bounds,
+        ),
+    )
+    if (starts_outside_plot) return
+
     evt.preventDefault()
     touch_state = {
-      start_touches: Array.from(evt.touches).map((touch) => ({
-        x: touch.clientX,
-        y: touch.clientY,
-      })),
+      start_touches,
       ...snapshot_ranges(opts.ranges()),
     }
   }

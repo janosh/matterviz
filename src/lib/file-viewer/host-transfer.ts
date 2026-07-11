@@ -37,7 +37,7 @@ export type HostTransferRejectReason =
 
 export type HostFileTransferPlan =
   | { kind: `inline`; is_base64: boolean }
-  | { kind: `marker`; content: string; is_base64: boolean }
+  | { kind: `marker`; content: string }
   | { kind: `reject`; reason: HostTransferRejectReason }
 
 export interface HostFileTransferInput extends LargeFileMarker {
@@ -66,6 +66,5 @@ export const plan_host_file_transfer = ({
   return {
     kind: `marker`,
     content: format_large_file_marker({ file_path, file_size }),
-    is_base64,
   }
 }

@@ -295,12 +295,9 @@ describe(`MatterViz Extension`, () => {
     }
   })
 
-  test.each([
-    [`large-trajectory.traj`, true],
-    [`large.extxyz`, false],
-  ])(
+  test.each([`large-trajectory.traj`, `large.extxyz`])(
     `file reading: large trajectory %s returns an indexed marker`,
-    async (filename, is_base64) => {
+    async (filename) => {
       const large_file_size = LARGE_FILE_THRESHOLD + 1
       const file_path = `/test/${filename}`
       mock_vscode.workspace.fs.stat.mockResolvedValue({ size: large_file_size, type: 1 })
@@ -310,7 +307,7 @@ describe(`MatterViz Extension`, () => {
       expect(result).toEqual({
         filename,
         content: `LARGE_FILE:${file_path}:${large_file_size}`,
-        is_base64,
+        is_base64: false,
       })
       expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
     },
@@ -338,8 +335,6 @@ describe(`MatterViz Extension`, () => {
         command: `request_large_file`,
         request_id: `large-request`,
         file_path,
-        filename: `movie.extxyz.gz`,
-        is_base64: true,
       },
       mock_webview,
     )
@@ -351,7 +346,6 @@ describe(`MatterViz Extension`, () => {
       expect.objectContaining({
         command: `large_file_response`,
         request_id: `large-request`,
-        is_parsed: true,
       }),
     )
     const large_file_response = mock_webview.postMessage.mock.calls.at(-1)?.[0] as {
@@ -365,7 +359,6 @@ describe(`MatterViz Extension`, () => {
         command: `request_frame`,
         request_id: `frame-request`,
         file_path,
-        filename: `movie.extxyz`,
         frame_index: 1,
       },
       mock_webview,
@@ -384,8 +377,6 @@ describe(`MatterViz Extension`, () => {
         command: `request_large_file`,
         request_id: ``,
         file_path: `/test/movie.extxyz`,
-        filename: `movie.extxyz`,
-        is_base64: false,
       },
       mock_webview,
     )
@@ -407,7 +398,6 @@ describe(`MatterViz Extension`, () => {
         command: `request_frame`,
         request_id: `frame-request`,
         file_path,
-        filename: `movie.extxyz`,
         frame_index,
       },
       mock_webview,

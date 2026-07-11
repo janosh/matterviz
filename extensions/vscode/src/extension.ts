@@ -16,11 +16,7 @@ import { format_bytes } from '$lib/labels'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 import type { FrameLoader } from '$lib/trajectory'
-import {
-  create_frame_loader,
-  LARGE_FILE_THRESHOLD,
-  parse_trajectory_async,
-} from '$lib/trajectory/parse'
+import { LARGE_FILE_THRESHOLD, parse_trajectory_async } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -153,7 +149,7 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   if (transfer.kind === `reject`)
     throw host_transfer_error(transfer.reason, filename, file_size)
   if (transfer.kind === `marker`) {
-    return { filename, content: transfer.content, is_base64: transfer.is_base64 }
+    return { filename, content: transfer.content, is_base64: false }
   }
 
   // For normal-sized files, read using VSCode API
@@ -351,7 +347,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
     try {
       const { request_id, file_path } = msg
       if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
-      const filename = msg.filename || path.basename(file_path)
+      const filename = path.basename(file_path)
       const indexed_file = await read_indexed_trajectory_file(
         file_path,
         filename,
@@ -376,20 +372,18 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
         },
       )
 
-      active_frame_loaders.set(file_path, {
-        loader: create_frame_loader(indexed_file.filename),
-        file_data: indexed_file.data,
-      })
-
       // TrajFrameReader caches the full source payload; keep it host-side instead
       // of cloning it across webview IPC, where VSCodeFrameLoader replaces it.
-      const webview_trajectory = { ...parsed_trajectory }
-      delete webview_trajectory.frame_loader
+      const { frame_loader, ...webview_trajectory } = parsed_trajectory
+      if (!frame_loader) throw new Error(`Indexed trajectory parser returned no frame loader`)
+      active_frame_loaders.set(file_path, {
+        loader: frame_loader,
+        file_data: indexed_file.data,
+      })
       webview.postMessage({
         command,
         request_id,
         parsed_trajectory: webview_trajectory,
-        is_parsed: true,
       })
     } catch (error) {
       const error_message = to_error(error).message
@@ -526,6 +520,7 @@ async function handle_file_change(
   if (event_type === `change`) {
     // File was changed - send updated content
     try {
+      active_frame_loaders.delete(file_path)
       const updated_file = await read_file(file_path)
 
       webview.postMessage({

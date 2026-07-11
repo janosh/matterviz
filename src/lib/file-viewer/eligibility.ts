@@ -4,7 +4,7 @@ import {
   detect_compression_format,
   is_browser_decompressible_format,
 } from '$lib/io/decompress'
-import { is_structure_file } from '$lib/structure/parse'
+import { is_structure_file } from '$lib/structure/format-detect'
 import { is_trajectory_file } from '$lib/trajectory/format-detect'
 
 // Return the browser-visible filename after removing one supported compression

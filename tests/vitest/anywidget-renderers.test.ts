@@ -37,7 +37,6 @@ vi.mock(`matterviz`, async () => {
   return Object.fromEntries(component_names.map((name) => [name, stub_module.default]))
 })
 vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
-vi.mock(`matterviz/structure`, () => import(`../../src/lib/structure/prop-groups`))
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 vi.mock(`matterviz/theme/embedded`, () => ({
   detect_parent_theme: () => `light`,

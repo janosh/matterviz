@@ -318,6 +318,15 @@ describe(`Histogram`, () => {
         [`touchmove`, [[150, 150], [250, 150]]],
       ],
     },
+    {
+      // One contact starts in the left axis margin. Moving both contacts into the
+      // plot must not retroactively arm a pinch gesture.
+      name: `two-finger start spanning the plot margin is ignored`,
+      events: [
+        [`touchstart`, [[10, 100], [100, 100]]],
+        [`touchmove`, [[100, 100], [300, 100]]],
+      ],
+    },
   ] as const)(`$name`, async ({ events }) => {
     mount_histogram({ series: [{ x: [], y: [1, 2, 3, 4, 5], label: `A` }] })
     await tick()

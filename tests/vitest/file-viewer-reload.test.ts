@@ -54,7 +54,7 @@ const update_file = (version: string): boolean =>
     }),
   )
 
-test(`file reloads discard stale parses and render the newest update`, async () => {
+test(`file reloads discard stale parses and cleanup blocks later updates`, async () => {
   expect(create_display).toBeTypeOf(`function`)
   let resolve_stale: (result: ParseResult) => void = () => {}
   const stale_parse = new Promise<ParseResult>((resolve) => (resolve_stale = resolve))
@@ -73,12 +73,21 @@ test(`file reloads discard stale parses and render the newest update`, async () 
   update_file(`stale`)
   await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(2))
   update_file(`fresh`)
+  await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(3))
   resolve_stale(result(`stale`))
 
   await vi.waitFor(() => {
-    expect(parse_file_content).toHaveBeenCalledTimes(3)
     expect(mount).toHaveBeenCalledTimes(2)
   })
   expect(mount.mock.calls.map((call) => call[1].props.value)).toEqual([`initial`, `fresh`])
   expect(unmount).toHaveBeenCalledTimes(1)
+
+  let finish_cleanup: () => void = () => {}
+  unmount.mockReturnValueOnce(new Promise<void>((resolve) => (finish_cleanup = resolve)))
+  const cleanup = window.cleanupMatterViz?.()
+  expect(unmount).toHaveBeenCalledTimes(2)
+  update_file(`after-cleanup`)
+  expect(parse_file_content).toHaveBeenCalledTimes(3)
+  finish_cleanup()
+  await cleanup
 })

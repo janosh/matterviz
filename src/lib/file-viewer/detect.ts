@@ -451,7 +451,8 @@ export function resolve_path(root: unknown, path: string): unknown {
     /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g,
   )) {
     if (current == null || typeof current !== `object`) return undefined
-    current = (current as Record<string, unknown>)[match[1] ?? match[2] ?? match[3]]
+    const { quoted_key, array_index, bare_key } = match.groups ?? {}
+    current = (current as Record<string, unknown>)[quoted_key ?? array_index ?? bare_key ?? ``]
   }
   return current
 }

@@ -530,10 +530,10 @@ describe(`BinnedScatterPlot`, () => {
 
     await drag([206, 436], [633, 124])
 
-    for (const call_count of [0, 1]) {
-      click(420, 247)
-      expect(on_density_zoom).toHaveBeenCalledTimes(call_count)
-    }
+    click(420, 247)
+    expect(on_density_zoom).not.toHaveBeenCalled()
+    click(420, 247)
+    expect(on_density_zoom).toHaveBeenCalledOnce()
     await tick()
 
     const reset_btn = doc_query<HTMLButtonElement>(`.reset-view`)

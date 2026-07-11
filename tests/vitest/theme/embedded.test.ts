@@ -2,7 +2,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Isolate watcher behavior from palette data and theme registration side effects.
-vi.mock(`$lib/colors`, () => ({ luminance: () => 1 }))
+vi.mock(`$lib/colors`, () => ({
+  luminance: (color: string) => (color.replaceAll(` `, ``) === `rgba(0,0,0,0)` ? 0 : 1),
+}))
 vi.mock(`$lib/theme`, () => ({ COLOR_THEMES: { light: `light`, dark: `dark` } }))
 vi.mock(`$lib/theme/themes.mjs`, () => ({}))
 
@@ -49,6 +51,7 @@ beforeEach(() => {
 afterEach(() => {
   document.body.innerHTML = ``
   document.body.className = ``
+  document.documentElement.removeAttribute(`style`)
   globalThis.MATTERVIZ_THEMES = undefined
   globalThis.MATTERVIZ_CSS_MAP = undefined
 })
@@ -76,6 +79,15 @@ describe(`embedded theme helpers`, () => {
     host.dataset.theme = `dark`
 
     expect(detect_parent_theme(inner)).toBe(`dark`)
+  })
+
+  test(`ignores transparent rgba document backgrounds`, async () => {
+    globalThis.matchMedia = undefined as unknown as typeof matchMedia
+    document.body.style.backgroundColor = `rgba(0, 0, 0, 0)`
+    document.documentElement.style.backgroundColor = `rgba(0, 0, 0, 0)`
+    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+
+    expect(detect_parent_theme()).toBe(`light`)
   })
 
   test.each([

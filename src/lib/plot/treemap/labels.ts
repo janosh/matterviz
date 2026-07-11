@@ -99,7 +99,7 @@ export function place_treemap_label({
   const header_height = Math.min(rect.height, padding_top)
   const available_width = Math.max(0, rect.width - 2 * margin)
   const label_height = header ? header_height : rect.height
-  const available_height = Math.max(0, label_height - 2 * (header ? 1 : margin))
+  const available_height = Math.max(0, label_height - (header ? 2 : 0))
   // Single guard for all degenerate geometry (zero/negative/NaN rects, missing
   // header strips, margin-swallowed slivers): negated > 0 so NaN also bails
   // instead of emitting NaN SVG coordinates, same idiom as tile_rects.

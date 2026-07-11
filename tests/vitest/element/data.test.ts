@@ -100,21 +100,21 @@ describe(`atomic_radius`, () => {
   })
 
   test.each([
-    [`period 2: Li > Be > B > C > N > O > F`, [`Li`, `Be`, `B`, `C`, `N`, `O`, `F`], false],
+    [`period 2: Li > Be > B > C > N > O > F`, [`Li`, `Be`, `B`, `C`, `N`, `O`, `F`], null],
     [
-      `period 3: Na > Mg > Al > Si >= P >= S > Cl`,
+      `period 3: Na > Mg > Al > Si >= P >= S >= Cl`,
       [`Na`, `Mg`, `Al`, `Si`, `P`, `S`, `Cl`],
-      true,
+      new Set<string>([`Si/P`, `P/S`, `S/Cl`]),
     ],
-    [`group 1: Li < Na < K < Rb < Cs`, [`Cs`, `Rb`, `K`, `Na`, `Li`], false],
-    [`group 17: F < Cl < Br < I`, [`I`, `Br`, `Cl`, `F`], false],
-  ] as const)(`%s`, (_name, order, allow_equal) => {
+    [`group 1: Li < Na < K < Rb < Cs`, [`Cs`, `Rb`, `K`, `Na`, `Li`], null],
+    [`group 17: F < Cl < Br < I`, [`I`, `Br`, `Cl`, `F`], null],
+  ] as const)(`%s`, (_name, order, equal_pairs) => {
     for (let idx = 0; idx < order.length - 1; idx++) {
       const larger = get_element(order[idx])
       const smaller = get_element(order[idx + 1])
       expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
       expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
-      if (allow_equal) {
+      if (equal_pairs?.has(`${larger.symbol}/${smaller.symbol}`)) {
         expect(larger.atomic_radius).toBeGreaterThanOrEqual(smaller.atomic_radius as number)
       } else {
         expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
@@ -318,9 +318,11 @@ describe(`data completeness`, () => {
       // All main elements need first_ionization
       expect(element.first_ionization, `${element.symbol} first_ionization`).not.toBeNull()
 
-      // Non-noble gases need electronegativity and atomic_radius
-      if (element.category === `noble gas`) continue
-      expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
+      // Noble gases lack electronegativity; only Ar has a reported atomic radius.
+      if (element.category !== `noble gas`) {
+        expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
+      }
+      if (element.category === `noble gas` && element.symbol !== `Ar`) continue
       if (element.symbol === `At` || element.symbol === `Fr`) continue
       expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
     }

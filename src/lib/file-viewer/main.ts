@@ -36,14 +36,11 @@ import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { build_structure_props_from_settings as structure_props } from '$lib/structure/prop-groups'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
-import type {
-  FileChangeMessage,
-  ParsedTrajectoryResponse,
-  WebviewBootstrapData,
-} from './host-protocol'
+import type { FileChangeMessage, FileData, WebviewBootstrapData } from './host-protocol'
+import { parse_large_file_marker } from './host-transfer'
 import JsonBrowser from './JsonBrowser.svelte'
 import type { ParseResult } from './parse'
-import { parse_file_content, set_large_file_requester } from './parse'
+import { parse_file_content } from './parse'
 import { escape_html, to_error } from '$lib/utils'
 
 export type MatterVizData = WebviewBootstrapData
@@ -100,7 +97,6 @@ function post_request<T>(
 export class VSCodeFrameLoader implements FrameLoader {
   constructor(
     private readonly file_path: string,
-    private readonly filename: string,
     private readonly vscode_api: VSCodeAPI,
   ) {}
 
@@ -113,7 +109,6 @@ export class VSCodeFrameLoader implements FrameLoader {
     const message = {
       command: `request_frame`,
       file_path: this.file_path,
-      filename: this.filename,
       frame_index,
     }
     return post_request(
@@ -167,7 +162,7 @@ let vscode_api: VSCodeAPI | null = null
 let current_app: MatterVizApp | null = null
 let file_change_listener_registered = false
 let file_change_generation = 0
-let file_change_queue: Promise<void> = Promise.resolve()
+let viewer_disposed = false
 const global_window = globalThis as unknown as Window
 
 // Initialize VSCode API at module level
@@ -243,21 +238,19 @@ const handle_file_change = async (
       container.innerHTML = `
         <div style="padding: 2rem; text-align: center; color: var(--vscode-errorForeground);">
           <h2>File Deleted</h2>
-          <p>The file "${escape_html(message.file_path ?? ``)}" has been deleted.</p>
+          <p>The file "${escape_html(message.file_path)}" has been deleted.</p>
         </div>
       `
     }
     return
   }
 
-  if (!message.data) return
   try {
     if (message.theme && is_valid_theme_name(message.theme)) {
       apply_theme_to_dom(message.theme)
     }
 
-    const { content, filename, is_base64 } = message.data
-    const result = await parse_file_content(content, filename, is_base64)
+    const result = await parse_file_data(message.data)
     if (generation !== file_change_generation) return
 
     // Update the display
@@ -265,7 +258,7 @@ const handle_file_change = async (
     if (container) {
       await unmount_current_app()
       if (generation !== file_change_generation) return
-      current_app = create_display(container, result, result.filename)
+      current_app = create_display(container, result)
     }
 
     vscode_api?.postMessage({ command: `info`, text: `File reloaded successfully` })
@@ -279,29 +272,26 @@ const handle_file_change = async (
   }
 }
 
-const enqueue_file_change = (message: FileChangeMessage): void => {
+const process_file_change = (message: FileChangeMessage): void => {
+  if (viewer_disposed) return
   const generation = ++file_change_generation
-  file_change_queue = file_change_queue
-    .then(() => handle_file_change(message, generation))
-    .catch((error) => {
-      console.error(`Failed to process file change:`, error)
-      vscode_api?.postMessage({
-        command: `error`,
-        text: `Failed to process file change: ${error}`,
-      })
+  void handle_file_change(message, generation).catch((error) => {
+    console.error(`Failed to process file change:`, error)
+    vscode_api?.postMessage({
+      command: `error`,
+      text: `Failed to process file change: ${error}`,
     })
+  })
 }
 
-// Request large file content from the extension using chunked streaming
+// Request host-side parsing for a file too large to copy into the webview.
 function request_large_file_content(
   file_path: string,
-  filename: string,
-  is_base64: boolean,
   timeout: number = 120_000, // large host-side indexing can take longer than eager reads
-): Promise<string | ParsedTrajectoryResponse> {
+): Promise<TrajectoryType> {
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
-  const message = { command: `request_large_file`, file_path, filename, is_base64 }
+  const message = { command: `request_large_file`, file_path }
   return post_request(
     vscode_api,
     message,
@@ -315,18 +305,35 @@ function request_large_file_content(
       }
       if (data.command !== `large_file_response`) return false
       if (data.error) reject(new Error(data.error as string))
-      else if (data.is_parsed && data.parsed_trajectory) {
-        resolve({ trajectory: data.parsed_trajectory as TrajectoryType, file_path })
-      } else resolve(data.content as string)
+      else if (data.parsed_trajectory && typeof data.parsed_trajectory === `object`) {
+        resolve(data.parsed_trajectory as TrajectoryType)
+      } else reject(new TypeError(`Malformed large-file response`))
       return true
     },
   )
 }
 
-// Wire the parse path's LARGE_FILE handling to this webview's host transport.
-// Registered unconditionally: request_large_file_content itself throws when no
-// VS Code API is available, matching the pre-split behavior.
-set_large_file_requester(request_large_file_content)
+type DisplayResult = ParseResult & { streaming_info?: { file_path: string } }
+
+async function parse_file_data({
+  content,
+  filename,
+  is_base64,
+}: FileData): Promise<DisplayResult> {
+  const marker = parse_large_file_marker(content)
+  if (!marker) return parse_file_content(content, filename, is_base64)
+
+  console.info(
+    `Handling large file: ${filename} (${Math.round(marker.file_size / 1024 / 1024)}MB)`,
+  )
+  const trajectory = await request_large_file_content(marker.file_path)
+  return {
+    type: `trajectory`,
+    data: trajectory,
+    filename,
+    streaming_info: { file_path: marker.file_path },
+  }
+}
 
 // Create error display in container
 const create_error_display = (
@@ -353,10 +360,10 @@ const create_error_display = (
 // Mount Svelte component and create display
 export const create_display = (
   container: HTMLElement,
-  result: ParseResult,
-  filename: string,
+  result: DisplayResult,
   display_options?: DisplayOptions,
 ): MatterVizApp => {
+  const { filename } = result
   Object.assign(container.style, {
     width: `100%`,
     height: `100%`,
@@ -388,16 +395,11 @@ export const create_display = (
     let final_trajectory = result.data as TrajectoryType
 
     if (vscode_api && result.streaming_info?.file_path) {
-      const trajectory = result.data as TrajectoryType
       final_trajectory = {
-        ...trajectory,
+        ...final_trajectory,
         is_indexed: true,
-        frames: trajectory.frames || [],
-        frame_loader: new VSCodeFrameLoader(
-          result.streaming_info.file_path,
-          filename,
-          vscode_api,
-        ),
+        frames: final_trajectory.frames || [],
+        frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode_api),
       }
     }
 
@@ -551,11 +553,12 @@ const trajectory_props = (defaults: DefaultSettings) => {
 
 // Initialize the MatterViz application
 async function initialize() {
+  viewer_disposed = false
   // Get MatterViz data passed from extension
-  const { content, filename, is_base64 } = globalThis.matterviz_data?.data ?? {}
+  const file_data = globalThis.matterviz_data?.data
   const theme = globalThis.matterviz_data?.theme
   const moyo_wasm_url = globalThis.matterviz_data?.moyo_wasm_url
-  if (!content || !filename) {
+  if (!file_data?.content || !file_data.filename) {
     throw new Error(`No data provided to MatterViz app`)
   }
 
@@ -571,8 +574,8 @@ async function initialize() {
   const container = document.querySelector<HTMLElement>(`#matterviz-app`)
   if (!container) throw new Error(`Target container not found in DOM`)
 
-  const result = await parse_file_content(content, filename, is_base64)
-  const app = create_display(container, result, result.filename)
+  const result = await parse_file_data(file_data)
+  const app = create_display(container, result)
 
   // Store the app instance for file watching
   current_app = app
@@ -582,7 +585,7 @@ async function initialize() {
     // Listen for file change messages from extension
     globalThis.addEventListener(`message`, (event) => {
       if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
-        enqueue_file_change(event.data)
+        process_file_change(event.data)
       }
     })
     file_change_listener_registered = true
@@ -593,8 +596,8 @@ async function initialize() {
 
 // Cleanup function to properly dispose of components
 async function cleanup_matterviz(): Promise<void> {
+  viewer_disposed = true
   file_change_generation++
-  await file_change_queue
   await unmount_current_app()
 } // Export initialization and cleanup functions to global scope
 global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {

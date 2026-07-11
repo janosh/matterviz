@@ -507,25 +507,35 @@
     // of the cell, so when the strip is missing/too thin the label is dropped
     const has_visible_children = !arc.is_leaf && arc.depth < depth_cutoff
 
-    return place_treemap_label({
-      rect,
-      lines: label_lines[arc.node_idx],
-      header: has_visible_children,
-      fit: label_fit,
-      min_font_size: label_min_font_size,
-      max_font_size: has_visible_children
-        ? resolved_parent_label_font_size
-        : (label_max_font_size ?? label_font_size),
-      padding_top,
-      margin: LABEL_MARGIN,
-      measure_line: (line, font_size) =>
-        measure_label_line(
-          has_visible_children && line.font_weight == null
-            ? { ...line, font_weight: 600 }
-            : line,
-          font_size,
-        ),
-    })
+    const place = (lines: TreemapLabelLine[]) =>
+      place_treemap_label({
+        rect,
+        lines,
+        header: has_visible_children,
+        fit: label_fit,
+        min_font_size: label_min_font_size,
+        max_font_size: has_visible_children
+          ? resolved_parent_label_font_size
+          : (label_max_font_size ?? label_font_size),
+        padding_top,
+        margin: LABEL_MARGIN,
+        measure_line: (line, font_size) =>
+          measure_label_line(
+            has_visible_children && line.font_weight == null
+              ? { ...line, font_weight: 600 }
+              : line,
+            font_size,
+          ),
+      })
+
+    if (!label_formatter && label_fit === `hide`) {
+      for (const { text } of cell_info[arc.node_idx].variants) {
+        const placement = place([{ text }])
+        if (placement) return placement
+      }
+      return null
+    }
+    return place(label_lines[arc.node_idx])
   }
 
   // hide mode never overflows (unfitting labels return null), so clipPaths are
@@ -756,9 +766,7 @@
                         class={line.class}
                         x={lbl.x}
                         y={line.y}
-                        font-size={lbl.font_size == null
-                          ? undefined
-                          : lbl.font_size * (line.font_scale ?? 1)}
+                        font-size={lbl.font_size * (line.font_scale ?? 1)}
                         font-weight={line.font_weight}
                         opacity={line.opacity}
                         fill={line.fill}

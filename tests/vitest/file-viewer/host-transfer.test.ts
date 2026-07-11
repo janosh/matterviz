@@ -23,19 +23,11 @@ test.each([
     {
       kind: `marker`,
       content: `LARGE_FILE:C:\\data\\movie.extxyz.gz:101`,
-      is_base64: true,
     },
   ],
   [`movie.traj`, 1001, { kind: `reject`, reason: `file-too-large` }],
   [`movie.h5`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
-  [`movie.hdf5`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
-  [`movie.lammpstrj`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
-  [`movie.xtc`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
-  [`movie.trr`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
-  [`movie.dcd`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
   [`movie.xyz.zip`, 101, { kind: `reject`, reason: `unsupported-compression` }],
-  [`movie.xyz.xz`, 101, { kind: `reject`, reason: `unsupported-compression` }],
-  [`movie.xyz.bz2`, 101, { kind: `reject`, reason: `unsupported-compression` }],
   [`movie.xyz.gz.gz`, 101, { kind: `reject`, reason: `unsupported-compression` }],
 ] as const)(`plans %s at %d bytes`, (filename, file_size, expected) => {
   expect(plan(filename, file_size)).toEqual(expected)

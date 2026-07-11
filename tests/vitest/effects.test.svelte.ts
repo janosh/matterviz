@@ -84,6 +84,9 @@ test.each([
     flushSync(() => (state.width += 1))
     expect(placement).toHaveBeenCalledTimes(expected_calls)
     expect(placed_tween?.placed()).toBe(true)
+    flushSync(() => placed_tween?.set_locked(true))
+    flushSync(() => (state.width += 1))
+    expect(placement).toHaveBeenCalledTimes(expected_calls)
     dispose()
   },
 )
@@ -100,10 +103,11 @@ test(`create_placed_tween repositions frozen decorations when they resize`, () =
       disconnect(): void {}
     },
   )
-  const placement = vi.fn(() => ({ x: 10, y: 20 }))
+  let placement_x = 10
+  let placed_tween: ReturnType<typeof create_placed_tween> | undefined
   const dispose = $effect.root(() => {
-    create_placed_tween({
-      placement,
+    placed_tween = create_placed_tween({
+      placement: () => ({ x: placement_x, y: 20 }),
       dims: () => ({ width: 100, height: 100 }),
       responsive: () => false,
       element: () => document.body,
@@ -112,17 +116,16 @@ test(`create_placed_tween repositions frozen decorations when they resize`, () =
   })
 
   flushSync()
-  expect(placement).toHaveBeenCalledTimes(1)
-  const resize = (width: number): void =>
-    flushSync(() =>
-      resize_callback?.(
-        [{ contentRect: { width, height: 40 } } as ResizeObserverEntry],
-        {} as ResizeObserver,
-      ),
-    )
+  const resize = (width: number): void => {
+    const entry = {
+      target: document.body,
+      contentRect: { width, height: 40 },
+    } as unknown as ResizeObserverEntry
+    flushSync(() => resize_callback?.([entry], {} as ResizeObserver))
+  }
   resize(100)
-  expect(placement).toHaveBeenCalledTimes(1)
+  placement_x = 30
   resize(120)
-  expect(placement).toHaveBeenCalledTimes(2)
+  expect(placed_tween?.coords.target).toEqual({ x: 30, y: 20 })
   dispose()
 })

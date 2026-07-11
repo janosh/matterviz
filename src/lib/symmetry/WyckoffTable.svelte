@@ -108,7 +108,7 @@
               {elem}
             </span>
           </td>
-          <td>({abc?.map(format_fractional).join(`,`) ?? `N/A`})</td>
+          <td>({abc?.map(format_fractional).join(`, `) ?? `N/A`})</td>
           {#if has_ita_coords}
             <td>{wyckoff_pos.coordinates ? `(${wyckoff_pos.coordinates})` : ``}</td>
           {/if}

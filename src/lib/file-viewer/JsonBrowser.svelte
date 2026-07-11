@@ -470,6 +470,7 @@
       allow_file_drop: false,
       enable_tips: false,
       ...structure_props(merged_defaults),
+      ...common_props,
     }
 
     try {
@@ -479,30 +480,25 @@
           props: {
             structure: prepare_structure(val) as AnyStructure,
             ...structure_mount_props,
-            ...common_props,
           },
         })
-      }
-      if (detected_type === `fermi_surface` || detected_type === `band_grid`) {
+      } else if (detected_type === `fermi_surface` || detected_type === `band_grid`) {
         const props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
         if (is_fermi_surface_data(val as Parameters<typeof is_fermi_surface_data>[0])) {
           props.fermi_data = val
         } else props.band_data = val
         return mount(FermiSurface, { target, props })
-      }
-      if (detected_type === `convex_hull`) {
+      } else if (detected_type === `convex_hull`) {
         return mount(ConvexHull, {
           target,
           props: { entries: val as PhaseData[], ...common_props },
         })
-      }
-      if (detected_type === `phase_diagram`) {
+      } else if (detected_type === `phase_diagram`) {
         return mount(IsobaricBinaryPhaseDiagram, {
           target,
           props: { data: val as PhaseDiagramData, ...common_props },
         })
-      }
-      if (detected_type === `volumetric`) {
+      } else if (detected_type === `volumetric`) {
         const vol_data = val as { lattice: LatticeType }
         return mount(Structure, {
           target,
@@ -510,7 +506,6 @@
             structure: { sites: [], lattice: vol_data.lattice } as AnyStructure,
             volumetric_data: [val as VolumetricData],
             ...structure_mount_props,
-            ...common_props,
           },
         })
       } else if (detected_type === `bands_and_dos`) {

@@ -7,7 +7,6 @@ import { Tween, type TweenOptions } from 'svelte/motion'
 const HOVER_DEBOUNCE_MS = 300
 
 type Point = { x: number; y: number }
-type Size = { width: number; height: number }
 
 // Tweened position for an auto-placed plot element with the stability gating shared
 // by BarPlot/BoxPlot/Histogram/ScatterPlot legends: snap (no animation) on first
@@ -40,8 +39,7 @@ export function create_placed_tween(opts: {
   }
 
   // Previous plot dimensions stay plain; they only classify the current effect run.
-  let prev_dims: Size | null = null
-  let element_size: Size | null = null
+  let prev_dims: { width: number; height: number } | null = null
   let element_size_revision = $state(0)
   let prev_element_size_revision = 0
   let placed = $state(false)
@@ -61,16 +59,14 @@ export function create_placed_tween(opts: {
   $effect(() => {
     const element = opts.element()
     if (!element || typeof ResizeObserver === `undefined`) return undefined
-    const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return
-      const { width, height } = entry.contentRect
-      const size_changed =
-        element_size !== null &&
-        (element_size.width !== width || element_size.height !== height)
-      element_size = { width, height }
+    const observed_elements = new WeakSet<Element>()
+    const observer = new ResizeObserver((entries) => {
+      const size_changed = entries.some(({ target }) => observed_elements.has(target))
+      for (const { target } of entries) observed_elements.add(target)
       if (size_changed) element_size_revision += 1
     })
     observer.observe(element)
+    for (const child of element.querySelectorAll(`*`)) observer.observe(child)
     return () => observer.disconnect()
   })
 
@@ -85,6 +81,8 @@ export function create_placed_tween(opts: {
       void coords.set({ x: manual.x, y: manual.y }, { duration: 0 })
       return
     }
+    // Leave resize revisions pending so unlock recomputes the latest placement.
+    if (hover_locked) return
 
     // Track dimensions for resize detection
     const dims_changed = !prev_dims || prev_dims.width !== width || prev_dims.height !== height
@@ -98,12 +96,7 @@ export function create_placed_tween(opts: {
 
     // Skip expensive DOM placement before evaluating it: non-responsive
     // elements stay fixed after their initial placement until the plot resizes.
-    if (
-      !dims_changed &&
-      !element_size_changed &&
-      (hover_locked || (!responsive && has_initial_placement))
-    )
-      return
+    if (!dims_changed && !element_size_changed && !responsive && has_initial_placement) return
     const placement = opts.placement()
     if (!placement) return
 
