@@ -223,20 +223,34 @@
     },
   ]
 
-  async function load_scenario(scenario: Scenario) {
+  // Run an async load with stale-load protection: bumps the shared counter and
+  // hands the task an is_current() check; error/loading state only update while
+  // this load is still the latest, so a newer selection can't be overwritten.
+  async function run_load(task: (is_current: () => boolean) => Promise<void>) {
     const load_id = ++load_counter
+    const is_current = () => load_id === load_counter
     loading = true
     error_msg = undefined
-    load_time_ms = undefined
-    active_scenario = scenario.id
-    structure = undefined
-    volumetric_data = undefined
-    active_volume_idx = 0
-
     try {
+      await task(is_current)
+    } catch (exc) {
+      if (is_current()) error_msg = to_error(exc).message
+    } finally {
+      if (is_current()) loading = false
+    }
+  }
+
+  const load_scenario = (scenario: Scenario) =>
+    run_load(async (is_current) => {
+      load_time_ms = undefined
+      active_scenario = scenario.id
+      structure = undefined
+      volumetric_data = undefined
+      active_volume_idx = 0
+
       const start = performance.now()
       const { struct, volumes } = await load_files(scenario.files)
-      if (load_id !== load_counter) return // stale load — a newer one took over
+      if (!is_current()) return // stale load — a newer one took over
       structure = struct
       volumetric_data = volumes
       isosurface_settings = {
@@ -253,12 +267,7 @@
           noScroll: true,
         })
       }
-    } catch (exc) {
-      if (load_id === load_counter) error_msg = to_error(exc).message
-    } finally {
-      if (load_id === load_counter) loading = false
-    }
-  }
+    })
 
   // Leave preset-scenario mode after the user modifies the scene: hide the
   // overlay label and drop the ?scenario param so the URL effect can't reload
@@ -277,13 +286,10 @@
   // Clicking a file appends its volumes when the lattice matches the current
   // scene (same physical cell → overlay another field); otherwise it replaces.
   // Uses the same merge helpers as Structure.svelte's drag-and-drop import.
-  async function add_or_replace_file(name: string) {
-    const load_id = ++load_counter
-    loading = true
-    error_msg = undefined
-    try {
+  const add_or_replace_file = (name: string) =>
+    run_load(async (is_current) => {
       const parsed = await fetch_volumetric(name)
-      if (load_id !== load_counter) return // stale load — a newer one took over
+      if (!is_current()) return // stale load — a newer one took over
       const incoming = label_file_volumes(parsed.volumes, name)
       const current_lattice =
         structure && `lattice` in structure ? structure.lattice.matrix : undefined
@@ -312,12 +318,7 @@
         supercell_scaling = `1x1x1`
       }
       clear_scenario()
-    } catch (exc) {
-      if (load_id === load_counter) error_msg = to_error(exc).message
-    } finally {
-      if (load_id === load_counter) loading = false
-    }
-  }
+    })
 
   let total_points = $derived(
     (volumetric_data ?? []).reduce(

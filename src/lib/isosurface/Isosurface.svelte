@@ -283,7 +283,6 @@
   const colored_keys = new SvelteSet<string>()
   let raf_id = 0
   let debounce_id = 0
-  let last_geo_sig = ``
 
   function dispose_all() {
     for (const entry of active_entries) entry.geometry.dispose()
@@ -377,39 +376,34 @@
     active_entries = entries
   }
 
-  // Rebuild layer geometries when geometry-relevant inputs change. The signature
-  // (per-layer geometry_key + lobe flag) deliberately excludes colors, opacity,
-  // colormap, and color range so those update without rerunning marching cubes.
-  // Debounced for slider drags.
-  $effect(() => {
-    const layers = resolved_layers
-    const geo_sig = layers
+  // Geometry-relevant inputs as a string: $derived strings only notify
+  // dependents when the value changes, so the rebuild effect below skips
+  // color-only updates (colors, opacity, colormap, range are excluded here)
+  // without any manual last-signature bookkeeping.
+  let geo_sig = $derived(
+    resolved_layers
       .map((layer) => {
         const vol = all_volumes[layer.volume_idx]
         if (!vol || !layer.visible || layer.isovalue <= 0) return `off`
         return `${geometry_key(layer, 1)}.${layer.show_negative}`
       })
-      .join(`|`)
+      .join(`|`),
+  )
 
-    if (all_volumes.length === 0) {
-      last_geo_sig = geo_sig
-      // Cancel any pending rebuild — its stale closure would otherwise fire
-      // against the emptied (or since-repopulated) volume list
-      clearTimeout(debounce_id)
-      cancelAnimationFrame(raf_id)
+  // Rebuild layer geometries when the geometry signature changes (debounced for
+  // slider drags). The rAF callback reads resolved_layers fresh, so a rebuild
+  // scheduled by an earlier signature still sees the latest layer props.
+  $effect(() => {
+    void geo_sig
+    clearTimeout(debounce_id)
+    cancelAnimationFrame(raf_id)
+    if (untrack(() => all_volumes.length) === 0) {
       untrack(() => dispose_all())
       return
     }
-    // Skip when nothing geometry-relevant changed (e.g. color-only updates).
-    // A pending debounced rebuild stays scheduled — it must not be cancelled by
-    // unrelated reruns, so the timer is cleared here rather than in a cleanup.
-    if (geo_sig === last_geo_sig) return
-    last_geo_sig = geo_sig
-
-    clearTimeout(debounce_id)
-    cancelAnimationFrame(raf_id)
     debounce_id = window.setTimeout(() => {
-      raf_id = requestAnimationFrame(() => rebuild_geometries(layers))
+      // No reactive context inside rAF: reads the freshest layers untracked
+      raf_id = requestAnimationFrame(() => rebuild_geometries(resolved_layers))
     }, 50)
   })
 
@@ -515,16 +509,12 @@
     }
   }
 
-  // Apply/refresh vertex colors when entries or color-relevant layer props change.
-  // The signature includes the color-source volume identity (so replacing a color
-  // volume in place resamples) but excludes geometry fields like isovalue and
-  // opacity, so e.g. isovalue slider drags don't remap colors on every tick.
-  let last_color_sig = ``
-  let last_colored_entries: MeshEntry[] = []
-  $effect(() => {
-    const entries = active_entries
-    const layers = resolved_layers
-    const color_sig = layers
+  // Color-relevant layer props as a string, including the color-source volume
+  // identity (so replacing a color volume in place resamples) but excluding
+  // geometry fields like isovalue and opacity, so e.g. isovalue slider drags
+  // don't remap colors on every tick.
+  let color_sig = $derived(
+    resolved_layers
       .map((layer) => {
         const color_vol = color_vol_of(layer)
         return [
@@ -536,11 +526,14 @@
           layer.negative_color,
         ].join(`.`)
       })
-      .join(`|`)
-    if (entries === last_colored_entries && color_sig === last_color_sig) return
-    last_colored_entries = entries
-    last_color_sig = color_sig
-    untrack(() => apply_vertex_colors(entries, layers))
+      .join(`|`),
+  )
+
+  // Apply/refresh vertex colors when entries are rebuilt or color props change
+  $effect(() => {
+    void color_sig
+    const entries = active_entries
+    untrack(() => apply_vertex_colors(entries, resolved_layers))
   })
 </script>
 

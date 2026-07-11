@@ -6,6 +6,7 @@ Run: python src/site/isosurfaces/generate_examples.py
 import gzip
 import math
 from collections.abc import Callable
+from typing import NamedTuple
 
 BOHR_TO_ANG = 0.529177249
 ANG_TO_BOHR = 1.0 / BOHR_TO_ANG
@@ -384,30 +385,46 @@ def generate_fe_bcc_spin_chgcar() -> str:
     )
 
 
-def generate_hbn_chgcar() -> str:
-    """Hexagonal BN charge density (CHGCAR, 20x20x16, non-orthogonal)."""
+# Hexagonal BN geometry shared by the CHGCAR and ELFCAR generators (grids must
+# match exactly so the demo can color the density surface by localization)
+HBN_B_FRAC: list[FracCoord] = [(0.0, 0.0, 0.0), (0.0, 0.0, 0.5)]
+HBN_N_FRAC: list[FracCoord] = [(1 / 3, 2 / 3, 0.0), (2 / 3, 1 / 3, 0.5)]
+HBN_BOND_FRAC: list[FracCoord] = [(1 / 6, 1 / 3, 0.0), (1 / 6, 1 / 3, 0.5)]
+
+
+class HbnGeometry(NamedTuple):
+    """Hexagonal BN lattice, PBC image vectors, cell volume, and frac→cart map."""
+
+    lattice: list[tuple[float, float, float]]
+    lat_vecs: list[tuple[float, float, float]]
+    volume: float
+    frac_to_cart: Callable[[float, float, float], tuple[float, float, float]]
+
+
+def hbn_geometry() -> HbnGeometry:
+    """Build the shared hexagonal BN cell (a=2.50, c=6.66, 60° between a and b)."""
     lat_a, lat_c = 2.50, 6.66
     a2_x, a2_y = lat_a / 2, lat_a * math.sqrt(3) / 2
     lattice = [(lat_a, 0.0, 0.0), (a2_x, a2_y, 0.0), (0.0, 0.0, lat_c)]
-    bn_frac: list[FracCoord] = [
-        (0.0, 0.0, 0.0),
-        (1 / 3, 2 / 3, 0.0),
-        (0.0, 0.0, 0.5),
-        (2 / 3, 1 / 3, 0.5),
-    ]
-    volume = lat_a * a2_y * lat_c
-    lat_vecs = [lattice[0], lattice[1], lattice[2]]
-    z_nums = [5, 7, 5, 7]
 
     def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
         return (fx * lat_a + fy * a2_x, fy * a2_y, fz * lat_c)
 
-    atom_cart = [frac_to_cart(*frac) for frac in bn_frac]
-    bond_cart = [frac_to_cart(1 / 6, 1 / 3, 0.0), frac_to_cart(1 / 6, 1 / 3, 0.5)]
+    return HbnGeometry(lattice, list(lattice), lat_a * a2_y * lat_c, frac_to_cart)
+
+
+def generate_hbn_chgcar() -> str:
+    """Hexagonal BN charge density (CHGCAR, 20x20x16, non-orthogonal)."""
+    geom = hbn_geometry()
+    bn_frac = [HBN_B_FRAC[0], HBN_N_FRAC[0], HBN_B_FRAC[1], HBN_N_FRAC[1]]
+    z_nums = [5, 7, 5, 7]
+    atom_cart = [geom.frac_to_cart(*frac) for frac in bn_frac]
+    bond_cart = [geom.frac_to_cart(*frac) for frac in HBN_BOND_FRAC]
 
     def density(
         x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
     ) -> float:
+        """Gaussian charge on B/N atoms plus bond-midpoint density."""
         rho = pbc_gaussian_sum(
             x,
             y,
@@ -415,15 +432,15 @@ def generate_hbn_chgcar() -> str:
             atom_cart,
             [float(zn) for zn in z_nums],
             [0.45] * 4,
-            lat_vecs,
+            geom.lat_vecs,
         )
-        rho += pbc_gaussian_sum(x, y, z, bond_cart, [3.0] * 2, [0.3] * 2, lat_vecs)
-        return rho * volume
+        rho += pbc_gaussian_sum(x, y, z, bond_cart, [3.0] * 2, [0.3] * 2, geom.lat_vecs)
+        return rho * geom.volume
 
     return write_chgcar(
         "hBN hexagonal - charge density",
-        lattice,
-        [("B", [bn_frac[0], bn_frac[2]]), ("N", [bn_frac[1], bn_frac[3]])],
+        geom.lattice,
+        [("B", HBN_B_FRAC), ("N", HBN_N_FRAC)],
         (20, 20, 16),
         density,
     )
@@ -584,37 +601,32 @@ def generate_hbn_elfcar() -> str:
     Pairs with hBN-CHGCAR on an identical grid so density surfaces can be
     colored by localization on a non-orthogonal lattice.
     """
-    lat_a, lat_c = 2.50, 6.66
-    a2_x, a2_y = lat_a / 2, lat_a * math.sqrt(3) / 2
-    lattice = [(lat_a, 0.0, 0.0), (a2_x, a2_y, 0.0), (0.0, 0.0, lat_c)]
-    volume = lat_a * a2_y * lat_c
-    lat_vecs = [lattice[0], lattice[1], lattice[2]]
-
-    def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
-        return (fx * lat_a + fy * a2_x, fy * a2_y, fz * lat_c)
+    geom = hbn_geometry()
 
     # ELF-like field: high (~0.9) at B-N bond midpoints and N lone-pair regions,
     # moderate at atoms, low in interstitial space
-    bond_cart = [frac_to_cart(1 / 6, 1 / 3, 0.0), frac_to_cart(1 / 6, 1 / 3, 0.5)]
-    n_cart = [frac_to_cart(1 / 3, 2 / 3, 0.0), frac_to_cart(2 / 3, 1 / 3, 0.5)]
-    b_cart = [frac_to_cart(0.0, 0.0, 0.0), frac_to_cart(0.0, 0.0, 0.5)]
+    bond_cart = [geom.frac_to_cart(*frac) for frac in HBN_BOND_FRAC]
+    n_cart = [geom.frac_to_cart(*frac) for frac in HBN_N_FRAC]
+    b_cart = [geom.frac_to_cart(*frac) for frac in HBN_B_FRAC]
 
     def elf(x: float, y: float, z: float, _fx: float, _fy: float, _fz: float) -> float:
+        """Bounded [0, 1] localization built from bond, N, and B Gaussians."""
         val = 0.05  # interstitial baseline
         val += 0.85 * pbc_gaussian_sum(
-            x, y, z, bond_cart, [1.0] * 2, [0.45] * 2, lat_vecs
+            x, y, z, bond_cart, [1.0] * 2, [0.45] * 2, geom.lat_vecs
         )
-        val += 0.6 * pbc_gaussian_sum(x, y, z, n_cart, [1.0] * 2, [0.4] * 2, lat_vecs)
-        val += 0.3 * pbc_gaussian_sum(x, y, z, b_cart, [1.0] * 2, [0.35] * 2, lat_vecs)
-        return min(val, 1.0) * volume
+        val += 0.6 * pbc_gaussian_sum(
+            x, y, z, n_cart, [1.0] * 2, [0.4] * 2, geom.lat_vecs
+        )
+        val += 0.3 * pbc_gaussian_sum(
+            x, y, z, b_cart, [1.0] * 2, [0.35] * 2, geom.lat_vecs
+        )
+        return min(val, 1.0) * geom.volume
 
     return write_chgcar(
         "hBN hexagonal - simulated ELF (pairs with hBN-CHGCAR)",
-        lattice,
-        [
-            ("B", [(0.0, 0.0, 0.0), (0.0, 0.0, 0.5)]),
-            ("N", [(1 / 3, 2 / 3, 0.0), (2 / 3, 1 / 3, 0.5)]),
-        ],
+        geom.lattice,
+        [("B", HBN_B_FRAC), ("N", HBN_N_FRAC)],
         (20, 20, 16),
         elf,
     )
