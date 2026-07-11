@@ -27,7 +27,8 @@ export const drag_over_handlers = (opts: {
 })
 
 // Handles URL drops (from FilePicker), direct file drops with decompression,
-// loading state, and error reporting.
+// loading state, and error reporting. Multiple dropped files are processed
+// sequentially in drop order so e.g. several cube files can be imported at once.
 export const create_file_drop_handler =
   (opts: FileDropOptions): ((event: DragEvent) => Promise<void>) =>
   async (event: DragEvent) => {
@@ -36,7 +37,6 @@ export const create_file_drop_handler =
 
     opts.set_loading?.(true)
 
-    let drop_filename = ``
     try {
       let url_error: string | undefined
       const handled = await handle_url_drop(event, opts.on_drop).catch((exc) => {
@@ -45,21 +45,31 @@ export const create_file_drop_handler =
       })
       if (handled) return
 
-      const file = event.dataTransfer?.files[0]
-      if (!file) {
+      const files = Array.from(event.dataTransfer?.files ?? [])
+      if (files.length === 0) {
         if (url_error) opts.on_error?.(`Failed to load from URL: ${url_error}`)
         return
       }
-      drop_filename = file.name
 
-      const { content, filename } = await decompress_file(file)
-      if (content) await opts.on_drop(content, filename)
+      // One failing file must not abort the rest of the batch
+      const failures: string[] = []
+      for (const file of files) {
+        try {
+          const { content, filename } = await decompress_file(file)
+          if (content) await opts.on_drop(content, filename)
+        } catch (exc) {
+          failures.push(`${file.name}: ${to_error(exc).message}`)
+        }
+      }
+      if (failures.length > 0) {
+        opts.on_error?.(
+          `Failed to load ${failures.length} file${failures.length > 1 ? `s` : ``} — ${failures.join(
+            `; `,
+          )}`,
+        )
+      }
     } catch (exc) {
-      const detail = to_error(exc).message
-      const msg = drop_filename
-        ? `Failed to load file ${drop_filename}: ${detail}`
-        : `Failed to load file: ${detail}`
-      opts.on_error?.(msg)
+      opts.on_error?.(`Failed to load file: ${to_error(exc).message}`)
     } finally {
       opts.set_loading?.(false)
     }

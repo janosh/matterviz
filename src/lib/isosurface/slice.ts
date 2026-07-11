@@ -3,6 +3,7 @@
 import { reciprocal_lattice } from '$lib/brillouin'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { trilinear_interpolate } from './sampling'
 import type { VolumetricData } from './types'
 
 // Result of sampling a 2D slice through volumetric data
@@ -12,71 +13,6 @@ export interface SliceResult {
   height: number
   min: number // data minimum for colormap
   max: number // data maximum for colormap
-}
-
-const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
-
-// Trilinear interpolation of a scalar 3D grid at fractional coordinates.
-// Periodic grids wrap with modulo; non-periodic return 0 for out-of-bounds.
-export function trilinear_interpolate(
-  grid: number[][][],
-  fx: number,
-  fy: number,
-  fz: number,
-  periodic: boolean,
-): number {
-  const nx = grid.length
-  const ny = grid[0]?.length ?? 0
-  const nz = grid[0]?.[0]?.length ?? 0
-  if (nx === 0 || ny === 0 || nz === 0) return 0
-
-  // Convert fractional to grid coordinates
-  const gx = periodic ? fx * nx : fx * (nx - 1)
-  const gy = periodic ? fy * ny : fy * (ny - 1)
-  const gz = periodic ? fz * nz : fz * (nz - 1)
-
-  if (!periodic) {
-    // Out-of-bounds check for non-periodic grids
-    if (fx < 0 || fx > 1 || fy < 0 || fy > 1 || fz < 0 || fz > 1) return 0
-  }
-
-  const x0 = periodic
-    ? safe_mod(Math.floor(gx), nx)
-    : Math.max(0, Math.min(Math.floor(gx), nx - 2))
-  const y0 = periodic
-    ? safe_mod(Math.floor(gy), ny)
-    : Math.max(0, Math.min(Math.floor(gy), ny - 2))
-  const z0 = periodic
-    ? safe_mod(Math.floor(gz), nz)
-    : Math.max(0, Math.min(Math.floor(gz), nz - 2))
-  const x1 = periodic ? (x0 + 1) % nx : Math.min(x0 + 1, nx - 1)
-  const y1 = periodic ? (y0 + 1) % ny : Math.min(y0 + 1, ny - 1)
-  const z1 = periodic ? (z0 + 1) % nz : Math.min(z0 + 1, nz - 1)
-
-  // deltas from clamped lower index (non-periodic x0 clamps to nx-2 so floor(gx) may != x0)
-  const xd = periodic ? gx - Math.floor(gx) : gx - x0
-  const yd = periodic ? gy - Math.floor(gy) : gy - y0
-  const zd = periodic ? gz - Math.floor(gz) : gz - z0
-
-  // 8-point interpolation
-  const c000 = grid[x0][y0][z0]
-  const c001 = grid[x0][y0][z1]
-  const c010 = grid[x0][y1][z0]
-  const c011 = grid[x0][y1][z1]
-  const c100 = grid[x1][y0][z0]
-  const c101 = grid[x1][y0][z1]
-  const c110 = grid[x1][y1][z0]
-  const c111 = grid[x1][y1][z1]
-
-  const c00 = c000 + (c100 - c000) * xd
-  const c01 = c001 + (c101 - c001) * xd
-  const c10 = c010 + (c110 - c010) * xd
-  const c11 = c011 + (c111 - c011) * xd
-
-  const c0 = c00 + (c10 - c00) * yd
-  const c1 = c01 + (c11 - c01) * yd
-
-  return c0 + (c1 - c0) * zd
 }
 
 // Sample a 2D slice through volumetric data along a Miller-index plane.

@@ -1,5 +1,6 @@
 // Tests for HKL plane slicing and trilinear interpolation
-import { sample_hkl_slice, trilinear_interpolate } from '$lib/isosurface/slice'
+import { trilinear_interpolate } from '$lib/isosurface/sampling'
+import { sample_hkl_slice } from '$lib/isosurface/slice'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { make_grid, make_volume } from '../setup'

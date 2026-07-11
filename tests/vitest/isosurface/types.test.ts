@@ -1,12 +1,19 @@
 // Tests for isosurface type utilities
 import {
   auto_isosurface_settings,
+  auto_volume_layer,
   DEFAULT_ISOSURFACE_SETTINGS,
   downsample_grid,
   generate_layers,
   grid_data_range,
+  type IsosurfaceLayer,
+  label_file_volumes,
+  lattices_match,
   LAYER_COLORS,
+  materialize_layers,
+  merge_imported_volumes,
   pad_periodic_grid,
+  remove_volume,
   tile_volumetric_data,
   type VolumetricData,
 } from '$lib/isosurface/types'
@@ -188,6 +195,244 @@ describe(`LAYER_COLORS`, () => {
   test(`has at least 8 distinct colors`, () => {
     expect(LAYER_COLORS.length).toBeGreaterThanOrEqual(8)
     expect(new Set(LAYER_COLORS).size).toBe(LAYER_COLORS.length)
+  })
+})
+
+describe(`auto_volume_layer`, () => {
+  const vol_with_range = (min: number, max: number): VolumetricData =>
+    make_volume_fixture(make_grid(2, 2, 2, 1), {
+      data_range: { min, max, abs_max: Math.max(Math.abs(min), Math.abs(max)), mean: 0 },
+    })
+
+  test(`sets isovalue to 20% of abs_max and binds volume_idx`, () => {
+    const layer = auto_volume_layer(vol_with_range(0, 10), 3)
+    expect(layer.isovalue).toBeCloseTo(2)
+    expect(layer.volume_idx).toBe(3)
+    expect(layer.visible).toBe(true)
+    expect(layer.color_volume_idx).toBeUndefined()
+  })
+
+  test.each([
+    { min: -5, max: 10, show_negative: true, label: `signed data` },
+    { min: 0, max: 10, show_negative: false, label: `non-negative data` },
+  ])(`$label sets show_negative=$show_negative`, ({ min, max, show_negative }) => {
+    expect(auto_volume_layer(vol_with_range(min, max), 0).show_negative).toBe(show_negative)
+  })
+
+  test(`color_offset picks successive palette colors`, () => {
+    const vol = vol_with_range(0, 10)
+    expect(auto_volume_layer(vol, 0, 0).color).toBe(LAYER_COLORS[0])
+    expect(auto_volume_layer(vol, 1, 1).color).toBe(LAYER_COLORS[1])
+    expect(auto_volume_layer(vol, 2, LAYER_COLORS.length).color).toBe(LAYER_COLORS[0])
+  })
+
+  test(`falls back to default isovalue for all-zero data`, () => {
+    const layer = auto_volume_layer(vol_with_range(0, 0), 0)
+    expect(layer.isovalue).toBe(DEFAULT_ISOSURFACE_SETTINGS.isovalue)
+  })
+})
+
+describe(`materialize_layers`, () => {
+  test(`converts implicit single-isovalue settings into one explicit layer`, () => {
+    const settings = {
+      ...DEFAULT_ISOSURFACE_SETTINGS,
+      isovalue: 0.42,
+      opacity: 0.7,
+      positive_color: `#123456`,
+      show_negative: true,
+      negative_color: `#654321`,
+    }
+    const layers = materialize_layers(settings, 2)
+    expect(layers).toHaveLength(1)
+    expect(layers[0]).toMatchObject({
+      isovalue: 0.42,
+      opacity: 0.7,
+      color: `#123456`,
+      show_negative: true,
+      negative_color: `#654321`,
+      volume_idx: 2,
+      visible: true,
+    })
+  })
+
+  test(`pins existing layers without volume_idx to the active volume`, () => {
+    const layers: IsosurfaceLayer[] = [
+      { ...generate_layers({ min: 0, max: 1, abs_max: 1, mean: 0.5 }, 2)[0] },
+      { ...generate_layers({ min: 0, max: 1, abs_max: 1, mean: 0.5 }, 2)[1], volume_idx: 5 },
+    ]
+    const result = materialize_layers({ ...DEFAULT_ISOSURFACE_SETTINGS, layers }, 1)
+    expect(result[0].volume_idx).toBe(1) // implicit → active volume
+    expect(result[1].volume_idx).toBe(5) // explicit stays
+  })
+})
+
+describe(`remove_volume`, () => {
+  const volumes = () => [
+    make_volume_fixture(make_grid(2, 2, 2, 1), { label: `a` }),
+    make_volume_fixture(make_grid(2, 2, 2, 2), { label: `b` }),
+    make_volume_fixture(make_grid(2, 2, 2, 3), { label: `c` }),
+  ]
+  const layer = (volume_idx: number, color_volume_idx?: number): IsosurfaceLayer => ({
+    isovalue: 1,
+    color: `#fff`,
+    opacity: 1,
+    visible: true,
+    show_negative: false,
+    negative_color: `#000`,
+    volume_idx,
+    color_volume_idx,
+  })
+
+  test(`drops the volume, its layers, and remaps higher indices`, () => {
+    const result = remove_volume(volumes(), [layer(0), layer(1, 0), layer(2, 1)], 1)
+    expect(result.volumes.map((vol) => vol.label)).toEqual([`a`, `c`])
+    expect(result.layers).toHaveLength(2)
+    // layer(0) unchanged; layer(2, 1) → volume 1, color source dropped (pointed at removed)
+    expect(result.layers[0]).toMatchObject({ volume_idx: 0, color_volume_idx: undefined })
+    expect(result.layers[1].volume_idx).toBe(1)
+    expect(result.layers[1].color_volume_idx).toBeUndefined()
+  })
+
+  test(`keeps color sources pointing past the removed index (shifted down)`, () => {
+    const result = remove_volume(volumes(), [layer(1, 2)], 0)
+    expect(result.layers[0]).toMatchObject({ volume_idx: 0, color_volume_idx: 1 })
+  })
+
+  test(`clears color source that referenced the removed volume`, () => {
+    const result = remove_volume(volumes(), [layer(0, 1)], 1)
+    expect(result.layers[0].color_volume_idx).toBeUndefined()
+  })
+
+  test(`implicit layers resolve against active_volume_idx, not volume 0`, () => {
+    const implicit: IsosurfaceLayer = { ...layer(0), volume_idx: undefined }
+    // Implicit layer follows active volume 1, which is being removed → dropped
+    const removed_active = remove_volume(volumes(), [implicit], 1, 1)
+    expect(removed_active.layers).toHaveLength(0)
+    // Implicit layer follows active volume 2; removing volume 0 shifts it to 1
+    const removed_other = remove_volume(volumes(), [implicit], 0, 2)
+    expect(removed_other.layers[0].volume_idx).toBe(1)
+  })
+})
+
+describe(`label_file_volumes`, () => {
+  const vol = (label?: string): VolumetricData =>
+    make_volume_fixture(make_grid(2, 2, 2, 1), { label })
+
+  test(`single volume gets the compression-stripped filename as label + source`, () => {
+    const [labeled] = label_file_volumes([vol(`charge density`)], `esp.cube.gz`)
+    expect(labeled.label).toBe(`esp.cube`)
+    expect(labeled.source).toBe(`esp.cube`)
+  })
+
+  test(`multi-block files get "file: block" labels sharing one source`, () => {
+    const labeled = label_file_volumes(
+      [vol(`charge density`), vol(`magnetization density`)],
+      `Fe-CHGCAR.bz2`,
+    )
+    expect(labeled.map((entry) => entry.label)).toEqual([
+      `Fe-CHGCAR: charge density`,
+      `Fe-CHGCAR: magnetization density`,
+    ])
+    expect(labeled.every((entry) => entry.source === `Fe-CHGCAR`)).toBe(true)
+  })
+})
+
+describe(`lattices_match`, () => {
+  const cubic = [
+    [10, 0, 0],
+    [0, 10, 0],
+    [0, 0, 10],
+  ]
+
+  test.each([
+    {
+      other: [
+        [10, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+      ],
+      match: true,
+      label: `identical`,
+    },
+    {
+      other: [
+        [10.01, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+      ],
+      match: true,
+      label: `within tolerance`,
+    },
+    {
+      other: [
+        [10.1, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+      ],
+      match: false,
+      label: `outside tolerance`,
+    },
+  ])(`$label`, ({ other, match }) => {
+    expect(lattices_match(cubic, other)).toBe(match)
+  })
+
+  test(`undefined lattices never match`, () => {
+    expect(lattices_match(undefined, cubic)).toBe(false)
+    expect(lattices_match(cubic, undefined)).toBe(false)
+  })
+})
+
+describe(`merge_imported_volumes`, () => {
+  const src_vol = (source: string, label: string, fill = 1): VolumetricData =>
+    make_volume_fixture(make_grid(2, 2, 2, fill), { source, label })
+  const layer_for = (volume_idx: number): IsosurfaceLayer => ({
+    isovalue: 0.42, // user-tuned value that reimports must preserve
+    color: `#123456`,
+    opacity: 1,
+    visible: true,
+    show_negative: false,
+    negative_color: `#000`,
+    volume_idx,
+  })
+
+  test(`appends volumes from a new source with auto layers`, () => {
+    const existing = [src_vol(`density.cube`, `density.cube`)]
+    const result = merge_imported_volumes(
+      existing,
+      [layer_for(0)],
+      [src_vol(`esp.cube`, `esp.cube`, 2)],
+    )
+    expect(result.volumes.map((vol) => vol.label)).toEqual([`density.cube`, `esp.cube`])
+    expect(result.layers).toHaveLength(2)
+    expect(result.layers[1].volume_idx).toBe(1)
+    expect(result).toMatchObject({ first_touched_idx: 1, n_added: 1 })
+  })
+
+  test(`reimport with same block count replaces in place and keeps tuned layers`, () => {
+    const existing = [src_vol(`density.cube`, `density.cube`)]
+    const fresh = src_vol(`density.cube`, `density.cube`, 9)
+    const result = merge_imported_volumes(existing, [layer_for(0)], [fresh])
+    expect(result.volumes).toHaveLength(1)
+    expect(result.volumes[0]).toBe(fresh) // new data object
+    expect(result.layers[0].isovalue).toBe(0.42) // user tuning preserved
+    expect(result).toMatchObject({ first_touched_idx: 0, n_added: 0 })
+  })
+
+  test(`reimport with changed block count drops the stale group and remaps`, () => {
+    // CHGCAR was spin-polarized (2 blocks at idx 0,1); reimport has 1 block
+    const existing = [
+      src_vol(`CHGCAR`, `CHGCAR: charge density`),
+      src_vol(`CHGCAR`, `CHGCAR: magnetization density`),
+      src_vol(`esp.cube`, `esp.cube`),
+    ]
+    const layers = [layer_for(0), layer_for(1), layer_for(2)]
+    const result = merge_imported_volumes(existing, layers, [src_vol(`CHGCAR`, `CHGCAR`, 9)])
+    expect(result.volumes.map((vol) => vol.label)).toEqual([`esp.cube`, `CHGCAR`])
+    // Stale CHGCAR layers dropped; esp layer remapped 2 → 0; new auto layer at 1
+    expect(result.layers).toHaveLength(2)
+    expect(result.layers[0].volume_idx).toBe(0)
+    expect(result.layers[1].volume_idx).toBe(1)
+    expect(result).toMatchObject({ first_touched_idx: 1, n_added: 1 })
   })
 })
 

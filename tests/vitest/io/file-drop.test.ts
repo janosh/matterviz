@@ -95,7 +95,7 @@ describe(`create_file_drop_handler`, () => {
   ])(`formats on_error from $desc`, async ({ rejection, expected }) => {
     vi.mocked(decompress_file).mockRejectedValue(rejection)
     await run({}, [new File([`x`], `f.txt`)])
-    expect(on_error).toHaveBeenCalledWith(`Failed to load file f.txt: ${expected}`)
+    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: ${expected}`)
     expect(on_drop).not.toHaveBeenCalled()
     expect(set_loading).toHaveBeenLastCalledWith(false)
   })
@@ -105,7 +105,29 @@ describe(`create_file_drop_handler`, () => {
     const throwing_drop = vi.fn().mockRejectedValue(new Error(`parse failed`))
     await run({ on_drop: throwing_drop }, [new File([`x`], `f.txt`)])
     expect(set_loading).toHaveBeenLastCalledWith(false)
-    expect(on_error).toHaveBeenCalledWith(`Failed to load file f.txt: parse failed`)
+    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: parse failed`)
+  })
+
+  test(`processes all dropped files sequentially in drop order`, async () => {
+    vi.mocked(decompress_file)
+      .mockResolvedValueOnce({ content: `first`, filename: `a.cube` })
+      .mockResolvedValueOnce({ content: `second`, filename: `b.cube` })
+    await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
+    expect(on_drop).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(on_drop).mock.calls).toEqual([
+      [`first`, `a.cube`],
+      [`second`, `b.cube`],
+    ])
+  })
+
+  test(`one failing file does not abort the rest of the batch`, async () => {
+    vi.mocked(decompress_file)
+      .mockRejectedValueOnce(new Error(`corrupt`))
+      .mockResolvedValueOnce({ content: `ok`, filename: `b.cube` })
+    await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
+    expect(on_drop).toHaveBeenCalledWith(`ok`, `b.cube`)
+    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — a.cube.gz: corrupt`)
+    expect(set_loading).toHaveBeenLastCalledWith(false)
   })
 
   test(`works without optional callbacks`, async () => {
