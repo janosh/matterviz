@@ -1105,6 +1105,10 @@
       total_atoms: loaded_structure.sites?.length || 0,
     })
 
+  // The currently loaded structure's lattice matrix (undefined for molecules/none)
+  const current_lattice_matrix = () =>
+    structure && `lattice` in structure ? structure.lattice.matrix : undefined
+
   // Try to parse content as a volumetric file, setting both structure and volumetric data.
   // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
   // When the file describes the same cell as already-loaded volumes, its volumes are
@@ -1117,9 +1121,10 @@
     if (!vol_result) return null
 
     const incoming = label_file_volumes(vol_result.volumes, filename)
-    const current_lattice =
-      structure && `lattice` in structure ? structure.lattice.matrix : undefined
-    const same_cell = lattices_match(current_lattice, vol_result.structure.lattice?.matrix)
+    const same_cell = lattices_match(
+      current_lattice_matrix(),
+      vol_result.structure.lattice?.matrix,
+    )
     const added_toast = (count: number) =>
       `Added ${count} volume${count > 1 ? `s` : ``} from ${filename}`
 
@@ -1178,7 +1183,7 @@
     // cell (e.g. a mixed batch drop of CHGCAR + POSCAR, in either order);
     // clear both for a genuinely new system
     const same_cell = lattices_match(
-      structure && `lattice` in structure ? structure.lattice.matrix : undefined,
+      current_lattice_matrix(),
       `lattice` in parsed ? parsed.lattice?.matrix : undefined,
     )
     if (!same_cell) {

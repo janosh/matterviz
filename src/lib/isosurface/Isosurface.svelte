@@ -449,12 +449,15 @@
     return scalars
   }
 
+  // The layer's scalar-color-source volume, if any
+  const color_vol_of = (layer: IsosurfaceLayer | undefined): VolumetricData | undefined =>
+    layer?.color_volume_idx != null ? all_volumes[layer.color_volume_idx] : undefined
+
   function apply_vertex_colors(entries: MeshEntry[], layers: ResolvedLayer[]) {
     // First pass: (re)sample scalars for entries with a color source
     for (const entry of entries) {
       const layer = layers[entry.layer_idx]
-      const color_vol =
-        layer?.color_volume_idx != null ? all_volumes[layer.color_volume_idx] : undefined
+      const color_vol = color_vol_of(layer)
       if (!layer || !color_vol) {
         if (entry.geometry.getAttribute(`color`)) entry.geometry.deleteAttribute(`color`)
         entry.scalars = null
@@ -481,8 +484,7 @@
       const layer_scalars = entries
         .filter((other) => other.layer_idx === entry.layer_idx && other.scalars)
         .map((other) => other.scalars as Float32Array)
-      // entry.scalars non-null implies the layer has a valid color source
-      const color_vol = all_volumes[layer.color_volume_idx ?? -1]
+      const color_vol = color_vol_of(layer)
       auto_ranges.set(
         entry.layer_idx,
         compute_scalar_range(layer_scalars, {
@@ -524,8 +526,7 @@
     const layers = resolved_layers
     const color_sig = layers
       .map((layer) => {
-        const color_vol =
-          layer.color_volume_idx != null ? all_volumes[layer.color_volume_idx] : undefined
+        const color_vol = color_vol_of(layer)
         return [
           layer.color_volume_idx ?? ``,
           color_vol ? vol_id(color_vol) : ``,

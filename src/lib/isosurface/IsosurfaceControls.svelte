@@ -57,6 +57,10 @@
   const resolve_geo_idx = (layer: IsosurfaceLayer): number =>
     Math.min(Math.max(layer.volume_idx ?? active_volume_idx, 0), volumes.length - 1)
 
+  // The layer's scalar-color-source volume, if any
+  const color_vol_of = (layer: IsosurfaceLayer): VolumetricData | undefined =>
+    layer.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
+
   function set_layer_count(count: number) {
     if (count <= 1) {
       settings.layers = undefined
@@ -137,8 +141,7 @@
     }
     const value = Number(raw_value)
     if (Number.isNaN(value)) return
-    const color_vol =
-      layer.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
+    const color_vol = color_vol_of(layer)
     const current: Vec2 =
       layer.color_range ??
       (color_vol ? auto_color_config(color_vol.data_range).color_range : [0, 1])
@@ -150,8 +153,7 @@
   // grids sample exactly; otherwise values are resampled in shared coordinates.
   function compat_warning(layer: IsosurfaceLayer): string | null {
     const geo_vol = volumes[resolve_geo_idx(layer)]
-    const color_vol =
-      layer.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
+    const color_vol = color_vol_of(layer)
     if (!geo_vol || !color_vol || geo_vol === color_vol) return null
     const compat = compare_volume_grids(geo_vol, color_vol)
     return compat.ok ? null : (compat.reason ?? `grids differ`)
@@ -408,7 +410,7 @@
               (idx) => set_color_source(layer_idx, idx),
               `Color surface by another volume's values`,
             )}
-            {#if layer.color_volume_idx != null && volumes[layer.color_volume_idx]}
+            {#if color_vol_of(layer)}
               {@const explicit_range = layer.color_range}
               <select
                 value={layer.colormap ?? DEFAULT_ISO_COLORMAP}

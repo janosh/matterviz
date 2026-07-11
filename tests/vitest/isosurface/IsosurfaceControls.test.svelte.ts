@@ -269,27 +269,25 @@ describe(`IsosurfaceControls multi-volume`, () => {
   })
 
   test(`clearing a range input resets the color range to auto`, () => {
-    const settings = $state<IsosurfaceSettings>({
-      ...DEFAULT_ISOSURFACE_SETTINGS,
-      layers: [
-        make_layer(0, {
-          color_volume_idx: 1,
-          colormap: `interpolateRdBu`,
-          color_range: [-1, 1],
-        }),
-      ],
+    const props = mount_controls({
+      volumes: two_volumes(),
+      settings: {
+        ...DEFAULT_ISOSURFACE_SETTINGS,
+        layers: [
+          make_layer(0, {
+            color_volume_idx: 1,
+            colormap: `interpolateRdBu`,
+            color_range: [-1, 1],
+          }),
+        ],
+      },
     })
-    mount(IsosurfaceControls, {
-      target: document.body,
-      props: { settings, volumes: two_volumes(), active_volume_idx: 0 },
-    })
-    flushSync()
     const range_input = doc_query<HTMLInputElement>(`input[type="number"].range-input`)
     range_input.value = ``
     // bubbles: true — Svelte 5 delegates change events to the root
     range_input.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(settings.layers?.[0].color_range).toBeUndefined()
+    expect(props.settings.layers?.[0].color_range).toBeUndefined()
     // Inputs now show the auto placeholder state (empty values)
     const inputs = document.querySelectorAll<HTMLInputElement>(
       `input[type="number"].range-input`,
@@ -298,12 +296,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
   })
 
   test(`display range inputs materialize, update, and reset display_range`, () => {
-    const settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS })
-    mount(IsosurfaceControls, {
-      target: document.body,
-      props: { settings, volumes: two_volumes(), active_volume_idx: 0 },
-    })
-    flushSync()
+    const props = mount_controls({ volumes: two_volumes() })
     const inputs = document.querySelectorAll<HTMLInputElement>(
       `.display-range .range-axis input`,
     )
@@ -313,7 +306,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     inputs[1].value = `2.15` // a max
     inputs[1].dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(settings.display_range).toEqual([
+    expect(props.settings.display_range).toEqual([
       [0, 2.15],
       [0, 1],
       [0, 1],
@@ -322,7 +315,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     inputs[0].value = `-0.15` // a min
     inputs[0].dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(settings.display_range?.[0]).toEqual([-0.15, 2.15])
+    expect(props.settings.display_range?.[0]).toEqual([-0.15, 2.15])
 
     // Reset button restores follow-the-supercell behavior
     const reset_btn = document.querySelector<HTMLButtonElement>(
@@ -330,7 +323,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     )
     reset_btn?.click()
     flushSync()
-    expect(settings.display_range).toBeUndefined()
+    expect(props.settings.display_range).toBeUndefined()
   })
 
   test(`display range hidden when no rendered volume is periodic`, () => {
@@ -341,21 +334,19 @@ describe(`IsosurfaceControls multi-volume`, () => {
   })
 
   test(`editing one bound of an auto range materializes an explicit range`, () => {
-    const settings = $state<IsosurfaceSettings>({
-      ...DEFAULT_ISOSURFACE_SETTINGS,
-      layers: [make_layer(0, { color_volume_idx: 1, colormap: `interpolateViridis` })],
+    const props = mount_controls({
+      volumes: two_volumes(),
+      settings: {
+        ...DEFAULT_ISOSURFACE_SETTINGS,
+        layers: [make_layer(0, { color_volume_idx: 1, colormap: `interpolateViridis` })],
+      },
     })
-    mount(IsosurfaceControls, {
-      target: document.body,
-      props: { settings, volumes: two_volumes(), active_volume_idx: 0 },
-    })
-    flushSync()
     const range_input = doc_query<HTMLInputElement>(`input[type="number"].range-input`)
     range_input.value = `2.5`
     range_input.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(settings.layers?.[0].color_range?.[0]).toBe(2.5)
-    expect(settings.layers?.[0].color_range?.[1]).toBeTypeOf(`number`)
+    expect(props.settings.layers?.[0].color_range?.[0]).toBe(2.5)
+    expect(props.settings.layers?.[0].color_range?.[1]).toBeTypeOf(`number`)
   })
 
   test(`selecting a color source reveals colormap select and range inputs`, () => {
