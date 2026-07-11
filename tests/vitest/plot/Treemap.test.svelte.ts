@@ -248,14 +248,14 @@ describe(`Treemap`, () => {
     expect(header?.getAttribute(`font-size`)).toBe(`14`)
     const leaf = labels.find((lbl) => lbl.textContent?.trim() === `B`)
     expect(leaf?.classList.contains(`header`)).toBe(false)
-    expect(leaf?.getAttribute(`font-size`)).toBeNull()
+    expect(leaf?.getAttribute(`font-size`)).toBe(`11`)
   })
 
   test.each([
-    [`the header strip is absent`, { padding_top: 0 }],
+    [`the header strip is absent`, { padding_top: 0, label_fit: `hide` }],
     [
       `its font is taller than the header strip`,
-      { padding_top: 12, parent_label_font_size: 30 },
+      { padding_top: 12, parent_label_font_size: 30, label_fit: `hide` },
     ],
   ] as const)(`hide mode drops a parent label when %s`, async (_reason, props) => {
     const plot = await mount_sized_treemap({ data: tree, ...props })
@@ -311,8 +311,8 @@ describe(`Treemap`, () => {
   test.each([
     [`hide drops overflowing labels`, `hide`, `very-long-label-`.repeat(100), 30, null],
     [
-      `shrink uses the minimum for overflow`,
-      `shrink`,
+      `default shrink uses the minimum for overflow`,
+      undefined,
       `very-long-label-`.repeat(100),
       30,
       `6`,
@@ -369,9 +369,12 @@ describe(`Treemap`, () => {
       data: tree,
       color_values: (arc: { is_leaf: boolean; value: number }) =>
         arc.is_leaf ? arc.value : null,
-      colorbar: { title: `count` },
+      colorbar: { title: `count`, orientation: `vertical` },
     })
-    expect(plot.querySelector(`.colorbar`)).not.toBeNull()
+    const colorbar = plot.querySelector<HTMLElement>(`.colorbar`)
+    expect(colorbar?.style.getPropertyValue(`--cbar-height`)).toBe(
+      `var(--treemap-colorbar-height, 150px)`,
+    )
     // branches keep categorical colors, leaves get metric colors
     expect(cell_rect(plot, `A`).getAttribute(`fill`)).toBe(`#e15759`)
     expect(cell_rect(plot, `B`).getAttribute(`fill`)).not.toBe(DEFAULT_SERIES_COLORS[0])

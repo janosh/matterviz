@@ -191,8 +191,9 @@ describe(`BoxPlot`, () => {
     svg.dispatchEvent(
       new MouseEvent(`mousedown`, { clientX: 100, clientY: 50, bubbles: true }),
     )
-    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 200 }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
+    // The endpoint may leave the plot as long as the drag started inside it.
+    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 290 }))
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 290 }))
     await tick()
     const y2_range = state.y2_axis.range as Vec2 | undefined
     expect(y2_range?.every(Number.isFinite)).toBe(true)

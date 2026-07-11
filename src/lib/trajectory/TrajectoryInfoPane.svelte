@@ -158,7 +158,7 @@
           structure.sites.length > 0 &&
           safe_item(
             `Density`,
-            `${format_num(structure.sites.length / volume, `.4~s`)} atoms/Å³`,
+            `${format_num(structure.sites.length / volume, `.3~s`)} atoms/Å³`,
             `density`,
           ),
         [a, b, c].every(is_valid_number) &&

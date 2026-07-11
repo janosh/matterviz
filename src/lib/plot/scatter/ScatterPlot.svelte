@@ -427,12 +427,16 @@
   )
   // full footprint (not the offset box): colorbar tick labels are absolutely
   // positioned outside the bar and must count toward reserved margins
-  const colorbar_footprint = $derived(
-    full_footprint_or(colorbar_element, colorbar_fallback_size),
-  )
-  const legend_footprint = $derived(
-    measured_footprint(legend_element, { width: 120, height: 80 }),
-  )
+  let colorbar_size_revision = $state(0)
+  let legend_size_revision = $state(0)
+  const colorbar_footprint = $derived.by(() => {
+    void colorbar_size_revision
+    return full_footprint_or(colorbar_element, colorbar_fallback_size)
+  })
+  const legend_footprint = $derived.by(() => {
+    void legend_size_revision
+    return measured_footprint(legend_element, { width: 120, height: 80 })
+  })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Plot-specific obstacle field: series points/lines normalized to [0,1] (y=0 at top)
@@ -942,7 +946,7 @@
   let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
 
   // Calculate best legend placement using continuous grid sampling
-  let legend_placement = $derived.by(() => {
+  const get_legend_placement = () => {
     const should_place =
       legend != null && (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)
 
@@ -961,10 +965,10 @@
     }
 
     return compute_element_placement(placement_config)
-  })
+  }
 
   // Calculate color bar placement (coordinates with legend to avoid overlap)
-  let color_bar_placement = $derived.by(() => {
+  const get_color_bar_placement = () => {
     if (!color_bar || all_color_values.length === 0 || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
@@ -972,6 +976,16 @@
 
     // Build exclusion rects (avoid legend if it's placed)
     const exclude_rects: Rect[] = []
+    const legend_placement =
+      legend_is_dragging && legend_manual_position
+        ? legend_manual_position
+        : legend_has_explicit_pos && legend_element
+          ? { x: legend_element.offsetLeft, y: legend_element.offsetTop }
+          : legend_auto_outside
+            ? { x: legend_outside_x, y: legend_outside_y }
+            : legend_tween.placed()
+              ? legend_tween.coords.target
+              : get_legend_placement()
     if (legend_element && legend_placement) {
       exclude_rects.push({
         x: legend_placement.x,
@@ -991,30 +1005,36 @@
       exclude_rects,
       points: plot_points_for_placement,
     })
-  })
+  }
 
   // Active legend placement (null if user set explicit position in style)
-  let active_legend_placement = $derived(
-    legend_placement && !legend_has_explicit_pos ? legend_placement : null,
-  )
+  const get_active_legend_placement = () =>
+    legend_has_explicit_pos ? null : get_legend_placement()
 
   // Tweened colorbar/legend coordinates with shared placement stability gating
-  const colorbar_tween = create_placed_tween({
-    placement: () => color_bar_placement,
-    dims: () => ({ width, height }),
-    responsive: () => color_bar?.responsive ?? false,
-    element: () => colorbar_element,
-    tween: () => color_bar?.tween,
-  })
   const legend_tween = create_placed_tween({
-    placement: () => active_legend_placement,
+    placement: get_active_legend_placement,
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
     tween: () => legend?.tween,
+    on_element_resize: () => (legend_size_revision += 1),
+    placement_revision: () => colorbar_size_revision,
     // Leave coords alone mid-drag; once dragged, the manual position wins permanently
     suspended: () => legend_is_dragging,
     manual_position: () => legend_manual_position,
+  })
+  const colorbar_tween = create_placed_tween({
+    placement: get_color_bar_placement,
+    dims: () => ({ width, height }),
+    responsive: () => color_bar?.responsive ?? false,
+    element: () => colorbar_element,
+    tween: () => color_bar?.tween,
+    on_element_resize: () => (colorbar_size_revision += 1),
+    placement_revision: () =>
+      `${legend_size_revision}:${legend_tween.coords.target.x}:${legend_tween.coords.target.y}:${
+        legend_auto_outside ? `${legend_outside_x}:${legend_outside_y}` : `inside`
+      }:${legend?.style ?? ``}`,
   })
 
   // Generate axis ticks - consolidated into single derived for efficiency
@@ -1091,7 +1111,9 @@
       ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis })[axis]
         .scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    plot_dims: () => ({
+    plot_bounds: () => ({
+      x: pad.l,
+      y: pad.t,
       width: Math.max(1, width - pad.l - pad.r),
       height: Math.max(1, height - pad.t - pad.b),
     }),
@@ -1928,7 +1950,7 @@
     {/if}
 
     <!-- Color Bar -->
-    {#if color_bar && all_color_values.length > 0}
+    {#if width > 0 && height > 0 && color_bar && all_color_values.length > 0}
       {@const color_domain = [
         (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
           auto_color_range[0],

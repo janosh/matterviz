@@ -78,6 +78,7 @@ describe(`WyckoffTable`, () => {
       })
       expect(header_cells()).toEqual([`Wyckoff`, `Element`, `Fractional Coords`])
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
+      expect(doc_query(`tbody tr td:nth-child(3)`).textContent).toBe(`(0, 0, 0)`)
     })
 
     test(`adds ITA coords + site symmetry columns from db_positions`, () => {

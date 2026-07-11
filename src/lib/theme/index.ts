@@ -1,5 +1,10 @@
 // Theme System for MatterViz
 
+declare global {
+  var MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
+  var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
+}
+
 const is_browser = typeof window !== `undefined`
 export const THEME_STORAGE_KEY = `matterviz-theme`
 

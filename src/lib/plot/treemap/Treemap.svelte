@@ -82,7 +82,7 @@
     show_labels = $bindable(DEFAULTS.treemap.show_labels),
     label_text = $bindable(DEFAULTS.treemap.label_text),
     label_formatter,
-    label_fit = `hide`,
+    label_fit = `shrink`,
     label_min_font_size = 6,
     label_max_font_size,
     parent_label_font_size = 14,
@@ -136,7 +136,7 @@
       // Structured multiline labels. Unlike cell_content, this keeps built-in
       // hover/focus/click and tooltip behavior on the underlying cell.
       label_formatter?: TreemapLabelFormatter<Metadata>
-      label_fit?: TreemapLabelFit // hide (legacy), shrink-to-fit, or clip at max size
+      label_fit?: TreemapLabelFit // shrink-to-fit (default), hide, or clip at max size
       label_min_font_size?: number // px floor used by shrink mode
       label_max_font_size?: number // px ceiling for leaf/cutoff labels
       parent_label_font_size?: number // px size/ceiling for branch header labels
@@ -479,102 +479,63 @@
     return measured_width > 0 ? measured_width : line.text.length * font_size * 0.6
   }
 
-  // The default no-formatter hide mode keeps the legacy single-line rendering
-  // contract: labels walk cell_info's fallback variants and inherit the CSS
-  // font-size (no font-size attribute, no clipPaths). A formatter or a non-hide
-  // fit mode switches to the multiline fitter in labels.ts.
-  let legacy_label_mode = $derived(!label_formatter && label_fit === `hide`)
-
   // Formatter output is layout-independent, so resolve it once per node instead
   // of on every frame of a zoom tween. Without a formatter, fit modes use the
-  // richest built-in variant (compound text before its shorter fallbacks).
+  // richest built-in variant (compound text when configured).
   // The depth-0 root never renders a cell, so the formatter is never invoked
   // for it (for array data it's synthetic and e.g. carries no metadata).
   let label_lines = $derived(
-    legacy_label_mode
-      ? []
-      : layout.arcs.map((arc, idx) =>
-          arc.depth === 0
-            ? []
-            : normalize_treemap_label_lines(
-                label_formatter ? label_formatter(arc) : cell_info[idx].variants[0]?.text,
-              ),
-        ),
+    layout.arcs.map((arc, idx) =>
+      arc.depth === 0
+        ? []
+        : normalize_treemap_label_lines(
+            label_formatter ? label_formatter(arc) : cell_info[idx].variants[0]?.text,
+          ),
+    ),
   )
 
   // Label text + placement for a cell; null means hide the label.
   // Branch cells label their header strip (top-left); leaves (and branches at the
   // depth cutoff, which render as plain cells) center their label, rotating 90°
-  // in thin-but-tall cells like the icicle shape does. The default hide mode
-  // preserves the legacy richest-fitting fallback chain. Custom labels and the
-  // shrink/clip modes use the shared multiline fitter.
+  // in thin-but-tall cells like the icicle shape does.
   function place_label(
     arc: PositionedArc<Metadata>,
     rect: Rect,
   ): TreemapLabelPlacement | null {
-    const { variants } = cell_info[arc.node_idx]
     // Branches with visible children only ever label their header strip: a
     // centered label would paint over the descendant cells that cover the rest
     // of the cell, so when the strip is missing/too thin the label is dropped
     const has_visible_children = !arc.is_leaf && arc.depth < depth_cutoff
 
-    // Keep the existing single-line fallback behavior in the default case.
-    if (legacy_label_mode) {
-      if (has_visible_children) {
-        for (const { text } of variants) {
-          const placement = place_treemap_label({
-            rect,
-            lines: [{ text, font_weight: 600 }],
-            header: true,
-            fit: `hide`,
-            min_font_size: resolved_parent_label_font_size,
-            max_font_size: resolved_parent_label_font_size,
-            padding_top,
-            margin: LABEL_MARGIN,
-            measure_line: measure_label_line,
-          })
-          if (placement) return placement
-        }
-        return null
-      }
-      const { x, y, width: cell_w, height: cell_h } = rect
-      const fits = (text_width: number, along: number, across: number) =>
-        text_width <= along - 2 * LABEL_MARGIN && across >= 12
-      const [center_x, center_y] = [x + cell_w / 2, y + cell_h / 2]
-      const place_leaf = (text: string, transform?: string): TreemapLabelPlacement => ({
-        x: center_x,
-        lines: [{ text, y: center_y }],
-        header: false,
-        transform,
+    const place = (lines: TreemapLabelLine[]) =>
+      place_treemap_label({
+        rect,
+        lines,
+        header: has_visible_children,
+        fit: label_fit,
+        min_font_size: label_min_font_size,
+        max_font_size: has_visible_children
+          ? resolved_parent_label_font_size
+          : (label_max_font_size ?? label_font_size),
+        padding_top,
+        margin: LABEL_MARGIN,
+        measure_line: (line, font_size) =>
+          measure_label_line(
+            has_visible_children && line.font_weight == null
+              ? { ...line, font_weight: 600 }
+              : line,
+            font_size,
+          ),
       })
-      for (const { text, width: text_width } of variants) {
-        if (fits(text_width, cell_w, cell_h)) return place_leaf(text)
-        if (fits(text_width, cell_h, cell_w)) {
-          return place_leaf(text, `rotate(-90, ${center_x}, ${center_y})`)
-        }
+
+    if (!label_formatter && label_fit === `hide`) {
+      for (const { text } of cell_info[arc.node_idx].variants) {
+        const placement = place([{ text }])
+        if (placement) return placement
       }
       return null
     }
-
-    return place_treemap_label({
-      rect,
-      lines: label_lines[arc.node_idx],
-      header: has_visible_children,
-      fit: label_fit,
-      min_font_size: label_min_font_size,
-      max_font_size: has_visible_children
-        ? resolved_parent_label_font_size
-        : (label_max_font_size ?? label_font_size),
-      padding_top,
-      margin: LABEL_MARGIN,
-      measure_line: (line, font_size) =>
-        measure_label_line(
-          has_visible_children && line.font_weight == null
-            ? { ...line, font_weight: 600 }
-            : line,
-          font_size,
-        ),
-    })
+    return place(label_lines[arc.node_idx])
   }
 
   // hide mode never overflows (unfitting labels return null), so clipPaths are
@@ -794,6 +755,7 @@
                     data-treemap-node-idx={idx}
                     x={lbl.x}
                     y={lbl.lines[0].y}
+                    dominant-baseline={lbl.dominant_baseline}
                     transform={lbl.transform}
                     fill={cell_info[idx].label_fill}
                     fill-opacity={cell_dim[idx].label_opacity}
@@ -805,9 +767,7 @@
                         class={line.class}
                         x={lbl.x}
                         y={line.y}
-                        font-size={lbl.font_size == null
-                          ? undefined
-                          : lbl.font_size * (line.font_scale ?? 1)}
+                        font-size={lbl.font_size * (line.font_scale ?? 1)}
                         font-weight={line.font_weight}
                         opacity={line.opacity}
                         fill={line.fill}
@@ -874,6 +834,9 @@
       {color_scale}
       range={metric.range}
       {...colorbar}
+      wrapper_style="{colorbar?.orientation === `vertical`
+        ? `--cbar-height: var(--treemap-colorbar-height, 150px);`
+        : ``} {colorbar?.wrapper_style ?? ``}"
       style="position: absolute; bottom: var(--treemap-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--treemap-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
         ``}"
       {@attach observe_height((px) => (colorbar_height = px))}
@@ -1047,7 +1010,6 @@
   }
   .cell-label {
     text-anchor: middle;
-    dominant-baseline: central;
     /* selectable so labels can be copied; clicks/hover still reach the underlying
     cell via data-treemap-node-idx + delegation on the chart group */
     -webkit-user-select: text;

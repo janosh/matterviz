@@ -27,6 +27,13 @@ export function ext_hint(filename: string | undefined, ext_regex: RegExp): boole
   return KNOWN_FORMAT_EXT_REGEX.test(base) ? false : null
 }
 
+// Large-file frame indexing currently supports text XYZ/EXTXYZ and binary ASE .traj.
+export const indexed_trajectory_format = (filename: string): `ase` | `xyz` =>
+  strip_compression_extensions(filename).endsWith(`.traj`) ? `ase` : `xyz`
+
+export const is_indexable_trajectory_filename = (filename: string): boolean =>
+  /\.(?:xyz|extxyz|traj)$/i.test(strip_compression_extensions(filename))
+
 // Unified format detection. Each pattern trusts a matching file extension when present
 // but falls back to content/magic-byte detection when the filename gives no hint
 // (e.g. blob: object URLs, extensionless API endpoints).

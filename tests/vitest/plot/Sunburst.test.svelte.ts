@@ -534,15 +534,17 @@ describe(`Sunburst display options`, () => {
     const plot = await mount_sized_sunburst({
       data: tree,
       color_values: (arc: PositionedArc) => arc.value,
+      colorbar: { orientation: `vertical` },
     })
     // A and B have equal values -> identical metric color despite different categories
     expect(arc_path(plot, `A`).getAttribute(`fill`)).toBe(
       arc_path(plot, `B`).getAttribute(`fill`),
     )
     expect(arc_path(plot, `A`).getAttribute(`fill`)).not.toBe(`#e15759`)
-    expect(
-      plot.querySelector(`.colorbar, [class*='color-bar'], [class*='colorbar']`),
-    ).not.toBeNull()
+    const colorbar = plot.querySelector<HTMLElement>(`.colorbar`)
+    expect(colorbar?.style.getPropertyValue(`--cbar-height`)).toBe(
+      `var(--sunburst-colorbar-height, 150px)`,
+    )
   })
 
   test(`min_fraction prop buckets small arcs into Other`, async () => {

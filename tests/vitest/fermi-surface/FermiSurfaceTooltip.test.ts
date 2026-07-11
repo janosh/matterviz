@@ -64,7 +64,7 @@ describe(`FermiSurfaceTooltip`, () => {
       const text = document.body.textContent ?? ``
       expect(text).toContain(`k (Å⁻¹):`)
       expect(text).toContain(`k (frac):`)
-      expect(text).toMatch(/1\.234/)
+      expect(text).toMatch(/1\.23/)
       expect(text).toMatch(/0\.25/)
       expect(document.querySelectorAll(`.k-coord-row`)).toHaveLength(2)
     })

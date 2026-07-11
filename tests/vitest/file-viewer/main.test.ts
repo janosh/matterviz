@@ -4,7 +4,6 @@ import { create_display, VSCodeFrameLoader } from '$lib/file-viewer/main'
 import {
   base64_to_array_buffer,
   parse_file_content,
-  parse_large_file_marker,
   type ParseResult,
 } from '$lib/file-viewer/parse'
 import { readFileSync } from 'node:fs'
@@ -14,6 +13,7 @@ import {
   deflateSync as deflate_sync,
   gzipSync as gzip_sync,
 } from 'node:zlib'
+import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -30,8 +30,7 @@ vi.mock('$lib/trajectory/parse', async (import_original) => {
   return { ...original, parse_trajectory_data: vi.fn(original.parse_trajectory_data) }
 })
 
-// Svelte components are stubbed out in test mode (see vite.config.ts svelte-mock), so
-// spy on mount to assert which props create_display passes to the mounted component.
+// Spy on the mocked mount to assert which props create_display passes to components.
 vi.mock('svelte', async (import_original) => ({
   ...(await import_original<typeof svelte_module>()),
   mount: vi.fn(() => ({})),
@@ -45,9 +44,7 @@ declare global {
 const uint8_as_base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
 
 const fixture_base64 = (name: string, gzip = false): string => {
-  const bytes = readFileSync(
-    resolve(import.meta.dirname, `../../../tests/vitest/fixtures/vasp-hdf5/${name}`),
-  )
+  const bytes = readFileSync(resolve(import.meta.dirname, `../fixtures/vasp-hdf5/${name}`))
   return (gzip ? gzip_sync(bytes) : bytes).toString(`base64`)
 }
 const make_container = () => ({ style: {}, innerHTML: `` }) as unknown as HTMLElement
@@ -83,30 +80,10 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
 
   test(`ASE trajectory file regression test - simulates VS Code extension flow`, () => {
     const ase_data = new Uint8Array([
-      0x2d,
-      0x20,
-      0x6f,
-      0x66,
-      0x20,
-      0x55,
-      0x6c,
-      0x6d, // "- of Ulm"
-      0x41,
-      0x53,
-      0x45,
-      0x2d,
-      0x54,
-      0x72,
-      0x61,
-      0x6a,
-      0x65,
-      0x63,
-      0x74,
-      0x6f,
-      0x72,
-      0x79,
+      ...new TextEncoder().encode(`- of Ulm`), // "- of Ulm"
+      ...new TextEncoder().encode(`ASE-Trajectory`), // "ASE-Trajectory"
       0x00,
-      0x00, // "ASE-Trajectory"
+      0x00,
       ...Array(176).fill(0), // Mock trajectory data
     ])
     const result = base64_to_array_buffer(uint8_as_base64(ase_data))
@@ -181,7 +158,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(data.dos).toBeNull()
     expect(data.bands).not.toBeNull()
 
-    create_display(make_container(), result, `vaspout.h5`)
+    create_display(make_container(), result)
     const mount_props = last_mount_props()
     expect(mount_props.band_type).toBe(`electronic`)
     expect(mount_props.band_structs).toBe(data.bands)
@@ -206,7 +183,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     const result = await parse_file_content(scf_base64, `vaspout.h5`, true)
     expect(result.type).toBe(`trajectory`)
 
-    create_display(make_container(), result, `vaspout.h5`)
+    create_display(make_container(), result)
     const mount_props = last_mount_props() as {
       dos?: unknown
       trajectory_props?: { trajectory: unknown }
@@ -231,6 +208,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     [`.gz`, gzip_sync],
     [`.deflate`, deflate_sync],
     [`.z`, deflate_raw_sync],
+    [`.zip`, (data: Uint8Array) => zipSync({ [`relax.traj`]: data })],
   ] as const)(
     `%s-compressed .traj routes byte-identical data to the trajectory parser`,
     async (extension, compress) => {
@@ -240,10 +218,8 @@ describe(`vaspout.h5 electronic routing`, () => {
       const raw_bytes = new Uint8Array([
         0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d, 0x00, 0xff, 0xfe, 0x80,
       ])
-      const compressed_base64 = uint8_as_base64(new Uint8Array(compress(raw_bytes)))
-
       const result = await parse_file_content(
-        compressed_base64,
+        uint8_as_base64(compress(raw_bytes)),
         `relax.traj${extension}`,
         true,
       )
@@ -257,6 +233,16 @@ describe(`vaspout.h5 electronic routing`, () => {
   )
 })
 
+test.each([
+  [`fermi_surface`, { energies: [] }, `band_data`],
+  [`convex_hull`, [], `entries`],
+  [`phase_diagram`, {}, `data`],
+  [`structure`, { sites: [] }, `structure`],
+] as const)(`create_display mounts %s data`, (type, data, prop_name) => {
+  create_display(make_container(), { type, data, filename: `test.json` })
+  expect(last_mount_props()[prop_name]).toBe(data)
+})
+
 describe(`create_display trajectory display options`, () => {
   const trajectory_result = (): ParseResult => ({
     type: `trajectory`,
@@ -266,7 +252,7 @@ describe(`create_display trajectory display options`, () => {
 
   test(`initial_step_idx and on_step_change reach the mounted Trajectory component`, () => {
     const on_step_change = vi.fn()
-    create_display(make_container(), trajectory_result(), `relax.h5`, {
+    create_display(make_container(), trajectory_result(), {
       initial_step_idx: 42,
       on_step_change,
     })
@@ -283,7 +269,7 @@ describe(`create_display trajectory display options`, () => {
   test.each([[undefined], [{}]])(
     `display options %o leave Trajectory props untouched`,
     (display_options) => {
-      create_display(make_container(), trajectory_result(), `relax.h5`, display_options)
+      create_display(make_container(), trajectory_result(), display_options)
       const mount_props = last_mount_props()
       expect(mount_props.current_step_idx).toBeUndefined()
       expect(mount_props.on_step_change).toBeUndefined()
@@ -291,35 +277,8 @@ describe(`create_display trajectory display options`, () => {
   )
 })
 
-describe(`large file marker parsing`, () => {
-  test.each([
-    [
-      `LARGE_FILE:/tmp/movie.traj:536870912`,
-      { file_path: `/tmp/movie.traj`, file_size: 536870912 },
-    ],
-    [
-      `LARGE_FILE:C:\\Users\\janosh\\movie.traj:536870912`,
-      { file_path: `C:\\Users\\janosh\\movie.traj`, file_size: 536870912 },
-    ],
-    [`not-large`, null],
-  ])(`parses marker %s`, (marker, expected) => {
-    expect(parse_large_file_marker(marker)).toEqual(expected)
-  })
-
-  test.each([
-    `LARGE_FILE:missing-size`,
-    `LARGE_FILE:/tmp/file:not-a-number`,
-    `LARGE_FILE:/tmp/file:123abc`,
-    `LARGE_FILE:/tmp/file:-1`,
-    `LARGE_FILE:/tmp/file:`,
-    `LARGE_FILE:/tmp/file: `,
-  ])(`rejects malformed marker %s`, (marker) => {
-    expect(() => parse_large_file_marker(marker)).toThrow(`Malformed large file`)
-  })
-})
-
 describe(`VS Code frame loader`, () => {
-  test(`includes filename in frame requests for the host streaming bridge`, async () => {
+  test(`requests frames by host file path`, async () => {
     // post_request listens on globalThis, which is a real EventTarget in the
     // webview but not in vitest's node environment — bridge it for the test
     const message_bus = new EventTarget()
@@ -327,7 +286,7 @@ describe(`VS Code frame loader`, () => {
     vi.stubGlobal(`removeEventListener`, message_bus.removeEventListener.bind(message_bus))
     try {
       const post_message = vi.fn()
-      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
+      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, {
         postMessage: post_message,
       })
       const frame_promise = loader.load_frame(``, 7)
@@ -336,7 +295,6 @@ describe(`VS Code frame loader`, () => {
         command: `request_frame`,
         request_id: expect.any(String),
         file_path: `/tmp/movie.extxyz`,
-        filename: `movie.extxyz`,
         frame_index: 7,
       })
 

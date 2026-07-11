@@ -205,8 +205,8 @@
   </div>
 
   <div class="demo-card">
-    <h2>4. Fixed Column Count (n_columns=4)</h2>
-    <p>Force exactly 4 columns regardless of container width.</p>
+    <h2>4. Column Cap (n_columns=4)</h2>
+    <p>Allow up to 4 columns when the item count requires them.</p>
     <div class="demo-container">
       <ToggleMenu
         bind:columns={fixed_columns}
@@ -247,7 +247,7 @@
   <div class="demo-card wide">
     <h2>7. Multi-column Sections</h2>
     <p>
-      With n_columns=3, each section header spans the full width and items fill a 3-column grid
+      With n_columns=3, each section header spans the full width and items use up to 3 columns
       below it.
     </p>
     <div class="demo-container">

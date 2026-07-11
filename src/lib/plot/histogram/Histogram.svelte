@@ -398,9 +398,11 @@
       base_pad = new_pad
   })
 
-  const legend_footprint = $derived(
-    measured_footprint(legend_element, { width: 120, height: 60 }),
-  )
+  let legend_size_revision = $state(0)
+  const legend_footprint = $derived.by(() => {
+    void legend_size_revision
+    return measured_footprint(legend_element, { width: 120, height: 60 })
+  })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each filled bar is modeled as a
@@ -562,14 +564,14 @@
   })
 
   // Calculate best legend placement using continuous grid sampling
-  let legend_placement = $derived.by(() => {
+  const get_legend_placement = () => {
     const should_place = show_legend && legend != null && series.length > 1
     if (!should_place || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    const result = compute_element_placement({
+    return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
       element: legend_element,
       element_size: { width: 120, height: 60 }, // fallback before first render
@@ -577,17 +579,16 @@
       exclude_rects: [],
       points: hist_points_for_placement,
     })
-
-    return result
-  })
+  }
 
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
-    placement: () => legend_placement,
+    placement: get_legend_placement,
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
     tween: () => legend?.tween,
+    on_element_resize: () => (legend_size_revision += 1),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -597,7 +598,9 @@
       ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis })[axis]
         .scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    plot_dims: () => ({
+    plot_bounds: () => ({
+      x: pad.l,
+      y: pad.t,
       width: Math.max(1, width - pad.l - pad.r),
       height: Math.max(1, height - pad.t - pad.b),
     }),

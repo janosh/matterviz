@@ -6,6 +6,7 @@ const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
 const pkg = JSON.parse(readFileSync(join(repo_root, `package.json`), `utf8`)) as {
   exports: Record<string, string | Record<string, string>>
+  sideEffects: string[]
 }
 
 // Extensions svelte-package compiles (.ts/.svelte -> .js/.svelte) or copies verbatim into ./dist
@@ -47,6 +48,29 @@ const module_dirs = readdirSync(lib_dir, { withFileTypes: true })
   .map((entry) => entry.name)
 
 describe(`package.json exports`, () => {
+  test(`reusable file-viewer barrel excludes the side-effectful webview bootstrap`, () => {
+    const source = readFileSync(join(lib_dir, `file-viewer/index.ts`), `utf8`)
+    expect(source).not.toMatch(/from\s+['"]\.\/main['"]/)
+    expect(pkg.exports[`./file-viewer/webview`]).toBeDefined()
+  })
+
+  test.each([
+    `./file-viewer/eligibility`,
+    `./file-viewer/host-protocol`,
+    `./file-viewer/host-transfer`,
+    `./theme/embedded`,
+  ])(`publishes dedicated subpath %s`, (subpath) => {
+    expect(pkg.exports[subpath]).toBeDefined()
+  })
+
+  test(`embedded theme side effects stay isolated from the normal theme barrel`, () => {
+    const source = readFileSync(join(lib_dir, `theme/index.ts`), `utf8`)
+    expect(source).not.toContain(`./embedded`)
+    expect(pkg.sideEffects).toEqual(
+      expect.arrayContaining([`**/theme/embedded.*`, `**/theme/themes.*`]),
+    )
+  })
+
   test(`every export target points into ./dist`, () => {
     const stray = export_targets.filter(({ target }) => !target.startsWith(`./dist/`))
     expect(stray, `targets must be published from ./dist`).toEqual([])

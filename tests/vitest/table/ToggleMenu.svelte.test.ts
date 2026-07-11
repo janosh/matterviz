@@ -14,6 +14,12 @@ describe(`ToggleMenu`, () => {
     { key: `col2`, label: `Column 2`, visible: false, description: `Second column` },
     { key: `col3`, label: `Column 3`, visible: true, description: `Third column` },
   ]
+  const make_many_columns = (count: number): Label[] =>
+    Array.from({ length: count }, (_, idx) => ({
+      key: `col_${idx + 1}`,
+      label: `Column ${idx + 1}`,
+      visible: true,
+    }))
 
   // Mount helper to reduce boilerplate
   const mount_menu = (
@@ -31,11 +37,11 @@ describe(`ToggleMenu`, () => {
 
   describe(`Basic rendering`, () => {
     it(`renders correctly with initial state`, () => {
-      mount_menu(make_columns())
+      mount_menu(make_columns(), { column_panel_open: true })
 
       const summary = document.querySelector(`summary`)
       expect(summary?.textContent?.trim()).toBe(`Columns`)
-      expect(summary?.getAttribute(`aria-expanded`)).toBe(`false`)
+      expect(summary?.getAttribute(`aria-expanded`)).toBe(`true`)
 
       const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       expect(checkboxes).toHaveLength(3)
@@ -48,7 +54,7 @@ describe(`ToggleMenu`, () => {
 
     it(`toggles column visibility when checkbox clicked`, async () => {
       const columns = make_columns()
-      mount_menu(columns)
+      mount_menu(columns, { column_panel_open: true })
 
       document.querySelectorAll(`label`)[0].click()
       await tick()
@@ -66,6 +72,35 @@ describe(`ToggleMenu`, () => {
       expect(details?.open).toBe(true)
     })
 
+    it(`portals the dropdown and right-aligns it to the trigger`, async () => {
+      mount_menu(make_columns(), { column_panel_open: true })
+      await tick()
+
+      const details = document.querySelector(`details`)
+      const summary = document.querySelector<HTMLElement>(`summary`)
+      const menu = document.querySelector<HTMLElement>(`.column-menu`)
+      expect(menu?.parentElement).toBe(document.body)
+      expect(details?.contains(menu)).toBe(false)
+      if (!summary || !menu) throw new Error(`missing toggle menu elements`)
+      const trigger_rect_spy = vi
+        .spyOn(summary, `getBoundingClientRect`)
+        .mockReturnValue(new DOMRect(240, 20, 60, 22))
+      const menu_rect_spy = vi
+        .spyOn(menu, `getBoundingClientRect`)
+        .mockReturnValue(new DOMRect(0, 0, 160, 180))
+      summary.click()
+      await tick()
+      summary.click()
+      await tick()
+      await vi.waitFor(() => {
+        expect(menu.style.left).toBe(`140px`)
+        expect(menu.style.top).toBe(`46px`)
+        expect(menu.style.visibility).toBe(`visible`)
+      })
+      trigger_rect_spy.mockRestore()
+      menu_rect_spy.mockRestore()
+    })
+
     it.each([
       { key: `Escape`, expect_open: false },
       { key: `Enter`, expect_open: true },
@@ -81,16 +116,21 @@ describe(`ToggleMenu`, () => {
     })
 
     it(`renders HTML in column labels via @html`, () => {
-      mount_menu([{ key: `col1`, label: `E<sub>hull</sub>`, visible: true }])
+      mount_menu([{ key: `col1`, label: `E<sub>hull</sub>`, visible: true }], {
+        column_panel_open: true,
+      })
       expect(document.querySelector(`sub`)).not.toBeNull()
     })
 
     it(`handles columns without explicit visible property`, () => {
-      mount_menu([
-        { key: `col1`, label: `No visible prop` },
-        { key: `col2`, label: `Explicit true`, visible: true },
-        { key: `col3`, label: `Explicit false`, visible: false },
-      ])
+      mount_menu(
+        [
+          { key: `col1`, label: `No visible prop` },
+          { key: `col2`, label: `Explicit true`, visible: true },
+          { key: `col3`, label: `Explicit false`, visible: false },
+        ],
+        { column_panel_open: true },
+      )
 
       const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       expect(checkboxes[0].checked).toBe(true) // defaults to true
@@ -98,11 +138,50 @@ describe(`ToggleMenu`, () => {
       expect(checkboxes[2].checked).toBe(false)
     })
 
+    it.each([
+      { count: 20, expected: false },
+      { count: 21, expected: true },
+    ])(`shows the column filter above 20 columns: $count`, ({ count, expected }) => {
+      mount_menu(make_many_columns(count), { column_panel_open: true })
+      expect(document.querySelector(`input[aria-label="Filter columns"]`) !== null).toBe(
+        expected,
+      )
+    })
+
+    it(`filters large menus without changing which column a toggle controls`, async () => {
+      const columns = make_many_columns(21)
+      mount_menu(columns, { column_panel_open: true })
+
+      const filter = document.querySelector<HTMLInputElement>(
+        `input[aria-label="Filter columns"]`,
+      )
+      if (!filter) throw new Error(`missing column filter`)
+      filter.value = `column 21`
+      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+
+      const labels = document.querySelectorAll<HTMLElement>(`.toggle-label`)
+      expect([...labels].map((label) => label.textContent?.trim())).toEqual([`Column 21`])
+      labels[0].click()
+      await tick()
+      expect(columns[20].visible).toBe(false)
+
+      filter.value = `missing`
+      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      expect(document.querySelector(`.no-matching-columns`)?.textContent).toBe(
+        `No matching columns`,
+      )
+    })
+
     it(`uses key for each block identity when available`, () => {
-      mount_menu([
-        { key: `unique1`, label: `Same Label`, visible: true },
-        { key: `unique2`, label: `Same Label`, visible: true },
-      ])
+      mount_menu(
+        [
+          { key: `unique1`, label: `Same Label`, visible: true },
+          { key: `unique2`, label: `Same Label`, visible: true },
+        ],
+        { column_panel_open: true },
+      )
 
       // Both render despite same label
       expect(document.querySelectorAll(`input[type="checkbox"]`)).toHaveLength(2)
@@ -187,24 +266,44 @@ describe(`ToggleMenu`, () => {
     })
   })
 
-  describe(`n_columns prop`, () => {
+  describe(`column layout`, () => {
     it.each([
-      { n_columns: 4, expected: `repeat(4, max-content)` },
-      { n_columns: undefined, expected: `auto-fill` },
-    ])(`flat list: n_columns=$n_columns → $expected`, ({ n_columns, expected }) => {
-      mount_menu(make_columns(), { column_panel_open: true, n_columns })
-      const menu = document.querySelector(`.column-menu`) as HTMLElement
-      expect(menu?.style.gridTemplateColumns).toContain(expected)
-    })
+      { count: 1, n_columns: undefined, expected: 1 },
+      { count: 2, n_columns: undefined, expected: 2 },
+      { count: 8, n_columns: undefined, expected: 2 },
+      { count: 20, n_columns: undefined, expected: 2 },
+      { count: 21, n_columns: undefined, expected: 3 },
+      { count: 8, n_columns: 4, expected: 2 },
+      { count: 21, n_columns: 2, expected: 2 },
+      { count: 31, n_columns: 4, expected: 4 },
+    ])(
+      `uses $expected columns for $count items with n_columns=$n_columns`,
+      ({ count, n_columns, expected }) => {
+        mount_menu(make_many_columns(count), { column_panel_open: true, n_columns })
+        const menu = document.querySelector(`.column-menu`) as HTMLElement
+        expect(menu?.style.gridTemplateColumns).toBe(`repeat(${expected}, max-content)`)
+      },
+    )
 
-    it(`grouped: n_columns=3 applies to section items`, () => {
+    it(`sizes grouped sections independently`, () => {
       const grouped: Label[] = [
-        { key: `a`, label: `A`, group: `G` },
-        { key: `b`, label: `B`, group: `G` },
+        ...make_many_columns(8).map((col) => ({
+          ...col,
+          key: `small_${col.key}`,
+          group: `Small`,
+        })),
+        ...make_many_columns(21).map((col) => ({
+          ...col,
+          key: `large_${col.key}`,
+          group: `Large`,
+        })),
       ]
-      mount_menu(grouped, { column_panel_open: true, n_columns: 3 })
-      const items = document.querySelector(`.section-items`) as HTMLElement
-      expect(items?.style.gridTemplateColumns).toContain(`repeat(3, max-content)`)
+      mount_menu(grouped, { column_panel_open: true, n_columns: 4 })
+      const section_items = document.querySelectorAll<HTMLElement>(`.section-items`)
+      expect([...section_items].map((items) => items.style.gridTemplateColumns)).toEqual([
+        `repeat(2, max-content)`,
+        `repeat(3, max-content)`,
+      ])
     })
   })
 

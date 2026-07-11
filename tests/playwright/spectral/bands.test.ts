@@ -161,24 +161,35 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot.locator(`.plot-tooltip`)).toBeHidden()
   })
 
-  test(`tooltip updates when hovering different segments`, async ({ page }) => {
+  test(`tooltip updates when hovering different band paths`, async ({ page }) => {
     const plot = page.getByTestId(`single-bands-plot`)
     await expect(plot).toBeVisible()
     const paths = plot.locator(`svg path[fill="none"]`)
     await expect(paths.first()).toBeVisible()
     const tooltip = plot.locator(`.plot-tooltip`)
+    const hover_path_start = async (path_idx: number) => {
+      const screen_point = await paths.nth(path_idx).evaluate((element) => {
+        const svg_path = element as SVGPathElement
+        const screen_matrix = svg_path.getScreenCTM()
+        if (!screen_matrix) throw new Error(`Band path has no screen transform`)
+        const path_start = svg_path.getPointAtLength(0).matrixTransform(screen_matrix)
+        return { x: path_start.x + 2, y: path_start.y }
+      })
+      await page.mouse.move(screen_point.x, screen_point.y)
+    }
 
     await expect(async () => {
-      await paths.nth(0).hover({ force: true })
+      await hover_path_start(3)
       await expect(tooltip).toBeVisible({ timeout: 500 })
     }).toPass({ timeout: 5000 })
 
     const first_text = await tooltip.textContent()
     expect(first_text).toBeTruthy()
 
-    // Hover over a different path and verify tooltip updates (retry both together)
+    // Bounding-box centers can resolve to the same nearby discrete point, so target
+    // exact endpoints on the lowest and highest bands.
     await expect(async () => {
-      await paths.nth(2).hover({ force: true })
+      await hover_path_start(0)
       const updated_text = await tooltip.textContent()
       expect(updated_text).not.toBe(first_text)
     }).toPass({ timeout: 5000 })
