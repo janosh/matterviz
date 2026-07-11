@@ -6,9 +6,10 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 const test_mocks = vi.hoisted(() => {
   const post_message = vi.fn()
-  Object.assign(globalThis, {
-    acquireVsCodeApi: () => ({ postMessage: post_message }),
-  })
+  vi.stubGlobal(`acquireVsCodeApi`, () => ({ postMessage: post_message }))
+  for (const key of [`cleanupMatterViz`, `initializeMatterViz`, `matterviz_data`]) {
+    vi.stubGlobal(key, undefined)
+  }
   return {
     mount: vi.fn((_component: unknown, _options: { props: Record<string, unknown> }) => ({})),
     parse_file_content: vi.fn(),
@@ -30,14 +31,7 @@ const { mount, parse_file_content, post_message, unmount } = test_mocks
 
 afterEach(async () => {
   await window.cleanupMatterViz?.()
-  for (const key of [
-    `acquireVsCodeApi`,
-    `cleanupMatterViz`,
-    `initializeMatterViz`,
-    `matterviz_data`,
-  ]) {
-    Reflect.deleteProperty(globalThis, key)
-  }
+  vi.unstubAllGlobals()
 })
 
 const result = (version: string): ParseResult => ({
@@ -62,13 +56,12 @@ const update_file = (version: string): boolean =>
     }),
   )
 
-test(`serializes reloads, blocks post-cleanup updates, and rejects invalid markers`, async () => {
+test(`serializes reloads and guards cleanup, markers, and initialization`, async () => {
   expect(create_display).toBeTypeOf(`function`)
-  let resolve_stale: (result: ParseResult) => void = () => {}
-  const stale_parse = new Promise<ParseResult>((resolve) => (resolve_stale = resolve))
+  const stale_parse = Promise.withResolvers<ParseResult>()
   parse_file_content
     .mockResolvedValueOnce(result(`initial`))
-    .mockReturnValueOnce(stale_parse)
+    .mockReturnValueOnce(stale_parse.promise)
     .mockResolvedValueOnce(result(`fresh`))
 
   set_file_data(`initial`)
@@ -80,7 +73,7 @@ test(`serializes reloads, blocks post-cleanup updates, and rejects invalid marke
   update_file(`fresh`)
   await Promise.resolve()
   expect(parse_file_content).toHaveBeenCalledTimes(2)
-  resolve_stale(result(`stale`))
+  stale_parse.resolve(result(`stale`))
 
   await vi.waitFor(() => {
     expect(parse_file_content).toHaveBeenCalledTimes(3)
@@ -89,21 +82,18 @@ test(`serializes reloads, blocks post-cleanup updates, and rejects invalid marke
   expect(mount.mock.calls.map((call) => call[1].props.value)).toEqual([`initial`, `fresh`])
   expect(unmount).toHaveBeenCalledTimes(1)
 
-  let resolve_cleanup_parse: (result: ParseResult) => void = () => {}
-  const cleanup_parse = new Promise<ParseResult>(
-    (resolve) => (resolve_cleanup_parse = resolve),
-  )
-  parse_file_content.mockReturnValueOnce(cleanup_parse)
+  const cleanup_parse = Promise.withResolvers<ParseResult>()
+  parse_file_content.mockReturnValueOnce(cleanup_parse.promise)
   update_file(`during-cleanup`)
   await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(4))
 
-  let finish_cleanup: () => void = () => {}
-  unmount.mockReturnValueOnce(new Promise<void>((resolve) => (finish_cleanup = resolve)))
+  const cleanup_unmount = Promise.withResolvers<undefined>()
+  unmount.mockReturnValueOnce(cleanup_unmount.promise)
   const cleanup = window.cleanupMatterViz?.()
   await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(2))
   update_file(`after-cleanup`)
   expect(parse_file_content).toHaveBeenCalledTimes(4)
-  finish_cleanup()
+  cleanup_unmount.resolve(undefined)
   await cleanup
 
   parse_file_content
@@ -116,7 +106,7 @@ test(`serializes reloads, blocks post-cleanup updates, and rejects invalid marke
     expect(parse_file_content).toHaveBeenCalledTimes(6)
     expect(mount).toHaveBeenCalledTimes(4)
   })
-  resolve_cleanup_parse(result(`during-cleanup`))
+  cleanup_parse.resolve(result(`during-cleanup`))
   await new Promise((resolve) => setTimeout(resolve))
   expect(mount).toHaveBeenCalledTimes(4)
   await window.cleanupMatterViz?.()
@@ -130,15 +120,13 @@ test(`serializes reloads, blocks post-cleanup updates, and rejects invalid marke
   })
 
   set_file_data(`LARGE_FILE:/tmp/movie.traj:536870912`, `movie.traj`)
-  const valid_marker_init = window.initializeMatterViz?.()
+  const valid_marker_initialization = window.initializeMatterViz?.()
   await vi.waitFor(() =>
     expect(post_message).toHaveBeenCalledWith(
       expect.objectContaining({ command: `request_large_file` }),
     ),
   )
-  const request = post_message.mock.calls
-    .map(([message]) => message as Record<string, unknown>)
-    .findLast(({ command }) => command === `request_large_file`)
+  const request = post_message.mock.lastCall?.[0] as Record<string, unknown>
   globalThis.dispatchEvent(
     new MessageEvent(`message`, {
       data: {
@@ -148,18 +136,16 @@ test(`serializes reloads, blocks post-cleanup updates, and rejects invalid marke
       },
     }),
   )
-  expect(await valid_marker_init).not.toBeNull()
+  expect(await valid_marker_initialization).not.toBeNull()
 
-  let resolve_initialization: (result: ParseResult) => void = () => {}
-  parse_file_content.mockReturnValueOnce(
-    new Promise<ParseResult>((resolve) => (resolve_initialization = resolve)),
-  )
+  const initialization_parse = Promise.withResolvers<ParseResult>()
+  parse_file_content.mockReturnValueOnce(initialization_parse.promise)
   set_file_data(`pending-initialization`)
   const pending_initialization = window.initializeMatterViz?.()
   await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(7))
   const mount_count = mount.mock.calls.length
   await window.cleanupMatterViz?.()
-  resolve_initialization(result(`pending-initialization`))
+  initialization_parse.resolve(result(`pending-initialization`))
   expect(await pending_initialization).toBeNull()
   expect(mount).toHaveBeenCalledTimes(mount_count)
 })

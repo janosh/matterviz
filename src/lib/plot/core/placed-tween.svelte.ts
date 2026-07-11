@@ -50,9 +50,6 @@ export function create_placed_tween(opts: {
   let previous_element: Element | null = null
   let previous_placement_revision: unknown
   let placed = $state(false)
-  const invalidate_element_size = (): void => {
-    element_size_revision += 1
-  }
 
   const coords = new Tween<Point>(
     { x: 0, y: 0 },
@@ -69,26 +66,21 @@ export function create_placed_tween(opts: {
   $effect(() => {
     const element = opts.element()
     if (!element || typeof ResizeObserver === `undefined`) return undefined
-    if (previous_element && previous_element !== element) invalidate_element_size()
+    if (previous_element && previous_element !== element) element_size_revision += 1
     previous_element = element
     const initialized_elements = new WeakSet<Element>()
-    const observed_elements = new WeakSet<Element>()
     const observer = new ResizeObserver((entries) => {
       const size_changed = entries.some(({ target }) => initialized_elements.has(target))
       for (const { target } of entries) initialized_elements.add(target)
-      if (size_changed) invalidate_element_size()
+      if (size_changed) element_size_revision += 1
     })
+    const tree_elements = (root: Element): Element[] => [root, ...root.querySelectorAll(`*`)]
     const observe_tree = (root: Element): void => {
-      for (const target of [root, ...root.querySelectorAll(`*`)]) {
-        if (observed_elements.has(target)) continue
-        observed_elements.add(target)
-        observer.observe(target)
-      }
+      for (const target of tree_elements(root)) observer.observe(target)
     }
     const unobserve_tree = (root: Element): void => {
-      for (const target of [root, ...root.querySelectorAll(`*`)]) {
+      for (const target of tree_elements(root)) {
         observer.unobserve(target)
-        observed_elements.delete(target)
         initialized_elements.delete(target)
       }
     }
@@ -98,10 +90,7 @@ export function create_placed_tween(opts: {
       typeof MutationObserver === `undefined`
         ? null
         : new MutationObserver((records) => {
-            let footprint_changed = false
             for (const record of records) {
-              if (record.type === `attributes` && record.target === element) continue
-              footprint_changed = true
               for (const node of record.addedNodes) {
                 if (node instanceof Element) observe_tree(node)
               }
@@ -109,7 +98,10 @@ export function create_placed_tween(opts: {
                 if (node instanceof Element) unobserve_tree(node)
               }
             }
-            if (footprint_changed) invalidate_element_size()
+            if (
+              records.some(({ type, target }) => type !== `attributes` || target !== element)
+            )
+              element_size_revision += 1
           })
     mutation_observer?.observe(element, {
       childList: true,
@@ -140,10 +132,8 @@ export function create_placed_tween(opts: {
     const dims_changed = !prev_dims || prev_dims.width !== width || prev_dims.height !== height
     if (dims_changed) prev_dims = { width, height }
     const element_size_changed = prev_element_size_revision !== element_size_revision
-    if (element_size_changed) {
-      prev_element_size_revision = element_size_revision
-      opts.on_element_resize?.()
-    }
+    prev_element_size_revision = element_size_revision
+    if (element_size_changed) opts.on_element_resize?.()
     if (manual) return
     const placement_revision = opts.placement_revision?.()
     const placement_invalidated = !Object.is(previous_placement_revision, placement_revision)
