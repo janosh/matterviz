@@ -177,7 +177,7 @@
     >
       <span>Isovalue:</span>
       <input type="range" min={step} max={slider_max} {step} bind:value={settings.isovalue} />
-      <span class="value">{format_num(settings.isovalue, `.4~g`)}</span>
+      <span class="value">{format_num(settings.isovalue, `.3~g`)}</span>
     </label>
 
     <!-- Opacity + colors on one row -->

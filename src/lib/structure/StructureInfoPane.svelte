@@ -238,7 +238,7 @@
           },
           {
             label: `a, b, c`,
-            value: `${format_num(a, `.4~f`)}, ${format_num(b, `.4~f`)}, ${format_num(c, `.4~f`)} Å`,
+            value: `${format_num(a, `.3~f`)}, ${format_num(b, `.3~f`)}, ${format_num(c, `.3~f`)} Å`,
             key: `cell-abc`,
           },
           {
@@ -326,7 +326,7 @@
         details.push({
           label,
           key,
-          value: `(${coords.map((coord) => format_num(coord, `.4~f`)).join(`, `)})${unit}`,
+          value: `(${coords.map((coord) => format_num(coord, `.3~f`)).join(`, `)})${unit}`,
         })
       }
       if (site.properties) {
