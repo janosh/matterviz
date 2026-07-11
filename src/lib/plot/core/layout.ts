@@ -270,7 +270,7 @@ const CORNER_WEIGHT = 5.0
 const MAX_SAMPLE_POINTS = 500
 
 // Check if a point is inside a rectangle
-const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
+export const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
   point.x >= rect.x &&
   point.x <= rect.x + rect.width &&
   point.y >= rect.y &&

@@ -24,6 +24,7 @@
     filter_padding,
     LABEL_GAP_DEFAULT,
     full_footprint_or,
+    point_in_rect,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -865,7 +866,7 @@
   function on_pointer_down(event: PointerEvent) {
     if (event.button !== 0) return
     const coords = pointer_coords(event)
-    if (!coords) return
+    if (!coords || !point_in_rect(coords, plot_rect)) return
     drag_start = coords
     drag_current = coords
     if (event.currentTarget instanceof HTMLElement) {

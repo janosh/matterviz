@@ -12,6 +12,7 @@ import {
   snapshot_ranges,
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
+import { point_in_rect } from '$lib/plot/core/layout'
 import type { AxisRanges, InitialRanges, PanConfig, ScaleType } from '$lib/plot/core/types'
 
 type Axis = `x` | `x2` | `y` | `y2`
@@ -21,7 +22,7 @@ export interface PanZoomOptions {
   // ALL reactive inputs are getter thunks - read fresh per event, never captured values
   ranges: () => AxisRanges
   scale_type: (axis: Axis) => ScaleType | undefined
-  plot_dims: () => { width: number; height: number }
+  plot_bounds: () => { x: number; y: number; width: number; height: number }
   pan: () => PanConfig | undefined
   // Write-order contract: x, x2, y, y2 (ScatterPlot's y2 sync reads the just-written y)
   set_range: (axis: Axis, range: Vec2) => void
@@ -100,7 +101,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Pan/zoom all four axes from an interaction-start snapshot, each in its own
   // scale's transform space (log axes pan by a constant factor, linear by a shift)
   const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
-    const dims = opts.plot_dims()
+    const dims = opts.plot_bounds()
     for (const axis of AXES) {
       const horizontal = axis === `x` || axis === `x2`
       opts.set_range(
@@ -144,6 +145,12 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     const svg = opts.svg()
     if (!svg) return
 
+    // The SVG also contains axes, tick labels, and titles. Only the padded data
+    // rectangle may start a drag interaction.
+    const svg_bounds = svg.getBoundingClientRect()
+    const coords = { x: evt.clientX - svg_bounds.left, y: evt.clientY - svg_bounds.top }
+    if (!point_in_rect(coords, opts.plot_bounds())) return
+
     // Shift+drag pans (when enabled); plain drag draws the zoom rect
     const pan_enabled = opts.pan()?.enabled !== false
     if (pan_enabled && evt.shiftKey) {
@@ -159,9 +166,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     }
 
     // Cache bounds at drag start so window mousemove can compute relative coords
-    const bounds = svg.getBoundingClientRect()
-    const coords = { x: evt.clientX - bounds.left, y: evt.clientY - bounds.top }
-    drag_state = { start: coords, current: coords, bounds }
+    drag_state = { start: coords, current: coords, bounds: svg_bounds }
     window.addEventListener(`mousemove`, on_window_mouse_move)
     window.addEventListener(`mouseup`, on_window_mouse_up)
     document.body.style.cursor = `crosshair`
@@ -175,7 +180,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (pan_cfg?.enabled === false || !is_focused || !shift_held) return
 
     evt.preventDefault()
-    const dims = opts.plot_dims()
+    const dims = opts.plot_bounds()
     const sensitivity = pan_cfg?.wheel_sensitivity ?? 1
     const ranges = opts.ranges()
 

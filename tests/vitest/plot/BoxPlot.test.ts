@@ -160,7 +160,7 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
   })
 
-  test(`vertical rect-zoom zooms y2 but writes no phantom x2 range`, async () => {
+  test(`vertical rect-zoom ignores margins and writes y2 without phantom x2`, async () => {
     // vertical orientation: the secondary value axis is y2; x is categorical and x2 is a
     // sentinel, so rect-zoom must not write back an x2 range. Mount directly (the helper
     // spreads props, which would sever the bind_props getters and lose the write-back).
@@ -188,6 +188,15 @@ describe(`BoxPlot`, () => {
     await resize_element(plot, 400, 300)
     const svg = plot.querySelector(`svg[role="application"]`)
     if (!svg) throw new Error(`svg not found`)
+    // Dragging from the bottom axis-label margin must not initiate a zoom.
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, { clientX: 100, clientY: 290, bubbles: true }),
+    )
+    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 100 }))
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 100 }))
+    await tick()
+    expect(state.y2_axis.range).toBeUndefined()
+
     svg.dispatchEvent(
       new MouseEvent(`mousedown`, { clientX: 100, clientY: 50, bubbles: true }),
     )

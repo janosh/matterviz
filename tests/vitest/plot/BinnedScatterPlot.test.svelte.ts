@@ -554,6 +554,12 @@ describe(`BinnedScatterPlot`, () => {
           pointerId: 1,
         }),
       )
+    pointer(`pointerdown`, 10, 10, 0)
+    pointer(`pointermove`, 200, 200)
+    pointer(`pointerup`, 200, 200)
+    await tick()
+    expect(document.querySelector(`.reset-view`)).toBeNull()
+
     pointer(`pointerdown`, 206, 436, 0)
     pointer(`pointermove`, 633, 124)
     pointer(`pointerup`, 633, 124)

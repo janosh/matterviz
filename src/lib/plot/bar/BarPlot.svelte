@@ -577,7 +577,12 @@
     ranges: () => ranges.current,
     scale_type: (axis) =>
       ({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })[axis].scale_type,
-    plot_dims: () => ({ width: chart_width, height: chart_height }),
+    plot_bounds: () => ({
+      x: pad.l,
+      y: pad.t,
+      width: chart_width,
+      height: chart_height,
+    }),
     pan: () => pan,
     set_range: (axis, range) => (ranges.current[axis] = range),
     svg: () => svg_element,

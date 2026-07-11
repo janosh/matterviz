@@ -1091,7 +1091,9 @@
       ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis })[axis]
         .scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    plot_dims: () => ({
+    plot_bounds: () => ({
+      x: pad.l,
+      y: pad.t,
       width: Math.max(1, width - pad.l - pad.r),
       height: Math.max(1, height - pad.t - pad.b),
     }),
