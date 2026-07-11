@@ -254,8 +254,10 @@
 <p>
   Render isosurfaces from volumetric data overlaid on atomic structures. Supports VASP
   <code>CHGCAR</code>/<code>AECCAR</code>/<code>ELFCAR</code>/<code>LOCPOT</code>/
-  <code>PARCHG</code> and Gaussian <code>.cube</code> file formats. Drag and drop your own files
-  onto the viewer.
+  <code>PARCHG</code> and Gaussian <code>.cube</code> file formats. Drag and drop your own
+  files onto the viewer. To render several volumes at once and color one surface by another
+  volume's values (e.g. density by ESP), see the
+  <a href="/structure/multi-volume">multi-volume demo</a>.
 </p>
 
 <FilePicker
