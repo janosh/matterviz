@@ -16,6 +16,7 @@
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
+  import { sorted_range } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
@@ -163,8 +164,7 @@
   let x_range = $state<Vec2>([0, 1])
   let y_range = $state<Vec2>([0, 1])
   let has_user_range = $state(false)
-  let drag_start = $state<Point2D | null>(null)
-  let drag_current = $state<Point2D | null>(null)
+  let drag_state = $state<{ start: Point2D; current: Point2D } | null>(null)
   let suppress_next_click = false
   let hovered_bin = $state<DensityBin | null>(null)
   let hovered_point = $state<DenseInternalPoint<Metadata> | null>(null)
@@ -868,42 +868,35 @@
     if (event.button !== 0) return
     const coords = pointer_coords(event)
     if (!coords || !point_in_rect(coords, plot_rect)) return
-    drag_start = coords
-    drag_current = coords
+    drag_state = { start: coords, current: coords }
     if (event.currentTarget instanceof HTMLElement) {
       event.currentTarget.setPointerCapture?.(event.pointerId)
     }
   }
 
   function on_pointer_drag(event: PointerEvent) {
-    if (!drag_start) {
+    if (!drag_state) {
       on_pointer_move(event)
       return
     }
     const coords = pointer_coords(event)
-    if (coords) drag_current = coords
+    if (coords) drag_state.current = coords
   }
 
   function on_pointer_up(event: PointerEvent) {
-    const start = drag_start
-    const end = drag_current
-    drag_start = null
-    drag_current = null
-
-    if (start && end && Math.abs(end.x - start.x) > 5 && Math.abs(end.y - start.y) > 5) {
-      const x0 = x_scale_fn.invert(start.x)
-      const x1 = x_scale_fn.invert(end.x)
-      const y0 = y_scale_fn.invert(start.y)
-      const y1 = y_scale_fn.invert(end.y)
-      x_range = [Math.min(x0, x1), Math.max(x0, x1)]
-      y_range = [Math.min(y0, y1), Math.max(y0, y1)]
-      has_user_range = true
-      suppress_next_click = true
-    }
+    if (!drag_state) return
+    const { start, current: end } = drag_state
+    drag_state = null
 
     if (event.currentTarget instanceof HTMLElement) {
       event.currentTarget.releasePointerCapture?.(event.pointerId)
     }
+    if (Math.abs(end.x - start.x) <= 5 || Math.abs(end.y - start.y) <= 5) return
+
+    x_range = sorted_range(x_scale_fn.invert(start.x), x_scale_fn.invert(end.x))
+    y_range = sorted_range(y_scale_fn.invert(start.y), y_scale_fn.invert(end.y))
+    has_user_range = true
+    suppress_next_click = true
   }
 
   onMount(() => {
@@ -1017,7 +1010,7 @@
       label_y={pad.t + plot_height / 2}
     />
 
-    <ZoomRect start={drag_start} current={drag_current} />
+    <ZoomRect start={drag_state?.start ?? null} current={drag_state?.current ?? null} />
 
     {#if point_label_payloads.length}
       <g class="point-label-leaders" clip-path="url(#{clip_path_id})">

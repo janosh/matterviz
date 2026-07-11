@@ -12,17 +12,18 @@ import {
   snapshot_ranges,
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
-import { point_in_rect } from '$lib/plot/core/layout'
+import { point_in_rect, type Rect } from '$lib/plot/core/layout'
 import type { AxisRanges, InitialRanges, PanConfig, ScaleType } from '$lib/plot/core/types'
 
 type Axis = `x` | `x2` | `y` | `y2`
+type RectDragState = { start: Point2D; current: Point2D; bounds: DOMRect }
 const AXES = [`x`, `x2`, `y`, `y2`] as const
 
 export interface PanZoomOptions {
   // ALL reactive inputs are getter thunks - read fresh per event, never captured values
   ranges: () => AxisRanges
   scale_type: (axis: Axis) => ScaleType | undefined
-  plot_bounds: () => { x: number; y: number; width: number; height: number }
+  plot_bounds: () => Rect
   pan: () => PanConfig | undefined
   // Write-order contract: x, x2, y, y2 (ScatterPlot's y2 sync reads the just-written y)
   set_range: (axis: Axis, range: Vec2) => void
@@ -52,11 +53,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   destroy: () => void
 } {
   // Rect-zoom drag state
-  let drag_state = $state<{
-    start: Point2D | null
-    current: Point2D | null
-    bounds: DOMRect | null
-  }>({ start: null, current: null, bounds: null })
+  let drag_state = $state<RectDragState | null>(null)
 
   // Pan state
   let is_focused = $state(false)
@@ -65,7 +62,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   let touch_state = $state<(InitialRanges & { start_touches: Point2D[] }) | null>(null)
 
   const cancel_rect_drag = () => {
-    drag_state = { start: null, current: null, bounds: null }
+    drag_state = null
     if (typeof window !== `undefined`) {
       window.removeEventListener(`mousemove`, on_window_mouse_move)
       window.removeEventListener(`mouseup`, on_window_mouse_up)
@@ -74,7 +71,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
 
   const on_window_mouse_move = (evt: MouseEvent) => {
-    if (!drag_state.start || !drag_state.bounds) return
+    if (!drag_state) return
     const coords = {
       x: evt.clientX - drag_state.bounds.left,
       y: evt.clientY - drag_state.bounds.top,
@@ -89,7 +86,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
 
   const on_window_mouse_up = () => {
-    if (drag_state.start && drag_state.current) {
+    if (drag_state) {
       // Ignore minuscule drag rects (e.g. accidental clicks)
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
@@ -142,6 +139,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
 
   const on_mouse_down = (evt: MouseEvent) => {
+    if (evt.button !== 0) return
     const svg = opts.svg()
     if (!svg) return
 
@@ -268,7 +266,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // when their own Enter/Space activation bubbles up.
   const on_key_down = (evt: KeyboardEvent) => {
     if (evt.target !== evt.currentTarget) return
-    if (evt.key === `Escape` && drag_state.start) cancel_rect_drag()
+    if (evt.key === `Escape` && drag_state) cancel_rect_drag()
     if ([`Enter`, ` `].includes(evt.key)) {
       evt.preventDefault()
       opts.on_reset()
@@ -277,10 +275,10 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   return {
     get drag_start() {
-      return drag_state.start
+      return drag_state?.start ?? null
     },
     get drag_current() {
-      return drag_state.current
+      return drag_state?.current ?? null
     },
     get is_pan_dragging() {
       return pan_drag_state !== null
@@ -313,7 +311,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
         [on_window_mouse_move, on_pan_move],
         [on_window_mouse_up, on_pan_end],
       )
-      drag_state = { start: null, current: null, bounds: null }
+      drag_state = null
       pan_drag_state = null
       touch_state = null
     },

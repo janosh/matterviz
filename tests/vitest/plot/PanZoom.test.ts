@@ -3,7 +3,7 @@ import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { mount_sized } from '../setup'
 
-type LocalPoint = { x: number; y: number }
+type LocalPoint = { x: number; y: number; button?: number }
 
 const xy_series = () => [{ x: [0, 1, 2], y: [1, 2, 3] }]
 const y_series = () => [{ y: [1, 2, 3] }]
@@ -30,7 +30,8 @@ const plot_cases = [
 
 async function drag(svg: SVGSVGElement, start: LocalPoint, end: LocalPoint): Promise<boolean> {
   const bounds = svg.getBoundingClientRect()
-  const event_init = ({ x, y }: LocalPoint): MouseEventInit => ({
+  const event_init = ({ x, y, button = 0 }: LocalPoint): MouseEventInit => ({
+    button,
     clientX: bounds.left + x,
     clientY: bounds.top + y,
   })
@@ -53,6 +54,7 @@ describe(`shared plot drag zoom bounds`, () => {
 
       // Default 400×300 plots end at y=240; y=290 is in the x-label margin.
       expect(await drag(svg, { x: 100, y: 290 }, { x: 300, y: 100 })).toBe(false)
+      expect(await drag(svg, { x: 100, y: 100, button: 2 }, { x: 300, y: 200 })).toBe(false)
 
       // Only the start is gated: leaving the plot after an interior start still zooms.
       expect(await drag(svg, { x: 100, y: 100 }, { x: 300, y: 290 })).toBe(true)
