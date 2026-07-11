@@ -745,7 +745,10 @@ export const activate = (context: vscode.ExtensionContext) => {
     vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
       // Update context on any document open
       update_supported_resource_context(document.uri)
-      if (document.uri.scheme === `file` && should_auto_render(document.uri.fsPath)) {
+      if (
+        document.uri.scheme === `file` &&
+        should_auto_render(path.basename(document.uri.fsPath))
+      ) {
         const file_path = document.uri.fsPath
 
         // Clear existing timer and reveal existing panel if present

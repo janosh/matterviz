@@ -1763,7 +1763,7 @@ describe(`MatterViz Extension`, () => {
       expect(() => on_did_open_text_document_callback?.(mock_document)).not.toThrow()
     })
 
-    test(`should handle file reading errors gracefully during auto-render`, async () => {
+    test(`should use basenames for auto-render eligibility and report read errors`, async () => {
       const activate_context = make_activate_context()
 
       // Mock vscode.workspace.fs.stat to throw an error
@@ -1787,7 +1787,7 @@ describe(`MatterViz Extension`, () => {
 
       // Mock document with supported file
       const mock_document = {
-        uri: { scheme: `file`, fsPath: `/test/structure.cif` },
+        uri: { scheme: `file`, fsPath: `/test/dist/structure.cif` },
       }
 
       // Should show error message when file reading fails
