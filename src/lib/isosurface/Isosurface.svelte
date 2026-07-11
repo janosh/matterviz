@@ -393,6 +393,10 @@
 
     if (all_volumes.length === 0) {
       last_geo_sig = geo_sig
+      // Cancel any pending rebuild — its stale closure would otherwise fire
+      // against the emptied (or since-repopulated) volume list
+      clearTimeout(debounce_id)
+      cancelAnimationFrame(raf_id)
       untrack(() => dispose_all())
       return
     }
@@ -411,15 +415,28 @@
 
   // === Cross-volume vertex coloring ===
 
+  // Samplers cached per volume object (lattice/origin/grid are immutable for a
+  // given VolumetricData) so multiple entries coloring from the same volume
+  // don't re-invert the lattice matrix
+  const sampler_cache = new WeakMap<VolumetricData, (position: Vec3) => number>()
+  const volume_sampler = (vol: VolumetricData): ((position: Vec3) => number) => {
+    let sample = sampler_cache.get(vol)
+    if (!sample) {
+      sample = create_volume_sampler(vol, {
+        out_of_bounds: vol.periodic ? `clamp` : `fallback`,
+      })
+      sampler_cache.set(vol, sample)
+    }
+    return sample
+  }
+
   // Sample the color volume at this entry's vertices. Vertices are in the scene
   // frame (first volume's origin at the grid corner), so shift back to absolute
   // Cartesian coordinates before sampling.
   function sample_entry_scalars(entry: MeshEntry, color_vol: VolumetricData): Float32Array {
     const positions = entry.geometry.getAttribute(`position`).array as Float32Array
     const [ref_x, ref_y, ref_z] = all_volumes[0]?.origin ?? [0, 0, 0]
-    const sample = create_volume_sampler(color_vol, {
-      out_of_bounds: color_vol.periodic ? `clamp` : `fallback`,
-    })
+    const sample = volume_sampler(color_vol)
     const n_verts = positions.length / 3
     const scalars = new Float32Array(n_verts)
     const pos: Vec3 = [0, 0, 0]

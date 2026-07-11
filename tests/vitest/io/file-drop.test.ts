@@ -1,11 +1,14 @@
 import type { FileDropOptions } from '$lib/io/file-drop'
 import { create_file_drop_handler, drag_over_handlers } from '$lib/io/file-drop'
 import { decompress_file } from '$lib/io/decompress'
-import { handle_url_drop } from '$lib/io/url-drop'
+import { dropped_file_url, load_from_url } from '$lib/io/url-drop'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$lib/io/decompress`, () => ({ decompress_file: vi.fn() }))
-vi.mock(`$lib/io/url-drop`, () => ({ handle_url_drop: vi.fn() }))
+vi.mock(`$lib/io/url-drop`, () => ({
+  dropped_file_url: vi.fn(),
+  load_from_url: vi.fn(),
+}))
 
 const make_event = (files: File[] = []) =>
   ({
@@ -23,7 +26,7 @@ describe(`create_file_drop_handler`, () => {
     on_drop = vi.fn<FileDropOptions[`on_drop`]>()
     on_error = vi.fn<NonNullable<FileDropOptions[`on_error`]>>()
     set_loading = vi.fn<NonNullable<FileDropOptions[`set_loading`]>>()
-    vi.mocked(handle_url_drop).mockResolvedValue(false)
+    vi.mocked(dropped_file_url).mockReturnValue(undefined)
   })
 
   const run = async (opts: Partial<FileDropOptions> = {}, files: File[] = []) => {
@@ -42,7 +45,7 @@ describe(`create_file_drop_handler`, () => {
     const event = await run({ allow: () => false })
     expect(event.preventDefault).toHaveBeenCalled()
     expect(on_drop).not.toHaveBeenCalled()
-    expect(handle_url_drop).not.toHaveBeenCalled()
+    expect(load_from_url).not.toHaveBeenCalled()
     expect(set_loading).not.toHaveBeenCalled()
   })
 
@@ -53,10 +56,11 @@ describe(`create_file_drop_handler`, () => {
     expect(set_loading).toHaveBeenLastCalledWith(false)
   })
 
-  test(`delegates to handle_url_drop first`, async () => {
-    vi.mocked(handle_url_drop).mockResolvedValue(true)
+  test(`delegates to URL loading first when a URL payload is present`, async () => {
+    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
+    vi.mocked(load_from_url).mockResolvedValue(undefined)
     await run({}, [new File([`x`], `test.txt`)])
-    expect(handle_url_drop).toHaveBeenCalled()
+    expect(load_from_url).toHaveBeenCalledWith(`https://example.com/f.cif`, on_drop)
     expect(decompress_file).not.toHaveBeenCalled()
   })
 
@@ -76,7 +80,8 @@ describe(`create_file_drop_handler`, () => {
   })
 
   test(`reports URL error when URL drop fails and no files present`, async () => {
-    vi.mocked(handle_url_drop).mockRejectedValue(new Error(`fetch failed`))
+    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
+    vi.mocked(load_from_url).mockRejectedValue(new Error(`fetch failed`))
     await run()
     expect(on_error).toHaveBeenCalledWith(`Failed to load from URL: fetch failed`)
     expect(on_drop).not.toHaveBeenCalled()
@@ -129,6 +134,34 @@ describe(`create_file_drop_handler`, () => {
     expect(on_drop).toHaveBeenCalledWith(`ok`, `b.cube`)
     expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — a.cube.gz: corrupt`)
     expect(set_loading).toHaveBeenLastCalledWith(false)
+  })
+
+  test(`aggregates multiple failures into one plural message`, async () => {
+    vi.mocked(decompress_file)
+      .mockRejectedValueOnce(new Error(`corrupt`))
+      .mockRejectedValueOnce(new Error(`bad header`))
+    await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
+    expect(on_error).toHaveBeenCalledWith(
+      `Failed to load 2 files — a.cube.gz: corrupt; b.cube.gz: bad header`,
+    )
+  })
+
+  test(`overlapping drops are processed sequentially, not interleaved`, async () => {
+    const order: string[] = []
+    vi.mocked(decompress_file).mockImplementation((file: File) =>
+      Promise.resolve({ content: `data`, filename: file.name }),
+    )
+    const slow_drop = vi.fn(async (_content: string | ArrayBuffer, filename: string) => {
+      order.push(`start ${filename}`)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      order.push(`end ${filename}`)
+    })
+    const handler = create_file_drop_handler({ allow: () => true, on_drop: slow_drop })
+    // Fire the second drop while the first batch is still processing
+    const first = handler(make_event([new File([`x`], `a.cube`)]))
+    const second = handler(make_event([new File([`y`], `b.cube`)]))
+    await Promise.all([first, second])
+    expect(order).toEqual([`start a.cube`, `end a.cube`, `start b.cube`, `end b.cube`])
   })
 
   test(`works without optional callbacks`, async () => {

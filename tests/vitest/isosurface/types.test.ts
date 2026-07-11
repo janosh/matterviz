@@ -264,6 +264,10 @@ describe(`materialize_layers`, () => {
     expect(result[0].volume_idx).toBe(1) // implicit → active volume
     expect(result[1].volume_idx).toBe(5) // explicit stays
   })
+
+  test(`preserves explicit empty layers array (zero surfaces, no resurrection)`, () => {
+    expect(materialize_layers({ ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] }, 0)).toEqual([])
+  })
 })
 
 describe(`remove_volume`, () => {
@@ -433,6 +437,27 @@ describe(`merge_imported_volumes`, () => {
     expect(result.layers[0].volume_idx).toBe(0)
     expect(result.layers[1].volume_idx).toBe(1)
     expect(result).toMatchObject({ first_touched_idx: 1, n_added: 1 })
+  })
+
+  test(`implicit layers follow active_volume_idx through block-count remapping`, () => {
+    // Implicit layer references active volume 1 (esp.cube); CHGCAR at 0 shrinks
+    // from 2 blocks to 1, so the implicit layer must survive pinned to esp.cube
+    const existing = [
+      src_vol(`CHGCAR`, `CHGCAR: charge`),
+      src_vol(`esp.cube`, `esp.cube`),
+      src_vol(`CHGCAR`, `CHGCAR: magnetization`),
+    ]
+    const implicit = { ...layer_for(0), volume_idx: undefined }
+    const result = merge_imported_volumes(
+      existing,
+      [implicit],
+      [src_vol(`CHGCAR`, `CHGCAR`, 9)],
+      1,
+    )
+    expect(result.volumes.map((vol) => vol.label)).toEqual([`esp.cube`, `CHGCAR`])
+    // Implicit layer pinned to esp.cube (was idx 1, now 0) + new auto CHGCAR layer
+    expect(result.layers.map((layer) => layer.volume_idx)).toEqual([0, 1])
+    expect(result.layers[0].isovalue).toBe(0.42) // user tuning preserved
   })
 })
 

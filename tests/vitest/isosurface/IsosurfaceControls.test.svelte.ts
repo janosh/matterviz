@@ -24,15 +24,16 @@ const mount_controls = (
   }>,
 ) => {
   // $state props so bindable mutations from button clicks re-render the component
+  // and are observable on the returned object
   const state_props = $state({
     settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
     volumes: [make_volume()],
     active_volume_idx: 0,
     ...props,
   })
-  const component = mount(IsosurfaceControls, { target: document.body, props: state_props })
+  mount(IsosurfaceControls, { target: document.body, props: state_props })
   flushSync()
-  return component
+  return state_props
 }
 
 describe(`IsosurfaceControls`, () => {
@@ -424,5 +425,83 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(groups).toHaveLength(1)
     expect(groups[0].querySelector(`.volume-label`)?.textContent).toBe(`density.cube`)
     expect(groups[0].querySelectorAll(`.layer-row`)).toHaveLength(1)
+  })
+
+  test(`removing a volume below the active one shifts active_volume_idx down`, () => {
+    const props = mount_controls({
+      volumes: two_volumes(),
+      active_volume_idx: 1,
+      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(0), make_layer(1)] },
+    })
+    document
+      .querySelector<HTMLButtonElement>(`button[aria-label="Remove volume density.cube"]`)
+      ?.click()
+    flushSync()
+    expect(props.active_volume_idx).toBe(0) // still points at esp.cube
+    expect(props.volumes.map((vol) => vol.label)).toEqual([`esp.cube`])
+  })
+
+  const change_select = (select: HTMLSelectElement | null, value: string) => {
+    if (!select) throw new Error(`select not found`)
+    select.value = value
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+  }
+
+  test.each([
+    {
+      desc: `colormap select updates the layer's colormap`,
+      layer: { color_volume_idx: 1, colormap: `interpolateViridis` },
+      act: () => change_select(find_select_with_option(`Turbo`) ?? null, `interpolateTurbo`),
+      expected: { colormap: `interpolateTurbo` },
+    },
+    {
+      desc: `picking "None (solid)" clears color source, colormap, and range`,
+      layer: { color_volume_idx: 1, colormap: `interpolateRdBu`, color_range: [-1, 1] },
+      act: () => change_select(find_select_with_option(`None (solid)`) ?? null, `-1`),
+      expected: { color_volume_idx: undefined, colormap: undefined, color_range: undefined },
+    },
+    {
+      desc: `reset button restores auto colormap and clears explicit range`,
+      layer: { color_volume_idx: 1, colormap: `interpolateTurbo`, color_range: [-9, 9] },
+      act: () => {
+        document
+          .querySelector<HTMLButtonElement>(`button[aria-label="Reset color range"]`)
+          ?.click()
+        flushSync()
+      },
+      // colormap auto-resets to Viridis for all-positive data
+      expected: { color_range: undefined, colormap: `interpolateViridis` },
+    },
+  ])(`$desc`, ({ layer, act, expected }) => {
+    const props = mount_controls({
+      volumes: two_volumes(),
+      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(0, layer)] },
+    })
+    act()
+    expect(props.settings.layers?.[0]).toMatchObject(expected)
+  })
+
+  test(`visibility checkbox toggles layer.visible`, () => {
+    const props = mount_controls({
+      volumes: two_volumes(),
+      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(0)] },
+    })
+    const checkbox = document.querySelector<HTMLInputElement>(
+      `.layer-row input[type="checkbox"]`,
+    )
+    checkbox?.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+    expect(props.settings.layers?.[0].visible).toBe(false)
+  })
+
+  test(`single-isovalue Color by pick materializes layers with that color source`, () => {
+    const props = mount_controls({ volumes: two_volumes() })
+    const color_by = Array.from(document.querySelectorAll(`label`)).find((label) =>
+      label.textContent?.includes(`Color by`),
+    )
+    change_select(color_by?.querySelector(`select`) ?? null, `1`)
+    expect(props.settings.layers).toHaveLength(1)
+    expect(props.settings.layers?.[0]).toMatchObject({ volume_idx: 0, color_volume_idx: 1 })
   })
 })

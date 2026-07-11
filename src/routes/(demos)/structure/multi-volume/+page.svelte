@@ -25,7 +25,7 @@
   import { volumetric_files } from '$site/isosurfaces'
   import type { AnyStructure } from 'matterviz'
   import { Structure } from 'matterviz'
-  import { onMount, untrack } from 'svelte'
+  import { untrack } from 'svelte'
   import { to_error } from '$lib/utils'
 
   let structure = $state<AnyStructure | undefined>()
@@ -296,6 +296,7 @@
           volumetric_data,
           materialize_layers(isosurface_settings, active_volume_idx),
           incoming,
+          active_volume_idx,
         )
         volumetric_data = merged.volumes
         isosurface_settings = { ...isosurface_settings, layers: merged.layers }
@@ -332,16 +333,24 @@
   )
 
   // Load the scenario from the URL param (reacts to client-side navigation too;
-  // load_scenario's replaceState goto writes the same param so no loop occurs)
+  // load_scenario's replaceState goto writes the same param so no loop occurs).
+  // Only the URL is tracked: card clicks set active_scenario before goto runs,
+  // and tracking it would rerun this effect against the stale URL, reloading
+  // the previous scenario and discarding the click as a stale load.
+  // An unknown or absent param falls back to the first scenario only while
+  // nothing is loaded (fresh mount / bad link) — clear_scenario() drops the
+  // param after user imports, and reloading a preset then would wipe the
+  // user's custom scene.
   $effect(() => {
     const param = page.url.searchParams.get(`scenario`)
-    if (param === active_scenario) return
-    const target = scenarios.find((scenario) => scenario.id === param)
-    if (target) untrack(() => load_scenario(target))
-  })
-
-  onMount(() => {
-    if (!page.url.searchParams.get(`scenario`)) load_scenario(scenarios[0])
+    untrack(() => {
+      const target = scenarios.find((scenario) => scenario.id === param)
+      if (target) {
+        if (target.id !== active_scenario) load_scenario(target)
+      } else if (!volumetric_data?.length && !loading) {
+        load_scenario(scenarios[0])
+      }
+    })
   })
 </script>
 

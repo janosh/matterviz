@@ -324,6 +324,18 @@ describe(`extract_volume_range`, () => {
     expect(extracted.lattice[0][0]).toBeCloseTo(50)
   })
 
+  test(`non-zero origin shifts by range_min·lattice on top of the source origin`, () => {
+    const vol = { ...periodic_vol(), origin: [3, -2, 5] as Vec3 }
+    const extracted = extract_volume_range(vol, [
+      [-0.5, 1.5],
+      [0, 1],
+      [0, 1],
+    ])
+    expect(extracted.origin).toEqual([3 - 5, -2, 5]) // -0.5 * 10 along x
+    // Values still wrap correctly: first plane at fx = -0.5 → grid value 0.5
+    expect(extracted.grid[0][0][0]).toBeCloseTo(0.5, 10)
+  })
+
   test(`non-periodic volumes are cropped, never repeated`, () => {
     const finite = linear_volume(11, cubic, false)
     const extracted = extract_volume_range(finite, [

@@ -51,6 +51,22 @@ export async function goto_structure_test(
   return wait_for_3d_canvas(page, container_selector)
 }
 
+// Open the structure viewer's gear-icon settings pane (forcing hover-only
+// controls visible) and return the pane locator
+export async function open_settings_pane(page: Page): Promise<Locator> {
+  await page.evaluate(() => {
+    const style = document.createElement(`style`)
+    style.textContent = `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
+    document.head.append(style)
+  })
+  const gear = page.locator(`button.structure-controls-toggle`)
+  await expect(gear).toBeVisible({ timeout: 15_000 })
+  await gear.click()
+  const pane = page.locator(`.controls-pane`)
+  await expect(pane).toBeVisible({ timeout: 15_000 })
+  return pane
+}
+
 // Set an input value and dispatch events
 export const set_input_value = async (input: Locator, value: string): Promise<void> => {
   await input.evaluate((el, val) => {

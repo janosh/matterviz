@@ -399,14 +399,20 @@ export interface VolumeMergeResult {
 // replaces its volumes in place, preserving user-tuned layers; a changed block
 // count drops the stale group (remapping layer indices) before appending fresh
 // volumes. New volumes each get an auto-generated layer.
+// Layers without an explicit volume_idx implicitly reference `active_volume_idx`
+// and are pinned to it up front so index remapping treats them correctly.
 export function merge_imported_volumes(
   existing: VolumetricData[],
   existing_layers: IsosurfaceLayer[],
   incoming: VolumetricData[],
+  active_volume_idx = 0,
 ): VolumeMergeResult {
   const source = incoming[0]?.source
   let volumes = [...existing]
-  let layers = [...existing_layers]
+  let layers: IsosurfaceLayer[] = existing_layers.map((layer) => ({
+    ...layer,
+    volume_idx: layer.volume_idx ?? active_volume_idx,
+  }))
 
   const group_indices = volumes
     .map((vol, idx) => (source !== undefined && vol.source === source ? idx : -1))

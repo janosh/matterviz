@@ -1119,27 +1119,37 @@
     const incoming = label_file_volumes(vol_result.volumes, filename)
     const current_lattice =
       structure && `lattice` in structure ? structure.lattice.matrix : undefined
-    const can_append =
-      Boolean(volumetric_data?.length) &&
-      lattices_match(current_lattice, vol_result.structure.lattice?.matrix)
+    const same_cell = lattices_match(current_lattice, vol_result.structure.lattice?.matrix)
+    const added_toast = (count: number) =>
+      `Added ${count} volume${count > 1 ? `s` : ``} from ${filename}`
 
-    if (can_append && volumetric_data) {
-      // Materialize the implicit single surface into explicit layers so existing
-      // surfaces survive the transition to multi-volume mode
-      const merged = merge_imported_volumes(
-        volumetric_data,
-        materialize_layers(isosurface_settings, active_volume_idx),
-        incoming,
-      )
-      volumetric_data = merged.volumes
-      isosurface_settings = { ...isosurface_settings, layers: merged.layers }
-      active_volume_idx = merged.first_touched_idx
-      show_toast(
-        merged.n_added > 0
-          ? `Added ${merged.n_added} volume${merged.n_added > 1 ? `s` : ``} from ${filename}`
-          : `Reloaded volumes from ${filename}`,
-      )
-      return structure ?? null
+    if (same_cell && structure) {
+      // Same cell: keep the structure and camera, only update volumes
+      if (volumetric_data?.length) {
+        // Materialize the implicit single surface into explicit layers so existing
+        // surfaces survive the transition to multi-volume mode
+        const merged = merge_imported_volumes(
+          volumetric_data,
+          materialize_layers(isosurface_settings, active_volume_idx),
+          incoming,
+          active_volume_idx,
+        )
+        volumetric_data = merged.volumes
+        isosurface_settings = { ...isosurface_settings, layers: merged.layers }
+        active_volume_idx = merged.first_touched_idx
+        show_toast(
+          merged.n_added > 0
+            ? added_toast(merged.n_added)
+            : `Reloaded volumes from ${filename}`,
+        )
+      } else if (incoming[0]) {
+        // First volumetric file for this structure
+        volumetric_data = incoming
+        isosurface_settings = auto_isosurface_settings(incoming[0].data_range)
+        active_volume_idx = 0
+        show_toast(added_toast(incoming.length))
+      }
+      return structure
     }
 
     // Replace: new system (or nothing loaded yet)
@@ -1162,28 +1172,33 @@
   function parse_file_content(text_content: string, filename: string): AnyStructure {
     const vol_struct = try_parse_volumetric(text_content, filename)
     if (vol_struct) return vol_struct
-    clear_camera_state()
-    // Clear stale volumetric data when loading a non-volumetric file
-    volumetric_data = []
     const parsed = parse_any_structure(text_content, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
+    // Keep loaded volumes and camera when the new structure describes the same
+    // cell (e.g. a mixed batch drop of CHGCAR + POSCAR, in either order);
+    // clear both for a genuinely new system
+    const same_cell = lattices_match(
+      structure && `lattice` in structure ? structure.lattice.matrix : undefined,
+      `lattice` in parsed ? parsed.lattice?.matrix : undefined,
+    )
+    if (!same_cell) {
+      clear_camera_state()
+      volumetric_data = []
+    }
     structure = parsed
     return parsed
   }
 
   const handle_file_drop = create_file_drop_handler({
     allow: () => allow_file_drop,
+    // Parse errors propagate so multi-file batches aggregate all failures into
+    // one message instead of the last error overwriting earlier ones
     on_drop: (content, filename) => {
       if (on_file_drop) return on_file_drop(content, filename)
-      try {
-        const text_content =
-          content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-        const parsed = parse_file_content(text_content, filename)
-        emit_file_load_event(parsed, filename, content)
-      } catch (err) {
-        error_msg = `Failed to parse structure: ${to_error(err).message}`
-        on_error?.({ error_msg, filename })
-      }
+      const text_content =
+        content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+      const parsed = parse_file_content(text_content, filename)
+      emit_file_load_event(parsed, filename, content)
     },
     on_error: (msg) => {
       error_msg = msg

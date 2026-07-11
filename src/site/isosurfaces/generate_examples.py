@@ -38,10 +38,10 @@ def gaussian_coulomb(
     q * sqrt(2/pi) / sigma. Far from the charge this decays like q/r, giving a
     physically shaped electrostatic potential for point partial charges.
     """
-    r = math.dist((x, y, z), (cx, cy, cz))
-    if r < 1e-9:
+    dist = math.dist((x, y, z), (cx, cy, cz))
+    if dist < 1e-9:
         return charge * math.sqrt(2.0 / math.pi) / sigma
-    return charge * math.erf(r / (math.sqrt(2.0) * sigma)) / r
+    return charge * math.erf(dist / (math.sqrt(2.0) * sigma)) / dist
 
 
 # === Shared helpers ===
@@ -682,6 +682,9 @@ if __name__ == "__main__":
     # Pass filenames as args to regenerate a subset, e.g.
     # python generate_examples.py glycine-density.cube.gz glycine-esp.cube.gz
     selected = sys.argv[1:] or list(generators)
+    if unknown := [name for name in selected if name not in generators]:
+        known = "\n  ".join(generators)
+        raise SystemExit(f"Unknown file(s): {', '.join(unknown)}. Known:\n  {known}")
 
     for filename in selected:
         gen_fn = generators[filename]

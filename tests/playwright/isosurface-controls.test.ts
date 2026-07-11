@@ -1,24 +1,11 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import { open_settings_pane } from './helpers'
 
 const ISO_URL = `/structure/isosurface?file=Si-CHGCAR.gz`
 
 async function wait_for_isosurface(page: Page) {
   await page.goto(ISO_URL, { waitUntil: `networkidle` })
   await expect(page.locator(`text=Grid:`)).toBeVisible({ timeout: 15_000 })
-}
-
-async function open_settings_pane(page: Page) {
-  await page.evaluate(() => {
-    const style = document.createElement(`style`)
-    style.textContent = `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
-    document.head.append(style)
-  })
-  const gear = page.locator(`button.structure-controls-toggle`)
-  await expect(gear).toBeVisible({ timeout: 15_000 })
-  await gear.click()
-  const pane = page.locator(`.controls-pane`)
-  await expect(pane).toBeVisible({ timeout: 15_000 })
-  return pane
 }
 
 // Get center of a bounding box, throwing if null
