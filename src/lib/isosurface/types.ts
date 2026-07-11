@@ -439,13 +439,15 @@ export function merge_imported_volumes(
   return { volumes, layers, first_touched_idx, n_added: incoming.length }
 }
 
-// Tile (repeat) volumetric data to fill a supercell.
+// Tile (repeat) periodic volumetric data to fill a supercell. Finite volumes
+// remain unchanged: structure supercells must not implicitly repeat molecular
+// or other bounded scalar fields.
 // Pre-downsamples the source grid when the tiled result would exceed MAX_GRID_POINTS
 // to avoid large temporary allocations. Returns the original volume unchanged for
 // [1,1,1] scaling.
 export function tile_volumetric_data(volume: VolumetricData, scaling: Vec3): VolumetricData {
   const [sx, sy, sz] = scaling
-  if (sx === 1 && sy === 1 && sz === 1) return volume
+  if (!volume.periodic || (sx === 1 && sy === 1 && sz === 1)) return volume
 
   const total_cells = sx * sy * sz
   let src_grid = volume.grid

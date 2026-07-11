@@ -29,15 +29,10 @@
   import {
     create_volume_sampler,
     extract_volume_range,
-    sanitize_display_range,
+    resolve_volume_display_range,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import {
-    DEFAULT_ISOSURFACE_SETTINGS,
-    downsample_grid,
-    pad_periodic_grid,
-    tile_volumetric_data,
-  } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, downsample_grid } from './types'
 
   let {
     volumes = [],
@@ -112,19 +107,18 @@
   const effective_halo = (vol: VolumetricData): number =>
     vol.periodic ? Math.max(0, settings.halo) : 0
 
-  // Fractional display range for this volume (VESTA-style non-integer supercell),
-  // expanded by the halo so surfaces can close beyond the requested bounds.
-  // Only periodic volumes repeat; null = follow the integer supercell tiling.
+  // Finite extraction range for this volume. Periodic volumes always use one
+  // so integer tiling and fractional VESTA-style bounds share exact endpoint
+  // semantics; finite volumes only use an explicitly requested crop.
   const effective_range = (vol: VolumetricData): DisplayRange | null => {
-    if (!settings.display_range || !vol.periodic) return null
-    const halo = effective_halo(vol)
-    return sanitize_display_range(settings.display_range, true).map(([lo, hi]) => [
-      lo - halo,
-      hi + halo,
-    ]) as DisplayRange
+    return resolve_volume_display_range(vol, {
+      display_range: settings.display_range,
+      tiling,
+      halo: effective_halo(vol),
+    })
   }
 
-  // === Geometry-volume preparation (tile/range-extract → downsample → halo pad) ===
+  // === Geometry-volume preparation (range extraction or finite-grid downsampling) ===
   type PreparedGrid = {
     tiling_key: string
     halo: number
@@ -167,35 +161,16 @@
 
     const range = effective_range(vol)
     if (range) {
-      // Fractional display range: resample the periodic volume over the range so
-      // marching cubes clips exactly at the requested fractional bounds
+      // Resample periodic integer supercells and explicit fractional ranges to
+      // an endpoint-inclusive finite grid so marching cubes clips at exact bounds.
       ;({ grid: mc_grid, lattice: mc_lattice, origin } = extract_volume_range(vol, range))
     } else {
-      const is_unit_tiling = tiling[0] === 1 && tiling[1] === 1 && tiling[2] === 1
-      const tiled = is_unit_tiling ? vol : tile_volumetric_data(vol, tiling)
-      const ds = downsample_grid(tiled.grid, tiled.grid_dims)
+      // Only finite volumes without an explicit range reach this branch. They
+      // stay in their original physical extent regardless of atom supercell.
+      const ds = downsample_grid(vol.grid, vol.grid_dims)
 
       mc_grid = ds.grid
-      mc_lattice = tiled.lattice
-
-      if (halo > 0) {
-        const padded = pad_periodic_grid(ds.grid, ds.dims, halo)
-        mc_grid = padded.grid
-        // marching_cubes maps [0,1] fractional -> Cartesian via lattice. The padded
-        // grid covers a wider fractional range, so scale the lattice to match and
-        // move the corner origin by the (negative) fractional padding offset.
-        const [la, lb, lc] = tiled.lattice
-        const scales = padded.dims.map((dim, axis) => dim / ds.dims[axis])
-        mc_lattice = [la, lb, lc].map((row, axis) =>
-          row.map((comp) => comp * scales[axis]),
-        ) as Matrix3x3
-        const [ox, oy, oz] = padded.offset
-        origin = [
-          vol.origin[0] + ox * la[0] + oy * lb[0] + oz * lc[0],
-          vol.origin[1] + ox * la[1] + oy * lb[1] + oz * lc[1],
-          vol.origin[2] + ox * la[2] + oy * lb[2] + oz * lc[2],
-        ]
-      }
+      mc_lattice = vol.lattice
     }
 
     const shift: Vec3 = [

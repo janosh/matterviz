@@ -236,8 +236,42 @@ export type DisplayRange = [Vec2, Vec2, Vec2]
 export function sanitize_display_range(range: DisplayRange, periodic: boolean): DisplayRange {
   return range.map(([lo, hi]) => {
     if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi - lo <= 1e-6) return [0, 1]
-    return periodic ? [lo, hi] : [Math.max(lo, 0), Math.min(hi, 1)]
+    if (periodic) return [lo, hi]
+    const clamped: Vec2 = [Math.max(lo, 0), Math.min(hi, 1)]
+    return clamped[1] - clamped[0] > 1e-6 ? clamped : [0, 1]
   }) as DisplayRange
+}
+
+export interface VolumeDisplayRangeOptions {
+  display_range?: DisplayRange
+  tiling?: Vec3
+  halo?: number
+}
+
+// Resolve the finite window used for marching cubes. Periodic volumes always
+// need an endpoint-inclusive window, including for an integer structure
+// supercell: a periodic N-point grid spans [0, 1), while finite marching cubes
+// interprets N points as spanning [0, 1]. Resampling [0, S] to N*S + 1 points
+// preserves the original voxel spacing and closes the final periodic interval.
+// Finite volumes only get a window when one is explicitly requested and are
+// never repeated to follow the structure supercell.
+export function resolve_volume_display_range(
+  volume: VolumetricData,
+  { display_range, tiling = [1, 1, 1], halo = 0 }: VolumeDisplayRangeOptions = {},
+): DisplayRange | null {
+  if (!display_range && !volume.periodic) return null
+
+  const range = display_range
+    ? sanitize_display_range(display_range, volume.periodic)
+    : ([
+        [0, tiling[0]],
+        [0, tiling[1]],
+        [0, tiling[2]],
+      ] as DisplayRange)
+
+  if (!volume.periodic) return range
+  const padding = Math.max(0, halo)
+  return range.map(([lo, hi]) => [lo - padding, hi + padding]) as DisplayRange
 }
 
 // Resample a volume over a fractional display range (VESTA-style non-integer
@@ -259,9 +293,12 @@ export function extract_volume_range(
   // Sample counts follow the source voxel density (inclusive endpoints), capped
   // to the point budget. The reduction loop guards against cbrt undershoot when
   // the min-2 floor prevents an axis from shrinking.
-  let counts = widths.map((width, axis) =>
-    Math.max(2, Math.round(width * volume.grid_dims[axis]) + 1),
-  ) as Vec3
+  let counts = widths.map((width, axis) => {
+    const source_intervals = volume.periodic
+      ? volume.grid_dims[axis]
+      : Math.max(volume.grid_dims[axis] - 1, 1)
+    return Math.max(2, Math.round(width * source_intervals) + 1)
+  }) as Vec3
   const total = counts[0] * counts[1] * counts[2]
   if (total > max_points) {
     const shrink = Math.cbrt(max_points / total)

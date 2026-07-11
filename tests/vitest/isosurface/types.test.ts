@@ -681,11 +681,11 @@ describe(`tile_volumetric_data`, () => {
     expect(tile_volumetric_data(vol, [1, 1, 1])).toBe(vol)
   })
 
-  test(`non-periodic volume is tiled, not skipped`, () => {
+  test(`non-periodic volume is not implicitly repeated`, () => {
     const vol = make_volume(4, 4, 4, 1, false)
     const tiled = tile_volumetric_data(vol, [2, 2, 2])
-    expect(tiled).not.toBe(vol)
-    expect(tiled.grid_dims).toEqual([8, 8, 8])
+    expect(tiled).toBe(vol)
+    expect(tiled.grid_dims).toEqual([4, 4, 4])
   })
 
   test.each([

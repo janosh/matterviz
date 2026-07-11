@@ -4,10 +4,12 @@ import {
   compare_volume_grids,
   create_volume_sampler,
   extract_volume_range,
+  resolve_volume_display_range,
   sample_volume_at_positions,
   sanitize_display_range,
 } from '$lib/isosurface/sampling'
 import type { VolumetricData } from '$lib/isosurface/types'
+import { marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { make_grid, make_volume } from '../setup'
@@ -266,6 +268,71 @@ describe(`sanitize_display_range`, () => {
       [0, 1],
     ])
   })
+
+  test(`replaces finite ranges entirely outside the volume`, () => {
+    const sanitized = sanitize_display_range(
+      [
+        [2, 3],
+        [-3, -2],
+        [0.2, 0.8],
+      ],
+      false,
+    )
+    expect(sanitized).toEqual([
+      [0, 1],
+      [0, 1],
+      [0.2, 0.8],
+    ])
+  })
+})
+
+describe(`resolve_volume_display_range`, () => {
+  test(`periodic integer tiling becomes an endpoint-inclusive extraction range`, () => {
+    const volume = linear_volume(10, cubic, true)
+    expect(resolve_volume_display_range(volume, { tiling: [2, 3, 1] })).toEqual([
+      [0, 2],
+      [0, 3],
+      [0, 1],
+    ])
+  })
+
+  test(`explicit periodic range overrides atom tiling and includes halo`, () => {
+    const volume = linear_volume(10, cubic, true)
+    expect(
+      resolve_volume_display_range(volume, {
+        display_range: [
+          [-0.15, 2.15],
+          [0, 1],
+          [0.25, 0.75],
+        ],
+        tiling: [4, 4, 4],
+        halo: 0.1,
+      }),
+    ).toEqual([
+      [-0.25, 2.25],
+      [-0.1, 1.1],
+      [0.15, 0.85],
+    ])
+  })
+
+  test(`finite volume ignores atom tiling but supports explicit cropping`, () => {
+    const volume = linear_volume(11, cubic, false)
+    expect(resolve_volume_display_range(volume, { tiling: [3, 2, 1] })).toBeNull()
+    expect(
+      resolve_volume_display_range(volume, {
+        display_range: [
+          [-1, 0.8],
+          [0.2, 2],
+          [0, 1],
+        ],
+        tiling: [3, 2, 1],
+      }),
+    ).toEqual([
+      [0, 0.8],
+      [0.2, 1],
+      [0, 1],
+    ])
+  })
 })
 
 describe(`extract_volume_range`, () => {
@@ -286,6 +353,33 @@ describe(`extract_volume_range`, () => {
     expect(extracted.lattice[0][0]).toBeCloseTo(20)
     expect(extracted.origin).toEqual([0, 0, 0])
     expect(extracted.periodic).toBe(false)
+  })
+
+  test(`self-sampling an integer-supercell surface recovers its isovalue`, () => {
+    const n_pts = 8
+    const grid = make_grid(n_pts, n_pts, n_pts, (ix, iy, iz) => {
+      const phase = (2 * Math.PI) / n_pts
+      return Math.sin(ix * phase) + 0.35 * Math.cos(iy * phase) + 0.2 * Math.sin(iz * phase)
+    })
+    const volume = make_volume(grid, { lattice: cubic, periodic: true })
+    const extracted = extract_volume_range(volume, [
+      [0, 2],
+      [0, 1],
+      [0, 1],
+    ])
+    const isovalue = 0.15
+    const surface = marching_cubes(extracted.grid, isovalue, extracted.lattice, {
+      periodic: false,
+      centered: false,
+      interpolate: true,
+      normals: false,
+    })
+    const sample = create_volume_sampler(volume)
+
+    expect(surface.vertices.length).toBeGreaterThan(0)
+    for (const vertex of surface.vertices) {
+      expect(sample(vertex)).toBeCloseTo(isovalue, 5)
+    }
   })
 
   test(`fractional bounds clip exactly at the requested coordinates`, () => {
@@ -348,6 +442,7 @@ describe(`extract_volume_range`, () => {
     expect(extracted.lattice[1][1]).toBeCloseTo(5)
     expect(extracted.grid[0][0][0]).toBeCloseTo(0, 10)
     const [nx, ny] = extracted.grid_dims
+    expect(extracted.grid_dims).toEqual([11, 6, 11])
     // Endpoint values match the source field at the crop bounds
     expect(extracted.grid[nx - 1][0][0]).toBeCloseTo(1, 10)
     expect(extracted.grid[0][ny - 1][0]).toBeCloseTo(1, 10) // 2 * 0.5
