@@ -248,7 +248,7 @@ describe(`Treemap`, () => {
     expect(header?.getAttribute(`font-size`)).toBe(`14`)
     const leaf = labels.find((lbl) => lbl.textContent?.trim() === `B`)
     expect(leaf?.classList.contains(`header`)).toBe(false)
-    expect(leaf?.getAttribute(`font-size`)).toBeNull()
+    expect(leaf?.getAttribute(`font-size`)).toBe(`11`)
   })
 
   test.each([
@@ -369,9 +369,12 @@ describe(`Treemap`, () => {
       data: tree,
       color_values: (arc: { is_leaf: boolean; value: number }) =>
         arc.is_leaf ? arc.value : null,
-      colorbar: { title: `count` },
+      colorbar: { title: `count`, orientation: `vertical` },
     })
-    expect(plot.querySelector(`.colorbar`)).not.toBeNull()
+    const colorbar = plot.querySelector<HTMLElement>(`.colorbar`)
+    expect(colorbar?.style.getPropertyValue(`--cbar-height`)).toBe(
+      `var(--treemap-colorbar-height, 150px)`,
+    )
     // branches keep categorical colors, leaves get metric colors
     expect(cell_rect(plot, `A`).getAttribute(`fill`)).toBe(`#e15759`)
     expect(cell_rect(plot, `B`).getAttribute(`fill`)).not.toBe(DEFAULT_SERIES_COLORS[0])

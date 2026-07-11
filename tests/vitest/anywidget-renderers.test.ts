@@ -236,6 +236,8 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
         `zoom_root_id`,
       ]),
     )
+    for (const key of [`color_scale`, `color_range`, `colorbar`])
+      expect(WIDGET_MODEL_KEYS.treemap).not.toContain(key)
   })
 })
 

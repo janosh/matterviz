@@ -83,30 +83,10 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
 
   test(`ASE trajectory file regression test - simulates VS Code extension flow`, () => {
     const ase_data = new Uint8Array([
-      0x2d,
-      0x20,
-      0x6f,
-      0x66,
-      0x20,
-      0x55,
-      0x6c,
-      0x6d, // "- of Ulm"
-      0x41,
-      0x53,
-      0x45,
-      0x2d,
-      0x54,
-      0x72,
-      0x61,
-      0x6a,
-      0x65,
-      0x63,
-      0x74,
-      0x6f,
-      0x72,
-      0x79,
+      ...new TextEncoder().encode(`- of Ulm`), // "- of Ulm"
+      ...new TextEncoder().encode(`ASE-Trajectory`), // "ASE-Trajectory"
       0x00,
-      0x00, // "ASE-Trajectory"
+      0x00,
       ...Array(176).fill(0), // Mock trajectory data
     ])
     const result = base64_to_array_buffer(uint8_as_base64(ase_data))
@@ -240,10 +220,8 @@ describe(`vaspout.h5 electronic routing`, () => {
       const raw_bytes = new Uint8Array([
         0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d, 0x00, 0xff, 0xfe, 0x80,
       ])
-      const compressed_base64 = uint8_as_base64(new Uint8Array(compress(raw_bytes)))
-
       const result = await parse_file_content(
-        compressed_base64,
+        uint8_as_base64(compress(raw_bytes)),
         `relax.traj${extension}`,
         true,
       )

@@ -47,6 +47,12 @@ const module_dirs = readdirSync(lib_dir, { withFileTypes: true })
   .map((entry) => entry.name)
 
 describe(`package.json exports`, () => {
+  test(`reusable file-viewer barrel excludes the side-effectful webview bootstrap`, () => {
+    const source = readFileSync(join(lib_dir, `file-viewer/index.ts`), `utf8`)
+    expect(source).not.toMatch(/from\s+['"]\.\/main['"]/)
+    expect(pkg.exports[`./file-viewer/webview`]).toBeDefined()
+  })
+
   test(`every export target points into ./dist`, () => {
     const stray = export_targets.filter(({ target }) => !target.startsWith(`./dist/`))
     expect(stray, `targets must be published from ./dist`).toEqual([])

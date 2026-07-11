@@ -256,11 +256,14 @@ describe(`BinnedScatterPlot`, () => {
       },
     })
     await settle()
+    const colorbar = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
+    const initial_position = { left: colorbar.style.left, top: colorbar.style.top }
     layout_spy.mockClear()
 
     series[0].x = [0.2, 0.8]
     await tick()
     expect(layout_spy).not.toHaveBeenCalled()
+    expect({ left: colorbar.style.left, top: colorbar.style.top }).toEqual(initial_position)
   })
 
   test(`renders annotation in point mode (no colorbar) and skips wrapper when absent`, async () => {

@@ -87,3 +87,42 @@ test.each([
     dispose()
   },
 )
+
+test(`create_placed_tween repositions frozen decorations when they resize`, () => {
+  let resize_callback: ResizeObserverCallback | undefined
+  vi.stubGlobal(
+    `ResizeObserver`,
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        resize_callback = callback
+      }
+      observe(): void {}
+      disconnect(): void {}
+    },
+  )
+  const placement = vi.fn(() => ({ x: 10, y: 20 }))
+  const dispose = $effect.root(() => {
+    create_placed_tween({
+      placement,
+      dims: () => ({ width: 100, height: 100 }),
+      responsive: () => false,
+      element: () => document.body,
+      tween: () => ({ duration: 0 }),
+    })
+  })
+
+  flushSync()
+  expect(placement).toHaveBeenCalledTimes(1)
+  const resize = (width: number): void =>
+    flushSync(() =>
+      resize_callback?.(
+        [{ contentRect: { width, height: 40 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      ),
+    )
+  resize(100)
+  expect(placement).toHaveBeenCalledTimes(1)
+  resize(120)
+  expect(placement).toHaveBeenCalledTimes(2)
+  dispose()
+})

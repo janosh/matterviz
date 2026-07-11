@@ -142,32 +142,50 @@ function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
   return padded.every(Number.isFinite) && padded[2] > 0 && padded[3] > 0 ? padded : null
 }
 
-function resolve_viewbox_padding(svg: SVGElement, options: SvgExportOptions): number {
+type ComputedSvgStyle = [element: Element, computed: CSSStyleDeclaration]
+
+const export_computed_styles = (
+  svg: SVGElement,
+  inline_styles: readonly string[],
+  options: SvgExportOptions,
+): ComputedSvgStyle[] =>
+  inline_styles.length || options.viewbox_padding === `stroke`
+    ? [svg, ...svg.querySelectorAll(`*`)].map((element) => [
+        element,
+        getComputedStyle(element),
+      ])
+    : []
+
+function resolve_viewbox_padding(
+  options: SvgExportOptions,
+  computed_styles: readonly ComputedSvgStyle[],
+): number {
   if (options.viewbox_padding !== `stroke`) {
     return Number.isFinite(options.viewbox_padding)
       ? Math.max(0, options.viewbox_padding ?? 0)
       : 0
   }
   let max_stroke_width = 0
-  for (const element of [svg, ...svg.querySelectorAll(`*`)]) {
-    const computed = getComputedStyle(element)
+  for (const [element, computed] of computed_styles) {
     const inline_style = (element as SVGElement).style
     const stroke =
       [
-        inline_style.stroke,
         computed.getPropertyValue(`stroke`),
+        inline_style.stroke,
         element.getAttribute(`stroke`),
       ].find(Boolean) ?? ``
     if (!stroke || stroke === `none` || stroke === `transparent`) continue
-    // oxlint-disable-next-line unicorn/prefer-number-coercion -- CSS lengths include units
-    const stroke_width = Number.parseFloat(
-      [
-        inline_style.strokeWidth,
-        computed.getPropertyValue(`stroke-width`),
-        element.getAttribute(`stroke-width`),
-      ].find(Boolean) ?? ``,
-    )
-    if (Number.isFinite(stroke_width)) {
+    // Prefer resolved computed widths (including CSS variables); CSS lengths
+    // include units, so Number() cannot parse them.
+    const stroke_width = [
+      computed.getPropertyValue(`stroke-width`),
+      inline_style.strokeWidth,
+      element.getAttribute(`stroke-width`) ?? ``,
+    ]
+      // oxlint-disable-next-line unicorn/prefer-number-coercion
+      .map((value) => Number.parseFloat(value))
+      .find(Number.isFinite)
+    if (stroke_width !== undefined) {
       max_stroke_width = Math.max(max_stroke_width, stroke_width)
     }
   }
@@ -177,14 +195,12 @@ function resolve_viewbox_padding(svg: SVGElement, options: SvgExportOptions): nu
 // Copy the given computed-style props from each live SVG element to its clone counterpart;
 // identical structure lets querySelectorAll(`*`) walk both in lockstep. Writes clone-only.
 function inline_computed_styles(
-  live: SVGElement,
   clone: SVGElement,
   properties: readonly string[],
+  computed_styles: readonly ComputedSvgStyle[],
 ) {
-  const live_els = [live, ...live.querySelectorAll(`*`)]
   const clone_els = [clone, ...clone.querySelectorAll(`*`)]
-  for (const [idx, live_el] of live_els.entries()) {
-    const computed = getComputedStyle(live_el)
+  for (const [idx, [, computed]] of computed_styles.entries()) {
     for (const prop of properties) {
       const val = computed.getPropertyValue(prop)
       if (val) clone_els[idx].setAttribute(prop, val)
@@ -198,10 +214,11 @@ function serialize_svg_for_export(
   svg_element: SVGElement,
   inline_styles: readonly string[] = [],
   viewbox_padding = 0,
+  computed_styles: readonly ComputedSvgStyle[] = [],
   strip_dimensions = false,
 ): string {
   const clone = svg_element.cloneNode(true) as SVGElement
-  if (inline_styles.length) inline_computed_styles(svg_element, clone, inline_styles)
+  if (inline_styles.length) inline_computed_styles(clone, inline_styles, computed_styles)
   const padded_viewbox = viewbox_padding > 0 ? svg_viewbox(clone, viewbox_padding) : null
   if (padded_viewbox) clone.setAttribute(`viewBox`, padded_viewbox.join(` `))
   if (strip_dimensions) {
@@ -224,8 +241,14 @@ export function svg_to_svg_string(
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
 ): string {
-  const viewbox_padding = resolve_viewbox_padding(svg_element, options)
-  const svg_string = serialize_svg_for_export(svg_element, inline_styles, viewbox_padding)
+  const computed_styles = export_computed_styles(svg_element, inline_styles, options)
+  const viewbox_padding = resolve_viewbox_padding(options, computed_styles)
+  const svg_string = serialize_svg_for_export(
+    svg_element,
+    inline_styles,
+    viewbox_padding,
+    computed_styles,
+  )
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
 }
 
@@ -262,7 +285,8 @@ export function svg_to_png_blob(
   if (!svg_element.getAttribute(`viewBox`)?.trim())
     return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
 
-  const padding = resolve_viewbox_padding(svg_element, options)
+  const computed_styles = export_computed_styles(svg_element, inline_styles, options)
+  const padding = resolve_viewbox_padding(options, computed_styles)
   const padded_viewbox = svg_viewbox(svg_element, padding)
   if (!padded_viewbox)
     return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
@@ -283,7 +307,13 @@ export function svg_to_png_blob(
   canvas.width = pixel_width
   canvas.height = pixel_height
 
-  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, padding > 0)
+  const serialized = serialize_svg_for_export(
+    svg_element,
+    inline_styles,
+    padding,
+    computed_styles,
+    padding > 0,
+  )
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
 

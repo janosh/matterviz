@@ -86,7 +86,7 @@ export const parse_large_file_marker = (
 export type LargeFileRequester = (
   file_path: string,
   filename: string,
-  is_compressed: boolean,
+  is_base64: boolean,
 ) => Promise<string | ParsedTrajectoryResponse>
 
 let large_file_requester: LargeFileRequester | null = null
@@ -99,7 +99,7 @@ export const set_large_file_requester = (requester: LargeFileRequester | null): 
 export const parse_file_content = async (
   content: string,
   filename: string,
-  is_compressed: boolean = false,
+  is_base64: boolean = false,
   recursion_depth: number = 0,
 ): Promise<ParseResult> => {
   if (recursion_depth > 2) {
@@ -115,7 +115,7 @@ export const parse_file_content = async (
     console.info(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
 
     if (!large_file_requester) throw new Error(`No large-file requester registered`)
-    const parsed_trajectory = await large_file_requester(file_path, filename, is_compressed)
+    const parsed_trajectory = await large_file_requester(file_path, filename, is_base64)
 
     // Check if we received a pre-parsed trajectory with VS Code streaming support
     if (
@@ -135,23 +135,20 @@ export const parse_file_content = async (
     if (typeof parsed_trajectory !== `string`) {
       throw new TypeError(`Malformed large-file response for ${filename}`)
     }
-    return parse_file_content(parsed_trajectory, filename, is_compressed, recursion_depth + 1)
+    return parse_file_content(parsed_trajectory, filename, is_base64, recursion_depth + 1)
   }
 
-  // Handle compressed/binary files by converting from base64 first
-  if (is_compressed) {
+  // Handle base64-encoded compressed/binary files by converting them first
+  if (is_base64) {
     let buffer = base64_to_array_buffer(content)
     const compression_format = detect_compression_format(filename)
-    const uncompressed_filename = compression_format
-      ? filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-      : filename
+    if (compression_format) filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
 
     // Compressed binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
     // or compressed ASE .traj files): decompress to binary first — generic text
     // decompression would corrupt their bytes — so routing sees the inner name.
-    if (compression_format && /\.(?:h5|hdf5|traj)$/i.test(uncompressed_filename)) {
+    if (compression_format && /\.(?:h5|hdf5|traj)$/i.test(filename)) {
       buffer = await decompress_data_binary(buffer, compression_format)
-      filename = uncompressed_filename
     }
 
     // vaspwave.h5 holds charge density (+ wavefunctions), not a trajectory —
@@ -177,10 +174,9 @@ export const parse_file_content = async (
     }
 
     // Unified handling for all supported compression formats
-    if (compression_format && compression_format !== `zip`) {
-      // Skip ZIP as it's not supported in browser
+    if (compression_format) {
+      // Unsupported formats fail here with a clear extraction error
       content = await decompress_data(buffer, compression_format)
-      filename = uncompressed_filename
     }
   }
 

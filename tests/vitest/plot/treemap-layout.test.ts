@@ -6,7 +6,7 @@ import {
   sunburst_from_paths,
   tile_rects,
 } from '$lib/plot'
-import { place_treemap_label } from '$lib/plot/treemap/labels'
+import { normalize_treemap_label_lines, place_treemap_label } from '$lib/plot/treemap/labels'
 import { describe, expect, test } from 'vitest'
 
 const size = { width: 400, height: 300 }
@@ -236,6 +236,12 @@ describe(`lerp_rects`, () => {
   test(`length mismatch snaps to target (layout swap mid-tween)`, () => {
     expect(lerp_rects([], to, 0.5)).toBe(to)
   })
+})
+
+test(`normalize_treemap_label_lines ignores nullish array entries`, () => {
+  expect(normalize_treemap_label_lines([`kept`, null, undefined, { text: `` }])).toEqual([
+    { text: `kept` },
+  ])
 })
 
 describe(`place_treemap_label`, () => {

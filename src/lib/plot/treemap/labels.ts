@@ -16,16 +16,16 @@ export interface TreemapLabelLine {
   fill?: string
 }
 
+type TreemapLabelContent = string | TreemapLabelLine | null | undefined
+
 export type TreemapLabelFormatter<
   Metadata extends Record<string, unknown> = Record<string, unknown>,
-> = (
-  arc: TreemapArc<Metadata>,
-) => string | TreemapLabelLine | readonly (string | TreemapLabelLine)[] | null | undefined
+> = (arc: TreemapArc<Metadata>) => TreemapLabelContent | readonly TreemapLabelContent[]
 
 export interface TreemapLabelPlacement {
   x: number
   lines: (TreemapLabelLine & { y: number })[]
-  font_size?: number
+  font_size: number
   header: boolean
   transform?: string
 }
@@ -57,7 +57,7 @@ export function normalize_treemap_label_lines(
   const lines = Array.isArray(content) ? content : [content]
   return lines.flatMap((line) => {
     const normalized = typeof line === `string` ? { text: line } : line
-    return normalized.text ? [{ ...normalized }] : []
+    return normalized?.text ? [{ ...normalized }] : []
   })
 }
 

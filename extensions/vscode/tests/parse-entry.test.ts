@@ -1,11 +1,11 @@
 // The public parse-only entry stays worker-safe.
+import { parse_file_content } from '$lib/file-viewer/parse'
 import { describe, expect, test } from 'vitest'
-import * as parse_entry from '$lib/file-viewer/parse'
 
 describe(`file-viewer parse entry`, () => {
-  test(`parse.ts parses a structure without going through main.ts`, async () => {
+  test(`parses a POSCAR structure`, async () => {
     const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
-    const result = await parse_entry.parse_file_content(poscar, `POSCAR`, false)
+    const result = await parse_file_content(poscar, `POSCAR`)
     expect(result.type).toBe(`structure`)
     const structure = result.data as { sites: unknown[] }
     expect(structure.sites).toHaveLength(2)
@@ -21,6 +21,7 @@ describe(`file-viewer parse entry`, () => {
     const { dirname, resolve } = await import(`node:path`)
     const repo_root = resolve(import.meta.dirname, `../../..`)
     const entry = resolve(repo_root, `src/lib/file-viewer/parse.ts`)
+    const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
 
     const resolve_specifier = (specifier: string, from_file: string): string | null => {
       let base: string
@@ -29,10 +30,13 @@ describe(`file-viewer parse entry`, () => {
       } else if (specifier.startsWith(`.`)) {
         base = resolve(dirname(from_file), specifier)
       } else return null // bare package import — not a repo file
-      for (const candidate of [base, `${base}.ts`, resolve(base, `index.ts`)]) {
-        if (/\.(?:ts|svelte)$/.test(candidate) && existsSync(candidate)) return candidate
-      }
-      return null
+      const candidates = source_extensions.some((extension) => base.endsWith(extension))
+        ? [base]
+        : source_extensions.flatMap((extension) => [
+            `${base}${extension}`,
+            resolve(base, `index${extension}`),
+          ])
+      return candidates.find(existsSync) ?? null
     }
 
     const import_re = /(?:from|import)\s*\(?\s*['"`](?<specifier>[^'"`]+)['"`]/g
@@ -40,7 +44,10 @@ describe(`file-viewer parse entry`, () => {
     // module — scanning them would flag every `import type ... from '$lib/x'`
     // whose barrel also exports components.
     const strip_type_only = (source: string): string =>
-      source.replaceAll(/(?:import|export)\s+type\s[^;]*?from\s*['"`][^'"`]+['"`]/g, ``)
+      source.replaceAll(
+        /(?:import|export)\s+(?:\{\s*(?:type\s+[^,}]+,?\s*)+\}|type\s+[^;]*?)\s+from\s*['"`][^'"`]+['"`]\s*;?/g,
+        ``,
+      )
     const visited = new Set<string>()
     const queue = [entry]
     const violations: string[] = []
@@ -51,13 +58,12 @@ describe(`file-viewer parse entry`, () => {
       const source = strip_type_only(readFileSync(file, `utf-8`))
       for (const match of source.matchAll(import_re)) {
         const specifier = match.groups?.specifier ?? ``
-        if (!specifier) continue
-        if (specifier === `svelte` || specifier.startsWith(`svelte/`)) {
+        if (
+          specifier === `svelte` ||
+          specifier.startsWith(`svelte/`) ||
+          specifier.endsWith(`.svelte`)
+        ) {
           violations.push(`${file} imports "${specifier}"`)
-          continue
-        }
-        if (specifier.endsWith(`.svelte`)) {
-          violations.push(`${file} imports component "${specifier}"`)
           continue
         }
         const resolved = resolve_specifier(specifier, file)

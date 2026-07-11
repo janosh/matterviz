@@ -1928,7 +1928,7 @@
     {/if}
 
     <!-- Color Bar -->
-    {#if color_bar && all_color_values.length > 0}
+    {#if width > 0 && height > 0 && color_bar && all_color_values.length > 0}
       {@const color_domain = [
         (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
           auto_color_range[0],

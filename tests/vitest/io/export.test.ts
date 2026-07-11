@@ -52,6 +52,19 @@ function make_svg(viewBox?: string): SVGElement {
   return svg
 }
 
+function add_stroked_rect(
+  svg: SVGElement,
+  stroke: string,
+  stroke_width: string | number,
+  style_width = ``,
+): void {
+  const rect = document.createElementNS(`http://www.w3.org/2000/svg`, `rect`)
+  rect.setAttribute(`stroke`, stroke)
+  rect.setAttribute(`stroke-width`, `${stroke_width}`)
+  if (style_width) rect.style.strokeWidth = style_width
+  svg.append(rect)
+}
+
 // === Tests ===
 
 describe(`dpi_to_scale`, () => {
@@ -170,6 +183,16 @@ describe(`svg_to_svg_string`, () => {
     expect(svg.attributes).toHaveLength(original_attrs)
   })
 
+  test(`preserves explicit width and height attributes`, () => {
+    const svg = make_svg(`0 0 320 240`)
+    svg.setAttribute(`width`, `320`)
+    svg.setAttribute(`height`, `240`)
+
+    const result = svg_to_svg_string(svg)
+    expect(result).toContain(`width="320"`)
+    expect(result).toContain(`height="240"`)
+  })
+
   test.each([
     { name: `pads the export`, padding: 2, expected: `-2 -2 104 54` },
     { name: `ignores overflowing padding`, padding: Number.MAX_VALUE, expected: `0 0 100 50` },
@@ -181,21 +204,52 @@ describe(`svg_to_svg_string`, () => {
   })
 
   test.each([
-    { attribute_width: `4`, style_width: ``, expected: `-2 -2 104 54` },
-    { attribute_width: `2`, style_width: `8px`, expected: `-4 -4 108 58` },
-  ])(
-    `derives viewBox padding from rendered stroke width $style_width`,
-    ({ attribute_width, style_width, expected }) => {
-      const svg = make_svg(`0 0 100 50`)
-      const rect = document.createElementNS(`http://www.w3.org/2000/svg`, `rect`)
-      rect.setAttribute(`stroke`, `black`)
-      rect.setAttribute(`stroke-width`, attribute_width)
-      if (style_width) rect.style.strokeWidth = style_width
-      svg.append(rect)
-      const result = svg_to_svg_string(svg, [], { viewbox_padding: `stroke` })
-      expect(result).toContain(`viewBox="${expected}"`)
-    },
-  )
+    [`attribute width`, [[`black`, 4, ``]], `-2 -2 104 54`],
+    [`style width`, [[`black`, 2, `8px`]], `-4 -4 108 58`],
+    [`unresolved CSS variable`, [[`black`, 4, `var(--edge-width)`]], `-2 -2 104 54`],
+    [
+      `largest width`,
+      [
+        [`black`, 2, ``],
+        [`black`, 10, ``],
+      ],
+      `-5 -5 110 60`,
+    ],
+    [
+      `ignores none`,
+      [
+        [`black`, 4, ``],
+        [`none`, 100, ``],
+      ],
+      `-2 -2 104 54`,
+    ],
+    [
+      `ignores transparent`,
+      [
+        [`black`, 4, ``],
+        [`transparent`, 100, ``],
+      ],
+      `-2 -2 104 54`,
+    ],
+  ] as const)(`stroke padding: %s`, (_name, rects, expected) => {
+    const svg = make_svg(`0 0 100 50`)
+    for (const [stroke, stroke_width, style_width] of rects) {
+      add_stroked_rect(svg, stroke, stroke_width, style_width)
+    }
+    const result = svg_to_svg_string(svg, [], { viewbox_padding: `stroke` })
+    expect(result).toContain(`viewBox="${expected}"`)
+  })
+
+  test(`reuses computed styles for stroke padding and inlining`, () => {
+    const svg = make_svg(`0 0 100 50`)
+    svg.append(
+      document.createElementNS(`http://www.w3.org/2000/svg`, `rect`),
+      document.createElementNS(`http://www.w3.org/2000/svg`, `rect`),
+    )
+    const get_style = vi.spyOn(globalThis, `getComputedStyle`)
+    svg_to_svg_string(svg, [`fill`], { viewbox_padding: `stroke` })
+    expect(get_style).toHaveBeenCalledTimes(3)
+  })
 
   test(`preserves xmlns if already set`, () => {
     const svg = make_svg(`0 0 100 100`)

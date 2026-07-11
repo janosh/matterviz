@@ -52,7 +52,7 @@ export function measure_text_width(text: string, font: string = `12px sans-serif
 // offset box. Colorbar tick labels are position:absolute outside the bar, so
 // offsetWidth/offsetHeight underestimate the space they actually occupy — which lets
 // auto-placement put the colorbar where its labels overlap the axes.
-export function measure_full_footprint(el: HTMLElement): { width: number; height: number } {
+function measure_full_footprint(el: HTMLElement): { width: number; height: number } {
   const root = el.getBoundingClientRect()
   let right = root.right
   let bottom = root.bottom

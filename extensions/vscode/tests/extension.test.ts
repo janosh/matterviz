@@ -4,10 +4,9 @@ import {
   TRAJ_KEYWORDS,
   VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
-import type { FileData } from '$lib/file-viewer/parse'
 import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import type { ThemeName } from '$lib/theme/index'
-import { is_trajectory_file } from '$lib/trajectory/parse'
+import { is_trajectory_file, LARGE_FILE_THRESHOLD } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import type * as node_path from 'node:path'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -294,43 +293,34 @@ describe(`MatterViz Extension`, () => {
     }
   })
 
-  test(`file reading: large file should return sentinel`, async () => {
-    const large_file_size = 2 * 1024 * 1024 * 1024 // 2GB, above MAX_VSCODE_FILE_SIZE (1GB)
-    const filename = `large-structure.cif`
-    const file_path = `/test/${filename}`
+  test.each([
+    [`large-trajectory.traj`, true],
+    [`large.extxyz`, false],
+  ])(
+    `file reading: large trajectory %s returns an indexed marker`,
+    async (filename, is_base64) => {
+      const large_file_size = LARGE_FILE_THRESHOLD + 1
+      const file_path = `/test/${filename}`
+      mock_vscode.workspace.fs.stat.mockResolvedValue({ size: large_file_size, type: 1 })
 
-    // Mock fs.stat to return a size above the threshold
-    mock_vscode.workspace.fs.stat.mockResolvedValue({
-      size: large_file_size,
-      type: 1,
-    })
+      const result = await read_file(file_path)
 
-    const result = await read_file(file_path)
+      expect(result).toEqual({
+        filename,
+        content: `LARGE_FILE:${file_path}:${large_file_size}`,
+        is_base64,
+      })
+      expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+    },
+  )
 
-    expect(result.filename).toBe(filename)
-    expect(result.content).toBe(`LARGE_FILE:${file_path}:${large_file_size}`)
-    expect(result.is_base64).toBe(false)
-    // readFile should not be called for large files
-    expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
-  })
+  test.each([
+    [`large-structure.cif`, LARGE_FILE_THRESHOLD + 1, `supports trajectories only`],
+    [`large-trajectory.traj`, 1024 ** 3 + 1, `Maximum supported size`],
+  ])(`file reading: rejects unsupported large file %s`, async (filename, file_size, error) => {
+    mock_vscode.workspace.fs.stat.mockResolvedValue({ size: file_size, type: 1 })
 
-  test(`file reading: large binary file should return sentinel with base64 flag`, async () => {
-    const large_file_size = 2 * 1024 * 1024 * 1024 // 2GB, above MAX_VSCODE_FILE_SIZE (1GB)
-    const filename = `large-trajectory.traj`
-    const file_path = `/test/${filename}`
-
-    // Mock fs.stat to return a size above the threshold
-    mock_vscode.workspace.fs.stat.mockResolvedValue({
-      size: large_file_size,
-      type: 1,
-    })
-
-    const result = await read_file(file_path)
-
-    expect(result.filename).toBe(filename)
-    expect(result.content).toBe(`LARGE_FILE:${file_path}:${large_file_size}`)
-    expect(result.is_base64).toBe(true) // Binary files should have base64 flag
-    // readFile should not be called for large files
+    await expect(read_file(`/test/${filename}`)).rejects.toThrow(error)
     expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
   })
 
@@ -371,7 +361,6 @@ describe(`MatterViz Extension`, () => {
 
     // Step 3: Verify webview data structure matches expected format
     const webview_data = {
-      type: `trajectory` as const,
       data: file_result,
     }
 
@@ -386,7 +375,7 @@ describe(`MatterViz Extension`, () => {
     const parsed_data = JSON.parse(
       /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
     )
-    expect(parsed_data.type).toBe(`trajectory`)
+    expect(parsed_data).not.toHaveProperty(`type`)
     expect(parsed_data.data.filename).toBe(ase_filename)
     expect(parsed_data.data.is_base64).toBe(true)
     expect(parsed_data.data.content).toBe(Buffer.from(`mock content`).toString(`base64`))
@@ -1028,7 +1017,6 @@ describe(`MatterViz Extension`, () => {
 
     // HTML generation performance
     const large_data = {
-      type: `structure`,
       data: { filename: `large.cif`, content: `x`.repeat(100_000), is_base64: false },
       theme: `light`,
     } as const
@@ -1039,7 +1027,6 @@ describe(`MatterViz Extension`, () => {
 
   test(`nonce uniqueness`, () => {
     const data = {
-      type: `structure`,
       data: { filename: `test.cif`, content: `content`, is_base64: false },
       theme: `light`,
     } as const
@@ -1066,7 +1053,6 @@ describe(`MatterViz Extension`, () => {
 
     dangerous_payloads.forEach((payload) => {
       const data = {
-        type: `structure`,
         data: { filename: `test.cif`, content: payload, is_base64: false },
         theme: `light`,
       } as const
@@ -1128,7 +1114,6 @@ describe(`MatterViz Extension`, () => {
       stub_theme_config(`dark`)
 
       const data = {
-        type: `structure` as const,
         data: { filename: `test.cif`, content: `content`, is_base64: false },
         theme: get_theme(),
       }
@@ -1382,7 +1367,6 @@ describe(`MatterViz Extension`, () => {
               content: `mock content`,
               is_base64: false,
             }),
-            type: `structure`,
             ...msg_args,
             file_path: `/test/file.cif`,
             theme: `light`,
@@ -1724,140 +1708,6 @@ describe(`MatterViz Extension`, () => {
           expect.stringContaining(`MatterViz auto-render failed:`),
         )
       })
-    })
-  })
-
-  describe(`Multi-frame xyz/extxyz handling`, () => {
-    test(`should correctly identify multi-frame XYZ as trajectory using content`, () => {
-      // Multi-frame XYZ content (2 frames)
-      const multi_frame_xyz_content = `3
-frame 1
-H 0.0 0.0 0.0
-O 0.0 0.0 1.0
-H 0.0 1.0 0.0
-3
-frame 2
-H 0.1 0.0 0.0
-O 0.0 0.1 1.0
-H 0.0 1.0 0.1`
-
-      // Single-frame XYZ content
-      const single_frame_xyz_content = `3
-water molecule
-H 0.0 0.0 0.0
-O 0.0 0.0 1.0
-H 0.0 1.0 0.0`
-
-      // Test 1: Verify is_trajectory_file directly detects multi-frame content
-      expect(is_trajectory_file(`multi-frame.xyz`, multi_frame_xyz_content)).toBe(true)
-      expect(is_trajectory_file(`single-frame.xyz`, single_frame_xyz_content)).toBe(false)
-
-      // Test 2: Verify filename-only detection doesn't identify .xyz as trajectory
-      expect(is_trajectory_file(`multi-frame.xyz`)).toBe(false) // filename-only should be false
-      expect(is_trajectory_file(`single-frame.xyz`)).toBe(false) // filename-only should be false
-
-      // Test 3: Test with FileData objects (simulating what infer_view_type receives)
-      const multi_frame_file: FileData = {
-        filename: `multi-frame.xyz`,
-        content: multi_frame_xyz_content,
-        is_base64: false,
-      }
-
-      const single_frame_file: FileData = {
-        filename: `single-frame.xyz`,
-        content: single_frame_xyz_content,
-        is_base64: false,
-      }
-
-      const compressed_file: FileData = {
-        filename: `trajectory.xyz.gz`,
-        content: `base64encodedcontent`,
-        is_base64: true,
-      }
-
-      // Test what infer_view_type logic would do:
-      // For non-compressed files, pass content
-      expect(is_trajectory_file(multi_frame_file.filename, multi_frame_file.content)).toBe(
-        true,
-      )
-      expect(is_trajectory_file(single_frame_file.filename, single_frame_file.content)).toBe(
-        false,
-      )
-
-      // For compressed files, don't pass content (falls back to filename-only)
-      expect(is_trajectory_file(compressed_file.filename)).toBe(true) // .xyz.gz with trajectory keyword is detected as trajectory by filename
-
-      // Test 4: Test webview creation scenario directly with content-based detection
-      const multi_frame_html = create_html(mock_webview, mock_context, {
-        type: is_trajectory_file(multi_frame_file.filename, multi_frame_file.content)
-          ? `trajectory`
-          : `structure`,
-        data: multi_frame_file,
-        theme: `light`,
-      })
-
-      const multi_frame_parsed_data = JSON.parse(
-        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(multi_frame_html)?.[1] ?? `{}`,
-      )
-
-      expect(multi_frame_parsed_data.type).toBe(`trajectory`)
-      expect(multi_frame_parsed_data.data.filename).toBe(`multi-frame.xyz`)
-      expect(multi_frame_parsed_data.data.content).toBe(multi_frame_xyz_content)
-
-      // Test 5: Test single-frame for comparison
-      const single_frame_html = create_html(mock_webview, mock_context, {
-        type: is_trajectory_file(single_frame_file.filename, single_frame_file.content)
-          ? `trajectory`
-          : `structure`,
-        data: single_frame_file,
-        theme: `light`,
-      })
-
-      const single_frame_parsed_data = JSON.parse(
-        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(single_frame_html)?.[1] ?? `{}`,
-      )
-
-      expect(single_frame_parsed_data.type).toBe(`structure`)
-
-      // Test 6: Test compressed file falls back correctly
-      const compressed_html = create_html(mock_webview, mock_context, {
-        type: is_trajectory_file(compressed_file.filename) ? `trajectory` : `structure`,
-        data: compressed_file,
-        theme: `light`,
-      })
-
-      const compressed_parsed_data = JSON.parse(
-        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(compressed_html)?.[1] ?? `{}`,
-      )
-
-      expect(compressed_parsed_data.type).toBe(`trajectory`) // Should be trajectory since filename contains trajectory keyword
-    })
-
-    test(`should handle compressed XYZ files by falling back to filename-only detection`, () => {
-      // Test compressed file (should fall back to filename-only detection)
-      const compressed_file = {
-        filename: `trajectory.xyz.gz`,
-        content: `base64encodedcontent`, // This is binary/compressed
-        is_base64: true,
-      }
-
-      // For compressed files, infer_view_type should fall back to filename-only detection
-      // Since .xyz.gz with trajectory keyword is detected as trajectory by filename, it should be 'trajectory'
-      expect(is_trajectory_file(compressed_file.filename)).toBe(true) // filename-only detection
-
-      // Test the HTML generation scenario
-      const html = create_html(mock_webview, mock_context, {
-        type: is_trajectory_file(compressed_file.filename) ? `trajectory` : `structure`,
-        data: compressed_file,
-        theme: `light`,
-      })
-
-      const parsed_data = JSON.parse(
-        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
-      )
-
-      // Should be 'trajectory' since filename contains trajectory keyword
-      expect(parsed_data.type).toBe(`trajectory`)
     })
   })
 

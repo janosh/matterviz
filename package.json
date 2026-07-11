@@ -72,6 +72,10 @@
       "types": "./dist/file-viewer/parse.d.ts",
       "default": "./dist/file-viewer/parse.js"
     },
+    "./file-viewer/webview": {
+      "types": "./dist/file-viewer/main.d.ts",
+      "default": "./dist/file-viewer/main.js"
+    },
     "./fermi-surface": {
       "types": "./dist/fermi-surface/index.d.ts",
       "default": "./dist/fermi-surface/index.js"
@@ -285,8 +289,7 @@
       },
       "extensions/vscode": {
         "entry": [
-          "src/extension.ts",
-          "src/webview/main.ts"
+          "src/extension.ts"
         ],
         "paths": {
           "$lib": [

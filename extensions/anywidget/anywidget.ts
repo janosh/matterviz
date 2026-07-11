@@ -607,7 +607,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   treemap: {
     // Treemap exposes show_controls as a top-level prop, so the default
     // top_level_base_drive applies. color_values/tooltip/cell_content are
-    // functions/snippets and cannot cross the JSON trait bridge.
+    // functions/snippets and cannot cross the JSON trait bridge. Continuous
+    // color props are omitted because they are inert without color_values.
     component: Treemap,
     drive: [
       ...drive_props([
@@ -629,9 +630,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `parent_label_font_size`,
         `zoom_on_click`,
         `show_breadcrumbs`,
-        `color_scale`,
-        `color_range`,
-        `colorbar`,
         `legend`,
         `show_legend`,
         `value_format`,

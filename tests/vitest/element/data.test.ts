@@ -38,6 +38,9 @@ test(`element data basics`, () => {
   expect(element_data[0].electronegativity).toBe(2.2)
   expect(element_data[0].electron_configuration).toBe(`1s1`)
   expect(element_data.every((el) => typeof el.density === `number`)).toBe(true)
+  expect(element_by_symbol.size).toBe(element_data.length)
+  for (const element of element_data)
+    expect(element_by_symbol.get(element.symbol)).toBe(element)
 })
 
 test(`category counts`, () => {
@@ -96,47 +99,26 @@ describe(`atomic_radius`, () => {
     expect(larger_el.atomic_radius).toBeGreaterThan(smaller_el.atomic_radius as number)
   })
 
-  test(`period 2: Li > Be > B > C > N > O > F`, () => {
-    const order = [`Li`, `Be`, `B`, `C`, `N`, `O`, `F`] as const
+  test.each([
+    [`period 2: Li > Be > B > C > N > O > F`, [`Li`, `Be`, `B`, `C`, `N`, `O`, `F`], false],
+    [
+      `period 3: Na > Mg > Al > Si >= P >= S > Cl`,
+      [`Na`, `Mg`, `Al`, `Si`, `P`, `S`, `Cl`],
+      true,
+    ],
+    [`group 1: Li < Na < K < Rb < Cs`, [`Cs`, `Rb`, `K`, `Na`, `Li`], false],
+    [`group 17: F < Cl < Br < I`, [`I`, `Br`, `Cl`, `F`], false],
+  ] as const)(`%s`, (_name, order, allow_equal) => {
     for (let idx = 0; idx < order.length - 1; idx++) {
       const larger = get_element(order[idx])
       const smaller = get_element(order[idx + 1])
       expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
       expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
-      expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
-    }
-  })
-
-  test(`period 3: Na > Mg > Al > Si >= P >= S > Cl`, () => {
-    const order = [`Na`, `Mg`, `Al`, `Si`, `P`, `S`, `Cl`] as const
-    for (let idx = 0; idx < order.length - 1; idx++) {
-      const larger = get_element(order[idx])
-      const smaller = get_element(order[idx + 1])
-      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
-      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
-      expect(larger.atomic_radius).toBeGreaterThanOrEqual(smaller.atomic_radius as number)
-    }
-  })
-
-  test(`group 1: Li < Na < K < Rb < Cs`, () => {
-    const order = [`Li`, `Na`, `K`, `Rb`, `Cs`] as const
-    for (let idx = 0; idx < order.length - 1; idx++) {
-      const smaller = get_element(order[idx])
-      const larger = get_element(order[idx + 1])
-      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
-      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
-      expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
-    }
-  })
-
-  test(`group 17: F < Cl < Br < I`, () => {
-    const order = [`F`, `Cl`, `Br`, `I`] as const
-    for (let idx = 0; idx < order.length - 1; idx++) {
-      const smaller = get_element(order[idx])
-      const larger = get_element(order[idx + 1])
-      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
-      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
-      expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
+      if (allow_equal) {
+        expect(larger.atomic_radius).toBeGreaterThanOrEqual(smaller.atomic_radius as number)
+      } else {
+        expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
+      }
     }
   })
 
@@ -332,20 +314,15 @@ describe(`data completeness`, () => {
   })
 
   test(`main elements (Z <= 86) have required properties`, () => {
-    const noble_gases = new Set([`He`, `Ne`, `Ar`, `Kr`, `Xe`, `Rn`])
-    const null_radius_ok = new Set([...noble_gases, `At`, `Fr`])
-
     for (const element of element_data.filter((entry) => entry.number <= 86)) {
       // All main elements need first_ionization
       expect(element.first_ionization, `${element.symbol} first_ionization`).not.toBeNull()
 
       // Non-noble gases need electronegativity and atomic_radius
-      if (!noble_gases.has(element.symbol)) {
-        expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
-        if (!null_radius_ok.has(element.symbol)) {
-          expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
-        }
-      }
+      if (element.category === `noble gas`) continue
+      expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
+      if (element.symbol === `At` || element.symbol === `Fr`) continue
+      expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
     }
   })
 })

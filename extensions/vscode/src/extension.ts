@@ -2,12 +2,7 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
-import {
-  FERMI_FILE_RE,
-  VOLUMETRIC_EXT_RE,
-  VOLUMETRIC_VASP_RE,
-  type ViewType,
-} from '$lib/file-viewer/types'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import { to_error } from '$lib/utils'
 import { detect_compression_format } from '$lib/io/decompress'
 import { format_bytes } from '$lib/labels'
@@ -18,6 +13,7 @@ import type { FrameLoader } from '$lib/trajectory'
 import {
   create_frame_loader,
   is_trajectory_file,
+  LARGE_FILE_THRESHOLD,
   parse_trajectory_async,
 } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
@@ -26,7 +22,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
-import { stream_file_to_buffer } from './node-io'
+import { MAX_STREAMING_FILE_SIZE, stream_file_to_buffer } from './node-io'
 
 interface FrameLoaderData {
   loader: FrameLoader
@@ -61,7 +57,6 @@ interface FileData {
 }
 
 interface WebviewData {
-  type: ViewType
   data: FileData
   theme: ThemeName
   defaults?: DefaultSettings
@@ -123,28 +118,11 @@ function get_wasm_filename(ext_path: string): string | null {
   return wasm_file
 }
 
-// File size thresholds for reading files via VSCode API (1GB for both text and binary)
-const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
-
 const normalize_browser_supported_filename = (filename: string): string | null => {
   const format = detect_compression_format(filename)
   if (!format) return filename
   if ([`zip`, `xz`, `bz2`].includes(format)) return null
   return filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-}
-
-// Helper: determine view type using content when available
-const infer_view_type = (file: FileData): ViewType => {
-  // Strip only browser-supported compression extensions before matching.
-  const name = normalize_browser_supported_filename(file.filename.toLowerCase())
-  if (name && FERMI_FILE_RE.test(name)) return `fermi_surface`
-  if (name && (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name))) {
-    return `isosurface`
-  }
-  // Only pass content for text files; for binary (compressed) fall back to filename
-  const content = file.is_base64 ? undefined : file.content
-  if (is_trajectory_file(file.filename, content)) return `trajectory`
-  return `structure`
 }
 
 // Check if a file should be auto-rendered
@@ -192,7 +170,24 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     })
   }
 
-  if (file_size > MAX_VSCODE_FILE_SIZE) {
+  if (file_size > MAX_STREAMING_FILE_SIZE) {
+    throw new Error(
+      `File too large (${format_bytes(file_size)}). Maximum supported size: ${format_bytes(
+        MAX_STREAMING_FILE_SIZE,
+      )}`,
+    )
+  }
+
+  if (file_size > LARGE_FILE_THRESHOLD) {
+    const normalized_filename = normalize_browser_supported_filename(filename)
+    const is_ambiguous_xyz_trajectory = /\.(?:xyz|extxyz)$/i.test(normalized_filename ?? ``)
+    if (!is_trajectory_file(filename) && !is_ambiguous_xyz_trajectory) {
+      throw new Error(
+        `Large-file loading currently supports trajectories only: ${filename} (${format_bytes(
+          file_size,
+        )})`,
+      )
+    }
     return {
       filename,
       content: `LARGE_FILE:${file_path}:${file_size}`,
@@ -570,7 +565,6 @@ async function handle_file_change(
         command: `fileUpdated`,
         file_path,
         data: updated_file,
-        type: infer_view_type(updated_file),
         theme: get_theme(),
         ...meta,
       })
@@ -631,7 +625,6 @@ function create_webview_panel(
   if (file_path) start_watching_file(file_path, panel.webview)
 
   panel.webview.html = create_html(panel.webview, context, {
-    type: infer_view_type(file_data),
     data: file_data,
     theme: get_theme(),
     defaults: get_defaults(),
@@ -648,7 +641,6 @@ function create_webview_panel(
     if (panel.visible) {
       const current_file = file_path ? await read_file(file_path) : file_data
       panel.webview.html = create_html(panel.webview, context, {
-        type: infer_view_type(current_file),
         data: current_file,
         theme: get_theme(),
         defaults: get_defaults(),
@@ -720,7 +712,6 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
       }
       const current = await read_file(document.uri.fsPath)
       webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
-        type: infer_view_type(current),
         data: current,
         theme: get_theme(),
         defaults: get_defaults(),
@@ -739,7 +730,6 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
         if (webview_panel.visible) {
           const current_file = await read_file(document.uri.fsPath)
           webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
-            type: infer_view_type(current_file),
             data: current_file,
             theme: get_theme(),
             defaults: get_defaults(),

@@ -37,12 +37,11 @@ import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
 import { structure_props } from './detect'
 import JsonBrowser from './JsonBrowser.svelte'
-import type { FileData, ParsedTrajectoryResponse, ParseResult, ViewType } from './parse'
+import type { FileData, ParsedTrajectoryResponse, ParseResult } from './parse'
 import { parse_file_content, set_large_file_requester } from './parse'
 import { escape_html, to_error } from '$lib/utils'
 
 export interface MatterVizData {
-  type: ViewType
   data: FileData
   theme: ThemeName
   defaults?: DefaultSettings
@@ -68,7 +67,6 @@ export interface FileChangeMessage {
   command: `fileUpdated` | `fileDeleted`
   file_path?: string
   data?: FileData
-  type?: ViewType
   theme?: ThemeName
 }
 
@@ -175,6 +173,8 @@ declare global {
 let vscode_api: VSCodeAPI | null = null
 let current_app: MatterVizApp | null = null
 let file_change_listener_registered = false
+let file_change_generation = 0
+let file_change_queue: Promise<void> = Promise.resolve()
 const global_window = globalThis as unknown as Window
 
 // Initialize VSCode API at module level
@@ -228,14 +228,23 @@ export const setup_vscode_download = (): void => {
   }
 }
 
+// Unmount the existing component before replacement to prevent memory leaks.
+async function unmount_current_app(): Promise<void> {
+  const app = current_app
+  current_app = null
+  if (app) await unmount(app)
+}
+
 // Handle file change events from extension
-const handle_file_change = async (message: FileChangeMessage): Promise<void> => {
+const handle_file_change = async (
+  message: FileChangeMessage,
+  generation: number,
+): Promise<void> => {
+  if (generation !== file_change_generation) return
   if (message.command === `fileDeleted`) {
     // File was deleted - show error message
-    if (current_app) {
-      await unmount(current_app)
-      current_app = null
-    }
+    await unmount_current_app()
+    if (generation !== file_change_generation) return
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {
       container.innerHTML = `
@@ -248,43 +257,58 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
     return
   }
 
-  if (message.command === `fileUpdated` && message.data) {
-    try {
-      if (message.theme && is_valid_theme_name(message.theme)) {
-        apply_theme_to_dom(message.theme)
-      }
+  if (!message.data) return
+  try {
+    if (message.theme && is_valid_theme_name(message.theme)) {
+      apply_theme_to_dom(message.theme)
+    }
 
-      const { content, filename, is_base64 } = message.data
-      const result = await parse_file_content(content, filename, is_base64)
+    const { content, filename, is_base64 } = message.data
+    const result = await parse_file_content(content, filename, is_base64)
+    if (generation !== file_change_generation) return
 
-      // Update the display
-      const container = document.querySelector<HTMLElement>(`#matterviz-app`)
-      if (container && current_app) {
-        await unmount(current_app) // unmount the existing component to prevent memory leaks
-        current_app = create_display(container, result, result.filename)
-      }
+    // Update the display
+    const container = document.querySelector<HTMLElement>(`#matterviz-app`)
+    if (container) {
+      await unmount_current_app()
+      if (generation !== file_change_generation) return
+      current_app = create_display(container, result, result.filename)
+    }
 
-      vscode_api?.postMessage({ command: `info`, text: `File reloaded successfully` })
-    } catch (error) {
-      console.error(`Failed to reload file:`, error)
+    vscode_api?.postMessage({ command: `info`, text: `File reloaded successfully` })
+  } catch (error) {
+    if (generation !== file_change_generation) return
+    console.error(`Failed to reload file:`, error)
+    vscode_api?.postMessage({
+      command: `error`,
+      text: `Failed to reload file: ${error}`,
+    })
+  }
+}
+
+const enqueue_file_change = (message: FileChangeMessage): void => {
+  const generation = ++file_change_generation
+  file_change_queue = file_change_queue
+    .then(() => handle_file_change(message, generation))
+    .catch((error) => {
+      console.error(`Failed to process file change:`, error)
       vscode_api?.postMessage({
         command: `error`,
-        text: `Failed to reload file: ${error}`,
+        text: `Failed to process file change: ${error}`,
       })
-    }
-  }
+    })
 }
 
 // Request large file content from the extension using chunked streaming
 function request_large_file_content(
   file_path: string,
   filename: string,
-  is_compressed: boolean,
+  is_base64: boolean,
   timeout: number = 120_000, // large host-side indexing can take longer than eager reads
 ): Promise<string | ParsedTrajectoryResponse> {
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
-  const message = { command: `request_large_file`, file_path, filename, is_compressed }
+  const message = { command: `request_large_file`, file_path, filename, is_base64 }
   return post_request(
     vscode_api,
     message,
@@ -577,7 +601,7 @@ async function initialize() {
     // Listen for file change messages from extension
     globalThis.addEventListener(`message`, (event) => {
       if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
-        void handle_file_change(event.data)
+        enqueue_file_change(event.data)
       }
     })
     file_change_listener_registered = true
@@ -588,10 +612,9 @@ async function initialize() {
 
 // Cleanup function to properly dispose of components
 async function cleanup_matterviz(): Promise<void> {
-  if (current_app) {
-    await unmount(current_app)
-    current_app = null
-  }
+  file_change_generation++
+  await file_change_queue
+  await unmount_current_app()
 } // Export initialization and cleanup functions to global scope
 global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
   if (!globalThis.matterviz_data) {
