@@ -6,7 +6,7 @@ import {
   sunburst_from_paths,
   tile_rects,
 } from '$lib/plot'
-import { place_treemap_label } from '$lib/plot/treemap/labels'
+import { normalize_treemap_label_lines, place_treemap_label } from '$lib/plot/treemap/labels'
 import { describe, expect, test } from 'vitest'
 
 const size = { width: 400, height: 300 }
@@ -238,6 +238,12 @@ describe(`lerp_rects`, () => {
   })
 })
 
+test(`normalize_treemap_label_lines ignores nullish and empty-label array entries`, () => {
+  expect(normalize_treemap_label_lines([`kept`, null, undefined, { text: `` }])).toEqual([
+    { text: `kept` },
+  ])
+})
+
 describe(`place_treemap_label`, () => {
   // deterministic char-width measure: width = chars * font_size * 0.5
   const measure_line = (line: { text: string }, font_size: number) =>
@@ -262,6 +268,13 @@ describe(`place_treemap_label`, () => {
     expect(placement).not.toBeNull()
     expect(Boolean(placement?.transform?.includes(`rotate(-90`))).toBe(rotated)
     expect(placement?.font_size).toBe(10)
+  })
+
+  test(`leaf fitting reserves margin on every edge`, () => {
+    const cell = rect(40, 12)
+    expect(place_treemap_label({ ...base, rect: cell })).not.toBeNull()
+    expect(place_treemap_label({ ...base, rect: cell, margin: 4 })).toBeNull()
+    expect(place_treemap_label({ ...base, rect: cell, margin: 6 })).toBeNull()
   })
 
   test.each([

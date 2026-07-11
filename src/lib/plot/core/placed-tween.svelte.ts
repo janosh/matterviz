@@ -10,11 +10,12 @@ type Point = { x: number; y: number }
 
 // Tweened position for an auto-placed plot element with the stability gating shared
 // by BarPlot/BoxPlot/Histogram/ScatterPlot legends: snap (no animation) on first
-// placement, follow container resizes, stay put while hovered (debounced hover lock),
-// and track placement continuously only when `responsive`. Creates $effects, so it
-// must be called during component init.
+// placement, follow container/element resizes, stay put while hovered (debounced
+// hover lock), and track placement continuously only when `responsive`. Creates
+// $effects, so it must be called during component init.
 export function create_placed_tween(opts: {
-  // Auto-computed target position (null disables updates, e.g. legend hidden)
+  // Auto-computed target position (null disables updates, e.g. legend hidden).
+  // Must measure fresh on each call rather than return a memoized DOM measurement.
   placement: () => Point | null
   dims: () => { width: number; height: number }
   responsive: () => boolean
@@ -26,6 +27,10 @@ export function create_placed_tween(opts: {
   suspended?: () => boolean
   // Manual override (e.g. user-dragged position): applied immediately, no animation
   manual_position?: () => Point | null
+  // Notify related layout state when the observed decoration footprint changes.
+  on_element_resize?: () => void
+  // Recompute when another decoration that affects this placement changes.
+  placement_revision?: () => unknown
 }): { coords: Tween<Point>; placed: () => boolean; set_locked: (locked: boolean) => void } {
   // Hover lock: placement updates pause while the element is hovered; release is
   // debounced so brief mouse-outs don't cause jumps
@@ -38,8 +43,12 @@ export function create_placed_tween(opts: {
     else unlock_timeout = setTimeout(() => (hover_locked = false), HOVER_DEBOUNCE_MS)
   }
 
-  // Plain (untracked) dimensions only affect the next effect run
+  // Previous plot dimensions stay plain; they only classify the current effect run.
   let prev_dims: { width: number; height: number } | null = null
+  let element_size_revision = $state(0)
+  let prev_element_size_revision = 0
+  let previous_element: Element | null | undefined
+  let previous_placement_revision: unknown
   let placed = $state(false)
 
   const coords = new Tween<Point>(
@@ -52,6 +61,26 @@ export function create_placed_tween(opts: {
     if (unlock_timeout) clearTimeout(unlock_timeout)
   })
 
+  // Decoration content (title, orientation, tick labels) can resize without the
+  // plot dimensions changing. Observe it so frozen placements are recomputed.
+  $effect(() => {
+    const element = opts.element() ?? null
+    if (previous_element !== undefined && previous_element !== element) {
+      element_size_revision += 1
+      if (!element) placed = false
+    }
+    previous_element = element
+    if (!element || typeof ResizeObserver === `undefined`) return undefined
+    const observed_elements = new WeakSet<Element>()
+    const observer = new ResizeObserver((entries) => {
+      const size_changed = entries.some(({ target }) => observed_elements.has(target))
+      for (const { target } of entries) observed_elements.add(target)
+      if (size_changed) element_size_revision += 1
+    })
+    for (const target of [element, ...element.querySelectorAll(`*`)]) observer.observe(target)
+    return () => observer.disconnect()
+  })
+
   // Update position with stability checks
   $effect(() => {
     const { width, height } = opts.dims()
@@ -61,12 +90,21 @@ export function create_placed_tween(opts: {
     if (manual) {
       // Immediate update (no animation) for manually positioned elements
       void coords.set({ x: manual.x, y: manual.y }, { duration: 0 })
-      return
+      if (opts.element()) placed = true
     }
+    // Leave resize revisions pending so unlock recomputes the latest placement.
+    if (hover_locked) return
 
     // Track dimensions for resize detection
     const dims_changed = !prev_dims || prev_dims.width !== width || prev_dims.height !== height
     if (dims_changed) prev_dims = { width, height }
+    const element_size_changed = prev_element_size_revision !== element_size_revision
+    prev_element_size_revision = element_size_revision
+    if (element_size_changed) opts.on_element_resize?.()
+    if (manual) return
+    const placement_revision = opts.placement_revision?.()
+    const placement_invalidated = !Object.is(previous_placement_revision, placement_revision)
+    previous_placement_revision = placement_revision
     const responsive = opts.responsive()
     // A non-responsive tween tracks `placed` once so it immediately reruns and
     // unsubscribes from the expensive placement chain after its first placement.
@@ -74,7 +112,14 @@ export function create_placed_tween(opts: {
 
     // Skip expensive DOM placement before evaluating it: non-responsive
     // elements stay fixed after their initial placement until the plot resizes.
-    if (!dims_changed && (hover_locked || (!responsive && has_initial_placement))) return
+    if (
+      !dims_changed &&
+      !element_size_changed &&
+      !placement_invalidated &&
+      !responsive &&
+      has_initial_placement
+    )
+      return
     const placement = opts.placement()
     if (!placement) return
 

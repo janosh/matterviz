@@ -549,17 +549,22 @@
   /* hosted in a panel title bar instead of floating over the cards */
   .structure-carousel-pager.portaled {
     position: static;
-    padding: 1px 4px;
+    gap: 1px;
+    padding: 0 2px;
     background: transparent;
     box-shadow: none;
     transform: none;
+  }
+  .structure-carousel-pager.portaled button {
+    inline-size: 18px;
+    block-size: 18px;
   }
   .structure-carousel-pager button {
     display: grid;
     place-items: center;
     inline-size: 22px;
     block-size: 22px;
-    padding: 0;
+    padding: 0 0 2px;
     border: 0;
     border-radius: 50%;
     background: transparent;
@@ -570,7 +575,7 @@
     line-height: 1;
   }
   .structure-carousel-pager button:hover:not(:disabled) {
-    background: color-mix(in srgb, currentColor 12%, transparent);
+    color: var(--active-color, #6ea8ff);
   }
   .structure-carousel-pager button:disabled {
     opacity: 0.3;

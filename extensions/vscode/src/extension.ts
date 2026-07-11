@@ -1,37 +1,37 @@
 // VS Code's webview postMessage API takes a single argument (no targetOrigin),
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import { is_matterviz_filename } from '$lib/file-viewer/eligibility'
 import {
-  FERMI_FILE_RE,
-  VOLUMETRIC_EXT_RE,
-  VOLUMETRIC_VASP_RE,
-  type ViewType,
-} from '$lib/file-viewer/types'
+  plan_host_file_transfer,
+  type HostTransferRejectReason,
+} from '$lib/file-viewer/host-transfer'
+import type {
+  FileData,
+  WebviewBootstrapData,
+  WebviewToHostMessage,
+} from '$lib/file-viewer/host-protocol'
 import { to_error } from '$lib/utils'
-import { detect_compression_format } from '$lib/io/decompress'
 import { format_bytes } from '$lib/labels'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
-import { is_structure_file } from '$lib/structure/parse'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 import type { FrameLoader } from '$lib/trajectory'
-import {
-  create_frame_loader,
-  is_trajectory_file,
-  parse_trajectory_async,
-} from '$lib/trajectory/parse'
+import { LARGE_FILE_THRESHOLD, parse_trajectory_async } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
-import { stream_file_to_buffer } from './node-io'
+import {
+  MAX_STREAMING_FILE_SIZE,
+  MAX_TEXT_TRAJECTORY_SIZE,
+  read_indexed_trajectory_file,
+} from './node-io'
 
 interface FrameLoaderData {
   loader: FrameLoader
-  file_data: ArrayBuffer
-  filename: string
+  file_data: string | ArrayBuffer
 }
 
 // WebviewLike and ExtensionContextLike are unions to allow both real vscode types and mock types for testing
@@ -54,40 +54,7 @@ type ExtensionContextLike =
       subscriptions: { dispose(): void }[]
     }
 
-interface FileData {
-  filename: string
-  content: string
-  is_base64: boolean // content is base64-encoded (binary or compressed)
-}
-
-interface WebviewData {
-  type: ViewType
-  data: FileData
-  theme: ThemeName
-  defaults?: DefaultSettings
-}
-
-export type IncomingCommand =
-  | `info`
-  | `error`
-  | `request_large_file`
-  | `request_frame`
-  | `saveAs`
-  | `startWatching`
-  | `stopWatching`
-
-export interface MessageData {
-  command: IncomingCommand
-  text?: string
-  filename?: string
-  file_size?: number
-  content?: string
-  is_binary?: boolean
-  file_path?: string
-  // Add frame loading support
-  request_id?: string
-  frame_index?: number
-}
+export type MessageData = WebviewToHostMessage
 
 type WatcherMeta = { request_id?: string; filename?: string; frame_index?: number }
 
@@ -123,42 +90,8 @@ function get_wasm_filename(ext_path: string): string | null {
   return wasm_file
 }
 
-// File size thresholds for reading files via VSCode API (1GB for both text and binary)
-const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
-
-const normalize_browser_supported_filename = (filename: string): string | null => {
-  const format = detect_compression_format(filename)
-  if (!format) return filename
-  if ([`zip`, `xz`, `bz2`].includes(format)) return null
-  return filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-}
-
-// Helper: determine view type using content when available
-const infer_view_type = (file: FileData): ViewType => {
-  // Strip only browser-supported compression extensions before matching.
-  const name = normalize_browser_supported_filename(file.filename.toLowerCase())
-  if (name && FERMI_FILE_RE.test(name)) return `fermi_surface`
-  if (name && (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name))) {
-    return `isosurface`
-  }
-  // Only pass content for text files; for binary (compressed) fall back to filename
-  const content = file.is_base64 ? undefined : file.content
-  if (is_trajectory_file(file.filename, content)) return `trajectory`
-  return `structure`
-}
-
 // Check if a file should be auto-rendered
-export const should_auto_render = (filename: string): boolean => {
-  if (!filename || typeof filename !== `string`) return false
-  // Strip only browser-supported compression extensions so unsupported
-  // compressed files are not advertised as auto-renderable.
-  const name = normalize_browser_supported_filename(path.basename(filename))
-  if (name === null) return false
-  if (FERMI_FILE_RE.test(name)) return true
-  if (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name)) return true
-  // Structure and trajectory files (existing behavior)
-  return is_structure_file(filename) || is_trajectory_file(filename)
-}
+export const should_auto_render = is_matterviz_filename
 
 // Update the shared VS Code context for supported resources
 const update_supported_resource_context = (uri?: vscode.Uri): void => {
@@ -172,14 +105,33 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
   vscode.commands.executeCommand(`setContext`, `matterviz.supported_resource`, is_supported)
 }
 
+const host_transfer_error = (
+  reason: HostTransferRejectReason,
+  filename: string,
+  file_size: number,
+  max_file_size: number = MAX_STREAMING_FILE_SIZE,
+): Error => {
+  if (reason === `file-too-large`) {
+    return new Error(
+      `File too large (${format_bytes(file_size)}). Maximum supported size: ${format_bytes(
+        max_file_size,
+      )}`,
+    )
+  }
+  if (reason === `unsupported-compression`) {
+    return new Error(`Large-file loading does not support this compression: ${filename}`)
+  }
+  return new Error(
+    `Large-file loading currently supports trajectories only (XYZ, EXTXYZ, ASE .traj): ${filename} (${format_bytes(
+      file_size,
+    )})`,
+  )
+}
+
 // Read file from filesystem using VSCode API (works with remote SSH)
 export const read_file = async (file_path: string): Promise<FileData> => {
   const filename = path.basename(file_path)
   const uri = vscode.Uri.file(file_path)
-
-  // Files we serialize as base64 for the webview (compressed OR binary)
-  const is_base64_payload =
-    COMPRESSION_EXTENSIONS_REGEX.test(filename) || /\.(?:traj|h5|hdf5)$/i.test(filename)
 
   // Check file size to avoid loading huge files into memory
   let file_size: number
@@ -192,21 +144,27 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     })
   }
 
-  if (file_size > MAX_VSCODE_FILE_SIZE) {
-    return {
-      filename,
-      content: `LARGE_FILE:${file_path}:${file_size}`,
-      is_base64: is_base64_payload, // NOTE: base64 payload (compressed or binary)
-    }
+  const transfer = plan_host_file_transfer({
+    filename,
+    file_path,
+    file_size,
+    large_file_threshold: LARGE_FILE_THRESHOLD,
+    max_file_size: MAX_STREAMING_FILE_SIZE,
+    max_text_file_size: MAX_TEXT_TRAJECTORY_SIZE,
+  })
+  if (transfer.kind === `reject`)
+    throw host_transfer_error(transfer.reason, filename, file_size, transfer.max_file_size)
+  if (transfer.kind === `marker`) {
+    return { filename, content: transfer.content, is_base64: false }
   }
 
   // For normal-sized files, read using VSCode API
   try {
     const uint8array = await vscode.workspace.fs.readFile(uri)
-    const content = is_base64_payload
+    const content = transfer.is_base64
       ? Buffer.from(uint8array).toString(`base64`)
       : Buffer.from(uint8array).toString(`utf8`)
-    return { filename, content, is_base64: is_base64_payload }
+    return { filename, content, is_base64: transfer.is_base64 }
   } catch (error) {
     throw new Error(`Failed to read file ${filename}: ${to_error(error).message}`, {
       cause: error,
@@ -329,7 +287,7 @@ export const get_defaults = (): DefaultSettings => {
 export const create_html = (
   webview: WebviewLike,
   context: ExtensionContextLike,
-  data: WebviewData,
+  data: WebviewBootstrapData,
 ): string => {
   const nonce = Math.random().toString(36).slice(2, 34)
   const webview_uri = webview.asWebviewUri(
@@ -394,20 +352,25 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
     const command = `large_file_response`
     try {
       const { request_id, file_path } = msg
+      if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
       const filename = path.basename(file_path)
-      const array_buffer = await stream_file_to_buffer(file_path, (progress_data) => {
-        webview.postMessage({
-          command: `large_file_progress`,
-          request_id,
-          stage: `Reading file`,
-          progress: Math.round(progress_data.progress * 100),
-        })
-      })
+      const indexed_file = await read_indexed_trajectory_file(
+        file_path,
+        filename,
+        (progress_data) => {
+          webview.postMessage({
+            command: `large_file_progress`,
+            request_id,
+            stage: `Reading file`,
+            progress: Math.round(progress_data.progress * 100),
+          })
+        },
+      )
 
       // Parse with indexing and create frame loader
       const parsed_trajectory = await parse_trajectory_async(
-        array_buffer,
-        filename,
+        indexed_file.data,
+        indexed_file.filename,
         undefined,
         {
           use_indexing: true,
@@ -415,19 +378,18 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
         },
       )
 
+      // TrajFrameReader caches the full source payload; keep it host-side instead
+      // of cloning it across webview IPC, where VSCodeFrameLoader replaces it.
+      const { frame_loader, ...webview_trajectory } = parsed_trajectory
+      if (!frame_loader) throw new Error(`Indexed trajectory parser returned no frame loader`)
       active_frame_loaders.set(file_path, {
-        loader: create_frame_loader(filename),
-        file_data: array_buffer,
-        filename,
+        loader: frame_loader,
+        file_data: indexed_file.data,
       })
-
       webview.postMessage({
         command,
         request_id,
-        parsed_trajectory,
-        is_parsed: true,
-        supports_frame_streaming: true,
-        file_path,
+        parsed_trajectory: webview_trajectory,
       })
     } catch (error) {
       const error_message = to_error(error).message
@@ -564,13 +526,13 @@ async function handle_file_change(
   if (event_type === `change`) {
     // File was changed - send updated content
     try {
+      active_frame_loaders.delete(file_path)
       const updated_file = await read_file(file_path)
 
       webview.postMessage({
         command: `fileUpdated`,
         file_path,
         data: updated_file,
-        type: infer_view_type(updated_file),
         theme: get_theme(),
         ...meta,
       })
@@ -631,7 +593,6 @@ function create_webview_panel(
   if (file_path) start_watching_file(file_path, panel.webview)
 
   panel.webview.html = create_html(panel.webview, context, {
-    type: infer_view_type(file_data),
     data: file_data,
     theme: get_theme(),
     defaults: get_defaults(),
@@ -648,7 +609,6 @@ function create_webview_panel(
     if (panel.visible) {
       const current_file = file_path ? await read_file(file_path) : file_data
       panel.webview.html = create_html(panel.webview, context, {
-        type: infer_view_type(current_file),
         data: current_file,
         theme: get_theme(),
         defaults: get_defaults(),
@@ -720,7 +680,6 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
       }
       const current = await read_file(document.uri.fsPath)
       webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
-        type: infer_view_type(current),
         data: current,
         theme: get_theme(),
         defaults: get_defaults(),
@@ -739,7 +698,6 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
         if (webview_panel.visible) {
           const current_file = await read_file(document.uri.fsPath)
           webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
-            type: infer_view_type(current_file),
             data: current_file,
             theme: get_theme(),
             defaults: get_defaults(),

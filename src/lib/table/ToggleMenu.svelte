@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import { portal } from '$lib/overlays/portal'
   import { sanitize_html } from '$lib/sanitize'
   import type { Label } from '$lib/table'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
@@ -14,7 +15,7 @@
   }: {
     columns: Label[]
     column_panel_open?: boolean
-    // Number of grid columns for toggle layout
+    // Maximum number of grid columns for toggle layout
     n_columns?: number
     collapsed_sections?: string[]
     // Called after reset with the section name (or undefined for global reset)
@@ -22,6 +23,24 @@
   } = $props()
 
   const col_id = (col: Label) => col.key ?? col.label
+  const toggle_menu_id = $props.id()
+  const dropdown_selector = `[data-toggle-menu-id="${toggle_menu_id}"]`
+  const COLUMN_FILTER_THRESHOLD = 20
+  const DEFAULT_MAX_MENU_COLUMNS = 3
+  const PREFERRED_MAX_MENU_ROWS = 10
+  let column_filter = $state(``)
+  let show_column_filter = $derived(columns.length > COLUMN_FILTER_THRESHOLD)
+  let normalized_column_filter = $derived(
+    show_column_filter ? column_filter.trim().toLowerCase() : ``,
+  )
+  const column_matches_filter = (col: Label): boolean =>
+    !normalized_column_filter ||
+    [col.key, col.label.replaceAll(/<[^>]*>/gu, ``), col.description, col.group]
+      .filter(Boolean)
+      .join(` `)
+      .toLowerCase()
+      .includes(normalized_column_filter)
+  let filtered_columns = $derived(columns.filter(column_matches_filter))
 
   // Snapshot default visibility when column set changes (new dataset).
   // Compare by keys and visibility defaults. Internal updates opt out below.
@@ -96,6 +115,14 @@
     if (ungrouped.length > 0) result.push({ name: ``, items: ungrouped })
     return result
   })
+  let filtered_sections = $derived(
+    sections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(column_matches_filter),
+      }))
+      .filter((section) => section.items.length > 0),
+  )
 
   // Check if any column defines a group (to decide whether to show sections)
   let has_sections = $derived(columns.some((col) => col.group))
@@ -113,31 +140,56 @@
     columns = [...columns] // trigger reactivity on parent binding
   }
 
-  // Grid template for section items
-  let grid_template = $derived(
-    n_columns ? `repeat(${n_columns}, max-content)` : `repeat(auto-fill, minmax(135px, 1fr))`,
-  )
+  // Prefer two tall columns, adding more only when the item count would make them unwieldy.
+  // n_columns caps large menus rather than forcing sparse menus to fill every column.
+  const grid_column_count = (item_count: number): number => {
+    const preferred_column_count =
+      item_count <= 1 ? 1 : Math.max(2, Math.ceil(item_count / PREFERRED_MAX_MENU_ROWS))
+    return Math.min(Math.max(1, n_columns ?? DEFAULT_MAX_MENU_COLUMNS), preferred_column_count)
+  }
+  const grid_template = (item_count: number): string =>
+    `repeat(${grid_column_count(item_count)}, max-content)`
 
-  // Reposition dropdown: left-aligned by default, switch to right if it overflows viewport
-  let details_el: HTMLElement | undefined = undefined
+  // Portal the dropdown to <body> so ancestor overflow/stacking contexts cannot clip it.
+  const dropdown_target = typeof document === `undefined` ? undefined : document.body
+  let details_el = $state<HTMLElement>()
+  let dropdown_el = $state<HTMLElement>()
+  const position_dropdown = (): void => {
+    const trigger = details_el?.querySelector(`summary`)
+    if (!column_panel_open || !trigger || !dropdown_el) return
+    const trigger_rect = trigger.getBoundingClientRect()
+    const dropdown_rect = dropdown_el.getBoundingClientRect()
+    const viewport_padding = 8
+    const gap = 4
+    const max_left = Math.max(
+      viewport_padding,
+      globalThis.innerWidth - dropdown_rect.width - viewport_padding,
+    )
+    const left = Math.min(
+      Math.max(viewport_padding, trigger_rect.right - dropdown_rect.width),
+      max_left,
+    )
+    const below = trigger_rect.bottom + gap
+    const top =
+      below + dropdown_rect.height <= globalThis.innerHeight - viewport_padding
+        ? below
+        : Math.max(viewport_padding, trigger_rect.top - dropdown_rect.height - gap)
+    Object.assign(dropdown_el.style, {
+      left: `${left}px`,
+      right: `auto`,
+      top: `${top}px`,
+      visibility: `visible`,
+    })
+  }
   $effect(() => {
-    if (!column_panel_open || !details_el) return
+    if (!column_panel_open || !details_el || !dropdown_el) return
     // Re-run when section state changes while open
     void n_columns
     void collapsed_sections
-    void sections
-    const dropdown = details_el.querySelector<HTMLElement>(`.column-menu, .sections-container`)
-    if (!dropdown) return
-    // Reset to left-aligned
-    dropdown.style.left = `0`
-    dropdown.style.right = `auto`
-    requestAnimationFrame(() => {
-      const rect = dropdown.getBoundingClientRect()
-      if (rect.right > window.innerWidth) {
-        dropdown.style.left = `auto`
-        dropdown.style.right = `0`
-      }
-    })
+    void filtered_columns
+    void filtered_sections
+    const frame = requestAnimationFrame(position_dropdown)
+    return () => cancelAnimationFrame(frame)
   })
 </script>
 
@@ -169,10 +221,19 @@
 <details
   class="column-toggles"
   bind:this={details_el}
-  bind:open={column_panel_open}
-  {@attach click_outside({ callback: () => (column_panel_open = false) })}
+  open={column_panel_open}
+  {@attach click_outside({
+    callback: () => (column_panel_open = false),
+    exclude: [dropdown_selector],
+  })}
 >
-  <summary aria-expanded={column_panel_open}>
+  <summary
+    aria-expanded={column_panel_open}
+    onclick={(event) => {
+      event.preventDefault()
+      column_panel_open = !column_panel_open
+    }}
+  >
     Columns <Icon icon="Columns" />
     {#if has_any_changes}
       <button
@@ -191,11 +252,32 @@
     {/if}
   </summary>
 
-  {#if has_sections}
-    <div class="sections-container" role="group">
-      {#each sections as section (section.name)}
+  <div
+    bind:this={dropdown_el}
+    class={has_sections ? `sections-container` : `column-menu`}
+    data-toggle-menu-id={toggle_menu_id}
+    hidden={!column_panel_open}
+    role="group"
+    style:grid-template-columns={has_sections
+      ? undefined
+      : grid_template(filtered_columns.length)}
+    {@attach portal(dropdown_target)}
+  >
+    {#if show_column_filter}
+      <input
+        aria-label="Filter columns"
+        bind:value={column_filter}
+        class="column-filter"
+        placeholder="Filter columns…"
+        type="search"
+      />
+    {/if}
+    {#if has_sections}
+      {#each filtered_sections as section (section.name)}
         {@const is_collapsed =
-          section.name !== `` && collapsed_sections.includes(section.name)}
+          !normalized_column_filter &&
+          section.name !== `` &&
+          collapsed_sections.includes(section.name)}
         <div class="section">
           {#if section.name}
             <div class="section-header-row">
@@ -224,7 +306,7 @@
           {#if !is_collapsed}
             <div
               class="section-items"
-              style:grid-template-columns={grid_template}
+              style:grid-template-columns={grid_template(section.items.length)}
               transition:slide={{ duration: 200 }}
             >
               {#each section.items as col, idx (col.key ?? col.label ?? idx)}
@@ -234,14 +316,15 @@
           {/if}
         </div>
       {/each}
-    </div>
-  {:else}
-    <div class="column-menu" role="group" style:grid-template-columns={grid_template}>
-      {#each columns as col, idx (col.key ?? col.label ?? idx)}
+    {:else}
+      {#each filtered_columns as col, idx (col.key ?? col.label ?? idx)}
         {@render toggle_item(col)}
       {/each}
-    </div>
-  {/if}
+    {/if}
+    {#if filtered_columns.length === 0}
+      <span class="no-matching-columns">No matching columns</span>
+    {/if}
+  </div>
 </details>
 
 <style>
@@ -268,9 +351,12 @@
   .column-menu,
   .sections-container {
     font-size: var(--tgl-font-size, 1.1em);
-    position: absolute;
+    position: fixed;
     left: 0;
-    top: calc(100% + 1pt);
+    top: 0;
+    visibility: hidden;
+    box-sizing: border-box;
+    width: max-content;
     background: var(--tgl-dropdown-bg, var(--page-bg));
     border: 1px solid
       var(--tgl-dropdown-border, color-mix(in srgb, currentColor 10%, transparent));
@@ -280,19 +366,58 @@
       0 4px 12px color-mix(in srgb, currentColor 8%, transparent)
     );
     min-width: 150px;
+    max-width: calc(100vw - 16px);
     max-height: var(--tgl-dropdown-max-height, min(70vh, 600px));
-    overflow-y: auto;
-    z-index: 1;
+    overflow: auto;
+    z-index: var(--tgl-dropdown-z-index, 10000);
+  }
+  .column-menu,
+  .section-items {
+    display: grid;
+    column-gap: var(--tgl-column-gap, 8px);
   }
   .column-menu {
     padding: 3pt 5pt;
-    display: grid;
   }
   .sections-container {
     padding: 6pt 8pt;
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+  .column-menu[hidden],
+  .sections-container[hidden] {
+    display: none;
+  }
+  .column-filter {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    grid-column: 1 / -1;
+    box-sizing: border-box;
+    width: 100%;
+    height: 1.35rem;
+    min-height: 0;
+    margin: 0 0 4px;
+    padding: 0 0.35rem;
+    border: 1px solid
+      var(--tgl-dropdown-border, color-mix(in srgb, currentColor 18%, transparent));
+    border-radius: var(--tgl-border-radius, 4pt);
+    outline: none;
+    background: var(--tgl-dropdown-bg, var(--page-bg));
+    color: inherit;
+    font: inherit;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    &:focus {
+      border-color: var(--active-color, #6ea8ff);
+    }
+  }
+  .no-matching-columns {
+    grid-column: 1 / -1;
+    padding: 4px;
+    color: color-mix(in srgb, currentColor 65%, transparent);
+    font-size: 0.9em;
   }
   .reset-btn {
     display: flex;
@@ -347,9 +472,6 @@
     font-size: 0.7em;
     width: 1em;
     flex-shrink: 0;
-  }
-  .section-items {
-    display: grid;
   }
   .toggle-label {
     display: inline-block;

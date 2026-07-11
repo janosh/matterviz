@@ -28,6 +28,7 @@ import {
 } from 'matterviz'
 import app_css from 'matterviz/app.css?raw'
 import type { ThemeType } from 'matterviz/theme'
+import { detect_parent_theme, get_theme_css, watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
 import type { DrivenProp } from './reactive.svelte'
 import {
@@ -42,8 +43,6 @@ import {
   throttle,
   writeback_prop,
 } from './reactive.svelte'
-import { detect_parent_theme, get_theme_css, watch_theme } from './theme-detection'
-
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
 // Static widget chrome + bundled app styles. Only the theme-variable block
@@ -362,10 +361,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `data_url`,
         // show_site_labels/show_site_indices are delivered via scene_props (see
         // scene_pick_keys), not as top-level Structure props.
-        `show_image_atoms`,
-        `color_scheme`,
-        `background_color`,
-        `background_opacity`,
+        ...traj_structure_prop_keys,
         `enable_info_pane`,
         `fullscreen_toggle`,
         `png_dpi`,
@@ -607,7 +603,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   treemap: {
     // Treemap exposes show_controls as a top-level prop, so the default
     // top_level_base_drive applies. color_values/tooltip/cell_content are
-    // functions/snippets and cannot cross the JSON trait bridge.
+    // functions/snippets and cannot cross the JSON trait bridge. Continuous
+    // color props are omitted because they are inert without color_values.
     component: Treemap,
     drive: [
       ...drive_props([
@@ -629,9 +626,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `parent_label_font_size`,
         `zoom_on_click`,
         `show_breadcrumbs`,
-        `color_scale`,
-        `color_range`,
-        `colorbar`,
         `legend`,
         `show_legend`,
         `value_format`,

@@ -1,11 +1,15 @@
 // Parsing functions for trajectory data from various formats
 import { is_binary } from '$lib/io/is-binary'
 import { is_plain_object } from '$lib/utils'
+import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure } from '$lib/structure/index'
 import { is_parsed_structure, parse_xyz } from '$lib/structure/parse'
-import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
-import { strip_compression_extensions } from '$lib/io/decompress'
-import { ext_hint, FORMAT_PATTERNS } from '$lib/trajectory/format-detect'
+import {
+  ext_hint,
+  FORMAT_PATTERNS,
+  indexed_trajectory_format,
+  is_indexable_trajectory_filename,
+} from '$lib/trajectory/format-detect'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type {
@@ -34,12 +38,14 @@ const assert_frame_structure = (structure: unknown, label: string | number): voi
   }
 }
 
-// Re-export constants and types for consumers
-export {
-  LARGE_FILE_THRESHOLD,
-  MAX_BIN_FILE_SIZE,
-  MAX_TEXT_FILE_SIZE,
-} from '$lib/trajectory/constants'
+// Constants for trajectory parsing and large file handling
+export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024 // 400MB
+const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
+// Fallback thresholds for component usage without loading_options, derived from the
+// settings schema so settings-driven contexts (e.g. the VSCode extension) and direct
+// component use agree on when large-file/indexed loading kicks in.
+export const MAX_BIN_FILE_SIZE = DEFAULTS.trajectory.bin_file_threshold // 50MB
+export const MAX_TEXT_FILE_SIZE = DEFAULTS.trajectory.text_file_threshold // 25MB
 export type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
 export { is_trajectory_file } from '$lib/trajectory/format-detect'
 export { TrajFrameReader } from '$lib/trajectory/frame-reader'
@@ -207,9 +213,8 @@ export async function parse_trajectory_async(
     // Use indexed loading for supported large files (including compressed names).
     // When the filename gives no format hint (e.g. blob: URLs), sniff a content
     // prefix for XYZ frames so large extensionless files still get indexed.
-    const base_filename = strip_compression_extensions(filename)
     const can_index =
-      /\.(?:xyz|extxyz|traj)$/.test(base_filename) ||
+      is_indexable_trajectory_filename(filename) ||
       (typeof data === `string` &&
         ext_hint(filename, /\.(?:xyz|extxyz)$/) === null &&
         count_xyz_frames(data.slice(0, 2 ** 20)) >= 1)
@@ -291,9 +296,7 @@ async function parse_with_unified_loader(
 
   const stage = `Ready: ${total_frames} frames indexed`
   on_progress?.({ current: 100, total: 100, stage })
-  const source_format = filename.toLowerCase().endsWith(`.traj`)
-    ? `ase_trajectory`
-    : `xyz_trajectory`
+  const source_format = `${indexed_trajectory_format(filename)}_trajectory`
 
   return {
     frames,
@@ -308,7 +311,7 @@ async function parse_with_unified_loader(
 
 // Factory function for frame loader (simplified)
 export function create_frame_loader(filename: string): FrameLoader {
-  if (!/\.(?:xyz|extxyz|traj)$/.test(filename.toLowerCase())) {
+  if (!is_indexable_trajectory_filename(filename)) {
     throw new Error(`Unsupported format for frame loading: ${filename}`)
   }
   return new TrajFrameReader(filename)
