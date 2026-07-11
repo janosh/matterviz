@@ -1,7 +1,7 @@
 // Streaming trajectory loader tests - clever testing without large files
 import { trajectory_property_config } from '$lib/labels'
-import type { ParseProgress } from '$lib/trajectory'
 import { DEFAULTS } from '$lib/settings'
+import { FRAME_LOAD_DEBOUNCE_MS, type ParseProgress } from '$lib/trajectory'
 import {
   create_frame_loader,
   LARGE_FILE_THRESHOLD,
@@ -10,7 +10,6 @@ import {
   parse_trajectory_async,
   TrajFrameReader,
 } from '$lib/trajectory/parse'
-import { FRAME_LOAD_DEBOUNCE_MS } from '$lib/trajectory'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
 import process from 'node:process'
 import { flushSync, mount, tick } from 'svelte'

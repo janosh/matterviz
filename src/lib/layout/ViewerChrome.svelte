@@ -103,7 +103,7 @@
       --viewer-buttons-hover-bg,
       color-mix(in srgb, currentColor 8%, transparent)
     );
-    color: var(--viewer-buttons-hover-color);
+    color: var(--viewer-buttons-hover-color, currentColor);
   }
   .filename {
     font-family: monospace;
