@@ -113,11 +113,7 @@ describe(`StructureInfoPane`, () => {
       site_cards()[0].click()
       expect(state.selected_sites).toEqual([1])
 
-      const copy_buttons =
-        site_cards()[0].querySelectorAll<HTMLButtonElement>(`button.copy-button`)
-      expect(copy_buttons).toHaveLength(1)
-      const [copy_button] = copy_buttons
-      copy_button.click()
+      site_cards()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `c`, bubbles: true }))
       expect(clipboard_spy).toHaveBeenCalledWith(expect.stringContaining(`Hydrogen`))
 
       filter_input.value = ``

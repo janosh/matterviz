@@ -252,10 +252,10 @@ describe(`Treemap`, () => {
   })
 
   test.each([
-    [`the header strip is absent`, { padding_top: 0 }],
+    [`the header strip is absent`, { padding_top: 0, label_fit: `hide` }],
     [
       `its font is taller than the header strip`,
-      { padding_top: 12, parent_label_font_size: 30 },
+      { padding_top: 12, parent_label_font_size: 30, label_fit: `hide` },
     ],
   ] as const)(`hide mode drops a parent label when %s`, async (_reason, props) => {
     const plot = await mount_sized_treemap({ data: tree, ...props })
@@ -311,8 +311,8 @@ describe(`Treemap`, () => {
   test.each([
     [`hide drops overflowing labels`, `hide`, `very-long-label-`.repeat(100), 30, null],
     [
-      `shrink uses the minimum for overflow`,
-      `shrink`,
+      `default shrink uses the minimum for overflow`,
+      undefined,
       `very-long-label-`.repeat(100),
       30,
       `6`,

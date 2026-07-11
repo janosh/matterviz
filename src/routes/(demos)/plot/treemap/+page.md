@@ -41,7 +41,7 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell are
 
 ## Multiline labels and fitting
 
-`label_formatter` returns one or more independently styled lines while preserving the default cell hover, focus, click, zoom, and tooltip behavior. Parent header labels default to 14 px (`parent_label_font_size`) while leaf labels use `--treemap-font-size` (11 px by default). `label_fit="hide"` is the default. Use `"shrink"` to grow or shrink the label block's base font size between `label_min_font_size` and `label_max_font_size`, or `"clip"` to keep the maximum size and clip overflow (per-line `font_scale` multiplies on top of the fitted base size, so scaled lines can render outside those bounds). Parent headers use `parent_label_font_size` as their ceiling. Both non-default modes clip on an unrotated cell wrapper, so even rotated labels stay inside their cells.
+`label_formatter` returns one or more independently styled lines while preserving the default cell hover, focus, click, zoom, and tooltip behavior. Parent header labels default to 14 px (`parent_label_font_size`) while leaf labels use `--treemap-font-size` (11 px by default). `label_fit="shrink"` is the default and scales the label block's base font size between `label_min_font_size` and `label_max_font_size`. Use `"hide"` to omit labels that do not fit at full size, or `"clip"` to keep the maximum size and clip overflow (per-line `font_scale` multiplies on top of the fitted base size, so scaled lines can render outside those bounds). Parent headers use `parent_label_font_size` as their ceiling. Shrink and clip modes use an unrotated clipping wrapper, so even rotated labels stay inside their cells.
 
 ```svelte example
 <script lang="ts">
@@ -58,7 +58,6 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell are
 <Treemap
   {data}
   padding_top={30}
-  label_fit="shrink"
   label_min_font_size={3}
   label_max_font_size={28}
   label_formatter={(arc) => [

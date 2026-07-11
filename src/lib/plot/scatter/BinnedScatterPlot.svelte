@@ -23,8 +23,8 @@
     compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
-    full_footprint_rect_or,
     LABEL_GAP_DEFAULT,
+    full_footprint_or,
     point_in_rect,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
@@ -171,7 +171,6 @@
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let colorbar_element = $state<HTMLDivElement>()
   let annotation_element = $state<HTMLDivElement>()
-  let colorbar_size_revision = $state(0)
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
   const clip_path_id = `binned-scatter-plot-area-${next_clip_id++}`
@@ -386,7 +385,7 @@
       ? COLOR_BAR_DEFAULTS.vertical_footprint
       : COLOR_BAR_DEFAULTS.horizontal_footprint,
   )
-  const get_color_bar_placement = () => {
+  let color_bar_placement = $derived.by(() => {
     if (
       !color_bar_props ||
       render_mode !== `density` ||
@@ -407,24 +406,19 @@
       points: density_placement_points,
       grid_resolution: 12,
     })
-  }
+  })
   // Fallback footprint before the annotation snippet first renders; the real
   // footprint is measured once laid out (mirrors colorbar_fallback_size above)
   const annotation_fallback_size = { width: 120, height: 50 }
   // Auto-place the annotation snippet like the colorbar, but with the already-placed
   // colorbar's footprint as an exclusion zone so the two never overlap.
-  const get_annotation_placement = () => {
+  let annotation_placement = $derived.by(() => {
     if (!annotation || !width || !height) return null
 
-    const color_bar_placement = colorbar_tween.placed()
-      ? colorbar_tween.coords.target
-      : get_color_bar_placement()
-    const colorbar_footprint = full_footprint_rect_or(colorbar_element, colorbar_fallback_size)
     const colorbar_rect = color_bar_placement && {
-      width: colorbar_footprint.width,
-      height: colorbar_footprint.height,
-      x: color_bar_placement.x + colorbar_footprint.offset_x,
-      y: color_bar_placement.y + colorbar_footprint.offset_y,
+      ...full_footprint_or(colorbar_element, colorbar_fallback_size),
+      x: color_bar_placement.x,
+      y: color_bar_placement.y,
     }
     return compute_element_placement({
       plot_bounds: plot_rect,
@@ -435,21 +429,18 @@
       points: density_placement_points,
       grid_resolution: 12,
     })
-  }
+  })
   const colorbar_tween = create_placed_tween({
-    placement: get_color_bar_placement,
+    placement: () => color_bar_placement,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => colorbar_element,
-    on_element_resize: () => (colorbar_size_revision += 1),
   })
   const annotation_tween = create_placed_tween({
-    placement: get_annotation_placement,
+    placement: () => annotation_placement,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => annotation_element,
-    placement_revision: () =>
-      `${colorbar_size_revision}:${colorbar_tween.coords.target.x}:${colorbar_tween.coords.target.y}`,
   })
 
   let auto_render_mode = $derived.by((): RenderMode => {

@@ -63,9 +63,13 @@ export const decompress_host_buffer = async (
       `Decompressed file too large for memory budget (${retained_size} bytes retained). Maximum: ${max_memory_size} bytes`,
     )
   if (data.byteLength > max_memory_size) throw memory_error(data.byteLength)
-  const output_buffer = new ArrayBuffer(0, {
-    maxByteLength: max_memory_size - data.byteLength,
-  })
+
+  const output_memory_factor =
+    1 + (reserve_text_decoding ? TEXT_DECODING_BYTES_PER_OUTPUT_BYTE : 0)
+  const max_output_size = Math.floor(
+    (max_memory_size - data.byteLength) / output_memory_factor,
+  )
+  const output_buffer = new ArrayBuffer(0, { maxByteLength: max_output_size })
   const decompressor =
     format === `gzip`
       ? createGunzip()
@@ -77,14 +81,13 @@ export const decompress_host_buffer = async (
   for await (const chunk of decompressed_stream) {
     const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk)
     const next_output_size = output_buffer.byteLength + bytes.byteLength
-    // The input and current zlib chunk remain live while the destination grows.
-    // TextDecoder may then retain the bytes while creating a UTF-16 string.
+    // Input, destination, and the current zlib chunk coexist during the copy.
+    // Text decoding additionally creates a UTF-16 string from the output bytes.
     const retained_size =
       data.byteLength +
       next_output_size +
-      (reserve_text_decoding
-        ? next_output_size * TEXT_DECODING_BYTES_PER_OUTPUT_BYTE
-        : bytes.byteLength)
+      bytes.byteLength +
+      (reserve_text_decoding ? next_output_size * TEXT_DECODING_BYTES_PER_OUTPUT_BYTE : 0)
     if (retained_size > max_memory_size) {
       decompressed_stream.destroy()
       throw memory_error(retained_size)

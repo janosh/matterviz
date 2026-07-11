@@ -82,7 +82,7 @@
     show_labels = $bindable(DEFAULTS.treemap.show_labels),
     label_text = $bindable(DEFAULTS.treemap.label_text),
     label_formatter,
-    label_fit = `hide`,
+    label_fit = `shrink`,
     label_min_font_size = 6,
     label_max_font_size,
     parent_label_font_size = 14,
@@ -136,7 +136,7 @@
       // Structured multiline labels. Unlike cell_content, this keeps built-in
       // hover/focus/click and tooltip behavior on the underlying cell.
       label_formatter?: TreemapLabelFormatter<Metadata>
-      label_fit?: TreemapLabelFit // hide (legacy), shrink-to-fit, or clip at max size
+      label_fit?: TreemapLabelFit // shrink-to-fit (default), hide, or clip at max size
       label_min_font_size?: number // px floor used by shrink mode
       label_max_font_size?: number // px ceiling for leaf/cutoff labels
       parent_label_font_size?: number // px size/ceiling for branch header labels

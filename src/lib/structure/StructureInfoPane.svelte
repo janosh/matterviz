@@ -6,7 +6,6 @@
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
-  import CopyButton from '$lib/overlays/CopyButton.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
@@ -92,11 +91,6 @@
 
   const copy_to_clipboard = (label: string, value: string, key: string): Promise<void> =>
     copy(`${label}: ${value}`, key)
-
-  function copy_event(event: MouseEvent, label: string, value: string, key: string) {
-    event.stopPropagation()
-    copy_to_clipboard(label, value, key)
-  }
 
   function copy_info_item(item: InfoItem) {
     copy_to_clipboard(item.label, String(item.value), item.key ?? item.label)
@@ -539,25 +533,11 @@
                 onclick={(event) => select_site(card.idx, event)}
                 onkeydown={(event) => handle_site_keydown(event, card)}
               >
-                <div class="site-card-header">
-                  <span class="site-title">
-                    <span class="site-color" aria-hidden="true"></span>
-                    <strong>{card.title}</strong>
-                    <span>{card.element_name}</span>
-                  </span>
-                  <CopyButton
-                    label="Copy {card.title}"
-                    title="Copy {card.title}"
-                    copied={copied.has(`site-${card.idx}-summary`)}
-                    onclick={(event) =>
-                      copy_event(
-                        event,
-                        card.title,
-                        site_summary(card),
-                        `site-${card.idx}-summary`,
-                      )}
-                  />
-                </div>
+                <span class="site-title">
+                  <span class="site-color" aria-hidden="true"></span>
+                  <strong>{card.title}</strong>
+                  <span>{card.element_name}</span>
+                </span>
                 <div class="site-card-details">
                   {#each card.details as detail (`site-${card.idx}-${detail.key}`)}
                     <div class="site-detail">
@@ -677,15 +657,11 @@
       background: color-mix(in srgb, var(--site-color, currentColor) 25%, transparent);
     }
   }
-  .site-card-header,
   .site-title,
   .site-detail {
     display: flex;
     align-items: center;
     gap: 5pt;
-  }
-  .site-card-header {
-    justify-content: space-between;
   }
   .site-title {
     min-width: 0;

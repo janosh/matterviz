@@ -52,32 +52,17 @@ export function measure_text_width(text: string, font: string = `12px sans-serif
 // offset box. Colorbar tick labels are position:absolute outside the bar, so
 // offsetWidth/offsetHeight underestimate the space they actually occupy — which lets
 // auto-placement put the colorbar where its labels overlap the axes.
-type Size = { width: number; height: number }
-export type ElementFootprint = Size & {
-  offset_x: number
-  offset_y: number
-}
-
-function measure_full_footprint(el: HTMLElement): ElementFootprint {
+function measure_full_footprint(el: HTMLElement): { width: number; height: number } {
   const root = el.getBoundingClientRect()
-  let left = root.left
-  let top = root.top
   let right = root.right
   let bottom = root.bottom
   for (const child of el.querySelectorAll(`*`)) {
     const rect = child.getBoundingClientRect()
     if (rect.width === 0 && rect.height === 0) continue
-    left = Math.min(left, rect.left)
-    top = Math.min(top, rect.top)
     right = Math.max(right, rect.right)
     bottom = Math.max(bottom, rect.bottom)
   }
-  return {
-    width: right - left,
-    height: bottom - top,
-    offset_x: left - root.left,
-    offset_y: top - root.top,
-  }
+  return { width: right - root.left, height: bottom - root.top }
 }
 
 // Full footprint once the element is laid out, else `fallback` (offset dims read 0
@@ -86,19 +71,9 @@ function measure_full_footprint(el: HTMLElement): ElementFootprint {
 // absolutely-positioned descendants like colorbar tick labels.
 export const full_footprint_or = (
   el: HTMLElement | null | undefined,
-  fallback: Size,
-): Size => {
-  const { width, height } = full_footprint_rect_or(el, fallback)
-  return { width, height }
-}
-
-export const full_footprint_rect_or = (
-  el: HTMLElement | null | undefined,
-  fallback: Size,
-): ElementFootprint =>
-  el?.offsetWidth && el?.offsetHeight
-    ? measure_full_footprint(el)
-    : { ...fallback, offset_x: 0, offset_y: 0 }
+  fallback: { width: number; height: number },
+): { width: number; height: number } =>
+  el?.offsetWidth && el?.offsetHeight ? measure_full_footprint(el) : fallback
 
 // Calculate auto-adjusted padding based on tick label widths/heights
 // This ensures tick labels don't overlap with axis labels
@@ -266,7 +241,7 @@ export interface ElementPlacementConfig {
   // Bounds of the plot area (in SVG coordinates)
   plot_bounds: Rect
   // Fallback size of the element to place (used before `element` first renders)
-  element_size: Size
+  element_size: { width: number; height: number }
   // Element to place. When provided and laid out, its full visual footprint
   // (including descendants that overflow the box, e.g. colorbar tick labels) is
   // measured and overrides element_size — keeping placement overlap-free everywhere.
@@ -365,22 +340,13 @@ export function compute_element_placement(
   // Measure the element's full footprint (incl. descendants that overflow its box,
   // such as colorbar tick labels) once it's laid out; fall back to element_size before
   // first render. Centralizing this keeps every plot's auto-placement overlap-free.
-  const {
-    width: elem_width,
-    height: elem_height,
-    offset_x,
-    offset_y,
-  } = full_footprint_rect_or(element, element_size)
+  const { width: elem_width, height: elem_height } = full_footprint_or(element, element_size)
 
   // Calculate valid placement region (plot bounds minus axis clearance)
-  const plot_left = plot_bounds.x + axis_clearance
-  const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
-  const plot_top = plot_bounds.y + axis_clearance
-  const plot_bottom = plot_bounds.y + plot_bounds.height - axis_clearance
-  const valid_x_min = plot_left - offset_x
-  const valid_y_min = plot_top - offset_y
-  const valid_x_max = plot_right - offset_x - elem_width
-  const valid_y_max = plot_bottom - offset_y - elem_height
+  const valid_x_min = plot_bounds.x + axis_clearance
+  const valid_y_min = plot_bounds.y + axis_clearance
+  const valid_x_max = plot_bounds.x + plot_bounds.width - axis_clearance - elem_width
+  const valid_y_max = plot_bounds.y + plot_bounds.height - axis_clearance - elem_height
 
   // Handle case where element is too large for the valid region
   const effective_x_min = Math.min(valid_x_min, valid_x_max)
@@ -414,6 +380,10 @@ export function compute_element_placement(
       : 0
 
   // Precompute plot corners (constant across all candidates)
+  const plot_left = valid_x_min
+  const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
+  const plot_top = valid_y_min
+  const plot_bottom = plot_bounds.y + plot_bounds.height - axis_clearance
   const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
 
   for (let grid_x = 0; grid_x < grid_resolution; grid_x++) {
@@ -421,8 +391,8 @@ export function compute_element_placement(
       const cand_x = effective_x_min + grid_x * x_step
       const cand_y = effective_y_min + grid_y * y_step
       const cand_rect: Rect = {
-        x: cand_x + offset_x,
-        y: cand_y + offset_y,
+        x: cand_x,
+        y: cand_y,
         width: elem_width,
         height: elem_height,
       }
@@ -462,14 +432,14 @@ export function compute_element_placement(
       // Corner preference: use element's actual corner (not center) for distance
       // This ensures a wide element at the left edge gets proper corner credit
       // (measured footprint, same as cand_rect — not the element_size fallback)
-      const elem_right = cand_rect.x + elem_width
-      const elem_bottom = cand_rect.y + elem_height
+      const elem_right = cand_x + elem_width
+      const elem_bottom = cand_y + elem_height
 
       // Distance from element's matching corner to each plot corner
       const min_corner_dist = Math.min(
-        euclidean_dist([cand_rect.x, cand_rect.y], [plot_left, plot_top]), // top-left
-        euclidean_dist([elem_right, cand_rect.y], [plot_right, plot_top]), // top-right
-        euclidean_dist([cand_rect.x, elem_bottom], [plot_left, plot_bottom]), // bottom-left
+        euclidean_dist([cand_x, cand_y], [plot_left, plot_top]), // top-left
+        euclidean_dist([elem_right, cand_y], [plot_right, plot_top]), // top-right
+        euclidean_dist([cand_x, elem_bottom], [plot_left, plot_bottom]), // bottom-left
         euclidean_dist([elem_right, elem_bottom], [plot_right, plot_bottom]), // bottom-right
       )
       // Higher bonus for positions closer to corners (0 = at corner, 1 = far from all)
