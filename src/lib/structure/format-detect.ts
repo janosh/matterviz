@@ -5,6 +5,8 @@ import {
   STRUCTURE_EXTENSIONS_REGEX,
   TRAJ_KEYWORDS_REGEX,
   VASP_FILES_REGEX,
+  XDATCAR_REGEX,
+  XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
 
@@ -14,16 +16,14 @@ import { strip_compression_extensions } from '$lib/io/decompress'
 export function is_structure_file(filename: string): boolean {
   const name = strip_compression_extensions(filename)
 
-  if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
+  if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || XDATCAR_REGEX.test(name)) return false
   if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) return true
-  if (/\.(?:xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
+  if (XYZ_EXTXYZ_REGEX.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
   if (/\.(?:yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
-  if (
+  return (
     /\.json$/i.test(name) &&
     STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
     !TRAJ_KEYWORDS_REGEX.test(name) &&
     !CONFIG_DIRS_REGEX.test(name)
   )
-    return true
-  return false
 }

@@ -6,7 +6,6 @@
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
-  import CopyButton from '$lib/overlays/CopyButton.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
@@ -93,11 +92,6 @@
   const copy_to_clipboard = (label: string, value: string, key: string): Promise<void> =>
     copy(`${label}: ${value}`, key)
 
-  function copy_event(event: MouseEvent, label: string, value: string, key: string) {
-    event.stopPropagation()
-    copy_to_clipboard(label, value, key)
-  }
-
   function copy_info_item(item: InfoItem) {
     copy_to_clipboard(item.label, String(item.value), item.key ?? item.label)
   }
@@ -157,6 +151,12 @@
     [card.element_name, ...card.details.map(({ label, value }) => `${label}: ${value}`)].join(
       `; `,
     )
+
+  function compact_site_detail_label(detail: SiteDetail): string {
+    if (detail.key === `fractional`) return `Frac.`
+    if (detail.key === `cartesian`) return `Cart.`
+    return detail.label
+  }
 
   function format_site_property(prop_key: string, prop_value: unknown): SiteDetail | null {
     if (prop_value == null) return null
@@ -238,7 +238,7 @@
           },
           {
             label: `a, b, c`,
-            value: `${format_num(a, `.4~f`)}, ${format_num(b, `.4~f`)}, ${format_num(c, `.4~f`)} Å`,
+            value: `${format_num(a, `.3~f`)}, ${format_num(b, `.3~f`)}, ${format_num(c, `.3~f`)} Å`,
             key: `cell-abc`,
           },
           {
@@ -326,7 +326,7 @@
         details.push({
           label,
           key,
-          value: `(${coords.map((coord) => format_num(coord, `.4~f`)).join(`, `)})${unit}`,
+          value: `(${coords.map((coord) => format_num(coord, `.3~f`)).join(`, `)})${unit}`,
         })
       }
       if (site.properties) {
@@ -401,7 +401,12 @@
   }}
   open_icon="Cross"
   closed_icon="Info"
-  pane_props={{ ...pane_props, class: `structure-info-pane ${pane_props?.class ?? ``}` }}
+  icon_style="transform: scale(1.15)"
+  pane_props={{
+    ...pane_props,
+    class: `structure-info-pane ${pane_props?.class ?? ``}`,
+    style: `--pane-padding: 4pt; --pane-gap: 2pt; ${pane_props?.style ?? ``}`,
+  }}
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Info</h4>
@@ -443,7 +448,7 @@
           {wyckoff_positions}
           on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
           on_click={(site_indices) => (selected_sites = site_indices ?? [])}
-          style="width: 100%; margin-top: 0.5em; font-size: 0.8em"
+          style="width: 100%; margin-top: 2pt; font-size: 0.8em"
         />
       {/if}
     </section>
@@ -528,42 +533,18 @@
                 onclick={(event) => select_site(card.idx, event)}
                 onkeydown={(event) => handle_site_keydown(event, card)}
               >
-                <div class="site-card-header">
-                  <span class="site-title">
-                    <span class="site-color" aria-hidden="true"></span>
-                    <strong>{card.title}</strong>
-                    <span>{card.element_name}</span>
-                  </span>
-                  <CopyButton
-                    label="Copy {card.title}"
-                    title="Copy {card.title}"
-                    copied={copied.has(`site-${card.idx}-summary`)}
-                    onclick={(event) =>
-                      copy_event(
-                        event,
-                        card.title,
-                        site_summary(card),
-                        `site-${card.idx}-summary`,
-                      )}
-                  />
-                </div>
+                <span class="site-title">
+                  <span class="site-color" aria-hidden="true"></span>
+                  <strong>{card.title}</strong>
+                  <span>{card.element_name}</span>
+                </span>
                 <div class="site-card-details">
                   {#each card.details as detail (`site-${card.idx}-${detail.key}`)}
                     <div class="site-detail">
-                      <span>{@html sanitize_html(detail.label)}</span>
+                      <span title={detail.label}
+                        >{@html sanitize_html(compact_site_detail_label(detail))}</span
+                      >
                       <span title={detail.tooltip}>{@html sanitize_html(detail.value)}</span>
-                      <CopyButton
-                        label="Copy {card.title} {detail.label}"
-                        title="Copy {detail.label}"
-                        copied={copied.has(`site-${card.idx}-${detail.key}`)}
-                        onclick={(event) =>
-                          copy_event(
-                            event,
-                            `${card.title} ${detail.label}`,
-                            detail.value,
-                            `site-${card.idx}-${detail.key}`,
-                          )}
-                      />
                     </div>
                   {/each}
                 </div>
@@ -588,13 +569,20 @@
 </DraggablePane>
 
 <style>
-  .info-row,
-  .tips-item {
+  h4 {
+    margin: 2pt 0;
+    font-size: 0.95em;
+  }
+  hr {
+    margin: 2pt 0;
+  }
+  .info-row {
     display: flex;
     justify-content: space-between;
-    gap: 6pt;
-    padding: 1pt;
-    line-height: 1.5;
+    gap: 4pt;
+    padding: 0 1pt;
+    font-size: 0.9em;
+    line-height: 1.3;
   }
   .info-row.clickable {
     cursor: pointer;
@@ -607,10 +595,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 6pt;
-    h4 {
-      margin: 0.5em 0;
-    }
+    gap: 4pt;
   }
   .sites-toggle,
   .site-window-controls button {
@@ -627,8 +612,8 @@
   .site-filter {
     box-sizing: border-box;
     width: 100%;
-    margin-bottom: 5pt;
-    padding: 4pt 6pt;
+    margin-bottom: 3pt;
+    padding: 3pt 5pt;
     border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
     border-radius: var(--border-radius, 3pt);
     background: color-mix(in srgb, var(--pane-bg, Canvas) 88%, currentColor);
@@ -643,8 +628,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 5pt;
-    margin-bottom: 5pt;
+    gap: 4pt;
+    margin-bottom: 3pt;
     font-size: 0.8em;
     button {
       padding: 2pt 5pt;
@@ -656,13 +641,12 @@
   }
   .site-cards {
     display: grid;
-    gap: 5pt;
+    gap: 6pt;
   }
   .site-card {
     border-left: 3px solid var(--site-color, #888);
-    border-radius: var(--border-radius, 3pt);
     background: color-mix(in srgb, currentColor 4%, transparent);
-    padding: 5pt;
+    padding: 4pt 8pt;
     cursor: pointer;
     outline: none;
     &:is(:hover, :focus-visible, .highlighted) {
@@ -673,15 +657,11 @@
       background: color-mix(in srgb, var(--site-color, currentColor) 25%, transparent);
     }
   }
-  .site-card-header,
   .site-title,
   .site-detail {
     display: flex;
     align-items: center;
     gap: 5pt;
-  }
-  .site-card-header {
-    justify-content: space-between;
   }
   .site-title {
     min-width: 0;
@@ -697,13 +677,17 @@
     background: var(--site-color, #888);
   }
   .site-card-details {
-    display: grid;
-    gap: 2pt;
-    margin-top: 3pt;
-    font-size: 0.86em;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1pt 4pt;
+    margin-top: 2pt;
+    font-size: 0.73em;
+    line-height: 1.3;
   }
   .site-detail {
-    justify-content: space-between;
+    gap: 2pt;
+    min-width: 0;
+    max-width: 100%;
     span:first-child {
       opacity: 0.75;
     }
@@ -732,8 +716,16 @@
     }
   }
   .tips-item {
-    flex-direction: column;
-    gap: 2pt;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4pt;
+    padding: 1pt 0;
+    font-size: 0.8em;
+    line-height: 1.25;
+    span:first-child {
+      font-weight: 600;
+      text-align: right;
+    }
     span:last-child {
       opacity: 0.8;
     }

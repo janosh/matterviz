@@ -1,6 +1,5 @@
 // ASE trajectory (.traj) parsing - binary format
 import * as math from '$lib/math'
-import { MAX_SAFE_STRING_LENGTH } from '$lib/trajectory/constants'
 import {
   convert_atomic_numbers,
   create_trajectory_frame,
@@ -8,6 +7,8 @@ import {
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+
+const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
 
 // ULM header: frame count lives at byte 32, frame-offsets table position at byte 40
 export const read_ase_header = (view: DataView): { n_items: number; offsets_pos: number } => ({

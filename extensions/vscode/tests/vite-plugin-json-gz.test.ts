@@ -5,7 +5,7 @@ import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 import { vite_plugin_json_gz } from '../vite-plugin-json-gz'
 
-const fixture_path = `${import.meta.dirname}/../test-fixtures/all-viz-types.json.gz`
+const fixture_path = `${import.meta.dirname}/../../../tests/vitest/fixtures/file-viewer/all-viz-types.json.gz`
 const expected_data = JSON.parse(gunzipSync(readFileSync(fixture_path)).toString(`utf-8`))
 
 function make_plugin(command: `build` | `serve` = `serve`) {

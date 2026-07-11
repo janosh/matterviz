@@ -82,6 +82,20 @@ describe(`ScatterPlot`, () => {
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
+  test(`does not render a colorbar in a zero-sized plot`, async () => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(0)
+    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(0)
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ ...basic, color_values: basic.x }],
+        color_bar: {},
+      },
+    })
+    await tick()
+    expect(document.querySelector(`.colorbar-wrapper`)).toBeNull()
+  })
+
   test.each([
     [`points only`, `points`, 5, 3],
     [`line+points`, `line+points`, 5, 2.5],
@@ -761,12 +775,15 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot({ series, legend: { responsive: false } })
     await resize_element(plot, 401, 300)
     await tick()
+    const legend = doc_query<HTMLElement>(`.legend`)
+    const initial_position = { left: legend.style.left, top: legend.style.top }
     layout_spy.mockClear()
 
     series[0].y = [6, 4, 9, 3, 8]
     flushSync()
     await tick()
     expect(layout_spy).not.toHaveBeenCalled()
+    expect({ left: legend.style.left, top: legend.style.top }).toEqual(initial_position)
   })
 
   // rect-zoom must zoom y2 series too when sync is 'none' (the default) - BarPlot,

@@ -102,13 +102,13 @@
           <td>
             <span
               style:background-color={colors.element[elem]}
-              style="display: inline-block; padding: 0 6pt; border-radius: 3pt; line-height: 1.4"
+              style="display: inline-block; padding: 0 4pt; border-radius: 3pt; line-height: 1.25"
               {@attach contrast_color()}
             >
               {elem}
             </span>
           </td>
-          <td>({abc?.map(format_fractional).join(` , `) ?? `N/A`})</td>
+          <td>({abc?.map(format_fractional).join(`, `) ?? `N/A`})</td>
           {#if has_ita_coords}
             <td>{wyckoff_pos.coordinates ? `(${wyckoff_pos.coordinates})` : ``}</td>
           {/if}
@@ -136,10 +136,11 @@
 
 <style>
   .wyckoff-table {
-    margin-top: 1em;
+    margin-top: 0.5em;
+    border-collapse: collapse;
   }
   .wyckoff-table :is(th, td) {
-    padding: 2px 6px;
+    padding: 1px 3px;
     text-align: center;
     vertical-align: middle;
   }

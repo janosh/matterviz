@@ -51,11 +51,11 @@ describe(`StructureInfoPane`, () => {
       expect(content).toContain(`(${atom_count} sites)`)
       if (atom_count >= 50) expect(content).toContain(`Show ${atom_count} sites`)
       if (shows_site_details) {
-        expect(content).toContain(`Fractional`)
-        expect(content).toContain(`Cartesian`)
+        expect(content).toContain(`Frac.`)
+        expect(content).toContain(`Cart.`)
       } else {
-        expect(content).not.toContain(`Fractional`)
-        expect(content).not.toContain(`Cartesian`)
+        expect(content).not.toContain(`Frac.`)
+        expect(content).not.toContain(`Cart.`)
       }
     },
   )
@@ -66,8 +66,8 @@ describe(`StructureInfoPane`, () => {
 
     const content = document.body.textContent || ``
     expect(content).not.toContain(`Show 600 sites`)
-    expect(content).not.toContain(`Fractional`)
-    expect(content).not.toContain(`Cartesian`)
+    expect(content).not.toContain(`Frac.`)
+    expect(content).not.toContain(`Cart.`)
   })
 
   test(`site cards hover, filter, select, copy, and keyboard navigate`, async () => {
@@ -113,10 +113,7 @@ describe(`StructureInfoPane`, () => {
       site_cards()[0].click()
       expect(state.selected_sites).toEqual([1])
 
-      const copy_button = site_cards()[0].querySelector(
-        `button.copy-button`,
-      ) as HTMLButtonElement
-      copy_button.click()
+      site_cards()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `c`, bubbles: true }))
       expect(clipboard_spy).toHaveBeenCalledWith(expect.stringContaining(`Hydrogen`))
 
       filter_input.value = ``

@@ -166,7 +166,7 @@ export const format_num = (num: number, fmt?: string | number) => {
 }
 
 // Format a 3D vector as "(x, y, z)" with configurable precision
-export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.4~`): string =>
+export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
   `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${format_num(
     vec[2],
     fmt_spec,

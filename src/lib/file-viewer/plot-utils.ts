@@ -38,7 +38,11 @@ export function extract_columns(data: unknown): Map<string, ColumnInfo> {
     for (const key of all_keys) {
       columns.set(
         key,
-        classify_column(data.map((row) => (row as Record<string, unknown>)[key])),
+        classify_column(
+          data.map((row) =>
+            row && typeof row === `object` ? (row as Record<string, unknown>)[key] : undefined,
+          ),
+        ),
       )
     }
   } else if (data && typeof data === `object` && !Array.isArray(data)) {

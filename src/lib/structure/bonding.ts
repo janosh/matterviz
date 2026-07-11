@@ -1,8 +1,7 @@
 // Bonding algorithms for structure visualization
 
-import { default as element_data } from '$lib/element/data'
+import element_data, { element_by_symbol } from '../element/data'
 import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol } from '$lib/element/groups'
 import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'

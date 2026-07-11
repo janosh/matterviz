@@ -2,11 +2,9 @@
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { get_d3_interpolator } from '$lib/colors'
-import {
-  calc_coordination_nums,
-  type CoordinationData,
-} from '$lib/coordination/calc-coordination'
-import { element_by_symbol } from '$lib/element/groups'
+import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
+import type { CoordinationData } from '$lib/coordination/calc-coordination'
+import { element_by_symbol } from '$lib/element/data'
 import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'

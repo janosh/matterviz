@@ -1,9 +1,9 @@
-// Theme Detection for AnyWidget
+// Theme Detection for Embedded MatterViz Views
 
-import { luminance } from 'matterviz/colors'
-import { COLOR_THEMES, type ThemeType } from 'matterviz/theme'
+import { luminance } from '$lib/colors'
+import { COLOR_THEMES, type ThemeType } from '$lib/theme'
 // oxlint-disable-next-line import/no-unassigned-import -- registers built-in themes
-import 'matterviz/theme/themes'
+import '$lib/theme/themes.mjs'
 
 // Extend globalThis with our custom properties
 declare global {
@@ -12,8 +12,6 @@ declare global {
         application?: { shell?: { dataset?: { theme?: string } } }
       }
     | undefined
-  var MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
-  var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
 }
 
 type ThemeCallback = (theme_type: ThemeType) => void
@@ -129,15 +127,11 @@ function check_element_hierarchy(element: Element): ThemeType | null {
     const bg_color = computed_style.backgroundColor
     const text_color = computed_style.color
 
-    if (bg_color && bg_color !== `rgba(0, 0, 0, 0)` && bg_color !== `transparent`) {
-      const is_dark = is_dark_color(bg_color)
-      if (is_dark !== null) return is_dark ? `dark` : `light`
-    }
+    const is_dark = is_dark_color(bg_color)
+    if (is_dark !== null) return is_dark ? `dark` : `light`
 
-    if (text_color && text_color !== `rgba(0, 0, 0, 0)` && text_color !== `transparent`) {
-      const text_is_dark = is_dark_color(text_color)
-      if (text_is_dark !== null) return text_is_dark ? `light` : `dark`
-    }
+    const text_is_dark = is_dark_color(text_color)
+    if (text_is_dark !== null) return text_is_dark ? `light` : `dark`
 
     current_element = current_element.parentElement
   }
@@ -146,7 +140,9 @@ function check_element_hierarchy(element: Element): ThemeType | null {
 }
 
 function is_dark_color(color: string): boolean | null {
-  if (!color || [`transparent`, `initial`, `inherit`].includes(color)) return null
+  if (!color || [`transparent`, `rgba(0, 0, 0, 0)`, `initial`, `inherit`].includes(color)) {
+    return null
+  }
   return luminance(color) < 0.5
 }
 

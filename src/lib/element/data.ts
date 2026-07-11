@@ -9,4 +9,11 @@
 
 // Source of truth is data.json.gz. During npm packaging, scripts/package-dist-assets.ts
 // rewrites dist/element/data.js to inline decompressed JSON for sync consumers.
+import element_data from './data.json.gz'
+import type { ChemicalElement, ElementSymbol } from './types'
+
+export const element_by_symbol: ReadonlyMap<ElementSymbol, ChemicalElement> = new Map(
+  element_data.map((element) => [element.symbol, element]),
+)
+
 export { default } from './data.json.gz'

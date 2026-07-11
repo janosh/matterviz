@@ -11,7 +11,7 @@ import {
 
 const fixture = JSON.parse(
   gunzipSync(
-    readFileSync(`${import.meta.dirname}/../test-fixtures/all-viz-types.json.gz`),
+    readFileSync(`${import.meta.dirname}/../fixtures/file-viewer/all-viz-types.json.gz`),
   ).toString(),
 )
 

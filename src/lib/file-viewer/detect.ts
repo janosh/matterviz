@@ -1,7 +1,6 @@
 // Data type detection for JSON values -- determines which visualization component to use.
 // Used by JsonBrowser and the file renderer to select visualization components.
 
-import type { DefaultSettings } from '$lib/settings'
 import { is_optimade_raw } from '$lib/structure/parse'
 
 // Visualization types supported by the file viewer.
@@ -447,37 +446,13 @@ export function scan_renderable_paths(
 // Handles dotted keys ["foo.bar"], array indices [0], and bare dotted paths a.b.c.
 export function resolve_path(root: unknown, path: string): unknown {
   if (!path) return root
-  const segment_re =
-    /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g
   let current: unknown = root
-  let match: RegExpExecArray | null
-  while ((match = segment_re.exec(path)) !== null) {
-    if (current === null || current === undefined || typeof current !== `object`) {
-      return undefined
-    }
-    current = (current as Record<string, unknown>)[match[1] ?? match[2] ?? match[3]]
+  for (const match of path.matchAll(
+    /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g,
+  )) {
+    if (current == null || typeof current !== `object`) return undefined
+    const { quoted_key, array_index, bare_key } = match.groups ?? {}
+    current = (current as Record<string, unknown>)[quoted_key ?? array_index ?? bare_key ?? ``]
   }
   return current
-}
-
-// Map centralized settings defaults to Structure component props.
-// TIGHT COUPLING WARNING: this mapping ties the settings schema (src/lib/settings.ts)
-// to the Structure prop interface — changes on either side need a manual update here.
-// Shared by the file renderer and JSON browser panel mounts.
-export const structure_props = (defaults: DefaultSettings) => {
-  const { structure } = defaults
-  return {
-    scene_props: { ...structure, gizmo: structure.show_gizmo },
-    lattice_props: {
-      show_cell_vectors: structure.show_cell_vectors,
-      cell_edge_opacity: structure.cell_edge_opacity,
-      cell_surface_opacity: structure.cell_surface_opacity,
-      cell_edge_color: structure.cell_edge_color,
-      cell_surface_color: structure.cell_surface_color,
-    },
-    color_scheme: defaults.color_scheme,
-    background_color: defaults.background_color,
-    background_opacity: defaults.background_opacity,
-    show_image_atoms: structure.show_image_atoms,
-  }
 }

@@ -1555,7 +1555,7 @@
       fullscreen_btn_style="padding: 0 3px"
       {wrapper}
       before={reset_camera_btn}
-      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch"
+      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if controls_config.visible(`multi-view`)}
         <button

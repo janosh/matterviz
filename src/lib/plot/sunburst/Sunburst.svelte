@@ -792,6 +792,9 @@
       {color_scale}
       range={metric.range}
       {...colorbar}
+      wrapper_style="{colorbar?.orientation === `vertical`
+        ? `--cbar-height: var(--sunburst-colorbar-height, 150px);`
+        : ``} {colorbar?.wrapper_style ?? ``}"
       style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
         ``}"
       {@attach observe_height((px) => (colorbar_height = px))}

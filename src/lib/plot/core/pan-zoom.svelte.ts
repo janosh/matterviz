@@ -12,16 +12,18 @@ import {
   snapshot_ranges,
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
+import { point_in_rect, type Rect } from '$lib/plot/core/layout'
 import type { AxisRanges, InitialRanges, PanConfig, ScaleType } from '$lib/plot/core/types'
 
 type Axis = `x` | `x2` | `y` | `y2`
+type RectDragState = { start: Point2D; current: Point2D; bounds: DOMRect }
 const AXES = [`x`, `x2`, `y`, `y2`] as const
 
 export interface PanZoomOptions {
   // ALL reactive inputs are getter thunks - read fresh per event, never captured values
   ranges: () => AxisRanges
   scale_type: (axis: Axis) => ScaleType | undefined
-  plot_dims: () => { width: number; height: number }
+  plot_bounds: () => Rect
   pan: () => PanConfig | undefined
   // Write-order contract: x, x2, y, y2 (ScatterPlot's y2 sync reads the just-written y)
   set_range: (axis: Axis, range: Vec2) => void
@@ -51,11 +53,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   destroy: () => void
 } {
   // Rect-zoom drag state
-  let drag_state = $state<{
-    start: Point2D | null
-    current: Point2D | null
-    bounds: DOMRect | null
-  }>({ start: null, current: null, bounds: null })
+  let drag_state = $state<RectDragState | null>(null)
 
   // Pan state
   let is_focused = $state(false)
@@ -64,7 +62,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   let touch_state = $state<(InitialRanges & { start_touches: Point2D[] }) | null>(null)
 
   const cancel_rect_drag = () => {
-    drag_state = { start: null, current: null, bounds: null }
+    drag_state = null
     if (typeof window !== `undefined`) {
       window.removeEventListener(`mousemove`, on_window_mouse_move)
       window.removeEventListener(`mouseup`, on_window_mouse_up)
@@ -73,7 +71,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
 
   const on_window_mouse_move = (evt: MouseEvent) => {
-    if (!drag_state.start || !drag_state.bounds) return
+    if (!drag_state) return
     const coords = {
       x: evt.clientX - drag_state.bounds.left,
       y: evt.clientY - drag_state.bounds.top,
@@ -88,7 +86,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
 
   const on_window_mouse_up = () => {
-    if (drag_state.start && drag_state.current) {
+    if (drag_state) {
       // Ignore minuscule drag rects (e.g. accidental clicks)
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
@@ -100,7 +98,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Pan/zoom all four axes from an interaction-start snapshot, each in its own
   // scale's transform space (log axes pan by a constant factor, linear by a shift)
   const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
-    const dims = opts.plot_dims()
+    const dims = opts.plot_bounds()
     for (const axis of AXES) {
       const horizontal = axis === `x` || axis === `x2`
       opts.set_range(
@@ -141,8 +139,15 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
 
   const on_mouse_down = (evt: MouseEvent) => {
+    if (evt.button !== 0) return
     const svg = opts.svg()
     if (!svg) return
+
+    // The SVG also contains axes, tick labels, and titles. Only the padded data
+    // rectangle may start a drag interaction.
+    const svg_bounds = svg.getBoundingClientRect()
+    const coords = { x: evt.clientX - svg_bounds.left, y: evt.clientY - svg_bounds.top }
+    if (!point_in_rect(coords, opts.plot_bounds())) return
 
     // Shift+drag pans (when enabled); plain drag draws the zoom rect
     const pan_enabled = opts.pan()?.enabled !== false
@@ -159,9 +164,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     }
 
     // Cache bounds at drag start so window mousemove can compute relative coords
-    const bounds = svg.getBoundingClientRect()
-    const coords = { x: evt.clientX - bounds.left, y: evt.clientY - bounds.top }
-    drag_state = { start: coords, current: coords, bounds }
+    drag_state = { start: coords, current: coords, bounds: svg_bounds }
     window.addEventListener(`mousemove`, on_window_mouse_move)
     window.addEventListener(`mouseup`, on_window_mouse_up)
     document.body.style.cursor = `crosshair`
@@ -175,7 +178,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (pan_cfg?.enabled === false || !is_focused || !shift_held) return
 
     evt.preventDefault()
-    const dims = opts.plot_dims()
+    const dims = opts.plot_bounds()
     const sensitivity = pan_cfg?.wheel_sensitivity ?? 1
     const ranges = opts.ranges()
 
@@ -203,12 +206,27 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     const touch_enabled = pan_cfg?.enabled !== false && pan_cfg?.touch_enabled !== false
     if (!touch_enabled || evt.touches.length !== 2) return
 
+    const svg_bounds = opts.svg()?.getBoundingClientRect()
+    if (!svg_bounds) return
+    const plot_bounds = opts.plot_bounds()
+    const start_touches = Array.from(evt.touches).map((touch) => ({
+      x: touch.clientX,
+      y: touch.clientY,
+    }))
+    // Every contact must start in the data rectangle; touching an axis or label
+    // must not arm a gesture that later moves into the plot.
+    const starts_outside_plot = start_touches.some(
+      (touch) =>
+        !point_in_rect(
+          { x: touch.x - svg_bounds.left, y: touch.y - svg_bounds.top },
+          plot_bounds,
+        ),
+    )
+    if (starts_outside_plot) return
+
     evt.preventDefault()
     touch_state = {
-      start_touches: Array.from(evt.touches).map((touch) => ({
-        x: touch.clientX,
-        y: touch.clientY,
-      })),
+      start_touches,
       ...snapshot_ranges(opts.ranges()),
     }
   }
@@ -248,7 +266,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // when their own Enter/Space activation bubbles up.
   const on_key_down = (evt: KeyboardEvent) => {
     if (evt.target !== evt.currentTarget) return
-    if (evt.key === `Escape` && drag_state.start) cancel_rect_drag()
+    if (evt.key === `Escape` && drag_state) cancel_rect_drag()
     if ([`Enter`, ` `].includes(evt.key)) {
       evt.preventDefault()
       opts.on_reset()
@@ -257,10 +275,10 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   return {
     get drag_start() {
-      return drag_state.start
+      return drag_state?.start ?? null
     },
     get drag_current() {
-      return drag_state.current
+      return drag_state?.current ?? null
     },
     get is_pan_dragging() {
       return pan_drag_state !== null
@@ -293,7 +311,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
         [on_window_mouse_move, on_pan_move],
         [on_window_mouse_up, on_pan_end],
       )
-      drag_state = { start: null, current: null, bounds: null }
+      drag_state = null
       pan_drag_state = null
       touch_state = null
     },

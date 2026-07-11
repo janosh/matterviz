@@ -16,14 +16,16 @@
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
+  import { sorted_range } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
     compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
-    LABEL_GAP_DEFAULT,
     full_footprint_or,
+    LABEL_GAP_DEFAULT,
+    point_in_rect,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -162,14 +164,14 @@
   let x_range = $state<Vec2>([0, 1])
   let y_range = $state<Vec2>([0, 1])
   let has_user_range = $state(false)
-  let drag_start = $state<Point2D | null>(null)
-  let drag_current = $state<Point2D | null>(null)
+  let drag_state = $state<{ start: Point2D; current: Point2D } | null>(null)
   let suppress_next_click = false
   let hovered_bin = $state<DensityBin | null>(null)
   let hovered_point = $state<DenseInternalPoint<Metadata> | null>(null)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let colorbar_element = $state<HTMLDivElement>()
   let annotation_element = $state<HTMLDivElement>()
+  let colorbar_size_revision = $state(0)
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
   const clip_path_id = `binned-scatter-plot-area-${next_clip_id++}`
@@ -384,7 +386,7 @@
       ? COLOR_BAR_DEFAULTS.vertical_footprint
       : COLOR_BAR_DEFAULTS.horizontal_footprint,
   )
-  let color_bar_placement = $derived.by(() => {
+  const get_color_bar_placement = () => {
     if (
       !color_bar_props ||
       render_mode !== `density` ||
@@ -405,19 +407,23 @@
       points: density_placement_points,
       grid_resolution: 12,
     })
-  })
+  }
   // Fallback footprint before the annotation snippet first renders; the real
   // footprint is measured once laid out (mirrors colorbar_fallback_size above)
   const annotation_fallback_size = { width: 120, height: 50 }
   // Auto-place the annotation snippet like the colorbar, but with the already-placed
   // colorbar's footprint as an exclusion zone so the two never overlap.
-  let annotation_placement = $derived.by(() => {
+  const get_annotation_placement = () => {
     if (!annotation || !width || !height) return null
 
+    const color_bar_placement = colorbar_tween.placed()
+      ? colorbar_tween.coords.target
+      : get_color_bar_placement()
+    const colorbar_footprint = full_footprint_or(colorbar_element, colorbar_fallback_size)
     const colorbar_rect = color_bar_placement && {
-      ...full_footprint_or(colorbar_element, colorbar_fallback_size),
-      x: color_bar_placement.x,
-      y: color_bar_placement.y,
+      ...colorbar_footprint,
+      x: color_bar_placement.x + colorbar_footprint.offset_x,
+      y: color_bar_placement.y + colorbar_footprint.offset_y,
     }
     return compute_element_placement({
       plot_bounds: plot_rect,
@@ -428,18 +434,21 @@
       points: density_placement_points,
       grid_resolution: 12,
     })
-  })
+  }
   const colorbar_tween = create_placed_tween({
-    placement: () => color_bar_placement,
+    placement: get_color_bar_placement,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => colorbar_element,
+    on_element_resize: () => (colorbar_size_revision += 1),
   })
   const annotation_tween = create_placed_tween({
-    placement: () => annotation_placement,
+    placement: get_annotation_placement,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => annotation_element,
+    placement_revision: () =>
+      `${colorbar_size_revision}:${colorbar_tween.coords.target.x}:${colorbar_tween.coords.target.y}`,
   })
 
   let auto_render_mode = $derived.by((): RenderMode => {
@@ -608,8 +617,9 @@
   })
 
   function pointer_coords(event: PointerEvent | MouseEvent): Point2D | null {
-    if (!wrapper) return null
-    const rect = wrapper.getBoundingClientRect()
+    if (!canvas) return null
+    // The fullscreen wrapper has a top border outside the canvas coordinate space.
+    const rect = canvas.getBoundingClientRect()
     return { x: event.clientX - rect.left, y: event.clientY - rect.top }
   }
 
@@ -865,43 +875,36 @@
   function on_pointer_down(event: PointerEvent) {
     if (event.button !== 0) return
     const coords = pointer_coords(event)
-    if (!coords) return
-    drag_start = coords
-    drag_current = coords
+    if (!coords || !point_in_rect(coords, plot_rect)) return
+    drag_state = { start: coords, current: coords }
     if (event.currentTarget instanceof HTMLElement) {
       event.currentTarget.setPointerCapture?.(event.pointerId)
     }
   }
 
   function on_pointer_drag(event: PointerEvent) {
-    if (!drag_start) {
+    if (!drag_state) {
       on_pointer_move(event)
       return
     }
     const coords = pointer_coords(event)
-    if (coords) drag_current = coords
+    if (coords) drag_state.current = coords
   }
 
   function on_pointer_up(event: PointerEvent) {
-    const start = drag_start
-    const end = drag_current
-    drag_start = null
-    drag_current = null
-
-    if (start && end && Math.abs(end.x - start.x) > 5 && Math.abs(end.y - start.y) > 5) {
-      const x0 = x_scale_fn.invert(start.x)
-      const x1 = x_scale_fn.invert(end.x)
-      const y0 = y_scale_fn.invert(start.y)
-      const y1 = y_scale_fn.invert(end.y)
-      x_range = [Math.min(x0, x1), Math.max(x0, x1)]
-      y_range = [Math.min(y0, y1), Math.max(y0, y1)]
-      has_user_range = true
-      suppress_next_click = true
-    }
+    if (!drag_state) return
+    const { start, current: end } = drag_state
+    drag_state = null
 
     if (event.currentTarget instanceof HTMLElement) {
       event.currentTarget.releasePointerCapture?.(event.pointerId)
     }
+    if (Math.abs(end.x - start.x) <= 5 || Math.abs(end.y - start.y) <= 5) return
+
+    x_range = sorted_range(x_scale_fn.invert(start.x), x_scale_fn.invert(end.x))
+    y_range = sorted_range(y_scale_fn.invert(start.y), y_scale_fn.invert(end.y))
+    has_user_range = true
+    suppress_next_click = true
   }
 
   onMount(() => {
@@ -1015,7 +1018,7 @@
       label_y={pad.t + plot_height / 2}
     />
 
-    <ZoomRect start={drag_start} current={drag_current} />
+    <ZoomRect start={drag_state?.start ?? null} current={drag_state?.current ?? null} />
 
     {#if point_label_payloads.length}
       <g class="point-label-leaders" clip-path="url(#{clip_path_id})">

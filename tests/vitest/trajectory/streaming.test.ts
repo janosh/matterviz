@@ -1,7 +1,7 @@
 // Streaming trajectory loader tests - clever testing without large files
 import { trajectory_property_config } from '$lib/labels'
-import type { ParseProgress } from '$lib/trajectory'
 import { DEFAULTS } from '$lib/settings'
+import { FRAME_LOAD_DEBOUNCE_MS, type ParseProgress } from '$lib/trajectory'
 import {
   create_frame_loader,
   LARGE_FILE_THRESHOLD,
@@ -10,7 +10,6 @@ import {
   parse_trajectory_async,
   TrajFrameReader,
 } from '$lib/trajectory/parse'
-import { FRAME_LOAD_DEBOUNCE_MS } from '$lib/trajectory'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
 import process from 'node:process'
 import { flushSync, mount, tick } from 'svelte'
@@ -142,11 +141,11 @@ describe(`Trajectory Streaming`, () => {
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-1"]`)?.click()
     await settle_frame_load()
-    expect(document.body.textContent).toContain(`Cartesian (1, 0, 0)`)
+    expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
     await settle_frame_load()
-    expect(document.body.textContent).toContain(`Cartesian (1, 0, 0)`)
+    expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
   })
 
   describe(`Frame Indexing`, () => {
@@ -482,6 +481,16 @@ describe(`Trajectory Streaming`, () => {
 
       expect(xyz_frame?.step).toBe(3)
       expect(ase_frame?.step).toBe(3)
+    })
+
+    it(`labels indexed ASE data from compressed filenames correctly`, async () => {
+      const result = await parse_trajectory_async(
+        create_synthetic_ase(2),
+        `test.traj.gz`,
+        undefined,
+        { use_indexing: true, extract_plot_metadata: false },
+      )
+      expect(result.metadata?.source_format).toBe(`ase_trajectory`)
     })
 
     it(`should auto-detect format and create appropriate loader`, () => {

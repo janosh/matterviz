@@ -5,10 +5,12 @@ import {
   compute_element_placement,
   constrain_tooltip_position,
   filter_padding,
+  full_footprint_or,
   LABEL_GAP_DEFAULT,
   measure_max_tick_width,
   measure_text_width,
   pad_rect,
+  point_in_rect,
   rect_within_rect,
   sample_series_obstacle_points,
   TICK_LABEL_HEIGHT,
@@ -42,6 +44,15 @@ describe(`layout utility functions`, () => {
       { name: `over bottom edge`, rect: { x: 1, y: 8, width: 8, height: 4 }, expected: false },
     ])(`rect_within_rect: $name`, ({ rect, expected }) => {
       expect(rect_within_rect(rect, bounds)).toBe(expected)
+    })
+
+    test.each([
+      [{ x: 5, y: 5 }, true],
+      [{ x: 0, y: 0 }, true],
+      [{ x: 10, y: 10 }, true],
+      [{ x: -1, y: 11 }, false],
+    ] as const)(`point_in_rect(%o) -> %s`, (point, expected) => {
+      expect(point_in_rect(point, bounds)).toBe(expected)
     })
   })
 
@@ -153,6 +164,36 @@ describe(`layout utility functions`, () => {
       })
       expect(result.x).toBeGreaterThanOrEqual(base_config.plot_bounds.x + 60)
       expect(result.y).toBeGreaterThanOrEqual(base_config.plot_bounds.y + 60)
+    })
+
+    it(`keeps descendants overflowing left and top inside the valid region`, () => {
+      const element = document.createElement(`div`)
+      const child = document.createElement(`span`)
+      element.append(child)
+      Object.defineProperties(element, {
+        offsetWidth: { value: 100 },
+        offsetHeight: { value: 60 },
+      })
+      element.getBoundingClientRect = () =>
+        DOMRect.fromRect({ x: 100, y: 100, width: 100, height: 60 })
+      child.getBoundingClientRect = () =>
+        DOMRect.fromRect({ x: 80, y: 85, width: 140, height: 90 })
+
+      expect(full_footprint_or(element, { width: 1, height: 1 })).toEqual({
+        width: 140,
+        height: 90,
+        offset_x: -20,
+        offset_y: -15,
+      })
+      const result = compute_element_placement({
+        plot_bounds: { x: 0, y: 0, width: 300, height: 200 },
+        element,
+        element_size: { width: 1, height: 1 },
+        axis_clearance: 10,
+        points: [],
+      })
+
+      expect(result).toMatchObject({ x: 30, y: 25 })
     })
 
     it(`defaults axis_clearance to 12 so legends hug the corner`, () => {

@@ -12,6 +12,7 @@ import type {
   SunburstLayoutOptions,
   SunburstNode,
   SunburstNodeHandlerProps,
+  SunburstSort,
 } from '$lib/plot/sunburst/sunburst'
 import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
 import { DEFAULTS } from '$lib/settings'
@@ -25,7 +26,9 @@ export type TreemapNode<Metadata = Record<string, unknown>> = SunburstNode<Metad
 export type TreemapArc<Metadata = Record<string, unknown>> = PositionedArc<Metadata>
 export type TreemapNodeHandlerProps<Metadata = Record<string, unknown>> =
   SunburstNodeHandlerProps<Metadata>
-export type TreemapLayoutOptions = SunburstLayoutOptions
+export interface TreemapLayoutOptions extends Omit<SunburstLayoutOptions, `sort`> {
+  sort?: SunburstSort // default 'descending' (largest top-left); 'none' keeps input order
+}
 
 export interface TilePadding {
   padding_inner: number // px gap between sibling cells

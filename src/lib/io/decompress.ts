@@ -13,6 +13,12 @@ export function strip_compression_extensions(filename: string): string {
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
+export type BrowserCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
+
+export const is_browser_decompressible_format = (
+  format: CompressionFormat | null,
+): format is BrowserCompressionFormat =>
+  format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
 
 export function detect_compression_format(filename: string): CompressionFormat | null {
   const lower = filename.toLowerCase()
@@ -37,7 +43,7 @@ export async function decompress_data_binary(
   format: CompressionFormat,
 ): Promise<ArrayBuffer> {
   try {
-    if (format === `zip` || format === `xz` || format === `bz2`) {
+    if (!is_browser_decompressible_format(format)) {
       throw new Error(
         `${format.toUpperCase()} decompression is not supported in the browser. ` +
           `Please extract the ${format.toUpperCase()} file first.`,
@@ -71,8 +77,7 @@ export async function decompress_file(
 ): Promise<{ content: string | ArrayBuffer; filename: string }> {
   const format = detect_compression_format(file.name)
   // zip/xz/bz2 are handled by their own code paths; null = not compressed
-  const decompressible =
-    format !== null && format !== `zip` && format !== `xz` && format !== `bz2` ? format : null
+  const decompressible = is_browser_decompressible_format(format) ? format : null
   const buffer = await file.arrayBuffer()
 
   if (decompressible) {

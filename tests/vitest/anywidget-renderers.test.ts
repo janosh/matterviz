@@ -37,9 +37,12 @@ vi.mock(`matterviz`, async () => {
   return Object.fromEntries(component_names.map((name) => [name, stub_module.default]))
 })
 vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
-vi.mock(`matterviz/colors`, () => ({ luminance: () => 0 }))
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
-vi.mock(`matterviz/theme/themes`, () => ({}))
+vi.mock(`matterviz/theme/embedded`, () => ({
+  detect_parent_theme: () => `light`,
+  get_theme_css: () => ``,
+  watch_theme: () => () => {},
+}))
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
@@ -236,6 +239,8 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
         `zoom_root_id`,
       ]),
     )
+    for (const key of [`color_scale`, `color_range`, `colorbar`])
+      expect(WIDGET_MODEL_KEYS.treemap).not.toContain(key)
   })
 })
 

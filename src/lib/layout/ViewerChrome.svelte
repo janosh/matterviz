@@ -99,7 +99,11 @@
     font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
   }
   section.control-buttons :global(button:hover) {
-    background-color: color-mix(in srgb, currentColor 8%, transparent);
+    background-color: var(
+      --viewer-buttons-hover-bg,
+      color-mix(in srgb, currentColor 8%, transparent)
+    );
+    color: var(--viewer-buttons-hover-color, currentColor);
   }
   .filename {
     font-family: monospace;
