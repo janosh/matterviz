@@ -57,6 +57,7 @@ export const create_file_drop_handler =
         try {
           const { content, filename } = await decompress_file(file)
           if (content) await opts.on_drop(content, filename)
+          else failures.push(`${file.name}: file is empty`)
         } catch (exc) {
           failures.push(`${file.name}: ${to_error(exc).message}`)
         }

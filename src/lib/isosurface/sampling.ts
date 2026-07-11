@@ -2,7 +2,7 @@
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Vec2, Vec3 } from '$lib/math'
-import { matrix_inverse_3x3, scale_lattice_matrix, transpose_3x3_matrix } from '$lib/math'
+import { create_cart_to_frac_matrix, scale_lattice_matrix } from '$lib/math'
 import type { VolumetricData } from './types'
 import { MAX_GRID_POINTS } from './types'
 
@@ -97,9 +97,7 @@ export function create_volume_sampler(
 ): (position: Vec3) => number {
   const { out_of_bounds = `clamp` } = options
   const { grid, lattice, origin, periodic } = volume
-  // cart→frac matrix = inverse of the transposed (row-vector) lattice,
-  // matching the convention of math.ts create_cart_to_frac
-  const inv = matrix_inverse_3x3(transpose_3x3_matrix(lattice))
+  const inv = create_cart_to_frac_matrix(lattice)
   const [ox, oy, oz] = origin
 
   return (position: Vec3): number => {

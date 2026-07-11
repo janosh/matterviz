@@ -397,7 +397,10 @@ export function scale_lattice_matrix(
   ]
 }
 
-const create_cart_to_frac_matrix = (lattice: Matrix3x3): Matrix3x3 =>
+// Matrix mapping Cartesian coords to fractional (inverse of transposed
+// row-vector lattice). Prefer create_cart_to_frac unless the raw matrix is
+// needed, e.g. for allocation-free scalar arithmetic in hot loops.
+export const create_cart_to_frac_matrix = (lattice: Matrix3x3): Matrix3x3 =>
   matrix_inverse_3x3(transpose_3x3_matrix(lattice))
 
 // Curried fractional→Cartesian converter (caches transposed matrix)

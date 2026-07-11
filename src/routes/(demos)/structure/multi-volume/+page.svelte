@@ -260,6 +260,20 @@
     }
   }
 
+  // Leave preset-scenario mode after the user modifies the scene: hide the
+  // overlay label and drop the ?scenario param so the URL effect can't reload
+  // the stale scenario over the user's changes.
+  function clear_scenario() {
+    active_scenario = undefined
+    if (browser && page.url.searchParams.has(`scenario`)) {
+      goto(globalThis.location.pathname, {
+        replaceState: true,
+        keepFocus: true,
+        noScroll: true,
+      })
+    }
+  }
+
   // Clicking a file appends its volumes when the lattice matches the current
   // scene (same physical cell → overlay another field); otherwise it replaces.
   // Uses the same merge helpers as Structure.svelte's drag-and-drop import.
@@ -295,8 +309,8 @@
         }
         active_volume_idx = 0
         supercell_scaling = `1x1x1`
-        active_scenario = undefined
       }
+      clear_scenario()
     } catch (exc) {
       if (load_id === load_counter) error_msg = to_error(exc).message
     } finally {
@@ -402,7 +416,7 @@
       bind:loading
       bind:error_msg
       show_controls="always"
-      on_file_load={() => (active_scenario = undefined)}
+      on_file_load={clear_scenario}
     >
       {#if active_scenario}
         <p class="scenario-label">

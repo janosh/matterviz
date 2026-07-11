@@ -66,7 +66,7 @@ def pbc_gaussian_sum(
         for vec in lattice_vecs
     ]
     result = 0.0
-    for (cx, cy, cz), weight, sigma in zip(centers, weights, sigmas):
+    for (cx, cy, cz), weight, sigma in zip(centers, weights, sigmas, strict=True):
         for dx_img in image_ranges[0]:
             for dy_img in image_ranges[1]:
                 for dz_img in image_ranges[2]:
@@ -74,7 +74,7 @@ def pbc_gaussian_sum(
                     iy = cy
                     iz = cz
                     for dim, (lx, ly, lz) in zip(
-                        (dx_img, dy_img, dz_img), lattice_vecs
+                        (dx_img, dy_img, dz_img), lattice_vecs, strict=True
                     ):
                         ix += dim * lx
                         iy += dim * ly

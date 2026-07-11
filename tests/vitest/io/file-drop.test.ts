@@ -82,11 +82,12 @@ describe(`create_file_drop_handler`, () => {
     expect(on_drop).not.toHaveBeenCalled()
   })
 
-  test(`skips on_drop when decompress returns empty content`, async () => {
+  test(`reports empty decompressed content as a failure instead of silently skipping`, async () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: ``, filename: `f.txt` })
     await run({}, [new File([``], `f.txt`)])
     expect(decompress_file).toHaveBeenCalled()
     expect(on_drop).not.toHaveBeenCalled()
+    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: file is empty`)
   })
 
   test.each([
