@@ -29,7 +29,7 @@
   import { to_error } from '$lib/utils'
 
   let structure = $state<AnyStructure | undefined>()
-  let volumetric_data = $state<VolumetricData[] | undefined>()
+  let volumetric_data = $state.raw<VolumetricData[] | undefined>()
   let isosurface_settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS })
   let active_volume_idx = $state(0)
   let supercell_scaling = $state(`1x1x1`)

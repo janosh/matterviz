@@ -3,6 +3,7 @@ import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { extract_volume_range, sample_volume_at_positions } from '$lib/isosurface/sampling'
 import { marching_cubes_buffers } from '$lib/marching-cubes'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
@@ -29,7 +30,9 @@ const benchmark = <Result>(operation: () => Result, iterations = 5): Benchmark<R
 
 describe.runIf(process.env.MATTERVIZ_PERF === `1`)(`isosurface detailed performance`, () => {
   test(`reports parse, extraction, marching-cubes, sampling, and recolor baselines`, () => {
-    const compressed = readFileSync(`src/site/isosurfaces/large-grid-CHGCAR.gz`)
+    const compressed = readFileSync(
+      resolve(import.meta.dirname, `../../../src/site/isosurfaces/large-grid-CHGCAR.gz`),
+    )
     const decompression = benchmark(() => gunzipSync(compressed), 3)
     const source_text = decompression.result.toString(`utf8`)
     const parsing = benchmark(

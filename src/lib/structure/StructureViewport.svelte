@@ -8,6 +8,7 @@
   // callbacks so it drives Structure's external camera API. Camera state is per-pane:
   // the primary pane binds it back to Structure's scene_props, while side panes keep it local.
   import type { ElementSymbol } from '$lib/element'
+  import { StatusMessage } from '$lib/feedback'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import type { Vec3 } from '$lib/math'
   import type { CameraProjection } from '$lib/settings'
@@ -53,23 +54,38 @@
   // Bounded retries avoid eviction ping-pong when over the context budget.
   let canvas_remount_token = $state(0)
   let remount_timer: ReturnType<typeof setTimeout> | undefined
+  let recovery_reset_timer: ReturnType<typeof setTimeout> | undefined
   let recovery_attempts = 0
+  let recovery_failed = $state(false)
 
   const create_renderer = (canvas: HTMLCanvasElement) => {
     canvas.addEventListener(`webglcontextlost`, () => {
       // canvas.isConnected is false when the loss came from our own dispose()
       // (component unmounted), not from browser eviction
-      if (!canvas.isConnected || recovery_attempts >= 3) return
+      if (!canvas.isConnected) return
+      clearTimeout(recovery_reset_timer)
+      if (recovery_attempts >= 3) {
+        recovery_failed = true
+        return
+      }
       recovery_attempts += 1
       remount_timer = setTimeout(() => (canvas_remount_token += 1), 1000)
     })
-    canvas.addEventListener(`webglcontextrestored`, () => clearTimeout(remount_timer))
-    return new StructureRenderer({
+    canvas.addEventListener(`webglcontextrestored`, () => {
+      clearTimeout(remount_timer)
+      recovery_attempts = 0
+      recovery_failed = false
+    })
+    const renderer = new StructureRenderer({
       canvas,
       powerPreference: `high-performance`,
       antialias: true,
       alpha: true,
     })
+    // Reset only after a stable remount; an immediate reset would allow
+    // endless eviction ping-pong while the page exceeds its context budget.
+    recovery_reset_timer = setTimeout(() => (recovery_attempts = 0), 5000)
+    return renderer
   }
 
   let {
@@ -298,7 +314,10 @@
     reset_camera()
   }
 
-  $effect(() => () => clearTimeout(remount_timer))
+  $effect(() => () => {
+    clearTimeout(remount_timer)
+    clearTimeout(recovery_reset_timer)
+  })
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -313,6 +332,14 @@
   ondblclick={handle_dblclick}
 >
   {#if label}<span class="viewport-label">{label}</span>{/if}
+  {#if recovery_failed}
+    <div class="context-recovery-error">
+      <StatusMessage
+        message="Unable to restore the 3D view after repeated WebGL context loss. Reload the page to retry."
+        type="error"
+      />
+    </div>
+  {/if}
   {#key canvas_remount_token}
     <Canvas createRenderer={create_renderer}>
       <StructureScene
@@ -407,6 +434,16 @@
       --struct-viewport-label-bg,
       color-mix(in srgb, var(--page-bg, Canvas) 65%, transparent)
     );
+  }
+  .context-recovery-error {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-index-viewer-tooltip, 1000);
+    display: grid;
+    place-items: center;
+    padding: 1em;
+    pointer-events: none;
+    will-change: transform;
   }
   .viewport-cell :global(canvas) {
     cursor: var(--canvas-cursor, default);

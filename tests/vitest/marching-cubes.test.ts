@@ -6,17 +6,11 @@ import {
 } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
-import { make_grid } from './setup'
+import { cubic_matrix, make_grid } from './setup'
 
-const IDENTITY: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
+const IDENTITY = cubic_matrix(1)
 const NON_PERIODIC = { periodic: false, centered: false }
-
-const uniform_grid = (nx: number, ny: number, nz: number, value: number): number[][][] =>
-  make_grid(nx, ny, nz, value)
+const PERIODIC = { periodic: true, centered: false }
 
 // Gaussian blob centered in grid, values ~0 at edges to ~1 at center
 const gaussian_grid = (size: number): number[][][] => {
@@ -28,32 +22,27 @@ const gaussian_grid = (size: number): number[][][] => {
   })
 }
 
+const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void => {
+  expect(actual).toHaveLength(expected.length)
+  for (let idx = 0; idx < actual.length; idx++) {
+    expect(actual[idx]).toBeCloseTo(expected[idx], 6)
+  }
+}
+
 // === marching_cubes ===
 
 describe(`marching_cubes`, () => {
   test.each([
-    { nx: 1, ny: 1, nz: 1 },
-    { nx: 1, ny: 3, nz: 3 },
-    { nx: 3, ny: 1, nz: 3 },
-    { nx: 3, ny: 3, nz: 1 },
-    { nx: 0, ny: 0, nz: 0 },
-  ])(`returns empty result for grid smaller than 2x2x2: $nx×$ny×$nz`, ({ nx, ny, nz }) => {
-    const grid = uniform_grid(Math.max(nx, 1), Math.max(ny, 1), Math.max(nz, 1), 1.0).slice(
-      0,
-      nx,
-    )
-    const result = marching_cubes(grid, 0.5, IDENTITY)
-    expect(result.vertices).toHaveLength(0)
-    expect(result.faces).toHaveLength(0)
-    expect(result.normals).toHaveLength(0)
-  })
-
-  test.each([
-    { iso: 2.0, label: `above all values` },
-    { iso: 0.5, label: `below all values` },
-  ])(`returns empty result when isovalue $label`, ({ iso }) => {
-    const result = marching_cubes(uniform_grid(4, 4, 4, 1.0), iso, IDENTITY)
-    expect(result.faces).toHaveLength(0)
+    { dims: [1, 1, 1], iso: 0.5, label: `1×1×1 grid` },
+    { dims: [1, 3, 3], iso: 0.5, label: `1×3×3 grid` },
+    { dims: [3, 1, 3], iso: 0.5, label: `3×1×3 grid` },
+    { dims: [3, 3, 1], iso: 0.5, label: `3×3×1 grid` },
+    { dims: [0, 0, 0], iso: 0.5, label: `empty grid` },
+    { dims: [4, 4, 4], iso: 2, label: `isovalue above all values` },
+    { dims: [4, 4, 4], iso: 0.5, label: `isovalue below all values` },
+  ])(`returns empty result for $label`, ({ dims: [nx, ny, nz], iso }) => {
+    const result = marching_cubes(make_grid(nx, ny, nz, 1), iso, IDENTITY)
+    expect([result.vertices, result.faces, result.normals]).toEqual([[], [], []])
   })
 
   test(`Gaussian blob produces valid geometry: triangles, indices, normals`, () => {
@@ -81,6 +70,10 @@ describe(`marching_cubes`, () => {
 
     // Vertex caching: shared vertices across adjacent cubes
     expect(result.vertices.length).toBeLessThan(result.faces.length * 3)
+    const vertex_keys = result.vertices.map((vertex) =>
+      vertex.map((coord) => coord.toFixed(12)).join(`,`),
+    )
+    expect(new Set(vertex_keys).size).toBe(result.vertices.length)
   })
 
   test(`buffer path preserves compatibility topology and values`, () => {
@@ -90,26 +83,13 @@ describe(`marching_cubes`, () => {
     const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, options)
 
     expect(Array.from(buffers.indices)).toEqual(compatibility.faces.flat())
-    expect(buffers.positions).toHaveLength(compatibility.vertices.length * 3)
-    expect(buffers.normals).toHaveLength(compatibility.normals.length * 3)
-    for (let value_idx = 0; value_idx < buffers.positions.length; value_idx++) {
-      expect(buffers.positions[value_idx]).toBeCloseTo(
-        compatibility.vertices[Math.floor(value_idx / 3)][value_idx % 3],
-        6,
-      )
-      expect(buffers.normals[value_idx]).toBeCloseTo(
-        compatibility.normals[Math.floor(value_idx / 3)][value_idx % 3],
-        6,
-      )
-    }
+    expect_array_close(buffers.positions, compatibility.vertices.flat())
+    expect_array_close(buffers.normals, compatibility.normals.flat())
   })
 
   test(`centered=true shifts vertices relative to uncentered`, () => {
     const grid = gaussian_grid(8)
-    const centered = marching_cubes(grid, 0.5, IDENTITY, {
-      periodic: false,
-      centered: true,
-    })
+    const centered = marching_cubes(grid, 0.5, IDENTITY, { ...NON_PERIODIC, centered: true })
     const uncentered = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
 
     expect(centered.faces).toHaveLength(uncentered.faces.length)
@@ -126,10 +106,7 @@ describe(`marching_cubes`, () => {
         ? 2.0
         : 0.0
     })
-    const periodic = marching_cubes(grid, 1.0, IDENTITY, {
-      periodic: true,
-      centered: false,
-    })
+    const periodic = marching_cubes(grid, 1.0, IDENTITY, PERIODIC)
     const non_periodic = marching_cubes(grid, 1.0, IDENTITY, NON_PERIODIC)
     expect(periodic.faces.length).toBeGreaterThanOrEqual(non_periodic.faces.length)
   })
@@ -141,8 +118,7 @@ describe(`marching_cubes`, () => {
     const grid = make_grid(8, 8, 8, (ix, iy, iz) =>
       Math.exp(-(min_frac(ix) ** 2 + min_frac(iy) ** 2 + min_frac(iz) ** 2) / 0.045),
     )
-    const opts = { periodic: true, centered: false }
-    const { vertices, faces } = marching_cubes(grid, 0.3, IDENTITY, opts)
+    const { vertices, faces } = marching_cubes(grid, 0.3, IDENTITY, PERIODIC)
     expect(faces.length).toBeGreaterThan(0)
     const edge_len = (i1: number, i2: number) =>
       Math.hypot(...vertices[i1].map((coord, axis) => coord - vertices[i2][axis]))
@@ -171,19 +147,16 @@ describe(`marching_cubes`, () => {
     expect(no_interp.vertices.length).toBeGreaterThan(0)
     expect(no_interp.faces).toHaveLength(interp.faces.length)
     // Non-linear gradient means interpolated positions differ from midpoints
-    const any_different = no_interp.vertices.some(
-      (vert, idx) => Math.abs(vert[0] - interp.vertices[idx][0]) > 1e-6,
-    )
-    expect(any_different).toBe(true)
+    expect(
+      no_interp.vertices.some(
+        (vertex, idx) => Math.abs(vertex[0] - interp.vertices[idx][0]) > 1e-6,
+      ),
+    ).toBe(true)
   })
 
   test(`lattice transformation scales vertices`, () => {
     const grid = gaussian_grid(6)
-    const scaled_lattice: Matrix3x3 = [
-      [10, 0, 0],
-      [0, 10, 0],
-      [0, 0, 10],
-    ]
+    const scaled_lattice = cubic_matrix(10)
     const unit = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
     const scaled = marching_cubes(grid, 0.5, scaled_lattice, NON_PERIODIC)
 
@@ -209,10 +182,11 @@ describe(`marching_cubes`, () => {
     const identity = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
 
     expect(result.vertices.length).toBeGreaterThan(0)
-    const any_different = result.vertices.some(
-      (vertex, idx) => Math.abs(vertex[1] - identity.vertices[idx][1]) > 1e-6,
-    )
-    expect(any_different).toBe(true)
+    expect(
+      result.vertices.some(
+        (vertex, idx) => Math.abs(vertex[1] - identity.vertices[idx][1]) > 1e-6,
+      ),
+    ).toBe(true)
   })
 
   test(`higher isovalue produces fewer faces for a blob`, () => {
@@ -226,56 +200,33 @@ describe(`marching_cubes`, () => {
 // === compute_vertex_normals ===
 
 describe(`compute_vertex_normals`, () => {
-  test(`xy-plane triangle produces z-direction unit normals`, () => {
-    const vertices: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-    ]
-    const normals = compute_vertex_normals(vertices, [[0, 1, 2]])
+  const xy_triangle: Vec3[] = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [0, 1, 0],
+  ]
+  const xy_quad: Vec3[] = [...xy_triangle, [1, 1, 0]]
 
-    expect(normals).toHaveLength(3)
+  test.each([
+    { label: `xy-plane triangle`, vertices: xy_triangle, face: [0, 1, 2] },
+    { label: `quad via fan triangulation`, vertices: xy_quad, face: [0, 1, 3, 2] },
+  ])(`$label produces z-direction unit normals`, ({ vertices, face }) => {
+    const normals = compute_vertex_normals(vertices, [face])
+    expect(normals).toHaveLength(vertices.length)
     for (const normal of normals) {
-      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 5)
-      expect(Math.abs(normal[2])).toBeCloseTo(1.0, 5)
+      expect(Math.hypot(...normal)).toBeCloseTo(1, 5)
+      expect(Math.abs(normal[2])).toBeCloseTo(1, 5)
     }
-  })
-
-  test(`returns empty array for empty inputs`, () => {
-    expect(compute_vertex_normals([], [])).toHaveLength(0)
   })
 
   test.each([
-    { face: [0, 1], label: `fewer than 3 indices` },
-    { face: [0, 1, 99], label: `out-of-bounds index` },
-    { face: [-1, 1, 2], label: `negative index` },
-  ])(`skips invalid faces: $label`, ({ face }) => {
-    const vertices: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-    ]
-    const normals = compute_vertex_normals(vertices, [face])
-    // All normals remain at zero (face was skipped)
-    for (const normal of normals) {
-      expect(Math.hypot(...normal)).toBe(0)
-    }
-  })
-
-  test(`handles quad faces via fan triangulation`, () => {
-    const vertices: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [1, 1, 0],
-      [0, 1, 0],
-    ]
-    const normals = compute_vertex_normals(vertices, [[0, 1, 2, 3]])
-
-    expect(normals).toHaveLength(4)
-    for (const normal of normals) {
-      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 5)
-      expect(Math.abs(normal[2])).toBeCloseTo(1.0, 5)
-    }
+    { label: `empty inputs`, vertices: [] as Vec3[], faces: [] as number[][] },
+    { label: `face with fewer than 3 indices`, vertices: xy_triangle, faces: [[0, 1]] },
+    { label: `face with out-of-bounds index`, vertices: xy_triangle, faces: [[0, 1, 99]] },
+    { label: `face with negative index`, vertices: xy_triangle, faces: [[-1, 1, 2]] },
+  ])(`returns zero normals for $label`, ({ vertices, faces }) => {
+    // All normals remain at zero (invalid faces are skipped)
+    expect(compute_vertex_normals(vertices, faces)).toEqual(vertices.map(() => [0, 0, 0]))
   })
 
   test(`averages normals from shared vertices`, () => {

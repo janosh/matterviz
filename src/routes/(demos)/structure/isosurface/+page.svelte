@@ -24,7 +24,7 @@
   import { to_error } from '$lib/utils'
 
   let structure = $state<AnyStructure | undefined>()
-  let volumetric_data = $state<VolumetricData[] | undefined>()
+  let volumetric_data = $state.raw<VolumetricData[] | undefined>()
   let isosurface_settings = $state<IsosurfaceSettings>({
     ...DEFAULT_ISOSURFACE_SETTINGS,
   })
@@ -38,7 +38,7 @@
   // HKL slice view state
   let miller_indices = $state<Vec3>([0, 0, 1]) // default (001) = z-plane
   let slice_position = $state(0.5) // fractional distance along plane normal [0, 1]
-  let slice_resolution = $state(256) // display default; 0 uses the volume's native grid
+  let slice_resolution = $state(512) // display default; 0 uses the volume's native grid
   let slice_plane_mode = $state<`cartesian` | `hkl`>(`hkl`)
   let cartesian_point = $state<Vec3>([0, 0, 0])
   let cartesian_normal = $state<Vec3>([0, 0, 1])
@@ -402,7 +402,7 @@
         >
       </label>
     </div>
-    <div class="slice-view">
+    <div class="slice-view" style:width={slice_result ? undefined : `100%`}>
       {#if slice_result}
         <VolumeSlice
           slice={slice_result}
@@ -417,6 +417,7 @@
         <StatusMessage
           message="The selected plane does not intersect the volume."
           type="warning"
+          style="box-sizing: border-box; width: 100%; padding-block: 0.3em; font-size: 0.9em"
         />
       {/if}
     </div>

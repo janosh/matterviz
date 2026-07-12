@@ -60,7 +60,7 @@ test.describe(`Isosurface page`, () => {
       const slice = page.getByTestId(`volume-slice`)
       const canvas = slice.locator(`canvas`)
       await wait_for_canvas_rendered(canvas)
-      expect(Number(await canvas.getAttribute(`width`))).toBeGreaterThanOrEqual(256)
+      expect(Number(await canvas.getAttribute(`width`))).toBeGreaterThanOrEqual(512)
       const initial = await canvas.screenshot()
 
       await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
@@ -74,6 +74,23 @@ test.describe(`Isosurface page`, () => {
       await expect(page.getByLabel(`Slice colormap`)).toBeVisible()
       await page.getByLabel(`Slice colormap`).selectOption(`interpolateViridis`)
       await expect(canvas).toBeVisible()
+    })
+
+    test(`keeps Miller input responsive at high slice resolution`, async ({ page }) => {
+      const input = page.getByRole(`textbox`, { name: `hkl` })
+      await input.fill(`11`)
+      const update_ms = await input.evaluate(async (input_element) => {
+        const input_node = input_element as HTMLInputElement
+        const start = performance.now()
+        input_node.value += `0`
+        input_node.dispatchEvent(new Event(`input`, { bubbles: true }))
+        await new Promise<number>((resolve) => requestAnimationFrame(resolve))
+        await new Promise<number>((resolve) => requestAnimationFrame(resolve))
+        return performance.now() - start
+      })
+
+      await expect(input).toHaveValue(`110`)
+      expect(update_ms).toBeLessThan(400)
     })
 
     test(`masks pixels outside an oblique triclinic cross-section`, async ({ page }) => {

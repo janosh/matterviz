@@ -48,6 +48,7 @@
       : (value: number) => interpolator(1 - value)
   })
   let image_data: ImageData | undefined
+  let render_generation = 0
   let aspect_ratio = $derived.by(() => {
     if (!slice) return 1
     const u_span = slice.u_range[1] - slice.u_range[0]
@@ -76,35 +77,39 @@
     context.clip()
   }
 
-  function draw_contours(context: CanvasRenderingContext2D, current_slice: SliceResult): void {
+  async function draw_contours(
+    context: CanvasRenderingContext2D,
+    current_slice: SliceResult,
+    generation: number,
+  ): Promise<void> {
     if (contour_thresholds.length === 0) return
     const threshold_min = contour_thresholds[0]
+    const color_span = Math.abs(resolved_color_range[1] - resolved_color_range[0])
     const outside_value =
       Math.min(...resolved_color_range, threshold_min) -
-      Math.max(
-        1,
-        Math.abs(threshold_min),
-        Math.abs(resolved_color_range[1] - resolved_color_range[0]),
-      )
+      Math.max(1, Math.abs(threshold_min), color_span)
     const contour_values = Float64Array.from(current_slice.data, (value, data_idx) =>
       current_slice.mask[data_idx] && Number.isFinite(value) ? value : outside_value,
     )
-    const shapes = create_contours()
-      .size([current_slice.width, current_slice.height])
-      .thresholds(contour_thresholds)(contour_values as unknown as number[])
-
-    context.save()
-    clip_to_slice_polygon(context, current_slice)
-    context.strokeStyle = canvas ? getComputedStyle(canvas).color : `currentColor`
+    const values = contour_values as unknown as number[]
+    const { height, width } = current_slice
+    const contour_generator = create_contours().size([width, height])
+    context.strokeStyle = getComputedStyle(context.canvas).color
     context.lineWidth = 1
     context.lineJoin = `round`
-    for (const shape of shapes) {
+    for (const threshold of contour_thresholds) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      if (generation !== render_generation) return
+      const [shape] = contour_generator.thresholds([threshold])(values)
+
+      context.save()
+      clip_to_slice_polygon(context, current_slice)
       context.beginPath()
       for (const polygon of shape.coordinates) {
         for (const ring of polygon) {
           for (let point_idx = 0; point_idx < ring.length; point_idx++) {
             const [point_x, sampled_y] = ring[point_idx]
-            const point_y = current_slice.height - sampled_y
+            const point_y = height - sampled_y
             if (point_idx === 0) context.moveTo(point_x, point_y)
             else context.lineTo(point_x, point_y)
           }
@@ -112,11 +117,12 @@
         }
       }
       context.stroke()
+      context.restore()
     }
-    context.restore()
   }
 
   function render_slice(): void {
+    const generation = ++render_generation
     if (!canvas) return
     if (!slice) {
       canvas.getContext(`2d`)?.clearRect(0, 0, canvas.width, canvas.height)
@@ -127,7 +133,6 @@
     canvas.height = slice.height
     const context = canvas.getContext(`2d`)
     if (!context) return
-    context.clearRect(0, 0, slice.width, slice.height)
     if (mode !== `contours`) {
       if (image_data?.width !== slice.width || image_data?.height !== slice.height) {
         image_data = context.createImageData(slice.width, slice.height)
@@ -135,7 +140,7 @@
       slice_to_rgba(slice, colormap, resolved_color_range, { out: image_data.data })
       context.putImageData(image_data, 0, 0)
     }
-    if (mode !== `filled`) draw_contours(context, slice)
+    if (mode !== `filled`) void draw_contours(context, slice, generation)
   }
 
   $effect(render_slice)

@@ -22,9 +22,10 @@ async function wait_for_stage(
   page: Page,
   stage: string,
   previous_count = 0,
+  timeout = 30_000,
 ): Promise<ProfileEvent[]> {
   await expect
-    .poll(async () => stage_events(await read_events(page), stage).length, { timeout: 30_000 })
+    .poll(async () => stage_events(await read_events(page), stage).length, { timeout })
     .toBeGreaterThan(previous_count)
   return read_events(page)
 }
@@ -40,7 +41,7 @@ async function goto_benchmark(
   await page.goto(`/test/isosurface-performance?${query}`)
   const canvas = benchmark_canvas(page)
   await wait_for_canvas_rendered(canvas, { timeout })
-  return wait_for_stage(page, `rebuild_total`)
+  return wait_for_stage(page, `rebuild_total`, 0, timeout)
 }
 
 const median = (values: number[]): number => {

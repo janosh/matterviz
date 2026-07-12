@@ -453,6 +453,8 @@ function marching_cubes_raw(
     const oy2 = CUBE_VERTS_Y[v2_idx]
     const oz2 = CUBE_VERTS_Z[v2_idx]
 
+    // Key the edge's lower endpoint. For x-edges, x is the rolling slab and
+    // y/z are equal; y- and z-edges normalize their sole varying key coordinate.
     let cache: Int32Array
     let cache_idx: number
     if (ox1 !== ox2) {
