@@ -294,6 +294,8 @@
         const reused = reusable.get(geo_key)
         if (reused) {
           reusable.delete(geo_key)
+          // Keep only the cached geometry + scalars; key/layer_idx/sign are
+          // rebound to the CURRENT loop values (they override the spread)
           entries.push({ ...reused, key, layer_idx, sign })
           continue
         }
