@@ -119,15 +119,16 @@
   }
 
   // === Geometry-volume preparation (range extraction or finite-grid downsampling) ===
+  // The range fully determines the prepared grid for a given volume: it encodes
+  // tiling and halo for periodic volumes and is null/explicit-crop for finite
+  // ones (which ignore tiling and halo entirely).
   type PreparedGrid = {
-    tiling_key: string
-    halo: number
     range_key: string
     ref_origin_key: string
     grid: number[][][]
     lattice: Matrix3x3
-    // Cartesian shift applied to marching-cubes vertices: halo/range offset plus
-    // this volume's origin delta relative to the scene reference (first volume's origin)
+    // Cartesian shift applied to marching-cubes vertices: range offset plus this
+    // volume's origin delta relative to the scene reference (first volume's origin)
     vertex_shift: Vec3 | null
   }
   // Keyed by volume object so removed/replaced volumes release their prepared
@@ -138,16 +139,12 @@
     effective_range(vol)?.flat().join(`,`) ?? ``
 
   function prepare_geometry_volume(vol: VolumetricData): PreparedGrid {
-    const halo = effective_halo(vol)
-    const tiling_key = tiling.join(`x`)
     const vol_range_key = range_key(vol)
     const ref_origin = all_volumes[0]?.origin ?? [0, 0, 0]
     const ref_origin_key = ref_origin.join(`,`)
     const cached = prepared_cache.get(vol)
     if (
       cached &&
-      cached.tiling_key === tiling_key &&
-      cached.halo === halo &&
       cached.range_key === vol_range_key &&
       cached.ref_origin_key === ref_origin_key
     )
@@ -180,8 +177,6 @@
     ]
     const has_shift = shift[0] !== 0 || shift[1] !== 0 || shift[2] !== 0
     const prepared: PreparedGrid = {
-      tiling_key,
-      halo,
       range_key: vol_range_key,
       ref_origin_key,
       grid: mc_grid,
@@ -276,11 +271,13 @@
   // (first volume's origin) is part of the geometry identity too
   const ref_origin_sig = (): string => (all_volumes[0]?.origin ?? [0, 0, 0]).join(`,`)
 
+  // range_key covers halo + tiling (encoded in the range for periodic volumes;
+  // irrelevant for finite ones), so the geometry identity needs no other inputs
   const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
     const vol = all_volumes[layer.volume_idx]
     return `${layer.volume_idx}.${vol ? vol_id(vol) : 0}.${sign * layer.isovalue}.${
-      vol ? effective_halo(vol) : 0
-    }.${vol ? range_key(vol) : ``}.${tiling.join(`x`)}.${ref_origin_sig()}`
+      vol ? range_key(vol) : ``
+    }.${ref_origin_sig()}`
   }
 
   function rebuild_geometries(layers: ResolvedLayer[]) {
