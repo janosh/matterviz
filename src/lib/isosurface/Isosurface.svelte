@@ -103,20 +103,16 @@
     return id
   }
 
-  // Halo only applies to periodic volumes (matches previous behavior)
-  const effective_halo = (vol: VolumetricData): number =>
-    vol.periodic ? Math.max(0, settings.halo) : 0
-
   // Finite extraction range for this volume. Periodic volumes always use one
   // so integer tiling and fractional VESTA-style bounds share exact endpoint
-  // semantics; finite volumes only use an explicitly requested crop.
-  const effective_range = (vol: VolumetricData): DisplayRange | null => {
-    return resolve_volume_display_range(vol, {
+  // semantics; finite volumes only use an explicitly requested crop (the
+  // resolver clamps negative halo and only applies it to periodic volumes).
+  const effective_range = (vol: VolumetricData): DisplayRange | null =>
+    resolve_volume_display_range(vol, {
       display_range: settings.display_range,
       tiling,
-      halo: effective_halo(vol),
+      halo: settings.halo,
     })
-  }
 
   // === Geometry-volume preparation (range extraction or finite-grid downsampling) ===
   // The range fully determines the prepared grid for a given volume: it encodes

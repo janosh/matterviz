@@ -263,11 +263,7 @@ export function resolve_volume_display_range(
 
   const range = display_range
     ? sanitize_display_range(display_range, volume.periodic)
-    : ([
-        [0, tiling[0]],
-        [0, tiling[1]],
-        [0, tiling[2]],
-      ] as DisplayRange)
+    : (tiling.map((factor) => [0, factor]) as DisplayRange)
 
   if (!volume.periodic) return range
   const padding = Math.max(0, halo)
