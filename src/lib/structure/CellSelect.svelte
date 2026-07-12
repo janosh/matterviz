@@ -71,13 +71,13 @@
   function apply_preset(preset: string) {
     supercell_scaling = preset
     input_value = preset
-    menu_open = false
+    close_menu()
   }
 
   function handle_input_submit() {
     if (input_valid && input_value !== supercell_scaling) {
       supercell_scaling = input_value
-      menu_open = false
+      close_menu()
     }
   }
 
@@ -89,11 +89,11 @@
       !(next_target instanceof Node) ||
       !current_target.contains(next_target)
     )
-      menu_open = false
+      close_menu()
   }
 
   function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
-    if (event.key === `Escape`) menu_open = false
+    if (event.key === `Escape`) close_menu()
     if (submit_on_enter && event.key === `Enter`) handle_input_submit()
   }
 
@@ -107,7 +107,7 @@
   // Close + keep closed while suppressed so the menu can't obscure a sibling popover
   // (e.g. the atom color-mode dropdown) the user is actively interacting with
   $effect(() => {
-    if (suppress_hover) menu_open = false
+    if (suppress_hover) close_menu()
   })
 </script>
 

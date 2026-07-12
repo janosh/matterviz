@@ -339,6 +339,11 @@ describe(`label_file_volumes`, () => {
     ])
     expect(labeled.every((entry) => entry.source === `Fe-CHGCAR`)).toBe(true)
   })
+
+  test(`multi-block files use positional labels when block labels are absent`, () => {
+    const labeled = label_file_volumes([vol(), vol()], `density.cube`)
+    expect(labeled.map((entry) => entry.label)).toEqual([`density.cube: 1`, `density.cube: 2`])
+  })
 })
 
 describe(`lattices_match`, () => {

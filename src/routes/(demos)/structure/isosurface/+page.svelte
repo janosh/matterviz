@@ -2,15 +2,20 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
+  import type { D3InterpolateName } from '$lib/colors'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
   import FilePicker from '$lib/FilePicker.svelte'
   import { load_from_url } from '$lib/io'
+  import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
-  import { sample_hkl_slice } from '$lib/isosurface/slice'
+  import type { VolumeSliceMode } from '$lib/isosurface/slice-rendering'
+  import { sample_hkl_slice, sample_plane_slice } from '$lib/isosurface/slice'
+  import type { SliceResult } from '$lib/isosurface/slice'
+  import VolumeSlice from '$lib/isosurface/VolumeSlice.svelte'
   import { format_num } from '$lib/labels'
   import type { Vec2, Vec3 } from '$lib/math'
+  import * as math from '$lib/math'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import { ColorBar } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
   import type { AnyStructure, IsosurfaceSettings, VolumetricData } from 'matterviz'
@@ -33,14 +38,21 @@
   // HKL slice view state
   let miller_indices = $state<Vec3>([0, 0, 1]) // default (001) = z-plane
   let slice_position = $state(0.5) // fractional distance along plane normal [0, 1]
-  let slice_resolution = $state(0) // 0 = auto (max grid dim), otherwise explicit n_points
-  let max_grid_dim = $derived(
-    Math.max(...(volumetric_data?.[active_volume_idx]?.grid_dims ?? [64])),
+  let slice_resolution = $state(256) // display default; 0 uses the volume's native grid
+  let slice_plane_mode = $state<`cartesian` | `hkl`>(`hkl`)
+  let cartesian_point = $state<Vec3>([0, 0, 0])
+  let cartesian_normal = $state<Vec3>([0, 0, 1])
+  let cartesian_up = $state<Vec3>([1, 0, 0])
+  let slice_mode = $state<VolumeSliceMode>(`both`)
+  let slice_colormap = $state<D3InterpolateName>(`interpolateRdBu`)
+  let contour_levels = $state(10)
+  let slice_range_min = $state<number | undefined>()
+  let slice_range_max = $state<number | undefined>()
+  let slice_color_range = $derived<Vec2 | undefined>(
+    Number.isFinite(slice_range_min) && Number.isFinite(slice_range_max)
+      ? [slice_range_min as number, slice_range_max as number]
+      : undefined,
   )
-  let effective_resolution = $derived(slice_resolution || max_grid_dim)
-  let slice_canvas = $state<HTMLCanvasElement | undefined>()
-  let slice_range = $state<Vec2>([0, 1])
-  let slice_canvas_height = $state(200)
 
   // Use precomputed data_range from the active volume
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
@@ -55,6 +67,24 @@
     active_volume_idx = 0
   }
 
+  const volume_center = (volume: VolumetricData): Vec3 =>
+    math.add(volume.origin, math.create_frac_to_cart(volume.lattice)([0.5, 0.5, 0.5]))
+  const vector_field = (label: string, name: string, vector: Vec3) => ({
+    label,
+    name,
+    vector,
+  })
+
+  function reset_cartesian_plane(volume = active_volume): void {
+    if (volume) cartesian_point = volume_center(volume)
+  }
+
+  function set_cartesian_plane(normal: Vec3, up: Vec3): void {
+    cartesian_normal = normal
+    cartesian_up = up
+    reset_cartesian_plane()
+  }
+
   function parse_and_apply(text: string, filename: string) {
     try {
       const vol_result = parse_volumetric_file(text, filename)
@@ -63,7 +93,10 @@
         volumetric_data = vol_result.volumes
         active_volume_idx = 0
         const vol = vol_result.volumes[0]
-        if (vol) isosurface_settings = auto_isosurface_settings(vol.data_range)
+        if (vol) {
+          isosurface_settings = auto_isosurface_settings(vol.data_range)
+          reset_cartesian_plane(vol)
+        }
         return
       }
 
@@ -123,92 +156,30 @@
     void active_file
     if (mounted) update_url()
   })
-  onMount(() => {
-    mounted = true
-  })
-
   // === Slice rendering ===
-  // Render a 2D heatmap slice through the volumetric data using ImageData for performance
-  function render_slice() {
-    const vol = volumetric_data?.[active_volume_idx]
-    if (!vol || !slice_canvas) return
-
-    // Sample the slice along the HKL plane
-    const result = sample_hkl_slice(
-      vol,
-      miller_indices,
-      slice_position,
-      slice_resolution > 0 ? slice_resolution : undefined,
-    )
-    if (!result) return
-    const { data: slice_data, width, height, min: s_min, max: s_max } = result
-
-    // Render to canvas using ImageData for efficient pixel-level writes
-    const scale = Math.min(300 / width, 300 / height, 10)
-    const canvas_width = Math.round(width * scale)
-    const canvas_height = Math.round(height * scale)
-    slice_canvas.width = canvas_width
-    slice_canvas.height = canvas_height
-    slice_canvas_height = canvas_height
-
-    const ctx = slice_canvas.getContext(`2d`)
-    if (!ctx) return
-
-    slice_range = [s_min, s_max]
-
-    const img_data = ctx.createImageData(canvas_width, canvas_height)
-    const pixels = img_data.data
-    const val_range = s_max - s_min || 1
-
-    for (let row = 0; row < height; row++) {
-      for (let col = 0; col < width; col++) {
-        const val = slice_data[row * width + col]
-        // Normalize to [0,1] then reverse for RdBu (1=blue/low, 0=red/high)
-        const normalized = 1 - (val - s_min) / val_range
-
-        // Inline RdBu-like diverging colormap: blue (0) → white (0.5) → red (1)
-        // Matches d3's interpolateRdBu so canvas and ColorBar stay in sync
-        let r_col: number, g_col: number, b_col: number
-        if (normalized < 0.5) {
-          const frac = normalized * 2
-          r_col = Math.round(103 + (247 - 103) * frac)
-          g_col = Math.round(169 + (247 - 169) * frac)
-          b_col = Math.round(207 + (247 - 207) * frac)
-        } else {
-          const frac = (normalized - 0.5) * 2
-          r_col = Math.round(247 - (247 - 202) * frac)
-          g_col = Math.round(247 - (247 - 0) * frac)
-          b_col = Math.round(247 - (247 - 32) * frac)
-        }
-
-        // Fill the scaled pixel block (flip y so origin is at bottom-left)
-        const flipped_row = height - 1 - row
-        const px_y_start = Math.round(flipped_row * scale)
-        const px_y_end = Math.round((flipped_row + 1) * scale)
-        const px_x_start = Math.round(col * scale)
-        const px_x_end = Math.round((col + 1) * scale)
-        for (let py = px_y_start; py < px_y_end; py++) {
-          for (let px = px_x_start; px < px_x_end; px++) {
-            const offset = (py * canvas_width + px) * 4
-            pixels[offset] = r_col
-            pixels[offset + 1] = g_col
-            pixels[offset + 2] = b_col
-            pixels[offset + 3] = 255
-          }
-        }
-      }
+  // VolumeSlice handles color mapping, exact masks, and contours.
+  let slice_result = $derived.by((): SliceResult | null => {
+    const volume = volumetric_data?.[active_volume_idx]
+    if (!volume) return null
+    const resolution = slice_resolution > 0 ? slice_resolution : undefined
+    if (slice_plane_mode === `hkl`) {
+      // Sample the slice along the HKL plane
+      return sample_hkl_slice(volume, miller_indices, slice_position, resolution)
     }
-
-    ctx.putImageData(img_data, 0, 0)
-  }
-
-  // Re-render slice when relevant state changes (Svelte 5 auto-tracks dependencies)
-  $effect(() => {
-    if (volumetric_data && slice_canvas) render_slice()
+    return sample_plane_slice(
+      volume,
+      {
+        point: cartesian_point,
+        normal: cartesian_normal,
+        up: cartesian_up,
+      },
+      { resolution },
+    )
   })
 
   // Load file from URL param or default on mount
   onMount(() => {
+    mounted = true
     const file_param = page.url.searchParams.get(`file`)
     const target = file_param
       ? volumetric_files.find((file) => file.name === file_param)
@@ -339,47 +310,115 @@
   <div class="slice-section">
     <div class="slice-header">
       <h2>Cross-Section Slice</h2>
-      <MillerIndexInput bind:value={miller_indices} />
       <label class="slice-control">
-        d =
-        <input type="number" min={0} max={1} step={0.01} bind:value={slice_position} />
-        <input type="range" min={0} max={1} step={0.01} bind:value={slice_position} />
+        Plane
+        <select aria-label="Slice plane mode" bind:value={slice_plane_mode}>
+          <option value="hkl">HKL</option>
+          <option value="cartesian">Cartesian</option>
+        </select>
+      </label>
+      {#if slice_plane_mode === `hkl`}
+        <MillerIndexInput bind:value={miller_indices} />
+        <label class="slice-control">
+          d = {slice_position.toFixed(2)}
+          <input type="range" min={0} max={1} step={0.01} bind:value={slice_position} />
+        </label>
+      {:else}
+        {#each [vector_field(`Point (Å)`, `point`, cartesian_point), vector_field(`Normal`, `normal`, cartesian_normal)] as { label, name, vector } (name)}
+          <label class="vector-control">
+            <span>{label}</span>
+            {#each [`x`, `y`, `z`] as axis, axis_idx (axis)}
+              <input
+                aria-label="Cartesian {name} {axis}"
+                type="number"
+                step={0.1}
+                bind:value={vector[axis_idx]}
+              />
+            {/each}
+          </label>
+        {/each}
+        <div class="plane-presets" aria-label="Cartesian plane presets">
+          <button type="button" onclick={() => set_cartesian_plane([0, 0, 1], [1, 0, 0])}>
+            XY
+          </button>
+          <button type="button" onclick={() => set_cartesian_plane([0, 1, 0], [1, 0, 0])}>
+            XZ
+          </button>
+          <button type="button" onclick={() => set_cartesian_plane([1, 0, 0], [0, 1, 0])}>
+            YZ
+          </button>
+          <button type="button" onclick={() => reset_cartesian_plane()}>Center</button>
+        </div>
+      {/if}
+      <label class="slice-control">
+        Resolution (0 = native)
+        <input type="number" min={0} step={1} bind:value={slice_resolution} />
+      </label>
+    </div>
+    <div class="slice-header rendering-controls">
+      <label class="slice-control">
+        View
+        <select aria-label="Slice rendering mode" bind:value={slice_mode}>
+          <option value="both">Filled + contours</option>
+          <option value="filled">Filled</option>
+          <option value="contours">Contours</option>
+        </select>
       </label>
       <label class="slice-control">
-        Resolution
+        Colormap
+        <select aria-label="Slice colormap" bind:value={slice_colormap}>
+          {#each ISO_COLORMAPS as colormap (colormap)}
+            <option value={colormap}>{colormap.replace(`interpolate`, ``)}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="slice-control">
+        Contours
+        <input type="number" min={0} max={50} step={1} bind:value={contour_levels} />
+      </label>
+      <label class="slice-control">
+        Range
         <input
+          aria-label="Slice color minimum"
           type="number"
-          min={8}
-          max={max_grid_dim * 4}
-          step={1}
-          bind:value={effective_resolution}
-          onchange={() => {
-            slice_resolution = Math.max(8, effective_resolution)
-          }}
+          step="any"
+          placeholder="auto"
+          bind:value={slice_range_min}
         />
+        <span>to</span>
         <input
-          type="range"
-          min={8}
-          max={max_grid_dim * 4}
-          step={1}
-          bind:value={effective_resolution}
-          oninput={() => {
-            slice_resolution = effective_resolution
-          }}
+          aria-label="Slice color maximum"
+          type="number"
+          step="any"
+          placeholder="auto"
+          bind:value={slice_range_max}
         />
+        <button
+          type="button"
+          onclick={() => {
+            slice_range_min = undefined
+            slice_range_max = undefined
+          }}>Auto</button
+        >
       </label>
     </div>
     <div class="slice-view">
-      <canvas bind:this={slice_canvas}></canvas>
-      <ColorBar
-        orientation="vertical"
-        range={slice_range}
-        color_scale="interpolateRdBu"
-        tick_labels={5}
-        bar_style="height: {slice_canvas_height}px"
-        --cbar-font-size="0.75em"
-        --cbar-tick-label-font-weight="normal"
-      />
+      {#if slice_result}
+        <VolumeSlice
+          slice={slice_result}
+          mode={slice_mode}
+          colormap={slice_colormap}
+          color_range={slice_color_range}
+          {contour_levels}
+          colorbar_title={active_volume?.label ?? `Value`}
+          data-testid="volume-slice"
+        />
+      {:else}
+        <StatusMessage
+          message="The selected plane does not intersect the volume."
+          type="warning"
+        />
+      {/if}
     </div>
   </div>
 {/if}
@@ -408,7 +447,7 @@
       <strong>Spin-polarized</strong> &ndash; Switch between charge density and magnetization volumes
     </li>
     <li>
-      <strong>Cross-section</strong> &ndash; 2D heatmap slices through volumetric data
+      <strong>Cross-section</strong> &ndash; HKL and arbitrary Cartesian filled/contour maps
     </li>
   </ul>
 </section>
@@ -461,45 +500,47 @@
   .slice-section {
     margin-top: 1em;
   }
-  .slice-header {
+  .slice-header,
+  .slice-control,
+  .vector-control,
+  .plane-presets {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
+    gap: 0.4em;
+  }
+  .slice-header {
+    flex-wrap: wrap;
     gap: 0.5em 0.8em;
     margin-bottom: 0.5em;
     font-size: 0.9em;
-    h2 {
-      margin: 0;
-      font-size: 1rem;
-    }
-    .slice-control {
-      white-space: nowrap;
-      display: flex;
-      align-items: center;
-      gap: 0.4em;
-      font-family: monospace;
-      input[type='range'] {
-        width: 150px;
-      }
-      input[type='number'] {
-        width: 4em;
-        text-align: center;
-        font-family: inherit;
-        padding: 1px 2px;
-        box-sizing: border-box;
-      }
-    }
+  }
+  .slice-header h2 {
+    margin: 0;
+    font-size: 1rem;
+  }
+  .slice-control,
+  .vector-control {
+    white-space: nowrap;
+    font-family: monospace;
+  }
+  .slice-control input[type='range'] {
+    width: 150px;
+  }
+  .slice-control input[type='number'],
+  .vector-control input {
+    width: 4.5em;
+    box-sizing: border-box;
+    padding: 1px 2px;
+    text-align: center;
+    font-family: inherit;
+  }
+  .rendering-controls {
+    padding-top: 0.35em;
+    border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   }
   .slice-view {
-    display: flex;
-    align-items: stretch;
-    gap: 1em;
+    width: min(100%, 700px);
     margin-top: 0.5em;
-    canvas {
-      outline: 1px solid var(--border-color, #ccc);
-      border-radius: 4px;
-      image-rendering: pixelated;
-    }
   }
   .features {
     margin-top: 1.5em;

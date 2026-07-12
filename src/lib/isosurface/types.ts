@@ -364,10 +364,10 @@ export function label_file_volumes(
   filename: string,
 ): VolumetricData[] {
   const source = filename.replace(/\.(?:gz|gzip|bz2|xz|zst)$/i, ``)
-  return volumes.map((vol) => ({
+  return volumes.map((vol, idx) => ({
     ...vol,
     source,
-    label: volumes.length > 1 ? `${source}: ${vol.label}` : source,
+    label: volumes.length > 1 ? `${source}: ${vol.label ?? idx + 1}` : source,
   }))
 }
 

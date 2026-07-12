@@ -3,6 +3,7 @@
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Vec2, Vec3 } from '$lib/math'
 import { create_cart_to_frac_matrix, scale_lattice_matrix } from '$lib/math'
+import { grid_dimensions } from './_grid'
 import type { VolumetricData } from './types'
 import { MAX_GRID_POINTS } from './types'
 
@@ -80,9 +81,38 @@ export interface VolumeSamplerOptions {
   out_of_bounds?: OutOfBoundsPolicy
 }
 
+export interface BulkVolumeSamplerOptions extends VolumeSamplerOptions {
+  position_offset?: Vec3
+  out?: Float32Array
+}
+
 // Small tolerance so vertices numerically on the boundary of a finite grid
 // (e.g. marching-cubes output at fractional coordinate 1.0 + 1e-16) still sample.
 const OOB_TOL = 1e-6
+
+interface PreparedVolumeSampler {
+  grid: number[][][]
+  inv: ReturnType<typeof create_cart_to_frac_matrix>
+  origin: Vec3
+  periodic: boolean
+  grid_dims: Vec3
+}
+
+const prepared_sampler_cache = new WeakMap<VolumetricData, PreparedVolumeSampler>()
+
+const prepare_volume_sampler = (volume: VolumetricData): PreparedVolumeSampler => {
+  const cached = prepared_sampler_cache.get(volume)
+  if (cached) return cached
+  const prepared: PreparedVolumeSampler = {
+    grid: volume.grid,
+    inv: create_cart_to_frac_matrix(volume.lattice),
+    origin: volume.origin,
+    periodic: volume.periodic,
+    grid_dims: grid_dimensions(volume.grid),
+  }
+  prepared_sampler_cache.set(volume, prepared)
+  return prepared
+}
 
 // Create a sampler that maps absolute Cartesian positions (in the same physical
 // frame as the volume's `origin`) to trilinearly-interpolated scalar values.
@@ -96,8 +126,7 @@ export function create_volume_sampler(
   options: VolumeSamplerOptions = {},
 ): (position: Vec3) => number {
   const { out_of_bounds = `clamp` } = options
-  const { grid, lattice, origin, periodic } = volume
-  const inv = create_cart_to_frac_matrix(lattice)
+  const { grid, inv, origin, periodic } = prepare_volume_sampler(volume)
   const [ox, oy, oz] = origin
 
   return (position: Vec3): number => {
@@ -137,17 +166,72 @@ export function create_volume_sampler(
 export function sample_volume_at_positions(
   volume: VolumetricData,
   positions: Float32Array | Float64Array,
-  options: VolumeSamplerOptions = {},
+  options: BulkVolumeSamplerOptions = {},
 ): Float32Array {
-  const sample = create_volume_sampler(volume, options)
+  const { out_of_bounds = `clamp`, position_offset = [0, 0, 0] } = options
+  const { grid, inv, origin, periodic, grid_dims } = prepare_volume_sampler(volume)
+  const [nx, ny, nz] = grid_dims
+  const [offset_x, offset_y, offset_z] = position_offset
+  const [origin_x, origin_y, origin_z] = origin
   const n_points = Math.floor(positions.length / 3)
-  const out = new Float32Array(n_points)
-  const pos: Vec3 = [0, 0, 0]
+  const out = options.out?.length === n_points ? options.out : new Float32Array(n_points)
   for (let idx = 0; idx < n_points; idx++) {
-    pos[0] = positions[idx * 3]
-    pos[1] = positions[idx * 3 + 1]
-    pos[2] = positions[idx * 3 + 2]
-    out[idx] = sample(pos)
+    const position_idx = idx * 3
+    const cart_x = positions[position_idx] + offset_x - origin_x
+    const cart_y = positions[position_idx + 1] + offset_y - origin_y
+    const cart_z = positions[position_idx + 2] + offset_z - origin_z
+    let frac_x = inv[0][0] * cart_x + inv[0][1] * cart_y + inv[0][2] * cart_z
+    let frac_y = inv[1][0] * cart_x + inv[1][1] * cart_y + inv[1][2] * cart_z
+    let frac_z = inv[2][0] * cart_x + inv[2][1] * cart_y + inv[2][2] * cart_z
+
+    if (periodic) {
+      frac_x = safe_mod(frac_x, 1)
+      frac_y = safe_mod(frac_y, 1)
+      frac_z = safe_mod(frac_z, 1)
+    } else {
+      if (
+        out_of_bounds === `fallback` &&
+        (frac_x < -OOB_TOL ||
+          frac_x > 1 + OOB_TOL ||
+          frac_y < -OOB_TOL ||
+          frac_y > 1 + OOB_TOL ||
+          frac_z < -OOB_TOL ||
+          frac_z > 1 + OOB_TOL)
+      ) {
+        out[idx] = Number.NaN
+        continue
+      }
+      frac_x = Math.min(1, Math.max(0, frac_x))
+      frac_y = Math.min(1, Math.max(0, frac_y))
+      frac_z = Math.min(1, Math.max(0, frac_z))
+    }
+
+    const grid_x = frac_x * (periodic ? nx : nx - 1)
+    const grid_y = frac_y * (periodic ? ny : ny - 1)
+    const grid_z = frac_z * (periodic ? nz : nz - 1)
+    const floor_x = Math.floor(grid_x)
+    const floor_y = Math.floor(grid_y)
+    const floor_z = Math.floor(grid_z)
+    const x_lower = periodic ? floor_x : Math.max(0, Math.min(floor_x, nx - 2))
+    const y_lower = periodic ? floor_y : Math.max(0, Math.min(floor_y, ny - 2))
+    const z_lower = periodic ? floor_z : Math.max(0, Math.min(floor_z, nz - 2))
+    const x_upper = periodic ? (x_lower + 1) % nx : Math.min(x_lower + 1, nx - 1)
+    const y_upper = periodic ? (y_lower + 1) % ny : Math.min(y_lower + 1, ny - 1)
+    const z_upper = periodic ? (z_lower + 1) % nz : Math.min(z_lower + 1, nz - 1)
+    const x_weight = grid_x - x_lower
+    const y_weight = grid_y - y_lower
+    const z_weight = grid_z - z_lower
+    const row_00 = grid[x_lower][y_lower]
+    const row_01 = grid[x_lower][y_upper]
+    const row_10 = grid[x_upper][y_lower]
+    const row_11 = grid[x_upper][y_upper]
+    const value_00 = row_00[z_lower] + (row_10[z_lower] - row_00[z_lower]) * x_weight
+    const value_01 = row_00[z_upper] + (row_10[z_upper] - row_00[z_upper]) * x_weight
+    const value_10 = row_01[z_lower] + (row_11[z_lower] - row_01[z_lower]) * x_weight
+    const value_11 = row_01[z_upper] + (row_11[z_upper] - row_01[z_upper]) * x_weight
+    const value_0 = value_00 + (value_10 - value_00) * y_weight
+    const value_1 = value_01 + (value_11 - value_01) * y_weight
+    out[idx] = value_0 + (value_1 - value_0) * z_weight
   }
   return out
 }
@@ -157,6 +241,8 @@ export interface GridCompatibility {
   ok: boolean
   reason?: string // identifies the first mismatching property when ok is false
 }
+
+const incompatible_grids = (reason: string): GridCompatibility => ({ ok: false, reason })
 
 const fmt_vec = (vec: readonly number[]): string =>
   `[${vec.map((val) => Number(val.toPrecision(6))).join(`, `)}]`
@@ -174,30 +260,27 @@ export function compare_volume_grids(
   const [nx_a, ny_a, nz_a] = vol_a.grid_dims
   const [nx_b, ny_b, nz_b] = vol_b.grid_dims
   if (nx_a !== nx_b || ny_a !== ny_b || nz_a !== nz_b) {
-    return {
-      ok: false,
-      reason: `grid dimensions differ: ${nx_a}×${ny_a}×${nz_a} vs ${nx_b}×${ny_b}×${nz_b}`,
-    }
+    return incompatible_grids(
+      `grid dimensions differ: ${nx_a}×${ny_a}×${nz_a} vs ${nx_b}×${ny_b}×${nz_b}`,
+    )
   }
 
   if (vol_a.periodic !== vol_b.periodic) {
-    return {
-      ok: false,
-      reason: `boundary modes differ: ${vol_a.periodic ? `periodic` : `finite`} vs ${
+    return incompatible_grids(
+      `boundary modes differ: ${vol_a.periodic ? `periodic` : `finite`} vs ${
         vol_b.periodic ? `periodic` : `finite`
       }`,
-    }
+    )
   }
 
   for (let axis = 0; axis < 3; axis++) {
     const delta = Math.abs(vol_a.origin[axis] - vol_b.origin[axis])
     if (delta > tolerance) {
-      return {
-        ok: false,
-        reason: `origins differ by ${delta.toPrecision(3)} Å along axis ${axis}: ${fmt_vec(
+      return incompatible_grids(
+        `origins differ by ${delta.toPrecision(3)} Å along axis ${axis}: ${fmt_vec(
           vol_a.origin,
         )} vs ${fmt_vec(vol_b.origin)}`,
-      }
+      )
     }
   }
 
@@ -214,12 +297,11 @@ export function compare_volume_grids(
       const voxel_delta =
         Math.abs(vol_a.lattice[axis][comp] - vol_b.lattice[axis][comp]) / divisor
       if (voxel_delta > tolerance) {
-        return {
-          ok: false,
-          reason: `voxel vectors differ along axis ${axis}: ${fmt_vec(
+        return incompatible_grids(
+          `voxel vectors differ along axis ${axis}: ${fmt_vec(
             vol_a.lattice[axis],
           )} vs ${fmt_vec(vol_b.lattice[axis])} (lattice rows)`,
-        }
+        )
       }
     }
   }
@@ -270,6 +352,45 @@ export function resolve_volume_display_range(
   return range.map(([lo, hi]) => [lo - padding, hi + padding]) as DisplayRange
 }
 
+interface AxisInterpolation {
+  lower: Int32Array
+  upper: Int32Array
+  weight: Float64Array
+  direct: boolean
+}
+
+const precompute_axis_interpolation = (
+  range: Vec2,
+  count: number,
+  source_dim: number,
+  periodic: boolean,
+): AxisInterpolation => {
+  const intervals = periodic ? source_dim : Math.max(source_dim - 1, 1)
+  const fractional_step = (range[1] - range[0]) / (count - 1)
+  const grid_step = fractional_step * intervals
+  const grid_start = range[0] * intervals
+  const direct =
+    Math.abs(grid_step - 1) < 1e-10 && Math.abs(grid_start - Math.round(grid_start)) < 1e-10
+  const lower = new Int32Array(count)
+  const upper = new Int32Array(count)
+  const weight = new Float64Array(count)
+
+  for (let sample_idx = 0; sample_idx < count; sample_idx++) {
+    const grid_coord = grid_start + sample_idx * grid_step
+    const grid_floor = Math.floor(grid_coord)
+    if (periodic) {
+      lower[sample_idx] = safe_mod(grid_floor, source_dim)
+      upper[sample_idx] = (lower[sample_idx] + 1) % source_dim
+      weight[sample_idx] = grid_coord - grid_floor
+    } else {
+      lower[sample_idx] = Math.max(0, Math.min(grid_floor, source_dim - 2))
+      upper[sample_idx] = Math.min(lower[sample_idx] + 1, source_dim - 1)
+      weight[sample_idx] = grid_coord - lower[sample_idx]
+    }
+  }
+  return { lower, upper, weight, direct }
+}
+
 // Resample a volume over a fractional display range (VESTA-style non-integer
 // supercell) into a finite grid whose bounds land exactly on the requested
 // fractional coordinates, so marching cubes clips repeated surfaces precisely
@@ -306,31 +427,71 @@ export function extract_volume_range(
   }
 
   const [nx, ny, nz] = counts
-  const steps: Vec3 = [widths[0] / (nx - 1), widths[1] / (ny - 1), widths[2] / (nz - 1)]
   const grid: number[][][] = Array(nx)
+  const x_samples = precompute_axis_interpolation(rx, nx, volume.grid_dims[0], volume.periodic)
+  const y_samples = precompute_axis_interpolation(ry, ny, volume.grid_dims[1], volume.periodic)
+  const z_samples = precompute_axis_interpolation(rz, nz, volume.grid_dims[2], volume.periodic)
   let [min_val, max_val, sum] = [Infinity, -Infinity, 0]
-  for (let ix = 0; ix < nx; ix++) {
-    const fx = rx[0] + ix * steps[0]
-    const plane: number[][] = Array(ny)
-    for (let iy = 0; iy < ny; iy++) {
-      const fy = ry[0] + iy * steps[1]
-      const row: number[] = Array(nz)
-      for (let iz = 0; iz < nz; iz++) {
-        const val = trilinear_interpolate(
-          volume.grid,
-          fx,
-          fy,
-          rz[0] + iz * steps[2],
-          volume.periodic,
-        )
-        row[iz] = val
-        if (val < min_val) min_val = val
-        if (val > max_val) max_val = val
-        sum += val
+  const direct_copy = x_samples.direct && y_samples.direct && z_samples.direct
+  if (direct_copy) {
+    for (let x_idx = 0; x_idx < nx; x_idx++) {
+      const source_x =
+        x_samples.weight[x_idx] > 0.5 ? x_samples.upper[x_idx] : x_samples.lower[x_idx]
+      const source_plane = volume.grid[source_x]
+      const plane: number[][] = Array(ny)
+      for (let y_idx = 0; y_idx < ny; y_idx++) {
+        const source_y =
+          y_samples.weight[y_idx] > 0.5 ? y_samples.upper[y_idx] : y_samples.lower[y_idx]
+        const source_row = source_plane[source_y]
+        const row: number[] = Array(nz)
+        for (let z_idx = 0; z_idx < nz; z_idx++) {
+          const source_z =
+            z_samples.weight[z_idx] > 0.5 ? z_samples.upper[z_idx] : z_samples.lower[z_idx]
+          const value = source_row[source_z]
+          row[z_idx] = value
+          if (value < min_val) min_val = value
+          if (value > max_val) max_val = value
+          sum += value
+        }
+        plane[y_idx] = row
       }
-      plane[iy] = row
+      grid[x_idx] = plane
     }
-    grid[ix] = plane
+  } else {
+    for (let x_idx = 0; x_idx < nx; x_idx++) {
+      const x_lower_plane = volume.grid[x_samples.lower[x_idx]]
+      const x_upper_plane = volume.grid[x_samples.upper[x_idx]]
+      const x_weight = x_samples.weight[x_idx]
+      const plane: number[][] = Array(ny)
+      for (let y_idx = 0; y_idx < ny; y_idx++) {
+        const y_lower = y_samples.lower[y_idx]
+        const y_upper = y_samples.upper[y_idx]
+        const y_weight = y_samples.weight[y_idx]
+        const row_00 = x_lower_plane[y_lower]
+        const row_01 = x_lower_plane[y_upper]
+        const row_10 = x_upper_plane[y_lower]
+        const row_11 = x_upper_plane[y_upper]
+        const row: number[] = Array(nz)
+        for (let z_idx = 0; z_idx < nz; z_idx++) {
+          const z_lower = z_samples.lower[z_idx]
+          const z_upper = z_samples.upper[z_idx]
+          const z_weight = z_samples.weight[z_idx]
+          const value_00 = row_00[z_lower] + (row_10[z_lower] - row_00[z_lower]) * x_weight
+          const value_01 = row_00[z_upper] + (row_10[z_upper] - row_00[z_upper]) * x_weight
+          const value_10 = row_01[z_lower] + (row_11[z_lower] - row_01[z_lower]) * x_weight
+          const value_11 = row_01[z_upper] + (row_11[z_upper] - row_01[z_upper]) * x_weight
+          const value_0 = value_00 + (value_10 - value_00) * y_weight
+          const value_1 = value_01 + (value_11 - value_01) * y_weight
+          const value = value_0 + (value_1 - value_0) * z_weight
+          row[z_idx] = value
+          if (value < min_val) min_val = value
+          if (value > max_val) max_val = value
+          sum += value
+        }
+        plane[y_idx] = row
+      }
+      grid[x_idx] = plane
+    }
   }
 
   const [row_a, row_b, row_c] = volume.lattice

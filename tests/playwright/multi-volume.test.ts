@@ -2,12 +2,13 @@ import { expect, type Page, test } from '@playwright/test'
 import { open_settings_pane, wait_for_3d_canvas } from './helpers'
 
 const DEMO_URL = `/structure/multi-volume`
+const SCENARIO_LOAD_TIMEOUT = 20_000
 
 // networkidle is flaky with large fixture downloads; the stats bar only renders
 // once volumes are fetched + parsed, so waiting on it is sufficient
 async function wait_for_scenario(page: Page, url: string) {
   await page.goto(url)
-  await expect(page.locator(`.stats-bar`)).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator(`.stats-bar`)).toBeVisible({ timeout: SCENARIO_LOAD_TIMEOUT })
 }
 
 test.describe(`Multi-volume isosurface demo`, () => {
@@ -33,7 +34,7 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
     await page.locator(`.scenario-card`, { hasText: `Charge × magnetization` }).click()
     await expect(page.locator(`.stats-bar`)).toContainText(`Fe-spin-CHGCAR`, {
-      timeout: 20_000,
+      timeout: SCENARIO_LOAD_TIMEOUT,
     })
     await expect(page).toHaveURL(/scenario=fe-spin/)
     await expect(page.locator(`.scenario-card.active`)).toContainText(`Charge × magnetization`)

@@ -41,7 +41,7 @@ export const create_file_drop_handler = (
       const failures: string[] = []
       if (url) {
         try {
-          return await load_from_url(url, opts.on_drop)
+          await load_from_url(url, opts.on_drop)
         } catch (exc) {
           // URL failed; if plain files were also dropped, still process them
           // and fold the URL failure into the aggregate report
@@ -85,7 +85,7 @@ export const create_file_drop_handler = (
     // capture them before deferring to the queue
     const url = dropped_file_url(event)
     const files = Array.from(event.dataTransfer?.files ?? [])
-    queue = queue.then(() => process_batch(url, files))
+    queue = queue.then(() => process_batch(url, files)).catch(() => undefined)
     return queue
   }
 }

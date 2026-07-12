@@ -1,9 +1,14 @@
 // Tests for HKL plane slicing and trilinear interpolation
 import { trilinear_interpolate } from '$lib/isosurface/sampling'
-import { sample_hkl_slice } from '$lib/isosurface/slice'
-import type { Matrix3x3 } from '$lib/math'
+import {
+  type CartesianPlane,
+  type PlaneSliceOptions,
+  sample_hkl_slice,
+  sample_plane_slice,
+} from '$lib/isosurface/slice'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
-import { make_grid, make_volume } from '../setup'
+import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../setup'
 
 // Helper: assert result is non-null and return narrowed type
 function expect_slice(result: ReturnType<typeof sample_hkl_slice>) {
@@ -146,5 +151,105 @@ describe(`sample_hkl_slice`, () => {
     // Interior should have value 5, edges may have 0 if they extend beyond [0,1]
     const nonzero = result.data.filter((val) => val > 0).length
     expect(nonzero).toBeGreaterThan(0)
+  })
+})
+
+describe(`sample_plane_slice`, () => {
+  const linear_volume = (lattice: Matrix3x3, origin: Vec3 = [0, 0, 0], periodic = false) =>
+    make_linear_volume(11, lattice, periodic, origin)
+
+  const cubic = cubic_matrix(10)
+  const plane_slice = (
+    plane: CartesianPlane,
+    options: PlaneSliceOptions = {},
+    volume = linear_volume(cubic),
+  ) => expect_slice(sample_plane_slice(volume, plane, options))
+
+  test(`samples an absolute Cartesian plane with a non-zero volume origin`, () => {
+    const result = plane_slice(
+      { point: [8, 3, 10], normal: [0, 0, 1], up: [1, 0, 0] },
+      { resolution: [5, 5] },
+      linear_volume(cubic, [3, -2, 5]),
+    )
+
+    expect(result.mask.every((value) => value === 1)).toBe(true)
+    expect(result.data[0]).toBeCloseTo(2, 10)
+    expect(result.data.at(-1)).toBeCloseTo(5, 10)
+    expect(result.min).toBeCloseTo(2, 10)
+    expect(result.max).toBeCloseTo(5, 10)
+  })
+
+  test(`masks the exact cell cross-section instead of inventing zero values`, () => {
+    const result = plane_slice(
+      { point: [5, 5, 5], normal: [1, 1, 1] },
+      { resolution: [31, 31] },
+    )
+    const inside_count = result.mask.filter(Boolean).length
+
+    expect(inside_count).toBeGreaterThan(0)
+    expect(inside_count).toBeLessThan(result.mask.length)
+    for (let data_idx = 0; data_idx < result.data.length; data_idx++) {
+      expect(Number.isNaN(result.data[data_idx])).toBe(result.mask[data_idx] === 0)
+    }
+  })
+
+  test(`preserves aspect ratio and enforces the pixel budget`, () => {
+    const volume = linear_volume([
+      [10, 0, 0],
+      [0, 2, 0],
+      [0, 0, 1],
+    ])
+    const plane: CartesianPlane = {
+      point: [5, 1, 0.5],
+      normal: [0, 0, 1],
+      up: [1, 0, 0],
+    }
+    const result = plane_slice(plane, { resolution: 100, max_pixels: Number.NaN }, volume)
+
+    expect(result.width).toBe(100)
+    expect(result.height).toBe(20)
+    expect(result.u_range[1] - result.u_range[0]).toBeCloseTo(10)
+    expect(result.v_range[1] - result.v_range[0]).toBeCloseTo(2)
+    const capped = plane_slice(plane, { resolution: [1_000_000, 2], max_pixels: 100 }, volume)
+    expect(capped.width * capped.height).toBeLessThanOrEqual(100)
+  })
+
+  test.each([
+    { point: [20, 20, 20] as Vec3, normal: [1, 1, 1] as Vec3 },
+    { point: [5, 5, 5] as Vec3, normal: [0, 0, 0] as Vec3 },
+    { point: [NaN, 0, 0] as Vec3, normal: [1, 0, 0] as Vec3 },
+  ])(`returns null for a non-intersecting or invalid plane`, ({ point, normal }) => {
+    expect(sample_plane_slice(linear_volume(cubic), { point, normal })).toBeNull()
+  })
+
+  test(`supports repeated fractional bounds for periodic slices`, () => {
+    const result = plane_slice(
+      { point: [15, 5, 5], normal: [1, 0, 0], up: [0, 1, 0] },
+      {
+        resolution: [7, 7],
+        fractional_bounds: [
+          [1, 2],
+          [0, 1],
+          [0, 1],
+        ],
+      },
+      linear_volume(cubic, [0, 0, 0], true),
+    )
+
+    expect(result.mask.every((value) => value === 1)).toBe(true)
+    expect(result.data[Math.floor(result.data.length / 2)]).toBeCloseTo(3.5, 8)
+  })
+
+  test(`HKL adapter matches the corresponding Cartesian plane for shifted volumes`, () => {
+    const volume = linear_volume(cubic, [3, -2, 5])
+    const hkl_result = expect_slice(sample_hkl_slice(volume, [0, 0, 1], 0.5, 9))
+    const cartesian_result = plane_slice(
+      { point: [0, 0, 10], normal: [0, 0, 1] },
+      { resolution: [9, 9] },
+      volume,
+    )
+
+    expect(hkl_result.data).toEqual(cartesian_result.data)
+    expect(hkl_result.mask).toEqual(cartesian_result.mask)
   })
 })

@@ -56,12 +56,22 @@ describe(`create_file_drop_handler`, () => {
     expect(set_loading).toHaveBeenLastCalledWith(false)
   })
 
-  test(`delegates to URL loading first when a URL payload is present`, async () => {
+  test(`processes a URL and files sequentially when both are present`, async () => {
     vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
-    vi.mocked(load_from_url).mockResolvedValue(undefined)
-    await run({}, [new File([`x`], `test.txt`)])
+    vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
+      await callback(`remote`, `f.cif`)
+    })
+    const file = new File([`local`], `test.txt`)
+    vi.mocked(decompress_file).mockResolvedValue({ content: `local`, filename: file.name })
+
+    await run({}, [file])
+
     expect(load_from_url).toHaveBeenCalledWith(`https://example.com/f.cif`, on_drop)
-    expect(decompress_file).not.toHaveBeenCalled()
+    expect(decompress_file).toHaveBeenCalledWith(file)
+    expect(vi.mocked(on_drop).mock.calls).toEqual([
+      [`remote`, `f.cif`],
+      [`local`, `test.txt`],
+    ])
   })
 
   test(`URL failure with files present still processes files and reports both`, async () => {
@@ -174,6 +184,45 @@ describe(`create_file_drop_handler`, () => {
     await Promise.all([first, second])
     expect(order).toEqual([`start a.cube`, `end a.cube`, `start b.cube`, `end b.cube`])
   })
+
+  test.each([`set_loading`, `on_error`] as const)(
+    `recovers the queue when %s throws`,
+    async (failure_source) => {
+      let fail_loading = failure_source === `set_loading`
+      const flaky_set_loading = (loading: boolean) => {
+        if (loading && fail_loading) {
+          fail_loading = false
+          throw new Error(`loading callback failed`)
+        }
+      }
+      const throwing_error = () => {
+        throw new Error(`error callback failed`)
+      }
+      vi.mocked(decompress_file).mockResolvedValue({
+        content: `second`,
+        filename: `second.cube`,
+      })
+      if (failure_source === `on_error`) {
+        vi.mocked(decompress_file).mockRejectedValueOnce(new Error(`corrupt`))
+      }
+      const queue_drop = vi.fn<FileDropOptions[`on_drop`]>()
+      const handler = create_file_drop_handler({
+        allow: () => true,
+        on_drop: queue_drop,
+        on_error: failure_source === `on_error` ? throwing_error : undefined,
+        set_loading: failure_source === `set_loading` ? flaky_set_loading : undefined,
+      })
+
+      const first_file = new File([`first`], `first.cube`)
+      const second_file = new File([`second`], `second.cube`)
+      await Promise.all([
+        handler(make_event([first_file])),
+        handler(make_event([second_file])),
+      ])
+
+      expect(queue_drop).toHaveBeenCalledExactlyOnceWith(`second`, `second.cube`)
+    },
+  )
 
   test(`works without optional callbacks`, async () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })

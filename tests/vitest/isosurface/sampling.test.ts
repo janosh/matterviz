@@ -8,36 +8,20 @@ import {
   sample_volume_at_positions,
   sanitize_display_range,
 } from '$lib/isosurface/sampling'
-import type { VolumetricData } from '$lib/isosurface/types'
 import { marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
-import { make_grid, make_volume } from '../setup'
+import {
+  cubic_matrix,
+  make_grid,
+  make_linear_volume as linear_volume,
+  make_volume,
+} from '../setup'
 
 // Grid whose value is a linear function of fractional coordinates — trilinear
 // interpolation reproduces linear fields exactly, so samples have closed forms.
 // Non-periodic grids place point i at frac i/(n-1); periodic at i/n.
-const linear_volume = (
-  n_pts: number,
-  lattice: Matrix3x3,
-  periodic: boolean,
-  origin: Vec3 = [0, 0, 0],
-): VolumetricData => {
-  const divisor = periodic ? n_pts : n_pts - 1
-  const grid = make_grid(
-    n_pts,
-    n_pts,
-    n_pts,
-    (ix, iy, iz) => ix / divisor + 2 * (iy / divisor) + 4 * (iz / divisor),
-  )
-  return make_volume(grid, { lattice, origin, periodic })
-}
-
-const cubic: Matrix3x3 = [
-  [10, 0, 0],
-  [0, 10, 0],
-  [0, 0, 10],
-]
+const cubic = cubic_matrix(10)
 // Hexagonal-like non-orthogonal lattice (60° between a and b)
 const hexagonal: Matrix3x3 = [
   [4, 0, 0],
@@ -152,6 +136,31 @@ describe(`sample_volume_at_positions`, () => {
     expect(scalars[0]).toBeCloseTo(3.5, 5)
     expect(scalars[1]).toBeCloseTo(0, 5)
     expect(scalars[2]).toBeNaN()
+  })
+
+  test(`matches scalar sampling while applying an offset and reusing output`, () => {
+    const origin: Vec3 = [2, 3, 4]
+    const vol = linear_volume(11, hexagonal, false, origin)
+    const positions = new Float64Array([2, 1, 3, 0, 0, 0, -10, 0, 0])
+    const output = new Float32Array(3)
+    const scalars = sample_volume_at_positions(vol, positions, {
+      out_of_bounds: `fallback`,
+      position_offset: origin,
+      out: output,
+    })
+    const sample = create_volume_sampler(vol, { out_of_bounds: `fallback` })
+
+    expect(scalars).toBe(output)
+    for (let point_idx = 0; point_idx < positions.length / 3; point_idx++) {
+      const position_idx = point_idx * 3
+      const expected = sample([
+        positions[position_idx] + origin[0],
+        positions[position_idx + 1] + origin[1],
+        positions[position_idx + 2] + origin[2],
+      ])
+      if (Number.isNaN(expected)) expect(scalars[point_idx]).toBeNaN()
+      else expect(scalars[point_idx]).toBeCloseTo(expected, 5)
+    }
   })
 })
 

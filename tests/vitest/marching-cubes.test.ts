@@ -1,5 +1,9 @@
 // Tests for the marching cubes algorithm and vertex normal computation
-import { compute_vertex_normals, marching_cubes } from '$lib/marching-cubes'
+import {
+  compute_vertex_normals,
+  marching_cubes,
+  marching_cubes_buffers,
+} from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { make_grid } from './setup'
@@ -77,6 +81,27 @@ describe(`marching_cubes`, () => {
 
     // Vertex caching: shared vertices across adjacent cubes
     expect(result.vertices.length).toBeLessThan(result.faces.length * 3)
+  })
+
+  test(`buffer path preserves compatibility topology and values`, () => {
+    const grid = gaussian_grid(8)
+    const options = { ...NON_PERIODIC, normals: true }
+    const compatibility = marching_cubes(grid, 0.5, IDENTITY, options)
+    const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, options)
+
+    expect(Array.from(buffers.indices)).toEqual(compatibility.faces.flat())
+    expect(buffers.positions).toHaveLength(compatibility.vertices.length * 3)
+    expect(buffers.normals).toHaveLength(compatibility.normals.length * 3)
+    for (let value_idx = 0; value_idx < buffers.positions.length; value_idx++) {
+      expect(buffers.positions[value_idx]).toBeCloseTo(
+        compatibility.vertices[Math.floor(value_idx / 3)][value_idx % 3],
+        6,
+      )
+      expect(buffers.normals[value_idx]).toBeCloseTo(
+        compatibility.normals[Math.floor(value_idx / 3)][value_idx % 3],
+        6,
+      )
+    }
   })
 
   test(`centered=true shifts vertices relative to uncentered`, () => {
