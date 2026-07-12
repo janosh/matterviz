@@ -106,7 +106,7 @@
     {
       id: `glycine-esp`,
       title: `Density × ESP (glycine)`,
-      description: `Electron-density isosurface of glycine colored by electrostatic potential sampled at each vertex — red marks nucleophilic regions (carboxyl oxygens), blue electrophilic ones (amine/hydroxyl hydrogens). The ESP volume shows no surface of its own but stays loaded as a color source. Both cubes share a strictly matching 50×50×50 grid.`,
+      description: `Glycine electron-density surface colored by ESP: red = nucleophilic (carboxyl O), blue = electrophilic (amine/hydroxyl H). The ESP cube renders no surface of its own — it's purely a color source.`,
       files: [`glycine-density.cube.gz`, `glycine-esp.cube.gz`],
       layers: (volumes) => [
         colored_layer(volumes, 0, 1, {
@@ -118,7 +118,7 @@
     {
       id: `caffeine-homo-lumo`,
       title: `HOMO + LUMO together (caffeine)`,
-      description: `Two real Psi4 B3LYP orbital cubes rendered simultaneously: HOMO in blue/red and LUMO in green/purple, each with ± lobes (4 transparent surfaces total). Demonstrates independent volumes with solid-color surfaces coexisting in one scene.`,
+      description: `Two real Psi4 orbital cubes at once: HOMO in blue/red, LUMO in green/purple, each with ± lobes — four transparent surfaces from independent volumes in one scene.`,
       files: [`caffeine-HOMO.cube.gz`, `caffeine-LUMO.cube.gz`],
       layers: () => [
         {
@@ -144,7 +144,7 @@
     {
       id: `fe-spin`,
       title: `Charge × magnetization (Fe BCC)`,
-      description: `Spin-polarized CHGCAR containing two volumes in one file: the total-charge isosurface is colored by the magnetization density sampled at its vertices, revealing where spin density concentrates on the charge surface. Uses a 2×2×2 supercell with periodic color continuity across cell boundaries.`,
+      description: `Spin-polarized CHGCAR (two volumes in one file): the charge surface is colored by magnetization density, in a 2×2×2 supercell with colors continuous across cell boundaries.`,
       files: [`Fe-spin-CHGCAR.gz`],
       supercell: `2x2x2`,
       layers: (volumes) => [
@@ -157,7 +157,7 @@
     {
       id: `al-slab`,
       title: `Slab density × potential (Al 111)`,
-      description: `Al(111) slab charge density colored by the local electrostatic potential (LOCPOT) from a second file on the same 12×12×40 grid — the classic work-function picture. Tiled 3×3×1: surface geometry tiles with the supercell while colors sample the original periodic volume, staying continuous across boundaries.`,
+      description: `Al(111) slab density colored by the local potential (LOCPOT) from a second file — the classic work-function picture, tiled 3×3×1 with seamless colors.`,
       files: [`Al-slab-CHGCAR.gz`, `Al-slab-LOCPOT.gz`],
       supercell: `3x3x1`,
       layers: (volumes) => [
@@ -171,7 +171,7 @@
     {
       id: `hbn-elf`,
       title: `Density × ELF, non-orthogonal (hBN)`,
-      description: `Hexagonal boron nitride (60° lattice angle) with two surfaces from the charge density: an outer shell colored by a localization function (ELF) from a second file, plus an inner solid shell. Exercises world-coordinate sampling on a non-orthogonal lattice in a 3×3×1 supercell.`,
+      description: `hBN with two density surfaces: an outer shell colored by ELF from a second file plus an inner solid shell — world-coordinate sampling on a non-orthogonal lattice, 3×3×1.`,
       files: [`hBN-CHGCAR.gz`, `hBN-ELFCAR.gz`],
       supercell: `3x3x1`,
       layers: (volumes) => [
@@ -193,7 +193,7 @@
     {
       id: `fractional-range`,
       title: `Fractional display range (hBN)`,
-      description: `VESTA-style non-integer supercell: the ELF-colored density surface repeats over the fractional range a, b ∈ [−0.15, 2.15], c ∈ [0, 1] and is clipped exactly at those bounds — crossing unit-cell boundaries instead of snapping to integer cells. Atoms use an independent 2×2×1 integer supercell, so structure, surface, and cell outline stay separately controllable. Tune the range live under Isosurface → Range.`,
+      description: `VESTA-style non-integer supercell: the surface spans a, b ∈ [−0.15, 2.15], clipped exactly at those fractional bounds, while atoms keep an independent 2×2×1 supercell. Tune live under Isosurface → Range.`,
       files: [`hBN-CHGCAR.gz`, `hBN-ELFCAR.gz`],
       supercell: `2x2x1`,
       display_range: [
@@ -211,7 +211,7 @@
     {
       id: `perf`,
       title: `Perf: two 80×80×96 grids`,
-      description: `Stress test with two 614k-point volumes (1.2M grid points total): large-grid CHGCAR geometry colored by a matching LOCPOT. Geometry is downsampled to stay interactive while colors sample the full-resolution potential. Drag the isovalue and colormap-range controls to compare rebuild vs recolor cost.`,
+      description: `Stress test: two 614k-point volumes, CHGCAR geometry colored by a matching LOCPOT. Drag the isovalue vs colormap-range controls to compare rebuild vs recolor cost.`,
       files: [`large-grid-CHGCAR.gz`, `large-grid-LOCPOT.gz`],
       layers: (volumes) => [
         colored_layer(volumes, 0, 1, {
@@ -531,6 +531,7 @@
     transition: all 0.15s ease;
     font: inherit;
     color: inherit;
+    user-select: text; /* buttons suppress text selection by default */
   }
   .scenario-card:hover {
     border-color: var(--accent-color, #007acc);
