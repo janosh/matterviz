@@ -4,6 +4,7 @@ import type { CameraProjection } from '$lib/settings'
 import type { Gizmo } from '@threlte/extras'
 import type { ComponentProps } from 'svelte'
 import type { Camera, Scene, Vector3 } from 'three'
+import { page_visibility } from './visibility.svelte'
 
 // Threlte pointer event type for mesh interactions
 export type ThreltePointerEvent = { point: Vector3; nativeEvent: PointerEvent }
@@ -85,7 +86,10 @@ export function build_orbit_props(opts: {
     panSpeed: opts.pan_speed,
     maxZoom: opts.max_zoom,
     minZoom: opts.min_zoom,
-    autoRotate: Boolean(opts.auto_rotate),
+    // pause auto-rotation while the page is hidden: callers build these props
+    // in $derived, so the visibility flip re-runs them and stops the per-frame
+    // OrbitControls task (threlte only runs it while autoRotate/damping is on)
+    autoRotate: Boolean(opts.auto_rotate) && page_visibility.visible,
     autoRotateSpeed: opts.auto_rotate,
     enableDamping: Boolean(opts.rotation_damping),
     dampingFactor: opts.rotation_damping,

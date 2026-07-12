@@ -3,3 +3,4 @@
 export * from './bind-renderer.svelte'
 export * from './props'
 export { default as SceneCamera } from './SceneCamera.svelte'
+export * from './visibility.svelte'

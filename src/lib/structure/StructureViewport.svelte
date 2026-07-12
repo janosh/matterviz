@@ -46,13 +46,31 @@
     }
   }
 
-  const create_renderer = (canvas: HTMLCanvasElement) =>
-    new StructureRenderer({
+  // Self-heal evicted WebGL contexts: browsers cap live contexts (~8-16 per
+  // page) and evict the oldest without notice, leaving its canvas permanently
+  // blank. three.js handles `webglcontextrestored` when the browser restores
+  // on its own; when it doesn't, remount the <Canvas> for a fresh context.
+  // Bounded retries avoid eviction ping-pong when over the context budget.
+  let canvas_remount_token = $state(0)
+  let remount_timer: ReturnType<typeof setTimeout> | undefined
+  let recovery_attempts = 0
+
+  const create_renderer = (canvas: HTMLCanvasElement) => {
+    canvas.addEventListener(`webglcontextlost`, () => {
+      // canvas.isConnected is false when the loss came from our own dispose()
+      // (component unmounted), not from browser eviction
+      if (!canvas.isConnected || recovery_attempts >= 3) return
+      recovery_attempts += 1
+      remount_timer = setTimeout(() => (canvas_remount_token += 1), 1000)
+    })
+    canvas.addEventListener(`webglcontextrestored`, () => clearTimeout(remount_timer))
+    return new StructureRenderer({
       canvas,
       powerPreference: `high-performance`,
       antialias: true,
       alpha: true,
     })
+  }
 
   let {
     // Multi-view chrome
@@ -279,6 +297,8 @@
       return
     reset_camera()
   }
+
+  $effect(() => () => clearTimeout(remount_timer))
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -293,59 +313,61 @@
   ondblclick={handle_dblclick}
 >
   {#if label}<span class="viewport-label">{label}</span>{/if}
-  <Canvas createRenderer={create_renderer}>
-    <StructureScene
-      {structure}
-      {base_structure}
-      {...scene_props}
-      {...in_grid ? { auto_rotate: 0 } : {}}
-      {camera_position}
-      {camera_target}
-      {camera_projection}
-      {camera_direction}
-      {interactive}
-      gizmo={gizmo_prop}
-      {lattice_props}
-      {volumetric_data}
-      {isosurface_settings}
-      {active_volume_idx}
-      {volume_scaling}
-      bind:camera_is_moving
-      bind:selected_sites
-      {active_sites}
-      bind:hovered_idx={hovered_site_idx}
-      bind:measured_sites
-      bind:scene
-      bind:camera
-      bind:orbit_controls
-      bind:rotation_target_ref
-      bind:initial_computed_zoom
-      bind:hidden_elements
-      bind:hidden_prop_vals
-      bind:element_radius_overrides
-      bind:site_radius_overrides
-      bind:added_bonds
-      bind:removed_bonds
-      bind:bond_order_overrides
-      {bond_edits_enabled}
-      bind:bond_edit_mode
-      {bond_edit_order}
-      {measure_mode}
-      {width}
-      {height}
-      {atom_color_config}
-      {sym_data}
-      {on_sites_moved}
-      {on_operation_start}
-      {on_bond_edit_start}
-      {on_add_atom}
-      bind:add_atom_mode
-      bind:add_element
-      bind:cursor
-      bind:dragging_atoms
-      bind:polyhedra_rendered_elements
-    />
-  </Canvas>
+  {#key canvas_remount_token}
+    <Canvas createRenderer={create_renderer}>
+      <StructureScene
+        {structure}
+        {base_structure}
+        {...scene_props}
+        {...in_grid ? { auto_rotate: 0 } : {}}
+        {camera_position}
+        {camera_target}
+        {camera_projection}
+        {camera_direction}
+        {interactive}
+        gizmo={gizmo_prop}
+        {lattice_props}
+        {volumetric_data}
+        {isosurface_settings}
+        {active_volume_idx}
+        {volume_scaling}
+        bind:camera_is_moving
+        bind:selected_sites
+        {active_sites}
+        bind:hovered_idx={hovered_site_idx}
+        bind:measured_sites
+        bind:scene
+        bind:camera
+        bind:orbit_controls
+        bind:rotation_target_ref
+        bind:initial_computed_zoom
+        bind:hidden_elements
+        bind:hidden_prop_vals
+        bind:element_radius_overrides
+        bind:site_radius_overrides
+        bind:added_bonds
+        bind:removed_bonds
+        bind:bond_order_overrides
+        {bond_edits_enabled}
+        bind:bond_edit_mode
+        {bond_edit_order}
+        {measure_mode}
+        {width}
+        {height}
+        {atom_color_config}
+        {sym_data}
+        {on_sites_moved}
+        {on_operation_start}
+        {on_bond_edit_start}
+        {on_add_atom}
+        bind:add_atom_mode
+        bind:add_element
+        bind:cursor
+        bind:dragging_atoms
+        bind:polyhedra_rendered_elements
+      />
+    </Canvas>
+  {/key}
 </div>
 
 <style>
@@ -374,7 +396,7 @@
     position: absolute;
     top: 3px;
     left: 5px;
-    z-index: 1;
+    z-index: var(--z-index-viewer-label, 1);
     pointer-events: none;
     font-size: var(--struct-viewport-label-font-size, 0.8em);
     font-weight: 500;

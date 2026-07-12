@@ -2156,7 +2156,7 @@
     gap: 1rem;
     max-width: min(90%, 400px);
     font-size: 0.9rem;
-    z-index: 1000;
+    z-index: var(--z-index-viewer-tooltip, 1000);
   }
   .symmetry-error span {
     flex: 1;
@@ -2183,7 +2183,7 @@
     padding: 0.4rem 0.8rem;
     border-radius: var(--border-radius, 3pt);
     font-size: 0.8rem;
-    z-index: 100;
+    z-index: var(--z-index-viewer-dropdown, 100);
     pointer-events: none;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     animation: toast-fade 2s ease-in-out;
