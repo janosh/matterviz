@@ -373,7 +373,7 @@
     }
 
     return new Promise((resolve, reject) => {
-      const worker = new Worker(new URL(`geometry.worker.ts`, import.meta.url), {
+      const worker = new Worker(new URL(`geometry.worker`, import.meta.url), {
         type: `module`,
       })
       geometry_worker = worker
