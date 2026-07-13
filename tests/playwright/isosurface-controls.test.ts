@@ -32,6 +32,8 @@ async function drag_from(page: Page, locator: Locator, dx: number, dy: number) {
 }
 
 test.describe(`Isosurface page`, () => {
+  test.describe.configure({ mode: `serial` })
+
   test.beforeEach(async ({ page }) => {
     await wait_for_isosurface(page)
   })
