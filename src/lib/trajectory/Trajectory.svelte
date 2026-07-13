@@ -280,6 +280,7 @@
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
       if (trajectory.frame_loader) {
         // Load frame on demand (works for both indexed files and external streaming)
+        current_frame = null
         schedule_frame_load_on_demand(current_step_idx)
       } else {
         clear_frame_load_timeout()
@@ -1283,6 +1284,7 @@
             {#if trajectory && controls_config.visible(`info-pane`)}
               <TrajectoryInfoPane
                 {trajectory}
+                {current_frame}
                 {current_step_idx}
                 {current_filename}
                 {current_file_path}
