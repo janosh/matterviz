@@ -1,13 +1,12 @@
-import type { D3InterpolateName } from '$lib/colors'
-import { get_d3_interpolator } from '$lib/colors'
+import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import { rgb } from 'd3-color'
 import type { SliceResult } from './slice'
 
 export type VolumeSliceMode = `both` | `contours` | `filled`
-type PixelSlice = Pick<SliceResult, `data` | `mask` | `width` | `height`>
 
 const SLICE_LUT_SIZE = 256
+const MAX_CONTOUR_LEVELS = 256
 const slice_lut_cache = new Map<D3InterpolateName, Uint8ClampedArray>()
 
 const get_slice_lut = (colormap: D3InterpolateName): Uint8ClampedArray => {
@@ -41,7 +40,7 @@ export function resolve_slice_color_range(
 
 /** Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask. */
 export function slice_to_rgba(
-  slice: PixelSlice,
+  slice: Pick<SliceResult, `data` | `mask` | `width` | `height`>,
   colormap: D3InterpolateName,
   color_range: Vec2,
   { flip_y = true, out }: { flip_y?: boolean; out?: Uint8ClampedArray } = {},
@@ -85,13 +84,20 @@ export function resolve_contour_thresholds(
   contour_levels: number | number[],
 ): number[] {
   if (Array.isArray(contour_levels)) {
-    return contour_levels.filter(Number.isFinite).sort((left, right) => left - right)
+    const thresholds: number[] = []
+    for (const threshold of contour_levels) {
+      if (Number.isFinite(threshold)) thresholds.push(threshold)
+      if (thresholds.length === MAX_CONTOUR_LEVELS) break
+    }
+    return thresholds.sort((left, right) => left - right)
   }
-  const count = Math.max(0, Math.floor(contour_levels))
+  const count = Number.isFinite(contour_levels)
+    ? Math.min(MAX_CONTOUR_LEVELS, Math.max(0, Math.floor(contour_levels)))
+    : 0
   const [range_min, range_max] = color_range
   if (count === 0 || range_min === range_max) return []
   return Array.from(
     { length: count },
     (_, level_idx) => range_min + ((level_idx + 1) / (count + 1)) * (range_max - range_min),
-  )
+  ).sort((left, right) => left - right)
 }

@@ -333,7 +333,7 @@ export interface MarchingCubesOptions {
   // Whether to compute per-vertex normals via central differences on the grid.
   // Default true. Set false to skip (caller can use geometry.computeVertexNormals() instead).
   normals?: boolean
-  // Cartesian translation applied before converting positions to Float32 buffers.
+  // Cartesian translation applied before positions are rounded to Float32 buffers.
   position_offset?: Vec3
 }
 
@@ -384,7 +384,7 @@ function marching_cubes_raw(
     interpolate = true,
     centered = true,
     normals: compute_norms = true,
-    position_offset = [0, 0, 0],
+    position_offset,
   } = options
   // When centered=true, shift fractional coordinates by -0.5 so the grid is
   // centered at the origin (Γ point). This is needed for proper BZ visualization.
@@ -501,11 +501,16 @@ function marching_cubes_raw(
 
     // Transform to Cartesian (inlined)
     const vert_idx = positions.length / 3
-    positions.push(
-      fx * kx0 + fy * ky0 + fz * kz0 + position_offset[0],
-      fx * kx1 + fy * ky1 + fz * kz1 + position_offset[1],
-      fx * kx2 + fy * ky2 + fz * kz2 + position_offset[2],
-    )
+    const cart_x = fx * kx0 + fy * ky0 + fz * kz0
+    const cart_y = fx * kx1 + fy * ky1 + fz * kz1
+    const cart_z = fx * kx2 + fy * ky2 + fz * kz2
+    if (position_offset) {
+      positions.push(
+        cart_x + position_offset[0],
+        cart_y + position_offset[1],
+        cart_z + position_offset[2],
+      )
+    } else positions.push(cart_x, cart_y, cart_z)
 
     // Compute normal from grid gradient (skip if caller will compute from geometry)
     if (compute_norms) {

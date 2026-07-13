@@ -158,6 +158,26 @@ describe(`sample_volume_at_positions`, () => {
       else expect(scalars[point_idx]).toBeCloseTo(expected, 5)
     }
   })
+
+  test(`returns zeros for empty grid dimensions`, () => {
+    const vol = make_volume([], { grid_dims: [0, 0, 0], lattice: cubic, periodic: false })
+    const scalars = sample_volume_at_positions(vol, new Float32Array([1, 2, 3, 4, 5, 6]))
+    expect([...scalars]).toEqual([0, 0])
+  })
+})
+
+describe(`prepare_volume_sampler cache`, () => {
+  test(`invalidates when lattice changes on the same volume object`, () => {
+    const vol = linear_volume(11, cubic, false)
+    const before = create_volume_sampler(vol)([5, 5, 5])
+    vol.lattice = [
+      [20, 0, 0],
+      [0, 20, 0],
+      [0, 0, 20],
+    ]
+    const after = create_volume_sampler(vol)([5, 5, 5])
+    expect(after).not.toBeCloseTo(before, 5)
+  })
 })
 
 describe(`compare_volume_grids`, () => {

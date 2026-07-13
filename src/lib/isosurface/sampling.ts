@@ -95,19 +95,28 @@ interface PreparedVolumeSampler {
   origin: Vec3
   periodic: boolean
   grid_dims: Vec3
+  signature: string
 }
 
 const prepared_sampler_cache = new WeakMap<VolumetricData, PreparedVolumeSampler>()
 
 const prepare_volume_sampler = (volume: VolumetricData): PreparedVolumeSampler => {
+  const grid_dims = grid_dimensions(volume.grid)
+  const signature = [
+    ...volume.lattice.flat(),
+    ...volume.origin,
+    ...grid_dims,
+    Number(volume.periodic),
+  ].join(`,`)
   const cached = prepared_sampler_cache.get(volume)
-  if (cached) return cached
+  if (cached?.grid === volume.grid && cached.signature === signature) return cached
   const prepared: PreparedVolumeSampler = {
     grid: volume.grid,
     inv: create_cart_to_frac_matrix(volume.lattice),
     origin: volume.origin,
     periodic: volume.periodic,
-    grid_dims: grid_dimensions(volume.grid),
+    grid_dims,
+    signature,
   }
   prepared_sampler_cache.set(volume, prepared)
   return prepared
@@ -174,6 +183,10 @@ export function sample_volume_at_positions(
   const [origin_x, origin_y, origin_z] = origin
   const n_points = Math.floor(positions.length / 3)
   const out = options.out?.length === n_points ? options.out : new Float32Array(n_points)
+  if (nx === 0 || ny === 0 || nz === 0) {
+    out.fill(0)
+    return out
+  }
   for (let idx = 0; idx < n_points; idx++) {
     const position_idx = idx * 3
     const cart_x = positions[position_idx] + offset_x - origin_x
