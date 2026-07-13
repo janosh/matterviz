@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
   expect_canvas_changed,
+  get_canvas_timeout,
   IS_CI,
   open_settings_pane,
   set_input_value,
@@ -66,15 +67,17 @@ test.describe(`Isosurface page`, () => {
       const canvas = slice.locator(`canvas`)
       await wait_for_canvas_rendered(canvas)
       expect(Number(await canvas.getAttribute(`width`))).toBeGreaterThanOrEqual(512)
-      const initial = await canvas_screenshot(canvas)
 
       await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
       await expect(page.getByLabel(`Cartesian point x`)).toBeVisible()
       await page.getByRole(`button`, { name: `XY`, exact: true }).click()
       await expect(page.getByLabel(`Cartesian normal z`)).toHaveValue(`1`)
+      await wait_for_canvas_rendered(canvas)
+      const filled = await canvas_screenshot(canvas)
 
       await page.getByLabel(`Slice rendering mode`).selectOption(`contours`)
-      await expect_canvas_changed(canvas, initial)
+      // Contour strokes are drawn across animation frames; allow CI headroom.
+      await expect_canvas_changed(canvas, filled, get_canvas_timeout() * 2)
       await page.getByLabel(`Slice rendering mode`).selectOption(`filled`)
       await expect(page.getByLabel(`Slice colormap`)).toBeVisible()
       await page.getByLabel(`Slice colormap`).selectOption(`interpolateViridis`)
