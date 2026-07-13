@@ -533,7 +533,7 @@
   })
 
   const should_show_legend = $derived(show_legend ?? false)
-  const decor = $derived.by(() =>
+  const decor = $derived(
     place_decorations({
       base_pad,
       width,

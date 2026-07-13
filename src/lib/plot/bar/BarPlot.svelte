@@ -431,7 +431,7 @@
   })
 
   // Move the legend to the bottom margin when no interior spot avoids the bars
-  const decor = $derived.by(() =>
+  const decor = $derived(
     place_decorations({
       base_pad,
       width,

@@ -4,6 +4,12 @@
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
+  type SettingsSectionContext = {
+    current_values: Record<string, unknown>
+    has_changes: boolean
+    reference_values: Record<string, unknown>
+  }
+
   let {
     title,
     current_values,
@@ -13,15 +19,7 @@
   }: HTMLAttributes<HTMLElementTagNameMap[`section`]> & {
     title: string
     current_values: Record<string, unknown>
-    children: Snippet<
-      [
-        {
-          current_values: Record<string, unknown>
-          has_changes: boolean
-          reference_values: Record<string, unknown>
-        },
-      ]
-    >
+    children: Snippet<[SettingsSectionContext]>
     on_reset?: () => void
   } = $props()
 
@@ -42,22 +40,48 @@
   // unique per-instance id so aria-labelledby stays valid with multiple sections on a page
   const title_id = `settings-section-title-${crypto.randomUUID()}`
 
-  // Check if any values have changed from reference values
-  // Deep comparison for arrays (JSON.stringify fallback for nested objects/arrays)
-  // Symmetric deep equality so object/array settings compare by value, not reference.
-  // Settings values are JSON-serializable (primitives, arrays, plain objects).
-  const setting_equal = (left: unknown, right: unknown): boolean =>
-    Object.is(left, right) ||
-    (left != null &&
-      right != null &&
-      typeof left === `object` &&
-      typeof right === `object` &&
-      JSON.stringify(left) === JSON.stringify(right))
+  // Order-independent deep equality for setting values
+  const setting_equal = (left: unknown, right: unknown): boolean => {
+    if (Object.is(left, right)) return true
+    if (left == null || right == null) return false
+    if (typeof left !== `object` || typeof right !== `object`) return false
+    if (left instanceof Date || right instanceof Date) {
+      return (
+        left instanceof Date && right instanceof Date && left.getTime() === right.getTime()
+      )
+    }
+    if (left instanceof RegExp || right instanceof RegExp) {
+      return (
+        left instanceof RegExp &&
+        right instanceof RegExp &&
+        left.toString() === right.toString()
+      )
+    }
+    if (Array.isArray(left) || Array.isArray(right)) {
+      if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+        return false
+      }
+      return left.every((item, idx) => setting_equal(item, right[idx]))
+    }
+    const left_obj = left as Record<string, unknown>
+    const right_obj = right as Record<string, unknown>
+    const left_keys = Object.keys(left_obj)
+    if (left_keys.length !== Object.keys(right_obj).length) return false
+    return left_keys.every(
+      (key) => Object.hasOwn(right_obj, key) && setting_equal(left_obj[key], right_obj[key]),
+    )
+  }
 
-  // Keys added to either side count as changes
-  let has_changes = $derived.by(() =>
+  // Key presence is independent of value: additions/removals count even when the
+  // value is undefined. Only compare values when both sides own the key.
+  let has_changes = $derived(
     [...new Set([...Object.keys(reference_values), ...Object.keys(current_values)])].some(
-      (key) => !setting_equal(reference_values[key], current_values[key]),
+      (key) => {
+        const in_reference = Object.hasOwn(reference_values, key)
+        const in_current = Object.hasOwn(current_values, key)
+        if (in_reference !== in_current) return true
+        return !setting_equal(reference_values[key], current_values[key])
+      },
     ),
   )
   function handle_reset(event: MouseEvent) {

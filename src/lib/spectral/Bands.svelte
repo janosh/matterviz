@@ -250,7 +250,7 @@
 
   let num_structures = $derived(Object.keys(band_structs_dict).length)
   let all_segment_keys = $derived(Object.keys(all_segments))
-  let common_segment_keys = $derived.by(() =>
+  let common_segment_keys = $derived(
     all_segment_keys.filter(
       (segment_key) => all_segments[segment_key].length === num_structures,
     ),
@@ -635,7 +635,7 @@
     ]
   })
 
-  let custom_highlight_regions = $derived.by((): FillRegion[] =>
+  let custom_highlight_regions = $derived(
     (highlight_regions ?? [])
       .filter((region) => Number.isFinite(region.y_min) && Number.isFinite(region.y_max))
       .map((region) => ({

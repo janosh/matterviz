@@ -5,12 +5,16 @@ import { format_num } from '$lib/labels'
 import { is_elem_symbol } from '$lib/element'
 import { ELEMENT_ELECTRONEGATIVITY_MAP, parse_composition } from './parse'
 
-// Extract composition from structure object (errors from malformed structures are
-// caught by format_formula_generic, which returns ``)
+// Extract composition from structure object
 const structure_to_composition = (structure: AnyStructure): CompositionType => {
+  if (!Array.isArray(structure.sites)) {
+    throw new TypeError(`Invalid structure object`)
+  }
+
   const composition: CompositionType = {}
   for (const site of structure.sites) {
-    for (const species of site.species ?? []) {
+    if (!Array.isArray(site.species)) continue
+    for (const species of site.species) {
       composition[species.element] = (composition[species.element] ?? 0) + (species.occu ?? 1)
     }
   }

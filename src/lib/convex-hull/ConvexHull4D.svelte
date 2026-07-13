@@ -355,7 +355,7 @@
     )
 
   // Cache energy color scale per frame/setting
-  const energy_color_scale = $derived.by(() =>
+  const energy_color_scale = $derived(
     helpers.get_energy_color_scale(color_mode, color_scale, plot_entries),
   )
 

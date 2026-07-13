@@ -12,7 +12,7 @@ import { Buffer } from 'node:buffer'
 import type * as node_path from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { ExtensionContext, Tab, TextEditor, Uri } from 'vscode'
+import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import type { MessageData } from '../src/extension'
 import { MAX_TEXT_TRAJECTORY_SIZE } from '../src/node-io'
@@ -1052,7 +1052,7 @@ describe(`MatterViz Extension`, () => {
     const webview_with_dispose = (dispose: () => void) => ({
       ...mock_webview,
       onDidReceiveMessage: vi.fn(() => ({ dispose })),
-      options: undefined as unknown,
+      options: undefined as WebviewOptions | undefined,
     })
 
     const setup_panel = (options = {}) => {

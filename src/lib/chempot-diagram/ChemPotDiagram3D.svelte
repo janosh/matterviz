@@ -268,17 +268,14 @@
     get_projection_source_entries(entries, temp_filtered_entries),
   )
 
-  const all_entry_elements = $derived.by(() =>
-    Array.from(
-      new SvelteSet(
-        projection_source_entries.flatMap((entry) =>
-          Object.entries(entry.composition)
-            .filter(([, amount]) => amount > 0)
-            .map(([element]) => element),
-        ),
-      ),
-    ).sort(),
-  )
+  const all_entry_elements = $derived.by(() => {
+    const elements = projection_source_entries.flatMap((entry) =>
+      Object.entries(entry.composition)
+        .filter(([, amount]) => amount > 0)
+        .map(([element]) => element),
+    )
+    return Array.from(new SvelteSet(elements)).sort()
+  })
   const has_multinary_system = $derived(all_entry_elements.length > 3)
   let projection_elements_override = $state<string[] | null>(null)
   const config_projection_elements = $derived(
@@ -358,7 +355,7 @@
   })
   const current_projection_key = $derived(plot_elements.join(`|`))
   let formula_filter_query = $state(``)
-  const available_formulas = $derived.by(() => Object.keys(diagram_data?.domains ?? {}).sort())
+  const available_formulas = $derived(Object.keys(diagram_data?.domains ?? {}).sort())
   const filtered_formulas = $derived.by(() => {
     const query = formula_filter_query.trim().toLowerCase()
     if (!query) return available_formulas
@@ -1292,8 +1289,8 @@
   // Niced ranges (from ticks) padded so the grid extends beyond the diagram.
   // For horizontal axes (0,1): pad both sides.
   // For vertical axis (2): use actual data range and round min down to an integer.
-  const niced_range = $derived.by(() => {
-    return [0, 1, 2].map((axis): Vec2 => {
+  const niced_range = $derived(
+    [0, 1, 2].map((axis): Vec2 => {
       const ticks = data_ticks[axis]
       const lo = ticks[0]
       const hi = ticks.at(-1) ?? lo
@@ -1303,8 +1300,8 @@
         return [Math.floor(min_data), hi]
       }
       return [lo - step, hi + step]
-    })
-  })
+    }),
+  )
 
   // Helper to create a line geometry from two Vec3 arrays
   function make_line_geom(start: Vec3, end: Vec3): THREE.BufferGeometry {

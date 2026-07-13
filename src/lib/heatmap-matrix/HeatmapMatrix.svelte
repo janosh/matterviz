@@ -476,7 +476,7 @@
   })
 
   // Keep selected outlines visible against each cell's background.
-  let selected_outline_flat = $derived.by(() => to_contrast_colors(bg_flat))
+  let selected_outline_flat = $derived(to_contrast_colors(bg_flat))
 
   const get_flat_idx = (x_idx: number, y_idx: number): number => y_idx * n_x + x_idx
 
