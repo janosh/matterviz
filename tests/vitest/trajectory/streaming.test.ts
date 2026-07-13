@@ -223,6 +223,24 @@ describe(`Trajectory Streaming`, () => {
       expect(loaded?.metadata?.energy).toBe(-1.5)
       expect(loaded?.metadata?.volume).toBe(216) // derived from lattice (6^3), parity with eager parser
     })
+
+    it(`should preserve EXTXYZ PBC in indexed loads`, async () => {
+      const frame = (pbc_field: string): string => `1
+Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${pbc_field}
+Si 0 0 0`
+      const source = `${frame(` pbc="F F F"`)}\n${frame(` pbc="T F T"`)}`
+
+      const loader = new TrajFrameReader(`pbc.extxyz`)
+      const frame_0 = await loader.load_frame(source, 0)
+      const frame_1 = await loader.load_frame(source, 1)
+
+      expect(
+        frame_0?.structure && `lattice` in frame_0.structure && frame_0.structure.lattice.pbc,
+      ).toEqual([false, false, false])
+      expect(
+        frame_1?.structure && `lattice` in frame_1.structure && frame_1.structure.lattice.pbc,
+      ).toEqual([true, false, true])
+    })
   })
 
   describe(`Plot Metadata Extraction`, () => {
