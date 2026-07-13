@@ -33,10 +33,15 @@ describe(`handle_url_drop`, () => {
   test.each([
     [`no JSON data`, ``, false],
     [`no URL in JSON`, JSON.stringify({ name: `test.json` }), false],
+    [`empty string URL`, JSON.stringify({ url: `` }), false],
+    // Drop payloads are external input: truthy non-string urls must not reach fetch
+    [`numeric URL`, JSON.stringify({ url: 123 }), false],
+    [`object URL`, JSON.stringify({ url: { href: `https://x.com` } }), false],
   ])(`%s`, async (_, data, expected) => {
     get_data.mockReturnValue(data)
     expect(await handle_url_drop(drag_event, callback)).toBe(expected)
     expect(callback).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   test(`valid JSON with URL`, async () => {

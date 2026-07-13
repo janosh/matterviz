@@ -1,5 +1,5 @@
-import { build_gizmo_props, build_orbit_props } from '$lib/scene'
-import { describe, expect, test, vi } from 'vitest'
+import { build_gizmo_props, build_orbit_props, page_visibility } from '$lib/scene'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 describe(`build_gizmo_props`, () => {
   test(`shared axis defaults`, () => {
@@ -65,5 +65,21 @@ describe(`build_orbit_props`, () => {
     props.onend()
     expect(set_camera_is_moving).toHaveBeenLastCalledWith(false)
     expect(onstart_extra).toHaveBeenCalledOnce() // not re-run on end
+  })
+
+  describe(`page visibility`, () => {
+    afterEach(() => {
+      page_visibility.visible = true
+    })
+
+    test.each([
+      [true, true],
+      [false, false],
+    ])(`visible=%s keeps autoRotate=%s (speed preserved)`, (visible, auto_rotate_on) => {
+      page_visibility.visible = visible
+      const props = build_orbit_props({ ...opts, auto_rotate: 1.5 })
+      expect(props.autoRotate).toBe(auto_rotate_on)
+      expect(props.autoRotateSpeed).toBe(1.5) // resumes at full speed when shown
+    })
   })
 })

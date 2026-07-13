@@ -1,4 +1,5 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
+import type { D3InterpolateName } from '$lib/colors'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { scale_lattice_matrix } from '$lib/math'
 import type { ParsedStructure } from '$lib/structure/parse'
@@ -26,6 +27,9 @@ export interface VolumetricData {
   // span [0,1] with spacing 1/(N-1).
   periodic: boolean
   label?: string // e.g. "charge density", "spin density", "orbital"
+  // Stable identity of the file this volume came from (compression-stripped
+  // filename). Reimporting the same source replaces its previous volumes.
+  source?: string
 }
 
 // Result of parsing a volumetric file (contains both structure and volumetric data)
@@ -34,7 +38,11 @@ export interface VolumetricFileData {
   volumes: VolumetricData[] // one or more volumes (e.g. total + magnetization for spin-polarized)
 }
 
-// A single isosurface layer at a specific isovalue with its own appearance
+// A single isosurface layer at a specific isovalue with its own appearance.
+// Layers reference volumes by index into the loaded volumes array: `volume_idx`
+// picks the geometry source (marching cubes input) and `color_volume_idx`
+// optionally picks a different volume whose scalar field is sampled at surface
+// vertices to drive a colormap (e.g. density surface colored by ESP).
 export interface IsosurfaceLayer {
   isovalue: number
   color: string
@@ -43,6 +51,16 @@ export interface IsosurfaceLayer {
   // When true, also render the -isovalue surface in `negative_color`
   show_negative: boolean
   negative_color: string
+  // Geometry-source volume index (defaults to the active volume when omitted)
+  volume_idx?: number
+  // Scalar-color-source volume index; unset preserves solid-color behavior
+  color_volume_idx?: number
+  // Continuous colormap applied to sampled scalars (default interpolateViridis)
+  colormap?: D3InterpolateName
+  // Scalar range mapped onto the colormap; inverted [max, min] flips the map.
+  // When unset, the renderer auto-fits the range to the values sampled on the
+  // surface (symmetric about zero for signed fields).
+  color_range?: Vec2
 }
 
 // Isosurface rendering settings
@@ -55,6 +73,12 @@ export interface IsosurfaceSettings {
   wireframe: boolean
   halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)
   layers?: IsosurfaceLayer[] // if set, overrides single-isovalue mode
+  // Fractional display range per lattice axis for periodic volumes, VESTA-style:
+  // e.g. [[-0.15, 2.15], [-0.15, 2.15], [0, 1]] repeats surfaces periodically and
+  // clips them exactly at the fractional bounds. Unset = follow the structure's
+  // integer supercell. Independent of the atom supercell, so structure, surface,
+  // and cell outline remain separately controllable.
+  display_range?: [Vec2, Vec2, Vec2]
 }
 
 // Categorical palette for auto-coloring isosurface layers (Tailwind-inspired)
@@ -143,7 +167,7 @@ export function pad_periodic_grid(
 
 // Max total grid points before downsampling is applied for isosurface extraction.
 // 500K balances visual quality with interactive performance (<200ms marching cubes).
-const MAX_GRID_POINTS = 500_000
+export const MAX_GRID_POINTS = 500_000
 
 // Downsample a 3D volumetric grid to keep total point count under a budget.
 // Uses block averaging to preserve data fidelity while reducing grid dimensions.
@@ -224,17 +248,20 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   halo: 0,
 }
 
+const field_has_significant_negatives = ({ min, abs_max }: DataRange): boolean =>
+  min < -abs_max * 0.01
+const default_isovalue = ({ abs_max }: DataRange): number =>
+  abs_max > 0 ? abs_max * 0.2 : DEFAULT_ISOSURFACE_SETTINGS.isovalue
+
 // Compute reasonable isosurface settings from a volume's data range.
 // Sets isovalue to 20% of abs_max and enables negative lobe when data has
 // significant negative values (>1% of max).
 export function auto_isosurface_settings(data_range: DataRange): IsosurfaceSettings {
-  const has_negatives = data_range.min < -data_range.abs_max * 0.01
   return {
     ...DEFAULT_ISOSURFACE_SETTINGS,
     // Fall back to default isovalue for all-zero grids to keep controls usable
-    isovalue:
-      data_range.abs_max > 0 ? data_range.abs_max * 0.2 : DEFAULT_ISOSURFACE_SETTINGS.isovalue,
-    show_negative: has_negatives,
+    isovalue: default_isovalue(data_range),
+    show_negative: field_has_significant_negatives(data_range),
   }
 }
 
@@ -243,7 +270,7 @@ export function auto_isosurface_settings(data_range: DataRange): IsosurfaceSetti
 // for outer (lower-isovalue) shells so inner shells remain visible.
 export function generate_layers(data_range: DataRange, n_layers: number): IsosurfaceLayer[] {
   if (n_layers <= 0 || data_range.abs_max <= 0) return []
-  const has_negatives = data_range.min < -data_range.abs_max * 0.01
+  const show_negative = field_has_significant_negatives(data_range)
   // Space isovalues from high (inner) to low (outer)
   return Array.from({ length: n_layers }, (_, idx) => {
     // Fraction from 0.8 (inner) to 0.1 (outer)
@@ -253,19 +280,175 @@ export function generate_layers(data_range: DataRange, n_layers: number): Isosur
       color: LAYER_COLORS[idx % LAYER_COLORS.length],
       opacity: n_layers === 1 ? 0.6 : 0.8 - idx * (0.5 / Math.max(n_layers - 1, 1)),
       visible: true,
-      show_negative: has_negatives,
+      show_negative,
       negative_color: LAYER_COLORS[(idx + 1) % LAYER_COLORS.length],
     }
   })
 }
 
-// Tile (repeat) volumetric data to fill a supercell.
+// Build a default isosurface layer for a newly added volume: isovalue at 20% of
+// abs_max, next unused palette color, and negative lobe when the data is signed.
+export function auto_volume_layer(
+  volume: VolumetricData,
+  volume_idx: number,
+  color_offset = 0,
+): IsosurfaceLayer {
+  return {
+    isovalue: default_isovalue(volume.data_range),
+    color: LAYER_COLORS[color_offset % LAYER_COLORS.length],
+    opacity: 0.6,
+    visible: true,
+    show_negative: field_has_significant_negatives(volume.data_range),
+    negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
+    volume_idx,
+  }
+}
+
+// Convert single-isovalue settings into an explicit layers array (no-op when
+// layers already exist — an explicit empty array means zero surfaces and is
+// preserved). Used when entering multi-volume mode so the implicit
+// active-volume surface survives as an editable layer.
+export function materialize_layers(
+  settings: IsosurfaceSettings,
+  active_volume_idx: number,
+): IsosurfaceLayer[] {
+  if (settings.layers) {
+    // Pin any layers still relying on the implicit active volume
+    return settings.layers.map((layer) => ({
+      ...layer,
+      volume_idx: layer.volume_idx ?? active_volume_idx,
+    }))
+  }
+  return [
+    {
+      isovalue: settings.isovalue,
+      color: settings.positive_color,
+      opacity: settings.opacity,
+      visible: true,
+      show_negative: settings.show_negative,
+      negative_color: settings.negative_color,
+      volume_idx: active_volume_idx,
+    },
+  ]
+}
+
+// Remove a volume from the registry: drops layers whose geometry references it,
+// unsets color sources pointing at it, and shifts higher indices down by one.
+// Layers without an explicit volume_idx implicitly reference `active_volume_idx`.
+export function remove_volume(
+  volumes: VolumetricData[],
+  layers: IsosurfaceLayer[],
+  removed_idx: number,
+  active_volume_idx = 0,
+): { volumes: VolumetricData[]; layers: IsosurfaceLayer[] } {
+  const remap = (idx: number | undefined): number | undefined => {
+    if (idx === undefined || idx === removed_idx) return undefined
+    return idx > removed_idx ? idx - 1 : idx
+  }
+  return {
+    volumes: volumes.filter((_vol, idx) => idx !== removed_idx),
+    layers: layers
+      .filter((layer) => (layer.volume_idx ?? active_volume_idx) !== removed_idx)
+      .map((layer) => ({
+        ...layer,
+        volume_idx: remap(layer.volume_idx ?? active_volume_idx) ?? 0,
+        color_volume_idx: remap(layer.color_volume_idx),
+      })),
+  }
+}
+
+// Label volumes parsed from a file with a stable `source` id (compression-
+// stripped filename) and a display label (multi-block files like spin-polarized
+// CHGCAR get "<file>: <block label>" labels).
+export function label_file_volumes(
+  volumes: VolumetricData[],
+  filename: string,
+): VolumetricData[] {
+  const source = filename.replace(/\.(?:gz|gzip|bz2|xz|zst)$/i, ``)
+  return volumes.map((vol, idx) => ({
+    ...vol,
+    source,
+    label: volumes.length > 1 ? `${source}: ${vol.label ?? idx + 1}` : source,
+  }))
+}
+
+// Two lattices describe the same cell when all matrix entries agree within
+// tolerance — the signal that an imported file is another scalar field of the
+// already-loaded system and should be appended rather than replace the scene.
+export const lattices_match = (
+  lattice_a: readonly (readonly number[])[] | undefined,
+  lattice_b: readonly (readonly number[])[] | undefined,
+  tolerance = 0.05,
+): boolean =>
+  Boolean(lattice_a && lattice_b) &&
+  (lattice_a as number[][]).every((row, row_idx) =>
+    row.every(
+      (val, col_idx) =>
+        Math.abs(val - (lattice_b as number[][])[row_idx][col_idx]) < tolerance,
+    ),
+  )
+
+export interface VolumeMergeResult {
+  volumes: VolumetricData[]
+  layers: IsosurfaceLayer[]
+  first_touched_idx: number // index of the first replaced/added volume (new active)
+  n_added: number // volumes appended (0 for a pure in-place reimport)
+}
+
+// Merge volumes from a newly imported file (pre-labeled via label_file_volumes)
+// into an existing registry. Reimporting a source with the same block count
+// replaces its volumes in place, preserving user-tuned layers; a changed block
+// count drops the stale group (remapping layer indices) before appending fresh
+// volumes. New volumes each get an auto-generated layer.
+// Layers without an explicit volume_idx implicitly reference `active_volume_idx`
+// and are pinned to it up front so index remapping treats them correctly.
+export function merge_imported_volumes(
+  existing: VolumetricData[],
+  existing_layers: IsosurfaceLayer[],
+  incoming: VolumetricData[],
+  active_volume_idx = 0,
+): VolumeMergeResult {
+  const source = incoming[0]?.source
+  let volumes = [...existing]
+  let layers: IsosurfaceLayer[] = existing_layers.map((layer) => ({
+    ...layer,
+    volume_idx: layer.volume_idx ?? active_volume_idx,
+  }))
+
+  const group_indices = volumes
+    .map((vol, idx) => (source !== undefined && vol.source === source ? idx : -1))
+    .filter((idx) => idx >= 0)
+
+  if (group_indices.length === incoming.length && incoming.length > 0) {
+    // Same source, same block count: replace in place, keep layer settings
+    for (const [incoming_idx, vol_idx] of group_indices.entries()) {
+      volumes[vol_idx] = incoming[incoming_idx]
+    }
+    return { volumes, layers, first_touched_idx: group_indices[0], n_added: 0 }
+  }
+
+  // Drop any stale volumes from the same source (block count changed)
+  for (let removed = group_indices.length - 1; removed >= 0; removed--) {
+    ;({ volumes, layers } = remove_volume(volumes, layers, group_indices[removed]))
+  }
+
+  const first_touched_idx = volumes.length
+  for (const vol of incoming) {
+    layers.push(auto_volume_layer(vol, volumes.length, layers.length))
+    volumes.push(vol)
+  }
+  return { volumes, layers, first_touched_idx, n_added: incoming.length }
+}
+
+// Tile (repeat) periodic volumetric data to fill a supercell. Finite volumes
+// remain unchanged: structure supercells must not implicitly repeat molecular
+// or other bounded scalar fields.
 // Pre-downsamples the source grid when the tiled result would exceed MAX_GRID_POINTS
 // to avoid large temporary allocations. Returns the original volume unchanged for
 // [1,1,1] scaling.
 export function tile_volumetric_data(volume: VolumetricData, scaling: Vec3): VolumetricData {
   const [sx, sy, sz] = scaling
-  if (sx === 1 && sy === 1 && sz === 1) return volume
+  if (!volume.periodic || (sx === 1 && sy === 1 && sz === 1)) return volume
 
   const total_cells = sx * sy * sz
   let src_grid = volume.grid

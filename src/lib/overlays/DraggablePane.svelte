@@ -386,7 +386,9 @@
       --pane-box-shadow,
       light-dark(0 4px 20px -4px rgba(0, 0, 0, 0.15), 0 8px 16px -4px rgba(0, 0, 0, 0.3))
     );
-    z-index: var(--pane-z-index, 10);
+    z-index: var(--pane-z-index, var(--z-index-viewer-pane, 10));
+    /* own compositing layer, or WKWebView paints the canvas over this (see app.css) */
+    will-change: transform;
     display: grid;
     text-align: left;
     /* Exclude position from being transitioned to prevent sluggish dragging */

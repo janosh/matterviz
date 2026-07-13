@@ -313,22 +313,42 @@ describe(`click and dblclick handlers`, () => {
     expect(handler.mock.calls[0][0]).toMatchObject({ x_idx: 0, y_idx: 0, value: 10 })
   })
 
-  test(`dblclick suppresses pending single-click callback`, () => {
+  test(`disambiguates click vs dblclick when both handlers are set`, () => {
     vi.useFakeTimers()
     try {
-      const click_handler = vi.fn()
-      const dblclick_handler = vi.fn()
-      mount_matrix({
-        values: [[10, 20, 30]],
-        onclick: click_handler,
-        ondblclick: dblclick_handler,
-      })
-      const cell = doc_query(`.cell:not(.empty)`)
-      cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-      cell.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      const on_click = vi.fn()
+      const on_dblclick = vi.fn()
+      mount_matrix({ values: [[10, 20, 30]], onclick: on_click, ondblclick: on_dblclick })
+      const cells = get_data_cells()
+      const fire = (el: HTMLElement, type: `click` | `dblclick`) => {
+        el.dispatchEvent(new MouseEvent(type, { bubbles: true }))
+      }
+
+      // Matching click + dblclick → dblclick only
+      fire(cells[0], `click`)
+      fire(cells[0], `dblclick`)
       vi.runAllTimers()
-      expect(click_handler).not.toHaveBeenCalled()
-      expect(dblclick_handler).toHaveBeenCalledOnce()
+      expect(on_click).not.toHaveBeenCalled()
+      expect(on_dblclick).toHaveBeenCalledOnce()
+
+      // Orphaned dblclick → schedule single-click
+      on_click.mockClear()
+      on_dblclick.mockClear()
+      fire(cells[0], `dblclick`)
+      expect(on_dblclick).not.toHaveBeenCalled()
+      vi.runAllTimers()
+      expect(on_click).toHaveBeenCalledOnce()
+      expect(on_click.mock.calls[0][0]).toMatchObject({ x_idx: 0, y_idx: 0, value: 10 })
+
+      // Click A then dblclick B → single-click B
+      on_click.mockClear()
+      on_dblclick.mockClear()
+      fire(cells[0], `click`)
+      fire(cells[1], `dblclick`)
+      expect(on_dblclick).not.toHaveBeenCalled()
+      vi.runAllTimers()
+      expect(on_click).toHaveBeenCalledOnce()
+      expect(on_click.mock.calls[0][0]).toMatchObject({ x_idx: 1, y_idx: 0, value: 20 })
     } finally {
       vi.useRealTimers()
     }

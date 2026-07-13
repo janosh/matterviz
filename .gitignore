@@ -29,3 +29,4 @@ src/lib/element/data.json
 
 # agent worktrees / local config
 .claude
+__pycache__/

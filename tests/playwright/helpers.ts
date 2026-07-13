@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test'
-import type { Buffer } from 'node:buffer'
+import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
 // Timeout constants for different environments
@@ -49,6 +49,22 @@ export async function goto_structure_test(
 ): Promise<Locator> {
   await page.goto(url, { waitUntil: `networkidle` })
   return wait_for_3d_canvas(page, container_selector)
+}
+
+// Open the structure viewer's gear-icon settings pane (forcing hover-only
+// controls visible) and return the pane locator
+export async function open_settings_pane(page: Page): Promise<Locator> {
+  await page.evaluate(() => {
+    const style = document.createElement(`style`)
+    style.textContent = `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
+    document.head.append(style)
+  })
+  const gear = page.locator(`button.structure-controls-toggle`)
+  await expect(gear).toBeVisible({ timeout: 15_000 })
+  await gear.click()
+  const pane = page.locator(`.controls-pane`)
+  await expect(pane).toBeVisible({ timeout: 15_000 })
+  return pane
 }
 
 // Set an input value and dispatch events
@@ -178,12 +194,44 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="application"]`)
 
-// Poll until canvas has rendered non-trivial content (screenshot size > threshold)
-// Use this to wait for WebGL/Three.js canvas initialization before interacting.
-// Note: Screenshot size is a pragmatic heuristic that can vary by codec/compression.
-// Complex scenes or specific drivers may need a higher min_size threshold.
-// Alternative approaches: check canvas.boundingBox() > 0 (like wait_for_3d_canvas)
-// or use pixel-diff heuristics for more robust "rendered" detection.
+// Capture canvas pixels without hanging on busy pages.
+// - 2D canvases: read via toDataURL (Playwright screenshots hang under CI load on the
+//   isosurface page while fonts/paint wait on a saturated main thread).
+// - WebGL canvases: blit is blank without preserveDrawingBuffer, so fall back to a clipped
+//   page screenshot of the compositor's presented frame.
+export async function canvas_screenshot(canvas: Locator): Promise<Buffer> {
+  const is_2d = await canvas.evaluate((element) => {
+    const source = element as HTMLCanvasElement
+    return Boolean(source.getContext(`2d`))
+  })
+
+  if (is_2d) {
+    const data_url = await canvas.evaluate((element) => {
+      const source = element as HTMLCanvasElement
+      if (source.width < 1 || source.height < 1) throw new Error(`Canvas has zero size`)
+      return source.toDataURL(`image/png`)
+    })
+    return Buffer.from(data_url.replace(/^data:image\/png;base64,/, ``), `base64`)
+  }
+
+  await canvas.scrollIntoViewIfNeeded()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error(`Canvas has no bounding box`)
+  const page = canvas.page()
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 }
+  const x = Math.min(Math.max(0, box.x), viewport.width - 1)
+  const y = Math.min(Math.max(0, box.y), viewport.height - 1)
+  const width = Math.max(1, Math.min(Math.ceil(box.width), viewport.width - x))
+  const height = Math.max(1, Math.min(Math.ceil(box.height), viewport.height - y))
+  return page.screenshot({
+    clip: { x, y, width, height },
+    animations: `disabled`,
+    timeout: get_canvas_timeout(),
+  })
+}
+
+// Poll until canvas has rendered non-trivial content (PNG byte length > threshold).
+// Use this to wait for WebGL/Three.js / 2D canvas initialization before interacting.
 export async function wait_for_canvas_rendered(
   canvas: Locator,
   options?: { min_size?: number; timeout?: number },
@@ -191,14 +239,11 @@ export async function wait_for_canvas_rendered(
   const min_size = options?.min_size ?? 1000
   const timeout = options?.timeout ?? get_canvas_timeout()
   await expect
-    .poll(async () => (await canvas.screenshot()).length, { timeout })
+    .poll(async () => (await canvas_screenshot(canvas)).length, { timeout })
     .toBeGreaterThan(min_size)
 }
 
-// Poll until canvas screenshot differs from initial (handles GPU/driver timing variations)
-// Use this instead of raw Buffer.equals() for more reliable canvas change detection.
-// Note: Buffer comparison can be sensitive to minor rendering differences (anti-aliasing,
-// driver variations). For stricter checks, consider pixel-diff with a tolerance threshold.
+// Poll until canvas screenshot differs from initial (handles GPU/driver timing variations).
 export async function expect_canvas_changed(
   canvas: Locator,
   initial: Buffer,
@@ -206,7 +251,7 @@ export async function expect_canvas_changed(
 ): Promise<void> {
   const effective_timeout = timeout ?? get_canvas_timeout()
   await expect(async () => {
-    const current = await canvas.screenshot()
+    const current = await canvas_screenshot(canvas)
     expect(initial.equals(current)).toBe(false)
   }).toPass({ timeout: effective_timeout })
 }

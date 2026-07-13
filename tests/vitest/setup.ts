@@ -258,6 +258,23 @@ export const make_volume = (
   ...overrides,
 })
 
+// Linear fractional field; trilinear interpolation reproduces it exactly.
+export const make_linear_volume = (
+  n_pts: number,
+  lattice: math.Matrix3x3,
+  periodic: boolean,
+  origin: Vec3 = [0, 0, 0],
+): VolumetricData => {
+  const divisor = periodic ? n_pts : n_pts - 1
+  const grid = make_grid(
+    n_pts,
+    n_pts,
+    n_pts,
+    (x_idx, y_idx, z_idx) => (x_idx + 2 * y_idx + 4 * z_idx) / divisor,
+  )
+  return make_volume(grid, { lattice, origin, periodic })
+}
+
 export function read_binary_test_file(
   filename: string,
   directory = `src/site/trajectories`,

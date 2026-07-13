@@ -82,6 +82,32 @@ const file_metadata: Record<string, { type: string; label: string; description: 
     label: `Large grid (perf)`,
     description: `Large 80×80×96 grid for performance testing (issue #317)`,
   },
+  // Matching-grid pairs for multi-volume cross-coloring demos (issue #375)
+  'glycine-density.cube.gz': {
+    type: `cube`,
+    label: `Glycine ρ`,
+    description: `Glycine electron density on the same grid as glycine-esp (simulated)`,
+  },
+  'glycine-esp.cube.gz': {
+    type: `cube`,
+    label: `Glycine ESP`,
+    description: `Glycine electrostatic potential on the same grid as glycine-density (simulated)`,
+  },
+  'Al-slab-CHGCAR.gz': {
+    type: `chgcar`,
+    label: `Al slab ρ`,
+    description: `Al(111) slab charge density on the same grid as Al-slab-LOCPOT (simulated)`,
+  },
+  'hBN-ELFCAR.gz': {
+    type: `elfcar`,
+    label: `hBN ELF`,
+    description: `hBN localization function on the same non-orthogonal grid as hBN-CHGCAR (simulated)`,
+  },
+  'large-grid-LOCPOT.gz': {
+    type: `locpot`,
+    label: `Large LOCPOT (perf)`,
+    description: `80×80×96 local potential matching large-grid-CHGCAR for cross-coloring perf tests`,
+  },
 }
 
 export const volumetric_files: VolumetricFileInfo[] = Object.keys(volumetric_file_modules)

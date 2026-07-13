@@ -2,7 +2,7 @@ import CellSelect from '$lib/structure/CellSelect.svelte'
 import type { CellType } from '$lib/symmetry'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 
 // Mock sym_data for testing cell type buttons
@@ -64,7 +64,10 @@ describe(`CellSelect`, () => {
   })
 
   describe(`dropdown menu`, () => {
-    test(`opens on click/mouseenter, closes on mouseleave`, async () => {
+    afterEach(() => vi.useRealTimers())
+
+    test(`opens on click/mouseenter (after hover-intent delay), closes on mouseleave`, async () => {
+      vi.useFakeTimers()
       mount(CellSelect, {
         target: document.body,
         props: { supercell_scaling: `1x1x1` },
@@ -83,13 +86,33 @@ describe(`CellSelect`, () => {
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
 
-      // Opens on mouseenter
+      // mouseenter alone doesn't open it (hover-intent delay pending)...
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      await tick()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
+
+      // ...but a sustained hover does
+      vi.advanceTimersByTime(250)
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
     })
 
+    test(`mouseleave during the hover-intent delay cancels opening`, async () => {
+      vi.useFakeTimers()
+      mount(CellSelect, {
+        target: document.body,
+        props: { supercell_scaling: `1x1x1` },
+      })
+
+      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+      vi.advanceTimersByTime(250)
+      await tick()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
+    })
+
     test(`suppress_hover blocks hover/focus opening and closes an open menu`, async () => {
+      vi.useFakeTimers()
       let suppressed = $state(false)
       mount(CellSelect, {
         target: document.body,
@@ -101,8 +124,9 @@ describe(`CellSelect`, () => {
         },
       })
 
-      // hover opens normally
+      // sustained hover opens normally
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      vi.advanceTimersByTime(250)
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
 
@@ -114,6 +138,7 @@ describe(`CellSelect`, () => {
       // ...and hover/focus no longer reopen it while suppressed
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       doc_query(`.cell-select`).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      vi.advanceTimersByTime(250)
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
 

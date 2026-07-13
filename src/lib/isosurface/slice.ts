@@ -1,82 +1,262 @@
 // HKL plane slicing for volumetric data: samples a 3D grid along an arbitrary
 // crystallographic plane defined by Miller indices, using trilinear interpolation.
 import { reciprocal_lattice } from '$lib/brillouin'
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { create_volume_sampler, sanitize_display_range, type DisplayRange } from './sampling'
 import type { VolumetricData } from './types'
+
+const CELL_EDGES = [
+  [0, 1],
+  [0, 2],
+  [0, 4],
+  [1, 3],
+  [1, 5],
+  [2, 3],
+  [2, 6],
+  [3, 7],
+  [4, 5],
+  [4, 6],
+  [5, 7],
+  [6, 7],
+] as const
+const PLANE_TOLERANCE = 1e-9
+const DEFAULT_MAX_PIXELS = 512 * 512
+const UNIT_CELL_RANGE: DisplayRange = [
+  [0, 1],
+  [0, 1],
+  [0, 1],
+]
+
+export interface CartesianPlane {
+  point: Vec3 // absolute Cartesian point on the plane
+  normal: Vec3 // Cartesian plane normal (normalization is handled internally)
+  up?: Vec3 // optional preferred in-plane orientation
+}
+
+export interface PlaneSliceOptions {
+  resolution?: number | Vec2 // scalar = longest side, tuple = exact [width, height]
+  max_pixels?: number
+  fractional_bounds?: DisplayRange
+}
 
 // Result of sampling a 2D slice through volumetric data
 export interface SliceResult {
-  data: Float64Array // sampled values, row-major [height * width]
+  data: Float64Array // sampled values, row-major [height * width]; masked pixels are NaN
+  mask: Uint8Array // 1 inside the exact cell/plane intersection, 0 outside
   width: number
   height: number
   min: number // data minimum for colormap
   max: number // data maximum for colormap
+  point: Vec3
+  normal: Vec3
+  u_axis: Vec3
+  v_axis: Vec3
+  u_range: Vec2
+  v_range: Vec2
+  polygon: Vec2[] // exact convex cell/plane intersection in local (u, v)
 }
 
-const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
+const cell_corners = (volume: VolumetricData, bounds: DisplayRange): Vec3[] => {
+  const frac_to_cart = math.create_frac_to_cart(volume.lattice)
+  return Array.from({ length: 8 }, (_, corner_idx) =>
+    math.add(
+      volume.origin,
+      frac_to_cart([
+        bounds[0][corner_idx & 1 ? 1 : 0],
+        bounds[1][corner_idx & 2 ? 1 : 0],
+        bounds[2][corner_idx & 4 ? 1 : 0],
+      ]),
+    ),
+  )
+}
 
-// Trilinear interpolation of a scalar 3D grid at fractional coordinates.
-// Periodic grids wrap with modulo; non-periodic return 0 for out-of-bounds.
-export function trilinear_interpolate(
-  grid: number[][][],
-  fx: number,
-  fy: number,
-  fz: number,
-  periodic: boolean,
-): number {
-  const nx = grid.length
-  const ny = grid[0]?.length ?? 0
-  const nz = grid[0]?.[0]?.length ?? 0
-  if (nx === 0 || ny === 0 || nz === 0) return 0
+const add_unique_point = (points: Vec3[], point: Vec3): void => {
+  if (
+    points.some(
+      (existing) =>
+        (existing[0] - point[0]) ** 2 +
+          (existing[1] - point[1]) ** 2 +
+          (existing[2] - point[2]) ** 2 <
+        PLANE_TOLERANCE ** 2,
+    )
+  )
+    return
+  points.push(point)
+}
 
-  // Convert fractional to grid coordinates
-  const gx = periodic ? fx * nx : fx * (nx - 1)
-  const gy = periodic ? fy * ny : fy * (ny - 1)
-  const gz = periodic ? fz * nz : fz * (nz - 1)
+const plane_basis = (normal: Vec3, up?: Vec3): [Vec3, Vec3] => {
+  if (!up) return math.compute_in_plane_basis(normal)
+  const normal_projection = math.dot(up, normal)
+  const projected = math.subtract(up, math.scale(normal, normal_projection))
+  if (Math.hypot(...projected) < PLANE_TOLERANCE) {
+    return math.compute_in_plane_basis(normal)
+  }
+  const u_axis = math.normalize_vec(projected)
+  return [u_axis, math.cross_3d(normal, u_axis)]
+}
 
-  if (!periodic) {
-    // Out-of-bounds check for non-periodic grids
-    if (fx < 0 || fx > 1 || fy < 0 || fy > 1 || fz < 0 || fz > 1) return 0
+const intersect_plane_cell = (
+  corners: Vec3[],
+  point: Vec3,
+  normal: Vec3,
+  u_axis: Vec3,
+  v_axis: Vec3,
+): Vec2[] => {
+  const intersections: Vec3[] = []
+  for (const [start_idx, end_idx] of CELL_EDGES) {
+    const start = corners[start_idx]
+    const end = corners[end_idx]
+    const start_distance = math.dot(math.subtract(start, point), normal)
+    const end_distance = math.dot(math.subtract(end, point), normal)
+    if (Math.abs(start_distance) <= PLANE_TOLERANCE) add_unique_point(intersections, start)
+    if (Math.abs(end_distance) <= PLANE_TOLERANCE) add_unique_point(intersections, end)
+    if (start_distance * end_distance >= -(PLANE_TOLERANCE ** 2)) continue
+    const fraction = start_distance / (start_distance - end_distance)
+    add_unique_point(intersections, [
+      start[0] + fraction * (end[0] - start[0]),
+      start[1] + fraction * (end[1] - start[1]),
+      start[2] + fraction * (end[2] - start[2]),
+    ])
+  }
+  return math.convex_hull_2d(
+    intersections.map((intersection) => {
+      const relative = math.subtract(intersection, point)
+      return [math.dot(relative, u_axis), math.dot(relative, v_axis)]
+    }),
+    PLANE_TOLERANCE,
+  )
+}
+
+const point_in_convex_polygon = (point: Vec2, polygon: Vec2[]): boolean => {
+  let orientation = 0
+  for (let point_idx = 0; point_idx < polygon.length; point_idx++) {
+    const start = polygon[point_idx]
+    const end = polygon[(point_idx + 1) % polygon.length]
+    const cross =
+      (end[0] - start[0]) * (point[1] - start[1]) - (end[1] - start[1]) * (point[0] - start[0])
+    if (Math.abs(cross) <= PLANE_TOLERANCE) continue
+    const current_orientation = Math.sign(cross)
+    if (orientation && current_orientation !== orientation) return false
+    orientation = current_orientation
+  }
+  return true
+}
+
+const resolve_resolution = (
+  resolution: number | Vec2 | undefined,
+  u_span: number,
+  v_span: number,
+  max_grid_dim: number,
+  max_pixels: number,
+): Vec2 => {
+  let counts: Vec2
+  if (Array.isArray(resolution)) {
+    counts = [Math.max(2, Math.round(resolution[0])), Math.max(2, Math.round(resolution[1]))]
+  } else {
+    const longest_count = Math.max(2, Math.round(resolution ?? max_grid_dim))
+    const longest_span = Math.max(u_span, v_span, PLANE_TOLERANCE)
+    counts = [
+      Math.max(2, Math.round((longest_count * u_span) / longest_span)),
+      Math.max(2, Math.round((longest_count * v_span) / longest_span)),
+    ]
+  }
+  const pixel_budget = Number.isFinite(max_pixels)
+    ? Math.max(4, Math.floor(max_pixels))
+    : DEFAULT_MAX_PIXELS
+  const shrink = Math.min(1, Math.sqrt(pixel_budget / (counts[0] * counts[1])))
+  if (shrink >= 1) return counts
+  counts = counts.map((count) => Math.max(2, Math.floor(count * shrink))) as Vec2
+  if (counts[0] * counts[1] > pixel_budget) {
+    const axis = counts[0] >= counts[1] ? 0 : 1
+    counts[axis] = Math.max(2, Math.floor(pixel_budget / counts[axis === 0 ? 1 : 0]))
+  }
+  return counts
+}
+
+/** Sample a scalar volume on an arbitrary absolute Cartesian plane. */
+export function sample_plane_slice(
+  volume: VolumetricData,
+  plane: CartesianPlane,
+  options: PlaneSliceOptions = {},
+): SliceResult | null {
+  if (!plane.point.every(Number.isFinite) || !plane.normal.every(Number.isFinite)) return null
+  if (plane.up && !plane.up.every(Number.isFinite)) return null
+  if (Math.hypot(...plane.normal) < PLANE_TOLERANCE) return null // degenerate normal
+  const normal = math.normalize_vec(plane.normal)
+
+  // In-plane basis vectors
+  const [u_axis, v_axis] = plane_basis(normal, plane.up)
+  const bounds = sanitize_display_range(
+    options.fractional_bounds ?? UNIT_CELL_RANGE,
+    volume.periodic,
+  )
+  const corners = cell_corners(volume, bounds)
+  const polygon = intersect_plane_cell(corners, plane.point, normal, u_axis, v_axis)
+  if (polygon.length < 3) return null
+
+  // Project all 8 unit cell corners onto the (u, v) plane to find sampling bounds.
+  // Corners are at fractional coords (0 or 1) for each axis.
+  const { min, max, width: u_span, height: v_span } = math.compute_bounding_box_2d(polygon)
+  const u_range: Vec2 = [min[0], max[0]]
+  const v_range: Vec2 = [min[1], max[1]]
+  if (u_span <= PLANE_TOLERANCE || v_span <= PLANE_TOLERANCE) return null
+
+  // Sampling resolution: caller-specified or default to max grid dimension
+  const [width, height] = resolve_resolution(
+    options.resolution,
+    u_span,
+    v_span,
+    Math.max(...volume.grid_dims),
+    options.max_pixels ?? DEFAULT_MAX_PIXELS,
+  )
+  const data = new Float64Array(width * height)
+  data.fill(Number.NaN)
+  const mask = new Uint8Array(width * height)
+  let data_min = Infinity
+  let data_max = -Infinity
+  const sample = create_volume_sampler(volume, {
+    out_of_bounds: volume.periodic ? `clamp` : `fallback`,
+  })
+  const u_step = u_span / (width - 1)
+  const v_step = v_span / (height - 1)
+  const cartesian: Vec3 = [0, 0, 0]
+
+  for (let row = 0; row < height; row++) {
+    const v_value = v_range[0] + row * v_step
+    for (let col = 0; col < width; col++) {
+      const u_value = u_range[0] + col * u_step
+      if (!point_in_convex_polygon([u_value, v_value], polygon)) continue
+      const data_idx = row * width + col
+      mask[data_idx] = 1
+
+      // Cartesian position on the plane
+      cartesian[0] = plane.point[0] + u_value * u_axis[0] + v_value * v_axis[0]
+      cartesian[1] = plane.point[1] + u_value * u_axis[1] + v_value * v_axis[1]
+      cartesian[2] = plane.point[2] + u_value * u_axis[2] + v_value * v_axis[2]
+      const value = sample(cartesian)
+      if (!Number.isFinite(value)) continue
+      data[data_idx] = value
+      if (value < data_min) data_min = value
+      if (value > data_max) data_max = value
+    }
   }
 
-  const x0 = periodic
-    ? safe_mod(Math.floor(gx), nx)
-    : Math.max(0, Math.min(Math.floor(gx), nx - 2))
-  const y0 = periodic
-    ? safe_mod(Math.floor(gy), ny)
-    : Math.max(0, Math.min(Math.floor(gy), ny - 2))
-  const z0 = periodic
-    ? safe_mod(Math.floor(gz), nz)
-    : Math.max(0, Math.min(Math.floor(gz), nz - 2))
-  const x1 = periodic ? (x0 + 1) % nx : Math.min(x0 + 1, nx - 1)
-  const y1 = periodic ? (y0 + 1) % ny : Math.min(y0 + 1, ny - 1)
-  const z1 = periodic ? (z0 + 1) % nz : Math.min(z0 + 1, nz - 1)
-
-  // deltas from clamped lower index (non-periodic x0 clamps to nx-2 so floor(gx) may != x0)
-  const xd = periodic ? gx - Math.floor(gx) : gx - x0
-  const yd = periodic ? gy - Math.floor(gy) : gy - y0
-  const zd = periodic ? gz - Math.floor(gz) : gz - z0
-
-  // 8-point interpolation
-  const c000 = grid[x0][y0][z0]
-  const c001 = grid[x0][y0][z1]
-  const c010 = grid[x0][y1][z0]
-  const c011 = grid[x0][y1][z1]
-  const c100 = grid[x1][y0][z0]
-  const c101 = grid[x1][y0][z1]
-  const c110 = grid[x1][y1][z0]
-  const c111 = grid[x1][y1][z1]
-
-  const c00 = c000 + (c100 - c000) * xd
-  const c01 = c001 + (c101 - c001) * xd
-  const c10 = c010 + (c110 - c010) * xd
-  const c11 = c011 + (c111 - c011) * xd
-
-  const c0 = c00 + (c10 - c00) * yd
-  const c1 = c01 + (c11 - c01) * yd
-
-  return c0 + (c1 - c0) * zd
+  return {
+    data,
+    mask,
+    width,
+    height,
+    min: data_min === Infinity ? 0 : data_min,
+    max: data_max === -Infinity ? 0 : data_max,
+    point: [...plane.point],
+    normal,
+    u_axis,
+    v_axis,
+    u_range,
+    v_range,
+    polygon,
+  }
 }
 
 // Sample a 2D slice through volumetric data along a Miller-index plane.
@@ -92,85 +272,31 @@ export function sample_hkl_slice(
   const [h_idx, k_idx, l_idx] = miller_indices
   if (h_idx === 0 && k_idx === 0 && l_idx === 0) return null
 
-  const { grid, grid_dims, lattice, periodic } = volume
-  const [nx, ny, nz] = grid_dims
-
   // Plane normal G = h*b1 + k*b2 + l*b3 where b_i are reciprocal lattice rows
-  const recip = reciprocal_lattice(lattice)
+  const recip = reciprocal_lattice(volume.lattice)
   const plane_normal: Vec3 = [
     h_idx * recip[0][0] + k_idx * recip[1][0] + l_idx * recip[2][0],
     h_idx * recip[0][1] + k_idx * recip[1][1] + l_idx * recip[2][1],
     h_idx * recip[0][2] + k_idx * recip[1][2] + l_idx * recip[2][2],
   ]
-  if (Math.hypot(...plane_normal) < 1e-12) return null // degenerate normal
+  if (Math.hypot(...plane_normal) < PLANE_TOLERANCE) return null // degenerate normal
   const unit_normal = math.normalize_vec(plane_normal)
-
-  // In-plane basis vectors
-  const [u_vec, v_vec] = math.compute_in_plane_basis(unit_normal)
-
-  const cart_to_frac = math.create_cart_to_frac(lattice)
-
-  // Project all 8 unit cell corners onto the (u, v) plane to find sampling bounds.
-  // Corners are at fractional coords (0 or 1) for each axis.
-  let u_min = Infinity
-  let u_max = -Infinity
-  let v_min = Infinity
-  let v_max = -Infinity
-  let normal_min = Infinity
-  let normal_max = -Infinity
-
-  for (let ci = 0; ci < 8; ci++) {
-    const fi = ci & 1 ? 1 : 0
-    const fj = ci & 2 ? 1 : 0
-    const fk = ci & 4 ? 1 : 0
-    // Corner in Cartesian: frac * lattice
-    const corner: Vec3 = [
-      fi * lattice[0][0] + fj * lattice[1][0] + fk * lattice[2][0],
-      fi * lattice[0][1] + fj * lattice[1][1] + fk * lattice[2][1],
-      fi * lattice[0][2] + fj * lattice[1][2] + fk * lattice[2][2],
-    ]
-    const u_proj = math.dot(corner, u_vec)
-    const v_proj = math.dot(corner, v_vec)
-    const n_proj = math.dot(corner, unit_normal)
-    if (u_proj < u_min) u_min = u_proj
-    if (u_proj > u_max) u_max = u_proj
-    if (v_proj < v_min) v_min = v_proj
-    if (v_proj > v_max) v_max = v_proj
-    if (n_proj < normal_min) normal_min = n_proj
-    if (n_proj > normal_max) normal_max = n_proj
-  }
+  const corners = cell_corners(volume, UNIT_CELL_RANGE)
+  const projections = corners.map((corner) => math.dot(corner, unit_normal))
+  const normal_min = Math.min(...projections)
+  const normal_max = Math.max(...projections)
 
   // Plane position: fractional distance [0,1] along the normal extent
   const d_cartesian = normal_min + distance * (normal_max - normal_min)
-
-  // Sampling resolution: caller-specified or default to max grid dimension
-  const width = n_points ?? Math.max(nx, ny, nz)
-  const height = width
-
-  const data = new Float64Array(width * height)
-  let data_min = Infinity
-  let data_max = -Infinity
-
-  const u_step = (u_max - u_min) / (width - 1 || 1)
-  const v_step = (v_max - v_min) / (height - 1 || 1)
-
-  for (let row = 0; row < height; row++) {
-    const v_val = v_min + row * v_step
-    for (let col = 0; col < width; col++) {
-      const u_val = u_min + col * u_step
-
-      // Cartesian position on the plane
-      const px = d_cartesian * unit_normal[0] + u_val * u_vec[0] + v_val * v_vec[0]
-      const py = d_cartesian * unit_normal[1] + u_val * u_vec[1] + v_val * v_vec[1]
-      const pz = d_cartesian * unit_normal[2] + u_val * u_vec[2] + v_val * v_vec[2]
-
-      const [fx, fy, fz] = cart_to_frac([px, py, pz])
-      const val = trilinear_interpolate(grid, fx, fy, fz, periodic)
-      data[row * width + col] = val
-      if (val < data_min) data_min = val
-      if (val > data_max) data_max = val
-    }
-  }
-
-  return { data, width, height, min: data_min, max: data_max }
+  const point: Vec3 = [
+    d_cartesian * unit_normal[0],
+    d_cartesian * unit_normal[1],
+    d_cartesian * unit_normal[2],
+  ]
+  const resolution = n_points ?? Math.max(...volume.grid_dims)
+  return sample_plane_slice(
+    volume,
+    { point, normal: unit_normal },
+    { resolution: [resolution, resolution] },
+  )
 }

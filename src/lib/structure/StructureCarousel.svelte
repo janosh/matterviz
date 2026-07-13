@@ -531,6 +531,8 @@
   .structure-carousel-pager {
     position: absolute;
     z-index: 6;
+    /* own compositing layer, or WKWebView paints the canvas over this (see app.css) */
+    will-change: transform;
     inset-block-end: 12px;
     inset-inline-start: 50%;
     display: flex;

@@ -79,8 +79,6 @@
   {actions}
   placeholder="Go to..."
   dialog_style="left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog)"
-  portal={{ active: true }}
-  ulOptionsStyle="z-index: var(--z-index-overlay-options)"
 />
 <GitHubCorner href={pkg.repository} --github-corner-bg-hover="var(--github-corner-bg-hover)" />
 <CopyButton global class="copy-btn" />

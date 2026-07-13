@@ -29,6 +29,26 @@
   let input_value = $state(supercell_scaling)
   let input_valid = $derived(is_valid_supercell_input(input_value))
 
+  // Hover-intent gate: opening instantly on mouseenter made the menu pop open
+  // when merely scrubbing the pointer across compact embeds (carousel cards).
+  // Deliberate hovers still open it; keyboard focus and clicks open instantly.
+  const hover_open_delay_ms = 200
+  let hover_timer: ReturnType<typeof setTimeout> | undefined
+
+  const schedule_hover_open = () => {
+    if (suppress_hover) return
+    clearTimeout(hover_timer)
+    // re-check suppression at fire time: a sibling popover may have opened meanwhile
+    hover_timer = setTimeout(() => (menu_open = !suppress_hover), hover_open_delay_ms)
+  }
+
+  const close_menu = () => {
+    clearTimeout(hover_timer)
+    menu_open = false
+  }
+
+  $effect(() => () => clearTimeout(hover_timer))
+
   const supercell_presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
 
   // Always show all 3 cell types - Prim/Conv disabled without sym_data
@@ -51,13 +71,13 @@
   function apply_preset(preset: string) {
     supercell_scaling = preset
     input_value = preset
-    menu_open = false
+    close_menu()
   }
 
   function handle_input_submit() {
     if (input_valid && input_value !== supercell_scaling) {
       supercell_scaling = input_value
-      menu_open = false
+      close_menu()
     }
   }
 
@@ -69,11 +89,11 @@
       !(next_target instanceof Node) ||
       !current_target.contains(next_target)
     )
-      menu_open = false
+      close_menu()
   }
 
   function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
-    if (event.key === `Escape`) menu_open = false
+    if (event.key === `Escape`) close_menu()
     if (submit_on_enter && event.key === `Enter`) handle_input_submit()
   }
 
@@ -87,22 +107,25 @@
   // Close + keep closed while suppressed so the menu can't obscure a sibling popover
   // (e.g. the atom color-mode dropdown) the user is actively interacting with
   $effect(() => {
-    if (suppress_hover) menu_open = false
+    if (suppress_hover) close_menu()
   })
 </script>
 
 <div
   class="cell-select"
   role="group"
-  {@attach click_outside({ callback: () => (menu_open = false) })}
-  onmouseenter={() => (menu_open = !suppress_hover)}
-  onmouseleave={() => (menu_open = false)}
+  {@attach click_outside({ callback: close_menu })}
+  onmouseenter={schedule_hover_open}
+  onmouseleave={close_menu}
   onfocusin={() => (menu_open = !suppress_hover)}
   onfocusout={handle_focus_out}
 >
   <button
     type="button"
-    onclick={() => (menu_open = !suppress_hover && !menu_open)}
+    onclick={() => {
+      clearTimeout(hover_timer)
+      menu_open = !suppress_hover && !menu_open
+    }}
     onkeydown={handle_key_down}
     class="toggle-btn"
     class:active={menu_open}
@@ -224,7 +247,9 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    z-index: 100;
+    z-index: var(--z-index-viewer-dropdown, 100);
+    /* own compositing layer, or WKWebView paints the canvas over this (see app.css) */
+    will-change: transform;
     font-size: var(--struct-cell-select-dropdown-font, max(10px, 1em));
     min-width: 118px;
   }

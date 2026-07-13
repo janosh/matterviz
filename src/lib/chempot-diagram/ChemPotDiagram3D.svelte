@@ -20,6 +20,7 @@
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
+  import { page_visibility } from '$lib/scene'
   import { constrain_tooltip_position, pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -2331,7 +2332,7 @@
                 enableRotate
                 enableZoom
                 enablePan
-                autoRotate={auto_rotate > 0}
+                autoRotate={auto_rotate > 0 && page_visibility.visible}
                 autoRotateSpeed={auto_rotate}
                 target={camera_target}
               />
@@ -2349,7 +2350,7 @@
                 enableRotate
                 enableZoom
                 enablePan
-                autoRotate={auto_rotate > 0}
+                autoRotate={auto_rotate > 0 && page_visibility.visible}
                 autoRotateSpeed={auto_rotate}
                 target={camera_target}
               />

@@ -701,7 +701,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     initial_zoom: {
-      value: 35,
+      value: 50,
       description: `Initial zoom level for orthographic projection (ignored for perspective)`,
       minimum: 0.1,
       maximum: 200,

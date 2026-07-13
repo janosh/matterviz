@@ -58,6 +58,10 @@ describe(`Settings`, () => {
   })
 
   describe(`DEFAULTS extraction`, () => {
+    test(`uses a closer default structure framing`, () => {
+      expect(DEFAULTS.structure.initial_zoom).toBe(50)
+    })
+
     test.each([
       [`color_scheme`, DEFAULTS.color_scheme, `string`],
       [`background_opacity`, DEFAULTS.background_opacity, `number`],
