@@ -68,8 +68,6 @@ export interface ParsedStructure {
 
 const cif_coords_key = (coords: Vec3): string =>
   `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
-const cif_site_key = (element: string, abc: Vec3, label: string): string =>
-  `${element}|${label}|${cif_coords_key(abc)}`
 // Bravais lattice centering translations (excluding the identity) keyed by the
 // leading letter of a space-group Hermann-Mauguin symbol. R is the obverse
 // hexagonal setting.
@@ -991,7 +989,7 @@ export function parse_cif(
         )
         for (const equiv_atom of equiv_atoms) {
           const abc = wrap_vec3(equiv_atom.coords)
-          const key = cif_site_key(element, abc, equiv_atom.id)
+          const key = `${element}|${equiv_atom.id}|${cif_coords_key(abc)}`
           if (seen_site_keys.has(key)) continue
           seen_site_keys.add(key)
           sites.push(

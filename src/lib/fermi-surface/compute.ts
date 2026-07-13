@@ -456,10 +456,6 @@ export function compute_fermi_slice(
   }
 }
 
-// Helper to create edge key (sorted vertex indices)
-const make_edge_key = (v0_idx: number, v1_idx: number): string =>
-  `${Math.min(v0_idx, v1_idx)},${Math.max(v0_idx, v1_idx)}`
-
 // Compute intersection point on an edge
 function compute_edge_intersection(
   surface: Isosurface,
@@ -534,7 +530,7 @@ function slice_surface_with_plane(
     for (let edge_idx = 0; edge_idx < face.length; edge_idx++) {
       const v0_idx = face[edge_idx]
       const v1_idx = face[(edge_idx + 1) % face.length]
-      const edge_key = make_edge_key(v0_idx, v1_idx)
+      const edge_key = `${Math.min(v0_idx, v1_idx)},${Math.max(v0_idx, v1_idx)}`
 
       const intersection = compute_edge_intersection(surface, vertex_distances, v0_idx, v1_idx)
 

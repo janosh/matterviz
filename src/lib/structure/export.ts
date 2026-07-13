@@ -161,14 +161,6 @@ export function generate_mtl_content(scene: Scene): string {
   return lines.join(`\n`)
 }
 
-// Extract color from material, returning RGB values or null if not found
-function extract_material_color(mat: Material): { r: number; g: number; b: number } | null {
-  if (has_color_property(mat)) {
-    return { r: mat.color.r, g: mat.color.g, b: mat.color.b }
-  }
-  return null
-}
-
 // Helper function to convert InstancedMesh to regular Mesh objects for export
 // This is necessary because GLB/OBJ exporters don't handle InstancedMesh properly
 // Note: Threlte's InstancedMesh sets isInstancedMesh=true but type remains "Mesh"
@@ -237,9 +229,12 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
     } else {
       // Extract shared material color for atoms
       const single_mat = Array.isArray(mat) ? mat[0] : mat
-      const color = extract_material_color(single_mat)
-      if (color) {
-        material_colors.set(mesh_id, color)
+      if (has_color_property(single_mat)) {
+        material_colors.set(mesh_id, {
+          r: single_mat.color.r,
+          g: single_mat.color.g,
+          b: single_mat.color.b,
+        })
       }
     }
   })

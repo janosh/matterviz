@@ -226,9 +226,6 @@ function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
   return [...uniq.values()]
 }
 
-const order_to_bond_order = (order: number): BondOrder =>
-  order >= 3 ? 3 : order === 2 ? 2 : 1
-
 // Conservative planarity check: degenerate first-3-atom planes are non-planar.
 function ring_is_planar(ring: number[], sites: Site[]): boolean {
   if (ring.length < 3) return false
@@ -337,7 +334,8 @@ export function perceive_bond_orders(
     }
     if (!solved) continue
     local_edges.forEach((edge, edge_idx) => {
-      const order = order_to_bond_order(solved[edge_idx])
+      const solved_order = solved[edge_idx]
+      const order: BondOrder = solved_order >= 3 ? 3 : solved_order === 2 ? 2 : 1
       result.set(edge.bond, { ...edge.bond, bond_order: order, perceived: true })
     })
 

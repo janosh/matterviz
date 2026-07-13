@@ -9,11 +9,6 @@ import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import type { TrajectoryFrame } from './index'
 
-const is_valid_row = (row: unknown): boolean => {
-  if (!(Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row))) return false
-  return math.is_finite_vec3_like(row as ArrayLike<unknown>)
-}
-
 const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
   Array.isArray(coords) && math.is_finite_vec3_like(coords)
 
@@ -26,7 +21,13 @@ export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
     )
   }
 
-  if (!data.every(is_valid_row)) {
+  if (
+    !data.every(
+      (row) =>
+        (Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row)) &&
+        math.is_finite_vec3_like(row as ArrayLike<unknown>),
+    )
+  ) {
     throw new Error(`Invalid 3x3 matrix structure`)
   }
   return data as math.Matrix3x3

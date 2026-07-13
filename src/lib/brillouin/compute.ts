@@ -9,10 +9,6 @@ import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './typ
 
 const TOL = 1e-8
 
-// Check if rotation matrix is identity
-const is_identity_rotation = (rot: Matrix3x3): boolean =>
-  rot.every((row, idx) => row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL))
-
 // Extract unique point group rotation matrices from space group operations.
 // Returns fractional-coordinate rotations (W matrices from spglib convention).
 // These must be converted to Cartesian k-space before use in clipping.
@@ -387,7 +383,12 @@ export function find_ibz_reference_direction(non_identity_ops: Matrix3x3[]): Vec
 // of exactly volume(BZ)/|G|. (Using a different reference point per operation — or
 // flipping individual planes — does NOT yield a fundamental domain in general.)
 export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): ClippingPlane[] {
-  const non_identity_ops = point_group_ops.filter((rot) => !is_identity_rotation(rot))
+  const non_identity_ops = point_group_ops.filter(
+    (rot) =>
+      !rot.every((row, idx) =>
+        row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL),
+      ),
+  )
   if (non_identity_ops.length === 0) return []
 
   const ref_dir = find_ibz_reference_direction(non_identity_ops)

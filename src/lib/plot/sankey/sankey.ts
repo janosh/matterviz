@@ -92,11 +92,6 @@ function resolve_node_ref(
   throw new Error(`Sankey link references unknown node: ${JSON.stringify(ref)}`)
 }
 
-function resolve_numeric_node_ref(ref: number, n_nodes: number): number {
-  if (Number.isInteger(ref) && ref >= 0 && ref < n_nodes) return ref
-  throw new Error(`Sankey link references unknown node: ${JSON.stringify(ref)}`)
-}
-
 // Build a SankeyData object from parallel flat arrays (e.g. the plotly/matbench
 // `link.source`/`link.target`/`link.value` + `node.label` format).
 export function sankey_from_links(
@@ -206,10 +201,24 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
   }))
   // Resolve a source/target ref to a node index: id/label lookup when any link uses
   // non-numeric refs, otherwise a cheap numeric-range check (no map built).
-  const resolve_ref = (ref: number | string): number =>
-    needs_ref_lookup
-      ? resolve_node_ref(ref, id_to_idx as Map<string | number, number>, data.nodes.length)
-      : resolve_numeric_node_ref(ref as number, data.nodes.length)
+  const resolve_ref = (ref: number | string): number => {
+    if (needs_ref_lookup) {
+      return resolve_node_ref(
+        ref,
+        id_to_idx as Map<string | number, number>,
+        data.nodes.length,
+      )
+    }
+    if (
+      typeof ref === `number` &&
+      Number.isInteger(ref) &&
+      ref >= 0 &&
+      ref < data.nodes.length
+    ) {
+      return ref
+    }
+    throw new Error(`Sankey link references unknown node: ${JSON.stringify(ref)}`)
+  }
 
   const link_copies = data.links.map((link, idx) => ({
     link_idx: idx,

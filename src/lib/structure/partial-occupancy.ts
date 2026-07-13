@@ -45,9 +45,6 @@ const make_render_site = (
   ),
   source_site_indices,
 })
-const sq_dist = (xyz_1: Vec3, xyz_2: Vec3): number =>
-  (xyz_1[0] - xyz_2[0]) ** 2 + (xyz_1[1] - xyz_2[1]) ** 2 + (xyz_1[2] - xyz_2[2]) ** 2
-
 const is_split_partial_site = (site: Site, hidden_elements: ReadonlySet<string>): boolean => {
   const visible_species = site.species.filter(({ element }) => !hidden_elements.has(element))
   const total_visible_occupancy = visible_species.reduce(
@@ -73,9 +70,12 @@ const group_split_partial_indices = (
       continue
     }
 
-    const matched_group_idx = grouped_centers.findIndex(
-      (center_xyz) => sq_dist(center_xyz, site.xyz) <= MERGE_DISTANCE_TOLERANCE ** 2,
-    )
+    const matched_group_idx = grouped_centers.findIndex((center_xyz) => {
+      const dx = center_xyz[0] - site.xyz[0]
+      const dy = center_xyz[1] - site.xyz[1]
+      const dz = center_xyz[2] - site.xyz[2]
+      return dx * dx + dy * dy + dz * dz <= MERGE_DISTANCE_TOLERANCE ** 2
+    })
     if (matched_group_idx === -1) {
       grouped_centers.push(site.xyz)
       grouped_site_indices.push([site_idx])

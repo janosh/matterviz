@@ -505,7 +505,13 @@ function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
     if (!comment.includes(`+`)) continue // skip axis labels (no "+")
 
     // Clean LaTeX: "La$_2$NiO$_4$ + NiO" -> "La2NiO4 + NiO"
-    const text = clean_latex(comment.trim())
+    const text = comment
+      .trim()
+      .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
+      .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
+      .replaceAll(`$`, ``) // remove any remaining $
+      .replaceAll(/\s+/g, ` `)
+      .trim()
 
     // Get position from transform="translate(x, y)"
     const pos = parse_translate(group.querySelector(`g[transform]`)) ?? parse_translate(group)
@@ -873,15 +879,6 @@ function find_comment_text(group: Element): string | null {
 
   return null
 }
-
-// Clean LaTeX subscript notation: "La$_2$NiO$_4$" -> "La2NiO4"
-const clean_latex = (text: string): string =>
-  text
-    .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
-    .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
-    .replaceAll(`$`, ``) // remove any remaining $
-    .replaceAll(/\s+/g, ` `)
-    .trim()
 
 // Parse SVG path data into absolute line segments [x1,y1,x2,y2]
 // Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)

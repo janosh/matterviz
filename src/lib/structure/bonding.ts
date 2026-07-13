@@ -57,9 +57,6 @@ export function has_framework_potential(elements: Iterable<string>): boolean {
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
 
-const format_cell_shift = (cell_shift: Vec3 | undefined): string =>
-  cell_shift === undefined || is_zero_cell_shift(cell_shift) ? `` : `@${cell_shift.join(`,`)}`
-
 const negate_cell_shift = (cell_shift: Vec3): Vec3 => [
   cell_shift[0] === 0 ? 0 : -cell_shift[0],
   cell_shift[1] === 0 ? 0 : -cell_shift[1],
@@ -106,9 +103,11 @@ export const normalize_structure_bond = (
 
 export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): string => {
   const normalized = normalize_bond_endpoints(idx_1, idx_2, cell_shift)
-  return `${normalized.site_idx_1}-${normalized.site_idx_2}${format_cell_shift(
-    normalized.cell_shift,
-  )}`
+  const shift_suffix =
+    normalized.cell_shift === undefined || is_zero_cell_shift(normalized.cell_shift)
+      ? ``
+      : `@${normalized.cell_shift.join(`,`)}`
+  return `${normalized.site_idx_1}-${normalized.site_idx_2}${shift_suffix}`
 }
 
 // Remap explicit bond metadata after site deletion: drop bonds touching deleted
@@ -396,9 +395,6 @@ export const merge_bond_edits = (
   return [...merged.values()]
 }
 
-const is_record = (value: unknown): value is Record<string, unknown> =>
-  typeof value === `object` && value !== null
-
 export function normalize_bond_order(order: unknown): BondOrder | null {
   if (order === `aromatic`) return order
   if (order === 1 || order === 1.5 || order === 2 || order === 3) return order
@@ -464,13 +460,14 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
 
   const explicit_bonds = new Map<string, StructureBond>()
   for (const [entry_idx, raw_bond] of raw_bonds.entries()) {
-    if (!is_record(raw_bond)) {
+    if (typeof raw_bond !== `object` || raw_bond === null) {
       console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: expected object`)
       continue
     }
-    const { order } = raw_bond
-    const site_idx_1 = raw_bond.site_idx_1
-    const site_idx_2 = raw_bond.site_idx_2
+    const bond_record = raw_bond as Record<string, unknown>
+    const { order } = bond_record
+    const site_idx_1 = bond_record.site_idx_1
+    const site_idx_2 = bond_record.site_idx_2
     if (
       typeof site_idx_1 !== `number` ||
       typeof site_idx_2 !== `number` ||
@@ -504,7 +501,7 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
       )
       continue
     }
-    const cell_shift = normalize_cell_shift(raw_bond.cell_shift)
+    const cell_shift = normalize_cell_shift(bond_record.cell_shift)
     if (cell_shift === null) {
       console.warn(
         `Ignoring invalid explicit bond at index ${entry_idx}: cell_shift must be three integers`,
