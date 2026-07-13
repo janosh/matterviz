@@ -210,15 +210,13 @@
         class:hovered={hovered_element === segment.element}
         onmouseenter={() => interactive && (hovered_element = segment.element)}
         onmouseleave={() => interactive && (hovered_element = null)}
-        {...interactive
-          ? {
-              role: `button`,
-              tabindex: 0,
-              'aria-label': `${segment.element}: ${segment.amount} ${
-                segment.amount === 1 ? `atom` : `atoms`
-              } (${format_num(segment.fraction, `.1~%`)})`,
-            }
-          : {}}
+        {...interactive && {
+          role: `button`,
+          tabindex: 0,
+          'aria-label': `${segment.element}: ${segment.amount} ${
+            segment.amount === 1 ? `atom` : `atoms`
+          } (${format_num(segment.fraction, `.1~%`)})`,
+        }}
       >
         <title>
           {segment.element}: {segment.amount}

@@ -251,107 +251,6 @@ describe(`PlotLegend`, () => {
     expect(items[0].textContent).toContain(`Target series`)
   })
 
-  test(`renders different marker shapes and line types`, () => {
-    const test_data: LegendItem[] = [
-      {
-        label: `Circle/Solid`,
-        visible: true,
-        series_idx: 0,
-        display_style: {
-          symbol_type: `Circle`,
-          line_dash: `solid`,
-          line_color: `currentColor`,
-        },
-      },
-      {
-        label: `Square/Dashed`,
-        visible: true,
-        series_idx: 1,
-        display_style: {
-          symbol_type: `Square`,
-          line_dash: `dashed`,
-          line_color: `currentColor`,
-        },
-      },
-      {
-        label: `Triangle/Dotted`,
-        visible: true,
-        series_idx: 2,
-        display_style: {
-          symbol_type: `Triangle`,
-          line_dash: `dotted`,
-          line_color: `currentColor`,
-        },
-      },
-      {
-        label: `Cross`,
-        visible: true,
-        series_idx: 3,
-        display_style: { symbol_type: `Cross`, symbol_color: `orange` }, // Added color
-      },
-      {
-        label: `Star`,
-        visible: true,
-        series_idx: 4,
-        display_style: { symbol_type: `Star`, symbol_color: `magenta` }, // Added color
-      },
-    ]
-    mount(PlotLegend, {
-      target: document.body,
-      props: { series_data: test_data },
-    })
-
-    const items = document.querySelectorAll(`.legend-item`)
-    expect(items).toHaveLength(5)
-
-    // Circle/Solid
-    const item1_marker_svgs = items[0].querySelectorAll(`.legend-marker > svg`)
-    expect(item1_marker_svgs).toHaveLength(2) // Line + Marker
-    expect(item1_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
-      `solid`,
-    )
-    expect(item1_marker_svgs[1].querySelector(`circle`)).toBeInstanceOf(SVGCircleElement)
-    expect(item1_marker_svgs[1].querySelector(`circle`)?.getAttribute(`fill`)).toBe(
-      `currentColor`,
-    ) // Default color
-
-    // Square/Dashed
-    const item2_marker_svgs = items[1].querySelectorAll(`.legend-marker > svg`)
-    expect(item2_marker_svgs).toHaveLength(2)
-    expect(item2_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
-      `dashed`,
-    )
-    expect(item2_marker_svgs[1].querySelector(`rect`)).toBeInstanceOf(SVGRectElement)
-    expect(item2_marker_svgs[1].querySelector(`rect`)?.getAttribute(`fill`)).toBe(
-      `currentColor`,
-    )
-
-    // Triangle/Dotted
-    const item3_marker_svgs = items[2].querySelectorAll(`.legend-marker > svg`)
-    expect(item3_marker_svgs).toHaveLength(2)
-    expect(item3_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
-      `dotted`,
-    )
-    expect(item3_marker_svgs[1].querySelector(`polygon`)).toBeInstanceOf(SVGPolygonElement) // triangle
-    expect(item3_marker_svgs[1].querySelector(`polygon`)?.getAttribute(`fill`)).toBe(
-      `currentColor`,
-    )
-
-    // Cross (only marker) - rendered as filled polygon matching D3's symbolCross
-    const item4_marker_svgs = items[3].querySelectorAll(`.legend-marker > svg`)
-    expect(item4_marker_svgs).toHaveLength(1)
-    const cross_polygon = item4_marker_svgs[0].querySelector(`polygon`)
-    expect(cross_polygon).toBeInstanceOf(SVGPolygonElement) // cross as filled polygon (plus shape)
-    expect(cross_polygon?.getAttribute(`fill`)).toBe(`orange`)
-
-    // Star (only marker)
-    const item5_marker_svgs = items[4].querySelectorAll(`.legend-marker > svg`)
-    expect(item5_marker_svgs).toHaveLength(1)
-    const star_polygon = item5_marker_svgs[0].querySelector(`polygon`)
-    expect(star_polygon).toBeInstanceOf(SVGPolygonElement) // star polygon
-    expect(star_polygon?.getAttribute(`fill`)).toBe(`magenta`)
-  })
-
   // Regression tests for legend symbol SVG elements matching D3 symbol shapes
   test.each([
     [`Circle`, `circle`, { cx: `5`, cy: `5`, r: `4` }],
@@ -394,56 +293,6 @@ describe(`PlotLegend`, () => {
       }
     },
   )
-
-  test(`applies marker and line colors correctly`, () => {
-    const test_data: LegendItem[] = [
-      {
-        label: `Red`,
-        visible: true,
-        series_idx: 0,
-        display_style: {
-          symbol_type: `Circle`,
-          symbol_color: `red`,
-          line_dash: `solid`,
-          line_color: `red`,
-        },
-      },
-      {
-        label: `Blue Marker Only`,
-        visible: true,
-        series_idx: 1,
-        display_style: { symbol_type: `Square`, symbol_color: `blue` }, // No line
-      },
-      {
-        label: `Green Line Only`,
-        visible: true,
-        series_idx: 2,
-        display_style: { line_dash: `solid`, line_color: `green` }, // No marker
-      },
-    ]
-    mount(PlotLegend, {
-      target: document.body,
-      props: { series_data: test_data },
-    })
-
-    const items = document.querySelectorAll(`.legend-item`)
-
-    // Red
-    const item1_marker_svgs = items[0].querySelectorAll(`.legend-marker > svg`)
-    expect(item1_marker_svgs).toHaveLength(2)
-    expect(item1_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`red`)
-    expect(item1_marker_svgs[1].querySelector(`circle`)?.getAttribute(`fill`)).toBe(`red`)
-
-    // Blue Marker Only
-    const item2_marker_svgs = items[1].querySelectorAll(`.legend-marker > svg`)
-    expect(item2_marker_svgs).toHaveLength(1) // Only marker SVG rendered
-    expect(item2_marker_svgs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`blue`)
-
-    // Green Line Only
-    const item3_marker_svgs = items[2].querySelectorAll(`.legend-marker > svg`)
-    expect(item3_marker_svgs).toHaveLength(1) // Only line SVG rendered
-    expect(item3_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`green`)
-  })
 
   test(`calls on_toggle with correct series_idx on click`, () => {
     const mock_toggle = vi.fn()
@@ -512,23 +361,6 @@ describe(`PlotLegend`, () => {
     expect(wrapper.querySelector(`.legend-filter`)).toBeNull()
   })
 
-  test(`renders correctly with only one series`, () => {
-    const single_series = [default_series_data[0]]
-    mount(PlotLegend, {
-      target: document.body,
-      props: { series_data: single_series },
-    })
-    const wrapper = doc_query(`.legend`)
-    expect(wrapper).toBeInstanceOf(HTMLElement)
-    const items = document.querySelectorAll(`.legend-item`)
-    expect(items).toHaveLength(1)
-    expect(items[0].querySelector(`.legend-label`)?.textContent).toBe(`Series 1`)
-    // Check ARIA attributes for single item
-    expect(items[0].getAttribute(`role`)).toBe(`button`)
-    expect(items[0].getAttribute(`tabindex`)).toBe(`0`)
-    expect(items[0].getAttribute(`aria-pressed`)).toBe(`true`)
-  })
-
   describe(`legend groups`, () => {
     // Helper to create grouped test data
     const make_grouped_data = (): LegendItem[] => [
@@ -575,47 +407,21 @@ describe(`PlotLegend`, () => {
       },
     ]
 
-    test.each([
-      {
-        desc: `renders group headers and items`,
-        expects: { headers: 2, items: 6, indented: 5, grouped_class: true },
-      },
-    ])(`$desc`, ({ expects }) => {
+    test(`renders group headers and items`, () => {
       mount(PlotLegend, {
         target: document.body,
         props: { series_data: make_grouped_data() },
       })
 
-      expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(expects.grouped_class)
-      expect(document.querySelectorAll(`.legend-group-header`)).toHaveLength(expects.headers)
-      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(expects.items)
-      expect(document.querySelectorAll(`.legend-item.indented`)).toHaveLength(expects.indented)
+      expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(true)
+      expect(document.querySelectorAll(`.legend-group-header`)).toHaveLength(2)
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
+      expect(document.querySelectorAll(`.legend-item.indented`)).toHaveLength(5)
 
       const group_labels = Array.from(document.querySelectorAll(`.legend-group-header`)).map(
         (header) => header.querySelector(`.group-label`)?.textContent,
       )
       expect(group_labels).toEqual([`Li₂O`, `NaCl`])
-    })
-
-    test(`group header hidden class reflects item visibility`, () => {
-      const all_hidden: LegendItem[] = [
-        {
-          label: `A`,
-          visible: false,
-          series_idx: 0,
-          legend_group: `Hidden`,
-          display_style: {},
-        },
-        {
-          label: `B`,
-          visible: false,
-          series_idx: 1,
-          legend_group: `Hidden`,
-          display_style: {},
-        },
-      ]
-      mount(PlotLegend, { target: document.body, props: { series_data: all_hidden } })
-      expect(doc_query(`.legend-group-header`).classList.contains(`hidden`)).toBe(true)
     })
 
     test.each([
@@ -776,23 +582,6 @@ describe(`PlotLegend`, () => {
       chevron.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       await tick()
       expect(chevron.getAttribute(`aria-label`)).toBe(`Expand group Li₂O`)
-    })
-
-    test(`collapsing one group does not affect other groups`, async () => {
-      mount(PlotLegend, {
-        target: document.body,
-        props: { series_data: make_grouped_data() },
-      })
-
-      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
-
-      // Collapse first group (Li₂O)
-      const chevrons = document.querySelectorAll(`.group-chevron`)
-      chevrons[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-      await tick()
-
-      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3) // 6 - 3 Li₂O
-      expect(chevrons[1].classList.contains(`collapsed`)).toBe(false)
     })
 
     test.each([

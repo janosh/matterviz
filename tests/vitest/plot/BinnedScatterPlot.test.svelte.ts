@@ -196,7 +196,7 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const anno_wrapper = doc_query<HTMLElement>(`.binned-scatter .annotation`)
+    const anno_wrapper = doc_query(`.binned-scatter .annotation`)
     expect(anno_wrapper.querySelector(`.custom-annotation`)?.textContent).toBe(`800x600:false`)
     // style.left/top are `${n}px` strings, so strip the unit before Number()
     const style_px = (value: string): number => Number(value.replace(/px$/, ``))
@@ -208,7 +208,7 @@ describe(`BinnedScatterPlot`, () => {
       width: 120,
       height: 50,
     }
-    const bar_wrapper = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
+    const bar_wrapper = doc_query(`.binned-scatter .color-bar`)
     const bar_rect = {
       x: style_px(bar_wrapper.style.left),
       y: style_px(bar_wrapper.style.top),
@@ -241,7 +241,7 @@ describe(`BinnedScatterPlot`, () => {
       style: `width: 800px; height: 600px`,
     })
     await settle()
-    const colorbar = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
+    const colorbar = doc_query(`.binned-scatter .color-bar`)
     const initial_position = { left: colorbar.style.left, top: colorbar.style.top }
     layout_spy.mockClear()
 
@@ -261,7 +261,7 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     expect(document.querySelector(`.color-bar`)).toBeNull()
-    const anno_wrapper = doc_query<HTMLElement>(`.annotation`)
+    const anno_wrapper = doc_query(`.annotation`)
     expect(anno_wrapper.style.left).toMatch(/px$/)
     expect(anno_wrapper.style.top).toMatch(/px$/)
 
@@ -630,7 +630,7 @@ describe(`BinnedScatterPlot`, () => {
 
     const expected_color = document.createElement(`div`)
     expected_color.style.backgroundColor = interpolateViridis(0)
-    const tooltip = doc_query<HTMLElement>(`.plot-tooltip`)
+    const tooltip = doc_query(`.plot-tooltip`)
     expect(tooltip.style.backgroundColor).toBe(expected_color.style.backgroundColor)
     expect(tooltip.style.color).toBe(`#ffffff`)
 
@@ -859,7 +859,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`includes configured point label gap in placement`, async () => {
     mock_label_measurement(40, 10)
     const label_distance = (): number => {
-      const label = doc_query<HTMLElement>(`.point-labels .point-label`)
+      const label = doc_query(`.point-labels .point-label`)
       const left = Number(label.style.left.replace(`px`, ``))
       const top = Number(label.style.top.replace(`px`, ``))
       return Math.hypot(left - 420, top - 284)

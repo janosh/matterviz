@@ -40,13 +40,8 @@
     }
   })
 
-  // Determine value type
   let value_type = $derived(get_value_type(value))
-
-  // Check if this node is expandable
   let expandable = $derived(is_expandable(value))
-
-  // Get child count for preview
   let child_count = $derived(expandable ? get_child_count(value) : 0)
 
   // Determine if this node should be collapsed
@@ -77,14 +72,9 @@
   })
 
   // Note: Search highlighting is handled by CSS Highlight API in JsonTree.svelte
-
-  // Check if this node is focused
   let is_focused = $derived(ctx?.focused_path === path)
-
-  // Check if this is the current search match being navigated
+  // Current search match being navigated
   let is_current_match = $derived(ctx?.current_match_path === path)
-
-  // Check if this node is selected
   let is_selected = $derived(ctx?.selected_paths.has(path) ?? false)
 
   // Diff status for this node (null if no diff or unchanged)
@@ -103,58 +93,34 @@
     }
   }
 
-  // Toggle collapse recursively on double-click
+  // Toggle collapse recursively on double-click (collapsed expands all, and vice versa)
   function toggle_collapse_recursive(event: MouseEvent) {
     event.stopPropagation()
-    if (ctx && expandable) {
-      // If collapsed, expand all; if expanded, collapse all
-      ctx.toggle_collapse_recursive(path, !is_collapsed)
-    }
+    if (ctx && expandable) ctx.toggle_collapse_recursive(path, !is_collapsed)
   }
 
-  // Focus this node
-  function focus_node() {
-    ctx?.set_focused(path)
-  }
-
-  // Get children based on value type
-  function get_children(): { key: string | number; value: unknown }[] {
-    if (!expandable) return []
-
+  // Children as { key, value } pairs based on value type (Map entries are wrapped so
+  // key and value render as an expandable pair; Set values get numeric keys)
+  let children = $derived.by((): { key: string | number; value: unknown }[] => {
     if (value_type === `array`) {
       return (value as unknown[]).map((val, idx) => ({ key: idx, value: val }))
     }
-
     if (value_type === `object`) {
-      let keys = Object.keys(value as Record<string, unknown>)
-      if (ctx?.settings.sort_keys) {
-        keys = keys.sort()
-      }
-      return keys.map((key) => ({
-        key,
-        value: (value as Record<string, unknown>)[key],
-      }))
+      const keys = Object.keys(value as Record<string, unknown>)
+      if (ctx?.settings.sort_keys) keys.sort()
+      return keys.map((key) => ({ key, value: (value as Record<string, unknown>)[key] }))
     }
-
     if (value_type === `map`) {
-      const map = value as Map<unknown, unknown>
-      return Array.from(map.entries()).map(([key, val], idx) => ({
+      return Array.from(value as Map<unknown, unknown>, ([key, val], idx) => ({
         key: idx,
         value: { key, value: val },
       }))
     }
-
     if (value_type === `set`) {
-      return Array.from(value as Set<unknown>).map((val, idx) => ({
-        key: idx,
-        value: val,
-      }))
+      return Array.from(value as Set<unknown>, (val, idx) => ({ key: idx, value: val }))
     }
-
     return []
-  }
-
-  let children = $derived(get_children())
+  })
 
   // Ghost children: removed entries from diff (pre-computed in JsonTree for O(1) lookup)
   let ghost_children = $derived.by(() => {
@@ -233,7 +199,7 @@
       event.stopPropagation()
       ctx?.toggle_select(path, event.shiftKey)
     } else {
-      focus_node()
+      ctx?.set_focused(path)
     }
   }}
   onauxclick={(event) => {

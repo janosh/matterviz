@@ -45,24 +45,17 @@ The periodic table supports multiple values per element with different visual la
     <TableInset
       style="display: flex; gap: 0 2em; justify-content: center; align-items: center; flex-wrap: wrap; padding: 0.5em"
     >
-      <ColorBar
-        title="Atomic Mass (u)"
-        color_scale="interpolateRdYlBu"
-        range={atomic_mass_range}
-        orientation="horizontal"
-        bar_style="width: 180px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
-      <ColorBar
-        title="Density (g/cm³)"
-        color_scale="interpolateRdYlBu"
-        range={density_range}
-        orientation="horizontal"
-        bar_style="width: 180px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
+      {#each [[`Atomic Mass (u)`, atomic_mass_range], [`Density (g/cm³)`, density_range]] as const as [title, range] (title)}
+        <ColorBar
+          {title}
+          color_scale="interpolateRdYlBu"
+          {range}
+          orientation="horizontal"
+          bar_style="width: 180px; height: 12px"
+          tick_labels={3}
+          title_side="top"
+        />
+      {/each}
     </TableInset>
   {/snippet}
 </PeriodicTable>

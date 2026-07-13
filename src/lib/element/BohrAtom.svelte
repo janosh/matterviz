@@ -109,7 +109,6 @@
               {number_electrons(elec_idx)}
             {:else if number_electrons === `hierarchical`}
               {shell_idx + 1}.{elec_idx + 1}
-              <!-- {:else if [`sequential`, true].includes(number_electrons)} -->
             {:else}
               {@const nth_electron =
                 shells.slice(0, shell_idx).reduce((sum, count) => sum + count, 0) +

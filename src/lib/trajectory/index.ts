@@ -93,7 +93,6 @@ export interface FrameLoader {
 }
 
 export function validate_trajectory(trajectory: TrajectoryType): string[] {
-  // with detailed error reporting
   const errors: string[] = []
   const { frames, total_frames, indexed_frames, plot_metadata, is_indexed } = trajectory
 
@@ -207,13 +206,7 @@ export function get_trajectory_stats(trajectory: TrajectoryType): Record<string,
     stats.constant_atom_count = constant
     if (constant) stats.total_atoms = first_frame.structure.sites.length
     else stats.atom_count_range = [Math.min(...all_counts), Math.max(...all_counts)]
-  } else {
-    // Handle empty trajectory case
-    stats.steps = []
-    stats.step_range = undefined
-    stats.constant_atom_count = undefined
-    stats.total_atoms = undefined
-  }
+  } else stats.steps = [] // empty trajectory
 
   // Additional metadata for large files
   if (indexed_frames) stats.indexed_frame_count = indexed_frames.length

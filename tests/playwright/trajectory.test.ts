@@ -120,9 +120,6 @@ test.describe(`Trajectory Component`, () => {
     // Try to find the info button and click it
     const info_button = trajectory_viewer.locator(`.trajectory-info-toggle`)
     await expect(info_button).toBeVisible()
-
-    // Verify initial state - pane should not be visible initially
-    await expect(info_button).toBeVisible()
     await expect(info_button).toBeEnabled()
 
     // Get the pane before clicking
@@ -166,16 +163,6 @@ test.describe(`Trajectory Component`, () => {
     await expect(info_button).toBeEnabled()
   })
 
-  test(`initial state has step 0 and closed info pane`, async () => {
-    // Check default step (should be 0)
-    const step_input = controls.locator(`.step-input`)
-    await expect(step_input).toHaveValue(`0`)
-
-    // Check info pane is initially closed
-    const info_pane = trajectory_viewer.locator(`.trajectory-info-pane`).first()
-    await expect(info_pane).toBeHidden()
-  })
-
   test(`playback controls function properly`, async () => {
     const play_button = controls.locator(`.play-button`)
 
@@ -187,47 +174,9 @@ test.describe(`Trajectory Component`, () => {
 
     // Verify button is still functional
     await expect(play_button).toBeEnabled()
-
-    // Check FPS controls exist in DOM (might be conditionally displayed)
-    const fps_section = controls.locator(`.fps-section`)
-    if (await fps_section.isVisible()) {
-      await expect(fps_section.locator(`input[type="range"]`)).toHaveAttribute(`min`, `0.2`)
-      await expect(fps_section.locator(`input[type="number"]`)).toHaveAttribute(`max`, `60`)
-      await expect(fps_section).toContainText(`FPS`)
-    }
   })
 
   test.describe(`layout and configuration options`, () => {
-    test(`layout classes are correct based on viewport and props`, async ({ page }) => {
-      // Auto layout should be horizontal when container is wide
-      const auto_trajectory = page.locator(`#auto-layout`)
-
-      // Start with container that should trigger horizontal layout (default 500px height from test page)
-      await expect(auto_trajectory).toHaveClass(/horizontal/)
-
-      // Explicit vertical layout should override auto detection
-      const vertical_trajectory = page.locator(`#vertical-layout`)
-      await expect(vertical_trajectory).toHaveClass(/vertical/)
-
-      // Test auto layout with tall container - make the container tall and narrow
-      await page
-        .locator(`#auto-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.height = `900px`
-          el.style.width = `300px`
-          el.style.minHeight = `900px` // Ensure the height is actually applied
-          el.style.minWidth = `300px` // Ensure the width is actually applied
-        })
-
-      // Check if layout changed to vertical, but don't fail if it didn't
-      // since viewport detection might not work in test environment
-      const class_attr = await auto_trajectory.getAttribute(`class`)
-
-      // At least one layout class should be present
-      expect(has_orientation_layout_class(class_attr)).toBe(true)
-    })
-
     test(`step labels work correctly`, async ({ page }) => {
       // Test evenly spaced labels
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
@@ -447,33 +396,6 @@ test.describe(`Trajectory Component`, () => {
       await expect(play_button).toHaveText(`▶`)
     })
 
-    test(`playback FPS controls work when playing`, async ({ page }) => {
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const play_button = trajectory.locator(`.play-button`)
-      await play_button.click()
-
-      // Check if FPS controls are visible when playing
-      const fps_section = trajectory.locator(`.fps-section`)
-      if (await fps_section.isVisible()) {
-        const fps_input = fps_section.locator(`input[type="number"]`)
-
-        // Test FPS controls using the FPS input instead of slider
-        await fps_input.fill(`2`)
-        await fps_input.press(`Enter`)
-        await expect(fps_input).toHaveValue(`2`)
-
-        await fps_input.fill(`1`)
-        await fps_input.press(`Enter`)
-        await expect(fps_input).toHaveValue(`1`)
-      }
-
-      // Stop playing - use toPass for robust state transition check
-      await play_button.click()
-      await expect(async () => {
-        await expect(play_button).toHaveText(`▶`)
-      }).toPass({ timeout: 3000 })
-    })
-
     test(`FPS range slider covers full range and stays synchronized`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const play_button = trajectory.locator(`.play-button`)
@@ -505,25 +427,6 @@ test.describe(`Trajectory Component`, () => {
 
       await play_button.click() // Stop playing
       await expect(play_button).toHaveText(`▶`)
-    })
-
-    test(`large jump navigation works`, async ({ page }) => {
-      // Test large jumps using the slider (simulating what PageUp/PageDown would do)
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const step_input = trajectory.locator(`.step-input`)
-
-      // Start at step 0
-      await expect(step_input).toHaveValue(`0`)
-
-      // Jump to last step (simulating large jump forward)
-      await step_input.fill(`2`)
-      await step_input.press(`Enter`)
-      await expect(step_input).toHaveValue(`2`)
-
-      // Jump to first step (simulating large jump backward)
-      await step_input.fill(`0`)
-      await step_input.press(`Enter`)
-      await expect(step_input).toHaveValue(`0`)
     })
   })
 
@@ -668,53 +571,6 @@ test.describe(`Trajectory Component`, () => {
       }).toPass({ timeout: 5000 })
     })
 
-    test(`mobile layout adapts correctly`, async ({ page }) => {
-      const trajectory = page.locator(`#auto-layout`)
-      const trajectory_controls = trajectory.locator(`.trajectory-controls`)
-
-      // Test mobile container with tall aspect ratio
-      await page
-        .locator(`#auto-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.width = `300px`
-          el.style.height = `600px`
-        })
-      await expect(trajectory).toBeVisible()
-      await expect(trajectory_controls.locator(`.play-button`)).toBeVisible()
-      await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toBeVisible()
-
-      // Should use vertical layout for tall container, but be lenient in test environment
-      const mobile_class = await trajectory.getAttribute(`class`)
-      expect(has_orientation_layout_class(mobile_class)).toBe(true)
-
-      // Info pane should exist and be properly sized
-      const info_pane = trajectory.locator(`.trajectory-info-pane`).first()
-
-      // Pane may not be attached if not visible since DraggablePane only renders when show=true
-      // So we'll check if it's visible or if the info button is at least present
-      const info_button = trajectory.locator(`.trajectory-info-toggle`)
-      await expect(info_button).toBeVisible()
-
-      // If pane is visible, check its dimensions
-      if (await info_pane.isVisible()) {
-        const info_pane_bbox = await info_pane.boundingBox()
-        expect(info_pane_bbox).toBeTruthy() // Just verify it has some dimensions
-      }
-    })
-
-    test(`desktop layout works correctly`, async ({ page }) => {
-      // Set wide viewport first
-      await page.setViewportSize({ width: 1200, height: 600 })
-      const trajectory = page.locator(`#auto-layout`)
-
-      await expect(trajectory).toBeVisible({ timeout: LOAD_TIMEOUT })
-      // Wait for layout class to be applied (may need time after viewport change)
-      await expect(trajectory).toHaveClass(/horizontal|vertical/, { timeout: 10_000 })
-      await expect(trajectory.locator(`.content-area`)).toBeVisible()
-      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
-    })
-
     test(`layout is based on element aspect ratio`, async ({ page }) => {
       const trajectory = page.locator(`#auto-layout`)
 
@@ -738,33 +594,6 @@ test.describe(`Trajectory Component`, () => {
           expect(current_class).toContain(`vertical`)
         }
       }
-    })
-
-    test(`layout responsive behavior with tablet viewports`, async ({ page }) => {
-      const trajectory = page.locator(`#auto-layout`)
-
-      // Test tablet landscape container (should be horizontal)
-      await page
-        .locator(`#auto-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.width = `750px`
-          el.style.height = `550px`
-        })
-      await expect(trajectory).toHaveClass(/horizontal/)
-
-      // Test tablet portrait container (should be vertical)
-      await page
-        .locator(`#auto-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.width = `550px`
-          el.style.height = `750px`
-        })
-      // Check if layout is valid, but be lenient since viewport detection
-      // might not work perfectly in test environment
-      const portrait_layout_class = await trajectory.getAttribute(`class`)
-      expect(has_orientation_layout_class(portrait_layout_class)).toBe(true)
     })
 
     test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({

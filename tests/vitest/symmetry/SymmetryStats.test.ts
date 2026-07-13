@@ -103,26 +103,30 @@ describe(`SymmetryStats`, () => {
       },
     )
 
-    test(`symprec uses oninput for immediate updates`, () => {
-      // Verifies symprec input triggers updates while typing.
-      let update_count = 0
-      const current_settings = { symprec: 1e-4, algo: `Moyo` as const }
-
+    // Mount with a tracked bindable settings prop and return the symprec input plus
+    // a live view of how often the component reassigned settings
+    const mount_with_tracked_settings = () => {
+      const state = { update_count: 0, settings: { symprec: 1e-4, algo: `Moyo` as const } }
       mount(SymmetryStats, {
         target: document.body,
         props: {
           sym_data: create_mock_sym_data(),
           get settings() {
-            return current_settings
+            return state.settings
           },
           set settings(val) {
-            update_count++
-            Object.assign(current_settings, val)
+            state.update_count++
+            Object.assign(state.settings, val)
           },
         },
       })
-
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      return { state, symprec_input }
+    }
+
+    test(`symprec uses oninput for immediate updates`, () => {
+      // Verifies symprec input triggers updates while typing.
+      const { state, symprec_input } = mount_with_tracked_settings()
 
       // Simulate typing (input events should trigger updates)
       for (const val of [`0.0`, `0.00`, `0.001`]) {
@@ -130,39 +134,22 @@ describe(`SymmetryStats`, () => {
         symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
         flushSync()
       }
-      expect(update_count).toBe(3)
+      expect(state.update_count).toBe(3)
 
       // Change event no longer drives the update.
       symprec_input.dispatchEvent(new Event(`change`, { bubbles: true }))
       flushSync()
-      expect(update_count).toBe(3)
+      expect(state.update_count).toBe(3)
     })
 
     test(`symprec ignores incomplete scientific notation while typing`, () => {
-      let update_count = 0
-      const current_settings = { symprec: 1e-4, algo: `Moyo` as const }
-
-      mount(SymmetryStats, {
-        target: document.body,
-        props: {
-          sym_data: create_mock_sym_data(),
-          get settings() {
-            return current_settings
-          },
-          set settings(val) {
-            update_count++
-            Object.assign(current_settings, val)
-          },
-        },
-      })
-
-      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      const { state, symprec_input } = mount_with_tracked_settings()
       symprec_input.value = `1e-`
       symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       flushSync()
 
-      expect(update_count).toBe(0)
-      expect(current_settings.symprec).toBe(1e-4)
+      expect(state.update_count).toBe(0)
+      expect(state.settings.symprec).toBe(1e-4)
     })
 
     test.each([

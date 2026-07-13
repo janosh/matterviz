@@ -23,11 +23,6 @@ describe(`PeriodicTable`, () => {
     expect(document.querySelectorAll(`.element-tile`)).toHaveLength(expected_tiles)
   })
 
-  test(`empty tiles are rendered`, () => {
-    mount(PeriodicTable, { target: document.body })
-    expect(document.querySelectorAll(`.element-tile`)).toHaveLength(120)
-  })
-
   test(`hovering element tile toggles CSS class 'active'`, async () => {
     mount(PeriodicTable, { target: document.body })
 
@@ -98,30 +93,20 @@ describe(`PeriodicTable`, () => {
       target: document.body,
       props: { tile_props: { style: `cursor: pointer` } },
     })
-    const tile = doc_query<HTMLElement>(`.element-tile`)
+    const tile = doc_query(`.element-tile`)
     expect(tile.style.gridColumn).toBe(`1`) // H placement preserved
     expect(tile.style.gridRow).toBe(`1`)
     expect(tile.style.cursor).toBe(`pointer`) // user style still applied
   })
 
-  test(`PropertySelect integration`, () => {
-    const props: { heatmap_values?: number[] } = {}
-    mount(PeriodicTable, { target: document.body, props })
+  test(`PropertySelect offers heatmap options and selecting one maps to an element key`, () => {
     mount(PropertySelect, { target: document.body })
 
-    const li = doc_query(`ul.options > li`)
-    li.dispatchEvent(new MouseEvent(`mouseup`))
+    doc_query(`ul.options > li`).dispatchEvent(new MouseEvent(`mouseup`))
 
-    const selected_text = doc_query(`div.multiselect > ul.selected`).textContent?.trim()
-    if (selected_text && ELEM_HEATMAP_LABELS[selected_text]) {
-      const heatmap_key = ELEM_HEATMAP_LABELS[selected_text]
-
-      props.heatmap_values = element_data.map((elem) => elem[heatmap_key] as number)
-      // Check that a background color has been applied (exact color may vary based on color scale)
-      const bg_color = doc_query(`div.element-tile`).style.backgroundColor
-      expect(bg_color).not.toBe(`transparent`)
-      // expect(bg_color).not.toBe(``) // can't test for non-empty string since CSS custom properties don't resolve in happy-dom
-    }
+    const selected_text = doc_query(`div.multiselect > ul.selected`).textContent?.trim() ?? ``
+    expect(selected_text).not.toBe(``)
+    expect(ELEM_HEATMAP_LABELS[selected_text]).toBeDefined()
   })
 
   test.each([
@@ -135,9 +120,9 @@ describe(`PeriodicTable`, () => {
       mount(PeriodicTable, { target: document.body, props })
 
       if (typeof value === `string`) {
-        expect(getComputedStyle(doc_query(`.ptable-grid`) as Element).gap).toBe(value)
+        expect(getComputedStyle(doc_query(`.ptable-grid`)).gap).toBe(value)
       } else if (value > 0) {
-        expect(getComputedStyle(doc_query(`div.spacer`) as Element).gridRow).toBe(`8`)
+        expect(getComputedStyle(doc_query(`div.spacer`)).gridRow).toBe(`8`)
       } else {
         expect(document.querySelector(`div.spacer`)).toBeNull()
       }

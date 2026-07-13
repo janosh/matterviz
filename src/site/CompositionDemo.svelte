@@ -13,7 +13,6 @@
   let parsed_composition: CompositionType = $derived(parse_composition(formula))
 
   const compositions = [
-    // Example compositions
     [`Uranium`, `U`],
     [`Water`, `H2O`],
     [`Iron Oxide`, `Fe2O3`],
@@ -35,18 +34,18 @@
     [`Refractory HEA`, JSON.stringify({ Ti: 20, Zr: 20, Nb: 20, Mo: 20, V: 20 })],
   ]
 
-  // Function to get formula display text
-  function get_formula_display(composition_formula: string): string {
-    let parsed
+  // JSON-object entries above render as e.g. Fe98C2, plain strings pass through as-is
+  // (malformed JSON degrades to the raw string instead of crashing the page)
+  const get_formula_display = (composition_formula: string): string => {
     try {
-      parsed = composition_formula.startsWith(`{`)
-        ? JSON.parse(composition_formula)
-        : composition_formula
-    } catch (err) {
-      console.error(`Invalid JSON formula:`, err)
-      parsed = composition_formula
+      return get_electro_neg_formula(
+        composition_formula.startsWith(`{`)
+          ? JSON.parse(composition_formula)
+          : composition_formula,
+      )
+    } catch {
+      return composition_formula
     }
-    return get_electro_neg_formula(parsed)
   }
 </script>
 

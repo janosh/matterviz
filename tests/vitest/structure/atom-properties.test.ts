@@ -4,6 +4,8 @@ import * as math from '$lib/math'
 import type { Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import * as ap from '$lib/structure/atom-properties'
+import { get_pbc_image_sites } from '$lib/structure/pbc'
+import { make_supercell } from '$lib/structure/supercell'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test, vi } from 'vitest'
 import { make_crystal } from '../setup'
@@ -101,47 +103,46 @@ describe(`Coordination`, () => {
     }>([
       {
         name: `cell boundaries`,
-        sites: [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.5, 0, 0] as Vec3 }],
+        sites: [{ abc: [0, 0, 0] }, { abc: [0.5, 0, 0] }],
         lattice_size: 3,
-        pbc: [true, true, true] as [boolean, boolean, boolean],
+        pbc: [true, true, true],
         expected_length: 2,
-        check: (vals: (number | string)[]) =>
-          vals.every((val) => typeof val === `number` && val > 0),
+        check: (vals) => vals.every((val) => typeof val === `number` && val > 0),
       },
       {
         name: `BCC symmetry`,
         sites: [
-          { abc: [0, 0, 0] as Vec3, element: `Cs` },
-          { abc: [0.5, 0.5, 0.5] as Vec3, element: `Cs` },
+          { abc: [0, 0, 0], element: `Cs` },
+          { abc: [0.5, 0.5, 0.5], element: `Cs` },
         ],
         lattice_size: 5,
-        pbc: [true, true, true] as [boolean, boolean, boolean],
+        pbc: [true, true, true],
         expected_length: 2,
-        check: (vals: (number | string)[]) => vals[0] === 8 && vals[1] === 8,
+        check: (vals) => vals[0] === 8 && vals[1] === 8,
       },
       {
         name: `NaCl corner`,
         sites: [
-          { abc: [0, 0, 0] as Vec3, element: `Na` },
-          { abc: [0.5, 0, 0] as Vec3, element: `Cl` },
-          { abc: [0, 0.5, 0] as Vec3, element: `Cl` },
-          { abc: [0, 0, 0.5] as Vec3, element: `Cl` },
+          { abc: [0, 0, 0], element: `Na` },
+          { abc: [0.5, 0, 0], element: `Cl` },
+          { abc: [0, 0.5, 0], element: `Cl` },
+          { abc: [0, 0, 0.5], element: `Cl` },
         ],
         lattice_size: 5,
-        pbc: [true, true, true] as [boolean, boolean, boolean],
+        pbc: [true, true, true],
         expected_length: 4,
-        check: (vals: (number | string)[]) =>
+        check: (vals) =>
           vals.every((val) => typeof val === `number` && val > 0) &&
           typeof vals[0] === `number` &&
           vals[0] >= 3,
       },
       {
         name: `partial PBC`,
-        sites: [{ abc: [0, 0, 0.3] as Vec3 }, { abc: [0.5, 0.5, 0.3] as Vec3 }],
+        sites: [{ abc: [0, 0, 0.3] }, { abc: [0.5, 0.5, 0.3] }],
         lattice_size: 5,
-        pbc: [true, true, false] as [boolean, boolean, boolean],
+        pbc: [true, true, false],
         expected_length: 2,
-        check: (vals: (number | string)[]) => vals.length === 2,
+        check: (vals) => vals.length === 2,
       },
       {
         // Regression: in the >20-atom optimized boundary-imaging path an inverted filter
@@ -531,42 +532,29 @@ describe(`Coordination`, () => {
     })
   })
 
-  describe(`Supercell coordination coloring`, () => {
-    test(`supercell atoms inherit unit cell coordination colors`, async () => {
-      const { make_supercell } = await import(`$lib/structure/supercell`)
+  test(`supercell atoms track originals via orig_unit_cell_idx for color mapping`, () => {
+    const unit_cell = make_cubic_structure(
+      [
+        { abc: [0, 0, 0], element: `Fe` },
+        { abc: [0.5, 0.5, 0.5], element: `Fe` },
+      ],
+      4,
+    )
+    const supercell = make_supercell(unit_cell, [2, 2, 2])
+    expect(supercell.sites).toHaveLength(16) // 2 atoms * 2³
 
-      const unit_cell = make_cubic_structure(
-        [
-          { abc: [0, 0, 0], element: `Fe` },
-          { abc: [0.5, 0.5, 0.5], element: `Fe` },
-        ],
-        4,
-      )
-      const unit_colors = ap.get_coordination_colors(unit_cell)
-      expect(unit_colors.values).toHaveLength(2)
-
-      const supercell = make_supercell(unit_cell, [2, 2, 2])
-      expect(supercell.sites).toHaveLength(16) // 2 atoms * 2³
-
-      // All supercell atoms track original via orig_unit_cell_idx
-      const orig_indices = supercell.sites.map((site) => site.properties?.orig_unit_cell_idx)
-      expect(orig_indices.every((idx) => idx === 0 || idx === 1)).toBe(true)
-      expect(orig_indices.filter((idx) => idx === 0)).toHaveLength(8)
-      expect(orig_indices.filter((idx) => idx === 1)).toHaveLength(8)
-    })
+    const orig_indices = supercell.sites.map((site) => site.properties?.orig_unit_cell_idx)
+    expect(orig_indices.filter((idx) => idx === 0)).toHaveLength(8)
+    expect(orig_indices.filter((idx) => idx === 1)).toHaveLength(8)
   })
 
-  describe(`Image atom coloring`, () => {
-    test(`image atoms use orig_site_idx for color mapping`, async () => {
-      const { get_pbc_image_sites } = await import(`$lib/structure/pbc`)
+  test(`image atoms use orig_site_idx for color mapping`, () => {
+    const structure = make_cubic_structure([{ abc: [0, 0, 0] }], 3)
+    const with_images = get_pbc_image_sites(structure)
 
-      const structure = make_cubic_structure([{ abc: [0, 0, 0] }], 3)
-      const with_images = get_pbc_image_sites(structure)
-
-      expect(with_images.sites.length).toBeGreaterThan(1)
-      const image_atoms = with_images.sites.slice(1)
-      expect(image_atoms.every((site) => site.properties?.orig_site_idx === 0)).toBe(true)
-    })
+    expect(with_images.sites.length).toBeGreaterThan(1)
+    const image_atoms = with_images.sites.slice(1)
+    expect(image_atoms.every((site) => site.properties?.orig_site_idx === 0)).toBe(true)
   })
 })
 

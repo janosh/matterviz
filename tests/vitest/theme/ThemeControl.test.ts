@@ -16,12 +16,12 @@ vi.mock(`$lib/theme`, () => ({
 vi.mock(`$lib/state.svelte`, () => ({ theme_state: { mode: `light` } }))
 
 describe(`ThemeControl`, () => {
-  test(`renders select element with theme options`, () => {
+  test(`renders theme options with a default aria-label`, () => {
     mount(ThemeControl, { target: document.body, props: {} })
 
     const select = doc_query(`select.theme-control`)
     expect(select).toBeInstanceOf(HTMLSelectElement)
-    expect(select.tagName).toBe(`SELECT`)
+    expect(select.getAttribute(`aria-label`)).toBe(`Color theme`)
 
     const options = select.querySelectorAll(`option`)
     expect(options).toHaveLength(3)
@@ -33,28 +33,17 @@ describe(`ThemeControl`, () => {
     expect(options[2].textContent).toMatch(/^🔄\s+Auto/u)
   })
 
-  test(`applies custom class when provided`, () => {
+  test(`forwards class, aria-label and other props to select element`, () => {
     mount(ThemeControl, {
       target: document.body,
-      props: { class: `custom-theme-control` },
+      props: {
+        class: `custom-theme-control`,
+        'data-testid': `theme-select`,
+        'aria-label': `Select theme`,
+      },
     })
 
     const select = doc_query(`select.theme-control.custom-theme-control`)
-    expect(select).toBeInstanceOf(HTMLSelectElement)
-  })
-
-  test(`has a default aria-label when none is provided`, () => {
-    mount(ThemeControl, { target: document.body, props: {} })
-    expect(doc_query(`select.theme-control`).getAttribute(`aria-label`)).toBe(`Color theme`)
-  })
-
-  test(`forwards additional props to select element`, () => {
-    mount(ThemeControl, {
-      target: document.body,
-      props: { 'data-testid': `theme-select`, 'aria-label': `Select theme` },
-    })
-
-    const select = doc_query(`select.theme-control`)
     expect(select.getAttribute(`data-testid`)).toBe(`theme-select`)
     expect(select.getAttribute(`aria-label`)).toBe(`Select theme`)
   })

@@ -1,8 +1,6 @@
 import { Line, type Vec2 } from '$lib'
 import { resolve_line_tween } from '$lib/plot/core/utils'
-import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
-import { sineIn } from 'svelte/easing'
 import { describe, expect, test } from 'vitest'
 
 describe(`resolve_line_tween (path-morph budget)`, () => {
@@ -221,30 +219,6 @@ describe(`Line`, () => {
     expect(paths).toHaveLength(2)
     expect(paths[0].getAttribute(`d`)).toMatch(/^M50,50Z?$/)
     expect(paths[1].getAttribute(`d`)).toMatch(/^M50,50Z?L50,100L50,100Z$/)
-  })
-
-  test(`applies custom tween options (easing, interpolate)`, () => {
-    const points: Vec2[] = [
-      [10, 10],
-      [50, 50],
-    ]
-    const origin: Vec2 = [0, 100]
-
-    const custom_tween = {
-      duration: 500,
-      easing: sineIn, // Custom easing function
-      interpolate: interpolatePath, // Custom interpolator for paths
-    }
-
-    mount(Line, {
-      target: document.body,
-      props: { points, origin, line_tween: custom_tween },
-    })
-
-    const paths = document.querySelectorAll(`path`)
-    expect(paths).toHaveLength(2)
-    // Further checks on internal tween state are difficult in unit tests,
-    // but mounting confirms the props were accepted.
   })
 
   test(`passes additional props to path elements`, () => {

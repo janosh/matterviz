@@ -212,24 +212,20 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
   const [a, b, c] = matrix
   const [x, y, z] = vector
-  const a_new = a[0] * x + a[1] * y + a[2] * z
-  const b_new = b[0] * x + b[1] * y + b[2] * z
-  const c_new = c[0] * x + c[1] * y + c[2] * z
-  return [a_new, b_new, c_new]
+  return [
+    a[0] * x + a[1] * y + a[2] * z,
+    b[0] * x + b[1] * y + b[2] * z,
+    c[0] * x + c[1] * y + c[2] * z,
+  ]
 }
 
+// Add up any number of same-length vectors
 export function add<T extends NdVector>(...vecs: T[]): T {
-  // add up any number of same-length vectors
   if (vecs.length === 0) throw new Error(`Cannot add zero vectors`)
 
-  const first_vec = vecs[0]
-  const length = first_vec.length
-
-  // Validate all vectors have the same length
-  for (const vec of vecs) {
-    if (vec.length !== length) {
-      throw new Error(`All vectors must have the same length`)
-    }
+  const length = vecs[0].length
+  if (vecs.some((vec) => vec.length !== length)) {
+    throw new Error(`All vectors must have the same length`)
   }
 
   const result = Array.from<number>({ length }).fill(0)
@@ -250,23 +246,12 @@ export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
 
 // Validate matrix structure and return column count
 function validate_matrix(mat: number[][], name: string): number {
-  // Check for empty matrix (no rows)
-  if (mat.length === 0) {
-    throw new Error(`${name} must have at least one row`)
-  }
-
+  if (mat.length === 0) throw new Error(`${name} must have at least one row`)
   if (!mat.every((row) => Array.isArray(row))) {
     throw new Error(`${name} must contain only array rows (no undefined/non-array elements)`)
   }
-
-  const cols = mat[0]?.length
-  if (!Number.isFinite(cols)) throw new Error(`${name} has no columns`)
-
-  // Check for zero columns
-  if (cols === 0) {
-    throw new Error(`${name} must have at least one column`)
-  }
-
+  const cols = mat[0].length
+  if (cols === 0) throw new Error(`${name} must have at least one column`)
   if (!mat.every((row) => row.length === cols)) {
     throw new Error(`${name} must be rectangular`)
   }
@@ -982,11 +967,11 @@ export function compute_bounding_box_2d(vertices: Vec2[]): {
 // Falls back to vertex average for degenerate cases (< 3 vertices or zero area)
 export function polygon_centroid(vertices: Vec2[]): Vec2 {
   if (vertices.length === 0) return [0, 0]
-  if (vertices.length < 3) {
-    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
-    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
-    return [sum_x / vertices.length, sum_y / vertices.length]
-  }
+  const vertex_average = (): Vec2 => [
+    vertices.reduce((acc, [x]) => acc + x, 0) / vertices.length,
+    vertices.reduce((acc, [, y]) => acc + y, 0) / vertices.length,
+  ]
+  if (vertices.length < 3) return vertex_average()
 
   let [signed_area, cx, cy] = [0, 0, 0]
 
@@ -1000,13 +985,7 @@ export function polygon_centroid(vertices: Vec2[]): Vec2 {
   }
 
   signed_area *= 0.5
-
-  // Fall back to vertex average for degenerate polygons
-  if (Math.abs(signed_area) < EPS) {
-    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
-    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
-    return [sum_x / vertices.length, sum_y / vertices.length]
-  }
+  if (Math.abs(signed_area) < EPS) return vertex_average()
 
   const factor = 1 / (6 * signed_area)
   return [cx * factor, cy * factor]

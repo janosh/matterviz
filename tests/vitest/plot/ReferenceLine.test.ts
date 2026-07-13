@@ -10,16 +10,41 @@ const query_all = <T extends Element>(selector: string): T[] =>
   Array.from(document.querySelectorAll<T>(selector))
 
 describe(`ReferenceLine`, () => {
-  const container_style = `width: 800px; height: 600px;`
   const default_bounds = { x_min: 0, x_max: 100, y_min: 0, y_max: 100 }
   // Scale functions mapping data to pixels
   const x_scale = (val: number) => 50 + (val / 100) * 700 // 0-100 -> 50-750
   const y_scale = (val: number) => 550 - (val / 100) * 500 // 0-100 -> 550-50 (inverted)
 
+  // Mount into the pre-created <svg> with shared scales/bounds; extra overrides per test
+  const mount_line = (
+    ref_line: RefLine,
+    extra: Record<string, unknown> = {},
+  ): SVGSVGElement => {
+    const target = doc_query<SVGSVGElement>(`svg`)
+    mount(ReferenceLine, {
+      target,
+      props: {
+        ref_line,
+        line_idx: 0,
+        ...default_bounds,
+        x_scale,
+        y_scale,
+        clip_path_id: `test-clip`,
+        ...extra,
+      },
+    })
+    return target
+  }
+
+  const visible_line = (): SVGLineElement | undefined =>
+    query_all<SVGLineElement>(`line`).find(
+      (line) => line.getAttribute(`stroke`) !== `transparent`,
+    )
+
   beforeEach(() => {
     document.body.innerHTML = ``
     const container = document.createElement(`div`)
-    container.setAttribute(`style`, container_style)
+    container.setAttribute(`style`, `width: 800px; height: 600px;`)
     const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
     svg.setAttribute(`width`, `800`)
     svg.setAttribute(`height`, `600`)
@@ -27,188 +52,53 @@ describe(`ReferenceLine`, () => {
     document.body.append(container)
   })
 
-  test(`renders horizontal line correctly`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = { type: `horizontal`, y: 50 }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const group = doc_query(`.reference-line`)
-    expect(group).toBeInstanceOf(SVGGElement)
-
-    const lines = query_all(`line`)
-    expect(lines).toHaveLength(2) // Hit area + visible line
-
-    // Verify the visible line is at correct y position
-    const visible_line = Array.from(lines).find(
-      (line) => line.getAttribute(`stroke`) !== `transparent`,
-    )
-    expect(visible_line).toBeInstanceOf(SVGLineElement)
-    const y_pos = Number(visible_line?.getAttribute(`y1`) ?? `0`)
-    expect(y_pos).toBeCloseTo(y_scale(50), 0) // y=50 mapped through y_scale
-  })
-
-  test(`renders vertical line correctly`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = { type: `vertical`, x: 50 }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const lines = query_all(`line`)
-    expect(lines).toHaveLength(2) // Hit area + visible line
-
-    // Get the visible line (not transparent)
-    const visible_line = Array.from(lines).find(
-      (line) => line.getAttribute(`stroke`) !== `transparent`,
-    )
-    expect(visible_line).toBeInstanceOf(SVGLineElement)
-
-    // Verify the visible line is at correct x position
-    const x_pos = Number(visible_line?.getAttribute(`x1`) ?? `0`)
-    expect(x_pos).toBeCloseTo(x_scale(50), 0) // x=50 mapped through x_scale
+  test.each<{ ref_line: RefLine; attr: string; expected: number }>([
+    { ref_line: { type: `horizontal`, y: 50 }, attr: `y1`, expected: y_scale(50) },
+    { ref_line: { type: `vertical`, x: 50 }, attr: `x1`, expected: x_scale(50) },
+  ])(`renders $ref_line.type line at the scaled position`, ({ ref_line, attr, expected }) => {
+    mount_line(ref_line)
+    expect(doc_query(`.reference-line`)).toBeInstanceOf(SVGGElement)
+    expect(query_all(`line`)).toHaveLength(2) // Hit area + visible line
+    expect(Number(visible_line()?.getAttribute(attr) ?? `0`)).toBeCloseTo(expected, 0)
   })
 
   test(`applies custom style`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = {
+    mount_line({
       type: `horizontal`,
       y: 50,
       style: { color: `red`, width: 2, dash: `4 2`, opacity: 0.8 },
-    }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
     })
-
-    const lines = query_all(`line`)
-    const visible_line = Array.from(lines).find(
-      (line) => line.getAttribute(`stroke`) !== `transparent`,
-    )
-
-    expect(visible_line?.getAttribute(`stroke`)).toBe(`red`)
-    expect(visible_line?.getAttribute(`stroke-width`)).toBe(`2`)
-    expect(visible_line?.getAttribute(`stroke-dasharray`)).toBe(`4 2`)
-    expect(visible_line?.getAttribute(`stroke-opacity`)).toBe(`0.8`)
+    const line = visible_line()
+    expect(line?.getAttribute(`stroke`)).toBe(`red`)
+    expect(line?.getAttribute(`stroke-width`)).toBe(`2`)
+    expect(line?.getAttribute(`stroke-dasharray`)).toBe(`4 2`)
+    expect(line?.getAttribute(`stroke-opacity`)).toBe(`0.8`)
   })
 
   test(`renders annotation text`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = {
+    mount_line({
       type: `horizontal`,
       y: 50,
       annotation: { text: `Test Label`, position: `end`, side: `above` },
-    }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
     })
-
     const text = doc_query(`text`)
     expect(text).toBeInstanceOf(SVGTextElement)
     expect(text.textContent).toContain(`Test Label`)
   })
 
-  test(`does not render when visible is false`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = { type: `horizontal`, y: 50, visible: false }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const group = target.querySelector(`.reference-line`)
-    expect(group).toBeNull()
-  })
-
-  test(`does not render when line is outside visible range`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = { type: `horizontal`, y: 150 } // Outside y_max
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const group = target.querySelector(`.reference-line`)
-    expect(group).toBeNull()
+  test.each([
+    { desc: `visible is false`, ref_line: { type: `horizontal`, y: 50, visible: false } },
+    { desc: `line is outside visible range`, ref_line: { type: `horizontal`, y: 150 } },
+  ] as const)(`does not render when $desc`, ({ ref_line }) => {
+    const target = mount_line(ref_line)
+    expect(target.querySelector(`.reference-line`)).toBeNull()
   })
 
   test(`calls on_click handler`, () => {
-    const target = doc_query(`svg`)
     const on_click = vi.fn()
-    const ref_line: RefLine = {
-      type: `horizontal`,
-      y: 50,
-      id: `test-line`,
-      label: `Test`,
-    }
+    mount_line({ type: `horizontal`, y: 50, id: `test-line`, label: `Test` }, { on_click })
 
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-        on_click,
-      },
-    })
-
-    const group = doc_query(`.reference-line`)
-    group.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    doc_query(`.reference-line`).dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
 
     expect(on_click).toHaveBeenCalledTimes(1)
     expect(on_click).toHaveBeenCalledWith(
@@ -221,88 +111,26 @@ describe(`ReferenceLine`, () => {
     )
   })
 
-  test(`calls on_hover handler on mouseenter`, () => {
-    const target = doc_query(`svg`)
+  test(`calls on_hover on mouseenter and with null on mouseleave`, () => {
     const on_hover = vi.fn()
-    const ref_line: RefLine = { type: `horizontal`, y: 50 }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-        on_hover,
-      },
-    })
+    mount_line({ type: `horizontal`, y: 50 }, { on_hover })
 
     const group = doc_query(`.reference-line`)
     group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-
     expect(on_hover).toHaveBeenCalledTimes(1)
     expect(on_hover).toHaveBeenCalledWith(
-      expect.objectContaining({
-        line_idx: 0,
-        type: `horizontal`,
-      }),
+      expect.objectContaining({ line_idx: 0, type: `horizontal` }),
     )
-  })
 
-  test(`calls on_hover with null on mouseleave`, () => {
-    const target = doc_query(`svg`)
-    const on_hover = vi.fn()
-    const ref_line: RefLine = { type: `horizontal`, y: 50 }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-        on_hover,
-      },
-    })
-
-    const group = doc_query(`.reference-line`)
-    group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     group.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-
     expect(on_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`respects x_span constraint`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = { type: `horizontal`, y: 50, x_span: [20, 80] }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const lines = query_all(`line`)
-    const visible_line = Array.from(lines).find(
-      (line) => line.getAttribute(`stroke`) !== `transparent`,
-    )
-
-    // x1 should be at x_scale(20), x2 at x_scale(80)
-    const x1 = Number(visible_line?.getAttribute(`x1`) ?? `0`)
-    const x2 = Number(visible_line?.getAttribute(`x2`) ?? `0`)
-
-    expect(x1).toBeCloseTo(x_scale(20), 0)
-    expect(x2).toBeCloseTo(x_scale(80), 0)
+    mount_line({ type: `horizontal`, y: 50, x_span: [20, 80] })
+    const line = visible_line()
+    expect(Number(line?.getAttribute(`x1`) ?? `0`)).toBeCloseTo(x_scale(20), 0)
+    expect(Number(line?.getAttribute(`x2`) ?? `0`)).toBeCloseTo(x_scale(80), 0)
   })
 
   test.each([
@@ -312,94 +140,30 @@ describe(`ReferenceLine`, () => {
     { type: `segment`, p1: [10, 10], p2: [90, 90] },
     { type: `line`, p1: [20, 20], p2: [80, 80] },
   ] as RefLine[])(`renders $type line type`, (ref_line) => {
-    const target = doc_query(`svg`)
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const lines = query_all(`line`)
+    mount_line(ref_line)
     // Should have hit area + visible line
-    expect(lines).toHaveLength(2)
+    expect(query_all(`line`)).toHaveLength(2)
   })
 
-  test(`has correct aria-label`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = { type: `horizontal`, y: 50, label: `Important threshold` }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const group = doc_query(`.reference-line`)
-    expect(group.getAttribute(`aria-label`)).toBe(`Important threshold`)
-  })
-
-  test(`uses annotation text as aria-label fallback`, () => {
-    const target = doc_query(`svg`)
-    const ref_line: RefLine = {
-      type: `horizontal`,
-      y: 50,
-      annotation: { text: `Annotation text` },
-    }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const group = doc_query(`.reference-line`)
-    expect(group.getAttribute(`aria-label`)).toBe(`Annotation text`)
+  test.each([
+    {
+      desc: `label prop`,
+      ref_line: { type: `horizontal`, y: 50, label: `Important threshold` },
+      expected: `Important threshold`,
+    },
+    {
+      desc: `annotation text fallback`,
+      ref_line: { type: `horizontal`, y: 50, annotation: { text: `Annotation text` } },
+      expected: `Annotation text`,
+    },
+  ] as const)(`aria-label uses $desc`, ({ ref_line, expected }) => {
+    mount_line(ref_line)
+    expect(doc_query(`.reference-line`).getAttribute(`aria-label`)).toBe(expected)
   })
 
   test(`uses y2_scale when y_axis is y2`, () => {
-    const target = doc_query(`svg`)
     const y2_scale = (val: number) => 550 - (val / 200) * 500 // Different scale
-    const ref_line: RefLine = { type: `horizontal`, y: 50, y_axis: `y2` }
-
-    mount(ReferenceLine, {
-      target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        y2_scale,
-        clip_path_id: `test-clip`,
-      },
-    })
-
-    const lines = query_all(`line`)
-    const visible_line = Array.from(lines).find(
-      (line) => line.getAttribute(`stroke`) !== `transparent`,
-    )
-
-    // Y should use y2_scale
-    const y1 = Number(visible_line?.getAttribute(`y1`) ?? `0`)
-    expect(y1).toBeCloseTo(y2_scale(50), 0)
+    mount_line({ type: `horizontal`, y: 50, y_axis: `y2` }, { y2_scale })
+    expect(Number(visible_line()?.getAttribute(`y1`) ?? `0`)).toBeCloseTo(y2_scale(50), 0)
   })
 })

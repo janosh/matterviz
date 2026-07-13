@@ -61,32 +61,12 @@
     },
   ]
 
-  const SUBSCRIPT_TO_ASCII: Record<string, string> = {
-    [`\u2080`]: `0`,
-    [`\u2081`]: `1`,
-    [`\u2082`]: `2`,
-    [`\u2083`]: `3`,
-    [`\u2084`]: `4`,
-    [`\u2085`]: `5`,
-    [`\u2086`]: `6`,
-    [`\u2087`]: `7`,
-    [`\u2088`]: `8`,
-    [`\u2089`]: `9`,
-  }
-
-  const SUPERSCRIPT_TO_ASCII: Record<string, string> = {
-    [`\u2070`]: `0`,
-    [`\u00B9`]: `1`,
-    [`\u00B2`]: `2`,
-    [`\u00B3`]: `3`,
-    [`\u2074`]: `4`,
-    [`\u2075`]: `5`,
-    [`\u2076`]: `6`,
-    [`\u2077`]: `7`,
-    [`\u2078`]: `8`,
-    [`\u2079`]: `9`,
-    [`\u207A`]: `+`,
-    [`\u207B`]: `-`,
+  // Unicode subscript/superscript digits and signs -> ASCII equivalents
+  const UNICODE_TO_ASCII: Record<string, string> = {
+    ...Object.fromEntries([...`₀₁₂₃₄₅₆₇₈₉`].map((char, digit) => [char, `${digit}`])),
+    ...Object.fromEntries([...`⁰¹²³⁴⁵⁶⁷⁸⁹`].map((char, digit) => [char, `${digit}`])),
+    [`⁺`]: `+`,
+    [`⁻`]: `-`,
   }
 
   let {
@@ -152,36 +132,10 @@
   const has_storage = typeof localStorage !== `undefined`
   const history_pins_key = $derived(`${history_key}-pins`)
 
-  function load_history(): string[] {
+  function load_entries(key: string): string[] {
     if (max_history <= 0 || !has_storage) return []
     try {
-      const raw = localStorage.getItem(history_key)
-      if (!raw) return []
-      const parsed: unknown = JSON.parse(raw)
-      if (!Array.isArray(parsed)) return []
-      return parsed
-        .filter((item): item is string => typeof item === `string`)
-        .slice(0, max_history)
-    } catch {
-      return []
-    }
-  }
-
-  function save_history(entries: string[]): void {
-    if (max_history <= 0 || !has_storage) return
-    try {
-      localStorage.setItem(history_key, JSON.stringify(entries.slice(0, max_history)))
-    } catch {
-      // localStorage may be unavailable (e.g. private browsing)
-    }
-  }
-
-  function load_pinned(): string[] {
-    if (max_history <= 0 || !has_storage) return []
-    try {
-      const raw = localStorage.getItem(history_pins_key)
-      if (!raw) return []
-      const parsed: unknown = JSON.parse(raw)
+      const parsed: unknown = JSON.parse(localStorage.getItem(key) ?? `null`)
       if (!Array.isArray(parsed)) return []
       return parsed.filter((item): item is string => typeof item === `string`)
     } catch {
@@ -189,14 +143,20 @@
     }
   }
 
-  function save_pinned(entries: string[]): void {
+  function save_entries(key: string, entries: string[]): void {
     if (max_history <= 0 || !has_storage) return
     try {
-      localStorage.setItem(history_pins_key, JSON.stringify(entries))
+      localStorage.setItem(key, JSON.stringify(entries))
     } catch {
-      // localStorage may be unavailable
+      // localStorage may be unavailable (e.g. private browsing)
     }
   }
+
+  const load_history = () => load_entries(history_key).slice(0, max_history)
+  const load_pinned = () => load_entries(history_pins_key)
+  const save_history = (entries: string[]) =>
+    save_entries(history_key, entries.slice(0, max_history))
+  const save_pinned = (entries: string[]) => save_entries(history_pins_key, entries)
 
   let history = $state<string[]>(load_history())
   let pinned_history = $state<string[]>(load_pinned())
@@ -325,11 +285,8 @@
 
   function normalize_unicode_formula(input: string): string {
     let normalized = input
-    for (const [subscript, ascii] of Object.entries(SUBSCRIPT_TO_ASCII)) {
-      normalized = normalized.replaceAll(subscript, ascii)
-    }
-    for (const [superscript, ascii] of Object.entries(SUPERSCRIPT_TO_ASCII)) {
-      normalized = normalized.replaceAll(superscript, ascii)
+    for (const [unicode_char, ascii] of Object.entries(UNICODE_TO_ASCII)) {
+      normalized = normalized.replaceAll(unicode_char, ascii)
     }
     return (
       normalized
@@ -410,13 +367,10 @@
     return `${prefix}${token.element}${suffix}`
   }
 
-  function token_chip_label(
+  // Chip labels show an explicit + prefix for include tokens; serialized values omit it
+  const token_chip_label = (
     token: Pick<FormulaFilterToken, `operator` | `element` | `constraint`>,
-  ): string {
-    const prefix = token.operator === `exclude` ? `-` : `+`
-    const suffix = token.constraint ? `:${token.constraint}` : ``
-    return `${prefix}${token.element}${suffix}`
-  }
+  ): string => (token.operator === `include` ? `+` : ``) + serialize_token(token)
 
   function parse_token(raw_token: string): FormulaFilterToken {
     const token = raw_token.trim()
@@ -571,15 +525,8 @@
     // Otherwise parse as formula (already returns sorted by default)
     // For formulas with wildcards, we can't parse them normally
     if (has_wildcards(trimmed)) {
-      // Use shared utility and extract unique elements
       const tokens = parse_formula_with_wildcards(trimmed)
-      const unique_elements: string[] = []
-      for (const token of tokens) {
-        if (token.element !== null && !unique_elements.includes(token.element)) {
-          unique_elements.push(token.element)
-        }
-      }
-      const elements = unique_elements.sort()
+      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))].sort()
       const wildcards = tokens.filter((token) => token.element === null).map(() => `*`)
       return [...elements, ...wildcards]
     }
@@ -1124,24 +1071,7 @@
     font-size: 0.88em;
     color: inherit;
   }
-  .history-remove {
-    min-width: 24px;
-    min-height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 3pt;
-    border-radius: 50%;
-    opacity: 0.3;
-    color: inherit;
-    &:hover {
-      opacity: 0.8;
-      background: rgba(128, 128, 128, 0.15);
-    }
-  }
+  .history-remove,
   .history-pin {
     display: flex;
     align-items: center;
@@ -1157,6 +1087,10 @@
       opacity: 0.8;
       background: rgba(128, 128, 128, 0.15);
     }
+  }
+  .history-remove {
+    min-width: 24px;
+    min-height: 24px;
   }
   .examples-wrapper {
     position: relative;

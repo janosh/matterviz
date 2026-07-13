@@ -1,6 +1,4 @@
-import { normalize_show_controls } from '$lib/controls'
-import { default_controls } from '$lib/convex-hull'
-import type { HullFaceColorMode, PhaseData } from '$lib/convex-hull/types'
+import type { PhaseData } from '$lib/convex-hull/types'
 import {
   compute_hull_stability,
   get_arity,
@@ -8,7 +6,6 @@ import {
   is_on_hull,
   is_unary_entry,
 } from '$lib/convex-hull/helpers'
-import { HULL_FACE_COLOR_MODES } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {
@@ -113,37 +110,4 @@ describe(`compute_hull_stability`, () => {
       }
     },
   )
-})
-
-describe(`show_controls`, () => {
-  test(`defaults to hover and supports hidden array`, () => {
-    // Verify default (undefined show_controls prop) normalizes to 'hover'
-    expect(normalize_show_controls(undefined).mode).toBe(`hover`)
-
-    // Verify full ShowControlsProp form with hidden controls
-    const config = normalize_show_controls({
-      mode: `hover`,
-      hidden: [`reset`, `fullscreen`],
-    })
-    expect(config.mode).toBe(`hover`)
-    expect(config.class).toBe(`hover-visible`)
-    expect(config.visible(`reset`)).toBe(false)
-    expect(config.visible(`info-pane`)).toBe(true)
-  })
-
-  test(`default_controls no longer carries a show key (moved to top-level show_controls prop)`, () => {
-    expect(`show` in default_controls).toBe(false)
-  })
-})
-
-describe(`HullFaceColorMode`, () => {
-  // toEqual validates content, order, length, and array-ness in one assertion
-  test(`HULL_FACE_COLOR_MODES contains expected modes in order`, () => {
-    expect(HULL_FACE_COLOR_MODES).toEqual([
-      `uniform`,
-      `formation_energy`,
-      `dominant_element`,
-      `facet_index`,
-    ] satisfies HullFaceColorMode[])
-  })
 })

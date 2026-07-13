@@ -426,13 +426,6 @@ def _parse_external_type_with_aliases(
     return {}, aliases
 
 
-def parse_external_type(
-    dist_dir: str, include_spec: str
-) -> dict[str, tuple[str, bool]]:
-    """Parse a type/interface from an external .d.ts file."""
-    return _parse_external_type_with_aliases(dist_dir, include_spec)[0]
-
-
 def _detect_prop_kind(ts_type: str, aliases: dict[str, str] | None = None) -> str:
     """Determine prop kind based on TypeScript type signature."""
     resolved = ts_type

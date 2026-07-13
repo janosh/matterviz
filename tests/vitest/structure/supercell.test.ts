@@ -346,44 +346,14 @@ describe(`image atom behavior`, () => {
 describe(`oblique cell bug tests`, () => {
   test(`handles oblique cells like MgNiF6 correctly`, () => {
     // MgNiF6.cif structure with oblique lattice (56.455° angles)
-    const mgf6_structure: Crystal = {
-      lattice: {
-        matrix: math.cell_to_lattice_matrix(5.2219, 5.2219, 5.2219, 56.455, 56.455, 56.455),
-        pbc: [true, true, true],
-        volume: 92.43478979,
-        a: 5.2219,
-        b: 5.2219,
-        c: 5.2219,
-        alpha: 56.455,
-        beta: 56.455,
-        gamma: 56.455,
-      },
-      sites: [
-        {
-          species: [{ element: `Mg`, occu: 1.0, oxidation_state: 2 }],
-          abc: [0.5, 0.5, 0.5],
-          xyz: [0, 0, 0], // Will be calculated properly
-          label: `Mg0`,
-          properties: {},
-        },
-        {
-          species: [{ element: `Ni`, occu: 1.0, oxidation_state: 2 }],
-          abc: [0.0, 0.0, 0.0],
-          xyz: [0, 0, 0], // Will be calculated properly
-          label: `Ni1`,
-          properties: {},
-        },
+    const mgf6_structure = make_crystal(
+      math.cell_to_lattice_matrix(5.2219, 5.2219, 5.2219, 56.455, 56.455, 56.455),
+      [
+        { element: `Mg`, abc: [0.5, 0.5, 0.5], oxidation_state: 2 },
+        { element: `Ni`, abc: [0, 0, 0], oxidation_state: 2 },
       ],
-      charge: 0,
-    }
-
-    // Calculate correct cartesian coordinates
-    for (const site of mgf6_structure.sites) {
-      site.xyz = math.mat3x3_vec3_multiply(
-        math.transpose_3x3_matrix(mgf6_structure.lattice.matrix),
-        site.abc,
-      )
-    }
+      { charge: 0 },
+    )
 
     const supercell = make_supercell(mgf6_structure, [2, 2, 2])
 
@@ -429,49 +399,23 @@ describe(`oblique cell bug tests`, () => {
     }
   })
 
-  test(`verifies all atoms are within supercell bounds for various oblique cells`, () => {
-    const test_cases = [
-      // Triclinic
-      { a: 4.0, b: 5.0, c: 6.0, alpha: 70, beta: 80, gamma: 110 },
-      // Monoclinic
-      { a: 3.5, b: 4.5, c: 5.5, alpha: 90, beta: 95, gamma: 90 },
-      // Hexagonal-like
-      { a: 4.0, b: 4.0, c: 6.0, alpha: 90, beta: 90, gamma: 120 },
-    ]
-
-    for (const { a, b, c, alpha, beta, gamma } of test_cases) {
-      const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
-      const structure: Crystal = {
-        lattice: {
-          matrix: lattice_matrix,
-          pbc: [true, true, true],
-          volume: math.det_3x3(lattice_matrix),
-          a,
-          b,
-          c,
-          alpha,
-          beta,
-          gamma,
-        },
-        sites: [
-          {
-            species: [{ element: `H`, occu: 1.0, oxidation_state: 0 }],
-            abc: [0.25, 0.25, 0.25],
-            xyz: math.mat3x3_vec3_multiply(
-              math.transpose_3x3_matrix(lattice_matrix),
-              [0.25, 0.25, 0.25],
-            ),
-            label: `H1`,
-            properties: {},
-          },
-        ],
-        charge: 0,
-      }
+  test.each([
+    { name: `triclinic`, a: 4.0, b: 5.0, c: 6.0, alpha: 70, beta: 80, gamma: 110 },
+    { name: `monoclinic`, a: 3.5, b: 4.5, c: 5.5, alpha: 90, beta: 95, gamma: 90 },
+    { name: `hexagonal-like`, a: 4.0, b: 4.0, c: 6.0, alpha: 90, beta: 90, gamma: 120 },
+  ])(
+    `all atoms stay within supercell bounds for $name cell`,
+    ({ a, b, c, alpha, beta, gamma }) => {
+      const structure = make_crystal(
+        math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma),
+        [{ element: `H`, abc: [0.25, 0.25, 0.25] }],
+        { charge: 0 },
+      )
 
       const supercell = make_supercell(structure, [2, 2, 2])
 
-      // All fractional coordinates should be in [0, 1)
       for (const site of supercell.sites) {
+        // All fractional coordinates should be in [0, 1)
         for (const coord of site.abc) {
           expect(coord).toBeGreaterThanOrEqual(0)
           expect(coord).toBeLessThan(1)
@@ -482,13 +426,12 @@ describe(`oblique cell bug tests`, () => {
           math.transpose_3x3_matrix(supercell.lattice.matrix),
           site.abc,
         )
-
         for (let idx = 0; idx < 3; idx++) {
           expect(Math.abs(site.xyz[idx] - recalc_xyz[idx])).toBeLessThan(1e-10)
         }
       }
-    }
-  })
+    },
+  )
 })
 
 describe(`performance tests`, () => {

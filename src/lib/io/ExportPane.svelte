@@ -3,7 +3,7 @@
   import type { ExportItem, ExportSection } from './types'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
-  import { type ComponentProps, onDestroy, type Snippet } from 'svelte'
+  import { onDestroy, type Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 

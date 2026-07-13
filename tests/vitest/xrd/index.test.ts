@@ -30,17 +30,10 @@ describe(`@xrd/ api and compute_xrd_pattern options`, () => {
     { wl: -Infinity, desc: `-Infinity` },
   ])(`invalid numeric wavelength ($desc) throws`, ({ wl }) => {
     const structure = make_simple_cubic(2)
-    try {
-      compute_xrd_pattern(structure, { wavelength: wl })
-      expect.fail(`Expected error for wavelength=${wl}`)
-    } catch (error) {
-      const message = (error as Error).message
-      // relaxed key fragments only, not full wording
-      expect(message).toMatch(/invalid wavelength/i)
-      expect(message).toMatch(/finite positive/i)
-      // ensure the invalid value is echoed for debugging
-      expect(message).toContain(String(wl))
-    }
+    // message must name the problem, echo the value, and state the requirement
+    expect(() => compute_xrd_pattern(structure, { wavelength: wl })).toThrow(
+      `Invalid wavelength: ${wl}. Must be a finite positive number.`,
+    )
   })
 
   test(`valid numeric wavelength works`, () => {

@@ -84,21 +84,6 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   const branches: Branch[] = []
   if (sorted_indices.length === 0) {
     branches.push({ start_index: 0, end_index: n_qpoints - 1, name: `full` })
-  } else if (sorted_indices.length === 1) {
-    const label_idx = sorted_indices[0]
-    const label = label_idx !== undefined ? labeled_indices.get(label_idx) : undefined
-    if (label_idx !== undefined && label) {
-      if (label_idx > 0) {
-        branches.push({ start_index: 0, end_index: label_idx, name: `0-${label}` })
-      }
-      if (label_idx < n_qpoints - 1) {
-        branches.push({
-          start_index: label_idx,
-          end_index: n_qpoints - 1,
-          name: `${label}-end`,
-        })
-      }
-    }
   } else {
     // Optional head segment (if path doesn't start at a labeled point)
     if (sorted_indices[0] > 0) {

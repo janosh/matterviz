@@ -254,29 +254,22 @@
     return sorted
   }
 
+  const filter_by_search = (indices: number[], items: AxisItem[]): number[] =>
+    search_query_norm
+      ? indices.filter((idx) => {
+          const item = items[idx]
+          return (
+            (item.key ?? item.label).toLowerCase().includes(search_query_norm) ||
+            item.label.toLowerCase().includes(search_query_norm)
+          )
+        })
+      : indices
+
   let { vis_x, vis_y } = $derived.by(() => {
     const all_x = Array.from({ length: x_items.length }, (_, idx) => idx)
     const all_y = Array.from({ length: y_items.length }, (_, idx) => idx)
-    const filtered_x = search_query_norm
-      ? all_x.filter((idx) => {
-          const item = x_items[idx]
-          const key = item.key ?? item.label
-          return (
-            key.toLowerCase().includes(search_query_norm) ||
-            item.label.toLowerCase().includes(search_query_norm)
-          )
-        })
-      : all_x
-    const filtered_y = search_query_norm
-      ? all_y.filter((idx) => {
-          const item = y_items[idx]
-          const key = item.key ?? item.label
-          return (
-            key.toLowerCase().includes(search_query_norm) ||
-            item.label.toLowerCase().includes(search_query_norm)
-          )
-        })
-      : all_y
+    const filtered_x = filter_by_search(all_x, x_items)
+    const filtered_y = filter_by_search(all_y, y_items)
     if (!hide_empty) {
       return {
         vis_x: sort_indices(filtered_x, x_items, x_order),
@@ -483,13 +476,9 @@
   })
 
   // Keep selected outlines visible against each cell's background.
-  let selected_outline_flat = $derived.by(() => to_contrast_colors(bg_flat))
+  let selected_outline_flat = $derived(to_contrast_colors(bg_flat))
 
   const get_flat_idx = (x_idx: number, y_idx: number): number => y_idx * n_x + x_idx
-
-  // Look up bg color by indices
-  const get_bg = (x_idx: number, y_idx: number): string | null =>
-    bg_flat[get_flat_idx(x_idx, y_idx)]
 
   // === Cell context builder (only called for clicks, not per-hover) ===
   const build_cell_context = (x_idx: number, y_idx: number): CellContext => ({
@@ -498,13 +487,12 @@
     x_idx,
     y_idx,
     value: get_value(x_idx, y_idx),
-    bg_color: get_bg(x_idx, y_idx),
+    bg_color: bg_flat[get_flat_idx(x_idx, y_idx)],
   })
 
   // === Fully imperative hover management ===
   // ZERO $state writes during mouseover — all DOM updates are direct.
   // This avoids Svelte's reactive flush which would re-evaluate effects.
-  const is_browser = typeof window !== `undefined`
   let tooltip_div: HTMLDivElement | undefined = $state()
   let active_cell_raf = 0 // rAF handle for deferred active_cell update
   let click_timeout_id: ReturnType<typeof setTimeout> | null = null
@@ -635,23 +623,6 @@
     return Math.max(1, vis_row + 1)
   }
 
-  function x_label_diag_grid_col(x_idx: number): number | undefined {
-    const vis_col = get_vis_col(x_idx)
-    if (vis_col === null) return undefined
-    return vis_col + 2
-  }
-
-  function y_label_edge_grid_row(y_idx: number): number | undefined {
-    const vis_row = get_vis_row(y_idx)
-    if (vis_row === null) return undefined
-    return vis_row + 2
-  }
-
-  function x_label_grid_col(x_idx: number): number | undefined {
-    if (use_diagonal_symmetric_labels) return x_label_diag_grid_col(x_idx)
-    return cell_grid_col(x_idx)
-  }
-
   function x_label_grid_row(x_idx: number): number | undefined {
     if (use_diagonal_symmetric_labels) return x_label_diag_grid_row(x_idx)
     if (use_side_split_x_labels && x_idx % 2 !== 0) {
@@ -680,17 +651,10 @@
     return vis_row + 2
   }
 
-  function schedule_raf(callback: () => void): number {
-    if (!is_browser) {
-      callback()
-      return 0
-    }
-    return globalThis.requestAnimationFrame(callback)
-  }
-
+  // Called by event handlers, the axis-key-change effect, and onDestroy; the 0-handle
+  // guard prevents invalid cancelAnimationFrame calls.
   function cancel_raf(raf_handle: number): void {
-    if (!is_browser || raf_handle === 0) return
-    globalThis.cancelAnimationFrame(raf_handle)
+    if (raf_handle !== 0) globalThis.cancelAnimationFrame(raf_handle)
   }
 
   function clear_pending_click(): void {
@@ -731,13 +695,9 @@
   }
 
   function get_cell_el_from_target(event_target: EventTarget | null): HTMLElement | null {
-    const target_node = event_target
-    if (!(target_node instanceof Element)) return null
-    if (target_node instanceof HTMLElement && target_node.dataset.x !== undefined) {
-      return target_node
-    }
-    const closest_cell = target_node.closest(`[data-x][data-y]`)
-    return closest_cell instanceof HTMLElement ? closest_cell : null
+    if (!(event_target instanceof Element)) return null
+    const cell_el = event_target.closest(`[data-x][data-y]`) // matches self too
+    return cell_el instanceof HTMLElement ? cell_el : null
   }
 
   function update_selected_cells(event: MouseEvent, clicked_cell: CellPos): void {
@@ -768,9 +728,10 @@
     const existing_idx = next_cells.findIndex(
       (pos) => cell_pos_key(pos.x_idx, pos.y_idx) === clicked_key,
     )
+    // multi mode with Cmd/Ctrl toggles the clicked cell, otherwise replace selection
     const toggle_mode = selection_mode === `multi` && (event.metaKey || event.ctrlKey)
-    if (existing_idx !== -1 && toggle_mode) next_cells.splice(existing_idx, 1)
-    else if (selection_mode === `multi` && toggle_mode) next_cells.push(clicked_cell)
+    if (toggle_mode && existing_idx !== -1) next_cells.splice(existing_idx, 1)
+    else if (toggle_mode) next_cells.push(clicked_cell)
     else next_cells.splice(0, next_cells.length, clicked_cell)
     selected_cells = next_cells
     last_selected_cell = clicked_cell
@@ -824,7 +785,7 @@
 
     // Defer bindable writes out of the hot mouseover path
     cancel_raf(active_cell_raf)
-    active_cell_raf = schedule_raf(() => {
+    active_cell_raf = globalThis.requestAnimationFrame(() => {
       active_cell = { x_idx, y_idx }
     })
 
@@ -856,7 +817,7 @@
     }
     // Defer reactive cleanup to rAF
     cancel_raf(active_cell_raf)
-    active_cell_raf = schedule_raf(() => {
+    active_cell_raf = globalThis.requestAnimationFrame(() => {
       active_cell = null
       if (!keep_tooltip_visible) tooltip_cell = null
     })
@@ -877,7 +838,6 @@
         else update_tooltip_content(tooltip_div, x_idx, y_idx)
       }
     }
-    if (!onclick) return
     trigger_click(cell_context)
   }
 
@@ -1060,7 +1020,7 @@
   let legend_orientation = $derived<ColorBarOrientation>(
     legend_position === `right` ? `vertical` : `horizontal`,
   )
-  let legend_wrapper_style = $derived.by(() =>
+  let legend_wrapper_style = $derived(
     legend_position === `right`
       ? `--cbar-height: 120px; --cbar-min-height: 120px; --cbar-max-height: 120px;`
       : `--cbar-width: 180px;`,
@@ -1106,11 +1066,8 @@
 
   onMount(() => {
     update_viewport_state()
-    if (!is_browser) return
     globalThis.addEventListener(`mouseup`, handle_mouseup)
-    return () => {
-      globalThis.removeEventListener(`mouseup`, handle_mouseup)
-    }
+    return () => globalThis.removeEventListener(`mouseup`, handle_mouseup)
   })
 
   onDestroy(() => {
@@ -1183,7 +1140,7 @@
           class:highlighted={highlight_x_by_idx.has(x_idx)}
           class:sticky={sticky_x_labels}
           style={label_style || undefined}
-          style:grid-column={x_label_grid_col(x_idx)}
+          style:grid-column={cell_grid_col(x_idx)}
           style:grid-row={x_label_grid_row(x_idx)}
           title={x_label_cell ? undefined : item.label}
         >
@@ -1207,7 +1164,7 @@
           class:highlighted={highlight_y_by_idx.has(y_idx)}
           class:sticky={sticky_y_labels}
           style={label_style || undefined}
-          style:grid-row={y_label_edge_grid_row(y_idx)}
+          style:grid-row={cell_grid_row(y_idx)}
           style:grid-column={y_label_grid_col(y_idx)}
           title={y_label_cell ? undefined : y_item.label}
         >

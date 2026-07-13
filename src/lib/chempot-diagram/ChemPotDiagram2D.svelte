@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition/format'
-  import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
@@ -12,9 +11,8 @@
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { DataSeries, UserContentProps } from '$lib/plot/core/types'
   import { sanitize_html } from '$lib/sanitize'
-  import { SvelteMap } from 'svelte/reactivity'
   import { compute_chempot_async } from './async-compute.svelte'
-  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
+  import { ARITY_COLORS, get_chempot_color_bar_config, get_domain_color_data } from './color'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -22,10 +20,8 @@
   } from './controls-state.svelte'
   import {
     apply_element_padding,
-    best_form_energy_for_formula,
     build_axis_ranges,
-    formula_key_from_composition,
-    get_energy_per_atom,
+    get_energy_stats_by_formula,
     get_min_entries_and_el_refs,
     orthonormal_2d,
     pad_domain_points,
@@ -33,12 +29,7 @@
   import { export_json_file, get_json_string } from './export'
   import { with_hover_pointer } from './pointer'
   import { get_temp_filter_payload, get_valid_temperature } from './temperature'
-  import type {
-    ChemPotColorMode,
-    ChemPotDiagramConfig,
-    ChemPotDiagramData,
-    ChemPotHoverInfo,
-  } from './types'
+  import type { ChemPotDiagramConfig, ChemPotDiagramData, ChemPotHoverInfo } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   let {
@@ -97,7 +88,6 @@
   const color_mode = $derived(overrides.resolve(`color_mode`))
   const color_scale = $derived(overrides.resolve(`color_scale`))
   const reverse_color_scale = $derived(overrides.resolve(`reverse_color_scale`))
-  const arity_colors = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
   const show_tooltip = $derived(config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip)
   const effective_config = $derived({
     ...config,
@@ -183,108 +173,22 @@
     return result
   })
   const domain_entries = $derived(Object.entries(draw_domains))
-  const domain_formulas = $derived(Object.keys(draw_domains))
 
-  interface FormulaEnergyStats {
-    matching_entry_count: number
-    min_energy_per_atom: number | null
-  }
-  type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
-
+  // Raw (non-renormalized) elemental refs for true formation energies
   const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
-  const entry_energy_stats_by_formula = $derived.by(
-    (): SvelteMap<string, FormulaEnergyStats> => {
-      const stats = new SvelteMap<string, FormulaEnergyStats>()
-      for (const entry of temp_filtered_entries) {
-        const formula_key = formula_key_from_composition(entry.composition)
-        const epa = get_energy_per_atom(entry)
-        const prev_stats = stats.get(formula_key)
-        if (!prev_stats) {
-          stats.set(formula_key, {
-            matching_entry_count: 1,
-            min_energy_per_atom: epa,
-          })
-          continue
-        }
-        stats.set(formula_key, {
-          matching_entry_count: prev_stats.matching_entry_count + 1,
-          min_energy_per_atom: Math.min(prev_stats.min_energy_per_atom ?? epa, epa),
-        })
-      }
-      return stats
-    },
-  )
-  const color_mode_labels: Record<NumericColorMode, string> = {
-    energy: `Energy per atom (eV)`,
-    formation_energy: `Formation energy (eV/atom)`,
-    entries: `Entry count`,
-  }
-  function get_numeric_color_value(
-    formula: string,
-    active_color_mode: NumericColorMode,
-  ): number | null {
-    if (active_color_mode === `energy`) {
-      return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
-    }
-    if (active_color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(temp_filtered_entries, formula, raw_el_refs) ?? null
-    }
-    return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
-  }
-  const domain_color_values = $derived.by(
-    (): { value_by_formula: SvelteMap<string, number>; values: number[] } | null => {
-      if (color_mode === `none` || color_mode === `arity`) return null
-      const active_color_mode = color_mode as NumericColorMode
-      const value_by_formula = new SvelteMap<string, number>()
-      const values: number[] = []
-      for (const formula of domain_formulas) {
-        const value = get_numeric_color_value(formula, active_color_mode)
-        if (value == null || !Number.isFinite(value)) continue
-        values.push(value)
-        value_by_formula.set(formula, value)
-      }
-      return { value_by_formula, values }
-    },
-  )
-  const domain_colors = $derived.by((): SvelteMap<string, string> => {
-    const colors = new SvelteMap<string, string>()
-    if (color_mode === `none`) return colors
-    if (color_mode === `arity`) {
-      for (const formula of domain_formulas) {
-        const n_elements = extract_formula_elements(formula).length
-        const color_idx = Math.min(n_elements, arity_colors.length) - 1
-        colors.set(formula, arity_colors[Math.max(0, color_idx)])
-      }
-      return colors
-    }
-    const values_payload = domain_color_values
-    const scale = make_chempot_color_scale(
-      values_payload?.values ?? [],
+  // Memoize separately so color-control toggles don't re-scan all entries
+  const energy_stats = $derived(get_energy_stats_by_formula(temp_filtered_entries))
+  const { colors: domain_colors, color_range } = $derived(
+    get_domain_color_data({
+      formulas: Object.keys(draw_domains),
+      color_mode,
       color_scale,
       reverse_color_scale,
-    )
-    for (const formula of domain_formulas) {
-      const color_val = values_payload?.value_by_formula.get(formula)
-      colors.set(formula, color_val != null && scale ? scale(color_val) : `#999`)
-    }
-    return colors
-  })
-  const color_range = $derived.by((): { min: number; max: number; label: string } | null => {
-    const values = domain_color_values?.values ?? []
-    if (values.length === 0) return null
-    let min_val = values[0],
-      max_val = values[0]
-    for (let idx = 1; idx < values.length; idx++) {
-      if (values[idx] < min_val) min_val = values[idx]
-      if (values[idx] > max_val) max_val = values[idx]
-    }
-    return {
-      min: min_val,
-      max: Math.max(max_val, min_val + 1e-6),
-      label:
-        color_mode === `none` || color_mode === `arity` ? `` : color_mode_labels[color_mode],
-    }
-  })
+      entries: temp_filtered_entries,
+      el_refs: raw_el_refs,
+      energy_stats,
+    }),
+  )
 
   // === Convert domains to ScatterPlot DataSeries ===
   const series = $derived<DataSeries[]>(
@@ -601,7 +505,7 @@
       on_point_click={handle_click}
       style="--scatter-width: 100%; --scatter-height: {render_height}px; --fullscreen-btn-offset: 68px"
     />
-    {#if color_mode !== `none` && color_mode !== `arity` && color_range}
+    {#if color_range}
       {@const color_bar_config = get_chempot_color_bar_config(
         color_scale,
         reverse_color_scale,
@@ -620,7 +524,7 @@
       <div class="arity-legend">
         {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label_text, color_idx (label_text)}
           <span>
-            <span style:background={arity_colors[color_idx]}></span>
+            <span style:background={ARITY_COLORS[color_idx]}></span>
             {label_text}
           </span>
         {/each}

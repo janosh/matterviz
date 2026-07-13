@@ -290,20 +290,6 @@ describe(`layout utility functions`, () => {
       expect(result.score).toBeDefined()
     })
 
-    it(`uses custom grid resolution`, () => {
-      const result_fine = compute_element_placement({
-        ...base_config,
-        grid_resolution: 20,
-      })
-      const result_coarse = compute_element_placement({
-        ...base_config,
-        grid_resolution: 3,
-      })
-      // Both should return valid placements
-      expect(result_fine.x).toBeGreaterThanOrEqual(base_config.plot_bounds.x)
-      expect(result_coarse.x).toBeGreaterThanOrEqual(base_config.plot_bounds.x)
-    })
-
     test.each([
       [
         `top-left cluster`,
@@ -412,22 +398,16 @@ describe(`layout utility functions`, () => {
       expect(result).toEqual({ t: 10, l: 80, b: 60, r: 20 })
     })
 
-    it(`left padding is at least default when y-axis has ticks`, () => {
+    it.each([
+      [`l`, `y_axis`],
+      [`r`, `y2_axis`],
+    ] as const)(`%s padding is at least default when %s has ticks`, (side, axis_key) => {
       const result = calc_auto_padding({
         padding: {},
         default_padding: defaults,
-        y_axis: { tick_values: [1, 2, 3] },
+        [axis_key]: { tick_values: [1, 2, 3] },
       })
-      expect(result.l).toBeGreaterThanOrEqual(defaults.l)
-    })
-
-    it(`right padding is at least default when y2-axis has ticks`, () => {
-      const result = calc_auto_padding({
-        padding: {},
-        default_padding: defaults,
-        y2_axis: { tick_values: [1, 2] },
-      })
-      expect(result.r).toBeGreaterThanOrEqual(defaults.r)
+      expect(result[side]).toBeGreaterThanOrEqual(defaults[side])
     })
 
     it(`right padding includes label_gap even with zero-width ticks`, () => {

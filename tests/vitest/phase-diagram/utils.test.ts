@@ -1,4 +1,4 @@
-import { point_in_polygon, polygon_centroid, type Vec2 } from '$lib/math'
+import { polygon_centroid, type Vec2 } from '$lib/math'
 import type { CompUnit, PhaseDiagramData, PhaseRegion, TempUnit } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
@@ -11,7 +11,6 @@ import {
   format_composition,
   format_formula_html,
   format_formula_svg,
-  format_hover_info_text,
   format_label_html,
   format_label_svg,
   format_temperature,
@@ -31,72 +30,6 @@ import {
   transform_vertices,
 } from '$lib/phase-diagram/utils'
 import { describe, expect, test } from 'vitest'
-
-describe(`point_in_polygon`, () => {
-  const square: Vec2[] = [
-    [0, 0],
-    [1, 0],
-    [1, 1],
-    [0, 1],
-  ]
-  const triangle: Vec2[] = [
-    [0, 0],
-    [1, 0],
-    [0.5, 1],
-  ]
-
-  test.each([
-    {
-      point_x: 0.5,
-      point_y: 0.5,
-      polygon: square,
-      expected: true,
-      desc: `center of square`,
-    },
-    { point_x: 0.1, point_y: 0.1, polygon: square, expected: true, desc: `near corner` },
-    { point_x: 2, point_y: 2, polygon: square, expected: false, desc: `outside square` },
-    {
-      point_x: -1,
-      point_y: 0.5,
-      polygon: square,
-      expected: false,
-      desc: `left of square`,
-    },
-    {
-      point_x: 0.5,
-      point_y: 0.3,
-      polygon: triangle,
-      expected: true,
-      desc: `inside triangle`,
-    },
-    {
-      point_x: 0.9,
-      point_y: 0.9,
-      polygon: triangle,
-      expected: false,
-      desc: `outside triangle`,
-    },
-    {
-      point_x: 0.5,
-      point_y: 0.5,
-      polygon: [
-        [0, 0],
-        [1, 1],
-      ] as Vec2[],
-      expected: false,
-      desc: `2 vertices`,
-    },
-    {
-      point_x: 0.5,
-      point_y: 0.5,
-      polygon: [] as Vec2[],
-      expected: false,
-      desc: `empty polygon`,
-    },
-  ])(`$desc → $expected`, ({ point_x, point_y, polygon, expected }) => {
-    expect(point_in_polygon(point_x, point_y, polygon)).toBe(expected)
-  })
-})
 
 describe(`find_phase_at_point`, () => {
   const test_data: PhaseDiagramData = {
@@ -976,132 +909,7 @@ describe(`get_phase_stability_range`, () => {
   })
 })
 
-// === format_hover_info_text ===
-
-describe(`format_hover_info_text`, () => {
-  const base_info = {
-    region: { id: `liquid`, name: `Liquid`, vertices: [] as Vec2[] },
-    composition: 0.4,
-    temperature: 800,
-    position: { x: 0, y: 0 },
-  }
-
-  test(`includes phase name, temperature, and composition`, () => {
-    const text = format_hover_info_text(base_info)
-    expect(text).toContain(`Phase: Liquid`)
-    expect(text).toContain(`Temperature: 800 K`)
-    expect(text).toContain(`40 at% B`)
-    expect(text).toContain(`60 at% A`)
-  })
-
-  test(`uses custom component names and units`, () => {
-    const text = format_hover_info_text(base_info, `°C`, `at%`, `Cu`, `Ni`)
-    expect(text).toContain(`800 °C`)
-    expect(text).toContain(`40 at% Ni`)
-    expect(text).toContain(`60 at% Cu`)
-  })
-
-  test(`includes horizontal lever rule when present`, () => {
-    const info = {
-      ...base_info,
-      lever_rule: {
-        left_phase: `α`,
-        right_phase: `β`,
-        left_composition: 0.2,
-        right_composition: 0.8,
-        fraction_left: 0.667,
-        fraction_right: 0.333,
-      },
-    }
-    const text = format_hover_info_text(info)
-    expect(text).toContain(`Lever Rule:`)
-    expect(text).toContain(`α: 66.7%`)
-    expect(text).toContain(`β: 33.3%`)
-  })
-
-  test(`includes vertical lever rule when mode is vertical`, () => {
-    const info = {
-      ...base_info,
-      vertical_lever_rule: {
-        bottom_phase: `α`,
-        top_phase: `L`,
-        bottom_temperature: 400,
-        top_temperature: 900,
-        fraction_bottom: 0.6,
-        fraction_top: 0.4,
-      },
-    }
-    const text = format_hover_info_text(info, `K`, `at%`, `A`, `B`, `K`, `vertical`)
-    expect(text).toContain(`Vertical Lever Rule:`)
-    expect(text).toContain(`α: 60.0%`)
-    expect(text).toContain(`L: 40.0%`)
-    expect(text).toContain(`at 400 K`)
-    expect(text).toContain(`at 900 K`)
-  })
-
-  test(`omits lever rule sections when not present`, () => {
-    const text = format_hover_info_text(base_info)
-    expect(text).not.toContain(`Lever Rule`)
-  })
-
-  test(`converts temperature from data unit to display unit`, () => {
-    // Data in K (800), display in °C → should show 527 °C, not 800 °C
-    const text = format_hover_info_text(base_info, `°C`, `at%`, `A`, `B`, `K`)
-    expect(text).toContain(`527 °C`)
-    expect(text).not.toContain(`800`)
-  })
-
-  test(`converts vertical lever rule temperatures to display unit`, () => {
-    const info = {
-      ...base_info,
-      vertical_lever_rule: {
-        bottom_phase: `α`,
-        top_phase: `L`,
-        bottom_temperature: 673.15, // 400 °C in K
-        top_temperature: 1173.15, // 900 °C in K
-        fraction_bottom: 0.6,
-        fraction_top: 0.4,
-      },
-    }
-    const text = format_hover_info_text(info, `°C`, `at%`, `A`, `B`, `K`, `vertical`)
-    expect(text).toContain(`at 400 °C`)
-    expect(text).toContain(`at 900 °C`)
-  })
-
-  test(`only includes active lever rule mode in copied text`, () => {
-    const info = {
-      ...base_info,
-      lever_rule: {
-        left_phase: `α`,
-        right_phase: `β`,
-        left_composition: 0.2,
-        right_composition: 0.8,
-        fraction_left: 0.6,
-        fraction_right: 0.4,
-      },
-      vertical_lever_rule: {
-        bottom_phase: `α`,
-        top_phase: `β`,
-        bottom_temperature: 400,
-        top_temperature: 900,
-        fraction_bottom: 0.7,
-        fraction_top: 0.3,
-      },
-    }
-    // Horizontal mode: only horizontal lever rule
-    const horiz = format_hover_info_text(info, `K`, `at%`, `A`, `B`, `K`, `horizontal`)
-    expect(horiz).toContain(`Lever Rule:`)
-    expect(horiz).toContain(`α: 60.0%`)
-    expect(horiz).not.toContain(`Vertical`)
-
-    // Vertical mode: only vertical lever rule
-    const vert = format_hover_info_text(info, `K`, `at%`, `A`, `B`, `K`, `vertical`)
-    expect(vert).toContain(`Vertical Lever Rule:`)
-    expect(vert).toContain(`α: 70.0%`)
-    // Should not contain a standalone "Lever Rule:" line (only "Vertical Lever Rule:")
-    expect(vert).not.toMatch(/^Lever Rule:/m)
-  })
-})
+// format_hover_info_text is covered in IsobaricBinaryPhaseDiagram.test.ts
 
 // === extract_tdb_reference ===
 

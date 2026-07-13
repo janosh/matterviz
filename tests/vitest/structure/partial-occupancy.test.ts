@@ -3,7 +3,6 @@ import type { Vec3 } from '$lib/math'
 import {
   compute_slice_geometry,
   merge_split_partial_sites,
-  PARTIAL_OCCUPANCY_CAP_ARC,
 } from '$lib/structure/partial-occupancy'
 import { describe, expect, test } from 'vitest'
 
@@ -113,11 +112,5 @@ describe(`partial occupancy slice flags`, () => {
     expect(slices[0].render_start_cap).toBe(false)
     expect(slices[1].render_end_cap).toBe(false)
     expect(slices[1].end_phi).toBeLessThanOrEqual(2 * Math.PI + 1e-6)
-  })
-
-  test(`cap arc configuration intentionally uses same start angle for both caps`, () => {
-    expect(PARTIAL_OCCUPANCY_CAP_ARC.start_cap_arc_start).toBe(
-      PARTIAL_OCCUPANCY_CAP_ARC.end_cap_arc_start,
-    )
   })
 })

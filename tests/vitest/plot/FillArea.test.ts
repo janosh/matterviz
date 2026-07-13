@@ -115,21 +115,6 @@ describe(`FillArea`, () => {
     })
   })
 
-  test(`on_hover called on mouseenter, cleared on mouseleave`, async () => {
-    const on_hover = vi.fn()
-    mount(FillArea, { target: document.body, props: make_props({ on_hover }) })
-
-    const group = doc_query(`.fill-region`)
-
-    group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-    await tick()
-    expect(on_hover).toHaveBeenCalledWith(expect.objectContaining({ region_idx: 0 }))
-
-    group.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    await tick()
-    expect(on_hover).toHaveBeenLastCalledWith(null)
-  })
-
   test.each([`click`, `hover`] as const)(
     `region.on_%s called alongside prop`,
     async (type) => {

@@ -1,17 +1,5 @@
 // Tests for data cleaning utilities
-import type {
-  CleaningConfig,
-  CleaningResult,
-  DataSeries,
-  InstabilityResult,
-  InvalidValueMode,
-  LocalOutlierConfig,
-  LocalOutlierResult,
-  OscillationWeights,
-  PhysicalBounds,
-  SmoothingConfig,
-  TruncationMode,
-} from '$lib/plot'
+import type { DataSeries } from '$lib/plot'
 import {
   apply_bounds,
   clean_multi_series,
@@ -165,23 +153,25 @@ describe(`detect_instability`, () => {
 })
 
 describe(`remove_local_outliers`, () => {
-  it(`returns empty result for empty input`, () => {
-    const result = remove_local_outliers([])
-    expect(result.kept_indices).toEqual([])
-    expect(result.removed_indices).toEqual([])
-    expect(result.iterations_used).toBe(0)
-  })
-
-  it(`keeps all points for small arrays below window size`, () => {
-    const result = remove_local_outliers([1, 2, 3])
-    expect(result.kept_indices).toEqual([0, 1, 2])
-    expect(result.removed_indices).toEqual([])
-    expect(result.iterations_used).toBe(0)
-  })
-
-  it(`keeps all points for smooth linear data`, () => {
-    const y = Array.from({ length: 30 }, (_, idx) => idx * 0.5)
+  it.each([
+    { y: [] as number[], expected_kept: [] as number[], desc: `empty input` },
+    { y: [1, 2, 3], expected_kept: [0, 1, 2], desc: `small array below window size` },
+  ])(`returns all-kept result for $desc`, ({ y, expected_kept }) => {
     const result = remove_local_outliers(y)
+    expect(result.kept_indices).toEqual(expected_kept)
+    expect(result.removed_indices).toEqual([])
+    expect(result.iterations_used).toBe(0)
+  })
+
+  it.each([
+    {
+      y: Array.from({ length: 30 }, (_, idx) => idx * 0.5),
+      config: undefined,
+      desc: `smooth linear data`,
+    },
+    { y: Array(30).fill(5), config: undefined, desc: `constant data (zero MAD)` },
+  ])(`keeps all points for $desc`, ({ y, config }) => {
+    const result = remove_local_outliers(y, config)
     expect(result.kept_indices).toHaveLength(30)
     expect(result.removed_indices).toHaveLength(0)
   })
@@ -249,16 +239,6 @@ describe(`remove_local_outliers`, () => {
     expect(result.kept_indices.length).toBeGreaterThan(0)
   })
 
-  it(`respects window_half parameter`, () => {
-    const y = Array.from({ length: 50 }, (_, idx) => idx)
-    y[25] = 100
-    // With larger window, more neighbors = smoother median = easier to detect spike
-    const large_window = remove_local_outliers(y, { window_half: 10 })
-    const small_window = remove_local_outliers(y, { window_half: 3 })
-    expect(large_window.removed_indices).toContain(25)
-    expect(small_window.removed_indices).toContain(25)
-  })
-
   it(`respects mad_threshold parameter`, () => {
     const y = Array.from({ length: 50 }, (_, idx) => idx + Math.sin(idx) * 2)
     y[25] += 10 // Moderate deviation
@@ -277,14 +257,6 @@ describe(`remove_local_outliers`, () => {
     const result = remove_local_outliers(y, { max_iterations: 10 })
     expect(result.iterations_used).toBeLessThan(10)
     expect(result.removed_indices).toContain(15)
-  })
-
-  it(`handles constant data (zero MAD) gracefully`, () => {
-    const y = Array(30).fill(5)
-    const result = remove_local_outliers(y)
-    // All points identical, zero MAD, nothing should be removed
-    expect(result.kept_indices).toHaveLength(30)
-    expect(result.removed_indices).toHaveLength(0)
   })
 
   it(`handles oscillating data without false positives`, () => {
@@ -985,84 +957,6 @@ describe(`Performance`, () => {
     const result = clean_series({ x, y }, { smooth, in_place: false })
     expect(result.series.x).toHaveLength(length)
     expect(performance.now() - start).toBeLessThan(maxMs)
-  })
-})
-
-describe(`Type Exports`, () => {
-  it(`exports all cleaning types correctly`, () => {
-    // CleaningConfig
-    const config: CleaningConfig = {
-      oscillation_threshold: 2.0,
-      window_size: 5,
-      in_place: false,
-      local_outliers: { window_half: 7, mad_threshold: 2.0, max_iterations: 5 },
-    }
-    expect(config.oscillation_threshold).toBe(2.0)
-    expect(config.local_outliers?.window_half).toBe(7)
-
-    // PhysicalBounds
-    const bounds: PhysicalBounds = { min: 0, max: (x) => x * 2, mode: `clamp` }
-    expect(typeof bounds.max).toBe(`function`)
-
-    // OscillationWeights
-    const weights: OscillationWeights = {
-      derivative_variance: 1.0,
-      amplitude_growth: 0.5,
-      sign_changes: 0.3,
-    }
-    expect(weights.derivative_variance).toBe(1.0)
-
-    // SmoothingConfig
-    const smooth: SmoothingConfig = { type: `savgol`, window: 11, polynomial_order: 3 }
-    expect(smooth.type).toBe(`savgol`)
-
-    // CleaningResult & CleaningQuality
-    const result: CleaningResult = {
-      series: { x: [], y: [] },
-      quality: {
-        points_removed: 0,
-        invalid_values_found: 0,
-        oscillation_detected: false,
-        bounds_violations: 0,
-      },
-    }
-    expect(result.quality.points_removed).toBe(0)
-
-    // InstabilityResult
-    const instability: InstabilityResult = {
-      detected: true,
-      onset_index: 50,
-      onset_x: 50.5,
-      combined_score: 2.3,
-      method_scores: {
-        derivative_variance: 1.5,
-        amplitude_growth: 2.0,
-        sign_changes: 1.2,
-      },
-    }
-    expect(instability.detected).toBe(true)
-
-    // Mode types
-    const invalid_modes: InvalidValueMode[] = [`remove`, `propagate`, `interpolate`]
-    const trunc_modes: TruncationMode[] = [`hard_cut`, `mark_unstable`]
-    expect(invalid_modes).toContain(`remove`)
-    expect(trunc_modes).toContain(`hard_cut`)
-
-    // LocalOutlierConfig
-    const local_outlier_config: LocalOutlierConfig = {
-      window_half: 7,
-      mad_threshold: 2.0,
-      max_iterations: 5,
-    }
-    expect(local_outlier_config.window_half).toBe(7)
-
-    // LocalOutlierResult
-    const local_outlier_result: LocalOutlierResult = {
-      kept_indices: [0, 1, 3, 4],
-      removed_indices: [2],
-      iterations_used: 1,
-    }
-    expect(local_outlier_result.removed_indices).toContain(2)
   })
 })
 

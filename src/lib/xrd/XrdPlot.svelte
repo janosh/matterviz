@@ -164,18 +164,17 @@
       const labels: (string | null)[] = []
 
       // Determine which peaks to annotate
-      const intens = ys
       let selected_indices: number[] = []
-      if (annotate_peaks && annotate_peaks > 0) {
+      if (annotate_peaks > 0) {
         let candidates: { idx: number; y_val: number }[] = []
-        if (annotate_peaks > 0 && annotate_peaks < 1) {
+        if (annotate_peaks < 1) {
           const thresh = annotate_peaks * 100
-          candidates = intens
+          candidates = ys
             .map((y_val, idx) => ({ y_val, idx }))
             .filter(({ y_val }) => y_val > thresh)
         } else {
-          const max_peaks = Math.min(intens.length, Math.floor(annotate_peaks))
-          candidates = intens
+          const max_peaks = Math.min(ys.length, Math.floor(annotate_peaks))
+          candidates = ys
             .map((y_val, idx) => ({ y_val, idx }))
             .sort((a, b) => b.y_val - a.y_val)
             .slice(0, max_peaks)
@@ -209,10 +208,9 @@
 
         if (selected_indices.includes(idx)) {
           const angle_text = actual_show_angles ? `${format_value(xs[idx], `.2f`)}°` : ``
-          const hkl_text =
-            hkls && hkl_format
-              ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `)
-              : ``
+          const hkl_text = hkl_format
+            ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `)
+            : ``
           // Use @ separator between hkl and angle for better clarity
           const separator = hkl_text && angle_text ? ` @ ` : ``
           const text = [hkl_text, angle_text].filter(Boolean).join(separator)
@@ -239,49 +237,32 @@
     if (!broadening_enabled) return []
 
     const include_name = pattern_entries.length > 1
-    // We rescale after broadening so that max peak is 100, matching stick view scale
-    return pattern_entries
-      .map((entry, entry_idx) => {
-        const broadened = compute_broadened_pattern(
-          entry.pattern,
-          broadening_params,
-          angle_range,
-        )
+    // Normalize so the highest peak across ALL broadened profiles is 100: per-profile
+    // normalization would lose relative scaling between patterns, while the stick-view
+    // global max would make broadened peaks tiny (broadening spreads intensity)
+    const broadened = pattern_entries.map((entry) =>
+      compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
+    )
+    let max_y = 1 // avoid div by zero
+    for (const profile of broadened) {
+      for (const y_val of profile.y) max_y = Math.max(max_y, y_val)
+    }
+    // Add transparency when multiple series overlap
+    const alpha = pattern_entries.length > 1 ? 0.6 : 1
 
-        // Normalize broadened profile relative to GLOBAL max intensity of stick patterns?
-        // Or normalize to 100 for *this* profile?
-        // Usually we want relative intensities between patterns to be preserved if possible.
-        // But broadening spreads intensity, so peak heights drop.
-        // If we normalize each profile to 100 independently, we lose relative scaling between patterns.
-        // If we normalize by global_max_intensity (from sticks), broadened peaks will be tiny.
-        // Let's normalize such that the highest peak across ALL broadened patterns is 100.
-
-        return {
-          broadened,
-          entry,
-          entry_idx,
-        }
-      })
-      .map(({ broadened, entry, entry_idx }, _, all_processed) => {
-        // Find global max of all broadened patterns to normalize
-        const all_ys = all_processed.flatMap((processed) => processed.broadened.y)
-        const max_y = Math.max(...all_ys, 1) // Avoid div by zero
-
-        const scale = (y_val: number) => (y_val / max_y) * 100
-        const base_color = entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length]
-        // Add transparency when multiple series overlap
-        const alpha = all_processed.length > 1 ? 0.6 : 1
-
-        return {
-          x: broadened.x,
-          y: broadened.y.map(scale),
-          label: include_name ? entry.label : ``,
-          color: add_alpha(base_color, alpha),
-          markers: `line`, // Only line for profile
-          line_style: { stroke_width: 2 },
-          visible: true,
-        } as DataSeries
-      })
+    return broadened.map((profile, entry_idx) => {
+      const entry = pattern_entries[entry_idx]
+      const base_color = entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length]
+      return {
+        x: profile.x,
+        y: profile.y.map((y_val) => (y_val / max_y) * 100),
+        label: include_name ? entry.label : ``,
+        color: add_alpha(base_color, alpha),
+        markers: `line`, // Only line for profile
+        line_style: { stroke_width: 2 },
+        visible: true,
+      } as DataSeries
+    })
   })
 
   async function handle_file_drop(event: DragEvent) {

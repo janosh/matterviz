@@ -60,14 +60,9 @@
     { value: `bar`, icon: `Graph`, label: `Bar Chart` },
   ] as const
 
-  const color_scheme_options = [
-    { value: `Vesta`, icon: `ColorPalette`, label: `Vesta` },
-    { value: `Jmol`, icon: `ColorPalette`, label: `Jmol` },
-    { value: `Alloy`, icon: `ColorPalette`, label: `Alloy` },
-    { value: `Pastel`, icon: `ColorPalette`, label: `Pastel` },
-    { value: `Muted`, icon: `ColorPalette`, label: `Muted` },
-    { value: `Dark Mode`, icon: `ColorPalette`, label: `Dark Mode` },
-  ] as const
+  const color_scheme_options = (
+    [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
+  ).map((value) => ({ value, icon: `ColorPalette`, label: value }))
 
   const export_options = [
     { value: `copy_formula`, icon: `Copy`, label: `Copy Formula` },

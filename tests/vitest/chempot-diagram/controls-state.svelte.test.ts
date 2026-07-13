@@ -39,7 +39,7 @@ describe(`create_chempot_overrides`, () => {
     expect(overrides.resolve(`element_padding`)).toBe(0)
   })
 
-  test(`throws upfront for keys without any default`, () => {
+  test(`throws for keys without a default, accepts custom_defaults`, () => {
     // `elements` is in ChemPotDiagramConfig but neither in CHEMPOT_DEFAULTS nor custom_defaults
     expect(() => create_chempot_overrides(() => ({}), [`elements`])).toThrow(
       /key 'elements' is missing from both/,
@@ -49,16 +49,18 @@ describe(`create_chempot_overrides`, () => {
       create_chempot_overrides(() => ({}), [`elements`], { elements: [] }),
     ).not.toThrow()
   })
+})
 
-  test(`color mode/scale option values match the original select options`, () => {
-    expect(CHEMPOT_COLOR_MODE_OPTIONS.map(([value]) => value)).toEqual([
-      `none`,
-      `energy`,
-      `formation_energy`,
-      `arity`,
-      `entries`,
-    ])
-    expect(CHEMPOT_COLOR_SCALE_OPTIONS.map(([value]) => value)).toEqual([
+test.each([
+  [
+    `color mode`,
+    CHEMPOT_COLOR_MODE_OPTIONS,
+    [`none`, `energy`, `formation_energy`, `arity`, `entries`],
+  ],
+  [
+    `color scale`,
+    CHEMPOT_COLOR_SCALE_OPTIONS,
+    [
       `interpolateViridis`,
       `interpolatePlasma`,
       `interpolateInferno`,
@@ -67,6 +69,8 @@ describe(`create_chempot_overrides`, () => {
       `interpolateTurbo`,
       `interpolateRdYlBu`,
       `interpolateSpectral`,
-    ])
-  })
+    ],
+  ],
+] as const)(`%s option values match pane selects`, (_label, options, values) => {
+  expect(options.map(([value]) => value)).toEqual([...values])
 })

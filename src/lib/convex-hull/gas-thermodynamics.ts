@@ -42,55 +42,23 @@ export const GAS_STOICHIOMETRY: Readonly<
 
 // Default Thermodynamic Data (abstracted - users can provide their own)
 
-// Entropy contribution T*S at various temperatures (in eV/molecule)
-// Data points at 0, 298, 300, 400, ..., 2000 K
-// This data structure allows interpolation between tabulated values
-interface TabulatedTSData {
-  temperatures: number[] // K
-  values: number[] // eV/molecule
-}
+// Temperature grid (K) shared by all tabulated T*S data below
+// oxfmt-ignore
+const TS_TEMPERATURES = [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
 
-// Default T*S data for common gases (in eV/molecule)
+// Default T*S values (eV/molecule) at TS_TEMPERATURES, interpolated between grid points.
 // Source: Barin Thermochemical Tables and NBS Thermochemical Tables
 // Data compiled to match PIRO (https://github.com/GENESIS-EFRC/piro)
-// Note: These values are T*S in eV/molecule
+// F2 not in Barin/NBS tables used by PIRO - approximated from similar homonuclear diatomics (O2, N2)
 // oxfmt-ignore
-const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, TabulatedTSData>> = {
-  O2: {
-    temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
-    values: [0, 0.317, 0.3192, 0.4433, 0.5718, 0.7041, 0.8396, 0.9781, 1.119, 1.2623, 1.4075, 1.5547, 1.7036, 1.8541, 2.006, 2.1594, 2.3141, 2.47, 2.6271, 2.7854],
-  },
-  H2: {
-    temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
-    values: [0, 0.2019, 0.2034, 0.2886, 0.3776, 0.4697, 0.5645, 0.6614, 0.7605, 0.8614, 0.964, 1.0683, 1.1741, 1.2815, 1.3902, 1.5003, 1.6116, 1.7242, 1.838, 1.9528],
-  },
-  N2: {
-    temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
-    values: [0, 0.2959, 0.2981, 0.4149, 0.5356, 0.6596, 0.7866, 0.9161, 1.0481, 1.1822, 1.3184, 1.4563, 1.596, 1.7372, 1.8799, 2.0239, 2.1693, 2.3158, 2.4634, 2.6122],
-  },
-  CO: {
-    temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
-    values: [0, 0.3054, 0.3076, 0.4275, 0.5515, 0.6788, 0.8092, 0.9423, 1.0778, 1.2155, 1.3552, 1.4967, 1.64, 1.7848, 1.9311, 2.0788, 2.2277, 2.3779, 2.5291, 2.6815],
-  },
-  CO2: {
-    temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
-    values: [0, 0.2202, 0.2218, 0.3113, 0.4057, 0.5042, 0.6064, 0.7116, 0.8197, 0.9303, 1.0432, 1.1582, 1.2751, 1.3938, 1.5141, 1.636, 1.7593, 1.8839, 2.0098, 2.1369],
-  },
-  H2O: {
-    temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
-    values: [0, 0.1946, 0.1961, 0.2749, 0.357, 0.4419, 0.5293, 0.6189, 0.7107, 0.8045, 0.9001, 0.9975, 1.0966, 1.1972, 1.2994, 1.403, 1.5079, 1.6142, 1.7216, 1.8303],
-  },
-  F2: {
-    // F2 not in Barin/NBS tables used by PIRO - approximated from similar homonuclear diatomics (O2, N2)
-    temperatures: [
-      0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600,
-      1700, 1800, 1900, 2000,
-    ],
-    values: [
-      0, 0.31, 0.312, 0.435, 0.56, 0.69, 0.82, 0.96, 1.1, 1.24, 1.38, 1.53, 1.68, 1.83,
-      1.98, 2.13, 2.29, 2.45, 2.61, 2.77,
-    ],
-  },
+const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, number[]>> = {
+  O2: [0, 0.317, 0.3192, 0.4433, 0.5718, 0.7041, 0.8396, 0.9781, 1.119, 1.2623, 1.4075, 1.5547, 1.7036, 1.8541, 2.006, 2.1594, 2.3141, 2.47, 2.6271, 2.7854],
+  H2: [0, 0.2019, 0.2034, 0.2886, 0.3776, 0.4697, 0.5645, 0.6614, 0.7605, 0.8614, 0.964, 1.0683, 1.1741, 1.2815, 1.3902, 1.5003, 1.6116, 1.7242, 1.838, 1.9528],
+  N2: [0, 0.2959, 0.2981, 0.4149, 0.5356, 0.6596, 0.7866, 0.9161, 1.0481, 1.1822, 1.3184, 1.4563, 1.596, 1.7372, 1.8799, 2.0239, 2.1693, 2.3158, 2.4634, 2.6122],
+  CO: [0, 0.3054, 0.3076, 0.4275, 0.5515, 0.6788, 0.8092, 0.9423, 1.0778, 1.2155, 1.3552, 1.4967, 1.64, 1.7848, 1.9311, 2.0788, 2.2277, 2.3779, 2.5291, 2.6815],
+  CO2: [0, 0.2202, 0.2218, 0.3113, 0.4057, 0.5042, 0.6064, 0.7116, 0.8197, 0.9303, 1.0432, 1.1582, 1.2751, 1.3938, 1.5141, 1.636, 1.7593, 1.8839, 2.0098, 2.1369],
+  H2O: [0, 0.1946, 0.1961, 0.2749, 0.357, 0.4419, 0.5293, 0.6189, 0.7107, 0.8045, 0.9001, 0.9975, 1.0966, 1.1972, 1.2994, 1.403, 1.5079, 1.6142, 1.7216, 1.8303],
+  F2: [0, 0.31, 0.312, 0.435, 0.56, 0.69, 0.82, 0.96, 1.1, 1.24, 1.38, 1.53, 1.68, 1.83, 1.98, 2.13, 2.29, 2.45, 2.61, 2.77],
 }
 
 // Formation enthalpies H_f at 0K in eV/molecule
@@ -104,30 +72,18 @@ const DEFAULT_ENTHALPY: Readonly<Partial<Record<GasSpecies, number>>> = {
   // O2, N2, H2, F2 are reference states with H_f = 0
 }
 
-// Interpolation Helpers
-
-// Linearly interpolate T*S value at given temperature
-function interpolate_ts(data: TabulatedTSData, T: number): number {
-  const { temperatures, values } = data
-
-  // Clamp to valid range
-  if (T <= temperatures[0]) return values[0]
-  if (T >= temperatures[temperatures.length - 1]) {
-    return values[values.length - 1]
-  }
+// Linearly interpolate T*S value at given temperature (clamped to the tabulated range)
+function interpolate_ts(values: number[], T: number): number {
+  const temps = TS_TEMPERATURES
+  if (T <= temps[0]) return values[0]
+  if (T >= temps[temps.length - 1]) return values[values.length - 1]
 
   // Find bracketing indices
   let idx = 0
-  while (idx < temperatures.length - 1 && temperatures[idx + 1] < T) idx++
+  while (idx < temps.length - 1 && temps[idx + 1] < T) idx++
 
-  const T_low = temperatures[idx]
-  const T_high = temperatures[idx + 1]
-  const v_low = values[idx]
-  const v_high = values[idx + 1]
-
-  // Linear interpolation
-  const fraction = (T - T_low) / (T_high - T_low)
-  return v_low + fraction * (v_high - v_low)
+  const fraction = (T - temps[idx]) / (temps[idx + 1] - temps[idx])
+  return values[idx] + fraction * (values[idx + 1] - values[idx])
 }
 
 // Default Provider Implementation

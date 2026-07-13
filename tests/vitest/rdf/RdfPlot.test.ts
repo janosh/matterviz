@@ -60,6 +60,7 @@ describe(`RdfPlot`, () => {
     [{ structures: nacl_structure }],
     [{ structures: [nacl_structure, pd_structure] }],
     [{ structures: { NaCl: nacl_structure, Pd: pd_structure } }],
+    [{ structures: make_crystal(5, [[`Si`, [0, 0, 0]]]), mode: `full` as const }],
     [{ structures: [], patterns: [] }],
   ])(`renders %s`, async (props) => {
     const plot = await mount_sized_rdf_plot(props)
@@ -185,12 +186,5 @@ describe(`RdfPlot`, () => {
     })
     expect(plot.textContent).toContain(`Red`)
     expect(plot.textContent).toContain(`Blue`)
-  })
-
-  test(`single atom structure`, async () => {
-    const single_atom = make_crystal(5, [[`Si`, [0, 0, 0]]])
-    const plot = await mount_sized_rdf_plot({ structures: single_atom, mode: `full` })
-    expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
-    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`g(r)`)
   })
 })

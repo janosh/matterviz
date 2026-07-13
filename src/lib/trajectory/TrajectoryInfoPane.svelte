@@ -81,9 +81,13 @@
     const total_frames = trajectory.total_frames ?? trajectory.frames?.length ?? 0
 
     const sections: { title: string; items: InfoItem[] }[] = []
+    // Append a section unless every item filtered out as falsy
+    const push_section = (title: string, items: unknown[]) => {
+      const valid_items = items.filter(is_info_item)
+      if (valid_items.length > 0) sections.push({ title, items: valid_items })
+    }
 
-    // File info section
-    const file_items = [
+    push_section(`File`, [
       current_filename &&
         safe_item(`Name`, current_filename, `file-name`, current_file_path || undefined),
       file_size &&
@@ -97,14 +101,9 @@
         ),
       trajectory.metadata?.source_format &&
         safe_item(`Format`, String(trajectory.metadata.source_format), `file-format`),
-    ].filter(is_info_item)
+    ])
 
-    if (file_items.length > 0) {
-      sections.push({ title: `File`, items: file_items })
-    }
-
-    // Trajectory info section (always show this)
-    const traj_items = [
+    push_section(`Trajectory`, [
       safe_item(
         `Total Frames`,
         `${format_num(total_frames, `.3~s`)} (current: ${format_num(
@@ -134,11 +133,7 @@
           `plot-metadata`,
           `Pre-extracted metadata for plotting`,
         ),
-    ].filter(is_info_item)
-
-    if (traj_items.length > 0) {
-      sections.push({ title: `Trajectory`, items: traj_items })
-    }
+    ])
 
     // Structure info section (only if we have the current frame)
     if (current_frame?.structure?.sites) {
@@ -147,7 +142,7 @@
       const { volume, a, b, c, alpha, beta, gamma } = lattice || {}
       const formula = safe_formula(structure)
 
-      const structure_items = [
+      push_section(`Structure`, [
         safe_item(`Atoms`, `${structure.sites.length}`, `atoms`),
         formula && safe_item(`Formula`, String(formula), `formula`),
         is_valid_number(volume) &&
@@ -179,70 +174,52 @@
             )}°, ${format_num(gamma as number, `.2~f`)}°`,
             `cell-angles`,
           ),
-      ].filter(is_info_item)
-
-      if (structure_items.length > 0) {
-        sections.push({ title: `Structure`, items: structure_items })
-      }
+      ])
     } else if (trajectory.is_indexed) {
       // For indexed trajectories, show a note that frame data is loaded on demand
-      const structure_items = [
+      push_section(`Structure`, [
         safe_item(
           `Frame Loading`,
           `On-demand`,
           `frame-loading`,
           `Structure data loaded when frame is accessed`,
         ),
-      ].filter(is_info_item)
-
-      if (structure_items.length > 0) {
-        sections.push({ title: `Structure`, items: structure_items })
-      }
+      ])
     }
 
-    // Energy section (only for regular trajectories with multiple frames)
+    // Energy/Forces sections (only for regular trajectories with multiple frames)
     if (!trajectory.is_indexed && trajectory.frames.length > 1) {
-      const energies = extract_numeric_array(trajectory.frames, `energy`)
-      if (energies.length > 1) {
-        const current_energy = current_frame?.metadata?.energy
-        const energy_range = format_range(energies, `eV`, `.3~s`)
-
-        const energy_items = [
-          is_valid_number(current_energy) &&
+      const range_sections = [
+        {
+          title: `Energy`,
+          prop: `energy`,
+          unit: `eV`,
+          key: `energy`,
+          current_label: `Current Energy`,
+          range_label: `Energy Range`,
+        },
+        {
+          title: `Forces`,
+          prop: `force_max`,
+          unit: `eV/Å`,
+          key: `force`,
+          current_label: `Max Force`,
+          range_label: `Force Range`,
+        },
+      ] as const
+      for (const { title, prop, unit, key, current_label, range_label } of range_sections) {
+        const values = extract_numeric_array(trajectory.frames, prop)
+        if (values.length <= 1) continue
+        const current = current_frame?.metadata?.[prop]
+        push_section(title, [
+          is_valid_number(current) &&
             safe_item(
-              `Current Energy`,
-              `${format_num(current_energy, `.3~s`)} eV`,
-              `energy-current`,
+              current_label,
+              `${format_num(current, `.3~s`)} ${unit}`,
+              `${key}-current`,
             ),
-          energy_range && safe_item(`Energy Range`, energy_range, `energy-range`),
-        ].filter(is_info_item)
-
-        if (energy_items.length > 0) {
-          sections.push({ title: `Energy`, items: energy_items })
-        }
-      }
-    }
-
-    // Forces section (only for regular trajectories with multiple frames)
-    if (!trajectory.is_indexed && trajectory.frames.length > 1) {
-      const forces = extract_numeric_array(trajectory.frames, `force_max`)
-      if (forces.length > 1) {
-        const current_force = current_frame?.metadata?.force_max
-        const force_range = format_range(forces, `eV/Å`, `.3~s`)
-
-        const force_items = [
-          is_valid_number(current_force) &&
-            safe_item(
-              `Max Force`,
-              `${format_num(current_force, `.3~s`)} eV/Å`,
-              `force-current`,
-            ),
-          force_range && safe_item(`Force Range`, force_range, `force-range`),
-        ].filter(is_info_item)
-
-        if (force_items.length > 0) {
-          sections.push({ title: `Forces`, items: force_items })
-        }
+          safe_item(range_label, format_range(values, unit, `.3~s`), `${key}-range`),
+        ])
       }
     }
 
@@ -260,13 +237,9 @@
           const vol_change =
             (Math.max(...volumes) - Math.min(...volumes)) / Math.min(...volumes)
           if (Math.abs(vol_change) > 0.1 && is_valid_number(vol_change)) {
-            const vol_items = [
+            push_section(`Volume`, [
               safe_item(`Volume Change`, `${format_num(vol_change, `.2~%`)}`, `vol-change`),
-            ].filter(is_info_item)
-
-            if (vol_items.length > 0) {
-              sections.push({ title: `Volume`, items: vol_items })
-            }
+            ])
           }
         }
       }

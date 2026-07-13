@@ -7,7 +7,7 @@ export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svel
     return { route: `/${parts.slice(2, -1).join(`/`)}`, filename }
   })
 
-if (routes.length === 0) console.error(`No routes found: ${routes.length}`)
+if (routes.length === 0) console.error(`No routes found`)
 
 export type RouteEntry = string | [string, string] | [string, string[]]
 
@@ -23,37 +23,21 @@ export function group_demo_routes(demos: string[]): RouteEntry[] {
       const parent = `/${parts[0]}`
       if (!grouped.has(parent)) {
         // Initialize with parent route if it exists
-        const parent_exists = demos.includes(parent)
-        grouped.set(parent, parent_exists ? [parent] : [])
+        grouped.set(parent, demos.includes(parent) ? [parent] : [])
       }
-      const parent_routes = grouped.get(parent)
-      if (parent_routes) parent_routes.push(route)
+      grouped.get(parent)?.push(route)
     } else {
-      // Top-level route
-      const parent = route
-      // Check if this route has children
-      const has_children = demos.some(
-        (demo_route) => demo_route.startsWith(`${route}/`) && demo_route !== route,
-      )
+      // Top-level route: group it (as its own first child) if it has children
+      const has_children = demos.some((demo_route) => demo_route.startsWith(`${route}/`))
       if (has_children) {
-        // Include the parent route itself as the first child
-        if (!grouped.has(parent)) {
-          grouped.set(parent, [parent])
-        } else if (!grouped.get(parent)?.includes(parent)) {
-          // Parent was already initialized but doesn't include itself yet
-          grouped.get(parent)?.unshift(parent)
-        }
+        if (!grouped.has(route)) grouped.set(route, [route])
       } else {
         standalone.push(route)
       }
     }
   }
 
-  // Convert to array of route entries
-  const result: RouteEntry[] = []
-
-  for (const route of standalone) result.push(route)
-
+  const result: RouteEntry[] = [...standalone]
   for (const [parent, children] of grouped) {
     if (children.length > 0) result.push([parent, children.sort()])
   }

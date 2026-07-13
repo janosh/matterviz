@@ -97,28 +97,20 @@
     })),
   )
 
-  // Compute appropriate ranges
-  const ranges = $derived.by(() => {
-    // CN axis should always start at 0 and show at least [0,4]
-    let max_cn = 4 // minimum max value
-    for (const entry of entries_with_data) {
-      for (const [cn] of entry.data.cn_histogram) max_cn = Math.max(max_cn, cn)
-    }
-    const cn_range: Vec2 = [-0.5, max_cn + 0.5]
-
-    return { count: [0, null] as [number, null], cn: cn_range } // Count axis should always start at 0
-  })
-
   // Derive integer CN ticks for axis labels
   const cn_ticks = $derived.by(() => {
-    const all_cns = new SvelteSet<number>()
-    // Always include minimum CN values 0-4
-    for (let idx = 0; idx <= 4; idx++) all_cns.add(idx)
-    // Add actual CN values from data
+    // Always include minimum CN values 0-4, then actual CN values from data
+    const all_cns = new SvelteSet<number>([0, 1, 2, 3, 4])
     for (const entry of entries_with_data) {
       for (const [cn] of entry.data.cn_histogram) all_cns.add(cn)
     }
     return Array.from(all_cns).sort((cn1, cn2) => cn1 - cn2)
+  })
+
+  // CN axis spans all ticks with half-bar margin; count axis always starts at 0
+  const ranges = $derived({
+    count: [0, null] as [number, null],
+    cn: [-0.5, (cn_ticks.at(-1) ?? 4) + 0.5] as Vec2,
   })
   // Build BarPlot series based on split_mode
   const bar_series = $derived.by<BarSeries<CoordinationMetadata>[]>(() => {
@@ -131,12 +123,11 @@
 
       for (const entry of entries_with_data) {
         for (const [element, cn_histogram] of entry.data.cn_histogram_by_element) {
-          if (!element_series_map.has(element)) {
-            element_series_map.set(element, new SvelteMap())
+          let element_map = element_series_map.get(element)
+          if (!element_map) {
+            element_map = new SvelteMap()
+            element_series_map.set(element, element_map)
           }
-          const element_map = element_series_map.get(element)
-          if (!element_map) continue
-
           for (const [cn, count] of cn_histogram) {
             all_cns.add(cn)
             element_map.set(cn, (element_map.get(cn) ?? 0) + count)

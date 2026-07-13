@@ -239,10 +239,21 @@ describe(`format_hover_info_text`, () => {
     const info = create_hover_info({
       region: { id: `two_phase`, name: `α + β`, vertices: [] },
       lever_rule,
+      vertical_lever_rule: {
+        // present but must be ignored in horizontal mode
+        bottom_phase: `α`,
+        top_phase: `β`,
+        bottom_temperature: 400,
+        top_temperature: 900,
+        fraction_bottom: 0.7,
+        fraction_top: 0.3,
+      },
     })
-    const lines = format_hover_info_text(info, `K`, unit).split(`\n`)
+    const text = format_hover_info_text(info, `K`, unit)
+    const lines = text.split(`\n`)
     expect(lines).toContain(`Lever Rule:`)
     for (const line of expected) expect(lines).toContain(line)
+    expect(text).not.toContain(`Vertical`)
   })
 
   test(`vertical mode prints only the vertical lever rule, with converted temps`, () => {

@@ -8,37 +8,26 @@ import {
 import type { BandGridData, FermiSurfaceData, Isosurface } from '$lib/fermi-surface/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
+import { make_grid } from '../setup'
+
+const identity_lattice: Matrix3x3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+]
 
 describe(`extract_fermi_surface`, () => {
-  const identity_lattice: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
-
-  // Create a simple band data with spherical-like isosurface
+  // Band data with a spherical isosurface: energy = distance² from grid center
   function create_spherical_band_data(grid_size: number, fermi_energy: number): BandGridData {
-    const energies: number[][][][][] = [[]]
     const center = (grid_size - 1) / 2
-    const band: number[][][] = []
-
-    for (let x_idx = 0; x_idx < grid_size; x_idx++) {
-      band[x_idx] = []
-      for (let y_idx = 0; y_idx < grid_size; y_idx++) {
-        band[x_idx][y_idx] = []
-        for (let z_idx = 0; z_idx < grid_size; z_idx++) {
-          const dx = x_idx - center
-          const dy = y_idx - center
-          const dz = z_idx - center
-          // Energy increases with distance from center
-          band[x_idx][y_idx][z_idx] = dx * dx + dy * dy + dz * dz
-        }
-      }
-    }
-    energies[0].push(band)
-
+    const band = make_grid(
+      grid_size,
+      grid_size,
+      grid_size,
+      (ix, iy, iz) => (ix - center) ** 2 + (iy - center) ** 2 + (iz - center) ** 2,
+    )
     return {
-      energies,
+      energies: [[band]],
       k_grid: [grid_size, grid_size, grid_size],
       k_lattice: identity_lattice,
       fermi_energy,
@@ -58,14 +47,9 @@ describe(`extract_fermi_surface`, () => {
 
   test(`respects mu offset`, () => {
     const band_data = create_spherical_band_data(10, 9)
-
-    // With mu=0, surface at E_F=9
+    // mu=0 gives surface at E_F=9; mu=7 at E_F=16 (larger radius, different area)
     const result_0 = extract_fermi_surface(band_data, { mu: 0 })
-
-    // With mu=7, surface at E_F=9+7=16 (larger radius)
     const result_7 = extract_fermi_surface(band_data, { mu: 7 })
-
-    // Different mu should give different surface areas
     expect(result_0.metadata.total_area).not.toBe(result_7.metadata.total_area)
   })
 
@@ -105,151 +89,113 @@ describe(`extract_fermi_surface`, () => {
 })
 
 describe(`compute_surface_area`, () => {
-  test(`computes area of simple triangle`, () => {
-    // Single triangle with known area = 0.5 * base * height
-    const surface: Isosurface = {
+  test.each([
+    {
+      label: `single triangle`,
       vertices: [
         [0, 0, 0],
         [1, 0, 0],
         [0, 1, 0],
-      ],
+      ] as Vec3[],
       faces: [[0, 1, 2]],
-      normals: [[0, 0, 1]],
-      band_index: 0,
-      spin: null,
-    }
-
-    const area = compute_surface_area(surface)
-    expect(area).toBeCloseTo(0.5, 5)
-  })
-
-  test(`computes area of unit square (2 triangles)`, () => {
-    const surface: Isosurface = {
+      area: 0.5, // 0.5 * base * height
+    },
+    {
+      label: `unit square (2 triangles)`,
       vertices: [
         [0, 0, 0],
         [1, 0, 0],
         [1, 1, 0],
         [0, 1, 0],
-      ],
+      ] as Vec3[],
       faces: [
         [0, 1, 2],
         [0, 2, 3],
       ],
-      normals: [
-        [0, 0, 1],
-        [0, 0, 1],
-        [0, 0, 1],
-        [0, 0, 1],
-      ],
-      band_index: 0,
-      spin: null,
-    }
-
-    const area = compute_surface_area(surface)
-    expect(area).toBeCloseTo(1.0, 5)
-  })
-
-  test(`returns 0 for empty surface`, () => {
-    const surface: Isosurface = {
-      vertices: [],
-      faces: [],
-      normals: [],
-      band_index: 0,
-      spin: null,
-    }
-
-    expect(compute_surface_area(surface)).toBe(0)
+      area: 1.0,
+    },
+    { label: `empty surface`, vertices: [] as Vec3[], faces: [] as number[][], area: 0 },
+  ])(`computes area of $label`, ({ vertices, faces, area }) => {
+    const surface: Isosurface = { vertices, faces, normals: [], band_index: 0, spin: null }
+    expect(compute_surface_area(surface)).toBeCloseTo(area, 5)
   })
 })
 
 describe(`compute_fermi_slice`, () => {
-  // Create a simple FermiSurfaceData for testing
-  function create_test_fermi_data(): FermiSurfaceData {
-    // A square isosurface in the xy plane
-    const vertices: Vec3[] = [
-      [-0.5, -0.5, 0],
-      [0.5, -0.5, 0],
-      [0.5, 0.5, 0],
-      [-0.5, 0.5, 0],
-      [-0.5, -0.5, 0.1],
-      [0.5, -0.5, 0.1],
-      [0.5, 0.5, 0.1],
-      [-0.5, 0.5, 0.1],
-    ]
+  // Thin box: a square sheet at z=0 extruded to z=0.1
+  const box_vertices: Vec3[] = [
+    [-0.5, -0.5, 0],
+    [0.5, -0.5, 0],
+    [0.5, 0.5, 0],
+    [-0.5, 0.5, 0],
+    [-0.5, -0.5, 0.1],
+    [0.5, -0.5, 0.1],
+    [0.5, 0.5, 0.1],
+    [-0.5, 0.5, 0.1],
+  ]
+  // oxfmt-ignore
+  const tri_faces = [
+    [0, 1, 2], [0, 2, 3], // bottom
+    [4, 6, 5], [4, 7, 6], // top
+    [0, 4, 5], [0, 5, 1], // front
+    [2, 6, 7], [2, 7, 3], // back
+    [0, 3, 7], [0, 7, 4], // left
+    [1, 5, 6], [1, 6, 2], // right
+  ]
+  // oxfmt-ignore
+  const quad_faces = [
+    [0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [2, 6, 7, 3], [0, 3, 7, 4], [1, 5, 6, 2],
+  ]
 
-    // Make a box
-    const faces: number[][] = [
-      [0, 1, 2],
-      [0, 2, 3], // bottom
-      [4, 6, 5],
-      [4, 7, 6], // top
-      [0, 4, 5],
-      [0, 5, 1], // front
-      [2, 6, 7],
-      [2, 7, 3], // back
-      [0, 3, 7],
-      [0, 7, 4], // left
-      [1, 5, 6],
-      [1, 6, 2], // right
-    ]
-
-    const normals: Vec3[] = vertices.map(() => [0, 0, 1])
-
-    return {
-      isosurfaces: [
-        {
-          vertices,
-          faces,
-          normals,
-          band_index: 0,
-          spin: null,
-        },
-      ],
-      k_lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      fermi_energy: 0,
-      reciprocal_cell: `wigner_seitz`,
-      metadata: {
-        n_bands: 1,
-        n_surfaces: 1,
-        total_area: 1,
+  const make_box_fermi_data = (faces: number[][] = tri_faces): FermiSurfaceData => ({
+    isosurfaces: [
+      {
+        vertices: box_vertices,
+        faces,
+        normals: box_vertices.map(() => [0, 0, 1]),
+        band_index: 0,
+        spin: null,
       },
-    }
-  }
+    ],
+    k_lattice: [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    fermi_energy: 0,
+    reciprocal_cell: `wigner_seitz`,
+    metadata: { n_bands: 1, n_surfaces: 1, total_area: 1 },
+  })
 
-  test(`computes slice through Fermi surface`, () => {
-    const fermi_data = create_test_fermi_data()
-    const slice = compute_fermi_slice(fermi_data, {
+  test(`computes slice with metadata and ordered contour points`, () => {
+    const slice = compute_fermi_slice(make_box_fermi_data(), {
       miller_indices: [0, 0, 1],
       distance: 0.05,
     })
 
     expect(slice.plane_normal).toBeDefined()
     expect(slice.plane_distance).toBe(0.05)
-  })
+    expect(slice.metadata.n_lines).toBe(slice.isolines.length)
+    expect(slice.metadata.has_properties).toBe(false)
 
-  test(`returns metadata about isolines`, () => {
-    const fermi_data = create_test_fermi_data()
-    const slice = compute_fermi_slice(fermi_data)
-
-    expect(slice.metadata.n_lines).toBeDefined()
-    expect(typeof slice.metadata.has_properties).toBe(`boolean`)
+    // Consecutive points must be close: contours are traced, not random scribbles
+    for (const isoline of slice.isolines) {
+      for (let idx = 0; idx < isoline.points_2d.length - 1; idx++) {
+        const [x1, y1] = isoline.points_2d[idx]
+        const [x2, y2] = isoline.points_2d[idx + 1]
+        expect(Math.hypot(x2 - x1, y2 - y1)).toBeLessThan(1.0)
+      }
+    }
   })
 
   test(`throws error for zero miller indices [0, 0, 0]`, () => {
-    const fermi_data = create_test_fermi_data()
-
-    expect(() => compute_fermi_slice(fermi_data, { miller_indices: [0, 0, 0] })).toThrow(
-      /Invalid miller indices.*at least one index must be non-zero/,
-    )
+    expect(() =>
+      compute_fermi_slice(make_box_fermi_data(), { miller_indices: [0, 0, 0] }),
+    ).toThrow(/Invalid miller indices.*at least one index must be non-zero/)
   })
 
   test(`throws error for degenerate k_lattice producing zero plane normal`, () => {
-    const fermi_data = create_test_fermi_data()
-    // Set k_lattice to degenerate vectors (all zeros)
+    const fermi_data = make_box_fermi_data()
     fermi_data.k_lattice = [
       [0, 0, 0],
       [0, 0, 0],
@@ -261,198 +207,61 @@ describe(`compute_fermi_slice`, () => {
     )
   })
 
-  test(`produces ordered contour points (not random scribbles)`, () => {
-    const fermi_data = create_test_fermi_data()
-    const slice = compute_fermi_slice(fermi_data, {
-      miller_indices: [0, 0, 1],
-      distance: 0.05,
-    })
-
-    // Each isoline should have ordered points where consecutive points are close
-    for (const isoline of slice.isolines) {
-      if (isoline.points_2d.length < 2) continue
-
-      for (let idx = 0; idx < isoline.points_2d.length - 1; idx++) {
-        const [x1, y1] = isoline.points_2d[idx]
-        const [x2, y2] = isoline.points_2d[idx + 1]
-        const dist = Math.hypot(x2 - x1, y2 - y1)
-        // Consecutive points should be close (within a reasonable mesh edge length)
-        // This ensures contours are traced, not random scribbles
-        expect(dist).toBeLessThan(1.0)
-      }
-    }
-  })
-
   test(`correctly handles quad faces (4 vertices per face)`, () => {
-    // Create a simple box with quad faces instead of triangles
-    // This tests the fix for the bug where only the first 3 edges were checked
-    const vertices: Vec3[] = [
-      [-0.5, -0.5, 0],
-      [0.5, -0.5, 0],
-      [0.5, 0.5, 0],
-      [-0.5, 0.5, 0],
-      [-0.5, -0.5, 0.1],
-      [0.5, -0.5, 0.1],
-      [0.5, 0.5, 0.1],
-      [-0.5, 0.5, 0.1],
-    ]
-
-    // Use quad faces (4 vertices each) instead of triangles
-    const faces: number[][] = [
-      [0, 1, 2, 3], // bottom quad
-      [4, 7, 6, 5], // top quad
-      [0, 4, 5, 1], // front quad
-      [2, 6, 7, 3], // back quad
-      [0, 3, 7, 4], // left quad
-      [1, 5, 6, 2], // right quad
-    ]
-
-    const normals: Vec3[] = vertices.map(() => [0, 0, 1])
-
-    const fermi_data: FermiSurfaceData = {
-      isosurfaces: [
-        {
-          vertices,
-          faces,
-          normals,
-          band_index: 0,
-          spin: null,
-        },
-      ],
-      k_lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      fermi_energy: 0,
-      reciprocal_cell: `wigner_seitz`,
-      metadata: {
-        n_bands: 1,
-        n_surfaces: 1,
-        total_area: 1,
-      },
-    }
-
-    // Slice at z=0.05 should intersect the side faces
-    const slice = compute_fermi_slice(fermi_data, {
+    // Regression: only the first 3 edges of each face used to be checked, so the
+    // 4th edge of a quad never produced intersections
+    const slice = compute_fermi_slice(make_box_fermi_data(quad_faces), {
       miller_indices: [0, 0, 1],
       distance: 0.05,
     })
 
-    // Should produce isolines since the plane intersects the box
     expect(slice.isolines.length).toBeGreaterThan(0)
-
-    // The isoline should form a closed rectangular contour
-    // With quad faces, edges 3->0 (the 4th edge) must be checked for intersections
     const total_points = slice.isolines.reduce((sum, line) => sum + line.points_2d.length, 0)
     expect(total_points).toBeGreaterThan(0)
   })
 })
 
 describe(`detect_irreducible_bz`, () => {
-  const identity_lattice: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
-
-  test(`returns true for vertices in positive octant only`, () => {
-    const fermi_data: FermiSurfaceData = {
-      isosurfaces: [
-        {
-          vertices: [
-            [0.1, 0.2, 0.3],
-            [0.5, 0.5, 0.5],
-            [0.8, 0.4, 0.2],
-            [0.3, 0.6, 0.1],
-            [0.2, 0.2, 0.2],
-            [0.4, 0.3, 0.5],
-            [0.1, 0.1, 0.1],
-            [0.7, 0.7, 0.7],
-            [0.6, 0.4, 0.3],
-            [0.5, 0.5, 0.4],
-            [0.3, 0.3, 0.3],
-          ],
-          faces: [[0, 1, 2]],
-          normals: [],
-          band_index: 0,
-          spin: null,
-        },
-      ],
-      k_lattice: identity_lattice,
-      fermi_energy: 0,
-      reciprocal_cell: `wigner_seitz`,
-      metadata: { n_bands: 1, n_surfaces: 1, total_area: 1 },
-    }
-
-    expect(detect_irreducible_bz(fermi_data)).toBe(true)
+  const make_data = (...vertex_lists: Vec3[][]): FermiSurfaceData => ({
+    isosurfaces: vertex_lists.map((vertices) => ({
+      vertices,
+      faces: [],
+      normals: [],
+      band_index: 0,
+      spin: null,
+    })),
+    k_lattice: identity_lattice,
+    fermi_energy: 0,
+    reciprocal_cell: `wigner_seitz`,
+    metadata: { n_bands: 1, n_surfaces: vertex_lists.length, total_area: 0 },
   })
 
-  test(`returns false for vertices spanning full BZ`, () => {
-    const fermi_data: FermiSurfaceData = {
-      isosurfaces: [
-        {
-          vertices: [
-            [0.5, 0.5, 0.5],
-            [-0.5, 0.5, 0.5],
-            [0.5, -0.5, 0.5],
-            [0.5, 0.5, -0.5],
-            [-0.5, -0.5, 0.5],
-            [0.5, -0.5, -0.5],
-            [-0.5, 0.5, -0.5],
-            [-0.5, -0.5, -0.5],
-            [0, 0, 0],
-            [0.3, -0.2, 0.1],
-            [-0.1, 0.4, -0.3],
-          ],
-          faces: [[0, 1, 2]],
-          normals: [],
-          band_index: 0,
-          spin: null,
-        },
-      ],
-      k_lattice: identity_lattice,
-      fermi_energy: 0,
-      reciprocal_cell: `wigner_seitz`,
-      metadata: { n_bands: 1, n_surfaces: 1, total_area: 1 },
-    }
+  // 11 vertices (> IRREDUCIBLE_BZ_MIN_VERTICES), all in the positive octant
+  const positive_verts: Vec3[] = Array.from({ length: 11 }, (_, idx) => [
+    0.1 + idx * 0.05,
+    0.2,
+    0.3,
+  ])
+  // 11 vertices spanning positive and negative octants
+  const spanning_verts: Vec3[] = positive_verts.map((vert, idx) =>
+    idx % 2 ? vert : [-vert[0], vert[1], vert[2]],
+  )
 
-    expect(detect_irreducible_bz(fermi_data)).toBe(false)
-  })
-
-  test(`returns false for empty isosurfaces`, () => {
-    const fermi_data: FermiSurfaceData = {
-      isosurfaces: [],
-      k_lattice: identity_lattice,
-      fermi_energy: 0,
-      reciprocal_cell: `wigner_seitz`,
-      metadata: { n_bands: 0, n_surfaces: 0, total_area: 0 },
-    }
-
-    expect(detect_irreducible_bz(fermi_data)).toBe(false)
-  })
-
-  test(`returns false for too few vertices`, () => {
-    const fermi_data: FermiSurfaceData = {
-      isosurfaces: [
-        {
-          vertices: [
-            [0.1, 0.2, 0.3],
-            [0.5, 0.5, 0.5],
-          ],
-          faces: [],
-          normals: [],
-          band_index: 0,
-          spin: null,
-        },
-      ],
-      k_lattice: identity_lattice,
-      fermi_energy: 0,
-      reciprocal_cell: `wigner_seitz`,
-      metadata: { n_bands: 1, n_surfaces: 1, total_area: 0 },
-    }
-
-    // Only 2 vertices, needs > 10 to be considered valid irreducible data
-    expect(detect_irreducible_bz(fermi_data)).toBe(false)
+  test.each([
+    {
+      label: `vertices in positive octant only`,
+      data: make_data(positive_verts),
+      expected: true,
+    },
+    { label: `vertices spanning full BZ`, data: make_data(spanning_verts), expected: false },
+    { label: `empty isosurfaces`, data: make_data(), expected: false },
+    {
+      // needs > 10 vertices to be considered valid irreducible data
+      label: `too few vertices`,
+      data: make_data(positive_verts.slice(0, 2)),
+      expected: false,
+    },
+  ])(`returns $expected for $label`, ({ data, expected }) => {
+    expect(detect_irreducible_bz(data)).toBe(expected)
   })
 })

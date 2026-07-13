@@ -182,7 +182,6 @@ describe(`edit-atoms: undo/redo stack`, () => {
     ops.push_undo(struct_v1)
     const restored = ops.undo(struct_v2)
 
-    expect(restored).not.toBeNull()
     expect(restored?.sites).toHaveLength(2)
     expect(ops.undo_count).toBe(0)
     expect(ops.redo_count).toBe(1)
@@ -197,22 +196,14 @@ describe(`edit-atoms: undo/redo stack`, () => {
     ops.undo(struct_v2)
     const restored = ops.redo(struct_v1)
 
-    expect(restored).not.toBeNull()
     expect(restored?.sites).toHaveLength(3)
     expect(ops.undo_count).toBe(1)
     expect(ops.redo_count).toBe(0)
   })
 
-  test(`undo on empty stack returns null`, () => {
+  test.each([`undo`, `redo`] as const)(`%s on empty stack returns null`, (direction) => {
     const ops = create_stack_ops()
-    const struct = get_dummy_structure(`H`, 2)
-    expect(ops.undo(struct)).toBeNull()
-  })
-
-  test(`redo on empty stack returns null`, () => {
-    const ops = create_stack_ops()
-    const struct = get_dummy_structure(`H`, 2)
-    expect(ops.redo(struct)).toBeNull()
+    expect(ops[direction](get_dummy_structure(`H`, 2))).toBeNull()
   })
 
   test(`push_undo caps at MAX_HISTORY`, () => {
@@ -225,16 +216,12 @@ describe(`edit-atoms: undo/redo stack`, () => {
 
   test(`push_undo clears redo stack`, () => {
     const ops = create_stack_ops()
-    const struct_v1 = get_dummy_structure(`H`, 2)
-    const struct_v2 = get_dummy_structure(`H`, 3)
-    const struct_v3 = get_dummy_structure(`H`, 4)
-
-    ops.push_undo(struct_v1)
-    ops.undo(struct_v2)
+    ops.push_undo(get_dummy_structure(`H`, 2))
+    ops.undo(get_dummy_structure(`H`, 3))
     expect(ops.redo_count).toBe(1)
 
     // New edit should clear redo
-    ops.push_undo(struct_v3)
+    ops.push_undo(get_dummy_structure(`H`, 4))
     expect(ops.redo_count).toBe(0)
   })
 

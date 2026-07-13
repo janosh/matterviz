@@ -30,25 +30,16 @@ export function get_value_type(value: unknown): JsonValueType {
   if (value === undefined) return `undefined`
 
   const type = typeof value
+  // string/number/boolean/symbol/bigint/function map directly to JsonValueType
+  if (type !== `object`) return type
 
-  if (type === `string`) return `string`
-  if (type === `number`) return `number`
-  if (type === `boolean`) return `boolean`
-  if (type === `symbol`) return `symbol`
-  if (type === `bigint`) return `bigint`
-  if (type === `function`) return `function`
-
-  if (type === `object`) {
-    if (Array.isArray(value)) return `array`
-    if (value instanceof Date) return `date`
-    if (value instanceof RegExp) return `regexp`
-    if (value instanceof Map) return `map`
-    if (value instanceof Set) return `set`
-    if (value instanceof Error) return `error`
-    return `object`
-  }
-
-  return `object` // fallback
+  if (Array.isArray(value)) return `array`
+  if (value instanceof Date) return `date`
+  if (value instanceof RegExp) return `regexp`
+  if (value instanceof Map) return `map`
+  if (value instanceof Set) return `set`
+  if (value instanceof Error) return `error`
+  return `object`
 }
 
 // Check if a value type is expandable (has children)
@@ -100,23 +91,12 @@ function format_path_segment(segment: string | number, is_first: boolean = false
 // e.g., ["users", 0, "name"] -> "users[0].name"
 // e.g., [0, "name"] -> "[0].name" (root numeric index)
 // e.g., ["key.with.dot"] -> '["key.with.dot"]' (root special key)
-export function format_path(segments: (string | number)[]): string {
-  if (segments.length === 0) return ``
-
-  let result = format_path_segment(segments[0], true)
-  for (let idx = 1; idx < segments.length; idx++) {
-    result += format_path_segment(segments[idx])
-  }
-  return result
-}
+export const format_path = (segments: (string | number)[]): string =>
+  segments.map((segment, idx) => format_path_segment(segment, idx === 0)).join(``)
 
 // Build a path string from parent path and key
-export function build_path(parent_path: string, key: string | number): string {
-  if (!parent_path) {
-    return format_path_segment(key, true)
-  }
-  return parent_path + format_path_segment(key)
-}
+export const build_path = (parent_path: string, key: string | number): string =>
+  parent_path ? parent_path + format_path_segment(key) : format_path_segment(key, true)
 
 // Format a primitive/special value to string (shared by serialize and preview)
 function format_special_value(value: unknown, type: JsonValueType): string | null {
@@ -192,20 +172,13 @@ export function matches_search(
   if (!query) return false
 
   const lower_query = query.toLowerCase()
-
-  // Check path
   if (path.toLowerCase().includes(lower_query)) return true
-
-  // Check key
   if (key !== null && String(key).toLowerCase().includes(lower_query)) return true
-
-  // Check value (for primitives)
-  const type = get_value_type(value)
-  if (is_primitive_type(type)) {
-    return String(value).toLowerCase().includes(lower_query)
-  }
-
-  return false
+  // Check value (only primitives are searchable as strings)
+  return (
+    is_primitive_type(get_value_type(value)) &&
+    String(value).toLowerCase().includes(lower_query)
+  )
 }
 
 // Iterate over children of an expandable value, calling visitor for each
@@ -360,46 +333,23 @@ export function parse_path(path: string): (string | number)[] {
 // Check if two values are deeply equal (for change detection)
 export function values_equal(val_a: unknown, val_b: unknown): boolean {
   if (val_a === val_b) return true
-  // Handle NaN (NaN !== NaN in JS, but we want NaN === NaN for change detection)
-  if (
-    typeof val_a === `number` &&
-    typeof val_b === `number` &&
-    Number.isNaN(val_a) &&
-    Number.isNaN(val_b)
-  )
-    return true
-  if (val_a === null || val_b === null) return false
-  if (typeof val_a !== typeof val_b) return false
+  // NaN !== NaN in JS, but we want NaN === NaN for change detection
+  if (typeof val_a === `number` && typeof val_b === `number`) {
+    return Number.isNaN(val_a) && Number.isNaN(val_b)
+  }
+  if (val_a === null || val_b === null || typeof val_a !== typeof val_b) return false
 
   const type = get_value_type(val_a)
-
-  // For primitives, strict equality is sufficient
-  if (is_primitive_type(type) || type === `symbol`) {
-    return val_a === val_b
-  }
-
-  // For dates, compare timestamps
-  if (type === `date`) {
-    return (val_a as Date).getTime() === (val_b as Date).getTime()
-  }
-
-  // For regex, compare string representation
-  if (type === `regexp`) {
-    return (val_a as RegExp).toString() === (val_b as RegExp).toString()
-  }
-
-  // For objects and arrays, do shallow comparison (for performance)
-  // Deep changes will be detected at the child level
-  if (type === `array`) {
-    return (val_a as unknown[]).length === (val_b as unknown[]).length
-  }
-
+  if (type !== get_value_type(val_b)) return false
+  if (is_primitive_type(type) || type === `symbol`) return false // strict equality failed above
+  if (type === `date`) return (val_a as Date).getTime() === (val_b as Date).getTime()
+  if (type === `regexp`) return (val_a as RegExp).toString() === (val_b as RegExp).toString()
+  // Objects and arrays use shallow size comparison for performance —
+  // deep changes are detected at the child level
+  if (type === `array`) return (val_a as unknown[]).length === (val_b as unknown[]).length
   if (type === `object`) {
-    const keys_a = Object.keys(val_a as object)
-    const keys_b = Object.keys(val_b as object)
-    return keys_a.length === keys_b.length
+    return Object.keys(val_a as object).length === Object.keys(val_b as object).length
   }
-
   return false
 }
 
@@ -547,46 +497,29 @@ export function compute_diff(
 ): Map<string, DiffEntry> {
   const old_type = get_value_type(old_val)
   const new_type = get_value_type(new_val)
-
-  // Different types = changed
-  if (old_type !== new_type) {
+  const mark_changed = () =>
     result.set(current_path, {
       status: `changed`,
       path: current_path,
       old_value: old_val,
       new_value: new_val,
     })
+
+  // Different types = changed
+  if (old_type !== new_type) {
+    mark_changed()
     return result
   }
 
-  // Both primitive: compare values (with NaN === NaN special case)
+  // Both primitive: compare values (values_equal treats NaN === NaN)
   if (is_primitive_type(old_type)) {
-    const both_nan =
-      typeof old_val === `number` &&
-      typeof new_val === `number` &&
-      Number.isNaN(old_val) &&
-      Number.isNaN(new_val)
-    if (!both_nan && old_val !== new_val) {
-      result.set(current_path, {
-        status: `changed`,
-        path: current_path,
-        old_value: old_val,
-        new_value: new_val,
-      })
-    }
+    if (!values_equal(old_val, new_val)) mark_changed()
     return result
   }
 
   // Non-expandable special types (date, regexp, etc): compare string forms
   if (!is_expandable_type(old_type)) {
-    if (String(old_val) !== String(new_val)) {
-      result.set(current_path, {
-        status: `changed`,
-        path: current_path,
-        old_value: old_val,
-        new_value: new_val,
-      })
-    }
+    if (String(old_val) !== String(new_val)) mark_changed()
     return result
   }
 
@@ -654,16 +587,9 @@ export function compute_diff(
 
   // Maps: wrap entries as { key, value } to match JsonNode.get_children() rendering
   if (old_type === `map`) {
-    diff_indexed(
-      Array.from((old_val as Map<unknown, unknown>).entries()).map(([key, val]) => ({
-        key,
-        value: val,
-      })),
-      Array.from((new_val as Map<unknown, unknown>).entries()).map(([key, val]) => ({
-        key,
-        value: val,
-      })),
-    )
+    const wrap_entries = (map: unknown) =>
+      Array.from(map as Map<unknown, unknown>, ([key, value]) => ({ key, value }))
+    diff_indexed(wrap_entries(old_val), wrap_entries(new_val))
     return result
   }
   if (old_type === `set`) {

@@ -94,57 +94,39 @@
     return !is_color(value)
   })
 
+  // CSS classes for segments and value positions, keyed by `layout-count`
+  const layout_classes: Record<string, { segments: string[]; positions: string[] }> = {
+    'diagonal-2': {
+      segments: [`diagonal-top`, `diagonal-bottom`],
+      positions: [`top-left`, `bottom-right`],
+    },
+    'horizontal-3': {
+      segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
+      positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
+    },
+    'vertical-3': {
+      segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
+      positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
+    },
+    'triangular-4': {
+      segments: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}`),
+      positions: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}-pos`),
+    },
+    'quadrant-4': {
+      segments: [`tl`, `tr`, `bl`, `br`].map((pos) => `quadrant-${pos}`),
+      positions: [`tl`, `tr`, `bl`, `br`].map((pos) => `value-quadrant-${pos}`),
+    },
+  }
+
   // Get the appropriate CSS classes for segments and positions based on layout
   const layout_config = $derived.by(() => {
     if (!Array.isArray(value)) return null
-
     const count = value.length
     // Use explicit split_layout or auto-determine based on count
     const layout =
       split_layout ??
-      ({
-        2: `diagonal`,
-        3: `horizontal`,
-        4: `quadrant`,
-      }[count] as SplitLayout | undefined)
-
-    if (!layout) return null
-
-    if (layout === `diagonal` && count === 2) {
-      return {
-        segments: [`diagonal-top`, `diagonal-bottom`],
-        positions: [`top-left`, `bottom-right`],
-      }
-    }
-
-    if (layout === `horizontal` && count === 3) {
-      return {
-        segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
-        positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
-      }
-    }
-
-    if (layout === `vertical` && count === 3) {
-      return {
-        segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
-        positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
-      }
-    }
-
-    if (layout === `triangular` && count === 4) {
-      return {
-        segments: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}`),
-        positions: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}-pos`),
-      }
-    }
-
-    if (layout === `quadrant` && count === 4) {
-      const segments = [`tl`, `tr`, `bl`, `br`].map((pos) => `quadrant-${pos}`)
-      const positions = [`tl`, `tr`, `bl`, `br`].map((pos) => `value-quadrant-${pos}`)
-      return { segments, positions }
-    }
-
-    return null
+      ({ 2: `diagonal`, 3: `horizontal`, 4: `quadrant` }[count] as SplitLayout | undefined)
+    return layout ? (layout_classes[`${layout}-${count}`] ?? null) : null
   })
 </script>
 

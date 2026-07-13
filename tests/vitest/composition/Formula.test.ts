@@ -21,88 +21,45 @@ test(`parse_formula_with_oxidation parses simple formulas`, () => {
   expect(result[1]).toMatchObject({ element: `O`, amount: 1, orig_idx: 1 })
 })
 
-test(`parse_formula_with_oxidation handles caret syntax for oxidation states`, () => {
-  const result = parse_formula_with_oxidation(`Fe^2+O3`)
-  expect(result).toHaveLength(2)
-  expect(result[0]).toMatchObject({
-    element: `Fe`,
-    amount: 1,
-    oxidation_state: 2,
-    orig_idx: 0,
-  })
-  expect(result[1]).toMatchObject({
-    element: `O`,
-    amount: 3,
-    oxidation_state: undefined,
-    orig_idx: 1,
-  })
-})
-
-test(`parse_formula_with_oxidation handles bracket syntax for oxidation states`, () => {
-  const result = parse_formula_with_oxidation(`Fe[2+]O3`)
-  expect(result).toHaveLength(2)
-  expect(result[0]).toMatchObject({
-    element: `Fe`,
-    amount: 1,
-    oxidation_state: 2,
-    orig_idx: 0,
-  })
-  expect(result[1]).toMatchObject({
-    element: `O`,
-    amount: 3,
-    oxidation_state: undefined,
-    orig_idx: 1,
-  })
-})
-
-test(`parse_formula_with_oxidation handles negative oxidation states`, () => {
-  const result1 = parse_formula_with_oxidation(`Cl^-`)
-  expect(result1[0]).toMatchObject({
-    element: `Cl`,
-    amount: 1,
-    oxidation_state: -1,
-  })
-
-  const result2 = parse_formula_with_oxidation(`S[-2]`)
-  expect(result2[0]).toMatchObject({
-    element: `S`,
-    amount: 1,
-    oxidation_state: -2,
-  })
-})
-
-test(`parse_formula_with_oxidation handles bare sign oxidation states`, () => {
-  // Test bare signs: "+", "-", "[+]", "[-]" should be treated as ±1
-  const test_cases: [string, number][] = [
-    [`Na^+`, 1],
-    [`Cl^-`, -1],
-    [`Na[+]`, 1],
-    [`Cl[-]`, -1],
-    [`K^+Cl^-`, 1], // K should have +1
-  ]
-  for (const [formula, expected_oxidation] of test_cases) {
+test.each([`Fe^2+O3`, `Fe[2+]O3`])(
+  `parse_formula_with_oxidation handles caret/bracket syntax: %s`,
+  (formula) => {
     const result = parse_formula_with_oxidation(formula)
-    expect(result[0].oxidation_state).toBe(expected_oxidation)
-  }
-})
+    expect(result).toHaveLength(2)
+    expect(result[0]).toMatchObject({
+      element: `Fe`,
+      amount: 1,
+      oxidation_state: 2,
+      orig_idx: 0,
+    })
+    expect(result[1]).toMatchObject({
+      element: `O`,
+      amount: 3,
+      oxidation_state: undefined,
+      orig_idx: 1,
+    })
+  },
+)
 
-test(`parse_formula_with_oxidation handles various oxidation state formats`, () => {
-  // Test different formats: +2, 2+, -2, 2-
-  const test_cases: [string, number][] = [
-    [`Fe^+2O`, 2],
-    [`Fe^2+O`, 2],
-    [`Fe^-2O`, -2],
-    [`Fe^2-O`, -2],
-    [`Fe[+2]O`, 2],
-    [`Fe[2+]O`, 2],
-    [`Fe[-2]O`, -2],
-    [`Fe[2-]O`, -2],
-  ]
-
-  for (const [formula, expected_oxidation] of test_cases) {
-    const result = parse_formula_with_oxidation(formula)
-    expect(result[0].oxidation_state).toBe(expected_oxidation)
-  }
+test.each([
+  // bare signs "+", "-", "[+]", "[-]" are treated as ±1
+  [`Na^+`, 1],
+  [`Cl^-`, -1],
+  [`Na[+]`, 1],
+  [`Cl[-]`, -1],
+  [`K^+Cl^-`, 1], // K should have +1
+  [`S[-2]`, -2],
+  // sign before or after the digit, caret or bracket syntax
+  [`Fe^+2O`, 2],
+  [`Fe^2+O`, 2],
+  [`Fe^-2O`, -2],
+  [`Fe^2-O`, -2],
+  [`Fe[+2]O`, 2],
+  [`Fe[2+]O`, 2],
+  [`Fe[-2]O`, -2],
+  [`Fe[2-]O`, -2],
+])(`parse_formula_with_oxidation %s -> oxidation %d`, (formula, expected_oxidation) => {
+  expect(parse_formula_with_oxidation(formula)[0].oxidation_state).toBe(expected_oxidation)
 })
 
 test(`parse_formula_with_oxidation handles complex formulas`, () => {
@@ -198,77 +155,37 @@ test(`Formula component renders with string formula`, () => {
   expect(element?.textContent).toContain(`O`)
 })
 
-test(`Formula component renders with oxidation states (caret syntax)`, () => {
-  const element = mount_formula({ formula: `Fe^2+O3` })
-  expect(element).toBeInstanceOf(HTMLElement)
-  expect(element?.textContent).toContain(`Fe`)
-  expect(element?.textContent).toContain(`+2`)
-  expect(element?.textContent).toContain(`O`)
-})
+test.each([`Fe^2+O3`, `Fe[2+]O3`])(
+  `Formula component renders oxidation states for %s`,
+  (formula) => {
+    const element = mount_formula({ formula })
+    expect(element).toBeInstanceOf(HTMLElement)
+    expect(element?.textContent).toContain(`Fe`)
+    expect(element?.textContent).toContain(`+2`)
+    expect(element?.textContent).toContain(`O`)
+  },
+)
 
-test(`Formula component renders with oxidation states (bracket syntax)`, () => {
-  const element = mount_formula({ formula: `Fe[2+]O3` })
-  expect(element).toBeInstanceOf(HTMLElement)
-  expect(element?.textContent).toContain(`Fe`)
-  expect(element?.textContent).toContain(`+2`)
-  expect(element?.textContent).toContain(`O`)
+test.each([
+  [`OHFe`, `original`, `OHFe`],
+  [`OHFe`, `alphabetical`, `FeHO`],
+  // Na has lower electronegativity than O, so it should come first
+  [`ONa`, `electronegativity`, `NaO`],
+  // Hill notation: C first, H second (if C present), then alphabetical
+  [`C2H6O`, `hill`, `CHO`],
+] as const)(`Formula component ordering: %s %s -> %s`, (formula, ordering, expected) => {
+  mount_formula({ formula, ordering })
+  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
+  expect(symbols.map((elem) => elem.textContent).join(``)).toBe(expected)
 })
 
 test.each([
-  { scheme: `Vesta` as const, expected_color_present: true },
-  { scheme: `Jmol` as const, expected_color_present: true },
-  { scheme: `Alloy` as const, expected_color_present: true },
-])(`Formula applies $scheme color scheme correctly`, ({ scheme, expected_color_present }) => {
-  mount_formula({ formula: `H2O`, color_scheme: scheme })
-  const symbols = document.querySelectorAll(`.element-symbol`)
-  expect(symbols).toHaveLength(2)
-
-  // Check that elements have color styles applied
-  const has_color = Array.from(symbols).some((symbol) => (symbol as HTMLElement).style.color)
-  expect(has_color).toBe(expected_color_present)
-})
-
-test(`Formula component ordering: original`, () => {
-  mount_formula({ formula: `OHFe`, ordering: `original` })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
-  const text = symbols.map((elem) => elem.textContent).join(``)
-  expect(text).toBe(`OHFe`)
-})
-
-test(`Formula component ordering: alphabetical`, () => {
-  mount_formula({ formula: `OHFe`, ordering: `alphabetical` })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
-  const text = symbols.map((elem) => elem.textContent).join(``)
-  expect(text).toBe(`FeHO`)
-})
-
-test(`Formula component ordering: electronegativity`, () => {
-  mount_formula({ formula: `ONa`, ordering: `electronegativity` })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
-  const text = symbols.map((elem) => elem.textContent).join(``)
-  // Na has lower electronegativity than O, so it should come first
-  expect(text).toBe(`NaO`)
-})
-
-test(`Formula component ordering: hill`, () => {
-  mount_formula({ formula: `C2H6O`, ordering: `hill` })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
-  const text = symbols.map((elem) => elem.textContent).join(``)
-  // Hill notation: C first, H second (if C present), then alphabetical
-  expect(text).toBe(`CHO`)
-})
-
-test(`Formula component renders subscripts for amounts > 1`, () => {
-  mount_formula({ formula: `H2O` })
-  const subscripts = document.querySelectorAll(`sub`)
-  expect(subscripts).toHaveLength(1)
-  expect(subscripts[0].textContent).toBe(`2`)
-})
-
-test(`Formula component does not render subscripts for amount = 1`, () => {
-  mount_formula({ formula: `HO` })
-  const subscripts = document.querySelectorAll(`sub`)
-  expect(subscripts).toHaveLength(0)
+  [`H2O`, [`2`]], // subscript for amounts > 1
+  [`HO`, []], // no subscript for amount = 1
+])(`Formula component subscripts for %s -> %j`, (formula, expected) => {
+  mount_formula({ formula })
+  const subscripts = Array.from(document.querySelectorAll(`sub`))
+  expect(subscripts.map((sub) => sub.textContent)).toEqual(expected)
 })
 
 test(`Formula component renders superscripts for oxidation states`, () => {
@@ -323,18 +240,16 @@ test.each([
   expect(element?.textContent).toContain(`O`)
 })
 
-test.each([
-  { scheme: `Vesta` as const },
-  { scheme: `Jmol` as const },
-  { scheme: `Alloy` as const },
-  { scheme: `Pastel` as const },
-  { scheme: `Muted` as const },
-  { scheme: `Dark Mode` as const },
-])(`Formula renders with color scheme "$scheme"`, ({ scheme }) => {
-  const element = mount_formula({ formula: `H2O`, color_scheme: scheme })
-  expect(element).toBeInstanceOf(HTMLElement)
-  expect(element?.querySelectorAll(`.element-symbol`).length).toBe(2)
-})
+test.each([`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const)(
+  `Formula renders with color scheme "%s" applied to element symbols`,
+  (scheme) => {
+    const element = mount_formula({ formula: `H2O`, color_scheme: scheme })
+    expect(element).toBeInstanceOf(HTMLElement)
+    const symbols = element?.querySelectorAll<HTMLElement>(`.element-symbol`) ?? []
+    expect(symbols).toHaveLength(2)
+    expect(Array.from(symbols).some((symbol) => symbol.style.color)).toBe(true)
+  },
+)
 
 test(`Formula formats amounts with custom format string`, () => {
   mount_formula({ formula: `H2O`, amount_format: `.2f` })

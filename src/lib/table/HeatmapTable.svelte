@@ -327,11 +327,10 @@
 
   // Normalize export_data config
   type ExportFormat = `csv` | `json`
-  const default_formats: ExportFormat[] = [`csv`, `json`]
   let export_config = $derived(
     export_data
       ? {
-          formats: default_formats,
+          formats: [`csv`, `json`] as ExportFormat[],
           filename: `table-export`,
           ...(typeof export_data === `object` ? export_data : {}),
         }
@@ -381,9 +380,7 @@
   ] as const
 
   // Columns that have a color gradient
-  let colored_columns = $derived(
-    columns.filter((col) => col.color_scale !== null && col.color_scale !== undefined),
-  )
+  let colored_columns = $derived(columns.filter((col) => col.color_scale != null))
 
   // Column resize state
   let resize_col_id = $state<string | null>(null)
@@ -748,22 +745,19 @@
     // Skip client-side sorting when using async onsort callback or sort_data is false
     if (onsort || !sort_data) return filtered_data
 
-    if (!sort_state.column && multi_sort.length === 0) return filtered_data
-
-    // Build sort criteria: multi_sort takes precedence, fallback to single sort
+    // Build sort criteria: multi_sort (Shift+click) takes precedence over single sort
     const sort_criteria =
       multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
-
     if (sort_criteria.length === 0) return filtered_data
 
+    const valid_column_ids = new Set(ordered_columns.map(get_col_id))
     return [...filtered_data].sort((row1, row2) => {
       for (const { column, ascending } of sort_criteria) {
-        const matched_col = ordered_columns.find((col) => get_col_id(col) === column)
-        if (!matched_col) continue
+        // criteria hold column IDs; skip stale entries referencing removed columns
+        if (!valid_column_ids.has(column)) continue
 
-        const col_id = get_col_id(matched_col)
-        const val1 = row1[col_id]
-        const val2 = row2[col_id]
+        const val1 = row1[column]
+        const val2 = row2[column]
 
         if (val1 === val2) continue
 
@@ -934,13 +928,7 @@
         }
       } else {
         // Add to multi-sort
-        multi_sort = [
-          ...multi_sort,
-          {
-            column: col_id,
-            ascending: col.better === `lower`,
-          },
-        ]
+        multi_sort = [...multi_sort, { column: col_id, ascending: col.better === `lower` }]
       }
       // Clear single sort when using multi-sort
       sort = { column: ``, dir: `asc` }
@@ -1047,25 +1035,23 @@
     visible_columns.length + (show_row_select ? 1 : 0) + (show_row_numbers ? 1 : 0),
   )
 
+  // Arrow (plus a numbered badge under multi-sort) for actively sorted columns
   const sort_indicator = (col: Label, current_sort_state: SortState) => {
-    const hide_sort_indicator =
-      col.show_sort_indicator === false || col.style?.includes(`--hide-sort-indicator`)
-    if (hide_sort_indicator) return ``
-
-    const col_id = get_col_id(col)
-
-    // Check multi-sort first
-    const multi_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
-    if (multi_idx !== -1) {
-      const arrow = multi_sort[multi_idx].ascending ? `↓` : `↑`
-      const badge = multi_sort.length > 1 ? `<sup>${multi_idx + 1}</sup>` : ``
-      return `<span style="font-size: 0.8em;">${arrow}${badge}</span>`
+    if (col.show_sort_indicator === false || col.style?.includes(`--hide-sort-indicator`)) {
+      return ``
     }
-
-    // Show indicator only for actively sorted columns.
-    if (current_sort_state.column !== col_id) return ``
-    const arrow = current_sort_state.ascending ? `↓` : `↑`
-    return `<span style="font-size: 0.8em;">${arrow}</span>`
+    const col_id = get_col_id(col)
+    const multi_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
+    const active =
+      multi_idx !== -1
+        ? multi_sort[multi_idx]
+        : current_sort_state.column === col_id
+          ? current_sort_state
+          : null
+    if (!active) return ``
+    const badge =
+      multi_idx !== -1 && multi_sort.length > 1 ? `<sup>${multi_idx + 1}</sup>` : ``
+    return `<span style="font-size: 0.8em;">${active.ascending ? `↓` : `↑`}${badge}</span>`
   }
 
   // Context menu state for column right-click (headers and body cells)
@@ -1200,7 +1186,7 @@
   // Raw cell value as clipboard text (numbers keep full precision, dates go
   // ISO, HTML cells lose their markup)
   const cell_copy_text = (val: CellVal): string => {
-    if (val == null || (typeof val === `number` && Number.isNaN(val))) return ``
+    if (is_invalid(val)) return ``
     if (val instanceof Date) return val.toISOString()
     if (typeof val === `object`) return JSON.stringify(val)
     return strip_html(String(val)).trim()
@@ -1367,6 +1353,11 @@
     download(JSON.stringify(rows, null, 2), `${filename}.json`, `application/json`)
   }
 
+  const export_actions = [
+    [`csv`, export_csv],
+    [`json`, export_json],
+  ] as const
+
   function copy_to_clipboard() {
     navigator.clipboard.writeText(serialize_table(`\t`))
   }
@@ -1532,28 +1523,20 @@
         </button>
         {#if show_export_dropdown}
           <div class="dropdown-pane">
-            {#if export_config.formats.includes(`csv`)}
-              <button
-                class="dropdown-option"
-                onclick={() => {
-                  export_csv(export_config.filename)
-                  show_export_dropdown = false
-                }}
-              >
-                <Icon icon="Download" style="width: 12px" /> CSV
-              </button>
-            {/if}
-            {#if export_config.formats.includes(`json`)}
-              <button
-                class="dropdown-option"
-                onclick={() => {
-                  export_json(export_config.filename)
-                  show_export_dropdown = false
-                }}
-              >
-                <Icon icon="Download" style="width: 12px" /> JSON
-              </button>
-            {/if}
+            {#each export_actions as [format, export_fn] (format)}
+              {#if export_config.formats.includes(format)}
+                <button
+                  class="dropdown-option"
+                  onclick={() => {
+                    export_fn(export_config.filename)
+                    show_export_dropdown = false
+                  }}
+                >
+                  <Icon icon="Download" style="width: 12px" />
+                  {format.toUpperCase()}
+                </button>
+              {/if}
+            {/each}
             <button
               class="dropdown-option"
               onclick={() => {
@@ -1710,12 +1693,13 @@
               {#if !col.group}
                 <th class:sticky-col={col.sticky}></th>
               {:else}
-                {@const group_cols = visible_columns.filter(
-                  (column) => column.group === col.group,
-                )}
-                <!-- Only render the group header once for each group by checking if this is the first column of this group -->
-                {#if visible_columns.findIndex((column) => column.group === col.group) === visible_columns.findIndex((column) => column.group === col.group && column.label === col.label)}
-                  <th title={col.description} colspan={group_cols.length}>
+                <!-- Only render the group header once per group (on its first column) -->
+                {#if visible_columns.find((column) => column.group === col.group) === col}
+                  <th
+                    title={col.description}
+                    colspan={visible_columns.filter((column) => column.group === col.group)
+                      .length}
+                  >
                     {@html sanitize_html(col.group)}
                   </th>
                 {/if}
@@ -1967,7 +1951,7 @@
                   {date_val}
                 {:else if typeof val === `number` && !Number.isNaN(val)}
                   {format_num(val, col.format ?? default_num_format)}
-                {:else if val === undefined || val === null || Number.isNaN(val)}
+                {:else if is_invalid(val)}
                   <span {@attach tooltip({ content: `Not available` })}> n/a </span>
                 {:else}
                   {@html sanitize_html(val)}
@@ -2000,24 +1984,16 @@
     </div>
   {/if}
 
+  {#snippet page_btn(label: string, title: string, target_page: number, disabled: boolean)}
+    <button class="page-btn" {disabled} onclick={() => (current_page = target_page)} {title}>
+      {label}
+    </button>
+  {/snippet}
+
   {#if pagination_config && total_pages > 1}
     <div class="pagination">
-      <button
-        class="page-btn"
-        disabled={current_page === 1}
-        onclick={() => (current_page = 1)}
-        title="First page"
-      >
-        «
-      </button>
-      <button
-        class="page-btn"
-        disabled={current_page === 1}
-        onclick={() => current_page--}
-        title="Previous page"
-      >
-        ‹
-      </button>
+      {@render page_btn(`«`, `First page`, 1, current_page === 1)}
+      {@render page_btn(`‹`, `Previous page`, current_page - 1, current_page === 1)}
       <span class="page-info">
         Page
         <input
@@ -2035,22 +2011,8 @@
         of {total_pages}
         <span class="row-count">({sorted_data.length} rows)</span>
       </span>
-      <button
-        class="page-btn"
-        disabled={current_page === total_pages}
-        onclick={() => current_page++}
-        title="Next page"
-      >
-        ›
-      </button>
-      <button
-        class="page-btn"
-        disabled={current_page === total_pages}
-        onclick={() => (current_page = total_pages)}
-        title="Last page"
-      >
-        »
-      </button>
+      {@render page_btn(`›`, `Next page`, current_page + 1, current_page === total_pages)}
+      {@render page_btn(`»`, `Last page`, total_pages, current_page === total_pages)}
       {#if pagination_config.page_sizes}
         <select
           class="page-size-select"
@@ -2449,10 +2411,6 @@
     text-align: center;
     vertical-align: middle;
     padding: 2px !important;
-  }
-  .select-col :global(svg) {
-    display: block;
-    margin: auto;
   }
   tr.selected {
     background: var(--highlight-bg, rgba(74, 158, 255, 0.15)) !important;

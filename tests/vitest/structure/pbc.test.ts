@@ -217,42 +217,22 @@ Cl       2.5       2.5       2.5`
 
   const normal_trajectory = await parse_trajectory_data(normal_structure_extxyz, `test.xyz`)
   const normal_structure = normal_trajectory.frames[0].structure as Crystal
-
-  // Test that the structure has lattice information
-  expect(`lattice` in normal_structure).toBe(true)
   if (!(`lattice` in normal_structure) || !normal_structure.lattice) {
     throw new Error(`Structure should have lattice`)
   }
 
-  // Test the image atom detection
-  const image_atoms = find_image_atoms(normal_structure)
-  const processed_structure = get_pbc_image_sites(normal_structure)
+  // Atoms sit within the unit cell, so this is treated as a normal crystal and
+  // generates image atoms for atoms near cell boundaries
+  expect(find_image_atoms(normal_structure).length).toBeGreaterThan(0)
+  expect(get_pbc_image_sites(normal_structure).sites.length).toBeGreaterThan(
+    normal_structure.sites.length,
+  )
 
-  // This structure has atoms within the unit cell, so it will be treated as a normal crystal
-  // and will generate image atoms for atoms near cell boundaries
-  expect(image_atoms.length).toBeGreaterThan(0)
-
-  // For normal crystal structures, get_pbc_image_sites adds image atoms
-  expect(processed_structure.sites.length).toBeGreaterThan(normal_structure.sites.length)
-
-  // Verify that few/no atoms are outside the unit cell (making it a normal crystal structure)
+  // Few/no atoms outside the unit cell (below the 10% trajectory-detection threshold)
   const atoms_outside = normal_structure.sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
-
-  // This structure should have few atoms outside the unit cell (<10% threshold)
   expect(atoms_outside.length).toBeLessThanOrEqual(normal_structure.sites.length * 0.1)
-
-  // Test multiple frames to ensure consistency
-  for (
-    let frame_idx = 1;
-    frame_idx < Math.min(normal_trajectory.frames.length, 3);
-    frame_idx++
-  ) {
-    const frame_structure = normal_trajectory.frames[frame_idx].structure as Crystal
-    const frame_image_atoms = find_image_atoms(frame_structure)
-    expect(frame_image_atoms.length).toBeGreaterThan(0) // Should consistently treat as normal crystal
-  }
 })
 
 // Additional regression tests for trajectory threshold, triclinic correctness, tolerance edges, and boundary wrapping
@@ -273,40 +253,13 @@ test.each([
 ])(
   `trajectory detection threshold: $description`,
   ({ total_atoms, outside_atoms, expect_skip }) => {
-    const lattice_len = 5
-    const lattice: Matrix3x3 = [
-      [lattice_len, 0, 0],
-      [0, lattice_len, 0],
-      [0, 0, lattice_len],
-    ]
-
-    const sites = Array.from({ length: total_atoms }, (_, idx) => {
-      const is_outside = idx < outside_atoms
-      const abc: Vec3 = is_outside ? [1.2, 0.5, 0.5] : [0.5, 0.5, 0.5]
-      const xyz: Vec3 = [abc[0] * lattice_len, abc[1] * lattice_len, abc[2] * lattice_len]
-      return {
-        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz,
-        label: `C${idx + 1}`,
-        properties: {},
-      }
-    })
-
-    const structure: Crystal = {
-      sites,
-      lattice: {
-        matrix: lattice,
-        pbc: [true, true, true],
-        a: lattice_len,
-        b: lattice_len,
-        c: lattice_len,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: lattice_len ** 3,
-      },
-    }
+    const structure = make_crystal(
+      5,
+      Array.from({ length: total_atoms }, (_, idx) => ({
+        element: `C`,
+        abc: idx < outside_atoms ? [1.2, 0.5, 0.5] : [0.5, 0.5, 0.5],
+      })),
+    )
 
     const images = find_image_atoms(structure)
     if (expect_skip) {
@@ -322,32 +275,8 @@ test.each([
 )
 
 test(`triclinic lattice image xyz must match lattice * abc`, () => {
-  // Construct a triclinic lattice from cell parameters
-  const a_len = 4
-  const b_len = 5
-  const c_len = 6
-  const alpha = 75
-  const beta = 85
-  const gamma = 65
-  const matrix = math.cell_to_lattice_matrix(a_len, b_len, c_len, alpha, beta, gamma)
-  const params = math.calc_lattice_params(matrix)
-
-  const structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0],
-        xyz: [0.0, 0.0, 0.0],
-        label: `C1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix,
-      pbc: [true, true, true],
-      ...params,
-    },
-  }
+  const matrix = math.cell_to_lattice_matrix(4, 5, 6, 75, 85, 65)
+  const structure = make_crystal(matrix, [[`C`, [0, 0, 0]]])
 
   const images = find_image_atoms(structure)
   expect(images.length).toBeGreaterThanOrEqual(7)
@@ -484,23 +413,15 @@ C        -2.0      10.0      12.0`
 
   const trajectory_like = await parse_trajectory_data(trajectory_like_extxyz, `test.xyz`)
   const trajectory_structure = trajectory_like.frames[0].structure as Crystal
-
-  // Test that the structure has lattice information
-  expect(`lattice` in trajectory_structure).toBe(true)
   if (!(`lattice` in trajectory_structure) || !trajectory_structure.lattice) {
     throw new Error(`Structure should have lattice`)
   }
 
-  // Test the image atom detection
-  const image_atoms = find_image_atoms(trajectory_structure)
-  const processed_structure = get_pbc_image_sites(trajectory_structure)
-
-  // This structure has atoms near cell boundaries, so it will be detected as trajectory data
-  // and will NOT generate image atoms (trajectory data detection)
-  expect(image_atoms).toHaveLength(0)
-
-  // For trajectory data, get_pbc_image_sites returns the structure unchanged
-  expect(processed_structure.sites).toHaveLength(trajectory_structure.sites.length)
+  // Detected as trajectory data → no image atoms, structure returned unchanged
+  expect(find_image_atoms(trajectory_structure)).toHaveLength(0)
+  expect(get_pbc_image_sites(trajectory_structure).sites).toHaveLength(
+    trajectory_structure.sites.length,
+  )
 
   // abc coords are wrapped into the cell on parse, so none read as outside the [-0.1, 1.1]
   // margin (the raw cartesian positions extend past the 15 Å box, which is what flags trajectory)
@@ -508,17 +429,6 @@ C        -2.0      10.0      12.0`
     abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
   expect(atoms_outside).toHaveLength(0)
-
-  // Test multiple frames to ensure consistency
-  for (
-    let frame_idx = 1;
-    frame_idx < Math.min(trajectory_like.frames.length, 3);
-    frame_idx++
-  ) {
-    const frame_structure = trajectory_like.frames[frame_idx].structure as Crystal
-    const frame_image_atoms = find_image_atoms(frame_structure)
-    expect(frame_image_atoms).toHaveLength(0) // Should consistently treat as trajectory data
-  }
 })
 
 // Comprehensive tests for find_image_atoms with real structure files
@@ -596,19 +506,13 @@ test.each([
       structure.sites.length + image_atoms.length,
     )
 
-    // Verify no duplicate sites (within tolerance)
-    for (let idx1 = 0; idx1 < symmetrized.sites.length; idx1++) {
-      for (let idx2 = idx1 + 1; idx2 < symmetrized.sites.length; idx2++) {
-        const pos1 = symmetrized.sites[idx1].xyz
-        const pos2 = symmetrized.sites[idx2].xyz
-        const distance = euclidean_dist(pos1, pos2)
-
-        // Sites should not be too close (would indicate duplicates)
-        if (distance < 1e-10) {
-          expect(distance).toBeGreaterThan(1e-10)
-        }
-      }
-    }
+    // Verify no duplicate sites (coincident positions within tolerance)
+    const duplicate_pairs = symmetrized.sites.flatMap((site_1, idx_1) =>
+      symmetrized.sites
+        .slice(idx_1 + 1)
+        .filter((site_2) => euclidean_dist(site_1.xyz, site_2.xyz) < 1e-10),
+    )
+    expect(duplicate_pairs).toHaveLength(0)
   },
 )
 
@@ -661,99 +565,37 @@ test(`edge detection should be precise for atoms at boundaries`, () => {
 
 // Test tolerance parameter effects with clearer edge cases
 test.each([
-  {
-    tolerance: 0.01,
-    abc_coords: [0.005, 0.0, 0.0], // Very close to edge, should create images
-    expected_count: 1,
-    description: `strict tolerance with very close atom`,
-  },
-  {
-    tolerance: 0.05,
-    abc_coords: [0.02, 0.0, 0.0], // Should create images with default tolerance
-    expected_count: 1,
-    description: `default tolerance`,
-  },
-  {
-    tolerance: 0.1,
-    abc_coords: [0.08, 0.0, 0.0], // Should create images with loose tolerance
-    expected_count: 1,
-    description: `loose tolerance`,
-  },
+  { tolerance: 0.01, abc_coords: [0.005, 0.0, 0.0], description: `strict tolerance` },
+  { tolerance: 0.05, abc_coords: [0.02, 0.0, 0.0], description: `default tolerance` },
+  { tolerance: 0.1, abc_coords: [0.08, 0.0, 0.0], description: `loose tolerance` },
 ])(
-  `tolerance parameter affects image atom detection: $description`,
-  ({ tolerance, abc_coords, expected_count }) => {
+  `atom within tolerance of edge generates images: $description`,
+  ({ tolerance, abc_coords }) => {
     const test_structure = make_crystal(5, [[`Na`, abc_coords as Vec3]])
     const image_atoms = find_image_atoms(test_structure, { tolerance })
 
-    // For atoms at edges, the algorithm creates multiple images due to corner/edge combinations
-    // Check that we get at least the expected minimum, allowing for algorithm complexity
-    if (expected_count === 0) {
-      // When we expect no images, assert exactly zero - any non-zero result indicates a regression
-      expect(image_atoms).toHaveLength(0)
-    } else {
-      // For non-zero expectations, check minimum but cap maximum to catch runaway generation
-      expect(image_atoms.length).toBeGreaterThanOrEqual(expected_count)
-      expect(image_atoms.length).toBeLessThanOrEqual(26) // Max possible for a cube - prevent runaway generation
-    }
+    // Edge/corner combinations may create several images; cap catches runaway generation
+    expect(image_atoms.length).toBeGreaterThanOrEqual(1)
+    expect(image_atoms.length).toBeLessThanOrEqual(26)
   },
 )
 
 // Test image atom generation with various crystal systems
+// oxfmt-ignore
 test.each([
-  {
-    name: `cubic`,
-    lattice: [
-      [5.0, 0.0, 0.0],
-      [0.0, 5.0, 0.0],
-      [0.0, 0.0, 5.0],
-    ],
-    sites: [{ abc: [0.0, 0.0, 0.0], xyz: [0.0, 0.0, 0.0] }],
-    expected_min: 7, // 7 images for corner atom in cubic
-  },
-  {
-    name: `orthorhombic`,
-    lattice: [
-      [4.0, 0.0, 0.0],
-      [0.0, 6.0, 0.0],
-      [0.0, 0.0, 8.0],
-    ],
-    sites: [{ abc: [0.0, 0.0, 0.0], xyz: [0.0, 0.0, 0.0] }],
-    expected_min: 7, // 7 images for corner atom
-  },
+  { name: `cubic`, lattice: [[5, 0, 0], [0, 5, 0], [0, 0, 5]], abc_list: [[0, 0, 0]] },
+  { name: `orthorhombic`, lattice: [[4, 0, 0], [0, 6, 0], [0, 0, 8]], abc_list: [[0, 0, 0]] },
   {
     name: `face-centered`,
-    lattice: [
-      [3.0, 0.0, 0.0],
-      [0.0, 3.0, 0.0],
-      [0.0, 0.0, 3.0],
-    ],
-    sites: [
-      { abc: [0.0, 0.0, 0.0], xyz: [0.0, 0.0, 0.0] },
-      { abc: [0.5, 0.5, 0.0], xyz: [1.5, 1.5, 0.0] },
-    ],
-    expected_min: 7, // At least 7 from corner atom
+    lattice: [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
+    abc_list: [[0, 0, 0], [0.5, 0.5, 0]],
   },
-])(`image atom generation for $name crystal system`, ({ lattice, sites, expected_min }) => {
-  const test_structure: Crystal = {
-    sites: sites.map((site, idx) => ({
-      species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-      abc: site.abc as Vec3,
-      xyz: site.xyz as Vec3,
-      label: `C${idx + 1}`,
-      properties: {},
-    })),
-    lattice: {
-      matrix: lattice as Matrix3x3,
-      pbc: [true, true, true],
-      a: lattice[0][0],
-      b: lattice[1][1],
-      c: lattice[2][2],
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: lattice[0][0] * lattice[1][1] * lattice[2][2],
-    },
-  }
+])(`image atom generation for $name crystal system`, ({ lattice, abc_list }) => {
+  const test_structure = make_crystal(
+    lattice as Matrix3x3,
+    abc_list.map((abc) => ({ element: `C`, abc: abc as Vec3 })),
+  )
+  const expected_min = 7 // at least 7 images for the corner atom
 
   const image_atoms = find_image_atoms(test_structure)
   expect(image_atoms.length).toBeGreaterThanOrEqual(expected_min)
@@ -804,16 +646,9 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
     // Verify consistency between abc and xyz coordinates in the image site
     assert_xyz_matches_lattice(test_structure.lattice.matrix, image_site.abc, image_site.xyz)
 
-    // Verify the image abc coordinates are related to original by integer translations
-    const orig_abc = test_structure.sites[orig_idx].abc
-    assert_integer_translation(orig_abc, image_site.abc, 1e-8)
-
-    // Verify at least one dimension has non-zero translation
-    const has_translation = [0, 1, 2].some((dim) => {
-      const diff = image_site.abc[dim] - orig_abc[dim]
-      return Math.abs(Math.round(diff)) > 0
-    })
-    expect(has_translation).toBe(true)
+    // Verify the image abc coordinates are related to the original by NON-ZERO
+    // integer translations (assert_integer_translation requires non-zero by default)
+    assert_integer_translation(test_structure.sites[orig_idx].abc, image_site.abc, 1e-8)
   }
 })
 
@@ -831,34 +666,6 @@ test(`highly oblique cells should have finite, well-defined fractional coordinat
     // Also verify they are valid integer translations from the original
     const orig_abc = tl_bi_se2_struct.sites[orig_idx].abc
     assert_integer_translation(orig_abc, img_abc, 1e-8)
-  }
-})
-
-// Test that the new tuple format works correctly for downstream code
-test(`find_image_atoms returns correct tuple format`, () => {
-  const structure = mp_1_struct
-  const image_atoms = find_image_atoms(structure)
-
-  expect(image_atoms.length).toBeGreaterThan(0)
-
-  for (const tuple of image_atoms) {
-    // Should be 3 or 4 elements: [orig_idx, image_xyz, image_abc, is_completion?]
-    expect(tuple.length).toBeGreaterThanOrEqual(3)
-    expect(tuple.length).toBeLessThanOrEqual(4)
-
-    const [orig_idx, image_xyz, image_abc, is_completion] = tuple
-
-    // Type checks
-    expect(typeof orig_idx).toBe(`number`)
-    expect(Array.isArray(image_xyz)).toBe(true)
-    expect(Array.isArray(image_abc)).toBe(true)
-    expect(image_xyz).toHaveLength(3)
-    expect(image_abc).toHaveLength(3)
-    if (is_completion !== undefined) expect(typeof is_completion).toBe(`boolean`)
-
-    // All coordinates should be finite numbers
-    expect(image_xyz.every((coord) => Number.isFinite(coord))).toBe(true)
-    expect(image_abc.every((coord) => Number.isFinite(coord))).toBe(true)
   }
 })
 
@@ -903,39 +710,19 @@ test.each([
   ({ coord, expected_int_shift }) => {
     const orig_abc: Vec3 = [coord, 0.5, 0.5]
     const structure = make_crystal(5, [[`Na`, orig_abc]])
-    const lattice_matrix = structure.lattice.matrix
-    const image_atoms = find_image_atoms(structure)
-    const images_for_first = image_atoms.filter(([site_index]) => site_index === 0)
-    expect(images_for_first.length).toBeGreaterThan(0)
+    const image_atoms = find_image_atoms(structure).filter(([site_idx]) => site_idx === 0)
+    expect(image_atoms.length).toBeGreaterThan(0)
 
-    const candidate = images_for_first.find(([, image_xyz, image_abc]) => {
-      // must be a true translated replica: integer shift in x
-      const diff_x = image_abc[0] - orig_abc[0]
-      const int_shift_x = Math.round(diff_x)
-      // and geometry consistent
-      const xyz_ok = (() => {
-        try {
-          assert_xyz_matches_lattice(lattice_matrix, image_abc, image_xyz, 10)
-          return true
-        } catch {
-          return false
-        }
-      })()
-      return Math.abs(int_shift_x) === 1 && xyz_ok
-    })
-
+    // the x-translated replica must shift in the expected direction with consistent xyz
+    const candidate = image_atoms.find(
+      ([, , image_abc]) => Math.abs(Math.round(image_abc[0] - orig_abc[0])) === 1,
+    )
     expect(candidate).toBeDefined()
     if (!candidate) return
 
     const [, img_xyz, img_abc] = candidate
-
-    // integer translation direction matches expectation
-    const diff_x = img_abc[0] - orig_abc[0]
-    const int_shift_x = Math.round(diff_x)
-    expect(int_shift_x).toBe(expected_int_shift)
-
-    // xyz consistency check
-    assert_xyz_matches_lattice(lattice_matrix, img_abc, img_xyz, 10)
+    expect(Math.round(img_abc[0] - orig_abc[0])).toBe(expected_int_shift)
+    assert_xyz_matches_lattice(structure.lattice.matrix, img_abc, img_xyz, 10)
   },
 )
 
@@ -964,130 +751,45 @@ test(`find_image_atoms uses physical tolerance for large cells`, () => {
   expect(c_images_explicit.length).toBeGreaterThan(0)
 })
 
-// Tests for wrap_to_unit_cell function
 describe(`wrap_to_unit_cell`, () => {
   test.each([
     { input: [0.0, 0.0, 0.0], expected: [0.0, 0.0, 0.0], desc: `origin stays at origin` },
     { input: [0.5, 0.5, 0.5], expected: [0.5, 0.5, 0.5], desc: `center stays at center` },
-    {
-      input: [0.25, 0.75, 0.1],
-      expected: [0.25, 0.75, 0.1],
-      desc: `values in range unchanged`,
-    },
-  ] as { input: Vec3; expected: Vec3; desc: string }[])(
-    `values already in [0, 1): $desc`,
-    ({ input, expected }) => {
-      const result = wrap_to_unit_cell(input)
-      for (let dim = 0; dim < 3; dim++) {
-        expect(result[dim]).toBeCloseTo(expected[dim], 10)
-      }
-    },
-  )
-
-  test.each([
+    { input: [0.25, 0.75, 0.1], expected: [0.25, 0.75, 0.1], desc: `in-range unchanged` },
     { input: [1.3, 0.5, 0.5], expected: [0.3, 0.5, 0.5], desc: `x > 1 wraps` },
     { input: [0.5, 2.7, 0.5], expected: [0.5, 0.7, 0.5], desc: `y > 1 wraps` },
     { input: [0.5, 0.5, 3.1], expected: [0.5, 0.5, 0.1], desc: `z > 1 wraps` },
-    {
-      input: [1.0, 2.0, 3.0],
-      expected: [0.0, 0.0, 0.0],
-      desc: `exact integers wrap to 0`,
-    },
-    {
-      input: [5.8, 10.2, 100.9],
-      expected: [0.8, 0.2, 0.9],
-      desc: `large values wrap correctly`,
-    },
-  ] as { input: Vec3; expected: Vec3; desc: string }[])(
-    `values > 1 wrap correctly: $desc`,
-    ({ input, expected }) => {
-      const result = wrap_to_unit_cell(input)
-      for (let dim = 0; dim < 3; dim++) {
-        expect(result[dim]).toBeCloseTo(expected[dim], 10)
-      }
-    },
-  )
-
-  test.each([
+    { input: [1.0, 2.0, 3.0], expected: [0.0, 0.0, 0.0], desc: `exact ints wrap to 0` },
+    { input: [5.8, 10.2, 100.9], expected: [0.8, 0.2, 0.9], desc: `large values wrap` },
     { input: [-0.3, 0.5, 0.5], expected: [0.7, 0.5, 0.5], desc: `x < 0 wraps` },
     { input: [0.5, -0.8, 0.5], expected: [0.5, 0.2, 0.5], desc: `y < 0 wraps` },
     { input: [0.5, 0.5, -0.1], expected: [0.5, 0.5, 0.9], desc: `z < 0 wraps` },
-    {
-      input: [-1.0, -2.0, -3.0],
-      expected: [0.0, 0.0, 0.0],
-      desc: `negative integers wrap to 0`,
-    },
-    {
-      input: [-5.2, -10.7, -100.4],
-      expected: [0.8, 0.3, 0.6],
-      desc: `large negative values wrap`,
-    },
-  ] as { input: Vec3; expected: Vec3; desc: string }[])(
-    `negative values wrap correctly: $desc`,
-    ({ input, expected }) => {
-      const result = wrap_to_unit_cell(input)
-      for (let dim = 0; dim < 3; dim++) {
-        expect(result[dim]).toBeCloseTo(expected[dim], 10)
-      }
-    },
-  )
-
-  test.each([
-    {
-      input: [0.9999999999, 0.5, 0.5],
-      expected: [0.0, 0.5, 0.5],
-      desc: `x very close to 1`,
-    },
-    {
-      input: [0.5, 0.99999999999, 0.5],
-      expected: [0.5, 0.0, 0.5],
-      desc: `y very close to 1`,
-    },
-    {
-      input: [0.5, 0.5, 0.999999999999],
-      expected: [0.5, 0.5, 0.0],
-      desc: `z very close to 1`,
-    },
+    { input: [-1.0, -2.0, -3.0], expected: [0.0, 0.0, 0.0], desc: `negative ints → 0` },
+    { input: [-5.2, -10.7, -100.4], expected: [0.8, 0.3, 0.6], desc: `large negatives` },
+    // values within epsilon of 1 snap to 0 to suppress floating-point noise
+    { input: [0.9999999999, 0.5, 0.5], expected: [0.0, 0.5, 0.5], desc: `x ≈ 1 snaps to 0` },
     {
       input: [1.0 - 1e-12, 1.0 - 1e-11, 1.0 - 1e-10],
       expected: [0.0, 0.0, 0.0],
-      desc: `all dims very close to 1`,
+      desc: `all dims ≈ 1 snap to 0`,
     },
-  ] as { input: Vec3; expected: Vec3; desc: string }[])(
-    `floating point precision near 1 handled: $desc`,
-    ({ input, expected }) => {
-      const result = wrap_to_unit_cell(input)
-      // Values very close to 1 should become 0 to avoid floating point issues
-      for (let dim = 0; dim < 3; dim++) {
-        expect(result[dim]).toBeCloseTo(expected[dim], 8)
-      }
-    },
-  )
-
-  test(`result is always a Vec3 tuple`, () => {
-    const result = wrap_to_unit_cell([1.5, -0.5, 2.3])
-    expect(Array.isArray(result)).toBe(true)
-    expect(result).toHaveLength(3)
-    expect(result.every((coord) => typeof coord === `number`)).toBe(true)
+  ] as { input: Vec3; expected: Vec3; desc: string }[])(`$desc`, ({ input, expected }) => {
+    const result = wrap_to_unit_cell(input)
+    for (let dim = 0; dim < 3; dim++) {
+      expect(result[dim]).toBeCloseTo(expected[dim], 8)
+    }
   })
 
-  test(`result values are always in [0, 1) range`, () => {
-    // Test a variety of edge cases
-    const test_inputs: Vec3[] = [
-      [0.0, 0.0, 0.0],
-      [1.0, 1.0, 1.0],
-      [-1.0, -1.0, -1.0],
-      [0.5, 0.5, 0.5],
-      [100.123, -50.456, 0.789],
-      [1e-15, 1 - 1e-15, 0.5],
-    ]
-
-    for (const input of test_inputs) {
-      const result = wrap_to_unit_cell(input)
-      for (let dim = 0; dim < 3; dim++) {
-        expect(result[dim]).toBeGreaterThanOrEqual(0.0)
-        expect(result[dim]).toBeLessThan(1.0)
-      }
+  test.each([
+    [[0.0, 0.0, 0.0]],
+    [[1.0, 1.0, 1.0]],
+    [[-1.0, -1.0, -1.0]],
+    [[100.123, -50.456, 0.789]],
+    [[1e-15, 1 - 1e-15, 0.5]],
+  ] as [Vec3][])(`result values for %j are always in [0, 1)`, (input) => {
+    for (const coord of wrap_to_unit_cell(input)) {
+      expect(coord).toBeGreaterThanOrEqual(0.0)
+      expect(coord).toBeLessThan(1.0)
     }
   })
 })

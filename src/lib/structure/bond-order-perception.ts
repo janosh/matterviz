@@ -68,12 +68,10 @@ const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 // Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains).
 const MAX_VALENCE_COMBOS = 4096
 
+// Edges are bounds-checked by perceive_bond_orders before reaching here.
 function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
   const adjacency = Array.from({ length: n_atoms }, () => [] as number[])
   for (const [atom_idx_1, atom_idx_2] of edges) {
-    if (adjacency[atom_idx_1] === undefined || adjacency[atom_idx_2] === undefined) {
-      throw new Error(`Invalid edge ${atom_idx_1}-${atom_idx_2} for ${n_atoms} atoms`)
-    }
     adjacency[atom_idx_1].push(atom_idx_2)
     adjacency[atom_idx_2].push(atom_idx_1)
   }
@@ -162,9 +160,6 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
 function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
   const adjacency = Array.from({ length: n_atoms }, () => new Set<number>())
   for (const [atom_idx_1, atom_idx_2] of edges) {
-    if (adjacency[atom_idx_1] === undefined || adjacency[atom_idx_2] === undefined) {
-      throw new Error(`Invalid edge ${atom_idx_1}-${atom_idx_2} for ${n_atoms} atoms`)
-    }
     adjacency[atom_idx_1].add(atom_idx_2)
     adjacency[atom_idx_2].add(atom_idx_1)
   }
@@ -230,9 +225,6 @@ function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
   }
   return [...uniq.values()]
 }
-
-const order_to_bond_order = (order: number): BondOrder =>
-  order >= 3 ? 3 : order === 2 ? 2 : 1
 
 // Conservative planarity check: degenerate first-3-atom planes are non-planar.
 function ring_is_planar(ring: number[], sites: Site[]): boolean {
@@ -342,7 +334,8 @@ export function perceive_bond_orders(
     }
     if (!solved) continue
     local_edges.forEach((edge, edge_idx) => {
-      const order = order_to_bond_order(solved[edge_idx])
+      const solved_order = solved[edge_idx]
+      const order: BondOrder = solved_order >= 3 ? 3 : solved_order === 2 ? 2 : 1
       result.set(edge.bond, { ...edge.bond, bond_order: order, perceived: true })
     })
 

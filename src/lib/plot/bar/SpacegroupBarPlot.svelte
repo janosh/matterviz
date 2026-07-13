@@ -34,36 +34,21 @@
     data.map(spg.normalize_spacegroup).filter((sg): sg is number => sg !== null),
   )
 
-  // Compute histogram of space group numbers
+  // Histogram of space group number counts
   const histogram = $derived.by(() => {
     const hist = new SvelteMap<number, number>()
-
-    // Count occurrences
-    for (const sg of normalized_data) {
-      hist.set(sg, (hist.get(sg) ?? 0) + 1)
-    }
-
+    for (const sg of normalized_data) hist.set(sg, (hist.get(sg) ?? 0) + 1)
     return hist
   })
 
-  // Group counts by crystal system
-  const crystal_system_stats = $derived.by(() => {
-    const stats = new SvelteMap<CrystalSystem, { count: number; spacegroups: number[] }>()
-
-    for (const system of symmetry.CRYSTAL_SYSTEMS) {
-      stats.set(system, { count: 0, spacegroups: [] })
-    }
-
+  // Total counts per crystal system
+  const crystal_system_counts = $derived.by(() => {
+    const counts = new SvelteMap<CrystalSystem, number>()
     for (const [sg, count] of histogram) {
       const system = spg.spacegroup_to_crystal_sys(sg)
-      if (!system) continue
-      const stat = stats.get(system)
-      if (!stat) continue
-      stat.count += count
-      stat.spacegroups.push(sg)
+      if (system) counts.set(system, (counts.get(system) ?? 0) + count)
     }
-
-    return stats
+    return counts
   })
 
   // Create sorted list of space groups for x-axis
@@ -88,28 +73,20 @@
     // Group data by crystal system
     for (const sg of sorted_spacegroups) {
       const system = spg.spacegroup_to_crystal_sys(sg)
-      if (system) {
-        let series = series_by_system.get(system)
-        if (!series) {
-          series = { x: [], y: [] }
-          series_by_system.set(system, series)
-        }
-        series.x.push(sg)
-        series.y.push(histogram.get(sg) ?? 0)
-      }
+      if (!system) continue
+      let series = series_by_system.get(system)
+      if (!series) series_by_system.set(system, (series = { x: [], y: [] }))
+      series.x.push(sg)
+      series.y.push(histogram.get(sg) ?? 0)
     }
 
     // Convert to BarSeries array, maintaining order of crystal systems
-    const result: BarSeries[] = []
-    for (const system of symmetry.CRYSTAL_SYSTEMS) {
+    return symmetry.CRYSTAL_SYSTEMS.flatMap((system) => {
       const system_data = series_by_system.get(system)
-      if (system_data) {
-        const { x, y } = system_data
-        const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
-        result.push({ x, y, color, label: system, bar_width: 0.9, visible: true })
-      }
-    }
-    return result
+      if (!system_data) return []
+      const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
+      return { ...system_data, color, label: system, bar_width: 0.9, visible: true }
+    })
   })
 
   // Always show full space group range (1-230)
@@ -121,8 +98,7 @@
 
     return symmetry.CRYSTAL_SYSTEMS.map((system) => {
       const [sg_start, sg_end] = symmetry.CRYSTAL_SYSTEM_RANGES[system]
-      const stats = crystal_system_stats.get(system)
-      const count = stats?.count ?? 0
+      const count = crystal_system_counts.get(system) ?? 0
       const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
       return { system, sg_start, sg_end, count, color }
     }).filter(

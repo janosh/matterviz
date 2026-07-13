@@ -249,22 +249,6 @@ describe(`BarPlot`, () => {
     expect(b_rects[2].bottom).toBeCloseTo(a_rects[0].bottom, 4)
   })
 
-  test(`event callbacks`, () => {
-    const [change_fn, hover_fn, click_fn] = [vi.fn(), vi.fn(), vi.fn()]
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [basic],
-        change: change_fn,
-        on_bar_hover: hover_fn,
-        on_bar_click: click_fn,
-      },
-    })
-    expect(change_fn).not.toHaveBeenCalled()
-    expect(hover_fn).not.toHaveBeenCalled()
-    expect(click_fn).not.toHaveBeenCalled()
-  })
-
   test(`default tooltip shows series label for multi-series on hover`, async () => {
     const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
     const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }
@@ -403,20 +387,20 @@ describe(`BarPlot`, () => {
       expect(labels).toEqual([`C`, `D`])
     })
 
-    test(`hover provides category_label and preserves metadata`, async () => {
+    test(`hover reports category_label + metadata and tooltip shows the category name`, async () => {
       const hover_fn = vi.fn()
       mount(BarPlot, {
         target: document.body,
         props: {
           series: [
             {
-              x: [`X`, `Y`],
-              y: [10, 20],
+              x: [`Alpha`, `Beta`, `Gamma`],
+              y: [10, 20, 30],
               color: `blue`,
-              metadata: [{ id: 1 }, { id: 2 }],
-              labels: [`Label X`, `Label Y`],
+              metadata: [{ id: 1 }, { id: 2 }, { id: 3 }],
             },
           ],
+          x_axis: { label: `Greek` },
           on_bar_hover: hover_fn,
           style: `width: 400px; height: 300px`,
         },
@@ -428,26 +412,11 @@ describe(`BarPlot`, () => {
       await tick()
       expect(hover_fn).toHaveBeenCalled()
       const data = hover_fn.mock.calls[0][0]
-      expect(typeof data.category_label).toBe(`string`)
-      expect(data.metadata).toBeDefined()
-    })
-
-    test(`tooltip shows category name, not numeric index`, async () => {
-      mount(BarPlot, {
-        target: document.body,
-        props: {
-          series: [{ x: [`Alpha`, `Beta`, `Gamma`], y: [10, 20, 30], color: `blue` }],
-          x_axis: { label: `Greek` },
-          style: `width: 400px; height: 300px`,
-        },
-      })
-      await tick()
-      const bar = document.querySelector(`path[role="button"]`)
-      if (!bar) throw new Error(`bar element not found`)
-      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-      await tick()
+      expect(data.category_label).toBe(`Alpha`)
+      expect(data.metadata).toEqual({ id: 1 })
+      // tooltip shows the category name, not its numeric index
       const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
-      expect(tooltip_text).toMatch(/Alpha|Beta|Gamma/)
+      expect(tooltip_text).toContain(`Alpha`)
       expect(tooltip_text).not.toMatch(/\b0\b/)
     })
   })
@@ -510,11 +479,13 @@ describe(`BarPlot`, () => {
       },
     ]
 
-    test(`accepts series with legend_group property without errors`, async () => {
-      const plot = await mount_sized_bar_plot({ series: grouped_series, mode: `grouped` })
+    test.each([
+      [`grouped`, [`DFT`, `ML`]],
+      [`overlay`, [`Experiment`]],
+    ] as const)(`renders grouped + ungrouped series in %s mode`, async (mode, labels) => {
+      const plot = await mount_sized_bar_plot({ series: grouped_series, mode })
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
-      expect(plot.textContent).toContain(`DFT`)
-      expect(plot.textContent).toContain(`ML`)
+      for (const label of labels) expect(plot.textContent).toContain(label)
     })
 
     test(`series visibility can be toggled via legend_group`, async () => {
@@ -532,25 +503,6 @@ describe(`BarPlot`, () => {
           el.getAttribute(`data-series-idx`),
         ),
       ).toEqual([`2`, `3`])
-    })
-
-    test(`legend_group property is preserved on series data`, () => {
-      // Verify that legend_group is a valid property on BarSeries
-      const series_with_group: BarSeries = {
-        x: [1, 2, 3],
-        y: [10, 20, 15],
-        label: `Test`,
-        legend_group: `TestGroup`,
-        color: `blue`,
-      }
-
-      expect(series_with_group.legend_group).toBe(`TestGroup`)
-    })
-
-    test(`renders with mixed grouped and ungrouped series`, async () => {
-      const plot = await mount_sized_bar_plot({ series: grouped_series, mode: `overlay` })
-      expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
-      expect(plot.textContent).toContain(`Experiment`)
     })
   })
 

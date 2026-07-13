@@ -660,7 +660,7 @@ def layout() -> html.Div:
                                         {"Sr": 2, "Fe": 1, "Mo": 1, "O": 6},
                                         None,
                                         "Vesta",
-                                    ),  # noqa: E501
+                                    ),
                                     (
                                         "composition/Composition",
                                         "CaTiO3",

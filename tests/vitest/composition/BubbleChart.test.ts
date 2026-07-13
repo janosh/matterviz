@@ -1,4 +1,4 @@
-import { BubbleChart, count_atoms_in_composition } from '$lib/composition'
+import { BubbleChart } from '$lib/composition'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
@@ -45,22 +45,5 @@ describe(`BubbleChart component`, () => {
     })
 
     expect(document.querySelector(`.custom-child`)).toBeInstanceOf(HTMLElement)
-  })
-})
-
-describe(`BubbleChart calculations`, () => {
-  test.each([
-    [{ H: 2, O: 1 }, 3],
-    [{}, 0],
-    [{ C: 60 }, 60],
-    [{ H: 0.1, O: 0.2 }, 0.3],
-  ])(`calculates total atoms correctly`, (composition, expected_total) => {
-    const total = count_atoms_in_composition(composition)
-
-    if (expected_total < 1) {
-      expect(total).toBeCloseTo(expected_total, 1)
-    } else {
-      expect(total).toBe(expected_total)
-    }
   })
 })

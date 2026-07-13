@@ -126,7 +126,7 @@ export class VSCodeFrameLoader implements FrameLoader {
     )
   }
 
-  // Unused methods - just throw errors
+  // Required by the FrameLoader interface but never called for host-streamed trajectories
   async get_total_frames(): Promise<number> {
     throw new Error(`Not implemented`)
   }
@@ -260,7 +260,6 @@ const handle_file_change = async (
     const result = await parse_file_data(message.data)
     if (!is_current_file_change(generation)) return
 
-    // Update the display
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {
       await unmount_current_app()
@@ -566,9 +565,8 @@ const trajectory_props = (defaults: DefaultSettings) => {
   }
 }
 
-// Initialize the MatterViz application
+// Initialize the MatterViz application from data passed by the extension
 async function initialize(lifecycle_generation: number): Promise<MatterVizApp | null> {
-  // Get MatterViz data passed from extension
   const file_data = globalThis.matterviz_data?.data
   const theme = globalThis.matterviz_data?.theme
   const moyo_wasm_url = globalThis.matterviz_data?.moyo_wasm_url
@@ -580,10 +578,7 @@ async function initialize(lifecycle_generation: number): Promise<MatterVizApp | 
   if (moyo_wasm_url) await ensure_moyo_wasm_ready(moyo_wasm_url)
   if (!is_current_lifecycle(lifecycle_generation)) return null
 
-  // Set up VSCode-specific download override
   setup_vscode_download()
-
-  // Apply theme early
   if (theme) apply_theme_to_dom(theme)
 
   const container = document.querySelector<HTMLElement>(`#matterviz-app`)
@@ -596,9 +591,8 @@ async function initialize(lifecycle_generation: number): Promise<MatterVizApp | 
   // Store the app instance for file watching
   current_app = app
 
-  // Set up file change monitoring
+  // Listen for file change messages from extension
   if (vscode_api && !file_change_listener_registered) {
-    // Listen for file change messages from extension
     globalThis.addEventListener(`message`, (event) => {
       if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
         process_file_change(event.data)
@@ -617,7 +611,9 @@ async function cleanup_matterviz(): Promise<void> {
   viewer_lifecycle_generation++
   file_change_queue = Promise.resolve()
   await unmount_current_app()
-} // Export initialization and cleanup functions to global scope
+}
+
+// Export initialization and cleanup functions to global scope
 global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
   if (!globalThis.matterviz_data) {
     console.warn(`No matterviz_data found on window`)

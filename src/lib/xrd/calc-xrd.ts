@@ -13,9 +13,7 @@ import { is_xrd_data_file, parse_xrd_file } from './parse'
 import { to_error } from '$lib/utils'
 
 // JSON import yields Record<string, number[][]>; type for element-keyed scattering params
-type ScatteringParamsRecord = Partial<
-  Record<ElementSymbol, number[][] | { a: number[]; b: number[]; c?: number }>
->
+type ScatteringParamsRecord = Partial<Record<ElementSymbol, number[][]>>
 
 // XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
@@ -155,16 +153,14 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   )
 
   // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda
-  const two_theta_range =
+  const two_theta_range: Vec2 | null =
     options.two_theta_range === null ? null : (options.two_theta_range ?? [0, 180])
   const [min_radius, max_radius] =
     two_theta_range === null
       ? [0, 2 / wavelength]
-      : (([t_min, t_max]: Vec2) => {
-          const r_min = (2 * Math.sin((t_min / 2) * (Math.PI / 180))) / wavelength
-          const r_max = (2 * Math.sin((t_max / 2) * (Math.PI / 180))) / wavelength
-          return [r_min, r_max]
-        })(two_theta_range)
+      : two_theta_range.map(
+          (angle) => (2 * Math.sin((angle / 2) * (Math.PI / 180))) / wavelength,
+        )
 
   const recip_points = enumerate_reciprocal_points(
     recip_rows,
@@ -174,8 +170,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   )
 
   // Flatten species with occupancies; gather coeffs, frac coords, occu, DW factors.
-  // z is set only for pymatgen-style fitted params (array form); {a, b, c} = Cromer-Mann
-  type ScatteringCoeffs = { a: number[]; b: number[]; c?: number; z?: number }
+  type ScatteringCoeffs = { a: number[]; b: number[]; z: number }
   const coeffs: ScatteringCoeffs[] = []
   const frac_coords: math.Vec3[] = []
   const occus: number[] = []
@@ -195,15 +190,11 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
           `No atomic scattering coefficients for ${element_symbol}. Extend ATOMIC_SCATTERING_PARAMS.`,
         )
       }
-      let coeff_entry: ScatteringCoeffs
-      if (Array.isArray(raw_coeff)) {
-        const a_arr = raw_coeff.map(([a]) => a)
-        const b_arr = raw_coeff.map(([_, b]) => b)
-        coeff_entry = { a: a_arr, b: b_arr, z: ELEMENT_Z[element_symbol] }
-      } else {
-        coeff_entry = { a: raw_coeff.a.slice(), b: raw_coeff.b.slice(), c: raw_coeff.c }
-      }
-      coeffs.push(coeff_entry)
+      coeffs.push({
+        a: raw_coeff.map((row) => row[0]),
+        b: raw_coeff.map((row) => row[1]),
+        z: ELEMENT_Z[element_symbol],
+      })
       frac_coords.push(site.abc)
       occus.push(species.occu)
       dw_factors.push(debye_waller_factors[element_symbol] ?? 0)
@@ -216,9 +207,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   const merge_tol = options.peak_merge_tol ?? TWO_THETA_TOL
   const scaled_tol = options.scaled_intensity_tol ?? SCALED_INTENSITY_TOL
 
-  for (const entry of recip_points) {
-    const hkl = entry.hkl
-    const g_norm = entry.g_norm
+  for (const { hkl, g_norm } of recip_points) {
     if (g_norm === 0) continue
 
     const asin_arg = (wavelength * g_norm) / 2
@@ -231,22 +220,14 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     // g.r for all fractional coords
     const g_dot_r_all = frac_coords.map((frac_coord) => math.dot(frac_coord, hkl))
 
-    // Atomic scattering factors (vectorized style)
-    const f_scattering: number[] = coeffs.map((coeff_entry) => {
-      const { a: a_arr, b: b_arr, z: atomic_number } = coeff_entry
-      const num_terms = Math.min(a_arr.length, b_arr.length)
-      const sum_terms = a_arr
-        .slice(0, num_terms)
-        .reduce(
-          (sum, a_i, term_idx) =>
-            sum + a_i * Math.exp(-b_arr[term_idx] * sin_theta_over_lambda_sq),
-          0,
-        )
-      // pymatgen-style fitted params: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²)
-      if (atomic_number !== undefined) {
-        return atomic_number - 41.78214 * sin_theta_over_lambda_sq * sum_terms
-      }
-      return sum_terms + (coeff_entry.c ?? 0)
+    // Atomic scattering factors: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²) (pymatgen fitted params)
+    const f_scattering: number[] = coeffs.map(({ a: a_arr, b: b_arr, z: atomic_number }) => {
+      const sum_terms = a_arr.reduce(
+        (sum, a_i, term_idx) =>
+          sum + a_i * Math.exp(-b_arr[term_idx] * sin_theta_over_lambda_sq),
+        0,
+      )
+      return atomic_number - 41.78214 * sin_theta_over_lambda_sq * sum_terms
     })
 
     const dw_corr: number[] = dw_factors.map((dw_b) =>
@@ -274,29 +255,15 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     const intensity_hkl = (f_real * f_real + f_imag * f_imag) * lorentz
     const two_theta = math.to_degrees(2 * theta)
 
-    // Use (h, k, l) always. For hexagonal systems, pymatgen presents Miller–Bravais (h, k, i, l),
-    // but downstream components expect 3-index HKL. Keep 3-index form to match types/consumers.
-    const hkl_to_store: Hkl = [hkl[0], hkl[1], hkl[2]]
-
-    // Merge peaks within tolerance
-    let found_index: number | null = null
-    for (let idx = 0; idx < two_thetas.length; idx++) {
-      if (Math.abs(two_thetas[idx] - two_theta) < merge_tol) {
-        found_index = idx
-        break
-      }
-    }
-
-    if (found_index !== null) {
-      const key = two_thetas[found_index]
-      const item = peaks.get(key)
-      if (item) {
-        item.intensity += intensity_hkl
-        item.hkls.push(hkl_to_store)
-      }
+    // Merge peaks within tolerance. hkls stay 3-index (h, k, l) even for hexagonal
+    // systems where pymatgen presents Miller–Bravais (h, k, i, l), matching consumers.
+    const merge_key = two_thetas.find((angle) => Math.abs(angle - two_theta) < merge_tol)
+    const existing = merge_key === undefined ? undefined : peaks.get(merge_key)
+    if (existing) {
+      existing.intensity += intensity_hkl
+      existing.hkls.push(hkl)
     } else {
-      const d_hkl = 1 / g_norm
-      peaks.set(two_theta, { intensity: intensity_hkl, hkls: [hkl_to_store], d_hkl })
+      peaks.set(two_theta, { intensity: intensity_hkl, hkls: [hkl], d_hkl: 1 / g_norm })
       two_thetas.push(two_theta)
     }
   }
@@ -352,13 +319,10 @@ export async function add_xrd_pattern(
     // Check if file is a direct XRD data file (.xy, .brml)
     if (is_xrd_data_file(filename)) {
       // Convert ArrayBufferLike to ArrayBuffer if needed (handles SharedArrayBuffer)
-      let buffer_content: string | ArrayBuffer
-      if (typeof content === `string`) {
-        buffer_content = content
-      } else {
-        buffer_content =
-          content instanceof ArrayBuffer ? content : new Uint8Array(content).slice().buffer
-      }
+      const buffer_content: string | ArrayBuffer =
+        typeof content === `string` || content instanceof ArrayBuffer
+          ? content
+          : new Uint8Array(content).slice().buffer
       const pattern = await parse_xrd_file(buffer_content, filename)
       if (pattern && pattern.x.length > 0) {
         return { pattern: { label: filename || `XRD data`, pattern } }

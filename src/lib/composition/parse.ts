@@ -64,8 +64,7 @@ export const atomic_symbol_to_num = (
 ): Record<number, number> => {
   const atomic_composition: Record<number, number> = {}
   for (const [symbol, amount] of Object.entries(symbol_composition)) {
-    if (!is_elem_symbol(symbol)) throw new Error(`Invalid element symbol: ${symbol}`)
-    const atomic_num = SYMBOL_TO_ATOMIC_NUMBER[symbol]
+    const atomic_num = is_elem_symbol(symbol) ? SYMBOL_TO_ATOMIC_NUMBER[symbol] : undefined
     if (!atomic_num) throw new Error(`Invalid element symbol: ${symbol}`)
     if (amount > 0) {
       atomic_composition[atomic_num] = (atomic_composition[atomic_num] || 0) + amount
@@ -175,8 +174,7 @@ export const fractional_composition = (
   if (by_weight) {
     const element_weights = Object.fromEntries(
       Object.entries(filtered).map(([element, amount]) => {
-        if (!is_elem_symbol(element)) throw new Error(`Unknown element: ${element}`)
-        const atomic_mass = ATOMIC_WEIGHTS.get(element)
+        const atomic_mass = is_elem_symbol(element) ? ATOMIC_WEIGHTS.get(element) : undefined
         if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
         return [element, amount * atomic_mass]
       }),
@@ -289,53 +287,37 @@ export const parse_formula_with_oxidation = (
   const elements: ElementWithOxidation[] = []
   const cleaned_formula = expand_parentheses(formula.replaceAll(/\s/g, ``))
 
-  // Regex to match: Element, optional oxidation state and/or count in either order
-  // Pattern: ([A-Z][a-z]?)  - element symbol
-  //          Followed by one of:
-  //          - oxidation then optional count: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(count?)
-  //          - count then optional oxidation: count(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?
-  //          - just oxidation: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])
-  //          - just count: count
-  //          - neither
+  // Element symbol followed by optional oxidation state (^2+ or [2+] syntax) and
+  // optional count, in either order: Fe^2+O3, Fe[2+]O3, Fe3^2+, Fe2
   const regex =
     /(?<element>[A-Z][a-z]?)(?:(?:\^(?<oxi_caret>[+-]?\d+[+-]?|[+-])|\[(?<oxi_bracket>[+-]?\d+[+-]?|[+-])\])(?<count_after>(?:\d+(?:\.\d+)?|\.\d+)?)|(?<count_before>(?:\d+(?:\.\d+)?|\.\d+))(?:\^(?<oxi_caret_2>[+-]?\d+[+-]?|[+-])|\[(?<oxi_bracket_2>[+-]?\d+[+-]?|[+-])\])?)?/g
 
-  let match: RegExpExecArray | null
-  let orig_idx = 0
-
-  while ((match = regex.exec(cleaned_formula)) !== null) {
-    const element = match[1]
-    // Oxidation can be in groups 2/3 (oxidation first) or 6/7 (count first)
-    // Count can be in group 4 (after oxidation) or 5 (before oxidation)
-    const oxidation_str = match[2] || match[3] || match[6] || match[7]
-    const count_str = match[4] || match[5]
-    const count = parse_count(count_str)
+  for (const match of cleaned_formula.matchAll(regex)) {
+    const groups = match.groups ?? {}
+    const element = groups.element
+    const oxidation_str =
+      groups.oxi_caret || groups.oxi_bracket || groups.oxi_caret_2 || groups.oxi_bracket_2
+    const count = parse_count(groups.count_after || groups.count_before)
 
     if (!is_elem_symbol(element)) throw new Error(`Invalid element symbol: ${element}`)
 
     const oxidation_state = oxidation_str ? parse_oxidation_state(oxidation_str) : undefined
 
-    // Find or add element entry
     const existing = elements.find((el) => el.element === element)
-    if (existing) {
-      existing.amount += count
-
-      // Handle oxidation state conflicts
-      if (oxidation_state === undefined) {
-        // No oxidation state in current match, nothing to do
-      } else if (existing.oxidation_state === undefined) {
-        // Set oxidation state on first occurrence
-        existing.oxidation_state = oxidation_state
-      } else if (strict && existing.oxidation_state !== oxidation_state) {
-        // In strict mode, throw on conflicting oxidation states
-        throw new Error(
-          `Conflicting oxidation states for ${element}: ${format_state(
-            existing.oxidation_state,
-          )} and ${format_state(oxidation_state)}`,
-        )
-      }
-    } else {
-      elements.push({ element, amount: count, oxidation_state, orig_idx: orig_idx++ })
+    if (!existing) {
+      elements.push({ element, amount: count, oxidation_state, orig_idx: elements.length })
+      continue
+    }
+    existing.amount += count
+    if (oxidation_state === undefined) continue
+    if (existing.oxidation_state === undefined) {
+      existing.oxidation_state = oxidation_state // Set on first occurrence
+    } else if (strict && existing.oxidation_state !== oxidation_state) {
+      throw new Error(
+        `Conflicting oxidation states for ${element}: ${format_state(
+          existing.oxidation_state,
+        )} and ${format_state(oxidation_state)}`,
+      )
     }
   }
 
@@ -385,17 +367,11 @@ export function generate_chem_sys_subspaces(
   let elements: ElementSymbol[]
 
   if (typeof input === `string`) elements = extract_formula_elements(input)
-  else if (Array.isArray(input)) {
-    const uniq = [...new Set(input)]
-    for (const elem of uniq) {
+  else {
+    const symbols = Array.isArray(input) ? input : (Object.keys(input) as ElementSymbol[])
+    elements = [...new Set(symbols)]
+    for (const elem of elements) {
       if (!is_elem_symbol(elem)) throw new Error(`Invalid element symbol: ${elem}`)
-    }
-    elements = uniq
-  } else {
-    elements = []
-    for (const elem of Object.keys(input)) {
-      if (!is_elem_symbol(elem)) throw new Error(`Invalid element symbol: ${elem}`)
-      elements.push(elem)
     }
   }
 
@@ -456,7 +432,7 @@ export const has_wildcards = (input: string): boolean => input.includes(`*`)
 // Throws if any non-wildcard token is not a valid element symbol.
 export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcards {
   const tokens = input
-    .replaceAll('-', `,`)
+    .replaceAll(`-`, `,`)
     .split(`,`)
     .map((tok) => tok.trim())
     .filter(Boolean)
@@ -495,36 +471,22 @@ export const ELEM_WILDCARD = {
 export function parse_formula_with_wildcards(formula: string): WildcardFormulaToken[] {
   const tokens: WildcardFormulaToken[] = []
 
-  // Expand parentheses, treating * as a pseudo-element (temporarily replace to protect it)
+  // Swap * for a placeholder so parentheses expansion treats it as a pseudo-element
   let cleaned = formula.replaceAll(/\s/g, ``)
-
-  // Protect wildcards from parentheses expansion by replacing * with placeholder
   cleaned = cleaned.replace(ELEM_WILDCARD.to_placeholder, ELEM_WILDCARD.placeholder)
   cleaned = expand_parentheses(cleaned)
-  // Restore wildcards
   cleaned = cleaned.replace(ELEM_WILDCARD.from_placeholder, `*`)
 
-  // Regex to match either:
-  // 1. Standard element symbol with optional decimal count
-  // 2. Wildcard with optional decimal count
+  // Match element symbol or wildcard, each with optional decimal count
   const regex =
     /(?<element>[A-Z][a-z]?)(?<count>(?:\d+(?:\.\d+)?|\.\d+)?)|(?<wildcard>\*)(?<wildcard_count>(?:\d+(?:\.\d+)?|\.\d+)?)/g
 
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(cleaned)) !== null) {
-    if (match[3] === `*`) {
-      // Wildcard match
-      const count = parse_count(match[4])
-      tokens.push({ element: null, count })
-    } else if (match[1]) {
-      // Element symbol match
-      const element = match[1]
-      const count = parse_count(match[2])
-
-      if (!is_elem_symbol(element)) {
-        throw new Error(`Invalid element symbol: ${element}`)
-      }
-      tokens.push({ element, count })
+  for (const match of cleaned.matchAll(regex)) {
+    const { element, count, wildcard, wildcard_count } = match.groups ?? {}
+    if (wildcard) tokens.push({ element: null, count: parse_count(wildcard_count) })
+    else if (element) {
+      if (!is_elem_symbol(element)) throw new Error(`Invalid element symbol: ${element}`)
+      tokens.push({ element, count: parse_count(count) })
     }
   }
 
@@ -568,50 +530,35 @@ export function matches_formula_wildcard(
   try {
     const composition = parse_formula(formula)
 
-    // Separate explicit elements and wildcards from pattern
-    const explicit_requirements: { element: ElementSymbol; count: number }[] = []
+    // Split pattern into merged explicit element counts (e.g. "LiLi" -> Li: 2)
+    // and wildcard counts
+    const explicit_counts = new Map<ElementSymbol, number>()
     const wildcard_counts: number[] = []
-
     for (const token of pattern) {
-      if (token.element === null) {
-        wildcard_counts.push(token.count)
-      } else {
-        // Merge counts for same element (e.g. "LiLi" -> Li with count 2)
-        const existing = explicit_requirements.find((req) => req.element === token.element)
-        if (existing) {
-          existing.count += token.count
-        } else {
-          explicit_requirements.push({ element: token.element, count: token.count })
-        }
+      if (token.element === null) wildcard_counts.push(token.count)
+      else {
+        explicit_counts.set(
+          token.element,
+          (explicit_counts.get(token.element) ?? 0) + token.count,
+        )
       }
     }
 
-    // Check explicit element requirements
-    const used_elements = new Set<string>()
-    for (const req of explicit_requirements) {
-      if (composition[req.element] !== req.count) return false
-      used_elements.add(req.element)
+    for (const [element, count] of explicit_counts) {
+      if (composition[element] !== count) return false
     }
 
-    // Get remaining elements (candidates for wildcards)
-    const remaining_elements = Object.entries(composition)
-      .filter(([elem]) => !used_elements.has(elem))
-      .map(([elem, count]) => ({ elem, count }))
+    // Remaining elements are wildcard candidates. Each wildcard needs a distinct
+    // element with exactly its count, so sorting both count lists reduces the
+    // matching to a positional comparison
+    const remaining_counts = Object.entries(composition)
+      .filter(([elem]) => !explicit_counts.has(elem as ElementSymbol))
+      .map(([, count]) => count)
+      .sort((cnt_a, cnt_b) => cnt_a - cnt_b)
+    if (remaining_counts.length !== wildcard_counts.length) return false
 
-    // Must have exactly as many remaining elements as wildcards
-    if (remaining_elements.length !== wildcard_counts.length) return false
-
-    // Try to match remaining elements to wildcards (each wildcard needs a distinct element)
-    // Sort both by count to enable greedy matching
-    const sorted_remaining = [...remaining_elements].sort((a, b) => a.count - b.count)
-    const sorted_wildcards = [...wildcard_counts].sort((a, b) => a - b)
-
-    // Check if counts match (simple comparison works because we need exact matches)
-    for (let idx = 0; idx < sorted_wildcards.length; idx++) {
-      if (sorted_remaining[idx].count !== sorted_wildcards[idx]) return false
-    }
-
-    return true
+    wildcard_counts.sort((cnt_a, cnt_b) => cnt_a - cnt_b)
+    return wildcard_counts.every((count, idx) => remaining_counts[idx] === count)
   } catch {
     return false
   }

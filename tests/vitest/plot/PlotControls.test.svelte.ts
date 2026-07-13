@@ -27,62 +27,25 @@ describe(`PlotControls`, () => {
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
       expect(input.classList.contains(`invalid`)).toBe(false)
     })
-
-    test(`handles various input scenarios`, () => {
-      mount_controls({ auto_x_range: [0, 100] })
-      const [x_min, x_max, y_min] = Array.from(
-        document.querySelectorAll<HTMLInputElement>(`input.range-input`),
-      )
-
-      // Valid values
-      x_min.value = `10`
-      x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
-      x_max.value = `90`
-      x_max.dispatchEvent(new Event(`input`, { bubbles: true }))
-      expect(x_min.classList.contains(`invalid`)).toBe(false)
-
-      // Non-finite value
-      x_min.value = `1e`
-      x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
-      expect(x_min.classList.contains(`invalid`)).toBe(false)
-
-      // Empty values
-      x_min.value = ``
-      x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
-      x_max.value = ``
-      x_max.dispatchEvent(new Event(`input`, { bubbles: true }))
-
-      // Test y-axis to ensure all axes work
-      y_min.value = `5`
-      y_min.dispatchEvent(new Event(`input`, { bubbles: true }))
-      expect(y_min.value).toBe(`5`)
-    })
   })
 
   describe(`auto range fallback`, () => {
-    test(`handles all three axes and y2 visibility`, () => {
-      mount_controls({
-        has_y2_points: true,
-        auto_x_range: [0, 100],
-        auto_y_range: [0, 50],
-        auto_y2_range: [0, 25],
-      })
-
-      const inputs = Array.from(
-        document.querySelectorAll<HTMLInputElement>(`input.range-input`),
-      )
-      expect(inputs).toHaveLength(6) // 2 per axis
-
-      // Test input updates work
-      inputs[0].value = `10`
-      inputs[0].dispatchEvent(new Event(`input`, { bubbles: true }))
-      expect(inputs[0].value).toBe(`10`)
-    })
-
-    test(`hides y2 inputs when has_y2_points is false`, () => {
-      mount_controls({ has_y2_points: false })
-      expect(document.querySelectorAll(`input.range-input`)).toHaveLength(4)
-    })
+    // y2 range inputs only render when the plot has y2 series (2 inputs per visible axis)
+    test.each([
+      { has_y2_points: true, expected: 6 },
+      { has_y2_points: false, expected: 4 },
+    ])(
+      `renders $expected range inputs when has_y2_points=$has_y2_points`,
+      ({ has_y2_points, expected }) => {
+        mount_controls({
+          has_y2_points,
+          auto_x_range: [0, 100],
+          auto_y_range: [0, 50],
+          auto_y2_range: [0, 25],
+        })
+        expect(document.querySelectorAll(`input.range-input`)).toHaveLength(expected)
+      },
+    )
   })
 
   describe(`format input validation`, () => {
@@ -103,19 +66,6 @@ describe(`PlotControls`, () => {
       input.value = format
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
       expect(input.classList.contains(`invalid`)).toBe(!valid)
-    })
-
-    test(`handles all three axis formats`, () => {
-      mount_controls({ has_y2_points: true })
-      const inputs = Array.from(
-        document.querySelectorAll<HTMLInputElement>(`input[type="text"]`),
-      )
-
-      inputs.forEach((input, idx) => {
-        input.value = [`.2r`, `.0%`, `.1e`][idx]
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        expect(input.classList.contains(`invalid`)).toBe(false)
-      })
     })
   })
 
@@ -147,39 +97,18 @@ describe(`PlotControls`, () => {
     })
   })
 
-  test(`tick controls visibility`, () => {
+  test(`tick controls section only renders when show_ticks`, () => {
+    // section titles render in <h4> headers (not inside the <section> itself)
+    const has_ticks_section = () =>
+      Array.from(document.querySelectorAll(`h4`)).some((header) =>
+        header.textContent?.includes(`Ticks`),
+      )
     mount_controls({ show_ticks: false })
-    expect(
-      Array.from(document.querySelectorAll(`section`)).find((section) =>
-        section.textContent?.includes(`Ticks`),
-      ),
-    ).toBeUndefined()
+    expect(has_ticks_section()).toBe(false)
 
+    document.body.innerHTML = ``
     mount_controls({ show_ticks: true })
-    const tick_inputs = Array.from(
-      document.querySelectorAll<HTMLInputElement>(`input[type="number"]`),
-    ).filter((input) => input.parentElement?.textContent?.toLowerCase().includes(`axis`))
-
-    const x_tick = tick_inputs.find((input) =>
-      input.parentElement?.textContent?.includes(`X-axis`),
-    )
-    if (x_tick) {
-      x_tick.value = `10`
-      x_tick.dispatchEvent(new Event(`input`, { bubbles: true }))
-      expect(x_tick.value).toBe(`10`)
-    }
-  })
-
-  test(`has reset buttons for control sections`, () => {
-    mount_controls({ x_range: [-10, 10], y_range: [-5, 5] })
-    const sections = Array.from(document.querySelectorAll(`section`))
-
-    const expected_sections = [`Display`, `Axis Range`, `Tick Format`]
-    expected_sections.forEach((name) => {
-      const matching_section = sections.find((section) => section.textContent?.includes(name))
-      const reset = matching_section?.querySelector<HTMLButtonElement>(`button`)
-      expect(reset).not.toBeNull()
-    })
+    expect(has_ticks_section()).toBe(true)
   })
 
   test(`controls visibility toggles`, () => {

@@ -2,23 +2,21 @@
 // Note: This file needs to be symlinked into static/ to be importable by app.html before initial page render to prevent flashing colors before client-side JS kicks in. It also needs to be in src/lib so it gets packaged and shipped to NPM for use by the anywidgets in pymatviz.
 // Can't use exports in this file as would then require type="module" in app.html to import which would defer until after HTML is ready (module files are always deferred).
 
-// Text colors
-const txt_light = `#374151` // Dark gray
-const txt_dark = `#eee` // Light gray
-const txt_white = `#000000` // Black
-const txt_black = `#f5f5f5` // Off-white
+// Text colors (also GitHub corner bg + plot legend item color)
+const txt = {
+  light: `#374151`, // Dark gray
+  dark: `#eee`, // Light gray
+  white: `#000000`, // Black
+  black: `#f5f5f5`, // Off-white
+}
 
-// Page backgrounds
-const page_bg_light = `#f1f3f5` // Light gray
-const page_bg_dark = `#18171c` // Very dark blue
-const page_bg_white = `#ffffff` // Pure white
-const page_bg_black = `#000000` // Pure black
-
-// Borders
-const border_light = `#d1d5db` // Gray border
-const border_dark = `#404040` // Dark gray border
-const border_white = `#d1d5db` // Light border
-const border_black = `#404040` // Dark border
+// Page backgrounds (also fullscreen structure bg + GitHub corner fg)
+const page_bg = {
+  light: `#f1f3f5`, // Light gray
+  dark: `#18171c`, // Very dark blue
+  white: `#ffffff`, // Pure white
+  black: `#000000`, // Pure black
+}
 
 // Accents
 const acc_light = `#4f46e5` // Indigo
@@ -26,19 +24,12 @@ const acc_dark = `cornflowerblue` // Light blue
 const acc_white = `#2563eb` // Blue
 const acc_black = `cornflowerblue`
 
-// Helper functions for common patterns
+// Helper for common button-like background patterns
 const btn_bg = (dark_op, light_op) => ({
   light: `rgba(0, 0, 0, ${light_op})`,
   dark: `rgba(255, 255, 255, ${dark_op})`,
   white: `rgba(0, 0, 0, ${light_op})`,
   black: `rgba(255, 255, 255, ${dark_op})`,
-})
-
-const tooltip_bg = (light_bg, dark_bg, light_op = 0.95, dark_op = 0.95) => ({
-  light: `rgba(${light_bg}, ${light_op})`,
-  dark: `rgba(${dark_bg}, ${dark_op})`,
-  white: `rgba(255, 255, 255, 0.98)`,
-  black: `rgba(20, 20, 20, 0.98)`,
 })
 
 // Slight contrast shading drawn behind plot SVGs and structure canvases so they read
@@ -54,13 +45,8 @@ const canvas_bg = {
 
 const themes = {
   // Core colors
-  'page-bg': {
-    light: page_bg_light,
-    dark: page_bg_dark,
-    white: page_bg_white,
-    black: page_bg_black,
-  },
-  'text-color': { light: txt_light, dark: txt_dark, white: txt_white, black: txt_black },
+  'page-bg': page_bg,
+  'text-color': txt,
   'surface-bg': {
     light: `rgb(237, 238, 239)`,
     dark: `rgb(33, 36, 43)`,
@@ -68,10 +54,10 @@ const themes = {
     black: `rgb(19, 19, 19)`,
   },
   'border-color': {
-    light: border_light,
-    dark: border_dark,
-    white: border_white,
-    black: border_black,
+    light: `#d1d5db`, // Gray border
+    dark: `#404040`, // Dark gray border
+    white: `#d1d5db`,
+    black: `#404040`,
   },
   'accent-color': {
     light: acc_light,
@@ -158,7 +144,12 @@ const themes = {
   'btn-disabled-bg': btn_bg(0.1, 0.05),
 
   // Tooltips
-  'tooltip-bg': tooltip_bg(`243, 244, 246`, `0, 40, 60`),
+  'tooltip-bg': {
+    light: `rgba(243, 244, 246, 0.95)`,
+    dark: `rgba(0, 40, 60, 0.95)`,
+    white: `rgba(255, 255, 255, 0.98)`,
+    black: `rgba(20, 20, 20, 0.98)`,
+  },
   'canvas-tooltip-bg': {
     light: `rgba(226, 232, 240, 0.96)`,
     dark: `rgba(15, 23, 42, 0.96)`,
@@ -181,12 +172,7 @@ const themes = {
   // Plot & structure canvas backgrounds (shared subtle panel shading)
   'plot-bg': canvas_bg,
   'struct-bg': canvas_bg,
-  'struct-bg-fullscreen': {
-    light: page_bg_light,
-    dark: page_bg_dark,
-    white: page_bg_white,
-    black: page_bg_black,
-  },
+  'struct-bg-fullscreen': page_bg,
 
   // Pane backgrounds (DraggablePane, etc.)
   'pane-bg': {
@@ -257,26 +243,11 @@ const themes = {
     white: `1px solid rgba(0, 0, 0, 0.1)`,
     black: `1px solid rgba(255, 255, 255, 0.1)`,
   },
-  'plot-legend-item-color': {
-    light: txt_light,
-    dark: txt_dark,
-    white: txt_white,
-    black: txt_black,
-  },
+  'plot-legend-item-color': txt,
   'plot-legend-item-hover-bg-color': btn_bg(0.1, 0.1),
 
-  'github-corner-color': {
-    light: page_bg_light,
-    dark: page_bg_dark,
-    white: page_bg_white,
-    black: page_bg_black,
-  },
-  'github-corner-bg': {
-    light: txt_light,
-    dark: txt_dark,
-    white: txt_white,
-    black: txt_black,
-  },
+  'github-corner-color': page_bg,
+  'github-corner-bg': txt,
   'github-corner-bg-hover': {
     light: `#1e40af`, // Darker, more modest blue for light mode
     dark: `#60a5fa`, // Lighter blue for dark mode

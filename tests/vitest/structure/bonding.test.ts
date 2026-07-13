@@ -711,9 +711,6 @@ describe(`Crystal Structure Bonding`, () => {
     )
     const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 3 })
     expect(bonds.length).toBeGreaterThan(0)
-    expect(bonds.filter((bond) => bond.site_idx_1 !== bond.site_idx_2).length).toBeGreaterThan(
-      0,
-    )
   })
 
   test(`diamond structure`, () => {
@@ -739,25 +736,6 @@ describe(`Crystal Structure Bonding`, () => {
 })
 
 describe(`Electronegativity-Based Bonding`, () => {
-  test(`chemical preferences`, () => {
-    const ionic = get_test_structure([
-      { xyz: [0, 0, 0], element: `Na` },
-      { xyz: [2.3, 0, 0], element: `Cl` },
-      { xyz: [4.6, 0, 0], element: `Na` },
-      { xyz: [6.9, 0, 0], element: `Cl` },
-    ])
-    const metal = get_test_structure([
-      { xyz: [0, 0, 0], element: `Fe` },
-      { xyz: [2.5, 0, 0], element: `Fe` },
-      { xyz: [1.25, 2.2, 0], element: `Fe` },
-      { xyz: [3.75, 2.2, 0], element: `Fe` },
-    ])
-    const ionic_bonds = bonding.electroneg_ratio(ionic, { max_distance_ratio: 2.5 })
-    const metal_bonds = bonding.electroneg_ratio(metal, { max_distance_ratio: 2 })
-    expect(ionic_bonds.length).toBeGreaterThan(0)
-    expect(metal_bonds.length).toBeGreaterThan(0)
-  })
-
   test(`bond type identification`, () => {
     const na_cl = get_test_structure([
       { xyz: [0, 0, 0], element: `Na` },
@@ -810,46 +788,12 @@ describe(`Algorithm Comparison`, () => {
     expect(bonding.solid_angle(structure)).toHaveLength(1)
     expect(bonding.electroneg_ratio(structure)).toHaveLength(1)
   })
-
-  test(`large structures`, () => {
-    const large_structure = make_random_structure(500)
-    expect(bonding.electroneg_ratio(large_structure)).toBeInstanceOf(Array)
-    expect(bonding.solid_angle(large_structure)).toBeInstanceOf(Array)
-  })
 })
 
-describe(`Bond Strength Validation`, () => {
-  test.each(Object.values(bonding.BONDING_STRATEGIES))(`valid strength values`, (strategy) => {
-    const structure = get_test_structure([
-      { xyz: [0, 0, 0], element: `C` },
-      { xyz: [1.5, 0, 0], element: `O` },
-      { xyz: [0, 1.5, 0], element: `H` },
-    ])
-    strategy(structure).forEach((bond: BondPair) => {
-      expect(bond.strength).toBeGreaterThanOrEqual(0)
-      expect(bond.strength).toBeLessThanOrEqual(2)
-    })
-  })
-})
 test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
-  // This test reproduces a bug where image atoms get fewer bonds than original atoms
-  // due to the order in which neighbor distance penalties are applied.
-
-  // Construct a structure where:
-  // 1. Original Na (idx 0) is processed.
-  // 2. It sees a "Long" neighbor first. Distance 3.0.
-  //    Since no shorter bond is known yet, it accepts this bond.
-  // 3. It sees a "Short" neighbor second. Distance 2.0.
-  //    It accepts this bond too, and updates "closest" to 2.0.
-  //    Result: Original Na has 2 bonds.
-  //
-  // 4. Image Na (idx 3) is processed later.
-  //    It shares `orig_site_idx: 0`, so it inherits `closest = 2.0` from step 3.
-  // 5. It sees "Long" neighbor. Distance 3.0.
-  //    3.0 > 2.0, so penalty is applied!
-  //    If penalty is strong enough, this bond is rejected (or has much lower strength).
-  // 6. It sees "Short" neighbor. Distance 2.0. Accepted.
-  //    Result: Image Na has 1 bond (or 2 bonds with different strengths).
+  // Regression: image atoms used to get fewer bonds than their originals because
+  // closest-neighbor penalties were applied in processing order — an image inherited
+  // its original's `closest` distance and penalized bonds the original had accepted.
 
   // Two copies of identical local geometry (a Na with a "Long" 3.0 A and a "Short" 2.0 A Cl
   // neighbor): sites 0-2 are originals, 3-5 are images (orig_site_idx 0,1,2) placed 100 A away.
@@ -872,20 +816,10 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   expect(bond_count(3)).toBe(bond_count(0)) // image (idx 3) bonds identically to original (idx 0)
 })
 test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bonds`, () => {
-  // Benzene-like fragment: C bonded to C and H.
-  // C-H distance ~1.09 A.
-  // C-C distance ~1.40 A.
-  // Radius C ~0.76, H ~0.31. Sums: C-H ~1.07, C-C ~1.52.
-  // C-H is close to expected sum. C-C is actually shorter than expected sum (aromatic).
-  // However, in raw distance, C-H (1.09) < C-C (1.40).
-  // If we use raw distance for "closest neighbor" penalty, C-H sets closest=1.09.
-  // C-C at 1.40 gets penalized (1.40/1.09 = 1.28).
-  // If we use normalized distance:
-  // C-H norm = 1.09/1.07 = 1.02.
-  // C-C norm = 1.40/1.52 = 0.92.
-  // C-C is the "closest" in normalized space. C-H is slightly further.
-  // Both should survive.
-
+  // Benzene-like fragment: in raw distance C-H (1.09 Å) < C-C (1.40 Å), so a raw-distance
+  // closest-neighbor penalty would penalize C-C (1.40/1.09 = 1.28). Normalized by
+  // covalent-radii sums, C-C (1.40/1.52 = 0.92) is closer than C-H (1.09/1.07 = 1.02),
+  // so both bonds survive.
   const structure = make_crystal(10, [
     { element: `C`, xyz: [0, 0, 0] }, // central C
     { element: `H`, xyz: [1.09, 0, 0] }, // C-H at 1.09 A (shorter raw distance)

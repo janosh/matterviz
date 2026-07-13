@@ -93,8 +93,6 @@ test.describe(`Periodic Table`, () => {
     // Configure retries for tooltip tests which can be timing-sensitive
     test.describe.configure({ retries: 2 })
 
-    test.beforeEach(() => {})
-
     // test utilities
     const get_element_tile = (page: Page, selector: string) =>
       page.locator(`.element-tile`).filter({ hasText: selector }).first()
@@ -154,6 +152,10 @@ test.describe(`Periodic Table`, () => {
       const option_list = await open_heatmap_select(page)
       const first_option = option_list.locator(`li`).first()
       await first_option.click()
+
+      // Close dropdown by clicking outside before hovering on tile
+      await page.mouse.click(10, 10)
+      await expect(option_list).not.toBeVisible()
 
       const tooltip = await hover_until_tooltip(page, get_element_tile(page, `C`))
       await expect(tooltip).toContainText(`Carbon`, { timeout: 15_000 })
@@ -225,25 +227,6 @@ test.describe(`Periodic Table`, () => {
         await expect(tooltip).toContainText(`${element.symbol} • ${element.number}`)
       })
     }
-
-    test(`tooltip works with heatmap property selected`, async ({ page }) => {
-      await page.goto(`/periodic-table`)
-
-      // Open the heatmap dropdown (retries click until hydrated) and select Atomic mass
-      const option_list = await open_heatmap_select(page)
-      const option = option_list.locator(`li`, { hasText: `Atomic mass` })
-      await expect(option).toBeVisible()
-      await option.click()
-
-      // Close dropdown by clicking outside before hovering on tile
-      await page.mouse.click(10, 10)
-      await expect(option_list).not.toBeVisible()
-
-      // Hover over Carbon element (retries until tooltip shows)
-      const tooltip = await hover_until_tooltip(page, get_element_tile(page, `C`))
-      await expect(tooltip).toContainText(`Carbon`, { timeout: 15_000 })
-      await expect(tooltip).toContainText(`C • 6`)
-    })
   })
 
   test.describe(`in heatmap mode`, () => {

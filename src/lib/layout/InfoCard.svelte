@@ -26,14 +26,12 @@
     data = [],
     title = ``,
     fallback = ``,
-    fmt = `.2f`,
+    fmt: default_fmt = `.2f`,
     as = `section`,
     title_snippet,
     fallback_snippet,
     ...rest
   }: Props = $props()
-
-  let default_fmt = $derived(fmt) // rename fmt to default_fmt for internal use
 </script>
 
 <svelte:element this={as} {...rest} class={[`info-card`, rest.class]}>

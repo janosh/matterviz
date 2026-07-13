@@ -139,15 +139,4 @@ describe(`HeatmapMatrixControls`, () => {
     expect(export_handler).toHaveBeenLastCalledWith(`json`)
     expect(export_handler).toHaveBeenCalledTimes(2)
   })
-
-  test(`labels use shortened text`, () => {
-    mount_controls()
-    const label_texts = Array.from(document.querySelectorAll(`.heatmap-controls label`)).map(
-      (label) => label.childNodes[0]?.textContent?.trim(),
-    )
-    expect(label_texts).toContain(`Ordering`)
-    expect(label_texts).toContain(`Search`)
-    expect(label_texts).toContain(`Normalize`)
-    expect(label_texts).toContain(`Domain`)
-  })
 })

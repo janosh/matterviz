@@ -44,7 +44,7 @@ python -m pip install -e .
 python scripts/sample_app.py
 ```
 
-Then open <http://127.0.0.1:8050> to see a `Structure` and `PeriodicTable` demo.
+Then open <http://127.0.0.1:8050> to see demos of `Structure`, `Trajectory`, `PeriodicTable`, spectral plots and more.
 
 ### Built assets for distribution
 
@@ -85,13 +85,12 @@ app.layout = html.Div(
 )
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run(debug=True)
 ```
 
-### Convenience factories (optional)
+### Typed wrapper shorthand
 
-This package also provides a dynamic factory for any _capitalized_ attribute via `__getattr__`.
-So you can write:
+For components with a generated typed wrapper (see below), keyword arguments forward into `mv_props`:
 
 ```python
 mvc.Structure(
@@ -103,7 +102,7 @@ mvc.Structure(
 That is syntactic sugar for:
 
 ```python
-mvc.MatterViz(component="Structure", mv_props={"structure": {...}, "show_controls": True})
+mvc.MatterViz(component="structure/Structure", mv_props={"structure": {...}, "show_controls": True})
 ```
 
 If a component name is ambiguous, use a path key:
@@ -172,8 +171,7 @@ To regenerate wrappers after bumping the `matterviz` npm dependency:
      --out matterviz_dash_components/typed.py
    ```
 
-If a component is not in the manifest, it remains accessible through the generic `MatterViz` API
-(and via the `__getattr__` fallback factory).
+If a component is not in the manifest, it remains accessible through the generic `MatterViz` API.
 
 ## Props
 

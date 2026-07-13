@@ -10,35 +10,28 @@ import { describe, expect, test } from 'vitest'
 
 describe(`get_alphabetical_formula`, () => {
   test.each([
-    // Basic string inputs (default params: plain_text=false, delim=' ')
+    // Basic string / composition inputs
     [`Fe2O3`, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
     [`H2O`, undefined, undefined, undefined, `H<sub>2</sub> O`],
     [`CaCO3`, undefined, undefined, undefined, `C Ca O<sub>3</sub>`],
-    // Composition objects (default params)
     [{ Fe: 2, O: 3 }, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
     [{ H: 2, O: 1 }, undefined, undefined, undefined, `H<sub>2</sub> O`],
     [{ Ca: 1, C: 1, O: 3 }, undefined, undefined, undefined, `C Ca O<sub>3</sub>`],
-    // plain_text flag
-    [{ Fe: 2, O: 3 }, false, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
+    // plain_text
     [{ Fe: 2, O: 3 }, true, undefined, undefined, `Fe2 O3`],
-    [`Fe2O3`, false, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
     [`Fe2O3`, true, undefined, undefined, `Fe2 O3`],
-    [{ H: 1, O: 1 }, false, undefined, undefined, `H O`],
     [{ H: 1, O: 1 }, true, undefined, undefined, `H O`],
-    [`H2O`, false, undefined, undefined, `H<sub>2</sub> O`],
     [`H2O`, true, undefined, undefined, `H2 O`],
-    // delim parameter
-    [{ Fe: 2, O: 3 }, false, ` `, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
+    // delim
     [{ Fe: 2, O: 3 }, false, ``, undefined, `Fe<sub>2</sub>O<sub>3</sub>`],
     [{ Fe: 2, O: 3 }, false, `-`, undefined, `Fe<sub>2</sub>-O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, true, ` `, undefined, `Fe2 O3`],
     [{ Fe: 2, O: 3 }, true, ``, undefined, `Fe2O3`],
     [{ Fe: 2, O: 3 }, true, `-`, undefined, `Fe2-O3`],
     [`Fe2O3`, false, ``, undefined, `Fe<sub>2</sub>O<sub>3</sub>`],
     [`Fe2O3`, true, ``, undefined, `Fe2O3`],
     [`H2O`, false, ``, undefined, `H<sub>2</sub>O`],
     [`H2O`, true, ``, undefined, `H2O`],
-    // amount_format parameter
+    // amount_format
     [{ Fe: 2.5, O: 3.75 }, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [{ Fe: 2.5, O: 3.75 }, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
     [{ Fe: 2.5, O: 3.75 }, false, ` `, `.0f`, `Fe<sub>3</sub> O<sub>4</sub>`],
@@ -46,63 +39,58 @@ describe(`get_alphabetical_formula`, () => {
     [{ Fe: 0.001, O: 0.002 }, false, ` `, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
     [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
-    // default SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
+    // SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
     [`Li0.5FeO2`, true, ``, undefined, `FeLi0.5O2`],
     [{ Li: 0.001, Fe: 1, O: 2 }, true, ``, `.3~s`, `FeLi0.001O2`],
-    // Invalid inputs return empty string
+    // Invalid / malformed inputs
     [`invalid`, undefined, undefined, undefined, ``],
     [`123`, undefined, undefined, undefined, ``],
+    [{ lattice: {} }, undefined, undefined, undefined, ``],
+    [{ sites: null }, undefined, undefined, undefined, ``],
+    [{ sites: `not-array` }, undefined, undefined, undefined, ``],
+    [
+      {
+        sites: [
+          { species: `Fe`, abc: [0, 0, 0], xyz: [0, 0, 0], label: `Fe`, properties: {} },
+        ],
+      },
+      undefined,
+      undefined,
+      undefined,
+      ``,
+    ],
   ])(
     `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
     (input, plain_text, delim, amount_format, expected) => {
-      expect(get_alphabetical_formula(input, plain_text, delim, amount_format)).toBe(expected)
+      expect(
+        get_alphabetical_formula(
+          // malformed fixtures intentionally violate AnyStructure
+          input as Parameters<typeof get_alphabetical_formula>[0],
+          plain_text,
+          delim,
+          amount_format,
+        ),
+      ).toBe(expected)
     },
   )
 })
 
 describe(`get_electro_neg_formula`, () => {
   test.each([
-    // Basic string inputs (default params: plain_text=false, delim=' ')
-    [`Fe2O3`, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
+    // Electronegativity-specific ordering
     [`O2Ti`, undefined, undefined, undefined, `Ti O<sub>2</sub>`],
-    [`H2O`, undefined, undefined, undefined, `H<sub>2</sub> O`],
     [`NaCl`, undefined, undefined, undefined, `Na Cl`],
-    // Composition objects (default params)
-    [{ Fe: 2, O: 3 }, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [{ H: 2, O: 1 }, undefined, undefined, undefined, `H<sub>2</sub> O`],
     [{ Na: 1, Cl: 1 }, undefined, undefined, undefined, `Na Cl`],
-    // plain_text flag
-    [{ Fe: 2, O: 3 }, false, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, true, undefined, undefined, `Fe2 O3`],
-    [`Fe2O3`, false, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [`Fe2O3`, true, undefined, undefined, `Fe2 O3`],
     [`O2Ti`, true, ``, undefined, `TiO2`],
-    [{ H: 1, O: 1 }, false, undefined, undefined, `H O`],
-    [{ H: 1, O: 1 }, true, undefined, undefined, `H O`],
-    [`H2O`, false, undefined, undefined, `H<sub>2</sub> O`],
-    [`H2O`, true, undefined, undefined, `H2 O`],
-    // delim parameter
-    [{ Fe: 2, O: 3 }, false, ` `, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
+    // Shared formatting behavior (same as alphabetical for these compositions)
+    [`Fe2O3`, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [`H2O`, undefined, undefined, undefined, `H<sub>2</sub> O`],
+    [{ Fe: 2, O: 3 }, true, undefined, undefined, `Fe2 O3`],
     [{ Fe: 2, O: 3 }, false, ``, undefined, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, false, `-`, undefined, `Fe<sub>2</sub>-O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, true, ` `, undefined, `Fe2 O3`],
-    [{ Fe: 2, O: 3 }, true, ``, undefined, `Fe2O3`],
     [{ Fe: 2, O: 3 }, true, `-`, undefined, `Fe2-O3`],
-    [`Fe2O3`, false, ``, undefined, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [`Fe2O3`, true, ``, undefined, `Fe2O3`],
-    [`H2O`, false, ``, undefined, `H<sub>2</sub>O`],
-    [`H2O`, true, ``, undefined, `H2O`],
-    // amount_format parameter
     [{ Fe: 2.5, O: 3.75 }, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
-    [{ Fe: 2.5, O: 3.75 }, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
-    [{ Fe: 2.5, O: 3.75 }, false, ` `, `.0f`, `Fe<sub>3</sub> O<sub>4</sub>`],
     [{ Fe: 1000, O: 1500 }, false, ` `, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
-    [{ Fe: 0.001, O: 0.002 }, false, ` `, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
-    [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
-    [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
-    // Invalid inputs return empty string
     [`invalid`, undefined, undefined, undefined, ``],
-    [`123`, undefined, undefined, undefined, ``],
   ])(
     `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
     (input, plain_text, delim, amount_format, expected) => {
@@ -116,89 +104,43 @@ describe(`get_formula_label_segments`, () => {
   const subscript = (text: string) => ({ text, subscript: true })
 
   test.each([
-    {
-      formula: `O2`,
-      expected: [plain(`O`), subscript(`2`)],
-    },
-    {
-      formula: `Fe2O3`,
-      expected: [plain(`Fe`), subscript(`2`), plain(`O`), subscript(`3`)],
-    },
-    {
-      formula: `C12H22O11`,
-      expected: [
-        plain(`C`),
-        subscript(`12`),
-        plain(`H`),
-        subscript(`22`),
-        plain(`O`),
-        subscript(`11`),
-      ],
-    },
-    {
-      formula: `Li0.5FeO2`,
-      expected: [plain(`Li`), subscript(`0.5`), plain(`FeO`), subscript(`2`)],
-    },
-    {
-      formula: `(OH)2`,
-      expected: [plain(`(OH)2`)],
-    },
-    {
-      formula: `mp-123`,
-      expected: [plain(`mp-123`)],
-    },
-  ])(`$formula`, ({ formula, expected }) => {
+    [`O2`, [plain(`O`), subscript(`2`)]],
+    [`Fe2O3`, [plain(`Fe`), subscript(`2`), plain(`O`), subscript(`3`)]],
+    [
+      `C12H22O11`,
+      [plain(`C`), subscript(`12`), plain(`H`), subscript(`22`), plain(`O`), subscript(`11`)],
+    ],
+    [`Li0.5FeO2`, [plain(`Li`), subscript(`0.5`), plain(`FeO`), subscript(`2`)]],
+    [`(OH)2`, [plain(`(OH)2`)]],
+    [`mp-123`, [plain(`mp-123`)]],
+  ])(`%s`, (formula, expected) => {
     expect(get_formula_label_segments(formula)).toEqual(expected)
   })
 })
 
 describe(`formula functions handle structure objects`, () => {
+  const site = (element: string, xyz: [number, number, number], label: string) => ({
+    species: [{ element, occu: 1, oxidation_state: 0 }],
+    abc: xyz,
+    xyz,
+    label,
+    properties: {},
+  })
   const structure = {
     sites: [
-      {
-        species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `Fe1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
-        abc: [0.5, 0.5, 0.5],
-        xyz: [0.5, 0.5, 0.5],
-        label: `Fe2`,
-        properties: {},
-      },
-      {
-        species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-        abc: [0.25, 0.25, 0.25],
-        xyz: [0.25, 0.25, 0.25],
-        label: `O1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-        abc: [0.75, 0.75, 0.75],
-        xyz: [0.75, 0.75, 0.75],
-        label: `O2`,
-        properties: {},
-      },
-      {
-        species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-        abc: [0.5, 0, 0],
-        xyz: [0.5, 0, 0],
-        label: `O3`,
-        properties: {},
-      },
+      site(`Fe`, [0, 0, 0], `Fe1`),
+      site(`Fe`, [0.5, 0.5, 0.5], `Fe2`),
+      site(`O`, [0.25, 0.25, 0.25], `O1`),
+      site(`O`, [0.75, 0.75, 0.75], `O2`),
+      site(`O`, [0.5, 0, 0], `O3`),
     ],
   } as AnyStructure
 
-  test(`get_alphabetical_formula`, () => {
-    expect(get_alphabetical_formula(structure)).toBe(`Fe<sub>2</sub> O<sub>3</sub>`)
-  })
-
-  test(`get_electro_neg_formula`, () => {
-    expect(get_electro_neg_formula(structure)).toBe(`Fe<sub>2</sub> O<sub>3</sub>`)
+  test.each([
+    [`alphabetical`, get_alphabetical_formula],
+    [`electro_neg`, get_electro_neg_formula],
+  ] as const)(`%s formula from Fe2O3 structure`, (_name, format) => {
+    expect(format(structure)).toBe(`Fe<sub>2</sub> O<sub>3</sub>`)
   })
 })
 

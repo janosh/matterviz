@@ -96,13 +96,24 @@
     ...default_hull_config,
     ...config,
     colors: { ...default_hull_config.colors, ...config.colors },
-    margin: { t: 60, r: 60, b: 60, l: 60, ...config.margin },
   })
 
-  // Reactive dark mode detection for canvas text color
-  let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
-  const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
+  // Cache resolved canvas colors and refresh them only when the theme changes.
+  const initial_text_color = helpers.get_canvas_text_color(is_dark_mode())
+  let text_color = $state(initial_text_color)
+  let hull_edge_color = $state(initial_text_color)
+  function refresh_canvas_colors(dark_mode: boolean): void {
+    const next_text_color = helpers.get_canvas_text_color(dark_mode)
+    text_color = next_text_color
+    const resolved_edge_color = canvas
+      ? getComputedStyle(canvas).getPropertyValue(`--hull-edge-color`).trim()
+      : ``
+    hull_edge_color = resolved_edge_color || next_text_color
+  }
+  $effect(() => {
+    refresh_canvas_colors(is_dark_mode())
+    return watch_dark_mode(refresh_canvas_colors)
+  })
 
   // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
   // Explicit generic breaks the circular type inference through the all_enriched_entries thunk
@@ -132,31 +143,33 @@
   const elements = $derived(hull_data.elements)
   const plot_entries = $derived(hull_data.plot_entries)
 
+  // Entry → 4D hull point (3 barycentric composition fractions + e_form as w),
+  // or null when the entry lacks a finite formation energy or valid composition
+  function to_point_4d(entry: ConvexHullEntry): Point4D | null {
+    if (
+      !Number.isFinite(entry.e_form_per_atom) ||
+      ![entry.x, entry.y, entry.z].every(Number.isFinite)
+    )
+      return null
+    const amounts = elements.map((el) => entry.composition[el] || 0)
+    const total = amounts.reduce((sum, amt) => sum + amt, 0)
+    if (!(total > 0)) return null
+    const [x, y, z] = amounts.map((amt) => amt / total)
+    return [x, y, z].every(Number.isFinite)
+      ? { x, y, z, w: entry.e_form_per_atom ?? NaN }
+      : null
+  }
+
   // Compute 4D hull for visualization (always compute when we have formation energies)
   const hull_4d = $derived.by(() => {
     if (elements.length !== 4) return []
 
     try {
-      // Get coords with formation energies, excluding entries that don't participate in hull
-      const coords = compute_4d_coords(pd_data.entries, elements).filter(
-        (ent) => !ent.exclude_from_hull,
-      )
-
-      // Convert to 4D points for hull computation using barycentric coordinates (composition fractions)
-      const points_4d: Point4D[] = coords
-        .filter(
-          (ent) =>
-            Number.isFinite(ent.e_form_per_atom) &&
-            [ent.x, ent.y, ent.z].every(Number.isFinite),
-        )
-        .map((ent) => {
-          const amounts = elements.map((el) => ent.composition[el] || 0)
-          const total = amounts.reduce((sum, amt) => sum + amt, 0)
-          if (!(total > 0)) return { x: NaN, y: NaN, z: NaN, w: NaN }
-          const [x, y, z] = amounts.map((amt) => amt / total)
-          return { x, y, z, w: ent.e_form_per_atom ?? NaN }
-        })
-        .filter((point) => [point.x, point.y, point.z, point.w].every(Number.isFinite))
+      // Excluded entries don't participate in hull construction
+      const points_4d = compute_4d_coords(pd_data.entries, elements)
+        .filter((ent) => !ent.exclude_from_hull)
+        .map(to_point_4d)
+        .filter((point): point is Point4D => point !== null)
 
       if (points_4d.length < 5) return [] // Need at least 5 points for 4D hull
 
@@ -177,18 +190,8 @@
 
       // Build 4D points, tracking original indices for mapping hull distances back
       const valid = coords.flatMap((entry, idx) => {
-        if (
-          !Number.isFinite(entry.e_form_per_atom) ||
-          ![entry.x, entry.y, entry.z].every(Number.isFinite)
-        )
-          return []
-        const amounts = elements.map((el) => entry.composition[el] || 0)
-        const total = amounts.reduce((sum, amt) => sum + amt, 0)
-        if (!(total > 0)) return []
-        const [x, y, z] = amounts.map((amt) => amt / total)
-        return [x, y, z].every(Number.isFinite)
-          ? [{ idx, pt: { x, y, z, w: entry.e_form_per_atom ?? NaN } }]
-          : []
+        const pt = to_point_4d(entry)
+        return pt ? [{ idx, pt }] : []
       })
       const raw_dists = thermo.compute_e_above_hull_4d(
         valid.map((item) => item.pt),
@@ -206,7 +209,7 @@
     }
   })
 
-  let canvas: HTMLCanvasElement | undefined = undefined
+  let canvas = $state<HTMLCanvasElement>()
   let ctx: CanvasRenderingContext2D | null = null
 
   // Camera state - following Materials Project's 3D camera setup
@@ -293,12 +296,10 @@
   // Re-render when important state changes
   $effect(() => {
     // oxfmt-ignore
-    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, elements] // track reactively
+    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, hull_edge_color, elements] // track reactively
 
     render_once()
   })
-
-  // Visibility toggles are now bindable props
 
   // Smart label defaults: hide labels for large datasets. Applied once per dataset
   // (keyed on the entries prop) so later entry-count changes from temperature/gas
@@ -354,7 +355,7 @@
     )
 
   // Cache energy color scale per frame/setting
-  const energy_color_scale = $derived.by(() =>
+  const energy_color_scale = $derived(
     helpers.get_energy_color_scale(color_mode, color_scale, plot_entries),
   )
 
@@ -371,16 +372,11 @@
   ): { x: number; y: number; depth: number } {
     if (!canvas) return { x: 0, y: 0, depth: 0 }
 
-    // Center coordinates around tetrahedron/triangle centroid
-    let [centered_x, centered_y, centered_z] = [x, y, z]
-
-    // Tetrahedron centroid: average of vertices (1,0,0), (0.5,√3/2,0), (0.5,√3/6,√6/3), (0,0,0)
-    const centroid_x = (1 + 0.5 + 0.5 + 0) / 4 // = 0.5
-    const centroid_y = (0 + Math.sqrt(3) / 2 + Math.sqrt(3) / 6 + 0) / 4 // = √3/6
-    const centroid_z = (0 + 0 + Math.sqrt(6) / 3 + 0) / 4 // = √6/12
-    centered_x = x - centroid_x
-    centered_y = y - centroid_y
-    centered_z = z - centroid_z
+    // Center coordinates around the tetrahedron centroid: average of vertices
+    // (1,0,0), (0.5,√3/2,0), (0.5,√3/6,√6/3), (0,0,0)
+    const centered_x = x - (1 + 0.5 + 0.5 + 0) / 4 // centroid_x = 0.5
+    const centered_y = y - (0 + Math.sqrt(3) / 2 + Math.sqrt(3) / 6 + 0) / 4 // = √3/6
+    const centered_z = z - (0 + 0 + Math.sqrt(6) / 3 + 0) / 4 // = √6/12
 
     // Apply 3D transformations around the centered coordinates
     const cos_x = Math.cos(camera.rotation_x)
@@ -408,56 +404,33 @@
     }
   }
 
+  // Dashed tetrahedron outline (matching the gray structure lines used in 3D)
+  // plus corner element labels
   function draw_structure_outline(): void {
     if (!ctx || !canvas) return
 
-    const styles = getComputedStyle(canvas)
-    // Match gray dashed structure lines used in 3D
     ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
     ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
     ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
 
-    // Draw tetrahedron edges
-    draw_tetrahedron()
-
-    // Reset dash and stroke for subsequent drawings
-    ctx.setLineDash([])
-    ctx.strokeStyle = styles.getPropertyValue(`--hull-edge-color`) || `#212121`
-  }
-
-  function draw_tetrahedron(): void {
-    if (!ctx) return
-
-    // Convert vertices to Point3D objects
     const vertices = TETRAHEDRON_VERTICES.map(([x, y, z]) => ({ x, y, z }))
-
-    // Tetrahedron edges (connecting vertices)
-    const edges = [
-      [0, 1],
-      [0, 2],
-      [0, 3], // From vertex 0
-      [1, 2],
-      [1, 3], // From vertex 1
-      [2, 3], // From vertex 2
-    ]
-
-    // Draw edges
+    // oxfmt-ignore
+    const edges = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]
     ctx.beginPath()
     for (const [start, end] of edges) {
-      const v1 = vertices[start]
-      const v2 = vertices[end]
-
-      const proj1 = project_3d_point(v1.x, v1.y, v1.z)
-      const proj2 = project_3d_point(v2.x, v2.y, v2.z)
-
+      const proj1 = project_3d_point(vertices[start].x, vertices[start].y, vertices[start].z)
+      const proj2 = project_3d_point(vertices[end].x, vertices[end].y, vertices[end].z)
       ctx.moveTo(proj1.x, proj1.y)
       ctx.lineTo(proj2.x, proj2.y)
     }
     ctx.stroke()
 
-    // Corner element labels: place just outside along line towards tetrahedron centroid
+    // Reset dash and stroke for subsequent drawings
+    ctx.setLineDash([])
+    ctx.strokeStyle = hull_edge_color
+
+    // Corner element labels: place just outside each vertex, along the centroid→vertex line
     if (elements.length === 4) {
-      // Tetrahedron centroid in barycentric space maps to average of vertices
       const centroid = {
         x: (vertices[0].x + vertices[1].x + vertices[2].x + vertices[3].x) / 4,
         y: (vertices[0].y + vertices[1].y + vertices[2].y + vertices[3].y) / 4,
@@ -472,16 +445,13 @@
       const distance = 0.06
       for (let idx = 0; idx < 4; idx++) {
         const vx = vertices[idx]
-        // Direction from centroid to vertex
-        const { x: cx, y: cy, z: cz } = centroid
-        const dir = { x: vx.x - cx, y: vx.y - cy, z: vx.z - cz }
+        const dir = { x: vx.x - centroid.x, y: vx.y - centroid.y, z: vx.z - centroid.z }
         const len = Math.hypot(dir.x, dir.y, dir.z) || 1
-        const label_pos = {
-          x: vx.x + (dir.x / len) * distance,
-          y: vx.y + (dir.y / len) * distance,
-          z: vx.z + (dir.z / len) * distance,
-        }
-        const proj = project_3d_point(label_pos.x, label_pos.y, label_pos.z)
+        const proj = project_3d_point(
+          vx.x + (dir.x / len) * distance,
+          vx.y + (dir.y / len) * distance,
+          vx.z + (dir.z / len) * distance,
+        )
         ctx.fillText(elements[idx], proj.x, proj.y)
       }
     }

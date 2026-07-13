@@ -311,7 +311,6 @@ def generate_si_chgcar() -> str:
         (0.125, 0.875, 0.875),
     ]
     volume = lat_a**3
-    lat_vecs = [lattice[0], lattice[1], lattice[2]]
     atom_cart = [(fx * lat_a, fy * lat_a, fz * lat_a) for fx, fy, fz in si_frac]
     bond_cart = [(fx * lat_a, fy * lat_a, fz * lat_a) for fx, fy, fz in bond_frac]
 
@@ -325,10 +324,10 @@ def generate_si_chgcar() -> str:
             atom_cart,
             [14.0] * len(atom_cart),
             [0.8] * len(atom_cart),
-            lat_vecs,
+            lattice,
         )
         rho += pbc_gaussian_sum(
-            x, y, z, bond_cart, [4.0] * len(bond_cart), [0.5] * len(bond_cart), lat_vecs
+            x, y, z, bond_cart, [4.0] * len(bond_cart), [0.5] * len(bond_cart), lattice
         )
         return rho * volume
 
@@ -347,14 +346,13 @@ def generate_fe_bcc_spin_chgcar() -> str:
     lattice = [(lat_a, 0.0, 0.0), (0.0, lat_a, 0.0), (0.0, 0.0, lat_a)]
     fe_frac: list[FracCoord] = [(0.0, 0.0, 0.0), (0.5, 0.5, 0.5)]
     volume = lat_a**3
-    lat_vecs = [lattice[0], lattice[1], lattice[2]]
     atom_cart = [(fx * lat_a, fy * lat_a, fz * lat_a) for fx, fy, fz in fe_frac]
 
     def charge(
         x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
     ) -> float:
         return (
-            pbc_gaussian_sum(x, y, z, atom_cart, [26.0] * 2, [0.6] * 2, lat_vecs)
+            pbc_gaussian_sum(x, y, z, atom_cart, [26.0] * 2, [0.6] * 2, lattice)
             * volume
         )
 
@@ -362,8 +360,7 @@ def generate_fe_bcc_spin_chgcar() -> str:
         x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
     ) -> float:
         return (
-            pbc_gaussian_sum(x, y, z, atom_cart, [2.2] * 2, [0.5] * 2, lat_vecs)
-            * volume
+            pbc_gaussian_sum(x, y, z, atom_cart, [2.2] * 2, [0.5] * 2, lattice) * volume
         )
 
     aug_text = "\n".join(

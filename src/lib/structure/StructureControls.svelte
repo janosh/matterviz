@@ -2,6 +2,7 @@
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
@@ -286,17 +287,11 @@
     scene_props.rotation = [...scene_props.rotation]
   }
 
-  // Helper function to get example set of colors from an element color scheme
+  // Sample colors for common elements, used to preview an element color scheme
   function get_representative_colors(scheme_name: string): string[] {
     const scheme = ELEMENT_COLOR_SCHEMES[scheme_name as ColorSchemeName]
     if (!scheme) return []
-
-    // Get colors for common elements: H, C, N, O, Fe, Ca, Si, Al
-    const sample_elements = [`H`, `C`, `N`, `O`, `Fe`, `Ca`, `Si`, `Al`]
-    return sample_elements
-      .slice(0, 4) // Take first 4
-      .map((el) => scheme[el] || scheme.H || `#cccccc`)
-      .filter(Boolean)
+    return [`H`, `C`, `N`, `O`].map((elem) => scheme[elem] || scheme.H || `#cccccc`)
   }
 </script>
 
@@ -923,15 +918,10 @@
         />
       </label>
       {#if supercell_loading}
-        <div
-          style="display: flex; align-items: center; gap: 8px; font-size: 0.85em; color: var(--accent-color); margin-top: 4pt"
-        >
-          <span
-            class="spinner-icon"
-            style="display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite"
-          ></span>
-          <span>Generating supercell...</span>
-        </div>
+        <Spinner
+          text="Generating supercell..."
+          style="--spinner-size: 12px; --spinner-border-width: 2px; --spinner-margin: 4pt 0 0; font-size: 0.85em; color: var(--accent-color)"
+        />
       {/if}
 
       {#if !supercell_input_valid}
@@ -1234,13 +1224,5 @@
   input[type='range'] {
     flex: 1;
     min-width: 40px;
-  }
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

@@ -38,41 +38,22 @@
     return { x: Math.max(0, x), y: Math.max(0, y) }
   }
 
-  // Handle click outside to close
-  function handle_click_outside(event: MouseEvent) {
-    const target = event.target
-    if (target instanceof Element && visible) {
-      const menu = target.closest(`.context-menu`)
-      if (!menu) on_close?.()
-    }
-  }
-
-  // Handle right-click outside to close
-  function handle_right_click_outside(event: MouseEvent) {
-    if (!visible) return
-    const target = event.target
-    const menu = target instanceof Element ? target.closest(`.context-menu`) : null
-    if (!menu) {
-      event.preventDefault()
-      on_close?.()
-    }
-  }
-
-  // Handle keyboard shortcuts
-  function handle_keydown(event: KeyboardEvent) {
-    if (event.key === `Escape` && visible) on_close?.()
-  }
-
-  // Handle option selection
-  function handle_option_click(section_title: string, option: MenuOption) {
-    if (!option.disabled) on_select?.(section_title, option)
+  // Close on click or right-click outside the menu (right-click also suppresses
+  // the native context menu)
+  function handle_outside_pointer(event: MouseEvent) {
+    if (!visible || !(event.target instanceof Element)) return
+    if (event.target.closest(`.context-menu`)) return
+    if (event.type === `contextmenu`) event.preventDefault()
+    on_close?.()
   }
 </script>
 
 <svelte:document
-  onclick={handle_click_outside}
-  oncontextmenu={handle_right_click_outside}
-  onkeydown={handle_keydown}
+  onclick={handle_outside_pointer}
+  oncontextmenu={handle_outside_pointer}
+  onkeydown={(event) => {
+    if (event.key === `Escape` && visible) on_close?.()
+  }}
 />
 
 {#if visible}
@@ -86,7 +67,9 @@
           <button
             class:selected={selected_values[title] === option.value}
             class:disabled={option.disabled}
-            onclick={() => handle_option_click(title, option)}
+            onclick={() => {
+              if (!option.disabled) on_select?.(title, option)
+            }}
           >
             {#if option.icon}
               <Icon icon={option.icon as IconName} />

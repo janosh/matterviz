@@ -22,16 +22,14 @@ describe(`JsonTree`, () => {
     document.querySelectorAll(`.collapse-toggle`)
 
   describe(`rendering`, () => {
-    it(`renders with required value prop`, () => {
+    it(`renders tree with header and ARIA attributes by default`, () => {
       mount_tree({ value: { a: 1 } })
-      expect(get_tree()).toBeInstanceOf(HTMLDivElement)
+      const tree = get_tree()
       expect(get_content()).toBeInstanceOf(HTMLDivElement)
-    })
-
-    it(`renders header by default`, () => {
-      mount_tree({ value: { a: 1 } })
       expect(get_header()).toBeInstanceOf(HTMLElement)
       expect(get_search_input()).toBeInstanceOf(HTMLElement)
+      expect(tree.getAttribute(`role`)).toBe(`tree`)
+      expect(tree.getAttribute(`aria-label`)).toBe(`JSON tree viewer`)
     })
 
     it(`hides header when show_header=false`, () => {
@@ -42,20 +40,6 @@ describe(`JsonTree`, () => {
     it(`renders root label when provided`, () => {
       mount_tree({ value: [1, 2, 3], root_label: `items`, show_header: false })
       expect(document.body.textContent).toContain(`"items"`)
-    })
-
-    it(`renders without root label when not provided`, () => {
-      mount_tree({ value: { a: 1 }, show_header: false })
-      // Should not have a key for the root
-      const first_node = get_nodes()[0]
-      expect(first_node.querySelector(`.node-key`)).toBeInstanceOf(HTMLElement)
-    })
-
-    it(`has correct ARIA attributes`, () => {
-      mount_tree({ value: { a: 1 } })
-      const tree = get_tree()
-      expect(tree.getAttribute(`role`)).toBe(`tree`)
-      expect(tree.getAttribute(`aria-label`)).toBe(`JSON tree viewer`)
     })
 
     it(`spreads additional attributes`, () => {
@@ -248,41 +232,10 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).not.toContain(`Array(15)`)
     })
 
-    it(`expand all button expands collapsed nodes`, async () => {
+    it(`collapse all / expand all buttons toggle nested visibility`, async () => {
       mount_tree({
         value: { a: { b: 1 } },
         default_fold_level: 5, // High level so nothing auto-collapses
-      })
-
-      // Second controls group has expand/collapse buttons
-      const control_groups = document.querySelectorAll(`.controls`)
-      const expand_collapse_group = control_groups[1]
-      const btns = expand_collapse_group.querySelectorAll(`button`)
-      const expand_btn = btns[0]
-      const collapse_btn = btns[1]
-
-      // Manually collapse via collapse all first
-      collapse_btn.click()
-      flushSync()
-      await tick()
-
-      // Now collapsed - shows preview
-      expect(document.body.textContent).toContain(`{1 key}`)
-      expect(document.body.textContent).not.toContain(`"b"`)
-
-      // Click expand all
-      expand_btn.click()
-      flushSync()
-      await tick()
-
-      // After expand - nested value visible again
-      expect(document.body.textContent).toContain(`"b"`)
-    })
-
-    it(`collapse all button collapses expanded nodes`, async () => {
-      mount_tree({
-        value: { a: { b: 1 }, c: 2 },
-        default_fold_level: 5,
       })
 
       // Initially expanded - nested value visible
@@ -290,15 +243,22 @@ describe(`JsonTree`, () => {
 
       // Second controls group has expand/collapse buttons
       const control_groups = document.querySelectorAll(`.controls`)
-      const expand_collapse_group = control_groups[1]
-      const collapse_btn = expand_collapse_group.querySelectorAll(`button`)[1]
+      const [expand_btn, collapse_btn] = control_groups[1].querySelectorAll(`button`)
+
       collapse_btn.click()
       flushSync()
       await tick()
 
-      // After collapse - nested node shows preview, b is hidden
+      // Collapsed - shows preview, b is hidden
       expect(document.body.textContent).toContain(`{1 key}`)
       expect(document.body.textContent).not.toContain(`"b"`)
+
+      expand_btn.click()
+      flushSync()
+      await tick()
+
+      // After expand - nested value visible again
+      expect(document.body.textContent).toContain(`"b"`)
     })
 
     it(`collapse to level buttons work`, async () => {
@@ -329,15 +289,6 @@ describe(`JsonTree`, () => {
       expect(dividers).toHaveLength(2) // separators between 3 button groups
     })
 
-    it(`has toggle buttons for data types and array indices`, () => {
-      mount_tree({ value: { arr: [1, 2] } })
-      const toggle_btns = document.querySelectorAll(`.controls button`)
-      const type_toggle = toggle_btns[0] as HTMLButtonElement
-      const index_toggle = toggle_btns[1] as HTMLButtonElement
-      expect(type_toggle.textContent).toBe(`T`)
-      expect(index_toggle.textContent).toBe(`#`)
-    })
-
     it(`has copy and download buttons with icons`, () => {
       mount_tree({ value: { a: 1 } })
       const control_groups = document.querySelectorAll(`.controls`)
@@ -353,7 +304,7 @@ describe(`JsonTree`, () => {
   })
 
   describe(`copy functionality`, () => {
-    it(`keys are clickable and copy value to clipboard`, () => {
+    it(`keys are clickable buttons without title tooltip that copy value to clipboard`, () => {
       const write_text = vi.fn().mockResolvedValue(undefined)
       Object.defineProperty(navigator, `clipboard`, {
         value: { writeText: write_text },
@@ -362,6 +313,7 @@ describe(`JsonTree`, () => {
       mount_tree({ value: { my_key: 42 }, show_header: false })
       const key_el = document.querySelector(`.node-key`) as HTMLButtonElement
       expect(key_el.tagName).toBe(`BUTTON`)
+      expect(key_el.getAttribute(`title`)).toBeNull()
       key_el.click()
       flushSync()
       // Clicking an expanded key copies the value, not the path
@@ -439,22 +391,6 @@ describe(`JsonTree`, () => {
 
       expect(oncopy).toHaveBeenCalledWith(`[root]`, expect.any(String))
     })
-
-    it.each([
-      { value: [1, 2, 3], desc: `array` },
-      { value: { nested: { deep: { value: true } } }, desc: `nested object` },
-      { value: `just a string`, desc: `primitive string` },
-      { value: 42, desc: `primitive number` },
-      { value: null, desc: `null` },
-    ])(`copies $desc correctly`, async ({ value }) => {
-      mount_tree({ value })
-
-      get_copy_btn().click()
-      flushSync()
-      await tick()
-
-      expect(write_text_mock).toHaveBeenCalledTimes(1)
-    })
   })
 
   describe(`download button`, () => {
@@ -475,19 +411,7 @@ describe(`JsonTree`, () => {
       delete (globalThis as Record<string, unknown>).download
     })
 
-    it(`creates download with correct filename format`, async () => {
-      mount_tree({ value: { a: 1 } })
-
-      get_download_btn().click()
-      flushSync()
-      await tick()
-
-      expect(mock_download).toHaveBeenCalledTimes(1)
-      const [, filename] = mock_download.mock.calls[0]
-      expect(filename).toMatch(/^data-\d{4}-\d{2}-\d{2}\.json$/)
-    })
-
-    it(`creates download with JSON content and correct mime type`, async () => {
+    it(`downloads JSON content with default date filename and mime type`, async () => {
       const test_value = { name: `test`, count: 42 }
       mount_tree({ value: test_value })
 
@@ -495,30 +419,21 @@ describe(`JsonTree`, () => {
       flushSync()
       await tick()
 
-      const [data, , mime_type] = mock_download.mock.calls[0]
-      expect(mime_type).toBe(`application/json`)
+      expect(mock_download).toHaveBeenCalledTimes(1)
+      const [data, filename, mime_type] = mock_download.mock.calls[0]
       expect(JSON.parse(data)).toEqual(test_value)
+      expect(filename).toMatch(/^data-\d{4}-\d{2}-\d{2}\.json$/)
+      expect(mime_type).toBe(`application/json`)
     })
 
-    it.each([
-      {
-        value: { deep: { nested: { obj: true } } },
-        desc: `nested object`,
-        is_json: true,
-      },
-      { value: [1, 2, 3, 4, 5], desc: `array`, is_json: true },
-      { value: `string value`, desc: `string`, is_json: false },
-      { value: 42, desc: `number`, is_json: false },
-    ])(`downloads $desc correctly`, async ({ value, is_json }) => {
-      mount_tree({ value })
+    it(`downloads primitive root via serialize_for_copy`, async () => {
+      mount_tree({ value: `string value` })
 
       get_download_btn().click()
       flushSync()
       await tick()
 
-      const [data] = mock_download.mock.calls[0]
-      if (is_json) expect(JSON.parse(data)).toEqual(value)
-      else expect(data).toBe(serialize_for_copy(value))
+      expect(mock_download.mock.calls[0][0]).toBe(serialize_for_copy(`string value`))
     })
 
     it(`uses custom download_filename when provided`, async () => {
@@ -530,15 +445,6 @@ describe(`JsonTree`, () => {
 
       const [, filename] = mock_download.mock.calls[0]
       expect(filename).toBe(`my-custom-data.json`)
-    })
-  })
-
-  describe(`keyboard navigation`, () => {
-    it(`collapse toggles have aria-label`, () => {
-      mount_tree({ value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 })
-      const toggles = get_collapse_toggles()
-      expect(toggles.length).toBeGreaterThan(0)
-      expect(toggles[0].getAttribute(`aria-label`)).not.toBeNull()
     })
   })
 
@@ -629,58 +535,6 @@ describe(`JsonTree`, () => {
       expect(type_toggle.getAttribute(`title`)).toBe(`Show data types`)
       // When on, title should say "Hide..."
       expect(index_toggle.getAttribute(`title`)).toBe(`Hide array indices`)
-    })
-
-    it(`toggle button active state updates when toggled`, async () => {
-      mount_tree({ value: { a: 1 }, show_data_types: false })
-
-      let type_toggle = get_toggle_btns()[0]
-      expect(type_toggle.classList.contains(`active`)).toBe(false)
-
-      type_toggle.click()
-      flushSync()
-      await tick()
-
-      // Re-query the button after state change
-      type_toggle = get_toggle_btns()[0]
-      expect(type_toggle.classList.contains(`active`)).toBe(true)
-
-      // Toggle off
-      type_toggle.click()
-      flushSync()
-      await tick()
-
-      type_toggle = get_toggle_btns()[0]
-      expect(type_toggle.classList.contains(`active`)).toBe(false)
-    })
-
-    it(`toggle states are independent`, async () => {
-      mount_tree({
-        value: [`item`],
-        show_data_types: false,
-        show_array_indices: true,
-        default_fold_level: 5,
-      })
-
-      const toggle_btns = get_toggle_btns()
-      const type_toggle = toggle_btns[0]
-      const index_toggle = toggle_btns[1]
-
-      // Toggle data types on
-      type_toggle.click()
-      flushSync()
-      await tick()
-
-      expect(type_toggle.classList.contains(`active`)).toBe(true)
-      expect(index_toggle.classList.contains(`active`)).toBe(true) // unchanged
-
-      // Toggle array indices off
-      index_toggle.click()
-      flushSync()
-      await tick()
-
-      expect(type_toggle.classList.contains(`active`)).toBe(true) // unchanged
-      expect(index_toggle.classList.contains(`active`)).toBe(false)
     })
 
     it(`respects initial prop values`, () => {
@@ -857,7 +711,7 @@ describe(`search navigation`, () => {
     await tick()
   }
 
-  it(`shows prev/next buttons when search has matches`, async () => {
+  it(`shows prev/next buttons and "X of Y" count when search has matches`, async () => {
     mount_tree({ value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 })
     expect(get_match_nav()).toBeNull()
 
@@ -865,19 +719,10 @@ describe(`search navigation`, () => {
 
     expect(get_match_nav()).toBeInstanceOf(HTMLElement)
     expect(get_nav_btns()).toHaveLength(2) // prev and next
+    expect(get_match_count()?.textContent).toMatch(/1 of 2/)
   })
 
-  it(`shows "X of Y" match count format`, async () => {
-    mount_tree({ value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 })
-
-    await type_search(`ba`)
-
-    const count = get_match_count()
-    expect(count).toBeInstanceOf(HTMLElement)
-    expect(count?.textContent).toMatch(/1 of 2/)
-  })
-
-  it(`next button increments match index and wraps around`, async () => {
+  it(`next/prev buttons navigate matches with wrap-around`, async () => {
     mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
 
     await type_search(`ba`)
@@ -885,7 +730,7 @@ describe(`search navigation`, () => {
     const count = get_match_count()
     expect(count?.textContent).toContain(`1 of 2`)
 
-    const next_btn = get_nav_btns()[1]
+    const [prev_btn, next_btn] = get_nav_btns()
 
     // Go to 2nd match
     next_btn.click()
@@ -898,22 +743,11 @@ describe(`search navigation`, () => {
     flushSync()
     await tick()
     expect(count?.textContent).toContain(`1 of 2`)
-  })
 
-  it(`prev button decrements match index with wrap-around`, async () => {
-    mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
-
-    await type_search(`ba`)
-
-    const count = get_match_count()
-    expect(count?.textContent).toContain(`1 of 2`)
-
-    const prev_btn = get_nav_btns()[0]
+    // Prev wraps back to last match
     prev_btn.click()
     flushSync()
     await tick()
-
-    // Should wrap to last match
     expect(count?.textContent).toContain(`2 of 2`)
   })
 
@@ -935,33 +769,20 @@ describe(`search navigation`, () => {
     expect(get_match_count()?.textContent).toContain(`1 of 1`)
   })
 
-  it(`highlights current match with distinct class`, async () => {
-    mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
-
-    await type_search(`ba`)
-
-    const current = get_current_match()
-    expect(current).toBeInstanceOf(HTMLElement)
-    expect(current?.classList.contains(`current-match`)).toBe(true)
-  })
-
-  it(`navigating to next match updates current-match class`, async () => {
+  it(`highlights current match and moves highlight on navigation`, async () => {
     mount_tree({ value: { bar: 1, baz: 2 }, default_fold_level: 5 })
 
     await type_search(`ba`)
 
     const first_match = get_current_match()
+    expect(first_match).toBeInstanceOf(HTMLElement)
     const first_path = first_match?.getAttribute(`data-path`)
 
-    const next_btn = get_nav_btns()[1]
-    next_btn.click()
+    get_nav_btns()[1].click()
     flushSync()
     await tick()
 
-    const second_match = get_current_match()
-    const second_path = second_match?.getAttribute(`data-path`)
-
-    expect(first_path).not.toBe(second_path)
+    expect(get_current_match()?.getAttribute(`data-path`)).not.toBe(first_path)
   })
 
   it.each([
@@ -1043,46 +864,6 @@ describe(`path breadcrumb`, () => {
   })
 })
 
-describe(`copy path functionality`, () => {
-  it(`clicking expanded key copies value to clipboard`, async () => {
-    const write_text = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, `clipboard`, {
-      value: { writeText: write_text },
-      writable: true,
-    })
-
-    mount_tree({
-      value: { outer: { inner: 42 } },
-      show_header: false,
-      default_fold_level: 5,
-    })
-
-    // Find the "inner" key button
-    const keys = document.querySelectorAll(`.node-key`)
-    const inner_key = Array.from(keys).find((el) => el.textContent?.includes(`inner`))
-    expect(inner_key).toBeDefined()
-    ;(inner_key as HTMLButtonElement).click()
-    flushSync()
-    await tick()
-
-    // Clicking expanded key copies value, not path
-    expect(write_text).toHaveBeenCalledWith(`42`)
-  })
-
-  it(`key has no obtrusive title tooltip`, () => {
-    mount_tree({
-      value: { parent: { child: 1 } },
-      show_header: false,
-      default_fold_level: 5,
-    })
-
-    const keys = document.querySelectorAll(`.node-key`)
-    const child_key = Array.from(keys).find((el) => el.textContent?.includes(`child`))
-
-    expect(child_key?.getAttribute(`title`)).toBeNull()
-  })
-})
-
 describe(`double-click recursive expand/collapse`, () => {
   it.each([
     {
@@ -1117,46 +898,13 @@ describe(`double-click recursive expand/collapse`, () => {
     after.notContains.forEach((text) => expect(document.body.textContent).not.toContain(text))
   })
 
-  // Test for root node double-click when root_label is undefined (empty path)
-  // Verifies that toggle_collapse_recursive handles empty path correctly
-  it.each([
-    {
-      desc: `collapses all from root without label`,
-      fold_level: 10,
-      before: { contains: [`"b"`, `"c"`], notContains: [] },
-      after: { contains: [], notContains: [`"b"`, `"c"`] },
-    },
-  ])(`double-click root (empty path) $desc`, async ({ fold_level, before, after }) => {
-    mount_tree({
-      value: { a: { b: { c: 1 }, d: 2 } },
-      show_header: false,
-      default_fold_level: fold_level,
-      // No root_label means root path is empty string
-    })
-
-    before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
-    before.notContains.forEach((text) => expect(document.body.textContent).not.toContain(text))
-
-    // Double-click on root node (index 0) - has empty path when no root_label
-    const root_node = document.querySelectorAll(`.json-node`)[0]
-    expect(root_node.getAttribute(`data-path`)).toBe(``)
-    root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    flushSync()
-    await tick()
-
-    after.contains.forEach((text) => expect(document.body.textContent).toContain(text))
-    after.notContains.forEach((text) => expect(document.body.textContent).not.toContain(text))
-  })
-
-  it(`double-click root (empty path) expands after collapse all`, async () => {
-    // Start with everything expanded, collapse all, then double-click root to expand
+  it(`double-click root (empty path when no root_label) collapses then re-expands all`, async () => {
     mount_tree({
       value: { a: { b: { c: 1 }, d: 2 } },
       show_header: false,
       default_fold_level: 10, // Everything expanded initially
     })
 
-    // Initially everything is visible
     expect(document.body.textContent).toContain(`"c"`)
 
     // Double-click root to collapse all descendants
@@ -1166,7 +914,6 @@ describe(`double-click recursive expand/collapse`, () => {
     flushSync()
     await tick()
 
-    // Now everything should be collapsed - c is hidden
     expect(document.body.textContent).not.toContain(`"c"`)
 
     // Double-click root again to expand all descendants
@@ -1174,18 +921,8 @@ describe(`double-click recursive expand/collapse`, () => {
     flushSync()
     await tick()
 
-    // Now everything should be visible again
     expect(document.body.textContent).toContain(`"c"`)
     expect(document.body.textContent).toContain(`"d"`)
-  })
-
-  it(`nodes have data-path attribute`, () => {
-    mount_tree({ value: { foo: { bar: 1 } }, show_header: false, default_fold_level: 5 })
-    const paths = Array.from(document.querySelectorAll(`.json-node[data-path]`)).map((node) =>
-      node.getAttribute(`data-path`),
-    )
-    expect(paths).toContain(`foo`)
-    expect(paths).toContain(`foo.bar`)
   })
 })
 
@@ -1274,29 +1011,24 @@ describe(`context menu`, () => {
     expect(menu?.textContent).toContain(`Pin`)
   })
 
-  it(`closes on backdrop click`, async () => {
+  it(`closes on backdrop click and on Escape key`, async () => {
     mount_tree({ value: { a: 1 }, show_header: false })
     const node = document.querySelector(`.json-node`) as HTMLDivElement
-    node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-    flushSync()
-    await tick()
-    expect(document.querySelector(`.context-menu`)).toBeInstanceOf(HTMLElement)
+    const open_menu = async () => {
+      node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      flushSync()
+      await tick()
+      expect(document.querySelector(`.context-menu`)).toBeInstanceOf(HTMLElement)
+    }
 
+    await open_menu()
     const backdrop = document.querySelector(`.context-menu-backdrop`) as HTMLDivElement
     backdrop.click()
     flushSync()
     await tick()
     expect(document.querySelector(`.context-menu`)).toBeNull()
-  })
 
-  it(`closes on Escape key`, async () => {
-    mount_tree({ value: { a: 1 }, show_header: false })
-    const node = document.querySelector(`.json-node`) as HTMLDivElement
-    node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-    flushSync()
-    await tick()
-    expect(document.querySelector(`.context-menu`)).toBeInstanceOf(HTMLElement)
-
+    await open_menu()
     const tree = document.querySelector(`.json-tree`) as HTMLDivElement
     tree.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
     flushSync()
@@ -1319,7 +1051,7 @@ describe(`context menu`, () => {
 })
 
 describe(`pinned paths panel`, () => {
-  it(`shows pinned panel after pinning via context menu`, async () => {
+  it(`shows pinned panel after pinning via context menu, Clear button removes it`, async () => {
     mount_tree({ value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 })
     // Right-click to open context menu
     const node = document.querySelector(`.json-node`) as HTMLDivElement
@@ -1336,26 +1068,9 @@ describe(`pinned paths panel`, () => {
     flushSync()
     await tick()
 
-    // Pinned panel should appear
     const panel = document.querySelector(`.pinned-panel`)
     expect(panel).toBeInstanceOf(HTMLElement)
     expect(panel?.textContent).toContain(`Pinned (1)`)
-  })
-
-  it(`clears all pins with Clear button`, async () => {
-    mount_tree({ value: { a: 1 }, show_header: false })
-    // Pin a node via context menu
-    const node = document.querySelector(`.json-node`) as HTMLDivElement
-    node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-    flushSync()
-    await tick()
-    const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`)).find((btn) =>
-      btn.textContent?.includes(`Pin`),
-    ) as HTMLButtonElement
-    pin_btn.click()
-    flushSync()
-    await tick()
-    expect(document.querySelector(`.pinned-panel`)).toBeInstanceOf(HTMLElement)
 
     // Click Clear
     const clear_btn = document.querySelector(`.pinned-clear-btn`) as HTMLButtonElement
@@ -1367,25 +1082,15 @@ describe(`pinned paths panel`, () => {
 })
 
 describe(`selection`, () => {
-  it(`Ctrl+click selects a node`, async () => {
+  it(`Ctrl+click selects a node, Ctrl+click again deselects`, async () => {
     mount_tree({ value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 })
-    const nodes = document.querySelectorAll(`.json-node`)
     // Ctrl+click on the "a" node (index 1, since index 0 is root)
-    nodes[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
-    flushSync()
-    await tick()
-    expect(nodes[1].classList.contains(`selected`)).toBe(true)
-  })
-
-  it(`Ctrl+click again deselects`, async () => {
-    mount_tree({ value: { a: 1 }, show_header: false, default_fold_level: 5 })
     const node = document.querySelectorAll(`.json-node`)[1]
-    // Select
     node.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
     flushSync()
     await tick()
     expect(node.classList.contains(`selected`)).toBe(true)
-    // Deselect
+
     node.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
     flushSync()
     await tick()
@@ -1455,17 +1160,11 @@ describe(`node visual hints`, () => {
     expect(size_hint?.textContent?.trim()).toMatch(/\d+ B/)
   })
 
-  it(`shows ▸ hint for collapsed keys, copy icon for expanded`, () => {
+  it(`shows ▸ hint for collapsed keys`, () => {
     mount_tree({ value: { nested: { a: 1 } }, show_header: false, default_fold_level: 1 })
-    // Collapsed expandable key shows expand hint
+    // Collapsed expandable key shows expand hint (leaf keys show a copy icon instead)
     const hint = document.querySelector(`.action-hint`)
     expect(hint?.textContent?.trim()).toBe(`▸`)
-  })
-
-  it(`renders action hint on expanded leaf keys`, () => {
-    mount_tree({ value: { key: 42 }, show_header: false, default_fold_level: 5 })
-    // Expanded/leaf key shows copy icon (SVG renders as empty text)
-    expect(document.querySelector(`.action-hint`)).toBeInstanceOf(HTMLElement)
   })
 })
 

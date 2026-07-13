@@ -1,11 +1,7 @@
 import { StructureControls } from '$lib/structure'
 import { mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { bind_props, simple_structure } from '../setup'
-
-vi.mock(`$lib/io/export`, () => ({
-  export_canvas_as_png: vi.fn(),
-}))
 
 describe(`StructureControls reactive props`, () => {
   test(`syncs site label controls from external scene prop updates`, async () => {

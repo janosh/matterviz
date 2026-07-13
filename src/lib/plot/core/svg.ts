@@ -37,7 +37,6 @@ export function violin_path(
   return `M${pts.map(([x_pos, y_pos]) => `${x_pos},${y_pos}`).join(`L`)}Z`
 }
 
-//
 // Generate SVG path for a bar with rounded corners on the "free" end (away from axis).
 // For vertical bars, rounds top corners. For horizontal bars, rounds right corners.
 export function bar_path(

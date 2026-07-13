@@ -11,11 +11,6 @@ interface TempFilterProps {
   max_interpolation_gap?: number
 }
 
-interface ResolvedTempFilterOptions {
-  interpolate: boolean
-  max_interpolation_gap: number
-}
-
 export interface TempFilterPayload {
   has_temp_data: boolean
   available_temperatures: number[]
@@ -27,20 +22,6 @@ export const get_projection_source_entries = (
   temp_filtered_entries: PhaseData[],
 ): PhaseData[] => (temp_filtered_entries.length > 0 ? temp_filtered_entries : entries)
 
-const resolve_temp_filter_options = (
-  config: ChemPotDiagramConfig,
-  props: TempFilterProps,
-): ResolvedTempFilterOptions => ({
-  interpolate:
-    config.interpolate_temperature ??
-    props.interpolate_temperature ??
-    CHEMPOT_DEFAULTS.interpolate_temperature,
-  max_interpolation_gap:
-    config.max_interpolation_gap ??
-    props.max_interpolation_gap ??
-    CHEMPOT_DEFAULTS.max_interpolation_gap,
-})
-
 export function get_temp_filter_payload(
   entries: PhaseData[],
   temperature: number | undefined,
@@ -51,12 +32,17 @@ export function get_temp_filter_payload(
   if (!has_temp_data || temperature === undefined) {
     return { has_temp_data, available_temperatures, temp_filtered_entries: entries }
   }
-  const filter_options = resolve_temp_filter_options(config, props)
-  const temp_filtered_entries = filter_entries_at_temperature(
-    entries,
-    temperature,
-    filter_options,
-  )
+  // Option resolution order: config beats props beats defaults
+  const temp_filtered_entries = filter_entries_at_temperature(entries, temperature, {
+    interpolate:
+      config.interpolate_temperature ??
+      props.interpolate_temperature ??
+      CHEMPOT_DEFAULTS.interpolate_temperature,
+    max_interpolation_gap:
+      config.max_interpolation_gap ??
+      props.max_interpolation_gap ??
+      CHEMPOT_DEFAULTS.max_interpolation_gap,
+  })
   return { has_temp_data, available_temperatures, temp_filtered_entries }
 }
 

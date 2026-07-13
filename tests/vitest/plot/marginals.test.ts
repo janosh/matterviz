@@ -5,7 +5,6 @@ import {
   curves_max,
   default_marginal_label,
   MARGINAL_DEFAULTS,
-  MARGINAL_HIT_TOLERANCE_PX,
   marginal_hit,
   marginal_strip_rect,
   marginal_value_format,
@@ -767,9 +766,5 @@ describe(`marginal_hit`, () => {
     )
     // absent axis_title leaves the field undefined (PlotMarginals falls back to "pos"/"range")
     expect(marginal_hit(make_ctx([curve]), 50, 62)?.axis_title).toBeUndefined()
-  })
-
-  test(`MARGINAL_HIT_TOLERANCE_PX is a positive pixel threshold`, () => {
-    expect(MARGINAL_HIT_TOLERANCE_PX).toBeGreaterThan(0)
   })
 })

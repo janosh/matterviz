@@ -63,8 +63,6 @@ describe(`decompress utility functions`, () => {
     test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
       `should handle %s decompression errors gracefully`,
       async (format) => {
-        if (!globalThis.DecompressionStream) return
-
         const invalid_data = new Uint8Array(10).fill(255).buffer
         await expect(decompress_data(invalid_data, format)).rejects.toThrow(
           `Failed to decompress ${format} file`,
@@ -75,8 +73,6 @@ describe(`decompress utility functions`, () => {
     test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
       `should successfully decompress valid %s data`,
       async (format) => {
-        if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
-
         const test_string = `{"test": "data", "format": "${format}"}`
         const compressed = await compress(new TextEncoder().encode(test_string), format)
         expect(await decompress_data(compressed, format)).toBe(test_string)
@@ -97,16 +93,6 @@ describe(`decompress utility functions`, () => {
       },
     )
 
-    test(`round-trips JSON file content`, async () => {
-      const test_json = { message: `Hello, JSON!` }
-      const json_string = JSON.stringify(test_json, null, 2)
-      const result = await decompress_file(new File([json_string], `test.json`))
-
-      expect(result.filename).toBe(`test.json`)
-      if (typeof result.content !== `string`) throw new Error(`expected string content`)
-      expect(JSON.parse(result.content)).toEqual(test_json)
-    })
-
     test(`resolves empty (0-byte) files to empty content`, async () => {
       const result = await decompress_file(new File([], `empty.txt`))
       expect(result).toEqual({ content: ``, filename: `empty.txt` })
@@ -118,7 +104,6 @@ describe(`decompress utility functions`, () => {
       [`deflate`, `deflate`],
       [`deflate-raw`, `z`],
     ] as const)(`decompresses %s text and strips the extension`, async (format, ext) => {
-      if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
       const text = `{"compressed": true, "format": "${format}"}`
       const compressed = await compress(new TextEncoder().encode(text), format)
       const result = await decompress_file(new File([compressed], `test.json.${ext}`))
@@ -138,7 +123,6 @@ describe(`decompress utility functions`, () => {
     )
 
     test(`rejects when a compressed file fails to decompress`, async () => {
-      if (!globalThis.DecompressionStream) return
       const invalid = new Uint8Array(10).fill(255)
       await expect(decompress_file(new File([invalid], `test.json.gz`))).rejects.toThrow(
         `Failed to decompress gzip file`,
@@ -184,7 +168,6 @@ describe(`decompress utility functions`, () => {
     // a compressed binary payload without a binary inner extension must still stay ArrayBuffer
     // via post-decompression magic-byte detection (else a text decode corrupts it)
     test(`keeps a gzipped binary payload (by magic) as ArrayBuffer`, async () => {
-      if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
       const hdf5 = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02])
       const gz = await compress(hdf5)
       // payload.gz -> payload (no binary extension): only magic bytes can save it

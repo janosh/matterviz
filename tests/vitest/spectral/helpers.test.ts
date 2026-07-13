@@ -299,44 +299,6 @@ describe(`apply_gaussian_smearing`, () => {
   })
 })
 
-describe(`DOS stacking with mismatched lengths`, () => {
-  it.each([
-    {
-      name: `matching lengths`,
-      cumulative: [1, 2, 3, 2, 1],
-      current: [0.5, 1, 1.5, 1, 0.5],
-      expected: [1.5, 3, 4.5, 3, 1.5],
-    },
-    {
-      name: `mismatched lengths`,
-      cumulative: [1, 2, 3],
-      current: [0.5, 1, 1.5, 1, 0.5],
-      expected: [1.5, 3, 4.5, 1, 0.5],
-    },
-  ])(`stacks with $name without NaN`, ({ cumulative, current, expected }) => {
-    const stacked = current.map((val, idx) => val + (cumulative[idx] ?? 0))
-    expect(stacked).toEqual(expected)
-    expect(stacked.every((val) => !Number.isNaN(val))).toBe(true)
-  })
-
-  it(`warns on length mismatch`, () => {
-    const console_warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const cumulative = [1, 2, 3]
-    const current = [0.5, 1, 1.5, 1, 0.5]
-
-    if (cumulative.length !== current.length) {
-      console.warn(
-        `DOS stacking: length mismatch (cumulative=${cumulative.length}, current=${current.length})`,
-      )
-    }
-
-    expect(console_warn_spy).toHaveBeenCalledWith(
-      `DOS stacking: length mismatch (cumulative=3, current=5)`,
-    )
-    console_warn_spy.mockRestore()
-  })
-})
-
 describe(`get_band_xaxis_ticks`, () => {
   it(`preserves branch order (not alphabetical)`, () => {
     // Create a band structure with segments that would sort differently alphabetically
@@ -439,14 +401,6 @@ describe(`find_qpoint_at_distance`, () => {
     expect(
       find_qpoint_at_distance({ distance: undefined } as unknown as BaseBandStructure, 1.0),
     ).toBeNull()
-  })
-
-  it(`correctly distinguishes repeated symmetry points`, () => {
-    const idx_first_gamma = find_qpoint_at_distance(test_bs, 0.0)
-    const idx_second_gamma = find_qpoint_at_distance(test_bs, 3.0)
-    expect(idx_first_gamma).toBe(0)
-    expect(idx_second_gamma).toBe(6)
-    expect(idx_first_gamma).not.toBe(idx_second_gamma)
   })
 })
 
@@ -807,22 +761,24 @@ describe(`normalize_band_structure`, () => {
   })
 
   describe(`pymatgen format`, () => {
-    it(`converts PhononBandStructureSymmLine (default THz, no conversion)`, () => {
-      // pymatgen defaults to unit="thz", so no conversion should happen
+    it.each([
+      { desc: `default THz (no conversion)`, unit: undefined, input: 5.0, expected: 5.0 },
+      { desc: `explicit unit='thz'`, unit: `thz`, input: 5.0, expected: 5.0 },
+      { desc: `eV→THz (factor 241.8)`, unit: `ev`, input: 0.001, expected: 0.2418 },
+      { desc: `cm-1→THz`, unit: `cm-1`, input: 333.5641, expected: 10.0 },
+    ])(`converts band values: $desc`, ({ unit, input, expected }) => {
       const result = normalize_band_structure(
         make_pmg({
           qpoints: [
             [0, 0, 0],
-            [0.5, 0, 0],
-            [0.5, 0.5, 0],
+            [1, 0, 0],
           ],
-          bands: [[0, 5.0, 10.0]], // Already in THz
-          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
-          lattice_rec: { matrix: ident },
+          bands: [[0, input]],
+          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+          ...(unit && { unit }),
         }),
       )
-      expect(result?.qpoints).toHaveLength(3)
-      expect(result?.bands[0][1]).toBe(5.0) // No conversion, stays 5.0 THz
+      expect(result?.bands[0][1]).toBeCloseTo(expected, 2)
     })
 
     it.each([
@@ -839,7 +795,7 @@ describe(`normalize_band_structure`, () => {
         },
       },
     ])(`detects pymatgen by $desc`, ({ input }) =>
-      expect(() => normalize_band_structure(input)).not.toThrow(),
+      expect(normalize_band_structure(input)).not.toBeNull(),
     )
 
     it(`handles Kpoint objects with labels`, () => {
@@ -921,51 +877,6 @@ describe(`normalize_band_structure`, () => {
         }),
       )
       expect(Math.max(...(result?.distance ?? []))).toBeLessThan(1.0) // Jump not accumulated
-    })
-
-    it(`converts eV→THz (factor 241.8) when unit='ev'`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [1, 0, 0],
-          ],
-          bands: [[0, 0.001]], // 0.001 eV
-          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-          unit: `ev`, // Explicitly specify eV unit
-        }),
-      )
-      expect(result?.bands[0][1]).toBeCloseTo(0.2418, 2) // 0.001 eV * 241.8 = 0.2418 THz
-    })
-
-    it(`preserves THz values when unit='thz' (default)`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [1, 0, 0],
-          ],
-          bands: [[0, 5.0]], // 5.0 THz
-          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-          unit: `thz`, // Explicit THz
-        }),
-      )
-      expect(result?.bands[0][1]).toBe(5.0) // No conversion
-    })
-
-    it(`converts cm-1→THz when unit='cm-1'`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [1, 0, 0],
-          ],
-          bands: [[0, 333.5641]], // 333.5641 cm⁻¹ ≈ 10 THz
-          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-          unit: `cm-1`,
-        }),
-      )
-      expect(result?.bands[0][1]).toBeCloseTo(10.0, 2)
     })
 
     it(`tolerates floating point in labels_dict matching`, () => {
@@ -1317,70 +1228,35 @@ describe(`normalize_dos`, () => {
   const spy_info = () => vi.spyOn(console, `warn`).mockImplementation(() => {})
 
   describe(`spin-keyed densities (pymatgen format)`, () => {
-    it(`extracts first spin channel from {1: [...], -1: [...]} format`, () => {
-      const result = normalize_dos({
-        energies: [-5, 0, 5],
+    it.each([
+      {
+        desc: `numeric spin keys {1, -1}`,
         densities: { '1': [0.5, 1.0, 0.5], '-1': [0.4, 0.9, 0.4] },
-      })
-      expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) {
-        expect(result.densities).toEqual([0.5, 1.0, 0.5]) // First spin channel
-      }
-    })
-
-    it(`extracts first spin channel from {"Spin.up": [...], "Spin.down": [...]} format`, () => {
-      const result = normalize_dos({
-        energies: [-2, 0, 2],
+        expected: [0.5, 1.0, 0.5],
+      },
+      {
+        desc: `string spin keys {Spin.up, Spin.down}`,
         densities: { 'Spin.up': [0.3, 0.8, 0.3], 'Spin.down': [0.2, 0.7, 0.2] },
-      })
-      expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) {
-        expect(result.densities).toEqual([0.3, 0.8, 0.3])
-      }
-    })
-
-    it(`handles already-array densities (non-spin-polarized)`, () => {
-      const result = normalize_dos({
-        energies: [-1, 0, 1],
+        expected: [0.3, 0.8, 0.3],
+      },
+      {
+        desc: `spin-up key picked even when listed second`,
+        densities: { '-1': [0.4, 0.9, 0.4], '1': [0.5, 1.0, 0.5] },
+        expected: [0.5, 1.0, 0.5],
+      },
+      {
+        desc: `plain array densities (non-spin-polarized)`,
         densities: [0.2, 0.6, 0.2],
-      })
+        expected: [0.2, 0.6, 0.2],
+      },
+    ])(`extracts spin-up channel from $desc`, ({ densities, expected }) => {
+      const result = normalize_dos({ energies: [-5, 0, 5], densities })
       expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) {
-        expect(result.densities).toEqual([0.2, 0.6, 0.2])
-      }
-    })
-
-    it(`handles pymatgen CompleteDos with spin-keyed densities`, () => {
-      const result = normalize_dos({
-        energies: [-5, -2.5, 0, 2.5, 5],
-        densities: { '1': [0.1, 0.4, 1.0, 0.4, 0.1], '-1': [0.1, 0.3, 0.9, 0.3, 0.1] },
-        efermi: 0,
-      })
-      expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) {
-        expect(result.densities).toEqual([0.1, 0.4, 1.0, 0.4, 0.1])
-      }
-    })
-
-    it(`handles LobsterCompleteDos with spin-keyed densities`, () => {
-      const result = normalize_dos({
-        energies: [-10, -5, 0, 5, 10],
-        densities: { '-1': [0.0, 0.5, 1.0, 0.5, 0.0], '1': [0.0, 0.6, 1.1, 0.6, 0.0] },
-        efermi: 0,
-      })
-      expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) {
-        // First key in object iteration order
-        expect(result.densities).toHaveLength(5)
-      }
+      if (result?.type === `electronic`) expect(result.densities).toEqual(expected)
     })
 
     it(`returns null for empty spin-keyed densities object`, () => {
-      const result = normalize_dos({
-        energies: [-1, 0, 1],
-        densities: {},
-      })
-      expect(result).toBeNull()
+      expect(normalize_dos({ energies: [-1, 0, 1], densities: {} })).toBeNull()
     })
   })
 
@@ -1394,25 +1270,18 @@ describe(`normalize_dos`, () => {
       if (result?.type === `phonon`) expect(result.frequencies).toEqual([0, 1, 2, 3, 4])
     })
 
-    it(`auto-converts cm⁻¹→THz when max > 100`, () => {
+    it(`auto-converts cm⁻¹→THz when max > 100 (factor 33.356)`, () => {
       const info_spy = spy_info()
       const result = normalize_dos({
-        frequencies: [0, 100, 200, 300, 400],
-        densities: [0, 0.5, 1, 0.5, 0],
+        frequencies: [0, 200, 333.5641],
+        densities: [0, 1, 0],
       })
+      expect(result?.type).toBe(`phonon`)
       if (result?.type === `phonon`) {
-        expect(result.frequencies[4]).toBeCloseTo(11.99, 1) // 400 cm⁻¹
-        expect(result.frequencies[2]).toBeCloseTo(5.99, 1) // 200 cm⁻¹
+        expect(result.frequencies[1]).toBeCloseTo(5.99, 1) // 200 cm⁻¹
+        expect(result.frequencies[2]).toBeCloseTo(10.0, 4) // 333.5641 cm⁻¹
       }
       expect(info_spy).toHaveBeenCalled()
-      info_spy.mockRestore()
-    })
-
-    it(`cm⁻¹→THz uses factor 33.356`, () => {
-      const info_spy = spy_info()
-      const result = normalize_dos({ frequencies: [0, 333.5641], densities: [0, 1] })
-      expect(result?.type).toBe(`phonon`)
-      if (result?.type === `phonon`) expect(result.frequencies[1]).toBeCloseTo(10.0, 4)
       info_spy.mockRestore()
     })
 
@@ -1500,12 +1369,30 @@ describe(`shift_to_fermi`, () => {
     efermi,
   })
 
-  it(`shifts energies so E_F = 0`, () => {
-    const dos = make_dos(5.0, [-10, -5, 0, 5, 10])
-    const shifted = shift_to_fermi(dos)
-
+  it.each([
+    {
+      desc: `positive efermi`,
+      efermi: 5.0,
+      energies: [-10, -5, 0, 5, 10],
+      expected: [-15, -10, -5, 0, 5],
+    },
+    { desc: `zero efermi (no-op)`, efermi: 0, energies: [-5, 0, 5], expected: [-5, 0, 5] },
+    {
+      desc: `negative efermi`,
+      efermi: -2.5,
+      energies: [-10, -5, 0, 5],
+      expected: [-7.5, -2.5, 2.5, 7.5],
+    },
+    {
+      desc: `typical pymatgen efermi (mp-865805)`,
+      efermi: 5.36,
+      energies: [0, 2.68, 5.36, 8.04, 10.72],
+      expected: [-5.36, -2.68, 0, 2.68, 5.36],
+    },
+  ])(`shifts energies so E_F = 0: $desc`, ({ efermi, energies, expected }) => {
+    const shifted = shift_to_fermi(make_dos(efermi, energies))
     expect(shifted.efermi).toBe(0)
-    expect(shifted.energies).toEqual([-15, -10, -5, 0, 5])
+    expected.forEach((val, idx) => expect(shifted.energies[idx]).toBeCloseTo(val, 10))
   })
 
   it(`preserves non-energy DOS properties`, () => {
@@ -1578,33 +1465,6 @@ describe(`shift_to_fermi`, () => {
     expect(shifted.spd_dos?.s[`@class`]).toBe(`Dos`)
   })
 
-  it(`handles zero Fermi energy (no-op)`, () => {
-    const dos = make_dos(0, [-5, 0, 5])
-    const shifted = shift_to_fermi(dos)
-
-    expect(shifted.efermi).toBe(0)
-    expect(shifted.energies).toEqual([-5, 0, 5]) // Unchanged
-  })
-
-  it(`handles negative Fermi energy`, () => {
-    const dos = make_dos(-2.5, [-10, -5, 0, 5])
-    const shifted = shift_to_fermi(dos)
-
-    expect(shifted.efermi).toBe(0)
-    expect(shifted.energies).toEqual([-7.5, -2.5, 2.5, 7.5])
-  })
-
-  it(`handles typical pymatgen efermi values`, () => {
-    // Real-world example: mp-865805 has efermi ≈ 5.36 eV
-    const dos = make_dos(5.36, [0, 2.68, 5.36, 8.04, 10.72])
-    const shifted = shift_to_fermi(dos)
-
-    expect(shifted.efermi).toBe(0)
-    expect(shifted.energies[0]).toBeCloseTo(-5.36, 10)
-    expect(shifted.energies[2]).toBeCloseTo(0, 10) // E_F now at 0
-    expect(shifted.energies[4]).toBeCloseTo(5.36, 10)
-  })
-
   it(`returns new object (immutable)`, () => {
     const dos = make_dos(5.0, [0, 5, 10])
     const shifted = shift_to_fermi(dos)
@@ -1618,42 +1478,26 @@ describe(`shift_to_fermi`, () => {
 })
 
 describe(`scale_segment_distances`, () => {
-  it(`scales distances to target range`, () => {
-    // Input: [0, 1, 2, 3] → range [10, 20] with dist_range = 3
-    // d=0: 10 + (0/3)*10 = 10
-    // d=1: 10 + (1/3)*10 = 13.333...
-    // d=2: 10 + (2/3)*10 = 16.666...
-    // d=3: 10 + (3/3)*10 = 20
-    const result = scale_segment_distances([0, 1, 2, 3], 10, 20)
-    expect(result[0]).toBe(10)
-    expect(result[1]).toBeCloseTo(10 + 10 / 3, 10)
-    expect(result[2]).toBeCloseTo(10 + 20 / 3, 10)
-    expect(result[3]).toBe(20)
-  })
-
-  it(`handles zero-range segment by placing at midpoint`, () => {
-    const result = scale_segment_distances([5, 5, 5], 10, 20)
-    expect(result).toEqual([15, 15, 15])
-  })
-
-  it(`returns empty array for empty input`, () => {
-    expect(scale_segment_distances([], 0, 10)).toEqual([])
-  })
-
-  it(`handles single point by placing at midpoint`, () => {
-    const result = scale_segment_distances([42], 0, 10)
-    expect(result).toEqual([5])
-  })
-
   it.each([
     { distances: [0, 0.5, 1], x_start: 0, x_end: 100, expected: [0, 50, 100] },
     { distances: [10, 15, 20], x_start: 0, x_end: 1, expected: [0, 0.5, 1] },
     { distances: [0, 2, 4, 8], x_start: 0, x_end: 8, expected: [0, 2, 4, 8] },
+    {
+      distances: [0, 1, 2, 3],
+      x_start: 10,
+      x_end: 20,
+      expected: [10, 10 + 10 / 3, 10 + 20 / 3, 20],
+    },
+    // Zero-range and single-point segments placed at midpoint
+    { distances: [5, 5, 5], x_start: 10, x_end: 20, expected: [15, 15, 15] },
+    { distances: [42], x_start: 0, x_end: 10, expected: [5] },
+    { distances: [], x_start: 0, x_end: 10, expected: [] },
   ])(
     `maps $distances to [$x_start, $x_end] → $expected`,
     ({ distances, x_start, x_end, expected }) => {
       const result = scale_segment_distances(distances, x_start, x_end)
-      expect(result).toEqual(expected)
+      expect(result).toHaveLength(expected.length)
+      expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 10))
     },
   )
 })

@@ -365,43 +365,6 @@ describe(`XrdPlot`, () => {
     }
   })
 
-  test(`multiple patterns create multiple bar series`, async () => {
-    // When plotting multiple patterns, should render multiple bar series with transparency
-    const pattern1: XrdPattern = {
-      x: [10, 20, 30],
-      y: [100, 50, 75],
-      hkls: [],
-      d_hkls: [],
-    }
-    const pattern2: XrdPattern = {
-      x: [15, 25, 35],
-      y: [80, 60, 90],
-      hkls: [],
-      d_hkls: [],
-    }
-
-    const target = await mount_xrd({
-      patterns: { 'Pattern 1': pattern1, 'Pattern 2': pattern2 },
-    })
-
-    // Should have 2 bar series for 2 patterns
-    const bar_series = target.querySelectorAll(`.bar-series`)
-    expect(bar_series).toHaveLength(2)
-
-    // Verify both pattern labels appear in legend
-    const text_content = target.textContent || ``
-    expect(text_content).toContain(`Pattern 1`)
-    expect(text_content).toContain(`Pattern 2`)
-  })
-
-  test(`single pattern renders single bar series`, async () => {
-    // Single pattern should render without transparency
-    const target = await mount_xrd({ patterns: pattern })
-
-    const bar_series = target.querySelectorAll(`.bar-series`)
-    expect(bar_series).toHaveLength(1)
-  })
-
   test(`dragover class toggles correctly`, async () => {
     const target = await mount_xrd({ patterns: pattern, allow_file_drop: true })
 

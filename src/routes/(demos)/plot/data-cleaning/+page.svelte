@@ -291,12 +291,12 @@
     return { x: x_vals, y: y_vals, z: t_vals } // z is just the time/index parameter
   })
 
-  let xyz_cleaned = $derived.by(() => {
-    return clean_xyz(xyz_data.x, xyz_data.y, xyz_data.z, {
+  let xyz_cleaned = $derived(
+    clean_xyz(xyz_data.x, xyz_data.y, xyz_data.z, {
       invalid_values: invalid_mode,
       in_place: false,
-    })
-  })
+    }),
+  )
 
   // Helper: find interpolated positions for NaN in 2D trajectory
   function find_trajectory_nan_positions(

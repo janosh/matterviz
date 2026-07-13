@@ -280,19 +280,14 @@ export function find_image_atoms(
   return image_sites
 }
 
-// Return structure with image atoms added
+// Return structure with image atoms added (unchanged when none are generated,
+// e.g. for scattered trajectory-like data)
 export function get_pbc_image_sites(
   ...args: Parameters<typeof find_image_atoms>
 ): ParsedStructure {
   const structure = args[0]
-  if (!structure || !structure.sites || structure.sites.length === 0) {
-    return structure
-  }
-  // Return trajectory data unchanged
-  if (is_scattered_trajectory(structure.sites)) return structure
-
-  // Add image atoms to regular crystal structures
   const image_sites = find_image_atoms(...args)
+  if (image_sites.length === 0) return structure
   const imaged_struct = { ...structure, sites: [...structure.sites] }
 
   for (const [site_idx, img_xyz, img_abc, is_completion] of image_sites) {

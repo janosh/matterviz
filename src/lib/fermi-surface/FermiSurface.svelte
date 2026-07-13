@@ -34,13 +34,9 @@
     RepresentationMode,
   } from './types'
 
-  type FermiHandlerData = {
+  type FermiFullscreenData = {
     fermi_data?: FermiSurfaceData
-    band_data?: BandGridData
     bz_data?: BrillouinZoneData
-    filename?: string
-    file_size?: number
-    error_msg?: string
     fullscreen?: boolean
   }
 
@@ -140,7 +136,7 @@
     on_file_drop?: (filename: string) => void
     on_file_load?: (data: FermiFileLoadData) => void
     on_error?: (data: FermiErrorData) => void
-    on_fullscreen_change?: (data: FermiHandlerData) => void
+    on_fullscreen_change?: (data: FermiFullscreenData) => void
     on_mu_change?: (mu: number) => void
     tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
     on_point_hover?: (data: FermiHoverData | null) => void

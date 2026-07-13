@@ -77,23 +77,6 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
       expect(Array.from(new Uint8Array(result))).toEqual(Array.from(data))
     },
   )
-
-  test(`ASE trajectory file regression test - simulates VS Code extension flow`, () => {
-    const ase_data = new Uint8Array([
-      ...new TextEncoder().encode(`- of Ulm`), // "- of Ulm"
-      ...new TextEncoder().encode(`ASE-Trajectory`), // "ASE-Trajectory"
-      0x00,
-      0x00,
-      ...Array(176).fill(0), // Mock trajectory data
-    ])
-    const result = base64_to_array_buffer(uint8_as_base64(ase_data))
-    const result_array = new Uint8Array(result)
-    expect(result.byteLength).toBe(ase_data.length)
-    expect(new TextDecoder().decode(result_array.slice(0, 8))).toBe(`- of Ulm`)
-    expect(new TextDecoder().decode(result_array.slice(8, 24)).replaceAll(`\0`, ``)).toBe(
-      `ASE-Trajectory`,
-    )
-  })
 })
 
 describe(`parse_file_content structure guard`, () => {

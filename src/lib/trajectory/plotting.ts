@@ -60,12 +60,17 @@ const same_frames = (
   cached_frames.length === current_frames.length &&
   cached_frames.every((frame, frame_idx) => frame === current_frames[frame_idx])
 
+type PropertyStats = Map<
+  string,
+  { values: number[]; has_variation: boolean; is_energy: boolean }
+>
+
 const stats_cache = new WeakMap<
   TrajectoryType,
   {
     extractor: TrajectoryDataExtractor
     frames: TrajectoryFrame[]
-    stats: ReturnType<typeof extract_property_statistics>
+    stats: PropertyStats
   }
 >()
 
@@ -85,7 +90,7 @@ export function generate_plot_series(
 
   // Single-pass extraction with variance detection, cached per trajectory (see stats_cache above)
   const cached = stats_cache.get(trajectory)
-  let property_stats: ReturnType<typeof extract_property_statistics>
+  let property_stats: PropertyStats
   if (cached?.extractor === data_extractor && same_frames(cached.frames, trajectory.frames)) {
     property_stats = cached.stats
   } else {
@@ -113,14 +118,7 @@ export function generate_plot_series(
 function extract_property_statistics(
   trajectory: TrajectoryType,
   data_extractor: TrajectoryDataExtractor,
-): Map<
-  string,
-  {
-    values: number[]
-    has_variation: boolean
-    is_energy: boolean
-  }
-> {
+): PropertyStats {
   const property_stats = new Map<string, { values: number[] }>()
 
   // Extract all data in single pass
@@ -139,33 +137,18 @@ function extract_property_statistics(
   })
 
   // Convert to final format with variation detection
-  const result = new Map<
-    string,
-    {
-      values: number[]
-      has_variation: boolean
-      is_energy: boolean
-    }
-  >()
+  const result: PropertyStats = new Map()
 
   for (const [key, stat] of property_stats) {
-    const n_values = stat.values.length
-    if (n_values <= 1) continue
+    if (stat.values.length <= 1) continue
 
-    const coefficient_of_variation = get_coefficient_of_variation(stat.values)
-
-    const lower_key = key.toLowerCase()
-    const is_energy = lower_key === `energy`
-    const has_variation = coefficient_of_variation >= 1e-6
+    const is_energy = key.toLowerCase() === `energy`
+    const has_variation = get_coefficient_of_variation(stat.values) >= 1e-6
 
     // Skip constant properties except energy
     if (!has_variation && !is_energy) continue
 
-    result.set(key, {
-      values: stat.values,
-      has_variation,
-      is_energy,
-    })
+    result.set(key, { values: stat.values, has_variation, is_energy })
   }
 
   return result
@@ -173,14 +156,7 @@ function extract_property_statistics(
 
 // Create series from statistics
 function create_series_from_stats(
-  property_stats: Map<
-    string,
-    {
-      values: number[]
-      has_variation: boolean
-      is_energy: boolean
-    }
-  >,
+  property_stats: PropertyStats,
   property_config: Record<string, TrajPropertyConfig>,
   colors: readonly string[],
 ): DataSeries[] {
@@ -188,7 +164,6 @@ function create_series_from_stats(
   let color_idx = 0
 
   for (const [key, stat] of property_stats) {
-    if (!stat) continue
     const n_values = stat.values.length
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
     const color = colors[color_idx % colors.length]
@@ -373,18 +348,13 @@ function get_axis_label(axis_series: DataSeries[]): string {
   if (visible_series.length === 0) return `Value`
 
   const unit_groups = new Map<string, string[]>()
-  visible_series.forEach((srs) => {
-    const unit = srs.unit ?? ``
-    const label = srs.label ?? `Value`
-    if (!unit_groups.has(unit)) unit_groups.set(unit, [])
-    const group = unit_groups.get(unit)
-    if (group) group.push(label)
-  })
+  for (const srs of visible_series) {
+    const labels = unit_groups.get(srs.unit ?? ``) ?? []
+    labels.push(srs.label ?? `Value`)
+    unit_groups.set(srs.unit ?? ``, labels)
+  }
 
-  const unit_entries = Array.from(unit_groups.entries())
-  if (unit_entries.length === 0) return `Value`
-
-  const [unit, labels] = unit_entries[0]
+  const [unit, labels] = [...unit_groups.entries()][0]
   const unique_labels = [...new Set(labels)].sort().join(` / `)
   return unit ? `${unique_labels} (${unit})` : unique_labels
 }
@@ -482,7 +452,8 @@ export function generate_streaming_plot_series(
     if (data_points.length < 2) continue
 
     const is_energy = property_key.toLowerCase() === `energy`
-    if (!is_energy && !has_significant_variation(data_points.map((point) => point.y))) continue
+    const values = data_points.map((point) => point.y)
+    if (!is_energy && get_coefficient_of_variation(values) < 1e-6) continue
 
     const { clean_label, unit, axis_group } = extract_label_and_unit(
       property_key,
@@ -516,14 +487,13 @@ export function generate_streaming_plot_series(
   return all_series
 }
 
-// Helper functions for streaming
+// Down-sample to at most target_points entries (callers guarantee the list is longer)
 function downsample_metadata(
   metadata_list: TrajectoryMetadata[],
   target_points: number,
 ): TrajectoryMetadata[] {
   const total_count = metadata_list.length
-  if (total_count <= target_points) return metadata_list
-  const points = Math.max(2, Math.min(target_points, total_count))
+  const points = Math.max(2, target_points)
   // Evenly spaced indices in [0, total_count-1], guaranteed to include first and last.
   const sampled: TrajectoryMetadata[] = []
   for (let idx = 0; idx < points; idx++) {
@@ -533,13 +503,6 @@ function downsample_metadata(
     }
   }
   return sampled
-}
-
-function has_significant_variation(values: number[], tolerance = 1e-6): boolean {
-  if (values.length <= 1) return false
-
-  const coefficient_of_variation = get_coefficient_of_variation(values)
-  return coefficient_of_variation >= tolerance
 }
 
 function determine_axis_from_groups(

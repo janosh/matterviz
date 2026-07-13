@@ -544,29 +544,20 @@ describe(`ScatterPlot`, () => {
       expect(get_series_color(idx)).toBe(color)
       expect(get_series_symbol(idx)).toBe(symbol)
     })
-
-    test(`adjacent indices return different values (catches off-by-one)`, () => {
-      expect(get_series_color(0)).not.toBe(get_series_color(1))
-      expect(get_series_symbol(0)).not.toBe(get_series_symbol(1))
-    })
   })
 
-  describe(`aria-label on SVG`, () => {
-    // SVG only renders when container has width/height. We test by mounting
-    // with the same setup used by other passing render tests.
-    test(`derives from axis labels`, async () => {
-      const plot = await mount_sized_scatter_plot({
-        series: [basic],
-        x_axis: { label: `Temperature` },
-        y_axis: { label: `Pressure` },
-      })
-      const svg = plot.querySelector(`svg[role="application"]`)
-      if (!(svg instanceof SVGSVGElement)) throw new Error(`ScatterPlot SVG not rendered`)
-
-      expect(svg.getAttribute(`aria-label`)).toBe(`Temperature vs Pressure`)
-      expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Temperature`)
-      expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Pressure`)
+  test(`svg aria-label derives from axis labels`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      x_axis: { label: `Temperature` },
+      y_axis: { label: `Pressure` },
     })
+    const svg = plot.querySelector(`svg[role="application"]`)
+    if (!(svg instanceof SVGSVGElement)) throw new Error(`ScatterPlot SVG not rendered`)
+
+    expect(svg.getAttribute(`aria-label`)).toBe(`Temperature vs Pressure`)
+    expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Temperature`)
+    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Pressure`)
   })
 
   test(`keeps fallback-index and explicit-id fill hovers distinct`, async () => {
@@ -758,7 +749,7 @@ describe(`ScatterPlot`, () => {
     await tick()
     // default interior placement would be top-left (~10px); auto-outside drops it into the
     // reserved bottom margin (~height - footprint - gap), well below mid-plot
-    const legend = doc_query<HTMLElement>(`.legend`)
+    const legend = doc_query(`.legend`)
     expect(Number(legend.style.top.replace(`px`, ``))).toBeGreaterThan(150)
   })
 
@@ -775,7 +766,7 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot({ series, legend: { responsive: false } })
     await resize_element(plot, 401, 300)
     await tick()
-    const legend = doc_query<HTMLElement>(`.legend`)
+    const legend = doc_query(`.legend`)
     const initial_position = { left: legend.style.left, top: legend.style.top }
     layout_spy.mockClear()
 

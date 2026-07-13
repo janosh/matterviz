@@ -45,23 +45,15 @@ describe(`PhaseDiagramExportPane`, () => {
     return matches[0]
   }
 
-  test(`displays export format buttons for SVG, PNG, and JSON`, () => {
+  test(`displays section headings and export format buttons`, () => {
     mount(PhaseDiagramExportPane, {
       target: document.body,
       props: { data: mock_phase_data, wrapper: wrapper_div },
     })
 
-    expect(document.body.textContent).toContain(`SVG`)
-    expect(document.body.textContent).toContain(`PNG`)
-    expect(document.body.textContent).toContain(`JSON`)
-  })
-
-  test(`displays section headings`, () => {
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: wrapper_div },
-    })
-
+    for (const label of [`SVG`, `PNG`, `JSON`]) {
+      expect(document.body.textContent).toContain(label)
+    }
     const headings = Array.from(document.querySelectorAll(`h4`)).map(
       (heading) => heading.textContent,
     )
@@ -69,7 +61,7 @@ describe(`PhaseDiagramExportPane`, () => {
     expect(headings).toContain(`Data`)
   })
 
-  test(`SVG download button calls export_svg_as_svg`, async () => {
+  test(`SVG download button calls export_svg_as_svg with component filename`, async () => {
     mount(PhaseDiagramExportPane, {
       target: document.body,
       props: { data: mock_phase_data, wrapper: wrapper_div },
@@ -139,17 +131,20 @@ describe(`PhaseDiagramExportPane`, () => {
     },
   )
 
-  test(`JSON buttons disabled when data is undefined`, () => {
+  test(`JSON buttons disabled and copy is a no-op when data is undefined`, async () => {
     mount(PhaseDiagramExportPane, {
       target: document.body,
       props: { data: undefined, wrapper: wrapper_div },
     })
 
-    const download_btn = get_button(`Download JSON`)
     const copy_btn = get_button(`Copy JSON`)
-
-    expect(download_btn.disabled).toBe(true)
+    expect(get_button(`Download JSON`).disabled).toBe(true)
     expect(copy_btn.disabled).toBe(true)
+
+    vi.mocked(navigator.clipboard.writeText).mockClear()
+    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 
   test(`DPI input has correct attributes`, () => {
@@ -164,23 +159,6 @@ describe(`PhaseDiagramExportPane`, () => {
     expect(dpi_input.value).toBe(`150`)
     expect(dpi_input.min).toBe(`50`)
     expect(dpi_input.max).toBe(`600`)
-  })
-
-  test(`generates filename with component names`, async () => {
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: wrapper_div },
-    })
-
-    const svg_btn = get_button(`Download SVG`)
-    svg_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => {
-      expect(export_svg_as_svg).toHaveBeenCalledWith(
-        expect.anything(),
-        `phase-diagram-AL-CU.svg`,
-      )
-    })
   })
 
   test(`uses default filename when components not available`, async () => {
@@ -223,57 +201,39 @@ describe(`PhaseDiagramExportPane`, () => {
     })
   })
 
-  test(`toggle button title when pane is closed`, () => {
+  test.each([
+    { export_pane_open: false, title: `Export phase diagram` },
+    { export_pane_open: true, title: `` },
+  ])(`toggle title is "$title" when open=$export_pane_open`, ({ export_pane_open, title }) => {
     mount(PhaseDiagramExportPane, {
       target: document.body,
-      props: { export_pane_open: false },
+      props: { export_pane_open },
     })
 
-    expect(doc_query(`.pd-export-toggle`).title).toBe(`Export phase diagram`)
+    expect(doc_query(`.pd-export-toggle`).title).toBe(title)
   })
 
-  test(`toggle button title is empty when pane is open`, () => {
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { export_pane_open: true },
-    })
+  test.each([
+    { button_title: `Download SVG`, was_called: () => vi.mocked(export_svg_as_svg) },
+    { button_title: `Copy SVG`, was_called: () => vi.mocked(navigator.clipboard.writeText) },
+  ])(
+    `$button_title is a no-op when wrapper has no SVG element`,
+    async ({ button_title, was_called }) => {
+      const empty_wrapper = document.createElement(`div`)
+      document.body.append(empty_wrapper)
 
-    expect(doc_query(`.pd-export-toggle`).title).toBe(``)
-  })
+      mount(PhaseDiagramExportPane, {
+        target: document.body,
+        props: { data: mock_phase_data, wrapper: empty_wrapper },
+      })
 
-  test(`does not export SVG when wrapper has no SVG element`, async () => {
-    const empty_wrapper = document.createElement(`div`)
-    document.body.append(empty_wrapper)
+      get_button(button_title).dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: empty_wrapper },
-    })
-
-    const svg_btn = get_button(`Download SVG`)
-    svg_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    // Flush microtasks then verify export was not called
-    await new Promise<void>((resolve) => queueMicrotask(resolve))
-    expect(export_svg_as_svg).not.toHaveBeenCalled()
-  })
-
-  test(`does not copy SVG when wrapper has no SVG element`, async () => {
-    const empty_wrapper = document.createElement(`div`)
-    document.body.append(empty_wrapper)
-
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: empty_wrapper },
-    })
-
-    const copy_btn = get_button(`Copy SVG`)
-    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    // Flush microtasks then verify clipboard was not called
-    await new Promise<void>((resolve) => queueMicrotask(resolve))
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
-  })
+      // Flush microtasks then verify export/clipboard was not called
+      await new Promise<void>((resolve) => queueMicrotask(resolve))
+      expect(was_called()).not.toHaveBeenCalled()
+    },
+  )
 
   test(`JSON download creates blob URL and triggers download`, async () => {
     const revoke_spy = vi.spyOn(URL, `revokeObjectURL`)
@@ -296,22 +256,5 @@ describe(`PhaseDiagramExportPane`, () => {
 
     create_spy.mockRestore()
     revoke_spy.mockRestore()
-  })
-
-  test(`does not copy JSON when data is undefined`, async () => {
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: undefined, wrapper: wrapper_div },
-    })
-
-    // The button is disabled, but let's also verify click doesn't trigger copy
-    vi.mocked(navigator.clipboard.writeText).mockClear()
-
-    const copy_btn = get_button(`Copy JSON`)
-    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    // Flush microtasks then verify clipboard was not called
-    await new Promise<void>((resolve) => queueMicrotask(resolve))
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 })

@@ -394,13 +394,7 @@ export function compute_energy_mode_info(
   for (const entry of entries) {
     for (const el of Object.keys(entry.composition)) elements_in_entries.add(el)
   }
-  let can_compute_e_form = true
-  for (const el of elements_in_entries) {
-    if (!unary_refs[el]) {
-      can_compute_e_form = false
-      break
-    }
-  }
+  const can_compute_e_form = [...elements_in_entries].every((el) => el in unary_refs)
   // Resolve mode to avoid inconsistent states:
   // - If full precomputed available, honor user toggle
   // - Else if we can compute, use on-the-fly automatically

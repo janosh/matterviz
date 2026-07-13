@@ -26,33 +26,6 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 
-def load_pymatgen_data() -> dict[str, Any]:
-    """Load pymatgen's periodic table JSON data."""
-    try:
-        import pymatgen.core
-
-        pymatgen_path = Path(pymatgen.core.__file__).parent / "periodic_table.json.gz"
-    except ImportError:
-        print("pymatgen not installed. Install with: pip install pymatgen")
-        raise
-
-    with gzip.open(pymatgen_path, "rb") as file:
-        data = json.loads(file.read())
-
-    # Remove the _unit metadata key
-    data.pop("_unit", None)
-    return data
-
-
-def load_existing_data(path: Path) -> list[dict[str, Any]]:
-    """Load existing element data from JSON or gzipped JSON."""
-    if path.suffix == ".gz":
-        with gzip.open(path, "rb") as file:
-            return json.loads(file.read())
-    with open(path, encoding="utf-8") as file:
-        return json.load(file)
-
-
 def extract_pymatgen_properties(
     pymatgen_data: dict[str, Any], symbol: str
 ) -> dict[str, Any]:
@@ -91,39 +64,32 @@ def extract_pymatgen_properties(
     return result
 
 
-def merge_data(
-    existing: list[dict[str, Any]], pymatgen_data: dict[str, Any]
-) -> list[dict[str, Any]]:
-    """Merge pymatgen data into existing element data."""
-    result = []
-
-    for elem in existing:
-        symbol = elem["symbol"]
-        merged = {**elem}
-
-        # Extract and add pymatgen properties
-        pymatgen_props = extract_pymatgen_properties(pymatgen_data, symbol)
-        merged.update(pymatgen_props)
-
-        result.append(merged)
-
-    return result
-
-
 def main() -> None:
     """Main entry point."""
     gz_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json.gz"
 
     print(f"Loading existing data from {gz_path}")
-    existing_data = load_existing_data(gz_path)
+    with gzip.open(gz_path, "rb") as file:
+        existing_data: list[dict[str, Any]] = json.loads(file.read())
     print(f"Loaded {len(existing_data)} elements")
 
     print("Loading pymatgen periodic table data...")
-    pymatgen_data = load_pymatgen_data()
+    try:
+        import pymatgen.core
+    except ImportError:
+        print("pymatgen not installed. Install with: pip install pymatgen")
+        raise
+    pymatgen_path = Path(pymatgen.core.__file__).parent / "periodic_table.json.gz"
+    with gzip.open(pymatgen_path, "rb") as file:
+        pymatgen_data: dict[str, Any] = json.loads(file.read())
+    pymatgen_data.pop("_unit", None)
     print(f"Loaded pymatgen data for {len(pymatgen_data)} elements")
 
     print("Merging data...")
-    merged_data = merge_data(existing_data, pymatgen_data)
+    merged_data = [
+        {**elem, **extract_pymatgen_properties(pymatgen_data, elem["symbol"])}
+        for elem in existing_data
+    ]
 
     # Verify we have key properties for common elements
     sample_elements = ["Fe", "O", "Na", "Cl"]

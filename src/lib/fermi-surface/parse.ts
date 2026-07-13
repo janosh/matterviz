@@ -131,18 +131,13 @@ function parse_bxsf(content: string): BandGridData {
       )
     }
 
-    // Reshape into 3D grid [kx][ky][kz] (preallocated for speed)
-    const band_grid: number[][][] = Array(nx)
-    let val_idx = 0
-    for (let ix = 0; ix < nx; ix++) {
-      const iy_arr: number[][] = Array(ny)
-      for (let iy = 0; iy < ny; iy++) {
-        const iz_arr = energy_values.slice(val_idx, val_idx + nz)
-        val_idx += nz
-        iy_arr[iy] = iz_arr
-      }
-      band_grid[ix] = iy_arr
-    }
+    // Reshape into 3D grid [kx][ky][kz]
+    const band_grid: number[][][] = Array.from({ length: nx }, (_x_row, ix) =>
+      Array.from({ length: ny }, (_y_row, iy) => {
+        const offset = (ix * ny + iy) * nz
+        return energy_values.slice(offset, offset + nz)
+      }),
+    )
     energies[0].push(band_grid)
   }
 
@@ -202,65 +197,49 @@ function parse_frmsf(content: string): BandGridData {
     throw new Error(`FRMSF: Invalid number of bands`)
   }
 
-  // FRMSF format has single spin channel (no spin-polarized support in standard format)
-  const n_spins = 1
-
   // Lines 4-6: reciprocal lattice vectors (in Bohr^-1, convert to Å^-1)
   const inv_bohr = 1 / constants.BOHR_TO_ANGSTROM
-  const k_lattice: Matrix3x3 = [
+  const parse_k_vector = (): Vec3 =>
     parse_floats(lines[line_idx++])
       .slice(0, 3)
-      .map((val) => val * inv_bohr) as Vec3,
-    parse_floats(lines[line_idx++])
-      .slice(0, 3)
-      .map((val) => val * inv_bohr) as Vec3,
-    parse_floats(lines[line_idx++])
-      .slice(0, 3)
-      .map((val) => val * inv_bohr) as Vec3,
-  ]
+      .map((val) => val * inv_bohr) as Vec3
+  const k_lattice: Matrix3x3 = [parse_k_vector(), parse_k_vector(), parse_k_vector()]
 
   const [nx, ny, nz] = k_grid
   const total_points = nx * ny * nz
 
-  // Parse band energies for each spin and band
-  // FRMSF format: one energy value per line per grid point. Any additional columns
-  // (e.g. auxiliary color/velocity data) are ignored to prevent grid corruption.
-  const energies: EnergyGrid5D = []
-  for (let spin_idx = 0; spin_idx < n_spins; spin_idx++) {
-    energies[spin_idx] = []
-    for (let band_idx = 0; band_idx < n_bands; band_idx++) {
-      const energy_values: number[] = []
+  // Parse band energies (FRMSF has a single spin channel — no spin-polarized support
+  // in the standard format). One energy value per line per grid point; any additional
+  // columns (e.g. auxiliary color/velocity data) are ignored to prevent grid corruption.
+  const energies: EnergyGrid5D = [[]]
+  for (let band_idx = 0; band_idx < n_bands; band_idx++) {
+    const energy_values: number[] = []
 
-      // Read energy values (first value per line only, ignore auxiliary columns;
-      // normalize Fortran D-exponents like parse_floats does)
-      while (energy_values.length < total_points && line_idx < lines.length) {
-        const energy = parse_leading_num(normalize_scientific_notation(lines[line_idx] ?? ``))
-        if (isNaN(energy)) break
-        energy_values.push(energy)
-        line_idx++
-      }
-
-      if (energy_values.length < total_points) {
-        throw new Error(
-          `FRMSF spin ${spin_idx} band ${band_idx}: expected ${total_points} values, got ${energy_values.length}`,
-        )
-      }
-
-      // Reshape into 3D grid [kx][ky][kz]
-      const band_grid: number[][][] = []
-      let val_idx = 0
-      for (let ix = 0; ix < nx; ix++) {
-        band_grid[ix] = []
-        for (let iy = 0; iy < ny; iy++) {
-          band_grid[ix][iy] = []
-          for (let iz = 0; iz < nz; iz++) {
-            // FRMSF uses Hartree, convert to eV
-            band_grid[ix][iy][iz] = energy_values[val_idx++] * constants.HARTREE_TO_EV
-          }
-        }
-      }
-      energies[spin_idx].push(band_grid)
+    // Read energy values (first value per line only, ignore auxiliary columns;
+    // normalize Fortran D-exponents like parse_floats does)
+    while (energy_values.length < total_points && line_idx < lines.length) {
+      const energy = parse_leading_num(normalize_scientific_notation(lines[line_idx] ?? ``))
+      if (isNaN(energy)) break
+      energy_values.push(energy)
+      line_idx++
     }
+
+    if (energy_values.length < total_points) {
+      throw new Error(
+        `FRMSF band ${band_idx}: expected ${total_points} values, got ${energy_values.length}`,
+      )
+    }
+
+    // Reshape into 3D grid [kx][ky][kz], converting Hartree to eV
+    const band_grid: number[][][] = Array.from({ length: nx }, (_x_row, ix) =>
+      Array.from({ length: ny }, (_y_row, iy) => {
+        const offset = (ix * ny + iy) * nz
+        return energy_values
+          .slice(offset, offset + nz)
+          .map((energy) => energy * constants.HARTREE_TO_EV)
+      }),
+    )
+    energies[0].push(band_grid)
   }
 
   return {
@@ -269,7 +248,7 @@ function parse_frmsf(content: string): BandGridData {
     k_lattice,
     fermi_energy: 0, // FRMSF typically expects Fermi level at 0
     n_bands,
-    n_spins,
+    n_spins: 1,
     periodic: true, // FRMSF stores k=i/n with no duplicated endpoint (unlike BXSF)
   }
 }
@@ -446,16 +425,9 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
       // Compute vertex normals from faces
       const normals = compute_vertex_normals(vertices, faces)
 
-      // Extract properties if available
-      let properties: number[] | undefined
-      if (ifermi_iso.properties) {
-        // IFermi stores properties like fermi_velocity, spin, etc.
-        const prop_keys = Object.keys(ifermi_iso.properties)
-        if (prop_keys.length > 0) {
-          // Use first available property as vertex colors
-          properties = ifermi_iso.properties[prop_keys[0]]
-        }
-      }
+      // IFermi stores properties like fermi_velocity, spin, etc.
+      // Use first available property as vertex colors
+      const properties: number[] | undefined = Object.values(ifermi_iso.properties ?? {})[0]
 
       // Parse dimensionality
       let dimensionality: SurfaceDimensionality | undefined

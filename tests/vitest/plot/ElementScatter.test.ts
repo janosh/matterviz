@@ -38,12 +38,4 @@ describe(`ElementScatter`, () => {
     })
     expect(without).toContain(`Value`)
   })
-
-  test(`renders without errors`, () => {
-    mount(ElementScatter, {
-      target: document.body,
-      props: { y: y_values },
-    })
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-  })
 })

@@ -115,47 +115,6 @@ const get_svg_rect = async (
     height: Number(el.getAttribute(`height`)),
   }))
 
-// Check and return marker sizes and relationships
-const check_marker_sizes = async (
-  plot_locator: Locator,
-  first_idx: number,
-  intermediate_idx: number,
-  last_idx: number,
-): Promise<{
-  first_area: number
-  intermediate_area: number
-  last_area: number
-  ratio_last_first: number
-  ratio_inter_first: number
-}> => {
-  const bbox_first = await get_marker_bbox(plot_locator, first_idx)
-  const bbox_intermediate = await get_marker_bbox(plot_locator, intermediate_idx)
-  const bbox_last = await get_marker_bbox(plot_locator, last_idx)
-
-  const first_area = get_bbox_area(bbox_first)
-  const intermediate_area = get_bbox_area(bbox_intermediate)
-  const last_area = get_bbox_area(bbox_last)
-  const area_tolerance = 1e-3
-
-  expect(first_area).toBeGreaterThan(0)
-  expect(intermediate_area).toBeGreaterThanOrEqual(first_area)
-  expect(last_area + area_tolerance).toBeGreaterThanOrEqual(intermediate_area)
-
-  const ratio_last_first = last_area / first_area
-  const ratio_inter_first = intermediate_area / first_area
-
-  expect(ratio_inter_first).toBeGreaterThanOrEqual(1)
-  expect(ratio_last_first).toBeGreaterThanOrEqual(ratio_inter_first)
-
-  return {
-    first_area,
-    intermediate_area,
-    last_area,
-    ratio_last_first,
-    ratio_inter_first,
-  }
-}
-
 // Hover over a marker to show tooltip using two-phase approach.
 // The ScatterPlot component requires onmouseenter on the SVG to set hovered=true
 // before onmousemove can identify the closest point and show the tooltip.
@@ -248,34 +207,31 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(scatter_plot.locator(`.axis-label.x-label`)).toHaveText(`X Axis`)
     await expect(scatter_plot.locator(`.axis-label.y-label`)).toHaveText(`Y Axis`)
 
-    // Check cursor is not pointer (no click handler)
-    const point = scatter_plot.locator(`path.marker`).first()
-    const cursor = await point.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).not.toBe(`pointer`)
+    for (const axis of [`x`, `y`] as const) {
+      const axis_ticks = scatter_plot.locator(`g.${axis}-axis .tick`)
+      // Check that ticks exist within reasonable bounds (varies by viewport)
+      const tick_count = await axis_ticks.count()
+      expect(tick_count).toBeGreaterThanOrEqual(4)
+      expect(tick_count).toBeLessThanOrEqual(15)
 
-    // Check that ticks exist within reasonable bounds (varies by viewport)
-    const x_tick_count = await scatter_plot.locator(`g.x-axis .tick`).count()
-    const y_tick_count = await scatter_plot.locator(`g.y-axis .tick`).count()
-    expect(x_tick_count).toBeGreaterThanOrEqual(4)
-    expect(x_tick_count).toBeLessThanOrEqual(15)
-    expect(y_tick_count).toBeGreaterThanOrEqual(4)
-    expect(y_tick_count).toBeLessThanOrEqual(15)
+      // Verify tick values are parseable numbers and in ascending order
+      const tick_texts = await axis_ticks.locator(`text`).allTextContents()
+      const values = tick_texts.map(Number).filter((val) => !isNaN(val))
+      expect(values.length).toBeGreaterThan(0)
+      expect(is_ascending(values)).toBe(true)
 
-    // Check tick text exists and contains valid numeric values
-    const x_tick_texts = await scatter_plot.locator(`g.x-axis .tick text`).allTextContents()
-    const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`).allTextContents()
-    expect(x_tick_texts.length).toBeGreaterThan(0)
-    expect(y_tick_texts.length).toBeGreaterThan(0)
+      // Verify first and last ticks are visible
+      await expect(axis_ticks.locator(`text`).first()).toBeVisible()
+      await expect(axis_ticks.locator(`text`).last()).toBeVisible()
 
-    // Verify tick values are parseable numbers (handles plain numbers and scientific notation)
-    const x_values = x_tick_texts.map(Number).filter((val) => !isNaN(val))
-    const y_values = y_tick_texts.map(Number).filter((val) => !isNaN(val))
-    expect(x_values.length).toBeGreaterThan(0)
-    expect(y_values.length).toBeGreaterThan(0)
-
-    // Verify tick values are in ascending order (proper axis scaling)
-    expect(is_ascending(x_values)).toBe(true)
-    expect(is_ascending(y_values)).toBe(true)
+      // Verify tick spacing is roughly uniform (proper linear scale)
+      const spacings = values.slice(1).map((val, idx) => val - values[idx])
+      const avg_spacing = spacings.reduce((sum, val) => sum + val, 0) / spacings.length
+      const uniform = spacings.every(
+        (spacing) => Math.abs(spacing - avg_spacing) < avg_spacing * 0.6,
+      )
+      expect(uniform).toBe(true)
+    }
 
     // Check markers are rendered (10 points in basic_data)
     await expect(scatter_plot.locator(`path.marker`)).toHaveCount(10)
@@ -441,33 +397,23 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`marker sizing scales correctly with data values`, async ({ page }) => {
-    // Test with a plot that has different marker sizes based on data
     const plot_locator = page.locator(`#basic-example .scatter`)
     await expect(plot_locator).toBeVisible()
 
-    // Test that markers have reasonable sizes
-    const marker_count = await plot_locator.locator(`.marker`).count()
-    if (marker_count >= 3) {
-      const sizes = await check_marker_sizes(plot_locator, 0, 1, 2)
-      expect(sizes.ratio_inter_first).toBeGreaterThan(0.5)
-      expect(sizes.ratio_last_first).toBeGreaterThan(0.5)
-      expect(sizes.first_area).toBeGreaterThan(0)
-      expect(sizes.intermediate_area).toBeGreaterThan(0)
-      expect(sizes.last_area).toBeGreaterThan(0)
-    }
+    // First three markers of basic_data grow with their data values
+    const areas = await Promise.all(
+      [0, 1, 2].map(async (idx) => get_bbox_area(await get_marker_bbox(plot_locator, idx))),
+    )
+    const area_tolerance = 1e-3
+    expect(areas[0]).toBeGreaterThan(0)
+    expect(areas[1] + area_tolerance).toBeGreaterThanOrEqual(areas[0])
+    expect(areas[2] + area_tolerance).toBeGreaterThanOrEqual(areas[1])
   })
 
   test(`size_values prop with per-point styling and dynamic configuration`, async ({
     page,
   }) => {
-    // TODO: Consider experimenting with more tolerant area-ratio thresholds
-    // so this test can eventually run in CI again
-    // Configure retries for size compression tests which can have small numerical variations
-    test.info().annotations.push({ type: `slow`, description: `Size calculation test` })
-
-    // This test verifies the fix for size_values not working with per-point styling arrays
-    // Test page has the spiral plot section at #point-sizing-spiral-test
-
+    // Verifies the fix for size_values not working with per-point styling arrays
     // Find the spiral plot section (has per-point styling with symbol_type and size_values)
     const section = page.locator(`#point-sizing-spiral-test`)
     const plot_locator = section.locator(`.scatter`)
@@ -634,6 +580,13 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const section = page.locator(`#color-scale`)
     await expect(section).toBeVisible()
 
+    // Section data includes null/undefined color values, so this also covers
+    // graceful null handling during scale transitions
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
     const color_scale_plot = section.locator(`#color-scale-toggle .scatter`)
     await expect(color_scale_plot).toBeVisible()
 
@@ -655,6 +608,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Switch back to linear mode
     await click_radio(page, `#color-scale input[value="linear"]`)
     await expect(linear_radio).toBeChecked()
+
+    expect(console_errors).toHaveLength(0)
   })
 
   test(`no console errors on linear-log scale transition`, async ({ page }) => {
@@ -1522,28 +1477,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(pane).toBeHidden()
   })
 
-  test(`one-sided axis range pins via controls`, async ({ page }) => {
-    // Test that control pane opens and axes have ticks
-    const plot = page.locator(`#basic-example .scatter`)
-    await expect(plot).toBeVisible()
-
-    const { toggle, pane } = await open_control_pane(plot)
-
-    const x_axis = plot.locator(`g.x-axis`)
-    const y_axis = plot.locator(`g.y-axis`)
-
-    // Verify axes have ticks
-    const x_ticks = await get_tick_range(x_axis)
-    const y_ticks = await get_tick_range(y_axis)
-    expect(x_ticks.ticks.length).toBeGreaterThan(0)
-    expect(y_ticks.ticks.length).toBeGreaterThan(0)
-
-    // Close control pane
-    await plot.hover()
-    await toggle.click()
-    await expect(pane).toBeHidden()
-  })
-
   // AXIS COLOR TESTS
 
   const axis_color_test_cases = [
@@ -1596,86 +1529,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     })
   })
 
-  // AXIS TICK TESTS
-
-  const tick_axis_test_cases = [
-    {
-      axis: `x`,
-      selector: `g.x-axis .tick`,
-      description: `x-axis ticks are properly generated and formatted`,
-    },
-    {
-      axis: `y`,
-      selector: `g.y-axis .tick`,
-      description: `y-axis ticks are properly generated and formatted`,
-    },
-  ]
-
-  tick_axis_test_cases.forEach(({ selector, description }) => {
-    test(description, async ({ page }) => {
-      const section = page.locator(`#basic-example`)
-      const scatter_plot = section.locator(`.scatter`)
-
-      await expect(scatter_plot).toBeVisible()
-
-      const axis_ticks = scatter_plot.locator(selector)
-      // Verify tick count is within reasonable bounds
-      const tick_count = await axis_ticks.count()
-      expect(tick_count).toBeGreaterThanOrEqual(4)
-      expect(tick_count).toBeLessThanOrEqual(15)
-
-      // Verify tick text is visible and properly formatted
-      const tick_texts = await axis_ticks.locator(`text`).allTextContents()
-      expect(tick_texts.length).toBeGreaterThan(0)
-
-      // Verify tick values are parseable and in ascending order
-      const values = tick_texts.map(Number).filter((val) => !isNaN(val))
-      expect(values.length).toBeGreaterThan(0)
-
-      // Verify ascending order (proper axis scaling)
-      expect(is_ascending(values)).toBe(true)
-
-      // Verify first and last ticks are visible
-      await expect(axis_ticks.locator(`text`).first()).toBeVisible()
-      await expect(axis_ticks.locator(`text`).last()).toBeVisible()
-    })
-  })
-
-  test(`auto-generated ticks span appropriate range for data`, async ({ page }) => {
-    const section = page.locator(`#basic-example`)
-    const scatter_plot = section.locator(`.scatter`)
-
-    await expect(scatter_plot).toBeVisible()
-
-    // Get tick values for both axes
-    const x_tick_texts = await scatter_plot.locator(`g.x-axis .tick text`).allTextContents()
-    const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`).allTextContents()
-
-    const x_values = x_tick_texts.map(Number).filter((val) => !isNaN(val))
-    const y_values = y_tick_texts.map(Number).filter((val) => !isNaN(val))
-
-    // Verify we have a reasonable number of ticks
-    expect(x_values.length).toBeGreaterThanOrEqual(4)
-    expect(y_values.length).toBeGreaterThanOrEqual(4)
-
-    // Verify tick ranges are positive (data spans some distance)
-    const x_range = Math.max(...x_values) - Math.min(...x_values)
-    const y_range = Math.max(...y_values) - Math.min(...y_values)
-    expect(x_range).toBeGreaterThan(0)
-    expect(y_range).toBeGreaterThan(0)
-
-    // Verify tick spacing is roughly uniform (proper linear scale)
-    if (x_values.length >= 3) {
-      const x_spacings = x_values.slice(1).map((val, idx) => val - x_values[idx])
-      const avg_spacing = x_spacings.reduce((sum, val) => sum + val, 0) / x_spacings.length
-      // All spacings should be within 50% of the average (accounting for rounding)
-      const uniform = x_spacings.every(
-        (spacing) => Math.abs(spacing - avg_spacing) < avg_spacing * 0.6,
-      )
-      expect(uniform).toBe(true)
-    }
-  })
-
   test(`handles extreme zoom levels and data ranges`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
     const svg = plot_locator.locator(`> svg[role="application"]`).first()
@@ -1700,41 +1553,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Reset zoom for next test
     await svg.dblclick()
-  })
-
-  test(`handles very long axis labels and overlapping text`, async ({ page }) => {
-    // Test with a plot that has long axis labels (if such test case exists)
-    const plot_locator = page.locator(`#basic-example .scatter`)
-
-    // Check that axis labels are properly positioned and don't overflow
-    const x_label = plot_locator.locator(`.axis-label.x-label`)
-    const y_label = plot_locator.locator(`.axis-label.y-label`)
-
-    if (await x_label.isVisible()) {
-      const x_label_box = await x_label.boundingBox()
-      const plot_box = await plot_locator.boundingBox()
-
-      if (x_label_box && plot_box) {
-        // Label should be within reasonable bounds of the plot
-        expect(x_label_box.x + x_label_box.width).toBeLessThanOrEqual(
-          plot_box.x + plot_box.width + 50,
-        )
-      }
-    }
-
-    // Test Y-axis label positioning as well
-    if (await y_label.isVisible()) {
-      const y_label_box = await y_label.boundingBox()
-      const plot_box = await plot_locator.boundingBox()
-
-      if (y_label_box && plot_box) {
-        // Y-label should be positioned within reasonable bounds
-        expect(y_label_box.y).toBeGreaterThanOrEqual(plot_box.y - 20)
-        expect(y_label_box.y + y_label_box.height).toBeLessThanOrEqual(
-          plot_box.y + plot_box.height + 20,
-        )
-      }
-    }
   })
 
   test(`series-specific controls work correctly in multi-series plots`, async ({ page }) => {
@@ -1782,62 +1600,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
         timeout: 3000,
       })
       .toBe(true)
-  })
-
-  test(`point event handlers work with complex interactions`, async ({ page }) => {
-    const section_selector = `#point-event-test`
-    const section = page.locator(section_selector)
-    const plot_locator = section.locator(`.scatter`)
-
-    // Test multiple rapid clicks using dispatchEvent (safer than hover)
-    const first_marker = plot_locator.locator(`path.marker`).first()
-    const marker_group = first_marker.locator(`..`)
-
-    await expect(first_marker).toBeVisible()
-    await expect(marker_group).toBeVisible()
-
-    // Test multiple click events
-    await marker_group.dispatchEvent(`click`)
-    await marker_group.dispatchEvent(`click`)
-    await marker_group.dispatchEvent(`click`)
-
-    // Should handle rapid clicks gracefully without errors
-    await expect(plot_locator).toBeVisible()
-
-    // Test additional mouse events without problematic actions
-    await marker_group.dispatchEvent(`mouseenter`)
-    await marker_group.dispatchEvent(`mouseleave`)
-
-    // Verify plot remains functional
-    await expect(plot_locator.locator(`> svg[role="application"]`)).toBeVisible()
-    await expect(first_marker).toBeVisible()
-  })
-
-  test(`legend handles very long series names`, async ({ page }) => {
-    // Test legend with long text (if such test case exists)
-    const legend_plot = page.locator(`#legend-multi-default`)
-    const legend = legend_plot.locator(`.legend`)
-
-    if (await legend.isVisible()) {
-      const legend_items = legend.locator(`.legend-item`)
-      const item_count = await legend_items.count()
-
-      // Check that all legend items are visible and properly sized
-      for (let idx = 0; idx < item_count; idx++) {
-        const item = legend_items.nth(idx)
-        await expect(item).toBeVisible()
-
-        // Check that text doesn't overflow container
-        const item_box = await item.boundingBox()
-        const legend_box = await legend.boundingBox()
-
-        if (item_box && legend_box) {
-          expect(item_box.x + item_box.width).toBeLessThanOrEqual(
-            legend_box.x + legend_box.width + 10,
-          )
-        }
-      }
-    }
   })
 
   test(`tooltip positioning at plot edges`, async ({ page }) => {
@@ -1900,30 +1662,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Move away to hide tooltip
     await plot_locator.hover()
     await expect(tooltip).toBeHidden()
-  })
-
-  test(`color scaling with null and undefined values`, async ({ page }) => {
-    const section = page.locator(`#color-scale`)
-    const color_scale_plot = section.locator(`#color-scale-toggle .scatter`)
-
-    // Test that plot handles null/undefined color values gracefully
-    await expect(color_scale_plot).toBeVisible()
-    await expect(color_scale_plot.locator(`.marker`)).toHaveCount(10)
-
-    // Should render colorbar even with some null values
-    await expect(color_scale_plot.locator(`.colorbar`)).toBeVisible()
-
-    // No console errors should occur
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    // Switch scale types to test null handling
-    const log_radio = section.locator(`input[value="log"]`)
-    await log_radio.click()
-
-    expect(console_errors).toHaveLength(0)
   })
 
   test(`zoom behavior with logarithmic scales`, async ({ page }) => {

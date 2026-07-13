@@ -188,13 +188,6 @@ describe(`normalize_system_name`, () => {
 })
 
 describe(`parse_tdb edge cases`, () => {
-  test(`handles malformed ELEMENT line gracefully`, () => {
-    const content = `ELEMENT AL   !` // Missing fields
-    const result = parse_tdb(content)
-    expect(result.success).toBe(true)
-    // Should not crash, may or may not parse the element
-  })
-
   test(`handles PHASE line with special model hints`, () => {
     const content = `PHASE BCC_A2 %& 2 1 3 !\nCONSTITUENT BCC_A2 :AL,FE : VA% : !`
     const result = parse_tdb(content)
@@ -226,20 +219,6 @@ ELEMENT AL FCC_A1 0.02698 4577.3 28.32!
     const content = `ELEMENT AL FCC_A1 2.698e-02 4.577e+03 2.832e+01!`
     const result = parse_tdb(content)
     expect(result.data?.elements[0]?.mass).toBeCloseTo(0.02698, 4)
-  })
-
-  test(`handles FUNCTION with single temperature range`, () => {
-    const content = `FUNCTION SIMPLE 298.15 +1000*T; 6000 N !`
-    const result = parse_tdb(content)
-    expect(result.data?.functions.length).toBe(1)
-    // Parser may create multiple ranges depending on how it parses the content
-    expect(result.data?.functions[0]?.temperature_ranges.length).toBeGreaterThanOrEqual(1)
-  })
-
-  test(`handles FUNCTION with many temperature ranges`, () => {
-    const content = `FUNCTION MULTI 200 +A; 400 Y +B; 600 Y +C; 800 Y +D; 1000 N !`
-    const result = parse_tdb(content)
-    expect(result.data?.functions[0]?.temperature_ranges.length).toBeGreaterThanOrEqual(1)
   })
 
   test(`handles TYPE_DEFINITION and DEFINE_SYSTEM_DEFAULT gracefully`, () => {
@@ -280,11 +259,8 @@ CONSTITUENT CU2MG :CU,MG : CU,MG : !`
     const phase = result.data?.phases.find(
       (candidate_phase) => candidate_phase.name === `CU2MG`,
     )
-    expect(phase).toBeDefined()
-    // Constituents may or may not be parsed depending on line continuation behavior
-    if (phase?.constituents) {
-      expect(phase.constituents.length).toBeGreaterThanOrEqual(1)
-    }
+    expect(phase?.constituents?.[0]).toEqual([`CU`, `MG`])
+    expect(phase?.constituents?.[1]).toEqual([`CU`, `MG`])
   })
 
   test(`handles real-world TDB from NIMS database`, () => {

@@ -25,7 +25,6 @@
     property_colors = null,
     elements,
     elem_color_picker_title = `Double click to reset color`,
-    labels = $bindable([]),
     amount_format = `.3~f`,
     show_amounts = true,
     get_element_label,
@@ -48,7 +47,6 @@
     property_colors?: AtomPropertyColors | null
     elements?: CompositionType
     elem_color_picker_title?: string
-    labels?: HTMLLabelElement[]
     amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
     show_amounts?: boolean // Whether to show element amounts
     get_element_label?: (element: string, amount: number) => string // Custom label function
@@ -322,12 +320,11 @@
 {#if show_element_legend}
   <div {...rest} class={[`atom-legend element-legend`, rest.class]}>
     {@render mode_selector_snippet()}
-    {#each sorted_element_entries as [elem, amt], idx (elem)}
+    {#each sorted_element_entries as [elem, amt] (elem)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
       {@const displayed_elem = element_mapping?.[elem as ElementSymbol] || elem}
       <div class="legend-item">
         <label
-          bind:this={labels[idx]}
           title="{element_by_symbol.get(displayed_elem as ElementSymbol)?.name ??
             ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}

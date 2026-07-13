@@ -9,7 +9,12 @@
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import { get_ternary_combinations } from './compute'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotHoverInfo3D } from './types'
+  import type {
+    AxisRangeData,
+    ChemPotDiagramConfig,
+    ChemPotHoverInfo,
+    ChemPotHoverInfo3D,
+  } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
   import { to_error } from '$lib/utils'
 
@@ -106,6 +111,16 @@
   })
 </script>
 
+{#snippet axis_ranges_section(ranges: AxisRangeData[])}
+  <h5>Axis ranges</h5>
+  {#each ranges as axis_range (axis_range.element)}
+    <p>
+      {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
+      {format_num(axis_range.max_val, `.4~g`)} eV
+    </p>
+  {/each}
+{/snippet}
+
 <div class="chempot-diagram-wrapper">
   {#if n_display < 2}
     <div
@@ -191,13 +206,7 @@
       {#if hover_info.view === `2d`}
         <p>2D domain · Points: {hover_info.n_points}</p>
         {#if tooltip_detail_level === `detailed`}
-          <h5>Axis ranges</h5>
-          {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-            <p>
-              {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
-              {format_num(axis_range.max_val, `.4~g`)} eV
-            </p>
-          {/each}
+          {@render axis_ranges_section(hover_info.axis_ranges)}
         {/if}
       {:else if is_hover_info_3d(hover_info)}
         <p>
@@ -218,13 +227,7 @@
           {/if}
         </p>
         {#if tooltip_detail_level === `detailed`}
-          <h5>Axis ranges</h5>
-          {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-            <p>
-              {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
-              {format_num(axis_range.max_val, `.4~g`)} eV
-            </p>
-          {/each}
+          {@render axis_ranges_section(hover_info.axis_ranges)}
           <p>
             Centroid: ({hover_info.ann_loc
               .map((value) => format_num(value, `.3~g`))

@@ -1,5 +1,5 @@
 import type { SankeyData } from '$lib/plot'
-import { compute_sankey_layout, sankey_align_fn, sankey_from_links } from '$lib/plot'
+import { compute_sankey_layout, sankey_from_links } from '$lib/plot'
 import { describe, expect, test, vi } from 'vitest'
 
 // Simple two-column graph: A->C (1), B->C (2). C value = 1 + 2 = 3.
@@ -281,13 +281,4 @@ describe(`sankey_from_links`, () => {
     expect(data.nodes).toHaveLength(count + 1) // indices 0..count
     expect(data.links).toHaveLength(count)
   })
-})
-
-describe(`sankey_align_fn`, () => {
-  test.each([`left`, `right`, `center`, `justify`] as const)(
-    `returns a function for %s`,
-    (align) => {
-      expect(typeof sankey_align_fn(align)).toBe(`function`)
-    },
-  )
 })

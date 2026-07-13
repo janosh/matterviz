@@ -47,18 +47,9 @@
   let shared_frequency_range = $derived(helpers.compute_frequency_range(band_structs, doses))
 
   // Extract Fermi level from electronic band structure or DOS data
-  let fermi_level = $derived.by((): number | undefined => {
-    // Check band structures for efermi
-    const bs_source =
-      `efermi` in (band_structs as object) ? band_structs : Object.values(band_structs)[0]
-    const bs_efermi = (bs_source as Record<string, unknown>)?.efermi
-    if (typeof bs_efermi === `number`) return bs_efermi
-
-    // Check DOS for efermi
-    const dos_source = `efermi` in (doses as object) ? doses : Object.values(doses)[0]
-    const dos_efermi = (dos_source as Record<string, unknown>)?.efermi
-    return typeof dos_efermi === `number` ? dos_efermi : undefined
-  })
+  let fermi_level = $derived(
+    helpers.extract_efermi(band_structs) ?? helpers.extract_efermi(doses),
+  )
 
   // Convert fractional k-point coordinates to Cartesian reciprocal space
   // using the structure's reciprocal lattice (consistent with BZ computation)
@@ -91,13 +82,7 @@
   let clientWidth = $state(desktop_width)
   let is_desktop = $derived(clientWidth >= desktop_width)
   let is_mobile = $derived(clientWidth < tablet_width)
-  let screen_class = $derived(
-    clientWidth >= desktop_width
-      ? `desktop`
-      : clientWidth >= tablet_width
-        ? `tablet`
-        : `phone`,
-  )
+  let screen_class = $derived(is_desktop ? `desktop` : is_mobile ? `phone` : `tablet`)
 
   const bands_default_axis = (range = shared_frequency_range): AxisConfig =>
     helpers.axis_with_range(bands_props.y_axis, range)

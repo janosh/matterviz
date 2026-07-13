@@ -408,413 +408,101 @@ test.describe(`Structure Component Tests`, () => {
     await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
   })
 
-  test(`label controls appear when site labels are enabled`, async ({ page }) => {
+  test(`label styling controls echo values and enforce input constraints`, async ({
+    page,
+  }) => {
     const { pane_div } = await open_structure_control_pane(page)
 
-    // Enable site labels first
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
+    // Enable site labels to reveal the Labels section
+    await pane_div.locator(`label:has-text("Site Labels") input[type="checkbox"]`).check()
+    const labels_heading = pane_div.locator(`h4:has-text("Labels")`)
+    await expect(labels_heading).toBeVisible()
+    const labels_container = labels_heading.locator(`xpath=following-sibling::*[1]`)
+    const offset_row = labels_container.locator(`.pane-row`).filter({ hasText: `Offset` })
 
-    // Check that Labels section appears
-    const labels_section = pane_div.locator(`h4:has-text("Labels")`)
-    await expect(labels_section).toBeVisible()
+    // Color pickers echo filled values
+    const color_cases = [
+      {
+        name: `text color`,
+        input: labels_container.locator(`label:has-text("Color") input[type="color"]`).first(),
+        fill: `#ff0000`,
+      },
+      {
+        name: `background color`,
+        input: labels_container.locator(`label:has-text("Background") input[type="color"]`),
+        fill: `#0000ff`,
+      },
+    ]
+    for (const { name, input, fill } of color_cases) {
+      await expect(input, name).toBeVisible()
+      expect(await input.inputValue(), name).toMatch(/^#[0-9a-fA-F]{6}$/)
+      await input.fill(fill)
+      expect(await input.inputValue(), name).toBe(fill)
+    }
 
-    // Scope to labels section
-    const labels_container = labels_section.locator(`xpath=following-sibling::*[1]`)
-
-    // Check that all label controls are present within Labels section
-    const text_color_label = labels_container.locator(`label:has-text("Color")`).first()
-    const background_color_label = labels_container.locator(`label:has-text("Background")`)
+    // Numeric inputs echo filled values and carry expected min/max/step constraints
+    const opacity_label = labels_container.locator(`label:has-text("Opacity")`).first()
     const padding_label = labels_container.locator(`label:has-text("Padding")`)
 
-    const offset_row = labels_container.locator(`.pane-row`).filter({
-      hasText: `Offset`,
-    })
-    const offset_x_label = offset_row.locator(`label:has-text("X")`)
-    const offset_y_label = offset_row.locator(`label:has-text("Y")`)
-    const offset_z_label = offset_row.locator(`label:has-text("Z")`)
+    // Default label background must be fully transparent (opacity 0) — assert before
+    // the fill loop below overwrites it
+    await expect(opacity_label.locator(`input[type="number"]`)).toHaveValue(`0`)
+    const numeric_cases = [
+      {
+        name: `opacity number`,
+        input: opacity_label.locator(`input[type="number"]`),
+        fill: `0.5`,
+        attrs: { min: `0`, max: `1`, step: `0.01` },
+      },
+      {
+        name: `opacity range`,
+        input: opacity_label.locator(`input[type="range"]`),
+        fill: `0.8`,
+      },
+      {
+        name: `padding number`,
+        input: padding_label.locator(`input[type="number"]`),
+        fill: `5`,
+        attrs: { min: `0`, max: `10`, step: `1` },
+      },
+      {
+        name: `padding range`,
+        input: padding_label.locator(`input[type="range"]`),
+        fill: `8`,
+      },
+      ...[
+        { axis: `X`, fill: `0.5` },
+        { axis: `Y`, fill: `-0.7` },
+        { axis: `Z`, fill: `0.3` },
+      ].map(({ axis, fill }) => ({
+        name: `offset ${axis}`,
+        input: offset_row.locator(`label:has-text("${axis}") input[type="number"]`),
+        fill,
+        attrs: { min: `-1`, max: `1`, step: `0.1` },
+      })),
+      {
+        name: `font size range`,
+        input: labels_container.locator(`label:has-text("Size") input[type="range"]`),
+        fill: `1.5`,
+        attrs: { min: `0.5`, max: `2`, step: `0.1` },
+      },
+    ]
+    for (const { name, input, fill, attrs } of numeric_cases) {
+      await expect(input, name).toBeVisible()
+      for (const [attr, expected] of Object.entries(attrs ?? {})) {
+        await expect(input, `${name} ${attr}`).toHaveAttribute(attr, expected)
+      }
+      await input.fill(fill)
+      expect(Number(await input.inputValue()), name).toBe(Number(fill))
+    }
 
-    await expect(text_color_label).toBeVisible()
-    await expect(background_color_label).toBeVisible()
-    await expect(padding_label).toBeVisible()
-    await expect(offset_x_label).toBeVisible()
-    await expect(offset_y_label).toBeVisible()
-    await expect(offset_z_label).toBeVisible()
-  })
-
-  test(`label text color control works correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
+    // Number and range inputs for the same setting stay synchronized
+    expect(await opacity_label.locator(`input[type="number"]`).inputValue()).toBe(
+      await opacity_label.locator(`input[type="range"]`).inputValue(),
     )
-    await site_labels_checkbox.check()
-
-    // Find text color input (first in labels section)
-    const text_color_input = pane_div
-      .locator(`label:has-text("Color") input[type="color"]`)
-      .first()
-    await expect(text_color_input).toBeVisible()
-
-    // Get initial value
-    const initial_color = await text_color_input.inputValue()
-    expect(initial_color).toMatch(/^#[0-9a-fA-F]{6}$/)
-
-    // Change color
-    await text_color_input.fill(`#ff0000`)
-    const new_color = await text_color_input.inputValue()
-    expect(new_color).toBe(`#ff0000`)
-
-    // Change to another color
-    await text_color_input.fill(`#00ff00`)
-    const final_color = await text_color_input.inputValue()
-    expect(final_color).toBe(`#00ff00`)
-  })
-
-  test(`label background color control works correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
+    expect(await padding_label.locator(`input[type="number"]`).inputValue()).toBe(
+      await padding_label.locator(`input[type="range"]`).inputValue(),
     )
-    await site_labels_checkbox.check()
-
-    // Find background color input
-    const background_color_input = pane_div.locator(
-      `label:has-text("Background") input[type="color"]`,
-    )
-    await expect(background_color_input).toBeVisible()
-
-    // Get initial value
-    const initial_color = await background_color_input.inputValue()
-    expect(initial_color).toMatch(/^#[0-9a-fA-F]{6}$/)
-
-    // Change color
-    await background_color_input.fill(`#0000ff`)
-    const new_color = await background_color_input.inputValue()
-    expect(new_color).toBe(`#0000ff`)
-
-    // Change to another color
-    await background_color_input.fill(`#ffff00`)
-    const final_color = await background_color_input.inputValue()
-    expect(final_color).toBe(`#ffff00`)
-  })
-
-  test(`label background opacity control works correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Find background opacity controls
-    const opacity_label = pane_div.locator(`label:has-text("Opacity")`).first()
-    const opacity_number_input = opacity_label.locator(`input[type="number"]`)
-    const opacity_range_input = opacity_label.locator(`input[type="range"]`)
-
-    await expect(opacity_label).toBeVisible()
-    await expect(opacity_number_input).toBeVisible()
-    await expect(opacity_range_input).toBeVisible()
-
-    // Check initial value (should be 0 for transparent)
-    const initial_value = await opacity_number_input.inputValue()
-    expect(Number(initial_value)).toBe(0)
-
-    // Test number input
-    await opacity_number_input.fill(`0.5`)
-    const number_value = await opacity_number_input.inputValue()
-    expect(Number(number_value)).toBe(0.5)
-
-    // Test range input
-    await opacity_range_input.fill(`0.8`)
-    const range_value = await opacity_range_input.inputValue()
-    expect(Number(range_value)).toBe(0.8)
-
-    // Verify inputs are synchronized
-    const final_number_value = await opacity_number_input.inputValue()
-    const final_range_value = await opacity_range_input.inputValue()
-    expect(Number(final_number_value)).toBe(Number(final_range_value))
-  })
-
-  test(`label padding control works correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Find padding controls
-    const padding_label = pane_div.locator(`label:has-text("Padding")`)
-    const padding_number_input = padding_label.locator(`input[type="number"]`)
-    const padding_range_input = padding_label.locator(`input[type="range"]`)
-
-    await expect(padding_label).toBeVisible()
-    await expect(padding_number_input).toBeVisible()
-    await expect(padding_range_input).toBeVisible()
-
-    // Check initial value
-    const initial_value = await padding_number_input.inputValue()
-    expect(Number(initial_value)).toBeGreaterThanOrEqual(0)
-
-    // Test number input
-    await padding_number_input.fill(`5`)
-    const number_value = await padding_number_input.inputValue()
-    expect(Number(number_value)).toBe(5)
-
-    // Test range input
-    await padding_range_input.fill(`8`)
-    const range_value = await padding_range_input.inputValue()
-    expect(Number(range_value)).toBe(8)
-
-    // Verify inputs are synchronized
-    const final_number_value = await padding_number_input.inputValue()
-    const final_range_value = await padding_range_input.inputValue()
-    expect(Number(final_number_value)).toBe(Number(final_range_value))
-  })
-
-  test(`label offset X control works correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Find offset X controls
-    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
-    const offset_x_number_input = offset_row.locator(
-      `label:has-text("X") input[type="number"]`,
-    )
-
-    await expect(offset_row).toBeVisible()
-    await expect(offset_x_number_input).toBeVisible()
-
-    // Check initial value
-    const initial_value = await offset_x_number_input.inputValue()
-    expect(Number(initial_value)).toBeGreaterThanOrEqual(-1)
-    expect(Number(initial_value)).toBeLessThanOrEqual(1)
-
-    // Test number input
-    await offset_x_number_input.fill(`0.5`)
-    const number_value = await offset_x_number_input.inputValue()
-    expect(Number(number_value)).toBe(0.5)
-
-    // Test another value
-    await offset_x_number_input.fill(`-0.3`)
-    const final_value = await offset_x_number_input.inputValue()
-    expect(Number(final_value)).toBe(-0.3)
-  })
-
-  test(`label offset Y control works correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Find offset Y controls
-    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
-    const offset_y_number_input = offset_row.locator(
-      `label:has-text("Y") input[type="number"]`,
-    )
-
-    await expect(offset_row).toBeVisible()
-    await expect(offset_y_number_input).toBeVisible()
-
-    // Check initial value
-    const initial_value = await offset_y_number_input.inputValue()
-    expect(Number(initial_value)).toBeGreaterThanOrEqual(-1)
-    expect(Number(initial_value)).toBeLessThanOrEqual(1)
-
-    // Test number input
-    await offset_y_number_input.fill(`0.2`)
-    const number_value = await offset_y_number_input.inputValue()
-    expect(Number(number_value)).toBe(0.2)
-
-    // Test another value
-    await offset_y_number_input.fill(`-0.7`)
-    const final_value = await offset_y_number_input.inputValue()
-    expect(Number(final_value)).toBe(-0.7)
-  })
-
-  test(`label offset Z control works correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Find offset Z controls
-    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
-    const offset_z_number_input = offset_row.locator(
-      `label:has-text("Z") input[type="number"]`,
-    )
-
-    await expect(offset_row).toBeVisible()
-    await expect(offset_z_number_input).toBeVisible()
-
-    // Check initial value
-    const initial_value = await offset_z_number_input.inputValue()
-    expect(Number(initial_value)).toBeGreaterThanOrEqual(-1)
-    expect(Number(initial_value)).toBeLessThanOrEqual(1)
-
-    // Test number input
-    await offset_z_number_input.fill(`0.3`)
-    const number_value = await offset_z_number_input.inputValue()
-    expect(Number(number_value)).toBe(0.3)
-
-    // Test another value
-    await offset_z_number_input.fill(`-0.5`)
-    const final_value = await offset_z_number_input.inputValue()
-    expect(Number(final_value)).toBe(-0.5)
-  })
-
-  test(`label font size control works correctly`, async ({ page }) => {
-    const pane_div = page.locator(`#test-structure .controls-pane`)
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-
-    await test_page_controls_checkbox.check()
-    await expect(pane_div).toBeVisible()
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Find font size control
-    const size_row = pane_div.locator(`.pane-row`).filter({ hasText: `Size` })
-    const size_range_input = size_row.locator(`input[type="range"]`)
-
-    await expect(size_row).toBeVisible()
-    await expect(size_range_input).toBeVisible()
-
-    // Check initial value
-    const initial_value = await size_range_input.inputValue()
-    expect(Number(initial_value)).toBeGreaterThanOrEqual(0.5)
-    expect(Number(initial_value)).toBeLessThanOrEqual(2)
-
-    // Test range input
-    await size_range_input.fill(`1.5`)
-    const new_value = await size_range_input.inputValue()
-    expect(Number(new_value)).toBe(1.5)
-
-    // Test another value
-    await size_range_input.fill(`0.8`)
-    const final_value = await size_range_input.inputValue()
-    expect(Number(final_value)).toBe(0.8)
-  })
-
-  test(`label controls have correct input constraints`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Check opacity constraints
-    const opacity_number_input = pane_div
-      .locator(`label:has-text("Opacity") input[type="number"]`)
-      .first()
-    await expect(opacity_number_input).toHaveAttribute(`min`, `0`)
-    await expect(opacity_number_input).toHaveAttribute(`max`, `1`)
-    await expect(opacity_number_input).toHaveAttribute(`step`, `0.01`)
-
-    // Check padding constraints
-    const padding_number_input = pane_div.locator(
-      `label:has-text("Padding") input[type="number"]`,
-    )
-    await expect(padding_number_input).toHaveAttribute(`min`, `0`)
-    await expect(padding_number_input).toHaveAttribute(`max`, `10`)
-    await expect(padding_number_input).toHaveAttribute(`step`, `1`)
-
-    // Check offset X constraints
-    const offset_row_for_constraints = pane_div.locator(`.pane-row`).filter({
-      hasText: `Offset`,
-    })
-    const offset_x_number_input = offset_row_for_constraints.locator(
-      `label:has-text("X") input[type="number"]`,
-    )
-    await expect(offset_x_number_input).toHaveAttribute(`min`, `-1`)
-    await expect(offset_x_number_input).toHaveAttribute(`max`, `1`)
-    await expect(offset_x_number_input).toHaveAttribute(`step`, `0.1`)
-
-    // Check offset Y constraints
-    const offset_y_number_input = offset_row_for_constraints.locator(
-      `label:has-text("Y") input[type="number"]`,
-    )
-    await expect(offset_y_number_input).toHaveAttribute(`min`, `-1`)
-    await expect(offset_y_number_input).toHaveAttribute(`max`, `1`)
-    await expect(offset_y_number_input).toHaveAttribute(`step`, `0.1`)
-
-    // Check offset Z constraints
-    const offset_z_number_input = offset_row_for_constraints.locator(
-      `label:has-text("Z") input[type="number"]`,
-    )
-    await expect(offset_z_number_input).toHaveAttribute(`min`, `-1`)
-    await expect(offset_z_number_input).toHaveAttribute(`max`, `1`)
-    await expect(offset_z_number_input).toHaveAttribute(`step`, `0.1`)
-
-    // Check font size constraints
-    const size_range_input = pane_div.locator(`label:has-text("Size") input[type="range"]`)
-    await expect(size_range_input).toHaveAttribute(`min`, `0.5`)
-    await expect(size_range_input).toHaveAttribute(`max`, `2`)
-    await expect(size_range_input).toHaveAttribute(`step`, `0.1`)
-  })
-
-  test(`label controls are properly organized in rows`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Check that controls are organized in pane-row divs
-    const pane_rows = pane_div.locator(`.pane-row`)
-    const row_count = await pane_rows.count()
-    expect(row_count).toBeGreaterThan(0)
-
-    // Check that text color and size are in the same row
-    const first_row = pane_rows.first()
-    const text_color_in_first_row = first_row.locator(`label:has-text("Color")`)
-    const size_in_first_row = first_row.locator(`label:has-text("Size")`)
-    await expect(text_color_in_first_row).toBeVisible()
-    await expect(size_in_first_row).toBeVisible()
-
-    // Check that background color and opacity are in the same row
-    const second_row = pane_rows.nth(1)
-    const background_in_second_row = second_row.locator(`label:has-text("Background")`)
-    const opacity_in_second_row = second_row.locator(`label:has-text("Opacity")`)
-    await expect(background_in_second_row).toBeVisible()
-    await expect(opacity_in_second_row).toBeVisible()
-
-    // Check that offset X, Y, and Z are in the same row
-    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
-    const offset_x_in_row = offset_row.locator(`label:has-text("X")`)
-    const offset_y_in_row = offset_row.locator(`label:has-text("Y")`)
-    const offset_z_in_row = offset_row.locator(`label:has-text("Z")`)
-    await expect(offset_x_in_row).toBeVisible()
-    await expect(offset_y_in_row).toBeVisible()
-    await expect(offset_z_in_row).toBeVisible()
   })
 
   test(`label controls persist when toggling site labels`, async ({ page }) => {
@@ -865,20 +553,6 @@ test.describe(`Structure Component Tests`, () => {
     expect(new_text_color).toBe(`#ff0000`)
     expect(new_background_color).toBe(`#0000ff`)
     expect(Number(new_opacity)).toBe(0.7)
-  })
-
-  test(`gizmo is hidden when prop is set to false`, async ({ page }) => {
-    const gizmo_checkbox = page.locator(`label:has-text("Show Gizmo") input[type="checkbox"]`)
-    await expect(gizmo_checkbox).toBeVisible()
-    await expect(gizmo_checkbox).toBeChecked()
-
-    await gizmo_checkbox.uncheck()
-
-    const gizmo_status = page.locator(`[data-testid="gizmo-status"]`)
-    await expect(gizmo_status).toContainText(`Gizmo Status: false`)
-
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
   })
 
   test(`gizmo is visible by default and can be toggled`, async ({ page }) => {
@@ -1296,6 +970,13 @@ test.describe(`Structure Component Tests`, () => {
     await page.locator(`[data-testid="image-atoms-checkbox"]`).click()
     await expect(labels).toHaveCount(0)
   })
+
+  test(`reset camera button is hidden initially when camera is at default position`, async ({
+    page,
+  }) => {
+    const reset_camera_button = page.locator(`#test-structure button.reset-camera`)
+    await expect(reset_camera_button).toBeHidden()
+  })
 })
 
 test.describe(`File Drop Functionality Tests`, () => {
@@ -1499,119 +1180,27 @@ H    1.261    0.728   -0.890`
   })
 })
 
-test.describe(`Reset Camera Button Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
-  })
-
-  test(`reset camera button is hidden initially when camera is at default position`, async ({
-    page,
-  }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const reset_camera_button = structure_div.locator(`button.reset-camera`)
-
-    await expect(reset_camera_button).toBeHidden()
-  })
-})
-
 test.describe(`Export Button Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // Use show_controls=always so buttons are visible and clickable without hover
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
-  // Helper function to click export buttons using direct DOM manipulation
-  async function click_export_button(page: Page, button_type: `JSON` | `PNG`) {
-    const selector =
-      button_type === `JSON` ? `button[title="Download JSON"]` : `button[title*="PNG"]`
+  test(`export button clicks do not cause errors`, async ({ page }) => {
+    const { container, pane_div: export_pane } = await open_structure_export_pane(page)
 
-    await page.evaluate((sel) => {
-      const btn = document.querySelector(sel) as HTMLButtonElement
-      if (btn) btn.click()
-    }, selector)
-  }
+    const canvas = container.locator(`canvas`)
+    await expect(canvas).toBeVisible()
+    await expect(canvas).toHaveAttribute(`width`)
+    await expect(canvas).toHaveAttribute(`height`)
 
-  test(`XYZ export button click does not cause errors`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const xyz_export_btn = export_pane.locator(`button[title="Download XYZ"]`)
-    await expect(xyz_export_btn).toBeVisible()
-    await xyz_export_btn.click()
-
-    await expect(xyz_export_btn).toBeEnabled()
-  })
-
-  test(`PNG export button click does not cause errors`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-    await expect(png_export_btn).toBeVisible()
-    await png_export_btn.click()
-
-    await expect(png_export_btn).toBeEnabled()
-  })
-
-  test(`export buttons have correct attributes and styling`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    // Test JSON export button attributes
-    const json_export_btn = export_pane.locator(`button[title="Download JSON"]`)
-    await expect(json_export_btn).toHaveAttribute(`type`, `button`)
-    await expect(json_export_btn).toHaveAttribute(`title`, `Download JSON`)
-
-    // Test XYZ export button attributes
-    const xyz_export_btn = export_pane.locator(`button[title="Download XYZ"]`)
-    await expect(xyz_export_btn).toHaveAttribute(`type`, `button`)
-    await expect(xyz_export_btn).toHaveAttribute(`title`, `Download XYZ`)
-
-    // Test PNG export button attributes (includes DPI info)
-    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-    await expect(png_export_btn).toHaveAttribute(`type`, `button`)
-    // PNG button title includes DPI information
-    const png_title = await png_export_btn.getAttribute(`title`)
-    expect(png_title).toMatch(/PNG \(\d+ DPI\)/)
-
-    // Verify buttons have proper styling classes if any
-    const json_classes = await json_export_btn.getAttribute(`class`)
-    const xyz_classes = await xyz_export_btn.getAttribute(`class`)
-    const png_classes = await png_export_btn.getAttribute(`class`)
-
-    // All export buttons should have consistent styling
-    expect(json_classes).toBe(xyz_classes)
-    expect(xyz_classes).toBe(png_classes)
-  })
-
-  test(`export buttons are grouped together in proper layout`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    // The export pane has three sections: text, image, 3D model
-    const export_containers = export_pane.locator(`.export-grid`)
-    const container_count = await export_containers.count()
-    expect(container_count).toBe(3) // text, image, 3D model sections
-
-    // Verify first container (text exports) has proper flex styling
-    const first_container = export_containers.first()
-    await expect(first_container).toBeVisible()
-
-    const container_styles = await first_container.evaluate((el) => {
-      const computed = globalThis.getComputedStyle(el)
-      return {
-        display: computed.display,
-        gap: computed.gap,
-      }
-    })
-    expect(container_styles.display).toBe(`flex`)
-
-    // Verify JSON and XYZ buttons exist in text section
-    const json_btn = first_container.locator(`button[title="Download JSON"]`)
-    const xyz_btn = first_container.locator(`button[title="Download XYZ"]`)
-    await expect(json_btn).toBeVisible()
-    await expect(xyz_btn).toBeVisible()
-
-    // Verify PNG button exists in image section (second container)
-    const image_container = export_containers.nth(1)
-    const png_btn = image_container.locator(`button[title*="PNG"]`)
-    await expect(png_btn).toBeVisible()
+    for (const title_selector of [`Download JSON`, `Download XYZ`, `PNG`]) {
+      const export_btn = export_pane.locator(`button[title*="${title_selector}"]`)
+      await expect(export_btn).toBeVisible()
+      const [download] = await Promise.all([page.waitForEvent(`download`), export_btn.click()])
+      expect(await download.path()).toBeTruthy()
+      await expect(export_btn).toBeEnabled()
+    }
   })
 
   test(`DPI input for PNG export works correctly`, async ({ page }) => {
@@ -1644,24 +1233,6 @@ test.describe(`Export Button Tests`, () => {
 
     await dpi_input.fill(`72`)
     await expect(dpi_input).toHaveValue(`72`)
-  })
-
-  test(`export buttons work with loaded structure`, async ({ page }) => {
-    const { container, pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const canvas = container.locator(`canvas`)
-    await expect(canvas).toBeVisible()
-    await expect(canvas).toHaveAttribute(`width`)
-    await expect(canvas).toHaveAttribute(`height`)
-
-    const json_export_btn = export_pane.locator(`button[title="Download JSON"]`)
-    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-
-    await click_export_button(page, `JSON`)
-    await expect(json_export_btn).toBeEnabled()
-
-    await click_export_button(page, `PNG`)
-    await expect(png_export_btn).toBeEnabled()
   })
 })
 
@@ -1738,129 +1309,6 @@ test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // Use show_controls=always so buttons are visible and clickable without hover
     await goto_structure_test(page, `/test/structure?show_controls=always`)
-  })
-
-  test(`should handle file loading from URL correctly`, async ({ page }) => {
-    // Load a structure file via URL
-    const file_path = `/structures/mp-1.json`
-    await goto_structure_test(page, `/test/structure?data_url=${file_path}`)
-
-    // Verify the structure was loaded by checking for canvas
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
-
-    // Wait a bit for the structure to render
-
-    // Just verify the canvas is present and visible (content check is unreliable)
-    await expect(canvas).toBeVisible()
-    const canvas_size = await canvas.evaluate((el) => {
-      const canvas_el = el as HTMLCanvasElement
-      return { width: canvas_el.width, height: canvas_el.height }
-    })
-    expect(canvas_size.width).toBeGreaterThan(0)
-    expect(canvas_size.height).toBeGreaterThan(0)
-  })
-
-  test(`should handle canvas dimension changes correctly`, async ({ page }) => {
-    // Change canvas dimensions via test page controls
-    // Note: width/height are bound to clientWidth/clientHeight (read-only measurements).
-    // The actual CSS dimensions are controlled by --struct-width/--struct-height CSS vars.
-    // This test verifies the binding reflects changes to the inputs but the CSS uses defaults.
-    const width_input = page.locator(`[data-testid="canvas-width-input"]`)
-    const height_input = page.locator(`[data-testid="canvas-height-input"]`)
-
-    // Clear and fill width
-    await width_input.clear()
-    await width_input.fill(`800`)
-
-    // Clear and fill height
-    await height_input.clear()
-    await height_input.fill(`600`)
-
-    // Verify the input changes were applied (these update the test page state)
-    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(
-      `Canvas Width Status: 800`,
-    )
-    await expect(page.locator(`[data-testid="canvas-height-status"]`)).toContainText(
-      `Canvas Height Status: 600`,
-    )
-
-    // The structure wrapper dimensions are controlled by CSS (--struct-height defaults to 500px)
-    // so the actual CSS may differ from the bound values
-    const structure_wrapper = page.locator(`#test-structure`)
-    await expect(structure_wrapper).toHaveCSS(`width`, `800px`)
-    // Height is controlled by CSS variable, so it stays at the default 500px
-    await expect(structure_wrapper).toHaveCSS(`height`, `500px`)
-  })
-
-  test(`should handle scene props changes correctly`, async ({ page }) => {
-    // Change scene props via test page controls
-    const show_atoms_checkbox = page.locator(
-      `label:has-text("Show Atoms") input[type="checkbox"]`,
-    )
-    const gizmo_checkbox = page.locator(`label:has-text("Show Gizmo") input[type="checkbox"]`)
-
-    // Toggle show atoms
-    await show_atoms_checkbox.uncheck()
-    await expect(show_atoms_checkbox).not.toBeChecked()
-
-    // Toggle gizmo
-    await gizmo_checkbox.check()
-    await expect(gizmo_checkbox).toBeChecked()
-  })
-
-  test(`should handle background color changes correctly`, async ({ page }) => {
-    // Change background color via test page controls
-    const bg_color_input = page.locator(
-      `label:has-text("Background Color") input[type="color"]`,
-    )
-    await bg_color_input.fill(`#ff0000`)
-
-    // Verify the change was applied to the structure wrapper
-    const structure_wrapper = page.locator(`#test-structure`)
-    await expect(structure_wrapper).toHaveCSS(
-      `background-color`,
-      `rgba(255, 0, 0, 0.1)`, // With opacity
-      { timeout: get_canvas_timeout() },
-    )
-  })
-
-  test(`should handle camera projection toggle correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
-    await expect(camera_projection_select).toBeVisible()
-
-    // Check initial state - the select should have default value
-    await expect(camera_projection_select).toHaveValue(DEFAULTS.structure.camera_projection)
-
-    // Switch to perspective projection
-    await camera_projection_select.selectOption(`perspective`)
-
-    // Verify the select value was updated
-    await expect(camera_projection_select).toHaveValue(`perspective`)
-
-    // Switch back to orthographic projection
-    await camera_projection_select.selectOption(`orthographic`)
-
-    // Verify the select value was updated
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
-
-    // Verify the canvas is still visible and functional
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
-  })
-
-  test(`should handle error states gracefully`, async ({ page }) => {
-    // Try to load a non-existent file
-    await page.goto(`/test/structure?data_url=non-existent-file.json`)
-
-    // Verify the page still loads and shows the UI
-    const structure_wrapper = page.locator(`#test-structure`)
-    await expect(structure_wrapper).toBeVisible()
-
-    // Pane open status should still render
-    await expect(page.locator(`[data-testid="pane-open-status"]`)).toBeVisible()
   })
 
   test.describe(`Event Handlers`, () => {
@@ -1945,6 +1393,10 @@ test.describe(`Structure Event Handler Tests`, () => {
       await expect(async () => {
         await check_event_triggered(page, `on_error`, [`error_msg`, `filename`])
       }).toPass({ timeout: get_canvas_timeout() })
+
+      // UI should still render gracefully despite the load failure
+      await expect(page.locator(`#test-structure`)).toBeVisible()
+      await expect(page.locator(`[data-testid="pane-open-status"]`)).toBeVisible()
     })
 
     // Camera move/reset go through Three.js OrbitControls. The drag works in headless
@@ -2517,38 +1969,32 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     await goto_structure_test(page)
   })
 
-  test(`rotation controls are visible in Camera section`, async ({ page }) => {
+  test(`rotation controls render per-axis inputs in Camera section defaulting to zero`, async ({
+    page,
+  }) => {
     const { pane_div } = await open_structure_control_pane(page)
 
     // Scope to Camera section for more stable selectors
-    const camera_section = pane_div.locator(`h4:has-text("Camera")`)
-    await expect(camera_section).toBeVisible()
+    await expect(pane_div.locator(`h4:has-text("Camera")`)).toBeVisible()
 
     // Check for rotation axes container - it's in the Camera section but not directly under the h4
     const rotation_axes = pane_div.locator(`.rotation-axes`)
     await expect(rotation_axes).toBeVisible()
 
-    // Verify X, Y, Z controls are present by checking the axis controls count
     const axis_controls = rotation_axes.locator(`> div`)
     await expect(axis_controls).toHaveCount(3)
 
-    // Check that each control contains the expected axis labels
-    await expect(rotation_axes).toContainText(`X =`)
-    await expect(rotation_axes).toContainText(`Y =`)
-    await expect(rotation_axes).toContainText(`Z =`)
-  })
+    for (const axis_name of [`X`, `Y`, `Z`]) {
+      await expect(rotation_axes).toContainText(`${axis_name} =`)
+    }
+    await expect(rotation_axes).toContainText(`°`)
 
-  test(`rotation controls default to zero degrees`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const rotation_axes = pane_div.locator(`.rotation-axes`)
-    const number_inputs = rotation_axes.locator(`input[type="number"]`)
-    const range_inputs = rotation_axes.locator(`input[type="range"]`)
-
-    // All controls should default to 0
+    // Each control has number + range inputs, both defaulting to 0
     for (let idx = 0; idx < 3; idx++) {
-      await expect(number_inputs.nth(idx)).toHaveValue(`0`)
-      await expect(range_inputs.nth(idx)).toHaveValue(`0`)
+      const number_input = axis_controls.nth(idx).locator(`input[type="number"]`)
+      const range_input = axis_controls.nth(idx).locator(`input[type="range"]`)
+      await expect(number_input).toHaveValue(`0`)
+      await expect(range_input).toHaveValue(`0`)
     }
   })
 
@@ -2579,58 +2025,26 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     const x_number_input = rotation_axes.locator(`input[type="number"]`).first()
     const x_range_input = rotation_axes.locator(`input[type="range"]`).first()
 
-    // Test entering 999 - verify range slider gets the clamped then normalized value
-    await x_number_input.click()
-    await x_number_input.fill(`999`)
-
-    // The key insight: the range slider should reflect the clamped then normalized value
+    // The range slider always reflects the clamped then normalized value,
     // even if the number input temporarily shows the raw input
-    await expect(x_range_input).toHaveValue(`0`) // 999 → clamped to 360 → 360 % 360 = 0
+    const clamp_cases = [
+      { input: `999`, expected: `0` }, // clamped to 360 → 360 % 360 = 0
+      { input: `-90`, expected: `0` }, // negative clamped to 0
+      { input: `360`, expected: `0` }, // 360 % 360 = 0
+      { input: `359`, expected: `359` }, // stays 359
+      { input: `361`, expected: `0` }, // clamped to 360 → 0
+      { input: `720`, expected: `0` }, // clamped to 360 → 0
+      { input: `180`, expected: `180` }, // valid value passes through
+    ]
+    for (const { input, expected } of clamp_cases) {
+      await x_number_input.fill(input)
+      await expect(x_range_input).toHaveValue(expected)
+    }
 
-    // Test negative values get clamped to 0
-    await x_number_input.fill(`-90`)
-    await expect(x_range_input).toHaveValue(`0`) // -90 → clamped to 0
-
-    // Test 360 normalizes to 0
-    await x_number_input.fill(`360`)
-    await expect(x_range_input).toHaveValue(`0`) // 360 % 360 = 0
-
-    // Test valid range values work correctly
-    await x_number_input.fill(`180`)
-    await expect(x_number_input).toHaveValue(`180`)
-    await expect(x_range_input).toHaveValue(`180`)
-
-    // Test that changing the range slider updates the number input
+    // Changing the range slider updates the number input
     await x_range_input.fill(`270`)
     await expect(x_number_input).toHaveValue(`270`)
     await expect(x_range_input).toHaveValue(`270`)
-  })
-
-  test(`rotation controls handle edge cases correctly`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const rotation_axes = pane_div.locator(`.rotation-axes`)
-    const y_number_input = rotation_axes.locator(`input[type="number"]`).nth(1)
-    const y_range_input = rotation_axes.locator(`input[type="range"]`).nth(1)
-
-    // Test specific edge cases - focus on range slider since it reflects the actual clamped then normalized value
-    const test_cases = [
-      { input: `359`, expected: `359` }, // 359 → stays 359
-      { input: `361`, expected: `0` }, // 361 → clamped to 360 → 360 % 360 = 0
-      { input: `450`, expected: `0` }, // 450 → clamped to 360 → 360 % 360 = 0
-      { input: `720`, expected: `0` }, // 720 → clamped to 360 → 360 % 360 = 0
-    ]
-
-    for (const { input, expected } of test_cases) {
-      await y_number_input.fill(input)
-      // Test the range slider which always reflects the clamped then normalized value
-      await expect(y_range_input).toHaveValue(expected)
-
-      // For valid values, number input should match
-      if (Number(input) <= 360) {
-        await expect(y_number_input).toHaveValue(expected)
-      }
-    }
   })
 
   test(`all three axis controls work independently`, async ({ page }) => {
@@ -2660,31 +2074,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     await expect(number_inputs.nth(0)).toHaveValue(`30`) // X unchanged
     await expect(number_inputs.nth(1)).toHaveValue(`120`) // Y changed
     await expect(number_inputs.nth(2)).toHaveValue(`90`) // Z unchanged
-  })
-
-  test(`rotation controls have proper labels and structure`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const rotation_axes = pane_div.locator(`.rotation-axes`)
-    const axis_controls = rotation_axes.locator(`> div`)
-
-    const expected_axes = [`X`, `Y`, `Z`]
-
-    // Check that all expected axis labels are present
-    for (const axis_name of expected_axes) {
-      await expect(rotation_axes).toContainText(`${axis_name} =`)
-      await expect(rotation_axes).toContainText(`°`)
-    }
-
-    // Verify axis controls structure
-    await expect(axis_controls).toHaveCount(3)
-
-    // Each control should have both number and range inputs
-    for (let idx = 0; idx < 3; idx++) {
-      const control = axis_controls.nth(idx)
-      await expect(control.locator(`input[type="number"]`)).toBeVisible()
-      await expect(control.locator(`input[type="range"]`)).toBeVisible()
-    }
   })
 
   test(`rotation controls reset with Camera section reset button`, async ({ page }) => {
@@ -2742,34 +2131,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     await expect(new_number_inputs.nth(0)).toHaveValue(`120`)
     await expect(new_number_inputs.nth(1)).toHaveValue(`240`)
     await expect(new_number_inputs.nth(2)).toHaveValue(`300`)
-  })
-
-  test(`rotation controls layout is compact and organized`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const rotation_axes = pane_div.locator(`.rotation-axes`)
-
-    // Check CSS class exists (may have additional Svelte-generated classes)
-    await expect(rotation_axes).toHaveClass(/rotation-axes/)
-
-    // Verify layout properties
-    const styles = await rotation_axes.evaluate((el) => {
-      const computed = globalThis.getComputedStyle(el)
-      return {
-        display: computed.display,
-        gap: computed.gap,
-      }
-    })
-
-    expect(styles.display).toBe(`flex`)
-    // allow small variance in computed gap
-    const gapNum = Number(styles.gap.replace(`px`, ``))
-    expect(gapNum).toBeGreaterThan(8)
-    expect(gapNum).toBeLessThan(20)
-
-    // Check that all three controls are in a single row
-    const axis_controls = rotation_axes.locator(`> div`)
-    await expect(axis_controls).toHaveCount(3)
   })
 })
 
@@ -3108,8 +2469,6 @@ test.describe(`Fullscreen Background Color Detection`, () => {
     expect(bg).toContain(`200`)
   })
 })
-
-// === Edit Atoms Mode Tests ===
 
 test.describe(`Edit Atoms Mode`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {

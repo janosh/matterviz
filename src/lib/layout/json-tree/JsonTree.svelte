@@ -147,31 +147,10 @@
       current_match_index = -1
       return
     }
-    const paths_to_expand = new Set<string>()
-    for (const match of search_matches) {
-      for (const ancestor of get_ancestor_paths(match)) {
-        paths_to_expand.add(ancestor)
-      }
-    }
-    let collapsed_changed = false
-    let force_expanded_changed = false
-    for (const path_to_expand of paths_to_expand) {
-      if (collapsed_paths.has(path_to_expand)) {
-        collapsed_paths.delete(path_to_expand)
-        collapsed_changed = true
-      }
-      // Also add to force_expanded to override auto-fold thresholds (depth/size)
-      if (!force_expanded.has(path_to_expand)) {
-        force_expanded.add(path_to_expand)
-        force_expanded_changed = true
-      }
-    }
-    if (collapsed_changed) {
-      collapsed_paths = new SvelteSet(collapsed_paths)
-    }
-    if (force_expanded_changed) {
-      force_expanded = new SvelteSet(force_expanded)
-    }
+    const paths_to_expand = new Set([...search_matches].flatMap(get_ancestor_paths))
+    // Also add to force_expanded to override auto-fold thresholds (depth/size)
+    // Only reassign (which rerenders every node) the sets that actually changed
+    set_collapsed(paths_to_expand, () => false)
     // Wait for DOM to update before scrolling to match
     await tick()
     if (sorted_matches.length > 0) {
@@ -213,32 +192,34 @@
   // Previous values map for change detection
   const prev_values = new Map<string, unknown>()
 
-  // Toggle collapse - tracks force_expanded to override auto-fold thresholds
-  function toggle_collapse(path: string, is_currently_collapsed: boolean): void {
-    if (is_currently_collapsed) {
-      collapsed_paths.delete(path)
-      force_expanded.add(path)
-    } else {
-      force_expanded.delete(path)
-      collapsed_paths.add(path)
+  // Move each path into collapsed or force_expanded (which overrides auto-fold
+  // thresholds), then reassign only the sets that changed (reassignment rerenders
+  // every node subscribed to the set's identity)
+  function set_collapsed(paths: Iterable<string>, collapse: (path: string) => boolean) {
+    let collapsed_changed = false
+    let force_expanded_changed = false
+    for (const path of paths) {
+      if (collapse(path)) {
+        force_expanded_changed = force_expanded.delete(path) || force_expanded_changed
+        collapsed_changed = !collapsed_paths.has(path) || collapsed_changed
+        collapsed_paths.add(path)
+      } else {
+        collapsed_changed = collapsed_paths.delete(path) || collapsed_changed
+        force_expanded_changed = !force_expanded.has(path) || force_expanded_changed
+        force_expanded.add(path)
+      }
     }
-    collapsed_paths = new SvelteSet(collapsed_paths)
-    force_expanded = new SvelteSet(force_expanded)
+    if (collapsed_changed) collapsed_paths = new SvelteSet(collapsed_paths)
+    if (force_expanded_changed) force_expanded = new SvelteSet(force_expanded)
+  }
+
+  function toggle_collapse(path: string, is_currently_collapsed: boolean): void {
+    set_collapsed([path], () => !is_currently_collapsed)
   }
 
   // Toggle collapse recursively for all descendants
   function toggle_collapse_recursive(path: string, collapse: boolean): void {
-    for (const desc of get_descendants(path)) {
-      if (collapse) {
-        force_expanded.delete(desc)
-        collapsed_paths.add(desc)
-      } else {
-        collapsed_paths.delete(desc)
-        force_expanded.add(desc)
-      }
-    }
-    collapsed_paths = new SvelteSet(collapsed_paths)
-    force_expanded = new SvelteSet(force_expanded)
+    set_collapsed(get_descendants(path), () => collapse)
   }
 
   // Get all descendant paths of a given path (including the path itself)
@@ -358,19 +339,9 @@
   // Pre-compute ghost children map for O(1) lookup per node
   let ghost_map = $derived(diff_map ? build_ghost_map(diff_map) : new Map())
 
-  // Collapse all descendants but keep the given node expanded (single batch)
+  // Collapse all descendants but keep the given node expanded
   function collapse_children_only(target_path: string): void {
-    for (const desc of get_descendants(target_path)) {
-      if (desc === target_path) {
-        collapsed_paths.delete(desc)
-        force_expanded.add(desc)
-      } else {
-        force_expanded.delete(desc)
-        collapsed_paths.add(desc)
-      }
-    }
-    collapsed_paths = new SvelteSet(collapsed_paths)
-    force_expanded = new SvelteSet(force_expanded)
+    set_collapsed(get_descendants(target_path), (desc) => desc !== target_path)
   }
 
   // Context menu handlers
@@ -512,6 +483,13 @@
 
   // Keyboard navigation at tree level
   function handle_tree_keydown(event: KeyboardEvent) {
+    // F3 navigates search matches (search input handles its own F3/Enter)
+    if (event.key === `F3`) {
+      event.preventDefault()
+      if (event.shiftKey) go_to_prev_match()
+      else go_to_next_match()
+      return
+    }
     // Escape closes context menu first, then clears selection
     if (event.key === `Escape`) {
       if (context_menu_state) {
@@ -600,15 +578,7 @@
   role="tree"
   aria-label="JSON tree viewer"
   {...rest}
-  onkeydown={(event) => {
-    handle_tree_keydown(event)
-    // F3 at tree level for match navigation
-    if (event.key === `F3`) {
-      event.preventDefault()
-      if (event.shiftKey) go_to_prev_match()
-      else go_to_next_match()
-    }
-  }}
+  onkeydown={handle_tree_keydown}
 >
   {#if show_header}
     <header class="json-tree-header">
@@ -686,30 +656,16 @@
         <button type="button" onclick={collapse_all} title="Collapse all" {@attach tooltip()}>
           <Icon icon="Collapse" style="width: 14px; height: 14px" />
         </button>
-        <button
-          type="button"
-          onclick={() => collapse_to_level(1)}
-          title="Collapse to level 1"
-          {@attach tooltip()}
-        >
-          1
-        </button>
-        <button
-          type="button"
-          onclick={() => collapse_to_level(2)}
-          title="Collapse to level 2"
-          {@attach tooltip()}
-        >
-          2
-        </button>
-        <button
-          type="button"
-          onclick={() => collapse_to_level(3)}
-          title="Collapse to level 3"
-          {@attach tooltip()}
-        >
-          3
-        </button>
+        {#each [1, 2, 3] as level (level)}
+          <button
+            type="button"
+            onclick={() => collapse_to_level(level)}
+            title="Collapse to level {level}"
+            {@attach tooltip()}
+          >
+            {level}
+          </button>
+        {/each}
       </div>
       <div class="divider"></div>
       <div class="controls">
@@ -910,9 +866,6 @@
     border-radius: var(--jt-border-radius, 4px);
     overflow: hidden;
   }
-  /* --jt-header-bg, --jt-header-border, --jt-btn-bg, --jt-btn-hover-bg, --jt-btn-active-bg
-     intentionally removed in favor of transparent/opacity-based button styling.
-     Use --jt-hover-bg to customize the button hover background. */
   .json-tree-header {
     display: flex;
     align-items: center;

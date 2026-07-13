@@ -95,10 +95,8 @@
   const controls_config = $derived(normalize_show_controls(show_controls))
   const merged_config = $derived({
     ...default_hull_config,
-    point_size: 6, // Binary diagrams use slightly smaller points
     ...config,
     colors: { ...default_hull_config.colors, ...config.colors },
-    margin: { t: 40, r: 40, b: 60, l: 60, ...config.margin },
   })
 
   // Narrow deriveds to primitive fields so heavy downstream deriveds (scatter series,

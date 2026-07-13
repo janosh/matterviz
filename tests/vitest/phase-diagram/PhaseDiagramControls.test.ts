@@ -44,131 +44,24 @@ const sample_data: PhaseDiagramData = {
 }
 
 describe(`PhaseDiagramControls`, () => {
-  test(`renders without errors`, () => {
-    const target = document.createElement(`div`)
-    expect(() => {
-      mount(PhaseDiagramControls, { target, props: {} })
-    }).not.toThrow()
-  })
-
-  test(`renders with data prop`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { data: sample_data },
-    })
-    // Should contain the component names in title
-    expect(target.innerHTML).toContain(`Cu`)
-    expect(target.innerHTML).toContain(`Ni`)
-  })
-
-  test(`controls_open state is bindable`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-    // When open, the pane should contain visibility controls
-    expect(target.innerHTML).toContain(`Visibility`)
-  })
-
-  test(`visibility toggles are rendered when open`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-
-    expect(target.innerHTML).toContain(`Boundaries`)
-    expect(target.innerHTML).toContain(`Labels`)
-    expect(target.innerHTML).toContain(`Grid`)
-    expect(target.innerHTML).toContain(`Comp. Labels`)
-  })
-
-  test(`shows Special Points visibility toggle when data has special_points`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true, data: sample_data },
-    })
-
-    // Find the visibility grid and check for Special Pts checkbox
-    const visibility_grid = target.querySelector(`.visibility-grid`)
-    expect(visibility_grid).toBeInstanceOf(HTMLElement)
-    expect(visibility_grid?.innerHTML).toContain(`Special Pts`)
-  })
-
-  test(`hides Special Points visibility toggle when no special_points in data`, () => {
-    const target = document.createElement(`div`)
-    const data_without_special = { ...sample_data, special_points: [] }
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true, data: data_without_special },
-    })
-
-    // The visibility grid should NOT contain Special Pts (but colors grid still will)
-    const visibility_grid = target.querySelector(`.visibility-grid`)
-    expect(visibility_grid).toBeInstanceOf(HTMLElement)
-    expect(visibility_grid?.innerHTML).not.toContain(`Special Pts`)
-  })
-
-  test(`renders appearance section`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-
-    expect(target.innerHTML).toContain(`Appearance`)
-    expect(target.innerHTML).toContain(`Font size`)
-  })
-
-  test(`renders colors section`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-
-    expect(target.innerHTML).toContain(`Colors`)
-    expect(target.innerHTML).toContain(`Background`)
-    expect(target.innerHTML).toContain(`Boundaries`)
-  })
-
-  test(`renders tie-line section`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-
-    expect(target.innerHTML).toContain(`Tie-line Display`)
-    expect(target.innerHTML).toContain(`Line width`)
-    expect(target.innerHTML).toContain(`Endpoint radius`)
-    expect(target.innerHTML).toContain(`Cursor radius`)
-  })
-
-  test(`renders axes section`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-
-    expect(target.innerHTML).toContain(`Axes`)
-    expect(target.innerHTML).toContain(`X-axis ticks`)
-    expect(target.innerHTML).toContain(`Y-axis ticks`)
-  })
-
-  test(`renders export section when enable_export is true`, () => {
+  test.each([
+    { section: `Visibility`, labels: [`Boundaries`, `Labels`, `Grid`, `Comp. Labels`] },
+    { section: `Appearance`, labels: [`Font size`] },
+    { section: `Colors`, labels: [`Background`, `Boundaries`] },
+    {
+      section: `Tie-line Display`,
+      labels: [`Line width`, `Endpoint radius`, `Cursor radius`],
+    },
+    { section: `Axes`, labels: [`X-axis ticks`, `Y-axis ticks`] },
+    { section: `Export`, labels: [`PNG DPI`] },
+  ])(`renders $section section with its controls when open`, ({ section, labels }) => {
     const target = document.createElement(`div`)
     mount(PhaseDiagramControls, {
       target,
       props: { controls_open: true, enable_export: true },
     })
 
-    expect(target.innerHTML).toContain(`Export`)
-    expect(target.innerHTML).toContain(`PNG DPI`)
+    for (const text of [section, ...labels]) expect(target.innerHTML).toContain(text)
   })
 
   test(`hides export section when enable_export is false`, () => {
@@ -181,6 +74,21 @@ describe(`PhaseDiagramControls`, () => {
     // Export section header should not be present
     const export_regex = /<h4[^>]*>Export<\/h4>/i
     expect(target.innerHTML).not.toMatch(export_regex)
+  })
+
+  test.each([
+    { data: sample_data, expected: true, desc: `with special_points` },
+    { data: { ...sample_data, special_points: [] }, expected: false, desc: `without` },
+  ])(`Special Pts toggle shown=$expected $desc`, ({ data, expected }) => {
+    const target = document.createElement(`div`)
+    mount(PhaseDiagramControls, {
+      target,
+      props: { controls_open: true, data },
+    })
+
+    const visibility_grid = target.querySelector(`.visibility-grid`)
+    expect(visibility_grid).toBeInstanceOf(HTMLElement)
+    expect(visibility_grid?.innerHTML.includes(`Special Pts`)).toBe(expected)
   })
 
   test.each([
@@ -222,13 +130,10 @@ describe(`PhaseDiagramControls`, () => {
     })
 
     // The font size input should have the custom value
-    const font_size_input = target.querySelector(
+    const font_size_input = target.querySelector<HTMLInputElement>(
       `input[type="number"][min="8"][max="20"]`,
-    ) as HTMLInputElement
-
-    if (font_size_input) {
-      expect(font_size_input.value).toBe(`16`)
-    }
+    )
+    expect(font_size_input?.value).toBe(`16`)
   })
 
   test(`uses component names from data in title`, () => {

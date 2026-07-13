@@ -2,7 +2,7 @@
   import Icon from '$lib/Icon.svelte'
   import { portal } from '$lib/overlays/portal'
   import { sanitize_html } from '$lib/sanitize'
-  import type { Label } from '$lib/table'
+  import { type Label, strip_html } from '$lib/table'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import { slide } from 'svelte/transition'
 
@@ -35,7 +35,7 @@
   )
   const column_matches_filter = (col: Label): boolean =>
     !normalized_column_filter ||
-    [col.key, col.label.replaceAll(/<[^>]*>/gu, ``), col.description, col.group]
+    [col.key, strip_html(col.label), col.description, col.group]
       .filter(Boolean)
       .join(` `)
       .toLowerCase()

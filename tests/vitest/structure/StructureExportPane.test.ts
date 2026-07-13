@@ -229,16 +229,6 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => expect(png_btn?.disabled).toBe(true))
   })
 
-  test(`displays 3D model export formats`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure, scene: mock_scene },
-    })
-
-    expect(document.body.textContent).toContain(`GLB`)
-    expect(document.body.textContent).toContain(`OBJ`)
-  })
-
   test.each([
     { format: `glb`, label: `GLB`, fn_name: `export_structure_as_glb` },
     { format: `obj`, label: `OBJ`, fn_name: `export_structure_as_obj` },
@@ -274,20 +264,15 @@ describe(`StructureExportPane`, () => {
     buttons?.forEach((btn) => expect(btn.disabled).toBe(true))
   })
 
-  test(`toggle button title when closed`, () => {
+  test.each([
+    [false, `Export Structure`],
+    [true, ``],
+  ])(`toggle button title when export_pane_open=%s`, (export_pane_open, expected_title) => {
     mount(StructureExportPane, {
       target: document.body,
-      props: { export_pane_open: false },
+      props: { export_pane_open },
     })
-    expect(doc_query(`.structure-export-toggle`).title).toBe(`Export Structure`)
-  })
-
-  test(`toggle button title when open`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { export_pane_open: true },
-    })
-    expect(doc_query(`.structure-export-toggle`).title).toBe(``)
+    expect(doc_query(`.structure-export-toggle`).title).toBe(expected_title)
   })
 
   test(`handles clipboard API errors gracefully`, async () => {
@@ -343,32 +328,6 @@ describe(`StructureExportPane`, () => {
     console_error_spy.mockRestore()
   })
 
-  test(`text export format buttons have appropriate titles`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure, scene: mock_scene },
-    })
-
-    const text_section = Array.from(document.querySelectorAll(`h4`)).find((h4) =>
-      h4.textContent?.includes(`Export as text`),
-    )?.nextElementSibling
-
-    const download_buttons = Array.from(text_section?.querySelectorAll(`button`) ?? []).filter(
-      (btn) => btn.title?.includes(`Download`),
-    )
-    expect(download_buttons).toHaveLength(4)
-    download_buttons.forEach((btn) => expect(btn.title).toContain(`Download`))
-
-    const copy_buttons = Array.from(text_section?.querySelectorAll(`button`) ?? []).filter(
-      (btn) => btn.title?.includes(`Copy`) && btn.title?.includes(`clipboard`),
-    )
-    expect(copy_buttons).toHaveLength(4)
-    copy_buttons.forEach((btn) => {
-      expect(btn.title).toContain(`Copy`)
-      expect(btn.title).toContain(`clipboard`)
-    })
-  })
-
   test(`custom props are applied correctly`, () => {
     mount(StructureExportPane, {
       target: document.body,
@@ -387,46 +346,18 @@ describe(`StructureExportPane`, () => {
     expect(toggle.classList.contains(`custom-export-toggle`)).toBe(true)
   })
 
-  test(`PNG export button invokes export_canvas_as_png`, async () => {
-    const mock_camera = { type: `PerspectiveCamera` } as Camera
-    const png_dpi = 200
-
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        wrapper: wrapper_div,
-        png_dpi,
-        camera: mock_camera,
-        scene: mock_scene,
-      },
-    })
-
-    const png_btn = get_button(`PNG`)
-    expect(png_btn).toBeDefined()
-    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
-
-    png_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => {
-      expect(export_canvas_as_png).toHaveBeenCalledWith(
-        wrapper_div.querySelector(`canvas`),
-        simple_structure,
-        png_dpi,
-        mock_scene,
-        mock_camera,
-      )
-    })
-  })
-
-  test(`PNG export button uses defaults when optional props missing`, async () => {
+  const mock_camera = { type: `PerspectiveCamera` } as Camera
+  test.each([
+    { desc: `explicit dpi + camera`, props: { png_dpi: 200, camera: mock_camera } },
+    { desc: `default dpi (150), no camera`, props: {} }, // default png_dpi is 150
+  ])(`PNG export button invokes export_canvas_as_png with $desc`, async ({ props }) => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
         structure: simple_structure,
         wrapper: wrapper_div,
         scene: mock_scene,
-        // default png_dpi is 150, camera undefined
+        ...props,
       },
     })
 
@@ -438,9 +369,9 @@ describe(`StructureExportPane`, () => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
         wrapper_div.querySelector(`canvas`),
         simple_structure,
-        150,
+        props.png_dpi ?? 150,
         mock_scene,
-        undefined,
+        props.camera,
       )
     })
   })

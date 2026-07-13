@@ -57,58 +57,33 @@ function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceDa
 }
 
 describe(`FermiSlice`, () => {
-  // Consolidated mounting tests for all prop combinations
+  // Slicing math (miller indices, distances) is covered by compute_fermi_slice tests;
+  // these mount cases only need to exercise each prop-driven render path once
   test.each([
     { desc: `empty props`, props: {} },
-    { desc: `single band`, props: { fermi_data: create_mock_fermi_data([0]) } },
     { desc: `multiple bands`, props: { fermi_data: create_mock_fermi_data([0, 1, 2]) } },
     {
-      desc: `miller x-normal`,
-      props: {
-        fermi_data: create_mock_fermi_data([0]),
-        miller_indices: [1, 0, 0] as Vec3,
-      },
-    },
-    {
-      desc: `miller y-normal`,
-      props: {
-        fermi_data: create_mock_fermi_data([0]),
-        miller_indices: [0, 1, 0] as Vec3,
-      },
-    },
-    {
-      desc: `miller z-normal`,
-      props: {
-        fermi_data: create_mock_fermi_data([0]),
-        miller_indices: [0, 0, 1] as Vec3,
-      },
-    },
-    {
-      desc: `miller diagonal`,
+      desc: `miller diagonal at distance`,
       props: {
         fermi_data: create_mock_fermi_data([0]),
         miller_indices: [1, 1, 1] as Vec3,
+        distance: 0.05,
       },
     },
     {
-      desc: `positive distance`,
-      props: { fermi_data: create_mock_fermi_data([0]), distance: 0.05 },
-    },
-    {
-      desc: `negative distance`,
-      props: { fermi_data: create_mock_fermi_data([0]), distance: -0.05 },
-    },
-    {
-      desc: `large distance`,
+      desc: `slice plane misses surface entirely`,
       props: { fermi_data: create_mock_fermi_data([0]), distance: 100 },
     },
     { desc: `show_axes=false`, props: { show_axes: false } },
     { desc: `show_legend=false`, props: { show_legend: false } },
-    { desc: `custom line_width`, props: { line_width: 5 } },
-    { desc: `custom band_colors`, props: { band_colors: [`#ff0000`, `#00ff00`] } },
     {
-      desc: `custom axis_labels`,
-      props: { axis_labels: [`X`, `Y`] as [string, string] },
+      desc: `custom colors, line width, axis labels`,
+      props: {
+        fermi_data: create_mock_fermi_data([0]),
+        band_colors: [`#ff0000`, `#00ff00`],
+        line_width: 5,
+        axis_labels: [`X`, `Y`] as [string, string],
+      },
     },
   ])(`mounts without error: $desc`, ({ props }) => {
     expect(() => mount(FermiSlice, { target: document.body, props })).not.toThrow()
