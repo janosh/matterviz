@@ -119,10 +119,6 @@ test.describe(`BarPlot Component Tests`, () => {
     const bar = plot.locator(`svg path[aria-label^="bar "]`).first()
     await expect(bar).toBeVisible()
 
-    // Check cursor is not pointer (no click handler)
-    const cursor = await bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).not.toBe(`pointer`)
-
     const box = await bar.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
@@ -132,6 +128,10 @@ test.describe(`BarPlot Component Tests`, () => {
 
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 5000 })
+
+    // Check cursor is not pointer (no click handler)
+    const cursor = await bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
+    expect(cursor).not.toBe(`pointer`)
   })
 
   test(`on_bar_hover and on_bar_click handlers with pointer cursor`, async ({ page }) => {

@@ -1,4 +1,8 @@
-import { create_chempot_overrides } from '$lib/chempot-diagram/controls-state.svelte'
+import {
+  CHEMPOT_COLOR_MODE_OPTIONS,
+  CHEMPOT_COLOR_SCALE_OPTIONS,
+  create_chempot_overrides,
+} from '$lib/chempot-diagram/controls-state.svelte'
 import type { ChemPotDiagramConfig } from '$lib/chempot-diagram/types'
 import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
 import { describe, expect, test } from 'vitest'
@@ -35,7 +39,7 @@ describe(`create_chempot_overrides`, () => {
     expect(overrides.resolve(`element_padding`)).toBe(0)
   })
 
-  test(`throws upfront for keys without any default`, () => {
+  test(`throws for keys without a default, accepts custom_defaults`, () => {
     // `elements` is in ChemPotDiagramConfig but neither in CHEMPOT_DEFAULTS nor custom_defaults
     expect(() => create_chempot_overrides(() => ({}), [`elements`])).toThrow(
       /key 'elements' is missing from both/,
@@ -45,4 +49,28 @@ describe(`create_chempot_overrides`, () => {
       create_chempot_overrides(() => ({}), [`elements`], { elements: [] }),
     ).not.toThrow()
   })
+})
+
+test.each([
+  [
+    `color mode`,
+    CHEMPOT_COLOR_MODE_OPTIONS,
+    [`none`, `energy`, `formation_energy`, `arity`, `entries`],
+  ],
+  [
+    `color scale`,
+    CHEMPOT_COLOR_SCALE_OPTIONS,
+    [
+      `interpolateViridis`,
+      `interpolatePlasma`,
+      `interpolateInferno`,
+      `interpolateMagma`,
+      `interpolateCividis`,
+      `interpolateTurbo`,
+      `interpolateRdYlBu`,
+      `interpolateSpectral`,
+    ],
+  ],
+] as const)(`%s option values match pane selects`, (_label, options, values) => {
+  expect(options.map(([value]) => value)).toEqual([...values])
 })

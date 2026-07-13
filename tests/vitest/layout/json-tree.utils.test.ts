@@ -475,6 +475,9 @@ describe(`values_equal`, () => {
     [[1, 2], [1, 2, 3], false],
     [{ a: 1, b: 2 }, { c: 3, d: 4 }, true], // same key count = equal (shallow)
     [{ a: 1 }, { a: 1, b: 2 }, false],
+    [{ a: 1 }, [1], false], // object vs array subtypes differ
+    [new Date(`2024-01-01`), {}, false], // date vs object
+    [/a/, {}, false], // regexp vs object
   ])(`values_equal(%p, %p) = %p`, (val_a, val_b, expected) => {
     expect(values_equal(val_a, val_b)).toBe(expected)
   })

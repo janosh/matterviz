@@ -48,7 +48,7 @@
     auto_rotate = DEFAULTS.structure.auto_rotate,
     scene = $bindable(),
     camera = $bindable(),
-    k_path_points = [],
+    k_path_points: input_k_path_points = [],
     k_path_labels = [],
     hovered_k_point = null,
     hovered_qpoint_index = null,
@@ -75,6 +75,7 @@
     hover_data?: BZHoverData | null
     on_kpath_hover?: (qpoint_index: number | null) => void
   } = $props()
+  const k_path_points = $derived(input_k_path_points ?? [])
 
   bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene

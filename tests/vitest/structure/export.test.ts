@@ -342,12 +342,13 @@ describe(`Export functionality`, () => {
 
     it(`handles short coordinate arrays gracefully`, () => {
       const structure_short_coords: AnyStructure = {
-        sites: [make_site(`H`, [0.1, 0.2, 0.0], [1.0, 2.0, 0.0])],
+        sites: [make_site(`H`, [0.1, 0.2] as unknown as Vec3, [1.0, 2.0] as unknown as Vec3)],
       }
 
       const xyz_content = structure_to_xyz_str(structure_short_coords)
       const lines = xyz_content.split(`\n`)
-      expect(lines[2]).toBe(`H 1.000000 2.000000 0.000000`) // Should use provided coordinates
+      // length < 3 falls through to the [0, 0, 0] fallback
+      expect(lines[2]).toBe(`H 0.000000 0.000000 0.000000`)
     })
 
     // Test cartesian→fractional conversion with various xyz array formats

@@ -4,6 +4,7 @@ import {
   TRAJ_KEYWORDS,
   VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
+import { DEFAULTS } from '$lib/settings'
 import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file, LARGE_FILE_THRESHOLD } from '$lib/trajectory/parse'
@@ -814,7 +815,7 @@ describe(`MatterViz Extension`, () => {
       expect(mock_opened_document).not.toBeNull()
       expect(mock_opened_document?.language).toBe(`markdown`)
 
-      const expected_snippets = [
+      for (const snippet of [
         // Main sections
         `### Environment`,
         `### System Resources`,
@@ -839,16 +840,13 @@ describe(`MatterViz Extension`, () => {
         `No files currently being watched/rendered.`,
         // GitHub link
         `https://github.com/janosh/matterviz/issues`,
-      ]
-      for (const snippet of expected_snippets) expect(content).toContain(snippet)
-
+      ]) {
+        expect(content).toContain(snippet)
+      }
       expect(content).toMatch(/\*\*Generated\*\*: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
-    })
 
-    test(`should detect remote session correctly`, async () => {
       mock_env.remoteName = `ssh-remote`
-      const content = await run_report_bug()
-      expect(content).toContain(`- **Remote Session**: Yes (ssh-remote)`)
+      expect(await run_report_bug()).toContain(`- **Remote Session**: Yes (ssh-remote)`)
     })
 
     test(`should include active files and extension state counters in report`, async () => {
@@ -863,7 +861,6 @@ describe(`MatterViz Extension`, () => {
       expect(content).toContain(`- **Path**: \`/test/structure.cif\``)
       expect(content).toContain(`- **Path**: \`/test/trajectory.traj\``)
       expect(content).toContain(`- **Has Watcher**: true`)
-
       // Check for combined section and extension state counters
       expect(content).toContain(`### Active Files & Extension State`)
       expect(content).toContain(`- **Active Watchers**: 2`)
@@ -876,9 +873,7 @@ describe(`MatterViz Extension`, () => {
       mock_vscode.window.showInformationMessage = vi.fn(() =>
         Promise.resolve(`Copy to Clipboard`),
       )
-
       const content = await run_report_bug()
-
       expect(mock_env.clipboard.writeText).toHaveBeenCalledWith(content)
       expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
         `Debug information copied to clipboard!`,
@@ -889,11 +884,8 @@ describe(`MatterViz Extension`, () => {
       mock_vscode.window.showInformationMessage = vi.fn(() =>
         Promise.resolve(`Open GitHub Issues`),
       )
-
       await run_report_bug()
-
-      const call_args = mock_env.openExternal.mock.calls[0]
-      expect(call_args[0].toString()).toContain(
+      expect(mock_env.openExternal.mock.calls[0][0].toString()).toContain(
         `https://github.com/janosh/matterviz/issues/new`,
       )
     })
@@ -904,7 +896,6 @@ describe(`MatterViz Extension`, () => {
         { size: 1024 * 1024, expected: `1.00 MiB` },
         { size: 1024 * 1024 * 1024, expected: `1.00 GiB` },
       ]
-
       // Persistent stat mock resolving each watched file to its configured size
       const file_sizes = new Map(
         size_cases.map(({ size }) => [`/test/file_${size}.cif`, size]),
@@ -915,7 +906,6 @@ describe(`MatterViz Extension`, () => {
       await Promise.all(size_cases.map(({ size }) => start_watching(`file_${size}.cif`)))
 
       const content = await run_report_bug()
-
       for (const { expected } of size_cases) expect(content).toContain(expected)
     })
 
@@ -924,7 +914,6 @@ describe(`MatterViz Extension`, () => {
       mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
 
       const content = await run_report_bug()
-
       // Should still include the file but with "Unknown" size
       expect(content).toContain(`**error-file.cif**`)
       expect(content).toContain(`- **Size**: Unknown`)
@@ -1618,56 +1607,49 @@ describe(`MatterViz Extension`, () => {
 
   describe(`Default Settings`, () => {
     // Helper to create mock config and test setting
-    const test_setting = (
-      result_path: string,
-      expected_value: unknown,
-      config_key: string,
-    ) => {
-      const parts = config_key.split(`.`)
-      const config_value = parts
-        .slice(1)
-        .reduceRight<unknown>((value, key) => ({ [key]: value }), expected_value)
-
-      const mock_config = {
-        get: vi.fn((key: string, default_val?: unknown): unknown => {
-          if (key === parts[0]) return config_value
-          return default_val
-        }),
-      }
+    const apply_config = (config: unknown) => {
       // @ts-expect-error: Mock type override needed for testing
-      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+      mock_vscode.workspace.getConfiguration.mockReturnValue(config)
+    }
 
-      const result = get_defaults()
-      return result_path
+    const apply_overrides = (overrides: Record<string, unknown>) =>
+      apply_config({
+        get: vi.fn(),
+        inspect: vi.fn((key: string) =>
+          key in overrides ? { key, workspaceValue: overrides[key] } : undefined,
+        ),
+      })
+
+    const setting_at = (path: string) =>
+      path
         .split(`.`)
         .reduce<unknown>(
           (obj, key) => (obj as Record<string, unknown> | undefined)?.[key],
-          result,
+          get_defaults(),
         )
-    }
 
-    test(`should merge user settings with defaults`, () => {
-      const user_config = {
-        structure: { atom_radius: 1.5, show_bonds: `always`, bond_color: `#ff0000` },
-        trajectory: { auto_play: true },
-      }
-      const mock_config = {
-        get: vi.fn((key: string, default_val?: unknown) => {
-          if (key === `structure`) return user_config.structure
-          if (key === `trajectory`) return user_config.trajectory
-          return default_val
-        }),
-      }
-      // @ts-expect-error: Mock type override needed for testing
-      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+    test(`merges explicit overrides and keeps unset keys at DEFAULTS`, () => {
+      apply_overrides({
+        'structure.atom_radius': 1.5,
+        'structure.show_bonds': `always`,
+        'structure.bond_color': `#ff0000`,
+        'trajectory.auto_play': true,
+      })
+      expect(get_defaults().structure).toMatchObject({
+        atom_radius: 1.5,
+        show_bonds: `always`,
+        bond_color: `#ff0000`,
+        same_size_atoms: DEFAULTS.structure.same_size_atoms, // Falls back to default
+      })
+      expect(get_defaults().trajectory.auto_play).toBe(true)
+    })
 
-      const result = get_defaults()
-
-      expect(result.structure.atom_radius).toBe(1.5)
-      expect(result.structure.show_bonds).toBe(`always`)
-      expect(result.structure.bond_color).toBe(`#ff0000`)
-      expect(result.trajectory.auto_play).toBe(true)
-      expect(result.structure.same_size_atoms).toBe(false) // Falls back to default
+    test(`ignores package defaultValue from inspect()`, () => {
+      apply_config({
+        get: vi.fn(() => ({ atom_radius: 1.5 })),
+        inspect: vi.fn(() => ({ key: `structure.atom_radius`, defaultValue: 1.5 })),
+      })
+      expect(get_defaults().structure.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     })
 
     test.each([
@@ -1729,52 +1711,40 @@ describe(`MatterViz Extension`, () => {
       [`structure.camera_position`, [1, 2, 3]],
       [`structure.site_label_offset`, [0.5, 1.0, 0]],
       [`trajectory.fps_range`, [0.5, 60]],
-    ])(`should handle setting: %s = %s`, (result_path, expected_value) => {
-      const value = test_setting(result_path, expected_value, result_path)
-      if (Array.isArray(expected_value)) expect(value).toEqual(expected_value)
-      else expect(value).toBe(expected_value)
+    ])(`applies %s = %s`, (path, expected) => {
+      apply_overrides({ [path]: expected })
+      expect(setting_at(path)).toEqual(expected)
     })
 
     test.each([
-      [{ get: vi.fn(() => undefined) }, `missing config`],
+      [`missing inspect`, () => ({ get: vi.fn(), inspect: vi.fn(() => undefined) })],
       [
-        {
-          get: vi.fn((key: string, default_val?: unknown) =>
-            key === `defaults`
-              ? {
-                  structure: {
-                    atom_radius: `invalid`,
-                    show_bonds: `invalid-value`,
-                    bond_color: 123,
-                  },
-                }
-              : default_val,
+        `invalid structure values`,
+        () => ({
+          get: vi.fn(),
+          inspect: vi.fn((key: unknown) =>
+            typeof key === `string` && key.startsWith(`structure.`)
+              ? { key, workspaceValue: `invalid` }
+              : undefined,
           ),
-        },
-        `invalid values`,
+        }),
       ],
-    ])(`should handle %s gracefully`, (mock_config, _description) => {
-      // @ts-expect-error: Mock type override needed for testing
-      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
-
+      [
+        `getConfiguration throws`,
+        () => {
+          throw new Error(`Config access failed`)
+        },
+      ],
+    ])(`handles %s without throwing`, (_label, make_config) => {
+      mock_vscode.workspace.getConfiguration.mockImplementation(() => make_config())
       expect(() => get_defaults()).not.toThrow()
-      const result = get_defaults()
-
-      expect(result).toEqual(
+      expect(get_defaults()).toEqual(
         expect.objectContaining({
           structure: expect.any(Object),
           trajectory: expect.any(Object),
           composition: expect.any(Object),
         }),
       )
-    })
-
-    test(`should handle workspace config errors`, () => {
-      mock_vscode.workspace.getConfiguration.mockImplementation(() => {
-        throw new Error(`Config access failed`)
-      })
-
-      expect(() => get_defaults()).not.toThrow()
     })
   })
 })

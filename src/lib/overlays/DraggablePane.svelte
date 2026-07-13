@@ -122,19 +122,21 @@
   // refresh --pane-viewport-clamp (without which a reset after a drag + window
   // resize would keep a stale bottom-edge cap)
   function position_pane() {
+    if (pane_div) {
+      // Clear manual size first so calculate_position() uses natural pane dimensions
+      pane_div.style.width = ``
+      pane_div.style.maxHeight = ``
+    }
     const pos = calculate_position()
     initial_position = pos
-    if (pane_div) {
-      Object.assign(pane_div.style, {
-        left: pos.left,
-        top: pos.top,
-        right: `auto`,
-        bottom: `auto`,
-        width: ``,
-        maxHeight: ``,
-      })
-      apply_viewport_clamp()
-    }
+    if (!pane_div) return
+    Object.assign(pane_div.style, {
+      left: pos.left,
+      top: pos.top,
+      right: `auto`,
+      bottom: `auto`,
+    })
+    apply_viewport_clamp()
   }
 
   function reset_position() {

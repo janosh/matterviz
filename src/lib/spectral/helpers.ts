@@ -464,11 +464,9 @@ export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null
   const record = data as Record<string, T>
   const up_key = SPIN_UP_KEYS.find((key) => key in record)
   const down_key = SPIN_DOWN_KEYS.find((key) => key in record)
-  // Fall back to first key if no spin-up key found
-  const up =
-    (up_key !== undefined ? record[up_key] : null) ?? record[Object.keys(record)[0]] ?? null
-  if (up === null) return null
-  return { up, down: down_key !== undefined ? record[down_key] : null }
+  // No spin-up key: do not fall back to Object.keys()[0] (could be spin-down)
+  if (up_key === undefined) return null
+  return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
 }
 
 // Convert pymatgen PhononBandStructureSymmLine or BandStructure to matterviz format

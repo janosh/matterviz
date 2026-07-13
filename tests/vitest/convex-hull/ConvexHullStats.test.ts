@@ -233,6 +233,13 @@ describe(`ConvexHullStats`, () => {
     expect(document.querySelectorAll(`.histogram`)).toHaveLength(2)
   })
 
+  test(`missing energy fields render without errors`, () => {
+    mount_stats({
+      stable_entries: [mock_entry({ e_form_per_atom: undefined, energy_per_atom: undefined })],
+    })
+    expect(doc_query(`.convex-hull-stats`)).toBeInstanceOf(HTMLElement)
+  })
+
   test(`zero totals does not produce NaN in percentages`, () => {
     mount_stats({
       phase_stats: mock_stats({ total: 0, stable: 0, unstable: 0 }),

@@ -8,6 +8,14 @@ import { downsample_grid, MAX_GRID_POINTS, type VolumetricData } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
+// Lower/upper voxel indices for one axis of a trilinear sample. Singleton axes
+// (n===1) pin both corners to 0 so nx-2 clamping never goes negative.
+const voxel_corners = (n: number, floor_g: number, periodic: boolean): [number, number] => {
+  if (n === 1) return [0, 0]
+  const lower = periodic ? safe_mod(floor_g, n) : Math.max(0, Math.min(floor_g, n - 2))
+  return [lower, periodic ? (lower + 1) % n : Math.min(lower + 1, n - 1)]
+}
+
 // Trilinear interpolation of a scalar 3D grid at fractional coordinates.
 // Periodic grids wrap with modulo; non-periodic return 0 for out-of-bounds.
 export function trilinear_interpolate(
@@ -32,18 +40,9 @@ export function trilinear_interpolate(
     if (fx < 0 || fx > 1 || fy < 0 || fy > 1 || fz < 0 || fz > 1) return 0
   }
 
-  const x0 = periodic
-    ? safe_mod(Math.floor(gx), nx)
-    : Math.max(0, Math.min(Math.floor(gx), nx - 2))
-  const y0 = periodic
-    ? safe_mod(Math.floor(gy), ny)
-    : Math.max(0, Math.min(Math.floor(gy), ny - 2))
-  const z0 = periodic
-    ? safe_mod(Math.floor(gz), nz)
-    : Math.max(0, Math.min(Math.floor(gz), nz - 2))
-  const x1 = periodic ? (x0 + 1) % nx : Math.min(x0 + 1, nx - 1)
-  const y1 = periodic ? (y0 + 1) % ny : Math.min(y0 + 1, ny - 1)
-  const z1 = periodic ? (z0 + 1) % nz : Math.min(z0 + 1, nz - 1)
+  const [x0, x1] = voxel_corners(nx, Math.floor(gx), periodic)
+  const [y0, y1] = voxel_corners(ny, Math.floor(gy), periodic)
+  const [z0, z1] = voxel_corners(nz, Math.floor(gz), periodic)
 
   // deltas from clamped lower index (non-periodic x0 clamps to nx-2 so floor(gx) may != x0)
   const xd = periodic ? gx - Math.floor(gx) : gx - x0
@@ -224,12 +223,9 @@ export function sample_volume_at_positions(
     const floor_x = Math.floor(grid_x)
     const floor_y = Math.floor(grid_y)
     const floor_z = Math.floor(grid_z)
-    const x_lower = periodic ? floor_x : Math.max(0, Math.min(floor_x, nx - 2))
-    const y_lower = periodic ? floor_y : Math.max(0, Math.min(floor_y, ny - 2))
-    const z_lower = periodic ? floor_z : Math.max(0, Math.min(floor_z, nz - 2))
-    const x_upper = periodic ? (x_lower + 1) % nx : Math.min(x_lower + 1, nx - 1)
-    const y_upper = periodic ? (y_lower + 1) % ny : Math.min(y_lower + 1, ny - 1)
-    const z_upper = periodic ? (z_lower + 1) % nz : Math.min(z_lower + 1, nz - 1)
+    const [x_lower, x_upper] = voxel_corners(nx, floor_x, periodic)
+    const [y_lower, y_upper] = voxel_corners(ny, floor_y, periodic)
+    const [z_lower, z_upper] = voxel_corners(nz, floor_z, periodic)
     const x_weight = grid_x - x_lower
     const y_weight = grid_y - y_lower
     const z_weight = grid_z - z_lower

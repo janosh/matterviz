@@ -5,6 +5,7 @@
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
+  import { extent } from 'd3-array'
   import type { ComponentProps } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-multiselect/attachments'
   import {
@@ -299,7 +300,7 @@
   let clamp_to_zero = $derived(
     is_phonon &&
       all_freqs.length > 0 &&
-      Math.min(...all_freqs) < 0 &&
+      (extent(all_freqs)[0] ?? 0) < 0 &&
       negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD,
   )
 
@@ -307,10 +308,11 @@
   let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 
   // Density axis starts at 0 (unless mirror mode needs negative values); frequency axis
-  // clamps to 0 only when negative phonon frequencies are numerical noise
+  // clamps to 0 only when negative phonon frequencies are numerical noise.
+  // Prefer d3 extent over Math.min/max(...arr) — large DOS grids can blow the call stack.
   const compute_range = (values: number[], is_density_axis: boolean): Vec2 | undefined => {
     if (values.length === 0) return undefined
-    const [min_val, max_val] = [Math.min(...values), Math.max(...values)]
+    const [min_val, max_val] = extent(values) as [number, number]
     if (is_density_axis && has_mirrored_spin) return [min_val, max_val]
     if (is_density_axis || clamp_to_zero) return [0, max_val]
     return [min_val, max_val]
@@ -374,9 +376,9 @@
   let effective_sigma_range = $derived.by((): Vec2 => {
     if (sigma_range) return sigma_range
     if (all_freqs.length === 0) return [0, 1]
-    const freq_range = Math.max(...all_freqs) - Math.min(...all_freqs)
+    const [min_freq, max_freq] = extent(all_freqs) as [number, number]
     // Reasonable sigma range: 0 to ~5% of total range
-    const max_sigma = Math.max(0.1, freq_range * 0.05)
+    const max_sigma = Math.max(0.1, (max_freq - min_freq) * 0.05)
     return [0, max_sigma]
   })
 

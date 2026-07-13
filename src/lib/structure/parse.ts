@@ -106,7 +106,10 @@ const vec3_from_values = (values: readonly unknown[] | undefined, context: strin
     throw new Error(`Invalid ${context}: expected 3 coordinates, got ${values?.length ?? 0}`)
   }
   const coords = math.finite_vec3_from_values(values)
-  if (!coords) throw new Error(`Invalid ${context}: expected 3 finite coordinates`)
+  if (!coords)
+    throw new Error(
+      `Invalid ${context}: expected 3 finite coordinates, got [${values.map(String).join(`, `)}]`,
+    )
   return coords
 }
 
@@ -558,10 +561,15 @@ const parse_symmetry_expression = (
 
     // Numeric term: integer, decimal, or fraction like "1/3"
     const parts = term.split(`/`)
-    if (parts.length > 2) continue // skip malformed terms like "1/2/3"
+    // skip malformed terms like "1/2/3"
+    if (parts.length > 2) {
+      diag_warn(`Skipping malformed symmetry term '${term}'`)
+      continue
+    }
     const [numerator, denominator = `1`] = parts
     const value = Number(numerator) / Number(denominator)
     if (Number.isFinite(value)) translation += sign * value
+    else diag_warn(`Skipping non-finite symmetry term '${term}'`)
   }
 
   return { coefficients, translation }

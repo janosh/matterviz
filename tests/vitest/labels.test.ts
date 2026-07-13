@@ -35,6 +35,10 @@ describe(`labels utils`, () => {
 
 test(`format_num uses defaults and respects overrides`, () => {
   const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
+  // Default-format path (no explicit format arg) selects gt_1 / lt_1 from DEFAULT_FMT
+  expect(format_num(1234)).toBe(d3_format(gt_1_fmt)(1234))
+  expect(format_num(0.123)).toBe(d3_format(lt_1_fmt)(0.123))
+  // Explicit format overrides still win
   expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
   expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
 

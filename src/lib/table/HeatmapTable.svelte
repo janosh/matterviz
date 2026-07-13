@@ -750,10 +750,11 @@
       multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
     if (sort_criteria.length === 0) return filtered_data
 
+    const valid_column_ids = new Set(ordered_columns.map(get_col_id))
     return [...filtered_data].sort((row1, row2) => {
       for (const { column, ascending } of sort_criteria) {
         // criteria hold column IDs; skip stale entries referencing removed columns
-        if (!ordered_columns.some((col) => get_col_id(col) === column)) continue
+        if (!valid_column_ids.has(column)) continue
 
         const val1 = row1[column]
         const val2 = row2[column]

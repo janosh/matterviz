@@ -213,29 +213,37 @@ const get_system_theme = (): ThemeName => {
   return theme_by_kind[vscode.window.activeColorTheme.kind] ?? COLOR_THEMES.light
 }
 
+// Collect user/workspace overrides via config.inspect() (ignores package defaults)
+const read_explicit_overrides = (
+  config: vscode.WorkspaceConfiguration,
+  defaults: Record<string, unknown>,
+  prefix = ``,
+): Record<string, unknown> => {
+  const overrides: Record<string, unknown> = {}
+  for (const [key, default_value] of Object.entries(defaults)) {
+    const full_key = prefix ? `${prefix}.${key}` : key
+    if (is_plain_object(default_value)) {
+      const nested = read_explicit_overrides(config, default_value, full_key)
+      if (Object.keys(nested).length > 0) overrides[key] = nested
+      continue
+    }
+    const inspected = config.inspect(full_key)
+    // Prefer more specific scope: folder > workspace > global
+    const value = [
+      inspected?.workspaceFolderValue,
+      inspected?.workspaceValue,
+      inspected?.globalValue,
+    ].find((candidate) => candidate !== undefined)
+    if (value !== undefined) overrides[key] = value
+  }
+  return overrides
+}
+
 // Settings reader with nested structure support and built-in error handling
 export const get_defaults = (): DefaultSettings => {
   try {
     const config = vscode.workspace.getConfiguration(`matterviz`)
-    const user_settings: Record<string, unknown> = {}
-
-    for (const [key, default_value] of Object.entries(DEFAULTS)) {
-      const value = config.get<unknown>(key)
-      if (!is_plain_object(default_value)) {
-        if (value !== undefined) user_settings[key] = value
-        continue
-      }
-      if (!is_plain_object(value)) continue
-
-      const settings: Record<string, unknown> = {}
-      for (const setting_key of Object.keys(default_value)) {
-        const setting_value = value[setting_key]
-        if (setting_value !== undefined) settings[setting_key] = setting_value
-      }
-      if (Object.keys(settings).length > 0) user_settings[key] = settings
-    }
-
-    return merge(user_settings)
+    return merge(read_explicit_overrides(config, DEFAULTS))
   } catch (error) {
     console.error(`Failed to get defaults:`, error)
     return DEFAULTS

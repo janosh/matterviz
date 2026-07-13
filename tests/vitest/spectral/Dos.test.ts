@@ -231,9 +231,12 @@ describe(`extract_spin_channels`, () => {
     expect(result).toEqual({ up: [1, 2, 3], down: null })
   })
 
-  it.each([null, undefined])(`returns null for %s`, (input) => {
-    expect(extract_spin_channels(input)).toBeNull()
-  })
+  it.each([null, undefined, {}, { '-1': [1, 2] }, { 'Spin.down': [1] }])(
+    `returns null for %j`,
+    (input) => {
+      expect(extract_spin_channels(input)).toBeNull()
+    },
+  )
 })
 
 describe(`extract_pdos`, () => {

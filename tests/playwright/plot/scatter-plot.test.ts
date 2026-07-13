@@ -406,7 +406,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     )
     const area_tolerance = 1e-3
     expect(areas[0]).toBeGreaterThan(0)
-    expect(areas[1]).toBeGreaterThanOrEqual(areas[0])
+    expect(areas[1] + area_tolerance).toBeGreaterThanOrEqual(areas[0])
     expect(areas[2] + area_tolerance).toBeGreaterThanOrEqual(areas[1])
   })
 

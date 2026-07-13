@@ -849,16 +849,16 @@
 
       <!-- Component labels at corners (supports compound formulas with subscripts) -->
       {#if show_component_labels}
-        {#each [{ x: left, svg: component_a_svg }, { x: right, svg: component_b_svg }] as label (label.x)}
+        {#each [component_a_svg, component_b_svg] as svg, idx (idx)}
           <text
-            x={label.x}
+            x={idx === 0 ? left : right}
             y={bottom + 45}
             text-anchor="middle"
             fill={merged_config.colors.text}
             font-size={merged_config.font_size + 2}
             font-weight="bold"
           >
-            {@html sanitize_svg(label.svg)}
+            {@html sanitize_svg(svg)}
           </text>
         {/each}
       {/if}

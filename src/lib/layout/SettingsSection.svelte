@@ -43,24 +43,23 @@
   const title_id = `settings-section-title-${crypto.randomUUID()}`
 
   // Check if any values have changed from reference values
-  let has_changes = $derived.by(() =>
-    Object.entries(reference_values).some(([key, reference_value]) => {
-      const current_value = current_values[key]
-      // Deep comparison for arrays (JSON.stringify fallback for nested objects/arrays)
-      if (Array.isArray(reference_value) && Array.isArray(current_value)) {
-        if (reference_value.length !== current_value.length) return true
-        return reference_value.some((val, idx) => {
-          const curr_val = current_value[idx]
-          if (typeof val === `object` && val && typeof curr_val === `object` && curr_val) {
-            return JSON.stringify(val) !== JSON.stringify(curr_val)
-          }
-          return val !== curr_val
-        })
-      }
-      return current_value !== reference_value
-    }),
-  )
+  // Deep comparison for arrays (JSON.stringify fallback for nested objects/arrays)
+  // Symmetric deep equality so object/array settings compare by value, not reference.
+  // Settings values are JSON-serializable (primitives, arrays, plain objects).
+  const setting_equal = (left: unknown, right: unknown): boolean =>
+    Object.is(left, right) ||
+    (left != null &&
+      right != null &&
+      typeof left === `object` &&
+      typeof right === `object` &&
+      JSON.stringify(left) === JSON.stringify(right))
 
+  // Keys added to either side count as changes
+  let has_changes = $derived.by(() =>
+    [...new Set([...Object.keys(reference_values), ...Object.keys(current_values)])].some(
+      (key) => !setting_equal(reference_values[key], current_values[key]),
+    ),
+  )
   function handle_reset(event: MouseEvent) {
     event.stopPropagation()
     event.preventDefault()

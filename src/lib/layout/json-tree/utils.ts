@@ -340,6 +340,7 @@ export function values_equal(val_a: unknown, val_b: unknown): boolean {
   if (val_a === null || val_b === null || typeof val_a !== typeof val_b) return false
 
   const type = get_value_type(val_a)
+  if (type !== get_value_type(val_b)) return false
   if (is_primitive_type(type) || type === `symbol`) return false // strict equality failed above
   if (type === `date`) return (val_a as Date).getTime() === (val_b as Date).getTime()
   if (type === `regexp`) return (val_a as RegExp).toString() === (val_b as RegExp).toString()

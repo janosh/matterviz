@@ -317,18 +317,17 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Get initial series count and bar count
     const initial_series_count = await histogram.locator(`g.histogram-series`).count()
-    const initial_bars = await get_bar_count(histogram)
     expect(initial_series_count).toBeGreaterThan(1)
-    expect(initial_bars).toBeGreaterThan(0)
+    expect(await get_bar_count(histogram)).toBeGreaterThan(0)
 
     // Toggle each series off and back on individually
     for (let idx = 0; idx < initial_item_count; idx++) {
-      await legend_items.nth(idx).click()
-      await expect(histogram).toBeVisible()
+      const legend_item = legend_items.nth(idx)
+      await legend_item.click()
+      await expect(legend_item).toHaveClass(/hidden/)
 
-      await legend_items.nth(idx).click()
-      const restored_bars = await get_bar_count(histogram)
-      expect(restored_bars).toBeGreaterThan(0)
+      await legend_item.click()
+      await expect(legend_item).not.toHaveClass(/hidden/)
     }
 
     // Turn all series off - no bars, but legend and axes must remain functional

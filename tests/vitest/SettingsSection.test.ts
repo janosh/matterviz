@@ -43,6 +43,7 @@ describe(`SettingsSection`, () => {
     [`primitives`, { setting1: `value` }],
     [`arrays`, { setting1: [`a`, `b`, `c`] }],
     [`nested object arrays`, { setting1: [{ key: `value1` }, { key: `value2` }] }],
+    [`plain objects`, { setting1: { nested: `ok`, count: 2 } }],
     [`undefined/null values`, { setting1: undefined, setting2: null }],
     [`empty arrays`, { setting1: [] }],
   ])(
