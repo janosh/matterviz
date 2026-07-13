@@ -1,24 +1,19 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import {
+  canvas_screenshot,
+  expect_canvas_changed,
+  get_canvas_timeout,
+  IS_CI,
+  open_settings_pane,
+  set_input_value,
+  wait_for_canvas_rendered,
+} from './helpers'
 
 const ISO_URL = `/structure/isosurface?file=Si-CHGCAR.gz`
 
-async function wait_for_isosurface(page: Page) {
-  await page.goto(ISO_URL, { waitUntil: `networkidle` })
+async function wait_for_isosurface(page: Page, url = ISO_URL) {
+  await page.goto(url, { waitUntil: `networkidle` })
   await expect(page.locator(`text=Grid:`)).toBeVisible({ timeout: 15_000 })
-}
-
-async function open_settings_pane(page: Page) {
-  await page.evaluate(() => {
-    const style = document.createElement(`style`)
-    style.textContent = `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
-    document.head.append(style)
-  })
-  const gear = page.locator(`button.structure-controls-toggle`)
-  await expect(gear).toBeVisible({ timeout: 15_000 })
-  await gear.click()
-  const pane = page.locator(`.controls-pane`)
-  await expect(pane).toBeVisible({ timeout: 15_000 })
-  return pane
 }
 
 // Get center of a bounding box, throwing if null
@@ -39,71 +34,126 @@ async function drag_from(page: Page, locator: Locator, dx: number, dy: number) {
   await page.mouse.up()
 }
 
-test.describe(`Isosurface controls`, () => {
+test.describe(`Isosurface page`, () => {
+  test.describe.configure({ mode: `serial` })
+
   test.beforeEach(async ({ page }) => {
     await wait_for_isosurface(page)
   })
 
-  test(`neg. lobe toggle adds and removes negative surface`, async ({ page }) => {
-    const pane = await open_settings_pane(page)
-    const neg_cb = pane.locator(`label:has-text("Neg. lobe") input[type="checkbox"]`)
-    await expect(neg_cb).toBeVisible()
-    await neg_cb.check()
-    await expect(neg_cb).toBeChecked()
-    await neg_cb.uncheck()
-    await expect(neg_cb).not.toBeChecked()
+  test.describe(`Isosurface controls`, () => {
+    test(`neg. lobe toggle adds and removes negative surface`, async ({ page }) => {
+      const pane = await open_settings_pane(page)
+      const neg_cb = pane.locator(`label:has-text("Neg. lobe") input[type="checkbox"]`)
+      await expect(neg_cb).toBeVisible()
+      await neg_cb.check()
+      await expect(neg_cb).toBeChecked()
+      await neg_cb.uncheck()
+      await expect(neg_cb).not.toBeChecked()
+    })
+
+    test(`halo slider is present for periodic volumes`, async ({ page }) => {
+      const pane = await open_settings_pane(page)
+      const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
+      await expect(halo_slider).toBeVisible()
+      await expect(halo_slider).toHaveValue(`0`)
+    })
   })
 
-  test(`halo slider is present for periodic volumes`, async ({ page }) => {
-    const pane = await open_settings_pane(page)
-    const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
-    await expect(halo_slider).toBeVisible()
-    await expect(halo_slider).toHaveValue(`0`)
+  test.describe(`Volumetric slices`, () => {
+    test(`switches between HKL, Cartesian, filled, and contour views`, async ({ page }) => {
+      test.setTimeout(IS_CI ? 90_000 : 45_000)
+      const slice = page.getByTestId(`volume-slice`)
+      const canvas = slice.locator(`canvas`)
+      await wait_for_canvas_rendered(canvas)
+      expect(Number(await canvas.getAttribute(`width`))).toBeGreaterThanOrEqual(512)
+
+      await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
+      await expect(page.getByLabel(`Cartesian point x`)).toBeVisible()
+      await page.getByRole(`button`, { name: `XY`, exact: true }).click()
+      await expect(page.getByLabel(`Cartesian normal z`)).toHaveValue(`1`)
+      await wait_for_canvas_rendered(canvas)
+      const filled = await canvas_screenshot(canvas)
+
+      await page.getByLabel(`Slice rendering mode`).selectOption(`contours`)
+      // Contour strokes are drawn across animation frames; allow CI headroom.
+      await expect_canvas_changed(canvas, filled, get_canvas_timeout() * 2)
+      await page.getByLabel(`Slice rendering mode`).selectOption(`filled`)
+      await expect(page.getByLabel(`Slice colormap`)).toBeVisible()
+      await page.getByLabel(`Slice colormap`).selectOption(`interpolateViridis`)
+      await expect(canvas).toBeVisible()
+    })
+
+    test(`keeps Miller input responsive at high slice resolution`, async ({ page }) => {
+      const input = page.getByRole(`textbox`, { name: `hkl` })
+      await input.fill(`11`)
+      const update_ms = await input.evaluate(async (input_element) => {
+        const input_node = input_element as HTMLInputElement
+        const start = performance.now()
+        input_node.value += `0`
+        input_node.dispatchEvent(new Event(`input`, { bubbles: true }))
+        await new Promise<number>((resolve) => requestAnimationFrame(resolve))
+        await new Promise<number>((resolve) => requestAnimationFrame(resolve))
+        return performance.now() - start
+      })
+
+      await expect(input).toHaveValue(`110`)
+      expect(update_ms).toBeLessThan(400)
+    })
+
+    test(`masks pixels outside an oblique triclinic cross-section`, async ({ page }) => {
+      await wait_for_isosurface(page, `/structure/isosurface?file=hBN-CHGCAR.gz`)
+      await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
+      for (const axis of [`x`, `y`, `z`]) {
+        await set_input_value(page.getByLabel(`Cartesian normal ${axis}`), `1`)
+      }
+      const canvas = page.getByTestId(`volume-slice`).locator(`canvas`)
+      await wait_for_canvas_rendered(canvas)
+
+      const alpha_values = await canvas.evaluate((canvas_element) => {
+        const canvas_node = canvas_element as HTMLCanvasElement
+        const pixels = canvas_node
+          .getContext(`2d`)
+          ?.getImageData(0, 0, canvas_node.width, canvas_node.height).data
+        return pixels
+          ? Array.from(
+              { length: pixels.length / 4 },
+              (_, pixel_idx) => pixels[pixel_idx * 4 + 3],
+            )
+          : []
+      })
+      expect(alpha_values).toContain(0)
+      expect(alpha_values.some(Boolean)).toBe(true)
+    })
   })
-})
 
-test.describe(`DraggablePane resize grip`, () => {
-  test.beforeEach(async ({ page }) => {
-    await wait_for_isosurface(page)
-  })
+  test.describe(`DraggablePane resize grip`, () => {
+    test(`resizes and resets`, async ({ page }) => {
+      const pane = await open_settings_pane(page)
+      const grip = pane.locator(`.resize-grip`)
+      await expect(grip).toBeVisible()
+      const initial_box = await pane.boundingBox()
+      expect(initial_box).toBeTruthy()
+      await drag_from(page, grip, 100, 0)
+      await expect(pane).toBeVisible()
+      const resized_box = await pane.boundingBox()
+      expect(resized_box).toBeTruthy()
+      expect(resized_box?.width).toBeGreaterThan((initial_box?.width ?? 0) + 50)
 
-  test(`resize grip is visible when pane is open`, async ({ page }) => {
-    const pane = await open_settings_pane(page)
-    await expect(pane.locator(`.resize-grip`)).toBeVisible()
-  })
+      await grip.dblclick()
+      expect(await pane.evaluate((element) => element.style.width)).toBe(``)
+    })
 
-  test(`dragging resize grip changes pane width`, async ({ page }) => {
-    const pane = await open_settings_pane(page)
-    const initial_box = await pane.boundingBox()
-    expect(initial_box).toBeTruthy()
-    await drag_from(page, pane.locator(`.resize-grip`), 100, 0)
-    await expect(pane).toBeVisible()
-    const resized_box = await pane.boundingBox()
-    expect(resized_box).toBeTruthy()
-    expect(resized_box?.width).toBeGreaterThan((initial_box?.width ?? 0) + 50)
-  })
-
-  test(`double-clicking resize grip resets pane size`, async ({ page }) => {
-    const pane = await open_settings_pane(page)
-    await drag_from(page, pane.locator(`.resize-grip`), 150, 0)
-    await expect(pane).toBeVisible()
-    await pane.locator(`.resize-grip`).dblclick()
-    const inline_width = await pane.evaluate((el) => el.style.width)
-    expect(inline_width).toBe(``)
-  })
-
-  test(`control tab shows reset/close after drag, reset keeps pane open`, async ({ page }) => {
-    const pane = await open_settings_pane(page)
-    const tab = pane.locator(`.control-tab`)
-    await expect(tab.locator(`.drag-handle`)).toBeVisible()
-    await expect(tab.locator(`.reset-button`)).not.toBeVisible()
-
-    await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
-
-    await expect(tab.locator(`.reset-button`)).toBeVisible()
-    await expect(tab.locator(`.close-button`)).toBeVisible()
-
-    await tab.locator(`.reset-button`).click()
-    await expect(pane).toBeVisible()
+    test(`exposes reset and close controls after dragging`, async ({ page }) => {
+      const pane = await open_settings_pane(page)
+      const tab = pane.locator(`.control-tab`)
+      await expect(tab.locator(`.drag-handle`)).toBeVisible()
+      await expect(tab.locator(`.reset-button`)).not.toBeVisible()
+      await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
+      await expect(tab.locator(`.reset-button`)).toBeVisible()
+      await expect(tab.locator(`.close-button`)).toBeVisible()
+      await tab.locator(`.reset-button`).click()
+      await expect(pane).toBeVisible()
+    })
   })
 })

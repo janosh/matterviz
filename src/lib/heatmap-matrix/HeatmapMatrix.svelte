@@ -508,6 +508,7 @@
   let tooltip_div: HTMLDivElement | undefined = $state()
   let active_cell_raf = 0 // rAF handle for deferred active_cell update
   let click_timeout_id: ReturnType<typeof setTimeout> | null = null
+  let pending_click_key: string | null = null
   const dblclick_delay_ms = 250
   let last_hover_x = -1
   let last_hover_y = -1
@@ -693,9 +694,19 @@
   }
 
   function clear_pending_click(): void {
-    if (click_timeout_id === null) return
-    clearTimeout(click_timeout_id)
+    if (click_timeout_id !== null) clearTimeout(click_timeout_id)
     click_timeout_id = null
+    pending_click_key = null
+  }
+
+  function schedule_single_click(cell_context: CellContext): void {
+    if (!onclick) return
+    clear_pending_click()
+    pending_click_key = cell_pos_key(cell_context.x_idx, cell_context.y_idx)
+    click_timeout_id = setTimeout(() => {
+      onclick(cell_context)
+      clear_pending_click()
+    }, dblclick_delay_ms)
   }
 
   function parse_cell_indices(cell_el: HTMLElement): { x_idx: number; y_idx: number } | null {
@@ -715,15 +726,8 @@
 
   function trigger_click(cell_context: CellContext): void {
     if (!onclick) return
-    if (!ondblclick) {
-      onclick(cell_context)
-      return
-    }
-    clear_pending_click()
-    click_timeout_id = setTimeout(() => {
-      onclick(cell_context)
-      click_timeout_id = null
-    }, dblclick_delay_ms)
+    if (ondblclick) schedule_single_click(cell_context)
+    else onclick(cell_context)
   }
 
   function get_cell_el_from_target(event_target: EventTarget | null): HTMLElement | null {
@@ -881,8 +885,20 @@
     if (disabled || !ondblclick) return
     const cell_context = get_cell_context_from_target(event.target)
     if (!cell_context) return
+    // With onclick, require a matching pending click (FilePicker pattern).
+    // ondblclick-only stays direct so orphaned dblclicks still work.
+    if (!onclick) {
+      clear_pending_click()
+      ondblclick(cell_context)
+      return
+    }
+    const pending = pending_click_key
     clear_pending_click()
-    ondblclick(cell_context)
+    if (pending === cell_pos_key(cell_context.x_idx, cell_context.y_idx)) {
+      ondblclick(cell_context)
+    } else {
+      schedule_single_click(cell_context)
+    }
   }
 
   function handle_contextmenu(event: MouseEvent): void {

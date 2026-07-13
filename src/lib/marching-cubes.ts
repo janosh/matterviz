@@ -310,6 +310,18 @@ export interface MarchingCubesResult {
   normals: Vec3[]
 }
 
+export interface MarchingCubesBuffers {
+  positions: Float32Array
+  indices: Uint32Array
+  normals: Float32Array
+}
+
+interface MarchingCubesRaw {
+  positions: number[]
+  indices: number[]
+  normals: number[]
+}
+
 export interface MarchingCubesOptions {
   // Whether to apply periodic boundary conditions (wrap around grid edges)
   periodic?: boolean
@@ -321,6 +333,8 @@ export interface MarchingCubesOptions {
   // Whether to compute per-vertex normals via central differences on the grid.
   // Default true. Set false to skip (caller can use geometry.computeVertexNormals() instead).
   normals?: boolean
+  // Cartesian translation applied before converting positions to Float32 buffers.
+  position_offset?: Vec3
 }
 
 // Compute gradient (normal) at a grid point using central differences
@@ -359,17 +373,18 @@ function compute_gradient(
 }
 
 // Main marching cubes algorithm (optimized version)
-export function marching_cubes(
+function marching_cubes_raw(
   grid: number[][][],
   iso_value: number,
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
-): MarchingCubesResult {
+): MarchingCubesRaw {
   const {
     periodic = true,
     interpolate = true,
     centered = true,
     normals: compute_norms = true,
+    position_offset = [0, 0, 0],
   } = options
   // When centered=true, shift fractional coordinates by -0.5 so the grid is
   // centered at the origin (Γ point). This is needed for proper BZ visualization.
@@ -380,26 +395,33 @@ export function marching_cubes(
   const nz = grid[0]?.[0]?.length || 0
 
   if (nx < 2 || ny < 2 || nz < 2) {
-    return { vertices: [], faces: [], normals: [] }
+    return { positions: [], indices: [], normals: [] }
   }
 
-  const vertices: Vec3[] = []
-  const faces: number[][] = []
-  const normals: Vec3[] = []
+  const positions: number[] = []
+  const indices: number[] = []
+  const normals: number[] = []
 
-  // Cache keys use UNWRAPPED grid coords (reach n in periodic mode, hence radix n+1):
-  // wrapping would merge vertices on opposite cell faces into cell-spanning triangles.
-  const key_nz = nz + 1
-  const key_ny_nz = (ny + 1) * key_nz
-  const max_flat = (nx + 1) * key_ny_nz // for computing cache keys
-  // Use numeric cache key - safe for grids up to ~300³ (2^53 / 2 / max_flat)
-  // For much larger grids (>30M cells), consider switching to Map<string, number>
-  // with keys like `${flat1},${flat2}` or Map<bigint, number> to avoid
-  // Number.MAX_SAFE_INTEGER limits. The current approach is faster for typical grids.
-  if (max_flat > 30_000_000) {
-    console.warn(`Grid size ${nx}×${ny}×${nz} may cause cache key overflow`)
-  }
-  const vertex_cache = new Map<number, number>()
+  // Iterate over all cubes in the grid
+  const max_x = periodic ? nx : nx - 1
+  const max_y = periodic ? ny : ny - 1
+  const max_z = periodic ? nz : nz - 1
+
+  // Rolling typed edge caches retain only the current x slab. Coordinates stay
+  // UNWRAPPED (reach n in periodic mode), so opposite cell faces remain distinct
+  // and never create cell-spanning triangles.
+  const edge_stride = max_z + 1
+  const edge_plane_size = (max_y + 1) * edge_stride
+  const x_edge_cache = new Int32Array(edge_plane_size)
+  let y_edge_current = new Int32Array(edge_plane_size)
+  let y_edge_next = new Int32Array(edge_plane_size)
+  let z_edge_current = new Int32Array(edge_plane_size)
+  let z_edge_next = new Int32Array(edge_plane_size)
+  x_edge_cache.fill(-1)
+  y_edge_current.fill(-1)
+  y_edge_next.fill(-1)
+  z_edge_current.fill(-1)
+  z_edge_next.fill(-1)
 
   // Precompute k_lattice values for faster coordinate transform
   const [kx0, kx1, kx2] = k_lattice[0]
@@ -431,14 +453,22 @@ export function marching_cubes(
     const oy2 = CUBE_VERTS_Y[v2_idx]
     const oz2 = CUBE_VERTS_Z[v2_idx]
 
-    // Sorted numeric key from UNWRAPPED coords (value/gradient lookups wrap internally).
-    // Safe for grids up to ~300³ before exceeding Number.MAX_SAFE_INTEGER
-    const flat1 = (ix + ox1) * key_ny_nz + (iy + oy1) * key_nz + (iz + oz1)
-    const flat2 = (ix + ox2) * key_ny_nz + (iy + oy2) * key_nz + (iz + oz2)
-    const cache_key = flat1 < flat2 ? flat1 * max_flat + flat2 : flat2 * max_flat + flat1
-
-    const cached = vertex_cache.get(cache_key)
-    if (cached !== undefined) return cached
+    // Key the edge's lower endpoint. For x-edges, x is the rolling slab and
+    // y/z are equal; y- and z-edges normalize their sole varying key coordinate.
+    let cache: Int32Array
+    let cache_idx: number
+    if (ox1 !== ox2) {
+      cache = x_edge_cache
+      cache_idx = (iy + oy1) * edge_stride + iz + oz1
+    } else if (oy1 !== oy2) {
+      cache = ox1 === 0 ? y_edge_current : y_edge_next
+      cache_idx = (iy + Math.min(oy1, oy2)) * edge_stride + iz + oz1
+    } else {
+      cache = ox1 === 0 ? z_edge_current : z_edge_next
+      cache_idx = (iy + oy1) * edge_stride + iz + Math.min(oz1, oz2)
+    }
+    const cached = cache[cache_idx]
+    if (cached >= 0) return cached
 
     // Compute vertex position
     const v1 = cube_values[v1_idx]
@@ -470,31 +500,30 @@ export function marching_cubes(
     }
 
     // Transform to Cartesian (inlined)
-    const vert_idx = vertices.length
-    vertices.push([
-      fx * kx0 + fy * ky0 + fz * kz0,
-      fx * kx1 + fy * ky1 + fz * kz1,
-      fx * kx2 + fy * ky2 + fz * kz2,
-    ])
+    const vert_idx = positions.length / 3
+    positions.push(
+      fx * kx0 + fy * ky0 + fz * kz0 + position_offset[0],
+      fx * kx1 + fy * ky1 + fz * kz1 + position_offset[1],
+      fx * kx2 + fy * ky2 + fz * kz2 + position_offset[2],
+    )
 
     // Compute normal from grid gradient (skip if caller will compute from geometry)
     if (compute_norms) {
-      normals.push(compute_gradient(grid, ix + ox1, iy + oy1, iz + oz1, nx, ny, nz, periodic))
+      const normal = compute_gradient(grid, ix + ox1, iy + oy1, iz + oz1, nx, ny, nz, periodic)
+      normals.push(normal[0], normal[1], normal[2])
     }
 
-    vertex_cache.set(cache_key, vert_idx)
+    cache[cache_idx] = vert_idx
     return vert_idx
   }
-
-  // Iterate over all cubes in the grid
-  const max_x = periodic ? nx : nx - 1
-  const max_y = periodic ? ny : ny - 1
-  const max_z = periodic ? nz : nz - 1
 
   // Preallocate cube_values array (reuse across iterations)
   const cube_values: number[] = Array(8)
 
   for (let ix = 0; ix < max_x; ix++) {
+    x_edge_cache.fill(-1)
+    y_edge_next.fill(-1)
+    z_edge_next.fill(-1)
     const ix_row = grid[ix]
     const ix1_row = grid[(ix + 1) % nx]
 
@@ -543,14 +572,53 @@ export function marching_cubes(
 
           // Skip degenerate triangles
           if (v0 !== v1 && v1 !== v2 && v0 !== v2) {
-            faces.push([v0, v1, v2])
+            indices.push(v0, v1, v2)
           }
         }
       }
     }
+    ;[y_edge_current, y_edge_next] = [y_edge_next, y_edge_current]
+    ;[z_edge_current, z_edge_next] = [z_edge_next, z_edge_current]
   }
 
-  return { vertices, faces, normals }
+  return { positions, indices, normals }
+}
+
+// Buffer-oriented result for renderers that otherwise immediately flatten the
+// compatibility arrays. This avoids one Vec3 and one triangle-array allocation
+// per emitted vertex/face while preserving the public marching_cubes() API.
+export function marching_cubes_buffers(
+  grid: number[][][],
+  iso_value: number,
+  k_lattice: Matrix3x3,
+  options: MarchingCubesOptions = {},
+): MarchingCubesBuffers {
+  const raw = marching_cubes_raw(grid, iso_value, k_lattice, options)
+  return {
+    positions: Float32Array.from(raw.positions),
+    indices: Uint32Array.from(raw.indices),
+    normals: Float32Array.from(raw.normals),
+  }
+}
+
+const packed_to_vec3 = (values: number[]): Vec3[] =>
+  Array.from({ length: values.length / 3 }, (_, idx) => {
+    const offset = idx * 3
+    return [values[offset], values[offset + 1], values[offset + 2]]
+  })
+
+export function marching_cubes(
+  grid: number[][][],
+  iso_value: number,
+  k_lattice: Matrix3x3,
+  options: MarchingCubesOptions = {},
+): MarchingCubesResult {
+  const raw = marching_cubes_raw(grid, iso_value, k_lattice, options)
+  return {
+    vertices: packed_to_vec3(raw.positions),
+    faces: packed_to_vec3(raw.indices),
+    normals: packed_to_vec3(raw.normals),
+  }
 }
 
 // Compute per-vertex normals from faces using area-weighted averaging

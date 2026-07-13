@@ -5,7 +5,7 @@
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
-  import { build_gizmo_props, build_orbit_props } from './props'
+  import { build_gizmo_props, build_orbit_props } from './props.svelte'
 
   let {
     camera_projection = `perspective`,

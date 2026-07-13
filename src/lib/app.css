@@ -25,6 +25,21 @@
      Override per viewer by setting this on its wrapper. */
   --ctrl-btn-icon-size: clamp(0.7rem, 2cqmin, 0.85rem);
 
+  /* In-viewer overlay stack (inside one viewer container, above its WebGL
+     canvas): 1 viewport labels · 2 glass chips · 4–6 carousel chrome
+     (legend/resize-handle/pager) · 10 draggable panes · 100 dropdowns +
+     toasts · 1000 canvas tooltips + error banners. Components fall back to
+     these tiers; override per instance via their dedicated --*-z-index vars.
+     NOTE (WKWebView/Tauri): overlays that can overlap a WebGL canvas also
+     need their own compositing layer (will-change: transform) — after hiding
+     and re-showing the window, WebKit reattaches canvas layers above
+     non-composited overlays regardless of z-index. */
+  --z-index-viewer-label: 1;
+  --z-index-viewer-chip: 2;
+  --z-index-viewer-pane: 10;
+  --z-index-viewer-dropdown: 100;
+  --z-index-viewer-tooltip: 1000;
+
   /* App-wide overlay stack: controls < fullscreen/nav < dialogs < floating options.
      These must exceed Threlte HTML overlays, which use very high z-index values. */
   --z-index-overlay-controls: 100000000;

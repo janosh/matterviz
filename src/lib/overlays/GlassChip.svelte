@@ -18,7 +18,9 @@
     position: absolute;
     top: var(--glass-chip-top, 10px);
     left: var(--glass-chip-left, 10px);
-    z-index: var(--glass-chip-z, 2);
+    z-index: var(--glass-chip-z, var(--z-index-viewer-chip, 2));
+    /* own compositing layer, or WKWebView paints the canvas over this (see app.css) */
+    will-change: transform;
     max-width: var(--glass-chip-max-width, calc(100% - 20px));
     padding: 4px 8px;
     border-radius: 6px;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator } from '$lib/colors'
+  import { get_d3_interpolator, is_dark_mode, watch_dark_mode } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -211,6 +211,8 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
+    active_volume_idx = 0,
+    volume_scaling = [1, 1, 1],
     interactive = true,
   }: SceneControlProps & {
     structure?: AnyStructure
@@ -316,8 +318,12 @@
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
     cursor?: string // cursor style for the 3D canvas
     dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
-    volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
+    // Loaded volumetric datasets for isosurface rendering (single volume accepted
+    // for backwards compatibility)
+    volumetric_data?: VolumetricData | VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
+    active_volume_idx?: number // Volume implicit single-isovalue settings apply to
+    volume_scaling?: Vec3 // Supercell tiling applied to isosurface geometry
     // When false, render the scene without hover/edit raycast helpers. Used by multi-side
     // view so inactive panes skip interaction-only work while the active pane stays editable.
     interactive?: boolean
@@ -328,6 +334,8 @@
     { step: 0.015, frequency: 5 },
   )
   let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
+  let dark_mode = $state(is_dark_mode())
+  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
 
   bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
@@ -1464,7 +1472,7 @@
           : get_site_radius(site, site_idx)
       targets.push({ kind, site, site_idx, color, radius })
     }
-    add(`hover`, hovered_site, hovered_idx, `white`)
+    add(`hover`, hovered_site, hovered_idx, dark_mode ? `white` : `#333`)
     for (const idx of selected_sites ?? []) {
       add(`selected`, structure?.sites?.[idx] ?? null, idx, selection_highlight_color)
     }
@@ -2228,7 +2236,15 @@
 
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
       {#if volumetric_data && isosurface_settings}
-        <Isosurface volume={volumetric_data} settings={isosurface_settings} />
+        {@const volume_list = Array.isArray(volumetric_data)
+          ? volumetric_data
+          : [volumetric_data]}
+        <Isosurface
+          volumes={volume_list}
+          settings={isosurface_settings}
+          {active_volume_idx}
+          tiling={volume_scaling}
+        />
       {/if}
 
       <!-- Measurement overlays for measured sites -->

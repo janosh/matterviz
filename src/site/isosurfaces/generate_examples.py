@@ -6,6 +6,7 @@ Run: python src/site/isosurfaces/generate_examples.py
 import gzip
 import math
 from collections.abc import Callable
+from typing import NamedTuple
 
 BOHR_TO_ANG = 0.529177249
 ANG_TO_BOHR = 1.0 / BOHR_TO_ANG
@@ -22,6 +23,28 @@ def gaussian(
     return math.exp(-r2 / (2 * sigma**2))
 
 
+def gaussian_coulomb(
+    x: float,
+    y: float,
+    z: float,
+    cx: float,
+    cy: float,
+    cz: float,
+    charge: float,
+    sigma: float,
+) -> float:
+    """Coulomb potential of a Gaussian charge distribution (softened 1/r).
+
+    V(r) = q * erf(r / (sqrt(2) * sigma)) / r, with the finite r -> 0 limit
+    q * sqrt(2/pi) / sigma. Far from the charge this decays like q/r, giving a
+    physically shaped electrostatic potential for point partial charges.
+    """
+    dist = math.dist((x, y, z), (cx, cy, cz))
+    if dist < 1e-9:
+        return charge * math.sqrt(2.0 / math.pi) / sigma
+    return charge * math.erf(dist / (math.sqrt(2.0) * sigma)) / dist
+
+
 # === Shared helpers ===
 
 
@@ -34,17 +57,25 @@ def pbc_gaussian_sum(
     sigmas: list[float],
     lattice_vecs: list[tuple[float, float, float]],
 ) -> float:
-    """Sum of Gaussians at centers with periodic images along lattice vectors."""
+    """Sum of Gaussians at centers with periodic images along lattice vectors.
+
+    A zero lattice vector disables periodic images along that axis (used for
+    slabs), rather than adding coincident duplicate images.
+    """
+    image_ranges = [
+        (-1, 0, 1) if any(abs(comp) > 0 for comp in vec) else (0,)
+        for vec in lattice_vecs
+    ]
     result = 0.0
-    for (cx, cy, cz), weight, sigma in zip(centers, weights, sigmas):
-        for dx_img in (-1, 0, 1):
-            for dy_img in (-1, 0, 1):
-                for dz_img in (-1, 0, 1):
+    for (cx, cy, cz), weight, sigma in zip(centers, weights, sigmas, strict=True):
+        for dx_img in image_ranges[0]:
+            for dy_img in image_ranges[1]:
+                for dz_img in image_ranges[2]:
                     ix = cx
                     iy = cy
                     iz = cz
                     for dim, (lx, ly, lz) in zip(
-                        (dx_img, dy_img, dz_img), lattice_vecs
+                        (dx_img, dy_img, dz_img), lattice_vecs, strict=True
                     ):
                         ix += dim * lx
                         iy += dim * ly
@@ -354,30 +385,45 @@ def generate_fe_bcc_spin_chgcar() -> str:
     )
 
 
-def generate_hbn_chgcar() -> str:
-    """Hexagonal BN charge density (CHGCAR, 20x20x16, non-orthogonal)."""
+# Hexagonal BN geometry shared by the CHGCAR and ELFCAR generators (grids must
+# match exactly so the demo can color the density surface by localization)
+HBN_B_FRAC: list[FracCoord] = [(0.0, 0.0, 0.0), (0.0, 0.0, 0.5)]
+HBN_N_FRAC: list[FracCoord] = [(1 / 3, 2 / 3, 0.0), (2 / 3, 1 / 3, 0.5)]
+HBN_BOND_FRAC: list[FracCoord] = [(1 / 6, 1 / 3, 0.0), (1 / 6, 1 / 3, 0.5)]
+
+
+class HbnGeometry(NamedTuple):
+    """Hexagonal BN lattice, cell volume, and fractional-to-Cartesian map."""
+
+    lattice: list[tuple[float, float, float]]
+    volume: float
+    frac_to_cart: Callable[[float, float, float], tuple[float, float, float]]
+
+
+def hbn_geometry() -> HbnGeometry:
+    """Build the shared hexagonal BN cell (a=2.50, c=6.66, 60° between a and b)."""
     lat_a, lat_c = 2.50, 6.66
     a2_x, a2_y = lat_a / 2, lat_a * math.sqrt(3) / 2
     lattice = [(lat_a, 0.0, 0.0), (a2_x, a2_y, 0.0), (0.0, 0.0, lat_c)]
-    bn_frac: list[FracCoord] = [
-        (0.0, 0.0, 0.0),
-        (1 / 3, 2 / 3, 0.0),
-        (0.0, 0.0, 0.5),
-        (2 / 3, 1 / 3, 0.5),
-    ]
-    volume = lat_a * a2_y * lat_c
-    lat_vecs = [lattice[0], lattice[1], lattice[2]]
-    z_nums = [5, 7, 5, 7]
 
     def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
         return (fx * lat_a + fy * a2_x, fy * a2_y, fz * lat_c)
 
-    atom_cart = [frac_to_cart(*frac) for frac in bn_frac]
-    bond_cart = [frac_to_cart(1 / 6, 1 / 3, 0.0), frac_to_cart(1 / 6, 1 / 3, 0.5)]
+    return HbnGeometry(lattice, lat_a * a2_y * lat_c, frac_to_cart)
+
+
+def generate_hbn_chgcar() -> str:
+    """Hexagonal BN charge density (CHGCAR, 20x20x16, non-orthogonal)."""
+    geom = hbn_geometry()
+    bn_frac = [HBN_B_FRAC[0], HBN_N_FRAC[0], HBN_B_FRAC[1], HBN_N_FRAC[1]]
+    z_nums = [5, 7, 5, 7]
+    atom_cart = [geom.frac_to_cart(*frac) for frac in bn_frac]
+    bond_cart = [geom.frac_to_cart(*frac) for frac in HBN_BOND_FRAC]
 
     def density(
         x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
     ) -> float:
+        """Gaussian charge on B/N atoms plus bond-midpoint density."""
         rho = pbc_gaussian_sum(
             x,
             y,
@@ -385,43 +431,58 @@ def generate_hbn_chgcar() -> str:
             atom_cart,
             [float(zn) for zn in z_nums],
             [0.45] * 4,
-            lat_vecs,
+            geom.lattice,
         )
-        rho += pbc_gaussian_sum(x, y, z, bond_cart, [3.0] * 2, [0.3] * 2, lat_vecs)
-        return rho * volume
+        rho += pbc_gaussian_sum(x, y, z, bond_cart, [3.0] * 2, [0.3] * 2, geom.lattice)
+        return rho * geom.volume
 
     return write_chgcar(
         "hBN hexagonal - charge density",
-        lattice,
-        [("B", [bn_frac[0], bn_frac[2]]), ("N", [bn_frac[1], bn_frac[3]])],
+        geom.lattice,
+        [("B", HBN_B_FRAC), ("N", HBN_N_FRAC)],
         (20, 20, 16),
         density,
     )
 
 
+# Al(111) slab geometry shared by the LOCPOT and CHGCAR generators (grids must
+# match exactly so the demo can color the density surface by the potential)
+AL_SLAB_A, AL_SLAB_C = 2.86, 25.0
+AL_SLAB_FRAC: list[FracCoord] = [
+    (0.0, 0.0, 0.30),
+    (1 / 3, 2 / 3, 0.35),
+    (2 / 3, 1 / 3, 0.40),
+    (0.0, 0.0, 0.45),
+]
+
+
+def al_slab_geometry() -> tuple[
+    list[tuple[float, float, float]],
+    list[tuple[float, float, float]],
+    list[tuple[float, float, float]],
+    float,
+]:
+    """Return (lattice, atom Cartesian coords, in-plane PBC vectors, cell volume)."""
+    a2_x, a2_y = AL_SLAB_A / 2, AL_SLAB_A * math.sqrt(3) / 2
+    lattice = [(AL_SLAB_A, 0.0, 0.0), (a2_x, a2_y, 0.0), (0.0, 0.0, AL_SLAB_C)]
+    atom_cart = [
+        (fx * AL_SLAB_A + fy * a2_x, fy * a2_y, fz * AL_SLAB_C)
+        for fx, fy, fz in AL_SLAB_FRAC
+    ]
+    # Zero z vector: no periodic images across the vacuum gap
+    lat_vecs_xy = [lattice[0], lattice[1], (0.0, 0.0, 0.0)]
+    volume = AL_SLAB_A * a2_y * AL_SLAB_C
+    return lattice, atom_cart, lat_vecs_xy, volume
+
+
 def generate_al_slab_locpot() -> str:
     """Al(111) slab local potential (LOCPOT, 12x12x40)."""
-    a_surf, c_slab = 2.86, 25.0
-    a2_x, a2_y = a_surf / 2, a_surf * math.sqrt(3) / 2
-    lattice = [(a_surf, 0.0, 0.0), (a2_x, a2_y, 0.0), (0.0, 0.0, c_slab)]
-    al_frac: list[FracCoord] = [
-        (0.0, 0.0, 0.30),
-        (1 / 3, 2 / 3, 0.35),
-        (2 / 3, 1 / 3, 0.40),
-        (0.0, 0.0, 0.45),
-    ]
-    volume = a_surf * a2_y * c_slab
-    # Only use in-plane PBC images (no z images for slab)
-    lat_vecs_xy = [lattice[0], lattice[1], (0.0, 0.0, 0.0)]
-
-    def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
-        return (fx * a_surf + fy * a2_x, fy * a2_y, fz * c_slab)
-
-    atom_cart = [frac_to_cart(*frac) for frac in al_frac]
+    lattice, atom_cart, lat_vecs_xy, volume = al_slab_geometry()
 
     def density(
         x: float, y: float, z: float, _fx: float, _fy: float, fz: float
     ) -> float:
+        """Attractive atomic wells plus a slab-vs-vacuum background step."""
         pot = -pbc_gaussian_sum(x, y, z, atom_cart, [13.0] * 4, [0.5] * 4, lat_vecs_xy)
         slab_center, slab_width = 0.375, 0.10
         in_slab = math.exp(-((fz - slab_center) ** 2) / (2 * slab_width**2))
@@ -431,9 +492,178 @@ def generate_al_slab_locpot() -> str:
     return write_chgcar(
         "Al(111) slab - local potential",
         lattice,
-        [("Al", al_frac)],
+        [("Al", AL_SLAB_FRAC)],
         (12, 12, 40),
         density,
+    )
+
+
+# === Multi-volume demo generators (matching-grid pairs for cross-volume coloring) ===
+
+# Glycine NH2-CH2-COOH geometry in Angstrom, roughly centered at the origin
+# (Z, x, y, z) with approximate partial charges (summing to zero for the
+# neutral molecule) used for the simulated ESP
+GLYCINE_ATOMS_CHARGES: list[tuple[int, float, float, float, float]] = [
+    (7, -1.45, 0.01, -0.93, -0.60),  # N (amine)
+    (1, -1.82, 0.86, -0.50, 0.28),  # H on N
+    (1, -1.99, -0.78, -0.62, 0.28),  # H on N
+    (6, -0.03, -0.05, -0.90, -0.05),  # C alpha
+    (1, 0.31, -1.05, -1.19, 0.10),  # H on C alpha
+    (1, 0.36, 0.66, -1.63, 0.10),  # H on C alpha
+    (6, 0.63, 0.26, 0.43, 0.55),  # C carboxyl
+    (8, 0.22, 1.11, 1.21, -0.50),  # O double-bonded
+    (8, 1.71, -0.45, 0.76, -0.55),  # O hydroxyl
+    (1, 2.05, -0.18, 1.63, 0.39),  # H on O
+]
+
+assert abs(sum(atom[4] for atom in GLYCINE_ATOMS_CHARGES)) < 1e-9, (
+    "glycine partial charges must sum to zero"
+)
+
+GLYCINE_GRID = 50
+GLYCINE_BOX = 10.0
+
+
+def generate_glycine_density_cube() -> str:
+    """Glycine electron density (.cube, 50x50x50) — pairs with glycine-esp."""
+    atoms: list[Atom] = [(z, x, y, zc) for z, x, y, zc, _q in GLYCINE_ATOMS_CHARGES]
+    # Bond midpoints add covalent-bond density between heavy atoms
+    bonds = [(0, 3), (3, 6), (6, 7), (6, 8)]
+
+    def density(x: float, y: float, z: float) -> float:
+        rho = 0.0
+        for z_num, ax, ay, az, _q in GLYCINE_ATOMS_CHARGES:
+            # Tight core + diffuse valence tail so a vdW-like outer surface still
+            # follows the molecular skeleton instead of merging into one blob
+            sigma_core = 0.28 if z_num == 1 else 0.38
+            rho += z_num * gaussian(x, y, z, ax, ay, az, sigma_core)
+            rho += 0.4 * z_num * gaussian(x, y, z, ax, ay, az, sigma_core * 1.8)
+        for idx_a, idx_b in bonds:
+            _, ax, ay, az, _ = GLYCINE_ATOMS_CHARGES[idx_a]
+            _, bx, by, bz, _ = GLYCINE_ATOMS_CHARGES[idx_b]
+            mx, my, mz = (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2
+            rho += 1.2 * gaussian(x, y, z, mx, my, mz, 0.3)
+        return rho
+
+    return write_cube(
+        "Glycine electron density (pairs with glycine-esp.cube)",
+        atoms,
+        GLYCINE_GRID,
+        GLYCINE_BOX,
+        density,
+    )
+
+
+def generate_glycine_esp_cube() -> str:
+    """Glycine electrostatic potential (.cube, 50x50x50) on the density grid."""
+    atoms: list[Atom] = [(z, x, y, zc) for z, x, y, zc, _q in GLYCINE_ATOMS_CHARGES]
+
+    def potential(x: float, y: float, z: float) -> float:
+        """Sum of softened Coulomb potentials of the atomic partial charges."""
+        pot = 0.0
+        for _z_num, ax, ay, az, charge in GLYCINE_ATOMS_CHARGES:
+            pot += gaussian_coulomb(x, y, z, ax, ay, az, charge, 0.5)
+        return pot
+
+    return write_cube(
+        "Glycine electrostatic potential (pairs with glycine-density.cube)",
+        atoms,
+        GLYCINE_GRID,
+        GLYCINE_BOX,
+        potential,
+    )
+
+
+def generate_al_slab_chgcar() -> str:
+    """Al(111) slab charge density (CHGCAR, 12x12x40) on the LOCPOT grid."""
+    lattice, atom_cart, lat_vecs_xy, volume = al_slab_geometry()
+
+    def density(
+        x: float, y: float, z: float, _fx: float, _fy: float, _fz: float
+    ) -> float:
+        """Gaussian charge blobs on the four slab atoms."""
+        rho = pbc_gaussian_sum(x, y, z, atom_cart, [13.0] * 4, [0.55] * 4, lat_vecs_xy)
+        return rho * volume
+
+    return write_chgcar(
+        "Al(111) slab - charge density (pairs with Al-slab-LOCPOT)",
+        lattice,
+        [("Al", AL_SLAB_FRAC)],
+        (12, 12, 40),
+        density,
+    )
+
+
+def generate_hbn_elfcar() -> str:
+    """Hexagonal BN localization function (ELFCAR, 20x20x16, non-orthogonal).
+
+    Pairs with hBN-CHGCAR on an identical grid so density surfaces can be
+    colored by localization on a non-orthogonal lattice.
+    """
+    geom = hbn_geometry()
+
+    # ELF-like field: high (~0.9) at B-N bond midpoints and N lone-pair regions,
+    # moderate at atoms, low in interstitial space
+    bond_cart = [geom.frac_to_cart(*frac) for frac in HBN_BOND_FRAC]
+    n_cart = [geom.frac_to_cart(*frac) for frac in HBN_N_FRAC]
+    b_cart = [geom.frac_to_cart(*frac) for frac in HBN_B_FRAC]
+
+    def elf(x: float, y: float, z: float, _fx: float, _fy: float, _fz: float) -> float:
+        """Bounded [0, 1] localization built from bond, N, and B Gaussians."""
+        val = 0.05  # interstitial baseline
+        val += 0.85 * pbc_gaussian_sum(
+            x, y, z, bond_cart, [1.0] * 2, [0.45] * 2, geom.lattice
+        )
+        val += 0.6 * pbc_gaussian_sum(
+            x, y, z, n_cart, [1.0] * 2, [0.4] * 2, geom.lattice
+        )
+        val += 0.3 * pbc_gaussian_sum(
+            x, y, z, b_cart, [1.0] * 2, [0.35] * 2, geom.lattice
+        )
+        return min(val, 1.0) * geom.volume
+
+    return write_chgcar(
+        "hBN hexagonal - simulated ELF (pairs with hBN-CHGCAR)",
+        geom.lattice,
+        [("B", HBN_B_FRAC), ("N", HBN_N_FRAC)],
+        (20, 20, 16),
+        elf,
+    )
+
+
+def generate_large_grid_locpot() -> str:
+    """Large 80x80x96 LOCPOT matching large-grid-CHGCAR for perf testing.
+
+    Same 12x12x14.4 Angstrom cell and Si4 sites as the large CHGCAR so
+    cross-volume coloring can be stress-tested at full grid resolution.
+    """
+    lattice = [(12.0, 0.0, 0.0), (0.0, 12.0, 0.0), (0.0, 0.0, 14.4)]
+    si_frac: list[FracCoord] = [
+        (0.0, 0.0, 0.0),
+        (0.5, 0.5, 0.0),
+        (0.5, 0.0, 0.5),
+        (0.0, 0.5, 0.5),
+    ]
+    volume = 12.0 * 12.0 * 14.4
+    lat_vecs = [lattice[0], lattice[1], lattice[2]]
+    atom_cart = [(fx * 12.0, fy * 12.0, fz * 14.4) for fx, fy, fz in si_frac]
+
+    def potential(
+        x: float, y: float, z: float, fx: float, fy: float, fz: float
+    ) -> float:
+        """Attractive wells at nuclei plus a long-wavelength periodic modulation."""
+        pot = -pbc_gaussian_sum(x, y, z, atom_cart, [10.0] * 4, [0.9] * 4, lat_vecs)
+        pot += 0.8 * math.sin(2 * math.pi * fx) * math.cos(2 * math.pi * fy)
+        pot += 0.5 * math.cos(2 * math.pi * fz)
+        # Round to 6 significant digits so the gzipped file stays small
+        return float(f"{pot * volume:.5e}")
+
+    return write_chgcar(
+        "Large grid LOCPOT - perf test (pairs with large-grid-CHGCAR)",
+        lattice,
+        [("Si", si_frac)],
+        (80, 80, 96),
+        potential,
     )
 
 
@@ -441,6 +671,7 @@ def generate_al_slab_locpot() -> str:
 
 if __name__ == "__main__":
     import os
+    import sys
 
     out_dir = os.path.dirname(__file__)
     generators: dict[str, Callable[[], str]] = {
@@ -451,9 +682,23 @@ if __name__ == "__main__":
         "ch4-esp.cube.gz": generate_ch4_esp_cube,
         "hBN-CHGCAR.gz": generate_hbn_chgcar,
         "Al-slab-LOCPOT.gz": generate_al_slab_locpot,
+        # Matching-grid pairs for multi-volume cross-coloring demos
+        "glycine-density.cube.gz": generate_glycine_density_cube,
+        "glycine-esp.cube.gz": generate_glycine_esp_cube,
+        "Al-slab-CHGCAR.gz": generate_al_slab_chgcar,
+        "hBN-ELFCAR.gz": generate_hbn_elfcar,
+        "large-grid-LOCPOT.gz": generate_large_grid_locpot,
     }
 
-    for filename, gen_fn in generators.items():
+    # Pass filenames as args to regenerate a subset, e.g.
+    # python generate_examples.py glycine-density.cube.gz glycine-esp.cube.gz
+    selected = sys.argv[1:] or list(generators)
+    if unknown := [name for name in selected if name not in generators]:
+        known = "\n  ".join(generators)
+        raise SystemExit(f"Unknown file(s): {', '.join(unknown)}. Known:\n  {known}")
+
+    for filename in selected:
+        gen_fn = generators[filename]
         print(f"Generating {filename} ...")
         content = gen_fn()
         with gzip.open(f"{out_dir}/{filename}", "wt") as fh:

@@ -49,23 +49,30 @@ async function decompress_gz_payload(
   return [content, strip_gz_ext(filename)]
 }
 
+// Extract the URL of a FilePicker-style drop payload. Synchronous because
+// DataTransfer.getData is only readable during drop-event dispatch — callers
+// that defer processing (e.g. drop queues) must capture the URL up front.
+export function dropped_file_url(drag_event: DragEvent): string | undefined {
+  const json_data = drag_event.dataTransfer?.getData(`application/json`)
+  if (!json_data) return undefined
+  try {
+    // Runtime-check instead of trusting the FileInfo cast: drop payloads are
+    // external input and a truthy non-string url must not reach fetch()
+    const { url } = JSON.parse(json_data) as Partial<FileInfo>
+    return typeof url === `string` && url ? url : undefined
+  } catch {
+    return undefined
+  }
+}
+
 // Handle URL-based file drop data by fetching content lazily
 export async function handle_url_drop(
   drag_event: DragEvent,
   callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
 ): Promise<boolean> {
-  const json_data = drag_event.dataTransfer?.getData(`application/json`)
-  if (!json_data) return false
-
-  let file_info: FileInfo
-  try {
-    file_info = JSON.parse(json_data)
-  } catch {
-    return false
-  }
-  if (!file_info.url) return false
-
-  await load_from_url(file_info.url, callback)
+  const url = dropped_file_url(drag_event)
+  if (!url) return false
+  await load_from_url(url, callback)
   return true
 }
 
