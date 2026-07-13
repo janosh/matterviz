@@ -233,6 +233,13 @@
   let element_size = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
+  let data_url_load_id = 0
+  let loaded_data_url: string | undefined
+  let url_owned_trajectory: TrajectoryType | undefined
+  type LoadTrajectoryDataOptions = {
+    on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
+    should_commit?: () => boolean
+  }
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -313,18 +320,24 @@
 
   const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
     if (!trajectory || batch.length === 0) return
-    trajectory = {
+    const preserves_url_ownership = trajectory === url_owned_trajectory
+    const next_trajectory = {
       ...trajectory,
       plot_metadata: [...(trajectory.plot_metadata ?? []), ...batch],
     }
+    trajectory = next_trajectory
+    if (preserves_url_ownership) url_owned_trajectory = trajectory
   }
 
   const finish_plot_metadata_loading = () => {
     if (!trajectory) return
-    trajectory = {
+    const preserves_url_ownership = trajectory === url_owned_trajectory
+    const next_trajectory = {
       ...trajectory,
       metadata: { ...trajectory.metadata, plot_metadata_loading: false },
     }
+    trajectory = next_trajectory
+    if (preserves_url_ownership) url_owned_trajectory = trajectory
   }
 
   onMount(() => {
@@ -858,33 +871,62 @@
     }
   }
 
+  // Load trajectory from URL when data_url is provided. Track the model produced by
+  // this effect so caller-owned trajectory props keep precedence while URL-owned
+  // models can reload when data_url changes.
   $effect(() => {
-    // Load trajectory from URL when data_url is provided
-    if (data_url && !trajectory) {
-      loading = true
-      error_msg = null
+    const requested_url = data_url
+    const current_trajectory = trajectory
+    const caller_owns_trajectory = Boolean(
+      current_trajectory && current_trajectory !== url_owned_trajectory,
+    )
+    if (!requested_url || caller_owns_trajectory) {
+      loaded_data_url = undefined
+      url_owned_trajectory = undefined
+      return
+    }
+    if (loaded_data_url === requested_url) return
 
-      load_from_url(data_url, async (content, filename) => {
-        current_filename = filename
-        file_size =
-          content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
-        await load_trajectory_data(content, filename)
+    const load_id = ++data_url_load_id
+    const is_current = () => load_id === data_url_load_id
+    loading = true
+    error_msg = null
+
+    load_from_url(requested_url, async (content, filename) => {
+      if (!is_current()) return
+      current_filename = filename
+      file_size =
+        content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
+      await load_trajectory_data(content, filename, {
+        on_trajectory_loaded: (loaded_trajectory) => {
+          if (!is_current()) return
+          url_owned_trajectory = loaded_trajectory
+          loaded_data_url = requested_url
+        },
+        should_commit: is_current,
       })
-        .then(() => {
-          loading = false
+    })
+      .catch((err: Error) => {
+        if (!is_current()) return
+        console.error(`Failed to load trajectory from URL:`, err)
+        error_msg = `Failed to load trajectory: ${err.message}`
+        current_filename = undefined
+        file_size = undefined
+        on_error?.({
+          error_msg,
+          filename: requested_url,
+          file_size: undefined,
         })
-        .catch((err: Error) => {
-          console.error(`Failed to load trajectory from URL:`, err)
-          error_msg = `Failed to load trajectory: ${err.message}`
-          current_filename = undefined
-          file_size = undefined
-          loading = false
-          on_error?.({
-            error_msg,
-            filename: current_filename || undefined,
-            file_size: file_size || undefined,
-          })
-        })
+      })
+      .finally(() => {
+        if (is_current()) loading = false
+      })
+
+    return () => {
+      if (is_current()) {
+        data_url_load_id += 1
+        loading = false
+      }
     }
   })
 
@@ -893,7 +935,12 @@
     on_frame_rate_change?.({ trajectory, fps })
   })
 
-  async function load_trajectory_data(data: string | ArrayBuffer, filename: string) {
+  async function load_trajectory_data(
+    data: string | ArrayBuffer,
+    filename: string,
+    options: LoadTrajectoryDataOptions = {},
+  ) {
+    const { on_trajectory_loaded, should_commit = () => true } = options
     loading = true
     error_msg = null
     parsing_progress = null
@@ -912,34 +959,40 @@
         (typeof data === `string` && data_size > text_file_threshold)
       ) {
         // Large files: Use indexed loading
-        await load_with_indexing(data, filename)
+        await load_with_indexing(data, filename, options)
       } else {
         // Small files: Use regular loading
         const merged_options = { ...loading_options, atom_type_mapping }
-        trajectory = await parse_trajectory_async(
+        const parsed_trajectory = await parse_trajectory_async(
           data,
           filename,
           (progress) => {
-            parsing_progress = progress
+            if (should_commit()) parsing_progress = progress
           },
           merged_options,
         )
+        if (!should_commit()) return
+        trajectory = parsed_trajectory
+        if (trajectory) on_trajectory_loaded?.(trajectory)
       }
+      if (!should_commit()) return
 
       current_step_idx = 0
       current_filename = filename
 
       const file_size_bytes =
         data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
+      const loaded_trajectory = trajectory
       on_file_load?.({
         // emit file load event
-        trajectory,
-        frame_count: trajectory?.frames.length ?? 0,
-        total_atoms: trajectory?.frames[0]?.structure.sites.length ?? 0,
+        trajectory: loaded_trajectory,
+        frame_count: loaded_trajectory?.frames.length ?? 0,
+        total_atoms: loaded_trajectory?.frames[0]?.structure.sites.length ?? 0,
         filename,
         file_size: file_size_bytes,
       })
     } catch (err) {
+      if (!should_commit()) return
       const unsupported_message = get_unsupported_format_message(
         filename,
         typeof data === `string` ? data : ``,
@@ -955,13 +1008,20 @@
         file_size: file_size || undefined,
       })
     } finally {
-      parsing_progress = null
-      loading = false
+      if (should_commit()) {
+        parsing_progress = null
+        loading = false
+      }
     }
   }
 
   // Load using indexed parsing for large files
-  async function load_with_indexing(data: string | ArrayBuffer, filename: string) {
+  async function load_with_indexing(
+    data: string | ArrayBuffer,
+    filename: string,
+    options: LoadTrajectoryDataOptions = {},
+  ) {
+    const { on_trajectory_loaded, should_commit = () => true } = options
     try {
       // Use indexed parsing for efficient large file handling
       const merged_options = {
@@ -969,20 +1029,24 @@
         ...loading_options,
         atom_type_mapping,
       }
-      trajectory = await parse_trajectory_async(
+      const parsed_trajectory = await parse_trajectory_async(
         data,
         filename,
         (progress) => {
-          parsing_progress = progress
+          if (should_commit()) parsing_progress = progress
         },
         merged_options,
       )
+      if (!should_commit()) return
+      trajectory = parsed_trajectory
+      if (trajectory) on_trajectory_loaded?.(trajectory)
 
       // Keep original data for on-demand frame loads only when indexed parsing attached a
       // frame_loader. Direct-parse fallbacks (e.g. large JSON or extensionless blob:
       // filenames) load all frames upfront, so retaining a full duplicate payload wastes memory.
       orig_data = trajectory?.frame_loader ? data : null
     } catch (error) {
+      if (!should_commit()) return
       console.error(`Indexed loading failed:`, error)
       throw error
     }
