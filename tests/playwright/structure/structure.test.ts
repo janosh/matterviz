@@ -2779,9 +2779,7 @@ test.describe(`Element Visibility Toggle`, () => {
     await goto_structure_test(page)
   })
 
-  test(`atom-color mode toggle reveals on every viewer hover, not just the first`, async ({
-    page,
-  }) => {
+  test(`hover chrome reveals repeatedly without remounting the gizmo`, async ({ page }) => {
     // Regression: `viewer_active` was a `$derived(hovered || focused)` reading the $bindable
     // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle (and
     // gizmo) only appeared on the very first mouseenter until page reload.
@@ -2798,6 +2796,7 @@ test.describe(`Element Visibility Toggle`, () => {
       await page.mouse.move(3, 3) // move off the viewer
       await expect(toggle).toHaveCSS(`opacity`, `0`)
       await expect(wrapper).not.toHaveClass(/gizmo-visible/)
+      await expect(wrapper.locator(`.responsive-gizmo`)).toBeAttached()
     }
   })
 
