@@ -56,7 +56,9 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await expect(color_row.locator(`select`)).toBeVisible()
     const color_scale_select = color_row.locator(`.multiselect`)
     await expect(color_scale_select.locator(`.selected`)).toContainText(`RdBu`)
-    const reset_button = color_row.getByRole(`button`, { name: `Reset color range` })
+    const reset_button = color_row.getByRole(`button`, {
+      name: `Reset colormap + range to auto-fit`,
+    })
     await expect(reset_button).toHaveCount(0)
     await color_scale_select.click()
     await page.getByRole(`option`, { name: `Turbo` }).click()

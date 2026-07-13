@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator } from '$lib/colors'
+  import { get_d3_interpolator, is_dark_mode, watch_dark_mode } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -334,6 +334,8 @@
     { step: 0.015, frequency: 5 },
   )
   let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
+  let dark_mode = $state(is_dark_mode())
+  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
 
   bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
@@ -1470,7 +1472,7 @@
           : get_site_radius(site, site_idx)
       targets.push({ kind, site, site_idx, color, radius })
     }
-    add(`hover`, hovered_site, hovered_idx, `white`)
+    add(`hover`, hovered_site, hovered_idx, dark_mode ? `white` : `#333`)
     for (const idx of selected_sites ?? []) {
       add(`selected`, structure?.sites?.[idx] ?? null, idx, selection_highlight_color)
     }

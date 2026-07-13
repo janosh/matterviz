@@ -362,28 +362,41 @@
                     : `Surface color`,
               })}
             />
-            <input
-              type="range"
-              min={layer_step}
-              max={layer_abs_max}
-              step={layer_step}
-              value={layer.isovalue}
-              oninput={(event) =>
-                update_layer(layer_idx, { isovalue: Number(event.currentTarget.value) })}
-              style="flex: 1; min-width: 50px"
-            />
-            <span class="layer-value">{format_num(layer.isovalue, `.3~g`)}</span>
-            <input
-              type="range"
-              min={0.1}
-              max={1}
-              step={0.05}
-              value={layer.opacity}
-              oninput={(event) =>
-                update_layer(layer_idx, { opacity: Number(event.currentTarget.value) })}
-              style="width: 40px"
-              title="Opacity: {format_num(layer.opacity, `.2f`)}"
-            />
+            <label
+              class="slider-field"
+              {@attach tooltip({
+                content: `Density threshold — surface is drawn where grid values equal this`,
+              })}
+            >
+              <span>Iso</span>
+              <input
+                type="range"
+                class="isovalue-slider"
+                min={layer_step}
+                max={layer_abs_max}
+                step={layer_step}
+                value={layer.isovalue}
+                oninput={(event) =>
+                  update_layer(layer_idx, { isovalue: Number(event.currentTarget.value) })}
+                aria-label="Isovalue"
+              />
+              <span class="layer-value">{format_num(layer.isovalue, `.3~g`)}</span>
+            </label>
+            <label class="slider-field" {@attach tooltip({ content: `Surface transparency` })}>
+              <span>Op</span>
+              <input
+                type="range"
+                class="opacity-slider"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={layer.opacity}
+                oninput={(event) =>
+                  update_layer(layer_idx, { opacity: Number(event.currentTarget.value) })}
+                aria-label="Opacity"
+              />
+              <span class="layer-value">{format_num(layer.opacity, `.2f`)}</span>
+            </label>
             <button
               type="button"
               class="icon-btn"
@@ -414,7 +427,6 @@
                   title_style: `width: 4em; font-size: 1em;`,
                 }}
                 liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
-                style="--sms-min-height: var(--compact-control-size); --sms-border: var(--color-control-border); --sms-border-radius: 3px; width: 10em"
                 aria-label="Colormap for sampled values"
                 {@attach tooltip({ content: `Colormap for sampled values` })}
               />
@@ -425,12 +437,13 @@
                 {@render range_bound_input(layer_idx, 1, explicit_range)}
               </div>
               {#if explicit_range || (layer.colormap ?? DEFAULT_ISO_COLORMAP) !== auto_colormap}
+                {@const reset_color_label = `Reset colormap + range to auto-fit`}
                 <button
                   type="button"
                   class="icon-btn"
                   onclick={() => set_color_source(layer_idx, layer.color_volume_idx ?? null)}
-                  aria-label="Reset color range"
-                  {@attach tooltip({ content: `Reset colormap + range to auto-fit` })}
+                  aria-label={reset_color_label}
+                  {@attach tooltip({ content: reset_color_label })}
                 >
                   <Icon icon="Reset" aria-hidden="true" style="--icon-size: 12px" />
                 </button>
@@ -557,6 +570,40 @@
 </SettingsSection>
 
 <style>
+  /* Shared chrome for native selects/number/color + ColorScaleSelect (--sms-*) */
+  :is(.compact-row, .volume-group, .display-range) {
+    --iso-ctrl-h: 22px;
+    --iso-ctrl-radius: 3px;
+    --iso-ctrl-border: 1px solid var(--border-color, light-dark(#b8bec8, #555));
+    --iso-ctrl-bg: light-dark(#fff, #1e1e1e);
+    --sms-min-height: var(--iso-ctrl-h);
+    --sms-border: var(--iso-ctrl-border);
+    --sms-border-radius: var(--iso-ctrl-radius);
+    --sms-bg: var(--iso-ctrl-bg);
+    font-size: 0.95em;
+
+    :is(select, input[type='number'], input[type='color']) {
+      box-sizing: border-box;
+      margin: 0; /* beat DraggablePane margins */
+      border: var(--iso-ctrl-border);
+      border-radius: var(--iso-ctrl-radius);
+    }
+    :is(select, input[type='number']) {
+      height: var(--iso-ctrl-h);
+      padding: 0 4px;
+      background: var(--iso-ctrl-bg);
+      color: inherit;
+      font: inherit;
+      line-height: 1.2;
+    }
+    input[type='color'] {
+      width: var(--iso-ctrl-h);
+      height: var(--iso-ctrl-h);
+      padding: 0;
+      cursor: pointer;
+      background: transparent;
+    }
+  }
   .compact-row {
     flex-wrap: wrap;
     gap: 4pt 14pt;
@@ -570,29 +617,30 @@
     padding: 2px 0;
   }
   .volume-group {
-    --compact-control-size: 22px;
     display: flex;
     flex-direction: column;
     gap: 3px;
+    min-width: 0;
     padding: 3px 0;
     border-top: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.12));
   }
   .volume-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.4em;
-    font-size: 0.85em;
+    min-width: 0;
   }
   .volume-label {
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
     max-width: 14em;
   }
   .volume-dims,
   .volume-note {
-    font-size: 0.85em;
     opacity: 0.6;
     white-space: nowrap;
   }
@@ -602,19 +650,17 @@
   .icon-btn {
     display: inline-grid;
     place-items: center;
-    min-width: var(--compact-control-size, 22px);
-    height: var(--compact-control-size, 22px);
-    background: transparent;
+    width: var(--iso-ctrl-h);
+    height: var(--iso-ctrl-h);
+    padding: 0;
     border: none;
-    cursor: pointer;
+    border-radius: var(--iso-ctrl-radius);
+    background: transparent;
     color: inherit;
+    font-size: 0.875rem;
     line-height: 1;
     opacity: 0.7;
-    border-radius: 3px;
-  }
-  :is(.volume-group, .display-range) .icon-btn {
-    padding: 0;
-    font-size: 0.875rem;
+    cursor: pointer;
   }
   .icon-btn:hover {
     opacity: 1;
@@ -623,55 +669,71 @@
   .layer-row,
   .color-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.3em;
-    font-size: 0.85em;
-    input[type='color'] {
-      width: var(--compact-control-size);
-      height: var(--compact-control-size);
-      padding: 0;
-      border: 1px solid var(--border-color, #ccc);
-      border-radius: 3px;
-      box-sizing: border-box;
-      cursor: pointer;
-    }
+    min-width: 0;
     input[type='checkbox'] {
       margin: 0;
+      flex-shrink: 0;
+    }
+  }
+  .layer-row {
+    .slider-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+    }
+    .slider-field + .slider-field {
+      margin-inline-start: 0.7em;
+    }
+    .slider-field:has(.isovalue-slider) {
+      flex: 1 1 6em;
+    }
+    .isovalue-slider {
+      flex: 1 1 4em;
+      min-width: 3em;
+      margin: 0;
+    }
+    .opacity-slider {
+      width: 40px;
+      min-width: 0;
+      margin: 0;
+    }
+    .layer-value {
+      font-family: monospace;
+      font-variant-numeric: tabular-nums;
     }
   }
   .color-row {
-    --color-control-border: 1px solid var(--border-color, light-dark(#b8bec8, #555));
     padding-left: 1.4em;
-    flex-wrap: wrap;
     label {
       display: flex;
       align-items: center;
       gap: 4pt;
+      min-width: 0;
     }
     select {
-      max-width: 9em;
-      height: var(--compact-control-size);
-      box-sizing: border-box;
-      border: var(--color-control-border);
-      font-size: 1em;
-      font-family: inherit;
+      max-width: min(9em, 100%);
+    }
+    :global(.multiselect) {
+      flex: 1 1 10em;
+      min-width: 0;
+      font: inherit;
+      color: inherit;
     }
   }
   .range-input {
     width: 4.5em;
-    height: var(--compact-control-size);
-    font-size: 0.9em;
-    padding: 1px 2px;
-    box-sizing: border-box;
   }
   .color-range {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 3px;
-    white-space: nowrap;
   }
   .display-range {
-    font-size: 0.85em;
     gap: 4pt 8pt;
     .range-axis {
       display: flex;
@@ -679,20 +741,11 @@
       gap: 3pt;
       input {
         width: 3.8em;
-        font-size: 0.9em;
-        padding: 1px 2px;
-        box-sizing: border-box;
       }
     }
   }
   .compat-warning {
     cursor: help;
     color: light-dark(#b45309, #fbbf24);
-  }
-  .layer-value {
-    font-family: monospace;
-    font-size: 0.85em;
-    min-width: 3.5em;
-    text-align: right;
   }
 </style>

@@ -410,7 +410,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
       layer: { color_volume_idx: 1, colormap: `interpolateTurbo`, color_range: [-9, 9] },
       act: () => {
         const reset_button = document.querySelector<HTMLButtonElement>(
-          `button[aria-label="Reset color range"]`,
+          `button[aria-label="Reset colormap + range to auto-fit"]`,
         )
         expect(reset_button?.querySelector(`svg`)).not.toBeNull()
         reset_button?.click()
@@ -424,9 +424,11 @@ describe(`IsosurfaceControls multi-volume`, () => {
     const props = mount_layers([make_layer(0, layer as Partial<IsosurfaceLayer>)])
     act()
     expect(props.settings.layers?.[0]).toMatchObject(expected)
-    expect(Boolean(document.querySelector(`button[aria-label="Reset color range"]`))).toBe(
-      reset_visible,
-    )
+    expect(
+      Boolean(
+        document.querySelector(`button[aria-label="Reset colormap + range to auto-fit"]`),
+      ),
+    ).toBe(reset_visible)
   })
 
   test(`visibility checkbox toggles layer.visible`, () => {

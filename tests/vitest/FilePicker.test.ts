@@ -1,9 +1,11 @@
 import { type FileInfo, FilePicker } from '$lib'
-import { mount } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { flushSync, mount } from 'svelte'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`FilePicker`, () => {
+  afterEach(() => vi.useRealTimers())
+
   // Mock file data for testing
   const create_mock_file = (
     name: string,
@@ -210,23 +212,38 @@ describe(`FilePicker`, () => {
       expect(filtered[1].name).toBe(`another.xyz`)
     })
 
-    it(`handles filter state correctly`, () => {
-      // Test filter clearing and mutual exclusion
-      let active_category_filter: string | null = `crystal`
-      let active_type_filter: string | null = `xyz`
+    it(`toggles category/type filters on and off and keeps them mutually exclusive`, () => {
+      mount(FilePicker, {
+        target: document.body,
+        props: { files: mock_files, show_category_filters: true },
+      })
+      const legend_btn = (text: string): HTMLElement => {
+        const el = [...document.querySelectorAll<HTMLElement>(`.legend-item`)].find((item) =>
+          item.textContent?.includes(text),
+        )
+        if (!el) throw new Error(`Legend item not found: ${text}`)
+        return el
+      }
+      const click = (el: HTMLElement) => {
+        el.click()
+        flushSync()
+      }
+      const n_files = () => document.querySelectorAll(`.file-item`).length
+      const crystal = legend_btn(`crystal`)
+      const xyz = legend_btn(`XYZ`)
 
-      // Clear filters
-      active_category_filter = null
-      active_type_filter = null
-      expect(active_category_filter).toBeNull()
-      expect(active_type_filter).toBeNull()
-
-      // Test mutual exclusion
-      active_category_filter = `crystal`
-      active_type_filter = `xyz`
-      active_category_filter = null
-      expect(active_category_filter).toBeNull()
-      expect(active_type_filter).toBe(`xyz`)
+      click(crystal)
+      expect(crystal.getAttribute(`aria-pressed`)).toBe(`true`)
+      expect(n_files()).toBe(5)
+      click(crystal)
+      expect(crystal.getAttribute(`aria-pressed`)).toBe(`false`)
+      expect(n_files()).toBe(mock_files.length)
+      click(xyz)
+      expect(xyz.classList.contains(`active`)).toBe(true)
+      expect(n_files()).toBe(1)
+      click(crystal)
+      expect(crystal.getAttribute(`aria-pressed`)).toBe(`true`)
+      expect(xyz.classList.contains(`active`)).toBe(false)
     })
   })
 
@@ -356,6 +373,58 @@ describe(`FilePicker`, () => {
   })
 
   describe(`custom props`, () => {
+    it(`delays single-click when dblclick is handled and only dblclicks the pending file`, () => {
+      vi.useFakeTimers()
+      const on_click = vi.fn()
+      const on_dblclick = vi.fn()
+      const files = mock_files.slice(0, 2)
+      mount(FilePicker, {
+        target: document.body,
+        props: { files, on_click, on_dblclick },
+      })
+      const [first, second] = document.querySelectorAll<HTMLElement>(`.file-item`)
+      const fire = (el: HTMLElement, type: `click` | `dblclick` = `click`) => {
+        el.dispatchEvent(new MouseEvent(type, { bubbles: true }))
+        flushSync()
+      }
+      const settle = () => {
+        vi.advanceTimersByTime(250)
+        flushSync()
+      }
+
+      fire(first)
+      expect(on_click).not.toHaveBeenCalled()
+      settle()
+      expect(on_click).toHaveBeenCalledOnce()
+      expect(on_click.mock.calls[0][0].name).toBe(files[0].name)
+
+      on_click.mockClear()
+      fire(first)
+      fire(first, `dblclick`)
+      expect(on_dblclick).toHaveBeenCalledOnce()
+      expect(on_dblclick.mock.calls[0][0].name).toBe(files[0].name)
+      settle()
+      expect(on_click).not.toHaveBeenCalled()
+
+      on_click.mockClear()
+      on_dblclick.mockClear()
+      fire(first)
+      fire(second, `dblclick`) // different file → schedule as single-click
+      expect(on_dblclick).not.toHaveBeenCalled()
+      settle()
+      expect(on_click).toHaveBeenCalledOnce()
+      expect(on_click.mock.calls[0][0].name).toBe(files[1].name)
+
+      // Orphaned dblclick (no pending click) must not invoke on_dblclick
+      on_click.mockClear()
+      on_dblclick.mockClear()
+      fire(first, `dblclick`)
+      expect(on_dblclick).not.toHaveBeenCalled()
+      settle()
+      expect(on_click).toHaveBeenCalledOnce()
+      expect(on_click.mock.calls[0][0].name).toBe(files[0].name)
+    })
+
     it(`uses custom type_mapper to override file type detection`, () => {
       const files = [create_mock_file(`foo.custom`, `/files/foo.custom`)]
       const type_mapper = (file: FileInfo) =>

@@ -550,8 +550,8 @@
     margin: 1ex 1em;
     font-family: monospace;
     z-index: 1;
-    background: rgba(0, 0, 0, 0.5);
-    color: white;
+    background: light-dark(rgba(220, 224, 230, 0.9), rgba(0, 0, 0, 0.5));
+    color: light-dark(#222, white);
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 0.85em;

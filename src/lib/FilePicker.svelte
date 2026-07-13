@@ -55,13 +55,24 @@
 
   // Timer for distinguishing click from double-click (per-component state)
   let click_timer: ReturnType<typeof setTimeout> | null = null
+  let click_timer_file: string | null = null
+  const file_key = (file: FileInfo): string => file.url || file.name
 
   const clear_click_timer = () => {
     if (click_timer !== null) clearTimeout(click_timer)
     click_timer = null
+    click_timer_file = null
   }
   const is_activation_key = (event: KeyboardEvent): boolean =>
     event.key === `Enter` || event.key === ` `
+
+  const schedule_single_click = (file: FileInfo, event: MouseEvent) => {
+    click_timer_file = file_key(file)
+    click_timer = setTimeout(() => {
+      clear_click_timer()
+      on_click?.(file, event)
+    }, CLICK_DELAY)
+  }
 
   // Helper function to get the base file type (removing .gz extension)
   const get_base_file_type = (file: FileInfo): string => {
@@ -100,20 +111,17 @@
   }
 
   const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
-    const file_url = file.url || file.name // Get the URL to drag (falling back to name)
-
-    const payload = JSON.stringify({
-      name: file.name,
-      url: file_url,
-      type: file.type || get_base_file_type(file),
-      category: file.category,
-    })
-    // Set file data as JSON for applications that can handle it
-    event.dataTransfer?.setData(`application/json`, payload)
-
-    // Also set plain text as fallback for external applications
-    event.dataTransfer?.setData(`text/plain`, file_url)
-
+    const url = file_key(file)
+    event.dataTransfer?.setData(
+      `application/json`,
+      JSON.stringify({
+        name: file.name,
+        url,
+        type: file.type || get_base_file_type(file),
+        category: file.category,
+      }),
+    )
+    event.dataTransfer?.setData(`text/plain`, url)
     on_drag_start?.(file, event)
   }
 
@@ -181,19 +189,14 @@
       ondragend={() => on_drag_end?.()}
       onclick={(event) => {
         clear_click_timer()
-        if (on_dblclick) {
-          // Delay click to allow double-click to cancel it
-          click_timer = setTimeout(() => {
-            clear_click_timer()
-            on_click?.(file, event)
-          }, CLICK_DELAY)
-        } else {
-          on_click?.(file, event)
-        }
+        if (on_dblclick) schedule_single_click(file, event)
+        else on_click?.(file, event)
       }}
       ondblclick={(event) => {
+        const pending = click_timer_file
         clear_click_timer()
-        on_dblclick?.(file, event)
+        if (pending !== null && pending === file_key(file)) on_dblclick?.(file, event)
+        else schedule_single_click(file, event)
       }}
       onkeydown={(event) => {
         if (is_activation_key(event)) {
