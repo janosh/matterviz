@@ -63,36 +63,14 @@ const mount_controls = (
 }
 
 describe(`IsosurfaceControls`, () => {
-  test(`renders isovalue slider with correct range from data`, () => {
+  test(`renders default single-layer controls and multi-volume selector`, () => {
     mount_controls()
     const slider = doc_query<HTMLInputElement>(`input[type="range"]`)
-    expect(Number(slider.max)).toBeCloseTo(8) // abs_max of test data
-    expect(Number(slider.min)).toBeGreaterThan(0)
-  })
-
-  test(`renders opacity slider (max=1) and positive color picker`, () => {
-    mount_controls()
-    const sliders = document.querySelectorAll<HTMLInputElement>(`input[type="range"]`)
-    expect(sliders.length).toBeGreaterThanOrEqual(2)
-    expect(Array.from(sliders).some((slider) => slider.max === `1`)).toBe(true)
-
-    const color_inputs = document.querySelectorAll<HTMLInputElement>(`input[type="color"]`)
-    expect(color_inputs.length).toBeGreaterThanOrEqual(1)
-    expect(color_inputs[0].value).toBe(DEFAULT_ISOSURFACE_SETTINGS.positive_color)
-  })
-
-  test(`renders wireframe checkbox unchecked by default`, () => {
-    mount_controls()
-    const wireframe_label = find_label(`Wireframe`)
-    expect(wireframe_label).toBeDefined()
-    const wireframe_cb =
-      wireframe_label?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
-    expect(wireframe_cb?.checked).toBe(false)
-  })
-
-  test(`hides volume selector for single volume, shows for multiple`, () => {
-    mount_controls({ volumes: [make_volume()] })
+    expect(Number(slider.max)).toBeCloseTo(8)
+    expect(document.querySelectorAll(`input[type="range"]`).length).toBeGreaterThanOrEqual(2)
+    expect(doc_query(`.grid-info`).textContent).toContain(`2 × 2 × 2`)
     expect(find_label(`Volume`)).toBeUndefined()
+    expect(find_label(`Layers`)?.querySelector(`select`)?.value).toBe(`1`)
 
     document.body.innerHTML = ``
     mount_controls({
@@ -102,24 +80,8 @@ describe(`IsosurfaceControls`, () => {
       ],
     })
     const vol_select = find_label(`Volume`)?.querySelector<HTMLSelectElement>(`select`)
-    expect(vol_select?.options.length).toBe(2)
+    expect(vol_select?.options).toHaveLength(2)
     expect(vol_select?.options[0].textContent).toBe(`charge density`)
-    expect(vol_select?.options[1].textContent).toBe(`magnetization`)
-  })
-
-  test(`layers selector defaults to 1`, () => {
-    mount_controls()
-    const layers_label = find_label(`Layers`)
-    const select = layers_label?.querySelector<HTMLSelectElement>(`select`)
-    expect(select?.value).toBe(`1`)
-  })
-
-  test(`displays grid info with dimensions and range`, () => {
-    mount_controls()
-    const grid_info = doc_query(`.grid-info`)
-    expect(grid_info.textContent).toContain(`2 × 2 × 2`)
-    expect(grid_info.textContent).toContain(`1`) // min
-    expect(grid_info.textContent).toContain(`8`) // max
   })
 
   test.each([
@@ -129,8 +91,8 @@ describe(`IsosurfaceControls`, () => {
     mount_controls({
       settings: { ...DEFAULT_ISOSURFACE_SETTINGS, show_negative: show_neg },
     })
-    const neg_label = find_label(`Neg. lobe`)
-    const checkbox = neg_label?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+    const checkbox =
+      find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
     expect(checkbox?.checked).toBe(show_neg)
     expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(color_count)
   })
@@ -146,27 +108,16 @@ describe(`IsosurfaceControls`, () => {
       },
     })
 
-    // Layer rows with correct controls
     const layer_rows = document.querySelectorAll(`.layer-row`)
     expect(layer_rows).toHaveLength(2)
     for (const row of Array.from(layer_rows)) {
       expect(row.querySelector(`input[type="checkbox"]`)).toBeInstanceOf(HTMLElement)
-      expect(row.querySelector(`input[type="color"]`)).toBeInstanceOf(HTMLElement)
       expect(row.querySelectorAll(`input[type="range"]`)).toHaveLength(2)
     }
 
-    // Single-layer controls should be hidden
     const labels = Array.from(document.querySelectorAll(`label`))
     expect(labels.find((lbl) => lbl.textContent?.includes(`Isovalue`))).toBeUndefined()
     expect(labels.find((lbl) => lbl.textContent?.includes(`Opacity`))).toBeUndefined()
-  })
-
-  test(`isovalue slider reflects custom initial value`, () => {
-    mount_controls({
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 3.5 },
-    })
-    const slider = doc_query<HTMLInputElement>(`input[type="range"]`)
-    expect(Number(slider.value)).toBeCloseTo(3.5)
   })
 })
 

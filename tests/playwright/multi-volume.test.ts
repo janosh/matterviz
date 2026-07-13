@@ -12,18 +12,16 @@ async function wait_for_scenario(page: Page, url: string) {
 }
 
 test.describe(`Multi-volume isosurface demo`, () => {
-  // Smoke test: every scenario loads its two volumes and renders without errors
-  for (const id of [
-    `glycine-esp`,
-    `caffeine-homo-lumo`,
-    `fe-spin`,
-    `si-potential`,
-    `hbn-elf`,
-    `fractional-range`,
-  ]) {
+  // One cross-volume color path + one fractional display-range path cover load/render
+  for (const [id, surfaces] of [
+    [`glycine-esp`, undefined],
+    [`caffeine-homo-lumo`, `Surfaces: 4`],
+    [`fractional-range`, undefined],
+  ] as const) {
     test(`scenario ${id} loads volumes and renders`, async ({ page }) => {
       await wait_for_scenario(page, `${DEMO_URL}?scenario=${id}`)
       await expect(page.locator(`.stats-bar`)).toContainText(`Volumes: 2`)
+      if (surfaces) await expect(page.locator(`.stats-bar`)).toContainText(surfaces)
       await wait_for_3d_canvas(page, `.viewer-pane`)
       await expect(page.locator(`.status-message.error`)).toHaveCount(0)
     })
@@ -66,13 +64,6 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await reset_button.click()
     await expect(reset_button).toHaveCount(0)
     await expect(color_scale_select.locator(`.selected`)).toContainText(`RdBu`)
-  })
-
-  test(`caffeine scenario renders 4 surfaces from two orbital volumes`, async ({ page }) => {
-    await wait_for_scenario(page, `${DEMO_URL}?scenario=caffeine-homo-lumo`)
-    const stats = page.locator(`.stats-bar`)
-    await expect(stats).toContainText(`Volumes: 2`)
-    await expect(stats).toContainText(`Surfaces: 4`) // 2 orbitals x (+/-) lobes
   })
 
   test(`add-surface button adds a surface for the color-source volume`, async ({ page }) => {

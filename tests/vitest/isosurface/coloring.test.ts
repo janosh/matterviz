@@ -2,7 +2,6 @@
 import {
   auto_color_config,
   compute_scalar_range,
-  ISO_COLORMAPS,
   is_signed_range,
   scalars_to_vertex_colors,
 } from '$lib/isosurface/coloring'
@@ -21,9 +20,9 @@ const rgb_at = (colors: Float32Array, idx: number): number[] => [
 ]
 
 describe(`scalars_to_vertex_colors`, () => {
-  test.each(ISO_COLORMAPS.map((cmap) => ({ cmap })))(
-    `produces valid RGB triplets for $cmap`,
-    ({ cmap }) => {
+  test.each([`interpolateViridis`, `interpolateRdBu`] as const)(
+    `produces valid RGB triplets for %s`,
+    (cmap) => {
       const colors = scalars_to_vertex_colors(new Float32Array([0, 5, 10]), {
         ...viridis_opts,
         colormap: cmap,

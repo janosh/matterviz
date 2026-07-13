@@ -4,7 +4,19 @@ import type { CameraProjection } from '$lib/settings'
 import type { Gizmo } from '@threlte/extras'
 import type { ComponentProps } from 'svelte'
 import type { Camera, Scene, Vector3 } from 'three'
-import { page_visibility } from './visibility.svelte'
+
+// Reactive page visibility — pause auto-rotation while the tab/window is
+// hidden. Desktop embedders like Tauri often disable background throttling,
+// which would otherwise leave every auto-rotating WebGL canvas burning GPU.
+export const page_visibility = $state({
+  visible: typeof document === `undefined` || document.visibilityState === `visible`,
+})
+
+if (typeof document !== `undefined`) {
+  document.addEventListener(`visibilitychange`, () => {
+    page_visibility.visible = document.visibilityState === `visible`
+  })
+}
 
 // Threlte pointer event type for mesh interactions
 export type ThreltePointerEvent = { point: Vector3; nativeEvent: PointerEvent }

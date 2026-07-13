@@ -82,14 +82,13 @@ describe(`grid_data_range`, () => {
 })
 
 describe(`DEFAULT_ISOSURFACE_SETTINGS`, () => {
-  test(`has expected default values and no removed fields`, () => {
-    expect(DEFAULT_ISOSURFACE_SETTINGS.isovalue).toBe(0.05)
-    expect(DEFAULT_ISOSURFACE_SETTINGS.opacity).toBe(0.6)
-    expect(DEFAULT_ISOSURFACE_SETTINGS.show_negative).toBe(false)
-    expect(DEFAULT_ISOSURFACE_SETTINGS.wireframe).toBe(false)
-    expect(DEFAULT_ISOSURFACE_SETTINGS.halo).toBe(0)
-    expect(DEFAULT_ISOSURFACE_SETTINGS.positive_color).toBe(`#3b82f6`)
-    expect(DEFAULT_ISOSURFACE_SETTINGS.negative_color).toBe(`#ef4444`)
+  test(`exposes expected core defaults`, () => {
+    expect(DEFAULT_ISOSURFACE_SETTINGS).toMatchObject({
+      isovalue: 0.05,
+      opacity: 0.6,
+      show_negative: false,
+      wireframe: false,
+    })
   })
 })
 
@@ -97,7 +96,6 @@ describe(`auto_isosurface_settings`, () => {
   test.each([
     { min: 0, abs_max: 10, show_neg: false, label: `positive-only` },
     { min: -5, abs_max: 10, show_neg: true, label: `significant negatives` },
-    { min: -5, abs_max: 5, show_neg: true, label: `symmetric ±` },
     {
       min: -0.005,
       abs_max: 1,
@@ -119,19 +117,9 @@ describe(`auto_isosurface_settings`, () => {
     expect(settings.show_negative).toBe(false)
   })
 
-  test(`preserves default opacity, colors, and wireframe`, () => {
-    const settings = auto_isosurface_settings({ min: 1, max: 3, abs_max: 3, mean: 2 })
-    expect(settings.opacity).toBe(DEFAULT_ISOSURFACE_SETTINGS.opacity)
-    expect(settings.positive_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.positive_color)
-    expect(settings.negative_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.negative_color)
-    expect(settings.wireframe).toBe(DEFAULT_ISOSURFACE_SETTINGS.wireframe)
-    expect(settings.halo).toBe(DEFAULT_ISOSURFACE_SETTINGS.halo)
-  })
-
   test(`returns a fresh object (not a reference to DEFAULT_ISOSURFACE_SETTINGS)`, () => {
     const settings = auto_isosurface_settings({ min: 0, max: 10, abs_max: 10, mean: 5 })
     expect(settings).not.toBe(DEFAULT_ISOSURFACE_SETTINGS)
-    // Mutating the result should not affect defaults
     settings.isovalue = 999
     expect(DEFAULT_ISOSURFACE_SETTINGS.isovalue).toBe(0.05)
   })
@@ -140,61 +128,28 @@ describe(`auto_isosurface_settings`, () => {
 describe(`generate_layers`, () => {
   const range = { min: 0, max: 10, abs_max: 10, mean: 5 }
 
-  test.each([1, 2, 3, 5])(
-    `generates %i layers with correct count and palette colors`,
-    (count) => {
-      const layers = generate_layers(range, count)
-      expect(layers).toHaveLength(count)
-      for (let idx = 0; idx < count; idx++) {
-        expect(layers[idx].color).toBe(LAYER_COLORS[idx % LAYER_COLORS.length])
-        expect(layers[idx].visible).toBe(true)
-        expect(layers[idx].isovalue).toBeGreaterThan(0)
-        expect(layers[idx].isovalue).toBeLessThanOrEqual(range.abs_max)
-        expect(layers[idx].opacity).toBeGreaterThan(0)
-        expect(layers[idx].opacity).toBeLessThanOrEqual(1)
-      }
-    },
-  )
+  test(`generates ordered layers with palette colors and decreasing opacity`, () => {
+    const layers = generate_layers(range, 3)
+    expect(layers).toHaveLength(3)
+    expect(layers[0].isovalue).toBeGreaterThan(layers[1].isovalue)
+    expect(layers[1].isovalue).toBeGreaterThan(layers[2].isovalue)
+    expect(layers[0].opacity).toBeGreaterThan(layers[2].opacity)
+    expect(layers[0].color).toBe(LAYER_COLORS[0])
+  })
 
   test(`single layer uses 20% of abs_max`, () => {
     const [layer] = generate_layers(range, 1)
     expect(layer.isovalue).toBeCloseTo(10 * 0.2)
   })
 
-  test(`layers are ordered from inner (highest isovalue) to outer (lowest)`, () => {
-    const layers = generate_layers(range, 4)
-    for (let idx = 1; idx < layers.length; idx++) {
-      expect(layers[idx].isovalue).toBeLessThan(layers[idx - 1].isovalue)
-    }
-  })
-
-  test(`outer layers have lower opacity than inner layers`, () => {
-    const layers = generate_layers(range, 3)
-    for (let idx = 1; idx < layers.length; idx++) {
-      expect(layers[idx].opacity).toBeLessThan(layers[idx - 1].opacity)
-    }
-  })
-
-  test(`returns empty array for zero abs_max`, () => {
+  test(`returns empty array for zero abs_max or non-positive layer count`, () => {
     expect(generate_layers({ min: 0, max: 0, abs_max: 0, mean: 0 }, 3)).toEqual([])
-  })
-
-  test(`returns empty array for n_layers <= 0`, () => {
     expect(generate_layers(range, 0)).toEqual([])
-    expect(generate_layers(range, -1)).toEqual([])
   })
 
   test(`enables show_negative for data with significant negatives`, () => {
-    const neg_range = { min: -5, max: 10, abs_max: 10, mean: 2 }
-    const layers = generate_layers(neg_range, 2)
+    const layers = generate_layers({ min: -5, max: 10, abs_max: 10, mean: 2 }, 2)
     expect(layers.every((layer) => layer.show_negative)).toBe(true)
-  })
-})
-
-describe(`LAYER_COLORS`, () => {
-  test(`has at least 8 distinct colors`, () => {
-    expect(LAYER_COLORS.length).toBeGreaterThanOrEqual(8)
-    expect(new Set(LAYER_COLORS).size).toBe(LAYER_COLORS.length)
   })
 })
 

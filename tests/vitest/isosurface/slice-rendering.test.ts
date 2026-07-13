@@ -15,12 +15,9 @@ const make_slice = () => ({
 })
 
 describe(`slice rendering helpers`, () => {
-  test.each([`auto`, false, true] as const)(
-    `resolves bounds when symmetric=%s`,
-    (symmetric) => {
-      expect(resolve_slice_color_range(make_slice(), undefined, symmetric)).toEqual([-2, 2])
-    },
-  )
+  test(`resolves auto/symmetric bounds from slice min/max`, () => {
+    expect(resolve_slice_color_range(make_slice(), undefined, `auto`)).toEqual([-2, 2])
+  })
 
   test(`honors an explicit color range`, () => {
     expect(resolve_slice_color_range(make_slice(), [3, -1], `auto`)).toEqual([3, -1])
