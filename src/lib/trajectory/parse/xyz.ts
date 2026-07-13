@@ -54,10 +54,13 @@ const EXTXYZ_BOOL = new Map<string, boolean>([
 
 // Parse pbc="T F T" / pbc=T F T boolean triples from an extxyz comment line
 export function parse_extxyz_pbc(comment: string): Pbc | undefined {
-  const match = /\bpbc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+\s+[^\s]+\s+[^\s]+))/iu.exec(
-    comment,
-  )
-  const tokens = (match?.[1] ?? match?.[2] ?? match?.[3])?.trim().split(/\s+/u)
+  const match =
+    /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>[^\s]+\s+[^\s]+\s+[^\s]+))/iu.exec(
+      comment,
+    )
+  const tokens = (match?.groups?.double ?? match?.groups?.single ?? match?.groups?.bare)
+    ?.trim()
+    .split(/\s+/u)
   if (tokens?.length !== 3) return undefined
   const first = EXTXYZ_BOOL.get(tokens[0].toLowerCase())
   const second = EXTXYZ_BOOL.get(tokens[1].toLowerCase())
