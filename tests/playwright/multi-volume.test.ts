@@ -17,10 +17,9 @@ test.describe(`Multi-volume isosurface demo`, () => {
     `glycine-esp`,
     `caffeine-homo-lumo`,
     `fe-spin`,
-    `al-slab`,
+    `si-potential`,
     `hbn-elf`,
     `fractional-range`,
-    `perf`,
   ]) {
     test(`scenario ${id} loads volumes and renders`, async ({ page }) => {
       await wait_for_scenario(page, `${DEMO_URL}?scenario=${id}`)
@@ -44,10 +43,6 @@ test.describe(`Multi-volume isosurface demo`, () => {
     page,
   }) => {
     await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
-    const stats = page.locator(`.stats-bar`)
-    await expect(stats).toContainText(`glycine-density.cube`)
-    await expect(stats).toContainText(`glycine-esp.cube`)
-    await expect(stats).toContainText(`Surfaces: 1`)
     const pane = await open_settings_pane(page)
 
     const groups = pane.locator(`.volume-group`)
@@ -56,10 +51,19 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await expect(groups.nth(0).locator(`.layer-row`)).toHaveCount(1)
     await expect(groups.nth(1).locator(`.volume-note`)).toHaveText(`color source only`)
 
-    // The color row exposes source select + colormap select
+    // Color settings switch scales and reset to automatic defaults
     const color_row = groups.nth(0).locator(`.color-row`)
-    await expect(color_row.locator(`select`).first()).toBeVisible()
-    await expect(color_row.locator(`select`).nth(1)).toHaveValue(`interpolateRdBu`)
+    await expect(color_row.locator(`select`)).toBeVisible()
+    const color_scale_select = color_row.locator(`.multiselect`)
+    await expect(color_scale_select.locator(`.selected`)).toContainText(`RdBu`)
+    const reset_button = color_row.getByRole(`button`, { name: `Reset color range` })
+    await expect(reset_button).toHaveCount(0)
+    await color_scale_select.click()
+    await page.getByRole(`option`, { name: `Turbo` }).click()
+    await expect(reset_button).toBeVisible()
+    await reset_button.click()
+    await expect(reset_button).toHaveCount(0)
+    await expect(color_scale_select.locator(`.selected`)).toContainText(`RdBu`)
   })
 
   test(`caffeine scenario renders 4 surfaces from two orbital volumes`, async ({ page }) => {

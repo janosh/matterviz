@@ -157,15 +157,14 @@
       ],
     },
     {
-      id: `al-slab`,
-      title: `Slab density × potential (Al 111)`,
-      description: `Al(111) slab density colored by the local potential (LOCPOT) from a second file — the classic work-function picture, tiled 3×3×1 with seamless colors.`,
-      files: [`Al-slab-CHGCAR.gz`, `Al-slab-LOCPOT.gz`],
-      supercell: `3x3x1`,
+      id: `si-potential`,
+      title: `Density × potential (Si diamond)`,
+      description: `Si diamond CHGCAR colored by a matching LOCPOT on two 80×80×96 grids (~614k points each). Drag isovalue vs colormap-range to compare mesh rebuild vs recolor cost.`,
+      files: [`large-grid-CHGCAR.gz`, `large-grid-LOCPOT.gz`],
       layers: (volumes) => [
         colored_layer(volumes, 0, 1, {
-          isovalue: volumes[0].data_range.abs_max * 0.3,
-          opacity: 0.95,
+          isovalue: volumes[0].data_range.abs_max * 0.25,
+          opacity: 0.9,
           colormap: `interpolateTurbo`,
         }),
       ],
@@ -207,19 +206,6 @@
         colored_layer(volumes, 0, 1, {
           isovalue: volumes[0].data_range.abs_max * 0.12,
           opacity: 0.85,
-        }),
-      ],
-    },
-    {
-      id: `perf`,
-      title: `Perf: two 80×80×96 grids`,
-      description: `Stress test: two 614k-point volumes, CHGCAR geometry colored by a matching LOCPOT. Drag the isovalue vs colormap-range controls to compare rebuild vs recolor cost.`,
-      files: [`large-grid-CHGCAR.gz`, `large-grid-LOCPOT.gz`],
-      layers: (volumes) => [
-        colored_layer(volumes, 0, 1, {
-          isovalue: volumes[0].data_range.abs_max * 0.25,
-          opacity: 0.9,
-          colormap: `interpolateTurbo`,
         }),
       ],
     },
@@ -559,6 +545,8 @@
   }
   .scenario-label {
     position: absolute;
+    top: 4px;
+    left: 0;
     margin: 1ex 1em;
     font-family: monospace;
     z-index: 1;

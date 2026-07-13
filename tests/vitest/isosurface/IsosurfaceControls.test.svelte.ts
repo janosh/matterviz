@@ -315,12 +315,19 @@ describe(`IsosurfaceControls multi-volume`, () => {
 
   test(`selecting a color source reveals colormap select and range inputs`, () => {
     mount_colored({ color_range: [-1, 1] })
-    const cmap_select = find_select_with_option(`RdBu`)
-    expect(cmap_select?.value).toBe(`interpolateRdBu`)
+    const color_scale = doc_query<HTMLInputElement>(
+      `input[aria-label="Colormap for sampled values"]`,
+    ).closest(`.multiselect`)
+    expect(color_scale?.querySelector(`.selected`)?.textContent).toContain(`RdBu`)
     const range_inputs = document.querySelectorAll<HTMLInputElement>(
       `input[type="number"].range-input`,
     )
     expect(range_inputs).toHaveLength(2)
+    expect(Array.from(range_inputs, (input) => input.getAttribute(`aria-label`))).toEqual([
+      `Color range minimum`,
+      `Color range maximum`,
+    ])
+    expect(document.querySelector(`.color-range`)?.textContent).toContain(`Range:`)
     expect(Number(range_inputs[0].value)).toBe(-1)
     expect(Number(range_inputs[1].value)).toBe(1)
   })
@@ -369,35 +376,57 @@ describe(`IsosurfaceControls multi-volume`, () => {
     flushSync()
   }
 
+  const change_color_scale = (label: string) => {
+    const input = doc_query<HTMLInputElement>(
+      `input[aria-label="Colormap for sampled values"]`,
+    )
+    input.dispatchEvent(new MouseEvent(`mouseup`, { bubbles: true }))
+    flushSync()
+    const option = Array.from(document.querySelectorAll<HTMLElement>(`[role="option"]`)).find(
+      (element) => element.textContent?.includes(label),
+    )
+    if (!option) throw new Error(`color scale ${label} not found`)
+    option.click()
+    flushSync()
+  }
+
   test.each([
     {
       desc: `colormap select updates the layer's colormap`,
       layer: { color_volume_idx: 1, colormap: `interpolateViridis` },
-      act: () => change_select(find_select_with_option(`Turbo`) ?? null, `interpolateTurbo`),
+      act: () => change_color_scale(`Turbo`),
       expected: { colormap: `interpolateTurbo` },
+      reset_visible: true,
     },
     {
       desc: `picking "None (solid)" clears color source, colormap, and range`,
       layer: { color_volume_idx: 1, colormap: `interpolateRdBu`, color_range: [-1, 1] },
       act: () => change_select(find_select_with_option(`None (solid)`) ?? null, `-1`),
       expected: { color_volume_idx: undefined, colormap: undefined, color_range: undefined },
+      reset_visible: false,
     },
     {
       desc: `reset button restores auto colormap and clears explicit range`,
       layer: { color_volume_idx: 1, colormap: `interpolateTurbo`, color_range: [-9, 9] },
       act: () => {
-        document
-          .querySelector<HTMLButtonElement>(`button[aria-label="Reset color range"]`)
-          ?.click()
+        const reset_button = document.querySelector<HTMLButtonElement>(
+          `button[aria-label="Reset color range"]`,
+        )
+        expect(reset_button?.querySelector(`svg`)).not.toBeNull()
+        reset_button?.click()
         flushSync()
       },
       // colormap auto-resets to Viridis for all-positive data
       expected: { color_range: undefined, colormap: `interpolateViridis` },
+      reset_visible: false,
     },
-  ])(`$desc`, ({ layer, act, expected }) => {
+  ])(`$desc`, ({ layer, act, expected, reset_visible }) => {
     const props = mount_layers([make_layer(0, layer as Partial<IsosurfaceLayer>)])
     act()
     expect(props.settings.layers?.[0]).toMatchObject(expected)
+    expect(Boolean(document.querySelector(`button[aria-label="Reset color range"]`))).toBe(
+      reset_visible,
+    )
   })
 
   test(`visibility checkbox toggles layer.visible`, () => {

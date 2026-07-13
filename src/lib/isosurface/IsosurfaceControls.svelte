@@ -3,11 +3,12 @@
   // Single-isovalue mode preserves the classic UI; explicit-layers mode groups
   // surfaces under their geometry-source volume and exposes cross-volume scalar
   // coloring (color source, colormap, value range) per surface.
+  import Icon from '$lib/Icon.svelte'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
-  import { ColorBar } from '$lib/plot'
+  import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-multiselect/attachments'
   import { auto_color_config, DEFAULT_ISO_COLORMAP, ISO_COLORMAPS } from './coloring'
   import type { DisplayRange } from './sampling'
@@ -183,8 +184,6 @@
     const is_default = range.every(([lo, hi]) => lo === 0 && hi === 1)
     settings.display_range = is_default ? undefined : range
   }
-
-  const colormap_name = (name: string): string => name.replace(/^interpolate/, ``)
 </script>
 
 {#snippet color_source_select(
@@ -217,6 +216,7 @@
     placeholder="auto"
     value={explicit_range ? Number(explicit_range[bound].toPrecision(4)) : ``}
     onchange={(event) => update_color_range(layer_idx, bound, event.currentTarget.value)}
+    aria-label={bound === 0 ? `Color range minimum` : `Color range maximum`}
     {@attach tooltip({
       content: `Value mapped to the colormap ${
         bound === 0 ? `start` : `end`
@@ -342,6 +342,7 @@
           {@const layer_abs_max = Math.max(vol.data_range.abs_max, 0.001)}
           {@const layer_step = layer_abs_max / 200}
           {@const warning = compat_warning(layer)}
+          {@const color_vol = color_vol_of(layer)}
           <div class="layer-row">
             <input
               type="checkbox"
@@ -397,41 +398,43 @@
               (idx) => set_color_source(layer_idx, idx),
               `Color surface by another volume's values`,
             )}
-            {#if color_vol_of(layer)}
+            {#if color_vol}
               {@const explicit_range = layer.color_range}
-              <select
+              {@const auto_colormap = auto_color_config(color_vol.data_range).colormap}
+              <ColorScaleSelect
+                options={[...ISO_COLORMAPS]}
                 value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
-                onchange={(event) =>
+                selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
+                onadd={({ option }) =>
                   update_layer(layer_idx, {
-                    colormap: event.currentTarget.value as D3InterpolateName,
+                    colormap: option as D3InterpolateName,
                   })}
+                colorbar={{
+                  bar_style: `height: 8px`,
+                  title_style: `width: 4em; font-size: 1em;`,
+                }}
+                liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
+                style="--sms-min-height: var(--compact-control-size); --sms-border: var(--color-control-border); --sms-border-radius: 3px; width: 10em"
+                aria-label="Colormap for sampled values"
                 {@attach tooltip({ content: `Colormap for sampled values` })}
-              >
-                {#each ISO_COLORMAPS as cmap (cmap)}
-                  <option value={cmap}>{colormap_name(cmap)}</option>
-                {/each}
-              </select>
-              {@render range_bound_input(layer_idx, 0, explicit_range)}
-              <ColorBar
-                color_scale={layer.colormap ?? DEFAULT_ISO_COLORMAP}
-                range={explicit_range
-                  ? [
-                      Math.min(explicit_range[0], explicit_range[1]),
-                      Math.max(explicit_range[0], explicit_range[1]),
-                    ]
-                  : [0, 1]}
-                tick_labels={0}
-                wrapper_style="flex: 1; min-width: 40px"
-                bar_style="height: 10px"
               />
-              {@render range_bound_input(layer_idx, 1, explicit_range)}
-              <button
-                type="button"
-                class="icon-btn"
-                onclick={() => set_color_source(layer_idx, layer.color_volume_idx ?? null)}
-                aria-label="Reset color range"
-                {@attach tooltip({ content: `Reset colormap + range to auto-fit` })}>⟲</button
-              >
+              <div class="color-range" aria-label="Colormap value range">
+                <span>Range:</span>
+                {@render range_bound_input(layer_idx, 0, explicit_range)}
+                <span aria-hidden="true">&ndash;</span>
+                {@render range_bound_input(layer_idx, 1, explicit_range)}
+              </div>
+              {#if explicit_range || (layer.colormap ?? DEFAULT_ISO_COLORMAP) !== auto_colormap}
+                <button
+                  type="button"
+                  class="icon-btn"
+                  onclick={() => set_color_source(layer_idx, layer.color_volume_idx ?? null)}
+                  aria-label="Reset color range"
+                  {@attach tooltip({ content: `Reset colormap + range to auto-fit` })}
+                >
+                  <Icon icon="Reset" aria-hidden="true" style="--icon-size: 12px" />
+                </button>
+              {/if}
               {#if warning}
                 <span
                   class="compat-warning"
@@ -535,8 +538,10 @@
           class="icon-btn"
           onclick={() => (settings.display_range = undefined)}
           aria-label="Reset display range"
-          {@attach tooltip({ content: `Follow the structure supercell again` })}>⟲</button
+          {@attach tooltip({ content: `Follow the structure supercell again` })}
         >
+          <Icon icon="Reset" aria-hidden="true" style="--icon-size: 12px" />
+        </button>
       {/if}
     </div>
   {/if}
@@ -565,6 +570,7 @@
     padding: 2px 0;
   }
   .volume-group {
+    --compact-control-size: 22px;
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -594,14 +600,21 @@
     margin-left: auto;
   }
   .icon-btn {
+    display: inline-grid;
+    place-items: center;
+    min-width: var(--compact-control-size, 22px);
+    height: var(--compact-control-size, 22px);
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 0 4px;
-    font-size: 1em;
-    line-height: 1.2;
+    color: inherit;
+    line-height: 1;
     opacity: 0.7;
     border-radius: 3px;
+  }
+  :is(.volume-group, .display-range) .icon-btn {
+    padding: 0;
+    font-size: 0.875rem;
   }
   .icon-btn:hover {
     opacity: 1;
@@ -614,8 +627,8 @@
     gap: 0.3em;
     font-size: 0.85em;
     input[type='color'] {
-      width: 24px;
-      height: 20px;
+      width: var(--compact-control-size);
+      height: var(--compact-control-size);
       padding: 0;
       border: 1px solid var(--border-color, #ccc);
       border-radius: 3px;
@@ -627,6 +640,7 @@
     }
   }
   .color-row {
+    --color-control-border: 1px solid var(--border-color, light-dark(#b8bec8, #555));
     padding-left: 1.4em;
     flex-wrap: wrap;
     label {
@@ -636,13 +650,25 @@
     }
     select {
       max-width: 9em;
+      height: var(--compact-control-size);
+      box-sizing: border-box;
+      border: var(--color-control-border);
+      font-size: 1em;
+      font-family: inherit;
     }
   }
   .range-input {
     width: 4.5em;
+    height: var(--compact-control-size);
     font-size: 0.9em;
     padding: 1px 2px;
     box-sizing: border-box;
+  }
+  .color-range {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
   }
   .display-range {
     font-size: 0.85em;

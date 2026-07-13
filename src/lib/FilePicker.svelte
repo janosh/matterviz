@@ -55,13 +55,13 @@
 
   // Timer for distinguishing click from double-click (per-component state)
   let click_timer: ReturnType<typeof setTimeout> | null = null
-  let click_timer_file: string | null = null
 
   const clear_click_timer = () => {
-    if (click_timer) clearTimeout(click_timer)
+    if (click_timer !== null) clearTimeout(click_timer)
     click_timer = null
-    click_timer_file = null
   }
+  const is_activation_key = (event: KeyboardEvent): boolean =>
+    event.key === `Enter` || event.key === ` `
 
   // Helper function to get the base file type (removing .gz extension)
   const get_base_file_type = (file: FileInfo): string => {
@@ -94,13 +94,9 @@
   )
 
   const toggle_filter = (kind: FilterKind, filter: string) => {
-    if (kind === `category`) {
-      active_category_filter = active_category_filter === filter ? null : filter
-      active_type_filter = null
-    } else {
-      active_type_filter = active_type_filter === filter ? null : filter
-      active_category_filter = null
-    }
+    const active_filter = kind === `category` ? active_category_filter : active_type_filter
+    active_category_filter = kind === `category` && active_filter !== filter ? filter : null
+    active_type_filter = kind === `type` && active_filter !== filter ? filter : null
   }
 
   const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
@@ -123,9 +119,7 @@
 
   // Get unique file types/categories for format/category filters
   let uniq_formats = $derived([...new Set(files.map(get_base_file_type))].sort())
-  let uniq_categories = $derived(
-    [...new Set(files.map(get_category_id))].filter(Boolean).sort(),
-  )
+  let uniq_categories = $derived([...new Set(files.map(get_category_id))].sort())
 </script>
 
 <div class="file-picker" class:vertical={layout === `vertical`} {...rest}>
@@ -135,11 +129,8 @@
       <span
         class="legend-item"
         class:active={is_active}
-        onclick={() => category && toggle_filter(`category`, category)}
-        onkeydown={(evt) =>
-          (evt.key === `Enter` || evt.key === ` `) &&
-          category &&
-          toggle_filter(`category`, category)}
+        onclick={() => toggle_filter(`category`, category)}
+        onkeydown={(event) => is_activation_key(event) && toggle_filter(`category`, category)}
         role="button"
         tabindex="0"
         aria-pressed={is_active}
@@ -158,8 +149,7 @@
         class="legend-item format-item"
         class:active={is_active}
         onclick={() => toggle_filter(`type`, format)}
-        onkeydown={(evt) =>
-          (evt.key === `Enter` || evt.key === ` `) && toggle_filter(`type`, format)}
+        onkeydown={(event) => is_activation_key(event) && toggle_filter(`type`, format)}
         role="button"
         tabindex="0"
         {@attach tooltip({ content: `Filter to show only ${format.toUpperCase()} files` })}
@@ -193,13 +183,9 @@
         clear_click_timer()
         if (on_dblclick) {
           // Delay click to allow double-click to cancel it
-          const target_file = file.name
-          click_timer_file = target_file
           click_timer = setTimeout(() => {
-            if (click_timer_file === target_file) {
-              clear_click_timer()
-              on_click?.(file, event)
-            }
+            clear_click_timer()
+            on_click?.(file, event)
           }, CLICK_DELAY)
         } else {
           on_click?.(file, event)
@@ -210,7 +196,7 @@
         on_dblclick?.(file, event)
       }}
       onkeydown={(event) => {
-        if ([`Enter`, ` `].includes(event.key)) {
+        if (is_activation_key(event)) {
           event.preventDefault()
           clear_click_timer()
           on_click?.(file, event)
@@ -316,9 +302,9 @@
   .file-item {
     display: flex;
     align-items: center;
-    padding: 4pt 8pt;
+    padding: 2pt 8pt;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
-    border-radius: 6px;
+    border-radius: 9px;
     cursor: grab;
     background: light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.1));
     transition: all 0.2s ease;
