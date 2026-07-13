@@ -90,6 +90,12 @@ const set_lattice_props = (page: Page, detail: Record<string, unknown>): Promise
     globalThis.dispatchEvent(new CustomEvent(`set-lattice-props`, { detail: props }))
   }, detail)
 
+// Dispatch a `set-scene-props` event with the given scene props.
+const set_scene_props = (page: Page, detail: Record<string, unknown>): Promise<void> =>
+  page.evaluate((props) => {
+    globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
+  }, detail)
+
 // Screenshot the canvas and assert it rendered non-trivial pixel data.
 const expect_canvas_renders = async (canvas: Locator): Promise<Buffer> => {
   const screenshot = await canvas.screenshot()
@@ -547,38 +553,16 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
 
-    const dispatch_disordered_site = (elements: [string, string]) =>
-      page.evaluate((site_elements) => {
-        const dispatch = (type: string, detail: unknown) =>
-          globalThis.dispatchEvent(new CustomEvent(type, { detail }))
-        const structure = {
-          sites: [
-            {
-              species: site_elements.map((element, species_idx) => ({
-                element,
-                occu: 0.49 + species_idx * 0.02,
-                oxidation_state: 0,
-              })),
-              abc: [0, 0, 0],
-              xyz: [0, 0, 0],
-              label: `${site_elements[0]}1`,
-              properties: {},
-            },
-          ],
-          properties: {},
-        }
-        dispatch(`set-structure`, { structure })
-        // auto_rotate defaults to 0.2 which would keep the canvas changing forever;
-        // disable it so the settled-screenshot comparison below is sound.
-        // Camera looks down the Y axis: species wedges are azimuthal (phi) slices
-        // around Y, so the top-down view shows every wedge regardless of phi origin.
-        dispatch(`set-scene-props`, {
-          same_size_atoms: true,
-          atom_radius: 2,
-          auto_rotate: 0,
-          camera_position: [0, 8, 0],
-        })
-      }, elements)
+    // Pole-on rotation shows all species wedges as pie slices. auto_rotate (default 0.2)
+    // must be off so the canvas can settle for the pixel comparison below.
+    const dispatch_disordered_site = async (elements: [string, string]) => {
+      await load_centered_scene(
+        page,
+        elements.map((element, species_idx) => ({ element, occu: 0.49 + species_idx * 0.02 })),
+        [-Math.PI / 2, 0, 0],
+      )
+      await set_scene_props(page, { same_size_atoms: true, auto_rotate: 0 })
+    }
 
     // Screenshot once the canvas stops changing (framing/damping settled)
     const settled_screenshot = async (): Promise<Buffer> => {
@@ -816,15 +800,10 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
 
-    const set_scene_props = (detail: Record<string, unknown>) =>
-      page.evaluate((props) => {
-        globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
-      }, detail)
-
-    await set_scene_props({ same_size_atoms: false, atom_radius: 1, show_atoms: true })
+    await set_scene_props(page, { same_size_atoms: false, atom_radius: 1, show_atoms: true })
     const per_element_radii = await expect_canvas_renders(canvas)
 
-    await set_scene_props({ same_size_atoms: true })
+    await set_scene_props(page, { same_size_atoms: true })
     await expect_canvas_changed(canvas, per_element_radii)
 
     expect(console_errors).toHaveLength(0)

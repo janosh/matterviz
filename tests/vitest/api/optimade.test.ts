@@ -65,10 +65,11 @@ describe(`fetch_with_cors_proxy behavior (via fetch_optimade_providers)`, () => 
   test(`unknown provider soft-fails suggested structures without fetching`, async () => {
     const mock_fetch = vi.fn()
     vi.stubGlobal(`fetch`, mock_fetch)
-    vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
 
     await expect(fetch_suggested_structures(`unknown`, MOCK_PROVIDERS)).resolves.toEqual([])
     expect(mock_fetch).not.toHaveBeenCalled()
+    expect(warn_spy).toHaveBeenCalled()
   })
 
   test(`HTTP error status from direct fetch surfaces instead of hammering proxies`, async () => {
