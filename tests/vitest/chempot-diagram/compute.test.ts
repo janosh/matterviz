@@ -1085,8 +1085,10 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     expect(ytos_ti_o_s.elements).toEqual([`O`, `S`, `Ti`])
     expect(ytos_y_ti_o.lims).toHaveLength(3)
     expect(ytos_ti_o_s.lims).toHaveLength(3)
-    for (const pts of Object.values(ytos_y_ti_o.domains)) {
-      for (const pt of pts) expect(pt).toHaveLength(3)
+    for (const projection of [ytos_y_ti_o, ytos_ti_o_s]) {
+      for (const points of Object.values(projection.domains)) {
+        for (const point of points) expect(point).toHaveLength(3)
+      }
     }
   })
 

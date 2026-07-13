@@ -176,6 +176,8 @@
 
   // Raw (non-renormalized) elemental refs for true formation energies
   const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
+  // Memoize separately so color-control toggles don't re-scan all entries
+  const energy_stats = $derived(get_energy_stats_by_formula(temp_filtered_entries))
   const { colors: domain_colors, color_range } = $derived(
     get_domain_color_data({
       formulas: Object.keys(draw_domains),
@@ -184,7 +186,7 @@
       reverse_color_scale,
       entries: temp_filtered_entries,
       el_refs: raw_el_refs,
-      energy_stats: get_energy_stats_by_formula(temp_filtered_entries),
+      energy_stats,
     }),
   )
 

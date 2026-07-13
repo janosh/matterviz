@@ -35,12 +35,18 @@
   ]
 
   // JSON-object entries above render as e.g. Fe98C2, plain strings pass through as-is
-  const get_formula_display = (composition_formula: string): string =>
-    get_electro_neg_formula(
-      composition_formula.startsWith(`{`)
-        ? JSON.parse(composition_formula)
-        : composition_formula,
-    )
+  // (malformed JSON degrades to the raw string instead of crashing the page)
+  const get_formula_display = (composition_formula: string): string => {
+    try {
+      return get_electro_neg_formula(
+        composition_formula.startsWith(`{`)
+          ? JSON.parse(composition_formula)
+          : composition_formula,
+      )
+    } catch {
+      return composition_formula
+    }
+  }
 </script>
 
 {#if show_grid}

@@ -1429,6 +1429,10 @@ describe(`polygon_centroid (from math)`, () => {
     expect(centroid[0]).toBeCloseTo(1, 6)
     expect(centroid[1]).toBeCloseTo(0, 6)
   })
+
+  test(`empty polygon returns [0, 0] without throwing`, () => {
+    expect(math.polygon_centroid([])).toEqual([0, 0])
+  })
 })
 
 describe(`are_coplanar`, () => {

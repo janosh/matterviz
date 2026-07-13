@@ -14,6 +14,19 @@ describe(`CRYSTAL_SYSTEM_RANGES`, () => {
       expect(next_min).toBe(current_max + 1)
     }
   })
+
+  // exact values are a cross-repo parity contract with pymatviz — don't change one side only
+  test(`CRYSTAL_SYSTEM_COLORS match pymatviz colors`, () => {
+    expect(spg.CRYSTAL_SYSTEM_COLORS).toEqual({
+      triclinic: `red`,
+      monoclinic: `teal`,
+      orthorhombic: `blue`,
+      tetragonal: `green`,
+      trigonal: `orange`,
+      hexagonal: `purple`,
+      cubic: `darkred`,
+    })
+  })
 })
 
 describe(`spacegroup_num_to_crystal_sys`, () => {

@@ -1,6 +1,7 @@
 import { Dos, type Vec2 } from '$lib'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
+  clear_smearing_cache,
   extract_pdos,
   extract_spin_channels,
   format_dos_tooltip,
@@ -106,6 +107,16 @@ describe(`Dos component`, () => {
     ],
   ])(`renders %s`, (_desc, props) => {
     mount(Dos, { target: document.body, props })
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+  })
+
+  it(`clears smearing cache without error and re-renders`, async () => {
+    mount(Dos, { target: document.body, props: { doses: phonon_dos, sigma: 0.5 } })
+    await tick()
+    clear_smearing_cache()
+    document.body.innerHTML = ``
+    mount(Dos, { target: document.body, props: { doses: phonon_dos, sigma: 0.5 } })
+    await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 

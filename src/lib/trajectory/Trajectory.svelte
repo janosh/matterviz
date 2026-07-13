@@ -912,10 +912,9 @@
           atom_type_mapping,
         },
       )
-      // Keep original data for on-demand frame loads only when indexed parsing attached a
-      // frame_loader. Direct-parse fallbacks (e.g. large JSON or extensionless blob:
-      // filenames) load all frames upfront, so retaining a full duplicate payload wastes memory.
-      if (is_large_file) orig_data = trajectory?.frame_loader ? data : null
+      // Keep original data only when parsing attached a frame_loader for on-demand loads.
+      // Direct-parse fallbacks load all frames upfront, so retaining a duplicate wastes memory.
+      orig_data = trajectory?.frame_loader ? data : null
 
       current_step_idx = 0
       current_filename = filename

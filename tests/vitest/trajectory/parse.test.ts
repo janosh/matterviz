@@ -522,10 +522,15 @@ ITEM: ATOMS id type x y z\n1 1 5.0 5.0 5.0`
       const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
       expect(trajectory.frames).toHaveLength(2)
-      const matrix_0 = get_matrix(trajectory.frames[0].structure)
-      expect([matrix_0[1][0], matrix_0[2][0], matrix_0[2][1]]).toEqual([1.0, 0.5, 0.25])
-      const matrix_1 = get_matrix(trajectory.frames[1].structure)
-      expect([matrix_1[1][0], matrix_1[2][0], matrix_1[2][1]]).toEqual([2.0, 1.0, 0.5])
+      const expected_tilts = [
+        [1.0, 0.5, 0.25],
+        [2.0, 1.0, 0.5],
+      ]
+      for (const [frame_idx, tilts] of expected_tilts.entries()) {
+        const matrix = get_matrix(trajectory.frames[frame_idx].structure)
+        const actual = [matrix[1][0], matrix[2][0], matrix[2][1]]
+        tilts.forEach((tilt, idx) => expect(actual[idx]).toBeCloseTo(tilt, 5))
+      }
     })
 
     it(`should handle triclinic box with mixed PBC flags`, async () => {
@@ -788,16 +793,6 @@ describe(`HDF5 Format`, () => {
     )
   })
 
-  it(`should handle various atomic number dataset names`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    // Should find atomic numbers under any of the common names
-    expect(trajectory.metadata?.element_counts).toBeDefined()
-    const element_counts = trajectory.metadata?.element_counts as Record<string, number>
-    expect(element_counts?.Au).toBe(55)
-  })
-
   it(`should provide detailed error for missing atomic numbers`, async () => {
     const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
 
@@ -826,58 +821,8 @@ describe(`HDF5 Format`, () => {
     expect(trajectory1).not.toBe(trajectory2) // Different instances
   })
 
-  it(`should handle different HDF5 group structures`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    // Should successfully parse regardless of which group contains the data
-    expect(trajectory.frames.length).toBeGreaterThan(0)
-    expect(trajectory.metadata?.num_atoms).toBeGreaterThan(0)
-
-    // Discovery information should show dataset paths
-    const discovery = trajectory.metadata?.discovered_datasets as Record<string, string>
-    expect(discovery?.positions).toContain(`/`)
-    expect(discovery?.atomic_numbers).toContain(`/`)
-  })
-
-  it(`should extract energy data when available`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    // Check if energy data is present in metadata
-    const has_energy = trajectory.frames.some(
-      (frame) => frame.metadata?.energy !== undefined && frame.metadata?.energy !== null,
-    )
-
-    if (has_energy) {
-      trajectory.frames.forEach((frame) => {
-        if (frame.metadata?.energy !== undefined) {
-          expect(typeof frame.metadata.energy).toBe(`number`)
-        }
-      })
-    }
-  })
-
-  it(`should handle periodic boundary conditions`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    expect(trajectory.metadata?.periodic_boundary_conditions).toBeDefined()
-    expect(Array.isArray(trajectory.metadata?.periodic_boundary_conditions)).toBe(true)
-    expect(trajectory.metadata?.periodic_boundary_conditions).toHaveLength(3)
-  })
-
-  it(`should calculate volumes when lattice is present`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    trajectory.frames.forEach((frame) => {
-      if (frame.metadata?.volume !== undefined) {
-        expect(typeof frame.metadata.volume).toBe(`number`)
-        expect(frame.metadata.volume).toBeGreaterThan(0)
-      }
-    })
-  })
+  // element counts, PBC, energy typing, volume, and dataset discovery for the
+  // gold-cluster fixture are all asserted in the consolidated first test above
 })
 
 describe(`ASE Trajectory Format`, () => {

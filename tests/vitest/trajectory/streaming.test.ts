@@ -331,6 +331,11 @@ describe(`Trajectory Streaming`, () => {
       const frame_index = await loader.build_frame_index(data, 10)
       expect(frame_index).toHaveLength(100) // Every 10th frame = 1000/10 = 100
 
+      // Index entries must stay lightweight (no parsed structures/positions attached)
+      expect(frame_index[0]).not.toHaveProperty(`structure`)
+      expect(frame_index[0]).not.toHaveProperty(`metadata`)
+      expect(frame_index[0]).not.toHaveProperty(`positions`)
+
       // Should be able to load frames from anywhere in the sequence
       const first_frame = await loader.load_frame(data, 0)
       const middle_frame = await loader.load_frame(data, 500)

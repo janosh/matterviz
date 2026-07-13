@@ -4,8 +4,10 @@ import {
   compute_element_chemical_potential,
   compute_gas_chemical_potential,
   compute_gas_correction,
+  DEFAULT_ELEMENT_TO_GAS,
   format_chemical_potential,
   format_pressure,
+  GAS_STOICHIOMETRY,
   get_default_gas_provider,
   get_effective_pressures,
   P_REF,
@@ -19,6 +21,25 @@ import { describe, expect, test } from 'vitest'
 const make_entry = (comp: Record<string, number>, energy = 0): PhaseData => ({
   composition: comp,
   energy,
+})
+
+describe(`gas-thermodynamics: physical data tables`, () => {
+  // pin the stoichiometry/gas-mapping tables — a typo here silently skews all corrections
+  test.each([
+    [`O2`, { O: 2 }],
+    [`N2`, { N: 2 }],
+    [`H2`, { H: 2 }],
+    [`F2`, { F: 2 }],
+    [`CO`, { C: 1, O: 1 }],
+    [`CO2`, { C: 1, O: 2 }],
+    [`H2O`, { H: 2, O: 1 }],
+  ] as const)(`GAS_STOICHIOMETRY[%s] has correct atom counts`, (gas, expected) => {
+    expect(GAS_STOICHIOMETRY[gas]).toEqual(expected)
+  })
+
+  test(`DEFAULT_ELEMENT_TO_GAS maps elements to their standard gas sources`, () => {
+    expect(DEFAULT_ELEMENT_TO_GAS).toEqual({ O: `O2`, N: `N2`, H: `H2`, F: `F2`, C: `CO2` })
+  })
 })
 
 describe(`gas-thermodynamics: default provider`, () => {

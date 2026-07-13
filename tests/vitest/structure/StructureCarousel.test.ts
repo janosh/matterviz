@@ -351,6 +351,17 @@ describe(`StructureCarousel`, () => {
     expect(document.querySelector(`.structure-carousel .structure-carousel-pager`)).toBeNull()
   })
 
+  test(`opens the cell selector menu inside carousel cards`, () => {
+    mount_carousel({ items, layout: `horizontal`, height: 210 })
+
+    doc_query(`.structure-card .cell-select .toggle-btn`).dispatchEvent(
+      new MouseEvent(`click`, { bubbles: true }),
+    )
+    flushSync()
+
+    expect(doc_query(`.structure-card .cell-select .dropdown`)).not.toBeNull()
+  })
+
   test(`attaches wheel prefetch after structures load into an empty carousel`, () => {
     const on_prefetch_more = vi.fn()
     const harness = mount(StructureCarouselHarness, {

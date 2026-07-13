@@ -536,11 +536,12 @@ describe(`Auto-detection & Error Handling`, () => {
     expect(xyz_result.sites).toHaveLength(2)
 
     // Both parsers should give identical fractional coordinates for same input,
-    // and xyz must reconstruct exactly from abc
+    // and each parser's xyz coordinates must reconstruct exactly from abc
     for (let idx = 0; idx < 2; idx++) {
       expect_vec3_close(poscar_result.sites[idx].abc, xyz_result.sites[idx].abc, 10)
     }
     expect_sites_reconstruct(poscar_result)
+    expect_sites_reconstruct(xyz_result)
   })
 
   it.each([
@@ -1856,6 +1857,14 @@ describe(`parse_structure_file`, () => {
       const result = parse_structure_file(content, `deep.json`)
 
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
+    })
+
+    test(`passes through raw string species like ['H'] unchanged`, () => {
+      const raw = { data: { sites: [{ species: [`H`], abc: [0, 0, 0] }] } }
+      const result = parse_structure_file(JSON.stringify(raw), `test.json`)
+
+      expect(result?.sites).toHaveLength(1)
+      expect(result?.sites[0].species[0]).toBe(`H`)
     })
 
     test(`finds valid structure when multiple structures exist`, () => {

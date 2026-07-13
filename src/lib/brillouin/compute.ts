@@ -147,11 +147,12 @@ export function generate_bz_vertices(
   // Default values: 26 (1st order), 80 (2nd order), 150 (3rd+ order)
   max_planes_by_order: Record<1 | 2 | 3, number> = { 1: 26, 2: 80, 3: 150 },
 ): Vec3[] {
-  const k_points = generate_k_space_grid(k_lattice, order)
+  const clamped_order = Math.min(order, 3) as typeof order
+  const k_points = generate_k_space_grid(k_lattice, clamped_order)
   const center_idx = Math.floor(k_points.length / 2)
 
   // Fallback for partial records passed through compute_brillouin_zone
-  const max_planes = max_planes_by_order[order] ?? 150
+  const max_planes = max_planes_by_order[clamped_order] ?? 150
 
   // Create Bragg planes (perpendicular bisectors of k-points)
   const planes = k_points
@@ -191,12 +192,12 @@ export function generate_bz_vertices(
             vertex[2] * normals[p_idx][2]
           if (dot > distances[p_idx] + TOL) {
             beyond_count++
-            if (beyond_count >= order) break
+            if (beyond_count >= clamped_order) break
           }
         }
 
         // Vertex belongs to nth BZ if it's beyond fewer than n planes
-        if (beyond_count < order && !dedup.has_duplicate(vertex)) {
+        if (beyond_count < clamped_order && !dedup.has_duplicate(vertex)) {
           vertices.push(vertex)
           dedup.add(vertex)
         }

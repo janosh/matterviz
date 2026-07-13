@@ -14,7 +14,7 @@ import {
   watch_dark_mode,
 } from '$lib/colors'
 import { ELEM_SYMBOLS } from '$lib/labels'
-import { beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
@@ -242,19 +242,20 @@ test.each([
 })
 
 describe(`get_bg_color`, () => {
+  const computed_style = (bg_color: string) =>
+    ({ backgroundColor: bg_color }) as CSSStyleDeclaration
+
+  afterEach(() => vi.restoreAllMocks())
+
   it(`handles various scenarios`, () => {
     expect(get_bg_color(null, `#ff0000`)).toBe(`#ff0000`) // provided bg_color
     expect(get_bg_color(null)).toBe(`rgba(0, 0, 0, 0)`) // no element, no bg_color
 
     // Mock element with background color
     const mock_element = { style: {}, parentElement: null } as HTMLElement
-    const mock_get_computed_style = vi.fn().mockReturnValue({
-      backgroundColor: `#ff0000`,
-    })
-    Object.defineProperty(globalThis, `getComputedStyle`, {
-      value: mock_get_computed_style,
-      writable: true,
-    })
+    const mock_get_computed_style = vi
+      .spyOn(globalThis, `getComputedStyle`)
+      .mockReturnValue(computed_style(`#ff0000`))
 
     expect(get_bg_color(mock_element)).toBe(`#ff0000`)
     expect(mock_get_computed_style).toHaveBeenCalledWith(mock_element)
@@ -264,14 +265,9 @@ describe(`get_bg_color`, () => {
     const mock_parent = { style: {}, parentElement: null } as HTMLElement
     const mock_element = { style: {}, parentElement: mock_parent } as HTMLElement
     const mock_get_computed_style = vi
-      .fn()
-      .mockReturnValueOnce({ backgroundColor: `rgba(0, 0, 0, 0)` })
-      .mockReturnValueOnce({ backgroundColor: `#00ff00` })
-
-    Object.defineProperty(globalThis, `getComputedStyle`, {
-      value: mock_get_computed_style,
-      writable: true,
-    })
+      .spyOn(globalThis, `getComputedStyle`)
+      .mockReturnValueOnce(computed_style(`rgba(0, 0, 0, 0)`))
+      .mockReturnValueOnce(computed_style(`#00ff00`))
 
     expect(get_bg_color(mock_element)).toBe(`#00ff00`)
     expect(mock_get_computed_style).toHaveBeenCalledTimes(2)

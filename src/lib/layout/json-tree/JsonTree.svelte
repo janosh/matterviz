@@ -148,20 +148,19 @@
       return
     }
     const paths_to_expand = new Set([...search_matches].flatMap(get_ancestor_paths))
-    let changed = false
+    let collapsed_changed = false
+    let force_expanded_changed = false
     for (const path_to_expand of paths_to_expand) {
-      if (collapsed_paths.delete(path_to_expand)) changed = true
+      if (collapsed_paths.delete(path_to_expand)) collapsed_changed = true
       // Also add to force_expanded to override auto-fold thresholds (depth/size)
       if (!force_expanded.has(path_to_expand)) {
         force_expanded.add(path_to_expand)
-        changed = true
+        force_expanded_changed = true
       }
     }
-    // Only reassign (which rerenders every node) if something actually changed
-    if (changed) {
-      collapsed_paths = new SvelteSet(collapsed_paths)
-      force_expanded = new SvelteSet(force_expanded)
-    }
+    // Only reassign (which rerenders every node) the sets that actually changed
+    if (collapsed_changed) collapsed_paths = new SvelteSet(collapsed_paths)
+    if (force_expanded_changed) force_expanded = new SvelteSet(force_expanded)
     // Wait for DOM to update before scrolling to match
     await tick()
     if (sorted_matches.length > 0) {

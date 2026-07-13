@@ -579,7 +579,7 @@ export const build_lower_hull_model = (faces: ConvexHullTriangle[]): HullFaceMod
       max_x: Math.max(x1, x2, x3),
       min_y: Math.min(y1, y2, y3),
       max_y: Math.max(y1, y2, y3),
-      denom: (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3),
+      denom: det,
     }
   })
 

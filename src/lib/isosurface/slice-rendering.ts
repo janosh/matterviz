@@ -84,12 +84,12 @@ export function resolve_contour_thresholds(
   contour_levels: number | number[],
 ): number[] {
   if (Array.isArray(contour_levels)) {
-    const thresholds: number[] = []
-    for (const threshold of contour_levels) {
-      if (Number.isFinite(threshold)) thresholds.push(threshold)
-      if (thresholds.length === MAX_CONTOUR_LEVELS) break
-    }
-    return thresholds.sort((left, right) => left - right)
+    // Sort before truncating so the cap keeps the lowest thresholds deterministically
+    // regardless of input order
+    return contour_levels
+      .filter(Number.isFinite)
+      .sort((left, right) => left - right)
+      .slice(0, MAX_CONTOUR_LEVELS)
   }
   const count = Number.isFinite(contour_levels)
     ? Math.min(MAX_CONTOUR_LEVELS, Math.max(0, Math.floor(contour_levels)))

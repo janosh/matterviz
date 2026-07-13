@@ -557,7 +557,9 @@ const parse_symmetry_expression = (
     }
 
     // Numeric term: integer, decimal, or fraction like "1/3"
-    const [numerator, denominator = `1`] = term.split(`/`)
+    const parts = term.split(`/`)
+    if (parts.length > 2) continue // skip malformed terms like "1/2/3"
+    const [numerator, denominator = `1`] = parts
     const value = Number(numerator) / Number(denominator)
     if (Number.isFinite(value)) translation += sign * value
   }

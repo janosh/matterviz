@@ -3,7 +3,17 @@ import * as helpers from '$lib/convex-hull/helpers'
 import { get_convex_hull_stats } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+class MockPath2D {
+  arc(
+    _x_pos: number,
+    _y_pos: number,
+    _radius: number,
+    _start_angle: number,
+    _end_angle: number,
+  ): void {}
+}
 
 describe(`helpers: energy color scale + point color`, () => {
   test(`get_energy_color_scale returns null when not energy mode or empty`, () => {
@@ -76,6 +86,20 @@ describe(`helpers: energy color scale + point color`, () => {
       `#E69F00`,
     )
   })
+})
+
+describe(`helpers: marker paths`, () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  // pins the Number.isFinite guard in create_marker_path — canvas hover/selection
+  // drawing must not throw on non-finite sizes
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    `create_marker_path handles non-finite size %s`,
+    (size) => {
+      vi.stubGlobal(`Path2D`, MockPath2D)
+      expect(() => helpers.create_marker_path(size)).not.toThrow()
+    },
+  )
 })
 
 describe(`helpers: thresholds and tooltips`, () => {

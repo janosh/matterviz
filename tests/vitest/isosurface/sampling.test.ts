@@ -167,16 +167,36 @@ describe(`sample_volume_at_positions`, () => {
 })
 
 describe(`prepare_volume_sampler cache`, () => {
+  // The cache signature covers lattice, origin, and periodic — pin each field so a
+  // future "optimization" dropping one from the signature fails a test
   test(`invalidates when lattice changes on the same volume object`, () => {
     const vol = linear_volume(11, cubic, false)
-    const before = create_volume_sampler(vol)([5, 5, 5])
+    // frac (0.5, 0.5, 0.5) → 3.5
+    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(3.5, 10)
     vol.lattice = [
       [20, 0, 0],
       [0, 20, 0],
       [0, 0, 20],
     ]
-    const after = create_volume_sampler(vol)([5, 5, 5])
-    expect(after).not.toBeCloseTo(before, 5)
+    // frac (0.25, 0.25, 0.25) → 1.75
+    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(1.75, 10)
+  })
+
+  test(`invalidates when origin changes on the same volume object`, () => {
+    const vol = linear_volume(11, cubic, false)
+    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(3.5, 10)
+    vol.origin = [5, 5, 5]
+    // cart [5,5,5] − origin [5,5,5] → frac (0, 0, 0) → 0
+    expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(0, 10)
+  })
+
+  test(`invalidates when periodic changes on the same volume object`, () => {
+    const vol = linear_volume(10, cubic, true)
+    // frac (1.5, 0.5, 0.5) wraps to (0.5, 0.5, 0.5) → index (5, 5, 5) → 3.5
+    expect(create_volume_sampler(vol)([15, 5, 5])).toBeCloseTo(3.5, 10)
+    vol.periodic = false
+    // clamped frac (1, 0.5, 0.5) → index (9, 4.5, 4.5) → 3.6
+    expect(create_volume_sampler(vol)([15, 5, 5])).toBeCloseTo(3.6, 10)
   })
 })
 

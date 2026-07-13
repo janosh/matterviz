@@ -651,8 +651,8 @@
     return vis_row + 2
   }
 
-  // Only ever called with a live handle from browser event handlers; the 0 check
-  // keeps onDestroy (which also runs during SSR) from touching cancelAnimationFrame.
+  // Called by event handlers, the axis-key-change effect, and onDestroy; the 0-handle
+  // guard prevents invalid cancelAnimationFrame calls.
   function cancel_raf(raf_handle: number): void {
     if (raf_handle !== 0) globalThis.cancelAnimationFrame(raf_handle)
   }

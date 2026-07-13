@@ -383,6 +383,9 @@
     } => {
       const all_series: DataSeries[] = []
       let max_slope = 0
+      // Cache per band structure: segments share their bs, so avoid re-scanning
+      // all q-points once per plotted segment
+      const gamma_cache = new Map<BaseBandStructure, number[]>()
 
       for (const {
         bs_idx,
@@ -394,8 +397,11 @@
       } of plot_segments) {
         const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
         const structure_label = label || `Structure ${bs_idx + 1}`
-        const gamma_indices =
-          detected_band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
+        let gamma_indices = gamma_cache.get(bs)
+        if (!gamma_indices) {
+          gamma_indices = detected_band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
+          gamma_cache.set(bs, gamma_indices)
+        }
 
         // Create series for each band (and spin channel for electronic structures)
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {

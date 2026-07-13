@@ -380,6 +380,7 @@ test.describe(`Bond component`, () => {
     await expect_canvas_changed(canvas, vertical)
     const zoomed = await canvas.screenshot()
     expect(count_non_white_pixels(zoomed)).toBeGreaterThan(100)
+    expect(zoomed.equals(initial)).toBe(false)
 
     expect(console_errors).toHaveLength(0)
   })

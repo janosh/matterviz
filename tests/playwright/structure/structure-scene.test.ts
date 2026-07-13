@@ -743,6 +743,27 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
+  // same_size_atoms swaps per-element atomic radii for a uniform radius — the
+  // rendered atom sizes must visibly change
+  test(`same_size_atoms visibly changes atom scaling`, async ({ page }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#test-structure canvas`)
+    await expect(canvas).toBeVisible()
+
+    const set_scene_props = (detail: Record<string, unknown>) =>
+      page.evaluate((props) => {
+        globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
+      }, detail)
+
+    await set_scene_props({ same_size_atoms: false, atom_radius: 1, show_atoms: true })
+    const per_element_radii = await expect_canvas_renders(canvas)
+
+    await set_scene_props({ same_size_atoms: true })
+    await expect_canvas_changed(canvas, per_element_radii)
+
+    expect(console_errors).toHaveLength(0)
+  })
+
   // Test that EdgesGeometry removes diagonal lines from wireframe
   test(`EdgesGeometry wireframe shows only cell edges without diagonals`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)

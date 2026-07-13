@@ -243,7 +243,10 @@
     const broadened = pattern_entries.map((entry) =>
       compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
     )
-    const max_y = Math.max(1, ...broadened.flatMap((profile) => profile.y)) // avoid div by zero
+    let max_y = 1 // avoid div by zero
+    for (const profile of broadened) {
+      for (const y_val of profile.y) max_y = Math.max(max_y, y_val)
+    }
     // Add transparency when multiple series overlap
     const alpha = pattern_entries.length > 1 ? 0.6 : 1
 

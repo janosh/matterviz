@@ -205,6 +205,12 @@ describe(`generate_bz_vertices`, () => {
       vertex.forEach((coord) => expect(Math.abs(coord)).toBeCloseTo(k_max, 5)),
     )
   })
+
+  test(`clamps unchecked orders above 3`, () => {
+    const max_planes_by_order = { 1: 10, 2: 10, 3: 10, 4: 4 }
+    const third_order = generate_bz_vertices(k_lattice, 3, max_planes_by_order)
+    expect(generate_bz_vertices(k_lattice, 4 as 3, max_planes_by_order)).toEqual(third_order)
+  })
 })
 
 describe(`compute_convex_hull`, () => {

@@ -98,10 +98,22 @@
     colors: { ...default_hull_config.colors, ...config.colors },
   })
 
-  // Reactive dark mode detection for canvas text color
-  let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
-  const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
+  // Cache resolved canvas colors and refresh them only when the theme changes.
+  const initial_text_color = helpers.get_canvas_text_color(is_dark_mode())
+  let text_color = $state(initial_text_color)
+  let hull_edge_color = $state(initial_text_color)
+  function refresh_canvas_colors(dark_mode: boolean): void {
+    const next_text_color = helpers.get_canvas_text_color(dark_mode)
+    text_color = next_text_color
+    const resolved_edge_color = canvas
+      ? getComputedStyle(canvas).getPropertyValue(`--hull-edge-color`).trim()
+      : ``
+    hull_edge_color = resolved_edge_color || next_text_color
+  }
+  $effect(() => {
+    refresh_canvas_colors(is_dark_mode())
+    return watch_dark_mode(refresh_canvas_colors)
+  })
 
   // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
   // Explicit generic breaks the circular type inference through the all_enriched_entries thunk
@@ -284,7 +296,7 @@
   // Re-render when important state changes
   $effect(() => {
     // oxfmt-ignore
-    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, elements] // track reactively
+    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, hull_edge_color, elements] // track reactively
 
     render_once()
   })
@@ -415,8 +427,7 @@
 
     // Reset dash and stroke for subsequent drawings
     ctx.setLineDash([])
-    ctx.strokeStyle =
-      getComputedStyle(canvas).getPropertyValue(`--hull-edge-color`) || `#212121`
+    ctx.strokeStyle = hull_edge_color
 
     // Corner element labels: place just outside each vertex, along the centroid→vertex line
     if (elements.length === 4) {

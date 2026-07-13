@@ -443,6 +443,10 @@ test.describe(`Structure Component Tests`, () => {
     // Numeric inputs echo filled values and carry expected min/max/step constraints
     const opacity_label = labels_container.locator(`label:has-text("Opacity")`).first()
     const padding_label = labels_container.locator(`label:has-text("Padding")`)
+
+    // Default label background must be fully transparent (opacity 0) — assert before
+    // the fill loop below overwrites it
+    await expect(opacity_label.locator(`input[type="number"]`)).toHaveValue(`0`)
     const numeric_cases = [
       {
         name: `opacity number`,
@@ -1190,17 +1194,13 @@ test.describe(`Export Button Tests`, () => {
     await expect(canvas).toHaveAttribute(`width`)
     await expect(canvas).toHaveAttribute(`height`)
 
-    for (const title_selector of [`Download JSON`, `Download XYZ`]) {
-      const export_btn = export_pane.locator(`button[title="${title_selector}"]`)
+    for (const title_selector of [`Download JSON`, `Download XYZ`, `PNG`]) {
+      const export_btn = export_pane.locator(`button[title*="${title_selector}"]`)
       await expect(export_btn).toBeVisible()
-      await export_btn.click()
+      const [download] = await Promise.all([page.waitForEvent(`download`), export_btn.click()])
+      expect(await download.path()).toBeTruthy()
       await expect(export_btn).toBeEnabled()
     }
-
-    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-    await expect(png_export_btn).toBeVisible()
-    await png_export_btn.click()
-    await expect(png_export_btn).toBeEnabled()
   })
 
   test(`DPI input for PNG export works correctly`, async ({ page }) => {

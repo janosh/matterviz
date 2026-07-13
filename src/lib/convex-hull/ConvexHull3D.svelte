@@ -480,7 +480,7 @@
     ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
     ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
 
-    const { min: e_form_min, max: e_form_max } = energy_range
+    const { min: e_form_min } = energy_range
     const triangle_edges = get_triangle_edges()
     ctx.beginPath()
     for (const z_plane of [0, e_form_min]) {
@@ -491,7 +491,7 @@
         ctx.lineTo(proj2.x, proj2.y)
       }
     }
-    for (const [v1, v2] of get_triangle_vertical_edges(e_form_min, e_form_max)) {
+    for (const [v1, v2] of get_triangle_vertical_edges(e_form_min, 0)) {
       const proj1 = project_3d_point(v1.x, v1.y, v1.z)
       const proj2 = project_3d_point(v2.x, v2.y, v2.z)
       ctx.moveTo(proj1.x, proj1.y)

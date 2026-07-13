@@ -1058,11 +1058,16 @@ describe(`MatterViz Extension`, () => {
     })
   })
 
-  describe(`Theme listener cleanup`, () => {
+  describe(`Panel listener cleanup`, () => {
+    const webview_with_dispose = (dispose: () => void) => ({
+      ...mock_webview,
+      onDidReceiveMessage: vi.fn(() => ({ dispose })),
+    })
+
     const setup_panel = (options = {}) => {
       const mock_dispose = vi.fn()
       const mock_panel = {
-        webview: { ...mock_webview },
+        webview: webview_with_dispose(mock_dispose),
         onDidDispose: vi.fn(),
         visible: true,
         ...options,
@@ -1082,7 +1087,7 @@ describe(`MatterViz Extension`, () => {
       return { mock_dispose, mock_panel }
     }
 
-    test(`sets up and cleans up theme listeners`, async () => {
+    test(`sets up and cleans up panel listeners`, async () => {
       const { mock_dispose, mock_panel } = setup_panel()
 
       await render(mock_context)
@@ -1092,7 +1097,7 @@ describe(`MatterViz Extension`, () => {
 
       // Test cleanup
       mock_panel.onDidDispose.mock.calls[0][0]()
-      expect(mock_dispose).toHaveBeenCalledTimes(2)
+      expect(mock_dispose).toHaveBeenCalledTimes(3)
     })
 
     test(`respects panel visibility for theme updates`, async () => {
@@ -1121,8 +1126,8 @@ describe(`MatterViz Extension`, () => {
     test(`multiple panels dispose independently`, async () => {
       const dispose1 = vi.fn()
       const dispose2 = vi.fn()
-      const panel1 = { webview: { ...mock_webview }, onDidDispose: vi.fn() }
-      const panel2 = { webview: { ...mock_webview }, onDidDispose: vi.fn() }
+      const panel1 = { webview: webview_with_dispose(dispose1), onDidDispose: vi.fn() }
+      const panel2 = { webview: webview_with_dispose(dispose2), onDidDispose: vi.fn() }
 
       mock_vscode.window.createWebviewPanel
         .mockReturnValueOnce(panel1)
@@ -1146,7 +1151,7 @@ describe(`MatterViz Extension`, () => {
       await render(mock_context)
 
       panel1.onDidDispose.mock.calls[0][0]()
-      expect(dispose1).toHaveBeenCalledTimes(2)
+      expect(dispose1).toHaveBeenCalledTimes(3)
       expect(dispose2).not.toHaveBeenCalled()
     })
   })

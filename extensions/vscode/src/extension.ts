@@ -532,7 +532,6 @@ function get_view_column(explicit?: vscode.ViewColumn): vscode.ViewColumn {
 
 const webview_resource_roots = (context: vscode.ExtensionContext): vscode.Uri[] => [
   vscode.Uri.joinPath(context.extensionUri, `dist`),
-  vscode.Uri.joinPath(context.extensionUri, `../../static`),
 ]
 
 // Shared panel wiring: html, message handling, file watching, theme/config refresh,
@@ -554,10 +553,9 @@ function setup_webview_panel(
   }
   set_html(file_data)
 
-  panel.webview.onDidReceiveMessage(
+  const message_listener = panel.webview.onDidReceiveMessage(
     (msg: MessageData) => handle_msg(msg, panel.webview),
     undefined,
-    context.subscriptions,
   )
 
   // Re-render with fresh theme/settings (and file content, if backed by a file)
@@ -573,6 +571,7 @@ function setup_webview_panel(
   )
 
   panel.onDidDispose(() => {
+    message_listener.dispose()
     theme_listener.dispose()
     config_listener.dispose()
     if (file_path) stop_watching_file(file_path)

@@ -9,7 +9,9 @@ import type { ChemPotColorMode } from './types'
 // Categorical palette for arity mode (element count)
 export const ARITY_COLORS = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
 
-const COLOR_MODE_LABELS: Record<string, string> = {
+// Exhaustively typed over the numeric color modes so adding a new mode
+// fails compilation here instead of rendering an undefined colorbar title
+const COLOR_MODE_LABELS: Record<Exclude<ChemPotColorMode, `none` | `arity`>, string> = {
   energy: `Energy per atom (eV)`,
   formation_energy: `Formation energy (eV/atom)`,
   entries: `Entry count`,
