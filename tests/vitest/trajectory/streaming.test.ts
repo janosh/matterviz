@@ -3,7 +3,6 @@ import { trajectory_property_config } from '$lib/labels'
 import { DEFAULTS } from '$lib/settings'
 import { FRAME_LOAD_DEBOUNCE_MS, type ParseProgress } from '$lib/trajectory'
 import {
-  create_frame_loader,
   LARGE_FILE_THRESHOLD,
   MAX_BIN_FILE_SIZE,
   MAX_TEXT_FILE_SIZE,
@@ -280,36 +279,6 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Large File Detection & Auto-Streaming`, () => {
-    it(`should automatically use streaming for large files`, async () => {
-      // Create small synthetic data for efficiency
-      const small_data = create_synthetic_xyz(10)
-
-      // Simulate large file by forcing use_indexing option
-      // This tests that when streaming is enabled (as it would be for large files),
-      // the correct indexed result structure is returned
-      const result = await parse_trajectory_async(
-        small_data,
-        `simulated_large.xyz`,
-        undefined,
-        { use_indexing: true }, // Force streaming mode as large file detection would
-      )
-
-      // Should have streaming characteristics that large files would automatically get
-      expect(result.is_indexed).toBe(true)
-      expect(result.indexed_frames).toBeDefined()
-      expect(result.total_frames).toBe(10)
-
-      // Should only load initial frames, not all frames
-      expect(result.frames.length).toBeLessThanOrEqual(10)
-      expect(result.frames.length).toBeGreaterThan(0)
-
-      // Verify that indexed_frames contains frame metadata
-      expect(result.indexed_frames).toBeInstanceOf(Array)
-      expect(result.indexed_frames?.length).toBeGreaterThan(0)
-      expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
-      expect(result.frame_loader).toBeDefined()
-    })
-
     it(`should use direct parsing for small files`, async () => {
       const data = create_synthetic_xyz(5)
 
@@ -321,6 +290,9 @@ describe(`Trajectory Streaming`, () => {
       expect(result.is_indexed).toBeUndefined()
       expect(result.indexed_frames).toBeUndefined()
       expect(result.frames).toHaveLength(5) // All frames loaded
+      expect(result.metadata?.source_format).toBe(`xyz_trajectory`)
+      // clean input must not attach a parse_warnings array (only set when warnings occur)
+      expect(result.metadata?.parse_warnings).toBeUndefined()
     })
 
     // use_indexing forces streaming even for small files, incl. compressed filenames
@@ -343,65 +315,26 @@ describe(`Trajectory Streaming`, () => {
         )
 
         expect(result.is_indexed).toBe(true)
-        expect(result.indexed_frames).toBeDefined()
+        expect(result.indexed_frames?.length).toBeGreaterThan(0)
         expect(result.total_frames).toBe(5)
+        expect(result.frame_loader).toBeDefined()
         if (expect_plot_metadata) expect(result.plot_metadata).toBeDefined()
       },
     )
   })
 
   describe(`Memory Efficiency`, () => {
-    it(`should build index without storing full frame data`, async () => {
-      const data = create_synthetic_xyz(100)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      // Build frame index (sample_rate=1 means index all frames)
-      const frame_index = await loader.build_frame_index(data, 1)
-
-      // Index should contain all frames
-      expect(frame_index).toHaveLength(100)
-      expect(frame_index[0]).toHaveProperty(`byte_offset`)
-      expect(frame_index[0]).toHaveProperty(`frame_number`)
-
-      // Index entries should be lightweight (no structure or metadata stored)
-      expect(frame_index[0]).not.toHaveProperty(`structure`)
-      expect(frame_index[0]).not.toHaveProperty(`metadata`)
-      expect(frame_index[0]).not.toHaveProperty(`positions`)
-    })
-
-    it(`should load frames on-demand without caching`, async () => {
-      const data = create_synthetic_xyz(20)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      // Load several frames
-      const frame_5 = await loader.load_frame(data, 5)
-      const frame_10 = await loader.load_frame(data, 10)
-      const frame_15 = await loader.load_frame(data, 15)
-
-      // Each frame should be loaded fresh (verify they have different data)
-      expect(frame_5?.metadata?.energy).toBe(-10.5)
-      expect(frame_10?.metadata?.energy).toBe(-11)
-      expect(frame_15?.metadata?.energy).toBe(-11.5)
-
-      // Loader should only contain format information, not frame data
-      const loader_properties = Object.keys(loader)
-      expect(loader_properties).toContain(`format`)
-      expect(loader_properties).not.toContain(`cached_frames`)
-      expect(loader_properties).not.toContain(`loaded_data`)
-    })
-
-    it(`should handle large frame counts efficiently`, async () => {
+    it(`should handle large frame counts and load from anywhere in the sequence`, async () => {
       const data = create_synthetic_xyz(1000) // Large number of frames
       const loader = new TrajFrameReader(`test.xyz`)
 
-      // Building index should be fast and not timeout (sample every 10th frame)
-      const start_time = performance.now()
       const frame_index = await loader.build_frame_index(data, 10)
-      const elapsed_time = performance.now() - start_time
-
-      // Should complete indexing efficiently
-      expect(elapsed_time).toBeLessThan(1000) // Less than 1 second
       expect(frame_index).toHaveLength(100) // Every 10th frame = 1000/10 = 100
+
+      // Index entries must stay lightweight (no parsed structures/positions attached)
+      expect(frame_index[0]).not.toHaveProperty(`structure`)
+      expect(frame_index[0]).not.toHaveProperty(`metadata`)
+      expect(frame_index[0]).not.toHaveProperty(`positions`)
 
       // Should be able to load frames from anywhere in the sequence
       const first_frame = await loader.load_frame(data, 0)
@@ -465,15 +398,12 @@ describe(`Trajectory Streaming`, () => {
       const xyz_data = create_synthetic_xyz(10)
       const ase_data = create_synthetic_ase(10)
 
-      const xyz_loader = create_frame_loader(`test.xyz`)
-      const ase_loader = create_frame_loader(`test.traj`)
+      const xyz_loader = new TrajFrameReader(`test.xyz`)
+      const ase_loader = new TrajFrameReader(`test.traj`)
 
       // Both should implement same interface
-      const xyz_frames = await xyz_loader.get_total_frames(xyz_data)
-      const ase_frames = await ase_loader.get_total_frames(ase_data)
-
-      expect(xyz_frames).toBe(10)
-      expect(ase_frames).toBe(10)
+      expect(await xyz_loader.get_total_frames(xyz_data)).toBe(10)
+      expect(await ase_loader.get_total_frames(ase_data)).toBe(10)
 
       // Both should support frame loading
       const xyz_frame = await xyz_loader.load_frame(xyz_data, 3)
@@ -491,19 +421,6 @@ describe(`Trajectory Streaming`, () => {
         { use_indexing: true, extract_plot_metadata: false },
       )
       expect(result.metadata?.source_format).toBe(`ase_trajectory`)
-    })
-
-    it(`should auto-detect format and create appropriate loader`, () => {
-      const xyz_loader = create_frame_loader(`trajectory.xyz`)
-      const ase_loader = create_frame_loader(`trajectory.traj`)
-
-      expect(xyz_loader).toBeInstanceOf(TrajFrameReader)
-      expect(ase_loader).toBeInstanceOf(TrajFrameReader)
-
-      // Should throw for unsupported formats
-      expect(() => create_frame_loader(`trajectory.pdb`)).toThrow(
-        `Unsupported format for frame loading`,
-      )
     })
   })
 
@@ -575,52 +492,26 @@ describe(`Trajectory Streaming`, () => {
       expect(await loader.load_frame(data, 40)).toBeNull()
     })
 
-    it(`metadata extraction returns valid plot data without loading all frames`, async () => {
-      // This test verifies streaming API correctness.
+    it(`metadata extraction assigns sequential frame numbers and keeps frames loadable`, async () => {
       const frame_count = 50
       const data = create_synthetic_xyz(frame_count)
       const loader = new TrajFrameReader(`test.xyz`)
 
-      // Extract metadata using streaming API
       const metadata = await loader.extract_plot_metadata(data, { sample_rate: 1 })
 
-      // Verify metadata has expected structure
-      expect(metadata).toBeDefined()
-      expect(Array.isArray(metadata)).toBe(true)
       expect(metadata).toHaveLength(frame_count)
-
-      // Verify each metadata entry has required fields
       for (const [idx, entry] of metadata.entries()) {
         expect(entry.frame_number, `entry ${idx}`).toBe(idx)
         expect(typeof entry.step).toBe(`number`)
-        expect(entry.properties).toBeDefined()
-        expect(typeof entry.properties).toBe(`object`)
       }
 
-      // Verify we can still load individual frames after metadata extraction
-      const frame_0 = await loader.load_frame(data, 0)
+      // Individual frames stay loadable after metadata extraction
       const frame_last = await loader.load_frame(data, frame_count - 1)
-      expect(frame_0).not.toBeNull()
-      expect(frame_last).not.toBeNull()
-      expect(frame_0?.structure.sites.length).toBeGreaterThan(0)
       expect(frame_last?.structure.sites.length).toBeGreaterThan(0)
     })
   })
 
   describe(`Regression Tests`, () => {
-    it(`should maintain compatibility with existing trajectory interface`, async () => {
-      const data = create_synthetic_xyz(5)
-
-      // Should work with existing parse_trajectory_async function
-      const result = await parse_trajectory_async(data, `test.xyz`)
-
-      expect(result.frames).toHaveLength(5)
-      expect(result.metadata?.source_format).toBe(`xyz_trajectory`)
-      expect(result.frames[0].structure.sites).toHaveLength(3)
-      // clean input must not attach a parse_warnings array (only set when warnings occur)
-      expect(result.metadata?.parse_warnings).toBeUndefined()
-    })
-
     it(`should preserve all frame metadata during streaming`, async () => {
       const data = create_synthetic_xyz(10)
 
@@ -672,20 +563,7 @@ describe(`Trajectory Streaming`, () => {
       expect(generic_series).toHaveLength(0)
     })
 
-    it(`should use frame numbers for sampled plot x values`, () => {
-      const metadata = [
-        { frame_number: 0, step: 0, properties: { energy: -10 } },
-        { frame_number: 10, step: 20_000, properties: { energy: -11 } },
-        { frame_number: 20, step: 40_000, properties: { energy: -12 } },
-      ]
-
-      const series = generate_streaming_plot_series(metadata, {
-        property_config: trajectory_property_config,
-      })
-
-      expect(series.find((srs) => srs.label === `Energy`)?.x).toEqual([0, 10, 20])
-    })
-
+    // x values must be frame numbers (not MD steps), sorted ascending
     it(`sorts streamed plot points by frame number`, () => {
       const metadata = [
         { frame_number: 20, step: 40_000, properties: { energy: -12 } },

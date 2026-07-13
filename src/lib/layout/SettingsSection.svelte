@@ -4,6 +4,12 @@
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
+  type SettingsSectionContext = {
+    current_values: Record<string, unknown>
+    has_changes: boolean
+    reference_values: Record<string, unknown>
+  }
+
   let {
     title,
     current_values,
@@ -13,15 +19,7 @@
   }: HTMLAttributes<HTMLElementTagNameMap[`section`]> & {
     title: string
     current_values: Record<string, unknown>
-    children: Snippet<
-      [
-        {
-          current_values: Record<string, unknown>
-          has_changes: boolean
-          reference_values: Record<string, unknown>
-        },
-      ]
-    >
+    children: Snippet<[SettingsSectionContext]>
     on_reset?: () => void
   } = $props()
 
@@ -30,17 +28,10 @@
     if (obj === null || typeof obj !== `object`) return obj
     if (obj instanceof Date) return new Date(obj)
     if (obj instanceof RegExp) return new RegExp(obj)
-    if (Array.isArray(obj)) {
-      return obj.map((item) =>
-        typeof item === `object` && item !== null ? deep_copy(item) : item,
-      )
-    }
-
-    const copy: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-      copy[key] = typeof value === `object` && value !== null ? deep_copy(value) : value
-    }
-    return copy
+    if (Array.isArray(obj)) return obj.map(deep_copy)
+    return Object.fromEntries(
+      Object.entries(obj).map(([key, value]) => [key, deep_copy(value)]),
+    )
   }
 
   // Capture initial values once at mount - must NOT be $derived or it tracks changes
@@ -49,45 +40,50 @@
   // unique per-instance id so aria-labelledby stays valid with multiple sections on a page
   const title_id = `settings-section-title-${crypto.randomUUID()}`
 
-  // Check if any values have changed from reference values
-  let has_changes = $derived.by(() => {
-    for (const [key, reference_value] of Object.entries(reference_values)) {
-      const current_value = current_values[key]
-
-      // Deep comparison for arrays
-      if (Array.isArray(reference_value) && Array.isArray(current_value)) {
-        if (reference_value.length !== current_value.length) return true
-        if (
-          reference_value.some((val, idx) => {
-            const curr_val = current_value[idx]
-            // Handle nested objects/arrays in arrays
-            if (
-              typeof val === `object` &&
-              val !== null &&
-              typeof curr_val === `object` &&
-              curr_val !== null
-            )
-              return JSON.stringify(val) !== JSON.stringify(curr_val) // Quick deep comparison fallback
-            return val !== curr_val
-          })
-        ) {
-          return true
-        }
-        continue
-      }
-
-      // Handle undefined/null comparisons properly
-      if (reference_value === undefined && current_value === undefined) continue
-      if (reference_value === null && current_value === null) continue
-
-      // Basic comparison for primitives
-      if (current_value !== reference_value) {
-        return true
-      }
+  // Order-independent deep equality for setting values
+  const setting_equal = (left: unknown, right: unknown): boolean => {
+    if (Object.is(left, right)) return true
+    if (left == null || right == null) return false
+    if (typeof left !== `object` || typeof right !== `object`) return false
+    if (left instanceof Date || right instanceof Date) {
+      return (
+        left instanceof Date && right instanceof Date && left.getTime() === right.getTime()
+      )
     }
-    return false
-  })
+    if (left instanceof RegExp || right instanceof RegExp) {
+      return (
+        left instanceof RegExp &&
+        right instanceof RegExp &&
+        left.toString() === right.toString()
+      )
+    }
+    if (Array.isArray(left) || Array.isArray(right)) {
+      if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+        return false
+      }
+      return left.every((item, idx) => setting_equal(item, right[idx]))
+    }
+    const left_obj = left as Record<string, unknown>
+    const right_obj = right as Record<string, unknown>
+    const left_keys = Object.keys(left_obj)
+    if (left_keys.length !== Object.keys(right_obj).length) return false
+    return left_keys.every(
+      (key) => Object.hasOwn(right_obj, key) && setting_equal(left_obj[key], right_obj[key]),
+    )
+  }
 
+  // Key presence is independent of value: additions/removals count even when the
+  // value is undefined. Only compare values when both sides own the key.
+  let has_changes = $derived(
+    [...new Set([...Object.keys(reference_values), ...Object.keys(current_values)])].some(
+      (key) => {
+        const in_reference = Object.hasOwn(reference_values, key)
+        const in_current = Object.hasOwn(current_values, key)
+        if (in_reference !== in_current) return true
+        return !setting_equal(reference_values[key], current_values[key])
+      },
+    ),
+  )
   function handle_reset(event: MouseEvent) {
     event.stopPropagation()
     event.preventDefault()
@@ -143,10 +139,5 @@
     color: var(--text-color, #374151);
     opacity: 1;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  }
-  .reset-button.standalone {
-    position: absolute;
-    top: -8pt;
-    right: -8pt;
   }
 </style>

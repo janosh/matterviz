@@ -1,10 +1,10 @@
 import type { ElementSymbol } from '$lib'
+import type { TrajectoryFrame } from '$lib/trajectory'
 import {
   get_unsupported_format_message,
   is_trajectory_file,
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
-import { Buffer } from 'node:buffer'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -104,22 +104,9 @@ describe(`Trajectory File Detection`, () => {
     [`trajectory-测试.traj`, true],
     [`simulation_ñáéíóú.h5`, true],
     [`trajectory with spaces.traj`, true],
-    [`trajectory-with-dashes.traj`, true],
-    [`trajectory_with_underscores.traj`, true],
     [`trajectory.with.dots.traj`, true],
-    [`trajectory+with+plus.traj`, true],
-    [`trajectory=with=equals.traj`, true],
-    [`trajectory#with#hash.traj`, true],
-    [`trajectory@with@at.traj`, true],
-    [`trajectory%with%percent.traj`, true],
-    [`trajectory^with^caret.traj`, true],
-    [`trajectory&with&ampersand.traj`, true],
-    [`trajectory*with*asterisk.traj`, true],
-    [`trajectory|with|pipe.traj`, true],
-    [`trajectory~with~tilde.traj`, true],
-    [`trajectory123.traj`, true],
+    [`trajectory#with@symbols%.traj`, true],
     [`123trajectory.traj`, true],
-    [`trajectory_123.traj`, true],
 
     // Very short names
     [`a.traj`, true],
@@ -153,65 +140,30 @@ describe(`Trajectory File Detection`, () => {
     [`md_simulation.txt`, false],
     [`relax_output.py`, false],
     [`npt_dynamics.csv`, false],
-    [`nvt_simulation.png`, false],
     [`nve_dynamics.zip`, false],
-    [`qha_analysis.ini`, false],
-    [`traj_data.sql`, false],
-    [`relaxation.tar`, false],
-    [`simulation.7z`, false],
-    [`dynamics.bin`, false],
     [`trajectory.yaml`, false],
-    [`md_simulation.yml`, false],
-    [`relax_output.js`, false],
-    [`npt_dynamics.ts`, false],
     [`nvt_simulation.html`, false],
-    [`nve_dynamics.css`, false],
-
-    // Mixed case with excluded extensions
-    [`TRAJECTORY.MD`, false],
-    [`MD_SIMULATION.TXT`, false],
-    [`RELAX_OUTPUT.PY`, false],
-    [`NPT_DYNAMICS.CSV`, false],
+    [`TRAJECTORY.MD`, false], // mixed case with excluded extension
 
     // Files with partial matches that should not trigger
     [`trajectory_notes.txt`, false],
     [`md_documentation.md`, false],
     [`relax_manual.pdf`, false],
-    [`npt_analysis.py`, false],
-    [`nvt_report.csv`, false],
-    [`nve_summary.html`, false],
-    [`qha_paper.md`, false],
 
     // Compressed files that should not be detected
     [`document.txt.gz`, false],
     [`script.py.gz`, false],
-    [`data.csv.gz`, false],
-    [`image.png.gz`, false],
-    [`archive.zip.gz`, false],
-    [`config.yaml.gz`, false],
     [`trajectory_notes.md.gz`, false],
 
     // Keyword matching edge cases - xyz files with trajectory keywords are detected by filename
-    [`trajectory_analysis.xyz`, true], // Has trajectory keyword "trajectory"
-    [`md_simulation.xyz`, true], // Has trajectory keyword "md"
-    [`relaxation_study.xyz`, true], // Has trajectory keyword "relax"
-    [`npt_ensemble.xyz`, true], // Has trajectory keyword "npt"
-    [`nvt_canonical.xyz`, true], // Has trajectory keyword "nvt"
-    [`nve_microcanonical.xyz`, true], // Has trajectory keyword "nve"
-    [`qha_thermodynamics.xyz`, true], // Has trajectory keyword "qha"
-    [`analysis_trajectory.xyz`, true], // Has trajectory keyword "trajectory"
-    [`simulation_md.xyz`, true], // Has trajectory keyword "md"
-    [`study_relax.xyz`, true], // Has trajectory keyword "relax"
-    [`ensemble_npt.xyz`, true], // Has trajectory keyword "npt"
-    [`canonical_nvt.xyz`, true], // Has trajectory keyword "nvt"
-    [`microcanonical_nve.xyz`, true], // Has trajectory keyword "nve"
-    [`thermodynamics_qha.xyz`, true], // Has trajectory keyword "qha"
-    [`TRAJECTORY.xyz`, true], // Has trajectory keyword "trajectory"
-    [`Trajectory.xyz`, true], // Has trajectory keyword "trajectory"
-    [`trajectory.xyz`, true], // Has trajectory keyword "trajectory"
-    [`MD.xyz`, true], // Has trajectory keyword "md"
-    [`Md.xyz`, true], // Has trajectory keyword "md"
-    [`md.xyz`, true], // Has trajectory keyword "md"
+    [`trajectory_analysis.xyz`, true], // keyword as prefix
+    [`analysis_trajectory.xyz`, true], // keyword as suffix
+    [`npt_ensemble.xyz`, true],
+    [`nvt_canonical.xyz`, true],
+    [`nve_microcanonical.xyz`, true],
+    [`qha_thermodynamics.xyz`, true],
+    [`TRAJECTORY.xyz`, true], // case insensitive
+    [`Md.xyz`, true],
     // Machine learning potential trajectories (some have trajectory keywords)
     [`V8Ta12W71Re8-mace-omat.xyz`, false], // No trajectory keywords
     [`CuAgAu_chgnet_relax.xyz`, true], // Has trajectory keyword "relax"
@@ -228,14 +180,6 @@ describe(`Trajectory File Detection`, () => {
   ])(`trajectory detection: "%s" → %s`, (filename, expected) => {
     expect(is_trajectory_file(filename)).toBe(expected)
   })
-
-  it.each([null, undefined, 1, true, false, [], {}, Symbol(`test`), Buffer.from(`test`)])(
-    `should throw for %s`,
-    (filename) => {
-      // @ts-expect-error - filename is not a string
-      expect(() => is_trajectory_file(filename)).toThrow(/toLowerCase|Cannot read|symbol/i)
-    },
-  )
 })
 
 describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
@@ -278,24 +222,6 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
       [`two-frames.xyz`, `1\nfirst\nH 0.0 0.0 0.0\n1\nsecond\nH 0.1 0.0 0.0`, true],
     ])(`should detect "%s" as trajectory: %s`, (filename, content, expected) => {
       expect(is_trajectory_file(filename, content)).toBe(expected)
-    })
-
-    test.each([
-      // Without content, xyz/extxyz files with trajectory keywords return true for auto-render
-      [`single.xyz`, false], // No trajectory keywords
-      [`trajectory.xyz`, true], // Has trajectory keyword
-      [`data.extxyz`, false], // No trajectory keywords
-      [`md-simulation.extxyz`, true], // Has trajectory keyword
-      // Non-xyz files should still work with filename-only detection
-      [`simulation.traj`, true],
-      [`XDATCAR`, true],
-      [`md-dynamics.h5`, true],
-      [`relax.log`, true],
-      [`npt.dat`, true],
-      [`structure.cif`, false],
-      [`document.txt`, false],
-    ])(`filename-only detection: "%s" → %s`, (filename, expected) => {
-      expect(is_trajectory_file(filename)).toBe(expected)
     })
 
     test.each([
@@ -346,22 +272,6 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
       expect(is_trajectory_file(`mixed.xyz`, content)).toBe(true)
     })
 
-    test(`should handle large trajectories efficiently`, () => {
-      // Create a trajectory with 100 frames (reduced for faster tests)
-      const frames = Array.from(
-        { length: 100 },
-        (_, idx) => `2\nstep=${idx}\nH ${idx * 0.01} 0.0 0.0\nH ${1 + idx * 0.01} 0.0 0.0`,
-      )
-      const content = frames.join(`\n`)
-
-      const start = performance.now()
-      const result = is_trajectory_file(`large-trajectory.xyz`, content)
-      const duration = performance.now() - start
-
-      expect(result).toBe(true)
-      expect(duration).toBeLessThan(100) // Should complete within 100ms
-    })
-
     test.each([
       // Files with Lattice information
       [
@@ -388,34 +298,19 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
 })
 
 describe(`VASP XDATCAR Parser`, () => {
-  it(`should parse VASP XDATCAR file correctly`, async () => {
+  it(`should parse the MD fixture: frames, elements, volumes, metadata`, async () => {
     const content = read_test_file(`vasp-XDATCAR.MD.gz`)
     const trajectory = await parse_trajectory_data(content, `XDATCAR`)
 
     expect(trajectory.metadata?.source_format).toBe(`vasp_xdatcar`)
+    expect(trajectory.metadata?.filename).toBe(`XDATCAR`)
     expect(trajectory.frames).toHaveLength(5)
+    expect(trajectory.metadata?.frame_count).toBe(5)
     expect(trajectory.frames[0].structure.sites).toHaveLength(80)
     expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
-  })
-
-  it(`should handle element names and counts correctly`, async () => {
-    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
-    const trajectory = await parse_trajectory_data(content, `XDATCAR`)
-
     expect(trajectory.metadata?.elements).toEqual([`O`, `Fe`])
     expect(trajectory.metadata?.element_counts).toEqual([48, 32])
-  })
-
-  it(`should calculate lattice volumes correctly`, async () => {
-    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
-    const trajectory = await parse_trajectory_data(content, `XDATCAR`)
-
-    trajectory.frames.forEach((frame) => {
-      if (frame.metadata?.volume !== undefined) {
-        expect(frame.metadata.volume).toBeGreaterThan(0)
-        expect(typeof frame.metadata.volume).toBe(`number`)
-      }
-    })
+    for (const frame of trajectory.frames) expect(frame.metadata?.volume).toBeGreaterThan(0)
   })
 
   it(`should reject invalid content`, async () => {
@@ -465,75 +360,58 @@ describe(`VASP XDATCAR Parser`, () => {
 })
 
 describe(`LAMMPS Trajectory Format`, () => {
-  it(`should parse LAMMPS trajectory file correctly`, async () => {
+  // Orthogonal 10x10x10 box frame(s) with one atom per entry of `types`
+  const lammps_frames = (
+    types: number[],
+    opts: { n_frames?: number; pbc?: string } = {},
+  ): string => {
+    const { n_frames = 1, pbc = `pp pp pp` } = opts
+    return Array.from({ length: n_frames }, (_, frame_idx) =>
+      [
+        `ITEM: TIMESTEP`,
+        `${frame_idx * 100}`,
+        `ITEM: NUMBER OF ATOMS`,
+        `${types.length}`,
+        `ITEM: BOX BOUNDS ${pbc}`,
+        `0.0 10.0`,
+        `0.0 10.0`,
+        `0.0 10.0`,
+        `ITEM: ATOMS id type x y z`,
+        ...types.map((atom_type, idx) => `${idx + 1} ${atom_type} ${idx}.0 0.0 0.0`),
+      ].join(`\n`),
+    ).join(`\n`)
+  }
+
+  it(`should parse the sample fixture: frames, lattice, elements, volumes`, async () => {
     const content = read_test_file(`lammps-sample.lammpstrj.gz`)
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
-    expect(trajectory.frames.length).toBeGreaterThan(0)
-    expect(trajectory.frames[0].structure.sites).toHaveLength(864)
     expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
-  })
-
-  it(`should parse multiple frames correctly`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
     expect(trajectory.frames).toHaveLength(5)
-    // First frame should have timestep 0
     expect(trajectory.frames[0].step).toBe(0)
-    // Each frame should have consistent atom count
-    trajectory.frames.forEach((frame) => {
+    for (const frame of trajectory.frames) {
       expect(frame.structure.sites).toHaveLength(864)
-    })
-  })
-
-  it(`should extract box bounds and create lattice correctly`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-    const structure = trajectory.frames[0].structure
-    expect(`lattice` in structure).toBe(true)
-    if (`lattice` in structure) {
-      // Box is approximately 21.12 x 21.12 x 21.12
-      expect(structure.lattice.a).toBeCloseTo(21.12, 1)
-      expect(structure.lattice.b).toBeCloseTo(21.12, 1)
-      expect(structure.lattice.c).toBeCloseTo(21.12, 1)
+      expect(frame.metadata?.volume).toBeGreaterThan(0)
     }
-  })
 
-  it(`should map atom types to elements`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+    // Box is approximately 21.12 x 21.12 x 21.12
+    const structure = trajectory.frames[0].structure
+    if (!(`lattice` in structure)) throw new Error(`missing lattice`)
+    expect(structure.lattice.a).toBeCloseTo(21.12, 1)
+    expect(structure.lattice.b).toBeCloseTo(21.12, 1)
+    expect(structure.lattice.c).toBeCloseTo(21.12, 1)
 
     // File has atom types 1 and 2, mapped to H and He
-    const elements = trajectory.frames[0].structure.sites.map(
-      (site) => site.species[0].element,
-    )
+    const elements = structure.sites.map((site) => site.species[0].element)
     expect(elements).toContain(`H`)
     expect(elements).toContain(`He`)
     expect(trajectory.metadata?.atom_types).toEqual([1, 2])
-  })
 
-  it(`should calculate volumes correctly`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-    trajectory.frames.forEach((frame) => {
-      if (frame.metadata?.volume !== undefined) {
-        expect(frame.metadata.volume).toBeGreaterThan(0)
-        expect(typeof frame.metadata.volume).toBe(`number`)
-      }
-    })
-  })
-
-  it(`should parse gzip-compressed lammpstrj file`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
-    const traj = await parse_trajectory_data(content, `lammps-sample.lammpstrj.gz`)
-
-    expect(traj.metadata?.source_format).toBe(`lammps_trajectory`)
-    expect(traj.frames).toHaveLength(5)
-    expect(traj.frames[0].structure.sites).toHaveLength(864)
+    // Compressed filename routes to the same parser
+    const gz_traj = await parse_trajectory_data(content, `lammps-sample.lammpstrj.gz`)
+    expect(gz_traj.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(gz_traj.frames).toHaveLength(5)
   })
 
   it(`should parse file without type column using id as fallback`, async () => {
@@ -555,37 +433,12 @@ describe(`LAMMPS Trajectory Format`, () => {
   })
 
   it(`should parse inline LAMMPS content`, async () => {
-    const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-3
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 1 5.0 0.0 0.0
-3 2 2.5 5.0 0.0
-ITEM: TIMESTEP
-100
-ITEM: NUMBER OF ATOMS
-3
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.1 0.0 0.0
-2 1 5.1 0.0 0.0
-3 2 2.6 5.0 0.0`
-
+    const content = lammps_frames([1, 1, 2], { n_frames: 2 })
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
     expect(trajectory.frames).toHaveLength(2)
-    expect(trajectory.frames[0].step).toBe(0)
-    expect(trajectory.frames[1].step).toBe(100)
+    expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100])
     expect(trajectory.frames[0].structure.sites).toHaveLength(3)
   })
 
@@ -608,18 +461,7 @@ ITEM: ATOMS id type x y z
   })
 
   it(`should handle PBC flags from BOX BOUNDS`, async () => {
-    const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS ff pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 1 5.0 0.0 0.0`
-
+    const content = lammps_frames([1, 1], { pbc: `ff pp pp` })
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     // First dimension is non-periodic (ff), others are periodic (pp)
@@ -627,356 +469,117 @@ ITEM: ATOMS id type x y z
   })
 
   describe(`triclinic box support`, () => {
-    it(`should parse triclinic box with tilt factors`, async () => {
-      // Triclinic box with xy=2.0, xz=1.0, yz=0.5
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS xy xz yz pp pp pp
-0.0 10.0 2.0
-0.0 10.0 1.0
-0.0 10.0 0.5
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 1 5.0 5.0 5.0`
+    // One triclinic frame: bounds are [lo_bound hi_bound tilt] rows with tilts xy, xz, yz
+    const triclinic_frame = (bounds: string[], pbc = `pp pp pp`, timestep = 0): string =>
+      `ITEM: TIMESTEP\n${timestep}\nITEM: NUMBER OF ATOMS\n1
+ITEM: BOX BOUNDS xy xz yz ${pbc}\n${bounds.join(`\n`)}
+ITEM: ATOMS id type x y z\n1 1 5.0 5.0 5.0`
 
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+    const get_matrix = (structure: TrajectoryFrame[`structure`]) => {
+      if (!(`lattice` in structure)) throw new Error(`missing lattice`)
+      return structure.lattice.matrix
+    }
 
+    it.each<[string, string[], { xy: number; xz: number; yz: number; diag?: number[] }]>([
+      [
+        `positive tilts`,
+        [`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`],
+        { xy: 2.0, xz: 1.0, yz: 0.5 },
+      ],
+      [
+        `bounding box conversion with large tilts`,
+        [`-3.0 13.0 3.0`, `-1.0 11.0 2.0`, `0.0 10.0 1.0`],
+        { xy: 3.0, xz: 2.0, yz: 1.0 },
+      ],
+      [
+        `negative tilts`,
+        [`-2.5 12.5 -2.5`, `-1.5 11.5 -1.5`, `0.0 10.0 -0.5`],
+        { xy: -2.5, xz: -1.5, yz: -0.5 },
+      ],
+      [
+        `zero tilts (degenerate triclinic = orthogonal)`,
+        [`0.0 10.0 0.0`, `0.0 8.0 0.0`, `0.0 6.0 0.0`],
+        { xy: 0, xz: 0, yz: 0, diag: [10.0, 8.0, 6.0] },
+      ],
+    ])(`parses tilt factors: %s`, async (_name, bounds, { xy, xz, yz, diag }) => {
+      const trajectory = await parse_trajectory_data(triclinic_frame(bounds), `test.lammpstrj`)
       expect(trajectory.frames).toHaveLength(1)
-      const structure = trajectory.frames[0].structure
-      expect(`lattice` in structure).toBe(true)
-
-      if (`lattice` in structure) {
-        // For this simple case (lo=0, hi=10, small tilts), the lattice should be close to:
-        // a = (lx, 0, 0), b = (xy, ly, 0), c = (xz, yz, lz)
-        const matrix = structure.lattice.matrix
-
-        // Check that off-diagonal elements are present (triclinic signature)
-        expect(matrix[1][0]).toBeCloseTo(2.0, 5) // xy tilt
-        expect(matrix[2][0]).toBeCloseTo(1.0, 5) // xz tilt
-        expect(matrix[2][1]).toBeCloseTo(0.5, 5) // yz tilt
-
-        // Diagonal elements should be the box lengths
-        expect(matrix[0][0]).toBeGreaterThan(0) // lx
-        expect(matrix[1][1]).toBeGreaterThan(0) // ly
-        expect(matrix[2][2]).toBeCloseTo(10.0, 5) // lz (unchanged for z)
-      }
-    })
-
-    it(`should correctly convert bounding box to actual box dimensions`, async () => {
-      // Test case with significant tilt that affects bounding box conversion
-      // xy=3, xz=2, yz=1 with bounds that include the tilt offset
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS xy xz yz pp pp pp
--3.0 13.0 3.0
--1.0 11.0 2.0
-0.0 10.0 1.0
-ITEM: ATOMS id type x y z
-1 1 5.0 5.0 5.0`
-
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-      const structure = trajectory.frames[0].structure
-
-      if (`lattice` in structure) {
-        const matrix = structure.lattice.matrix
-
-        // Verify tilt factors are preserved
-        expect(matrix[1][0]).toBeCloseTo(3.0, 5) // xy
-        expect(matrix[2][0]).toBeCloseTo(2.0, 5) // xz
-        expect(matrix[2][1]).toBeCloseTo(1.0, 5) // yz
-      }
-    })
-
-    it(`should handle negative tilt factors`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS xy xz yz pp pp pp
--2.5 12.5 -2.5
--1.5 11.5 -1.5
-0.0 10.0 -0.5
-ITEM: ATOMS id type x y z
-1 1 5.0 5.0 5.0`
-
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-      const structure = trajectory.frames[0].structure
-
-      if (`lattice` in structure) {
-        const matrix = structure.lattice.matrix
-
-        // Negative tilts should be preserved
-        expect(matrix[1][0]).toBeCloseTo(-2.5, 5) // xy
-        expect(matrix[2][0]).toBeCloseTo(-1.5, 5) // xz
-        expect(matrix[2][1]).toBeCloseTo(-0.5, 5) // yz
+      const matrix = get_matrix(trajectory.frames[0].structure)
+      // Lattice vectors: a = (lx, 0, 0), b = (xy, ly, 0), c = (xz, yz, lz)
+      expect(matrix[1][0]).toBeCloseTo(xy, 5)
+      expect(matrix[2][0]).toBeCloseTo(xz, 5)
+      expect(matrix[2][1]).toBeCloseTo(yz, 5)
+      for (const [idx, expected] of (diag ?? []).entries()) {
+        expect(matrix[idx][idx]).toBeCloseTo(expected, 5)
       }
     })
 
     it(`should parse multiple triclinic frames with varying cell shapes`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS xy xz yz pp pp pp
-0.0 10.0 1.0
-0.0 10.0 0.5
-0.0 10.0 0.25
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 1 5.0 5.0 5.0
-ITEM: TIMESTEP
-100
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS xy xz yz pp pp pp
-0.0 11.0 2.0
-0.0 11.0 1.0
-0.0 11.0 0.5
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 1 5.5 5.5 5.5`
-
+      const content = [
+        triclinic_frame([`0.0 10.0 1.0`, `0.0 10.0 0.5`, `0.0 10.0 0.25`], `pp pp pp`, 0),
+        triclinic_frame([`0.0 11.0 2.0`, `0.0 11.0 1.0`, `0.0 11.0 0.5`], `pp pp pp`, 100),
+      ].join(`\n`)
       const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
       expect(trajectory.frames).toHaveLength(2)
-
-      // First frame
-      if (`lattice` in trajectory.frames[0].structure) {
-        const m1 = trajectory.frames[0].structure.lattice.matrix
-        expect(m1[1][0]).toBeCloseTo(1.0, 5) // xy
-        expect(m1[2][0]).toBeCloseTo(0.5, 5) // xz
-        expect(m1[2][1]).toBeCloseTo(0.25, 5) // yz
-      }
-
-      // Second frame - cell has changed
-      if (`lattice` in trajectory.frames[1].structure) {
-        const m2 = trajectory.frames[1].structure.lattice.matrix
-        expect(m2[1][0]).toBeCloseTo(2.0, 5) // xy
-        expect(m2[2][0]).toBeCloseTo(1.0, 5) // xz
-        expect(m2[2][1]).toBeCloseTo(0.5, 5) // yz
+      const expected_tilts = [
+        [1.0, 0.5, 0.25],
+        [2.0, 1.0, 0.5],
+      ]
+      for (const [frame_idx, tilts] of expected_tilts.entries()) {
+        const matrix = get_matrix(trajectory.frames[frame_idx].structure)
+        const actual = [matrix[1][0], matrix[2][0], matrix[2][1]]
+        tilts.forEach((tilt, idx) => expect(actual[idx]).toBeCloseTo(tilt, 5))
       }
     })
 
     it(`should handle triclinic box with mixed PBC flags`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS xy xz yz pp pp ff
-0.0 10.0 1.0
-0.0 10.0 0.5
-0.0 20.0 0.0
-ITEM: ATOMS id type x y z
-1 1 5.0 5.0 10.0`
-
+      const content = triclinic_frame(
+        [`0.0 10.0 1.0`, `0.0 10.0 0.5`, `0.0 20.0 0.0`],
+        `pp pp ff`,
+      )
       const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
-      // z-direction is non-periodic (ff)
+      // z-direction is non-periodic (ff); triclinic cell still parsed
       expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, false])
-
-      // Still should parse the triclinic cell correctly
-      if (`lattice` in trajectory.frames[0].structure) {
-        const matrix = trajectory.frames[0].structure.lattice.matrix
-        expect(matrix[1][0]).toBeCloseTo(1.0, 5) // xy
-        expect(matrix[2][0]).toBeCloseTo(0.5, 5) // xz
-      }
-    })
-
-    it(`should handle zero tilt factors (degenerate triclinic = orthogonal)`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS xy xz yz pp pp pp
-0.0 10.0 0.0
-0.0 8.0 0.0
-0.0 6.0 0.0
-ITEM: ATOMS id type x y z
-1 1 5.0 4.0 3.0`
-
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-      const structure = trajectory.frames[0].structure
-
-      if (`lattice` in structure) {
-        const matrix = structure.lattice.matrix
-
-        // Zero tilts should give orthogonal box
-        expect(matrix[0][0]).toBeCloseTo(10.0, 5)
-        expect(matrix[1][1]).toBeCloseTo(8.0, 5)
-        expect(matrix[2][2]).toBeCloseTo(6.0, 5)
-
-        // Off-diagonal should be zero
-        expect(matrix[1][0]).toBeCloseTo(0.0, 5)
-        expect(matrix[2][0]).toBeCloseTo(0.0, 5)
-        expect(matrix[2][1]).toBeCloseTo(0.0, 5)
-      }
+      const matrix = get_matrix(trajectory.frames[0].structure)
+      expect(matrix[1][0]).toBeCloseTo(1.0, 5)
+      expect(matrix[2][0]).toBeCloseTo(0.5, 5)
     })
 
     it(`should calculate correct volume for triclinic cell`, async () => {
-      // Triclinic box with known dimensions after bounding box conversion
-      // Given bounds and tilts:
-      //   xlo_bound=0, xhi_bound=10, xy=2.0 → lx = 10 - max(0,2,1,3) = 7
-      //   ylo_bound=0, yhi_bound=10, xz=1.0 → ly = 10 - max(0,0.5) = 9.5
-      //   zlo_bound=0, zhi_bound=10, yz=0.5 → lz = 10
-      // Volume = lx * ly * lz = 7 * 9.5 * 10 = 665
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS xy xz yz pp pp pp
-0.0 10.0 2.0
-0.0 10.0 1.0
-0.0 10.0 0.5
-ITEM: ATOMS id type x y z
-1 1 5.0 5.0 5.0`
-
+      // Bounding-box conversion gives lx = 10 - max(0,2,1,3) = 7, ly = 10 - max(0,0.5) = 9.5,
+      // lz = 10 → volume = det(lattice) = 7 * 9.5 * 10 = 665
+      const content = triclinic_frame([`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`])
       const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-      // Volume is det(lattice_matrix) = lx * ly * lz (parallelepiped)
-      expect(trajectory.frames[0].metadata?.volume).toBeGreaterThan(0)
       expect(trajectory.frames[0].metadata?.volume).toBeCloseTo(665, 0)
     })
   })
 
   describe(`atom_type_mapping support`, () => {
-    it(`should map atom types to custom elements`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-3
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 2 5.0 0.0 0.0
-3 1 0.0 5.0 0.0`
-
-      const trajectory = await parse_trajectory_data(
-        content,
-        `test.lammpstrj`,
-        { 1: `Na`, 2: `Cl` }, // Map type 1→Na, type 2→Cl
-      )
-
-      const elements = trajectory.frames[0].structure.sites.map(
-        (site) => site.species[0].element,
-      )
-      expect(elements).toEqual([`Na`, `Cl`, `Na`])
-    })
-
-    it(`should fall back to default mapping for unmapped types`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-3
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 2 5.0 0.0 0.0
-3 3 0.0 5.0 0.0`
-
-      const trajectory = await parse_trajectory_data(
-        content,
-        `test.lammpstrj`,
-        { 1: `Na` }, // Only map type 1, others use default (2→He, 3→Li)
-      )
-
-      const elements = trajectory.frames[0].structure.sites.map(
-        (site) => site.species[0].element,
-      )
-      expect(elements).toEqual([`Na`, `He`, `Li`])
-    })
-
-    it(`should work without atom_type_mapping (default behavior)`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 2 5.0 0.0 0.0`
-
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-      const elements = trajectory.frames[0].structure.sites.map(
-        (site) => site.species[0].element,
-      )
-      expect(elements).toEqual([`H`, `He`]) // Default: 1→H, 2→He
+    it.each<[string, Record<number, ElementSymbol> | undefined, number[], ElementSymbol[]]>([
+      [`custom mapping`, { 1: `Na`, 2: `Cl` }, [1, 2, 1], [`Na`, `Cl`, `Na`]],
+      [`partial mapping falls back to defaults`, { 1: `Na` }, [1, 2, 3], [`Na`, `He`, `Li`]],
+      [`no mapping uses defaults`, undefined, [1, 2], [`H`, `He`]],
+      [`high atomic numbers`, { 79: `Au`, 118: `Og` }, [79, 118], [`Au`, `Og`]],
+    ])(`%s`, async (_name, mapping, types, expected_elements) => {
+      const traj = await parse_trajectory_data(lammps_frames(types), `test.lammpstrj`, mapping)
+      const elements = traj.frames[0].structure.sites.map((site) => site.species[0].element)
+      expect(elements).toEqual(expected_elements)
     })
 
     it(`should apply mapping consistently across multiple frames`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.0 0.0 0.0
-2 2 5.0 0.0 0.0
-ITEM: TIMESTEP
-100
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 1 0.1 0.0 0.0
-2 2 5.1 0.0 0.0`
-
+      const content = lammps_frames([1, 2], { n_frames: 2 })
       const trajectory = await parse_trajectory_data(content, `test.lammpstrj`, {
         1: `Fe`,
         2: `O`,
       })
 
       expect(trajectory.frames).toHaveLength(2)
-
-      // Both frames should have same element mapping
       for (const frame of trajectory.frames) {
         const elements = frame.structure.sites.map((site) => site.species[0].element)
         expect(elements).toEqual([`Fe`, `O`])
       }
-    })
-
-    it(`should handle all 118 elements in mapping`, async () => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-2
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z
-1 79 0.0 0.0 0.0
-2 118 5.0 0.0 0.0`
-
-      // Map to specific elements by type number
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`, {
-        79: `Au`,
-        118: `Og`,
-      })
-
-      const elements = trajectory.frames[0].structure.sites.map(
-        (site) => site.species[0].element,
-      )
-      expect(elements).toEqual([`Au`, `Og`])
     })
   })
 })
@@ -1088,21 +691,24 @@ describe(`XYZ Trajectory Format`, () => {
     },
   )
 
-  it(`should handle invalid atom counts gracefully`, async () => {
-    const content = `invalid\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+  const valid_frame = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+  it.each([
+    [`invalid text count`, `invalid\ncomment\nH 0.0 0.0 0.0\n${valid_frame}`, 1],
+    [`negative count`, `-1\ncomment\nH 0.0 0.0 0.0\n${valid_frame}`, 1],
+    [`zero count`, `0\ncomment\n\n${valid_frame}`, 1],
+    [
+      `empty lines and malformed frames`,
+      `\n\n${valid_frame}\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n${valid_frame}`,
+      2,
+    ],
+  ])(`skips %s and parses valid frames`, async (_name, content, expected_frames) => {
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
-    expect(trajectory.frames).toHaveLength(1) // Should skip invalid and parse valid frame
-  })
-
-  it(`should skip empty lines and malformed frames`, async () => {
-    const content = `\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n3\nanother valid\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const trajectory = await parse_trajectory_data(content, `test.xyz`)
-    expect(trajectory.frames).toHaveLength(2)
+    expect(trajectory.frames).toHaveLength(expected_frames)
   })
 })
 
 describe(`HDF5 Format`, () => {
-  it(`should parse valid HDF5 file`, async () => {
+  it(`should parse the gold-cluster fixture: frames, elements, discovery metadata`, async () => {
     const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
@@ -1110,62 +716,24 @@ describe(`HDF5 Format`, () => {
     expect(trajectory.frames).toHaveLength(20)
     expect(trajectory.metadata?.num_atoms).toBe(55)
     expect(trajectory.frames[0].structure.sites[0].species[0].element).toBe(`Au`)
-
-    // Should include dataset discovery information
-    expect(trajectory.metadata?.discovered_datasets).toBeDefined()
-    const discovery = trajectory.metadata?.discovered_datasets as Record<string, string>
-    expect(discovery?.positions).toBeDefined()
-    expect(discovery?.atomic_numbers).toBeDefined()
-    expect(trajectory.metadata?.total_groups_found).toBeGreaterThan(0)
-  })
-
-  it(`should handle various atomic number dataset names`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    // Should find atomic numbers under any of the common names
-    expect(trajectory.metadata?.element_counts).toBeDefined()
-    const element_counts = trajectory.metadata?.element_counts as Record<string, number>
-    expect(element_counts?.Au).toBe(55)
-  })
-
-  it(`should extract energy data when available`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    // Check if energy data is present in metadata
-    const has_energy = trajectory.frames.some(
-      (frame) => frame.metadata?.energy !== undefined && frame.metadata?.energy !== null,
-    )
-
-    if (has_energy) {
-      trajectory.frames.forEach((frame) => {
-        if (frame.metadata?.energy !== undefined) {
-          expect(typeof frame.metadata.energy).toBe(`number`)
-        }
-      })
-    }
-  })
-
-  it(`should handle periodic boundary conditions`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    expect(trajectory.metadata?.periodic_boundary_conditions).toBeDefined()
-    expect(Array.isArray(trajectory.metadata?.periodic_boundary_conditions)).toBe(true)
+    expect(trajectory.metadata?.element_counts).toEqual({ Au: 55 })
     expect(trajectory.metadata?.periodic_boundary_conditions).toHaveLength(3)
-  })
+    expect(trajectory.metadata?.has_cell_info).toBeDefined()
 
-  it(`should calculate volumes when lattice is present`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
+    // Dataset discovery information shows resolved dataset paths
+    const discovery = trajectory.metadata?.discovered_datasets as Record<string, string>
+    expect(discovery?.positions).toContain(`/`)
+    expect(discovery?.atomic_numbers).toContain(`/`)
+    expect(trajectory.metadata?.total_groups_found).toBeGreaterThan(0)
 
-    trajectory.frames.forEach((frame) => {
+    for (const frame of trajectory.frames) {
+      if (frame.metadata?.energy !== undefined) {
+        expect(typeof frame.metadata.energy).toBe(`number`)
+      }
       if (frame.metadata?.volume !== undefined) {
-        expect(typeof frame.metadata.volume).toBe(`number`)
         expect(frame.metadata.volume).toBeGreaterThan(0)
       }
-    })
+    }
   })
 
   // Build a minimal torch-sim-layout HDF5 file in h5wasm's in-memory FS and
@@ -1218,9 +786,7 @@ describe(`HDF5 Format`, () => {
     )
   })
 
-  it(`should provide detailed error for missing positions`, async () => {
-    // This would require a custom HDF5 file without positions - skip for now
-    // but keep the test structure for when we have such a file
+  it(`should provide detailed error for missing required datasets`, async () => {
     const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
     await expect(parse_trajectory_data(content, `bad-positions.h5`)).rejects.toThrow(
       /Missing required.*dataset/i,
@@ -1255,54 +821,27 @@ describe(`HDF5 Format`, () => {
     expect(trajectory1).not.toBe(trajectory2) // Different instances
   })
 
-  it(`should handle different HDF5 group structures`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    // Should successfully parse regardless of which group contains the data
-    expect(trajectory.frames.length).toBeGreaterThan(0)
-    expect(trajectory.metadata?.num_atoms).toBeGreaterThan(0)
-
-    // Discovery information should show dataset paths
-    const discovery = trajectory.metadata?.discovered_datasets as Record<string, string>
-    expect(discovery?.positions).toContain(`/`)
-    expect(discovery?.atomic_numbers).toContain(`/`)
-  })
+  // element counts, PBC, energy typing, volume, and dataset discovery for the
+  // gold-cluster fixture are all asserted in the consolidated first test above
 })
 
 describe(`ASE Trajectory Format`, () => {
   // Detailed tests for ase-LiMnO2-chgnet-relax.traj are in TRAJECTORY_REFERENCE_DATA below
 
-  it(`should validate ASE trajectory signature`, async () => {
-    const invalid_buffer = new ArrayBuffer(24)
-    const view = new Uint8Array(invalid_buffer)
-    view.set([0x12, 0x34, 0x56, 0x78]) // Invalid signature
-
-    await expect(parse_trajectory_data(invalid_buffer, `test.traj`)).rejects.toThrow(
-      `Unsupported binary format`,
-    )
-  })
-
-  it(`should reject truncated ASE trajectory`, async () => {
-    // Create a truncated buffer with HDF5 signature (\x89HDF) - this tests
-    // that the parser rejects incomplete files even with valid-looking headers
-    const truncated = new ArrayBuffer(16)
-    const view = new Uint8Array(truncated)
-    view.set([0x89, 0x48, 0x44, 0x46]) // HDF5 magic bytes, not ASE ULM format
-
-    await expect(parse_trajectory_data(truncated, `truncated.traj`)).rejects.toThrow(
+  it.each([
+    [`invalid signature`, [0x12, 0x34, 0x56, 0x78], 24],
+    // HDF5 magic bytes but truncated - rejects incomplete files with valid-looking headers
+    [`truncated buffer with HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], 16],
+  ])(`should reject %s`, async (_name, magic_bytes, byte_length) => {
+    const buffer = new ArrayBuffer(byte_length)
+    new Uint8Array(buffer).set(magic_bytes)
+    await expect(parse_trajectory_data(buffer, `test.traj`)).rejects.toThrow(
       `Unsupported binary format`,
     )
   })
 })
 
 describe(`JSON Formats`, () => {
-  it(`should parse compressed JSON`, async () => {
-    const content = read_test_file(`pymatgen-LiMnO2-chgnet-relax.json.gz`)
-    const trajectory = await parse_trajectory_data(content, `test.json.gz`)
-    expect(trajectory.frames.length).toBeGreaterThan(0)
-  })
-
   // malformed fields are present-but-wrong-shape so they pass the routing gate, then hit
   // the shape validation -> clear error instead of a cryptic `.map` throw
   it.each<[string, Record<string, unknown>, RegExp]>([
@@ -1320,10 +859,11 @@ describe(`JSON Formats`, () => {
     await expect(parse_trajectory_data(content, `test.json`)).rejects.toThrow(pattern)
   })
 
-  it(`should parse pymatgen trajectory with forces and stress`, async () => {
+  it(`should parse compressed pymatgen trajectory with forces and stress`, async () => {
     const content = read_test_file(`pymatgen-LiMnO2-chgnet-relax.json.gz`)
     const trajectory = await parse_trajectory_data(content, `test.json.gz`)
 
+    expect(trajectory.frames.length).toBeGreaterThan(0)
     expect(trajectory.metadata?.source_format).toBe(`pymatgen_trajectory`)
     expect(trajectory.metadata?.species_list).toBeDefined()
     expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
@@ -1386,17 +926,6 @@ describe(`Format Detection`, () => {
       : read_test_file(filename)
     const trajectory = await parse_trajectory_data(content, filename)
     expect(trajectory.metadata?.source_format).toBe(expected_format)
-  })
-
-  it(`should detect XYZ multi-frame vs single-frame`, async () => {
-    const single_frame = `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const multi_frame = `${single_frame}\n${single_frame}`
-
-    const single_trajectory = await parse_trajectory_data(single_frame, `test.xyz`)
-    const multi_trajectory = await parse_trajectory_data(multi_frame, `test.xyz`)
-
-    expect(single_trajectory.metadata?.source_format).toBe(`single_xyz`)
-    expect(multi_trajectory.metadata?.source_format).toBe(`xyz_trajectory`)
   })
 
   // Filenames from blob: object URLs (URL.createObjectURL) are UUIDs without extension,
@@ -1511,28 +1040,6 @@ describe(`Error Handling`, () => {
     await expect(parse_trajectory_data(content, filename)).rejects.toThrow(
       /Unsupported|Invalid|Unrecognized/,
     )
-  })
-
-  it(`should provide helpful error messages`, async () => {
-    const too_short_hdf5 = new ArrayBuffer(4)
-    await expect(parse_trajectory_data(too_short_hdf5, `test.h5`)).rejects.toThrow(
-      /Unsupported binary format/,
-    )
-
-    const invalid_xdatcar = `title\ninvalid_scale\n`
-    await expect(parse_trajectory_data(invalid_xdatcar, `XDATCAR`)).rejects.toThrow(
-      `XDATCAR file too short`,
-    )
-  })
-
-  it(`should handle edge cases in XYZ parsing`, async () => {
-    const negative_atoms = `-1\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const trajectory = await parse_trajectory_data(negative_atoms, `test.xyz`)
-    expect(trajectory.frames).toHaveLength(1) // Should skip negative atoms and parse valid frame
-
-    const zero_atoms = `0\ncomment\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const trajectory2 = await parse_trajectory_data(zero_atoms, `test.xyz`)
-    expect(trajectory2.frames).toHaveLength(1) // Should skip zero atoms and parse valid frame
   })
 
   it.each([

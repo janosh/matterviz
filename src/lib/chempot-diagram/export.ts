@@ -1,6 +1,7 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
 import { dpi_to_scale } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
+import { escape_html as xml_escape } from '$lib/utils'
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
@@ -127,14 +128,6 @@ export function export_png_file(
     download(blob, `${basename}.png`, `image/png`)
   }, `image/png`)
 }
-
-const xml_escape = (text: string): string =>
-  text
-    .replaceAll(`&`, `&amp;`)
-    .replaceAll(`<`, `&lt;`)
-    .replaceAll(`>`, `&gt;`)
-    .replaceAll(`"`, `&quot;`)
-    .replaceAll(`'`, `&#39;`)
 
 // SVG snapshot: rasterized canvas as embedded image + overlay labels as real text nodes
 export function export_svg_file(

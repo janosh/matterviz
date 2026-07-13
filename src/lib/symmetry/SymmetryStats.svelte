@@ -95,14 +95,10 @@
     hermann_mauguin: `Hermann-Mauguin symbol describes symmetry operations. Format: Lattice type + Point group symmetry. Example: P4/mmm = Primitive + 4-fold rotation + mirror planes`,
     hall_number: `Hall number: alternative numbering system for space groups. Useful for crystallographic software compatibility.`,
     pearson_symbol: `Pearson symbol. Format: Crystal system + Number of atoms per unit cell. Example: tP2 = tetragonal primitive with 2 atoms`,
-    symmetry_operations: `Total symmetry operations that map the crystal structure onto itself. Includes rotations, translations, and combinations.`,
     distinct_orbits: `Number of unique Wyckoff positions (symmetry-equivalent atomic sites) in the crystal structure.`,
     wyckoff_sequence: `Wyckoff sequence: letters of all occupied Wyckoff positions in descending alphabetical order, with superscript counts for letters occupied by multiple orbits. A standard structure-type fingerprint (complements the Pearson symbol).`,
     free_params: `Internal degrees of freedom: number of free fractional-coordinate parameters (x, y, z in the ITA representative coordinates) summed over occupied Wyckoff orbits. 0 means all atomic positions are fully fixed by symmetry.`,
     settings: `All settings of this space group in the International Tables (origin choices, unique axes, cell choices, hexagonal vs rhombohedral axes). The setting detected for this structure is highlighted.`,
-    translations: `Number of translations in the crystal structure.`,
-    rotations: `Number of rotations in the crystal structure.`,
-    roto_translations: `Number of roto-translations in the crystal structure.`,
   }
   const tooltips: Record<string, string> = $derived(show_tooltips ? titles : {})
 

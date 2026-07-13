@@ -39,7 +39,7 @@
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
-  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
+  import { ARITY_COLORS, get_chempot_color_bar_config, get_domain_color_data } from './color'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -57,12 +57,10 @@
   import {
     apply_element_padding,
     bbox_diagonal,
-    best_form_energy_for_formula,
     build_axis_ranges,
     dedup_points,
-    formula_key_from_composition,
     get_3d_domain_simplexes_and_ann_loc,
-    get_energy_per_atom,
+    get_energy_stats_by_formula,
     get_min_entries_and_el_refs,
     get_ternary_combinations,
     get_visible_domain_labels,
@@ -270,17 +268,14 @@
     get_projection_source_entries(entries, temp_filtered_entries),
   )
 
-  const all_entry_elements = $derived.by(() =>
-    Array.from(
-      new SvelteSet(
-        projection_source_entries.flatMap((entry) =>
-          Object.entries(entry.composition)
-            .filter(([, amount]) => amount > 0)
-            .map(([element]) => element),
-        ),
-      ),
-    ).sort(),
-  )
+  const all_entry_elements = $derived.by(() => {
+    const elements = projection_source_entries.flatMap((entry) =>
+      Object.entries(entry.composition)
+        .filter(([, amount]) => amount > 0)
+        .map(([element]) => element),
+    )
+    return Array.from(new SvelteSet(elements)).sort()
+  })
   const has_multinary_system = $derived(all_entry_elements.length > 3)
   let projection_elements_override = $state<string[] | null>(null)
   const config_projection_elements = $derived(
@@ -288,16 +283,14 @@
   )
   const projection_elements = $derived.by(() => {
     if (all_entry_elements.length < 3) return []
-    if (!has_multinary_system) {
-      return config_projection_elements ?? all_entry_elements.slice(0, 3)
-    }
-    const override_projection = normalize_projection_triplet(
-      projection_elements_override ?? undefined,
-      all_entry_elements,
-    )
-    if (override_projection) return override_projection
-    if (config_projection_elements) return config_projection_elements
-    return all_entry_elements.slice(0, 3)
+    // User-picked projection axes only apply to multinary (4+ element) systems
+    const override_projection = has_multinary_system
+      ? normalize_projection_triplet(
+          projection_elements_override ?? undefined,
+          all_entry_elements,
+        )
+      : null
+    return override_projection ?? config_projection_elements ?? all_entry_elements.slice(0, 3)
   })
   const effective_config = $derived({
     ...config,
@@ -362,7 +355,7 @@
   })
   const current_projection_key = $derived(plot_elements.join(`|`))
   let formula_filter_query = $state(``)
-  const available_formulas = $derived.by(() => Object.keys(diagram_data?.domains ?? {}).sort())
+  const available_formulas = $derived(Object.keys(diagram_data?.domains ?? {}).sort())
   const filtered_formulas = $derived.by(() => {
     const query = formula_filter_query.trim().toLowerCase()
     if (!query) return available_formulas
@@ -384,12 +377,6 @@
     info: ChemPotHoverInfo3D
   }
 
-  interface FormulaEnergyStats {
-    matching_entry_count: number
-    min_energy_per_atom: number | null
-    max_energy_per_atom: number | null
-  }
-  type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
   const domain_annotation_cache = new Map<string, number[]>()
 
   function get_domain_ann_loc(points_3d: number[][]): number[] {
@@ -445,122 +432,27 @@
     return result
   })
 
-  const entry_energy_stats_by_formula = $derived.by(
-    (): SvelteMap<string, FormulaEnergyStats> => {
-      const stats_by_formula = new SvelteMap<string, FormulaEnergyStats>()
-      for (const entry of temp_filtered_entries) {
-        const formula_key = formula_key_from_composition(entry.composition)
-        const energy_per_atom = get_energy_per_atom(entry)
-        const existing = stats_by_formula.get(formula_key)
-        if (!existing) {
-          stats_by_formula.set(formula_key, {
-            matching_entry_count: 1,
-            min_energy_per_atom: energy_per_atom,
-            max_energy_per_atom: energy_per_atom,
-          })
-          continue
-        }
-        stats_by_formula.set(formula_key, {
-          matching_entry_count: existing.matching_entry_count + 1,
-          min_energy_per_atom: Math.min(
-            existing.min_energy_per_atom ?? energy_per_atom,
-            energy_per_atom,
-          ),
-          max_energy_per_atom: Math.max(
-            existing.max_energy_per_atom ?? energy_per_atom,
-            energy_per_atom,
-          ),
-        })
-      }
-      return stats_by_formula
-    },
+  const entry_energy_stats_by_formula = $derived(
+    get_energy_stats_by_formula(temp_filtered_entries),
   )
 
   // === Region coloring ===
-  // Categorical palette for arity mode (element count)
-  const arity_colors = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
-
   // Original (non-renormalized) elemental references for formation energy computation.
   // diagram_data.el_refs may be renormalized to zero when formal_chempots is true,
   // so we compute our own from the raw entries to get true DFT reference energies.
   const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
 
-  const color_mode_labels: Record<NumericColorMode, string> = {
-    energy: `Energy per atom (eV)`,
-    formation_energy: `Formation energy (eV/atom)`,
-    entries: `Entry count`,
-  }
-  function get_numeric_color_value(
-    formula: string,
-    active_color_mode: NumericColorMode,
-  ): number | null {
-    if (active_color_mode === `energy`) {
-      return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
-    }
-    if (active_color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(temp_filtered_entries, formula, raw_el_refs) ?? null
-    }
-    return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
-  }
-  const domain_color_values = $derived.by(
-    (): { value_by_formula: SvelteMap<string, number>; values: number[] } | null => {
-      if (color_mode === `none` || color_mode === `arity`) return null
-      const active_color_mode = color_mode as NumericColorMode
-      const value_by_formula = new SvelteMap<string, number>()
-      const values: number[] = []
-      for (const domain of render_domains) {
-        const value = get_numeric_color_value(domain.formula, active_color_mode)
-        if (value == null || !Number.isFinite(value)) continue
-        values.push(value)
-        value_by_formula.set(domain.formula, value)
-      }
-      return { value_by_formula, values }
-    },
-  )
-
-  // Per-domain color map keyed by formula
-  const domain_colors = $derived.by((): SvelteMap<string, string> => {
-    const colors = new SvelteMap<string, string>()
-    if (color_mode === `none`) return colors
-
-    if (color_mode === `arity`) {
-      for (const domain of render_domains) {
-        const n_elements = extract_formula_elements(domain.formula).length
-        const idx = Math.min(n_elements, arity_colors.length) - 1
-        colors.set(domain.formula, arity_colors[Math.max(0, idx)])
-      }
-      return colors
-    }
-    const values_payload = domain_color_values
-    const scale = make_chempot_color_scale(
-      values_payload?.values ?? [],
+  const { colors: domain_colors, color_range } = $derived(
+    get_domain_color_data({
+      formulas: render_domains.map((domain) => domain.formula),
+      color_mode,
       color_scale,
       reverse_color_scale,
-    )
-    for (const domain of render_domains) {
-      const value = values_payload?.value_by_formula.get(domain.formula)
-      colors.set(domain.formula, value != null && scale ? scale(value) : `#999`)
-    }
-    return colors
-  })
-
-  // Range and label for the color bar (null for none/arity which are categorical)
-  const color_range = $derived.by((): { min: number; max: number; label: string } | null => {
-    const values = domain_color_values?.values ?? []
-    if (values.length === 0) return null
-    let lo = values[0],
-      hi = values[0]
-    for (let idx = 1; idx < values.length; idx++) {
-      if (values[idx] < lo) lo = values[idx]
-      if (values[idx] > hi) hi = values[idx]
-    }
-    return {
-      min: lo,
-      max: Math.max(hi, lo + 1e-6),
-      label:
-        color_mode === `none` || color_mode === `arity` ? `` : color_mode_labels[color_mode],
-    }
-  })
+      entries: temp_filtered_entries,
+      el_refs: raw_el_refs,
+      energy_stats: entry_energy_stats_by_formula,
+    }),
+  )
 
   const arity_legend_labels = $derived.by((): string[] => {
     let has_four_plus_regions = false
@@ -605,10 +497,7 @@
     ]
   })
 
-  function to_render_xyz(point: number[]): Vec3 {
-    const [scale_x, scale_y, scale_z] = render_axis_scale
-    return [point[1] * scale_x, point[2] * scale_y, point[0] * scale_z]
-  }
+  const to_render_xyz = (point: number[]): Vec3 => swiz(point[0], point[1], point[2])
 
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
@@ -753,20 +642,8 @@
       const point_b_idx = selected_coord_to_idx.get(
         `${point_b[0].toFixed(6)},${point_b[1].toFixed(6)}`,
       )
-      if (
-        point_a_idx == null ||
-        point_b_idx == null ||
-        point_a_idx >= pts.length ||
-        point_b_idx >= pts.length
-      ) {
-        console.warn(`get_2d_hull_edges: invalid edge`, {
-          point_a,
-          point_b,
-          point_a_idx,
-          point_b_idx,
-        })
-        continue
-      }
+      // Hull vertices come from pts_2d, so lookups always succeed
+      if (point_a_idx == null || point_b_idx == null) continue
       edges.push([pts[point_a_idx], pts[point_b_idx]])
     }
 
@@ -1070,23 +947,21 @@
     return geom
   })
 
+  const domain_label = (domain: DomainRenderData) => ({
+    formula: domain.formula,
+    position: swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2]),
+    label_font_size: domain.label_font_size,
+  })
+
   const visible_domain_labels = $derived.by(() => {
     if (!hull_base_geometry || face_domain_map.length === 0) {
-      return render_domains.map((domain) => ({
-        formula: domain.formula,
-        position: swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2]),
-        label_font_size: domain.label_font_size,
-      }))
+      return render_domains.map(domain_label)
     }
 
     const pos = hull_base_geometry.getAttribute(`position`)
     const pinned_labels = render_domains
       .filter((domain) => domain.is_draw_formula)
-      .map((domain) => ({
-        formula: domain.formula,
-        position: swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2]),
-        label_font_size: domain.label_font_size,
-      }))
+      .map(domain_label)
     const font_size_by_formula = new SvelteMap(
       render_domains.map((domain) => [domain.formula, domain.label_font_size]),
     )
@@ -1098,16 +973,24 @@
     )
   })
 
-  $effect(() => {
-    const geom = hull_base_geometry
-    return () => dispose_geometry(geom)
-  })
+  // Register an effect that disposes the given geometries whenever they are
+  // recomputed or the component unmounts.
+  function dispose_on_change(
+    get_geometries: () => (THREE.BufferGeometry | null | undefined)[],
+  ): void {
+    $effect(() => {
+      const geometries = get_geometries()
+      return () => {
+        for (const geometry of geometries) geometry?.dispose()
+      }
+    })
+  }
 
-  $effect(() => {
-    const geom = colored_hull_geometry
-    // Don't dispose if it's the same object as hull_base_geometry (no clone was made)
-    if (geom && geom !== hull_base_geometry) return () => dispose_geometry(geom)
-  })
+  dispose_on_change(() => [hull_base_geometry])
+  // Don't dispose colored hull if it's the same object as hull_base_geometry (no clone made)
+  dispose_on_change(() =>
+    colored_hull_geometry !== hull_base_geometry ? [colored_hull_geometry] : [],
+  )
 
   // Domains on the outer surface (used by the "Surface" formula overlay quick-select).
   const surface_formulas = $derived.by((): SvelteSet<string> => {
@@ -1344,44 +1227,12 @@
     return result
   })
 
-  function dispose_geometry(geometry: THREE.BufferGeometry | null | undefined): void {
-    if (!geometry) return
-    geometry.dispose()
-  }
-
-  function dispose_geometries(geometries: (THREE.BufferGeometry | null | undefined)[]): void {
-    for (const geometry of geometries) dispose_geometry(geometry)
-  }
-
-  $effect(() => {
-    const geometry = edge_geometry
-    return () => dispose_geometry(geometry)
-  })
-
-  $effect(() => {
-    const geometry = occlusion_hull_geometry
-    return () => dispose_geometry(geometry)
-  })
-
-  $effect(() => {
-    const geometry = bounding_box_geometry
-    return () => dispose_geometry(geometry)
-  })
-
-  $effect(() => {
-    const geometries = formula_edge_data.map((data) => data.geometry)
-    return () => dispose_geometries(geometries)
-  })
-
-  $effect(() => {
-    const geometries = formula_mesh_data.map((data) => data.geometry)
-    return () => dispose_geometries(geometries)
-  })
-
-  $effect(() => {
-    const geometries = hover_mesh_data.map((data) => data.geometry)
-    return () => dispose_geometries(geometries)
-  })
+  dispose_on_change(() => [edge_geometry])
+  dispose_on_change(() => [occlusion_hull_geometry])
+  dispose_on_change(() => [bounding_box_geometry])
+  dispose_on_change(() => formula_edge_data.map((data) => data.geometry))
+  dispose_on_change(() => formula_mesh_data.map((data) => data.geometry))
+  dispose_on_change(() => hover_mesh_data.map((data) => data.geometry))
 
   // === Grid, axes, ticks (matching ScatterPlot3D style) ===
 
@@ -1438,8 +1289,8 @@
   // Niced ranges (from ticks) padded so the grid extends beyond the diagram.
   // For horizontal axes (0,1): pad both sides.
   // For vertical axis (2): use actual data range and round min down to an integer.
-  const niced_range = $derived.by(() => {
-    return [0, 1, 2].map((axis): Vec2 => {
+  const niced_range = $derived(
+    [0, 1, 2].map((axis): Vec2 => {
       const ticks = data_ticks[axis]
       const lo = ticks[0]
       const hi = ticks.at(-1) ?? lo
@@ -1449,8 +1300,8 @@
         return [Math.floor(min_data), hi]
       }
       return [lo - step, hi + step]
-    })
-  })
+    }),
+  )
 
   // Helper to create a line geometry from two Vec3 arrays
   function make_line_geom(start: Vec3, end: Vec3): THREE.BufferGeometry {
@@ -1619,11 +1470,11 @@
       tick_label.style.visibility = ``
     }
     const domain_rects = Array.from(wrapper.querySelectorAll<HTMLElement>(`.domain-label`))
-      .filter((domain_label) => {
-        const style = getComputedStyle(domain_label)
+      .filter((label_el) => {
+        const style = getComputedStyle(label_el)
         return style.display !== `none` && style.visibility !== `hidden`
       })
-      .map((domain_label) => pad_rect(domain_label.getBoundingClientRect(), 1))
+      .map((label_el) => pad_rect(label_el.getBoundingClientRect(), 1))
     if (domain_rects.length === 0) return
 
     for (const tick_label of tick_labels) {
@@ -1751,20 +1602,13 @@
     bg_css_var: `--chempot-3d-bg-fullscreen`,
   })
 
-  $effect(() => {
-    const grid_geometries = grid_config
-    return () => {
-      for (const grid_item of grid_geometries) {
-        dispose_geometry(grid_item.line_geom)
-        for (const tick_geometry of grid_item.tick_geoms) {
-          dispose_geometry(tick_geometry)
-        }
-        for (const line_geometry of grid_item.grid_geoms) {
-          dispose_geometry(line_geometry)
-        }
-      }
-    }
-  })
+  dispose_on_change(() =>
+    grid_config.flatMap((grid_item) => [
+      grid_item.line_geom,
+      ...grid_item.tick_geoms,
+      ...grid_item.grid_geoms,
+    ]),
+  )
 
   const projection_planes = $derived.by(() => {
     const projections = display.projections
@@ -1998,15 +1842,12 @@
   }
 
   function stop_phase_pointer_event(raw_event: unknown): void {
-    if (!raw_event || typeof raw_event !== `object`) return
-
-    const event = raw_event as { nativeEvent?: unknown; stopPropagation?: () => void }
-    event.stopPropagation?.()
-
-    const native_event = event.nativeEvent
-    if (!native_event || typeof native_event !== `object`) return
-    const native_pointer_event = native_event as { stopPropagation?: () => void }
-    native_pointer_event.stopPropagation?.()
+    const event = raw_event as
+      | { nativeEvent?: { stopPropagation?: () => void }; stopPropagation?: () => void }
+      | null
+      | undefined
+    event?.stopPropagation?.()
+    event?.nativeEvent?.stopPropagation?.()
   }
 
   function handle_phase_hover(domain_data: HoverMeshData, raw_event: unknown): void {
@@ -2308,6 +2149,17 @@
         <p>Need at least 2 elements with elemental reference entries.</p>
       </div>
     {:else if mounted && typeof WebGLRenderingContext !== `undefined`}
+      {#snippet orbit_controls()}
+        <extras.OrbitControls
+          bind:ref={orbit_controls_ref}
+          enableRotate
+          enableZoom
+          enablePan
+          autoRotate={auto_rotate > 0 && page_visibility.visible}
+          autoRotateSpeed={auto_rotate}
+          target={camera_target}
+        />
+      {/snippet}
       <Canvas
         createRenderer={(cvs) =>
           new THREE.WebGLRenderer({
@@ -2327,15 +2179,7 @@
               near={0.1}
               far={data_extent * 10}
             >
-              <extras.OrbitControls
-                bind:ref={orbit_controls_ref}
-                enableRotate
-                enableZoom
-                enablePan
-                autoRotate={auto_rotate > 0 && page_visibility.visible}
-                autoRotateSpeed={auto_rotate}
-                target={camera_target}
-              />
+              {@render orbit_controls()}
             </T.OrthographicCamera>
           {:else}
             <T.PerspectiveCamera
@@ -2345,15 +2189,7 @@
               near={0.1}
               far={data_extent * 10}
             >
-              <extras.OrbitControls
-                bind:ref={orbit_controls_ref}
-                enableRotate
-                enableZoom
-                enablePan
-                autoRotate={auto_rotate > 0 && page_visibility.visible}
-                autoRotateSpeed={auto_rotate}
-                target={camera_target}
-              />
+              {@render orbit_controls()}
             </T.PerspectiveCamera>
           {/if}
 
@@ -2513,7 +2349,7 @@
         </ChemPotScene3D>
       </Canvas>
       <!-- Color bar for continuous modes -->
-      {#if color_mode !== `none` && color_mode !== `arity` && color_range}
+      {#if color_range}
         {@const color_bar_config = get_chempot_color_bar_config(
           color_scale,
           reverse_color_scale,
@@ -2533,7 +2369,7 @@
         <div class="arity-legend">
           {#each arity_legend_labels as label, idx (label)}
             <span>
-              <span style:background={arity_colors[idx]}></span>
+              <span style:background={ARITY_COLORS[idx]}></span>
               {label}
             </span>
           {/each}

@@ -285,8 +285,7 @@ describe(`Histogram`, () => {
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 
-  test(`renders without error when legend prop is null`, async () => {
-    // Should not throw when legend={null} is passed
+  test(`legend=null suppresses the legend even with show_legend=true`, async () => {
     mount_histogram({
       series: [
         { x: [], y: [1, 2, 3], label: `A` },
@@ -296,8 +295,8 @@ describe(`Histogram`, () => {
       show_legend: true,
     })
     await tick()
-    // Verify component mounted without crashing
     expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.legend`)).toBeNull()
   })
 
   // oxfmt-ignore

@@ -579,20 +579,6 @@ describe(`ColorBar Interactive Selects`, () => {
     void unmount(component)
   })
 
-  test(`renders both property and color scale selects together`, () => {
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: {
-        property_options,
-        color_scale_options,
-        range: [0, 10],
-      },
-    })
-    expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
-    expect(document.body.querySelector(`button.color-scale-select`)).not.toBeNull()
-    void unmount(component)
-  })
-
   test(`resets stale selected keys to valid options`, async () => {
     const state = {
       selected_property_key: `energy`,

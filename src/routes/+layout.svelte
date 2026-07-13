@@ -65,12 +65,12 @@
   const route_path = (route_entry: RouteEntry): string =>
     typeof route_entry === `string` ? route_entry : route_entry[0]
 
-  const nav_routes = $derived.by(() => {
-    return demo_routes.filter((route_entry) => {
+  const nav_routes = $derived(
+    demo_routes.filter((route_entry) => {
       const path = route_path(route_entry)
       return !path.startsWith(`/layout`)
-    })
-  })
+    }),
+  )
 </script>
 
 <!-- z-index: above nav dropdown and Structure control toggles -->

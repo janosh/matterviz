@@ -802,13 +802,9 @@
           fill={merged_config.colors.text}
           font-size={merged_config.font_size + 2}
         >
-          {#if x_axis.label}
-            {@html sanitize_svg(x_axis.label)}
-          {:else if effective_data?.x_axis_label}
-            {@html sanitize_svg(effective_data.x_axis_label)}
-          {:else}
-            {@html sanitize_svg(default_x_axis_label)}
-          {/if}
+          {@html sanitize_svg(
+            x_axis.label || effective_data?.x_axis_label || default_x_axis_label,
+          )}
         </text>
       </g>
 
@@ -845,38 +841,26 @@
           fill={merged_config.colors.text}
           font-size={merged_config.font_size + 2}
         >
-          {#if y_axis.label}
-            {@html sanitize_svg(y_axis.label)}
-          {:else if effective_data?.y_axis_label}
-            {@html sanitize_svg(effective_data.y_axis_label)}
-          {:else}
-            Temperature ({temp_unit})
-          {/if}
+          {@html sanitize_svg(
+            y_axis.label || effective_data?.y_axis_label || `Temperature (${temp_unit})`,
+          )}
         </text>
       </g>
 
       <!-- Component labels at corners (supports compound formulas with subscripts) -->
       {#if show_component_labels}
-        <text
-          x={left}
-          y={bottom + 45}
-          text-anchor="middle"
-          fill={merged_config.colors.text}
-          font-size={merged_config.font_size + 2}
-          font-weight="bold"
-        >
-          {@html sanitize_svg(component_a_svg)}
-        </text>
-        <text
-          x={right}
-          y={bottom + 45}
-          text-anchor="middle"
-          fill={merged_config.colors.text}
-          font-size={merged_config.font_size + 2}
-          font-weight="bold"
-        >
-          {@html sanitize_svg(component_b_svg)}
-        </text>
+        {#each [component_a_svg, component_b_svg] as svg, idx (idx)}
+          <text
+            x={idx === 0 ? left : right}
+            y={bottom + 45}
+            text-anchor="middle"
+            fill={merged_config.colors.text}
+            font-size={merged_config.font_size + 2}
+            font-weight="bold"
+          >
+            {@html sanitize_svg(svg)}
+          </text>
+        {/each}
       {/if}
     </svg>
 

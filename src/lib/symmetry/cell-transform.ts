@@ -27,11 +27,9 @@ export function moyo_cell_to_structure(
   // row-major(RB)), so the flat array is row-major with each row a lattice vector.
   const lattice_matrix = math.vec9_to_mat3x3([...cell.lattice.basis])
 
-  // Calculate lattice parameters from matrix
   const lattice_params = math.calc_lattice_params(lattice_matrix)
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
-  // Build sites from positions and atomic numbers
   const sites: Site[] = cell.positions.map((abc, idx) => {
     const atomic_number = cell.numbers[idx]
     const element = ATOMIC_NUMBER_TO_SYMBOL[atomic_number]
@@ -42,12 +40,10 @@ export function moyo_cell_to_structure(
     // Wrap fractional coordinates to [0, 1) range (moyo-wasm may return outside)
     const wrapped_abc = wrap_to_unit_cell(abc)
 
-    const xyz = frac_to_cart(wrapped_abc)
-
     // Oxidation state is set to 0 (unknown) because moyo-wasm only provides atomic numbers.
     // transformed cell may have different/reordered sites, making it non-trivial to
     // map oxidation states from original structure.
-    return make_site(element, wrapped_abc, xyz, element)
+    return make_site(element, wrapped_abc, frac_to_cart(wrapped_abc), element)
   })
 
   const lattice = {
@@ -71,7 +67,6 @@ export function get_conventional_cell(
   original_structure: Crystal, // The original input structure
   sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing std_cell
 ): Crystal {
-  // The conventional cell as a Crystal
   return moyo_cell_to_structure(sym_data.std_cell, original_structure)
 }
 
@@ -81,7 +76,6 @@ export function get_primitive_cell(
   original_structure: Crystal, // The original input structure
   sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing prim_std_cell
 ): Crystal {
-  // The primitive cell as a Crystal
   return moyo_cell_to_structure(sym_data.prim_std_cell, original_structure)
 }
 
@@ -92,17 +86,9 @@ export function transform_cell(
   cell_type: CellType, // The desired cell type ('original', 'conventional', or 'primitive')
   sym_data: MoyoDataset | null, // Optional MoyoDataset from symmetry analysis
 ): Crystal {
-  //transformed structure (or original if no transformation needed)
-  if (cell_type === `original` || !sym_data) {
-    return structure
-  }
-
-  if (cell_type === `conventional`) {
-    return get_conventional_cell(structure, sym_data)
-  }
-  if (cell_type === `primitive`) {
-    return get_primitive_cell(structure, sym_data)
-  }
-  // Unknown cell_type at runtime (e.g. from stale persisted settings): leave unchanged
+  if (!sym_data) return structure
+  if (cell_type === `conventional`) return get_conventional_cell(structure, sym_data)
+  if (cell_type === `primitive`) return get_primitive_cell(structure, sym_data)
+  // 'original' or unknown runtime cell_type (e.g. stale persisted settings): unchanged
   return structure
 }

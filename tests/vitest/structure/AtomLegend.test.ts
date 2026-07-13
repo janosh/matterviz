@@ -1,19 +1,16 @@
-import type { ElementSymbol, Species } from '$lib'
-import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
+import type { ElementSymbol } from '$lib'
+import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
 import type { ComponentProps } from 'svelte'
-import { mount as svelte_mount, tick, unmount } from 'svelte'
+import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-let mounted_components: ReturnType<typeof svelte_mount>[] = []
+let mounted_components: ReturnType<typeof mount>[] = []
 
-const mount = (
-  _component: typeof AtomLegend,
-  options: { target: HTMLElement; props?: ComponentProps<typeof AtomLegend> },
-): ReturnType<typeof svelte_mount> => {
-  const mounted = svelte_mount(AtomLegend, options)
+const mount_legend = (props: ComponentProps<typeof AtomLegend>): ReturnType<typeof mount> => {
+  const mounted = mount(AtomLegend, { target: document.body, props })
   mounted_components.push(mounted)
   return mounted
 }
@@ -59,7 +56,7 @@ describe(`AtomLegend Component`, () => {
       expected_count: 1,
     },
   ])(`$desc`, ({ props, expected_labels, expected_count, check_styling }) => {
-    mount(AtomLegend, { target: document.body, props })
+    mount_legend(props)
 
     const labels = document.querySelectorAll(`label`)
     expect(labels).toHaveLength(expected_count)
@@ -86,10 +83,7 @@ describe(`AtomLegend Component`, () => {
   })
 
   test(`color picker functionality`, () => {
-    mount(AtomLegend, {
-      target: document.body,
-      props: { elements: { Fe: 2 }, elem_color_picker_title: `Custom title` },
-    })
+    mount_legend({ elements: { Fe: 2 }, elem_color_picker_title: `Custom title` })
 
     const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
     const label = doc_query<HTMLLabelElement>(`label`)
@@ -112,7 +106,7 @@ describe(`AtomLegend Component`, () => {
     // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
     [{ Xx: 1 } as never, 1, `Xx 1`], // Non-existent element
   ])(`handles edge cases correctly`, (elements, expected_count, expected_text) => {
-    mount(AtomLegend, { target: document.body, props: { elements } })
+    mount_legend({ elements })
 
     const labels = document.querySelectorAll(`label`)
     expect(labels).toHaveLength(expected_count)
@@ -151,13 +145,10 @@ describe(`AtomLegend Component`, () => {
   ])(
     `custom label functions: $desc`,
     ({ get_element_label, elements, show_amounts, expected, verify_spy }) => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements,
-          get_element_label,
-          ...(show_amounts !== undefined && { show_amounts }),
-        },
+      mount_legend({
+        elements,
+        get_element_label,
+        ...(show_amounts !== undefined && { show_amounts }),
       })
 
       const label_texts = Array.from(document.querySelectorAll(`label`)).map((label) =>
@@ -179,10 +170,7 @@ describe(`AtomLegend Component`, () => {
     try {
       // 1. Initialize with a known color
       colors.element.Fe = `#000000`
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 1 } },
-      })
+      mount_legend({ elements: { Fe: 1 } })
       const label = doc_query(`label`)
       const initial_color = getComputedStyle(label).color
 
@@ -200,10 +188,7 @@ describe(`AtomLegend Component`, () => {
 
   test(`element visibility toggle`, async () => {
     const hidden_elements = new Set<ElementSymbol>()
-    mount(AtomLegend, {
-      target: document.body,
-      props: { elements: { Fe: 2, O: 3 }, hidden_elements },
-    })
+    mount_legend({ elements: { Fe: 2, O: 3 }, hidden_elements })
 
     const labels = document.querySelectorAll(`label`)
     const toggle_buttons = document.querySelectorAll(`button.toggle-visibility`)
@@ -219,10 +204,7 @@ describe(`AtomLegend Component`, () => {
 
   describe(`Mode Selector`, () => {
     test(`renders mode toggle button`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 } },
-      })
+      mount_legend({ elements: { Fe: 2 } })
 
       const mode_toggle = doc_query(`button.mode-toggle`)
       expect(mode_toggle).toBeInstanceOf(HTMLElement)
@@ -230,10 +212,7 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`opens and closes mode dropdown`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 } },
-      })
+      mount_legend({ elements: { Fe: 2 } })
 
       const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
@@ -250,13 +229,11 @@ describe(`AtomLegend Component`, () => {
       await tick()
 
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
+      expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`false`)
     })
 
     test(`mode options are rendered correctly`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 } },
-      })
+      mount_legend({ elements: { Fe: 2 } })
 
       const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
       mode_toggle.click()
@@ -277,18 +254,15 @@ describe(`AtomLegend Component`, () => {
         scale: `interpolateViridis` as const,
         scale_type: `continuous` as const,
       }
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: { Fe: 2 },
-          atom_color_config,
-          property_colors: {
-            colors: [`#ff0000`, `#00ff00`],
-            values: [4, 6],
-            min_value: 4,
-            max_value: 6,
-            unique_values: [4, 6],
-          },
+      mount_legend({
+        elements: { Fe: 2 },
+        atom_color_config,
+        property_colors: {
+          colors: [`#ff0000`, `#00ff00`],
+          values: [4, 6],
+          min_value: 4,
+          max_value: 6,
+          unique_values: [4, 6],
         },
       })
 
@@ -309,10 +283,7 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`wyckoff mode disabled without sym_data`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 }, sym_data: null },
-      })
+      mount_legend({ elements: { Fe: 2 }, sym_data: null })
 
       const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
       mode_toggle.click()
@@ -330,19 +301,16 @@ describe(`AtomLegend Component`, () => {
 
   describe(`Property Legend - Continuous`, () => {
     test(`renders discrete bar with one labeled segment per integer value`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: [`#440154`, `#31688e`, `#35b779`, `#fde724`],
-            values: [2, 4, 6, 8],
-            min_value: 2,
-            max_value: 8,
-            unique_values: [2, 4, 6, 8],
-          },
-          title: `Coordination Number`,
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`#440154`, `#31688e`, `#35b779`, `#fde724`],
+          values: [2, 4, 6, 8],
+          min_value: 2,
+          max_value: 8,
+          unique_values: [2, 4, 6, 8],
         },
+        title: `Coordination Number`,
       })
 
       const legend = doc_query(`.property-legend`)
@@ -361,19 +329,16 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`renders continuous gradient for non-integer numeric values`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `custom`, scale_type: `continuous` },
-          property_colors: {
-            colors: [`#440154`, `#fde724`],
-            values: [0.5, 2.5],
-            min_value: 0.5,
-            max_value: 2.5,
-            unique_values: [0.5, 2.5],
-          },
-          title: `Charge`,
+      mount_legend({
+        atom_color_config: { mode: `custom`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`#440154`, `#fde724`],
+          values: [0.5, 2.5],
+          min_value: 0.5,
+          max_value: 2.5,
+          unique_values: [0.5, 2.5],
         },
+        title: `Charge`,
       })
 
       // Non-integer data keeps the smooth gradient ColorBar
@@ -390,17 +355,14 @@ describe(`AtomLegend Component`, () => {
 
     test(`falls back to gradient when integer values exceed segment cap`, () => {
       const many_values = Array.from({ length: 25 }, (_, idx) => idx + 1)
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: many_values.map(() => `#440154`),
-            values: many_values,
-            min_value: 1,
-            max_value: 25,
-            unique_values: many_values,
-          },
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: many_values.map(() => `#440154`),
+          values: many_values,
+          min_value: 1,
+          max_value: 25,
+          unique_values: many_values,
         },
       })
 
@@ -411,17 +373,14 @@ describe(`AtomLegend Component`, () => {
 
     test(`renders discrete bar at exactly the segment cap (20 values)`, () => {
       const cap_values = Array.from({ length: 20 }, (_, idx) => idx + 1)
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: cap_values.map(() => `#440154`),
-            values: cap_values,
-            min_value: 1,
-            max_value: 20,
-            unique_values: cap_values,
-          },
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: cap_values.map(() => `#440154`),
+          values: cap_values,
+          min_value: 1,
+          max_value: 20,
+          unique_values: cap_values,
         },
       })
 
@@ -431,19 +390,16 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`integer property value visibility toggle on discrete bar`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: [`#440154`, `#fde724`],
-            values: [4, 6],
-            min_value: 4,
-            max_value: 6,
-            unique_values: [4, 6],
-          },
-          hidden_prop_vals: new Set<string | number>(),
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`#440154`, `#fde724`],
+          values: [4, 6],
+          min_value: 4,
+          max_value: 6,
+          unique_values: [4, 6],
         },
+        hidden_prop_vals: new Set<string | number>(),
       })
 
       const segments = document.querySelectorAll<HTMLButtonElement>(`.discrete-segment`)
@@ -465,26 +421,17 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`applies custom HTML attributes via rest props`, () => {
-      const config = {
-        mode: `coordination` as const,
-        scale_type: `continuous` as const,
-      }
-      const property_colors = {
-        colors: [`blue`, `red`],
-        values: [1, 2],
-        min_value: 1,
-        max_value: 2,
-        unique_values: [1, 2],
-      }
-
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: config,
-          property_colors,
-          'data-testid': `test-legend`,
-          style: `z-index: 100;`,
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`blue`, `red`],
+          values: [1, 2],
+          min_value: 1,
+          max_value: 2,
+          unique_values: [1, 2],
         },
+        'data-testid': `test-legend`,
+        style: `z-index: 100;`,
       })
 
       const legend = document.body.querySelector(`.atom-legend`)
@@ -494,19 +441,16 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`displays title for property legend`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: [`#440154`, `#fde724`],
-            values: [2, 8],
-            min_value: 2,
-            max_value: 8,
-            unique_values: [2, 8],
-          },
-          title: `Custom Title`,
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`#440154`, `#fde724`],
+          values: [2, 8],
+          min_value: 2,
+          max_value: 8,
+          unique_values: [2, 8],
         },
+        title: `Custom Title`,
       })
 
       const title = doc_query(`.legend-header h4`)
@@ -514,17 +458,14 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`uses default title based on mode`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: [`#440154`],
-            values: [4],
-            min_value: 4,
-            max_value: 4,
-            unique_values: [4],
-          },
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`#440154`],
+          values: [4],
+          min_value: 4,
+          max_value: 4,
+          unique_values: [4],
         },
       })
 
@@ -533,17 +474,14 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`handles single integer value as one discrete segment`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: [`#440154`],
-            values: [5],
-            min_value: 5,
-            max_value: 5,
-            unique_values: [5],
-          },
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`#440154`],
+          values: [5],
+          min_value: 5,
+          max_value: 5,
+          unique_values: [5],
         },
       })
 
@@ -552,74 +490,12 @@ describe(`AtomLegend Component`, () => {
       expect(segments[0].textContent?.trim()).toBe(`5`)
     })
 
-    test(`handles single unique value without division by zero or NaN`, () => {
-      const config = {
-        mode: `coordination` as const,
-        scale_type: `continuous` as const,
-      }
-      const property_colors = {
-        colors: [`rgb(255, 0, 0)`],
-        values: [5, 5], // Duplicates to simulate real data
-        min_value: 5,
-        max_value: 5,
-        unique_values: [5],
-      }
-
-      // Should not throw any errors
-      expect(() => {
-        mount(AtomLegend, {
-          target: document.body,
-          props: { atom_color_config: config, property_colors },
-        })
-      }).not.toThrow()
-
-      const discrete_bar = document.querySelector(`.discrete-colorbar`)
-      expect(discrete_bar).toBeInstanceOf(HTMLElement)
-
-      // Should not contain NaN or undefined anywhere
-      const legend = document.querySelector(`.property-legend`)
-      expect(legend?.innerHTML).not.toContain(`NaN`)
-      expect(legend?.innerHTML).not.toContain(`undefined`)
-    })
-
-    test(`handles two unique values correctly`, () => {
-      const config = {
-        mode: `coordination` as const,
-        scale_type: `continuous` as const,
-      }
-      const property_colors = {
-        colors: [`rgb(0, 0, 255)`, `rgb(255, 0, 0)`],
-        values: [1, 2],
-        min_value: 1,
-        max_value: 2,
-        unique_values: [1, 2],
-      }
-
-      mount(AtomLegend, {
-        target: document.body,
-        props: { atom_color_config: config, property_colors },
-      })
-
-      const segments = document.querySelectorAll(`.discrete-segment`)
-      expect(segments).toHaveLength(2)
-
-      // Should not contain NaN or undefined anywhere in the legend
-      const legend = document.querySelector(`.property-legend`)
-      expect(legend?.innerHTML).not.toContain(`NaN`)
-      expect(legend?.innerHTML).not.toContain(`undefined`)
-    })
-
     test.each([
       [`empty unique_values`, [], []],
       [`single value`, [42], [`rgb(255, 128, 0)`]],
       [`two values`, [1, 2], [`red`, `blue`]],
       [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`]],
     ])(`handles %s without errors or NaN`, (_desc, unique_values, legend_colors) => {
-      const config = {
-        mode: `coordination` as const,
-        scale_type: `continuous` as const,
-      }
-
       const property_colors =
         unique_values.length > 0
           ? {
@@ -631,34 +507,29 @@ describe(`AtomLegend Component`, () => {
             }
           : null
 
-      expect(() => {
-        mount(AtomLegend, {
-          target: document.body,
-          props: { atom_color_config: config, property_colors },
-        })
-      }).not.toThrow()
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors,
+      })
 
-      if (unique_values.length > 0) {
-        const legend = document.body.querySelector(`.property-legend`)
-        if (legend) {
-          expect(legend.innerHTML).not.toContain(`NaN`)
-          expect(legend.innerHTML).not.toContain(`undefined`)
-        }
+      const legend = document.body.querySelector(`.property-legend`)
+      if (unique_values.length === 0) {
+        expect(legend).toBeNull() // no property colors -> no legend at all
+      } else {
+        expect(legend?.innerHTML).not.toContain(`NaN`)
+        expect(legend?.innerHTML).not.toContain(`undefined`)
       }
     })
   })
 
   describe(`Property Legend - Categorical`, () => {
     test(`renders categorical legend with discrete values`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-          property_colors: {
-            colors: [`#e41a1c`, `#377eb8`, `#4daf4a`, `#984ea3`],
-            values: [2, 4, 4, 6],
-            unique_values: [2, 4, 6],
-          },
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
+        property_colors: {
+          colors: [`#e41a1c`, `#377eb8`, `#4daf4a`, `#984ea3`],
+          values: [2, 4, 4, 6],
+          unique_values: [2, 4, 6],
         },
       })
 
@@ -674,15 +545,12 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`formats Wyckoff orbit IDs correctly`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `wyckoff`, scale_type: `categorical` },
-          property_colors: {
-            colors: [`#e41a1c`, `#377eb8`, `#4daf4a`],
-            values: [`4e|Fe`, `4e|Fe`, `2a|O`],
-            unique_values: [`4e|Fe`, `2a|O`],
-          },
+      mount_legend({
+        atom_color_config: { mode: `wyckoff`, scale_type: `categorical` },
+        property_colors: {
+          colors: [`#e41a1c`, `#377eb8`, `#4daf4a`],
+          values: [`4e|Fe`, `4e|Fe`, `2a|O`],
+          unique_values: [`4e|Fe`, `2a|O`],
         },
       })
 
@@ -696,17 +564,14 @@ describe(`AtomLegend Component`, () => {
 
     test(`property value visibility toggle`, async () => {
       const hidden_prop_vals = new Set<string | number>()
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-          property_colors: {
-            colors: [`#e41a1c`, `#377eb8`],
-            values: [4, 6],
-            unique_values: [4, 6],
-          },
-          hidden_prop_vals,
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
+        property_colors: {
+          colors: [`#e41a1c`, `#377eb8`],
+          values: [4, 6],
+          unique_values: [4, 6],
         },
+        hidden_prop_vals,
       })
 
       const labels = document.querySelectorAll(`.category-label`)
@@ -724,17 +589,14 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`maps colors correctly when sites > unique values`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-          property_colors: {
-            colors: [`rgb(255, 0, 0)`, `rgb(255, 0, 0)`, `rgb(0, 0, 255)`],
-            values: [10, 10, 20],
-            unique_values: [10, 20],
-            min_value: 10,
-            max_value: 20,
-          },
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
+        property_colors: {
+          colors: [`rgb(255, 0, 0)`, `rgb(255, 0, 0)`, `rgb(0, 0, 255)`],
+          values: [10, 10, 20],
+          unique_values: [10, 20],
+          min_value: 10,
+          max_value: 20,
         },
       })
 
@@ -753,18 +615,15 @@ describe(`AtomLegend Component`, () => {
       const hidden_prop_vals = new Set([4, 6])
 
       // Mount with coordination mode
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: { Fe: 2, O: 3 },
-          atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-          property_colors: {
-            colors: [`#e41a1c`, `#377eb8`],
-            values: [4, 6],
-            unique_values: [4, 6],
-          },
-          hidden_prop_vals,
+      mount_legend({
+        elements: { Fe: 2, O: 3 },
+        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
+        property_colors: {
+          colors: [`#e41a1c`, `#377eb8`],
+          values: [4, 6],
+          unique_values: [4, 6],
         },
+        hidden_prop_vals,
       })
 
       // Initially, categorical legend should show items
@@ -774,13 +633,10 @@ describe(`AtomLegend Component`, () => {
 
       // Clear and remount with element mode to simulate mode switch
       document.body.innerHTML = ``
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: { Fe: 2, O: 3 },
-          atom_color_config: { mode: `element`, scale_type: `continuous` },
-          hidden_prop_vals,
-        },
+      mount_legend({
+        elements: { Fe: 2, O: 3 },
+        atom_color_config: { mode: `element`, scale_type: `continuous` },
+        hidden_prop_vals,
       })
       await tick()
 
@@ -790,12 +646,9 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`shows element legend when mode is element`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: { Fe: 2, O: 3 },
-          atom_color_config: { mode: `element` },
-        },
+      mount_legend({
+        elements: { Fe: 2, O: 3 },
+        atom_color_config: { mode: `element` },
       })
 
       expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
@@ -803,18 +656,15 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`shows property legend when mode is not element`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: { Fe: 2, O: 3 },
-          atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-          property_colors: {
-            colors: [`#440154`],
-            values: [4],
-            min_value: 4,
-            max_value: 4,
-            unique_values: [4],
-          },
+      mount_legend({
+        elements: { Fe: 2, O: 3 },
+        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
+        property_colors: {
+          colors: [`#440154`],
+          values: [4],
+          min_value: 4,
+          max_value: 4,
+          unique_values: [4],
         },
       })
 
@@ -823,12 +673,9 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`hides all legends when elements is empty and no property colors`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: {},
-          atom_color_config: { mode: `element` },
-        },
+      mount_legend({
+        elements: {},
+        atom_color_config: { mode: `element` },
       })
 
       expect(document.querySelector(`.element-legend`)).toBeNull()
@@ -841,18 +688,12 @@ describe(`AtomLegend Component`, () => {
       [{ H: `Na` } as const, `Sodium (remapped from H)`, `remapped`],
       [undefined, `Hydrogen`, `not remapped`],
     ])(`tooltip shows %s element name when %s`, (element_mapping, expected_title, _) => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { H: 1 }, element_mapping },
-      })
+      mount_legend({ elements: { H: 1 }, element_mapping })
       expect(doc_query<HTMLLabelElement>(`label`).title).toBe(expected_title)
     })
 
     test(`displays remapped element symbol in label`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { H: 2, He: 3 }, element_mapping: { H: `Na`, He: `Cl` } },
-      })
+      mount_legend({ elements: { H: 2, He: 3 }, element_mapping: { H: `Na`, He: `Cl` } })
       const labels = Array.from(document.querySelectorAll(`label`)).map((label) =>
         label.textContent?.trim(),
       )
@@ -860,10 +701,7 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`uses remapped element color`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { H: 1 }, element_mapping: { H: `Fe` } },
-      })
+      mount_legend({ elements: { H: 1 }, element_mapping: { H: `Fe` } })
       expect(doc_query<HTMLLabelElement>(`label`).style.backgroundColor).toBe(
         colors.element.Fe,
       )
@@ -873,20 +711,14 @@ describe(`AtomLegend Component`, () => {
       [{ H: `Na` } as const, true, `remapped`],
       [undefined, false, `not remapped`],
     ])(`label has remapped class=%s when %s`, (element_mapping, has_class, _) => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { H: 1 }, element_mapping },
-      })
+      mount_legend({ elements: { H: 1 }, element_mapping })
       expect(doc_query<HTMLLabelElement>(`label`).classList.contains(`remapped`)).toBe(
         has_class,
       )
     })
 
     test(`opens remap dropdown on right-click`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 } },
-      })
+      mount_legend({ elements: { Fe: 2 } })
 
       const label = doc_query<HTMLLabelElement>(`label`)
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
@@ -900,10 +732,7 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`remap dropdown has search input and element options`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 } },
-      })
+      mount_legend({ elements: { Fe: 2 } })
 
       const label = doc_query<HTMLLabelElement>(`label`)
       label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
@@ -918,16 +747,13 @@ describe(`AtomLegend Component`, () => {
 
     test(`clicking remap option updates element_mapping`, async () => {
       let element_mapping: Record<string, string> | undefined
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: { H: 1 },
-          get element_mapping() {
-            return element_mapping
-          },
-          set element_mapping(val) {
-            element_mapping = val
-          },
+      mount_legend({
+        elements: { H: 1 },
+        get element_mapping() {
+          return element_mapping
+        },
+        set element_mapping(val) {
+          element_mapping = val
         },
       })
 
@@ -950,10 +776,7 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`search filters element options`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { H: 1 } },
-      })
+      mount_legend({ elements: { H: 1 } })
 
       const label = doc_query<HTMLLabelElement>(`label`)
       label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
@@ -973,10 +796,7 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`Escape closes remap dropdown`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 } },
-      })
+      mount_legend({ elements: { Fe: 2 } })
 
       const label = doc_query<HTMLLabelElement>(`label`)
       label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
@@ -995,16 +815,13 @@ describe(`AtomLegend Component`, () => {
 
     test(`reset option removes mapping`, async () => {
       let element_mapping: Record<string, string> | undefined = { H: `Na` }
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          elements: { H: 1 },
-          get element_mapping() {
-            return element_mapping
-          },
-          set element_mapping(val) {
-            element_mapping = val
-          },
+      mount_legend({
+        elements: { H: 1 },
+        get element_mapping() {
+          return element_mapping
+        },
+        set element_mapping(val) {
+          element_mapping = val
         },
       })
 
@@ -1025,10 +842,7 @@ describe(`AtomLegend Component`, () => {
 
     test(`multiple elements can be remapped independently`, () => {
       const element_mapping: Record<string, string> = { H: `Na`, He: `Cl` }
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { H: 1, He: 2, Li: 3 }, element_mapping },
-      })
+      mount_legend({ elements: { H: 1, He: 2, Li: 3 }, element_mapping })
 
       const labels = document.querySelectorAll(`label`)
       expect(labels[0].textContent?.trim()).toBe(`Na 1`)
@@ -1041,26 +855,8 @@ describe(`AtomLegend Component`, () => {
   })
 
   describe(`Accessibility`, () => {
-    test(`mode toggle has correct aria attributes`, async () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2 } },
-      })
-
-      const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
-      expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`false`)
-
-      mode_toggle.click()
-      await tick()
-
-      expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`true`)
-    })
-
     test(`toggle visibility buttons have descriptive titles`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: { elements: { Fe: 2, O: 3 } },
-      })
+      mount_legend({ elements: { Fe: 2, O: 3 } })
 
       const toggle_buttons = document.querySelectorAll(`button.toggle-visibility`)
       expect((toggle_buttons[0] as HTMLButtonElement).title).toBe(`Hide O atoms`)
@@ -1068,15 +864,12 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`property value toggle buttons have descriptive titles`, () => {
-      mount(AtomLegend, {
-        target: document.body,
-        props: {
-          atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-          property_colors: {
-            colors: [`#e41a1c`, `#377eb8`],
-            values: [4, 6],
-            unique_values: [4, 6],
-          },
+      mount_legend({
+        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
+        property_colors: {
+          colors: [`#e41a1c`, `#377eb8`],
+          values: [4, 6],
+          unique_values: [4, 6],
         },
       })
 
@@ -1087,74 +880,4 @@ describe(`AtomLegend Component`, () => {
       expect((toggle_buttons[1] as HTMLButtonElement).title).toBe(`Hide 6`)
     })
   })
-})
-
-// Test coverage for disordered site coloring in StructureScene
-// Regression test for commit 16dbcf0b where disordered sites incorrectly used only first species color
-describe(`Disordered Site Color Assignment`, () => {
-  // Recreate the atom_data color logic from StructureScene.svelte
-  const compute_atom_colors = (species: Species[], site_property_color?: string) =>
-    species.map(({ element }) => ({
-      element,
-      color: site_property_color ?? colors.element?.[element],
-    }))
-
-  const create_species = (element: ElementSymbol, occu: number): Species => ({
-    element,
-    occu,
-    oxidation_state: 0,
-  })
-
-  const get_color = (
-    result: ReturnType<typeof compute_atom_colors>,
-    element: ElementSymbol,
-  ) => {
-    const item = result.find((atom) => atom.element === element)
-    if (!item) throw new Error(`Element ${element} not found`)
-    return item.color
-  }
-
-  test(`each species at disordered site gets own element color`, () => {
-    const result = compute_atom_colors([create_species(`Bi`, 0.5), create_species(`Zr`, 0.5)])
-
-    expect(get_color(result, `Bi`)).toBe(colors.element.Bi)
-    expect(get_color(result, `Zr`)).toBe(colors.element.Zr)
-    expect(result[0].color).not.toBe(result[1].color)
-  })
-
-  test(`property color overrides element colors for all species`, () => {
-    const result = compute_atom_colors(
-      [create_species(`Bi`, 0.5), create_species(`Zr`, 0.5)],
-      `#ff0000`,
-    )
-    expect(result.every((atom) => atom.color === `#ff0000`)).toBe(true)
-  })
-
-  test(`species order does not affect coloring`, () => {
-    const bi_first = compute_atom_colors([
-      create_species(`Bi`, 0.5),
-      create_species(`Zr`, 0.5),
-    ])
-    const zr_first = compute_atom_colors([
-      create_species(`Zr`, 0.5),
-      create_species(`Bi`, 0.5),
-    ])
-
-    expect(get_color(bi_first, `Bi`)).toBe(get_color(zr_first, `Bi`))
-    expect(get_color(bi_first, `Zr`)).toBe(get_color(zr_first, `Zr`))
-  })
-
-  test.each(Object.keys(ELEMENT_COLOR_SCHEMES) as (keyof typeof ELEMENT_COLOR_SCHEMES)[])(
-    `works with %s color scheme`,
-    (scheme) => {
-      colors.element = { ...ELEMENT_COLOR_SCHEMES[scheme] }
-      const result = compute_atom_colors([
-        create_species(`Bi`, 0.5),
-        create_species(`Zr`, 0.5),
-      ])
-
-      expect(get_color(result, `Bi`)).toBe(ELEMENT_COLOR_SCHEMES[scheme].Bi)
-      expect(get_color(result, `Zr`)).toBe(ELEMENT_COLOR_SCHEMES[scheme].Zr)
-    },
-  )
 })

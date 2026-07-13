@@ -13,7 +13,6 @@ import {
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type {
-  FrameLoader,
   ParseProgress,
   TrajectoryFrame,
   TrajectoryMetadata,
@@ -307,14 +306,6 @@ async function parse_with_unified_loader(
     is_indexed: true,
     frame_loader: loader,
   }
-}
-
-// Factory function for frame loader (simplified)
-export function create_frame_loader(filename: string): FrameLoader {
-  if (!is_indexable_trajectory_filename(filename)) {
-    throw new Error(`Unsupported format for frame loading: ${filename}`)
-  }
-  return new TrajFrameReader(filename)
 }
 
 export async function load_binary_traj(

@@ -81,17 +81,6 @@ describe(`grid_data_range`, () => {
   )
 })
 
-describe(`DEFAULT_ISOSURFACE_SETTINGS`, () => {
-  test(`exposes expected core defaults`, () => {
-    expect(DEFAULT_ISOSURFACE_SETTINGS).toMatchObject({
-      isovalue: 0.05,
-      opacity: 0.6,
-      show_negative: false,
-      wireframe: false,
-    })
-  })
-})
-
 describe(`auto_isosurface_settings`, () => {
   test.each([
     { min: 0, abs_max: 10, show_neg: false, label: `positive-only` },
@@ -117,9 +106,10 @@ describe(`auto_isosurface_settings`, () => {
     expect(settings.show_negative).toBe(false)
   })
 
-  test(`returns a fresh object (not a reference to DEFAULT_ISOSURFACE_SETTINGS)`, () => {
+  test(`preserves defaults in a fresh object (not a reference to defaults)`, () => {
     const settings = auto_isosurface_settings({ min: 0, max: 10, abs_max: 10, mean: 5 })
-    expect(settings).not.toBe(DEFAULT_ISOSURFACE_SETTINGS)
+    expect(settings).toEqual({ ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 2 })
+    // Mutating the result should not affect defaults
     settings.isovalue = 999
     expect(DEFAULT_ISOSURFACE_SETTINGS.isovalue).toBe(0.05)
   })

@@ -209,15 +209,7 @@ describe(`build_scatter_series`, () => {
 })
 
 describe(`build_scatter3d_series`, () => {
-  test(`builds 3d series`, () => {
-    const cols = extract_columns({ x: [1, 2], y: [3, 4], z: [5, 6] })
-    const series = build_scatter3d_series(cols, { x: `x`, y: `y`, z: `z` })
-    expect(series.x).toEqual([1, 2])
-    expect(series.y).toEqual([3, 4])
-    expect(series.z).toEqual([5, 6])
-  })
-
-  test(`includes color and size values when mapped`, () => {
+  test(`builds 3d series with color and size values when mapped`, () => {
     const cols = extract_columns({
       x: [1, 2],
       y: [3, 4],
@@ -232,6 +224,9 @@ describe(`build_scatter3d_series`, () => {
       color: `c`,
       size: `sz`,
     })
+    expect(series.x).toEqual([1, 2])
+    expect(series.y).toEqual([3, 4])
+    expect(series.z).toEqual([5, 6])
     expect(series.color_values).toEqual([7, 8])
     expect(series.size_values).toEqual([9, 10])
   })
