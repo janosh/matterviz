@@ -18,6 +18,7 @@ import { MAX_TEXT_TRAJECTORY_SIZE } from '../src/node-io'
 import {
   activate,
   active_frame_loaders,
+  active_watchers,
   create_html,
   get_defaults,
   get_file,
@@ -1062,6 +1063,7 @@ describe(`MatterViz Extension`, () => {
     const webview_with_dispose = (dispose: () => void) => ({
       ...mock_webview,
       onDidReceiveMessage: vi.fn(() => ({ dispose })),
+      options: undefined as unknown,
     })
 
     const setup_panel = (options = {}) => {
@@ -1153,6 +1155,60 @@ describe(`MatterViz Extension`, () => {
       panel1.onDidDispose.mock.calls[0][0]()
       expect(dispose1).toHaveBeenCalledTimes(3)
       expect(dispose2).not.toHaveBeenCalled()
+    })
+    describe(`Custom editor provider`, () => {
+      interface ProviderLike {
+        openCustomDocument: (uri: unknown, ctx: unknown, token: unknown) => { uri: Uri }
+        resolveCustomEditor: (
+          document: unknown,
+          panel: unknown,
+          token: unknown,
+        ) => Promise<void>
+      }
+
+      // Register the provider via activate() and grab the instance VSCode would use
+      const get_provider = (): ProviderLike => {
+        activate(mock_context)
+        return mock_vscode.window.registerCustomEditorProvider.mock.calls[0][1] as ProviderLike
+      }
+
+      test(`resolveCustomEditor wires webview options, html, watcher, and cleanup`, async () => {
+        const provider = get_provider()
+        const { mock_dispose, mock_panel: panel } = setup_panel()
+
+        const file_path = `/test/custom-editor.cif`
+        const document = provider.openCustomDocument({ fsPath: file_path }, {}, {})
+        await provider.resolveCustomEditor(document, panel, {})
+
+        // No error path taken, webview fully configured
+        expect(panel.webview.options).toMatchObject({ enableScripts: true })
+        expect(
+          (panel.webview.options as { localResourceRoots: unknown[] }).localResourceRoots,
+        ).toHaveLength(1)
+        expect(panel.webview.html).toContain(`custom-editor.cif`)
+        expect(panel.webview.onDidReceiveMessage).toHaveBeenCalledWith(
+          expect.any(Function),
+          undefined,
+        )
+        expect(active_watchers.has(file_path)).toBe(true)
+
+        // Dispose tears down message/theme/config listeners and the file watcher
+        panel.onDidDispose.mock.calls[0][0]()
+        expect(mock_dispose).toHaveBeenCalledTimes(3)
+        expect(active_watchers.has(file_path)).toBe(false)
+      })
+
+      test(`resolveCustomEditor surfaces file read errors via showErrorMessage`, async () => {
+        const provider = get_provider()
+        mock_vscode.workspace.fs.readFile.mockRejectedValue(new Error(`disk on fire`))
+
+        const document = provider.openCustomDocument({ fsPath: `/test/broken.cif` }, {}, {})
+        await provider.resolveCustomEditor(document, setup_panel().mock_panel, {})
+
+        expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+          expect.stringContaining(`Failed:`),
+        )
+      })
     })
   })
 
@@ -1568,12 +1624,13 @@ describe(`MatterViz Extension`, () => {
       config_key: string,
     ) => {
       const parts = config_key.split(`.`)
+      const config_value = parts
+        .slice(1)
+        .reduceRight<unknown>((value, key) => ({ [key]: value }), expected_value)
 
       const mock_config = {
         get: vi.fn((key: string, default_val?: unknown): unknown => {
-          if (parts.length === 2 && key === parts[0]) {
-            return { [parts[1]]: expected_value }
-          } else if (parts.length === 1 && key === parts[0]) return expected_value
+          if (key === parts[0]) return config_value
           return default_val
         }),
       }
@@ -1633,6 +1690,9 @@ describe(`MatterViz Extension`, () => {
       [`background_opacity`, 0.8],
       [`trajectory.fps`, 10],
       [`trajectory.step_labels`, 10],
+      [`scatter.point.size`, 7],
+      [`convex_hull.ternary.camera_zoom`, 2],
+      [`symmetry.symprec`, 0.01],
 
       // Booleans
       [`structure.same_size_atoms`, true],
@@ -1645,6 +1705,7 @@ describe(`MatterViz Extension`, () => {
       [`structure.show_gizmo`, false],
       [`trajectory.auto_play`, true],
       [`trajectory.show_controls`, false],
+      [`plot.grid_lines`, false],
 
       // Colors (strings)
       [`structure.bond_color`, `#ff0000`],

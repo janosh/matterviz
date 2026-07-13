@@ -2,16 +2,14 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { is_matterviz_filename } from '$lib/file-viewer/eligibility'
-import {
-  plan_host_file_transfer,
-  type HostTransferRejectReason,
-} from '$lib/file-viewer/host-transfer'
+import { plan_host_file_transfer } from '$lib/file-viewer/host-transfer'
+import type { HostTransferRejectReason } from '$lib/file-viewer/host-transfer'
 import type {
   FileData,
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '$lib/file-viewer/host-protocol'
-import { to_error } from '$lib/utils'
+import { is_plain_object, to_error } from '$lib/utils'
 import { format_bytes } from '$lib/labels'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
@@ -221,20 +219,20 @@ export const get_defaults = (): DefaultSettings => {
     const config = vscode.workspace.getConfiguration(`matterviz`)
     const user_settings: Record<string, unknown> = {}
 
-    for (const key of [`color_scheme`, `background_color`, `background_opacity`] as const) {
-      const value = config.get(key)
-      if (value !== undefined) user_settings[key] = value
-    }
-
-    // Nested sections: copy only keys that exist in DEFAULTS and were set by the user
-    for (const section_key of [`structure`, `trajectory`, `composition`] as const) {
-      const section_config = config.get<Record<string, unknown>>(section_key, {})
-      const settings: Record<string, unknown> = {}
-      for (const key of Object.keys(DEFAULTS[section_key])) {
-        const value = section_config?.[key]
-        if (value !== undefined) settings[key] = value
+    for (const [key, default_value] of Object.entries(DEFAULTS)) {
+      const value = config.get<unknown>(key)
+      if (!is_plain_object(default_value)) {
+        if (value !== undefined) user_settings[key] = value
+        continue
       }
-      if (Object.keys(settings).length > 0) user_settings[section_key] = settings
+      if (!is_plain_object(value)) continue
+
+      const settings: Record<string, unknown> = {}
+      for (const setting_key of Object.keys(default_value)) {
+        const setting_value = value[setting_key]
+        if (setting_value !== undefined) settings[setting_key] = setting_value
+      }
+      if (Object.keys(settings).length > 0) user_settings[key] = settings
     }
 
     return merge(user_settings)

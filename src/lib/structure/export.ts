@@ -687,7 +687,10 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
           true,
           true,
         ]) as boolean[]
-        sel_dyn_str = ` ${sel_dyn.map((flag) => (flag ? `T` : `F`)).join(` `)}`
+        sel_dyn_str = ` ${sel_dyn
+          .slice(0, 3)
+          .map((flag) => (flag ? `T` : `F`))
+          .join(` `)}`
       }
 
       lines.push(`${coords_str}${sel_dyn_str}`)

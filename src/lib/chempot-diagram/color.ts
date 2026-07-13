@@ -2,8 +2,13 @@ import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import { extract_formula_elements } from '$lib/composition/parse'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
+import { group } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
-import { best_form_energy_for_formula, type FormulaEnergyStats } from './compute'
+import {
+  best_form_energy_for_formula as best_form_energy,
+  type FormulaEnergyStats,
+  formula_key_from_composition,
+} from './compute'
 import type { ChemPotColorMode } from './types'
 
 // Categorical palette for arity mode (element count)
@@ -88,12 +93,15 @@ export function get_domain_color_data(opts: {
     return { colors, color_range: null }
   }
 
+  const entries_by_formula =
+    color_mode === `formation_energy`
+      ? group(entries, (entry) => formula_key_from_composition(entry.composition))
+      : new Map<string, PhaseData[]>()
+
   const get_value = (formula: string): number | null => {
-    if (color_mode === `energy`) {
-      return energy_stats.get(formula)?.min_energy_per_atom ?? null
-    }
+    if (color_mode === `energy`) return energy_stats.get(formula)?.min_energy_per_atom ?? null
     if (color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(entries, formula, el_refs) ?? null
+      return best_form_energy(entries_by_formula.get(formula) ?? [], formula, el_refs) ?? null
     }
     return energy_stats.get(formula)?.matching_entry_count ?? 0
   }

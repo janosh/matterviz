@@ -1,11 +1,11 @@
 import { DraggablePane } from '$lib'
-import { createRawSnippet, mount, tick } from 'svelte'
+import { createRawSnippet, mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`DraggablePane`, () => {
   const default_props = {
-    children: createRawSnippet(() => ({ render: () => `Pane Content` })),
+    children: createRawSnippet(() => ({ render: () => `<span>Pane Content</span>` })),
   }
   const click = (el: Element) => {
     el.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
@@ -166,6 +166,24 @@ describe(`DraggablePane`, () => {
         innerHeight: { configurable: true, value: original_inner_height },
         innerWidth: { configurable: true, value: original_inner_width },
       })
+    }
+  })
+
+  test(`cancels pending resize when destroyed`, async () => {
+    vi.useFakeTimers()
+    try {
+      const component = mount(DraggablePane, {
+        target: document.body,
+        props: { ...default_props, show: true },
+      })
+      await tick()
+      globalThis.dispatchEvent(new Event(`resize`))
+      const timer_count = vi.getTimerCount()
+      await unmount(component)
+      expect(vi.getTimerCount()).toBe(timer_count - 1)
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
     }
   })
 

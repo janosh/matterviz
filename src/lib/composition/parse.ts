@@ -294,7 +294,7 @@ export const parse_formula_with_oxidation = (
 
   for (const match of cleaned_formula.matchAll(regex)) {
     const groups = match.groups ?? {}
-    const element = match[1]
+    const element = groups.element ?? match[1]
     const oxidation_str =
       groups.oxi_caret || groups.oxi_bracket || groups.oxi_caret_2 || groups.oxi_bracket_2
     const count = parse_count(groups.count_after || groups.count_before)

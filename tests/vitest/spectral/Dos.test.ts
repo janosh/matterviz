@@ -10,7 +10,7 @@ import {
   validate_sigma_range,
 } from '$lib/spectral/helpers'
 import type { ElectronicDos, PhononDos, SpinMode } from '$lib/spectral/types'
-import { mount, tick } from 'svelte'
+import { mount, tick, unmount } from 'svelte'
 import { describe, expect, it } from 'vitest'
 
 // Test fixtures
@@ -111,11 +111,13 @@ describe(`Dos component`, () => {
   })
 
   it(`clears smearing cache without error and re-renders`, async () => {
-    mount(Dos, { target: document.body, props: { doses: phonon_dos, sigma: 0.5 } })
+    const props = { doses: phonon_dos, sigma: 0.5 }
+    const first = mount(Dos, { target: document.body, props })
     await tick()
     clear_smearing_cache()
+    await unmount(first)
     document.body.innerHTML = ``
-    mount(Dos, { target: document.body, props: { doses: phonon_dos, sigma: 0.5 } })
+    mount(Dos, { target: document.body, props })
     await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })

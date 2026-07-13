@@ -18,6 +18,7 @@ import {
   dedup_points,
   formula_key_from_composition,
   get_3d_domain_simplexes_and_ann_loc,
+  get_energy_stats_by_formula,
   get_energy_per_atom,
   get_min_entries_and_el_refs,
   get_ternary_combinations,
@@ -29,6 +30,7 @@ import {
   scale_to_font_range,
   simple_pca,
 } from '$lib/chempot-diagram/compute'
+import { get_domain_color_data } from '$lib/chempot-diagram/color'
 import { get_hill_formula } from '$lib/composition/format'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
@@ -1629,12 +1631,31 @@ describe(`compute_chempot_diagram edge cases`, () => {
 // === Formation energy computation ===
 // e_form = energy_per_atom - sum(fraction_i * ref_energy_per_atom_i)
 
+describe(`get_energy_stats_by_formula`, () => {
+  test(`aggregates polymorph counts and energy bounds`, () => {
+    const stats = get_energy_stats_by_formula([
+      make_entry({ A: 1 }, -1),
+      make_entry({ A: 1, B: 1 }, -2),
+      make_entry({ A: 1, B: 1 }, -1.5),
+    ])
+
+    expect(stats.get(`A`)).toEqual({
+      matching_entry_count: 1,
+      min_energy_per_atom: -1,
+      max_energy_per_atom: -1,
+    })
+    expect(stats.get(`AB`)).toEqual({
+      matching_entry_count: 2,
+      min_energy_per_atom: -2,
+      max_energy_per_atom: -1.5,
+    })
+    expect(get_energy_stats_by_formula([])).toEqual(new Map())
+  })
+})
+
 describe(`best_form_energy_for_formula`, () => {
-  const el_refs: Record<string, PhaseData> = {
-    A: make_entry({ A: 1 }, -2.0),
-    B: make_entry({ B: 1 }, -3.0),
-  }
-  const e_form = (entry: PhaseData, refs = el_refs) =>
+  const el_refs = { A: make_entry({ A: 1 }, -2), B: make_entry({ B: 1 }, -3) }
+  const e_form = (entry: PhaseData, refs: Record<string, PhaseData> = el_refs) =>
     best_form_energy_for_formula(
       [entry],
       formula_key_from_composition(entry.composition),
@@ -1653,9 +1674,23 @@ describe(`best_form_energy_for_formula`, () => {
     expect(e_form(make_entry(comp as Record<string, number>, epa))).toBeCloseTo(expected, 8)
   })
 
-  test(`picks minimum e_form across polymorphs of a formula`, () => {
+  test(`picks minimum formation energy across polymorphs`, () => {
     const polymorphs = [make_entry({ A: 1, B: 1 }, -3.5), make_entry({ A: 1, B: 1 }, -3.0)]
     expect(best_form_energy_for_formula(polymorphs, `AB`, el_refs)).toBeCloseTo(-1.0, 8)
+
+    const color_entries = [...Object.values(el_refs), ...polymorphs]
+    const color_data = get_domain_color_data({
+      formulas: [`A`, `B`, `AB`],
+      color_mode: `formation_energy`,
+      color_scale: `interpolateViridis`,
+      reverse_color_scale: false,
+      entries: color_entries,
+      el_refs,
+      energy_stats: get_energy_stats_by_formula(color_entries),
+    })
+
+    expect(color_data.color_range).toMatchObject({ min: -1, max: 0 })
+    expect(color_data.colors.size).toBe(3)
   })
 
   test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {

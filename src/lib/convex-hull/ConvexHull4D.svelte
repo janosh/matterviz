@@ -209,7 +209,7 @@
     }
   })
 
-  let canvas: HTMLCanvasElement | undefined = undefined
+  let canvas = $state<HTMLCanvasElement>()
   let ctx: CanvasRenderingContext2D | null = null
 
   // Camera state - following Materials Project's 3D camera setup

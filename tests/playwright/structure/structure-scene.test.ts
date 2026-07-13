@@ -539,6 +539,72 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
+  // Regression guard for commit 16dbcf0b (disordered sites wrongly used only the first
+  // species' color). Geometry is pinned identical via same_size_atoms + fixed occupancies,
+  // so the only difference between the two renders is the second species' color.
+  test(`disordered sites color each species segment by its own element`, async ({ page }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#test-structure canvas`)
+    await expect(canvas).toBeVisible()
+
+    const dispatch_disordered_site = (elements: [string, string]) =>
+      page.evaluate((site_elements) => {
+        const dispatch = (type: string, detail: unknown) =>
+          globalThis.dispatchEvent(new CustomEvent(type, { detail }))
+        const structure = {
+          sites: [
+            {
+              species: site_elements.map((element, species_idx) => ({
+                element,
+                occu: 0.49 + species_idx * 0.02,
+                oxidation_state: 0,
+              })),
+              abc: [0, 0, 0],
+              xyz: [0, 0, 0],
+              label: `${site_elements[0]}1`,
+              properties: {},
+            },
+          ],
+          properties: {},
+        }
+        dispatch(`set-structure`, { structure })
+        // auto_rotate defaults to 0.2 which would keep the canvas changing forever;
+        // disable it so the settled-screenshot comparison below is sound.
+        // Camera looks down the Y axis: species wedges are azimuthal (phi) slices
+        // around Y, so the top-down view shows every wedge regardless of phi origin.
+        dispatch(`set-scene-props`, {
+          same_size_atoms: true,
+          atom_radius: 2,
+          auto_rotate: 0,
+          camera_position: [0, 8, 0],
+        })
+      }, elements)
+
+    // Screenshot once the canvas stops changing (framing/damping settled)
+    const settled_screenshot = async (): Promise<Buffer> => {
+      let prev = await canvas.screenshot()
+      await expect(async () => {
+        const next = await canvas.screenshot()
+        const stable = next.equals(prev)
+        prev = next
+        expect(stable).toBe(true)
+      }).toPass({ timeout: get_canvas_timeout() })
+      return prev
+    }
+
+    await dispatch_disordered_site([`Bi`, `Bi`])
+    const uniform_color_render = await settled_screenshot()
+    expect(uniform_color_render.length).toBeGreaterThan(1000)
+
+    await dispatch_disordered_site([`Bi`, `Zr`])
+    const two_color_render = await settled_screenshot()
+
+    // If the Zr half wrongly reused the Bi color, both renders would be pixel-identical
+    expect(two_color_render.equals(uniform_color_render)).toBe(false)
+
+    expect(console_errors).toHaveLength(0)
+  })
+
   // Combined rapid interaction and performance test
   test(`handles rapid interactions and maintains performance`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)

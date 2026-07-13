@@ -663,7 +663,7 @@ describe(`Export functionality`, () => {
         name: `with selective dynamics`,
         sites: [
           make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, {
-            selective_dynamics: [true, false, true],
+            selective_dynamics: [true, false, true, false],
           }),
           make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1], `O1`, {
             selective_dynamics: [false, false, false],
@@ -693,7 +693,7 @@ describe(`Export functionality`, () => {
         const coord_lines = lines.filter((line) =>
           /^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/.exec(line),
         )
-        expect(coord_lines).toHaveLength(2)
+        expect(coord_lines).toHaveLength(expected_coords.length)
         expected_coords.forEach((expected, idx) => {
           expect(coord_lines[idx]).toContain(expected)
         })

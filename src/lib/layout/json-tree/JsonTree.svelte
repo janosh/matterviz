@@ -203,19 +203,24 @@
   const prev_values = new Map<string, unknown>()
 
   // Move each path into collapsed or force_expanded (which overrides auto-fold
-  // thresholds), then reassign both sets in a single batch to trigger reactivity
+  // thresholds), then reassign only the sets that changed (reassignment rerenders
+  // every node subscribed to the set's identity)
   function set_collapsed(paths: Iterable<string>, collapse: (path: string) => boolean) {
+    let collapsed_changed = false
+    let force_expanded_changed = false
     for (const path of paths) {
       if (collapse(path)) {
-        force_expanded.delete(path)
+        force_expanded_changed = force_expanded.delete(path) || force_expanded_changed
+        collapsed_changed = !collapsed_paths.has(path) || collapsed_changed
         collapsed_paths.add(path)
       } else {
-        collapsed_paths.delete(path)
+        collapsed_changed = collapsed_paths.delete(path) || collapsed_changed
+        force_expanded_changed = !force_expanded.has(path) || force_expanded_changed
         force_expanded.add(path)
       }
     }
-    collapsed_paths = new SvelteSet(collapsed_paths)
-    force_expanded = new SvelteSet(force_expanded)
+    if (collapsed_changed) collapsed_paths = new SvelteSet(collapsed_paths)
+    if (force_expanded_changed) force_expanded = new SvelteSet(force_expanded)
   }
 
   function toggle_collapse(path: string, is_currently_collapsed: boolean): void {

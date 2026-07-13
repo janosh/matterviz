@@ -3,6 +3,7 @@ import {
   detect_provider_from_slug,
   encode_structure_id,
   fetch_optimade_providers,
+  fetch_suggested_structures,
 } from '$lib/api/optimade'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { MOCK_PROVIDERS } from '../../fixtures/optimade-mocks'
@@ -56,7 +57,19 @@ describe(`OPTIMADE API utilities`, () => {
 })
 
 describe(`fetch_with_cors_proxy behavior (via fetch_optimade_providers)`, () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  test(`unknown provider soft-fails suggested structures without fetching`, async () => {
+    const mock_fetch = vi.fn()
+    vi.stubGlobal(`fetch`, mock_fetch)
+    vi.spyOn(console, `warn`).mockImplementation(() => {})
+
+    await expect(fetch_suggested_structures(`unknown`, MOCK_PROVIDERS)).resolves.toEqual([])
+    expect(mock_fetch).not.toHaveBeenCalled()
+  })
 
   test(`HTTP error status from direct fetch surfaces instead of hammering proxies`, async () => {
     // A 404 is a definitive server answer — surface the real status, not an opaque

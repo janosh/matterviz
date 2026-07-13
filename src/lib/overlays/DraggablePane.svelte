@@ -2,7 +2,7 @@
   import Icon from '$lib/Icon.svelte'
   import type { IconName } from '$lib/icons'
   import { DragControlTab } from '$lib/overlays'
-  import type { Snippet } from 'svelte'
+  import { onDestroy, type Snippet } from 'svelte'
   import { draggable, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -215,6 +215,7 @@
 
   // Debounced resize handler for better performance
   let resize_timeout: ReturnType<typeof setTimeout> | undefined
+  onDestroy(() => resize_timeout && clearTimeout(resize_timeout))
 
   function handle_resize() {
     // Only reposition if pane is visible and hasn't been manually dragged
