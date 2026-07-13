@@ -1,7 +1,7 @@
 import { marching_cubes_buffers } from '$lib/marching-cubes'
 import { flatten_grid, inflate_grid } from './_grid'
-import { extract_volume_range } from './sampling'
-import { downsample_grid, type VolumetricData } from './types'
+import { prepare_geometry_grid } from './sampling'
+import type { VolumetricData } from './types'
 import type {
   GeometryWorkerRequest,
   GeometryWorkerResponse,
@@ -31,15 +31,7 @@ worker_scope.addEventListener(`message`, ({ data: request }): void => {
     for (const job of request.volumes) {
       const prepare_start = performance.now()
       const volume = inflate_volume(job.volume)
-      const prepared = job.range
-        ? extract_volume_range(volume, job.range)
-        : {
-            ...volume,
-            ...downsample_grid(volume.grid, volume.grid_dims),
-          }
-      const grid = prepared.grid
-      const lattice = prepared.lattice
-      const prepared_origin = prepared.origin
+      const { grid, lattice, origin } = prepare_geometry_grid(volume, job.range)
       const { values: prepared_values, dims: grid_dims } = flatten_grid(grid)
       transfer.push(prepared_values.buffer)
       const prepare_geometry_ms = performance.now() - prepare_start
@@ -51,9 +43,9 @@ worker_scope.addEventListener(`message`, ({ data: request }): void => {
           centered: false,
           normals: false,
           position_offset: [
-            prepared_origin[0] - job.reference_origin[0],
-            prepared_origin[1] - job.reference_origin[1],
-            prepared_origin[2] - job.reference_origin[2],
+            origin[0] - job.reference_origin[0],
+            origin[1] - job.reference_origin[1],
+            origin[2] - job.reference_origin[2],
           ],
         })
         transfer.push(buffers.positions.buffer, buffers.indices.buffer)
@@ -68,7 +60,7 @@ worker_scope.addEventListener(`message`, ({ data: request }): void => {
         token: job.token,
         grid_dims,
         lattice,
-        origin: prepared_origin,
+        origin,
         prepared_values,
         prepare_geometry_ms,
         surfaces,

@@ -16,7 +16,7 @@ export const grid_point_count = (grid: number[][][]): number =>
 
 export function flatten_grid(grid: number[][][]): FlatGrid3D {
   const dims = grid_dimensions(grid)
-  const values = new Float64Array(grid_point_count(grid))
+  const values = new Float64Array(dims[0] * dims[1] * dims[2])
   let offset = 0
   for (const plane of grid) {
     for (const row of plane) {

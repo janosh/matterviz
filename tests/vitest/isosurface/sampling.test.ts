@@ -10,6 +10,7 @@ import {
 } from '$lib/isosurface/sampling'
 import { marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import { create_frac_to_cart } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import {
   cubic_matrix,
@@ -28,6 +29,7 @@ const hexagonal: Matrix3x3 = [
   [2, 2 * Math.sqrt(3), 0],
   [0, 0, 6],
 ]
+const hexagonal_frac_to_cart = create_frac_to_cart(hexagonal)
 
 describe(`create_volume_sampler`, () => {
   test.each([
@@ -54,14 +56,8 @@ describe(`create_volume_sampler`, () => {
   ])(`samples linear field exactly on non-orthogonal lattice at $frac`, ({ frac }) => {
     const vol = linear_volume(13, hexagonal, false)
     const sample = create_volume_sampler(vol)
-    // Cartesian position from fractional coords: frac · lattice (row convention)
-    const cart: Vec3 = [
-      frac[0] * hexagonal[0][0] + frac[1] * hexagonal[1][0] + frac[2] * hexagonal[2][0],
-      frac[0] * hexagonal[0][1] + frac[1] * hexagonal[1][1] + frac[2] * hexagonal[2][1],
-      frac[0] * hexagonal[0][2] + frac[1] * hexagonal[1][2] + frac[2] * hexagonal[2][2],
-    ]
     const expected = frac[0] + 2 * frac[1] + 4 * frac[2]
-    expect(sample(cart)).toBeCloseTo(expected, 10)
+    expect(sample(hexagonal_frac_to_cart(frac))).toBeCloseTo(expected, 10)
   })
 
   test(`accounts for volume origin offset`, () => {
@@ -167,14 +163,16 @@ describe(`sample_volume_at_positions`, () => {
 describe(`compare_volume_grids`, () => {
   const base = () => linear_volume(11, cubic, false)
 
-  test(`identical grids are compatible`, () => {
-    expect(compare_volume_grids(base(), base())).toEqual({ ok: true })
-  })
-
-  test(`matching periodic grids are compatible`, () => {
-    const vol_a = linear_volume(10, cubic, true)
-    const vol_b = linear_volume(10, cubic, true)
-    expect(compare_volume_grids(vol_a, vol_b).ok).toBe(true)
+  test.each([
+    [11, false],
+    [10, true],
+  ] as const)(`matching size=%i periodic=%s grids are compatible`, (size, periodic) => {
+    expect(
+      compare_volume_grids(
+        linear_volume(size, cubic, periodic),
+        linear_volume(size, cubic, periodic),
+      ),
+    ).toEqual({ ok: true })
   })
 
   test.each([

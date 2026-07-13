@@ -248,17 +248,20 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   halo: 0,
 }
 
+const field_has_significant_negatives = ({ min, abs_max }: DataRange): boolean =>
+  min < -abs_max * 0.01
+const default_isovalue = ({ abs_max }: DataRange): number =>
+  abs_max > 0 ? abs_max * 0.2 : DEFAULT_ISOSURFACE_SETTINGS.isovalue
+
 // Compute reasonable isosurface settings from a volume's data range.
 // Sets isovalue to 20% of abs_max and enables negative lobe when data has
 // significant negative values (>1% of max).
 export function auto_isosurface_settings(data_range: DataRange): IsosurfaceSettings {
-  const has_negatives = data_range.min < -data_range.abs_max * 0.01
   return {
     ...DEFAULT_ISOSURFACE_SETTINGS,
     // Fall back to default isovalue for all-zero grids to keep controls usable
-    isovalue:
-      data_range.abs_max > 0 ? data_range.abs_max * 0.2 : DEFAULT_ISOSURFACE_SETTINGS.isovalue,
-    show_negative: has_negatives,
+    isovalue: default_isovalue(data_range),
+    show_negative: field_has_significant_negatives(data_range),
   }
 }
 
@@ -267,7 +270,7 @@ export function auto_isosurface_settings(data_range: DataRange): IsosurfaceSetti
 // for outer (lower-isovalue) shells so inner shells remain visible.
 export function generate_layers(data_range: DataRange, n_layers: number): IsosurfaceLayer[] {
   if (n_layers <= 0 || data_range.abs_max <= 0) return []
-  const has_negatives = data_range.min < -data_range.abs_max * 0.01
+  const show_negative = field_has_significant_negatives(data_range)
   // Space isovalues from high (inner) to low (outer)
   return Array.from({ length: n_layers }, (_, idx) => {
     // Fraction from 0.8 (inner) to 0.1 (outer)
@@ -277,7 +280,7 @@ export function generate_layers(data_range: DataRange, n_layers: number): Isosur
       color: LAYER_COLORS[idx % LAYER_COLORS.length],
       opacity: n_layers === 1 ? 0.6 : 0.8 - idx * (0.5 / Math.max(n_layers - 1, 1)),
       visible: true,
-      show_negative: has_negatives,
+      show_negative,
       negative_color: LAYER_COLORS[(idx + 1) % LAYER_COLORS.length],
     }
   })
@@ -290,14 +293,12 @@ export function auto_volume_layer(
   volume_idx: number,
   color_offset = 0,
 ): IsosurfaceLayer {
-  const { abs_max, min } = volume.data_range
-  const has_negatives = min < -abs_max * 0.01
   return {
-    isovalue: abs_max > 0 ? abs_max * 0.2 : DEFAULT_ISOSURFACE_SETTINGS.isovalue,
+    isovalue: default_isovalue(volume.data_range),
     color: LAYER_COLORS[color_offset % LAYER_COLORS.length],
     opacity: 0.6,
     visible: true,
-    show_negative: has_negatives,
+    show_negative: field_has_significant_negatives(volume.data_range),
     negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
     volume_idx,
   }

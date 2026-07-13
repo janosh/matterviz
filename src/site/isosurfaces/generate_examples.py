@@ -393,10 +393,9 @@ HBN_BOND_FRAC: list[FracCoord] = [(1 / 6, 1 / 3, 0.0), (1 / 6, 1 / 3, 0.5)]
 
 
 class HbnGeometry(NamedTuple):
-    """Hexagonal BN lattice, PBC image vectors, cell volume, and frac→cart map."""
+    """Hexagonal BN lattice, cell volume, and fractional-to-Cartesian map."""
 
     lattice: list[tuple[float, float, float]]
-    lat_vecs: list[tuple[float, float, float]]
     volume: float
     frac_to_cart: Callable[[float, float, float], tuple[float, float, float]]
 
@@ -410,7 +409,7 @@ def hbn_geometry() -> HbnGeometry:
     def frac_to_cart(fx: float, fy: float, fz: float) -> tuple[float, float, float]:
         return (fx * lat_a + fy * a2_x, fy * a2_y, fz * lat_c)
 
-    return HbnGeometry(lattice, list(lattice), lat_a * a2_y * lat_c, frac_to_cart)
+    return HbnGeometry(lattice, lat_a * a2_y * lat_c, frac_to_cart)
 
 
 def generate_hbn_chgcar() -> str:
@@ -432,9 +431,9 @@ def generate_hbn_chgcar() -> str:
             atom_cart,
             [float(zn) for zn in z_nums],
             [0.45] * 4,
-            geom.lat_vecs,
+            geom.lattice,
         )
-        rho += pbc_gaussian_sum(x, y, z, bond_cart, [3.0] * 2, [0.3] * 2, geom.lat_vecs)
+        rho += pbc_gaussian_sum(x, y, z, bond_cart, [3.0] * 2, [0.3] * 2, geom.lattice)
         return rho * geom.volume
 
     return write_chgcar(
@@ -613,13 +612,13 @@ def generate_hbn_elfcar() -> str:
         """Bounded [0, 1] localization built from bond, N, and B Gaussians."""
         val = 0.05  # interstitial baseline
         val += 0.85 * pbc_gaussian_sum(
-            x, y, z, bond_cart, [1.0] * 2, [0.45] * 2, geom.lat_vecs
+            x, y, z, bond_cart, [1.0] * 2, [0.45] * 2, geom.lattice
         )
         val += 0.6 * pbc_gaussian_sum(
-            x, y, z, n_cart, [1.0] * 2, [0.4] * 2, geom.lat_vecs
+            x, y, z, n_cart, [1.0] * 2, [0.4] * 2, geom.lattice
         )
         val += 0.3 * pbc_gaussian_sum(
-            x, y, z, b_cart, [1.0] * 2, [0.35] * 2, geom.lat_vecs
+            x, y, z, b_cart, [1.0] * 2, [0.35] * 2, geom.lattice
         )
         return min(val, 1.0) * geom.volume
 

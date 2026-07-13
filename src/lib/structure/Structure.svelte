@@ -318,10 +318,7 @@
       else {
         // Parse structure internally when no handler provided
         try {
-          const text_content =
-            content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-          const parsed = parse_file_content(text_content, filename)
-          emit_file_load_event(parsed, filename, content)
+          parse_and_emit_file(content, filename)
         } catch (error) {
           error_msg = `Failed to parse structure: ${to_error(error).message}`
           on_error?.({ error_msg, filename })
@@ -1108,6 +1105,8 @@
   // The currently loaded structure's lattice matrix (undefined for molecules/none)
   const current_lattice_matrix = () =>
     structure && `lattice` in structure ? structure.lattice.matrix : undefined
+  const shares_current_lattice = (matrix: Parameters<typeof lattices_match>[1]): boolean =>
+    lattices_match(current_lattice_matrix(), matrix)
 
   // Try to parse content as a volumetric file, setting both structure and volumetric data.
   // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
@@ -1121,10 +1120,7 @@
     if (!vol_result) return null
 
     const incoming = label_file_volumes(vol_result.volumes, filename)
-    const same_cell = lattices_match(
-      current_lattice_matrix(),
-      vol_result.structure.lattice?.matrix,
-    )
+    const same_cell = shares_current_lattice(vol_result.structure.lattice?.matrix)
     const added_toast = (count: number) =>
       `Added ${count} volume${count > 1 ? `s` : ``} from ${filename}`
 
@@ -1182,8 +1178,7 @@
     // Keep loaded volumes and camera when the new structure describes the same
     // cell (e.g. a mixed batch drop of CHGCAR + POSCAR, in either order);
     // clear both for a genuinely new system
-    const same_cell = lattices_match(
-      current_lattice_matrix(),
+    const same_cell = shares_current_lattice(
       `lattice` in parsed ? parsed.lattice?.matrix : undefined,
     )
     if (!same_cell) {
@@ -1194,16 +1189,18 @@
     return parsed
   }
 
+  function parse_and_emit_file(content: string | ArrayBuffer, filename: string): void {
+    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+    emit_file_load_event(parse_file_content(text, filename), filename, content)
+  }
+
   const handle_file_drop = create_file_drop_handler({
     allow: () => allow_file_drop,
     // Parse errors propagate so multi-file batches aggregate all failures into
     // one message instead of the last error overwriting earlier ones
     on_drop: (content, filename) => {
       if (on_file_drop) return on_file_drop(content, filename)
-      const text_content =
-        content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-      const parsed = parse_file_content(text_content, filename)
-      emit_file_load_event(parsed, filename, content)
+      parse_and_emit_file(content, filename)
     },
     on_error: (msg) => {
       error_msg = msg

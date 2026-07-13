@@ -48,13 +48,3 @@ export function profile_stage<Result>(
   })
   return result
 }
-
-/** Emit an already measured stage event without doing work when profiling is disabled. */
-export function emit_profile(
-  profiler: IsosurfaceProfiler | undefined,
-  stage: IsosurfaceProfileStage,
-  start_time: number,
-  meta: IsosurfaceProfileMeta = {},
-): void {
-  record_profile(profiler, stage, performance.now() - start_time, meta)
-}

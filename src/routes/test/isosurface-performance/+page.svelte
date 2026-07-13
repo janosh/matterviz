@@ -16,10 +16,24 @@
     [0.6, 3.8, 0],
     [0.2, 0.3, 4.2],
   ]
+  type RangeMode = `fractional` | `integer` | `unit`
+  const display_ranges = {
+    fractional: [
+      [-0.15, 1.2],
+      [-0.1, 1.1],
+      [0, 1],
+    ],
+    integer: [
+      [0, 2],
+      [0, 1],
+      [0, 1],
+    ],
+    unit: undefined,
+  } satisfies Record<RangeMode, IsosurfaceSettings[`display_range`]>
 
   let grid_size = $state(48)
   let layer_count = $state(1)
-  let range_mode = $state<`fractional` | `integer` | `unit`>(`unit`)
+  let range_mode = $state<RangeMode>(`unit`)
   let color_mode = $state<`cross_grid` | `same_grid`>(`cross_grid`)
   let volumes = $state.raw<VolumetricData[]>([])
   let settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] })
@@ -87,20 +101,7 @@
     settings = {
       ...DEFAULT_ISOSURFACE_SETTINGS,
       layers: make_layers(layer_count),
-      display_range:
-        range_mode === `fractional`
-          ? [
-              [-0.15, 1.2],
-              [-0.1, 1.1],
-              [0, 1],
-            ]
-          : range_mode === `integer`
-            ? [
-                [0, 2],
-                [0, 1],
-                [0, 1],
-              ]
-            : undefined,
+      display_range: display_ranges[range_mode],
     }
   }
 

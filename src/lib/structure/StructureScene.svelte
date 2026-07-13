@@ -2237,14 +2237,12 @@
         {@const volume_list = Array.isArray(volumetric_data)
           ? volumetric_data
           : [volumetric_data]}
-        {#if volume_list.length}
-          <Isosurface
-            volumes={volume_list}
-            settings={isosurface_settings}
-            {active_volume_idx}
-            tiling={volume_scaling}
-          />
-        {/if}
+        <Isosurface
+          volumes={volume_list}
+          settings={isosurface_settings}
+          {active_volume_idx}
+          tiling={volume_scaling}
+        />
       {/if}
 
       <!-- Measurement overlays for measured sites -->

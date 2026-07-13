@@ -62,11 +62,7 @@
     layer.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
 
   function set_layer_count(count: number) {
-    if (count <= 1) {
-      settings.layers = undefined
-    } else {
-      settings.layers = generate_layers(data_range, count)
-    }
+    settings.layers = count <= 1 ? undefined : generate_layers(data_range, count)
   }
 
   function update_layer(idx: number, updates: Partial<IsosurfaceLayer>) {
@@ -77,8 +73,8 @@
   }
 
   function remove_layer(idx: number) {
-    if (!settings.layers) return
-    settings.layers = settings.layers.filter((_layer, layer_idx) => layer_idx !== idx)
+    if (settings.layers)
+      settings.layers = settings.layers.filter((_layer, layer_idx) => layer_idx !== idx)
   }
 
   function add_surface(vol_idx: number) {
@@ -104,19 +100,11 @@
   // from the color volume's data; color_range stays unset so the renderer fits
   // it to the scalar values actually present on the surface.
   function set_color_source(layer_idx: number, color_idx: number | null) {
-    if (color_idx === null) {
-      update_layer(layer_idx, {
-        color_volume_idx: undefined,
-        colormap: undefined,
-        color_range: undefined,
-      })
-      return
-    }
-    const color_vol = volumes[color_idx]
-    if (!color_vol) return
+    const color_vol = color_idx === null ? undefined : volumes[color_idx]
+    if (color_idx !== null && !color_vol) return
     update_layer(layer_idx, {
-      color_volume_idx: color_idx,
-      colormap: auto_color_config(color_vol.data_range).colormap,
+      color_volume_idx: color_idx ?? undefined,
+      colormap: color_vol ? auto_color_config(color_vol.data_range).colormap : undefined,
       color_range: undefined,
     })
   }
@@ -174,12 +162,11 @@
 
   // Halo pads geometry volumes only, so gate on volumes that actually render
   // surfaces (color-source-only volumes don't count)
-  let any_periodic = $derived.by(() => {
-    if (settings.layers) {
-      return settings.layers.some((layer) => volumes[resolve_geo_idx(layer)]?.periodic)
-    }
-    return volumes[active_volume_idx]?.periodic ?? false
-  })
+  let any_periodic = $derived(
+    settings.layers
+      ? settings.layers.some((layer) => volumes[resolve_geo_idx(layer)]?.periodic)
+      : (volumes[active_volume_idx]?.periodic ?? false),
+  )
 
   // Update one bound of the fractional display range. Clearing an input resets
   // that bound to its default (0 or 1); a fully default range unsets display_range

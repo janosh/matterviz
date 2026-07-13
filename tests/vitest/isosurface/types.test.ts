@@ -479,9 +479,10 @@ describe(`downsample_grid`, () => {
   test.each([
     { dims: [10, 10, 10] as Vec3, label: `under budget (1K)` },
     { dims: [100, 100, 50] as Vec3, label: `at exactly 500K` },
-  ])(`$label: returns original grid reference`, ({ dims }) => {
+    { dims: [10, 10, 10] as Vec3, label: `under custom budget`, max_points: 2000 },
+  ])(`$label: returns original grid reference`, ({ dims, max_points }) => {
     const grid = make_grid(dims[0], dims[1], dims[2])
-    const result = downsample_grid(grid, dims)
+    const result = downsample_grid(grid, dims, max_points)
     expect(result.factor).toBe(1)
     expect(result.grid).toBe(grid)
     expect(result.dims).toBe(dims)
@@ -546,30 +547,16 @@ describe(`downsample_grid`, () => {
     { dims: [80, 80, 96] as Vec3, label: `80x80x96 (614K)` },
     { dims: [120, 48, 144] as Vec3, label: `120x48x144 (829K)` },
     { dims: [1100, 1100, 2] as Vec3, label: `1100x1100x2 (anisotropic)` },
-  ])(`$label: stays within budget with correct shape`, ({ dims }) => {
+    { dims: [50, 50, 50] as Vec3, label: `custom 10K budget`, max_points: 10_000 },
+  ])(`$label: stays within budget with correct shape`, ({ dims, max_points = 500_000 }) => {
     const grid = make_grid(dims[0], dims[1], dims[2], 1)
-    const result = downsample_grid(grid, dims)
+    const result = downsample_grid(grid, dims, max_points)
     const [rnx, rny, rnz] = result.dims
-    expect(rnx * rny * rnz).toBeLessThanOrEqual(500_000)
+    expect(rnx * rny * rnz).toBeLessThanOrEqual(max_points)
+    expect(result.factor).toBeGreaterThan(1)
     expect(result.grid).toHaveLength(rnx)
     expect(result.grid[0]).toHaveLength(rny)
     expect(result.grid[0][0]).toHaveLength(rnz)
-  })
-
-  test(`respects custom max_points budget`, () => {
-    const grid = make_grid(50, 50, 50)
-    const result = downsample_grid(grid, [50, 50, 50], 10_000)
-    const [rnx, rny, rnz] = result.dims
-    expect(rnx * rny * rnz).toBeLessThanOrEqual(10_000)
-    expect(result.factor).toBeGreaterThan(1)
-  })
-
-  test(`returns original when total is under custom budget`, () => {
-    const dims: Vec3 = [10, 10, 10]
-    const grid = make_grid(10, 10, 10)
-    const result = downsample_grid(grid, dims, 2000)
-    expect(result.grid).toBe(grid)
-    expect(result.factor).toBe(1)
   })
 
   test.each([0, 1, 7])(

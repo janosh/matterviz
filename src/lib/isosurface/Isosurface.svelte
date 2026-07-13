@@ -27,24 +27,19 @@
   } from './coloring'
   import type { DisplayRange } from './sampling'
   import {
-    extract_volume_range,
+    prepare_geometry_grid,
     resolve_volume_display_range,
     sample_volume_at_positions,
   } from './sampling'
   import { flatten_grid, grid_point_count, inflate_grid } from './_grid'
-  import {
-    emit_profile,
-    profile_stage,
-    record_profile,
-    type IsosurfaceProfiler,
-  } from './_profile'
+  import { profile_stage, record_profile, type IsosurfaceProfiler } from './_profile'
   import type {
     GeometryWorkerRequest,
     GeometryWorkerResponse,
     TransferableVolume,
   } from './_geometry-worker-types'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, downsample_grid, MAX_GRID_POINTS } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from './types'
 
   let {
     volumes = [],
@@ -168,35 +163,18 @@
     }
     const profile_start = profiler ? performance.now() : 0
 
-    // Both branches yield the marching-cubes grid, the lattice spanning it, and
-    // the Cartesian position of its corner; the vertex shift falls out uniformly.
-    let mc_grid: number[][][]
-    let mc_lattice: Matrix3x3
-    let origin: Vec3 = vol.origin
-
     const range = effective_range(vol)
-    if (range) {
-      // Resample periodic integer supercells and explicit fractional ranges to
-      // an endpoint-inclusive finite grid so marching cubes clips at exact bounds.
-      ;({ grid: mc_grid, lattice: mc_lattice, origin } = extract_volume_range(vol, range))
-    } else {
-      // Only finite volumes without an explicit range reach this branch. They
-      // stay in their original physical extent regardless of atom supercell.
-      const ds = downsample_grid(vol.grid, vol.grid_dims)
-
-      mc_grid = ds.grid
-      mc_lattice = vol.lattice
-    }
+    const { grid, lattice, origin } = prepare_geometry_grid(vol, range)
 
     const prepared: PreparedGrid = {
       key: prepared_key(vol),
-      grid: mc_grid,
-      lattice: mc_lattice,
+      grid,
+      lattice,
       vertex_shift: vertex_shift(origin),
     }
     prepared_cache.set(vol, prepared)
-    emit_profile(profiler, `prepare_geometry`, profile_start, {
-      output_points: grid_point_count(mc_grid),
+    record_profile(profiler, `prepare_geometry`, performance.now() - profile_start, {
+      output_points: grid_point_count(grid),
       extracted_range: range !== null,
     })
     return prepared
@@ -354,7 +332,7 @@
           periodic: vol.periodic,
         }
         transfer.push(transferred_volume.grid_values.buffer)
-        emit_profile(profiler, `prepare_geometry`, serialize_start, {
+        record_profile(profiler, `prepare_geometry`, performance.now() - serialize_start, {
           worker: true,
           serialize: true,
           source_points: transferred_volume.grid_values.length,
@@ -454,10 +432,11 @@
           }
           return
         }
+        const volume_by_token = new Map(
+          pending.map(({ volume: source }) => [vol_id(source), source]),
+        )
         for (const volume_result of response.volumes) {
-          const source_volume = pending.find(
-            (surface) => vol_id(surface.volume) === volume_result.token,
-          )?.volume
+          const source_volume = volume_by_token.get(volume_result.token)
           if (source_volume) {
             const grid = profile_stage(
               profiler,
@@ -565,21 +544,18 @@
       if (entry.geometry.getAttribute(`color`)) colored_keys.add(entry.key)
     }
     active_entries = entries
-    emit_profile(profiler, `rebuild_total`, profile_start, {
+    let [vertices, triangles, buffer_bytes] = [0, 0, 0]
+    for (const entry of entries) {
+      vertices += entry.geometry.getAttribute(`position`).count
+      triangles += (entry.geometry.getIndex()?.count ?? 0) / 3
+      buffer_bytes += geometry_buffer_bytes(entry.geometry)
+    }
+    record_profile(profiler, `rebuild_total`, performance.now() - profile_start, {
       entries: entries.length,
       cache_hits,
-      vertices: entries.reduce(
-        (total, entry) => total + entry.geometry.getAttribute(`position`).count,
-        0,
-      ),
-      triangles: entries.reduce(
-        (total, entry) => total + (entry.geometry.getIndex()?.count ?? 0) / 3,
-        0,
-      ),
-      buffer_bytes: entries.reduce(
-        (total, entry) => total + geometry_buffer_bytes(entry.geometry),
-        0,
-      ),
+      vertices,
+      triangles,
+      buffer_bytes,
     })
   }
 
@@ -710,7 +686,9 @@
       else entry.geometry.setAttribute(`color`, new BufferAttribute(colors, 3))
       colored_keys.add(entry.key)
     }
-    emit_profile(profiler, `recolor_total`, profile_start, { entries: entries.length })
+    record_profile(profiler, `recolor_total`, performance.now() - profile_start, {
+      entries: entries.length,
+    })
   }
 
   // Color-relevant layer props as a string, including the color-source volume

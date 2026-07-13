@@ -44,6 +44,8 @@
 
   // Monotonic token so a stale async load can never overwrite a newer selection
   let load_counter = 0
+  const replace_url = (url: string) =>
+    goto(url, { replaceState: true, keepFocus: true, noScroll: true })
 
   // Fetch and parse one demo file from /isosurfaces/<name>
   async function fetch_volumetric(name: string): Promise<VolumetricFileData> {
@@ -260,13 +262,7 @@
       }
       supercell_scaling = scenario.supercell ?? `1x1x1`
       load_time_ms = Math.round(performance.now() - start)
-      if (browser) {
-        goto(`${globalThis.location.pathname}?scenario=${scenario.id}`, {
-          replaceState: true,
-          keepFocus: true,
-          noScroll: true,
-        })
-      }
+      if (browser) replace_url(`${globalThis.location.pathname}?scenario=${scenario.id}`)
     })
 
   // Leave preset-scenario mode after the user modifies the scene: hide the
@@ -275,11 +271,7 @@
   function clear_scenario() {
     active_scenario = undefined
     if (browser && page.url.searchParams.has(`scenario`)) {
-      goto(globalThis.location.pathname, {
-        replaceState: true,
-        keepFocus: true,
-        noScroll: true,
-      })
+      replace_url(globalThis.location.pathname)
     }
   }
 

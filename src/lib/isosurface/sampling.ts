@@ -1,11 +1,11 @@
 // Volume sampling utilities: trilinear interpolation, world-coordinate volume
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
-import type { Vec2, Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { create_cart_to_frac_matrix, scale_lattice_matrix } from '$lib/math'
 import { grid_dimensions } from './_grid'
 import type { VolumetricData } from './types'
-import { MAX_GRID_POINTS } from './types'
+import { downsample_grid, MAX_GRID_POINTS } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
@@ -512,5 +512,17 @@ export function extract_volume_range(
       mean: sum / (nx * ny * nz),
     },
     periodic: false, // the extracted block is a finite window; endpoints included
+  }
+}
+
+export function prepare_geometry_grid(
+  volume: VolumetricData,
+  range: DisplayRange | null,
+): { grid: number[][][]; lattice: Matrix3x3; origin: Vec3 } {
+  if (range) return extract_volume_range(volume, range)
+  return {
+    grid: downsample_grid(volume.grid, volume.grid_dims).grid,
+    lattice: volume.lattice,
+    origin: volume.origin,
   }
 }

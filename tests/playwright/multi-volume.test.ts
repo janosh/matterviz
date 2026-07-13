@@ -40,7 +40,7 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await expect(page.locator(`.scenario-card.active`)).toContainText(`Charge × magnetization`)
   })
 
-  test(`glycine ESP scenario lists both source files and one colored surface`, async ({
+  test(`controls group surfaces by volume and mark color-source-only volumes`, async ({
     page,
   }) => {
     await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
@@ -48,12 +48,6 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await expect(stats).toContainText(`glycine-density.cube`)
     await expect(stats).toContainText(`glycine-esp.cube`)
     await expect(stats).toContainText(`Surfaces: 1`)
-  })
-
-  test(`controls group surfaces by volume and mark color-source-only volumes`, async ({
-    page,
-  }) => {
-    await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
     const pane = await open_settings_pane(page)
 
     const groups = pane.locator(`.volume-group`)

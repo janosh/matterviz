@@ -122,44 +122,30 @@ test.describe(`Isosurface page`, () => {
   })
 
   test.describe(`DraggablePane resize grip`, () => {
-    test(`resize grip is visible when pane is open`, async ({ page }) => {
+    test(`resizes and resets`, async ({ page }) => {
       const pane = await open_settings_pane(page)
-      await expect(pane.locator(`.resize-grip`)).toBeVisible()
-    })
-
-    test(`dragging resize grip changes pane width`, async ({ page }) => {
-      const pane = await open_settings_pane(page)
+      const grip = pane.locator(`.resize-grip`)
+      await expect(grip).toBeVisible()
       const initial_box = await pane.boundingBox()
       expect(initial_box).toBeTruthy()
-      await drag_from(page, pane.locator(`.resize-grip`), 100, 0)
+      await drag_from(page, grip, 100, 0)
       await expect(pane).toBeVisible()
       const resized_box = await pane.boundingBox()
       expect(resized_box).toBeTruthy()
       expect(resized_box?.width).toBeGreaterThan((initial_box?.width ?? 0) + 50)
+
+      await grip.dblclick()
+      expect(await pane.evaluate((element) => element.style.width)).toBe(``)
     })
 
-    test(`double-clicking resize grip resets pane size`, async ({ page }) => {
-      const pane = await open_settings_pane(page)
-      await drag_from(page, pane.locator(`.resize-grip`), 150, 0)
-      await expect(pane).toBeVisible()
-      await pane.locator(`.resize-grip`).dblclick()
-      const inline_width = await pane.evaluate((el) => el.style.width)
-      expect(inline_width).toBe(``)
-    })
-
-    test(`control tab shows reset/close after drag, reset keeps pane open`, async ({
-      page,
-    }) => {
+    test(`exposes reset and close controls after dragging`, async ({ page }) => {
       const pane = await open_settings_pane(page)
       const tab = pane.locator(`.control-tab`)
       await expect(tab.locator(`.drag-handle`)).toBeVisible()
       await expect(tab.locator(`.reset-button`)).not.toBeVisible()
-
       await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
-
       await expect(tab.locator(`.reset-button`)).toBeVisible()
       await expect(tab.locator(`.close-button`)).toBeVisible()
-
       await tab.locator(`.reset-button`).click()
       await expect(pane).toBeVisible()
     })
