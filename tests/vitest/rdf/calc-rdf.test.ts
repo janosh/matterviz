@@ -157,6 +157,33 @@ describe(`calculate_rdf`, () => {
     expect(sum_pbc).toBeGreaterThan(sum_no_pbc)
   })
 
+  test(`auto_expand keeps one non-periodic atom all-zero beyond cell length`, () => {
+    const structure = create_test_structure(5, [make_site(`Si`, [0, 0, 0])])
+    const result = calculate_rdf(structure, {
+      cutoff: 8,
+      n_bins: 80,
+      auto_expand: true,
+      pbc: [false, false, false],
+    })
+    expect(result.g_r.every((val) => val === 0)).toBe(true)
+  })
+
+  test(`auto_expand replicates only periodic axes for mixed PBC`, () => {
+    const structure = create_test_structure(5, [make_site(`Si`, [0, 0, 0])])
+    const result = calculate_rdf(structure, {
+      cutoff: 9,
+      n_bins: 90,
+      auto_expand: true,
+      pbc: [true, false, false],
+    })
+    const nonzero_bins = result.g_r
+      .map((value, idx) => ({ radius: result.r[idx], value }))
+      .filter(({ value }) => value > 0)
+
+    expect(nonzero_bins.some(({ radius }) => radius > 4.5 && radius < 5.5)).toBe(true)
+    expect(nonzero_bins.every(({ radius }) => radius < 6)).toBe(true)
+  })
+
   // Regression: auto-expansion used to disable PBC on the expanded structure, so atoms near
   // the supercell boundary lost neighbors while normalization still assumed homogeneous
   // density, biasing g(r) low (first-shell coordination 5.26 instead of 6)

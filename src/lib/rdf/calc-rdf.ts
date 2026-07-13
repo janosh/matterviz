@@ -46,20 +46,22 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   if (auto_expand) {
     const { a, b, c } = calc_lattice_params(lattice)
     const min_size = cutoff * expansion_factor
-    const [n_a, n_b, n_c] = [a, b, c].map((len) => Math.ceil(min_size / len))
+    const expansion = ([a, b, c] as Vec3).map((length, axis) =>
+      pbc[axis] ? Math.ceil(min_size / length) : 1,
+    ) as Vec3
+    const [n_a, n_b, n_c] = expansion
 
     if (n_a > 1 || n_b > 1 || n_c > 1) {
       const expanded_structure = make_supercell(
         structure,
-        [n_a, n_b, n_c] as Vec3,
+        expansion,
         false, // Don't fold back to unit cell
       )
       sites = expanded_structure.sites
       lattice = expanded_structure.lattice.matrix
       // Keep PBC: min-image is exact once every lattice vector ≥ 2× cutoff (disabling PBC
-      // starves boundary atoms and biases g(r) low). Under full PBC all periodic copies are
-      // equivalent, so restrict centers to the first copy (make_supercell emits (0,0,0) first)
-      center_sites = pbc.every(Boolean) ? sites.slice(0, structure.sites.length) : sites
+      // starves boundary atoms and biases g(r) low).
+      // Keep the original sites as centers; expanded sites are periodic neighbor images only.
     }
   }
 
