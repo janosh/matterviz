@@ -135,10 +135,7 @@ export async function load_from_url(
 
   // Skip Range requests for known text formats to avoid production server issues
   // Include VASP files that don't have extensions (POSCAR, XDATCAR, CONTCAR)
-  const is_known_text = is_known_text_file(url_basename)
-  let sniffed_callback_args: [content: string | ArrayBuffer, filename: string] | undefined
-
-  if (!is_known_text) {
+  if (!is_known_text_file(url_basename)) {
     // Only the Range sniff is guarded (failure → plain text fetch). Once magic bytes
     // commit to a binary format, download/decompress errors must propagate instead of
     // falling through to a text fetch that would parse the binary bytes as garbage.
@@ -163,12 +160,11 @@ export async function load_from_url(
       const filename = extract_filename(resp.headers, url_basename)
       const buffer = await resp.arrayBuffer()
       // Gunzip sniffed gzip — downstream parsers can't handle raw gzip bytes
-      sniffed_callback_args =
+      const args: [content: string | ArrayBuffer, filename: string] =
         sniffed === `gzip` ? await decompress_gz_payload(buffer, filename) : [buffer, filename]
+      return callback(...args)
     }
   }
-
-  if (sniffed_callback_args) return callback(...sniffed_callback_args)
 
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)

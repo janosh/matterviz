@@ -3,14 +3,10 @@ import { WyckoffTable } from '$lib/symmetry'
 import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import type { ComponentProps } from 'svelte'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`WyckoffTable`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   const mount_table = (wyckoff_positions: WyckoffPos[] | null | undefined) =>
     mount(WyckoffTable, {
       target: document.body,

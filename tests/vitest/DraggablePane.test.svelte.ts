@@ -1,12 +1,11 @@
 import { DraggablePane } from '$lib'
-import { createRawSnippet, mount, tick } from 'svelte'
-import type { HTMLAttributes } from 'svelte/elements'
+import { createRawSnippet, mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`DraggablePane`, () => {
   const default_props = {
-    children: createRawSnippet(() => ({ render: () => `Pane Content` })),
+    children: createRawSnippet(() => ({ render: () => `<span>Pane Content</span>` })),
   }
   const click = (el: Element) => {
     el.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
@@ -20,34 +19,30 @@ describe(`DraggablePane`, () => {
     expect(document.querySelector(`.pane-toggle`)).toBeNull()
   })
 
-  test(`pane hidden when !show`, () => {
-    mount(DraggablePane, { target: document.body, props: default_props })
-    const pane: Element | null = document.querySelector(`.draggable-pane`)
-    expect(pane).toBeInstanceOf(HTMLElement)
-    expect(pane?.getAttribute(`style`)).toContain(`display: none`)
-  })
-
-  test(`toggle shows then hides pane with correct display and classes`, async () => {
+  test(`toggle shows then hides pane, updating display, classes and ARIA`, async () => {
     mount(DraggablePane, { target: document.body, props: default_props })
     const button = doc_query(`.pane-toggle`)
-    let pane: Element | null = document.querySelector(`.draggable-pane`)
+    const pane = doc_query(`.draggable-pane`)
 
-    // Initially hidden
-    expect(pane?.classList.contains(`pane-open`)).toBe(false)
-    expect(pane?.getAttribute(`style`)).toContain(`display: none`)
+    // Initially hidden, with ARIA defaults
+    expect(pane.classList.contains(`pane-open`)).toBe(false)
+    expect(pane.getAttribute(`style`)).toContain(`display: none`)
+    expect(pane.getAttribute(`aria-label`)).toBe(`Draggable pane`)
+    expect(pane.getAttribute(`aria-modal`)).toBe(`false`)
+    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
 
     // Click to show
     click(button)
     await tick()
-    pane = document.querySelector(`.draggable-pane`)
-    expect(pane?.classList.contains(`pane-open`)).toBe(true)
-    expect(pane?.getAttribute(`style`)).toContain(`display: grid`)
+    expect(pane.classList.contains(`pane-open`)).toBe(true)
+    expect(pane.getAttribute(`style`)).toContain(`display: grid`)
+    expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
 
     // Click to hide
     click(button)
     await tick()
-    pane = document.querySelector(`.draggable-pane`)
-    expect(pane?.classList.contains(`pane-open`)).toBe(false)
+    expect(pane.classList.contains(`pane-open`)).toBe(false)
+    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
   })
 
   test(`calls onclose when closed`, () => {
@@ -62,25 +57,15 @@ describe(`DraggablePane`, () => {
     expect(onclose).toHaveBeenCalled()
   })
 
-  test(`handles click outside pane correctly`, () => {
+  test(`click outside the pane closes it`, () => {
     const onclose = vi.fn()
     mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, show: true, show_pane: true, onclose },
     })
 
-    const pane = document.querySelector(`.draggable-pane`) as HTMLElement
-    const button = document.querySelector(`button`) as HTMLElement
-
-    expect(pane).toBeInstanceOf(HTMLElement)
-    expect(button).toBeInstanceOf(HTMLElement)
-
     expect(onclose).not.toHaveBeenCalled()
-
-    // Click outside pane (on document body)
     document.body.click()
-
-    // Pane should close when clicking outside
     expect(onclose).toHaveBeenCalled()
   })
 
@@ -112,42 +97,25 @@ describe(`DraggablePane`, () => {
     expect(onclose).toHaveBeenCalledTimes(1)
   })
 
-  test(`toggle props applied`, () => {
-    const toggle_props: HTMLAttributes<HTMLButtonElement> = {
-      title: `Custom Title`,
-      class: `custom-class`,
-    }
+  test(`toggle_props, pane_props and max_width forwarded to their elements`, () => {
     mount(DraggablePane, {
       target: document.body,
-      props: { ...default_props, toggle_props },
+      props: {
+        ...default_props,
+        show: true,
+        max_width: `600px`,
+        toggle_props: { title: `Custom Title`, class: `custom-class` },
+        pane_props: { class: `custom-pane-class`, 'data-testid': `custom-pane` },
+      },
     })
-    const button = doc_query(`.pane-toggle`)
 
+    const button = doc_query(`.pane-toggle`)
     expect(button.getAttribute(`title`)).toBe(`Custom Title`)
     expect(button.classList.contains(`custom-class`)).toBe(true)
-  })
 
-  test(`pane props applied`, () => {
-    const pane_props: HTMLAttributes<HTMLDivElement> = {
-      class: `custom-pane-class`,
-      'data-testid': `custom-pane`,
-    }
-    mount(DraggablePane, {
-      target: document.body,
-      props: { ...default_props, show: true, pane_props },
-    })
     const pane = doc_query(`[data-testid="custom-pane"]`)
-
     expect(pane.classList.contains(`custom-pane-class`)).toBe(true)
     expect(pane.classList.contains(`toc-exclude`)).toBe(true)
-  })
-
-  test(`max_width applied`, () => {
-    mount(DraggablePane, {
-      target: document.body,
-      props: { ...default_props, show: true, max_width: `600px` },
-    })
-    const pane = doc_query(`.draggable-pane`)
     expect(pane.style.maxWidth).toBe(`600px`)
   })
 
@@ -164,7 +132,7 @@ describe(`DraggablePane`, () => {
         props: { ...default_props, position: `fixed` },
       })
       const button = doc_query(`.pane-toggle`)
-      const pane = doc_query<HTMLElement>(`.draggable-pane`)
+      const pane = doc_query(`.draggable-pane`)
       vi.spyOn(button, `getBoundingClientRect`).mockReturnValue({
         bottom: 760,
         height: 24,
@@ -201,29 +169,22 @@ describe(`DraggablePane`, () => {
     }
   })
 
-  test(`ARIA defaults`, () => {
-    mount(DraggablePane, { target: document.body, props: default_props })
-    const button = doc_query(`.pane-toggle`)
-    const pane = doc_query(`.draggable-pane`)
-
-    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
-    expect(pane.getAttribute(`aria-label`)).toBe(`Draggable pane`)
-    expect(pane.getAttribute(`aria-modal`)).toBe(`false`)
-  })
-
-  test(`ARIA toggles on click`, async () => {
-    mount(DraggablePane, { target: document.body, props: default_props })
-    const button = doc_query(`.pane-toggle`)
-
-    // Click to expand
-    click(button)
-    await tick()
-    expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
-
-    // Click to collapse
-    click(button)
-    await tick()
-    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
+  test(`cancels pending resize when destroyed`, async () => {
+    vi.useFakeTimers()
+    try {
+      const component = mount(DraggablePane, {
+        target: document.body,
+        props: { ...default_props, show: true },
+      })
+      await tick()
+      globalThis.dispatchEvent(new Event(`resize`))
+      const timer_count = vi.getTimerCount()
+      await unmount(component)
+      expect(vi.getTimerCount()).toBe(timer_count - 1)
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
   })
 
   test(`renders control buttons with drag handle`, () => {

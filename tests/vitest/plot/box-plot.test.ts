@@ -57,17 +57,6 @@ describe(`compute_box_stats`, () => {
     expect(stats.outliers).toEqual([])
   })
 
-  // The 5-percentile bridge: passing [p05, p25, p50, p75, p95] with minmax reproduces the box
-  test(`five precomputed percentiles reproduce a box exactly (minmax)`, () => {
-    const stats = compute_box_stats([10, 20, 30, 40, 50], { whisker_mode: `minmax` })
-    expect(stats.q1).toBeCloseTo(20, 12)
-    expect(stats.median).toBeCloseTo(30, 12)
-    expect(stats.q3).toBeCloseTo(40, 12)
-    expect(stats.whisker_low).toBe(10)
-    expect(stats.whisker_high).toBe(50)
-    expect(stats.outliers).toEqual([])
-  })
-
   test(`percentile mode uses 5th/95th by default and is order-insensitive`, () => {
     const data = Array.from({ length: 100 }, (_, idx) => idx + 1) // 1..100
     const stats = compute_box_stats(data, { whisker_mode: `percentile` })
@@ -119,24 +108,16 @@ describe(`compute_box_stats`, () => {
   ])(`edge case: %s`, (_label, values, expected_n) => {
     const stats = compute_box_stats(values)
     expect(stats.n).toBe(expected_n)
+    expect(stats.outliers).toEqual([])
     if (expected_n === 0) {
       expect(Number.isNaN(stats.median)).toBe(true)
-      expect(stats.outliers).toEqual([])
     } else {
-      expect(stats.outliers).toEqual([])
-      expect(stats.whisker_low).toBe(values[0])
-      expect(stats.whisker_high).toBe(values[values.length - 1])
+      // degenerate distributions yield a flat box: all stats collapse to the single value
+      const { q1, median, q3, mean, whisker_low, whisker_high } = stats
+      for (const stat of [q1, median, q3, mean, whisker_low, whisker_high]) {
+        expect(stat).toBe(values[0])
+      }
     }
-  })
-
-  test(`degenerate single value yields a flat box`, () => {
-    const stats = compute_box_stats([42])
-    expect(stats.q1).toBe(42)
-    expect(stats.median).toBe(42)
-    expect(stats.q3).toBe(42)
-    expect(stats.mean).toBe(42)
-    expect(stats.whisker_low).toBe(42)
-    expect(stats.whisker_high).toBe(42)
   })
 
   test(`filters non-finite values and does not mutate input`, () => {

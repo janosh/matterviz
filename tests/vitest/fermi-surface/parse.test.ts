@@ -121,41 +121,18 @@ END_BLOCK_BANDGRID_3D`
   })
 
   describe(`FRMSF format`, () => {
-    // FRMSF format: grid dimensions, n_bands, n_spins, reciprocal vectors, then energies
-    const sample_frmsf = `3 3 3
-1
-1
-1.0 0.0 0.0
-0.0 1.0 0.0
-0.0 0.0 1.0
-0.1
-0.2
-0.1
-0.2
-0.3
-0.2
-0.1
-0.2
-0.1
-0.2
-0.3
-0.2
-0.3
-0.4
-0.3
-0.2
-0.3
-0.2
-0.1
-0.2
-0.1
-0.2
-0.3
-0.2
-0.1
-0.2
-0.1
-`
+    // FRMSF format: grid dims, lshift, n_bands, reciprocal vectors, then one energy per line
+    const frmsf_energies = `0.1 0.2 0.1 0.2 0.3 0.2 0.1 0.2 0.1 0.2 0.3 0.2 0.3 0.4
+      0.3 0.2 0.3 0.2 0.1 0.2 0.1 0.2 0.3 0.2 0.1 0.2 0.1`
+    const sample_frmsf = `${[
+      `3 3 3`,
+      `1`,
+      `1`,
+      `1.0 0.0 0.0`,
+      `0.0 1.0 0.0`,
+      `0.0 0.0 1.0`,
+      ...frmsf_energies.split(/\s+/).filter(Boolean),
+    ].join(`\n`)}\n`
 
     test(`parses valid FRMSF metadata and converts energies from Hartree to eV`, () => {
       const band_data = parse_grid(sample_frmsf, `test.frmsf`)

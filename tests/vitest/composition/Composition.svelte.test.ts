@@ -81,7 +81,7 @@ describe(`Composition component`, () => {
     expect(doc_query(`.header`).textContent).toBe(`Display Mode`)
   })
 
-  test(`context menu has all expected options`, async () => {
+  test(`context menu lists display modes, color schemes, and export options`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -90,13 +90,19 @@ describe(`Composition component`, () => {
     expect(menu_options.length).toBeGreaterThanOrEqual(13) // 3 display modes + 6 color schemes + 4 export options
 
     const option_texts = Array.from(menu_options).map((opt) => opt.textContent?.trim())
-    expect(option_texts).toContain(`Pie Chart`)
-    expect(option_texts).toContain(`Bubble Chart`)
-    expect(option_texts).toContain(`Bar Chart`)
-    expect(option_texts).toContain(`Vesta`)
-    expect(option_texts).toContain(`Jmol`)
-    expect(option_texts).toContain(`Alloy`)
-    expect(option_texts).toContain(`Copy Formula`)
+    const expected_options = [
+      `Pie Chart`,
+      `Bubble Chart`,
+      `Bar Chart`,
+      `Vesta`,
+      `Jmol`,
+      `Alloy`,
+      `Copy Formula`,
+      `Copy Data`,
+      `Export SVG`,
+      `Export PNG`,
+    ]
+    for (const label of expected_options) expect(option_texts).toContain(label)
   })
 
   test(`context menu changes propagate to chart components`, async () => {
@@ -113,22 +119,5 @@ describe(`Composition component`, () => {
     open_context_menu()
     await tick()
     expect(doc_query(`.bubble-chart`)).toBeInstanceOf(SVGSVGElement)
-  })
-
-  test(`export options are available in context menu`, async () => {
-    mount(Composition, { target: document.body, props: { composition: `H2O` } })
-    open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    const export_options = Array.from(
-      document.querySelectorAll(`.context-menu button`),
-    ).filter((opt) => opt.textContent?.includes(`Export`) || opt.textContent?.includes(`Copy`))
-    expect(export_options).toHaveLength(4)
-
-    const option_texts = export_options.map((opt) => opt.textContent?.trim())
-    expect(option_texts).toContain(`Copy Formula`)
-    expect(option_texts).toContain(`Copy Data`)
-    expect(option_texts).toContain(`Export SVG`)
-    expect(option_texts).toContain(`Export PNG`)
   })
 })

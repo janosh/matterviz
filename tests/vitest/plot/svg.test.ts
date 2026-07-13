@@ -30,18 +30,4 @@ describe(`bar_path`, () => {
     const implicit = bar_path(0, 0, 10, 20, 3)
     expect(implicit).toBe(explicit)
   })
-
-  it.each([
-    [0, 0, 10, 20, 5, true],
-    [100, 200, 50, 100, 10, false],
-  ])(
-    `path is valid SVG (x=%d, y=%d, w=%d, h=%d, r=%d, vertical=%s)`,
-    (x, y, w, h, r, vertical) => {
-      const path = bar_path(x, y, w, h, r, vertical)
-      // Basic SVG path validation: starts with M, ends with Z, contains expected commands
-      expect(path).toMatch(/^M[\d.,-]+/)
-      expect(path).toMatch(/Z$/)
-      expect(path).toContain(`A${r},${r}`)
-    },
-  )
 })

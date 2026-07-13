@@ -67,6 +67,10 @@ describe(`measure: angles`, () => {
     { v1: [1, 0, 0] as Vec3, v2: [0, 1, 0] as Vec3, deg: 90, desc: `x and y axes` },
     { v1: [1, 0, 0] as Vec3, v2: [0, 0, 1] as Vec3, deg: 90, desc: `x and z axes` },
     { v1: [0, 1, 0] as Vec3, v2: [0, 0, 1] as Vec3, deg: 90, desc: `y and z axes` },
+    { v1: [1, 1, 0] as Vec3, v2: [-1, 1, 0] as Vec3, deg: 90, desc: `diagonal vectors` },
+    { v1: [1, 0, 1] as Vec3, v2: [-1, 0, 1] as Vec3, deg: 90, desc: `3D diagonal` },
+    { v1: [2, 3, 0] as Vec3, v2: [0, 0, 5] as Vec3, deg: 90, desc: `scaled orthogonal` },
+    { v1: [1, 2, 3] as Vec3, v2: [-2, 1, 0] as Vec3, deg: 90, desc: `dot=0` },
     {
       v1: [1, 0, 0] as Vec3,
       v2: [0.5, Math.sqrt(3) / 2, 0] as Vec3,
@@ -86,7 +90,6 @@ describe(`measure: angles`, () => {
       desc: `opposite directions`,
     },
     { v1: [1, 0, 0] as Vec3, v2: [2, 0, 0] as Vec3, deg: 0, desc: `same direction` },
-    { v1: [1, 1, 0] as Vec3, v2: [-1, 1, 0] as Vec3, deg: 90, desc: `diagonal vectors` },
     { v1: [1, 1, 1] as Vec3, v2: [1, 1, 1] as Vec3, deg: 0, desc: `identical vectors` },
   ] as { v1: Vec3; v2: Vec3; deg: number; desc: string }[])(
     `basic angles: $desc`,
@@ -95,77 +98,71 @@ describe(`measure: angles`, () => {
     },
   )
 
+  // interior angle at `vertex` between the two `others` corners of a triangle
+  const angle_at = (vertex: Vec3, others: [Vec3, Vec3]): number =>
+    angle_between_vectors(
+      [others[0][0] - vertex[0], others[0][1] - vertex[1], others[0][2] - vertex[2]],
+      [others[1][0] - vertex[0], others[1][1] - vertex[1], others[1][2] - vertex[2]],
+      `degrees`,
+    )
+
   test.each([
-    { v1: [1, 0, 0] as Vec3, v2: [0, 1, 0] as Vec3, desc: `x ⊥ y` },
-    { v1: [1, 0, 0] as Vec3, v2: [0, 0, 1] as Vec3, desc: `x ⊥ z` },
-    { v1: [0, 1, 0] as Vec3, v2: [0, 0, 1] as Vec3, desc: `y ⊥ z` },
-    { v1: [1, 1, 0] as Vec3, v2: [-1, 1, 0] as Vec3, desc: `diagonal` },
-    { v1: [1, 0, 1] as Vec3, v2: [-1, 0, 1] as Vec3, desc: `3D diagonal` },
-    { v1: [2, 3, 0] as Vec3, v2: [0, 0, 5] as Vec3, desc: `scaled` },
-    { v1: [1, 2, 3] as Vec3, v2: [-2, 1, 0] as Vec3, desc: `dot=0` },
-  ])(`orthogonality: $desc`, ({ v1, v2 }) => {
-    expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(90, 10)
-  })
-
-  test(`triangle angle sum property: angles in any triangle sum to 180°`, () => {
-    // Test multiple triangles with different shapes
-    const triangles = [
-      {
-        name: `equilateral`,
-        vertices: [[0, 0, 0] as Vec3, [1, 0, 0] as Vec3, [0.5, Math.sqrt(3) / 2, 0] as Vec3],
-        expected_angles: [60, 60, 60],
-      },
-      {
-        name: `right triangle`,
-        vertices: [[0, 0, 0] as Vec3, [3, 0, 0] as Vec3, [0, 4, 0] as Vec3],
-        expected_angles: [
-          90,
-          (Math.atan(4 / 3) * 180) / Math.PI,
-          (Math.atan(3 / 4) * 180) / Math.PI,
-        ],
-      },
-      {
-        name: `isosceles`,
-        vertices: [[0, 0, 0] as Vec3, [2, 0, 0] as Vec3, [1, 2, 0] as Vec3],
-      },
-      {
-        name: `scalene`,
-        vertices: [[0, 0, 0] as Vec3, [3, 0, 0] as Vec3, [1, 2, 0] as Vec3],
-      },
-      {
-        name: `3D triangle`,
-        vertices: [[0, 0, 0] as Vec3, [1, 0, 0] as Vec3, [0, 1, 1] as Vec3],
-      },
+    {
+      name: `equilateral`,
+      vertices: [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0.5, Math.sqrt(3) / 2, 0],
+      ] as Vec3[],
+      expected_angles: [60, 60, 60],
+    },
+    {
+      name: `right triangle`,
+      vertices: [
+        [0, 0, 0],
+        [3, 0, 0],
+        [0, 4, 0],
+      ] as Vec3[],
+      expected_angles: [
+        90,
+        (Math.atan(4 / 3) * 180) / Math.PI,
+        (Math.atan(3 / 4) * 180) / Math.PI,
+      ],
+    },
+    {
+      name: `isosceles`,
+      vertices: [
+        [0, 0, 0],
+        [2, 0, 0],
+        [1, 2, 0],
+      ] as Vec3[],
+    },
+    {
+      name: `scalene`,
+      vertices: [
+        [0, 0, 0],
+        [3, 0, 0],
+        [1, 2, 0],
+      ] as Vec3[],
+    },
+    {
+      name: `3D triangle`,
+      vertices: [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 1],
+      ] as Vec3[],
+    },
+  ])(`triangle angles sum to 180°: $name`, ({ vertices, expected_angles }) => {
+    const [vert_a, vert_b, vert_c] = vertices
+    const angles = [
+      angle_at(vert_a, [vert_b, vert_c]),
+      angle_at(vert_b, [vert_a, vert_c]),
+      angle_at(vert_c, [vert_a, vert_b]),
     ]
-
-    for (const triangle of triangles) {
-      const [a, b, c] = triangle.vertices
-
-      // Calculate angle at vertex a (between vectors ab and ac)
-      const ab: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
-      const ac: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
-      const angle_a = angle_between_vectors(ab, ac, `degrees`)
-
-      // Calculate angle at vertex b (between vectors ba and bc)
-      const ba: Vec3 = [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-      const bc: Vec3 = [c[0] - b[0], c[1] - b[1], c[2] - b[2]]
-      const angle_b = angle_between_vectors(ba, bc, `degrees`)
-
-      // Calculate angle at vertex c (between vectors ca and cb)
-      const ca: Vec3 = [a[0] - c[0], a[1] - c[1], a[2] - c[2]]
-      const cb: Vec3 = [b[0] - c[0], b[1] - c[1], b[2] - c[2]]
-      const angle_c = angle_between_vectors(ca, cb, `degrees`)
-
-      // Sum should be 180° for any triangle
-      const sum = angle_a + angle_b + angle_c
-      expect(sum).toBeCloseTo(180, 8)
-
-      // If expected angles provided, check them too
-      if (triangle.expected_angles) {
-        expect(angle_a).toBeCloseTo(triangle.expected_angles[0], 5)
-        expect(angle_b).toBeCloseTo(triangle.expected_angles[1], 5)
-        expect(angle_c).toBeCloseTo(triangle.expected_angles[2], 5)
-      }
+    expect(angles[0] + angles[1] + angles[2]).toBeCloseTo(180, 8)
+    for (const [idx, expected] of (expected_angles ?? []).entries()) {
+      expect(angles[idx]).toBeCloseTo(expected, 5)
     }
   })
 

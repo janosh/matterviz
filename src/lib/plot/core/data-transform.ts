@@ -1,5 +1,5 @@
 import type { D3SymbolName } from '$lib/labels'
-import type { DataSeries, Point } from '$lib/plot'
+import type { DataSeries } from '$lib/plot'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
 
@@ -44,23 +44,6 @@ export const prepare_legend_data = (
       symbol_color: extract_series_color(series_data),
     },
   }))
-
-// Create data points from series for analysis
-export const create_data_points = (
-  series: DataSeries[],
-  filter_fn?: (series: DataSeries) => boolean,
-): Point[] =>
-  series
-    .filter(filter_fn ?? ((srs) => srs.visible ?? true))
-    .flatMap(({ x: xs, y: ys }, series_idx) => {
-      const length = Math.min(xs.length, ys.length)
-      if (xs.length !== ys.length) {
-        console.warn(
-          `length mismatch in series ${series_idx}: x.length=${xs.length} vs y.length=${ys.length}`,
-        )
-      }
-      return xs.slice(0, length).map((x, idx) => ({ x, y: ys[idx] }))
-    })
 
 // Process array or scalar properties for indexed access.
 // If prop is an array, returns the element at the given index.

@@ -338,58 +338,23 @@ const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
   })
 
 test.describe(`Bond component`, () => {
-  test(`renders bonds and handles rotation/zoom without errors`, async ({ page }) => {
+  test(`renders bonds from multiple angles and zoom levels without errors`, async ({
+    page,
+  }) => {
     test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     // wait_for_3d_canvas ensures canvas is visible with non-zero dimensions
-    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
-    const initial = await canvas.screenshot()
-    expect(initial.length).toBeGreaterThan(1000)
-
-    // Assert 3: Scene has rendered content (not blank)
-    const initial_pixels = count_non_white_pixels(initial)
-    expect(initial_pixels).toBeGreaterThan(100)
-
-    // Assert 4-5: Rotation works and changes view
-    const box = await canvas.boundingBox()
-    expect(box).toBeTruthy()
-    if (box) {
-      await canvas.dragTo(canvas, {
-        sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
-        targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
-        force: true,
-      })
-      // Poll for canvas change (handles GPU timing variations)
-      await expect_canvas_changed(canvas, initial)
-      const rotated = await canvas.screenshot()
-      const rotated_pixels = count_non_white_pixels(rotated)
-      expect(rotated_pixels).toBeGreaterThan(100)
-
-      // Assert 6-7: Zoom works and changes view
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      await page.mouse.wheel(0, -200)
-      await expect_canvas_changed(canvas, rotated)
-      const zoomed = await canvas.screenshot()
-      expect(count_non_white_pixels(zoomed)).toBeGreaterThan(100)
-    }
-    // Assert 8: No console errors
-    expect(console_errors).toHaveLength(0)
-  })
-
-  test(`bonds visible from multiple angles with proper gradients`, async ({ page }) => {
-    test.skip(IS_CI, `Visual bonds test times out in CI`)
-    const console_errors = await goto_structure_page(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
     const box = await canvas.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
-    // Assert 1: Initial view has content
+    // Initial scene has rendered content (not blank)
     const initial = await canvas.screenshot()
     expect(count_non_white_pixels(initial)).toBeGreaterThan(100)
 
-    // Assert 2-3: Horizontal rotation changes view
+    // Horizontal rotation changes view (poll handles GPU timing variations)
     await canvas.dragTo(canvas, {
       sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
       targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
@@ -399,7 +364,7 @@ test.describe(`Bond component`, () => {
     const horizontal = await canvas.screenshot()
     expect(count_non_white_pixels(horizontal)).toBeGreaterThan(100)
 
-    // Assert 4-5: Vertical rotation also changes view
+    // Vertical rotation also changes view
     await canvas.dragTo(canvas, {
       sourcePosition: { x: box.width / 2, y: box.height / 2 - 50 },
       targetPosition: { x: box.width / 2, y: box.height / 2 + 50 },
@@ -409,9 +374,14 @@ test.describe(`Bond component`, () => {
     const vertical = await canvas.screenshot()
     expect(count_non_white_pixels(vertical)).toBeGreaterThan(100)
 
-    // Assert 6: All three views are distinct
-    await expect_canvas_changed(canvas, initial)
-    // Assert 7: No console errors
+    // Zoom changes view and keeps content rendered
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -200)
+    await expect_canvas_changed(canvas, vertical)
+    const zoomed = await canvas.screenshot()
+    expect(count_non_white_pixels(zoomed)).toBeGreaterThan(100)
+    expect(zoomed.equals(initial)).toBe(false)
+
     expect(console_errors).toHaveLength(0)
   })
 

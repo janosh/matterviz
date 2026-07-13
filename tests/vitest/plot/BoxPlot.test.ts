@@ -53,16 +53,6 @@ describe(`BoxPlot`, () => {
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
-  test(`each box renders a median line, whiskers and an IQR box`, async () => {
-    const plot = await mount_sized_box_plot({ series: [basic] })
-    const box_group = plot.querySelector(`.box-series`)
-    expect(box_group).not.toBeNull()
-    // 2 whiskers + 2 caps + 1 median = 5 lines per box (tukey, cap_fraction > 0)
-    expect(box_group?.querySelectorAll(`line`).length).toBeGreaterThanOrEqual(5)
-    // IQR box rect + transparent hit rect = 2 rects
-    expect(box_group?.querySelectorAll(`rect`)).toHaveLength(2)
-  })
-
   // 2 whiskers + 2 caps + 1 median render as <line>s inside .box-series (tukey, cap_fraction
   // > 0, show_mean off); the IQR box is a <rect class="iqr-box">
   const theme_stroke = `var(--text-color, black)`
@@ -96,6 +86,8 @@ describe(`BoxPlot`, () => {
       expect(strokes.filter((stroke) => stroke === color)).toHaveLength(count)
     }
     expect(plot.querySelector(`.iqr-box`)?.getAttribute(`stroke`)).toBe(rect)
+    // IQR box rect + transparent hover-target rect
+    expect(plot.querySelectorAll(`.box-series rect`)).toHaveLength(2)
   })
 
   test(`show_value_labels renders one label per box`, async () => {
@@ -266,11 +258,10 @@ describe(`BoxPlot`, () => {
     expect([...x_ticks].map((tick_el) => tick_el.textContent?.trim())).toEqual([`A`, `B`, `C`])
   })
 
-  test(`legend toggles box visibility`, async () => {
+  test(`legend renders when show_legend=true`, async () => {
     const series = [basic, { ...basic, label: `B`, color: `orangered` }]
     const plot = await mount_sized_box_plot({ series, show_legend: true })
     expect(plot.querySelector(`.legend`)).not.toBeNull()
-    expect(plot.querySelectorAll(`.box-series`)).toHaveLength(2)
   })
 
   // === Violin support ===

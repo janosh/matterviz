@@ -219,7 +219,8 @@
         >
       {/if}
       <div class="file-name">
-        {file.category ? `${file.category_icon} ` : ``}{file.label ?? file.name}
+        {file.category && file.category_icon ? `${file.category_icon} ` : ``}{file.label ??
+          file.name}
       </div>
     </div>
   {/each}

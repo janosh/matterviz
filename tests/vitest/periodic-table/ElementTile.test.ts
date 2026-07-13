@@ -43,29 +43,6 @@ describe(`ElementTile`, () => {
 
   describe(`show_* props`, () => {
     test.each([
-      [`show_name`, `name`],
-      [`show_symbol`, `symbol`],
-      [`show_number`, `number`],
-    ] as const)(`%s prop controls %s visibility`, (prop, selector) => {
-      // Test showing
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, [prop]: true },
-      })
-
-      const visible_element = doc_query(`.${selector}`)
-      expect(visible_element.textContent).toBe(`${rand_element[selector]}`)
-
-      document.body.innerHTML = ``
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, [prop]: false },
-      })
-
-      expect(document.querySelector(`.${selector}`)).toBeNull()
-    })
-
-    test.each([
       [true, true, true, `${rand_element.number} ${rand_element.symbol} ${rand_element.name}`],
       [false, false, false, ``],
       [true, false, true, `${rand_element.number} ${rand_element.symbol}`],
@@ -103,21 +80,10 @@ describe(`ElementTile`, () => {
       expect(document.querySelector(`.name`)).toBeNull()
     })
 
-    test(`shows name when value is false`, () => {
+    test.each([[false], [undefined]] as const)(`shows name when value is %s`, (value) => {
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value: false },
-      })
-
-      const name_element = doc_query(`.name`)
-      expect(name_element.textContent).toBe(rand_element.name)
-      expect(document.querySelector(`.value`)).toBeNull()
-    })
-
-    test(`shows name when value is undefined`, () => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, value: undefined },
+        props: { element: rand_element, value },
       })
 
       const name_element = doc_query(`.name`)
@@ -235,26 +201,7 @@ describe(`ElementTile`, () => {
       expect(spy).toHaveBeenCalledWith(event)
     })
 
-    test(`accepts click and keyboard event handlers`, () => {
-      // Test that click and keyboard handlers can be passed without errors
-      const click_spy = vi.fn()
-      const keydown_spy = vi.fn()
-
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          onclick: click_spy,
-          onkeydown: keydown_spy,
-          onkeyup: vi.fn(),
-        },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node).toBeInstanceOf(HTMLElement)
-    })
-
-    test(`has proper accessibility attributes`, () => {
+    test(`has no role/tabindex without href`, () => {
       mount(ElementTile, {
         target: document.body,
         props: { element: rand_element },
@@ -263,19 +210,6 @@ describe(`ElementTile`, () => {
       const node = doc_query(`.element-tile`)
       expect(node.getAttribute(`tabindex`)).toBeNull()
       expect(node.getAttribute(`role`)).toBeNull()
-    })
-  })
-
-  describe(`accessibility`, () => {
-    test(`has proper ARIA attributes`, () => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`role`)).toBeNull()
-      expect(node.getAttribute(`tabindex`)).toBeNull()
     })
   })
 
@@ -297,21 +231,7 @@ describe(`ElementTile`, () => {
   })
 
   describe(`text_color binding`, () => {
-    test(`renders without error when text_color binding is used`, () => {
-      // Test that the component renders without errors when text_color is bound
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          bg_color: `#000000`, // Dark background
-        },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node).toBeInstanceOf(HTMLElement)
-    })
-
-    test(`explicit text_color overrides automatic calculation`, () => {
+    test(`explicit text_color overrides automatic contrast calculation`, () => {
       const explicit_color = `#ff0000`
 
       mount(ElementTile, {
@@ -326,42 +246,9 @@ describe(`ElementTile`, () => {
       const node = doc_query(`.element-tile`)
       expect(node.style.color).toBe(explicit_color)
     })
-
-    test(`text_color reactivity works with background color changes`, () => {
-      // This test specifically addresses the $effect rune bug mentioned by the user
-      // Test that text color reacts properly to background color changes
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          bg_color: `#000000`, // Start with dark background
-        },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.style.backgroundColor).toBe(`#000000`)
-
-      // Component should render without errors despite background/text color interactions
-      expect(node).toBeInstanceOf(HTMLElement)
-      expect(node.classList.contains(`element-tile`)).toBe(true)
-    })
   })
 
   describe(`edge cases`, () => {
-    test(`handles elements with spaces in category names`, () => {
-      // Find an element with a space in its category name
-      const element_with_space = element_data.find((el) => el.category.includes(` `))
-      if (element_with_space) {
-        mount(ElementTile, {
-          target: document.body,
-          props: { element: element_with_space },
-        })
-
-        const node = doc_query(`.element-tile`)
-        expect(node.getAttribute(`data-category`)).toBe(element_with_space.category)
-      }
-    })
-
     test(`handles zero value correctly`, () => {
       mount(ElementTile, {
         target: document.body,

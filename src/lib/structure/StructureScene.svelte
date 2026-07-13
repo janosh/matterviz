@@ -218,8 +218,7 @@
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
     atom_radius?: number // scale factor for atomic radii
-    same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
-    // determined by the atomic radius of the element
+    same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
     camera_target?: Vec3 // external orbit-controls target for pan synchronization
     // When set (and camera_position is unset/zero), auto-place the camera along this
@@ -439,6 +438,22 @@
     bond_context_target = null
   }
 
+  // Shared handlers for bond context-menu buttons: act on pointerdown (a click would
+  // arrive after orbit-controls' start handler already closed the menu) or Enter/Space
+  const menu_action_props = (action: () => void) => {
+    const run = (event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      action()
+    }
+    return {
+      onpointerdown: run,
+      onkeydown: (event: KeyboardEvent) => {
+        if (event.key === `Enter` || event.key === ` `) run(event)
+      },
+    }
+  }
+
   const canonical_bond_target = (bond: BondKeyTarget): BondKeyTarget =>
     canonicalize_bond_target(bond, structure?.sites)
 
@@ -508,20 +523,14 @@
   const BOND_ENDPOINT_HIT_FRACTION = 0.3
   const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
   const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
-  const skip_raycast = (): void => undefined
 
   function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
     mesh.matrix.fromArray(bond.transform_matrix)
     mesh.matrixWorldNeedsUpdate = true
   }
 
-  function apply_non_raycastable_bond_hit_transform(mesh: Mesh, bond: BondPair): void {
-    apply_bond_transform(mesh, bond)
-    disable_raycast(mesh)
-  }
-
   function disable_raycast(mesh: Mesh): void {
-    mesh.raycast = skip_raycast
+    mesh.raycast = () => undefined
   }
 
   function site_world_position(parent: Object3D, site: Site): Vector3 {
@@ -1697,12 +1706,6 @@
   })
 </script>
 
-{#snippet bond_instanced_mesh_snippet(group: ComponentProps<typeof Bond>[`group`])}
-  {#key group.instances.length}
-    <Bond {group} />
-  {/key}
-{/snippet}
-
 {#snippet site_label_snippet(site_idx: number)}
   {@const site = structure!.sites[site_idx]}
   {#if site}
@@ -1808,42 +1811,27 @@
               />
             </T.Mesh>
 
-            {#if atom.render_start_cap}
-              <T.Mesh rotation={[0, atom.start_phi, 0]}>
-                <T.CircleGeometry
-                  args={[
-                    0.5,
-                    sphere_segments,
-                    PARTIAL_OCCUPANCY_CAP_ARC.start_cap_arc_start,
-                    PARTIAL_OCCUPANCY_CAP_ARC.arc_length,
-                  ]}
-                />
-                <T.MeshStandardMaterial
-                  color={partial_color}
-                  side={2}
-                  opacity={ghost_opacity}
-                  transparent={partial_edit_image}
-                />
-              </T.Mesh>
-            {/if}
-            {#if atom.render_end_cap}
-              <T.Mesh rotation={[0, atom.end_phi, 0]}>
-                <T.CircleGeometry
-                  args={[
-                    0.5,
-                    sphere_segments,
-                    PARTIAL_OCCUPANCY_CAP_ARC.end_cap_arc_start,
-                    PARTIAL_OCCUPANCY_CAP_ARC.arc_length,
-                  ]}
-                />
-                <T.MeshStandardMaterial
-                  color={partial_color}
-                  side={2}
-                  opacity={ghost_opacity}
-                  transparent={partial_edit_image}
-                />
-              </T.Mesh>
-            {/if}
+            <!-- Flat caps closing the wedge at its start/end azimuthal angles -->
+            {#each [[atom.render_start_cap, atom.start_phi, PARTIAL_OCCUPANCY_CAP_ARC.start_cap_arc_start], [atom.render_end_cap, atom.end_phi, PARTIAL_OCCUPANCY_CAP_ARC.end_cap_arc_start]] as const as [render_cap, phi, arc_start], cap_idx (cap_idx)}
+              {#if render_cap}
+                <T.Mesh rotation={[0, phi, 0]}>
+                  <T.CircleGeometry
+                    args={[
+                      0.5,
+                      sphere_segments,
+                      arc_start,
+                      PARTIAL_OCCUPANCY_CAP_ARC.arc_length,
+                    ]}
+                  />
+                  <T.MeshStandardMaterial
+                    color={partial_color}
+                    side={2}
+                    opacity={ghost_opacity}
+                    transparent={partial_edit_image}
+                  />
+                </T.Mesh>
+              {/if}
+            {/each}
           </T.Group>
         {/each}
 
@@ -1889,11 +1877,11 @@
       {/each}
 
       <!-- Instanced bond rendering with gradient colors -->
-      {#if instanced_bond_groups.length > 0}
-        {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
-          {@render bond_instanced_mesh_snippet(group)}
-        {/each}
-      {/if}
+      {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
+        {#key group.instances.length}
+          <Bond {group} />
+        {/key}
+      {/each}
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
         LineSegments (1-2 draw calls regardless of supercell size) -->
@@ -1962,7 +1950,10 @@
           {#if is_hovered}
             <T.Mesh
               matrixAutoUpdate={false}
-              oncreate={(ref) => apply_non_raycastable_bond_hit_transform(ref, bond)}
+              oncreate={(ref) => {
+                apply_bond_transform(ref, bond)
+                disable_raycast(ref)
+              }}
             >
               <T.CylinderGeometry args={[bond_hover_radius, bond_hover_radius, 1, 6]} />
               <T.MeshBasicMaterial
@@ -2004,52 +1995,15 @@
             {#each BOND_ORDER_OPTIONS as { order, label } (label)}
               <button
                 type="button"
-                onpointerdown={(event: PointerEvent) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  set_context_bond_order(order)
-                }}
-                onkeydown={(event: KeyboardEvent) => {
-                  if (event.key !== `Enter` && event.key !== ` `) return
-                  event.preventDefault()
-                  event.stopPropagation()
-                  set_context_bond_order(order)
-                }}
+                {...menu_action_props(() => set_context_bond_order(order))}
               >
                 {label}
               </button>
             {/each}
-            <button
-              type="button"
-              class="remove"
-              onpointerdown={(event: PointerEvent) => {
-                event.preventDefault()
-                event.stopPropagation()
-                remove_context_bond()
-              }}
-              onkeydown={(event: KeyboardEvent) => {
-                if (event.key !== `Enter` && event.key !== ` `) return
-                event.preventDefault()
-                event.stopPropagation()
-                remove_context_bond()
-              }}
-            >
+            <button type="button" class="remove" {...menu_action_props(remove_context_bond)}>
               Remove
             </button>
-            <button
-              type="button"
-              onpointerdown={(event: PointerEvent) => {
-                event.preventDefault()
-                event.stopPropagation()
-                close_bond_context_menu()
-              }}
-              onkeydown={(event: KeyboardEvent) => {
-                if (event.key !== `Enter` && event.key !== ` `) return
-                event.preventDefault()
-                event.stopPropagation()
-                close_bond_context_menu()
-              }}
-            >
+            <button type="button" {...menu_action_props(close_bond_context_menu)}>
               Close
             </button>
           </div>
@@ -2257,17 +2211,13 @@
               {@const pos_i = site_i.xyz}
               {@const pos_j = site_j.xyz}
               <Cylinder from={pos_i} to={pos_j} thickness={0.12} color={measure_line_color} />
-              {@const midpoint = [
-                (pos_i[0] + pos_j[0]) / 2,
-                (pos_i[1] + pos_j[1]) / 2,
-                (pos_i[2] + pos_j[2]) / 2,
-              ] as Vec3}
+              {@const mid_pos = midpoint(pos_i, pos_j)}
               {@const direct = math.euclidean_dist(pos_i, pos_j)}
               {@const pbc = lattice
                 ? measure.distance_pbc(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
                 : direct}
               {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-              <extras.HTML center position={midpoint}>
+              <extras.HTML center position={mid_pos}>
                 <span class="measure-label">
                   {#if differ}
                     PBC: {format_num(pbc, float_fmt)} Å<br /><small>

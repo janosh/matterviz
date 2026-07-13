@@ -206,9 +206,10 @@ describe(`generate_bz_vertices`, () => {
     )
   })
 
-  test(`max_planes_by_order parameter`, () => {
-    const vertices = generate_bz_vertices(k_lattice, 1, { 1: 10, 2: 20, 3: 30 })
-    expect(vertices.length).toBeGreaterThanOrEqual(4)
+  test(`clamps unchecked orders above 3`, () => {
+    const max_planes_by_order = { 1: 10, 2: 10, 3: 10, 4: 4 }
+    const third_order = generate_bz_vertices(k_lattice, 3, max_planes_by_order)
+    expect(generate_bz_vertices(k_lattice, 4 as 3, max_planes_by_order)).toEqual(third_order)
   })
 })
 
@@ -246,13 +247,6 @@ describe(`compute_convex_hull`, () => {
       expect(hull.edges).toHaveLength(e_count)
     },
   )
-
-  test(`edge_sharp_angle_deg controls edge filtering`, () => {
-    const strict = compute_convex_hull(cube_verts, 1)
-    const loose = compute_convex_hull(cube_verts, 45)
-    expect(strict.edges.length).toBeGreaterThan(0)
-    expect(loose.edges.length).toBeGreaterThan(0)
-  })
 })
 
 describe(`BZ volume`, () => {
@@ -287,16 +281,11 @@ describe(`BZ volume`, () => {
 })
 
 describe(`BZ order`, () => {
-  const k_lattice = reciprocal_lattice(CUBIC_5)
-
   test(`higher order → more vertices`, () => {
+    const k_lattice = reciprocal_lattice(CUBIC_5)
     const bz1 = compute_brillouin_zone(k_lattice, 1)
     const bz2 = compute_brillouin_zone(k_lattice, 2)
     expect(bz2.vertices.length).toBeGreaterThan(bz1.vertices.length)
-  })
-
-  test(`order capped at 3`, () => {
-    expect(compute_brillouin_zone(k_lattice, 3).order).toBe(3)
   })
 })
 
@@ -310,15 +299,6 @@ describe(`error handling`, () => {
     expect(() => compute_brillouin_zone(reciprocal_lattice(degenerate), 1)).toThrow(
       /singular|Insufficient vertices/,
     )
-  })
-
-  test(`handles custom max_planes_by_order`, () => {
-    const bz = compute_brillouin_zone(reciprocal_lattice(CUBIC_5), 1, 5, {
-      1: 50,
-      2: 100,
-      3: 200,
-    })
-    expect(bz.vertices.length).toBeGreaterThan(0)
   })
 })
 
