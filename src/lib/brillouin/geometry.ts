@@ -39,11 +39,11 @@ export function polyhedron_geometry(
   return geometry
 }
 
-// Inverse of the reciprocal lattice for Cartesian -> fractional conversion; null if the lattice is missing or singular
+// Inverse of the transposed row-vector reciprocal lattice for Cartesian -> fractional conversion
 export function k_lattice_inverse(k_lattice: Matrix3x3 | undefined): Matrix3x3 | null {
   if (!k_lattice) return null
   try {
-    return math.matrix_inverse_3x3(k_lattice)
+    return math.create_cart_to_frac_matrix(k_lattice)
   } catch {
     return null
   }
