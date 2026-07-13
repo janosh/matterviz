@@ -10,22 +10,14 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js'
 
 // @internal exported only for tests - not part of the public API.
-// Type guard to check if a material has a color property (duck typing for bundler
-// compatibility across different Three.js instances - Threlte vs vanilla Three.js).
+// Type guard to check if a material has a Color-like property with numeric r/g/b
+// channels (duck typing for bundler compatibility across different Three.js
+// instances - Threlte vs vanilla Three.js).
 export function has_color_property(mat: Material): mat is Material & { color: Color } {
-  if (!(`color` in mat)) return false
-  const color = (mat as { color: unknown }).color
+  const color = (mat as { color?: unknown }).color
   if (!color || typeof color !== `object`) return false
-  // Check for Color-like object with numeric r/g/b channels (duck typing)
-  const color_obj = color as { r?: unknown; g?: unknown; b?: unknown }
-  const red_channel = color_obj.r
-  const green_channel = color_obj.g
-  const blue_channel = color_obj.b
-  return (
-    typeof red_channel === `number` &&
-    typeof green_channel === `number` &&
-    typeof blue_channel === `number`
-  )
+  const { r: red, g: green, b: blue } = color as { r?: unknown; g?: unknown; b?: unknown }
+  return typeof red === `number` && typeof green === `number` && typeof blue === `number`
 }
 
 // Extract color from a ShaderMaterial by checking common color uniform patterns
@@ -40,8 +32,8 @@ function extract_shader_color(shader_mat: ShaderMaterial): Color | null {
     }
   }
 
-  // For gradient bonds, try to extract midpoint color from instanceColorStart/End attributes
-  // These are set as geometry attributes, not uniforms, so we return a default gray
+  // Gradient bonds store colors as instanceColorStart/End geometry attributes,
+  // not uniforms — nothing to extract here (caller falls back to gray)
   return null
 }
 
@@ -255,17 +247,17 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // STEP 2: Clone the scene
   const cloned_scene = scene.clone()
 
-  // STEP 3: Find all InstancedMesh objects in the cloned scene and build uuid mapping
-  const original_meshes: InstancedMesh[] = []
-  const cloned_meshes: InstancedMesh[] = []
-
-  scene.traverse((object) => {
-    if (is_instanced_mesh(object)) original_meshes.push(object)
-  })
-
-  cloned_scene.traverse((object) => {
-    if (is_instanced_mesh(object)) cloned_meshes.push(object)
-  })
+  // STEP 3: Find all InstancedMesh objects in original + cloned scene (same traversal
+  // order) to map cloned meshes back to their original uuid
+  const collect_instanced = (root: Scene): InstancedMesh[] => {
+    const meshes: InstancedMesh[] = []
+    root.traverse((object) => {
+      if (is_instanced_mesh(object)) meshes.push(object)
+    })
+    return meshes
+  }
+  const original_meshes = collect_instanced(scene)
+  const cloned_meshes = collect_instanced(cloned_scene)
 
   // STEP 4: Convert each InstancedMesh to individual Mesh objects
   for (let mesh_idx = 0; mesh_idx < cloned_meshes.length; mesh_idx++) {
@@ -397,31 +389,20 @@ export function create_structure_filename(
     safe_push(formula.replaceAll(` `, ``))
   }
 
-  // Add space group if available
-  if (
-    `symmetry` in structure &&
-    structure.symmetry &&
-    typeof structure.symmetry === `object` &&
-    `space_group_symbol` in structure.symmetry
-  ) {
-    const space_group = structure.symmetry.space_group_symbol
-    if (space_group && typeof space_group === `string`) {
-      safe_push(space_group.replaceAll(` `, ``))
-    }
+  // Add space group and lattice system if available
+  const symmetry =
+    `symmetry` in structure && is_plain_object(structure.symmetry)
+      ? structure.symmetry
+      : undefined
+  if (typeof symmetry?.space_group_symbol === `string`) {
+    safe_push(symmetry.space_group_symbol.replaceAll(` `, ``))
   }
-
-  // Add lattice system if available
-  if (
-    `lattice` in structure &&
-    structure.lattice &&
-    typeof structure.lattice === `object` &&
-    `lattice_system` in structure.lattice
-  ) {
-    const lattice_system = structure.lattice.lattice_system
-    if (lattice_system && typeof lattice_system === `string`) {
-      safe_push(lattice_system)
-    }
-  }
+  const lattice =
+    `lattice` in structure && is_plain_object(structure.lattice)
+      ? structure.lattice
+      : undefined
+  if (lattice && `lattice_system` in lattice && typeof lattice.lattice_system === `string`)
+    safe_push(lattice.lattice_system)
 
   // Add number of sites
   if (structure.sites?.length) parts.push(`${structure.sites.length}sites`)
@@ -553,22 +534,23 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   const lines: string[] = []
 
   // CIF header with data block (required by pymatgen and CIF spec)
-  lines.push(`# CIF file generated by MatterViz`)
-  const block_name = get_cif_block_name(structure)
-  lines.push(`data_${block_name}`)
-  lines.push(``)
+  lines.push(`# CIF file generated by MatterViz`, `data_${get_cif_block_name(structure)}`, ``)
 
   // Cell parameters
   const lattice = structure.lattice
   if (lattice.a && lattice.b && lattice.c) {
-    lines.push(`_cell_length_a ${lattice.a.toFixed(6)}`)
-    lines.push(`_cell_length_b ${lattice.b.toFixed(6)}`)
-    lines.push(`_cell_length_c ${lattice.c.toFixed(6)}`)
+    lines.push(
+      `_cell_length_a ${lattice.a.toFixed(6)}`,
+      `_cell_length_b ${lattice.b.toFixed(6)}`,
+      `_cell_length_c ${lattice.c.toFixed(6)}`,
+    )
   }
   if (lattice.alpha && lattice.beta && lattice.gamma) {
-    lines.push(`_cell_angle_alpha ${lattice.alpha.toFixed(6)}`)
-    lines.push(`_cell_angle_beta ${lattice.beta.toFixed(6)}`)
-    lines.push(`_cell_angle_gamma ${lattice.gamma.toFixed(6)}`)
+    lines.push(
+      `_cell_angle_alpha ${lattice.alpha.toFixed(6)}`,
+      `_cell_angle_beta ${lattice.beta.toFixed(6)}`,
+      `_cell_angle_gamma ${lattice.gamma.toFixed(6)}`,
+    )
   }
 
   // Space group information
@@ -593,13 +575,15 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   lines.push(`loop_`, `_symmetry_equiv_pos_as_xyz`, `  'x, y, z'`, ``)
 
   // Atom site loop header
-  lines.push(`loop_`)
-  lines.push(`_atom_site_label`)
-  lines.push(`_atom_site_type_symbol`)
-  lines.push(`_atom_site_fract_x`)
-  lines.push(`_atom_site_fract_y`)
-  lines.push(`_atom_site_fract_z`)
-  lines.push(`_atom_site_occupancy`)
+  lines.push(
+    `loop_`,
+    `_atom_site_label`,
+    `_atom_site_type_symbol`,
+    `_atom_site_fract_x`,
+    `_atom_site_fract_y`,
+    `_atom_site_fract_z`,
+    `_atom_site_occupancy`,
+  )
 
   // Cache inverse transpose for Cartesian→fractional conversion (avoids recomputing per site)
   const cart_to_frac =
@@ -691,24 +675,22 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   for (const group of sites_by_element.values()) {
     for (const site of group) {
       const frac_coords = get_frac_coords(site, cart_to_frac)
+      const coords_str = frac_coords
+        .slice(0, 3)
+        .map((coord) => coord.toFixed(8))
+        .join(` `)
 
-      let selective_dynamics_str = ``
+      let sel_dyn_str = ``
       if (has_selective_dynamics) {
         const sel_dyn = (site.properties?.selective_dynamics ?? [
           true,
           true,
           true,
         ]) as boolean[]
-        selective_dynamics_str = ` ${sel_dyn[0] ? `T` : `F`} ${
-          sel_dyn[1] ? `T` : `F`
-        } ${sel_dyn[2] ? `T` : `F`}`
+        sel_dyn_str = ` ${sel_dyn.map((flag) => (flag ? `T` : `F`)).join(` `)}`
       }
 
-      lines.push(
-        `${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(8)} ${frac_coords[2].toFixed(
-          8,
-        )}${selective_dynamics_str}`,
-      )
+      lines.push(`${coords_str}${sel_dyn_str}`)
     }
   }
 

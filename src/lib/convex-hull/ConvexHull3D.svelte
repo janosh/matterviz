@@ -16,7 +16,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { Spinner } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import { to_radians, type Point3D, type Vec2, type Vec3 } from '$lib/math'
+  import { to_radians, type Vec2, type Vec3 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
   import {
     centered_rect,
@@ -123,7 +123,6 @@
     ...default_hull_config,
     ...config,
     colors: { ...default_hull_config.colors, ...config.colors },
-    margin: { t: 40, r: 40, b: 60, l: 60, ...config.margin },
   })
 
   // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
@@ -187,7 +186,7 @@
   })
 
   // Cached hull model for e_above_hull queries; recompute only when faces change
-  let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
+  const hull_model = $derived(thermo.build_lower_hull_model(hull_faces))
 
   // Enrich coords with e_above_hull from cached hull model (before filtering)
   const all_enriched_entries = $derived.by(() => {
@@ -472,65 +471,38 @@
     }
   }
 
+  // Dashed triangle outline: base triangle at E_form = 0, bottom triangle at the most
+  // negative formation energy, and vertical edges connecting corresponding corners
   function draw_structure_outline(): void {
     if (!ctx || !canvas) return
 
-    // Set consistent style for all triangle structure lines
     ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
     ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
-    ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash) // Dashed lines for all structure lines
+    ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
 
-    // Draw triangle base and vertical edges
-    draw_triangle_structure()
-  }
-
-  function draw_triangle_structure(): void {
-    if (!ctx || !canvas) return
-
-    // Get formation energy range for vertical edges
-    const e_form_min = energy_range.min // Includes 0 for elemental references
-    const e_form_max = energy_range.max // Includes 0 for elemental references
-
-    // Draw base triangle edges (top triangle at formation energy = 0)
+    const { min: e_form_min, max: e_form_max } = energy_range
     const triangle_edges = get_triangle_edges()
     ctx.beginPath()
-    for (const [v1, v2] of triangle_edges) {
-      const proj1 = project_3d_point(v1.x, v1.y, 0) // Base triangle at formation energy = 0
-      const proj2 = project_3d_point(v2.x, v2.y, 0)
-
-      ctx.moveTo(proj1.x, proj1.y)
-      ctx.lineTo(proj2.x, proj2.y)
+    for (const z_plane of [0, e_form_min]) {
+      for (const [v1, v2] of triangle_edges) {
+        const proj1 = project_3d_point(v1.x, v1.y, z_plane)
+        const proj2 = project_3d_point(v2.x, v2.y, z_plane)
+        ctx.moveTo(proj1.x, proj1.y)
+        ctx.lineTo(proj2.x, proj2.y)
+      }
     }
-    ctx.stroke()
-
-    // Draw vertical edges from corners (from most negative to 0 formation energy)
-    const vertical_edges = get_triangle_vertical_edges(e_form_min, e_form_max)
-    ctx.beginPath()
-    for (const [v1, v2] of vertical_edges) {
+    for (const [v1, v2] of get_triangle_vertical_edges(e_form_min, e_form_max)) {
       const proj1 = project_3d_point(v1.x, v1.y, v1.z)
       const proj2 = project_3d_point(v2.x, v2.y, v2.z)
-
       ctx.moveTo(proj1.x, proj1.y)
       ctx.lineTo(proj2.x, proj2.y)
     }
     ctx.stroke()
 
-    // Draw bottom triangle (connecting the bottom tips of vertical lines)
-    const bottom_triangle_edges = get_triangle_edges()
-    ctx.beginPath()
-    for (const [v1, v2] of bottom_triangle_edges) {
-      const proj1 = project_3d_point(v1.x, v1.y, e_form_min) // Bottom triangle at most negative energy
-      const proj2 = project_3d_point(v2.x, v2.y, e_form_min)
-
-      ctx.moveTo(proj1.x, proj1.y)
-      ctx.lineTo(proj2.x, proj2.y)
-    }
-    ctx.stroke()
-
-    // Reset stroke style to default for other elements
-    const styles = getComputedStyle(canvas)
-    ctx.strokeStyle = styles.getPropertyValue(`--hull-edge-color`) || `#212121`
-    ctx.setLineDash([]) // Reset line dash for other drawing operations
+    // Reset stroke style and line dash for subsequent drawing operations
+    ctx.strokeStyle =
+      getComputedStyle(canvas).getPropertyValue(`--hull-edge-color`) || `#212121`
+    ctx.setLineDash([])
   }
 
   function draw_element_labels(): void {

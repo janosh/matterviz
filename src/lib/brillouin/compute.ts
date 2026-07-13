@@ -147,12 +147,10 @@ export function generate_bz_vertices(
   // Default values: 26 (1st order), 80 (2nd order), 150 (3rd+ order)
   max_planes_by_order: Record<1 | 2 | 3, number> = { 1: 26, 2: 80, 3: 150 },
 ): Vec3[] {
-  if (order > 3) order = 3 // Performance limit
-
   const k_points = generate_k_space_grid(k_lattice, order)
   const center_idx = Math.floor(k_points.length / 2)
 
-  // Determine max planes for this order (default to highest value for orders > 3)
+  // Fallback for partial records passed through compute_brillouin_zone
   const max_planes = max_planes_by_order[order] ?? 150
 
   // Create Bragg planes (perpendicular bisectors of k-points)
@@ -209,12 +207,11 @@ export function generate_bz_vertices(
   return vertices
 }
 
-// Compute polyhedron volume via divergence theorem (sum of signed tetrahedral volumes)
+// Compute polyhedron volume via divergence theorem (sum of signed tetrahedral volumes).
+// Faces always come from compute_convex_hull, so each is a valid triangle.
 function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
-  if (faces.length === 0) return 0
   return Math.abs(
     faces.reduce((sum, face) => {
-      if (face.length < 3) return sum
       const [v0, v1, v2] = face.slice(0, 3).map((idx) => vertices[idx])
       const area_normal = math.scale(
         math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),

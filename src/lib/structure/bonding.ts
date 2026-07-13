@@ -57,10 +57,8 @@ export function has_framework_potential(elements: Iterable<string>): boolean {
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
 
-const format_cell_shift = (cell_shift: Vec3 | undefined): string => {
-  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return ``
-  return `@${cell_shift.join(`,`)}`
-}
+const format_cell_shift = (cell_shift: Vec3 | undefined): string =>
+  cell_shift === undefined || is_zero_cell_shift(cell_shift) ? `` : `@${cell_shift.join(`,`)}`
 
 const negate_cell_shift = (cell_shift: Vec3): Vec3 => [
   cell_shift[0] === 0 ? 0 : -cell_shift[0],
@@ -517,11 +515,7 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
       console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: endpoints match`)
       continue
     }
-    if (
-      cell_shift !== undefined &&
-      !is_zero_cell_shift(cell_shift) &&
-      !(`lattice` in structure)
-    ) {
+    if (!is_zero_cell_shift(cell_shift) && !(`lattice` in structure)) {
       console.warn(
         `Ignoring invalid explicit bond at index ${entry_idx}: cell_shift requires a crystal lattice`,
       )

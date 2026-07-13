@@ -48,21 +48,9 @@ export const STRUCT_KEYWORDS = Object.freeze([
 ])
 
 // More restrictive keywords for JSON/YAML files (excludes generic terms like "data")
-export const STRUCT_KEYWORDS_STRICT = Object.freeze([
-  `structure`,
-  `phono`,
-  `vasp`,
-  `crystal`,
-  `material`,
-  `lattice`,
-  `geometry`,
-  `unit_cell`,
-  `unitcell`,
-  `atoms`,
-  `sites`,
-  `phono3py`,
-  `phonopy`,
-])
+export const STRUCT_KEYWORDS_STRICT = Object.freeze(
+  STRUCT_KEYWORDS.filter((keyword) => keyword !== `data`),
+)
 
 // Regex patterns for keyword matching
 export const TRAJ_KEYWORDS_REGEX = new RegExp(

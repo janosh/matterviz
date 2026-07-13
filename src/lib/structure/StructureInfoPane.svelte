@@ -160,9 +160,9 @@
 
   function format_site_property(prop_key: string, prop_value: unknown): SiteDetail | null {
     if (prop_value == null) return null
-    const format_numeric_value = (value: unknown, format = `.3~f`): string | null => {
+    const format_numeric_value = (value: unknown): string | null => {
       const numeric_value = Number(value)
-      return Number.isNaN(numeric_value) ? null : format_num(numeric_value, format)
+      return Number.isNaN(numeric_value) ? null : format_num(numeric_value, `.3~f`)
     }
     const format_value_list = (values: unknown[]): string =>
       `(${values.map((value) => format_numeric_value(value) ?? String(value)).join(`, `)})`

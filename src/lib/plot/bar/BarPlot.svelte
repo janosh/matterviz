@@ -251,9 +251,9 @@
   let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
 
   // === Categorical Normalization (string x values -> integer indices, see ./data) ===
-  let cat_norm = $derived(normalize_categorical(series, x_axis.categories))
-  let category_list = $derived(cat_norm.category_list)
-  let internal_series = $derived(cat_norm.internal_series)
+  let { category_list, internal_series } = $derived(
+    normalize_categorical(series, x_axis.categories),
+  )
 
   let category_indices = $derived(
     category_list.length > 0 ? category_list.map((_, idx) => idx) : null,
@@ -384,6 +384,7 @@
     return measured_footprint(legend_element, { width: 120, height: 60 })
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
+  const should_show_legend = $derived(show_legend ?? series.length > 1)
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each bar is modeled as a segment
   // from baseline to its tip so the legend can't hide inside a tall bar. Built from internal_series
@@ -439,7 +440,7 @@
       // gate on legend_element (the render signal) not legend_data, whose entries can read pad
       legend:
         legend != null &&
-        (show_legend !== undefined ? show_legend : series.length > 1) &&
+        should_show_legend &&
         legend_element != null &&
         !legend_has_explicit_pos
           ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
@@ -474,9 +475,6 @@
     })),
   )
   const marginal_has_axis = $derived(marginal_axis_presence(show_x2, show_y2))
-  const legend_auto_outside = $derived(decor.legend_outside)
-  const legend_outside_x = $derived(decor.legend_pos.x)
-  const legend_outside_y = $derived(decor.legend_pos.y)
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
@@ -571,7 +569,6 @@
   let tick_label_widths = $derived({
     y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
     y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
-    x2_max: measure_max_tick_width(ticks.x2, x2_axis.format ?? ``),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -711,8 +708,7 @@
 
   // Calculate best legend placement using continuous grid sampling
   const get_legend_placement = () => {
-    const should_show = show_legend !== undefined ? show_legend : series.length > 1
-    if (!should_show || !width || !height) return null
+    if (!should_show_legend || !width || !height) return null
 
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
@@ -809,6 +805,12 @@
       change(hover_info)
       on_bar_hover?.({ ...hover_info, event })
     }
+
+  const clear_hover = () => {
+    hover_info = null
+    change(null)
+    on_bar_hover?.(null)
+  }
 
   // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode))
@@ -919,9 +921,7 @@
       onkeydown={pan_zoom.on_key_down}
       onmouseleave={() => {
         hovered = false
-        hover_info = null
-        change(null)
-        on_bar_hover?.(null)
+        clear_hover()
       }}
       onwheel={pan_zoom.on_wheel}
       ontouchstart={pan_zoom.on_touch_start}
@@ -970,8 +970,7 @@
         on_axis_change={(key) => handle_axis_change(`x`, key)}
       />
 
-      <!-- X2-axis (Top) -->
-      <!-- Note: x2 axis is only supported for vertical orientation -->
+      <!-- X2-axis (Top): only rendered in vertical orientation -->
       {#if show_x2}
         <PlotAxis
           side="x2"
@@ -1015,8 +1014,7 @@
         on_axis_change={(key) => handle_axis_change(`y`, key)}
       />
 
-      <!-- Y2-axis (Right) -->
-      <!-- Note: y2 axis is only supported for vertical orientation. Implementing x2 for horizontal mode requires additional complexity. -->
+      <!-- Y2-axis (Right): only rendered in vertical orientation -->
       {#if show_y2}
         <PlotAxis
           side="y2"
@@ -1144,11 +1142,7 @@
                       change(hover_info)
                       on_bar_hover?.({ ...hover_info!, event: evt })
                     }}
-                    onmouseleave={() => {
-                      change(null)
-                      hover_info = null
-                      on_bar_hover?.(null)
-                    }}
+                    onmouseleave={clear_hover}
                     onclick={(evt) => {
                       const pt = find_closest_point(evt, points)
                       if (!pt) return
@@ -1310,11 +1304,7 @@
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
                       style:cursor={on_bar_click ? `pointer` : undefined}
                       onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
-                      onmouseleave={() => {
-                        hover_info = null
-                        change(null)
-                        on_bar_hover?.(null)
-                      }}
+                      onmouseleave={clear_hover}
                       onclick={(evt) =>
                         on_bar_click?.({
                           ...get_bar_data(series_idx, bar_idx, color),
@@ -1381,10 +1371,10 @@
     </svg>
 
     <!-- Legend -->
-    {#if legend && (show_legend !== undefined ? show_legend : series.length > 1)}
+    {#if legend && should_show_legend}
       {@const legend_pos = placed_coords(
-        legend_auto_outside,
-        { x: legend_outside_x, y: legend_outside_y },
+        decor.legend_outside,
+        decor.legend_pos,
         legend_tween.placed(),
         legend_tween.coords.current,
         { x: pad.l + 10, y: pad.t + 10 },

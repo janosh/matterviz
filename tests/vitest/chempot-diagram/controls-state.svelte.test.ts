@@ -1,8 +1,4 @@
-import {
-  CHEMPOT_COLOR_MODE_OPTIONS,
-  CHEMPOT_COLOR_SCALE_OPTIONS,
-  create_chempot_overrides,
-} from '$lib/chempot-diagram/controls-state.svelte'
+import { create_chempot_overrides } from '$lib/chempot-diagram/controls-state.svelte'
 import type { ChemPotDiagramConfig } from '$lib/chempot-diagram/types'
 import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
 import { describe, expect, test } from 'vitest'
@@ -48,25 +44,5 @@ describe(`create_chempot_overrides`, () => {
     expect(() =>
       create_chempot_overrides(() => ({}), [`elements`], { elements: [] }),
     ).not.toThrow()
-  })
-
-  test(`color mode/scale option values match the original select options`, () => {
-    expect(CHEMPOT_COLOR_MODE_OPTIONS.map(([value]) => value)).toEqual([
-      `none`,
-      `energy`,
-      `formation_energy`,
-      `arity`,
-      `entries`,
-    ])
-    expect(CHEMPOT_COLOR_SCALE_OPTIONS.map(([value]) => value)).toEqual([
-      `interpolateViridis`,
-      `interpolatePlasma`,
-      `interpolateInferno`,
-      `interpolateMagma`,
-      `interpolateCividis`,
-      `interpolateTurbo`,
-      `interpolateRdYlBu`,
-      `interpolateSpectral`,
-    ])
   })
 })

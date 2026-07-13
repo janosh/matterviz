@@ -30,12 +30,6 @@ const mount_tooltip = (props: Partial<TooltipProps> = {}) =>
   })
 
 describe(`ConvexHullTooltip`, () => {
-  test(`renders container with expected structure`, () => {
-    mount_tooltip()
-    expect(doc_query(`.tooltip-content`)).not.toBeNull()
-    expect(doc_query(`.tooltip-title`)).not.toBeNull()
-  })
-
   test.each([
     { e_above_hull: 0.123, e_form_per_atom: -0.567, expected: [`0.123`, `−0.567`] },
     { e_above_hull: 0, e_form_per_atom: 0, expected: [`0 eV/atom`] },

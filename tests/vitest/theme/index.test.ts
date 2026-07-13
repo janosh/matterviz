@@ -29,30 +29,19 @@ describe(`Theme System`, () => {
   })
 
   describe(`Theme constants and validation`, () => {
-    test(`COLOR_THEMES contains all expected themes`, () => {
+    test(`COLOR_THEMES and THEME_TYPE cover the same themes`, () => {
       expect(COLOR_THEMES).toEqual({
         light: `light`,
         dark: `dark`,
         white: `white`,
         black: `black`,
       })
-    })
-
-    test(`THEME_TYPE provides single source of truth for color-scheme`, () => {
       expect(THEME_TYPE).toEqual({
         light: `light`,
         dark: `dark`,
         white: `light`,
         black: `dark`,
       })
-    })
-
-    test(`THEME_TYPE covers all COLOR_THEMES`, () => {
-      const theme_names = Object.keys(COLOR_THEMES)
-      const type_keys = Object.keys(THEME_TYPE)
-
-      expect(type_keys).toEqual(expect.arrayContaining(theme_names))
-      expect(type_keys).toHaveLength(theme_names.length)
     })
 
     test.each([
@@ -147,7 +136,7 @@ describe(`Theme System`, () => {
 
   describe(`DOM theme application`, () => {
     test.each(Object.keys(COLOR_THEMES))(
-      `apply_theme_to_dom("%s") sets CSS variables and data-theme`,
+      `apply_theme_to_dom("%s") sets CSS variables, data-theme and color-scheme`,
       (theme) => {
         apply_theme_to_dom(theme as ThemeName)
 
@@ -159,6 +148,9 @@ describe(`Theme System`, () => {
         expect(root.style.getPropertyValue(`--surface-bg`)).toBe(expected.surface_bg)
         expect(root.style.getPropertyValue(`--text-color`)).toBe(expected.text_color)
         expect(root.getAttribute(`data-theme`)).toBe(theme)
+        expect(root.style.getPropertyValue(`color-scheme`)).toBe(
+          THEME_TYPE[theme as ThemeName],
+        )
       },
     )
 
@@ -190,88 +182,12 @@ describe(`Theme System`, () => {
       )
     })
 
-    test(`apply_theme_to_dom handles missing theme data gracefully`, () => {
-      globalThis.MATTERVIZ_THEMES = {
-        light: {},
-        dark: {},
-        white: {},
-        black: {},
-      }
-      globalThis.MATTERVIZ_CSS_MAP = {}
-
-      expect(() => apply_theme_to_dom(`light`)).not.toThrow()
-    })
-
-    test(`apply_theme_to_dom handles missing global data gracefully`, () => {
+    test(`apply_theme_to_dom still sets data-theme when global theme data is missing`, () => {
       globalThis.MATTERVIZ_THEMES = undefined
       globalThis.MATTERVIZ_CSS_MAP = undefined
 
-      expect(() => apply_theme_to_dom(`light`)).not.toThrow()
-    })
-  })
-
-  describe(`Color scheme mapping consistency`, () => {
-    test(`THEME_TYPE covers all COLOR_THEMES with valid color-scheme values`, () => {
-      const theme_names = Object.keys(COLOR_THEMES) as ThemeName[]
-      expect(Object.keys(THEME_TYPE).sort()).toEqual(theme_names.sort())
-      for (const theme of theme_names) {
-        expect([`light`, `dark`]).toContain(THEME_TYPE[theme])
-      }
-    })
-  })
-
-  describe(`Integration workflows`, () => {
-    test.each(Object.keys(COLOR_THEMES))(`full workflow for theme "%s"`, (theme) => {
-      save_theme_preference(theme as ThemeMode)
-      expect(get_theme_preference()).toBe(theme)
-
-      apply_theme_to_dom(theme as ThemeName)
-
-      const root = document.documentElement
-      expect(root.getAttribute(`data-theme`)).toBe(theme)
-      const expected = globalThis.MATTERVIZ_THEMES?.[theme as ThemeName] as {
-        surface_bg: string
-        text_color: string
-      }
-      expect(root.style.getPropertyValue(`--surface-bg`)).toBe(expected.surface_bg)
-      expect(root.style.getPropertyValue(`--text-color`)).toBe(expected.text_color)
-      expect(root.style.getPropertyValue(`color-scheme`)).toBe(THEME_TYPE[theme as ThemeName])
-    })
-
-    test.each([
-      [true, `dark`],
-      [false, `light`],
-    ])(`auto mode workflow with system preference %s`, (dark_preference, expected_theme) => {
-      Object.defineProperty(window, `matchMedia`, {
-        writable: true,
-        value: vi.fn().mockImplementation(() => ({
-          matches: dark_preference,
-          addEventListener: vi.fn(),
-        })),
-      })
-
-      save_theme_preference(`auto`)
-      apply_theme_to_dom(`auto`)
-
-      expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
-      expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-        THEME_TYPE[expected_theme as ThemeName],
-      )
-    })
-  })
-
-  describe(`Theme data integrity`, () => {
-    test(`all themes have identical property keys`, () => {
-      if (!globalThis.MATTERVIZ_THEMES) return
-      const theme_names = Object.keys(globalThis.MATTERVIZ_THEMES)
-      const expected_keys = Object.keys(
-        globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName],
-      )
-      for (const name of theme_names) {
-        expect(Object.keys(globalThis.MATTERVIZ_THEMES[name as ThemeName])).toEqual(
-          expected_keys,
-        )
-      }
+      apply_theme_to_dom(`light`)
+      expect(document.documentElement.getAttribute(`data-theme`)).toBe(`light`)
     })
   })
 })

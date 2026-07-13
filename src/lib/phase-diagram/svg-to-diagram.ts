@@ -304,14 +304,9 @@ function extract_boundaries(
       const dy = Math.abs(coords.y2 - coords.y1)
       if (dx < 15 && dy < 15) continue
 
-      // Check stroke-width to distinguish boundaries from axis lines
+      // Check stroke-width to distinguish boundaries from axis lines;
+      // only include lines with meaningful stroke
       const stroke_width = parse_stroke_width(path_el) || 1
-
-      // Axis patches (id="patch_*") are axis borders, not phase boundaries
-      const parent_id = group.getAttribute(`id`) ?? ``
-      if (parent_id.startsWith(`patch_`)) continue
-
-      // Only include lines with meaningful stroke
       if (stroke_width < 1) continue
 
       add_boundary(boundaries, coords, x_scale, y_scale, epsilon)

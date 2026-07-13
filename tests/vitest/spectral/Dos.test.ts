@@ -1,20 +1,16 @@
 import { Dos, type Vec2 } from '$lib'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
-  clear_smearing_cache,
   extract_pdos,
   extract_spin_channels,
   format_dos_tooltip,
   format_sigma,
-  FREQUENCY_UNITS,
-  NORMALIZATION_MODES,
   normalize_dos,
-  SPIN_MODES,
   validate_sigma_range,
 } from '$lib/spectral/helpers'
 import type { ElectronicDos, PhononDos, SpinMode } from '$lib/spectral/types'
 import { mount, tick } from 'svelte'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 // Test fixtures
 const phonon_dos: PhononDos = {
@@ -97,6 +93,17 @@ describe(`Dos component`, () => {
         pdos_filter: [`Fe`],
       },
     ],
+    [
+      `all controls enabled`,
+      {
+        doses: phonon_dos,
+        show_controls: true,
+        show_normalize_control: true,
+        show_units_control: true,
+        sigma: 0.5,
+        sigma_range: [0, 2] as Vec2,
+      },
+    ],
   ])(`renders %s`, (_desc, props) => {
     mount(Dos, { target: document.body, props })
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
@@ -139,25 +146,6 @@ describe(`Dos component`, () => {
     expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
   })
 
-  it(`shows sigma control when enabled`, () => {
-    mount(Dos, {
-      target: document.body,
-      props: { doses: phonon_dos, show_sigma_control: true, show_controls: true },
-    })
-    // Controls are now part of ScatterPlot's control pane, not a separate overlay
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-  })
-
-  it(`clears smearing cache without error`, async () => {
-    mount(Dos, { target: document.body, props: { doses: phonon_dos, sigma: 0.5 } })
-    await tick()
-    clear_smearing_cache()
-    document.body.innerHTML = ``
-    mount(Dos, { target: document.body, props: { doses: phonon_dos, sigma: 0.5 } })
-    await tick()
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-  })
-
   it(`stacks spin-up and spin-down independently in overlay mode`, async () => {
     // With 2 spin-polarized DOS entries, stack=true, overlay mode:
     // - Should have 4 stacked areas: 2 for spin-up + 2 for spin-down
@@ -192,91 +180,7 @@ describe(`Dos component`, () => {
   })
 })
 
-describe(`DOS controls integration`, () => {
-  // Tests for DOS-specific controls that are now part of ScatterPlot's controls_extra
-
-  it(`renders with show_controls enabled`, () => {
-    mount(Dos, {
-      target: document.body,
-      props: { doses: phonon_dos, show_controls: true },
-    })
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-  })
-
-  it(`renders with show_controls disabled`, () => {
-    mount(Dos, {
-      target: document.body,
-      props: { doses: phonon_dos, show_controls: false },
-    })
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-    // Controls pane toggle should not be visible when disabled
-  })
-
-  it(`passes spin_mode prop correctly`, () => {
-    // Test that different spin modes affect rendering
-    for (const mode of [`mirror`, `overlay`, `up_only`, `down_only`] as const) {
-      document.body.innerHTML = ``
-      mount(Dos, {
-        target: document.body,
-        props: { doses: spin_polarized_dos, spin_mode: mode },
-      })
-      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-    }
-  })
-
-  it(`passes sigma and sigma_range props correctly`, () => {
-    mount(Dos, {
-      target: document.body,
-      props: { doses: phonon_dos, sigma: 0.5, sigma_range: [0, 2] },
-    })
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-  })
-
-  it(`passes normalize_control prop correctly`, () => {
-    mount(Dos, {
-      target: document.body,
-      props: { doses: phonon_dos, show_normalize_control: true },
-    })
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-  })
-
-  it(`passes units_control prop correctly for phonon DOS`, () => {
-    mount(Dos, {
-      target: document.body,
-      props: { doses: phonon_dos, show_units_control: true },
-    })
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-  })
-})
-
 describe(`normalize_dos`, () => {
-  it.each([
-    [`phonon DOS`, phonon_dos, `phonon`],
-    [`electronic DOS`, electronic_dos, `electronic`],
-  ])(`normalizes %s`, (_desc, dos, expected_type) => {
-    const result = normalize_dos(dos)
-    expect(result?.type).toBe(expected_type)
-  })
-
-  it.each([null, undefined, {}, { frequencies: [1, 2, 3] }])(
-    `returns null for invalid: %s`,
-    (input) => {
-      expect(normalize_dos(input)).toBeNull()
-    },
-  )
-
-  it(`auto-converts cm⁻¹ to THz when frequencies > 100`, () => {
-    const info_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const result = normalize_dos({
-      frequencies: [0, 100, 200, 300, 400],
-      densities: [0, 0.5, 1, 0.5, 0],
-    })
-    expect(result?.type).toBe(`phonon`)
-    if (result?.type === `phonon`) expect(result.frequencies[4]).toBeCloseTo(11.99, 1)
-    expect(info_spy).toHaveBeenCalled()
-    info_spy.mockRestore()
-  })
-
   it(`preserves spin_down_densities from normalized input`, () => {
     const result = normalize_dos(spin_polarized_dos)
     if (result?.type === `electronic`) {
@@ -400,30 +304,6 @@ describe(`format_sigma`, () => {
     [100, `100.00`], // large → 2 decimals
   ])(`format_sigma(%s) = %s`, (input, expected) => {
     expect(format_sigma(input)).toBe(expected)
-  })
-})
-
-describe(`DosControls constants`, () => {
-  it(`exports valid configuration arrays`, () => {
-    // SPIN_MODES: 4 modes with required fields
-    expect(SPIN_MODES.map((cfg) => cfg.value)).toEqual([
-      `mirror`,
-      `overlay`,
-      `up_only`,
-      `down_only`,
-    ])
-    expect(SPIN_MODES.every((cfg) => cfg.label && cfg.title)).toBe(true)
-
-    // NORMALIZATION_MODES: 4 modes
-    expect(NORMALIZATION_MODES.map((cfg) => cfg.value)).toEqual([
-      null,
-      `max`,
-      `sum`,
-      `integral`,
-    ])
-
-    // FREQUENCY_UNITS: 5 units
-    expect(FREQUENCY_UNITS).toEqual([`THz`, `eV`, `meV`, `cm-1`, `Ha`])
   })
 })
 

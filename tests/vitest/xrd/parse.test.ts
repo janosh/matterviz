@@ -23,6 +23,9 @@ describe(`parse_xy_file`, () => {
     [`tab-separated`, `10.0\t100\n20.0\t200\n30.0\t300`],
     [`comma-separated`, `10.0,100\n20.0,200\n30.0,300`],
     [`mixed whitespace`, `10.0  100\n20.0\t\t200\n30.0   300`],
+    [`CRLF line endings`, `10.0 100\r\n20.0 200\r\n30.0 300`],
+    [`empty lines`, `10.0 100\n\n20.0 200\n\n\n30.0 300`],
+    [`comment lines (#, ;)`, `# comment\n10.0 100\n; comment\n20.0 200\n30.0 300`],
   ])(`parses %s data correctly`, (_name, content) => {
     const result = parse_xy_file(content)
     expect(result).not.toBeNull()
@@ -31,32 +34,6 @@ describe(`parse_xy_file`, () => {
     expect(result?.y[0]).toBeCloseTo(33.33, 1)
     expect(result?.y[1]).toBeCloseTo(66.67, 1)
     expect(result?.y[2]).toBeCloseTo(100, 1)
-  })
-
-  test(`ignores comment lines starting with #`, () => {
-    const content = `# This is a comment\n10.0 100\n# Another comment\n20.0 200`
-    const result = parse_xy_file(content)
-    expect(result).not.toBeNull()
-    expect(result?.x).toEqual([10, 20])
-    // Normalized: 100/200*100=50, 200/200*100=100
-    expect(result?.y[0]).toBeCloseTo(50, 1)
-    expect(result?.y[1]).toBeCloseTo(100, 1)
-  })
-
-  test(`handles empty lines gracefully`, () => {
-    const content = `10.0 100\n\n20.0 200\n\n\n30.0 300`
-    const result = parse_xy_file(content)
-    expect(result).not.toBeNull()
-    expect(result?.x).toEqual([10, 20, 30])
-    expect(result?.y[2]).toBeCloseTo(100, 1)
-  })
-
-  test(`handles Windows-style line endings (CRLF)`, () => {
-    const content = `10.0 100\r\n20.0 200\r\n30.0 300`
-    const result = parse_xy_file(content)
-    expect(result).not.toBeNull()
-    expect(result?.x).toEqual([10, 20, 30])
-    expect(result?.y[2]).toBeCloseTo(100, 1) // max normalized to 100
   })
 
   test.each([

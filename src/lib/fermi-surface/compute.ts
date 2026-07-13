@@ -56,9 +56,9 @@ function tricubic_interpolate(
   const iz = Math.floor(fz)
 
   // Precompute Catmull-Rom coefficients
-  const [cx0, cx1, cx2, cx3] = catmull_rom_coeffs(fx - ix)
-  const [cy0, cy1, cy2, cy3] = catmull_rom_coeffs(fy - iy)
-  const [cz0, cz1, cz2, cz3] = catmull_rom_coeffs(fz - iz)
+  const cx = catmull_rom_coeffs(fx - ix)
+  const cy = catmull_rom_coeffs(fy - iy)
+  const cz = catmull_rom_coeffs(fz - iz)
 
   // Wrapped stencil indices (modulo hoisted out of the inner loop); a zero period
   // (single-point axis) has no neighbours, so collapse the stencil onto index 0
@@ -70,10 +70,6 @@ function tricubic_interpolate(
 
   // Interpolate along z, then y, then x (fully inlined)
   let result = 0
-  const cx = [cx0, cx1, cx2, cx3]
-  const cy = [cy0, cy1, cy2, cy3]
-  const cz = [cz0, cz1, cz2, cz3]
-
   for (let xi = 0; xi < 4; xi++) {
     const row = grid[wx[xi]]
     let y_sum = 0
@@ -398,24 +394,16 @@ function analyze_surface_topology(
 
   const n_spanning = spans.filter(Boolean).length
 
-  if (n_spanning === 0) {
-    // Closed surface, no spanning directions
-    return { dimensionality: `3D`, orientation: null }
-  } else if (n_spanning === 1) {
-    // 2D sheet spanning one direction
-    const axis_idx = spans.indexOf(true)
-    const orientation: Vec3 = [0, 0, 0]
-    orientation[axis_idx] = 1
-    return { dimensionality: `2D`, orientation }
-  } else if (n_spanning === 2) {
-    // 1D noodle-like (tube spanning 2 directions, bounded in 1)
-    const axis_idx = spans.indexOf(false)
-    const orientation: Vec3 = [0, 0, 0]
-    orientation[axis_idx] = 1
-    return { dimensionality: `1D`, orientation }
-  }
-  // Spans all 3 directions - complex warped network
-  return { dimensionality: `quasi-2D`, orientation: null }
+  // 0 spanning = closed 3D pocket; 3 spanning = complex warped network
+  if (n_spanning === 0) return { dimensionality: `3D`, orientation: null }
+  if (n_spanning === 3) return { dimensionality: `quasi-2D`, orientation: null }
+
+  // 1 spanning = 2D sheet (oriented along the spanning axis);
+  // 2 spanning = 1D noodle-like tube (oriented along the bounded axis)
+  const axis_idx = n_spanning === 1 ? spans.indexOf(true) : spans.indexOf(false)
+  const orientation: Vec3 = [0, 0, 0]
+  orientation[axis_idx] = 1
+  return { dimensionality: n_spanning === 1 ? `2D` : `1D`, orientation }
 }
 
 // Compute 2D Fermi slice along a specified plane
@@ -425,8 +413,7 @@ export function compute_fermi_slice(
 ): FermiSliceData {
   const { miller_indices = [0, 0, 1], distance = 0 } = options
 
-  // Validate miller indices are not all zero
-  if (miller_indices[0] === 0 && miller_indices[1] === 0 && miller_indices[2] === 0) {
+  if (miller_indices.every((miller_idx) => miller_idx === 0)) {
     throw new Error(
       `Invalid miller indices [0, 0, 0]: at least one index must be non-zero to define a plane`,
     )
@@ -434,10 +421,8 @@ export function compute_fermi_slice(
 
   // Compute plane normal in Cartesian coordinates
   const plane_normal = math.add(
-    math.add(
-      math.scale(fermi_data.k_lattice[0], miller_indices[0]),
-      math.scale(fermi_data.k_lattice[1], miller_indices[1]),
-    ),
+    math.scale(fermi_data.k_lattice[0], miller_indices[0]),
+    math.scale(fermi_data.k_lattice[1], miller_indices[1]),
     math.scale(fermi_data.k_lattice[2], miller_indices[2]),
   )
 
@@ -455,18 +440,9 @@ export function compute_fermi_slice(
   const [in_plane_u, in_plane_v] = math.compute_in_plane_basis(unit_normal)
 
   // Slice each isosurface
-  const isolines: Isoline[] = []
-
-  for (const surface of fermi_data.isosurfaces) {
-    const lines = slice_surface_with_plane(
-      surface,
-      unit_normal,
-      distance,
-      in_plane_u,
-      in_plane_v,
-    )
-    isolines.push(...lines)
-  }
+  const isolines: Isoline[] = fermi_data.isosurfaces.flatMap((surface) =>
+    slice_surface_with_plane(surface, unit_normal, distance, in_plane_u, in_plane_v),
+  )
 
   return {
     isolines,
@@ -714,27 +690,16 @@ function slice_surface_with_plane(
 // For cubic Oh symmetry, this is the region where all vertices are in the first octant
 // (x >= 0, y >= 0, z >= 0) with some tolerance. Such data needs tiling to show the full BZ.
 export function detect_irreducible_bz(fermi_data: FermiSurfaceData): boolean {
-  if (fermi_data.isosurfaces.length === 0) return false
-
-  // Check if all vertices are in the positive octant (with small tolerance for numerical error)
-  let all_positive = true
-  let vertex_count = 0
-
-  for (const surface of fermi_data.isosurfaces) {
-    for (const vertex of surface.vertices) {
-      vertex_count++
-      if (
-        vertex[0] < -IRREDUCIBLE_BZ_TOLERANCE ||
-        vertex[1] < -IRREDUCIBLE_BZ_TOLERANCE ||
-        vertex[2] < -IRREDUCIBLE_BZ_TOLERANCE
-      ) {
-        all_positive = false
-        break
-      }
-    }
-    if (!all_positive) break
-  }
-
-  // Only consider it irreducible if we have significant data and all positive
-  return all_positive && vertex_count > IRREDUCIBLE_BZ_MIN_VERTICES
+  const vertex_count = fermi_data.isosurfaces.reduce(
+    (sum, surface) => sum + surface.vertices.length,
+    0,
+  )
+  // Only consider it irreducible if we have significant data and all vertices are
+  // in the positive octant (with small tolerance for numerical error)
+  if (vertex_count <= IRREDUCIBLE_BZ_MIN_VERTICES) return false
+  return fermi_data.isosurfaces.every((surface) =>
+    surface.vertices.every((vertex) =>
+      vertex.every((coord) => coord >= -IRREDUCIBLE_BZ_TOLERANCE),
+    ),
+  )
 }

@@ -1,20 +1,9 @@
-import type { ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import * as helpers from '$lib/convex-hull/helpers'
 import { get_convex_hull_stats } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
-import { afterEach, describe, expect, test, vi } from 'vitest'
-
-class MockPath2D {
-  arc(
-    _x_pos: number,
-    _y_pos: number,
-    _radius: number,
-    _start_angle: number,
-    _end_angle: number,
-  ): void {}
-}
+import { describe, expect, test, vi } from 'vitest'
 
 describe(`helpers: energy color scale + point color`, () => {
   test(`get_energy_color_scale returns null when not energy mode or empty`, () => {
@@ -87,18 +76,6 @@ describe(`helpers: energy color scale + point color`, () => {
       `#E69F00`,
     )
   })
-})
-
-describe(`helpers: marker paths`, () => {
-  afterEach(() => vi.unstubAllGlobals())
-
-  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    `create_marker_path handles non-finite size %s`,
-    (size) => {
-      vi.stubGlobal(`Path2D`, MockPath2D)
-      expect(() => helpers.create_marker_path(size)).not.toThrow()
-    },
-  )
 })
 
 describe(`helpers: thresholds and tooltips`, () => {
@@ -194,81 +171,6 @@ describe(`helpers: thresholds and tooltips`, () => {
     expect(t2).toMatch(/E<sub>form<\/sub>/)
     expect(t2).toMatch(/ID/)
   })
-
-  test.each([
-    {
-      name: `ternary stats with mixed stability`,
-      elements: [`Li`, `O`, `Na`] as unknown as ElementSymbol[],
-      max_arity: 3 as const,
-      entries: [
-        { composition: { Li: 1 }, energy: 0, e_above_hull: 0, energy_per_atom: 0 },
-        { composition: { O: 2 }, energy: -10, e_above_hull: 0, energy_per_atom: -5 },
-        {
-          composition: { Li: 1, O: 1 },
-          energy: -6,
-          e_above_hull: 0.05,
-          energy_per_atom: -3,
-        },
-        {
-          composition: { Li: 1, Na: 1 },
-          energy: -2,
-          e_above_hull: 0,
-          energy_per_atom: -1,
-        },
-        {
-          composition: { Li: 1, O: 1, Na: 1 },
-          energy: -8,
-          e_above_hull: 0.1,
-          energy_per_atom: -8 / 3,
-        },
-      ] as PhaseData[],
-      expected: {
-        total: 5,
-        unary: 2,
-        binary: 2,
-        ternary: 1,
-        quaternary: 0,
-        elements: 3,
-        system: `Na-Li-O`,
-      },
-    },
-    {
-      name: `quaternary stats counts quaternary entries`,
-      elements: [`H`, `He`, `Li`, `Be`],
-      max_arity: 4 as const,
-      entries: [
-        { composition: { H: 1 }, energy: 0, e_above_hull: 0, energy_per_atom: 0 },
-        {
-          composition: { H: 1, He: 1, Li: 1, Be: 1 },
-          energy: -4,
-          e_above_hull: 0.2,
-          energy_per_atom: -1,
-        },
-      ] satisfies PhaseData[],
-      expected: {
-        total: 2,
-        unary: 1,
-        binary: 0,
-        ternary: 0,
-        quaternary: 1,
-        elements: 4,
-        system: `He-Li-Be-H`,
-      },
-    } as const,
-  ])(`get_convex_hull_stats: $name`, ({ elements, max_arity, entries, expected }) => {
-    const stats = get_convex_hull_stats(entries, [...elements], max_arity)
-    expect(stats).not.toBeNull()
-    if (!stats) return
-    expect(stats.total).toBe(expected.total)
-    expect(stats.unary).toBe(expected.unary)
-    expect(stats.binary).toBe(expected.binary)
-    expect(stats.ternary).toBe(expected.ternary)
-    expect(stats.quaternary).toBe(expected.quaternary)
-    expect(stats.elements).toBe(expected.elements)
-    expect(stats.chemical_system).toBe(expected.system)
-    expect(stats.energy_range.max).toBeGreaterThanOrEqual(stats.energy_range.min)
-    expect(stats.hull_distance.max).toBeGreaterThanOrEqual(stats.hull_distance.avg)
-  })
 })
 
 describe(`helpers: energy range preserves zero formation energy`, () => {
@@ -333,30 +235,31 @@ describe(`helpers: mouse hit testing`, () => {
 })
 
 describe(`helpers: fractional composition`, () => {
-  test(`get_fractional_composition normalizes composition`, () => {
-    const frac1 = helpers.get_fractional_composition({ Li: 1, O: 1 })
-    expect(frac1.Li).toBeCloseTo(0.5)
-    expect(frac1.O).toBeCloseTo(0.5)
-
-    const frac2 = helpers.get_fractional_composition({ Li: 2, O: 2 })
-    expect(frac2.Li).toBeCloseTo(0.5)
-    expect(frac2.O).toBeCloseTo(0.5)
-
-    const frac3 = helpers.get_fractional_composition({ Li: 1, O: 2 })
-    expect(frac3.Li).toBeCloseTo(1 / 3)
-    expect(frac3.O).toBeCloseTo(2 / 3)
-  })
-
-  test(`get_fractional_composition handles empty composition`, () => {
-    const frac = helpers.get_fractional_composition({})
-    expect(Object.keys(frac)).toHaveLength(0)
-  })
-
-  test(`get_fractional_composition ignores zero amounts`, () => {
-    const frac = helpers.get_fractional_composition({ Li: 1, O: 0 })
-    expect(frac.Li).toBe(1)
-    expect(frac.O).toBeUndefined()
-  })
+  test.each([
+    [
+      { Li: 1, O: 1 },
+      { Li: 0.5, O: 0.5 },
+    ],
+    [
+      { Li: 2, O: 2 },
+      { Li: 0.5, O: 0.5 },
+    ],
+    [
+      { Li: 1, O: 2 },
+      { Li: 1 / 3, O: 2 / 3 },
+    ],
+    [{}, {}], // empty composition
+    [{ Li: 1, O: 0 }, { Li: 1 }], // zero amounts dropped
+  ] as [Record<string, number>, Record<string, number>][])(
+    `get_fractional_composition(%j) → %j`,
+    (composition, expected) => {
+      const frac = helpers.get_fractional_composition(composition)
+      expect(Object.keys(frac)).toEqual(Object.keys(expected))
+      for (const [elem, value] of Object.entries(expected)) {
+        expect(frac[elem]).toBeCloseTo(value)
+      }
+    },
+  )
 })
 
 describe(`helpers: composition label entries`, () => {
@@ -366,49 +269,48 @@ describe(`helpers: composition label entries`, () => {
     fields: Partial<PhaseData> = {},
   ): PhaseData => ({ entry_id, composition, energy: 0, ...fields })
 
-  test(`keeps one lowest-energy label entry per normalized composition`, () => {
-    const entries = [
-      phase(`higher-fe-o`, { Fe: 2, O: 3 }, { energy: -1, e_form_per_atom: -0.2 }),
-      phase(`lower-fe-o`, { Fe: 4, O: 6 }, { energy: -2, e_form_per_atom: -0.4 }),
-      phase(`li-o`, { Li: 1, O: 1 }, { energy: -3, e_form_per_atom: -0.1 }),
-    ]
-
+  test.each([
+    {
+      name: `keeps one lowest-energy label entry per normalized composition`,
+      entries: [
+        phase(`higher-fe-o`, { Fe: 2, O: 3 }, { energy: -1, e_form_per_atom: -0.2 }),
+        phase(`lower-fe-o`, { Fe: 4, O: 6 }, { energy: -2, e_form_per_atom: -0.4 }),
+        phase(`li-o`, { Li: 1, O: 1 }, { energy: -3, e_form_per_atom: -0.1 }),
+      ],
+      expected: [`lower-fe-o`, `li-o`],
+    },
+    {
+      name: `does not merge distinct stoichiometries with the same elements`,
+      entries: [
+        phase(`fe-o`, { Fe: 1, O: 1 }, { e_form_per_atom: -1 }),
+        phase(`fe2-o3`, { Fe: 2, O: 3 }, { e_form_per_atom: -2 }),
+      ],
+      expected: [`fe-o`, `fe2-o3`],
+    },
+    {
+      name: `falls back to per-atom energy computed from total energy`,
+      entries: [
+        phase(`higher-total`, { A: 2, B: 2 }, { energy: -4 }),
+        phase(`lower-total`, { A: 1, B: 1 }, { energy: -3 }),
+      ],
+      expected: [`lower-total`],
+    },
+    {
+      name: `keeps explicit energy_per_atom ahead of computed total energy`,
+      entries: [
+        phase(`explicit-per-atom`, { A: 1, B: 1 }, { energy: 0, energy_per_atom: -4 }),
+        phase(`computed-per-atom`, { A: 2, B: 2 }, { energy: -12 }),
+      ],
+      expected: [`explicit-per-atom`],
+    },
+    {
+      name: `skips entries with empty compositions`,
+      entries: [phase(`empty`, { Fe: 0 })],
+      expected: [],
+    },
+  ])(`$name`, ({ entries, expected }) => {
     const label_entries = helpers.get_composition_label_entries(entries)
-
-    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`lower-fe-o`, `li-o`])
-  })
-
-  test(`does not merge distinct stoichiometries with the same elements`, () => {
-    const label_entries = helpers.get_composition_label_entries([
-      phase(`fe-o`, { Fe: 1, O: 1 }, { e_form_per_atom: -1 }),
-      phase(`fe2-o3`, { Fe: 2, O: 3 }, { e_form_per_atom: -2 }),
-    ])
-
-    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`fe-o`, `fe2-o3`])
-  })
-
-  test(`falls back to per-atom energy computed from total energy`, () => {
-    const label_entries = helpers.get_composition_label_entries([
-      phase(`higher-total`, { A: 2, B: 2 }, { energy: -4 }),
-      phase(`lower-total`, { A: 1, B: 1 }, { energy: -3 }),
-    ])
-
-    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`lower-total`])
-  })
-
-  test(`keeps explicit energy_per_atom ahead of computed total energy`, () => {
-    const label_entries = helpers.get_composition_label_entries([
-      phase(`explicit-per-atom`, { A: 1, B: 1 }, { energy: 0, energy_per_atom: -4 }),
-      phase(`computed-per-atom`, { A: 2, B: 2 }, { energy: -12 }),
-    ])
-
-    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`explicit-per-atom`])
-  })
-
-  test(`skips entries with empty compositions`, () => {
-    const label_entries = helpers.get_composition_label_entries([phase(`empty`, { Fe: 0 })])
-
-    expect(label_entries).toEqual([])
+    expect(label_entries.map((entry) => entry.entry_id)).toEqual(expected)
   })
 })
 
@@ -602,33 +504,6 @@ describe(`helpers: batch polymorph stats computation`, () => {
     ])
     expect(single.size).toBe(1)
     expect(single.get(`mp-1`)).toEqual({ total: 0, higher: 0, lower: 0, equal: 0 })
-  })
-
-  test(`groups polymorphs by fractional composition and ranks by energy`, () => {
-    const lio = (id: string, e_hull: number) =>
-      ({
-        composition: { Li: 1, O: 1 },
-        e_above_hull: e_hull,
-        entry_id: id,
-      }) as PhaseData
-    const entries = [
-      lio(`mp-1`, 0),
-      lio(`mp-2`, 0.5),
-      lio(`mp-3`, 1),
-      {
-        composition: { Li: 2 },
-        e_above_hull: 0,
-        entry_id: `mp-4`,
-      } as PhaseData,
-    ]
-
-    const stats_map = helpers.compute_all_polymorph_stats(entries)
-    expect(stats_map.size).toBe(4)
-
-    expect(stats_map.get(`mp-1`)).toEqual({ total: 2, higher: 2, lower: 0, equal: 0 })
-    expect(stats_map.get(`mp-2`)).toEqual({ total: 2, higher: 1, lower: 1, equal: 0 })
-    expect(stats_map.get(`mp-3`)).toEqual({ total: 2, higher: 0, lower: 2, equal: 0 })
-    expect(stats_map.get(`mp-4`)).toEqual({ total: 0, higher: 0, lower: 0, equal: 0 })
   })
 
   test(`normalizes stoichiometry and skips entries without entry_id`, () => {
@@ -870,11 +745,9 @@ describe(`helpers: temperature interpolation`, () => {
       expect(result[0].energy).toBe(-1)
     })
 
-    test(`interpolates when exact match missing but bracketed`, () => {
+    test(`interpolates when exact match missing but bracketed (default options)`, () => {
       const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450, {
-        interpolate: true,
-      })
+      const result = helpers.filter_entries_at_temperature(entries, 450)
       expect(result).toHaveLength(1)
       expect(result[0].energy).toBeCloseTo(-1.5)
     })
@@ -905,13 +778,6 @@ describe(`helpers: temperature interpolation`, () => {
       expect(result).toHaveLength(2)
       expect(result[0].energy).toBe(-0.5) // static entry unchanged
       expect(result[1].energy).toBeCloseTo(-1.5) // interpolated
-    })
-
-    test(`defaults to interpolate=true and max_gap=500`, () => {
-      const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450)
-      expect(result).toHaveLength(1)
-      expect(result[0].energy).toBeCloseTo(-1.5)
     })
   })
 

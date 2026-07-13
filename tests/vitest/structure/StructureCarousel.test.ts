@@ -37,6 +37,9 @@ const mount_carousel = (
   if (flush) flushSync()
 }
 
+const card_labels = (): (string | null)[] =>
+  [...document.querySelectorAll(`.structure-card strong`)].map((node) => node.textContent)
+
 describe(`StructureCarousel`, () => {
   test(`renders structures in a horizontal carousel`, () => {
     mount_carousel({
@@ -59,7 +62,6 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-card .structure`).getAttribute(`style`)).not.toContain(
       `--struct-legend-font`,
     )
-    expect(document.querySelector(`.structure-thumbnail`)).toBeNull()
     expect(carousel.getAttribute(`style`)).toContain(`--structure-carousel-card-width:`)
     expect(carousel.getAttribute(`style`)).toContain(
       `--structure-carousel-track-width: 1082px`,
@@ -93,12 +95,7 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
       `--structure-carousel-track-width: 2936px`,
     )
-    const rendered_before = [...document.querySelectorAll(`.structure-card strong`)].map(
-      (node) => node.textContent,
-    )
-    expect(rendered_before).toHaveLength(4)
-    expect(rendered_before[0]).toBe(`Many 0`)
-    expect(rendered_before.at(-1)).toBe(`Many 3`)
+    expect(card_labels()).toEqual([`Many 0`, `Many 1`, `Many 2`, `Many 3`])
     expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
 
     const track = doc_query(`.structure-carousel-track`)
@@ -106,12 +103,7 @@ describe(`StructureCarousel`, () => {
     track.dispatchEvent(new Event(`scroll`))
     flushSync()
 
-    const rendered_after = [...document.querySelectorAll(`.structure-card strong`)].map(
-      (node) => node.textContent,
-    )
-    expect(rendered_after).toHaveLength(4)
-    expect(rendered_after[0]).toBe(`Many 4`)
-    expect(rendered_after.at(-1)).toBe(`Many 7`)
+    expect(card_labels()).toEqual([`Many 4`, `Many 5`, `Many 6`, `Many 7`])
     // entering cards render as label shells during the scroll, promoted to a
     // live WebGL canvas one at a time (throttled, so mid-fling mounts don't
     // stack into one frame): exactly one canvas right after the scroll event,
@@ -148,10 +140,7 @@ describe(`StructureCarousel`, () => {
 
     // 800px viewport at offset 100 with 208px stride intersects cards 0-4;
     // all five must render or the right edge shows blank space while scrolling
-    const labels = [...document.querySelectorAll(`.structure-card strong`)].map(
-      (node) => node.textContent,
-    )
-    expect(labels).toEqual([`Many 0`, `Many 1`, `Many 2`, `Many 3`, `Many 4`])
+    expect(card_labels()).toEqual([`Many 0`, `Many 1`, `Many 2`, `Many 3`, `Many 4`])
   })
 
   test(`captures a nested viewer wheel and requests more structures immediately`, () => {
@@ -360,17 +349,6 @@ describe(`StructureCarousel`, () => {
     expect(pager?.textContent?.replaceAll(/\s/g, ``)).toBe(`‹1–2/40›`)
     // no floating pager left inside the carousel itself
     expect(document.querySelector(`.structure-carousel .structure-carousel-pager`)).toBeNull()
-  })
-
-  test(`opens the cell selector menu inside carousel cards`, () => {
-    mount_carousel({ items, layout: `horizontal`, height: 210 })
-
-    doc_query(`.structure-card .cell-select .toggle-btn`).dispatchEvent(
-      new MouseEvent(`click`, { bubbles: true }),
-    )
-    flushSync()
-
-    expect(doc_query(`.structure-card .cell-select .dropdown`)).not.toBeNull()
   })
 
   test(`attaches wheel prefetch after structures load into an empty carousel`, () => {

@@ -1,7 +1,7 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import type { VolumetricData } from '$lib/isosurface/types'
 import * as math from '$lib/math'
-import type { Crystal, LatticeParams, Pbc, Site } from '$lib/structure'
+import type { Crystal, Pbc, Site } from '$lib/structure'
 import type { TrajectoryFrame } from '$lib/trajectory'
 import init, { type MoyoDataset } from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
@@ -63,7 +63,7 @@ beforeEach(() => {
 
 type Element_constructor<T extends Element> = abstract new (...args: never[]) => T
 
-function query_required<T extends Element>(
+export function doc_query<T extends Element = HTMLElement>(
   selector: string,
   element_constructor?: Element_constructor<T>,
 ): T {
@@ -75,12 +75,7 @@ function query_required<T extends Element>(
   return node as T
 }
 
-export const doc_query = <T extends HTMLElement>(
-  selector: string,
-  element_constructor?: Element_constructor<T>,
-): T => query_required(selector, element_constructor)
-
-export const svg_query = (selector: string): SVGElement => query_required(selector)
+export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
 
 // Extract the rotation pivot-y from an axis label's nearest rotated SVG ancestor.
 // Used to assert y/y2 axis titles share a pivot.
@@ -338,58 +333,49 @@ export const make_trajectory_frame = (
   },
 })
 
-// Test data factory for creating mock structures
+// Test data factory for creating mock structures. Site coords are deliberately
+// inconsistent (abc all-zero, xyz spaced along x) and the default lattice is
+// degenerate (all params 0) — tests only need distinguishable dummy objects.
 export const get_dummy_structure = (
   element: ElementSymbol = `H`,
   atoms = 3,
   with_lattice = false,
-): Crystal => {
-  const default_matrix: math.Matrix3x3 = [
-    [5, 0, 0],
-    [0, 5, 0],
-    [0, 0, 5],
-  ]
-  const default_pbc: Pbc = [false, false, false]
-  const structure = {
-    sites: Array.from({ length: atoms }, (_, idx) => ({
-      species: [{ element, occu: 1, oxidation_state: 0 }],
-      abc: [0, 0, 0] as Vec3,
-      xyz: [idx, 0, 0] as Vec3,
-      label: `${element}${idx + 1}`,
-      properties: {},
-    })),
-    lattice: {
-      matrix: default_matrix,
-      pbc: default_pbc,
-      volume: 0,
-      a: 0,
-      b: 0,
-      c: 0,
-      alpha: 0,
-      beta: 0,
-      gamma: 0,
-    },
-    charge: 0,
-  }
+): Crystal => ({
+  sites: Array.from({ length: atoms }, (_, idx) => ({
+    species: [{ element, occu: 1, oxidation_state: 0 }],
+    abc: [0, 0, 0] as Vec3,
+    xyz: [idx, 0, 0] as Vec3,
+    label: `${element}${idx + 1}`,
+    properties: {},
+  })),
+  lattice: {
+    matrix: cubic_matrix(5),
+    ...(with_lattice
+      ? {
+          pbc: [true, true, true] as Pbc,
+          a: 5,
+          b: 5,
+          c: 5,
+          volume: 125,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+        }
+      : {
+          pbc: [false, false, false] as Pbc,
+          a: 0,
+          b: 0,
+          c: 0,
+          volume: 0,
+          alpha: 0,
+          beta: 0,
+          gamma: 0,
+        }),
+  },
+  charge: 0,
+})
 
-  if (with_lattice) {
-    const matrix: math.Matrix3x3 = [
-      [5.0, 0.0, 0.0],
-      [0.0, 5.0, 0.0],
-      [0.0, 0.0, 5.0],
-    ]
-    const pbc: Pbc = [true, true, true]
-    const lengths = { a: 5.0, b: 5.0, c: 5.0 }
-    const angles = { alpha: 90.0, beta: 90.0, gamma: 90.0 }
-    const lattice = { ...lengths, ...angles, volume: 125.0, matrix, pbc }
-    return { ...structure, lattice }
-  }
-
-  return structure
-}
-
-// Helper to create test crystal structures with proper lattice handling
-// Supports two modes:
+// Thin wrapper over make_crystal supporting two legacy call shapes:
 // 1. Fractional coordinates: create_test_structure(lattice, elements, frac_coords)
 // 2. Cartesian coordinates: create_test_structure(lattice, sites_data)
 export function create_test_structure(
@@ -402,49 +388,19 @@ export function create_test_structure(
       }[],
   frac_coords?: Vec3[],
 ): Crystal {
-  const lattice_matrix: math.Matrix3x3 =
-    typeof lattice === `number` ? cubic_matrix(lattice) : lattice
-
-  // Calculate lattice parameters from matrix
-  const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
-
-  let sites: Site[]
-
-  // Mode 1: Fractional coordinates (original behavior)
-  if (frac_coords) {
-    const elements = elements_or_sites as ElementSymbol[]
-    const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-    sites = frac_coords.map((frac_coord, idx) => ({
-      xyz: frac_to_cart(frac_coord),
-      abc: frac_coord,
-      species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
-      label: elements[idx],
-      properties: {},
-    }))
-  } // Mode 2: Cartesian coordinates (new behavior for RDF tests)
-  else {
-    const sites_data = elements_or_sites as {
-      species: { element: string; occu: number; oxidation_state: number }[]
-      xyz: number[]
-    }[]
-    const cart_to_frac = math.create_cart_to_frac(lattice_matrix)
-    sites = sites_data.map((site, idx) => ({
-      species: site.species.map((sp) => ({
-        ...sp,
-        element: sp.element as ElementSymbol,
-      })),
-      xyz: site.xyz as Vec3,
-      abc: cart_to_frac(site.xyz as Vec3),
-      label: `${site.species[0].element}${idx}`,
-      properties: {},
-    }))
-  }
-
-  const lattice_params = { a, b, c, alpha, beta, gamma, pbc: [true, true, true] as Pbc }
-  return {
-    lattice: { matrix: lattice_matrix, ...lattice_params, volume },
-    sites,
-  }
+  const site_inputs: SimpleSite[] = frac_coords
+    ? frac_coords.map((abc, idx) => {
+        const element = (elements_or_sites as ElementSymbol[])[idx]
+        return { element, abc, label: element }
+      })
+    : elements_or_sites.map((site) => {
+        const { species, xyz } = site as {
+          species: { element: string; occu: number; oxidation_state: number }[]
+          xyz: number[]
+        }
+        return { ...species[0], xyz: xyz as Vec3 }
+      })
+  return make_crystal(lattice, site_inputs)
 }
 
 // Simplified site input for make_crystal helper
@@ -526,20 +482,6 @@ export function make_crystal(
     sites,
     ...(options.charge !== undefined && { charge: options.charge }),
   }
-}
-
-export function make_symmetry_structure(
-  lattice_matrix: math.Matrix3x3,
-  sites: { elem: string; abc: Vec3; xyz: Vec3 }[],
-  lattice_params?: LatticeParams & { volume: number },
-): Crystal {
-  const crystal = make_crystal(
-    lattice_matrix,
-    sites.map(({ elem, abc, xyz }) => ({ element: elem, abc, xyz })),
-  )
-  return lattice_params
-    ? { ...crystal, lattice: { ...crystal.lattice, ...lattice_params } }
-    : crystal
 }
 
 // Shared 3x3 matrix fixtures

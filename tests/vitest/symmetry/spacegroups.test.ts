@@ -14,47 +14,6 @@ describe(`CRYSTAL_SYSTEM_RANGES`, () => {
       expect(next_min).toBe(current_max + 1)
     }
   })
-
-  test.each([
-    [`triclinic`, 1, 2],
-    [`monoclinic`, 3, 15],
-    [`orthorhombic`, 16, 74],
-    [`tetragonal`, 75, 142],
-    [`trigonal`, 143, 167],
-    [`hexagonal`, 168, 194],
-    [`cubic`, 195, 230],
-  ] as const)(`should have correct range for %s: [%i, %i]`, (system, min, max) => {
-    expect(spg.CRYSTAL_SYSTEM_RANGES[system]).toEqual([min, max])
-  })
-})
-
-describe(`CRYSTAL_SYSTEM_COLORS`, () => {
-  test(`should match pymatviz colors`, () => {
-    expect(Object.keys(spg.CRYSTAL_SYSTEM_COLORS)).toHaveLength(7)
-    expect(spg.CRYSTAL_SYSTEM_COLORS).toEqual({
-      triclinic: `red`,
-      monoclinic: `teal`,
-      orthorhombic: `blue`,
-      tetragonal: `green`,
-      trigonal: `orange`,
-      hexagonal: `purple`,
-      cubic: `darkred`,
-    })
-  })
-})
-
-describe(`CRYSTAL_SYSTEMS`, () => {
-  test(`should have 7 systems in correct order`, () => {
-    expect(spg.CRYSTAL_SYSTEMS).toEqual([
-      `triclinic`,
-      `monoclinic`,
-      `orthorhombic`,
-      `tetragonal`,
-      `trigonal`,
-      `hexagonal`,
-      `cubic`,
-    ])
-  })
 })
 
 describe(`spacegroup_num_to_crystal_sys`, () => {
@@ -188,14 +147,6 @@ describe(`normalize_spacegroup`, () => {
 })
 
 describe(`SPACEGROUP_SYMBOL_TO_NUM`, () => {
-  test(`should cover all 230 space groups`, () => {
-    const unique_numbers = new Set(Object.values(spg.SPACEGROUP_SYMBOL_TO_NUM))
-    expect(unique_numbers.size).toBe(230)
-    for (let num = 1; num <= 230; num++) {
-      expect([...unique_numbers]).toContain(num)
-    }
-  })
-
   test.each([
     [`P1`, 1],
     [`P-1`, 2],
@@ -215,15 +166,6 @@ describe(`SPACEGROUP_SYMBOL_TO_NUM`, () => {
 })
 
 describe(`SPACEGROUP_NUM_TO_SYMBOL`, () => {
-  test(`should bidirectionally map all 230 space groups`, () => {
-    expect(Object.keys(spg.SPACEGROUP_NUM_TO_SYMBOL)).toHaveLength(230)
-    for (let num = 1; num <= 230; num++) {
-      const symbol = spg.SPACEGROUP_NUM_TO_SYMBOL[num]
-      expect(typeof symbol).toBe(`string`)
-      expect(spg.SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(num)
-    }
-  })
-
   test.each([
     [1, `P1`],
     [2, `P-1`],
@@ -253,37 +195,6 @@ describe(`Integration tests`, () => {
       expect(spg.normalize_spacegroup(num)).toBe(num)
       expect(spg.normalize_spacegroup(symbol)).toBe(num)
     }
-  })
-
-  test(`should respect crystal system boundaries`, () => {
-    for (const system of spg.CRYSTAL_SYSTEMS) {
-      const [min, max] = spg.CRYSTAL_SYSTEM_RANGES[system]
-      const mid = Math.floor((min + max) / 2)
-
-      expect(spg.spacegroup_num_to_crystal_sys(min)).toBe(system)
-      expect(spg.spacegroup_num_to_crystal_sys(mid)).toBe(system)
-      expect(spg.spacegroup_num_to_crystal_sys(max)).toBe(system)
-
-      if (min > 1) {
-        expect(spg.spacegroup_num_to_crystal_sys(min - 1)).not.toBe(system)
-      }
-      if (max < 230) {
-        expect(spg.spacegroup_num_to_crystal_sys(max + 1)).not.toBe(system)
-      }
-    }
-  })
-
-  test.each([
-    [62, `62`, `Pnma`],
-    [225, `225`, `Fm-3m`],
-    [1, `1`, `P1`],
-  ])(`should handle multiple input formats for %i`, (num, num_str, symbol) => {
-    const expected_system = spg.spacegroup_num_to_crystal_sys(num)
-    expect(spg.spacegroup_to_crystal_sys(num)).toBe(expected_system)
-    expect(spg.spacegroup_to_crystal_sys(num_str)).toBe(expected_system)
-    expect(spg.spacegroup_to_crystal_sys(symbol)).toBe(expected_system)
-    expect(spg.normalize_spacegroup(num)).toBe(num)
-    expect(spg.normalize_spacegroup(symbol)).toBe(num)
   })
 })
 

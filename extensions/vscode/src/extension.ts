@@ -183,12 +183,7 @@ export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
   }
 
   const active_tab = vscode.window.tabGroups.activeTabGroup.activeTab
-  if (
-    active_tab?.input &&
-    typeof active_tab.input === `object` &&
-    active_tab.input !== null &&
-    `uri` in active_tab.input
-  )
+  if (active_tab?.input && typeof active_tab.input === `object` && `uri` in active_tab.input)
     return read_file((active_tab.input as { uri: vscode.Uri }).uri.fsPath)
 
   throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
@@ -210,70 +205,36 @@ export const get_theme = (): ThemeName => {
   return get_system_theme() // Auto-detect from VSCode color theme
 }
 
-// Get system theme based on VSCode's current color theme
+// Get system theme by mapping VSCode's current color theme kind to our theme names
 const get_system_theme = (): ThemeName => {
-  const color_theme = vscode.window.activeColorTheme
-
-  // Map VSCode theme kind to our theme names
-  if (color_theme.kind === vscode.ColorThemeKind.Light) return COLOR_THEMES.light
-  else if (color_theme.kind === vscode.ColorThemeKind.Dark) return COLOR_THEMES.dark
-  else if (color_theme.kind === vscode.ColorThemeKind.HighContrast) {
-    return COLOR_THEMES.black
-  } else if (color_theme.kind === vscode.ColorThemeKind.HighContrastLight) {
-    return COLOR_THEMES.white
+  const theme_by_kind: Partial<Record<vscode.ColorThemeKind, ThemeName>> = {
+    [vscode.ColorThemeKind.Dark]: COLOR_THEMES.dark,
+    [vscode.ColorThemeKind.HighContrast]: COLOR_THEMES.black,
+    [vscode.ColorThemeKind.HighContrastLight]: COLOR_THEMES.white,
   }
-  return COLOR_THEMES.light
+  return theme_by_kind[vscode.window.activeColorTheme.kind] ?? COLOR_THEMES.light
 }
 
 // Settings reader with nested structure support and built-in error handling
 export const get_defaults = (): DefaultSettings => {
   try {
     const config = vscode.workspace.getConfiguration(`matterviz`)
-    const user_settings: Partial<DefaultSettings> = {}
+    const user_settings: Record<string, unknown> = {}
 
-    // Helper to read settings section
-    const read_section = (
-      section_key: keyof DefaultSettings,
-      defaults_section: Record<string, unknown>,
-    ) => {
-      const settings: Record<string, unknown> = {}
+    for (const key of [`color_scheme`, `background_color`, `background_opacity`] as const) {
+      const value = config.get(key)
+      if (value !== undefined) user_settings[key] = value
+    }
+
+    // Nested sections: copy only keys that exist in DEFAULTS and were set by the user
+    for (const section_key of [`structure`, `trajectory`, `composition`] as const) {
       const section_config = config.get<Record<string, unknown>>(section_key, {})
-      for (const key of Object.keys(defaults_section)) {
+      const settings: Record<string, unknown> = {}
+      for (const key of Object.keys(DEFAULTS[section_key])) {
         const value = section_config?.[key]
         if (value !== undefined) settings[key] = value
       }
-      return Object.keys(settings).length > 0 ? settings : undefined
-    }
-
-    // Read all settings sections
-    // Top-level simple keys
-    const color_scheme_val = config.get(`color_scheme`)
-    if (color_scheme_val !== undefined) {
-      user_settings.color_scheme = color_scheme_val as DefaultSettings[`color_scheme`]
-    }
-    const bg_color_val = config.get(`background_color`)
-    if (bg_color_val !== undefined) {
-      user_settings.background_color = bg_color_val as DefaultSettings[`background_color`]
-    }
-    const bg_opacity_val = config.get(`background_opacity`)
-    if (bg_opacity_val !== undefined) {
-      user_settings.background_opacity =
-        bg_opacity_val as DefaultSettings[`background_opacity`]
-    }
-
-    const structure_settings = read_section(`structure`, DEFAULTS.structure)
-    if (structure_settings) {
-      user_settings.structure = structure_settings as DefaultSettings[`structure`]
-    }
-
-    const trajectory_settings = read_section(`trajectory`, DEFAULTS.trajectory)
-    if (trajectory_settings) {
-      user_settings.trajectory = trajectory_settings as DefaultSettings[`trajectory`]
-    }
-
-    const composition_settings = read_section(`composition`, DEFAULTS.composition)
-    if (composition_settings) {
-      user_settings.composition = composition_settings as DefaultSettings[`composition`]
+      if (Object.keys(settings).length > 0) user_settings[section_key] = settings
     }
 
     return merge(user_settings)
@@ -569,34 +530,29 @@ function get_view_column(explicit?: vscode.ViewColumn): vscode.ViewColumn {
   return open_beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active
 }
 
-// Create webview panel with common setup
-function create_webview_panel(
+const webview_resource_roots = (context: vscode.ExtensionContext): vscode.Uri[] => [
+  vscode.Uri.joinPath(context.extensionUri, `dist`),
+  vscode.Uri.joinPath(context.extensionUri, `../../static`),
+]
+
+// Shared panel wiring: html, message handling, file watching, theme/config refresh,
+// and cleanup on dispose. Used by both render() panels and the custom editor provider.
+function setup_webview_panel(
   context: vscode.ExtensionContext,
+  panel: vscode.WebviewPanel,
   file_data: FileData,
   file_path?: string,
-  view_column?: vscode.ViewColumn,
-): vscode.WebviewPanel {
-  const panel = vscode.window.createWebviewPanel(
-    `matterviz`,
-    `MatterViz - ${file_data.filename}`,
-    get_view_column(view_column),
-    {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(context.extensionUri, `dist`),
-        vscode.Uri.joinPath(context.extensionUri, `../../static`),
-      ],
-    },
-  )
-
+): void {
   if (file_path) start_watching_file(file_path, panel.webview)
 
-  panel.webview.html = create_html(panel.webview, context, {
-    data: file_data,
-    theme: get_theme(),
-    defaults: get_defaults(),
-  })
+  const set_html = (data: FileData) => {
+    panel.webview.html = create_html(panel.webview, context, {
+      data,
+      theme: get_theme(),
+      defaults: get_defaults(),
+    })
+  }
+  set_html(file_data)
 
   panel.webview.onDidReceiveMessage(
     (msg: MessageData) => handle_msg(msg, panel.webview),
@@ -604,16 +560,9 @@ function create_webview_panel(
     context.subscriptions,
   )
 
-  // Theme change handling
+  // Re-render with fresh theme/settings (and file content, if backed by a file)
   const update_theme = async () => {
-    if (panel.visible) {
-      const current_file = file_path ? await read_file(file_path) : file_data
-      panel.webview.html = create_html(panel.webview, context, {
-        data: current_file,
-        theme: get_theme(),
-        defaults: get_defaults(),
-      })
-    }
+    if (panel.visible) set_html(file_path ? await read_file(file_path) : file_data)
   }
 
   const theme_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
@@ -628,7 +577,26 @@ function create_webview_panel(
     config_listener.dispose()
     if (file_path) stop_watching_file(file_path)
   })
+}
 
+// Create webview panel with common setup
+function create_webview_panel(
+  context: vscode.ExtensionContext,
+  file_data: FileData,
+  file_path?: string,
+  view_column?: vscode.ViewColumn,
+): vscode.WebviewPanel {
+  const panel = vscode.window.createWebviewPanel(
+    `matterviz`,
+    `MatterViz - ${file_data.filename}`,
+    get_view_column(view_column),
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: webview_resource_roots(context),
+    },
+  )
+  setup_webview_panel(context, panel, file_data, file_path)
   return panel
 }
 
@@ -670,55 +638,11 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
   ): Promise<void> {
     try {
       const file_path = document.uri.fsPath
-
       webview_panel.webview.options = {
         enableScripts: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(this.context.extensionUri, `dist`),
-          vscode.Uri.joinPath(this.context.extensionUri, `../../static`),
-        ],
+        localResourceRoots: webview_resource_roots(this.context),
       }
-      const current = await read_file(document.uri.fsPath)
-      webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
-        data: current,
-        theme: get_theme(),
-        defaults: get_defaults(),
-      })
-      webview_panel.webview.onDidReceiveMessage(
-        (msg: MessageData) => handle_msg(msg, webview_panel.webview),
-        undefined,
-        this.context.subscriptions,
-      )
-
-      // Start watching the file immediately
-      start_watching_file(file_path, webview_panel.webview)
-
-      // Listen for theme changes and update webview
-      const update_theme = async () => {
-        if (webview_panel.visible) {
-          const current_file = await read_file(document.uri.fsPath)
-          webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
-            data: current_file,
-            theme: get_theme(),
-            defaults: get_defaults(),
-          })
-        }
-      }
-
-      const theme_change_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
-      const config_change_listener = vscode.workspace.onDidChangeConfiguration(
-        (event: vscode.ConfigurationChangeEvent) => {
-          if (event.affectsConfiguration(`matterviz`)) void update_theme()
-        },
-      )
-
-      // Dispose listeners when panel is closed
-      webview_panel.onDidDispose(() => {
-        theme_change_listener.dispose()
-        config_change_listener.dispose()
-
-        stop_watching_file(file_path) // Clean up file watcher
-      })
+      setup_webview_panel(this.context, webview_panel, await read_file(file_path), file_path)
       // Note: webview_panel disposal is managed by VSCode for custom editors
     } catch (error: unknown) {
       const message = to_error(error).message
@@ -801,30 +725,20 @@ async function collect_debug_info(): Promise<string> {
   const is_remote = Boolean(remote_name)
   const ui_kind = vscode.env.uiKind === vscode.UIKind.Desktop ? `Desktop` : `Web`
 
-  // Get information about active files being rendered
-  const active_files: {
-    filename: string
-    file_path: string
-    file_size?: number
-    has_watcher: boolean
-    has_frame_loader: boolean
-  }[] = []
-
-  // Collect file stats asynchronously in parallel
-  const file_stat_promises = Array.from(active_watchers.keys()).map(async (file_path) => {
-    const filename = path.basename(file_path)
-    let file_size: number | undefined
-    try {
-      const uri = vscode.Uri.file(file_path)
-      file_size = (await vscode.workspace.fs.stat(uri)).size
-    } catch {
-      // File might not exist anymore
-    }
-    const has_frame_loader = active_frame_loaders.has(file_path)
-    return { filename, file_path, file_size, has_watcher: true, has_frame_loader }
-  })
-
-  active_files.push(...(await Promise.all(file_stat_promises)))
+  // Collect info about actively watched/rendered files (stats fetched in parallel)
+  const active_files = await Promise.all(
+    Array.from(active_watchers.keys()).map(async (file_path) => {
+      const filename = path.basename(file_path)
+      let file_size: number | undefined
+      try {
+        file_size = (await vscode.workspace.fs.stat(vscode.Uri.file(file_path))).size
+      } catch {
+        // File might not exist anymore
+      }
+      const has_frame_loader = active_frame_loaders.has(file_path)
+      return { filename, file_path, file_size, has_watcher: true, has_frame_loader }
+    }),
+  )
 
   // Get memory usage if available (use global process object)
   const memory_usage = globalThis.process?.memoryUsage() ?? {

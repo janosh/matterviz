@@ -306,27 +306,27 @@
   // Check if we have mirrored spin-down data (negative densities)
   let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 
-  let x_range = $derived.by((): Vec2 | undefined => {
-    if (series_data.length === 0) return undefined
-    const all_x = series_data.flatMap((srs) => srs.x)
-    const min_x = Math.min(...all_x),
-      max_x = Math.max(...all_x)
-    // For horizontal orientation with mirror mode, allow negative values (mirrored densities)
-    if (is_horizontal && has_mirrored_spin) return [min_x, max_x]
-    if (is_horizontal || clamp_to_zero) return [0, max_x]
-    return [min_x, max_x]
-  })
-
-  let y_range = $derived.by((): Vec2 | undefined => {
-    if (series_data.length === 0) return undefined
-    const all_y = series_data.flatMap((srs) => srs.y)
-    const min_y = Math.min(...all_y),
-      max_y = Math.max(...all_y)
-    // For vertical orientation with mirror mode, allow negative values (mirrored densities)
-    if (!is_horizontal && has_mirrored_spin) return [min_y, max_y]
-    if (!is_horizontal || clamp_to_zero) return [0, max_y]
-    return [min_y, max_y]
-  })
+  // Density axis starts at 0 (unless mirror mode needs negative values); frequency axis
+  // clamps to 0 only when negative phonon frequencies are numerical noise
+  const compute_range = (values: number[], is_density_axis: boolean): Vec2 | undefined => {
+    if (values.length === 0) return undefined
+    const [min_val, max_val] = [Math.min(...values), Math.max(...values)]
+    if (is_density_axis && has_mirrored_spin) return [min_val, max_val]
+    if (is_density_axis || clamp_to_zero) return [0, max_val]
+    return [min_val, max_val]
+  }
+  let x_range = $derived(
+    compute_range(
+      series_data.flatMap((srs) => srs.x),
+      is_horizontal,
+    ),
+  )
+  let y_range = $derived(
+    compute_range(
+      series_data.flatMap((srs) => srs.y),
+      !is_horizontal,
+    ),
+  )
 
   // Get axis labels based on orientation
   let x_label = $derived(

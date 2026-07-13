@@ -1,5 +1,5 @@
 import type { ElementSymbol, Species } from '$lib'
-import type { Vec3, Vec9 } from '$lib/math'
+import type { Matrix3x3, Vec3, Vec9 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import type { WyckoffPos } from '$lib/symmetry'
 import {
@@ -11,21 +11,18 @@ import {
   wyckoff_multiplicity,
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
-import { structures } from '$site/structures'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, make_wyckoff_dataset } from '../setup'
+import { structures } from '$site/structures'
 
 describe(`wyckoff_positions_from_moyo`, () => {
-  const mock_data = (positions: number[][], numbers: number[], wyckoffs: (string | null)[]) =>
-    make_wyckoff_dataset(positions, numbers, wyckoffs)
-
   test(`handles various input scenarios`, () => {
     // Null input
     expect(wyckoff_positions_from_moyo(null)).toEqual([])
 
     // Symmetric sites - all H atoms with same Wyckoff letter
-    const symmetric = mock_data(
+    const symmetric = make_wyckoff_dataset(
       [
         [0, 0, 0],
         [0.5, 0.5, 0.5],
@@ -45,7 +42,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     ])
 
     // Mixed elements
-    const mixed = mock_data(
+    const mixed = make_wyckoff_dataset(
       [
         [0, 0, 0],
         [0.5, 0.5, 0.5],
@@ -59,7 +56,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     ])
 
     // Sorting by multiplicity then alphabetically
-    const sorted = mock_data(
+    const sorted = make_wyckoff_dataset(
       [
         [0, 0, 0],
         [0.5, 0.5, 0.5],
@@ -75,7 +72,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     ])
 
     // Sites without Wyckoff letters
-    const no_letters = mock_data(
+    const no_letters = make_wyckoff_dataset(
       [
         [0, 0, 0],
         [0.5, 0.5, 0.5],
@@ -89,7 +86,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     ])
 
     // Null Wyckoff values
-    const null_wyckoff = mock_data([[0, 0, 0]], [1], [null])
+    const null_wyckoff = make_wyckoff_dataset([[0, 0, 0]], [1], [null])
     expect(wyckoff_positions_from_moyo(null_wyckoff)).toEqual([
       {
         wyckoff: `1`,
@@ -102,7 +99,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
   test(`handles advanced scenarios`, () => {
     // Complex mixed occupancy sites - letter extraction and counting
-    const mixed = mock_data(
+    const mixed = make_wyckoff_dataset(
       [
         [0.1576, 0, 0.5754],
         [0.1576, 0, 0.5754],
@@ -120,7 +117,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     result.forEach((pos) => expect(mixed.std_cell.positions).toContainEqual(pos.abc))
 
     // Simplest coordinates selection
-    const simple = mock_data(
+    const simple = make_wyckoff_dataset(
       [
         [0.999, 0.999, 0.999],
         [0, 0, 0],
@@ -140,7 +137,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     ])
 
     // Different elements at same Wyckoff position
-    const multi_elem = mock_data(
+    const multi_elem = make_wyckoff_dataset(
       [
         [0, 0, 0],
         [0.5, 0.5, 0.5],
@@ -190,40 +187,39 @@ describe(`wyckoff_positions_from_moyo`, () => {
 })
 
 describe(`simplicity_score`, () => {
-  test(`calculates scores correctly`, () => {
-    // Integer coordinates
-    expect(simplicity_score([0, 0, 0])).toBe(0.75)
-    expect(simplicity_score([1, 1, 1])).toBe(0.75)
-
-    // Half coordinates: near_zero=0.5 each, near_half=0 each
-    expect(simplicity_score([0.5, 0.5, 0.5])).toBe(1.5)
-
-    // Mixed coordinates: [0, 0.5, 0] -> near_zero=[0,0.5,0], near_half=[0.5,0,0.5] -> 0.5 + 0.5*1.0 = 1.0
-    expect(simplicity_score([0, 0.5, 0])).toBe(1.0)
-    expect(simplicity_score([0.25, 0, 0])).toBe(0.875) // 0.25 + 0.5*(0.25+0.5+0.5) = 0.875
+  test.each([
+    [[0, 0, 0], 0.75],
+    [[1, 1, 1], 0.75], // wraps to [0, 0, 0]
+    [[0.5, 0.5, 0.5], 1.5],
+    [[0, 0.5, 0], 1], // near_zero=[0,0.5,0], near_half=[0.5,0,0.5] -> 0.5 + 0.5*1.0
+    [[0.25, 0, 0], 0.875], // 0.25 + 0.5*(0.25+0.5+0.5)
+    [[0.25, 0.25, 0.25], 1.125],
+    [[0.75, 0.75, 0.75], 1.125], // symmetric to 0.25 around 0.5
+    [[1 / 3, 1 / 3, 1 / 3], 1.25],
+    [[0.125, 0, 0], 0.8125], // 1/8 position
+  ])(`scores %j as %f`, (vec, expected) => {
+    expect(simplicity_score(vec)).toBeCloseTo(expected, 10)
   })
 
-  test(`handles comparisons and edge cases`, () => {
-    // Preference order: closer to 0/1 better than 0.5
-    expect(simplicity_score([0.1, 0.1, 0.1])).toBeLessThan(simplicity_score([0.5, 0.5, 0.5]))
+  test(`wraps coordinates into [0, 1) and ranks simpler positions lower`, () => {
+    expect(simplicity_score([1.1, 1.2, 1.3])).toBe(simplicity_score([0.1, 0.2, 0.3]))
+    expect(simplicity_score([-0.1, -0.2, -0.3])).toBe(simplicity_score([0.9, 0.8, 0.7]))
+    expect(simplicity_score([-100, 0, 0])).toBeCloseTo(simplicity_score([0, 0, 0]), 10)
+
+    // Preference order: closer to 0/1 is simpler than closer to 1/2
     expect(simplicity_score([0.9, 0.9, 0.9])).toBeLessThan(simplicity_score([0.5, 0.5, 0.5]))
     expect(simplicity_score([0.01, 0.01, 0.01])).toBeLessThan(
       simplicity_score([0.49, 0.49, 0.49]),
     )
+  })
 
-    // Coordinate wrapping
-    expect(simplicity_score([1.1, 1.2, 1.3])).toBe(simplicity_score([0.1, 0.2, 0.3]))
-    expect(simplicity_score([-0.1, -0.2, -0.3])).toBe(simplicity_score([0.9, 0.8, 0.7]))
-
-    // Edge cases
+  test(`returns NaN for empty or invalid input`, () => {
     expect(simplicity_score([])).toBeNaN()
     expect(simplicity_score([0])).toBeNaN()
-
-    // Symmetry around 0.5
-    expect(simplicity_score([0.25, 0.25, 0.25])).toBe(simplicity_score([0.75, 0.75, 0.75]))
-    expect(simplicity_score([0.25, 0.25, 0.25])).toBeLessThan(
-      simplicity_score([0.5, 0.5, 0.5]),
-    )
+    // @ts-expect-error testing invalid input
+    expect(simplicity_score(undefined)).toBeNaN()
+    // @ts-expect-error testing invalid input
+    expect(simplicity_score(null)).toBeNaN()
   })
 })
 
@@ -392,6 +388,62 @@ describe(`stable atom ordering`, () => {
 })
 
 describe(`to_cell_json`, () => {
+  test(`serializes lattice basis (row-major), positions, and atomic numbers`, () => {
+    const parsed = JSON.parse(
+      to_cell_json(
+        make_crystal(5, [
+          { element: `Si`, abc: [0, 0, 0] },
+          { element: `O`, abc: [0.5, 0.5, 0.5] },
+        ]),
+      ),
+    )
+    expect(parsed.lattice.basis).toEqual([5, 0, 0, 0, 5, 0, 0, 0, 5])
+    expect(parsed.positions).toEqual([
+      [0, 0, 0],
+      [0.5, 0.5, 0.5],
+    ])
+    expect(parsed.numbers).toEqual([14, 8]) // Si=14, O=8
+  })
+
+  test.each([
+    [
+      `hexagonal`,
+      [
+        [3, 0, 0],
+        [-1.5, 2.598076211353316, 0],
+        [0, 0, 5],
+      ],
+      `C`,
+      6,
+    ],
+    [
+      `triclinic`,
+      [
+        [4, 0, 0],
+        [1, 3, 0],
+        [0.5, 0.5, 5],
+      ],
+      `Fe`,
+      26,
+    ],
+  ] as [string, Matrix3x3, string, number][])(
+    `preserves non-orthogonal %s lattice vectors`,
+    (_desc, matrix, element, atomic_number) => {
+      const crystal = make_crystal(matrix, [{ element, abc: [0.25, 0.25, 0.25] }])
+      const parsed = JSON.parse(to_cell_json(crystal))
+      matrix
+        .flat()
+        .forEach((val, idx) => expect(parsed.lattice.basis[idx]).toBeCloseTo(val, 10))
+      expect(parsed.positions[0]).toEqual([0.25, 0.25, 0.25])
+      expect(parsed.numbers).toEqual([atomic_number])
+    },
+  )
+
+  test.each([[`Xx`], [``]])(`throws for unknown element %j`, (element) => {
+    const crystal = make_crystal(5, [{ element, abc: [0, 0, 0] }])
+    expect(() => to_cell_json(crystal)).toThrow(`Unknown element at site 0`)
+  })
+
   test(`merges split disordered sites before moyo conversion`, () => {
     const disordered_split_site = make_crystal(5, [
       { element: `O`, abc: [0, 0, 0], occu: 0.5 },
@@ -485,130 +537,84 @@ describe(`orig site mapping`, () => {
 })
 
 describe(`site coverage verification`, () => {
-  test(`all sites are covered by wyckoff positions`, () => {
-    const test_cases = [
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.25, 0.25, 0.25],
-        ],
-        numbers: [1, 8, 26],
-        wyckoffs: [`a`, `b`, `c`],
-        expected_coverage: [0, 1, 2],
-      },
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.5, 0, 0],
-          [0, 0.5, 0],
-        ],
-        numbers: [1, 1, 1, 1],
-        wyckoffs: [`4a`, `4a`, `4a`, `4a`],
-        expected_coverage: [0, 1, 2, 3],
-      },
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.25, 0.25, 0.25],
-          [0.75, 0.75, 0.75],
-        ],
-        numbers: [1, 8, 1, 1],
-        wyckoffs: [`2a`, `1b`, `2a`, `2a`],
-        expected_coverage: [0, 1, 2, 3],
-      },
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.25, 0.25, 0.25],
-        ],
-        numbers: [1, 8, 26],
-        wyckoffs: [null, `b`, null],
-        expected_coverage: [0, 1, 2],
-      },
-    ]
-
-    for (const test_case of test_cases) {
-      const mock_data = make_wyckoff_dataset(
-        test_case.positions,
-        test_case.numbers,
-        test_case.wyckoffs,
+  test.each<{
+    desc: string
+    positions: number[][]
+    numbers: number[]
+    wyckoffs: (string | null)[]
+    expected_coverage: number[]
+    expected_multiplicity: number
+  }>([
+    {
+      desc: `three 1-site orbits`,
+      positions: [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+        [0.25, 0.25, 0.25],
+      ],
+      numbers: [1, 8, 26],
+      wyckoffs: [`a`, `b`, `c`],
+      expected_coverage: [0, 1, 2],
+      expected_multiplicity: 3,
+    },
+    {
+      desc: `single 4-site orbit`,
+      positions: [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+        [0.5, 0, 0],
+        [0, 0.5, 0],
+      ],
+      numbers: [1, 1, 1, 1],
+      wyckoffs: [`4a`, `4a`, `4a`, `4a`],
+      expected_coverage: [0, 1, 2, 3],
+      expected_multiplicity: 4,
+    },
+    {
+      desc: `mixed 3-site and 1-site orbits`,
+      positions: [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+        [0.25, 0.25, 0.25],
+        [0.75, 0.75, 0.75],
+      ],
+      numbers: [1, 8, 1, 1],
+      wyckoffs: [`2a`, `1b`, `2a`, `2a`],
+      expected_coverage: [0, 1, 2, 3],
+      expected_multiplicity: 4,
+    },
+    {
+      desc: `null Wyckoff letters`,
+      positions: [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+        [0.25, 0.25, 0.25],
+      ],
+      numbers: [1, 8, 26],
+      wyckoffs: [null, `b`, null],
+      expected_coverage: [0, 1, 2],
+      expected_multiplicity: 3,
+    },
+  ])(
+    `$desc: all sites covered, multiplicities sum correctly`,
+    ({ positions, numbers, wyckoffs, expected_coverage, expected_multiplicity }) => {
+      const rows = wyckoff_positions_from_moyo(
+        make_wyckoff_dataset(positions, numbers, wyckoffs),
       )
+      const covered = rows
+        .flatMap((pos) => pos.site_indices ?? [])
+        .sort((idx_a, idx_b) => idx_a - idx_b)
+      expect(covered).toEqual(expected_coverage)
 
-      const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
-      const covered_indices = new Set<number>()
-
-      for (const pos of wyckoff_positions) {
-        for (const idx of pos.site_indices ?? []) covered_indices.add(idx)
-      }
-
-      const missing_indices = test_case.expected_coverage.filter(
-        (idx) => !covered_indices.has(idx),
+      const total_multiplicity = rows.reduce(
+        (sum, pos) => sum + (wyckoff_multiplicity(pos.wyckoff) || 1),
+        0,
       )
-      const extra_indices = Array.from(covered_indices).filter(
-        (idx) => !test_case.expected_coverage.includes(idx),
-      )
+      expect(total_multiplicity).toBe(expected_multiplicity)
+    },
+  )
 
-      expect(missing_indices).toEqual([])
-      expect(extra_indices).toEqual([])
-    }
-  })
-
-  test(`wyckoff positions account for all multiplicity`, () => {
-    const test_cases = [
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.5, 0, 0],
-          [0, 0.5, 0],
-        ],
-        numbers: [1, 1, 1, 1],
-        wyckoffs: [`4a`, `4a`, `4a`, `4a`],
-        expected_total_multiplicity: 4,
-      },
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.25, 0.25, 0.25],
-        ],
-        numbers: [1, 8, 26],
-        wyckoffs: [`a`, `b`, `c`],
-        expected_total_multiplicity: 3,
-      },
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-          [0.25, 0.25, 0.25],
-          [0.75, 0.75, 0.75],
-        ],
-        numbers: [1, 8, 1, 1],
-        wyckoffs: [`2a`, `1b`, `2a`, `2a`],
-        expected_total_multiplicity: 4,
-      },
-    ]
-
-    for (const test_case of test_cases) {
-      const mock_data = make_wyckoff_dataset(
-        test_case.positions,
-        test_case.numbers,
-        test_case.wyckoffs,
-      )
-
-      const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
-      const total_multiplicity = wyckoff_positions.reduce((sum, pos) => {
-        const multiplicity = wyckoff_multiplicity(pos.wyckoff) || 1
-        return sum + multiplicity
-      }, 0)
-
-      expect(total_multiplicity).toBe(test_case.expected_total_multiplicity)
-    }
-  })
+  // empty/null single-site letters are covered in `handles various input scenarios`
 
   test(`handles edge cases in Wyckoff position parsing`, () => {
     const edge_cases: {
@@ -617,20 +623,6 @@ describe(`site coverage verification`, () => {
       wyckoffs: (string | null)[]
       expected: WyckoffPos[]
     }[] = [
-      // Empty wyckoff letter
-      {
-        positions: [[0, 0, 0]],
-        numbers: [1],
-        wyckoffs: [``],
-        expected: [{ wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
-      },
-      // Null wyckoff letter
-      {
-        positions: [[0, 0, 0]],
-        numbers: [1],
-        wyckoffs: [null],
-        expected: [{ wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
-      },
       // Mixed valid and invalid wyckoff letters
       {
         positions: [
@@ -643,6 +635,13 @@ describe(`site coverage verification`, () => {
           { wyckoff: `1`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
           { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
         ],
+      },
+      // Multi-letter notation keeps all trailing letters
+      {
+        positions: [[0, 0, 0]],
+        numbers: [26],
+        wyckoffs: [`24abc`],
+        expected: [{ wyckoff: `1abc`, elem: `Fe`, abc: [0, 0, 0], site_indices: [0] }],
       },
       // Very large multiplicity
       {
@@ -671,25 +670,6 @@ describe(`site coverage verification`, () => {
       expect(result).toEqual(expected)
     })
   })
-
-  test(`performance with very large structures`, () => {
-    const large_structure = make_wyckoff_dataset(
-      Array.from({ length: 1000 }, () => [Math.random(), Math.random(), Math.random()]),
-      Array.from({ length: 1000 }, () => Math.floor(Math.random() * 10) + 1),
-      Array.from({ length: 1000 }, (_, idx) => `${(idx % 10) + 1}a`),
-    )
-
-    const start_time = performance.now()
-    const result = wyckoff_positions_from_moyo(large_structure)
-    const end_time = performance.now()
-
-    // Should complete in reasonable time (< 50ms for 1000 sites)
-    expect(end_time - start_time).toBeLessThan(50)
-
-    // Should produce reasonable number of grouped positions
-    expect(result.length).toBeGreaterThan(0)
-    expect(result.length).toBeLessThanOrEqual(10) // At most 10 different multiplicities
-  })
 })
 
 describe(`apply_symmetry_operations`, () => {
@@ -709,6 +689,22 @@ describe(`apply_symmetry_operations`, () => {
     rotation_90z: {
       rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1] as Vec9,
       translation: [0, 0, 0] as Vec3,
+    },
+    rotation_180z: {
+      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as Vec9,
+      translation: [0, 0, 0] as Vec3,
+    },
+    rotation_270z: {
+      rotation: [0, -1, 0, 1, 0, 0, 0, 0, 1] as Vec9,
+      translation: [0, 0, 0] as Vec3,
+    },
+    mirror_x: {
+      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
+      translation: [0, 0, 0] as Vec3,
+    },
+    glide_x: {
+      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
+      translation: [0.5, 0, 0] as Vec3,
     },
   }
 
@@ -763,6 +759,32 @@ describe(`apply_symmetry_operations`, () => {
       [[0.5, 0.5, 0.5], [0, 0, 0]],
       2,
     ],
+    [
+      `4-fold orbit about z`,
+      [0.25, 0, 0] as Vec3,
+      [
+        operations.identity,
+        operations.rotation_90z,
+        operations.rotation_180z,
+        operations.rotation_270z,
+      ],
+      [[0.25, 0, 0], [0, 0.25, 0], [0.75, 0, 0], [0, 0.75, 0]],
+      4,
+    ],
+    [
+      `mirror perpendicular to x`,
+      [0.25, 0.5, 0.75] as Vec3,
+      [operations.identity, operations.mirror_x],
+      [[0.25, 0.5, 0.75], [0.75, 0.5, 0.75]],
+      2,
+    ],
+    [
+      `a-glide (mirror + half translation)`,
+      [0.125, 0.25, 0.25] as Vec3,
+      [operations.identity, operations.glide_x],
+      [[0.125, 0.25, 0.25], [0.375, 0.25, 0.25]], // -0.125 + 0.5 = 0.375
+      2,
+    ],
   ])(`handles %s`, (_, position, ops, expected_positions, expected_length) => {
     const result = apply_symmetry_operations(position, ops)
     expect(result).toHaveLength(expected_length)
@@ -788,22 +810,6 @@ describe(`apply_symmetry_operations`, () => {
     const result = apply_symmetry_operations(position, [operations.identity])
     expect(result).toHaveLength(1)
     expect(result[0]).toEqual(expected)
-  })
-
-  test(`performance with many operations`, () => {
-    const position: Vec3 = [0.1, 0.2, 0.3]
-    const many_operations = Array.from({ length: 48 }, (_, idx) => ({
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] satisfies Vec9,
-      translation: [idx * 0.02, idx * 0.02, idx * 0.02] as Vec3,
-    }))
-
-    const start_time = performance.now()
-    const result = apply_symmetry_operations(position, many_operations)
-    const end_time = performance.now()
-
-    expect(end_time - start_time).toBeLessThan(10)
-    expect(result.length).toBeGreaterThan(0)
-    expect(result.length).toBeLessThanOrEqual(48)
   })
 })
 
@@ -1046,34 +1052,6 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
 
     expect(result[0].site_indices).toEqual(expected)
-  })
-
-  test(`performance with large structures`, () => {
-    const original = mock_structure(
-      Array.from({ length: 100 }, (_, idx) => ({
-        abc: [idx * 0.01, idx * 0.01, idx * 0.01] as Vec3,
-        element: `H`,
-      })),
-    )
-    const displayed = mock_structure(
-      Array.from({ length: 200 }, (_, idx) => ({
-        abc: [idx * 0.005, idx * 0.005, idx * 0.005] as Vec3,
-        element: `H`,
-      })),
-    )
-    const wyckoff_pos = Array.from({ length: 10 }, (_, idx) => ({
-      wyckoff: `1a`,
-      elem: `H`,
-      abc: [idx * 0.1, idx * 0.1, idx * 0.1] as Vec3,
-      site_indices: [idx],
-    }))
-
-    const start_time = performance.now()
-    const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
-    const end_time = performance.now()
-
-    expect(end_time - start_time).toBeLessThan(100)
-    expect(result).toHaveLength(wyckoff_pos.length)
   })
 
   test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {

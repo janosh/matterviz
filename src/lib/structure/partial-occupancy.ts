@@ -128,8 +128,10 @@ export const merge_split_partial_sites = (
   sites: Site[],
   hidden_elements: ReadonlySet<string> = new Set(),
 ): RenderSite[] => {
-  const grouped_indices = group_split_partial_indices(sites, hidden_elements)
-  const { non_grouped_site_indices, grouped_site_indices } = grouped_indices
+  const { non_grouped_site_indices, grouped_site_indices } = group_split_partial_indices(
+    sites,
+    hidden_elements,
+  )
   return build_render_sites(sites, non_grouped_site_indices, grouped_site_indices)
 }
 

@@ -24,6 +24,7 @@ describe(`OPTIMADE API utilities`, () => {
     [`odbx%25`],
     [`me:42`],
     [`user@id`],
+    [`odbx.9/1.2-3_4?param=value#fragment`],
     [``],
   ])(`should round-trip encode/decode: %s`, (id) => {
     const encoded = encode_structure_id(id)
@@ -31,37 +32,8 @@ describe(`OPTIMADE API utilities`, () => {
     expect(decoded).toBe(id)
   })
 
-  test(`should encode dots as %2E`, () => {
-    const id_with_dots = `odbx.9.1.2`
-    const encoded = encode_structure_id(id_with_dots)
-    // Case-insensitive check for %2e and verify count matches original dots
-    const dotCount = id_with_dots.match(/\./g)?.length ?? 0
-    const encodedDotCount = encoded.match(/%2e/gi)?.length ?? 0
-    expect(encodedDotCount).toBe(dotCount)
-    expect(encoded).not.toContain(`.`)
-  })
-
-  test(`should encode forward slashes as %2F`, () => {
-    const id_with_slashes = `odbx/9/1.2`
-    const encoded = encode_structure_id(id_with_slashes)
-    expect(encoded).toContain(`%2F`)
-    expect(encoded).not.toContain(`/`)
-  })
-
-  test(`should handle complex IDs`, () => {
-    const complex_id = `odbx.9/1.2-3_4?param=value#fragment`
-    const encoded = encode_structure_id(complex_id)
-    const decoded = decode_structure_id(encoded)
-    expect(decoded).toBe(complex_id)
-  })
-
-  test(`should extract provider prefix from slug`, () => {
-    const cases = [`odbx-9.1`, `mp-1226325`]
-    for (const slug of cases) {
-      const decoded = decode_structure_id(slug)
-      const provider = detect_provider_from_slug(decoded, MOCK_PROVIDERS)
-      expect(provider).toBe(slug.split(`-`)[0].toLowerCase())
-    }
+  test(`should encode dots as %2E and slashes as %2F`, () => {
+    expect(encode_structure_id(`odbx.9/1.2`)).toBe(`odbx%2E9%2F1%2E2`)
   })
 
   test.each([

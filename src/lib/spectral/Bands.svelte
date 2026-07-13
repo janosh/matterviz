@@ -337,124 +337,139 @@
     x_positions = positions
   })
 
+  // Plottable branch segments with rescaled x coordinates, shared by the band-line
+  // series and fat-band ribbon computations below
+  interface PlotSegment {
+    bs_idx: number
+    label: string
+    bs: BaseBandStructure
+    start_idx: number
+    end_idx: number // exclusive
+    segment_key: string
+    scaled_distances: number[]
+  }
+  let plot_segments = $derived.by((): PlotSegment[] => {
+    const segments: PlotSegment[] = []
+    for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
+      for (const branch of bs.branches) {
+        // Skip discontinuous segments (consecutive labeled points)
+        if (branch.end_index - branch.start_index === 1) continue
+
+        const start_idx = branch.start_index
+        const end_idx = branch.end_index + 1
+        const segment_key = helpers.get_segment_key(
+          bs.qpoints[start_idx]?.label ?? undefined,
+          bs.qpoints[end_idx - 1]?.label ?? undefined,
+        )
+        if (!segments_to_plot.has(segment_key)) continue
+
+        const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
+        const scaled_distances = helpers.scale_segment_distances(
+          bs.distance.slice(start_idx, end_idx),
+          x_start,
+          x_end,
+        )
+        segments.push({ bs_idx, label, bs, start_idx, end_idx, segment_key, scaled_distances })
+      }
+    }
+    return segments
+  })
+
   // Convert band structures to scatter plot series + track max slope in one pass
   let { series_data, max_abs_slope } = $derived.by(
     (): {
       series_data: DataSeries[]
       max_abs_slope: number
     } => {
-      if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
-        return { series_data: [], max_abs_slope: 1 }
-      }
-
       const all_series: DataSeries[] = []
       let max_slope = 0
 
-      for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
+      for (const {
+        bs_idx,
+        label,
+        bs,
+        start_idx,
+        end_idx,
+        scaled_distances,
+      } of plot_segments) {
         const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
         const structure_label = label || `Structure ${bs_idx + 1}`
         const gamma_indices =
           detected_band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
 
-        for (const branch of bs.branches) {
-          const start_idx = branch.start_index
-          const end_idx = branch.end_index + 1
-          const start_label = bs.qpoints[start_idx]?.label ?? undefined
-          const end_label = bs.qpoints[end_idx - 1]?.label ?? undefined
-          const segment_key = helpers.get_segment_key(start_label, end_label)
+        // Create series for each band (and spin channel for electronic structures)
+        for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
+          const frequencies = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
+          const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
 
-          if (!segments_to_plot.has(segment_key)) continue
-
-          // Skip discontinuous segments (consecutive labeled points)
-          const is_discontinuity = branch.end_index - branch.start_index === 1
-          if (is_discontinuity) continue
-
-          const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
-
-          // Scale distances for this segment
-          const segment_distances = bs.distance.slice(start_idx, end_idx)
-          const scaled_distances = helpers.scale_segment_distances(
-            segment_distances,
-            x_start,
-            x_end,
+          const line_style_up = get_line_style(
+            color,
+            is_acoustic === true,
+            frequencies,
+            band_idx,
           )
 
-          // Create series for each band (and spin channel for electronic structures)
-          for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
-            const frequencies = convert_band_values(
-              bs.bands[band_idx].slice(start_idx, end_idx),
-            )
-            const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
+          const spin_down_band = bs.spin_down_bands?.[band_idx]
+          const has_spin_down_channel =
+            detected_band_type === `electronic` &&
+            Array.isArray(spin_down_band) &&
+            spin_down_band.length >= end_idx
 
-            const line_style_up = get_line_style(
-              color,
-              is_acoustic === true,
-              frequencies,
-              band_idx,
-            )
-
-            const spin_down_band = bs.spin_down_bands?.[band_idx]
-            const has_spin_down_channel =
-              detected_band_type === `electronic` &&
-              Array.isArray(spin_down_band) &&
-              spin_down_band.length >= end_idx
-
-            const track_max_slope = (meta: helpers.BandPointMeta[]) => {
-              for (const pt of meta) {
-                if (typeof pt.slope === `number` && Number.isFinite(pt.slope)) {
-                  max_slope = Math.max(max_slope, Math.abs(pt.slope))
-                }
+          const track_max_slope = (meta: helpers.BandPointMeta[]) => {
+            for (const pt of meta) {
+              if (typeof pt.slope === `number` && Number.isFinite(pt.slope)) {
+                max_slope = Math.max(max_slope, Math.abs(pt.slope))
               }
             }
+          }
 
-            if (effective_spin_mode !== `down_only`) {
-              const meta = helpers.build_point_metadata({
-                x_vals: scaled_distances,
-                y_vals: frequencies,
-                band_idx,
-                spin: `up`,
-                is_acoustic,
-                bs,
-                start_idx,
-              })
-              track_max_slope(meta)
-              all_series.push({
-                x: scaled_distances,
-                y: frequencies,
-                markers: `line`,
-                label: has_spin_down_channel ? `${structure_label} (↑)` : structure_label,
-                line_style: line_style_up,
-                metadata: meta,
-              })
-            }
+          if (effective_spin_mode !== `down_only`) {
+            const meta = helpers.build_point_metadata({
+              x_vals: scaled_distances,
+              y_vals: frequencies,
+              band_idx,
+              spin: `up`,
+              is_acoustic,
+              bs,
+              start_idx,
+            })
+            track_max_slope(meta)
+            all_series.push({
+              x: scaled_distances,
+              y: frequencies,
+              markers: `line`,
+              label: has_spin_down_channel ? `${structure_label} (↑)` : structure_label,
+              line_style: line_style_up,
+              metadata: meta,
+            })
+          }
 
-            if (has_spin_down_channel && effective_spin_mode !== `up_only`) {
-              const spin_down_frequencies = convert_band_values(
-                spin_down_band.slice(start_idx, end_idx),
-              )
-              const meta = helpers.build_point_metadata({
-                x_vals: scaled_distances,
-                y_vals: spin_down_frequencies,
-                band_idx,
-                spin: `down`,
-                is_acoustic,
-                bs,
-                start_idx,
-              })
-              track_max_slope(meta)
-              all_series.push({
-                x: scaled_distances,
-                y: spin_down_frequencies,
-                markers: `line`,
-                label: `${structure_label} (↓)`,
-                line_style: {
-                  ...line_style_up,
-                  line_dash: `4,2`,
-                  stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
-                },
-                metadata: meta,
-              })
-            }
+          if (has_spin_down_channel && effective_spin_mode !== `up_only`) {
+            const spin_down_frequencies = convert_band_values(
+              spin_down_band.slice(start_idx, end_idx),
+            )
+            const meta = helpers.build_point_metadata({
+              x_vals: scaled_distances,
+              y_vals: spin_down_frequencies,
+              band_idx,
+              spin: `down`,
+              is_acoustic,
+              bs,
+              start_idx,
+            })
+            track_max_slope(meta)
+            all_series.push({
+              x: scaled_distances,
+              y: spin_down_frequencies,
+              markers: `line`,
+              label: `${structure_label} (↓)`,
+              line_style: {
+                ...line_style_up,
+                line_dash: `4,2`,
+                stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
+              },
+              metadata: meta,
+            })
           }
         }
       }
@@ -465,67 +480,39 @@
 
   // Compute ribbon data for bands with width information
   let ribbon_data = $derived.by((): RibbonData[] => {
-    if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
-      return []
-    }
-
     const all_ribbons: RibbonData[] = []
 
-    for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
+    for (const segment of plot_segments) {
+      const { bs_idx, label, bs, start_idx, end_idx, segment_key, scaled_distances } = segment
       // Skip if this band structure has no width data
-      if (!bs.band_widths || bs.band_widths.length === 0) continue
+      if (!bs.band_widths?.length) continue
 
-      const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
-      const structure_label = label || `Structure ${bs_idx + 1}`
       const config = helpers.get_ribbon_config(ribbon_config, label)
+      const structure_label = label || `Structure ${bs_idx + 1}`
 
-      for (const branch of bs.branches) {
-        const start_idx = branch.start_index
-        const end_idx = branch.end_index + 1
-        const start_label = bs.qpoints[start_idx]?.label ?? undefined
-        const end_label = bs.qpoints[end_idx - 1]?.label ?? undefined
-        const segment_key = helpers.get_segment_key(start_label, end_label)
+      // Create ribbon data for each band that has width data
+      for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
+        const band_widths = bs.band_widths[band_idx]
+        if (!band_widths) continue
 
-        if (!segments_to_plot.has(segment_key)) continue
+        const width_values = band_widths.slice(start_idx, end_idx)
+        // Skip if all widths are zero or missing
+        if (width_values.every((wv) => !wv || wv <= 0)) continue
 
-        // Skip discontinuous segments
-        const is_discontinuity = branch.end_index - branch.start_index === 1
-        if (is_discontinuity) continue
+        const y_values = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
 
-        const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
-
-        // Scale distances for this segment
-        const segment_distances = bs.distance.slice(start_idx, end_idx)
-        const scaled_distances = helpers.scale_segment_distances(
-          segment_distances,
-          x_start,
-          x_end,
-        )
-
-        // Create ribbon data for each band that has width data
-        for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
-          const band_widths = bs.band_widths[band_idx]
-          if (!band_widths) continue
-
-          const width_values = band_widths.slice(start_idx, end_idx)
-          // Skip if all widths are zero or missing
-          if (width_values.every((wv) => !wv || wv <= 0)) continue
-
-          const y_values = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
-
-          all_ribbons.push({
-            x_values: scaled_distances,
-            y_values,
-            width_values,
-            color: config.color ?? color,
-            opacity: config.opacity ?? 0.3,
-            max_width: config.max_width ?? 6,
-            scale: config.scale ?? 1,
-            band_idx,
-            structure_label,
-            segment_key,
-          })
-        }
+        all_ribbons.push({
+          x_values: scaled_distances,
+          y_values,
+          width_values,
+          color: config.color ?? PLOT_COLORS[bs_idx % PLOT_COLORS.length],
+          opacity: config.opacity ?? 0.3,
+          max_width: config.max_width ?? 6,
+          scale: config.scale ?? 1,
+          band_idx,
+          structure_label,
+          segment_key,
+        })
       }
     }
 

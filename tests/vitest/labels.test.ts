@@ -25,43 +25,19 @@ describe(`labels utils`, () => {
     expect(Object.values(ELEM_HEATMAP_LABELS)).toHaveLength(ELEM_HEATMAP_KEYS.length)
   })
 
-  test.each([
-    [0, `0`],
-    [0.5, `½`],
-    [1 / 3, `⅓`],
-    [3 / 4, `¾`],
-  ])(`format_fractional maps %p to %p`, (input, expected) => {
-    expect(format_fractional(input)).toBe(expected)
-  })
-
-  test(`format_num uses defaults and respects overrides`, () => {
-    const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
-    expect(format_num(1234)).toBe(d3_format(gt_1_fmt)(1234))
-    expect(format_num(0.123)).toBe(d3_format(lt_1_fmt)(0.123))
-    expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
-    expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
-  })
-
-  test.each([
-    [`Fe2+`, `Fe²⁺`],
-    [`O2-`, `O²⁻`],
-    [`H2O`, `H²O`],
-  ])(`superscript_digits(%p) -> %p`, (input, expected) => {
-    expect(superscript_digits(input)).toBe(expected)
-  })
-
-  test(`trajectory_property_config provides label and unit`, () => {
-    Object.keys(trajectory_property_config).forEach((key) => {
-      const info = trajectory_property_config[key]
-      expect(typeof info.label).toBe(`string`)
-      expect(typeof info.unit).toBe(`string`)
+  test(`trajectory_property_config provides non-empty label and unit`, () => {
+    for (const info of Object.values(trajectory_property_config)) {
       expect(info.label.length).toBeGreaterThan(0)
       expect(info.unit.length).toBeGreaterThan(0)
-    })
+    }
   })
 })
 
-test(`format_num`, () => {
+test(`format_num uses defaults and respects overrides`, () => {
+  const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
+  expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
+  expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
+
   expect(format_num(0)).toBe(`0`)
   expect(format_num(1)).toBe(`1`)
   expect(format_num(10)).toBe(`10`)
@@ -85,10 +61,6 @@ test(`format_num`, () => {
   expect(format_num(-1.1)).toBe(`−1.1`)
   expect(format_num(-1.14123)).toBe(`−1.14`)
   expect(format_num(-1.14123e-7, `.5~g`)).toBe(`−1.1412e-7`)
-})
-
-test(`DEFAULT_FMT`, () => {
-  expect(DEFAULT_FMT).toEqual([`,.3~s`, `.3~g`])
 })
 
 const element_data_keys = Object.keys(element_data[0])

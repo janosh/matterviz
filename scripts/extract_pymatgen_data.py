@@ -45,12 +45,9 @@ def load_pymatgen_data() -> dict[str, Any]:
 
 
 def load_existing_data(path: Path) -> list[dict[str, Any]]:
-    """Load existing element data from JSON or gzipped JSON."""
-    if path.suffix == ".gz":
-        with gzip.open(path, "rb") as file:
-            return json.loads(file.read())
-    with open(path, encoding="utf-8") as file:
-        return json.load(file)
+    """Load existing element data from gzipped JSON."""
+    with gzip.open(path, "rb") as file:
+        return json.loads(file.read())
 
 
 def extract_pymatgen_properties(
@@ -95,19 +92,10 @@ def merge_data(
     existing: list[dict[str, Any]], pymatgen_data: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Merge pymatgen data into existing element data."""
-    result = []
-
-    for elem in existing:
-        symbol = elem["symbol"]
-        merged = {**elem}
-
-        # Extract and add pymatgen properties
-        pymatgen_props = extract_pymatgen_properties(pymatgen_data, symbol)
-        merged.update(pymatgen_props)
-
-        result.append(merged)
-
-    return result
+    return [
+        {**elem, **extract_pymatgen_properties(pymatgen_data, elem["symbol"])}
+        for elem in existing
+    ]
 
 
 def main() -> None:

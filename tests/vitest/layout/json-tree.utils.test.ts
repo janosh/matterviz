@@ -43,17 +43,11 @@ describe(`get_value_type`, () => {
     [new Map(), `map`],
     [new Set(), `set`],
     [new Error(`test`), `error`],
+    [NaN, `number`],
+    [Infinity, `number`],
+    [-Infinity, `number`],
   ])(`returns %p for %s`, (value, expected) => {
     expect(get_value_type(value)).toBe(expected)
-  })
-
-  it(`handles NaN as number`, () => {
-    expect(get_value_type(NaN)).toBe(`number`)
-  })
-
-  it(`handles Infinity as number`, () => {
-    expect(get_value_type(Infinity)).toBe(`number`)
-    expect(get_value_type(-Infinity)).toBe(`number`)
   })
 })
 
@@ -117,42 +111,28 @@ describe(`get_child_count`, () => {
 })
 
 describe(`format_path`, () => {
-  it(`returns empty string for empty segments`, () => {
-    expect(format_path([])).toBe(``)
-  })
-
-  it(`handles single string segment`, () => {
-    expect(format_path([`root`])).toBe(`root`)
-  })
-
-  it(`handles multiple string segments`, () => {
-    expect(format_path([`users`, `name`])).toBe(`users.name`)
-  })
-
-  it(`handles numeric segments with bracket notation`, () => {
-    expect(format_path([`users`, 0])).toBe(`users[0]`)
-    expect(format_path([`arr`, 0, `name`])).toBe(`arr[0].name`)
-  })
-
-  it(`handles special characters with bracket notation`, () => {
-    expect(format_path([`data`, `key-with-dash`])).toBe(`data["key-with-dash"]`)
-    expect(format_path([`data`, `key with space`])).toBe(`data["key with space"]`)
-  })
-
-  it(`escapes quotes in keys`, () => {
-    expect(format_path([`data`, `key"with"quotes`])).toBe(`data["key\\"with\\"quotes"]`)
-  })
-
-  it(`formats root numeric index correctly`, () => {
-    expect(format_path([0, `name`])).toBe(`[0].name`)
-    expect(format_path([0])).toBe(`[0]`)
-    expect(format_path([42, `nested`, 3])).toBe(`[42].nested[3]`)
-  })
-
-  it(`formats root special key with bracket notation`, () => {
-    expect(format_path([`key.with.dot`])).toBe(`["key.with.dot"]`)
-    expect(format_path([`key.with.dot`, `child`])).toBe(`["key.with.dot"].child`)
-    expect(format_path([`key-with-dash`])).toBe(`["key-with-dash"]`)
+  it.each([
+    [[], ``],
+    [[`root`], `root`],
+    [[`users`, `name`], `users.name`],
+    // numeric segments use bracket notation
+    [[`users`, 0], `users[0]`],
+    [[`arr`, 0, `name`], `arr[0].name`],
+    // special characters use bracket notation
+    [[`data`, `key-with-dash`], `data["key-with-dash"]`],
+    [[`data`, `key with space`], `data["key with space"]`],
+    // quotes in keys are escaped
+    [[`data`, `key"with"quotes`], `data["key\\"with\\"quotes"]`],
+    // root numeric index
+    [[0, `name`], `[0].name`],
+    [[0], `[0]`],
+    [[42, `nested`, 3], `[42].nested[3]`],
+    // root special key
+    [[`key.with.dot`], `["key.with.dot"]`],
+    [[`key.with.dot`, `child`], `["key.with.dot"].child`],
+    [[`key-with-dash`], `["key-with-dash"]`],
+  ] as [(string | number)[], string][])(`format_path(%j) = %p`, (segments, expected) => {
+    expect(format_path(segments)).toBe(expected)
   })
 
   it(`round-trips correctly with parse_path`, () => {
@@ -171,16 +151,23 @@ describe(`format_path`, () => {
 })
 
 describe(`build_path`, () => {
-  it(`builds path from empty parent`, () => {
-    expect(build_path(``, `key`)).toBe(`key`)
-    expect(build_path(``, 0)).toBe(`[0]`)
-  })
-
-  it(`builds path from empty parent with special keys`, () => {
-    expect(build_path(``, `key.with.dot`)).toBe(`["key.with.dot"]`)
-    expect(build_path(``, `key-with-dash`)).toBe(`["key-with-dash"]`)
-    expect(build_path(``, `key"with"quotes`)).toBe(`["key\\"with\\"quotes"]`)
-  })
+  it.each([
+    // empty parent
+    [``, `key`, `key`],
+    [``, 0, `[0]`],
+    [``, `key.with.dot`, `["key.with.dot"]`],
+    [``, `key-with-dash`, `["key-with-dash"]`],
+    [``, `key"with"quotes`, `["key\\"with\\"quotes"]`],
+    // string keys use dot notation, numeric keys bracket notation
+    [`root`, `child`, `root.child`],
+    [`arr`, 0, `arr[0]`],
+    [`data`, `special-key`, `data["special-key"]`],
+  ] as [string, string | number, string][])(
+    `build_path(%p, %p) = %p`,
+    (parent, key, expected) => {
+      expect(build_path(parent, key)).toBe(expected)
+    },
+  )
 
   it.each([`123`, `0`, `-1`, `1.5`, `1e10`])(
     `treats numeric-looking key %p as string`,
@@ -190,18 +177,6 @@ describe(`build_path`, () => {
       expect(parse_path(path)).toEqual([`obj`, key])
     },
   )
-
-  it(`appends string key with dot notation`, () => {
-    expect(build_path(`root`, `child`)).toBe(`root.child`)
-  })
-
-  it(`appends numeric key with bracket notation`, () => {
-    expect(build_path(`arr`, 0)).toBe(`arr[0]`)
-  })
-
-  it(`handles special characters`, () => {
-    expect(build_path(`data`, `special-key`)).toBe(`data["special-key"]`)
-  })
 
   it(`handles nested paths`, () => {
     let path = build_path(``, `users`)
@@ -454,56 +429,30 @@ describe(`get_ancestor_paths`, () => {
 })
 
 describe(`parse_path`, () => {
-  it(`returns empty array for empty path`, () => {
-    expect(parse_path(``)).toEqual([])
-  })
-
-  it(`parses simple dot-notation path`, () => {
-    expect(parse_path(`a.b.c`)).toEqual([`a`, `b`, `c`])
-  })
-
-  it(`parses bracket notation with numbers`, () => {
-    expect(parse_path(`arr[0][1]`)).toEqual([`arr`, 0, 1])
-  })
-
-  it(`parses mixed notation`, () => {
-    expect(parse_path(`users[0].name`)).toEqual([`users`, 0, `name`])
-  })
-
-  it(`parses bracket notation with strings`, () => {
-    expect(parse_path(`data["special-key"]`)).toEqual([`data`, `special-key`])
-  })
-
-  it(`unescapes quotes in bracketed keys`, () => {
-    expect(parse_path(`data["key\\"with\\"quotes"]`)).toEqual([`data`, `key"with"quotes`])
+  it.each([
+    [``, []],
+    [`a.b.c`, [`a`, `b`, `c`]],
+    [`arr[0][1]`, [`arr`, 0, 1]],
+    [`users[0].name`, [`users`, 0, `name`]],
+    [`data["special-key"]`, [`data`, `special-key`]],
+    // quotes in bracketed keys are unescaped
+    [`data["key\\"with\\"quotes"]`, [`data`, `key"with"quotes`]],
+    // malformed paths with unclosed brackets still parse trailing tokens
+    [`a[0`, [`a`, 0]],
+    [`arr[123`, [`arr`, 123]],
+    [`data["key`, [`data`, `key`]],
+    // empty brackets are silently ignored
+    [`a[]`, [`a`]],
+    [`a[].b`, [`a`, `b`]],
+    [`a[-1]`, [`a`, -1]],
+  ] as [string, (string | number)[]][])(`parse_path(%p) = %j`, (path, expected) => {
+    expect(parse_path(path)).toEqual(expected)
   })
 
   it(`round-trips keys with quotes via build_path and parse_path`, () => {
     const key_with_quotes = `say "hello"`
     const path = build_path(`root`, key_with_quotes)
-    const segments = parse_path(path)
-    expect(segments).toEqual([`root`, key_with_quotes])
-  })
-
-  it(`handles unclosed bracket with numeric index`, () => {
-    // Malformed path with unclosed bracket should still parse trailing number correctly
-    expect(parse_path(`a[0`)).toEqual([`a`, 0])
-    expect(parse_path(`arr[123`)).toEqual([`arr`, 123])
-  })
-
-  it(`handles unclosed bracket with string key`, () => {
-    // Unclosed bracket with quoted string
-    expect(parse_path(`data["key`)).toEqual([`data`, `key`])
-  })
-
-  it(`handles empty brackets`, () => {
-    // Empty brackets are silently ignored
-    expect(parse_path(`a[]`)).toEqual([`a`])
-    expect(parse_path(`a[].b`)).toEqual([`a`, `b`])
-  })
-
-  it(`handles negative indices`, () => {
-    expect(parse_path(`a[-1]`)).toEqual([`a`, -1])
+    expect(parse_path(path)).toEqual([`root`, key_with_quotes])
   })
 })
 
@@ -652,72 +601,60 @@ describe(`compute_diff`, () => {
     expect(compute_diff(null, null).size).toBe(0)
   })
 
-  it(`detects changed primitives`, () => {
-    const diff = compute_diff(1, 2, `root`)
+  it.each([
+    {
+      desc: `changed primitive`,
+      old_val: 1,
+      new_val: 2,
+      root: `root`,
+      entry: { status: `changed`, path: `root`, old_value: 1, new_value: 2 },
+    },
+    {
+      desc: `type change`,
+      old_val: `string`,
+      new_val: 42,
+      root: `val`,
+      entry: { status: `changed`, path: `val`, old_value: `string`, new_value: 42 },
+    },
+    {
+      desc: `added object key`,
+      old_val: { a: 1 },
+      new_val: { a: 1, b: 2 },
+      root: `root`,
+      entry: { status: `added`, path: `root.b`, new_value: 2 },
+    },
+    {
+      desc: `removed object key`,
+      old_val: { a: 1, b: 2 },
+      new_val: { a: 1 },
+      root: `root`,
+      entry: { status: `removed`, path: `root.b`, old_value: 2 },
+    },
+    {
+      desc: `changed object value`,
+      old_val: { a: 1 },
+      new_val: { a: 99 },
+      root: `root`,
+      entry: { status: `changed`, path: `root.a`, old_value: 1, new_value: 99 },
+    },
+    {
+      desc: `added array element`,
+      old_val: [1, 2],
+      new_val: [1, 2, 3],
+      root: `arr`,
+      entry: { status: `added`, path: `arr[2]`, new_value: 3 },
+    },
+    {
+      desc: `removed array element`,
+      old_val: [1, 2, 3],
+      new_val: [1, 2],
+      root: `arr`,
+      entry: { status: `removed`, path: `arr[2]`, old_value: 3 },
+    },
+  ])(`detects $desc`, ({ old_val, new_val, root, entry }) => {
+    const diff = compute_diff(old_val, new_val, root)
     expect(diff.size).toBe(1)
-    expect(diff.get(`root`)).toEqual({
-      status: `changed`,
-      path: `root`,
-      old_value: 1,
-      new_value: 2,
-    })
-  })
-
-  it(`detects type changes`, () => {
-    const diff = compute_diff(`string`, 42, `val`)
-    expect(diff.get(`val`)?.status).toBe(`changed`)
-    expect(diff.get(`val`)?.old_value).toBe(`string`)
-    expect(diff.get(`val`)?.new_value).toBe(42)
-  })
-
-  it(`detects added object keys`, () => {
-    const diff = compute_diff({ a: 1 }, { a: 1, b: 2 }, `root`)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`root.b`)).toEqual({
-      status: `added`,
-      path: `root.b`,
-      new_value: 2,
-    })
-  })
-
-  it(`detects removed object keys`, () => {
-    const diff = compute_diff({ a: 1, b: 2 }, { a: 1 }, `root`)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`root.b`)).toEqual({
-      status: `removed`,
-      path: `root.b`,
-      old_value: 2,
-    })
-  })
-
-  it(`detects changed object values`, () => {
-    const diff = compute_diff({ a: 1 }, { a: 99 }, `root`)
-    expect(diff.get(`root.a`)).toEqual({
-      status: `changed`,
-      path: `root.a`,
-      old_value: 1,
-      new_value: 99,
-    })
-  })
-
-  it(`detects added array elements`, () => {
-    const diff = compute_diff([1, 2], [1, 2, 3], `arr`)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`arr[2]`)).toEqual({
-      status: `added`,
-      path: `arr[2]`,
-      new_value: 3,
-    })
-  })
-
-  it(`detects removed array elements`, () => {
-    const diff = compute_diff([1, 2, 3], [1, 2], `arr`)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`arr[2]`)).toEqual({
-      status: `removed`,
-      path: `arr[2]`,
-      old_value: 3,
-    })
+    expect(diff.get(entry.path)).toEqual(entry)
   })
 
   it(`handles nested object diffs`, () => {

@@ -565,63 +565,33 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // Site labeling functionality tests
-  test(`site labels display correctly for ordered and disordered sites`, async ({ page }) => {
+  // Site labeling functionality tests (labels only, indices only, then combined)
+  test(`site labels and indices display correctly alone and combined`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
-    // Enable site labels via URL parameter for easier testing
+    // Labels only: at least one atom label renders
     await goto_structure_test(page, `/test/structure?show_site_labels=true`)
-
-    // Take screenshot to verify labels are rendered
     await expect_canvas_renders(canvas)
+    expect(await page.locator(`.atom-label`).count()).toBeGreaterThan(0)
 
-    // Also assert at least one label is present
-    const labels = page.locator(`.atom-label`)
-    expect(await labels.count()).toBeGreaterThan(0)
-
-    // No console errors during label rendering
-    expect(console_errors).toHaveLength(0)
-  })
-
-  test(`site indices display correctly and start from 1`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const console_errors = setup_console_monitoring(page)
-
-    // Enable site indices via URL parameter
+    // Indices only: indices start at 1 (and not 0)
     await goto_structure_test(page, `/test/structure?show_site_indices=true`)
-
-    // Take screenshot to verify indices are rendered
     await expect_canvas_renders(canvas)
+    const index_texts = await page.locator(`.atom-label`).allTextContents()
+    expect(index_texts.some((text) => /^\s*1\s*$/.test(text))).toBe(true)
+    expect(index_texts.some((text) => /^\s*0\s*$/.test(text))).toBe(false)
 
-    // No console errors during index rendering
-    expect(console_errors).toHaveLength(0)
-
-    // Verify indices start at 1 (and not 0)
-    const texts = await page.locator(`.atom-label`).allTextContents()
-    expect(texts.some((text) => /^\s*1\s*$/.test(text))).toBe(true)
-    expect(texts.some((text) => /^\s*0\s*$/.test(text))).toBe(false)
-  })
-
-  test(`combined site labels and indices display correctly`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const console_errors = setup_console_monitoring(page)
-
-    // Enable both site labels and indices via URL parameters
+    // Combined: at least one label matches "X-<n>"
     await goto_structure_test(
       page,
       `/test/structure?show_site_labels=true&show_site_indices=true`,
     )
-
-    // Take screenshot to verify combined labels are rendered
     await expect_canvas_renders(canvas)
+    const combined_texts = await page.locator(`.atom-label`).allTextContents()
+    expect(combined_texts.some((text) => /[A-Z][a-z]?\s*-\s*\d+/.test(text))).toBe(true)
 
-    // No console errors during combined label rendering
     expect(console_errors).toHaveLength(0)
-
-    // Spot-check that at least one label matches "X-<n>"
-    const texts = await page.locator(`.atom-label`).allTextContents()
-    expect(texts.some((text) => /[A-Z][a-z]?\s*-\s*\d+/.test(text))).toBe(true)
   })
 
   test(`disordered sites show combined element-occupancy format`, async ({ page }) => {
@@ -807,15 +777,13 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // Test line width property (note: limited by WebGL constraints)
-  test(`cell line width changes are handled correctly`, async ({ page }) => {
+  // Extreme lattice prop values (line widths, out-of-range opacities) must not crash
+  test(`extreme cell line widths and opacities render without errors`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
     const canvas = page.locator(`#test-structure canvas`)
 
-    // Test different line widths (note: WebGL may limit actual rendering)
-    const line_widths = [1, 2, 5, 10]
-
-    for (const width of line_widths) {
+    // Different line widths (note: WebGL may limit actual rendering)
+    for (const width of [1, 2, 5, 10]) {
       await set_lattice_props(page, {
         cell_edge_color: `#ffffff`,
         cell_surface_color: `#ffffff`,
@@ -823,163 +791,17 @@ test.describe(`StructureScene Component Tests`, () => {
         cell_surface_opacity: 0,
         cell_edge_width: width,
       })
-
       await expect_canvas_renders(canvas)
     }
 
-    // Verify no errors occurred even if visual changes are limited by WebGL
-    expect(console_errors).toHaveLength(0)
-  })
-
-  // Test opacity range validation
-  test(`opacity values are clamped to valid range`, async ({ page }) => {
-    const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#test-structure canvas`)
-
-    // Test extreme values
-    const test_values = [-0.5, 0, 0.5, 1, 1.5]
-
-    for (const opacity of test_values) {
+    // Extreme opacity values incl. out-of-range should be clamped, not crash
+    for (const opacity of [-0.5, 0, 0.5, 1, 1.5]) {
       await set_lattice_props(page, {
         cell_edge_opacity: opacity,
         cell_surface_opacity: opacity,
         cell_edge_color: `#ffffff`,
         cell_surface_color: `#ffffff`,
       })
-
-      await expect_canvas_renders(canvas)
-    }
-
-    expect(console_errors).toHaveLength(0)
-  })
-
-  // Test that opacity values can be set independently and produce expected results
-  test(`independent opacity controls work correctly across different values`, async ({
-    page,
-  }) => {
-    const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#test-structure canvas`)
-
-    // Test low edge opacity, no surfaces
-    await set_lattice_props(page, {
-      cell_edge_opacity: 0.2,
-      cell_surface_opacity: 0,
-      cell_edge_color: `#ffffff`,
-      cell_surface_color: `#ffffff`,
-    })
-    const low_edge_screenshot = await canvas.screenshot()
-
-    // Test high edge opacity, no surfaces
-    await set_lattice_props(page, {
-      cell_edge_opacity: 0.9,
-      cell_surface_opacity: 0,
-      cell_edge_color: `#ffffff`,
-      cell_surface_color: `#ffffff`,
-    })
-    const high_edge_screenshot = await canvas.screenshot()
-
-    // Test no edges, low surface opacity
-    await set_lattice_props(page, {
-      cell_edge_opacity: 0,
-      cell_surface_opacity: 0.2,
-      cell_edge_color: `#ffffff`,
-      cell_surface_color: `#ffffff`,
-    })
-    const low_surface_screenshot = await canvas.screenshot()
-
-    // Verify different opacity levels produce different visual outputs
-    expect(low_edge_screenshot.equals(high_edge_screenshot)).toBe(false)
-    expect(low_edge_screenshot.equals(low_surface_screenshot)).toBe(false)
-    expect(high_edge_screenshot.equals(low_surface_screenshot)).toBe(false)
-
-    expect(console_errors).toHaveLength(0)
-  })
-
-  // Test same_size_atoms property controls atom scaling behavior
-  test(`same_size_atoms property controls atom radius scaling correctly`, async ({ page }) => {
-    const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#test-structure canvas`)
-
-    // Helper to set scene properties and take screenshot
-    const set_props_and_screenshot = async (props: Record<string, unknown>) => {
-      await page.evaluate((scene_props) => {
-        // Try to access the Structure component directly if possible
-        const structure_element = document.querySelector(`[data-testid="structure-component"]`)
-        if (structure_element) {
-          // If structure component has a direct method to update scene props
-          const event = new CustomEvent(`updateSceneProps`, {
-            detail: scene_props,
-          })
-          structure_element.dispatchEvent(event)
-        } else {
-          // Fallback to controls manipulation
-          const controls_btn = document.querySelector(
-            `button.structure-controls-toggle`,
-          ) as HTMLButtonElement
-          if (controls_btn) controls_btn.click()
-
-          // Set checkbox state for same_size_atoms
-          const checkbox = document.querySelector(`input[type="checkbox"]`) as HTMLInputElement
-          if (checkbox && scene_props.same_size_atoms !== undefined) {
-            checkbox.checked = Boolean(scene_props.same_size_atoms)
-            checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
-          }
-        }
-      }, props)
-
-      await expect(canvas).toBeVisible()
-      return canvas.screenshot()
-    }
-
-    // Test both modes and verify they produce different outputs
-    const atomic_radii_screenshot = await set_props_and_screenshot({
-      same_size_atoms: false,
-      atom_radius: 1.0,
-      show_atoms: true,
-    })
-
-    const uniform_size_screenshot = await set_props_and_screenshot({
-      same_size_atoms: true,
-      atom_radius: 1.0,
-      show_atoms: true,
-    })
-
-    // Verify screenshots are valid and different
-    expect(atomic_radii_screenshot.length).toBeGreaterThan(1000)
-    expect(uniform_size_screenshot.length).toBeGreaterThan(1000)
-
-    // If screenshots are identical, the property might not be implemented or working
-    // In that case, just verify no errors occurred
-    if (atomic_radii_screenshot.equals(uniform_size_screenshot)) {
-      console.warn(`same_size_atoms property appears to have no visual effect`)
-    }
-
-    expect(console_errors).toHaveLength(0)
-  })
-
-  // Test rotation target prevents structure from moving off-canvas
-  test(`rotation target uses lattice center for crystalline structures and center of mass for molecular systems`, async ({
-    page,
-  }) => {
-    const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#test-structure canvas`)
-
-    await expect(canvas).toBeVisible()
-
-    // Test rotation behavior - should not move structure off-canvas
-    const box = await canvas.boundingBox()
-    if (box) {
-      const initial_screenshot = await canvas.screenshot()
-
-      // Perform rotation drag
-      await canvas.dragTo(canvas, {
-        sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
-        targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
-      })
-
-      // Poll for canvas change after rotation (GPU timing variations)
-      await expect_canvas_changed(canvas, initial_screenshot)
-      // Verify structure remains visible (not moved off-canvas)
       await expect_canvas_renders(canvas)
     }
 

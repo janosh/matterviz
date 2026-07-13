@@ -51,75 +51,57 @@ describe(`gaussian_kde`, () => {
     expect(trapz(grid, density)).toBeCloseTo(1, 1) // ~1 within trapezoid + tail-truncation error
   })
 
-  test(`silverman bandwidth matches its closed form for [1,2,3,4,5]`, () => {
-    // std(ddof=1)=1.58114, IQR=2 -> min(std, IQR/1.34=1.49254)=1.49254
-    // 0.9 * 1.49254 * 5^-0.2 (=0.724780) = 0.973585
-    expect(silverman_bandwidth([1, 2, 3, 4, 5])).toBeCloseTo(0.973585, 5)
-  })
-
-  test(`scott bandwidth matches its closed form for [1,2,3,4,5]`, () => {
-    // std(ddof=1)=1.58114 ; 1.58114 * 5^-0.2 = 1.14594
-    expect(scott_bandwidth([1, 2, 3, 4, 5])).toBeCloseTo(1.14594, 4)
-  })
+  test.each([
+    // silverman: 0.9 * min(std(ddof=1)=1.58114, IQR/1.34=1.49254) * 5^-0.2 = 0.973585
+    [`silverman`, silverman_bandwidth, 0.973585, 5],
+    // scott: std(ddof=1)=1.58114 * 5^-0.2 = 1.14594
+    [`scott`, scott_bandwidth, 1.14594, 4],
+  ] as const)(
+    `%s bandwidth matches its closed form for [1,2,3,4,5]`,
+    (_rule, bandwidth_fn, expected, digits) => {
+      expect(bandwidth_fn([1, 2, 3, 4, 5])).toBeCloseTo(expected, digits)
+    },
+  )
 
   test(`respects clip bounds (RMSD >= 0)`, () => {
     const { grid } = gaussian_kde([0.1, 0.5, 1, 2], { clip: [0, null], n_points: 50 })
     expect(grid[0]).toBeGreaterThanOrEqual(0)
   })
 
-  test.each([
-    { label: `inverted clip`, clip: [10, 5] as [number | null, number | null] },
-    {
-      label: `clip lower bound above all data`,
-      clip: [100, null] as [number | null, number | null],
-    },
-    {
-      label: `clip upper bound below all data`,
-      clip: [null, -100] as [number | null, number | null],
-    },
+  test.each<{ label: string; clip: [number | null, number | null] }>([
+    { label: `inverted clip`, clip: [10, 5] },
+    { label: `clip lower bound above all data`, clip: [100, null] },
+    { label: `clip upper bound below all data`, clip: [null, -100] },
   ])(`degrades to empty density on an unusable clip range ($label)`, ({ clip }) => {
     const { grid, density } = gaussian_kde([1, 2, 3, 4, 5], { clip, n_points: 50 })
     expect(grid).toEqual([])
     expect(density).toEqual([])
   })
 
-  test(`subsampling (max_samples) leaves bandwidth and grid extent unchanged`, () => {
-    const samples = normal_samples(4000, 11)
-    const full = gaussian_kde(samples, { n_points: 50, cut: 2 })
-    const subbed = gaussian_kde(samples, { n_points: 50, cut: 2, max_samples: 500 })
-    // bandwidth comes from the full sample, grid range from full extremes -> identical
-    expect(subbed.bandwidth).toBeCloseTo(full.bandwidth, 12)
-    expect(subbed.grid[0]).toBeCloseTo(full.grid[0], 12)
-    expect(subbed.grid.at(-1)).toBeCloseTo(full.grid.at(-1) as number, 12)
-    // densities stay close despite the subsample
-    const max_abs = Math.max(
-      ...subbed.density.map((val, idx) => Math.abs(val - full.density[idx])),
-    )
-    expect(max_abs).toBeLessThan(0.05)
-  })
-
-  test(`large max_samples path stays close to exact KDE`, () => {
-    const samples = normal_samples(6000, 13)
-    const exact = gaussian_kde(samples, { n_points: 80, cut: 2 })
-    const binned = gaussian_kde(samples, { n_points: 80, cut: 2, max_samples: 5000 })
-    expect(binned.bandwidth).toBeCloseTo(exact.bandwidth, 12)
-    expect(binned.grid[0]).toBeCloseTo(exact.grid[0], 12)
-    expect(binned.grid.at(-1)).toBeCloseTo(exact.grid.at(-1) as number, 12)
-    const max_abs = Math.max(
-      ...binned.density.map((val, idx) => Math.abs(val - exact.density[idx])),
-    )
-    expect(max_abs).toBeLessThan(0.02)
-  })
-
-  test.each([{ label: `empty`, samples: [] as number[] }])(
-    `edge case: $label`,
-    ({ samples }) => {
-      const { grid, density, bandwidth } = gaussian_kde(samples)
-      expect(grid).toEqual([])
-      expect(density).toEqual([])
-      expect(bandwidth).toBe(0)
+  // max_samples <= KDE_EXACT_SAMPLE_LIMIT strides the sample; larger uses the binned path
+  test.each([
+    [`strided subsample`, 4000, 11, 50, 500, 0.05],
+    [`binned large-sample path`, 6000, 13, 80, 5000, 0.02],
+  ] as const)(
+    `%s stays close to the exact KDE`,
+    (_label, count, seed, n_points, max_samples, tol) => {
+      const samples = normal_samples(count, seed)
+      const exact = gaussian_kde(samples, { n_points, cut: 2 })
+      const approx = gaussian_kde(samples, { n_points, cut: 2, max_samples })
+      // bandwidth comes from the full sample, grid range from full extremes -> identical
+      expect(approx.bandwidth).toBeCloseTo(exact.bandwidth, 12)
+      expect(approx.grid[0]).toBeCloseTo(exact.grid[0], 12)
+      expect(approx.grid.at(-1)).toBeCloseTo(exact.grid.at(-1) as number, 12)
+      const max_abs = Math.max(
+        ...approx.density.map((val, idx) => Math.abs(val - exact.density[idx])),
+      )
+      expect(max_abs).toBeLessThan(tol)
     },
   )
+
+  test(`empty input yields an empty result`, () => {
+    expect(gaussian_kde([])).toEqual({ grid: [], density: [], bandwidth: 0 })
+  })
 
   test(`all-equal samples produce a finite positive-bandwidth density`, () => {
     const { density, bandwidth } = gaussian_kde([5, 5, 5, 5], { n_points: 11 })

@@ -404,6 +404,7 @@
     return measured_footprint(legend_element, { width: 120, height: 60 })
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
+  const should_show_legend = $derived(show_legend && legend != null && series.length > 1)
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each filled bar is modeled as a
   // vertical segment (top -> baseline) so the legend can't hide inside a tall bar. Built from
@@ -441,11 +442,7 @@
       obstacles_norm,
       // gate on legend_element (the render signal) not legend_data, whose entries can read pad
       legend:
-        show_legend &&
-        legend != null &&
-        series.length > 1 &&
-        legend_element != null &&
-        !legend_has_explicit_pos
+        should_show_legend && legend_element != null && !legend_has_explicit_pos
           ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
           : null,
     }),
@@ -474,9 +471,6 @@
   const marginal_has_axis = $derived(
     marginal_axis_presence(x2_series.length > 0, y2_series.length > 0),
   )
-  const legend_auto_outside = $derived(decor.legend_outside)
-  const legend_outside_x = $derived(decor.legend_pos.x)
-  const legend_outside_y = $derived(decor.legend_pos.y)
 
   // Scales and data (x/x2 share the horizontal pixel span, y/y2 the inverted vertical one)
   let scales = $derived(
@@ -533,7 +527,6 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    x2_max: measure_max_tick_width(ticks.x2, final_x2_axis.format ?? ``),
     y_max: measure_max_tick_width(ticks.y, final_y_axis.format ?? ``),
     y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format ?? ``),
   })
@@ -565,8 +558,7 @@
 
   // Calculate best legend placement using continuous grid sampling
   const get_legend_placement = () => {
-    const should_place = show_legend && legend != null && series.length > 1
-    if (!should_place || !width || !height) return null
+    if (!should_show_legend || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
@@ -1045,10 +1037,10 @@
     />
   {/if}
 
-  {#if show_legend && legend != null && series.length > 1}
+  {#if should_show_legend && legend}
     {@const legend_pos = placed_coords(
-      legend_auto_outside,
-      { x: legend_outside_x, y: legend_outside_y },
+      decor.legend_outside,
+      decor.legend_pos,
       legend_tween.placed(),
       legend_tween.coords.current,
       { x: pad.l + 10, y: pad.t + 10 },
