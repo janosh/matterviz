@@ -2,6 +2,7 @@ import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import {
+  canvas_screenshot,
   dispatch_cancelable_keydown,
   drop_file,
   enter_edit_atoms_mode,
@@ -2037,6 +2038,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection behavior and visual differences`, async ({ page }) => {
+    test.setTimeout(IS_CI ? 90_000 : 45_000)
     const canvas = page.locator(`#test-structure canvas`)
 
     // Test both projections produce different visuals and respond to zoom
@@ -2050,18 +2052,19 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await camera_projection_select.scrollIntoViewIfNeeded()
       await camera_projection_select.selectOption(projection)
       await expect(camera_projection_select).toHaveValue(projection)
-      // Let camera/projection updates settle before visual assertions.
+      // Close the pane before screenshots so overlays don't pollute the clip.
+      await canvas.click({ force: true })
+      await expect(pane_div).not.toHaveClass(/pane-open/, { timeout: get_canvas_timeout() })
       await page.waitForTimeout(100)
 
-      screenshots[`${projection}_initial`] = await canvas.screenshot()
+      screenshots[`${projection}_initial`] = await canvas_screenshot(canvas)
       await canvas.hover({ force: true })
-      await canvas.click({ force: true })
       // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
       await page.mouse.wheel(0, -250)
       await page.mouse.wheel(0, -250)
       // Wait for zoom to be applied (screenshot should differ from initial)
       await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
-      screenshots[`${projection}_zoomed`] = await canvas.screenshot()
+      screenshots[`${projection}_zoomed`] = await canvas_screenshot(canvas)
     }
 
     // Verify zoom responsiveness and visual differences

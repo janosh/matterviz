@@ -1,6 +1,8 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  canvas_screenshot,
   expect_canvas_changed,
+  IS_CI,
   open_settings_pane,
   set_input_value,
   wait_for_canvas_rendered,
@@ -59,11 +61,12 @@ test.describe(`Isosurface page`, () => {
 
   test.describe(`Volumetric slices`, () => {
     test(`switches between HKL, Cartesian, filled, and contour views`, async ({ page }) => {
+      test.setTimeout(IS_CI ? 90_000 : 45_000)
       const slice = page.getByTestId(`volume-slice`)
       const canvas = slice.locator(`canvas`)
       await wait_for_canvas_rendered(canvas)
       expect(Number(await canvas.getAttribute(`width`))).toBeGreaterThanOrEqual(512)
-      const initial = await canvas.screenshot()
+      const initial = await canvas_screenshot(canvas)
 
       await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
       await expect(page.getByLabel(`Cartesian point x`)).toBeVisible()

@@ -194,6 +194,26 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="application"]`)
 
+// Capture a canvas without locator.screenshot()'s "wait for element to be stable".
+// Under CI load, continuous WebGL/layout updates keep the box moving and that wait
+// burns the whole test timeout (seen on isosurface slice + camera projection E2Es).
+export async function canvas_screenshot(canvas: Locator): Promise<Buffer> {
+  await canvas.scrollIntoViewIfNeeded()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error(`Canvas has no bounding box`)
+  // Clip to the visible viewport; page.screenshot rejects off-screen clips.
+  const page = canvas.page()
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 }
+  const x = Math.min(Math.max(0, box.x), viewport.width - 1)
+  const y = Math.min(Math.max(0, box.y), viewport.height - 1)
+  const width = Math.max(1, Math.min(Math.ceil(box.width), viewport.width - x))
+  const height = Math.max(1, Math.min(Math.ceil(box.height), viewport.height - y))
+  return page.screenshot({
+    clip: { x, y, width, height },
+    animations: `disabled`,
+  })
+}
+
 // Poll until canvas has rendered non-trivial content (screenshot size > threshold)
 // Use this to wait for WebGL/Three.js canvas initialization before interacting.
 // Note: Screenshot size is a pragmatic heuristic that can vary by codec/compression.
@@ -207,7 +227,7 @@ export async function wait_for_canvas_rendered(
   const min_size = options?.min_size ?? 1000
   const timeout = options?.timeout ?? get_canvas_timeout()
   await expect
-    .poll(async () => (await canvas.screenshot()).length, { timeout })
+    .poll(async () => (await canvas_screenshot(canvas)).length, { timeout })
     .toBeGreaterThan(min_size)
 }
 
@@ -222,7 +242,7 @@ export async function expect_canvas_changed(
 ): Promise<void> {
   const effective_timeout = timeout ?? get_canvas_timeout()
   await expect(async () => {
-    const current = await canvas.screenshot()
+    const current = await canvas_screenshot(canvas)
     expect(initial.equals(current)).toBe(false)
   }).toPass({ timeout: effective_timeout })
 }
