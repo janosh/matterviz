@@ -397,7 +397,10 @@ export function scale_lattice_matrix(
   ]
 }
 
-const create_cart_to_frac_matrix = (lattice: Matrix3x3): Matrix3x3 =>
+// Matrix mapping Cartesian coords to fractional (inverse of transposed
+// row-vector lattice). Prefer create_cart_to_frac unless the raw matrix is
+// needed, e.g. for allocation-free scalar arithmetic in hot loops.
+export const create_cart_to_frac_matrix = (lattice: Matrix3x3): Matrix3x3 =>
   matrix_inverse_3x3(transpose_3x3_matrix(lattice))
 
 // Curried fractional→Cartesian converter (caches transposed matrix)
@@ -1094,12 +1097,12 @@ export const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
 
 // One half of Andrew's monotone chain built from x-then-y *pre-sorted* points
 // (lower chain; pass reversed input for the upper chain).
-export const monotone_chain = (sorted: Vec2[]): Vec2[] => {
+export const monotone_chain = (sorted: Vec2[], tolerance = 0): Vec2[] => {
   const chain: Vec2[] = []
   for (const pt of sorted) {
     while (
       chain.length >= 2 &&
-      cross_2d(chain[chain.length - 2], chain[chain.length - 1], pt) <= 0
+      cross_2d(chain[chain.length - 2], chain[chain.length - 1], pt) <= tolerance
     ) {
       chain.pop()
     }
@@ -1110,12 +1113,12 @@ export const monotone_chain = (sorted: Vec2[]): Vec2[] => {
 
 // Full 2D convex hull via Andrew's monotone chain algorithm.
 // Returns vertices in counter-clockwise order.
-export function convex_hull_2d(points: Vec2[]): Vec2[] {
+export function convex_hull_2d(points: Vec2[], tolerance = 0): Vec2[] {
   if (points.length < 3) return [...points]
 
   const sorted = points.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
-  const lower = monotone_chain(sorted)
-  const upper = monotone_chain(sorted.toReversed())
+  const lower = monotone_chain(sorted, tolerance)
+  const upper = monotone_chain(sorted.toReversed(), tolerance)
 
   // Remove last point of each half (it's the first point of the other)
   lower.pop()

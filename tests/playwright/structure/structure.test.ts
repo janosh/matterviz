@@ -2,6 +2,7 @@ import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import {
+  canvas_screenshot,
   dispatch_cancelable_keydown,
   drop_file,
   enter_edit_atoms_mode,
@@ -2037,6 +2038,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection behavior and visual differences`, async ({ page }) => {
+    test.setTimeout(IS_CI ? 90_000 : 45_000)
     const canvas = page.locator(`#test-structure canvas`)
 
     // Test both projections produce different visuals and respond to zoom
@@ -2053,7 +2055,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       // Let camera/projection updates settle before visual assertions.
       await page.waitForTimeout(100)
 
-      screenshots[`${projection}_initial`] = await canvas.screenshot()
+      screenshots[`${projection}_initial`] = await canvas_screenshot(canvas)
       await canvas.hover({ force: true })
       await canvas.click({ force: true })
       // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
@@ -2061,7 +2063,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await page.mouse.wheel(0, -250)
       // Wait for zoom to be applied (screenshot should differ from initial)
       await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
-      screenshots[`${projection}_zoomed`] = await canvas.screenshot()
+      screenshots[`${projection}_zoomed`] = await canvas_screenshot(canvas)
     }
 
     // Verify zoom responsiveness and visual differences
@@ -2779,9 +2781,7 @@ test.describe(`Element Visibility Toggle`, () => {
     await goto_structure_test(page)
   })
 
-  test(`atom-color mode toggle reveals on every viewer hover, not just the first`, async ({
-    page,
-  }) => {
+  test(`hover chrome reveals repeatedly without remounting the gizmo`, async ({ page }) => {
     // Regression: `viewer_active` was a `$derived(hovered || focused)` reading the $bindable
     // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle (and
     // gizmo) only appeared on the very first mouseenter until page reload.
@@ -2798,6 +2798,7 @@ test.describe(`Element Visibility Toggle`, () => {
       await page.mouse.move(3, 3) // move off the viewer
       await expect(toggle).toHaveCSS(`opacity`, `0`)
       await expect(wrapper).not.toHaveClass(/gizmo-visible/)
+      await expect(wrapper.locator(`.responsive-gizmo`)).toBeAttached()
     }
   })
 

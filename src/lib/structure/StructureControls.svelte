@@ -318,7 +318,7 @@
   {#if volumetric_data?.length && isosurface_settings}
     <IsosurfaceControls
       bind:settings={isosurface_settings}
-      volumes={volumetric_data}
+      bind:volumes={volumetric_data}
       bind:active_volume_idx
     />
   {/if}

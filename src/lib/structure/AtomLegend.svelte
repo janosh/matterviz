@@ -546,6 +546,8 @@
   .atom-legend {
     position: absolute;
     z-index: var(--legend-z-index, 1);
+    /* own compositing layer, or WKWebView paints the canvas over this (see app.css) */
+    will-change: transform;
     pointer-events: auto;
     visibility: visible;
     filter: var(--legend-filter, grayscale(10%) brightness(0.95) saturate(0.8));

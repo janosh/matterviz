@@ -13,7 +13,10 @@
   import {
     auto_isosurface_settings,
     DEFAULT_ISOSURFACE_SETTINGS,
-    tile_volumetric_data,
+    label_file_volumes,
+    lattices_match,
+    materialize_layers,
+    merge_imported_volumes,
   } from '$lib/isosurface/types'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
@@ -315,10 +318,7 @@
       else {
         // Parse structure internally when no handler provided
         try {
-          const text_content =
-            content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-          const parsed = parse_file_content(text_content, filename)
-          emit_file_load_event(parsed, filename, content)
+          parse_and_emit_file(content, filename)
         } catch (error) {
           error_msg = `Failed to parse structure: ${to_error(error).message}`
           on_error?.({ error_msg, filename })
@@ -830,7 +830,9 @@
   $effect(() => {
     viewer_active = hovered || focused
   })
-  let scene_gizmo = $derived(viewer_active && (scene_props.gizmo ?? scene_props.show_gizmo))
+  // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
+  // OrbitControls/Gizmo and resets camera rotation. Visibility is CSS-gated by `gizmo-visible`.
+  let scene_gizmo = $derived(scene_props.gizmo ?? scene_props.show_gizmo)
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
   ])
@@ -898,16 +900,16 @@
     })
   })
 
-  // Tile volumetric data to match supercell when active.
-  // Gate on !supercell_loading so the tiled volume and supercell structure update
-  // in the same frame (large supercells defer structure via setTimeout).
-  let supercell_volume = $derived.by(() => {
-    const vol = volumetric_data?.[active_volume_idx]
-    if (!vol || !has_supercell || supercell_loading) return vol
+  // Supercell tiling factors for isosurface geometry (tiling itself happens in
+  // the Isosurface component so color sampling can use the untiled full-res
+  // volumes). Gate on !supercell_loading so tiled surfaces and the supercell
+  // structure update in the same frame (large supercells defer via setTimeout).
+  let volume_scaling = $derived.by((): Vec3 => {
+    if (!has_supercell || supercell_loading) return [1, 1, 1]
     try {
-      return tile_volumetric_data(vol, parse_supercell_scaling(supercell_scaling))
+      return parse_supercell_scaling(supercell_scaling)
     } catch {
-      return vol
+      return [1, 1, 1]
     }
   })
 
@@ -1034,7 +1036,9 @@
     scene_props,
     gizmo: scene_gizmo,
     lattice_props,
-    volumetric_data: supercell_volume,
+    volumetric_data,
+    volume_scaling,
+    active_volume_idx,
     isosurface_settings,
     bond_edits_enabled,
     bond_edit_order,
@@ -1100,18 +1104,65 @@
       total_atoms: loaded_structure.sites?.length || 0,
     })
 
+  // The currently loaded structure's lattice matrix (undefined for molecules/none)
+  const current_lattice_matrix = () =>
+    structure && `lattice` in structure ? structure.lattice.matrix : undefined
+  const shares_current_lattice = (matrix: Parameters<typeof lattices_match>[1]): boolean =>
+    lattices_match(current_lattice_matrix(), matrix)
+
   // Try to parse content as a volumetric file, setting both structure and volumetric data.
   // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
+  // When the file describes the same cell as already-loaded volumes, its volumes are
+  // APPENDED (or replaced in place on re-import of the same source file) so multiple
+  // fields — e.g. density + ESP — coexist and can cross-color each other's isosurfaces.
+  // A file with a different lattice replaces the current structure and volumes.
   // Returns the parsed structure on success, or null if the file isn't a volumetric format.
   function try_parse_volumetric(text_content: string, filename: string): AnyStructure | null {
     const vol_result = parse_volumetric_file(text_content, filename)
     if (!vol_result) return null
+
+    const incoming = label_file_volumes(vol_result.volumes, filename)
+    const same_cell = shares_current_lattice(vol_result.structure.lattice?.matrix)
+    const added_toast = (count: number) =>
+      `Added ${count} volume${count > 1 ? `s` : ``} from ${filename}`
+
+    if (same_cell && structure) {
+      // Same cell: keep the structure and camera, only update volumes
+      if (volumetric_data?.length) {
+        // Materialize the implicit single surface into explicit layers so existing
+        // surfaces survive the transition to multi-volume mode
+        const merged = merge_imported_volumes(
+          volumetric_data,
+          materialize_layers(isosurface_settings, active_volume_idx),
+          incoming,
+          active_volume_idx,
+        )
+        volumetric_data = merged.volumes
+        isosurface_settings = { ...isosurface_settings, layers: merged.layers }
+        active_volume_idx = merged.first_touched_idx
+        show_toast(
+          merged.n_added > 0
+            ? added_toast(merged.n_added)
+            : `Reloaded volumes from ${filename}`,
+        )
+      } else if (incoming[0]) {
+        // First volumetric file for this structure
+        volumetric_data = incoming
+        isosurface_settings = auto_isosurface_settings(incoming[0].data_range)
+        active_volume_idx = 0
+        show_toast(added_toast(incoming.length))
+      }
+      return structure
+    }
+
+    // Replace: new system (or nothing loaded yet)
+    clear_camera_state()
     // parse_volumetric_file extracts structure from file header;
     // parsers set pbc so the lattice conforms to Crystal's LatticeType
     structure = vol_result.structure as AnyStructure
-    volumetric_data = vol_result.volumes
+    volumetric_data = incoming
     // Auto-compute reasonable isosurface settings from data range
-    const vol = vol_result.volumes[0]
+    const vol = incoming[0]
     if (vol) {
       isosurface_settings = auto_isosurface_settings(vol.data_range)
       active_volume_idx = 0
@@ -1122,30 +1173,36 @@
   // Parse file content, trying volumetric format first then falling back to plain structure.
   // Returns the parsed structure on success, throws on failure.
   function parse_file_content(text_content: string, filename: string): AnyStructure {
-    clear_camera_state()
     const vol_struct = try_parse_volumetric(text_content, filename)
     if (vol_struct) return vol_struct
-    // Clear stale volumetric data when loading a non-volumetric file
-    volumetric_data = []
     const parsed = parse_any_structure(text_content, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
+    // Keep loaded volumes and camera when the new structure describes the same
+    // cell (e.g. a mixed batch drop of CHGCAR + POSCAR, in either order);
+    // clear both for a genuinely new system
+    const same_cell = shares_current_lattice(
+      `lattice` in parsed ? parsed.lattice?.matrix : undefined,
+    )
+    if (!same_cell) {
+      clear_camera_state()
+      volumetric_data = []
+    }
     structure = parsed
     return parsed
   }
 
+  function parse_and_emit_file(content: string | ArrayBuffer, filename: string): void {
+    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+    emit_file_load_event(parse_file_content(text, filename), filename, content)
+  }
+
   const handle_file_drop = create_file_drop_handler({
     allow: () => allow_file_drop,
+    // Parse errors propagate so multi-file batches aggregate all failures into
+    // one message instead of the last error overwriting earlier ones
     on_drop: (content, filename) => {
       if (on_file_drop) return on_file_drop(content, filename)
-      try {
-        const text_content =
-          content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-        const parsed = parse_file_content(text_content, filename)
-        emit_file_load_event(parsed, filename, content)
-      } catch (err) {
-        error_msg = `Failed to parse structure: ${to_error(err).message}`
-        on_error?.({ error_msg, filename })
-      }
+      parse_and_emit_file(content, filename)
     },
     on_error: (msg) => {
       error_msg = msg
@@ -1500,7 +1557,7 @@
 <div
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
-  class:gizmo-visible={Boolean(scene_gizmo)}
+  class:gizmo-visible={viewer_active && Boolean(scene_gizmo)}
   class:multi-view={multi_view}
   role="application"
   tabindex="0"
@@ -2098,7 +2155,7 @@
     gap: 1rem;
     max-width: min(90%, 400px);
     font-size: 0.9rem;
-    z-index: 1000;
+    z-index: var(--z-index-viewer-tooltip, 1000);
   }
   .symmetry-error span {
     flex: 1;
@@ -2125,7 +2182,7 @@
     padding: 0.4rem 0.8rem;
     border-radius: var(--border-radius, 3pt);
     font-size: 0.8rem;
-    z-index: 100;
+    z-index: var(--z-index-viewer-dropdown, 100);
     pointer-events: none;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     animation: toast-fade 2s ease-in-out;

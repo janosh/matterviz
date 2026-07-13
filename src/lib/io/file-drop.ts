@@ -1,6 +1,6 @@
 // Shared file-drop handler composable for drag-and-drop file loading.
 import { decompress_file } from './decompress'
-import { handle_url_drop } from './url-drop'
+import { dropped_file_url, load_from_url } from './url-drop'
 import { to_error } from '$lib/utils'
 
 export interface FileDropOptions {
@@ -27,40 +27,65 @@ export const drag_over_handlers = (opts: {
 })
 
 // Handles URL drops (from FilePicker), direct file drops with decompression,
-// loading state, and error reporting.
-export const create_file_drop_handler =
-  (opts: FileDropOptions): ((event: DragEvent) => Promise<void>) =>
-  async (event: DragEvent) => {
-    event.preventDefault()
-    if (!opts.allow()) return
-
+// loading state, and error reporting. Multiple dropped files are processed
+// sequentially in drop order so e.g. several cube files can be imported at once.
+// Overlapping drops are queued: a batch starting while a previous one is still
+// processing would interleave on_drop state mutations (e.g. torn volume lists).
+export const create_file_drop_handler = (
+  opts: FileDropOptions,
+): ((event: DragEvent) => Promise<void>) => {
+  async function process_batch(url: string | undefined, files: File[]) {
     opts.set_loading?.(true)
-
-    let drop_filename = ``
     try {
-      let url_error: string | undefined
-      const handled = await handle_url_drop(event, opts.on_drop).catch((exc) => {
-        url_error = to_error(exc).message
-        return false
-      })
-      if (handled) return
-
-      const file = event.dataTransfer?.files[0]
-      if (!file) {
-        if (url_error) opts.on_error?.(`Failed to load from URL: ${url_error}`)
-        return
+      // One failing item must not abort the rest of the batch
+      const failures: string[] = []
+      if (url) {
+        try {
+          await load_from_url(url, opts.on_drop)
+        } catch (exc) {
+          // URL failed; if plain files were also dropped, still process them
+          // and fold the URL failure into the aggregate report
+          if (files.length === 0) {
+            opts.on_error?.(`Failed to load from URL: ${to_error(exc).message}`)
+            return
+          }
+          failures.push(`URL ${url}: ${to_error(exc).message}`)
+        }
       }
-      drop_filename = file.name
+      if (files.length === 0) return
 
-      const { content, filename } = await decompress_file(file)
-      if (content) await opts.on_drop(content, filename)
+      for (const file of files) {
+        try {
+          const { content, filename } = await decompress_file(file)
+          if (content) await opts.on_drop(content, filename)
+          else failures.push(`${file.name}: file is empty`)
+        } catch (exc) {
+          failures.push(`${file.name}: ${to_error(exc).message}`)
+        }
+      }
+      if (failures.length > 0) {
+        opts.on_error?.(
+          `Failed to load ${failures.length} file${failures.length > 1 ? `s` : ``} — ${failures.join(
+            `; `,
+          )}`,
+        )
+      }
     } catch (exc) {
-      const detail = to_error(exc).message
-      const msg = drop_filename
-        ? `Failed to load file ${drop_filename}: ${detail}`
-        : `Failed to load file: ${detail}`
-      opts.on_error?.(msg)
+      opts.on_error?.(`Failed to load file: ${to_error(exc).message}`)
     } finally {
       opts.set_loading?.(false)
     }
   }
+
+  let queue: Promise<void> = Promise.resolve()
+  return (event: DragEvent): Promise<void> => {
+    event.preventDefault()
+    if (!opts.allow()) return Promise.resolve()
+    // DataTransfer contents are only readable during drop-event dispatch, so
+    // capture them before deferring to the queue
+    const url = dropped_file_url(event)
+    const files = Array.from(event.dataTransfer?.files ?? [])
+    queue = queue.then(() => process_batch(url, files)).catch(() => undefined)
+    return queue
+  }
+}
