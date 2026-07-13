@@ -305,20 +305,45 @@
   // completions so a newer data_url (or an externally-supplied structure, via the cleanup)
   // can't be clobbered by a slow earlier fetch.
   let data_url_load_id = 0
+  let loaded_data_url: string | undefined
+  let url_owned_structure: AnyStructure | undefined
   $effect(() => {
-    if (!data_url || structure) return
+    const requested_url = data_url
+    const current_structure = structure
+    if (
+      is_internal_edit &&
+      loaded_data_url &&
+      current_structure &&
+      current_structure !== url_owned_structure
+    ) {
+      url_owned_structure = current_structure
+    }
+    const caller_owns_structure = Boolean(
+      current_structure && current_structure !== url_owned_structure,
+    )
+    if (!requested_url || caller_owns_structure) {
+      loaded_data_url = undefined
+      url_owned_structure = undefined
+      return
+    }
+    if (loaded_data_url === requested_url) return
+
     const load_id = ++data_url_load_id
     const is_current = () => load_id === data_url_load_id
     loading = true
     error_msg = undefined
 
-    load_from_url(data_url, (content, filename) => {
+    load_from_url(requested_url, (content, filename) => {
       if (!is_current()) return // stale response
-      if (on_file_drop) on_file_drop(content, filename)
-      else {
+      if (on_file_drop) {
+        on_file_drop(content, filename)
+        loaded_data_url = requested_url
+      } else {
         // Parse structure internally when no handler provided
         try {
           parse_and_emit_file(content, filename)
+          url_owned_structure = structure
+          loaded_data_url = requested_url
         } catch (error) {
           error_msg = `Failed to parse structure: ${to_error(error).message}`
           on_error?.({ error_msg, filename })
@@ -329,7 +354,7 @@
         if (!is_current()) return
         console.error(`Failed to load structure from URL:`, error)
         error_msg = `Failed to load structure: ${error.message}`
-        on_error?.({ error_msg, filename: data_url })
+        on_error?.({ error_msg, filename: requested_url })
       })
       .finally(() => {
         if (is_current()) loading = false
