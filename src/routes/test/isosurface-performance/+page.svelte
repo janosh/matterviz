@@ -1,6 +1,6 @@
 <script lang="ts">
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
-  import type { IsosurfaceProfileEvent, IsosurfaceProfiler } from '$lib/isosurface/_profile'
+  import type { IsosurfaceProfileEvent, IsosurfaceProfiler } from '$lib/isosurface/profile'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,

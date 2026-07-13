@@ -1,12 +1,12 @@
 import { marching_cubes_buffers } from '$lib/marching-cubes'
-import { flatten_grid, inflate_grid } from './_grid'
-import { prepare_geometry_grid } from './sampling'
-import type { VolumetricData } from './types'
 import type {
   GeometryWorkerRequest,
   GeometryWorkerResponse,
   TransferableVolume,
-} from './_geometry-worker-types'
+} from './geometry-worker-types'
+import { flatten_grid, inflate_grid } from './grid'
+import { prepare_geometry_grid } from './sampling'
+import type { VolumetricData } from './types'
 
 interface WorkerScope {
   addEventListener(

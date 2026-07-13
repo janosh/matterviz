@@ -25,19 +25,19 @@
     is_signed_range,
     scalars_to_vertex_colors,
   } from './coloring'
+  import type {
+    GeometryWorkerRequest,
+    GeometryWorkerResponse,
+    TransferableVolume,
+  } from './geometry-worker-types'
+  import { flatten_grid, grid_point_count, inflate_grid } from './grid'
+  import { profile_stage, record_profile, type IsosurfaceProfiler } from './profile'
   import type { DisplayRange } from './sampling'
   import {
     prepare_geometry_grid,
     resolve_volume_display_range,
     sample_volume_at_positions,
   } from './sampling'
-  import { flatten_grid, grid_point_count, inflate_grid } from './_grid'
-  import { profile_stage, record_profile, type IsosurfaceProfiler } from './_profile'
-  import type {
-    GeometryWorkerRequest,
-    GeometryWorkerResponse,
-    TransferableVolume,
-  } from './_geometry-worker-types'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from './types'
 

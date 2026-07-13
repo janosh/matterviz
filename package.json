@@ -208,7 +208,6 @@
   },
   "scripts": {
     "test": "vp test --run && playwright test",
-    "bench:isosurface": "MATTERVIZ_PERF=1 vp test --run tests/vitest/isosurface/performance.test.ts && MATTERVIZ_PERF=1 playwright test tests/playwright/isosurface-performance.test.ts --workers=1",
     "knip": "knip --include dependencies,exports,types,nsExports",
     "publint": "publint",
     "package-dist-assets": "node scripts/package-dist-assets.ts",

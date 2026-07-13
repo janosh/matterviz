@@ -3,9 +3,8 @@
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { create_cart_to_frac_matrix, scale_lattice_matrix } from '$lib/math'
-import { grid_dimensions } from './_grid'
-import type { VolumetricData } from './types'
-import { downsample_grid, MAX_GRID_POINTS } from './types'
+import { grid_dimensions } from './grid'
+import { downsample_grid, MAX_GRID_POINTS, type VolumetricData } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
