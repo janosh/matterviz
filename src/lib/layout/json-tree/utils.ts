@@ -93,7 +93,7 @@ function format_path_segment(segment: string | number, is_first: boolean = false
     return is_first ? segment : `.${segment}`
   }
   // Use bracket notation for keys with special characters
-  return `["${segment.replaceAll('"', `\\"`)}"]`
+  return `[${JSON.stringify(segment)}]`
 }
 
 // Format a full path from segments
@@ -322,36 +322,69 @@ export function parse_path(path: string): (string | number)[] {
   if (!path) return []
 
   const segments: (string | number)[] = []
-  let current = ``
-  let in_bracket = false
+  let pos = 0
 
-  // Bracket tokens are numeric indices or quoted keys (quotes stripped, \" unescaped)
   const push_bracket_token = (token: string): void => {
+    if (!token) return
     const num = Number(token)
-    if (Number.isNaN(num)) {
-      segments.push(token.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`))
-    } else segments.push(num)
+    segments.push(Number.isNaN(num) ? token : num)
   }
 
-  for (const char of path) {
-    if (char === `.` && !in_bracket) {
-      if (current) segments.push(current)
-      current = ``
-    } else if (char === `[`) {
-      if (current) segments.push(current)
-      current = ``
-      in_bracket = true
-    } else if (char === `]`) {
-      if (current) push_bracket_token(current)
-      current = ``
-      in_bracket = false
-    } else current += char
-  }
+  while (pos < path.length) {
+    if (path[pos] === `.`) {
+      pos++
+      continue
+    }
 
-  // Handle trailing content (e.g., unclosed bracket like "a[0")
-  if (current) {
-    if (in_bracket) push_bracket_token(current)
-    else segments.push(current)
+    if (path[pos] === `[`) {
+      pos++
+      if (path[pos] === `]`) {
+        pos++
+        continue
+      }
+
+      if (path[pos] === `"`) {
+        const json_start = pos
+        const content_start = pos + 1
+        pos++
+        let escaped = false
+        while (pos < path.length) {
+          const char = path[pos]
+          if (escaped) {
+            escaped = false
+          } else if (char === `\\`) {
+            escaped = true
+          } else if (char === `"`) {
+            break
+          }
+          pos++
+        }
+
+        if (pos >= path.length) {
+          segments.push(path.slice(content_start))
+          break
+        }
+
+        try {
+          segments.push(JSON.parse(path.slice(json_start, pos + 1)) as string)
+        } catch {
+          segments.push(path.slice(content_start, pos))
+        }
+        pos++
+        if (path[pos] === `]`) pos++
+        continue
+      }
+
+      const token_start = pos
+      while (pos < path.length && path[pos] !== `]`) pos++
+      push_bracket_token(path.slice(token_start, pos))
+      if (path[pos] === `]`) pos++
+      continue
+    }
+
+    const token_start = pos
+    while (pos < path.length && path[pos] !== `.` && path[pos] !== `[`) pos++
+    if (pos > token_start) segments.push(path.slice(token_start, pos))
   }
 
   return segments
