@@ -222,7 +222,7 @@ const read_explicit_overrides = (
   const overrides: Record<string, unknown> = {}
   for (const [key, default_value] of Object.entries(defaults)) {
     const full_key = prefix ? `${prefix}.${key}` : key
-    if (is_plain_object(default_value)) {
+    if (is_plain_object(default_value) && Object.keys(default_value).length > 0) {
       const nested = read_explicit_overrides(config, default_value, full_key)
       if (Object.keys(nested).length > 0) overrides[key] = nested
       continue

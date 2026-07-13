@@ -328,6 +328,7 @@ test.describe(`Histogram Component Tests`, () => {
 
       await legend_item.click()
       await expect(legend_item).not.toHaveClass(/hidden/)
+      expect(await get_bar_count(histogram)).toBeGreaterThan(0)
     }
 
     // Turn all series off - no bars, but legend and axes must remain functional

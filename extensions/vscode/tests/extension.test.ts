@@ -1633,15 +1633,18 @@ describe(`MatterViz Extension`, () => {
         'structure.atom_radius': 1.5,
         'structure.show_bonds': `always`,
         'structure.bond_color': `#ff0000`,
+        'structure.vector_configs': { force: { visible: true } },
         'trajectory.auto_play': true,
       })
-      expect(get_defaults().structure).toMatchObject({
+      const result = get_defaults()
+      expect(result.structure).toMatchObject({
         atom_radius: 1.5,
         show_bonds: `always`,
         bond_color: `#ff0000`,
         same_size_atoms: DEFAULTS.structure.same_size_atoms, // Falls back to default
+        vector_configs: { force: { visible: true } },
       })
-      expect(get_defaults().trajectory.auto_play).toBe(true)
+      expect(result.trajectory.auto_play).toBe(true)
     })
 
     test(`ignores package defaultValue from inspect()`, () => {
