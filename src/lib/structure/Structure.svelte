@@ -830,7 +830,9 @@
   $effect(() => {
     viewer_active = hovered || focused
   })
-  let scene_gizmo = $derived(viewer_active && (scene_props.gizmo ?? scene_props.show_gizmo))
+  // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
+  // OrbitControls/Gizmo and resets camera rotation. Visibility is CSS-gated by `gizmo-visible`.
+  let scene_gizmo = $derived(scene_props.gizmo ?? scene_props.show_gizmo)
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
   ])
@@ -1555,7 +1557,7 @@
 <div
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
-  class:gizmo-visible={Boolean(scene_gizmo)}
+  class:gizmo-visible={viewer_active && Boolean(scene_gizmo)}
   class:multi-view={multi_view}
   role="application"
   tabindex="0"
