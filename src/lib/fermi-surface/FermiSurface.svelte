@@ -5,7 +5,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { create_file_drop_handler, drag_over_handlers, load_from_url } from '$lib/io'
+  import * as io from '$lib/io'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import { PlotTooltip } from '$lib/plot'
@@ -299,23 +299,26 @@
   // Load from URL (with race condition protection for rapid URL changes)
   let load_id = 0
   $effect(() => {
-    if (data_url && !fermi_data && !band_data) {
-      const current_load_id = ++load_id
-      loading = true
-      error_msg = undefined
-      load_from_url(data_url, safe_parse)
-        .catch((err) => {
-          if (current_load_id !== load_id) return // stale request
-          error_msg = to_error(err).message
-          on_error?.({ error_msg, filename: data_url })
-        })
-        .finally(() => {
-          if (current_load_id === load_id) loading = false
-        })
-    }
+    const requested_url = data_url
+    if (!requested_url || fermi_data || band_data) return
+    const current_load_id = ++load_id
+    loading = true
+    error_msg = undefined
+    io.load_from_url(requested_url, (content, filename) => {
+      if (current_load_id !== load_id) return
+      return safe_parse(content, filename)
+    })
+      .catch((err) => {
+        if (current_load_id !== load_id) return
+        error_msg = to_error(err).message
+        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
+      })
+      .finally(() => {
+        if (current_load_id === load_id) loading = false
+      })
   })
 
-  const handle_file_drop = create_file_drop_handler({
+  const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
     on_drop: async (content, filename) => {
       on_file_drop?.(filename)
@@ -364,7 +367,7 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({
+  {...io.drag_over_handlers({
     allow: () => allow_file_drop,
     set_dragover: (over) => (dragover = over),
   })}

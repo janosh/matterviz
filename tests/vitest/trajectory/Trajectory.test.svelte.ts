@@ -1,12 +1,33 @@
-import { Trajectory } from '$lib/trajectory'
+import { Trajectory, type TrajHandlerData } from '$lib/trajectory'
 import { flushSync, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { make_trajectory_frame, resize_element } from '../setup'
 
 const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
   metadata: {},
 })
+const xyz = (element: string) => `1\n${element} frame\n${element} 0 0 0\n`
+const request_url = (url: string | URL | Request) =>
+  typeof url === `string` ? url : url instanceof URL ? url.href : url.url
+const loaded_element = (data: TrajHandlerData) =>
+  data.trajectory?.frames[0]?.structure.sites[0]?.species[0]?.element ?? ``
+
+const mount_traj = (props: Record<string, unknown>) => {
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  mount(Trajectory, { target, props })
+  return target
+}
+
+const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
+  vi.stubGlobal(`fetch`, fetch_impl)
+  try {
+    await run()
+  } finally {
+    vi.unstubAllGlobals()
+  }
+}
 
 describe(`Trajectory`, () => {
   // Regression: the series-regeneration effect must survive the visible_properties
@@ -20,9 +41,7 @@ describe(`Trajectory`, () => {
       display_mode: `scatter` as const,
       show_controls: false,
     })
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    mount(Trajectory, { target, props })
+    const target = mount_traj(props)
     flushSync()
     await tick()
     let plot = target.querySelector<HTMLElement>(`.scatter`)
@@ -60,9 +79,7 @@ describe(`Trajectory`, () => {
         })
       },
     })
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    mount(Trajectory, { target, props })
+    const target = mount_traj(props)
     flushSync()
     await tick()
 
@@ -83,9 +100,7 @@ describe(`Trajectory`, () => {
       display_mode: `structure+scatter` as const,
       show_controls: `always` as const,
     })
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    mount(Trajectory, { target, props })
+    const target = mount_traj(props)
     flushSync()
     await tick()
 
@@ -107,5 +122,106 @@ describe(`Trajectory`, () => {
 
     expect(props.display_mode).toBe(`scatter`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
+  })
+
+  test(`reloads URL-owned trajectory when data_url changes`, async () => {
+    const loaded_elements: string[] = []
+    await with_fetch(
+      vi.fn(
+        async (url: string | URL | Request) =>
+          new Response(xyz(request_url(url).includes(`b.xyz`) ? `He` : `H`)),
+      ),
+      async () => {
+        const props = $state({
+          data_url: `/a.xyz`,
+          display_mode: `structure` as const,
+          show_controls: `never` as const,
+          on_file_load: (data: TrajHandlerData) => loaded_elements.push(loaded_element(data)),
+        })
+        mount_traj(props)
+        await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
+
+        props.data_url = `/b.xyz`
+        await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
+      },
+    )
+  })
+
+  test(`caller-supplied trajectory takes precedence over data_url`, async () => {
+    const fetch_mock = vi.fn()
+    await with_fetch(fetch_mock, async () => {
+      mount_traj({
+        data_url: `/ignored.xyz`,
+        trajectory: make_traj([{ energy: -1 }]),
+        show_controls: `never`,
+      })
+      await tick()
+      expect(fetch_mock).not.toHaveBeenCalled()
+    })
+  })
+
+  test(`ignores a stale trajectory URL completion`, async () => {
+    const responses = new Map<string, (response: Response) => void>()
+    await with_fetch(
+      vi.fn(
+        (url: string | URL | Request) =>
+          new Promise<Response>((resolve) => responses.set(request_url(url), resolve)),
+      ),
+      async () => {
+        const on_file_load = vi.fn()
+        const props = $state({
+          data_url: `/a.xyz`,
+          display_mode: `structure` as const,
+          show_controls: `never` as const,
+          on_file_load,
+        })
+        mount_traj(props)
+        await vi.waitFor(() => expect(responses.has(`/a.xyz`)).toBe(true))
+
+        props.data_url = `/b.xyz`
+        await vi.waitFor(() => expect(responses.has(`/b.xyz`)).toBe(true))
+        responses.get(`/b.xyz`)?.(new Response(xyz(`He`)))
+        await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+
+        responses.get(`/a.xyz`)?.(new Response(xyz(`H`)))
+        await tick()
+        expect(on_file_load).toHaveBeenCalledTimes(1)
+        expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
+      },
+    )
+  })
+
+  test.each([
+    {
+      label: `parse failures include file_size`,
+      data_url: `/bad.xyz`,
+      fetch_impl: () => new Response(`not a valid trajectory`),
+      expected: {
+        filename: `bad.xyz`,
+        file_size: new Blob([`not a valid trajectory`]).size,
+        error_msg: expect.stringMatching(/Failed to parse|unsupported/i),
+      },
+    },
+    {
+      label: `fetch failures use basename`,
+      data_url: `/missing/traj.xyz`,
+      fetch_impl: () => Promise.reject(new Error(`network down`)),
+      expected: {
+        filename: `traj.xyz`,
+        error_msg: expect.stringContaining(`network down`),
+      },
+    },
+  ])(`on_error reports $label`, async ({ data_url, fetch_impl, expected }) => {
+    const on_error = vi.fn()
+    await with_fetch(vi.fn(fetch_impl), async () => {
+      mount_traj({
+        data_url,
+        display_mode: `structure`,
+        show_controls: `never`,
+        on_error,
+      })
+      await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+      expect(on_error.mock.calls[0][0]).toEqual(expect.objectContaining(expected))
+    })
   })
 })

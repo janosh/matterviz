@@ -8,11 +8,12 @@
   import { SETTINGS_CONFIG } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
-  import type { TrajectoryType } from './index'
+  import type { TrajectoryFrame, TrajectoryType } from './index'
 
   let {
     trajectory,
     current_step_idx,
+    current_frame = null,
     current_filename,
     current_file_path,
     file_size,
@@ -24,6 +25,7 @@
   }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
     trajectory: TrajectoryType
     current_step_idx: number
+    current_frame?: TrajectoryFrame | null
     current_filename?: string | null
     current_file_path?: string | null
     file_size?: number | null
@@ -76,8 +78,8 @@
     )
       return []
 
-    // For indexed trajectories, we might not have the current frame loaded
-    const current_frame = trajectory.frames?.[current_step_idx]
+    // For indexed trajectories, the resolved frame may live outside sparse frame arrays.
+    const displayed_frame = current_frame ?? trajectory.frames?.[current_step_idx]
     const total_frames = trajectory.total_frames ?? trajectory.frames?.length ?? 0
 
     const sections: { title: string; items: InfoItem[] }[] = []
@@ -136,8 +138,8 @@
     ])
 
     // Structure info section (only if we have the current frame)
-    if (current_frame?.structure?.sites) {
-      const { structure } = current_frame
+    if (displayed_frame?.structure?.sites) {
+      const { structure } = displayed_frame
       const lattice = `lattice` in structure ? structure.lattice : null
       const { volume, a, b, c, alpha, beta, gamma } = lattice || {}
       const formula = safe_formula(structure)
@@ -210,7 +212,7 @@
       for (const { title, prop, unit, key, current_label, range_label } of range_sections) {
         const values = extract_numeric_array(trajectory.frames, prop)
         if (values.length <= 1) continue
-        const current = current_frame?.metadata?.[prop]
+        const current = displayed_frame?.metadata?.[prop]
         push_section(title, [
           is_valid_number(current) &&
             safe_item(
@@ -224,9 +226,9 @@
     }
 
     // Volume change section (only for regular trajectories)
-    if (!trajectory.is_indexed && current_frame?.structure && trajectory.frames.length > 1) {
+    if (!trajectory.is_indexed && displayed_frame?.structure && trajectory.frames.length > 1) {
       const lattice =
-        `lattice` in current_frame.structure ? current_frame.structure.lattice : null
+        `lattice` in displayed_frame.structure ? displayed_frame.structure.lattice : null
       if (lattice) {
         const volumes = trajectory.frames
           .map(({ structure }) => `lattice` in structure && structure.lattice?.volume)
