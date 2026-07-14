@@ -140,12 +140,10 @@ export function format_chemical_formula(
 ): string {
   // concatenate elements in a structure followed by their amount
   const elements = get_element_counts(structure)
-  const formula = []
-  for (const element of sort_fn(Object.keys(elements) as ElementSymbol[])) {
+  const formula = sort_fn(Object.keys(elements) as ElementSymbol[]).map((element) => {
     const amount = elements[element] ?? 0
-    if (amount === 1) formula.push(element)
-    else formula.push(`${element}<sub>${amount}</sub>`)
-  }
+    return amount === 1 ? element : `${element}<sub>${amount}</sub>`
+  })
   return formula.join(` `)
 }
 

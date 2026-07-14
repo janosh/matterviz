@@ -533,7 +533,7 @@
   })
 
   const should_show_legend = $derived(show_legend ?? false)
-  const decor = $derived.by(() =>
+  const decor = $derived(
     place_decorations({
       base_pad,
       width,
@@ -572,9 +572,6 @@
     }),
   )
   const marginal_has_axis = $derived(marginal_axis_presence(show_x2, show_y2))
-  const legend_auto_outside = $derived(decor.legend_outside)
-  const legend_outside_x = $derived(decor.legend_pos.x)
-  const legend_outside_y = $derived(decor.legend_pos.y)
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
@@ -647,7 +644,6 @@
   let tick_label_widths = $derived({
     y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
     y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
-    x2_max: measure_max_tick_width(ticks.x2, x2_axis.format ?? ``),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -796,6 +792,12 @@
     on_box_hover?.({ ...hover_info, event })
   }
 
+  const clear_hover = () => {
+    hover_info = null
+    change(null)
+    on_box_hover?.(null)
+  }
+
   // Set theme-aware background when entering fullscreen
   $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--boxplot-fullscreen-bg`))
 
@@ -888,9 +890,7 @@
       onkeydown={pan_zoom.on_key_down}
       onmouseleave={() => {
         hovered = false
-        hover_info = null
-        change(null)
-        on_box_hover?.(null)
+        clear_hover()
       }}
       onwheel={pan_zoom.on_wheel}
       ontouchstart={pan_zoom.on_touch_start}
@@ -1088,11 +1088,7 @@
                 ? 0.25
                 : 1}
               onmousemove={handle_box_hover(box_item, color)}
-              onmouseleave={() => {
-                hover_info = null
-                change(null)
-                on_box_hover?.(null)
-              }}
+              onmouseleave={clear_hover}
               onclick={(evt) =>
                 on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
               onkeydown={(evt) => {
@@ -1223,8 +1219,8 @@
 
     {#if legend && should_show_legend}
       {@const legend_pos = placed_coords(
-        legend_auto_outside,
-        { x: legend_outside_x, y: legend_outside_y },
+        decor.legend_outside,
+        decor.legend_pos,
         legend_tween.placed(),
         legend_tween.coords.current,
         { x: pad.l + 10, y: pad.t + 10 },

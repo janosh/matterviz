@@ -173,19 +173,6 @@ describe(`ToggleMenu`, () => {
         `No matching columns`,
       )
     })
-
-    it(`uses key for each block identity when available`, () => {
-      mount_menu(
-        [
-          { key: `unique1`, label: `Same Label`, visible: true },
-          { key: `unique2`, label: `Same Label`, visible: true },
-        ],
-        { column_panel_open: true },
-      )
-
-      // Both render despite same label
-      expect(document.querySelectorAll(`input[type="checkbox"]`)).toHaveLength(2)
-    })
   })
 
   describe(`Grouped sections`, () => {

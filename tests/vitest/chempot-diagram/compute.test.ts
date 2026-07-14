@@ -9,6 +9,7 @@
 import {
   apply_element_padding,
   bbox_diagonal,
+  best_form_energy_for_formula,
   build_axis_ranges,
   build_border_hyperplanes,
   build_hyperplanes,
@@ -18,8 +19,8 @@ import {
   formula_key_from_composition,
   get_3d_domain_simplexes_and_ann_loc,
   get_energy_per_atom,
+  get_energy_stats_by_formula,
   get_min_entries_and_el_refs,
-  best_form_energy_for_formula,
   get_ternary_combinations,
   get_visible_domain_labels,
   make_nd_cache_key,
@@ -29,6 +30,7 @@ import {
   scale_to_font_range,
   simple_pca,
 } from '$lib/chempot-diagram/compute'
+import { get_domain_color_data } from '$lib/chempot-diagram/color'
 import { get_hill_formula } from '$lib/composition/format'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
@@ -1076,6 +1078,34 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     },
   )
 
+  test(`projections have 3 display elements, 3-column vertices, and 3 lims`, () => {
+    expect(ytos_y_ti_o.elements).toEqual([`O`, `Ti`, `Y`])
+    expect(ytos_ti_o_s.elements).toEqual([`O`, `S`, `Ti`])
+    expect(ytos_y_ti_o.lims).toHaveLength(3)
+    expect(ytos_ti_o_s.lims).toHaveLength(3)
+    for (const projection of [ytos_y_ti_o, ytos_ti_o_s]) {
+      for (const points of Object.values(projection.domains)) {
+        for (const point of points) expect(point).toHaveLength(3)
+      }
+    }
+  })
+
+  test(`Y-Ti-O projection contains expected phases`, () => {
+    const formulas = Object.keys(ytos_y_ti_o.domains)
+    expect(formulas).toContain(`O`)
+    expect(formulas).toContain(`Ti`)
+    expect(formulas).toContain(`Y`)
+    expect(formulas).toContain(`O3Y2`) // Y2O3
+    expect(formulas).toContain(`O2Ti`) // TiO2
+  })
+
+  test(`Ti-O-S projection contains key phases`, () => {
+    const formulas = Object.keys(ytos_ti_o_s.domains)
+    expect(formulas).toContain(`O2Ti`) // TiO2
+    expect(formulas).toContain(`S`) // elemental S
+    expect(formulas).toContain(`Ti`) // elemental Ti
+  })
+
   test(`Y-Ti-O has Y2Ti2O7, valid vertices, and elemental mu=0 touch`, () => {
     const key = `O7Ti2Y2`
     expect(ytos_y_ti_o.domains[key], `Domain for ${key} (Y2Ti2O7)`).toBeDefined()
@@ -1595,61 +1625,84 @@ describe(`compute_chempot_diagram edge cases`, () => {
   })
 })
 
-// Tests the math used by ChemPotDiagram3D.compute_e_form:
+// === Formation energy computation ===
 // e_form = energy_per_atom - sum(fraction_i * ref_energy_per_atom_i)
 
-describe(`formation energy from elemental refs`, () => {
-  // Reproduce the compute_e_form logic using exported helpers
-  function compute_e_form(entry: PhaseData, el_refs: Record<string, PhaseData>): number {
-    const atoms = Object.values(entry.composition).reduce((sum, count) => sum + count, 0)
-    const epa = get_energy_per_atom(entry)
-    let ref_energy = 0
-    for (const [el, amt] of Object.entries(entry.composition)) {
-      if (amt <= 0) continue
-      ref_energy += (amt / atoms) * get_energy_per_atom(el_refs[el])
-    }
-    return epa - ref_energy
-  }
+describe(`get_energy_stats_by_formula`, () => {
+  test(`aggregates polymorph counts and energy bounds`, () => {
+    const stats = get_energy_stats_by_formula([
+      make_entry({ A: 1 }, -1),
+      make_entry({ A: 1, B: 1 }, -2),
+      make_entry({ A: 1, B: 1 }, -1.5),
+    ])
 
-  const el_refs: Record<string, PhaseData> = {
-    A: make_entry({ A: 1 }, -2.0),
-    B: make_entry({ B: 1 }, -3.0),
-  }
+    expect(stats.get(`A`)).toEqual({
+      matching_entry_count: 1,
+      min_energy_per_atom: -1,
+      max_energy_per_atom: -1,
+    })
+    expect(stats.get(`AB`)).toEqual({
+      matching_entry_count: 2,
+      min_energy_per_atom: -2,
+      max_energy_per_atom: -1.5,
+    })
+    expect(get_energy_stats_by_formula([])).toEqual(new Map())
+  })
+
+  test.each([Number.NaN, Infinity, -Infinity])(
+    `skips non-finite EPA %s when aggregating`,
+    (bad) => {
+      const stats = get_energy_stats_by_formula([
+        make_entry({ A: 1 }, bad),
+        make_entry({ A: 1 }, -2),
+      ])
+      expect(stats.get(`A`)).toEqual({
+        matching_entry_count: 1,
+        min_energy_per_atom: -2,
+        max_energy_per_atom: -2,
+      })
+    },
+  )
+})
+
+describe(`best_form_energy_for_formula`, () => {
+  const el_refs = { A: make_entry({ A: 1 }, -2), B: make_entry({ B: 1 }, -3) }
+  const e_form = (entry: PhaseData, refs: Record<string, PhaseData> = el_refs) =>
+    best_form_energy_for_formula(
+      [entry],
+      formula_key_from_composition(entry.composition),
+      refs,
+    )
 
   test.each([
     { comp: { A: 1 }, epa: -2.0, expected: 0, label: `element A` },
     { comp: { B: 1 }, epa: -3.0, expected: 0, label: `element B` },
-    // AB: frac_A=0.5, frac_B=0.5, ref = 0.5*(-2) + 0.5*(-3) = -2.5
-    // e_form = -3.5 - (-2.5) = -1.0
+    // AB: ref = 0.5*(-2) + 0.5*(-3) = -2.5, e_form = -3.5 - (-2.5) = -1.0
     { comp: { A: 1, B: 1 }, epa: -3.5, expected: -1.0, label: `AB stable compound` },
-    // A2B: frac_A=2/3, frac_B=1/3, ref = 2/3*(-2) + 1/3*(-3) = -7/3
-    // e_form = -3.0 - (-7/3) = -3 + 7/3 = -2/3
+    // A2B: ref = 2/3*(-2) + 1/3*(-3) = -7/3, e_form = -3.0 + 7/3 = -2/3
     { comp: { A: 2, B: 1 }, epa: -3.0, expected: -2 / 3, label: `A2B compound` },
-    // Unstable compound: e_form > 0
-    {
-      comp: { A: 1, B: 1 },
-      epa: -2.0,
-      expected: 0.5,
-      label: `AB unstable (positive e_form)`,
-    },
+    { comp: { A: 1, B: 1 }, epa: -2.0, expected: 0.5, label: `AB unstable (positive)` },
   ])(`$label → e_form = $expected`, ({ comp, epa, expected }) => {
-    const entry = make_entry(comp as Record<string, number>, epa)
-    expect(compute_e_form(entry, el_refs)).toBeCloseTo(expected, 8)
+    expect(e_form(make_entry(comp as Record<string, number>, epa))).toBeCloseTo(expected, 8)
   })
 
-  test(`raw_el_refs from get_min_entries_and_el_refs give correct formation energies`, () => {
-    const all_entries: PhaseData[] = [
-      make_entry({ A: 1 }, -2.0),
-      make_entry({ B: 1 }, -3.0),
-      make_entry({ A: 1, B: 1 }, -3.5),
-    ]
-    const { el_refs: raw_refs } = get_min_entries_and_el_refs(all_entries)
-    // AB: e_form = -3.5 - (0.5*(-2) + 0.5*(-3)) = -3.5 + 2.5 = -1.0
-    const ab_entry = all_entries[2]
-    expect(compute_e_form(ab_entry, raw_refs)).toBeCloseTo(-1.0, 8)
-    // Elements should be exactly 0
-    expect(compute_e_form(all_entries[0], raw_refs)).toBeCloseTo(0, 8)
-    expect(compute_e_form(all_entries[1], raw_refs)).toBeCloseTo(0, 8)
+  test(`picks minimum formation energy across polymorphs`, () => {
+    const polymorphs = [make_entry({ A: 1, B: 1 }, -3.5), make_entry({ A: 1, B: 1 }, -3.0)]
+    expect(best_form_energy_for_formula(polymorphs, `AB`, el_refs)).toBeCloseTo(-1.0, 8)
+
+    const color_entries = [...Object.values(el_refs), ...polymorphs]
+    const color_data = get_domain_color_data({
+      formulas: [`A`, `B`, `AB`],
+      color_mode: `formation_energy`,
+      color_scale: `interpolateViridis`,
+      reverse_color_scale: false,
+      entries: color_entries,
+      el_refs,
+      energy_stats: get_energy_stats_by_formula(color_entries),
+    })
+
+    expect(color_data.color_range).toMatchObject({ min: -1, max: 0 })
+    expect(color_data.colors.size).toBe(3)
   })
 
   test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
@@ -1657,35 +1710,29 @@ describe(`formation energy from elemental refs`, () => {
     const { el_refs: raw_refs } = get_min_entries_and_el_refs(all_entries)
     const renormed = renormalize_entries(all_entries, raw_refs, [`A`, `B`])
     const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
-    // Renormalized refs have epa=0, so compute_e_form degenerates to just epa
     expect(get_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
     expect(get_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)
-    // Using renormalized refs, e_form equals raw epa (not true formation energy!)
-    const ab = make_entry({ A: 1, B: 1 }, -3.5)
-    expect(compute_e_form(ab, renorm_refs)).toBeCloseTo(-3.5, 8)
-    // This confirms raw_el_refs (not diagram_data.el_refs) must be used
+    // With zero-energy refs, e_form equals raw epa (not true formation energy!)
+    // This confirms raw_el_refs (not diagram_data.el_refs) must be used for coloring.
+    expect(e_form(make_entry({ A: 1, B: 1 }, -3.5), renorm_refs)).toBeCloseTo(-3.5, 8)
   })
 
   test(`formation energy from real data: Fe-Li-O system`, () => {
     const { el_refs: raw_refs } = get_min_entries_and_el_refs(entries)
     // All elemental refs should have zero formation energy
     for (const [el, ref] of Object.entries(raw_refs)) {
-      expect(compute_e_form(ref, raw_refs), `${el} should have e_form=0`).toBeCloseTo(0, 8)
+      expect(e_form(ref, raw_refs), `${el} should have e_form=0`).toBeCloseTo(0, 8)
     }
-    // Find a compound entry (Fe2O3) and verify formation energy is negative (stable)
-    const fe2o3 = entries.find(
-      (entry) => formula_key_from_composition(entry.composition) === `Fe2O3`,
-    )
-    if (fe2o3) {
-      const e_form = compute_e_form(fe2o3, raw_refs)
-      expect(e_form).toBeLessThan(0)
-      // Fe2O3 formation energy should be in a reasonable range (-3 to 0 eV/atom)
-      expect(e_form).toBeGreaterThan(-3)
-    }
+    // Fe2O3 formation energy should be negative (stable) and in a reasonable range
+    const fe2o3_e_form = best_form_energy_for_formula(entries, `Fe2O3`, raw_refs)
+    expect(fe2o3_e_form).toBeLessThan(0)
+    expect(fe2o3_e_form).toBeGreaterThan(-3)
   })
 })
 
-describe(`temperature filtering integration behavior`, () => {
+// filter_entries_at_temperature itself is covered in convex-hull/helpers.test.ts;
+// this only checks the filtered output still feeds compute_chempot_diagram correctly.
+test(`temperature-filtered entries still compute a valid 2D chempot diagram`, () => {
   const baseline_entries: PhaseData[] = [
     {
       composition: { Li: 1 },
@@ -1708,93 +1755,14 @@ describe(`temperature filtering integration behavior`, () => {
       temperatures: [300, 600],
       free_energies: [-1.7, -1.5],
     },
-    {
-      composition: { Li: 2, O: 1 },
-      energy: -5.1,
-      energy_per_atom: -1.7,
-      temperatures: [300, 900],
-      free_energies: [-1.9, -1.3],
-    },
-    {
-      composition: { Li: 1, O: 2 },
-      energy: -4.5,
-      energy_per_atom: -1.5,
-    },
   ]
-
-  test.each([
-    { selected_temperature: 300, expected_energy: -1.1 },
-    { selected_temperature: 600, expected_energy: -0.9 },
-  ])(
-    `exact temperature selection replaces entry energies at $selected_temperature K`,
-    ({ selected_temperature, expected_energy }) => {
-      const filtered_entries = filter_entries_at_temperature(
-        baseline_entries,
-        selected_temperature,
-      )
-      const elemental_li_entry = filtered_entries.find(
-        (entry) => formula_key_from_composition(entry.composition) === `Li`,
-      )
-      expect(elemental_li_entry).toBeDefined()
-      expect(elemental_li_entry?.energy).toBeCloseTo(expected_energy, 8)
-      expect(elemental_li_entry?.energy_per_atom).toBeCloseTo(expected_energy, 8)
-    },
-  )
-
-  test(`interpolation works within max_interpolation_gap`, () => {
-    const interpolated_entries = filter_entries_at_temperature(baseline_entries, 700, {
-      interpolate: true,
-      max_interpolation_gap: 700,
-    })
-    const li2o_entry = interpolated_entries.find(
-      (entry) => formula_key_from_composition(entry.composition) === `Li2O`,
-    )
-    expect(li2o_entry).toBeDefined()
-    // Linear interpolation between 300K (-1.9) and 900K (-1.3):
-    // fraction = (700 - 300) / (900 - 300) = 2/3 => -1.9 + 2/3 * 0.6 = -1.5
-    expect(li2o_entry?.energy).toBeCloseTo(-1.5, 8)
-    expect(li2o_entry?.energy_per_atom).toBeCloseTo(-1.5, 8)
+  const filtered_entries = filter_entries_at_temperature(baseline_entries, 600)
+  const result = compute_chempot_diagram(filtered_entries, {
+    default_min_limit: -20,
+    formal_chempots: false,
   })
-
-  test(`entries lacking temperature arrays are preserved`, () => {
-    const filtered_entries = filter_entries_at_temperature(baseline_entries, 600)
-    const lio2_entry = filtered_entries.find(
-      (entry) => formula_key_from_composition(entry.composition) === `LiO2`,
-    )
-    expect(lio2_entry).toBeDefined()
-    expect(lio2_entry?.energy).toBeCloseTo(-4.5, 8)
-    expect(lio2_entry?.energy_per_atom).toBeCloseTo(-1.5, 8)
-  })
-
-  test(`entries with unavailable temperatures are excluded when interpolation is off or invalid`, () => {
-    const non_interpolated_entries = filter_entries_at_temperature(baseline_entries, 700, {
-      interpolate: false,
-    })
-    const strict_gap_entries = filter_entries_at_temperature(baseline_entries, 700, {
-      interpolate: true,
-      max_interpolation_gap: 500,
-    })
-    expect(
-      non_interpolated_entries.some(
-        (entry) => formula_key_from_composition(entry.composition) === `Li2O`,
-      ),
-    ).toBe(false)
-    expect(
-      strict_gap_entries.some(
-        (entry) => formula_key_from_composition(entry.composition) === `Li2O`,
-      ),
-    ).toBe(false)
-  })
-
-  test(`filtered entries still compute a valid 2D chempot diagram`, () => {
-    const filtered_entries = filter_entries_at_temperature(baseline_entries, 600)
-    const result = compute_chempot_diagram(filtered_entries, {
-      default_min_limit: -20,
-      formal_chempots: false,
-    })
-    expect(result.elements).toHaveLength(2)
-    expect(Object.keys(result.domains)).toEqual(expect.arrayContaining([`Li`, `O`]))
-  })
+  expect(result.elements).toHaveLength(2)
+  expect(Object.keys(result.domains)).toEqual(expect.arrayContaining([`Li`, `O`]))
 })
 
 describe(`get_ternary_combinations`, () => {

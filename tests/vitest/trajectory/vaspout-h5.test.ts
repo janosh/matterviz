@@ -6,7 +6,7 @@ import {
   read_vaspout_bands,
   type VaspoutElectronicData,
 } from '$lib/trajectory/parse/vaspout-electronic'
-import { parse_vaspout_h5 } from '$lib/trajectory/parse/vaspout-h5'
+import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
 import { is_trajectory_file } from '$lib/trajectory/format-detect'
 import { describe, expect, it } from 'vitest'
 import { read_binary_test_file } from '../setup'
@@ -15,7 +15,7 @@ const VASPOUT_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
 const read_vaspout = (filename: string): ArrayBuffer =>
   read_binary_test_file(filename, VASPOUT_FIXTURE_DIR)
 const parse_fixture = (fixture: string) =>
-  parse_vaspout_h5(read_vaspout(fixture), `vaspout.h5`)
+  with_h5_file(read_vaspout(fixture), `vaspout.h5`, parse_vaspout_h5_file)
 
 describe(`vaspout.h5 parsing`, () => {
   it(`parses a relaxation trajectory with energy and force metadata`, async () => {
@@ -82,11 +82,12 @@ describe(`vaspout.h5 parsing`, () => {
 
   it(`returns an electronic-only zero-frame trajectory for bands-only vaspout files`, async () => {
     // Direct parser and generic parse_trajectory_data dispatch must agree
-    for (const parse of [parse_vaspout_h5, parse_trajectory_data]) {
-      const trajectory = await parse(
-        read_vaspout(`vaspout-tinisn-bands-only.h5`),
-        `vaspout.h5`,
-      )
+    const direct = await parse_fixture(`vaspout-tinisn-bands-only.h5`)
+    const dispatched = await parse_trajectory_data(
+      read_vaspout(`vaspout-tinisn-bands-only.h5`),
+      `vaspout.h5`,
+    )
+    for (const trajectory of [direct, dispatched]) {
       expect(trajectory.frames).toHaveLength(0)
       expect(trajectory.metadata?.vaspout_electronic_only).toBe(true)
       const electronic = trajectory.metadata?.electronic as VaspoutElectronicData

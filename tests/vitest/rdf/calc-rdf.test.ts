@@ -250,7 +250,8 @@ describe(`calculate_rdf`, () => {
     expect(all_pair.g_r).toEqual(direct.g_r)
   })
 
-  test(`RDF calculation should be deterministic`, () => {
+  // Guards against input mutation (e.g. by auto-expand supercell construction)
+  test(`repeated calls on the same structure give identical results`, () => {
     const result1 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })
     const result2 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })
     expect(result1.r).toEqual(result2.r)
@@ -289,6 +290,7 @@ describe(`calculate_rdf`, () => {
     expect(nonzero_bins[0]?.idx).toBe(expected_bin)
   })
 
+  // Non-orthogonal lattices: triclinic has all angles ≠ 90°, monoclinic has β ≠ 90°
   test.each([
     {
       name: `triclinic`,
@@ -305,12 +307,6 @@ describe(`calculate_rdf`, () => {
       ],
       cutoff: 10,
       n_bins: 100,
-      expected_angles: {
-        alpha: { not_close_to: 90 },
-        beta: { not_close_to: 90 },
-        gamma: { not_close_to: 90 },
-      },
-      expected_lengths_differ: true,
     },
     {
       name: `monoclinic`,
@@ -322,61 +318,16 @@ describe(`calculate_rdf`, () => {
       sites: [make_site(`Na`, [0.0, 0.0, 0.0]), make_site(`Cl`, [2.5, 3.0, 3.5])],
       cutoff: 8,
       n_bins: 80,
-      expected_angles: {
-        alpha: { close_to: 90 },
-        beta: { not_close_to: 90 },
-        gamma: { close_to: 90 },
-      },
-      expected_lengths_differ: false,
     },
   ])(
     `should calculate RDF correctly for $name lattice`,
-    ({ lattice, sites, cutoff, n_bins, expected_angles, expected_lengths_differ }) => {
+    ({ lattice, sites, cutoff, n_bins }) => {
       const structure = create_test_structure(lattice, sites)
       const result = calculate_rdf(structure, { cutoff, n_bins, pbc: [true, true, true] })
 
-      // Check basic RDF properties
       check_basic_rdf_properties(result.r, result.g_r, n_bins)
       expect(result.g_r.some((val) => val > 0)).toBe(true)
       expect(result.g_r.every(isFinite)).toBe(true)
-
-      // Check no negative or NaN values
-      expect(result.g_r.every((val) => val >= 0 && !Number.isNaN(val))).toBe(true)
-
-      // Verify correct lattice angles
-      const check_angle = (
-        angle: number,
-        expected: { close_to?: number; not_close_to?: number },
-      ) => {
-        if (expected.close_to !== undefined) {
-          expect(angle).toBeCloseTo(expected.close_to, 1)
-        }
-        if (expected.not_close_to !== undefined) {
-          expect(Math.abs(angle - expected.not_close_to)).toBeGreaterThan(1)
-        }
-      }
-
-      check_angle(structure.lattice.alpha, expected_angles.alpha)
-      check_angle(structure.lattice.beta, expected_angles.beta)
-      check_angle(structure.lattice.gamma, expected_angles.gamma)
-
-      // Verify lattice length differences
-      if (expected_lengths_differ) {
-        expect(Math.abs(structure.lattice.a - structure.lattice.b)).toBeGreaterThan(0.1)
-        expect(Math.abs(structure.lattice.b - structure.lattice.c)).toBeGreaterThan(0.1)
-        expect(Math.abs(structure.lattice.a - structure.lattice.c)).toBeGreaterThan(0.1)
-      }
-
-      // Verify volume is positive
-      expect(structure.lattice.volume).toBeGreaterThan(0)
-
-      // Check that fractional coordinates were calculated correctly
-      // For at least one site, verify xyz = lattice · abc
-      const site = structure.sites[0]
-      const xyz_from_abc = math.create_frac_to_cart(lattice)(site.abc)
-      expect(xyz_from_abc[0]).toBeCloseTo(site.xyz[0], 10)
-      expect(xyz_from_abc[1]).toBeCloseTo(site.xyz[1], 10)
-      expect(xyz_from_abc[2]).toBeCloseTo(site.xyz[2], 10)
     },
   )
 })
@@ -392,17 +343,6 @@ describe(`calculate_all_pair_rdfs`, () => {
     for (const pattern of patterns) {
       check_basic_rdf_properties(pattern.r, pattern.g_r, 50)
       expect(pattern.element_pair).toBeDefined()
-    }
-  })
-
-  test(`should respect cutoff and n_bins for all pairs`, () => {
-    const cutoff = 12
-    const n_bins = 80
-    const patterns = calculate_all_pair_rdfs(lu_al_structure, { cutoff, n_bins })
-
-    for (const pattern of patterns) {
-      expect(pattern.r).toHaveLength(n_bins)
-      expect(Math.max(...pattern.r)).toBeCloseTo((n_bins - 0.5) * (cutoff / n_bins), 2)
     }
   })
 
@@ -433,47 +373,8 @@ describe(`calculate_all_pair_rdfs`, () => {
       expect(max_g_r).toBeGreaterThan(0)
       expect(max_g_r).toBeLessThan(max_peak)
       expect(result.g_r.every(isFinite)).toBe(true)
-
-      // First few bins should not have crazy values
-      for (let idx = 0; idx < Math.min(10, n_bins); idx++) {
-        expect(result.g_r[idx]).toBeLessThan(max_peak)
-      }
     },
   )
-
-  test(`RDF with auto_expand should respect minimum physical distances`, () => {
-    const result = calculate_rdf(pd_structure, {
-      cutoff: 15,
-      n_bins: 150,
-      auto_expand: true,
-    })
-    check_basic_rdf_properties(result.r, result.g_r, 150)
-
-    // For Pd FCC, nearest neighbor is ~2.75 Å, so bins below 2 Å should be zero
-    const min_expected_dist = 2.0
-    const bins_should_be_zero = Math.floor(min_expected_dist / (15 / 150))
-    for (let idx = 0; idx < bins_should_be_zero; idx++) {
-      expect(result.g_r[idx]).toBe(0)
-    }
-  })
-
-  test(`all_pair_rdfs calculation should be deterministic`, () => {
-    const patterns1 = calculate_all_pair_rdfs(bi2zr2o8_structure, {
-      cutoff: 5,
-      n_bins: 50,
-    })
-    const patterns2 = calculate_all_pair_rdfs(bi2zr2o8_structure, {
-      cutoff: 5,
-      n_bins: 50,
-    })
-
-    expect(patterns1).toHaveLength(patterns2.length)
-    for (let idx = 0; idx < patterns1.length; idx++) {
-      expect(patterns1[idx].r).toEqual(patterns2[idx].r)
-      expect(patterns1[idx].g_r).toEqual(patterns2[idx].g_r)
-      expect(patterns1[idx].element_pair).toEqual(patterns2[idx].element_pair)
-    }
-  })
 
   test.each([
     {

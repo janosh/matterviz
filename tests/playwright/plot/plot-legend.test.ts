@@ -361,12 +361,6 @@ test.describe(`Legend Placement Stability`, () => {
     await first_item.click()
     await expect(first_item).not.toHaveClass(/hidden/)
   })
-})
-
-test.describe(`Coordinated Legend and ColorBar Placement`, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
-  })
 
   test(`legend and colorbar do not overlap`, async ({ page }) => {
     const section = page.locator(`#color-scale`)
@@ -391,12 +385,6 @@ test.describe(`Coordinated Legend and ColorBar Placement`, () => {
       const overlaps = rects_overlap(legend_bbox, colorbar_bbox)
       expect(overlaps).toBe(false)
     }
-  })
-})
-
-test.describe(`Legend Placement on Resize`, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
   })
 
   test(`legend repositions appropriately after viewport resize`, async ({ page }) => {
@@ -424,7 +412,5 @@ test.describe(`Legend Placement on Resize`, () => {
       expect(legend_center_y).toBeGreaterThan(plot_bbox.y)
       expect(legend_center_y).toBeLessThan(plot_bbox.y + plot_bbox.height)
     }
-
-    await page.setViewportSize({ width: 1280, height: 720 })
   })
 })

@@ -100,6 +100,5 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
 
   root.setAttribute(`data-theme`, resolved)
   // Set color-scheme to ensure form elements respect the theme
-  const color_scheme = THEME_TYPE[resolved]
-  root.style.setProperty(`color-scheme`, color_scheme)
+  root.style.setProperty(`color-scheme`, THEME_TYPE[resolved])
 }

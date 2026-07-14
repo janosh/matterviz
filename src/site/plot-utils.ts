@@ -58,12 +58,12 @@ export function generate_gamma(count: number, alpha: number, beta: number): numb
   if (alpha <= 0) throw new Error(`Alpha must be positive`)
   if (beta <= 0) throw new Error(`Beta must be positive`)
 
-  return Array.from({ length: count }, () => {
-    // For integer alpha, sum of exponentials is exact
-    const is_integer = Math.abs(alpha - Math.round(alpha)) < 1e-10
-    const floor_alpha = Math.floor(alpha)
-    const frac_alpha = alpha - floor_alpha
+  // For integer alpha, sum of exponentials is exact
+  const is_integer = Math.abs(alpha - Math.round(alpha)) < 1e-10
+  const floor_alpha = Math.floor(alpha)
+  const frac_alpha = alpha - floor_alpha
 
+  return Array.from({ length: count }, () => {
     let sum = 0
     // Integer part: sum of exponentials
     for (let idx = 0; idx < floor_alpha; idx++) {

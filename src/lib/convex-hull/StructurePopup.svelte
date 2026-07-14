@@ -38,7 +38,7 @@
     popup_div?: HTMLDivElement
   } = $props()
 
-  const formula_html = $derived.by(() =>
+  const formula_html = $derived(
     sanitize_formula(get_electro_neg_formula(stats?.formula ?? structure, true)),
   )
   const context = $derived({ structure, stats, formula_html })

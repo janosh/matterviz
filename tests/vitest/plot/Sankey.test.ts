@@ -96,11 +96,6 @@ describe(`Sankey`, () => {
     expect(on_node_click).toHaveBeenCalledOnce()
   })
 
-  test(`renders legend when show_legend is true`, async () => {
-    const plot = await mount_sized_sankey({ data, show_legend: true })
-    expect(plot.querySelector(`.legend`)).not.toBeNull()
-  })
-
   test(`dims toggled node and its links via legend`, async () => {
     // toggling a legend item mutes that node (dimmed, not removed) and its connected links.
     // fixture nodes omit `id`; the layout backfills id = index, so muting keys consistently

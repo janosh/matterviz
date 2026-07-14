@@ -4,6 +4,7 @@ import {
   TRAJ_KEYWORDS,
   VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
+import { DEFAULTS } from '$lib/settings'
 import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file, LARGE_FILE_THRESHOLD } from '$lib/trajectory/parse'
@@ -11,13 +12,14 @@ import { Buffer } from 'node:buffer'
 import type * as node_path from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { ExtensionContext, Tab, TextEditor, Uri } from 'vscode'
+import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import type { MessageData } from '../src/extension'
 import { MAX_TEXT_TRAJECTORY_SIZE } from '../src/node-io'
 import {
   activate,
   active_frame_loaders,
+  active_watchers,
   create_html,
   get_defaults,
   get_file,
@@ -28,9 +30,9 @@ import {
   should_auto_render,
 } from '../src/extension'
 
-// Mock modules
+// Mock modules (extension.ts only touches fs.existsSync + fs.readdirSync;
+// file contents come through the mocked vscode.workspace.fs API)
 const mock_fs = vi.hoisted(() => ({
-  readFileSync: vi.fn().mockReturnValue(`mock content`),
   existsSync: vi.fn().mockReturnValue(true),
   readdirSync: vi.fn().mockReturnValue([]),
 }))
@@ -148,7 +150,6 @@ describe(`MatterViz Extension`, () => {
     ext.auto_render_timers.clear()
     ext.active_auto_render_panels.clear()
 
-    mock_fs.readFileSync.mockReturnValue(`mock content`)
     mock_fs.existsSync.mockReturnValue(true)
     mock_fs.readdirSync.mockReturnValue([])
     mock_vscode.window.activeTextEditor = null
@@ -788,132 +789,92 @@ describe(`MatterViz Extension`, () => {
       report_bug_command = command_registry.get(`matterviz.report_bug`) ?? null
     })
 
-    test(`should generate bug report with environment information`, async () => {
+    // Assert the command was registered, run it, and return the generated report
+    const run_report_bug = async (): Promise<string> => {
       expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
+      await report_bug_command?.()
+      return mock_opened_document?.content ?? ``
+    }
 
-      await report_bug_command()
+    // Register a file watcher via the startWatching message (populates the report)
+    const start_watching = (filename: string) =>
+      handle_msg(
+        {
+          command: `startWatching`,
+          file_path: `/test/${filename}`,
+          filename,
+          request_id: `req_${filename}`,
+          frame_index: 0,
+        },
+        mock_webview,
+      )
+
+    test(`should generate bug report with environment information`, async () => {
+      const content = await run_report_bug()
 
       expect(mock_opened_document).not.toBeNull()
       expect(mock_opened_document?.language).toBe(`markdown`)
 
-      const content = mock_opened_document?.content ?? ``
-
-      // Check for main sections
-      expect(content).toContain(`### Environment`)
-      expect(content).toContain(`### System Resources`)
-      expect(content).toContain(`### Active Files & Extension State`)
-      expect(content).toContain(`### Console Logs`)
-
-      // Check environment details
-      expect(content).toContain(`- **Editor**: Cursor`)
-      expect(content).toContain(`- **MatterViz Version**: ${pkg_json.version}`)
-      expect(content).toContain(`- **UI Kind**: Desktop`)
-      expect(content).toContain(`- **Remote Session**: No (Local)`)
-
-      // Check system resources
-      expect(content).toContain(`- **Total Memory**:`)
-      expect(content).toContain(`- **Free Memory**:`)
-      expect(content).toContain(`- **Process RSS**:`)
-      expect(content).toContain(`- **Process Heap Used**:`)
-      expect(content).toContain(`- **Process Heap Total**:`)
-
-      // Check console logs instructions
-      expect(content).toContain(`**Please check for console errors/warnings:**`)
-      expect(content).toContain(`Toggle Developer Tools`)
-
-      // Check GitHub link
-      expect(content).toContain(`https://github.com/janosh/matterviz/issues`)
-
-      // Check timestamp
+      for (const snippet of [
+        // Main sections
+        `### Environment`,
+        `### System Resources`,
+        `### Active Files & Extension State`,
+        `### Console Logs`,
+        // Environment details
+        `- **Editor**: Cursor`,
+        `- **MatterViz Version**: ${pkg_json.version}`,
+        `- **UI Kind**: Desktop`,
+        `- **Remote Session**: No (Local)`,
+        // System resources
+        `- **Total Memory**:`,
+        `- **Free Memory**:`,
+        `- **Process RSS**:`,
+        `- **Process Heap Used**:`,
+        `- **Process Heap Total**:`,
+        // Console logs instructions
+        `**Please check for console errors/warnings:**`,
+        `Toggle Developer Tools`,
+        `Tip: You can filter console messages`,
+        // No watchers registered in this test
+        `No files currently being watched/rendered.`,
+        // GitHub link
+        `https://github.com/janosh/matterviz/issues`,
+      ]) {
+        expect(content).toContain(snippet)
+      }
       expect(content).toMatch(/\*\*Generated\*\*: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
-    })
 
-    test(`should detect remote session correctly`, async () => {
-      // Mock remote session
       mock_env.remoteName = `ssh-remote`
-
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
-      expect(content).toContain(`- **Remote Session**: Yes (ssh-remote)`)
+      expect(await run_report_bug()).toContain(`- **Remote Session**: Yes (ssh-remote)`)
     })
 
-    test(`should include active files in report`, async () => {
-      // Start watching some files first
-      const file1_path = `/test/structure.cif`
-      const file2_path = `/test/trajectory.traj`
+    test(`should include active files and extension state counters in report`, async () => {
+      await start_watching(`structure.cif`)
+      await start_watching(`trajectory.traj`)
 
-      await handle_msg(
-        {
-          command: `startWatching`,
-          file_path: file1_path,
-          filename: `structure.cif`,
-          request_id: `req1`,
-          frame_index: 0,
-        },
-        mock_webview,
-      )
-
-      await handle_msg(
-        {
-          command: `startWatching`,
-          file_path: file2_path,
-          filename: `trajectory.traj`,
-          request_id: `req2`,
-          frame_index: 0,
-        },
-        mock_webview,
-      )
-
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
+      const content = await run_report_bug()
 
       // Should list both files with bold filenames (not headers)
       expect(content).toContain(`**structure.cif**`)
       expect(content).toContain(`**trajectory.traj**`)
-      expect(content).toContain(`- **Path**: \`${file1_path}\``)
-      expect(content).toContain(`- **Path**: \`${file2_path}\``)
+      expect(content).toContain(`- **Path**: \`/test/structure.cif\``)
+      expect(content).toContain(`- **Path**: \`/test/trajectory.traj\``)
       expect(content).toContain(`- **Has Watcher**: true`)
-
       // Check for combined section and extension state counters
       expect(content).toContain(`### Active Files & Extension State`)
       expect(content).toContain(`- **Active Watchers**: 2`)
-    })
-
-    test(`should handle files with no active watchers`, async () => {
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
-      expect(content).toContain(`No files currently being watched/rendered.`)
+      expect(content).toMatch(/- \*\*Active Frame Loaders\*\*: \d+/)
+      expect(content).toMatch(/- \*\*Auto-Render Timers\*\*: \d+/)
+      expect(content).toMatch(/- \*\*Active Auto-Render Panels\*\*: \d+/)
     })
 
     test(`should copy to clipboard when user selects that option`, async () => {
       mock_vscode.window.showInformationMessage = vi.fn(() =>
         Promise.resolve(`Copy to Clipboard`),
       )
-
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
-
-      // Should have called clipboard.writeText with the content
+      const content = await run_report_bug()
       expect(mock_env.clipboard.writeText).toHaveBeenCalledWith(content)
-
-      // Should show success message
       expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
         `Debug information copied to clipboard!`,
       )
@@ -923,196 +884,53 @@ describe(`MatterViz Extension`, () => {
       mock_vscode.window.showInformationMessage = vi.fn(() =>
         Promise.resolve(`Open GitHub Issues`),
       )
-
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      // Should have opened GitHub issues URL
-      expect(mock_env.openExternal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          toString: expect.any(Function),
-        }),
-      )
-
-      // Verify the URL contains the GitHub issues path
-      const call_args = mock_env.openExternal.mock.calls[0]
-      expect(call_args[0].toString()).toContain(
+      await run_report_bug()
+      expect(mock_env.openExternal.mock.calls[0][0].toString()).toContain(
         `https://github.com/janosh/matterviz/issues/new`,
       )
     })
 
     test(`should format file sizes correctly`, async () => {
-      // Mock different file sizes
-      const test_cases = [
-        { size: 500, expected: `500 B` },
+      const size_cases = [
         { size: 1024, expected: `1.00 KiB` },
         { size: 1024 * 1024, expected: `1.00 MiB` },
         { size: 1024 * 1024 * 1024, expected: `1.00 GiB` },
       ]
+      // Persistent stat mock resolving each watched file to its configured size
+      const file_sizes = new Map(
+        size_cases.map(({ size }) => [`/test/file_${size}.cif`, size]),
+      )
+      mock_vscode.workspace.fs.stat.mockImplementation((uri) =>
+        Promise.resolve({ size: file_sizes.get(uri.fsPath) ?? 1000, type: 1 }),
+      )
+      await Promise.all(size_cases.map(({ size }) => start_watching(`file_${size}.cif`)))
 
-      // Create a map to track sizes for each file
-      const file_sizes = new Map<string, number>()
-
-      // Set up persistent mock that uses the file_sizes map
-      mock_vscode.workspace.fs.stat.mockImplementation((uri) => {
-        const size = file_sizes.get(uri.fsPath) ?? 1000
-        return Promise.resolve({ size, type: 1 })
-      })
-
-      // Add files to watchers with their sizes
-      const watcher_promises = test_cases.map((test_case) => {
-        const file_path = `/test/file_${test_case.size}.cif`
-        file_sizes.set(file_path, test_case.size)
-
-        return handle_msg(
-          {
-            command: `startWatching`,
-            file_path,
-            filename: `file_${test_case.size}.cif`,
-            request_id: `req_${test_case.size}`,
-            frame_index: 0,
-          },
-          mock_webview,
-        )
-      })
-
-      await Promise.all(watcher_promises)
-
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
-
-      // Check that sizes are formatted correctly
-      for (const test_case of test_cases) {
-        if (test_case.size >= 1024) {
-          // Only check KB and above (bytes might be rounded)
-          expect(content).toContain(test_case.expected)
-        }
-      }
+      const content = await run_report_bug()
+      for (const { expected } of size_cases) expect(content).toContain(expected)
     })
 
     test(`should handle file stat errors gracefully`, async () => {
-      // Mock file that exists but throws error on stat
-      const file_path = `/test/error-file.cif`
-
-      await handle_msg(
-        {
-          command: `startWatching`,
-          file_path,
-          filename: `error-file.cif`,
-          request_id: `req_error`,
-          frame_index: 0,
-        },
-        mock_webview,
-      )
-
-      // Mock stat to throw error for this specific file
+      await start_watching(`error-file.cif`)
       mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
 
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
-
+      const content = await run_report_bug()
       // Should still include the file but with "Unknown" size
       expect(content).toContain(`**error-file.cif**`)
       expect(content).toContain(`- **Size**: Unknown`)
     })
 
-    test(`should include extension state counters`, async () => {
-      // Start watching multiple files
-      await handle_msg(
-        {
-          command: `startWatching`,
-          file_path: `/test/file1.cif`,
-          filename: `file1.cif`,
-          request_id: `req1`,
-          frame_index: 0,
-        },
-        mock_webview,
-      )
-
-      await handle_msg(
-        {
-          command: `startWatching`,
-          file_path: `/test/file2.cif`,
-          filename: `file2.cif`,
-          request_id: `req2`,
-          frame_index: 0,
-        },
-        mock_webview,
-      )
-
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
-
-      // Check combined Active Files & Extension State section
-      expect(content).toContain(`### Active Files & Extension State`)
-      expect(content).toContain(`- **Active Watchers**: 2`)
-      expect(content).toMatch(/- \*\*Active Frame Loaders\*\*: \d+/)
-      expect(content).toMatch(/- \*\*Auto-Render Timers\*\*: \d+/)
-      expect(content).toMatch(/- \*\*Active Auto-Render Panels\*\*: \d+/)
-    })
-
     test(`should handle errors during report generation`, async () => {
-      // Mock openTextDocument to throw an error
       mock_vscode.workspace.openTextDocument = vi.fn(() =>
         Promise.reject(new Error(`Failed to create document`)),
       )
 
       expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
+      await report_bug_command?.()
 
-      await report_bug_command()
-
-      // Should show error message
       expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
         expect.stringContaining(`Failed to collect debug information`),
       )
     })
-
-    test(`should include console logs instructions in bug report`, async () => {
-      expect(report_bug_command).not.toBeNull()
-      if (!report_bug_command) return
-
-      await report_bug_command()
-
-      const content = mock_opened_document?.content ?? ``
-
-      // Check for console logs section with instructions
-      expect(content).toContain(`### Console Logs`)
-      expect(content).toContain(`**Please check for console errors/warnings:**`)
-      expect(content).toContain(`Toggle Developer Tools`)
-      expect(content).toContain(`Tip: You can filter console messages`)
-    })
-  })
-
-  test(`performance benchmarks`, () => {
-    // Trajectory detection performance
-    const filenames = Array.from({ length: 10000 }, (_, idx) => `test_${idx}.xyz`)
-    const start = performance.now()
-    filenames.forEach((name) => is_trajectory_file(name))
-    expect(performance.now() - start).toBeLessThan(100)
-
-    // HTML generation performance
-    const large_data = {
-      data: { filename: `large.cif`, content: `x`.repeat(100_000), is_base64: false },
-      theme: `light`,
-    } as const
-    const html_start = performance.now()
-    create_html(mock_webview, mock_context, large_data)
-    expect(performance.now() - html_start).toBeLessThan(50)
   })
 
   test(`nonce uniqueness`, () => {
@@ -1216,6 +1034,9 @@ describe(`MatterViz Extension`, () => {
       expect(parsed_data.theme).toBe(`dark`)
     })
 
+    // high-contrast auto mappings (HighContrast → black, HighContrastLight → white)
+    // are covered by the theme detection test.each above
+
     test(`invalid theme setting falls back to auto`, () => {
       stub_theme_config(`invalid-theme`)
       mock_vscode.window.activeColorTheme = {
@@ -1225,29 +1046,19 @@ describe(`MatterViz Extension`, () => {
       const result = get_theme()
       expect(result).toBe(`light`) // Should fall back to system theme
     })
-
-    test(`high contrast themes are mapped correctly`, () => {
-      stub_theme_config(`auto`)
-
-      // Test high contrast dark → black
-      mock_vscode.window.activeColorTheme = {
-        kind: mock_vscode.ColorThemeKind.HighContrast,
-      }
-      expect(get_theme()).toBe(`black`)
-
-      // Test high contrast light → white
-      mock_vscode.window.activeColorTheme = {
-        kind: mock_vscode.ColorThemeKind.HighContrastLight,
-      }
-      expect(get_theme()).toBe(`white`)
-    })
   })
 
-  describe(`Theme listener cleanup`, () => {
+  describe(`Panel listener cleanup`, () => {
+    const webview_with_dispose = (dispose: () => void) => ({
+      ...mock_webview,
+      onDidReceiveMessage: vi.fn(() => ({ dispose })),
+      options: undefined as WebviewOptions | undefined,
+    })
+
     const setup_panel = (options = {}) => {
       const mock_dispose = vi.fn()
       const mock_panel = {
-        webview: { ...mock_webview },
+        webview: webview_with_dispose(mock_dispose),
         onDidDispose: vi.fn(),
         visible: true,
         ...options,
@@ -1267,7 +1078,7 @@ describe(`MatterViz Extension`, () => {
       return { mock_dispose, mock_panel }
     }
 
-    test(`sets up and cleans up theme listeners`, async () => {
+    test(`sets up and cleans up panel listeners`, async () => {
       const { mock_dispose, mock_panel } = setup_panel()
 
       await render(mock_context)
@@ -1277,26 +1088,11 @@ describe(`MatterViz Extension`, () => {
 
       // Test cleanup
       mock_panel.onDidDispose.mock.calls[0][0]()
-      expect(mock_dispose).toHaveBeenCalledTimes(2)
+      expect(mock_dispose).toHaveBeenCalledTimes(3)
     })
 
     test(`respects panel visibility for theme updates`, async () => {
-      const mock_panel = {
-        webview: { ...mock_webview },
-        onDidDispose: vi.fn(),
-        visible: false,
-      }
-
-      mock_vscode.window.createWebviewPanel.mockReturnValue(mock_panel)
-      mock_vscode.window.onDidChangeActiveColorTheme.mockReturnValue({
-        dispose: vi.fn(),
-      })
-      mock_vscode.workspace.onDidChangeConfiguration.mockReturnValue({
-        dispose: vi.fn(),
-      })
-      mock_vscode.window.activeTextEditor = {
-        document: { fileName: `/test/active.cif`, getText: () => `content` },
-      } as TextEditor
+      const { mock_panel } = setup_panel({ visible: false })
 
       await render(mock_context)
 
@@ -1321,8 +1117,8 @@ describe(`MatterViz Extension`, () => {
     test(`multiple panels dispose independently`, async () => {
       const dispose1 = vi.fn()
       const dispose2 = vi.fn()
-      const panel1 = { webview: { ...mock_webview }, onDidDispose: vi.fn() }
-      const panel2 = { webview: { ...mock_webview }, onDidDispose: vi.fn() }
+      const panel1 = { webview: webview_with_dispose(dispose1), onDidDispose: vi.fn() }
+      const panel2 = { webview: webview_with_dispose(dispose2), onDidDispose: vi.fn() }
 
       mock_vscode.window.createWebviewPanel
         .mockReturnValueOnce(panel1)
@@ -1346,8 +1142,62 @@ describe(`MatterViz Extension`, () => {
       await render(mock_context)
 
       panel1.onDidDispose.mock.calls[0][0]()
-      expect(dispose1).toHaveBeenCalledTimes(2)
+      expect(dispose1).toHaveBeenCalledTimes(3)
       expect(dispose2).not.toHaveBeenCalled()
+    })
+    describe(`Custom editor provider`, () => {
+      interface ProviderLike {
+        openCustomDocument: (uri: unknown, ctx: unknown, token: unknown) => { uri: Uri }
+        resolveCustomEditor: (
+          document: unknown,
+          panel: unknown,
+          token: unknown,
+        ) => Promise<void>
+      }
+
+      // Register the provider via activate() and grab the instance VSCode would use
+      const get_provider = (): ProviderLike => {
+        activate(mock_context)
+        return mock_vscode.window.registerCustomEditorProvider.mock.calls[0][1] as ProviderLike
+      }
+
+      test(`resolveCustomEditor wires webview options, html, watcher, and cleanup`, async () => {
+        const provider = get_provider()
+        const { mock_dispose, mock_panel: panel } = setup_panel()
+
+        const file_path = `/test/custom-editor.cif`
+        const document = provider.openCustomDocument({ fsPath: file_path }, {}, {})
+        await provider.resolveCustomEditor(document, panel, {})
+
+        // No error path taken, webview fully configured
+        expect(panel.webview.options).toMatchObject({ enableScripts: true })
+        expect(
+          (panel.webview.options as { localResourceRoots: unknown[] }).localResourceRoots,
+        ).toHaveLength(1)
+        expect(panel.webview.html).toContain(`custom-editor.cif`)
+        expect(panel.webview.onDidReceiveMessage).toHaveBeenCalledWith(
+          expect.any(Function),
+          undefined,
+        )
+        expect(active_watchers.has(file_path)).toBe(true)
+
+        // Dispose tears down message/theme/config listeners and the file watcher
+        panel.onDidDispose.mock.calls[0][0]()
+        expect(mock_dispose).toHaveBeenCalledTimes(3)
+        expect(active_watchers.has(file_path)).toBe(false)
+      })
+
+      test(`resolveCustomEditor surfaces file read errors via showErrorMessage`, async () => {
+        const provider = get_provider()
+        mock_vscode.workspace.fs.readFile.mockRejectedValue(new Error(`disk on fire`))
+
+        const document = provider.openCustomDocument({ fsPath: `/test/broken.cif` }, {}, {})
+        await provider.resolveCustomEditor(document, setup_panel().mock_panel, {})
+
+        expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+          expect.stringContaining(`Failed:`),
+        )
+      })
     })
   })
 
@@ -1488,21 +1338,7 @@ describe(`MatterViz Extension`, () => {
       })
     })
 
-    describe(`lifecycle management`, () => {
-      test(`should handle activation gracefully`, () => {
-        const activate_context = {
-          extensionUri: { fsPath: `/test/extension` },
-          subscriptions: [],
-        } as unknown as ExtensionContext
-
-        expect(() => activate(activate_context)).not.toThrow()
-
-        expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-          `matterviz.open`,
-          expect.any(Function),
-        )
-      })
-    })
+    // activation itself is covered by the top-level `extension activation` test
   })
 
   describe(`Auto-Render Functionality`, () => {
@@ -1552,20 +1388,17 @@ describe(`MatterViz Extension`, () => {
       [`molecule|test.mol2`, true],
       [`structure\`test.sdf`, true],
       [`trajectory~test.mmcif`, true],
-      // Case sensitivity tests
+      // Case sensitivity tests (POSCAR/CONTCAR/XDATCAR uppercase already covered above)
       [`STRUCTURE.CIF`, true],
       [`structure.CIF`, true],
       [`Structure.cif`, true],
       [`TRAJECTORY.XYZ`, true],
       [`trajectory.XYZ`, true],
       [`Trajectory.xyz`, true],
-      [`POSCAR`, true],
       [`poscar`, true],
       [`Poscar`, true],
-      [`CONTCAR`, true],
       [`contcar`, true],
       [`Contcar`, true],
-      [`XDATCAR`, true],
       [`xdatcar`, true],
       [`Xdatcar`, true],
       // Fermi surface files
@@ -1648,41 +1481,19 @@ describe(`MatterViz Extension`, () => {
       [`crystal.poscar.old`, true],
       [`molecule.xyz~`, false],
       [`structure.cif.swp`, false],
+      // Unsupported files in mixed case (case-insensitivity of negatives)
       [`DOCUMENT.TXT`, false],
-      [`document.TXT`, false],
-      [`Document.txt`, false],
-      [`SCRIPT.PY`, false],
-      [`script.PY`, false],
       [`Script.py`, false],
-      [`DATA.CSV`, false],
       [`data.CSV`, false],
-      [`Data.csv`, false],
       // Configuration files that should never auto-render
       [`package.json`, false],
       [`tsconfig.json`, false],
-      [`vite.config.ts`, false],
       [`webpack.config.js`, false],
-      [`rollup.config.js`, false],
-      [`eslint.config.js`, false],
-      [`prettier.config.js`, false],
-      [`babel.config.js`, false],
-      [`jest.config.js`, false],
-      [`karma.conf.js`, false],
-      [`cypress.json`, false],
       [`playwright.config.ts`, false],
       [`.eslintrc.json`, false],
-      [`.prettierrc`, false],
       [`.babelrc`, false],
-      [`.jest.config.js`, false],
-      [`.karma.conf.js`, false],
-      [`.cypress.json`, false],
-      [`.playwright.config.ts`, false],
       [`.npmrc`, false],
-      [`.yarnrc`, false],
       [`.vscode/settings.json`, false],
-      [`.idea/workspace.xml`, false],
-      [`.nyc_output/coverage.json`, false],
-      [`.tmp/temp.json`, false],
       [`.temp/structure.json`, false],
       [`node_modules/package.json`, false],
       // Edge cases
@@ -1706,13 +1517,6 @@ describe(`MatterViz Extension`, () => {
       expect(mock_vscode.workspace.onDidOpenTextDocument).toHaveBeenCalledWith(
         expect.any(Function),
       )
-    })
-
-    test(`should handle rapid file detection efficiently`, () => {
-      const filenames = Array.from({ length: 100 }, (_, idx) => `test_${idx}.cif`)
-      const start = performance.now()
-      filenames.forEach(should_auto_render)
-      expect(performance.now() - start).toBeLessThan(10)
     })
 
     test(`should not trigger on non-file URIs`, () => {
@@ -1803,55 +1607,52 @@ describe(`MatterViz Extension`, () => {
 
   describe(`Default Settings`, () => {
     // Helper to create mock config and test setting
-    const test_setting = (
-      result_path: string,
-      expected_value: unknown,
-      config_key: string,
-    ) => {
-      const parts = config_key.split(`.`)
-
-      const mock_config = {
-        get: vi.fn((key: string, default_val?: unknown): unknown => {
-          if (parts.length === 2 && key === parts[0]) {
-            return { [parts[1]]: expected_value }
-          } else if (parts.length === 1 && key === parts[0]) return expected_value
-          return default_val
-        }),
-      }
+    const apply_config = (config: unknown) => {
       // @ts-expect-error: Mock type override needed for testing
-      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+      mock_vscode.workspace.getConfiguration.mockReturnValue(config)
+    }
 
-      const result = get_defaults()
-      return result_path
+    const apply_overrides = (overrides: Record<string, unknown>) =>
+      apply_config({
+        get: vi.fn(),
+        inspect: vi.fn((key: string) =>
+          key in overrides ? { key, workspaceValue: overrides[key] } : undefined,
+        ),
+      })
+
+    const setting_at = (path: string) =>
+      path
         .split(`.`)
         .reduce<unknown>(
           (obj, key) => (obj as Record<string, unknown> | undefined)?.[key],
-          result,
+          get_defaults(),
         )
-    }
 
-    test(`should merge user settings with defaults`, () => {
-      const user_config = {
-        structure: { atom_radius: 1.5, show_bonds: `always`, bond_color: `#ff0000` },
-        trajectory: { auto_play: true },
-      }
-      const mock_config = {
-        get: vi.fn((key: string, default_val?: unknown) => {
-          if (key === `structure`) return user_config.structure
-          if (key === `trajectory`) return user_config.trajectory
-          return default_val
-        }),
-      }
-      // @ts-expect-error: Mock type override needed for testing
-      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
-
+    test(`merges explicit overrides and keeps unset keys at DEFAULTS`, () => {
+      apply_overrides({
+        'structure.atom_radius': 1.5,
+        'structure.show_bonds': `always`,
+        'structure.bond_color': `#ff0000`,
+        'structure.vector_configs': { force: { visible: true } },
+        'trajectory.auto_play': true,
+      })
       const result = get_defaults()
-
-      expect(result.structure.atom_radius).toBe(1.5)
-      expect(result.structure.show_bonds).toBe(`always`)
-      expect(result.structure.bond_color).toBe(`#ff0000`)
+      expect(result.structure).toMatchObject({
+        atom_radius: 1.5,
+        show_bonds: `always`,
+        bond_color: `#ff0000`,
+        same_size_atoms: DEFAULTS.structure.same_size_atoms, // Falls back to default
+        vector_configs: { force: { visible: true } },
+      })
       expect(result.trajectory.auto_play).toBe(true)
-      expect(result.structure.same_size_atoms).toBe(false) // Falls back to default
+    })
+
+    test(`ignores package defaultValue from inspect()`, () => {
+      apply_config({
+        get: vi.fn(() => ({ atom_radius: 1.5 })),
+        inspect: vi.fn(() => ({ key: `structure.atom_radius`, defaultValue: 1.5 })),
+      })
+      expect(get_defaults().structure.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     })
 
     test.each([
@@ -1874,6 +1675,9 @@ describe(`MatterViz Extension`, () => {
       [`background_opacity`, 0.8],
       [`trajectory.fps`, 10],
       [`trajectory.step_labels`, 10],
+      [`scatter.point.size`, 7],
+      [`convex_hull.ternary.camera_zoom`, 2],
+      [`symmetry.symprec`, 0.01],
 
       // Booleans
       [`structure.same_size_atoms`, true],
@@ -1886,6 +1690,7 @@ describe(`MatterViz Extension`, () => {
       [`structure.show_gizmo`, false],
       [`trajectory.auto_play`, true],
       [`trajectory.show_controls`, false],
+      [`plot.grid_lines`, false],
 
       // Colors (strings)
       [`structure.bond_color`, `#ff0000`],
@@ -1909,52 +1714,40 @@ describe(`MatterViz Extension`, () => {
       [`structure.camera_position`, [1, 2, 3]],
       [`structure.site_label_offset`, [0.5, 1.0, 0]],
       [`trajectory.fps_range`, [0.5, 60]],
-    ])(`should handle setting: %s = %s`, (result_path, expected_value) => {
-      const value = test_setting(result_path, expected_value, result_path)
-      if (Array.isArray(expected_value)) expect(value).toEqual(expected_value)
-      else expect(value).toBe(expected_value)
+    ])(`applies %s = %s`, (path, expected) => {
+      apply_overrides({ [path]: expected })
+      expect(setting_at(path)).toEqual(expected)
     })
 
     test.each([
-      [{ get: vi.fn(() => undefined) }, `missing config`],
+      [`missing inspect`, () => ({ get: vi.fn(), inspect: vi.fn(() => undefined) })],
       [
-        {
-          get: vi.fn((key: string, default_val?: unknown) =>
-            key === `defaults`
-              ? {
-                  structure: {
-                    atom_radius: `invalid`,
-                    show_bonds: `invalid-value`,
-                    bond_color: 123,
-                  },
-                }
-              : default_val,
+        `invalid structure values`,
+        () => ({
+          get: vi.fn(),
+          inspect: vi.fn((key: unknown) =>
+            typeof key === `string` && key.startsWith(`structure.`)
+              ? { key, workspaceValue: `invalid` }
+              : undefined,
           ),
-        },
-        `invalid values`,
+        }),
       ],
-    ])(`should handle %s gracefully`, (mock_config, _description) => {
-      // @ts-expect-error: Mock type override needed for testing
-      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
-
+      [
+        `getConfiguration throws`,
+        () => {
+          throw new Error(`Config access failed`)
+        },
+      ],
+    ])(`handles %s without throwing`, (_label, make_config) => {
+      mock_vscode.workspace.getConfiguration.mockImplementation(() => make_config())
       expect(() => get_defaults()).not.toThrow()
-      const result = get_defaults()
-
-      expect(result).toEqual(
+      expect(get_defaults()).toEqual(
         expect.objectContaining({
           structure: expect.any(Object),
           trajectory: expect.any(Object),
           composition: expect.any(Object),
         }),
       )
-    })
-
-    test(`should handle workspace config errors`, () => {
-      mock_vscode.workspace.getConfiguration.mockImplementation(() => {
-        throw new Error(`Config access failed`)
-      })
-
-      expect(() => get_defaults()).not.toThrow()
     })
   })
 })

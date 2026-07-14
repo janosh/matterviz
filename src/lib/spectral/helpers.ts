@@ -114,7 +114,7 @@ export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as
 export function pretty_sym_point(symbol: string): string {
   if (!symbol) return ``
 
-  // Remove underscores (htmlify maps S0 → S<sub>0</sub> but leaves S_0 as is)
+  // Remove underscores so S_0 and S0 are treated alike
   // Replace common symmetry point names with Greek letters
   // Handle both plain names (GAMMA) and LaTeX notation (\Gamma) from pymatgen
   // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
@@ -459,36 +459,14 @@ const SPIN_DOWN_KEYS = [`-1`, `Spin.down`]
 // Returns { up: T, down: T | null } where down is null for non-spin-polarized data.
 export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null } | null {
   if (Array.isArray(data)) return { up: data as T, down: null }
-  if (data && typeof data === `object`) {
-    const record = data as Record<string, T>
-    let spin_up: T | null = null
-    let spin_down: T | null = null
+  if (!data || typeof data !== `object`) return null
 
-    // Extract spin-up channel
-    for (const key of SPIN_UP_KEYS) {
-      if (key in record) {
-        spin_up = record[key]
-        break
-      }
-    }
-    // Extract spin-down channel
-    for (const key of SPIN_DOWN_KEYS) {
-      if (key in record) {
-        spin_down = record[key]
-        break
-      }
-    }
-
-    // Fall back to first key if no spin-up key found
-    if (spin_up === null) {
-      const keys = Object.keys(record)
-      if (keys.length > 0) spin_up = record[keys[0]]
-    }
-
-    if (spin_up === null) return null
-    return { up: spin_up, down: spin_down }
-  }
-  return null
+  const record = data as Record<string, T>
+  const up_key = SPIN_UP_KEYS.find((key) => key in record)
+  const down_key = SPIN_DOWN_KEYS.find((key) => key in record)
+  // No spin-up key: do not fall back to Object.keys()[0] (could be spin-down)
+  if (up_key === undefined) return null
+  return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
 }
 
 // Convert pymatgen PhononBandStructureSymmLine or BandStructure to matterviz format
@@ -846,6 +824,19 @@ export function find_qpoint_at_distance(
   )
 }
 
+// Look up a branch's x-range in the plot via its start/end q-point labels
+const branch_x_range = (
+  bs: types.BaseBandStructure,
+  branch: types.Branch,
+  x_positions: Record<string, Vec2>,
+): Vec2 | undefined =>
+  x_positions[
+    get_segment_key(
+      bs.qpoints[branch.start_index]?.label ?? undefined,
+      bs.qpoints[branch.end_index]?.label ?? undefined,
+    )
+  ]
+
 // Rescaled x-position of a q-point index along the band plot path. Inverse of
 // find_qpoint_at_rescaled_x, used to highlight a q-point hovered in the Brillouin zone.
 // Returns null if the index doesn't fall on a plotted (non-discontinuity) branch.
@@ -858,9 +849,7 @@ export function qpoint_x_position(
 
   for (const branch of band_struct.branches) {
     if (qpoint_index < branch.start_index || qpoint_index > branch.end_index) continue
-    const start_label = band_struct.qpoints[branch.start_index]?.label ?? undefined
-    const end_label = band_struct.qpoints[branch.end_index]?.label ?? undefined
-    const range = x_positions[get_segment_key(start_label, end_label)]
+    const range = branch_x_range(band_struct, branch, x_positions)
     if (!range) continue
 
     const [x_start, x_end] = range
@@ -884,89 +873,53 @@ export function find_qpoint_at_rescaled_x(
 
   // Find which segment contains this x coordinate
   for (const branch of band_struct.branches) {
-    const start_idx = branch.start_index
-    const end_idx = branch.end_index
-    const start_label = band_struct.qpoints[start_idx]?.label ?? undefined
-    const end_label = band_struct.qpoints[end_idx]?.label ?? undefined
-    const segment_key = get_segment_key(start_label, end_label)
-
-    const segment_range = x_positions[segment_key]
+    const { start_index: start_idx, end_index: end_idx } = branch
+    const segment_range = branch_x_range(band_struct, branch, x_positions)
     if (!segment_range) continue
 
     const [x_start, x_end] = segment_range
 
-    // Check if discontinuity (zero-length segment)
-    const is_discontinuity = Math.abs(x_end - x_start) < 1e-6
-    if (is_discontinuity) {
-      // For discontinuities, check if x is exactly at this point
-      if (Math.abs(rescaled_x - x_start) < 1e-6) {
-        return start_idx
-      }
+    // Discontinuity (zero-length segment): match only if x is exactly at this point
+    if (Math.abs(x_end - x_start) < 1e-6) {
+      if (Math.abs(rescaled_x - x_start) < 1e-6) return start_idx
       continue
     }
 
     // Check if x is within this segment (with small tolerance for edges)
     if (rescaled_x >= x_start - 1e-6 && rescaled_x <= x_end + 1e-6) {
       // Map from rescaled x back to original distance
-      const segment_distances = band_struct.distance.slice(start_idx, end_idx + 1)
-      const dist_min = segment_distances[0]
-      const dist_max = segment_distances.at(-1) ?? dist_min
-      const dist_range = dist_max - dist_min
-
-      // Handle zero-length segments
-      if (dist_range === 0) {
-        return start_idx
-      }
+      const dist_min = band_struct.distance[start_idx]
+      const dist_range = band_struct.distance[end_idx] - dist_min
+      if (dist_range === 0) return start_idx
 
       // Inverse of the scaling: x = x_start + ((dist - dist_min) / dist_range) * (x_end - x_start)
-      // Solving for dist: dist = dist_min + ((x - x_start) / (x_end - x_start)) * dist_range
       const normalized_x = (rescaled_x - x_start) / (x_end - x_start)
       const target_dist = dist_min + normalized_x * dist_range
 
       // Find closest qpoint in this branch to the target distance
-      let closest_idx = start_idx
-      let min_diff = Math.abs(band_struct.distance[start_idx] - target_dist)
-
+      let [closest_idx, min_diff] = [start_idx, Infinity]
       for (let idx = start_idx; idx <= end_idx; idx++) {
         const diff = Math.abs(band_struct.distance[idx] - target_dist)
-        if (diff < min_diff) {
-          min_diff = diff
-          closest_idx = idx
-        }
+        if (diff < min_diff) [closest_idx, min_diff] = [idx, diff]
       }
-
       return closest_idx
     }
   }
 
   // Fallback: find closest labeled point
-  let closest_idx = 0
-  let min_dist = Infinity
-
+  let [closest_idx, min_dist] = [0, Infinity]
   for (const branch of band_struct.branches) {
-    const start_idx = branch.start_index
-    const end_idx = branch.end_index
-    const start_label = band_struct.qpoints[start_idx]?.label ?? undefined
-    const end_label = band_struct.qpoints[end_idx]?.label ?? undefined
-    const segment_key = get_segment_key(start_label, end_label)
-    const segment_range = x_positions[segment_key]
-
+    const segment_range = branch_x_range(band_struct, branch, x_positions)
     if (!segment_range) continue
 
-    const [x_start, x_end] = segment_range
-
     for (const [x_pos, idx] of [
-      [x_start, start_idx],
-      [x_end, end_idx],
+      [segment_range[0], branch.start_index],
+      [segment_range[1], branch.end_index],
     ] as const) {
       const dist = Math.abs(rescaled_x - x_pos)
-      if (dist < min_dist) {
-        min_dist = dist
-        closest_idx = idx
-      }
+      if (dist < min_dist) [closest_idx, min_dist] = [idx, dist]
     }
   }
-
   return closest_idx
 }
 
@@ -1055,32 +1008,19 @@ const shift_dos_energies = <T extends PymatgenDos>(dos: T, shift: number): T => 
 // Recursively shifts nested DOS in atom_dos and spd_dos for consistency
 export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   const shift = dos.efermi
+  const shift_nested = (nested?: Record<string, PymatgenDos>) =>
+    nested &&
+    Object.fromEntries(
+      Object.entries(nested).map(([key, nested_dos]) => [
+        key,
+        shift_dos_energies(nested_dos, shift),
+      ]),
+    )
 
-  // Shift root DOS energies using the shared helper
-  const shifted_root = shift_dos_energies(dos, shift)
-
-  // Shift nested atom_dos if present
-  const atom_dos = dos.atom_dos
-    ? Object.fromEntries(
-        Object.entries(dos.atom_dos).map(([key, nested_dos]) => [
-          key,
-          shift_dos_energies(nested_dos, shift),
-        ]),
-      )
-    : undefined
-
-  // Shift nested spd_dos if present
-  const spd_dos = dos.spd_dos
-    ? Object.fromEntries(
-        Object.entries(dos.spd_dos).map(([key, nested_dos]) => [
-          key,
-          shift_dos_energies(nested_dos, shift),
-        ]),
-      )
-    : undefined
-
+  const atom_dos = shift_nested(dos.atom_dos)
+  const spd_dos = shift_nested(dos.spd_dos)
   return {
-    ...shifted_root,
+    ...shift_dos_energies(dos, shift),
     efermi: 0, // Explicitly set to 0 (shift_dos_energies would give efermi - shift)
     ...(atom_dos && { atom_dos }),
     ...(spd_dos && { spd_dos }),
@@ -1198,26 +1138,16 @@ export function compute_frequency_range(
 
   // Check raw band_structs for electronic markers before normalization
   // (normalized structures always have qpoints, so we can't detect from them)
-  let has_electronic_bs = false
   // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict
   const is_single_bs =
     band_structs &&
     typeof band_structs === `object` &&
     (`qpoints` in band_structs || `kpoints` in band_structs)
-  if (band_structs && typeof band_structs === `object`) {
-    // Single structure check
-    if (is_electronic_band_struct(band_structs)) {
-      has_electronic_bs = true
-    } else if (!is_single_bs) {
-      // Dict of band structures - check each value
-      for (const bs_val of Object.values(band_structs)) {
-        if (is_electronic_band_struct(bs_val)) {
-          has_electronic_bs = true
-          break
-        }
-      }
-    }
-  }
+  const has_electronic_bs =
+    band_structs &&
+    typeof band_structs === `object` &&
+    (is_electronic_band_struct(band_structs) ||
+      (!is_single_bs && Object.values(band_structs).some(is_electronic_band_struct)))
 
   const bs_list = band_structs
     ? is_single_bs

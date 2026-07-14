@@ -31,7 +31,6 @@ import {
   to_number_array,
   to_scalar_number,
   to_string_array,
-  with_h5_file,
 } from './h5-utils'
 import { read_vaspout_dos, read_vaspout_electronic } from './vaspout-electronic'
 
@@ -363,11 +362,4 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
       ...(dos ? { electronic: { dos, bands: null } } : {}),
     },
   }
-}
-
-export async function parse_vaspout_h5(
-  buffer: ArrayBuffer,
-  filename?: string,
-): Promise<TrajectoryType> {
-  return with_h5_file(buffer, filename, parse_vaspout_h5_file)
 }

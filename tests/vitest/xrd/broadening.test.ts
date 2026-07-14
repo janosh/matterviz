@@ -23,18 +23,14 @@ describe(`compute_broadened_pattern`, () => {
 
   describe(`functional behavior`, () => {
     test(`generates correct grid based on range and step_size`, () => {
-      // range [10, 12], step 0.5 -> n_steps = 4 (10, 10.5, 11, 11.5)
       // The grid is [min, max) unless (max-min) is not a multiple of step
-      const range: Vec2 = [10, 12]
-      const step = 0.5
-      const pattern = { x: [], y: [] }
-      const result = compute_broadened_pattern(pattern, DEFAULT_BROADENING, range, step)
-
-      expect(result.x).toHaveLength(4)
-      expect(result.x[0]).toBe(10)
-      expect(result.x[1]).toBe(10.5)
-      expect(result.x[2]).toBe(11)
-      expect(result.x[3]).toBe(11.5)
+      const result = compute_broadened_pattern(
+        { x: [], y: [] },
+        DEFAULT_BROADENING,
+        [10, 12],
+        0.5,
+      )
+      expect(result.x).toEqual([10, 10.5, 11, 11.5])
     })
 
     test(`broadens a single peak correctly with intensity conservation`, () => {
@@ -55,13 +51,9 @@ describe(`compute_broadened_pattern`, () => {
       expect(peak_x).toBeCloseTo(20, 1)
       expect(max_y).toBeGreaterThan(0)
 
-      // Check intensity conservation (integral should be close to 100)
-      // Integral = sum(y * dx)
+      // Check intensity conservation: integral = sum(y * dx) should be close to 100
+      // (the finite 20 * FWHM window loses ~0.8% of intensity to Lorentzian tails)
       const integral = result.y.reduce((sum, val) => sum + val, 0) * step_size
-      expect(integral).toBeCloseTo(100, -1) // 20 * FWHM window loses ~0.8% of intensity for Lorentzian tails.
-      // The previous strict check failed because the window isn't infinitely wide.
-      // Precision -1 checks integer part roughly (10s place). 0 checks unit place.
-      // We got 99.2, which is close to 100.
       expect(integral).toBeGreaterThan(99)
       expect(integral).toBeLessThan(101)
     })

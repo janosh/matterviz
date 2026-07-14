@@ -9,11 +9,6 @@ import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import type { TrajectoryFrame } from './index'
 
-const is_valid_row = (row: unknown): boolean => {
-  if (!(Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row))) return false
-  return math.is_finite_vec3_like(row as ArrayLike<unknown>)
-}
-
 const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
   Array.isArray(coords) && math.is_finite_vec3_like(coords)
 
@@ -26,7 +21,13 @@ export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
     )
   }
 
-  if (!data.every(is_valid_row)) {
+  if (
+    !data.every(
+      (row) =>
+        (Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row)) &&
+        math.is_finite_vec3_like(row as ArrayLike<unknown>),
+    )
+  ) {
     throw new Error(`Invalid 3x3 matrix structure`)
   }
   return data as math.Matrix3x3
@@ -108,57 +109,27 @@ export const read_ndarray_from_view = (
 ): number[][] => {
   const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
   const total = shape.reduce((product, dim_size) => product * dim_size, 1)
-  const data: number[] = []
-  let pos = array_offset
 
-  const readers = {
-    int64: {
-      bytes_per_element: 8,
-      read: () => {
-        const value = Number(view.getBigInt64(pos, true))
-        pos += 8
-        return value
-      },
-    },
-    int32: {
-      bytes_per_element: 4,
-      read: () => {
-        const value = view.getInt32(pos, true)
-        pos += 4
-        return value
-      },
-    },
-    float64: {
-      bytes_per_element: 8,
-      read: () => {
-        const value = view.getFloat64(pos, true)
-        pos += 8
-        return value
-      },
-    },
-    float32: {
-      bytes_per_element: 4,
-      read: () => {
-        const value = view.getFloat32(pos, true)
-        pos += 4
-        return value
-      },
-    },
+  const readers: Record<string, { bytes: number; read: (pos: number) => number }> = {
+    int64: { bytes: 8, read: (pos) => Number(view.getBigInt64(pos, true)) },
+    int32: { bytes: 4, read: (pos) => view.getInt32(pos, true) },
+    float64: { bytes: 8, read: (pos) => view.getFloat64(pos, true) },
+    float32: { bytes: 4, read: (pos) => view.getFloat32(pos, true) },
   }
-
-  const reader_config = readers[dtype as keyof typeof readers]
-  if (!reader_config) throw new Error(`Unsupported dtype: ${dtype}`)
+  const reader = readers[dtype]
+  if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
 
   if (!Number.isInteger(array_offset) || array_offset < 0) {
     throw new Error(`Invalid array_offset: expected non-negative integer, got ${array_offset}`)
   }
-
-  const bytes_needed = total * reader_config.bytes_per_element
-  if (array_offset + bytes_needed > view.byteLength) {
+  if (array_offset + total * reader.bytes > view.byteLength) {
     throw new Error(`Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`)
   }
 
-  for (let idx = 0; idx < total; idx++) data.push(reader_config.read())
+  const data: number[] = []
+  for (let idx = 0; idx < total; idx++) {
+    data.push(reader.read(array_offset + idx * reader.bytes))
+  }
 
   return shape.length === 1
     ? [data]
@@ -198,7 +169,6 @@ export function calc_force_stats(
   return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
 }
 
-// Walk concatenated (ext)XYZ frames in `lines`, yielding each frame's atom-count line
 // True when a whitespace-split line looks like an XYZ atom line: a short
 // non-numeric element token followed by three numeric coordinates. Shared by
 // trajectory frame iteration and structure-format sniffing so both stay in sync.
@@ -209,7 +179,8 @@ export const is_xyz_atom_line = (parts: string[] | undefined): boolean =>
   parts[0].length <= 3 &&
   parts.slice(1, 4).every((coord) => coord !== `` && !isNaN(Number(coord)))
 
-// index, parsed atom count, and comment line. A candidate frame is accepted only when its
+// Walk concatenated (ext)XYZ frames in `lines`, yielding each frame's start line index,
+// parsed atom count, and comment line. A candidate frame is accepted only when its
 // first few atom lines look like "<element> <x> <y> <z>"; otherwise we advance one line and
 // rescan. That validation doubles as content sniffing so numeric-leading non-XYZ formats
 // (e.g. VASP XDATCAR) aren't misread as frames, and keeps count_xyz_frames consistent with
@@ -240,7 +211,7 @@ export function* iter_xyz_frames(
 
 // Count XYZ frames via iter_xyz_frames so total_frames matches what gets indexed/loaded
 export function count_xyz_frames(data: string): number {
-  if (!data || typeof data !== `string`) return 0
+  if (!data) return 0
   const frames = iter_xyz_frames(data.trim().split(/\r?\n/))
   let frame_count = 0
   while (!frames.next().done) frame_count += 1

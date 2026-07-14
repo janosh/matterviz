@@ -328,50 +328,25 @@ export function is_plottable_data(obj: unknown): boolean {
 
 // Detect the visualization type for a given JSON value.
 // Returns the type if the value matches a known format, or null if not renderable.
-// Checks are ordered from most specific to least specific to minimize false positives.
+// Checks are ordered from most specific to least specific to minimize false positives:
+// OPTIMADE before generic structure, combined bands+DOS before individual band/dos,
+// structure late (structures are common building blocks inside other data types),
+// and generic tabular data last.
 export function detect_view_type(value: unknown): RenderableType | null {
   if (value == null) return null
-
-  // OPTIMADE format (special structure variant) -- check before generic structure
   if (as_record(value) && is_optimade_raw(value)) return `structure`
-
-  // Fermi surface (pre-computed isosurfaces) -- very specific shape
   if (is_fermi_surface(value)) return `fermi_surface`
-
-  // Band grid data (raw k-grid energies) -- very specific shape
   if (is_band_grid(value)) return `band_grid`
-
-  // Phase diagram -- specific shape with components + regions + boundaries
   if (is_phase_diagram(value)) return `phase_diagram`
-
-  // Combined bands + DOS -- check before individual band/dos checks
   if (is_bands_and_dos(value)) return `bands_and_dos`
-
-  // Band structure -- qpoints + branches + bands
   if (is_band_structure(value)) return `band_structure`
-
-  // DOS -- energies/frequencies + densities
   if (is_dos(value)) return `dos`
-
-  // Brillouin zone -- reciprocal lattice with k-path info
   if (is_brillouin_zone(value)) return `brillouin_zone`
-
-  // XRD pattern -- x/y arrays with hkls or d_hkls
   if (is_xrd_pattern(value)) return `xrd`
-
-  // Volumetric data -- 3D grid with lattice
   if (is_volumetric(value)) return `volumetric`
-
-  // Structure (pymatgen-style) -- check after more specific types since
-  // structures are common building blocks inside other data types
   if (is_structure(value)) return `structure`
-
-  // Convex hull entries -- array check last (most generic)
   if (is_convex_hull_entries(value)) return `convex_hull`
-
-  // Tabular data -- most generic, check last
   if (is_tabular_data(value)) return `table`
-
   return null
 }
 

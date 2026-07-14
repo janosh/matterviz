@@ -3,27 +3,23 @@ import { get_density } from '$lib/structure/index'
 import { calc_force_stats, copy_numeric_fields } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
 
-// Common data extractor that extracts energy and structural properties
-export const energy_data_extractor: TrajectoryDataExtractor = (
-  frame: TrajectoryFrame,
-): Record<string, number> => {
-  const data: Record<string, number> = {
-    Step: frame.step,
+// Build an extractor that copies the listed numeric metadata fields (plus Step)
+const make_metadata_extractor =
+  (fields: readonly string[]): TrajectoryDataExtractor =>
+  (frame: TrajectoryFrame): Record<string, number> => {
+    const data: Record<string, number> = { Step: frame.step }
+    if (frame.metadata) copy_numeric_fields(data, frame.metadata, fields)
+    return data
   }
 
-  if (frame.metadata) {
-    // Extract energy-related properties
-    copy_numeric_fields(data, frame.metadata, [
-      `energy`,
-      `energy_per_atom`,
-      `potential_energy`,
-      `kinetic_energy`,
-      `total_energy`,
-    ])
-  }
-
-  return data
-}
+// Common data extractor that extracts energy-related properties
+export const energy_data_extractor: TrajectoryDataExtractor = make_metadata_extractor([
+  `energy`,
+  `energy_per_atom`,
+  `potential_energy`,
+  `kinetic_energy`,
+  `total_energy`,
+])
 
 // Data extractor for forces and stresses
 export const force_stress_data_extractor: TrajectoryDataExtractor = (
@@ -66,24 +62,12 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
 // Data extractor for SCF/electronic-convergence properties. Parsers emit these
 // per frame (per ionic step, or per SCF step for static single-point runs) —
 // e.g. the vaspout.h5 parser fills them from VASP's OSZICAR data.
-const scf_data_extractor: TrajectoryDataExtractor = (
-  frame: TrajectoryFrame,
-): Record<string, number> => {
-  const data: Record<string, number> = {
-    Step: frame.step,
-  }
-
-  if (frame.metadata) {
-    copy_numeric_fields(data, frame.metadata, [
-      `n_scf_steps`,
-      `scf_energy_delta`,
-      `scf_rms`,
-      `scf_charge_rms`,
-    ])
-  }
-
-  return data
-}
+const scf_data_extractor: TrajectoryDataExtractor = make_metadata_extractor([
+  `n_scf_steps`,
+  `scf_energy_delta`,
+  `scf_rms`,
+  `scf_charge_rms`,
+])
 
 // Data extractor for structural properties
 export const structural_data_extractor: TrajectoryDataExtractor = (

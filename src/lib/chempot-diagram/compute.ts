@@ -159,6 +159,44 @@ export function best_form_energy_for_formula(
   return best_value
 }
 
+export interface FormulaEnergyStats {
+  matching_entry_count: number
+  min_energy_per_atom: number | null
+  max_energy_per_atom: number | null
+}
+
+// Aggregate per-formula entry count and min/max energy per atom (used for
+// region coloring and hover tooltips in the 2D/3D diagram components).
+export function get_energy_stats_by_formula(
+  entries: PhaseData[],
+): Map<string, FormulaEnergyStats> {
+  const stats = new Map<string, FormulaEnergyStats>()
+  for (const entry of entries) {
+    const energy_per_atom = get_energy_per_atom(entry)
+    if (!Number.isFinite(energy_per_atom)) continue
+    const formula_key = formula_key_from_composition(entry.composition)
+    const existing = stats.get(formula_key)
+    if (existing) {
+      existing.matching_entry_count += 1
+      existing.min_energy_per_atom = Math.min(
+        existing.min_energy_per_atom ?? energy_per_atom,
+        energy_per_atom,
+      )
+      existing.max_energy_per_atom = Math.max(
+        existing.max_energy_per_atom ?? energy_per_atom,
+        energy_per_atom,
+      )
+    } else {
+      stats.set(formula_key, {
+        matching_entry_count: 1,
+        min_energy_per_atom: energy_per_atom,
+        max_energy_per_atom: energy_per_atom,
+      })
+    }
+  }
+  return stats
+}
+
 // Renormalize entry energies to be relative to elemental references (formal chemical potentials).
 // For each entry, subtracts sum(x_i * E_ref_i) from its energy per atom.
 export const renormalize_entries = (

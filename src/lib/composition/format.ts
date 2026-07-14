@@ -7,18 +7,15 @@ import { ELEMENT_ELECTRONEGATIVITY_MAP, parse_composition } from './parse'
 
 // Extract composition from structure object
 const structure_to_composition = (structure: AnyStructure): CompositionType => {
-  if (!structure.sites || !Array.isArray(structure.sites)) {
-    throw new Error(`Invalid structure object`)
+  if (!Array.isArray(structure.sites)) {
+    throw new TypeError(`Invalid structure object`)
   }
 
   const composition: CompositionType = {}
   for (const site of structure.sites) {
-    if (site.species && Array.isArray(site.species)) {
-      for (const species of site.species) {
-        const element = species.element
-        const occu = species.occu ?? 1
-        composition[element] = (composition[element] ?? 0) + occu
-      }
+    if (!Array.isArray(site.species)) continue
+    for (const species of site.species) {
+      composition[species.element] = (composition[species.element] ?? 0) + (species.occu ?? 1)
     }
   }
   return composition

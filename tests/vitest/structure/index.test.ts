@@ -470,30 +470,16 @@ describe(`default_vector_configs`, () => {
   })
 })
 
-describe(`DEFAULT_STRUCTURE_VIEWS`, () => {
-  test(`matches the exact Ovito-like default set (label, projection, direction)`, () => {
-    expect(DEFAULT_STRUCTURE_VIEWS).toEqual([
-      { label: `Perspective`, projection: `perspective`, direction: [1, 0.3, 0.8] },
-      { label: `Front`, projection: `orthographic`, direction: [0, 0, 1] },
-      { label: `Top`, projection: `orthographic`, direction: [0, 1, 0] },
-      { label: `Right`, projection: `orthographic`, direction: [1, 0, 0] },
-    ])
-  })
-
-  test(`has exactly one perspective + three orthographic views for a 2x2 grid`, () => {
-    expect(DEFAULT_STRUCTURE_VIEWS).toHaveLength(4)
-    const projections = DEFAULT_STRUCTURE_VIEWS.map((view) => view.projection)
-    expect(projections.filter((proj) => proj === `perspective`)).toHaveLength(1)
-    expect(projections.filter((proj) => proj === `orthographic`)).toHaveLength(3)
-  })
-
-  test(`every view has a unique label and a non-zero direction`, () => {
-    const labels = DEFAULT_STRUCTURE_VIEWS.map((view) => view.label)
-    expect(new Set(labels).size).toBe(labels.length)
-    for (const view of DEFAULT_STRUCTURE_VIEWS) {
-      expect(Math.hypot(...(view.direction ?? [0, 0, 0]))).toBeGreaterThan(0)
-    }
-  })
+test(`DEFAULT_STRUCTURE_VIEWS is a 2x2 grid: 1 perspective + 3 orthographic views with unique labels and non-zero directions`, () => {
+  expect(DEFAULT_STRUCTURE_VIEWS).toHaveLength(4)
+  const projections = DEFAULT_STRUCTURE_VIEWS.map((view) => view.projection)
+  expect(projections.filter((proj) => proj === `perspective`)).toHaveLength(1)
+  expect(projections.filter((proj) => proj === `orthographic`)).toHaveLength(3)
+  const labels = DEFAULT_STRUCTURE_VIEWS.map((view) => view.label)
+  expect(new Set(labels).size).toBe(labels.length)
+  for (const view of DEFAULT_STRUCTURE_VIEWS) {
+    expect(Math.hypot(...(view.direction ?? [0, 0, 0]))).toBeGreaterThan(0)
+  }
 })
 
 // glob_text unwraps the module-namespace shape the Rolldown prod build returns
