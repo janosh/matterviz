@@ -85,7 +85,7 @@ MatterViz supports [VSCode](https://marketplace.visualstudio.com/items?itemName=
 - ✅ **Remote file access**: Visualize structures and trajectories on remote servers (HPC clusters, cloud instances, etc.)
 - ✅ **No manual file transfer**: Files are read directly from the remote filesystem
 - ✅ **File watching**: Changes to remote files are automatically detected and reloaded
-- ⚠️ **File size limit**: Files are currently limited to 1GB to prevent memory issues. Larger files are streamed in chunks which is only supported locally, not via remote SSH.
+- ⚠️ **File size limit**: Files up to 1 GiB are read into extension memory in one operation on both local and Remote SSH workspaces. Files larger than 1 GiB are rejected to prevent memory issues.
 
 ## ⚙️ Configuration & Customization
 
@@ -124,8 +124,8 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 
 ```json
 {
-  "matterviz.scatter.point_size": 5,
-  "matterviz.scatter.line_width": 3,
+  "matterviz.scatter.point.size": 5,
+  "matterviz.scatter.line.width": 3,
   "matterviz.plot.grid_lines": true,
   "matterviz.scatter.show_legend": true
 }
