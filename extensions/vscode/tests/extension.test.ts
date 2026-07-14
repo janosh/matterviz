@@ -251,6 +251,21 @@ describe(`MatterViz Extension`, () => {
     ])(`pattern does not match unsupported near miss "%s"`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(false)
     })
+
+    test(`trajectory keyword selector does not include a bare md token`, () => {
+      const trajectory_keyword_pattern = patterns.find(
+        (pattern) => pattern.includes(`trajectory`) && pattern.includes(`simulation`),
+      )
+
+      expect(trajectory_keyword_pattern).toBeDefined()
+      expect(trajectory_keyword_pattern?.match(/\{(?<keywords>[^}]+)\}/)?.groups?.keywords)
+        .toBeDefined()
+      expect(
+        trajectory_keyword_pattern
+          ?.match(/\{(?<keywords>[^}]+)\}/)
+          ?.groups?.keywords.split(`,`),
+      ).not.toContain(`md`)
+    })
   })
 
   // Test data consolidation

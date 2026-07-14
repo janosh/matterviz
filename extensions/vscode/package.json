@@ -80,7 +80,7 @@
             "filenamePattern": "*{poscar,xdatcar,contcar,outcar}"
           },
           {
-            "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md,dynamics,simulation}*"
+            "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,dynamics,simulation}*"
           },
           {
             "filenamePattern": "*.{bxsf,frmsf}"
