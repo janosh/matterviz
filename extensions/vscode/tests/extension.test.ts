@@ -278,6 +278,33 @@ describe(`MatterViz Extension`, () => {
         }),
       )
     })
+
+    test(`rejects unsupported active-editor fallback without a URI`, async () => {
+      const commands = new Map<string, (uri?: Uri) => Promise<void> | void>()
+      mock_vscode.commands.registerCommand = vi.fn(
+        (name: string, callback: (uri?: Uri) => Promise<void> | void) => {
+          commands.set(name, callback)
+          return { dispose: vi.fn() }
+        },
+      )
+      mock_vscode.window.activeTextEditor = {
+        document: {
+          fileName: `/test/README.md`,
+          uri: { fsPath: `/test/README.md` },
+          getText: () => `notes`,
+        },
+      } as TextEditor
+
+      activate(mock_context)
+      const open_command = commands.get(`matterviz.open`)
+      expect(open_command).toBeDefined()
+      await open_command?.()
+
+      expect(mock_vscode.window.createWebviewPanel).not.toHaveBeenCalled()
+      expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        `MatterViz cannot open README.md because it is not a supported structure or trajectory file.`,
+      )
+    })
   })
 
   // Test data consolidation

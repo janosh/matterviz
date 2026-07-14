@@ -307,17 +307,10 @@
   let data_url_load_id = 0
   let loaded_data_url: string | undefined
   let url_owned_structure: AnyStructure | undefined
+
   $effect(() => {
     const requested_url = data_url
     const current_structure = structure
-    if (
-      is_internal_edit &&
-      loaded_data_url &&
-      current_structure &&
-      current_structure !== url_owned_structure
-    ) {
-      url_owned_structure = current_structure
-    }
     const caller_owns_structure = Boolean(
       current_structure && current_structure !== url_owned_structure,
     )
@@ -705,6 +698,13 @@
   // Flag set before internal edits (undo/redo/delete/add/move) to distinguish
   // them from external structure changes (file load, trajectory step, etc.)
   let is_internal_edit = false
+  // Claim URL ownership before regular effects so clearing is_internal_edit can't
+  // make an edited structure look caller-owned (and trigger a data_url reload).
+  $effect.pre(() => {
+    void structure
+    if (is_internal_edit && loaded_data_url && structure) url_owned_structure = structure
+  })
+
   // Add-atom sub-mode state (bound to StructureScene)
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)

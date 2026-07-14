@@ -467,23 +467,24 @@ function start_watching_file(
       new vscode.RelativePattern(file_dir, path.basename(file_path)),
     )
 
-    // Listen for file changes
+    // Read once on change, then fan out to every subscribed panel
     watcher.onDidChange(() => {
-      for (const [subscriber_webview, subscriber_meta] of active_watcher_subscribers.get(
-        file_path,
-      ) ?? []) {
-        void handle_file_change(`change`, file_path, subscriber_webview, subscriber_meta)
+      const change_subscribers = [...(active_watcher_subscribers.get(file_path) ?? [])]
+      if (change_subscribers.length > 0) {
+        void broadcast_file_updated(file_path, change_subscribers)
       }
     })
 
-    // Listen for file deletion
     watcher.onDidDelete(() => {
-      for (const [subscriber_webview, subscriber_meta] of active_watcher_subscribers.get(
-        file_path,
-      ) ?? []) {
-        void handle_file_change(`delete`, file_path, subscriber_webview, subscriber_meta)
+      for (const [subscriber, subscriber_meta] of active_watcher_subscribers.get(file_path) ??
+        []) {
+        post_to_webview(
+          subscriber,
+          { command: `fileDeleted`, file_path, ...subscriber_meta },
+          `fileDeleted`,
+        )
       }
-      stop_watching_file(file_path) // Clean up watcher
+      stop_watching_file(file_path)
     })
 
     active_watchers.set(file_path, watcher)
@@ -497,46 +498,37 @@ function start_watching_file(
   }
 }
 
-// Handle file change events from VS Code file system watcher
-async function handle_file_change(
-  event_type: `change` | `delete`,
-  file_path: string,
-  webview: WebviewLike,
-  meta: WatcherMeta = {},
-): Promise<void> {
-  if (event_type === `delete`) {
-    try {
-      // File was deleted - send notification
-      webview.postMessage({ command: `fileDeleted`, file_path, ...meta })
-    } catch (error) {
-      console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
-    }
-    return
+function post_to_webview(webview: WebviewLike, message: unknown, label: string): void {
+  try {
+    webview.postMessage(message)
+  } catch (error) {
+    console.error(`[MatterViz] Failed to send ${label} message:`, error)
   }
+}
 
-  if (event_type === `change`) {
-    // File was changed - send updated content
-    try {
-      active_frame_loaders.delete(file_path)
-      const updated_file = await read_file(file_path)
-
-      webview.postMessage({
-        command: `fileUpdated`,
-        file_path,
-        data: updated_file,
-        theme: get_theme(),
-        ...meta,
-      })
-    } catch (error) {
-      console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
-      try {
-        webview.postMessage({
-          command: `error`,
-          text: `Failed to read updated file: ${error}`,
-        })
-      } catch (msgError) {
-        console.error(`[MatterViz] Failed to send error message:`, msgError)
-      }
+async function broadcast_file_updated(
+  file_path: string,
+  subscribers: [WebviewLike, WatcherMeta | undefined][],
+): Promise<void> {
+  try {
+    active_frame_loaders.delete(file_path)
+    const data = await read_file(file_path)
+    const theme = get_theme()
+    for (const [webview, meta] of subscribers) {
+      post_to_webview(
+        webview,
+        { command: `fileUpdated`, file_path, data, theme, ...meta },
+        `fileUpdated`,
+      )
+    }
+  } catch (error) {
+    console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
+    for (const [webview] of subscribers) {
+      post_to_webview(
+        webview,
+        { command: `error`, text: `Failed to read updated file: ${error}` },
+        `error`,
+      )
     }
   }
 }
@@ -657,17 +649,23 @@ const open_resource = async (
   context: vscode.ExtensionContext,
   uri?: vscode.Uri,
 ): Promise<void> => {
-  if (uri) {
-    const filename = path.basename(uri.fsPath)
-    if (!should_auto_render(filename)) {
-      vscode.window.showErrorMessage(
-        `MatterViz cannot open ${filename} because it is not a supported structure or trajectory file.`,
-      )
-      return
-    }
+  const target = uri ?? vscode.window.activeTextEditor?.document.uri
+  if (!target) {
+    vscode.window.showErrorMessage(
+      `No file selected. MatterViz needs an active editor to know what to render.`,
+    )
+    return
   }
 
-  await render(context, uri)
+  const filename = path.basename(target.fsPath)
+  if (!should_auto_render(filename)) {
+    vscode.window.showErrorMessage(
+      `MatterViz cannot open ${filename} because it is not a supported structure or trajectory file.`,
+    )
+    return
+  }
+
+  await render(context, target)
 }
 
 // Custom editor provider for MatterViz files
