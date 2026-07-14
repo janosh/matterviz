@@ -3,7 +3,12 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { create_file_drop_handler, drag_over_handlers, load_from_url } from '$lib/io'
+  import {
+    basename_from_url,
+    create_file_drop_handler,
+    drag_over_handlers,
+    load_from_url,
+  } from '$lib/io'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
@@ -260,7 +265,7 @@
       load_from_url(data_url, (content, filename) =>
         on_file_drop ? on_file_drop(content, filename) : safe_parse(content, filename),
       )
-        .catch((err) => handle_error(err, data_url))
+        .catch((err) => handle_error(err, basename_from_url(data_url)))
         .finally(() => (loading = false))
     } else if (structure_string && !data_url) {
       loading = true

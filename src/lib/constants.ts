@@ -25,6 +25,7 @@ export const TRAJ_KEYWORDS = Object.freeze([
   `nve`,
   `qha`,
   `md`,
+  `dpmd`, // DeePMD trajectory outputs
   `dynamics`,
   `simulation`,
 ])
@@ -52,11 +53,10 @@ export const STRUCT_KEYWORDS_STRICT = Object.freeze(
   STRUCT_KEYWORDS.filter((keyword) => keyword !== `data`),
 )
 
-// Regex patterns for keyword matching
-export const TRAJ_KEYWORDS_REGEX = new RegExp(
-  `(^|[-_.])(${TRAJ_KEYWORDS.join(`|`)})([-_.]|$)`,
-  `i`,
-)
+// Regex patterns for keyword matching. Keywords must start at a token boundary but may
+// continue (matches `relaxation`, `md_300K`; rejects substring noise like `cmd`). Bare
+// `.md` markdown files are rejected by the extension guards in is_trajectory_file.
+export const TRAJ_KEYWORDS_REGEX = new RegExp(`(^|[-_.])(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
 
 export const STRUCT_KEYWORDS_REGEX = new RegExp(`(${STRUCT_KEYWORDS.join(`|`)})`, `i`)
 
@@ -64,8 +64,6 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
   `(${STRUCT_KEYWORDS_STRICT.join(`|`)})`,
   `i`,
 )
-
-export const TRAJ_KEYWORDS_SIMPLE_REGEX = new RegExp(`(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
 
 // Build a case-insensitive `\.(ext1|ext2|...)$` regex from extensions (leading dots stripped)
 const ext_regex = (exts: readonly string[]): RegExp =>

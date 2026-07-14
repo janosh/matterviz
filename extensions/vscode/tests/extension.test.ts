@@ -137,8 +137,6 @@ describe(`MatterViz Extension`, () => {
     [`density.cube`, `Gaussian cube`],
     [`density.cube.gz`, `Gaussian cube`],
   ]
-  const volumetric_auto_render_filenames: [string, boolean][] =
-    supported_volumetric_filenames.map(([filename]) => [filename, true] as [string, boolean])
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -253,7 +251,7 @@ describe(`MatterViz Extension`, () => {
       expect(matches_any_pattern(filename)).toBe(false)
     })
 
-    test(`trajectory keyword selector does not include a bare md token`, () => {
+    test(`trajectory keyword selector rejects bare md but keeps delimited md tokens`, () => {
       const trajectory_keyword_pattern = patterns.find(
         (pattern) => pattern.includes(`trajectory`) && pattern.includes(`simulation`),
       )
@@ -263,7 +261,7 @@ describe(`MatterViz Extension`, () => {
           ?.match(/\{(?<keywords>[^}]+)\}/)
           ?.groups?.keywords?.split(`,`) ?? []
       expect(keywords).not.toContain(`md`)
-      expect(keywords).toContain(`md_*`)
+      expect(keywords).toEqual(expect.arrayContaining([`md_`, `_md`, `-md`, `md-`, `md.`]))
     })
   })
 
@@ -729,24 +727,51 @@ describe(`MatterViz Extension`, () => {
     },
   )
 
-  test(`render creates webview panel`, async () => {
-    const mock_panel = {
-      webview: { ...mock_webview },
-      onDidDispose: vi.fn(),
-    }
-    mock_vscode.window.createWebviewPanel.mockReturnValue(mock_panel)
-    mock_vscode.window.activeTextEditor = {
-      document: { fileName: `/test/active.cif`, getText: () => `content` },
-    } as TextEditor
+  test.each([
+    [`active editor`, `/test/active.cif`, true],
+    [`active tab`, `/test/tab.cif`, false],
+  ] as const)(
+    `render from %s creates a panel and watches the file`,
+    async (_source, file_path, use_editor) => {
+      const basename = file_path.split(`/`).pop() as string
+      if (use_editor) {
+        mock_vscode.window.tabGroups.activeTabGroup.activeTab = null
+        mock_vscode.window.activeTextEditor = {
+          document: {
+            fileName: file_path,
+            uri: { fsPath: file_path },
+            getText: () => `content`,
+          },
+        } as TextEditor
+      } else {
+        mock_vscode.window.activeTextEditor = null
+        mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
+          input: { uri: { fsPath: file_path } },
+        } as unknown as Tab
+      }
+      mock_vscode.window.createWebviewPanel.mockReturnValue({
+        webview: {
+          ...mock_webview,
+          onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+        },
+        onDidDispose: vi.fn(),
+        visible: true,
+      })
 
-    await render(mock_context)
-    expect(mock_vscode.window.createWebviewPanel).toHaveBeenCalledWith(
-      `matterviz`,
-      `MatterViz - active.cif`,
-      mock_vscode.ViewColumn.Active,
-      expect.any(Object),
-    )
-  })
+      await render(mock_context)
+
+      expect(mock_vscode.window.createWebviewPanel).toHaveBeenCalledWith(
+        `matterviz`,
+        `MatterViz - ${basename}`,
+        mock_vscode.ViewColumn.Active,
+        expect.any(Object),
+      )
+      expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledWith(
+        expect.objectContaining({ pattern: basename }),
+      )
+      expect(active_watchers.has(file_path)).toBe(true)
+    },
+  )
 
   test(`render handles errors`, async () => {
     mock_vscode.window.activeTextEditor = null
@@ -1281,7 +1306,11 @@ describe(`MatterViz Extension`, () => {
           .mockReturnValueOnce(panel1)
           .mockReturnValueOnce(panel2)
         mock_vscode.window.activeTextEditor = {
-          document: { fileName: `/test/file.cif`, getText: () => `content` },
+          document: {
+            fileName: `/test/file.cif`,
+            uri: { fsPath: `/test/file.cif` },
+            getText: () => `content`,
+          },
         } as TextEditor
 
         await render(mock_context)
@@ -1455,172 +1484,25 @@ describe(`MatterViz Extension`, () => {
   })
 
   describe(`Auto-Render Functionality`, () => {
+    // Detailed eligibility lives in eligibility.test.ts; keep a thin wiring smoke set here.
     test.each([
-      // Supported structure files
       [`structure.cif`, true],
-      [`molecule.xyz`, true],
-      [`crystal.poscar`, true],
-      [`data.json`, false], // "data" is too broad, will not auto-render without structure-specific keywords in filename
-      [`structure.xml`, true],
-      [`molecule.pdb`, true],
-      [`compound.mol`, true],
-      [`structure.mol2`, true],
-      [`data.sdf`, true],
-      [`crystal.mmcif`, true],
-      // Supported trajectory files
-      [`trajectory.traj`, true],
-      [`simulation.h5`, true],
-      [`data.hdf5`, false],
-      [`traj.xtc`, true],
-      // Compressed supported files
-      [`trajectory.xyz.gz`, true],
-      [`data.json.gz`, false], // "data" is too broad, will not auto-render without structure-specific keywords in filename
-      [`structure.cif.gz`, true],
-      // Special filenames
+      [`molecule.xyz.gz`, true],
       [`POSCAR`, true],
-      [`CONTCAR`, true],
-      [`XDATCAR`, true],
-      [`trajectory.dat`, true],
-      [`md.xyz`, true],
-      [`relax.out`, true],
-      [`npt.log`, true],
-      [`nvt.data`, true],
-      [`nve.traj`, true],
-      // Files with special characters
-      [`structure (1).cif`, true],
-      [`trajectory[test].xyz.gz`, true],
-      [`crystal@test.poscar`, true],
-      [`molecule#test.xyz`, true],
-      [`structure$test.json`, true],
-      [`trajectory%test.h5`, true],
-      [`crystal^test.traj`, true],
-      [`molecule&test.extxyz`, true],
-      [`structure*test.xml`, true],
-      [`trajectory+test.pdb`, true],
-      [`crystal=test.mol`, true],
-      [`molecule|test.mol2`, true],
-      [`structure\`test.sdf`, true],
-      [`trajectory~test.mmcif`, true],
-      // Case sensitivity tests (POSCAR/CONTCAR/XDATCAR uppercase already covered above)
-      [`STRUCTURE.CIF`, true],
-      [`structure.CIF`, true],
-      [`Structure.cif`, true],
-      [`TRAJECTORY.XYZ`, true],
-      [`trajectory.XYZ`, true],
-      [`Trajectory.xyz`, true],
-      [`poscar`, true],
-      [`Poscar`, true],
-      [`contcar`, true],
-      [`Contcar`, true],
-      [`xdatcar`, true],
-      [`Xdatcar`, true],
-      // Fermi surface files
+      [`CHGCAR`, true],
       [`band.bxsf`, true],
-      [`fermi.frmsf`, true],
-      [`BAND.BXSF`, true],
-      [`fermi.FRMSF`, true],
-      [`band.bxsf.gz`, true],
-      [`fermi.frmsf.gz`, true],
-      // Volumetric data files
-      ...volumetric_auto_render_filenames,
-      [`DENSITY.CUBE`, true],
-      [`CHGCAR.lobster`, true],
-      // Files that look like structure files but are supported
-      [`structure_copy.cif`, true],
-      [`trajectory_backup.xyz`, true],
-      [`trajectory.log`, true], // Contains "trajectory" keyword
-      // Very long filenames
-      [`${`structure`.repeat(100)}.cif`, true],
-      // Unsupported files
-      [`config.yaml`, false],
-      [`simulation.trr`, false], // .trr files not supported
-      [`md.dcd`, false], // .dcd files not supported
-      [`document.txt`, false],
-      [`script.py`, false],
-      [`data.csv`, false],
-      [`image.png`, false],
-      [`archive.zip`, false],
-      [`fake.gz`, false],
-      [`config.ini`, false],
-      [`log.txt`, false],
+      [`vaspout.h5`, true],
+      [`simulation.h5`, true],
+      [`structure.json`, false],
+      [`crystal.json.gz`, false],
+      [`data.json.gz`, false],
+      [`npt.log`, false],
+      [`trajectory.dat`, false],
+      [`si_md.log`, false],
       [`README.md`, false],
-      [`readme.md`, false],
-      [`ReadMe.Md`, false],
-      [`vite.config.ts`, false],
-      [`test.spec.ts`, false],
-      [`index.html`, false],
-      [`style.css`, false],
-      [`app.js`, false],
-      [`data.sql`, false],
-      [`backup.tar`, false],
-      [`compressed.7z`, false],
-      [`binary.bin`, false],
-      [`.pre-commit-config.yaml`, false],
-      [`changelog.md`, false],
-      [`.prettierrc`, false],
-      [`.gitignore`, false],
-      [`dockerfile`, false],
-      [`makefile`, false],
-      [`.env`, false],
-      [`.env.local`, false],
-      [`.env.production`, false],
-      [`.github/workflows/ci.yml`, false],
-      [`dist/bundle.js`, false],
-      [`build/index.html`, false],
-      [`coverage/lcov.info`, false],
-      [`.cache/build.js`, false],
-      [`structure.json.bak`, false],
-      [`crystal.poscar.lock`, true],
-      [`simulation.log`, true],
-      [`backup.old`, false],
-      [`original.orig`, false],
-      [`patch.diff`, false],
-      [`structure.txt`, false],
-      [`crystal.md`, false],
-      [`molecule.doc`, false],
-      [`poscar.bak`, true],
-      [`contcar.old`, true],
-      [`document.txt.gz`, false],
-      [`script.py.gz`, false],
-      [`data.csv.gz`, false],
-      [`image.png.gz`, false],
-      [`archive.zip.gz`, false],
-      [`structure.cif.bz2`, false],
-      [`density.cube.bz2`, false],
-      [`PARCHG.bz2`, false],
-      [`myCHGCARfile`, false],
-      [`prefixPARCHGsuffix`, false],
-      [`structure.cif.bak`, false],
-      [`crystal.poscar.old`, true],
-      [`molecule.xyz~`, false],
-      [`structure.cif.swp`, false],
-      // Unsupported files in mixed case (case-insensitivity of negatives)
-      [`DOCUMENT.TXT`, false],
-      [`Script.py`, false],
-      [`data.CSV`, false],
-      // Configuration files that should never auto-render
       [`package.json`, false],
-      [`tsconfig.json`, false],
-      [`webpack.config.js`, false],
-      [`playwright.config.ts`, false],
-      [`.eslintrc.json`, false],
-      [`.babelrc`, false],
-      [`.npmrc`, false],
-      [`.vscode/settings.json`, false],
-      [`.temp/structure.json`, false],
-      [`node_modules/package.json`, false],
-      // Edge cases
-      [``, false],
-      [`   `, false],
-      [`.`, false],
-      [`..`, false],
-      [`/`, false],
-      [`\\`, false],
-      [`${`a`.repeat(1000)}.txt`, false],
-      // Null/undefined inputs
       [null as unknown as string, false],
-      [undefined as unknown as string, false],
-    ])(`should detect auto-render for "%s" as %s`, (filename, expected) => {
+    ])(`should_auto_render("%s") → %s`, (filename, expected) => {
       expect(should_auto_render(filename)).toBe(expected)
     })
 

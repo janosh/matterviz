@@ -1,4 +1,4 @@
-import { handle_url_drop, load_from_url } from '$lib/io'
+import { basename_from_url, handle_url_drop, load_from_url } from '$lib/io'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
@@ -17,6 +17,18 @@ vi.mock(`$lib/io/decompress`, async (import_original) => {
     decompress_data: mock_decompress,
     decompress_data_binary: mock_decompress_binary,
   }
+})
+
+describe(`basename_from_url`, () => {
+  test.each([
+    [`https://example.com/path/traj.xyz`, `traj.xyz`],
+    [`/bad.xyz`, `bad.xyz`],
+    [`traj.h5?X-Amz-Expires=300`, `traj.h5`],
+    [`https://cdn.example/a/b.cif#frag`, `b.cif`],
+    [`bare-name`, `bare-name`],
+  ])(`%s → %s`, (url, expected) => {
+    expect(basename_from_url(url)).toBe(expected)
+  })
 })
 
 describe(`handle_url_drop`, () => {

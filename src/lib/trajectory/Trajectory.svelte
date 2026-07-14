@@ -5,7 +5,12 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { drag_over_handlers, handle_url_drop, load_from_url } from '$lib/io'
+  import {
+    basename_from_url,
+    drag_over_handlers,
+    handle_url_drop,
+    load_from_url,
+  } from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
@@ -17,6 +22,7 @@
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
+  import type { AnyStructure } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -236,10 +242,6 @@
   let data_url_load_id = 0
   let loaded_data_url: string | undefined
   let url_owned_trajectory: TrajectoryType | undefined
-  type LoadTrajectoryDataOptions = {
-    on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
-    should_commit?: () => boolean
-  }
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -321,27 +323,24 @@
   const skip_stale_url_stream = () =>
     Boolean(data_url && loaded_data_url && data_url !== loaded_data_url)
 
-  const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
-    if (!trajectory || batch.length === 0 || skip_stale_url_stream()) return
+  // Replace the trajectory with an updated copy, keeping URL ownership if it applied.
+  // No-ops while a data_url switch is in flight so stale streams can't mutate the old model.
+  const update_trajectory = (updates: Partial<TrajectoryType>) => {
+    if (!trajectory || skip_stale_url_stream()) return
     const preserves_url_ownership = trajectory === url_owned_trajectory
-    const next_trajectory = {
-      ...trajectory,
-      plot_metadata: [...(trajectory.plot_metadata ?? []), ...batch],
-    }
-    trajectory = next_trajectory
+    trajectory = { ...trajectory, ...updates }
     if (preserves_url_ownership) url_owned_trajectory = trajectory
   }
 
-  const finish_plot_metadata_loading = () => {
-    if (!trajectory || skip_stale_url_stream()) return
-    const preserves_url_ownership = trajectory === url_owned_trajectory
-    const next_trajectory = {
-      ...trajectory,
-      metadata: { ...trajectory.metadata, plot_metadata_loading: false },
-    }
-    trajectory = next_trajectory
-    if (preserves_url_ownership) url_owned_trajectory = trajectory
+  const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
+    if (batch.length === 0) return
+    update_trajectory({ plot_metadata: [...(trajectory?.plot_metadata ?? []), ...batch] })
   }
+
+  const finish_plot_metadata_loading = () =>
+    update_trajectory({
+      metadata: { ...trajectory?.metadata, plot_metadata_loading: false },
+    })
 
   onMount(() => {
     const handle_plot_metadata_stream = (event: MessageEvent<PlotMetadataStreamMessage>) => {
@@ -506,8 +505,14 @@
     }
   }
 
-  // Current frame structure for display
-  let current_structure = $derived(current_frame?.structure)
+  // Current frame structure for display. Holds the last resolved structure so the 3D
+  // view doesn't blank while an uncached frame loads on demand (current_frame is nulled
+  // during loads to keep the info pane from showing the previous frame's data).
+  let current_structure = $state<AnyStructure | undefined>(undefined)
+  $effect(() => {
+    if (current_frame?.structure) current_structure = current_frame.structure
+    else if (!trajectory) current_structure = undefined
+  })
 
   // Track hidden elements (persists across frame changes)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
@@ -906,11 +911,7 @@
         error_msg = `Failed to load trajectory: ${err.message}`
         current_filename = undefined
         file_size = undefined
-        on_error?.({
-          error_msg,
-          filename: requested_url,
-          file_size: undefined,
-        })
+        on_error?.({ error_msg, filename: basename_from_url(requested_url) })
       })
       .finally(() => {
         if (is_current()) loading = false
@@ -932,7 +933,10 @@
   async function load_trajectory_data(
     data: string | ArrayBuffer,
     filename: string,
-    options: LoadTrajectoryDataOptions = {},
+    options: {
+      on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
+      should_commit?: () => boolean
+    } = {},
   ) {
     const { on_trajectory_loaded, should_commit = () => true } = options
     loading = true
@@ -941,6 +945,8 @@
 
     // Reset previous loading state
     orig_data = null
+    const file_size_bytes =
+      data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
 
     try {
       const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
@@ -974,9 +980,8 @@
 
       current_step_idx = 0
       current_filename = filename
+      file_size = file_size_bytes
 
-      const file_size_bytes =
-        data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
       const loaded_trajectory = trajectory
       on_file_load?.({
         // emit file load event
@@ -993,15 +998,9 @@
         typeof data === `string` ? data : ``,
       )
       error_msg = unsupported_message || `Failed to parse trajectory: ${err}`
+      on_error?.({ error_msg, filename, file_size: file_size_bytes })
       current_filename = undefined
       file_size = undefined
-
-      on_error?.({
-        // emit error event
-        error_msg,
-        filename: current_filename || undefined,
-        file_size: file_size || undefined,
-      })
     } finally {
       if (should_commit()) {
         parsing_progress = null

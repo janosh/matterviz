@@ -79,7 +79,7 @@
             "filenamePattern": "*{poscar,xdatcar,contcar,outcar}"
           },
           {
-            "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md_*,dynamics,simulation}*"
+            "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md_,_md,-md,md-,md.,dynamics,simulation}*"
           },
           {
             "filenamePattern": "*.{bxsf,frmsf}"
@@ -136,7 +136,7 @@
         "matterviz.auto_render": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically render supported file types (structures and trajectories) when opening them. If rendering fails, falls back to regular editor."
+          "description": "Automatically open unambiguous structure/trajectory/volumetric files (e.g. .cif, .xyz, .traj, POSCAR, CHGCAR). Does not auto-open JSON/YAML or keyword-matched .log/.dat/.out files."
         },
         "matterviz.open_beside": {
           "type": "boolean",

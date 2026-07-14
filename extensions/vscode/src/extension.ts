@@ -1,7 +1,10 @@
 // VS Code's webview postMessage API takes a single argument (no targetOrigin),
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import { is_matterviz_filename } from '$lib/file-viewer/eligibility'
+import {
+  is_auto_renderable_filename,
+  is_matterviz_filename,
+} from '$lib/file-viewer/eligibility'
 import { plan_host_file_transfer } from '$lib/file-viewer/host-transfer'
 import type { HostTransferRejectReason } from '$lib/file-viewer/host-transfer'
 import type {
@@ -93,10 +96,10 @@ function get_wasm_filename(ext_path: string): string | null {
   return wasm_file
 }
 
-// Check if a file should be auto-rendered
-export const should_auto_render = is_matterviz_filename
+// Auto-open only unambiguous structure/trajectory files (not JSON/YAML keyword matches)
+export const should_auto_render = is_auto_renderable_filename
 
-// Update the shared VS Code context for supported resources
+// Update the shared VS Code context for files MatterViz can open/view
 const update_supported_resource_context = (uri?: vscode.Uri): void => {
   // Prefer explicit URI; otherwise fall back to the active editor filename
   const filename = uri?.fsPath
@@ -104,7 +107,7 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
     : vscode.window.activeTextEditor?.document?.fileName
       ? path.basename(vscode.window.activeTextEditor.document.fileName)
       : ``
-  const is_supported = should_auto_render(filename)
+  const is_supported = is_matterviz_filename(filename)
   vscode.commands.executeCommand(`setContext`, `matterviz.supported_resource`, is_supported)
 }
 
@@ -175,20 +178,29 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   }
 }
 
-// Get file data from URI or active editor
-export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
-  if (uri) return read_file(uri.fsPath)
-
-  if (vscode.window.activeTextEditor) {
-    const filename = path.basename(vscode.window.activeTextEditor.document.fileName)
-    const content = vscode.window.activeTextEditor.document.getText()
-    return { filename, content, is_base64: false }
+// Resolve the file a command should act on: explicit URI, then active editor, then active tab
+const resolve_target_uri = (uri?: vscode.Uri): vscode.Uri | undefined => {
+  if (uri) return uri
+  if (vscode.window.activeTextEditor) return vscode.window.activeTextEditor.document.uri
+  const tab_input = vscode.window.tabGroups.activeTabGroup.activeTab?.input
+  if (tab_input && typeof tab_input === `object` && `uri` in tab_input) {
+    return (tab_input as { uri: vscode.Uri }).uri
   }
+  return undefined
+}
 
-  const active_tab = vscode.window.tabGroups.activeTabGroup.activeTab
-  if (active_tab?.input && typeof active_tab.input === `object` && `uri` in active_tab.input)
-    return read_file((active_tab.input as { uri: vscode.Uri }).uri.fsPath)
-
+// Get file data from URI or active editor (in-memory buffer, so unsaved edits render)
+export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
+  const editor = vscode.window.activeTextEditor
+  if (!uri && editor) {
+    return {
+      filename: path.basename(editor.document.fileName),
+      content: editor.document.getText(),
+      is_base64: false,
+    }
+  }
+  const target = uri ?? resolve_target_uri()
+  if (target) return read_file(target.fsPath)
   throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
 }
 
@@ -448,18 +460,12 @@ function start_watching_file(
   meta?: WatcherMeta,
 ): void {
   try {
-    const existing_watcher = active_watchers.get(file_path)
-    if (existing_watcher) {
-      const subscribers =
-        active_watcher_subscribers.get(file_path) ??
-        new Map<WebviewLike, WatcherMeta | undefined>()
-      subscribers.set(webview, meta)
-      active_watcher_subscribers.set(file_path, subscribers)
-      return
-    }
-
-    const subscribers = new Map<WebviewLike, WatcherMeta | undefined>([[webview, meta]])
+    const subscribers =
+      active_watcher_subscribers.get(file_path) ??
+      new Map<WebviewLike, WatcherMeta | undefined>()
+    subscribers.set(webview, meta)
     active_watcher_subscribers.set(file_path, subscribers)
+    if (active_watchers.has(file_path)) return // reuse the existing shared watcher
 
     // Create a new file system watcher for this specific file
     const file_dir = vscode.Uri.file(path.dirname(file_path))
@@ -635,26 +641,14 @@ export const render = async (
   uri?: vscode.Uri,
 ): Promise<void> => {
   try {
+    const target = resolve_target_uri(uri)
     const file = await get_file(uri)
-    const file_path = uri?.fsPath ?? vscode.window.activeTextEditor?.document.fileName
-
-    create_webview_panel(context, file, file_path)
+    // Use the same resolved path as get_file so active-tab fallbacks still get a watcher
+    create_webview_panel(context, file, target?.fsPath)
   } catch (error: unknown) {
     const message = to_error(error).message
     vscode.window.showErrorMessage(`Failed: ${message}`)
   }
-}
-
-// Mirror get_file's fallback chain (active editor, then active tab) so command-palette
-// invocations are validated against the same file that render would end up opening.
-const resolve_target_uri = (uri?: vscode.Uri): vscode.Uri | undefined => {
-  if (uri) return uri
-  if (vscode.window.activeTextEditor) return vscode.window.activeTextEditor.document.uri
-  const tab_input = vscode.window.tabGroups.activeTabGroup.activeTab?.input
-  if (tab_input && typeof tab_input === `object` && `uri` in tab_input) {
-    return (tab_input as { uri: vscode.Uri }).uri
-  }
-  return undefined
 }
 
 const open_resource = async (
@@ -670,7 +664,7 @@ const open_resource = async (
   }
 
   const filename = path.basename(target.fsPath)
-  if (!should_auto_render(filename)) {
+  if (!is_matterviz_filename(filename)) {
     vscode.window.showErrorMessage(
       `MatterViz cannot open ${filename} because it is not a supported structure or trajectory file.`,
     )

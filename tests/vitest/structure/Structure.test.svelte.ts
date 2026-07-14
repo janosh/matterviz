@@ -988,7 +988,7 @@ describe(`Structure string parsing`, () => {
 
       responses.get(`/b.json`)?.reject(new Error(`gone`))
       await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-      expect(on_error.mock.calls[0][0].filename).toBe(`/b.json`)
+      expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
     } finally {
       vi.unstubAllGlobals()
     }

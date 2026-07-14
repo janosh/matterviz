@@ -6,7 +6,12 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { create_file_drop_handler, drag_over_handlers, load_from_url } from '$lib/io'
+  import {
+    basename_from_url,
+    create_file_drop_handler,
+    drag_over_handlers,
+    load_from_url,
+  } from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
@@ -311,8 +316,9 @@
   $effect(() => {
     const requested_url = data_url
     const current_structure = structure
+    // Host on_file_drop owns the structure; don't treat it as caller-owned cancel.
     const caller_owns_structure = Boolean(
-      current_structure && current_structure !== url_owned_structure,
+      !on_file_drop && current_structure && current_structure !== url_owned_structure,
     )
     if (!requested_url || caller_owns_structure) {
       loaded_data_url = undefined
@@ -347,7 +353,7 @@
         if (!is_current()) return
         console.error(`Failed to load structure from URL:`, error)
         error_msg = `Failed to load structure: ${error.message}`
-        on_error?.({ error_msg, filename: requested_url })
+        on_error?.({ error_msg, filename: basename_from_url(requested_url) })
       })
       .finally(() => {
         if (is_current()) loading = false
@@ -698,11 +704,12 @@
   // Flag set before internal edits (undo/redo/delete/add/move) to distinguish
   // them from external structure changes (file load, trajectory step, etc.)
   let is_internal_edit = false
-  // Claim URL ownership before regular effects so clearing is_internal_edit can't
-  // make an edited structure look caller-owned (and trigger a data_url reload).
+  // Claim URL ownership before regular effects so internal edits aren't treated as caller-owned.
   $effect.pre(() => {
     void structure
-    if (is_internal_edit && loaded_data_url && structure) url_owned_structure = structure
+    if (is_internal_edit && loaded_data_url && loaded_data_url === data_url && structure) {
+      url_owned_structure = structure
+    }
   })
 
   // Add-atom sub-mode state (bound to StructureScene)
