@@ -14,6 +14,14 @@ const ensure_token = (value: string, token: string): string => {
   return [...tokens].join(` `)
 }
 
+const escape_html = (value: string): string =>
+  value
+    .replaceAll(`&`, `&amp;`)
+    .replaceAll(`<`, `&lt;`)
+    .replaceAll(`>`, `&gt;`)
+    .replaceAll(`"`, `&quot;`)
+    .replaceAll(`'`, `&#39;`)
+
 // undefined = not yet checked, null = no DOM available, instance = ready
 let purify: ReturnType<typeof DOMPurify> | null | undefined
 
@@ -51,7 +59,7 @@ function sanitize_svg_content(
   allowed_attrs: string[],
 ): string {
   const dp = get_purify()
-  if (!dp) return html
+  if (!dp) return escape_html(html)
   const wrapped = dp.sanitize(`<svg>${html}</svg>`, {
     ALLOWED_TAGS: [...allowed_tags, `svg`],
     ALLOWED_ATTR: allowed_attrs,
@@ -89,7 +97,7 @@ export function sanitize_html(html: unknown): string {
   const cached = sanitize_cache.get(str)
   if (cached !== undefined) return cached
   const dp = get_purify()
-  if (!dp) return str // no DOM (SSR): return as-is, don't cache
+  if (!dp) return escape_html(str) // no DOM (SSR): render inert text, don't cache
   // oxfmt-ignore
   const safe = dp.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
     `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `textarea`,
