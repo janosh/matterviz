@@ -1,7 +1,10 @@
 // Data type detection for JSON values -- determines which visualization component to use.
 // Used by JsonBrowser and the file renderer to select visualization components.
 
+import { build_path } from '$lib/json-path'
 import { is_optimade_raw } from '$lib/structure/parse'
+
+export { resolve_path } from '$lib/json-path'
 
 // Visualization types supported by the file viewer.
 export type RenderableType =
@@ -382,14 +385,6 @@ interface RenderablePath {
   label: string
 }
 
-const PATH_IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/u
-
-function append_object_key(path: string, key: string): string {
-  const segment = PATH_IDENTIFIER_RE.test(key) ? key : `[${JSON.stringify(key)}]`
-  if (!path) return segment
-  return segment.startsWith(`[`) ? `${path}${segment}` : `${path}.${segment}`
-}
-
 // Recursively scan a JSON object to find all paths that contain renderable data.
 // Returns a Map of JSON path strings to their detected type.
 // Used to show badges on JsonTree nodes indicating which subtrees contain visualizable data.
@@ -429,76 +424,15 @@ export function scan_renderable_paths(
       // For arrays, only scan first few elements to avoid huge arrays
       const scan_count = Math.min(value.length, 20)
       for (let idx = 0; idx < scan_count; idx++) {
-        const child_path = path ? `${path}[${idx}]` : `[${idx}]`
-        walk(value[idx], child_path, depth + 1)
+        walk(value[idx], build_path(path, idx), depth + 1)
       }
     } else {
       for (const [key, child_value] of Object.entries(value as Record<string, unknown>)) {
-        const child_path = append_object_key(path, key)
-        walk(child_value, child_path, depth + 1)
+        walk(child_value, build_path(path, key), depth + 1)
       }
     }
   }
 
   walk(obj, prefix, 0)
   return results
-}
-
-// Resolve a path produced by scan_renderable_paths back to its value (inverse walk).
-// Handles bare identifiers, array indices [0], and JSON-string object keys ["foo.bar"].
-export function resolve_path(root: unknown, path: string): unknown {
-  if (!path) return root
-  let current: unknown = root
-
-  for (let pos = 0; pos < path.length; ) {
-    if (current == null || typeof current !== `object`) return undefined
-
-    if (path[pos] === `.`) {
-      pos++
-      if (pos >= path.length) return undefined
-    }
-
-    let key: string
-    if (path[pos] === `[`) {
-      pos++
-      if (path[pos] === `"`) {
-        const json_start = pos
-        pos++
-        let escaped = false
-        while (pos < path.length) {
-          const char = path[pos]
-          if (escaped) {
-            escaped = false
-          } else if (char === `\\`) {
-            escaped = true
-          } else if (char === `"`) {
-            break
-          }
-          pos++
-        }
-        if (pos >= path.length) return undefined
-        try {
-          key = JSON.parse(path.slice(json_start, pos + 1)) as string
-        } catch {
-          return undefined
-        }
-        pos++
-      } else {
-        const index_start = pos
-        while (/\d/u.test(path[pos] ?? ``)) pos++
-        if (pos === index_start) return undefined
-        key = path.slice(index_start, pos)
-      }
-      if (path[pos] !== `]`) return undefined
-      pos++
-    } else {
-      const key_start = pos
-      while (pos < path.length && path[pos] !== `.` && path[pos] !== `[`) pos++
-      if (pos === key_start) return undefined
-      key = path.slice(key_start, pos)
-    }
-
-    current = (current as Record<string, unknown>)[key]
-  }
-  return current
 }
