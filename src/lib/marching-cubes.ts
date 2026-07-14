@@ -432,7 +432,15 @@ function marching_cubes_raw(
   const inv_nx = 1 / (periodic ? nx : nx - 1)
   const inv_ny = 1 / (periodic ? ny : ny - 1)
   const inv_nz = 1 / (periodic ? nz : nz - 1)
-  const normal_transform = compute_norms ? matrix_inverse_3x3(k_lattice) : null
+  // Singular lattices cannot map covectors; fall back to index-space unit gradients.
+  let normal_transform: Matrix3x3 | null = null
+  if (compute_norms) {
+    try {
+      normal_transform = matrix_inverse_3x3(k_lattice)
+    } catch {
+      /* keep null */
+    }
+  }
 
   // Get or create vertex on an edge (fully optimized with flat array lookups)
   const get_vertex_on_edge = (
@@ -506,8 +514,7 @@ function marching_cubes_raw(
       fx * kx2 + fy * ky2 + fz * kz2 + position_offset[2],
     )
 
-    // Transform index-space gradient → Cartesian covector (skip if normals disabled)
-    if (normal_transform) {
+    if (compute_norms) {
       const [gx, gy, gz] = compute_gradient(
         grid,
         ix + ox1,
@@ -518,11 +525,9 @@ function marching_cubes_raw(
         nz,
         periodic,
       )
-      const cartesian = mat3x3_vec3_multiply(normal_transform, [
-        gx / inv_nx,
-        gy / inv_ny,
-        gz / inv_nz,
-      ])
+      const cartesian = normal_transform
+        ? mat3x3_vec3_multiply(normal_transform, [gx / inv_nx, gy / inv_ny, gz / inv_nz])
+        : ([gx, gy, gz] as Vec3)
       const length = Math.hypot(...cartesian)
       if (length > 1e-10)
         normals.push(cartesian[0] / length, cartesian[1] / length, cartesian[2] / length)

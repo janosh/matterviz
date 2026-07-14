@@ -229,27 +229,38 @@ describe(`marching_cubes`, () => {
     }
   })
 
-  test(`skips singular-lattice normal transform when normals are disabled`, () => {
-    const singular_lattice: Matrix3x3 = [
-      [1, 0, 0],
-      [1, 0, 0],
-      [0, 0, 1],
-    ]
-    const grid = Array.from({ length: 4 }, (_x, ix) =>
-      Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => ix)),
-    )
-    let result: ReturnType<typeof marching_cubes> | undefined
-    expect(() => {
-      result = marching_cubes(grid, 1.5, singular_lattice, {
-        periodic: false,
-        centered: false,
-        normals: false,
-      })
-    }).not.toThrow()
-    expect(result?.vertices.length).toBeGreaterThan(0)
-    expect(result?.faces.length).toBeGreaterThan(0)
-    expect(result?.normals).toEqual([])
-  })
+  test.each([
+    { normals: false, expect_normals: false },
+    { normals: true, expect_normals: true },
+  ])(
+    `singular lattice still extracts mesh when normals=$normals`,
+    ({ normals, expect_normals }) => {
+      const singular_lattice: Matrix3x3 = [
+        [1, 0, 0],
+        [1, 0, 0],
+        [0, 0, 1],
+      ]
+      const grid = Array.from({ length: 4 }, (_x, ix) =>
+        Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => ix)),
+      )
+      let result: ReturnType<typeof marching_cubes> | undefined
+      expect(() => {
+        result = marching_cubes(grid, 1.5, singular_lattice, {
+          periodic: false,
+          centered: false,
+          normals,
+        })
+      }).not.toThrow()
+      expect(result?.vertices.length).toBeGreaterThan(0)
+      expect(result?.faces.length).toBeGreaterThan(0)
+      if (expect_normals) {
+        expect(result?.normals.length).toBe(result?.vertices.length)
+        for (const normal of result?.normals ?? []) {
+          expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
+        }
+      } else expect(result?.normals).toEqual([])
+    },
+  )
 
   test(`higher isovalue produces fewer faces for a blob`, () => {
     const grid = gaussian_grid(8)

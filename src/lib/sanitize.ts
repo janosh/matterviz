@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './phase-diagram/utils'
+import { escape_html } from './utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
 const SAFE_ATTRS = [`style`, `class`, `title`, `href`, `target`, `rel`]
@@ -13,14 +14,6 @@ const ensure_token = (value: string, token: string): string => {
   tokens.add(token)
   return [...tokens].join(` `)
 }
-
-const escape_html = (value: string): string =>
-  value
-    .replaceAll(`&`, `&amp;`)
-    .replaceAll(`<`, `&lt;`)
-    .replaceAll(`>`, `&gt;`)
-    .replaceAll(`"`, `&quot;`)
-    .replaceAll(`'`, `&#39;`)
 
 // undefined = not yet checked, null = no DOM available, instance = ready
 let purify: ReturnType<typeof DOMPurify> | null | undefined
