@@ -30,7 +30,10 @@ describe(`repository documentation and metadata`, () => {
     }
     const documented = [
       ...readme.matchAll(/"(?<setting>matterviz\.scatter\.(?:point|line)[^"]+)"/g),
-    ].flatMap((match) => match.groups?.setting ?? [])
+    ].flatMap((match) => {
+      const setting = match.groups?.setting
+      return setting ? [setting] : []
+    })
     expect(documented).toContain(`matterviz.scatter.point.size`)
     expect(documented).toContain(`matterviz.scatter.line.width`)
     for (const key of documented) {
