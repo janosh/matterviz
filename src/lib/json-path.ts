@@ -21,63 +21,59 @@ export function parse_path(path: string): (string | number)[] {
   const segments: (string | number)[] = []
   let pos = 0
 
-  const push_bracket_token = (token: string): void => {
-    if (!token) return
-    const num = Number(token)
-    segments.push(Number.isNaN(num) ? token : num)
-  }
-
   while (pos < path.length) {
-    if (path[pos] === `.`) {
+    const char = path[pos]
+    if (char === `.`) {
       pos++
       continue
     }
 
-    if (path[pos] === `[`) {
+    if (char !== `[`) {
+      const start = pos
+      while (pos < path.length && path[pos] !== `.` && path[pos] !== `[`) pos++
+      if (pos > start) segments.push(path.slice(start, pos))
+      continue
+    }
+
+    pos++ // skip `[`
+    if (path[pos] === `]`) {
       pos++
-      if (path[pos] === `]`) {
+      continue
+    }
+
+    if (path[pos] === `"`) {
+      const json_start = pos
+      let escaped = false
+      pos++
+      while (pos < path.length) {
+        const quote_char = path[pos]
+        if (escaped) escaped = false
+        else if (quote_char === `\\`) escaped = true
+        else if (quote_char === `"`) break
         pos++
-        continue
       }
-
-      if (path[pos] === `"`) {
-        const json_start = pos
-        const content_start = pos + 1
-        pos++
-        let escaped = false
-        while (pos < path.length) {
-          const char = path[pos]
-          if (escaped) escaped = false
-          else if (char === `\\`) escaped = true
-          else if (char === `"`) break
-          pos++
-        }
-
-        if (pos >= path.length) {
-          segments.push(path.slice(content_start))
-          break
-        }
-
-        try {
-          segments.push(JSON.parse(path.slice(json_start, pos + 1)) as string)
-        } catch {
-          segments.push(path.slice(content_start, pos))
-        }
-        pos++
-        if (path[pos] === `]`) pos++
-        continue
+      if (pos >= path.length) {
+        segments.push(path.slice(json_start + 1))
+        break
       }
-
-      const token_start = pos
-      while (pos < path.length && path[pos] !== `]`) pos++
-      push_bracket_token(path.slice(token_start, pos))
+      try {
+        segments.push(JSON.parse(path.slice(json_start, pos + 1)) as string)
+      } catch {
+        segments.push(path.slice(json_start + 1, pos))
+      }
+      pos++
       if (path[pos] === `]`) pos++
       continue
     }
 
-    const token_start = pos
-    while (pos < path.length && path[pos] !== `.` && path[pos] !== `[`) pos++
-    if (pos > token_start) segments.push(path.slice(token_start, pos))
+    const start = pos
+    while (pos < path.length && path[pos] !== `]`) pos++
+    const token = path.slice(start, pos)
+    if (token) {
+      const num = Number(token)
+      segments.push(Number.isNaN(num) ? token : num)
+    }
+    if (path[pos] === `]`) pos++
   }
 
   return segments

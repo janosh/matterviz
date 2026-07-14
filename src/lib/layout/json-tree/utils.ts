@@ -1,8 +1,6 @@
 // JSON Tree utility functions
-import * as json_path from '../../json-path'
+import { build_path, format_path, parse_path } from '../../json-path'
 import type { DiffEntry, JsonValueType } from './types'
-
-export { build_path, format_path, parse_path } from '../../json-path'
 
 // Circular-safe JSON.stringify helper (hoisted for reuse)
 function safe_stringify(val: unknown): string {
@@ -200,7 +198,7 @@ export function collect_all_paths(
 
   const paths: string[] = current_path ? [current_path] : []
   for_each_child(value, type, (child_value, key) => {
-    const child_path = json_path.build_path(current_path, key)
+    const child_path = build_path(current_path, key)
     paths.push(
       ...collect_all_paths(child_value, child_path, max_depth, current_depth + 1, seen),
     )
@@ -232,7 +230,7 @@ export function find_matching_paths(
   }
 
   for_each_child(value, type, (child_value, key, map_key) => {
-    const child_path = json_path.build_path(current_path, key)
+    const child_path = build_path(current_path, key)
     // Also check if Map key matches
     if (
       map_key !== undefined &&
@@ -254,9 +252,9 @@ export function get_ancestor_paths(path: string): string[] {
   let current = ``
 
   // Parse the path to extract segments
-  const segments = json_path.parse_path(path)
+  const segments = parse_path(path)
   for (let idx = 0; idx < segments.length - 1; idx++) {
-    current = json_path.build_path(current, segments[idx])
+    current = build_path(current, segments[idx])
     ancestors.push(current)
   }
 
@@ -306,7 +304,7 @@ export function set_at_path(
   new_value: unknown,
   root_label?: string,
 ): unknown {
-  const segments = json_path.parse_path(path_str)
+  const segments = parse_path(path_str)
   const start = root_label && segments[0] === root_label ? 1 : 0
   if (start >= segments.length) return new_value
   const cloned = structuredClone(root)
@@ -401,10 +399,9 @@ export function build_ghost_map(diff_map: Map<string, DiffEntry>): Map<string, G
   const ghost_map = new Map<string, GhostEntry[]>()
   for (const [diff_path, entry] of diff_map) {
     if (entry.status !== `removed`) continue
-    const segments = json_path.parse_path(diff_path)
+    const segments = parse_path(diff_path)
     if (segments.length === 0) continue
-    const parent_path =
-      segments.length === 1 ? `` : json_path.format_path(segments.slice(0, -1))
+    const parent_path = segments.length === 1 ? `` : format_path(segments.slice(0, -1))
     const key = segments[segments.length - 1]
     const ghosts = ghost_map.get(parent_path) ?? []
     ghosts.push({ key, value: entry.old_value, path: diff_path })
@@ -467,7 +464,7 @@ export function compute_diff(
   function diff_indexed(old_items: unknown[], new_items: unknown[]): void {
     const max_len = Math.max(old_items.length, new_items.length)
     for (let idx = 0; idx < max_len; idx++) {
-      const child_path = json_path.build_path(current_path, idx)
+      const child_path = build_path(current_path, idx)
       if (idx >= old_items.length) {
         result.set(child_path, {
           status: `added`,
@@ -497,7 +494,7 @@ export function compute_diff(
     const new_obj = new_val as Record<string, unknown>
     const all_keys = new Set([...Object.keys(old_obj), ...Object.keys(new_obj)])
     for (const key of all_keys) {
-      const child_path = json_path.build_path(current_path, key)
+      const child_path = build_path(current_path, key)
       const in_old = key in old_obj
       const in_new = key in new_obj
       if (!in_old) {

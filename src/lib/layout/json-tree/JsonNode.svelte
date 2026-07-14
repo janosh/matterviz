@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import { build_path } from '$lib/json-path'
   import { getContext, onMount } from 'svelte'
   // oxlint-disable-next-line import/no-self-import -- recursive Svelte component
   import JsonNode from './JsonNode.svelte'
@@ -7,7 +8,6 @@
   import type { JsonTreeContext } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
   import {
-    build_path,
     estimate_byte_size,
     format_byte_size,
     format_preview,

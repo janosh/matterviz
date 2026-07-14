@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import { download } from '$lib/io/fetch'
+  import { parse_path } from '$lib/json-path'
   import { make_change_detector } from '$lib/utils'
   import { setContext, tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-multiselect/attachments'
@@ -16,7 +17,6 @@
     find_matching_paths,
     format_preview,
     get_ancestor_paths,
-    parse_path,
     serialize_for_copy,
   } from './utils'
 

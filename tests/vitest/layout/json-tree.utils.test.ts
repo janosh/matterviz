@@ -1,12 +1,11 @@
 // Unit tests for JSON tree utility functions
+import { build_path, format_path, parse_path } from '$lib/json-path'
 import {
-  build_path,
   collect_all_paths,
   compute_diff,
   estimate_byte_size,
   find_matching_paths,
   format_byte_size,
-  format_path,
   format_preview,
   get_ancestor_paths,
   get_child_count,
@@ -16,7 +15,6 @@ import {
   is_expandable_type,
   is_url,
   matches_search,
-  parse_path,
   serialize_for_copy,
   values_equal,
 } from '$lib/layout/json-tree/utils'
