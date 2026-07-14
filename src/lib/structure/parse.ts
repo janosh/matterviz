@@ -754,8 +754,8 @@ const parse_cif_atom_data = (
     occupancy >= 0 && raw_data[occupancy]
       ? parse_cif_uncertain_number(raw_data[occupancy])
       : null
-  // invalid or zero occupancy defaults to fully occupied
-  const occu = raw_occu == null || raw_occu === 0 ? 1.0 : raw_occu
+  // Explicit 0 is kept; missing / `.` / `?` (null) default to fully occupied.
+  const occu = raw_occu ?? 1.0
 
   const from_symbol =
     symbol >= 0 ? /^(?<element>[A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
