@@ -449,6 +449,25 @@ describe(`scan_renderable_paths`, () => {
     },
   )
 
+  test.each([
+    { label: `bracket`, key: `a[b]` },
+    { label: `dot`, key: `dot.key` },
+    { label: `quote`, key: `say "hello"` },
+    { label: `backslash`, key: `slash\\key` },
+    { label: `mixed punctuation`, key: `mix.["quoted"]\\tail` },
+    { label: `empty`, key: `` },
+    { label: `numeric-looking`, key: `0` },
+  ])(`round-trips renderable object key: $label`, ({ key }) => {
+    const original = { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] }
+    const data = { root: { [key]: original } }
+    const paths = scan_renderable_paths(data)
+    const path = [...paths.keys()][0]
+
+    expect(paths.size).toBe(1)
+    expect(path).toBe(`root[${JSON.stringify(key)}]`)
+    expect(resolve_path(data, path)).toBe(original)
+  })
+
   test(`all scanned paths resolve back to the original value`, () => {
     for (const [path] of fixture_paths) {
       const resolved = resolve_path(fixture, path)

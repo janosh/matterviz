@@ -148,6 +148,14 @@ describe(`format_path`, () => {
       `key.with.dot`,
     ])
   })
+
+  it.each([`a[b]`, `dot.key`, `say "hello"`, `slash\\key`, `mix.["quoted"]\\tail`, ``, `0`])(
+    `round-trips arbitrary key %p`,
+    (key) => {
+      const segments = [`root`, key, 2, `leaf`]
+      expect(parse_path(format_path(segments))).toEqual(segments)
+    },
+  )
 })
 
 describe(`build_path`, () => {

@@ -1,8 +1,8 @@
 // JSON Tree utility functions
+import * as json_path from '$lib/json-path'
 import type { DiffEntry, JsonValueType } from './types'
 
-// Pre-compiled regex for valid JS identifiers (used in path formatting)
-const VALID_IDENTIFIER_RE = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
+export { build_path, format_path, parse_path } from '$lib/json-path'
 
 // Circular-safe JSON.stringify helper (hoisted for reuse)
 function safe_stringify(val: unknown): string {
@@ -71,32 +71,6 @@ export function get_child_count(value: unknown): number {
   if (type === `set`) return (value as Set<unknown>).size
   return 0
 }
-
-// Format a path segment for display
-// Handles both string keys and numeric indices
-// is_first: true for the first segment (no leading dot for valid identifiers)
-function format_path_segment(segment: string | number, is_first: boolean = false): string {
-  if (typeof segment === `number`) {
-    return `[${segment}]`
-  }
-  // Check if the key is a valid identifier (can use dot notation)
-  if (VALID_IDENTIFIER_RE.test(segment)) {
-    return is_first ? segment : `.${segment}`
-  }
-  // Use bracket notation for keys with special characters
-  return `["${segment.replaceAll('"', `\\"`)}"]`
-}
-
-// Format a full path from segments
-// e.g., ["users", 0, "name"] -> "users[0].name"
-// e.g., [0, "name"] -> "[0].name" (root numeric index)
-// e.g., ["key.with.dot"] -> '["key.with.dot"]' (root special key)
-export const format_path = (segments: (string | number)[]): string =>
-  segments.map((segment, idx) => format_path_segment(segment, idx === 0)).join(``)
-
-// Build a path string from parent path and key
-export const build_path = (parent_path: string, key: string | number): string =>
-  parent_path ? parent_path + format_path_segment(key) : format_path_segment(key, true)
 
 // Format a primitive/special value to string (shared by serialize and preview)
 function format_special_value(value: unknown, type: JsonValueType): string | null {
@@ -226,7 +200,7 @@ export function collect_all_paths(
 
   const paths: string[] = current_path ? [current_path] : []
   for_each_child(value, type, (child_value, key) => {
-    const child_path = build_path(current_path, key)
+    const child_path = json_path.build_path(current_path, key)
     paths.push(
       ...collect_all_paths(child_value, child_path, max_depth, current_depth + 1, seen),
     )
@@ -258,7 +232,7 @@ export function find_matching_paths(
   }
 
   for_each_child(value, type, (child_value, key, map_key) => {
-    const child_path = build_path(current_path, key)
+    const child_path = json_path.build_path(current_path, key)
     // Also check if Map key matches
     if (
       map_key !== undefined &&
@@ -280,54 +254,13 @@ export function get_ancestor_paths(path: string): string[] {
   let current = ``
 
   // Parse the path to extract segments
-  const segments = parse_path(path)
+  const segments = json_path.parse_path(path)
   for (let idx = 0; idx < segments.length - 1; idx++) {
-    current = build_path(current, segments[idx])
+    current = json_path.build_path(current, segments[idx])
     ancestors.push(current)
   }
 
   return ancestors
-}
-
-// Parse a path string into segments
-// e.g., "users[0].name" -> ["users", 0, "name"]
-export function parse_path(path: string): (string | number)[] {
-  if (!path) return []
-
-  const segments: (string | number)[] = []
-  let current = ``
-  let in_bracket = false
-
-  // Bracket tokens are numeric indices or quoted keys (quotes stripped, \" unescaped)
-  const push_bracket_token = (token: string): void => {
-    const num = Number(token)
-    if (Number.isNaN(num)) {
-      segments.push(token.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`))
-    } else segments.push(num)
-  }
-
-  for (const char of path) {
-    if (char === `.` && !in_bracket) {
-      if (current) segments.push(current)
-      current = ``
-    } else if (char === `[`) {
-      if (current) segments.push(current)
-      current = ``
-      in_bracket = true
-    } else if (char === `]`) {
-      if (current) push_bracket_token(current)
-      current = ``
-      in_bracket = false
-    } else current += char
-  }
-
-  // Handle trailing content (e.g., unclosed bracket like "a[0")
-  if (current) {
-    if (in_bracket) push_bracket_token(current)
-    else segments.push(current)
-  }
-
-  return segments
 }
 
 // Check if two values are deeply equal (for change detection)
@@ -373,7 +306,7 @@ export function set_at_path(
   new_value: unknown,
   root_label?: string,
 ): unknown {
-  const segments = parse_path(path_str)
+  const segments = json_path.parse_path(path_str)
   const start = root_label && segments[0] === root_label ? 1 : 0
   if (start >= segments.length) return new_value
   const cloned = structuredClone(root)
@@ -468,9 +401,10 @@ export function build_ghost_map(diff_map: Map<string, DiffEntry>): Map<string, G
   const ghost_map = new Map<string, GhostEntry[]>()
   for (const [diff_path, entry] of diff_map) {
     if (entry.status !== `removed`) continue
-    const segments = parse_path(diff_path)
+    const segments = json_path.parse_path(diff_path)
     if (segments.length === 0) continue
-    const parent_path = segments.length === 1 ? `` : format_path(segments.slice(0, -1))
+    const parent_path =
+      segments.length === 1 ? `` : json_path.format_path(segments.slice(0, -1))
     const key = segments[segments.length - 1]
     const ghosts = ghost_map.get(parent_path) ?? []
     ghosts.push({ key, value: entry.old_value, path: diff_path })
@@ -533,7 +467,7 @@ export function compute_diff(
   function diff_indexed(old_items: unknown[], new_items: unknown[]): void {
     const max_len = Math.max(old_items.length, new_items.length)
     for (let idx = 0; idx < max_len; idx++) {
-      const child_path = build_path(current_path, idx)
+      const child_path = json_path.build_path(current_path, idx)
       if (idx >= old_items.length) {
         result.set(child_path, {
           status: `added`,
@@ -563,7 +497,7 @@ export function compute_diff(
     const new_obj = new_val as Record<string, unknown>
     const all_keys = new Set([...Object.keys(old_obj), ...Object.keys(new_obj)])
     for (const key of all_keys) {
-      const child_path = build_path(current_path, key)
+      const child_path = json_path.build_path(current_path, key)
       const in_old = key in old_obj
       const in_new = key in new_obj
       if (!in_old) {
