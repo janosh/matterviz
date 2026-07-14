@@ -131,6 +131,28 @@ describe(`adaptive density utilities`, () => {
     })
   })
 
+  it(`computes both extents from the same finite point pairs`, () => {
+    expect(series_extents([{ x: [1, 1e9], y: [1, Number.NaN] }])).toEqual({
+      x: [0.5, 1.5],
+      y: [0.5, 1.5],
+    })
+  })
+
+  it(`pads log extents in transformed space`, () => {
+    const extents = series_extents([{ x: [1, 100], y: [2, 20] }], `log`, `linear`)
+
+    expect(extents.x[0]).toBeCloseTo(10 ** -0.1)
+    expect(extents.x[1]).toBeCloseTo(10 ** 2.1)
+    expect(extents.y).toEqual([1.1, 20.9])
+  })
+
+  it(`drops pairs that cannot render on a log axis`, () => {
+    expect(series_extents([{ x: [-10, 10], y: [1, 2] }], `log`, `linear`)).toEqual({
+      x: [10 / Math.sqrt(10), 10 * Math.sqrt(10)],
+      y: [1.5, 2.5],
+    })
+  })
+
   it(`does not pick outside visible ranges or radius`, () => {
     const hidden = pick_from_index(
       build_pick_index(series, { ...pick_options, radius_px: 30 }),

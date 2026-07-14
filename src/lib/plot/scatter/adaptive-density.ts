@@ -127,36 +127,51 @@ const value_bin = (value: number, min: number, span: number, bins: number): numb
 const series_length = (srs: Pick<DensePointSeries, `x` | `y`>): number =>
   Math.min(srs.x.length, srs.y.length)
 
-const padded_extent = (min: number, max: number): Vec2 => {
+const padded_extent = (min: number, max: number, scale_type?: ScaleType): Vec2 => {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1]
+  if (get_scale_type_name(scale_type) === `log`) {
+    if (min === max) return [min / Math.sqrt(10), max * Math.sqrt(10)]
+    const transform = scale_bin_transform(scale_type)
+    const t_min = transform.forward(min)
+    const t_max = transform.forward(max)
+    const padding = (t_max - t_min) * 0.05
+    return [transform.inverse(t_min - padding), transform.inverse(t_max + padding)]
+  }
   if (min === max) return [min - 0.5, max + 0.5]
   const padding = (max - min) * 0.05
   return [min - padding, max + padding]
 }
 
-export function series_extents(series: readonly DensePointSeries[]): { x: Vec2; y: Vec2 } {
+export function series_extents(
+  series: readonly DensePointSeries[],
+  x_scale_type?: ScaleType,
+  y_scale_type?: ScaleType,
+): { x: Vec2; y: Vec2 } {
   let x_min = Infinity
   let x_max = -Infinity
   let y_min = Infinity
   let y_max = -Infinity
+  const log_x = get_scale_type_name(x_scale_type) === `log`
+  const log_y = get_scale_type_name(y_scale_type) === `log`
 
   for (const srs of series) {
     const n_points = series_length(srs)
     for (let idx = 0; idx < n_points; idx++) {
       const x = srs.x[idx]
       const y = srs.y[idx]
-      if (Number.isFinite(x)) {
-        if (x < x_min) x_min = x
-        if (x > x_max) x_max = x
-      }
-      if (Number.isFinite(y)) {
-        if (y < y_min) y_min = y
-        if (y > y_max) y_max = y
-      }
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      if ((log_x && x <= 0) || (log_y && y <= 0)) continue
+      if (x < x_min) x_min = x
+      if (x > x_max) x_max = x
+      if (y < y_min) y_min = y
+      if (y > y_max) y_max = y
     }
   }
 
-  return { x: padded_extent(x_min, x_max), y: padded_extent(y_min, y_max) }
+  return {
+    x: padded_extent(x_min, x_max, x_scale_type),
+    y: padded_extent(y_min, y_max, y_scale_type),
+  }
 }
 
 export function bin_points(
