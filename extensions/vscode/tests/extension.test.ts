@@ -1263,18 +1263,14 @@ describe(`MatterViz Extension`, () => {
           dispose: vi.fn(),
         }
         const disposable = () => ({ dispose: vi.fn() })
-        const webview1 = {
+        const make_webview = () => ({
           ...mock_webview,
           postMessage: vi.fn(),
           onDidReceiveMessage: vi.fn(disposable),
           html: ``,
-        }
-        const webview2 = {
-          ...mock_webview,
-          postMessage: vi.fn(),
-          onDidReceiveMessage: vi.fn(disposable),
-          html: ``,
-        }
+        })
+        const webview1 = make_webview()
+        const webview2 = make_webview()
         const panel1 = { webview: webview1, onDidDispose: vi.fn(), visible: true }
         const panel2 = { webview: webview2, onDidDispose: vi.fn(), visible: true }
 
@@ -1297,6 +1293,7 @@ describe(`MatterViz Extension`, () => {
           | (() => Promise<void> | void)
           | undefined
         expect(change_handler).toBeDefined()
+        mock_vscode.workspace.fs.readFile.mockClear()
         await change_handler?.()
 
         await vi.waitFor(() => {
@@ -1313,6 +1310,7 @@ describe(`MatterViz Extension`, () => {
             }),
           )
         })
+        expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(1)
 
         panel1.onDidDispose.mock.calls[0]?.[0]()
         expect(shared_watcher.dispose).not.toHaveBeenCalled()
@@ -1323,13 +1321,20 @@ describe(`MatterViz Extension`, () => {
     })
 
     describe(`message handling`, () => {
+      const watch_path = `/test/file.cif`
+      const start_watching = {
+        command: `startWatching` as const,
+        ...msg_args,
+        file_path: watch_path,
+      }
+      const stop_watching = {
+        command: `stopWatching` as const,
+        ...msg_args,
+        file_path: watch_path,
+      }
+
       test(`should handle startWatching message`, async () => {
-        const message = {
-          command: `startWatching` as const,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-        }
-        await handle_msg(message, mock_webview)
+        await handle_msg(start_watching, mock_webview)
 
         expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1341,44 +1346,31 @@ describe(`MatterViz Extension`, () => {
         expect(mock_file_system_watcher.onDidDelete).toHaveBeenCalledWith(expect.any(Function))
       })
 
-      test(`should handle stopWatching message`, async () => {
-        // First start watching
-        const start_message = {
-          command: `startWatching` as const,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-        }
-        await handle_msg(start_message, mock_webview)
+      test(`stopWatching requires a webview and disposes only for that subscriber`, async () => {
+        await handle_msg(start_watching, mock_webview)
+        mock_file_system_watcher.dispose.mockClear()
 
-        // Then test stopping
-        const stop_message = {
-          command: `stopWatching` as const,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-        }
-        await handle_msg(stop_message, mock_webview)
+        await expect(handle_msg(stop_watching)).resolves.not.toThrow()
+        expect(mock_file_system_watcher.dispose).not.toHaveBeenCalled()
+        expect(active_watchers.has(watch_path)).toBe(true)
 
+        await handle_msg(stop_watching, mock_webview)
         expect(mock_file_system_watcher.dispose).toHaveBeenCalled()
       })
 
-      test(`should handle startWatching without webview gracefully`, async () => {
-        const message = {
-          command: `startWatching` as const,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-        }
-
-        await expect(handle_msg(message)).resolves.not.toThrow()
-        expect(mock_vscode.workspace.createFileSystemWatcher).not.toHaveBeenCalled()
-      })
-
-      test(`should handle startWatching without file_path gracefully`, async () => {
-        const message = {
-          command: `startWatching` as const,
-          ...msg_args,
-        }
-
-        await expect(handle_msg(message, mock_webview)).resolves.not.toThrow()
+      test.each([
+        {
+          label: `without webview`,
+          message: start_watching,
+          webview: undefined,
+        },
+        {
+          label: `without absolute file_path`,
+          message: { command: `startWatching` as const, ...msg_args },
+          webview: mock_webview,
+        },
+      ])(`should handle startWatching $label gracefully`, async ({ message, webview }) => {
+        await expect(handle_msg(message, webview)).resolves.not.toThrow()
         expect(mock_vscode.workspace.createFileSystemWatcher).not.toHaveBeenCalled()
       })
 
@@ -1387,13 +1379,14 @@ describe(`MatterViz Extension`, () => {
           throw new Error(`File system watcher creation failed`)
         })
 
-        const message = {
-          command: `startWatching` as const,
-          ...msg_args,
-          file_path: `/test/large-file.cif`,
-        }
-
-        await handle_msg(message, mock_webview)
+        await handle_msg(
+          {
+            command: `startWatching` as const,
+            ...msg_args,
+            file_path: `/test/large-file.cif`,
+          },
+          mock_webview,
+        )
 
         expect(mock_webview.postMessage).toHaveBeenCalledWith({
           command: `error`,

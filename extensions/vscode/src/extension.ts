@@ -435,7 +435,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
       filename: msg.filename,
       frame_index: msg.frame_index,
     })
-  } else if (msg.command === `stopWatching` && msg.file_path) {
+  } else if (msg.command === `stopWatching` && webview && msg.file_path) {
     // Handle request to stop watching a file
     stop_watching_file(msg.file_path, webview)
   }
@@ -645,11 +645,23 @@ export const render = async (
   }
 }
 
+// Mirror get_file's fallback chain (active editor, then active tab) so command-palette
+// invocations are validated against the same file that render would end up opening.
+const resolve_target_uri = (uri?: vscode.Uri): vscode.Uri | undefined => {
+  if (uri) return uri
+  if (vscode.window.activeTextEditor) return vscode.window.activeTextEditor.document.uri
+  const tab_input = vscode.window.tabGroups.activeTabGroup.activeTab?.input
+  if (tab_input && typeof tab_input === `object` && `uri` in tab_input) {
+    return (tab_input as { uri: vscode.Uri }).uri
+  }
+  return undefined
+}
+
 const open_resource = async (
   context: vscode.ExtensionContext,
   uri?: vscode.Uri,
 ): Promise<void> => {
-  const target = uri ?? vscode.window.activeTextEditor?.document.uri
+  const target = resolve_target_uri(uri)
   if (!target) {
     vscode.window.showErrorMessage(
       `No file selected. MatterViz needs an active editor to know what to render.`,
@@ -665,7 +677,9 @@ const open_resource = async (
     return
   }
 
-  await render(context, target)
+  // Pass the original (possibly undefined) uri through so get_file keeps using the
+  // active editor's in-memory buffer (unsaved edits) rather than re-reading from disk.
+  await render(context, uri)
 }
 
 // Custom editor provider for MatterViz files

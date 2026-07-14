@@ -188,16 +188,8 @@ describe(`Trajectory`, () => {
       await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
 
       responses.get(`/a.xyz`)?.(new Response(xyz(`H`)))
-      let stale_load_finished = false
-      try {
-        await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2), {
-          timeout: 250,
-        })
-        stale_load_finished = true
-      } catch {
-        stale_load_finished = false
-      }
-      expect(stale_load_finished).toBe(false)
+      // Give the stale load time to (incorrectly) commit before asserting it didn't
+      await new Promise((resolve) => setTimeout(resolve, 100))
       expect(on_file_load).toHaveBeenCalledTimes(1)
       expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
     } finally {

@@ -959,6 +959,41 @@ describe(`Structure string parsing`, () => {
     }
   })
 
+  test(`on_error reports the requested URL, not a superseded data_url`, async () => {
+    const responses = new Map<
+      string,
+      { resolve: (response: Response) => void; reject: (error: Error) => void }
+    >()
+    const fetch_mock = vi.fn(
+      (url: string | URL | Request) =>
+        new Promise<Response>((resolve, reject) => {
+          responses.set(request_url(url), { resolve, reject })
+        }),
+    )
+    vi.stubGlobal(`fetch`, fetch_mock)
+    try {
+      const on_error = vi.fn()
+      const props = $state<ComponentProps<typeof Structure>>({
+        data_url: `/a.json`,
+        on_error,
+      })
+      mount_structure(props)
+      await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+
+      props.data_url = `/b.json`
+      await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+      responses.get(`/a.json`)?.reject(new Error(`network down`))
+      await tick()
+      expect(on_error).not.toHaveBeenCalled()
+
+      responses.get(`/b.json`)?.reject(new Error(`gone`))
+      await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+      expect(on_error.mock.calls[0][0].filename).toBe(`/b.json`)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   test(`load error state renders StatusMessage`, async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

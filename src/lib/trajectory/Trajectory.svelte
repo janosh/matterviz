@@ -318,8 +318,11 @@
     frame_load_timeout = undefined
   }
 
+  const skip_stale_url_stream = () =>
+    Boolean(data_url && loaded_data_url && data_url !== loaded_data_url)
+
   const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
-    if (!trajectory || batch.length === 0) return
+    if (!trajectory || batch.length === 0 || skip_stale_url_stream()) return
     const preserves_url_ownership = trajectory === url_owned_trajectory
     const next_trajectory = {
       ...trajectory,
@@ -330,7 +333,7 @@
   }
 
   const finish_plot_metadata_loading = () => {
-    if (!trajectory) return
+    if (!trajectory || skip_stale_url_stream()) return
     const preserves_url_ownership = trajectory === url_owned_trajectory
     const next_trajectory = {
       ...trajectory,
