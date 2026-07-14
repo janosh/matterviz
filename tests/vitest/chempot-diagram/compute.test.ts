@@ -34,7 +34,7 @@ import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { convex_hull_2d, polygon_centroid, solve_linear_system } from '$lib/math'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { load_json } from '../setup'
 
 const test_dir = import.meta.dirname
@@ -62,6 +62,17 @@ const cpd_ternary_formal = compute_chempot_diagram(entries, {
 const cpd_binary = compute_chempot_diagram(binary_entries, {
   default_min_limit: -25,
   formal_chempots: false,
+})
+
+const ytos_y_ti_o = compute_chempot_diagram(ytos_entries, {
+  elements: [`O`, `Ti`, `Y`],
+  default_min_limit: -25,
+  formal_chempots: true,
+})
+const ytos_ti_o_s = compute_chempot_diagram(ytos_entries, {
+  elements: [`O`, `S`, `Ti`],
+  default_min_limit: -25,
+  formal_chempots: true,
 })
 
 // Mapping from pymatgen formula names to our alphabetically-sorted formula keys
@@ -103,17 +114,17 @@ const sort_rows = (pts: number[][]): number[][] =>
 const dedup_vertices = (pts: number[][], tol: number = 1e-4): number[][] =>
   dedup_points(pts, tol).unique
 
-// === Pymatgen parity tests ===
-
 describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
-  test(`dim`, () => {
+  test(`diagram metadata matches pymatgen`, () => {
     expect(cpd_binary.elements).toHaveLength(2)
     expect(cpd_ternary.elements).toHaveLength(3)
     expect(cpd_ternary_formal.elements).toHaveLength(3)
-  })
-
-  test(`elements sorted alphabetically`, () => {
     expect(cpd_ternary.elements).toEqual([`Fe`, `Li`, `O`])
+    expect(cpd_ternary.lims).toEqual([
+      [-25, 0],
+      [-25, 0],
+      [-25, 0],
+    ])
   })
 
   test(`el_refs (absolute)`, () => {
@@ -148,15 +159,6 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
         expect(border[idx][jdx]).toBeCloseTo(desired[idx][jdx], 5)
       }
     }
-  })
-
-  test(`lims`, () => {
-    const desired = [
-      [-25, 0],
-      [-25, 0],
-      [-25, 0],
-    ]
-    expect(cpd_ternary.lims).toEqual(desired)
   })
 
   test.each([
@@ -254,11 +256,8 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   })
 })
 
-// === Physical invariant tests ===
-
 describe(`physical invariants`, () => {
   test(`all domain vertices satisfy all hyperplane constraints`, () => {
-    // Every vertex must lie on or below every hyperplane: a·mu + b <= tol
     const all_hs = [...cpd_ternary.hyperplanes, ...build_border_hyperplanes(cpd_ternary.lims)]
     const dim = cpd_ternary.elements.length
     for (const [formula, pts] of Object.entries(cpd_ternary.domains)) {
@@ -272,7 +271,10 @@ describe(`physical invariants`, () => {
     }
   })
 
-  test(`all domain vertices lie within specified limits`, () => {
+  test(`vertices within limits and every element has a domain`, () => {
+    for (const el of cpd_ternary.elements) {
+      expect(cpd_ternary.domains[el], `Element ${el} has no domain`).toBeDefined()
+    }
     for (const pts of Object.values(cpd_ternary.domains)) {
       for (const pt of pts) {
         for (let dim = 0; dim < cpd_ternary.elements.length; dim++) {
@@ -284,34 +286,21 @@ describe(`physical invariants`, () => {
     }
   })
 
-  test(`every element has a domain (no element vanishes from the diagram)`, () => {
-    for (const el of cpd_ternary.elements) {
-      expect(cpd_ternary.domains[el], `Element ${el} has no domain`).toBeDefined()
-    }
-  })
-
   test(`elemental domains touch the el_ref energy axis`, () => {
-    // For absolute chempots: the Fe domain should have vertices where
-    // mu_Fe = E_ref(Fe) (the elemental reference energy per atom)
     const fe_ref_e = cpd_ternary.el_refs.Fe.energy
-    const fe_domain = dedup_vertices(cpd_ternary.domains.Fe)
-    // Fe column is index 0 (alphabetical: Fe, Li, O)
-    const fe_vals = fe_domain.map((pt) => pt[0])
+    const fe_vals = dedup_vertices(cpd_ternary.domains.Fe).map((pt) => pt[0])
     expect(fe_vals.some((val) => Math.abs(val - fe_ref_e) < 0.01)).toBe(true)
   })
 
-  test(`formal chempots: elemental domain vertices include mu=0`, () => {
+  test(`formal chempots touch mu=0 and are non-positive`, () => {
     for (const el of cpd_ternary_formal.elements) {
       const domain = dedup_vertices(cpd_ternary_formal.domains[el])
       const el_idx = cpd_ternary_formal.elements.indexOf(el)
-      const has_zero = domain.some((pt) => Math.abs(pt[el_idx]) < 0.01)
-      expect(has_zero, `${el} formal domain should touch mu_${el}=0`).toBe(true)
+      expect(
+        domain.some((pt) => Math.abs(pt[el_idx]) < 0.01),
+        `${el} formal domain should touch mu_${el}=0`,
+      ).toBe(true)
     }
-  })
-
-  test(`formal chempots: all chemical potentials are non-positive`, () => {
-    // With formal chempots, mu_X - mu_X^0 <= 0 always (phases can't have higher
-    // chemical potential than the pure element)
     for (const pts of Object.values(cpd_ternary_formal.domains)) {
       for (const pt of pts) {
         for (const chempot of pt) {
@@ -322,9 +311,7 @@ describe(`physical invariants`, () => {
   })
 
   test(`domain vertex centroids satisfy hyperplane feasibility`, () => {
-    // Vertex centroids aren't guaranteed to lie inside their own domain
-    // (boundary-clamped vertices can skew centroids into neighbors), so we only
-    // check that the energy at centroids is feasible (non-positive score).
+    // Centroids of boundary-clamped vertices may leave their domain; only check feasibility.
     const dim = cpd_ternary.elements.length
     for (const pts of Object.values(cpd_ternary.domains)) {
       const unique = dedup_vertices(pts)
@@ -343,61 +330,41 @@ describe(`physical invariants`, () => {
   })
 })
 
-// === Binary system tests ===
-
 describe(`binary system (2 elements)`, () => {
-  // A binary system A-B with compounds AB and A2B gives a well-understood diagram
-  const binary_simple = compute_chempot_diagram(
-    [
-      make_entry({ A: 1 }, -2.0), // element A
-      make_entry({ B: 1 }, -3.0), // element B
-      make_entry({ A: 1, B: 1 }, -6.0), // compound AB, formation energy = -6 - (-2 -3) = -1 eV/fu
-    ],
-    { default_min_limit: -20, formal_chempots: false },
-  )
-
-  test(`produces exactly 3 domains for A-B-AB system`, () => {
-    expect(Object.keys(binary_simple.domains).sort()).toEqual([`A`, `AB`, `B`])
+  const ab_binary_entries = [
+    make_entry({ A: 1 }, -2.0),
+    make_entry({ B: 1 }, -3.0),
+    make_entry({ A: 1, B: 1 }, -6.0),
+  ]
+  const binary_simple = compute_chempot_diagram(ab_binary_entries, {
+    default_min_limit: -20,
+    formal_chempots: false,
   })
 
-  test(`elemental ref energies match input`, () => {
+  test(`A-B-AB structure, refs, and AB vertices between refs`, () => {
+    expect(Object.keys(binary_simple.domains).sort()).toEqual([`A`, `AB`, `B`])
     expect(binary_simple.el_refs.A.energy_per_atom).toBe(-2.0)
     expect(binary_simple.el_refs.B.energy_per_atom).toBe(-3.0)
-  })
-
-  test(`compound domain vertices lie between element refs`, () => {
-    const ab_domain = dedup_vertices(binary_simple.domains.AB)
-    // AB domain should not extend beyond the elemental reference energies
-    for (const pt of ab_domain) {
-      expect(pt[0]).toBeLessThanOrEqual(-2.0 + 1e-4) // mu_A <= E_A
-      expect(pt[1]).toBeLessThanOrEqual(-3.0 + 1e-4) // mu_B <= E_B
+    for (const pt of dedup_vertices(binary_simple.domains.AB)) {
+      expect(pt[0]).toBeLessThanOrEqual(-2.0 + 1e-4)
+      expect(pt[1]).toBeLessThanOrEqual(-3.0 + 1e-4)
     }
   })
 
   test(`formal chempots shift all refs to zero`, () => {
-    const formal = compute_chempot_diagram(
-      [
-        make_entry({ A: 1 }, -2.0),
-        make_entry({ B: 1 }, -3.0),
-        make_entry({ A: 1, B: 1 }, -6.0),
-      ],
-      { default_min_limit: -20, formal_chempots: true },
-    )
-
+    const formal = compute_chempot_diagram(ab_binary_entries, {
+      default_min_limit: -20,
+      formal_chempots: true,
+    })
     expect(formal.el_refs.A.energy_per_atom).toBeCloseTo(0, 8)
     expect(formal.el_refs.B.energy_per_atom).toBeCloseTo(0, 8)
   })
 
   test(`tighter limits produce vertices within bounds`, () => {
-    const tight = compute_chempot_diagram(
-      [
-        make_entry({ A: 1 }, -2.0),
-        make_entry({ B: 1 }, -3.0),
-        make_entry({ A: 1, B: 1 }, -6.0),
-      ],
-      { default_min_limit: -10, formal_chempots: false },
-    )
-
+    const tight = compute_chempot_diagram(ab_binary_entries, {
+      default_min_limit: -10,
+      formal_chempots: false,
+    })
     for (const pts of Object.values(tight.domains)) {
       for (const pt of pts) {
         expect(pt[0]).toBeGreaterThanOrEqual(-10 - 1e-4)
@@ -406,8 +373,6 @@ describe(`binary system (2 elements)`, () => {
     }
   })
 })
-
-// === Trivial / analytic binary: only two elements, no compounds ===
 
 describe(`pure binary (no compounds)`, () => {
   const pure_binary = compute_chempot_diagram(
@@ -428,63 +393,70 @@ describe(`pure binary (no compounds)`, () => {
   })
 })
 
-// === Error handling ===
-
 describe(`error handling`, () => {
-  test(`throws for < 2 elements`, () => {
-    expect(() => compute_chempot_diagram([make_entry({ A: 1 }, -1.0)])).toThrow(
-      `requires 2+ elements`,
-    )
-  })
-
-  test(`throws for missing elemental ref`, () => {
-    // Compound-only entries have elements detected but no elemental reference entries
-    expect(() =>
-      compute_chempot_diagram([
-        make_entry({ A: 1, B: 1 }, -3.0),
-        make_entry({ A: 2, B: 1 }, -5.0),
-      ]),
-    ).toThrow(`Missing elemental reference`)
-  })
-
-  test(`empty entries array throws`, () => {
-    expect(() => compute_chempot_diagram([])).toThrow(`requires 2+ elements`)
+  test.each([
+    {
+      label: `< 2 elements`,
+      phase_entries: [make_entry({ A: 1 }, -1.0)],
+      message: `requires 2+ elements`,
+    },
+    {
+      label: `missing elemental ref`,
+      phase_entries: [make_entry({ A: 1, B: 1 }, -3.0), make_entry({ A: 2, B: 1 }, -5.0)],
+      message: `Missing elemental reference`,
+    },
+    {
+      label: `empty entries`,
+      phase_entries: [] as PhaseData[],
+      message: `requires 2+ elements`,
+    },
+  ])(`throws for $label`, ({ phase_entries, message }) => {
+    expect(() => compute_chempot_diagram(phase_entries)).toThrow(message)
   })
 })
 
-// === get_min_entries_and_el_refs ===
-
 describe(`get_min_entries_and_el_refs`, () => {
-  test(`picks lowest energy per composition`, () => {
-    const { min_entries } = get_min_entries_and_el_refs([
-      make_entry({ A: 1 }, -1.0),
-      make_entry({ A: 1 }, -2.0), // lower energy
-      make_entry({ A: 1 }, -0.5),
-    ])
-    expect(min_entries).toHaveLength(1)
-    expect(min_entries[0].energy_per_atom).toBe(-2.0)
-  })
-
-  test(`distinguishes compositions and identifies elemental refs`, () => {
-    const { min_entries, el_refs } = get_min_entries_and_el_refs([
-      make_entry({ A: 1 }, -1.0),
-      make_entry({ B: 1 }, -2.0),
-      make_entry({ A: 1, B: 1 }, -3.0),
-    ])
-    expect(min_entries).toHaveLength(3)
-    expect(el_refs.A.energy_per_atom).toBe(-1.0)
-    expect(el_refs.B.energy_per_atom).toBe(-2.0)
-  })
-
-  test(`handles multiple polymorphs of same composition`, () => {
-    const { min_entries, el_refs } = get_min_entries_and_el_refs([
-      make_entry({ Fe: 1 }, -6.0),
-      make_entry({ Fe: 1 }, -6.5), // BCC Fe, lowest
-      make_entry({ Fe: 1 }, -6.2),
-      make_entry({ O: 2 }, -8.0),
-    ])
-    expect(min_entries).toHaveLength(2)
-    expect(el_refs.Fe.energy_per_atom).toBe(-6.5)
+  test.each([
+    {
+      label: `picks lowest energy per composition`,
+      phase_entries: [
+        make_entry({ A: 1 }, -1.0),
+        make_entry({ A: 1 }, -2.0),
+        make_entry({ A: 1 }, -0.5),
+      ],
+      assert: ({ min_entries }: ReturnType<typeof get_min_entries_and_el_refs>) => {
+        expect(min_entries).toHaveLength(1)
+        expect(min_entries[0].energy_per_atom).toBe(-2.0)
+      },
+    },
+    {
+      label: `distinguishes compositions and identifies elemental refs`,
+      phase_entries: [
+        make_entry({ A: 1 }, -1.0),
+        make_entry({ B: 1 }, -2.0),
+        make_entry({ A: 1, B: 1 }, -3.0),
+      ],
+      assert: ({ min_entries, el_refs }: ReturnType<typeof get_min_entries_and_el_refs>) => {
+        expect(min_entries).toHaveLength(3)
+        expect(el_refs.A.energy_per_atom).toBe(-1.0)
+        expect(el_refs.B.energy_per_atom).toBe(-2.0)
+      },
+    },
+    {
+      label: `handles multiple polymorphs of same composition`,
+      phase_entries: [
+        make_entry({ Fe: 1 }, -6.0),
+        make_entry({ Fe: 1 }, -6.5),
+        make_entry({ Fe: 1 }, -6.2),
+        make_entry({ O: 2 }, -8.0),
+      ],
+      assert: ({ min_entries, el_refs }: ReturnType<typeof get_min_entries_and_el_refs>) => {
+        expect(min_entries).toHaveLength(2)
+        expect(el_refs.Fe.energy_per_atom).toBe(-6.5)
+      },
+    },
+  ])(`$label`, ({ phase_entries, assert }) => {
+    assert(get_min_entries_and_el_refs(phase_entries))
   })
 
   test.each([Number.NaN, Infinity, -Infinity])(`ignores non-finite EPA/e_form %s`, (bad) => {
@@ -508,41 +480,37 @@ describe(`get_min_entries_and_el_refs`, () => {
   })
 })
 
-// === renormalize_entries ===
-
 describe(`renormalize_entries`, () => {
-  test(`pure elements renormalize to zero`, () => {
-    const el_refs: Record<string, PhaseData> = {
-      A: make_entry({ A: 1 }, -2.0),
-      B: make_entry({ B: 1 }, -3.0),
-    }
-    const renormed = renormalize_entries(
-      [make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)],
-      el_refs,
-      [`A`, `B`],
-    )
-    expect(renormed[0].energy_per_atom).toBeCloseTo(0, 8)
-    expect(renormed[1].energy_per_atom).toBeCloseTo(0, 8)
-  })
+  const el_refs: Record<string, PhaseData> = {
+    A: make_entry({ A: 1 }, -2.0),
+    B: make_entry({ B: 1 }, -3.0),
+  }
 
-  test(`compound formation energy is preserved`, () => {
-    const entry_a = make_entry({ A: 1 }, -2.0) // E_per_atom = -2.0
-    const entry_b = make_entry({ B: 1 }, -3.0) // E_per_atom = -3.0
-    const el_refs: Record<string, PhaseData> = { A: entry_a, B: entry_b }
-    // AB: make_entry({A:1, B:1}, -3.0) → E_per_atom = -3.0, energy = -6.0
-    // Renorm = E_per_atom - (x_A * E_ref_A + x_B * E_ref_B)
-    //        = -3.0 - (0.5*(-2.0) + 0.5*(-3.0)) = -3.0 - (-2.5) = -0.5
-    const renormed = renormalize_entries([make_entry({ A: 1, B: 1 }, -3.0)], el_refs, [
-      `A`,
-      `B`,
-    ])
-    expect(renormed[0].energy_per_atom).toBeCloseTo(-0.5, 8)
-    // Total energy = E_per_atom_renormed * n_atoms = -0.5 * 2 = -1.0
-    expect(renormed[0].energy).toBeCloseTo(-1.0, 8)
+  test.each([
+    {
+      label: `pure elements renormalize to zero`,
+      phase_entries: [make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)],
+      expected_epa: [0, 0],
+      expected_energy: null as number[] | null,
+    },
+    {
+      label: `compound formation energy is preserved`,
+      phase_entries: [make_entry({ A: 1, B: 1 }, -3.0)],
+      expected_epa: [-0.5],
+      expected_energy: [-1.0],
+    },
+  ])(`$label`, ({ phase_entries, expected_epa, expected_energy }) => {
+    const renormed = renormalize_entries(phase_entries, el_refs, [`A`, `B`])
+    for (let idx = 0; idx < expected_epa.length; idx++) {
+      expect(renormed[idx].energy_per_atom).toBeCloseTo(expected_epa[idx], 8)
+    }
+    if (expected_energy) {
+      for (let idx = 0; idx < expected_energy.length; idx++) {
+        expect(renormed[idx].energy).toBeCloseTo(expected_energy[idx], 8)
+      }
+    }
   })
 })
-
-// === build_hyperplanes ===
 
 describe(`build_hyperplanes`, () => {
   const el_refs: Record<string, PhaseData> = {
@@ -556,62 +524,45 @@ describe(`build_hyperplanes`, () => {
     [`A`, `B`],
   )
 
-  test(`always includes elemental references`, () => {
+  test(`includes elemental refs with valid row structure`, () => {
     expect(hyperplane_entries.length).toBeGreaterThanOrEqual(2)
-  })
-
-  test(`rows have dim+1 columns and atomic fractions sum to 1`, () => {
     for (const row of hyperplanes) {
-      expect(row).toHaveLength(3) // [x_A, x_B, -E]
+      expect(row).toHaveLength(3)
       expect(row[0] + row[1]).toBeCloseTo(1.0, 8)
     }
   })
 
-  test(`precomputed hull stability excludes known above-hull phases`, () => {
-    const refs: Record<string, PhaseData> = {
-      A: { ...make_entry({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
-      B: { ...make_entry({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
-    }
-    const stable_ab: PhaseData = {
-      ...make_entry({ A: 1, B: 1 }, -6),
-      is_stable: true,
-      e_above_hull: 0,
-    }
-    const above_hull_a2b: PhaseData = {
-      ...make_entry({ A: 2, B: 1 }, -5),
-      is_stable: false,
-      e_above_hull: 0.2,
-    }
-    const result = build_hyperplanes([refs.A, refs.B, stable_ab, above_hull_a2b], refs, [
-      `A`,
-      `B`,
-    ])
+  test.each([
+    {
+      label: `precomputed hull stability excludes known above-hull phases`,
+      refs: {
+        A: { ...make_entry({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
+        B: { ...make_entry({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
+      },
+      extra: [
+        { ...make_entry({ A: 1, B: 1 }, -6), is_stable: true, e_above_hull: 0 },
+        { ...make_entry({ A: 2, B: 1 }, -5), is_stable: false, e_above_hull: 0.2 },
+      ],
+      expected: [`A`, `B`, `AB`],
+    },
+    {
+      label: `falls back to negative formation energy when hull stability is absent`,
+      refs: {
+        A: make_entry({ A: 1 }, -2),
+        B: make_entry({ B: 1 }, -3),
+      },
+      extra: [make_entry({ A: 2, B: 1 }, -5)],
+      expected: [`A`, `B`, `A2B`],
+    },
+  ])(`$label`, ({ refs, extra, expected }) => {
+    const result = build_hyperplanes([refs.A, refs.B, ...extra], refs, [`A`, `B`])
     expect(
       result.hyperplane_entries.map((entry) =>
         formula_key_from_composition(entry.composition),
       ),
-    ).toEqual([`A`, `B`, `AB`])
-  })
-
-  test(`falls back to negative formation energy when hull stability is absent`, () => {
-    const refs: Record<string, PhaseData> = {
-      A: make_entry({ A: 1 }, -2),
-      B: make_entry({ B: 1 }, -3),
-    }
-    const above_hull_without_metadata = make_entry({ A: 2, B: 1 }, -5)
-    const result = build_hyperplanes([refs.A, refs.B, above_hull_without_metadata], refs, [
-      `A`,
-      `B`,
-    ])
-    expect(
-      result.hyperplane_entries.map((entry) =>
-        formula_key_from_composition(entry.composition),
-      ),
-    ).toEqual([`A`, `B`, `A2B`])
+    ).toEqual(expected)
   })
 })
-
-// === apply_element_padding / pad_domain_points ===
 
 describe(`element padding`, () => {
   test(`padding reduces extreme coordinates`, () => {
@@ -632,23 +583,24 @@ describe(`element padding`, () => {
     expect(new_lims[1]).toBeCloseTo(-6, 4)
   })
 
-  test(`pad_domain_points replaces default_min_limit values`, () => {
-    const pts = [
-      [-50, -3],
-      [-2, -50],
-    ]
-    const padded = pad_domain_points(pts, [0, 1], [-10, -10], -50, 1.0)
-    expect(padded[0][0]).toBe(-10) // was -50 → replaced
-    expect(padded[0][1]).toBe(-3) // not near -50 → unchanged
-    expect(padded[1][0]).toBe(-2) // not near -50 → unchanged
-    expect(padded[1][1]).toBe(-10) // was -50 → replaced
-  })
+  test(`pad_domain_points replaces defaults and preserves non-defaults`, () => {
+    const replaced = pad_domain_points(
+      [
+        [-50, -3],
+        [-2, -50],
+      ],
+      [0, 1],
+      [-10, -10],
+      -50,
+      1.0,
+    )
+    expect(replaced[0][0]).toBe(-10) // was -50 → replaced
+    expect(replaced[0][1]).toBe(-3) // not near -50 → unchanged
+    expect(replaced[1][0]).toBe(-2)
+    expect(replaced[1][1]).toBe(-10)
 
-  test(`pad_domain_points preserves non-default values exactly`, () => {
-    const pts = [[-5.123, -7.456]]
-    const padded = pad_domain_points(pts, [0, 1], [-20, -20], -50, 1.0)
-    expect(padded[0][0]).toBe(-5.123)
-    expect(padded[0][1]).toBe(-7.456)
+    const preserved = pad_domain_points([[-5.123, -7.456]], [0, 1], [-20, -20], -50, 1.0)
+    expect(preserved[0]).toEqual([-5.123, -7.456])
   })
 
   test(`padding threshold scales with large padding values`, () => {
@@ -673,8 +625,6 @@ describe(`element padding`, () => {
     expect(padded[2]).toEqual([-40, -44])
   })
 })
-
-// === solve_linear_system ===
 
 describe(`solve_linear_system`, () => {
   test.each([
@@ -772,8 +722,6 @@ describe(`solve_linear_system`, () => {
   })
 })
 
-// === convex_hull_2d ===
-
 describe(`convex_hull_2d`, () => {
   test.each([
     {
@@ -849,8 +797,6 @@ describe(`convex_hull_2d`, () => {
   })
 })
 
-// === simple_pca ===
-
 describe(`simple_pca`, () => {
   test(`matches pymatgen output`, () => {
     const points_3d = [
@@ -893,7 +839,7 @@ describe(`simple_pca`, () => {
     expect(eigenvectors).toEqual([])
   })
 
-  test(`eigenvectors are unit length`, () => {
+  test(`eigenvectors are unit length and orthogonal`, () => {
     const data = [
       [1, 0, 0],
       [0, 1, 0],
@@ -902,19 +848,8 @@ describe(`simple_pca`, () => {
     ]
     const { eigenvectors } = simple_pca(data, 2)
     for (const ev of eigenvectors) {
-      const norm = Math.hypot(...ev)
-      expect(norm).toBeCloseTo(1.0, 6)
+      expect(Math.hypot(...ev)).toBeCloseTo(1.0, 6)
     }
-  })
-
-  test(`eigenvectors are orthogonal`, () => {
-    const data = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-      [1, 1, 1],
-    ]
-    const { eigenvectors } = simple_pca(data, 2)
     if (eigenvectors.length >= 2) {
       const dot = eigenvectors[0].reduce(
         (sum, val, idx) => sum + val * eigenvectors[1][idx],
@@ -924,8 +859,6 @@ describe(`simple_pca`, () => {
     }
   })
 })
-
-// === orthonormal_2d ===
 
 describe(`orthonormal_2d`, () => {
   test.each([
@@ -970,72 +903,73 @@ describe(`orthonormal_2d`, () => {
       expected: [-1, 0],
       label: `vertical`,
     },
-  ])(`$label: correct value, unit length, perpendicular`, ({ pts, expected }) => {
+    {
+      pts: [
+        [3, 7],
+        [3, 7],
+      ],
+      expected: [0, 1],
+      label: `degenerate`,
+      exact: true,
+    },
+  ])(`$label: correct value, unit length, perpendicular`, ({ pts, expected, exact }) => {
     const vec = orthonormal_2d(pts)
-    // exact value
+    if (exact) {
+      expect(vec).toEqual(expected)
+      return
+    }
     expect(vec[0]).toBeCloseTo(expected[0], 5)
     expect(vec[1]).toBeCloseTo(expected[1], 5)
-    // unit length
     expect(Math.hypot(vec[0], vec[1])).toBeCloseTo(1.0, 8)
-    // perpendicular to line direction (dot product = 0)
     const dx = pts[1][0] - pts[0][0]
     const dy = pts[1][1] - pts[0][1]
     expect(Math.abs(vec[0] * dx + vec[1] * dy)).toBeLessThan(1e-10)
   })
-
-  test(`degenerate (zero-length) line returns safe default [0, 1]`, () => {
-    expect(
-      orthonormal_2d([
-        [3, 7],
-        [3, 7],
-      ]),
-    ).toEqual([0, 1])
-  })
 })
-
-// === polygon_centroid ===
 
 describe(`polygon_centroid`, () => {
-  test(`unit square centroid is (0.5, 0.5)`, () => {
-    const centroid = polygon_centroid([
-      [0, 0],
-      [1, 0],
-      [1, 1],
-      [0, 1],
-    ])
-    expect(centroid[0]).toBeCloseTo(0.5, 8)
-    expect(centroid[1]).toBeCloseTo(0.5, 8)
-  })
-
-  test(`equilateral triangle centroid`, () => {
-    const centroid = polygon_centroid([
-      [0, 0],
-      [1, 0],
-      [0.5, Math.sqrt(3) / 2],
-    ])
-    expect(centroid[0]).toBeCloseTo(0.5, 6)
-    expect(centroid[1]).toBeCloseTo(Math.sqrt(3) / 6, 6)
-  })
-
-  test(`single point returns that point`, () => {
-    expect(polygon_centroid([[7, 3]])).toEqual([7, 3])
-  })
-
-  test(`two points returns midpoint`, () => {
-    const centroid = polygon_centroid([
-      [0, 0],
-      [4, 6],
-    ])
-    expect(centroid[0]).toBeCloseTo(2, 8)
-    expect(centroid[1]).toBeCloseTo(3, 8)
-  })
-
-  test(`empty returns origin`, () => {
-    expect(polygon_centroid([])).toEqual([0, 0])
+  test.each([
+    {
+      label: `unit square`,
+      pts: [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 1],
+      ] as Vec2[],
+      expected: [0.5, 0.5],
+      digits: 8,
+    },
+    {
+      label: `equilateral triangle`,
+      pts: [
+        [0, 0],
+        [1, 0],
+        [0.5, Math.sqrt(3) / 2],
+      ] as Vec2[],
+      expected: [0.5, Math.sqrt(3) / 6],
+      digits: 6,
+    },
+    { label: `single point`, pts: [[7, 3]] as Vec2[], expected: [7, 3], digits: null },
+    {
+      label: `two points midpoint`,
+      pts: [
+        [0, 0],
+        [4, 6],
+      ] as Vec2[],
+      expected: [2, 3],
+      digits: 8,
+    },
+    { label: `empty`, pts: [] as Vec2[], expected: [0, 0], digits: null },
+  ])(`$label`, ({ pts, expected, digits }) => {
+    const centroid = polygon_centroid(pts)
+    if (digits === null) expect(centroid).toEqual(expected)
+    else {
+      expect(centroid[0]).toBeCloseTo(expected[0], digits)
+      expect(centroid[1]).toBeCloseTo(expected[1], digits)
+    }
   })
 })
-
-// === config.elements projection and subsystem ===
 
 describe(`config.elements projection vs subsystem`, () => {
   test(`binary elements on ternary data triggers projection (includes Li phases)`, () => {
@@ -1077,8 +1011,6 @@ describe(`config.elements projection vs subsystem`, () => {
     expect(Object.keys(result.domains)).toHaveLength(Object.keys(cpd_ternary.domains).length)
   })
 
-  // === Stability: configuration sensitivity ===
-
   describe(`configuration sensitivity`, () => {
     test(`default_min_limit does not affect interior vertices`, () => {
       const tight = compute_chempot_diagram(entries, {
@@ -1089,8 +1021,6 @@ describe(`config.elements projection vs subsystem`, () => {
         default_min_limit: -50,
         formal_chempots: false,
       })
-      // Interior vertices (not touching any boundary limit) must be identical
-      // regardless of default_min_limit. Filter to only vertices far from both limits.
       const is_interior = (pt: number[], min_lim: number) =>
         pt.every((val) => Math.abs(val - min_lim) > 1 && Math.abs(val) > 1)
 
@@ -1111,120 +1041,68 @@ describe(`config.elements projection vs subsystem`, () => {
       }
     })
 
-    test(`formal vs absolute produces same number of domains`, () => {
-      const n_absolute = Object.keys(cpd_ternary.domains).length
-      const n_formal = Object.keys(cpd_ternary_formal.domains).length
-      expect(n_formal).toBe(n_absolute)
-    })
-
-    test(`formal vs absolute produces same formulas`, () => {
-      const formulas_abs = Object.keys(cpd_ternary.domains).sort()
-      const formulas_formal = Object.keys(cpd_ternary_formal.domains).sort()
-      expect(formulas_formal).toEqual(formulas_abs)
+    test(`formal vs absolute produces same domains`, () => {
+      expect(Object.keys(cpd_ternary_formal.domains).sort()).toEqual(
+        Object.keys(cpd_ternary.domains).sort(),
+      )
     })
   })
 })
 
-// === YTOS (Y-Ti-O-S) quaternary system tests ===
-// Uses real data from doped: github.com/SMTG-Bham/doped/blob/main/examples/YTOS/ytos_phase_diagram.json
-
+// YTOS data from doped: github.com/SMTG-Bham/doped/blob/main/examples/YTOS/ytos_phase_diagram.json
 describe(`YTOS quaternary system (projection mode)`, () => {
-  // 3-element views of 4-element data → triggers projection mode
-  const ytos_y_ti_o = compute_chempot_diagram(ytos_entries, {
-    elements: [`O`, `Ti`, `Y`],
-    default_min_limit: -25,
-    formal_chempots: true,
-  })
+  test.each([
+    {
+      label: `Y-Ti-O`,
+      diagram: ytos_y_ti_o,
+      elements: [`O`, `Ti`, `Y`],
+      phases: [`O`, `Ti`, `Y`, `O3Y2`, `O2Ti`],
+      min_domains: 10,
+    },
+    {
+      label: `Ti-O-S`,
+      diagram: ytos_ti_o_s,
+      elements: [`O`, `S`, `Ti`],
+      phases: [`O2Ti`, `S`, `Ti`],
+    },
+  ])(
+    `$label projection metadata and key phases`,
+    ({ diagram, elements, phases, min_domains }) => {
+      expect(diagram.elements).toEqual(elements)
+      expect(diagram.lims).toHaveLength(3)
+      const formulas = Object.keys(diagram.domains)
+      for (const formula of phases) expect(formulas).toContain(formula)
+      if (min_domains !== undefined) expect(formulas.length).toBeGreaterThan(min_domains)
+    },
+  )
 
-  const ytos_ti_o_s = compute_chempot_diagram(ytos_entries, {
-    elements: [`O`, `S`, `Ti`],
-    default_min_limit: -25,
-    formal_chempots: true,
-  })
+  test(`Y-Ti-O has Y2Ti2O7, valid vertices, and elemental mu=0 touch`, () => {
+    const key = `O7Ti2Y2`
+    expect(ytos_y_ti_o.domains[key], `Domain for ${key} (Y2Ti2O7)`).toBeDefined()
+    expect(dedup_vertices(ytos_y_ti_o.domains[key]).length).toBeGreaterThanOrEqual(3)
 
-  test(`Y-Ti-O projection has 3 display elements`, () => {
-    expect(ytos_y_ti_o.elements).toEqual([`O`, `Ti`, `Y`])
-  })
-
-  test(`Ti-O-S projection has 3 display elements`, () => {
-    expect(ytos_ti_o_s.elements).toEqual([`O`, `S`, `Ti`])
-  })
-
-  test(`Y-Ti-O projection contains expected phases`, () => {
-    const formulas = Object.keys(ytos_y_ti_o.domains)
-    expect(formulas).toContain(`O`)
-    expect(formulas).toContain(`Ti`)
-    expect(formulas).toContain(`Y`)
-    expect(formulas).toContain(`O3Y2`) // Y2O3
-    expect(formulas).toContain(`O2Ti`) // TiO2
-  })
-
-  test(`projection includes cross-system phases (S-containing in O-Ti-Y view)`, () => {
-    const formulas = Object.keys(ytos_y_ti_o.domains)
-    // S-containing phases should appear because they have non-zero O/Ti/Y fractions
-    // and their domains in 4D project non-trivially onto O-Ti-Y axes
-    expect(formulas.length).toBeGreaterThan(10) // more than pure O-Ti-Y subsystem
-  })
-
-  test(`Ti-O-S projection contains key phases`, () => {
-    const formulas = Object.keys(ytos_ti_o_s.domains)
-    expect(formulas).toContain(`O2Ti`) // TiO2
-    expect(formulas).toContain(`S`) // elemental S
-    expect(formulas).toContain(`Ti`) // elemental Ti
-  })
-
-  test(`projected vertices have 3 columns`, () => {
     for (const pts of Object.values(ytos_y_ti_o.domains)) {
       for (const pt of pts) {
         expect(pt).toHaveLength(3)
-      }
-    }
-  })
-
-  test(`projected lims have 3 entries`, () => {
-    expect(ytos_y_ti_o.lims).toHaveLength(3)
-    expect(ytos_ti_o_s.lims).toHaveLength(3)
-  })
-
-  test(`formal chempots are non-positive in projected coordinates`, () => {
-    for (const pts of Object.values(ytos_y_ti_o.domains)) {
-      for (const pt of pts) {
-        for (const val of pt) {
-          expect(val).toBeLessThanOrEqual(1e-4)
-        }
-      }
-    }
-  })
-
-  test(`projected vertices lie within display-axis limits`, () => {
-    for (const pts of Object.values(ytos_y_ti_o.domains)) {
-      for (const pt of pts) {
         for (let dim = 0; dim < 3; dim++) {
+          expect(pt[dim]).toBeLessThanOrEqual(1e-4)
           expect(pt[dim]).toBeGreaterThanOrEqual(ytos_y_ti_o.lims[dim][0] - 1e-4)
           expect(pt[dim]).toBeLessThanOrEqual(ytos_y_ti_o.lims[dim][1] + 1e-4)
         }
       }
     }
-  })
 
-  test(`elemental domains touch mu=0 in projection`, () => {
     for (const el of ytos_y_ti_o.elements) {
       const domain = dedup_vertices(ytos_y_ti_o.domains[el])
       const el_idx = ytos_y_ti_o.elements.indexOf(el)
-      const has_zero = domain.some((pt) => Math.abs(pt[el_idx]) < 0.01)
-      expect(has_zero, `${el} should touch mu=0`).toBe(true)
+      expect(
+        domain.some((pt) => Math.abs(pt[el_idx]) < 0.01),
+        `${el} should touch mu=0`,
+      ).toBe(true)
     }
   })
 
-  test(`Y2Ti2O7 domain exists in Y-Ti-O projection`, () => {
-    const key = `O7Ti2Y2`
-    expect(ytos_y_ti_o.domains[key], `Domain for ${key} (Y2Ti2O7)`).toBeDefined()
-    const domain = dedup_vertices(ytos_y_ti_o.domains[key])
-    expect(domain.length).toBeGreaterThanOrEqual(3)
-  })
-
   test(`projection produces more domains than subsystem filtering`, () => {
-    // Filter to only O-Ti-Y entries (subsystem mode)
     const oty_only = ytos_entries.filter((entry) => {
       const els = Object.entries(entry.composition)
         .filter(([, amt]) => amt > 0)
@@ -1236,47 +1114,50 @@ describe(`YTOS quaternary system (projection mode)`, () => {
       default_min_limit: -25,
       formal_chempots: true,
     })
-    // Projection should have strictly more domains (includes S-containing phases)
     expect(Object.keys(ytos_y_ti_o.domains).length).toBeGreaterThan(
       Object.keys(subsystem.domains).length,
     )
   })
 })
 
-// === build_axis_ranges ===
-
 describe(`build_axis_ranges`, () => {
-  test(`computes min/max per axis`, () => {
-    const points = [
-      [-3, 1],
-      [2, 5],
-      [0, -4],
-    ]
-    const result = build_axis_ranges(points, [`X`, `Y`])
-    expect(result).toEqual([
-      { element: `X`, min_val: -3, max_val: 2 },
-      { element: `Y`, min_val: -4, max_val: 5 },
-    ])
-  })
-
-  test(`single point has equal min/max`, () => {
-    const result = build_axis_ranges([[7, -2]], [`A`, `B`])
-    expect(result[0].min_val).toBe(7)
-    expect(result[0].max_val).toBe(7)
-    expect(result[1].min_val).toBe(-2)
-    expect(result[1].max_val).toBe(-2)
-  })
-
-  test(`elements longer than point dimensions produces Infinity`, () => {
-    const result = build_axis_ranges([[1, 2]], [`A`, `B`, `C`])
-    expect(result).toHaveLength(3)
-    // axis 2 reads undefined from points → loop finds no finite values
-    expect(result[2].min_val).toBe(Infinity)
-    expect(result[2].max_val).toBe(-Infinity)
+  test.each([
+    {
+      label: `computes min/max per axis`,
+      points: [
+        [-3, 1],
+        [2, 5],
+        [0, -4],
+      ],
+      elements: [`X`, `Y`],
+      expected: [
+        { element: `X`, min_val: -3, max_val: 2 },
+        { element: `Y`, min_val: -4, max_val: 5 },
+      ],
+    },
+    {
+      label: `single point has equal min/max`,
+      points: [[7, -2]],
+      elements: [`A`, `B`],
+      expected: [
+        { element: `A`, min_val: 7, max_val: 7 },
+        { element: `B`, min_val: -2, max_val: -2 },
+      ],
+    },
+    {
+      label: `elements longer than point dimensions produces Infinity`,
+      points: [[1, 2]],
+      elements: [`A`, `B`, `C`],
+      expected: [
+        { element: `A`, min_val: 1, max_val: 1 },
+        { element: `B`, min_val: 2, max_val: 2 },
+        { element: `C`, min_val: Infinity, max_val: -Infinity },
+      ],
+    },
+  ])(`$label`, ({ points, elements, expected }) => {
+    expect(build_axis_ranges(points, elements)).toEqual(expected)
   })
 })
-
-// === dedup_points ===
 
 describe(`dedup_points`, () => {
   test.each([
@@ -1354,20 +1235,20 @@ describe(`dedup_points`, () => {
   })
 })
 
-// === get_energy_per_atom ===
-
 describe(`get_energy_per_atom`, () => {
-  test(`returns energy_per_atom when present`, () => {
-    const entry = make_entry({ Fe: 2 }, -3.0)
-    expect(get_energy_per_atom(entry)).toBe(-3.0)
-  })
-
-  test(`computes from energy / atoms when energy_per_atom missing`, () => {
-    const entry: PhaseData = {
-      composition: { Fe: 2, O: 1 },
-      energy: -9.0,
-    }
-    expect(get_energy_per_atom(entry)).toBeCloseTo(-3.0, 8)
+  test.each([
+    {
+      label: `returns energy_per_atom when present`,
+      entry: make_entry({ Fe: 2 }, -3.0),
+      expected: -3.0,
+    },
+    {
+      label: `computes from energy / atoms when energy_per_atom missing`,
+      entry: { composition: { Fe: 2, O: 1 }, energy: -9.0 },
+      expected: -3.0,
+    },
+  ])(`$label`, ({ entry, expected }) => {
+    expect(get_energy_per_atom(entry)).toBeCloseTo(expected, 8)
   })
 
   test.each([
@@ -1393,8 +1274,6 @@ describe(`get_energy_per_atom`, () => {
     expect(min_entries[0]?.composition).toEqual({ Li: 1 })
   })
 })
-
-// === formula_key_from_composition ===
 
 describe(`formula_key_from_composition`, () => {
   test.each([
@@ -1426,8 +1305,6 @@ describe(`formula_key_from_composition`, () => {
     }
   })
 })
-
-// === get_3d_domain_simplexes_and_ann_loc ===
 
 // Helper: verify all edge indices are in [0, n_pts) and distinct within each edge
 function assert_valid_edges(result: { simplex_indices: number[][] }, n_pts: number): void {
@@ -1487,22 +1364,22 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
       ann_loc: null,
       label: `pentagon`,
     },
-  ])(`$label → $n_edges edges`, ({ pts, n_edges, ann_loc }) => {
+    {
+      pts: [
+        [0, 0, 0],
+        [4, 6, 2],
+      ],
+      n_edges: 1,
+      edges: [[0, 1]],
+      ann_loc: [2, 3, 1],
+      label: `two points`,
+    },
+  ])(`$label → $n_edges edges`, ({ pts, n_edges, ann_loc, edges }) => {
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices).toHaveLength(n_edges)
+    if (edges) expect(result.simplex_indices).toEqual(edges)
     if (ann_loc) expect(result.ann_loc).toEqual(ann_loc)
     if (n_edges > 0) assert_valid_edges(result, pts.length)
-  })
-
-  test(`two points returns midpoint ann_loc`, () => {
-    const result = get_3d_domain_simplexes_and_ann_loc([
-      [0, 0, 0],
-      [4, 6, 2],
-    ])
-    expect(result.simplex_indices).toEqual([[0, 1]])
-    expect(result.ann_loc[0]).toBeCloseTo(2, 6)
-    expect(result.ann_loc[1]).toBeCloseTo(3, 6)
-    expect(result.ann_loc[2]).toBeCloseTo(1, 6)
   })
 
   test(`dedup maps indices to first occurrences`, () => {
@@ -1545,18 +1422,9 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   })
 })
 
-// === Domain edge indices from real diagram data ===
-
 describe.each([
   { label: `ternary (Fe-Li-O)`, domains: cpd_ternary.domains },
-  {
-    label: `YTOS projection (O-Ti-Y)`,
-    domains: compute_chempot_diagram(ytos_entries, {
-      elements: [`O`, `Ti`, `Y`],
-      default_min_limit: -25,
-      formal_chempots: true,
-    }).domains,
-  },
+  { label: `YTOS projection (O-Ti-Y)`, domains: ytos_y_ti_o.domains },
 ])(`domain edge indices: $label`, ({ domains }) => {
   test(`all simplex indices reference valid points`, () => {
     for (const [formula, pts] of Object.entries(domains)) {
@@ -1568,8 +1436,6 @@ describe.each([
     }
   })
 })
-
-// === compute_domains (vertex enumeration) ===
 
 describe(`compute_domains`, () => {
   const ab_refs: Record<string, PhaseData> = {
@@ -1617,8 +1483,6 @@ describe(`compute_domains`, () => {
     expect(domains.AB).toBeUndefined()
   })
 })
-
-// === compute_chempot_diagram edge cases ===
 
 describe(`compute_chempot_diagram edge cases`, () => {
   test(`custom limits restrict domain vertices`, () => {
@@ -1731,7 +1595,6 @@ describe(`compute_chempot_diagram edge cases`, () => {
   })
 })
 
-// === Formation energy computation ===
 // Tests the math used by ChemPotDiagram3D.compute_e_form:
 // e_form = energy_per_atom - sum(fraction_i * ref_energy_per_atom_i)
 
@@ -1934,68 +1797,71 @@ describe(`temperature filtering integration behavior`, () => {
   })
 })
 
-// === get_ternary_combinations ===
-
 describe(`get_ternary_combinations`, () => {
   test.each([
-    { elements: [], expected_count: 0, label: `empty` },
-    { elements: [`Li`], expected_count: 0, label: `unary` },
-    { elements: [`Li`, `O`], expected_count: 0, label: `binary` },
-    { elements: [`Li`, `Fe`, `O`], expected_count: 1, label: `ternary` },
-    { elements: [`Co`, `Li`, `Ni`, `O`], expected_count: 4, label: `quaternary` },
+    { elements: [], expected: [] as string[][], label: `empty` },
+    { elements: [`Li`], expected: [], label: `unary` },
+    { elements: [`Li`, `O`], expected: [], label: `binary` },
+    {
+      elements: [`O`, `Fe`, `Li`],
+      expected: [[`Fe`, `Li`, `O`]],
+      label: `ternary`,
+    },
+    {
+      elements: [`O`, `Ni`, `Co`, `Li`],
+      expected: [
+        [`Co`, `Li`, `Ni`],
+        [`Co`, `Li`, `O`],
+        [`Co`, `Ni`, `O`],
+        [`Li`, `Ni`, `O`],
+      ],
+      label: `quaternary`,
+    },
     { elements: [`Co`, `Li`, `Ni`, `O`, `S`], expected_count: 10, label: `quinary` },
-  ])(`$label system ($elements) → $expected_count combos`, ({ elements, expected_count }) => {
-    expect(get_ternary_combinations(elements)).toHaveLength(expected_count)
-  })
-
-  test(`ternary system returns the single correct triplet`, () => {
-    const combos = get_ternary_combinations([`O`, `Fe`, `Li`])
-    expect(combos).toEqual([[`Fe`, `Li`, `O`]])
-  })
-
-  test(`quaternary system returns all 4 sorted triplets`, () => {
-    const combos = get_ternary_combinations([`O`, `Ni`, `Co`, `Li`])
-    expect(combos).toEqual([
-      [`Co`, `Li`, `Ni`],
-      [`Co`, `Li`, `O`],
-      [`Co`, `Ni`, `O`],
-      [`Li`, `Ni`, `O`],
-    ])
+  ])(`$label system ($elements)`, ({ elements, expected, expected_count }) => {
+    const combos = get_ternary_combinations(elements)
+    if (expected !== undefined) expect(combos).toEqual(expected)
+    else expect(combos).toHaveLength(expected_count ?? Number.NaN)
   })
 })
-
-// === make_nd_cache_key ===
 
 describe(`make_nd_cache_key`, () => {
   const li: PhaseData = { composition: { Li: 1 }, energy: -3 }
   const oxygen: PhaseData = { composition: { O: 1 }, energy: -5 }
-  const base_key = () => make_nd_cache_key([li, oxygen], true, -50, undefined)
-
-  test(`same entries in different order produce same key`, () => {
-    expect(make_nd_cache_key([oxygen, li], true, -50, undefined)).toBe(base_key())
-  })
+  const base_key = make_nd_cache_key([li, oxygen], true, -50, undefined)
 
   test.each([
     {
       a: { composition: { Li: 2 }, energy: -6, energy_per_atom: -3 },
       b: { composition: { Li: 2 }, energy: -6, energy_per_atom: -2.5 },
       same: false,
+      label: `different EPA`,
     },
     {
       a: { composition: { Li: 1 }, energy: -3 },
       b: { composition: { Li: 2 }, energy: -3 },
       same: false,
+      label: `different composition`,
     },
     {
       a: { composition: { Li: 1 }, energy: -3 },
       b: { composition: { Li: 1 }, energy: -3, energy_per_atom: -3 },
       same: true,
+      label: `EPA matches total/atoms`,
     },
-  ])(`nd cache key same=$same for EPA variants`, ({ a, b, same }) => {
-    expect(
-      make_nd_cache_key([a], true, -50, undefined) ===
-        make_nd_cache_key([b], true, -50, undefined),
-    ).toBe(same)
+    { a: li, b: oxygen, same: true, label: `order invariance`, multi: true },
+  ])(`nd cache key same=$same for $label`, ({ a, b, same, multi }) => {
+    if (multi) {
+      expect(make_nd_cache_key([a, b], true, -50, undefined)).toBe(
+        make_nd_cache_key([b, a], true, -50, undefined),
+      )
+      expect(make_nd_cache_key([a, b], true, -50, undefined)).toBe(base_key)
+    } else {
+      expect(
+        make_nd_cache_key([a], true, -50, undefined) ===
+          make_nd_cache_key([b], true, -50, undefined),
+      ).toBe(same)
+    }
   })
 
   test.each([
@@ -2022,62 +1888,40 @@ describe(`make_nd_cache_key`, () => {
   test.each([
     {
       label: `different compositions`,
-      key: () =>
-        make_nd_cache_key(
-          [
-            { composition: { Fe: 1 }, energy: -3 },
-            { composition: { Co: 1 }, energy: -5 },
-          ],
-          true,
-          -50,
-          undefined,
-        ),
+      phase_entries: [
+        { composition: { Fe: 1 }, energy: -3 },
+        { composition: { Co: 1 }, energy: -5 },
+      ],
     },
     {
       label: `different energies`,
-      key: () =>
-        make_nd_cache_key(
-          [
-            { composition: { Li: 1 }, energy: -4 },
-            { composition: { O: 1 }, energy: -4 },
-          ],
-          true,
-          -50,
-          undefined,
-        ),
+      phase_entries: [
+        { composition: { Li: 1 }, energy: -4 },
+        { composition: { O: 1 }, energy: -4 },
+      ],
     },
     {
       label: `different hull stability`,
-      key: () =>
-        make_nd_cache_key(
-          [
-            { composition: { Li: 1 }, energy: -3, is_stable: true, e_above_hull: 0 },
-            { composition: { O: 1 }, energy: -5, is_stable: false, e_above_hull: 0.1 },
-          ],
-          true,
-          -50,
-          undefined,
-        ),
+      phase_entries: [
+        { composition: { Li: 1 }, energy: -3, is_stable: true, e_above_hull: 0 },
+        { composition: { O: 1 }, energy: -5, is_stable: false, e_above_hull: 0.1 },
+      ],
     },
-    {
-      label: `different formal_chempots`,
-      key: () => make_nd_cache_key([li, oxygen], false, -50, undefined),
-    },
+    { label: `different formal_chempots`, phase_entries: [li, oxygen], formal: false },
     {
       label: `different limits`,
-      key: () => make_nd_cache_key([li, oxygen], true, -50, { Li: [-10, 0] }),
+      phase_entries: [li, oxygen],
+      limits: { Li: [-10, 0] as [number, number] },
     },
-  ])(`$label → different key`, ({ key }) => {
-    expect(key()).not.toBe(base_key())
+  ])(`$label → different key`, ({ phase_entries, formal = true, limits }) => {
+    expect(make_nd_cache_key(phase_entries, formal, -50, limits)).not.toBe(base_key)
   })
 })
-
-// === N-D cache integration ===
 
 describe(`N-D projection cache consistency`, () => {
   const config_base = { default_min_limit: -25, formal_chempots: true }
 
-  test(`two projections of the same quaternary data share the same formula set`, () => {
+  test(`shared N-D formula set across projections; display lims follow elements`, () => {
     const proj_a = compute_chempot_diagram(ytos_entries, {
       ...config_base,
       elements: [`O`, `Ti`, `Y`],
@@ -2086,24 +1930,21 @@ describe(`N-D projection cache consistency`, () => {
       ...config_base,
       elements: [`S`, `Ti`, `Y`],
     })
-    // Both projections see the same N-D domains; the full formula set must match
-    // (individual vertex counts differ because of projection, but keys are identical)
+    // Both projections see the same N-D domains; formula keys match
     expect(Object.keys(proj_a.domains).sort()).toEqual(Object.keys(proj_b.domains).sort())
-  })
 
-  test(`projection lims match selected display elements`, () => {
-    const result = compute_chempot_diagram(ytos_entries, {
+    const binary_proj = compute_chempot_diagram(ytos_entries, {
       ...config_base,
       elements: [`S`, `Y`],
     })
-    expect(result.elements).toEqual([`S`, `Y`])
-    expect(result.lims).toHaveLength(2)
-    for (const [min_val, max_val] of result.lims) {
+    expect(binary_proj.elements).toEqual([`S`, `Y`])
+    expect(binary_proj.lims).toHaveLength(2)
+    for (const [min_val, max_val] of binary_proj.lims) {
       expect(min_val).toBeLessThan(max_val)
     }
   })
 
-  test(`changing config invalidates cache (different domains)`, () => {
+  test(`changing formal_chempots invalidates cache (different domain coords)`, () => {
     const formal = compute_chempot_diagram(ytos_entries, {
       ...config_base,
       elements: [`O`, `Ti`, `Y`],
@@ -2113,12 +1954,9 @@ describe(`N-D projection cache consistency`, () => {
       formal_chempots: false,
       elements: [`O`, `Ti`, `Y`],
     })
-    // Formal chempots shifts coordinates by elemental refs → values differ
     expect(formal.domains.O2Ti[0][0]).not.toBeCloseTo(absolute.domains.O2Ti[0][0], 1)
   })
 })
-
-// === bbox_diagonal ===
 
 describe(`bbox_diagonal`, () => {
   test.each([
@@ -2156,8 +1994,6 @@ describe(`bbox_diagonal`, () => {
     expect(bbox_diagonal(points)).toBeCloseTo(expected, 10)
   })
 })
-
-// === scale_to_font_range ===
 
 describe(`scale_to_font_range`, () => {
   test.each([
@@ -2255,5 +2091,38 @@ describe(`get_visible_domain_labels`, () => {
     expect(labels[0].position).toEqual([1 / 3, 1 / 3, 0])
     expect(labels[0].label_font_size).toBe(12)
     expect(labels[1]).toEqual({ formula: `AC`, position: [2, 2, 2], label_font_size: 10 })
+  })
+})
+
+describe(`compute_chempot_async`, () => {
+  const async_entries: PhaseData[] = [
+    { composition: { Li: 1 }, energy: -1 },
+    { composition: { O: 1 }, energy: -2 },
+  ]
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  async function load_async(worker: unknown) {
+    vi.stubGlobal(`Worker`, worker)
+    vi.resetModules()
+    return import(`$lib/chempot-diagram/async-compute.svelte`)
+  }
+
+  test(`rejects instead of throwing synchronously when Worker construction fails`, async () => {
+    // Must be constructable (`new Worker()`); arrow functions are not.
+    function FailingWorker() {
+      throw new Error(`worker blocked by CSP`)
+    }
+    const { compute_chempot_async } = await load_async(FailingWorker)
+    await expect(compute_chempot_async(async_entries)).rejects.toThrow(`worker blocked by CSP`)
+  })
+
+  test(`falls back to main-thread compute without a Worker global`, async () => {
+    const { compute_chempot_async } = await load_async(undefined)
+    const data = await compute_chempot_async(async_entries, { elements: [`Li`, `O`] })
+    expect(Object.keys(data.domains).length).toBeGreaterThan(0)
   })
 })

@@ -12,7 +12,6 @@ const IDENTITY = cubic_matrix(1)
 const NON_PERIODIC = { periodic: false, centered: false }
 const PERIODIC = { periodic: true, centered: false }
 
-// Gaussian blob centered in grid, values ~0 at edges to ~1 at center
 const gaussian_grid = (size: number): number[][][] => {
   const center = (size - 1) / 2
   const sigma = size / 4
@@ -29,7 +28,8 @@ const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void
   }
 }
 
-// === marching_cubes ===
+const mean_axis = (verts: Vec3[], axis: 0 | 1 | 2): number =>
+  verts.reduce((sum, vertex) => sum + vertex[axis], 0) / verts.length
 
 describe(`marching_cubes`, () => {
   test.each([
@@ -45,16 +45,13 @@ describe(`marching_cubes`, () => {
     expect([result.vertices, result.faces, result.normals]).toEqual([[], [], []])
   })
 
-  test(`Gaussian blob produces valid geometry: triangles, indices, normals`, () => {
-    const result = marching_cubes(gaussian_grid(8), 0.5, IDENTITY, NON_PERIODIC)
-
-    // Produces non-empty output with matching vertex/normal counts
+  test(`Gaussian blob: topology, normals, caching, isovalue, buffers`, () => {
+    const grid = gaussian_grid(8)
+    const result = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
     expect(result.vertices.length).toBeGreaterThan(0)
     expect(result.faces.length).toBeGreaterThan(0)
     expect(result.normals).toHaveLength(result.vertices.length)
-
     for (const face of result.faces) {
-      // All faces are triangles with 3 distinct indices in valid range
       expect(face).toHaveLength(3)
       expect(new Set(face).size).toBe(3)
       for (const idx of face) {
@@ -62,91 +59,68 @@ describe(`marching_cubes`, () => {
         expect(idx).toBeLessThan(result.vertices.length)
       }
     }
-
-    // Normals are unit length
-    for (const normal of result.normals) {
-      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 3)
-    }
-
-    // Vertex caching: shared vertices across adjacent cubes
+    for (const normal of result.normals) expect(Math.hypot(...normal)).toBeCloseTo(1, 3)
     expect(result.vertices.length).toBeLessThan(result.faces.length * 3)
-    const vertex_keys = result.vertices.map((vertex) =>
-      vertex.map((coord) => coord.toFixed(12)).join(`,`),
+    expect(
+      new Set(
+        result.vertices.map((vertex) => vertex.map((coord) => coord.toFixed(12)).join(`,`)),
+      ).size,
+    ).toBe(result.vertices.length)
+    expect(marching_cubes(grid, 0.7, IDENTITY, NON_PERIODIC).faces.length).toBeLessThanOrEqual(
+      result.faces.length,
     )
-    expect(new Set(vertex_keys).size).toBe(result.vertices.length)
-  })
 
-  test(`buffer path preserves compatibility topology and values`, () => {
-    const grid = gaussian_grid(8)
-    const options = { ...NON_PERIODIC, normals: true }
-    const compatibility = marching_cubes(grid, 0.5, IDENTITY, options)
-    const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, options)
-
-    expect(Array.from(buffers.indices)).toEqual(compatibility.faces.flat())
-    expect_array_close(buffers.positions, compatibility.vertices.flat())
-    expect_array_close(buffers.normals, compatibility.normals.flat())
+    const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, {
+      ...NON_PERIODIC,
+      normals: true,
+    })
+    expect(Array.from(buffers.indices)).toEqual(result.faces.flat())
+    expect_array_close(buffers.positions, result.vertices.flat())
+    expect_array_close(buffers.normals, result.normals.flat())
   })
 
   test(`centered=true shifts vertices relative to uncentered`, () => {
     const grid = gaussian_grid(8)
     const centered = marching_cubes(grid, 0.5, IDENTITY, { ...NON_PERIODIC, centered: true })
     const uncentered = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
-
     expect(centered.faces).toHaveLength(uncentered.faces.length)
-    // Centered vertices have lower mean position (shifted by -0.5)
-    const mean_x = (verts: Vec3[]) =>
-      verts.reduce((sum, vertex) => sum + vertex[0], 0) / verts.length
-    expect(mean_x(centered.vertices)).toBeLessThan(mean_x(uncentered.vertices))
+    expect(mean_axis(centered.vertices, 0)).toBeLessThan(mean_axis(uncentered.vertices, 0))
   })
 
-  test(`periodic=true wraps boundaries and produces more faces`, () => {
-    const grid = make_grid(4, 4, 4, (ix, iy, iz) => {
-      // High at origin and opposite corner, low in middle
-      return (ix === 0 && iy === 0 && iz === 0) || (ix === 3 && iy === 3 && iz === 3)
-        ? 2.0
-        : 0.0
-    })
-    const periodic = marching_cubes(grid, 1.0, IDENTITY, PERIODIC)
-    const non_periodic = marching_cubes(grid, 1.0, IDENTITY, NON_PERIODIC)
-    expect(periodic.faces.length).toBeGreaterThanOrEqual(non_periodic.faces.length)
-  })
+  test(`periodic wraps boundaries without cell-spanning triangles`, () => {
+    const corner_grid = make_grid(4, 4, 4, (ix, iy, iz) =>
+      (ix === 0 && iy === 0 && iz === 0) || (ix === 3 && iy === 3 && iz === 3) ? 2 : 0,
+    )
+    expect(
+      marching_cubes(corner_grid, 1, IDENTITY, PERIODIC).faces.length,
+    ).toBeGreaterThanOrEqual(
+      marching_cubes(corner_grid, 1, IDENTITY, NON_PERIODIC).faces.length,
+    )
 
-  test(`periodic boundary-crossing isosurface has no cell-spanning triangles`, () => {
-    // Gaussian at frac (0,0,0) wraps all cell boundaries. Regression: edge cache keys
-    // used wrapped grid coords, merging opposite-face vertices into spanning triangles.
+    // Gaussian at frac (0,0,0): regression for edge-cache keys merging opposite faces
     const min_frac = (idx: number) => Math.min(idx / 8, 1 - idx / 8)
-    const grid = make_grid(8, 8, 8, (ix, iy, iz) =>
+    const wrap_grid = make_grid(8, 8, 8, (ix, iy, iz) =>
       Math.exp(-(min_frac(ix) ** 2 + min_frac(iy) ** 2 + min_frac(iz) ** 2) / 0.045),
     )
-    const { vertices, faces } = marching_cubes(grid, 0.3, IDENTITY, PERIODIC)
+    const { vertices, faces } = marching_cubes(wrap_grid, 0.3, IDENTITY, PERIODIC)
     expect(faces.length).toBeGreaterThan(0)
-    const edge_len = (i1: number, i2: number) =>
-      Math.hypot(...vertices[i1].map((coord, axis) => coord - vertices[i2][axis]))
+    const edge_len = (idx_a: number, idx_b: number) =>
+      Math.hypot(...vertices[idx_a].map((coord, axis) => coord - vertices[idx_b][axis]))
     const max_edge = Math.max(
-      ...faces.flatMap(([vert_a, vert_b, vert_c]) => [
-        edge_len(vert_a, vert_b),
-        edge_len(vert_b, vert_c),
-        edge_len(vert_c, vert_a),
-      ]),
+      ...faces.flatMap(([a, b, c]) => [edge_len(a, b), edge_len(b, c), edge_len(c, a)]),
     )
-    // No triangle edge should span more than half the unit cell
     expect(max_edge).toBeLessThan(0.5)
   })
 
-  test(`interpolate=false places vertices at different positions than interpolated`, () => {
-    // Quadratic gradient: interpolation won't land at midpoints
+  test(`interpolate=false places vertices differently than interpolated`, () => {
     const grid = make_grid(4, 4, 4, (ix) => ix * ix)
-    const interp = marching_cubes(grid, 2.0, IDENTITY, {
-      ...NON_PERIODIC,
-      interpolate: true,
-    })
-    const no_interp = marching_cubes(grid, 2.0, IDENTITY, {
+    const interp = marching_cubes(grid, 2, IDENTITY, { ...NON_PERIODIC, interpolate: true })
+    const no_interp = marching_cubes(grid, 2, IDENTITY, {
       ...NON_PERIODIC,
       interpolate: false,
     })
     expect(no_interp.vertices.length).toBeGreaterThan(0)
     expect(no_interp.faces).toHaveLength(interp.faces.length)
-    // Non-linear gradient means interpolated positions differ from midpoints
     expect(
       no_interp.vertices.some(
         (vertex, idx) => Math.abs(vertex[0] - interp.vertices[idx][0]) > 1e-6,
@@ -154,81 +128,88 @@ describe(`marching_cubes`, () => {
     ).toBe(true)
   })
 
-  test(`lattice transformation scales vertices`, () => {
+  test.each([
+    {
+      label: `uniform scale 10×`,
+      lattice: cubic_matrix(10),
+      assert: (
+        unit: ReturnType<typeof marching_cubes>,
+        out: ReturnType<typeof marching_cubes>,
+      ) => {
+        expect(out.vertices).toHaveLength(unit.vertices.length)
+        expect(unit.vertices.some((vertex) => Math.abs(vertex[1]) > 1e-6)).toBe(true)
+        for (let idx = 0; idx < unit.vertices.length; idx++) {
+          for (let dim = 0; dim < 3; dim++) {
+            expect(out.vertices[idx][dim]).toBeCloseTo(unit.vertices[idx][dim] * 10, 5)
+          }
+        }
+      },
+    },
+    {
+      label: `shear`,
+      lattice: [
+        [1, 0, 0],
+        [0.5, 0.866, 0],
+        [0, 0, 1],
+      ] as Matrix3x3,
+      assert: (
+        unit: ReturnType<typeof marching_cubes>,
+        out: ReturnType<typeof marching_cubes>,
+      ) => {
+        expect(out.vertices.length).toBeGreaterThan(0)
+        expect(
+          out.vertices.some(
+            (vertex, idx) => Math.abs(vertex[1] - unit.vertices[idx][1]) > 1e-6,
+          ),
+        ).toBe(true)
+      },
+    },
+  ])(`lattice $label transforms vertices`, ({ lattice, assert }) => {
     const grid = gaussian_grid(6)
-    const scaled_lattice = cubic_matrix(10)
-    const unit = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
-    const scaled = marching_cubes(grid, 0.5, scaled_lattice, NON_PERIODIC)
-
-    expect(scaled.vertices).toHaveLength(unit.vertices.length)
-    // Guard: unit result has non-zero y-coordinates
-    expect(unit.vertices.some((vertex) => Math.abs(vertex[1]) > 1e-6)).toBe(true)
-    // Scaled vertices should be 10x unit vertices
-    for (let idx = 0; idx < unit.vertices.length; idx++) {
-      for (let dim = 0; dim < 3; dim++) {
-        expect(scaled.vertices[idx][dim]).toBeCloseTo(unit.vertices[idx][dim] * 10, 5)
-      }
-    }
-  })
-
-  test(`non-orthogonal lattice transforms vertices differently from identity`, () => {
-    const grid = gaussian_grid(6)
-    const sheared: Matrix3x3 = [
-      [1, 0, 0],
-      [0.5, 0.866, 0],
-      [0, 0, 1],
-    ]
-    const result = marching_cubes(grid, 0.5, sheared, NON_PERIODIC)
-    const identity = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
-
-    expect(result.vertices.length).toBeGreaterThan(0)
-    expect(
-      result.vertices.some(
-        (vertex, idx) => Math.abs(vertex[1] - identity.vertices[idx][1]) > 1e-6,
-      ),
-    ).toBe(true)
-  })
-
-  test(`returns Cartesian normals perpendicular to a skewed constant-x surface`, () => {
-    const skewed: Matrix3x3 = [
-      [1, 0, 0],
-      [0.5, Math.sqrt(3) / 2, 0],
-      [0, 0, 1],
-    ]
-    const grid = Array.from({ length: 4 }, (_, ix) =>
-      Array.from({ length: 5 }, () => Array.from({ length: 6 }, () => ix)),
+    assert(
+      marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC),
+      marching_cubes(grid, 0.5, lattice, NON_PERIODIC),
     )
-    const { normals } = marching_cubes(grid, 1.5, skewed, {
-      periodic: false,
-      centered: false,
-    })
-    expect(normals.length).toBeGreaterThan(0)
-    for (const normal of normals) {
-      // MC normals point toward the low side of the field (decreasing ix here)
-      expect(normal[0]).toBeLessThan(0)
-      expect(normal[0] * skewed[1][0] + normal[1] * skewed[1][1]).toBeCloseTo(0, 6)
-      expect(normal[2]).toBeCloseTo(0, 6)
-      expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
-    }
   })
 
-  test(`accounts for unequal grid spacing before normalizing`, () => {
-    const [nx, ny, nz] = [3, 5, 4]
-    const grid = Array.from({ length: nx }, (_x, ix) =>
-      Array.from({ length: ny }, (_y, iy) =>
-        Array.from({ length: nz }, () => ix / (nx - 1) + iy / (ny - 1)),
+  test.each([
+    {
+      label: `skewed constant-x surface`,
+      lattice: [
+        [1, 0, 0],
+        [0.5, Math.sqrt(3) / 2, 0],
+        [0, 0, 1],
+      ] as Matrix3x3,
+      grid: Array.from({ length: 4 }, (_, ix) =>
+        Array.from({ length: 5 }, () => Array.from({ length: 6 }, () => ix)),
       ),
-    )
-    const { normals } = marching_cubes(grid, 0.75, IDENTITY, {
-      periodic: false,
-      centered: false,
-    })
+      iso: 1.5,
+      check: (normal: Vec3, lattice: Matrix3x3) => {
+        expect(normal[0]).toBeLessThan(0)
+        expect(normal[0] * lattice[1][0] + normal[1] * lattice[1][1]).toBeCloseTo(0, 6)
+        expect(normal[2]).toBeCloseTo(0, 6)
+        expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
+      },
+    },
+    {
+      label: `unequal grid spacing`,
+      lattice: IDENTITY,
+      grid: Array.from({ length: 3 }, (_x, ix) =>
+        Array.from({ length: 5 }, (_y, iy) =>
+          Array.from({ length: 4 }, () => ix / 2 + iy / 4),
+        ),
+      ),
+      iso: 0.75,
+      check: ([x, y, z]: Vec3) => {
+        expect(Math.abs(x)).toBeCloseTo(Math.SQRT1_2, 5)
+        expect(Math.abs(y)).toBeCloseTo(Math.SQRT1_2, 5)
+        expect(z).toBeCloseTo(0, 5)
+      },
+    },
+  ])(`normals: $label`, ({ lattice, grid, iso, check }) => {
+    const { normals } = marching_cubes(grid, iso, lattice, NON_PERIODIC)
     expect(normals.length).toBeGreaterThan(0)
-    for (const [x, y, z] of normals) {
-      expect(Math.abs(x)).toBeCloseTo(Math.SQRT1_2, 5)
-      expect(Math.abs(y)).toBeCloseTo(Math.SQRT1_2, 5)
-      expect(z).toBeCloseTo(0, 5)
-    }
+    for (const normal of normals) check(normal, lattice)
   })
 
   test.each([false, true])(
@@ -243,8 +224,7 @@ describe(`marching_cubes`, () => {
         Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => ix)),
       )
       const result = marching_cubes(grid, 1.5, singular_lattice, {
-        periodic: false,
-        centered: false,
+        ...NON_PERIODIC,
         normals,
       })
       expect(result.vertices.length).toBeGreaterThan(0)
@@ -255,33 +235,24 @@ describe(`marching_cubes`, () => {
       }
       expect(result.normals).toHaveLength(result.vertices.length)
       for (const normal of result.normals) expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
-      const grad_grid = (n: number) =>
-        Array.from({ length: n }, (_x, ix) =>
-          Array.from({ length: 2 * n }, () =>
-            Array.from({ length: 2 * n }, () => ix / (n - 1)),
-          ),
-        )
+      // Index-space gradient scaling: mean normal stable across anisotropic resolutions
       const mean_x = (n: number) => {
-        const { normals: ns } = marching_cubes(grad_grid(n), 0.5, singular_lattice, {
-          periodic: false,
-          centered: false,
-          normals: true,
-        })
+        const { normals: ns } = marching_cubes(
+          Array.from({ length: n }, (_x, ix) =>
+            Array.from({ length: 2 * n }, () =>
+              Array.from({ length: 2 * n }, () => ix / (n - 1)),
+            ),
+          ),
+          0.5,
+          singular_lattice,
+          { ...NON_PERIODIC, normals: true },
+        )
         return ns.reduce((sum, normal) => sum + normal[0], 0) / ns.length
       }
       expect(mean_x(4)).toBeCloseTo(mean_x(8), 2)
     },
   )
-
-  test(`higher isovalue produces fewer faces for a blob`, () => {
-    const grid = gaussian_grid(8)
-    const low = marching_cubes(grid, 0.3, IDENTITY, NON_PERIODIC)
-    const high = marching_cubes(grid, 0.7, IDENTITY, NON_PERIODIC)
-    expect(high.faces.length).toBeLessThanOrEqual(low.faces.length)
-  })
 })
-
-// === compute_vertex_normals ===
 
 describe(`compute_vertex_normals`, () => {
   const xy_triangle: Vec3[] = [
@@ -309,26 +280,24 @@ describe(`compute_vertex_normals`, () => {
     { label: `face with out-of-bounds index`, vertices: xy_triangle, faces: [[0, 1, 99]] },
     { label: `face with negative index`, vertices: xy_triangle, faces: [[-1, 1, 2]] },
   ])(`returns zero normals for $label`, ({ vertices, faces }) => {
-    // All normals remain at zero (invalid faces are skipped)
     expect(compute_vertex_normals(vertices, faces)).toEqual(vertices.map(() => [0, 0, 0]))
   })
 
   test(`averages normals from shared vertices`, () => {
-    // Two triangles meeting at 90° sharing edge (0-1)
-    const vertices: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
-    const normals = compute_vertex_normals(vertices, [
-      [0, 1, 2],
-      [0, 1, 3],
-    ])
-
-    // Shared vertex 0: averaged normal has both y and z components
+    const normals = compute_vertex_normals(
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [
+        [0, 1, 2],
+        [0, 1, 3],
+      ],
+    )
     const shared = normals[0]
-    expect(Math.hypot(...shared)).toBeCloseTo(1.0, 5)
+    expect(Math.hypot(...shared)).toBeCloseTo(1, 5)
     expect(Math.abs(shared[1])).toBeGreaterThan(0.1)
     expect(Math.abs(shared[2])).toBeGreaterThan(0.1)
   })
