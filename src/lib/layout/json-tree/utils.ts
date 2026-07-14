@@ -1,8 +1,8 @@
 // JSON Tree utility functions
-import * as json_path from '$lib/json-path'
+import * as json_path from '../../json-path'
 import type { DiffEntry, JsonValueType } from './types'
 
-export { build_path, format_path, parse_path } from '$lib/json-path'
+export { build_path, format_path, parse_path } from '../../json-path'
 
 // Circular-safe JSON.stringify helper (hoisted for reuse)
 function safe_stringify(val: unknown): string {

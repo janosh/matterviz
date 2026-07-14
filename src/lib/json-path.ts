@@ -3,10 +3,7 @@
 
 const PATH_IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/u
 
-export function format_path_segment(
-  segment: string | number,
-  is_first: boolean = false,
-): string {
+function format_path_segment(segment: string | number, is_first: boolean = false): string {
   if (typeof segment === `number`) return `[${segment}]`
   if (PATH_IDENTIFIER_RE.test(segment)) return is_first ? segment : `.${segment}`
   return `[${JSON.stringify(segment)}]`
