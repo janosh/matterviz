@@ -137,7 +137,7 @@ const padded_extent = (min: number, max: number, scale_type?: ScaleType): Vec2 =
   if (t_min === t_max) {
     if (log_scale) {
       const center = Math.max(min, LOG_EPS)
-      return [center, center * 10]
+      return [Math.max(LOG_EPS, center / Math.sqrt(10)), center * Math.sqrt(10)]
     }
     return [inverse(t_min - 0.5), inverse(t_max + 0.5)]
   }

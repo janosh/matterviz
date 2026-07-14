@@ -150,13 +150,14 @@ describe(`adaptive density utilities`, () => {
     expect(series_extents([{ x: [1e-300, 2e-300], y: [1, 2] }], `log`, `linear`).x).toEqual([
       1, 10,
     ])
+    const half_decade = Math.sqrt(10)
     expect(series_extents([{ x: [-10, 10], y: [1, 2] }], `log`, `linear`)).toEqual({
-      x: [10, 100],
+      x: [10 / half_decade, 10 * half_decade],
       y: [1.5, 2.5],
     })
     expect(series_extents([{ x: [LOG_EPS, LOG_EPS], y: [1, 2] }], `log`, `linear`).x).toEqual([
       LOG_EPS,
-      LOG_EPS * 10,
+      LOG_EPS * half_decade,
     ])
   })
 

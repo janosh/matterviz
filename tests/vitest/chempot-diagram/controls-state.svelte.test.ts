@@ -6,7 +6,6 @@ import {
 import type { ChemPotDiagramConfig } from '$lib/chempot-diagram/types'
 import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
 import { readFileSync } from 'node:fs'
-import process from 'node:process'
 import { describe, expect, test } from 'vitest'
 
 describe(`create_chempot_overrides`, () => {
@@ -79,7 +78,7 @@ test.each([
 
 describe(`ChemPotDiagram3D rendering contracts`, () => {
   const chempot_3d_source = readFileSync(
-    `${process.cwd()}/src/lib/chempot-diagram/ChemPotDiagram3D.svelte`,
+    `${import.meta.dirname}/../../../src/lib/chempot-diagram/ChemPotDiagram3D.svelte`,
     `utf8`,
   )
 

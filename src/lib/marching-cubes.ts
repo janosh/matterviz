@@ -362,12 +362,14 @@ function compute_gradient(
     ? [wrap_grid_idx(iz - 1, nz), wrap_grid_idx(iz + 1, nz)]
     : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
 
+  const x_lo = grid[ix_m][iy_w][iz_w]
+  const x_hi = grid[ix_p][iy_w][iz_w]
+  const y_lo = grid[ix_w][iy_m][iz_w]
+  const y_hi = grid[ix_w][iy_p][iz_w]
+  const z_row = grid[ix_w][iy_w]
   const scale = (lo: number, hi: number) => 1 / Math.max(1, periodic ? 2 : hi - lo)
-  return [
-    -(grid[ix_p][iy_w][iz_w] - grid[ix_m][iy_w][iz_w]) * scale(ix_m, ix_p),
-    -(grid[ix_w][iy_p][iz_w] - grid[ix_w][iy_m][iz_w]) * scale(iy_m, iy_p),
-    -(grid[ix_w][iy_w][iz_p] - grid[ix_w][iy_w][iz_m]) * scale(iz_m, iz_p),
-  ]
+  const gz = -(z_row[iz_p] - z_row[iz_m]) * scale(iz_m, iz_p)
+  return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
 }
 
 // Main marching cubes algorithm (optimized version)
