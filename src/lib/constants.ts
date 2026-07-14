@@ -19,11 +19,13 @@ export const COMPRESSION_EXTENSIONS = Object.freeze(
 export const TRAJ_KEYWORDS = Object.freeze([
   `trajectory`,
   `traj`,
+  `relaxation`,
   `relax`,
   `npt`,
   `nvt`,
   `nve`,
   `qha`,
+  `dpmd`, // DeePMD trajectory outputs (before `md` so the longer token wins)
   `md`,
   `dynamics`,
   `simulation`,
@@ -52,7 +54,9 @@ export const STRUCT_KEYWORDS_STRICT = Object.freeze(
   STRUCT_KEYWORDS.filter((keyword) => keyword !== `data`),
 )
 
-// Regex patterns for keyword matching
+// Regex patterns for keyword matching. Keywords must be delimited on both sides
+// (`md_300K`, `si_md.log`) so bare prefixes like `md/notes.log` or `mdp_run` do not
+// match. `relaxation` is listed explicitly (not only via the `relax` prefix).
 export const TRAJ_KEYWORDS_REGEX = new RegExp(
   `(^|[-_.])(${TRAJ_KEYWORDS.join(`|`)})([-_.]|$)`,
   `i`,
@@ -64,8 +68,6 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
   `(${STRUCT_KEYWORDS_STRICT.join(`|`)})`,
   `i`,
 )
-
-export const TRAJ_KEYWORDS_SIMPLE_REGEX = new RegExp(`(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
 
 // Build a case-insensitive `\.(ext1|ext2|...)$` regex from extensions (leading dots stripped)
 const ext_regex = (exts: readonly string[]): RegExp =>

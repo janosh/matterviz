@@ -12,6 +12,14 @@ import {
 } from './is-binary'
 import type { FileInfo } from './types'
 
+// Strip query/hash; last path segment (same basename load_from_url uses).
+// Trailing-slash URLs yield an empty segment — fall back to the original URL.
+export const basename_from_url = (url: string): string => {
+  const basename = url.split(/[?#]/)[0].split(`/`).pop()
+  if (!basename) return url
+  return basename
+}
+
 // Extract filename from Content-Disposition header, falling back to url_basename.
 function extract_filename(headers: Headers | undefined, fallback: string): string {
   if (!headers) return fallback
@@ -82,7 +90,7 @@ export async function load_from_url(
 ): Promise<void> {
   // Strip query string/hash before basename/extension detection so pre-signed
   // URLs like traj.h5?X-Amz-Expires=300 still hit the right format path
-  const url_basename = url.split(/[?#]/)[0].split(`/`).pop() ?? url
+  const url_basename = basename_from_url(url)
   const ext = ext_of(url_basename)
 
   if (BINARY_EXTENSIONS.has(ext)) {
