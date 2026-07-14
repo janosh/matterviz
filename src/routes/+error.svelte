@@ -17,7 +17,7 @@
   {#if page.status >= 500}
     <p>
       If page reloading doesn't help, please raise an issue on
-      <a href="{pkg.homepage}/issues" target="_blank" rel="noreferrer">GitHub</a>. Thanks! 🙏
+      <a href={pkg.bugs} target="_blank" rel="noreferrer">GitHub</a>. Thanks! 🙏
     </p>
   {/if}
   {#if online === false}

@@ -1,8 +1,6 @@
 // JSON Tree utility functions
+import { build_path, format_path, parse_path } from '../../json-path'
 import type { DiffEntry, JsonValueType } from './types'
-
-// Pre-compiled regex for valid JS identifiers (used in path formatting)
-const VALID_IDENTIFIER_RE = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
 
 // Circular-safe JSON.stringify helper (hoisted for reuse)
 function safe_stringify(val: unknown): string {
@@ -71,32 +69,6 @@ export function get_child_count(value: unknown): number {
   if (type === `set`) return (value as Set<unknown>).size
   return 0
 }
-
-// Format a path segment for display
-// Handles both string keys and numeric indices
-// is_first: true for the first segment (no leading dot for valid identifiers)
-function format_path_segment(segment: string | number, is_first: boolean = false): string {
-  if (typeof segment === `number`) {
-    return `[${segment}]`
-  }
-  // Check if the key is a valid identifier (can use dot notation)
-  if (VALID_IDENTIFIER_RE.test(segment)) {
-    return is_first ? segment : `.${segment}`
-  }
-  // Use bracket notation for keys with special characters
-  return `["${segment.replaceAll('"', `\\"`)}"]`
-}
-
-// Format a full path from segments
-// e.g., ["users", 0, "name"] -> "users[0].name"
-// e.g., [0, "name"] -> "[0].name" (root numeric index)
-// e.g., ["key.with.dot"] -> '["key.with.dot"]' (root special key)
-export const format_path = (segments: (string | number)[]): string =>
-  segments.map((segment, idx) => format_path_segment(segment, idx === 0)).join(``)
-
-// Build a path string from parent path and key
-export const build_path = (parent_path: string, key: string | number): string =>
-  parent_path ? parent_path + format_path_segment(key) : format_path_segment(key, true)
 
 // Format a primitive/special value to string (shared by serialize and preview)
 function format_special_value(value: unknown, type: JsonValueType): string | null {
@@ -287,47 +259,6 @@ export function get_ancestor_paths(path: string): string[] {
   }
 
   return ancestors
-}
-
-// Parse a path string into segments
-// e.g., "users[0].name" -> ["users", 0, "name"]
-export function parse_path(path: string): (string | number)[] {
-  if (!path) return []
-
-  const segments: (string | number)[] = []
-  let current = ``
-  let in_bracket = false
-
-  // Bracket tokens are numeric indices or quoted keys (quotes stripped, \" unescaped)
-  const push_bracket_token = (token: string): void => {
-    const num = Number(token)
-    if (Number.isNaN(num)) {
-      segments.push(token.replaceAll(/^"|"$/g, ``).replaceAll(String.raw`\"`, `"`))
-    } else segments.push(num)
-  }
-
-  for (const char of path) {
-    if (char === `.` && !in_bracket) {
-      if (current) segments.push(current)
-      current = ``
-    } else if (char === `[`) {
-      if (current) segments.push(current)
-      current = ``
-      in_bracket = true
-    } else if (char === `]`) {
-      if (current) push_bracket_token(current)
-      current = ``
-      in_bracket = false
-    } else current += char
-  }
-
-  // Handle trailing content (e.g., unclosed bracket like "a[0")
-  if (current) {
-    if (in_bracket) push_bracket_token(current)
-    else segments.push(current)
-  }
-
-  return segments
 }
 
 // Check if two values are deeply equal (for change detection)

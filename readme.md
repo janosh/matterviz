@@ -100,7 +100,8 @@ npm add -D matterviz
 ```svelte
 <script>
   import { Trajectory } from 'matterviz'
-  // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat, .gz, .zip, .bz2, .xz
+  // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat and .gz;
+  // decompress .zip/.bz2/.xz first because browsers cannot decode them
 </script>
 
 <Trajectory data_url="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
@@ -135,12 +136,12 @@ Use [`citation.cff`](citation.cff) or cite the [Zenodo record](https://zenodo.or
 @software{riebesell_matterviz_2022,
   title = {matterviz: visualization toolkit for materials informatics},
   author = {Riebesell, Janosh and Evans, Matthew},
-  date = {2026-01-23},
+  date = {2026-07-09},
   year = {2026},
   doi = {10.5281/zenodo.17094509},
   url = {https://github.com/janosh/matterviz},
   note = {10.5281/zenodo.17094509 - https://github.com/janosh/matterviz},
-  urldate = {2026-01-23}, % optional, replace with your date of access
-  version = {0.3.1}, % replace with the version you use
+  urldate = {2026-07-14}, % optional, replace with your date of access
+  version = {0.4.2}, % replace with the version you use
 }
 ```
