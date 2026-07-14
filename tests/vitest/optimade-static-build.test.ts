@@ -1,5 +1,4 @@
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join, resolve } from 'node:path'
@@ -12,9 +11,9 @@ const optimade_html_candidates = [
   join(build_dir, `optimade`, `index.html`),
 ]
 
-async function read_optimade_html(): Promise<string | null> {
+function read_optimade_html(): string | null {
   const html_path = optimade_html_candidates.find((path) => existsSync(path))
-  return html_path ? readFile(html_path, `utf8`) : null
+  return html_path ? readFileSync(html_path, `utf8`) : null
 }
 
 describe(`static OPTIMADE output`, () => {
@@ -22,7 +21,7 @@ describe(`static OPTIMADE output`, () => {
   let origin = ``
 
   beforeAll(async () => {
-    server = createServer(async (request, response) => {
+    server = createServer((request, response) => {
       const headers = {
         'access-control-allow-origin': `*`,
         'access-control-allow-methods': `GET, OPTIONS`,
@@ -38,7 +37,7 @@ describe(`static OPTIMADE output`, () => {
         return
       }
 
-      const html = await read_optimade_html()
+      const html = read_optimade_html()
       if (!html) {
         response.writeHead(404, headers).end(`missing optimade html`)
         return

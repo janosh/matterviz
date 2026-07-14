@@ -14,7 +14,9 @@ export function optimade_permalink(
 export function parse_optimade_id(url: string | URL): string {
   try {
     const parsed = url instanceof URL ? url : new URL(url, PARSE_BASE_URL)
-    return parsed.searchParams.get(`id`)?.trim() || DEFAULT_OPTIMADE_ID
+    const id = parsed.searchParams.get(`id`)?.trim() ?? DEFAULT_OPTIMADE_ID
+    if (id.length === 0) return DEFAULT_OPTIMADE_ID
+    return id
   } catch {
     return DEFAULT_OPTIMADE_ID
   }

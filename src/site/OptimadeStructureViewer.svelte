@@ -14,7 +14,11 @@
   import { Structure } from '$lib/structure'
   import type { Crystal } from '$lib/structure'
   import { optimade_to_crystal } from '$lib/structure/parse'
-  import { DEFAULT_OPTIMADE_ID, optimade_permalink, parse_optimade_id } from '$site/optimade-routing'
+  import {
+    DEFAULT_OPTIMADE_ID,
+    optimade_permalink,
+    parse_optimade_id,
+  } from '$site/optimade-routing'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -29,8 +33,7 @@
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   const initial_structure_id = () =>
-    init_structure_id ??
-    (browser ? parse_optimade_id(location.href) : DEFAULT_OPTIMADE_ID)
+    init_structure_id ?? (browser ? parse_optimade_id(location.href) : DEFAULT_OPTIMADE_ID)
 
   let structure = $state<Crystal | null>(null)
   let [loading_struct, loading_suggestions] = $state([false, false])
@@ -56,9 +59,7 @@
     const provider = detect_provider_from_slug(query_id, available_providers)
     if (provider) {
       selected_db = provider
-      input_value = query_id.startsWith(`${provider}-`)
-        ? query_id
-        : `${provider}-${query_id}`
+      input_value = query_id.startsWith(`${provider}-`) ? query_id : `${provider}-${query_id}`
     } else input_value = query_id
   })
 
