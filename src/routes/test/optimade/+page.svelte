@@ -1,7 +1,5 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { base } from '$app/paths'
-  import { optimade_permalink } from '$site/optimade-routing'
 </script>
 
 <div style="text-align: center; padding: 2em">
@@ -17,7 +15,7 @@
   >
     {#each [`mp-1`, `mp-149`, `mp-12263251`, `cod-1000000`] as id (id)}
       <button
-        onclick={() => goto(optimade_permalink(id, `${base}/optimade`))}
+        onclick={() => goto(`/optimade-${id}`)}
         style="padding: 0.5em 1em; border: 1px solid #ccc; border-radius: 4pt; background: #f0f0f0; cursor: pointer"
       >
         {id}

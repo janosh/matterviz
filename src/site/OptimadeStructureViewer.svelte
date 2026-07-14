@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
-  import { base } from '$app/paths'
   import { sanitize_html } from '$lib/sanitize'
+  import { page } from '$app/state'
   import Icon from '$lib/Icon.svelte'
   import {
+    decode_structure_id,
     detect_provider_from_slug,
+    encode_structure_id,
     fetch_optimade_providers,
     fetch_optimade_structure,
     fetch_suggested_structures,
@@ -14,11 +15,6 @@
   import { Structure } from '$lib/structure'
   import type { Crystal } from '$lib/structure'
   import { optimade_to_crystal } from '$lib/structure/parse'
-  import {
-    DEFAULT_OPTIMADE_ID,
-    optimade_permalink,
-    parse_optimade_id,
-  } from '$site/optimade-routing'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -32,9 +28,6 @@
     selected_provider?: string
   } & HTMLAttributes<HTMLDivElement> = $props()
 
-  const initial_structure_id = () =>
-    init_structure_id ?? (browser ? parse_optimade_id(location.href) : DEFAULT_OPTIMADE_ID)
-
   let structure = $state<Crystal | null>(null)
   let [loading_struct, loading_suggestions] = $state([false, false])
   let struct_error = $state<string | null>(null)
@@ -42,7 +35,7 @@
   let providers_error = $state<string | null>(null)
   // Using $state with untrack() - these are initialized from props but mutated by user interactions
   let selected_db = $state(untrack(() => init_provider ?? `mp`))
-  let input_value = $state(untrack(initial_structure_id))
+  let input_value = $state(untrack(() => init_structure_id ?? ``))
   let suggested_structures = $state<OptimadeStructure[]>([])
   let last_loaded_db = $state<string | null>(null)
   let structure_id = $derived(input_value.trim())
@@ -51,16 +44,19 @@
   )
 
   $effect(() => {
-    // Initialize from URL query (only if no props provided)
+    // Initialize from URL slug (only if no props provided)
     if (init_structure_id || init_provider) return // Props take precedence
-    if (available_providers.length === 0) return
 
-    const query_id = browser ? parse_optimade_id(location.href) : DEFAULT_OPTIMADE_ID
-    const provider = detect_provider_from_slug(query_id, available_providers)
-    if (provider) {
-      selected_db = provider
-      input_value = query_id.startsWith(`${provider}-`) ? query_id : `${provider}-${query_id}`
-    } else input_value = query_id
+    const decoded_slug = decode_structure_id(page.params.slug ?? ``)
+    if (available_providers.length > 0) {
+      const provider = detect_provider_from_slug(decoded_slug, available_providers)
+      if (provider) {
+        selected_db = provider
+        input_value = decoded_slug.startsWith(`${provider}-`)
+          ? decoded_slug
+          : `${provider}-${decoded_slug}`
+      } else input_value = decoded_slug
+    }
   })
 
   $effect(() => {
@@ -123,7 +119,7 @@
 
   function navigate_to_structure(id: string) {
     input_value = id
-    history.pushState({}, ``, optimade_permalink(id, `${base}/optimade`))
+    history.pushState({}, ``, `/optimade-${encode_structure_id(id)}`)
   }
 </script>
 

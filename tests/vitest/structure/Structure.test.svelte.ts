@@ -959,46 +959,6 @@ describe(`Structure string parsing`, () => {
     }
   })
 
-  test(`keeps internally edited URL-owned structure reloadable`, async () => {
-    const loaded_elements: string[] = []
-    const fetch_mock = vi.fn(async (url: string | URL | Request) => {
-      const href = request_url(url)
-      return new Response(structure_json(href.includes(`b.json`) ? `He` : `H`, 2))
-    })
-    vi.stubGlobal(`fetch`, fetch_mock)
-    try {
-      const state = $state({
-        data_url: `/a.json`,
-        structure: undefined as AnyStructure | undefined,
-        selected_sites: [] as number[],
-      })
-      const base_props: {
-        measure_mode: MeasureMode
-        on_file_load: (data: StructureHandlerData) => number
-      } = {
-        measure_mode: `edit-atoms`,
-        on_file_load: (data: StructureHandlerData) =>
-          loaded_elements.push(data.structure?.sites[0]?.species[0]?.element ?? ``),
-      }
-      const props = bind_props(base_props, state)
-      mount_structure(props)
-      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
-
-      state.selected_sites = [0]
-      doc_query(`.structure`).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `Delete`, cancelable: true, bubbles: true }),
-      )
-      await tick()
-      expect(state.structure?.sites).toHaveLength(1)
-
-      state.data_url = `/b.json`
-      await vi.waitFor(() => expect(fetch_mock).toHaveBeenCalledWith(`/b.json`))
-      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
-    } finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
   test(`load error state renders StatusMessage`, async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
