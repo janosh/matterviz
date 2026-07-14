@@ -189,17 +189,17 @@ const resolve_target_uri = (uri?: vscode.Uri): vscode.Uri | undefined => {
   return undefined
 }
 
-// Get file data from URI or active editor (in-memory buffer, so unsaved edits render)
+// Prefer the active editor buffer when it is the target so unsaved edits render
 export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
   const editor = vscode.window.activeTextEditor
-  if (!uri && editor) {
+  if (editor && (!uri || editor.document.uri.fsPath === uri.fsPath)) {
     return {
       filename: path.basename(editor.document.fileName),
       content: editor.document.getText(),
       is_base64: false,
     }
   }
-  const target = uri ?? resolve_target_uri()
+  const target = resolve_target_uri(uri)
   if (target) return read_file(target.fsPath)
   throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
 }
@@ -671,9 +671,7 @@ const open_resource = async (
     return
   }
 
-  // Pass the original (possibly undefined) uri through so get_file keeps using the
-  // active editor's in-memory buffer (unsaved edits) rather than re-reading from disk.
-  await render(context, uri)
+  await render(context, target)
 }
 
 // Custom editor provider for MatterViz files

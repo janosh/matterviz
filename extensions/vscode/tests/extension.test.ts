@@ -144,6 +144,7 @@ describe(`MatterViz Extension`, () => {
     // Import extension module and clear all watchers
     const ext = await import(`../src/extension`)
     ext.active_watchers.clear()
+    ext.active_watcher_subscribers.clear()
     ext.active_frame_loaders.clear()
     ext.auto_render_timers.clear()
     ext.active_auto_render_panels.clear()
@@ -525,37 +526,87 @@ describe(`MatterViz Extension`, () => {
   })
 
   test.each([
-    [{ fsPath: `/test/file.cif` } as unknown as Uri, `file.cif`],
-    [{ fsPath: `/test/structure.xyz` } as unknown as Uri, `structure.xyz`],
-  ])(`get_file with URI`, async (uri, expected_filename) => {
-    const result = await get_file(uri)
-    expect(result.filename).toBe(expected_filename)
-  })
+    {
+      label: `explicit URI`,
+      uri: `/test/file.cif`,
+      expect_filename: `file.cif`,
+      from_disk: true,
+    },
+    {
+      label: `explicit URI xyz`,
+      uri: `/test/structure.xyz`,
+      expect_filename: `structure.xyz`,
+      from_disk: true,
+    },
+    {
+      label: `active editor buffer`,
+      editor: `/test/active.cif`,
+      content: `unsaved`,
+      expect_filename: `active.cif`,
+      from_disk: false,
+    },
+    {
+      label: `URI matching active editor`,
+      uri: `/test/active.cif`,
+      editor: `/test/active.cif`,
+      content: `unsaved`,
+      expect_filename: `active.cif`,
+      from_disk: false,
+    },
+    {
+      label: `URI different from active editor`,
+      uri: `/test/other.cif`,
+      editor: `/test/active.cif`,
+      content: `unsaved`,
+      expect_filename: `other.cif`,
+      from_disk: true,
+    },
+    {
+      label: `active tab`,
+      tab: `/test/tab.cif`,
+      expect_filename: `tab.cif`,
+      from_disk: true,
+    },
+    {
+      label: `no target`,
+      error: `No file selected. MatterViz needs an active editor to know what to render.`,
+    },
+  ])(
+    `get_file ($label)`,
+    async ({ uri, editor, tab, content, expect_filename, from_disk, error }) => {
+      mock_vscode.window.activeTextEditor = editor
+        ? ({
+            document: {
+              fileName: editor,
+              uri: { fsPath: editor },
+              getText: () => content ?? ``,
+            },
+          } as TextEditor)
+        : null
+      mock_vscode.window.tabGroups.activeTabGroup.activeTab = tab
+        ? ({ input: { uri: { fsPath: tab } } } as unknown as Tab)
+        : null
+      mock_vscode.workspace.fs.readFile.mockClear()
 
-  test(`get_file with active editor`, async () => {
-    mock_vscode.window.activeTextEditor = {
-      document: { fileName: `/test/active.cif`, getText: () => `active content` },
-    } as TextEditor
-    const result = await get_file()
-    expect(result.filename).toBe(`active.cif`)
-    expect(result.content).toBe(`active content`)
-    expect(result.is_base64).toBe(false)
-  })
+      if (error) {
+        await expect(get_file()).rejects.toThrow(error)
+        return
+      }
 
-  test(`get_file with active tab`, async () => {
-    mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
-      input: { uri: { fsPath: `/test/tab.cif` } },
-    } as unknown as Tab
-    const result = await get_file()
-    expect(result.filename).toBe(`tab.cif`)
-  })
-
-  test(`get_file throws when no file found`, async () => {
-    mock_vscode.window.tabGroups.activeTabGroup.activeTab = null
-    await expect(get_file()).rejects.toThrow(
-      `No file selected. MatterViz needs an active editor to know what to render.`,
-    )
-  })
+      const result = await get_file(uri ? ({ fsPath: uri } as Uri) : undefined)
+      expect(result.filename).toBe(expect_filename)
+      if (from_disk) {
+        expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalled()
+      } else {
+        expect(result).toEqual({
+          filename: expect_filename,
+          content,
+          is_base64: false,
+        })
+        expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+      }
+    },
+  )
 
   test.each([
     [`structure`, { filename: `test.cif`, content: `content`, is_base64: false }],
@@ -672,50 +723,51 @@ describe(`MatterViz Extension`, () => {
     )
   })
 
-  test(`saveAs error handling`, async () => {
-    mock_vscode.window.showSaveDialog.mockResolvedValue({
-      fsPath: `/test/save.cif`,
-    })
-    mock_vscode.workspace.fs.writeFile.mockRejectedValue(new Error(`Write failed`))
-
-    await handle_msg({
-      command: `saveAs`,
+  test.each([
+    {
+      label: `write failure`,
+      dialog: { fsPath: `/test/save.cif` },
+      write_error: `Write failed`,
       content: `content`,
-      ...msg_args,
       filename: `test.cif`,
-    })
-    expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      `Failed to save text file: Write failed`,
-    )
-  })
-
-  test(`saveAs user cancellation`, async () => {
-    mock_vscode.window.showSaveDialog.mockResolvedValue(undefined)
-
-    await handle_msg({
-      command: `saveAs`,
+      error: `Failed to save text file: Write failed`,
+    },
+    {
+      label: `user cancellation`,
+      dialog: undefined,
       content: `content`,
-      ...msg_args,
       filename: `test.cif`,
-    })
-    expect(mock_vscode.workspace.fs.writeFile).not.toHaveBeenCalled()
-  })
-
-  test(`saveAs binary data validation: empty base64 data`, async () => {
-    mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/test.png` })
-
-    await handle_msg({
-      command: `saveAs`,
+    },
+    {
+      label: `empty base64`,
+      dialog: { fsPath: `/test/test.png` },
       content: `data:image/png;base64,`,
-      ...msg_args,
       filename: `test.png`,
       is_binary: true,
+      error: `Failed to save binary data: Invalid data URL: missing base64 data`,
+    },
+  ])(`saveAs $label`, async ({ dialog, write_error, content, filename, is_binary, error }) => {
+    mock_vscode.window.showSaveDialog.mockResolvedValue(dialog)
+    if (write_error) {
+      mock_vscode.workspace.fs.writeFile.mockRejectedValue(new Error(write_error))
+    }
+
+    await handle_msg({
+      command: `saveAs`,
+      content,
+      ...msg_args,
+      filename,
+      is_binary,
     })
 
-    expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      `Failed to save binary data: Invalid data URL: missing base64 data`,
-    )
-    expect(mock_vscode.workspace.fs.writeFile).not.toHaveBeenCalled()
+    if (error) {
+      expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(error)
+    }
+    if (write_error) {
+      expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalled()
+    } else {
+      expect(mock_vscode.workspace.fs.writeFile).not.toHaveBeenCalled()
+    }
   })
 
   test.each([[{ command: `info` }], [{ command: `saveAs` }], [{ command: `unknown` }]])(
@@ -1150,7 +1202,11 @@ describe(`MatterViz Extension`, () => {
         dispose: mock_dispose,
       })
       mock_vscode.window.activeTextEditor = {
-        document: { fileName: `/test/active.cif`, getText: () => `content` },
+        document: {
+          fileName: `/test/active.cif`,
+          uri: { fsPath: `/test/active.cif` },
+          getText: () => `content`,
+        },
       } as TextEditor
 
       return { mock_dispose, mock_panel }
@@ -1213,7 +1269,11 @@ describe(`MatterViz Extension`, () => {
         })
 
       mock_vscode.window.activeTextEditor = {
-        document: { fileName: `/test/active.cif`, getText: () => `content` },
+        document: {
+          fileName: `/test/active.cif`,
+          uri: { fsPath: `/test/active.cif` },
+          getText: () => `content`,
+        },
       } as TextEditor
 
       await render(mock_context)
@@ -1394,8 +1454,17 @@ describe(`MatterViz Extension`, () => {
           webview: undefined,
         },
         {
-          label: `without absolute file_path`,
+          label: `without file_path`,
           message: { command: `startWatching` as const, ...msg_args },
+          webview: mock_webview,
+        },
+        {
+          label: `with relative file_path`,
+          message: {
+            command: `startWatching` as const,
+            ...msg_args,
+            file_path: `relative/file.cif`,
+          },
           webview: mock_webview,
         },
       ])(`should handle startWatching $label gracefully`, async ({ message, webview }) => {
@@ -1425,24 +1494,11 @@ describe(`MatterViz Extension`, () => {
     })
 
     describe(`file change notifications`, () => {
-      test(`should send file change notification to webview`, async () => {
-        const message = {
-          command: `startWatching` as const,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-        }
-
-        await handle_msg(message, mock_webview)
-
-        // Get the change handler
-        const change_handler = mock_file_system_watcher.onDidChange.mock.calls[0][0]
-
-        // Trigger file change
-        await change_handler()
-
-        // Wait for postMessage to be called (it's async)
-        await vi.waitFor(() => {
-          expect(mock_webview.postMessage).toHaveBeenCalledWith({
+      test.each([
+        {
+          label: `change`,
+          register: `onDidChange` as const,
+          expected: {
             command: `fileUpdated`,
             data: expect.objectContaining({
               filename: `file.cif`,
@@ -1452,31 +1508,32 @@ describe(`MatterViz Extension`, () => {
             ...msg_args,
             file_path: `/test/file.cif`,
             theme: `light`,
-          })
-        })
-      })
-
-      test(`should handle file deletion notifications`, async () => {
-        const message = {
-          command: `startWatching` as const,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-        }
-
-        await handle_msg(message, mock_webview)
-
-        // Get the delete handler
-        const delete_handler = mock_file_system_watcher.onDidDelete.mock.calls[0][0]
-
-        // Trigger file deletion
-        delete_handler()
-
-        expect(mock_webview.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({
+          },
+        },
+        {
+          label: `delete`,
+          register: `onDidDelete` as const,
+          expected: expect.objectContaining({
             command: `fileDeleted`,
             file_path: `/test/file.cif`,
           }),
+        },
+      ])(`notifies webview on file $label`, async ({ register, expected }) => {
+        await handle_msg(
+          {
+            command: `startWatching` as const,
+            ...msg_args,
+            file_path: `/test/file.cif`,
+          },
+          mock_webview,
         )
+
+        const handler = mock_file_system_watcher[register].mock.calls[0][0]
+        await handler()
+
+        await vi.waitFor(() => {
+          expect(mock_webview.postMessage).toHaveBeenCalledWith(expected)
+        })
       })
     })
 
