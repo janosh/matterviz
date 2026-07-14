@@ -7,6 +7,7 @@ import { MOCK_PROVIDERS, MOCK_STRUCTURES, MOCK_SUGGESTIONS } from '../fixtures/o
 // - Component hydration after SSR
 // - CI environment variability (software-rendered WebGL, slow I/O)
 const DATA_LOAD_TIMEOUT = 30_000
+const optimade_path = (id: string) => `/optimade?id=${encodeURIComponent(id)}`
 
 test.describe(`OPTIMADE route`, () => {
   // Network mocking can be flaky in CI due to race conditions
@@ -61,7 +62,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`page loads correctly`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`)
+    await page.goto(optimade_path(`mp-1`))
 
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
     await expect(page.locator(`input[placeholder="Enter structure ID"]`)).toBeVisible()
@@ -70,7 +71,7 @@ test.describe(`OPTIMADE route`, () => {
 
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
     // invalid ID triggers async provider fetches; networkidle ensures stability
-    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `networkidle` })
+    await page.goto(optimade_path(`invalid-id-12345`), { waitUntil: `networkidle` })
 
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
 
@@ -99,7 +100,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can switch providers and clear input field`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`)
+    await page.goto(optimade_path(`mp-1`))
 
     // Wait for providers to load and structure to be fetched
     await expect(page.locator(`button.db-select`).first()).toBeVisible({
@@ -124,7 +125,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can load structure from different providers via text input`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`)
+    await page.goto(optimade_path(`mp-1`))
 
     // First wait for the page to be interactive (h1 should always be present)
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
@@ -160,7 +161,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`provider selection clears input field`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`)
+    await page.goto(optimade_path(`mp-1`))
 
     // First wait for the page to be interactive
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
@@ -190,7 +191,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can navigate between multiple providers`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`)
+    await page.goto(optimade_path(`mp-1`))
 
     // First wait for the page to be interactive
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
@@ -226,7 +227,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can click on suggested structures to load them`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`)
+    await page.goto(optimade_path(`mp-1`))
 
     // First wait for the page to be interactive
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
