@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { load } from 'js-yaml'
 import { describe, expect, test } from 'vitest'
 
@@ -15,7 +16,9 @@ describe(`repository documentation and metadata`, () => {
 
   test(`VS Code docs describe the hard in-memory file limit`, () => {
     const readme = read(`extensions/vscode/readme.md`)
-    expect(readme).toContain(`Files larger than 1 GiB are rejected`)
+    expect(readme).toContain(`Non-text files larger than 1 GiB are rejected`)
+    expect(readme).toContain(`XYZ/EXTXYZ text trajectories are limited`)
+    expect(readme).toContain(`512 MiB`)
     expect(readme).toContain(`read into extension memory in one operation`)
     expect(readme).not.toContain(`streamed in chunks`)
   })
@@ -40,11 +43,15 @@ describe(`repository documentation and metadata`, () => {
     const image_url = /property="og:image"\s+content="(?<url>[^"]+)"/.exec(app_html)?.groups
       ?.url
     expect(image_url).toBeDefined()
-    const repo_path = new URL(image_url as string).pathname.replace(
-      /^\/janosh\/matterviz\/main\//,
-      ``,
-    )
+    const image = new URL(image_url as string)
+    expect(image.origin).toBe(`https://raw.githubusercontent.com`)
+    const repo_path = image.pathname.replace(/^\/janosh\/matterviz\/main\//, ``)
+    expect(repo_path).toBe(`static/favicon.svg`)
     expect(existsSync(join(root, repo_path))).toBe(true)
+    execFileSync(`git`, [`ls-files`, `--error-unmatch`, repo_path], {
+      cwd: root,
+      stdio: `ignore`,
+    })
   })
 
   test(`citation metadata matches the current package release`, () => {
