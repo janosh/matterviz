@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -32,5 +32,17 @@ describe(`repository documentation and metadata`, () => {
     for (const key of documented) {
       expect(extension.contributes.configuration.properties).toHaveProperty(key)
     }
+  })
+
+  test(`Open Graph image points to a tracked static asset`, () => {
+    const app_html = read(`src/app.html`)
+    const image_url = /property="og:image"\s+content="(?<url>[^"]+)"/.exec(app_html)?.groups
+      ?.url
+    expect(image_url).toBeDefined()
+    const repo_path = new URL(image_url as string).pathname.replace(
+      /^\/janosh\/matterviz\/main\//,
+      ``,
+    )
+    expect(existsSync(join(root, repo_path))).toBe(true)
   })
 })
