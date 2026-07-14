@@ -144,6 +144,7 @@ describe(`MatterViz Extension`, () => {
     // Import extension module and clear all watchers
     const ext = await import(`../src/extension`)
     ext.active_watchers.clear()
+    ext.active_watcher_subscribers.clear()
     ext.active_frame_loaders.clear()
     ext.auto_render_timers.clear()
     ext.active_auto_render_panels.clear()
@@ -250,6 +251,21 @@ describe(`MatterViz Extension`, () => {
       [`structure.cif.bz2`],
     ])(`pattern does not match unsupported near miss "%s"`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(false)
+    })
+
+    test(`trajectory keyword selector does not include a bare md token`, () => {
+      const trajectory_keyword_pattern = patterns.find(
+        (pattern) => pattern.includes(`trajectory`) && pattern.includes(`simulation`),
+      )
+
+      expect(trajectory_keyword_pattern).toBeDefined()
+      expect(trajectory_keyword_pattern?.match(/\{(?<keywords>[^}]+)\}/)?.groups?.keywords)
+        .toBeDefined()
+      expect(
+        trajectory_keyword_pattern
+          ?.match(/\{(?<keywords>[^}]+)\}/)
+          ?.groups?.keywords.split(`,`),
+      ).not.toContain(`md`)
     })
   })
 
@@ -718,6 +734,82 @@ describe(`MatterViz Extension`, () => {
       expect.any(Object),
       expect.any(Object),
     )
+  })
+
+  describe(`Explorer open command`, () => {
+    const activate_with_open_command = (): ((uri?: Uri) => Promise<void> | void) => {
+      const command_registry = new Map<string, (uri?: Uri) => Promise<void> | void>()
+      mock_vscode.commands.registerCommand = vi.fn(
+        (command_name: string, callback: (uri?: Uri) => Promise<void> | void) => {
+          command_registry.set(command_name, callback)
+          return { dispose: vi.fn() }
+        },
+      )
+
+      activate(mock_context)
+      const open_command = command_registry.get(`matterviz.open`)
+      expect(open_command).toBeDefined()
+      return open_command as (uri?: Uri) => Promise<void> | void
+    }
+
+    const create_mock_panel = () => ({
+      webview: { ...mock_webview, postMessage: vi.fn(), onDidReceiveMessage: vi.fn() },
+      onDidDispose: vi.fn(),
+      visible: true,
+    })
+
+    test(`explorer menu command is not gated by active-editor support context`, () => {
+      const explorer_menu = pkg_json.contributes.menus[`explorer/context`]
+      const open_menu_item = explorer_menu.find((item) => item.command === `matterviz.open`)
+
+      expect(open_menu_item).toBeDefined()
+      expect(open_menu_item).not.toEqual(
+        expect.objectContaining({
+          when: expect.stringContaining(`matterviz.supported_resource`),
+        }),
+      )
+    })
+
+    test(`rejects unsupported clicked URIs without rendering the active editor`, async () => {
+      mock_vscode.window.activeTextEditor = {
+        document: {
+          fileName: `/test/active.cif`,
+          uri: { fsPath: `/test/active.cif` },
+          getText: () => `active content`,
+        },
+      } as TextEditor
+      mock_vscode.window.createWebviewPanel.mockReturnValue(create_mock_panel())
+
+      const open_command = activate_with_open_command()
+      await open_command({ fsPath: `/test/README.md` } as Uri)
+
+      expect(mock_vscode.window.createWebviewPanel).not.toHaveBeenCalled()
+      expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        `MatterViz cannot open README.md because it is not a supported structure or trajectory file.`,
+      )
+    })
+
+    test(`renders supported clicked URIs even when the active editor is unsupported`, async () => {
+      mock_vscode.window.activeTextEditor = {
+        document: {
+          fileName: `/test/README.md`,
+          uri: { fsPath: `/test/README.md` },
+          getText: () => `notes`,
+        },
+      } as TextEditor
+      mock_vscode.window.createWebviewPanel.mockReturnValue(create_mock_panel())
+
+      const open_command = activate_with_open_command()
+      await open_command({ fsPath: `/test/structure.cif` } as Uri)
+
+      expect(mock_vscode.window.createWebviewPanel).toHaveBeenCalledWith(
+        `matterviz`,
+        `MatterViz - structure.cif`,
+        mock_vscode.ViewColumn.Active,
+        expect.any(Object),
+      )
+      expect(mock_vscode.window.showErrorMessage).not.toHaveBeenCalled()
+    })
   })
 
   describe(`Bug Reporting`, () => {
@@ -1501,6 +1593,68 @@ describe(`MatterViz Extension`, () => {
           `matterviz.open`,
           expect.any(Function),
         )
+      })
+
+      test(`shares one file watcher across same-file panels until the final panel closes`, async () => {
+        const shared_watcher = {
+          onDidChange: vi.fn(),
+          onDidDelete: vi.fn(),
+          dispose: vi.fn(),
+        }
+        const webview1 = {
+          ...mock_webview,
+          postMessage: vi.fn(),
+          onDidReceiveMessage: vi.fn(),
+          html: ``,
+        }
+        const webview2 = {
+          ...mock_webview,
+          postMessage: vi.fn(),
+          onDidReceiveMessage: vi.fn(),
+          html: ``,
+        }
+        const panel1 = { webview: webview1, onDidDispose: vi.fn(), visible: true }
+        const panel2 = { webview: webview2, onDidDispose: vi.fn(), visible: true }
+
+        mock_vscode.workspace.createFileSystemWatcher.mockReturnValue(shared_watcher)
+        mock_vscode.window.createWebviewPanel
+          .mockReturnValueOnce(panel1)
+          .mockReturnValueOnce(panel2)
+        mock_vscode.window.activeTextEditor = {
+          document: { fileName: `/test/file.cif`, getText: () => `content` },
+        } as TextEditor
+
+        await render(mock_context)
+        await render(mock_context)
+
+        expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledTimes(1)
+
+        const change_handler = shared_watcher.onDidChange.mock.calls[0]?.[0] as
+          | (() => Promise<void> | void)
+          | undefined
+        expect(change_handler).toBeDefined()
+        await change_handler?.()
+
+        await vi.waitFor(() => {
+          expect(webview1.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              command: `fileUpdated`,
+              file_path: `/test/file.cif`,
+            }),
+          )
+          expect(webview2.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              command: `fileUpdated`,
+              file_path: `/test/file.cif`,
+            }),
+          )
+        })
+
+        panel1.onDidDispose.mock.calls[0]?.[0]()
+        expect(shared_watcher.dispose).not.toHaveBeenCalled()
+
+        panel2.onDidDispose.mock.calls[0]?.[0]()
+        expect(shared_watcher.dispose).toHaveBeenCalledTimes(1)
       })
     })
   })
