@@ -50,21 +50,29 @@ const EXTXYZ_BOOL: Record<string, boolean> = {
   true: true,
   f: false,
   false: false,
+  '1': true,
+  '0': false,
 }
 
-// Parse pbc="T F T" / pbc=T F T boolean triples from an extxyz comment line
-function parse_extxyz_pbc(comment: string): Pbc | undefined {
-  const match =
-    /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+\s+\S+\s+\S+))/iu.exec(
-      comment,
-    )
-  const tokens = (match?.groups?.double ?? match?.groups?.single ?? match?.groups?.bare)
-    ?.trim()
-    .split(/\s+/u)
-  if (tokens?.length !== 3) return undefined
+function parse_pbc_tokens(raw: string): Pbc | undefined {
+  const trimmed = raw.trim()
+  // Compact ASE-style TFT / TFF without spaces
+  const compact = trimmed.length === 3 ? trimmed.split(``) : null
+  const tokens = (compact ?? trimmed.split(/\s+/u)).slice(0, 3)
+  if (tokens.length !== 3) return undefined
   const [first, second, third] = tokens.map((token) => EXTXYZ_BOOL[token.toLowerCase()])
   if (first === undefined || second === undefined || third === undefined) return undefined
   return [first, second, third]
+}
+
+// Parse pbc="T F T" / pbc=TFT / pbc=1 0 1 boolean triples from an extxyz comment line
+function parse_extxyz_pbc(comment: string): Pbc | undefined {
+  const match =
+    /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+(?:\s+\S+){0,2}))/iu.exec(
+      comment,
+    )
+  const raw = match?.groups?.double ?? match?.groups?.single ?? match?.groups?.bare
+  return raw === undefined ? undefined : parse_pbc_tokens(raw)
 }
 
 // Keys anchored at ^|\s and followed by [=:] so single-letter keys (E/V/P/T) don't match mid-word

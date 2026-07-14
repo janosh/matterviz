@@ -15,17 +15,19 @@ const without_browser_dom = async <T>(run: (sanitizers: typeof Sanitize) => T): 
 }
 
 describe(`sanitizers without a browser DOM`, () => {
-  test.each([
-    [`<img src=x onerror=alert(1)>`, `sanitize_html`],
-    [`<script>alert(1)</script>`, `sanitize_html`],
-    [`Li<sub>2</sub>O`, `sanitize_html`],
-    [`<path d="M0 0" onload="alert(1)" />`, `sanitize_svg`],
-    [`<path d="M0 0" onload="alert(1)" />`, `sanitize_icon_svg`],
-  ] as const)(`escapes %s via %s`, async (payload, name) => {
-    await without_browser_dom((sanitizers) => {
-      const result = sanitizers[name](payload)
-      expect(result).not.toContain(`<`)
-      expect(result).toContain(`&lt;`)
+  test(`preserves formula HTML so SSR matches the client allowlist path`, async () => {
+    await without_browser_dom(({ sanitize_html }) => {
+      expect(sanitize_html(`Li<sub>2</sub>O`)).toBe(`Li<sub>2</sub>O`)
     })
   })
+
+  test.each([`sanitize_svg`, `sanitize_icon_svg`] as const)(
+    `%s returns markup unchanged when DOMPurify is unavailable`,
+    async (name) => {
+      const payload = `<path d="M0 0" />`
+      await without_browser_dom((sanitizers) => {
+        expect(sanitizers[name](payload)).toBe(payload)
+      })
+    },
+  )
 })

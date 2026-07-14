@@ -87,7 +87,15 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
     const key = formula_key_from_composition(entry.composition)
     const epa = get_energy_per_atom(entry)
     const existing = by_formula.get(key)
-    if (!existing || epa < existing.epa) {
+    // Prefer lower EPA; on ties prefer hull-eligible entries so nd_cache keys (order-
+    // normalized) cannot return domains computed from a different exclude_from_hull winner.
+    if (
+      !existing ||
+      epa < existing.epa ||
+      (epa === existing.epa &&
+        Number(entry.exclude_from_hull ?? false) <
+          Number(existing.entry.exclude_from_hull ?? false))
+    ) {
       by_formula.set(key, { entry, epa })
     }
   }

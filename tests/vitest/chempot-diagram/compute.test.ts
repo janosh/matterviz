@@ -1953,6 +1953,28 @@ describe(`make_nd_cache_key`, () => {
     )
   })
 
+  test(`EPA ties prefer hull-eligible entries independent of input order`, () => {
+    const kept = {
+      composition: { Li: 2, O: 1 },
+      energy: -10,
+      exclude_from_hull: false,
+    }
+    const dropped = {
+      composition: { Li: 4, O: 2 },
+      energy: -20,
+      exclude_from_hull: true,
+    }
+    const forward = get_min_entries_and_el_refs([kept, dropped])
+    const reverse = get_min_entries_and_el_refs([dropped, kept])
+    expect(forward.min_entries).toHaveLength(1)
+    expect(reverse.min_entries).toHaveLength(1)
+    expect(forward.min_entries[0]?.exclude_from_hull).toBe(false)
+    expect(reverse.min_entries[0]?.exclude_from_hull).toBe(false)
+    expect(make_nd_cache_key([kept, dropped], true, -50, undefined)).toBe(
+      make_nd_cache_key([dropped, kept], true, -50, undefined),
+    )
+  })
+
   test.each([
     {
       label: `different compositions`,

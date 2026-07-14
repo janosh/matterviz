@@ -1042,6 +1042,9 @@ describe(`XYZ Trajectory Format`, () => {
     [` pbc="T F T"`, [true, false, true]],
     [` pbc=T F T`, [true, false, true]],
     [` pbc="true FALSE t"`, [true, false, true]],
+    [` pbc=TFT`, [true, false, true]],
+    [` pbc="1 0 1"`, [true, false, true]],
+    [` pbc="F F F extra"`, [false, false, false]],
     [``, [true, true, true]],
   ])(`should parse EXTXYZ PBC field %p`, async (field, expected) => {
     const frame = `1

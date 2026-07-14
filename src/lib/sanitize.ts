@@ -1,6 +1,5 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './phase-diagram/utils'
-import { escape_html } from './utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
 const SAFE_ATTRS = [`style`, `class`, `title`, `href`, `target`, `rel`]
@@ -52,7 +51,8 @@ function sanitize_svg_content(
   allowed_attrs: string[],
 ): string {
   const dp = get_purify()
-  if (!dp) return escape_html(html)
+  // No DOM (SSR): return as-is. Escaping here breaks formulas/SVG and mismatches client hydrate.
+  if (!dp) return html
   const wrapped = dp.sanitize(`<svg>${html}</svg>`, {
     ALLOWED_TAGS: [...allowed_tags, `svg`],
     ALLOWED_ATTR: allowed_attrs,
@@ -90,7 +90,9 @@ export function sanitize_html(html: unknown): string {
   const cached = sanitize_cache.get(str)
   if (cached !== undefined) return cached
   const dp = get_purify()
-  if (!dp) return escape_html(str) // no DOM (SSR): render inert text, don't cache
+  // No DOM (SSR): return as-is so formula HTML matches the client DOMPurify path.
+  // Callers that need a hard sink (e.g. ChemPot 3D labels) still sanitize on the client.
+  if (!dp) return str
   // oxfmt-ignore
   const safe = dp.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
     `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `textarea`,
