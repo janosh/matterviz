@@ -6,12 +6,7 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import {
-    basename_from_url,
-    create_file_drop_handler,
-    drag_over_handlers,
-    load_from_url,
-  } from '$lib/io'
+  import * as io from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
@@ -332,7 +327,7 @@
     loading = true
     error_msg = undefined
 
-    load_from_url(requested_url, (content, filename) => {
+    io.load_from_url(requested_url, (content, filename) => {
       if (!is_current()) return // stale response
       if (on_file_drop) {
         on_file_drop(content, filename)
@@ -353,7 +348,7 @@
         if (!is_current()) return
         console.error(`Failed to load structure from URL:`, error)
         error_msg = `Failed to load structure: ${error.message}`
-        on_error?.({ error_msg, filename: basename_from_url(requested_url) })
+        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
       })
       .finally(() => {
         if (is_current()) loading = false
@@ -1228,7 +1223,7 @@
     emit_file_load_event(parse_file_content(text, filename), filename, content)
   }
 
-  const handle_file_drop = create_file_drop_handler({
+  const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
     // Parse errors propagate so multi-file batches aggregate all failures into
     // one message instead of the last error overwriting earlier ones
@@ -1607,7 +1602,7 @@
     }
   }}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({
+  {...io.drag_over_handlers({
     allow: () => allow_file_drop,
     set_dragover: (over) => (dragover = over),
   })}

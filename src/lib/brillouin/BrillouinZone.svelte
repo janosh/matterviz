@@ -3,12 +3,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import {
-    basename_from_url,
-    create_file_drop_handler,
-    drag_over_handlers,
-    load_from_url,
-  } from '$lib/io'
+  import * as io from '$lib/io'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
@@ -262,10 +257,10 @@
     if (data_url && !structure) {
       loading = true
       error_msg = undefined
-      load_from_url(data_url, (content, filename) =>
+      io.load_from_url(data_url, (content, filename) =>
         on_file_drop ? on_file_drop(content, filename) : safe_parse(content, filename),
       )
-        .catch((err) => handle_error(err, basename_from_url(data_url)))
+        .catch((err) => handle_error(err, io.basename_from_url(data_url)))
         .finally(() => (loading = false))
     } else if (structure_string && !data_url) {
       loading = true
@@ -280,7 +275,7 @@
     }
   })
 
-  const handle_file_drop = create_file_drop_handler({
+  const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
     on_drop: (content, filename) => (on_file_drop || safe_parse)(content, filename),
     on_error: (msg) => {
@@ -330,7 +325,7 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({
+  {...io.drag_over_handlers({
     allow: () => allow_file_drop,
     set_dragover: (over) => (dragover = over),
   })}

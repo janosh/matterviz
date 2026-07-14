@@ -2,13 +2,7 @@
   import { add_alpha, PLOT_COLORS } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import StatusMessage from '$lib/feedback/StatusMessage.svelte'
-  import {
-    decompress_data_binary,
-    decompress_file,
-    detect_compression_format,
-    drag_over_handlers,
-    handle_url_drop,
-  } from '$lib/io'
+  import * as io from '$lib/io'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
@@ -283,16 +277,16 @@
 
     try {
       // Handle URL-based drops
-      const handled = await handle_url_drop(event, on_file_drop || compute_and_add).catch(
-        () => false,
-      )
+      const handled = await io
+        .handle_url_drop(event, on_file_drop || compute_and_add)
+        .catch(() => false)
       if (handled) return
 
       const file = event.dataTransfer?.files?.[0]
       if (file) {
         try {
           const lower_name = file.name.toLowerCase()
-          const compression_format = detect_compression_format(lower_name)
+          const compression_format = io.detect_compression_format(lower_name)
           // Get base filename without compression extension
           const base_name = compression_format
             ? lower_name.replace(/\.(?:gz|gzip)$/i, ``)
@@ -304,7 +298,7 @@
             let buffer = await file.arrayBuffer()
             // Decompress if gzipped
             if (compression_format === `gzip`) {
-              buffer = await decompress_data_binary(buffer, `gzip`)
+              buffer = await io.decompress_data_binary(buffer, `gzip`)
             }
             const output_name = base_name.endsWith(`.brml`)
               ? base_name
@@ -312,7 +306,7 @@
             await (on_file_drop || compute_and_add)(buffer, output_name)
           } else {
             // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
-            const { content, filename } = await decompress_file(file)
+            const { content, filename } = await io.decompress_file(file)
             if (content) await (on_file_drop || compute_and_add)(content, filename)
           }
         } catch (exc) {
@@ -437,7 +431,7 @@
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        {...drag_over_handlers({
+        {...io.drag_over_handlers({
           allow: () => allow_file_drop,
           set_dragover: (over) => (dragover = over),
         })}
@@ -490,7 +484,7 @@
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        {...drag_over_handlers({
+        {...io.drag_over_handlers({
           allow: () => allow_file_drop,
           set_dragover: (over) => (dragover = over),
         })}

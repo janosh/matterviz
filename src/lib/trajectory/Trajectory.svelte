@@ -5,12 +5,7 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import {
-    basename_from_url,
-    drag_over_handlers,
-    handle_url_drop,
-    load_from_url,
-  } from '$lib/io'
+  import * as io from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
@@ -831,12 +826,14 @@
       }
 
       // Handle URL-based files (e.g. from FilePicker)
-      const handled = await handle_url_drop(event, async (content, filename) => {
-        current_filename = filename
-        file_size =
-          content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
-        await load_trajectory_data(content, filename)
-      }).catch(() => false)
+      const handled = await io
+        .handle_url_drop(event, async (content, filename) => {
+          current_filename = filename
+          file_size =
+            content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
+          await load_trajectory_data(content, filename)
+        })
+        .catch(() => false)
 
       if (handled) return
 
@@ -891,7 +888,7 @@
     loading = true
     error_msg = null
 
-    load_from_url(requested_url, async (content, filename) => {
+    io.load_from_url(requested_url, async (content, filename) => {
       if (!is_current()) return
       current_filename = filename
       file_size =
@@ -911,7 +908,7 @@
         error_msg = `Failed to load trajectory: ${err.message}`
         current_filename = undefined
         file_size = undefined
-        on_error?.({ error_msg, filename: basename_from_url(requested_url) })
+        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
       })
       .finally(() => {
         if (is_current()) loading = false
@@ -1135,7 +1132,7 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({
+  {...io.drag_over_handlers({
     allow: () => allow_file_drop,
     set_dragover: (over) => (dragover = over),
   })}
