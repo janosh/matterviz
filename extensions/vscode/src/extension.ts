@@ -60,6 +60,11 @@ type WatcherMeta = { request_id?: string; filename?: string; frame_index?: numbe
 
 // Track active file watchers by file path
 export const active_watchers = new Map<string, vscode.FileSystemWatcher>()
+// Track webviews subscribed to each watched file path
+export const active_watcher_subscribers = new Map<
+  string,
+  Map<WebviewLike, WatcherMeta | undefined>
+>()
 // Track active frame loaders by file path
 export const active_frame_loaders = new Map<string, FrameLoaderData>()
 // Track auto-render timers to clear them on deactivate
@@ -465,7 +470,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
     })
   } else if (msg.command === `stopWatching` && msg.file_path) {
     // Handle request to stop watching a file
-    stop_watching_file(msg.file_path)
+    stop_watching_file(msg.file_path, webview)
   }
 }
 
@@ -476,8 +481,18 @@ function start_watching_file(
   meta?: WatcherMeta,
 ): void {
   try {
-    // Stop existing watcher for this file if any
-    stop_watching_file(file_path)
+    const existing_watcher = active_watchers.get(file_path)
+    if (existing_watcher) {
+      const subscribers =
+        active_watcher_subscribers.get(file_path) ??
+        new Map<WebviewLike, WatcherMeta | undefined>()
+      subscribers.set(webview, meta)
+      active_watcher_subscribers.set(file_path, subscribers)
+      return
+    }
+
+    const subscribers = new Map<WebviewLike, WatcherMeta | undefined>([[webview, meta]])
+    active_watcher_subscribers.set(file_path, subscribers)
 
     // Create a new file system watcher for this specific file
     const file_dir = vscode.Uri.file(path.dirname(file_path))
@@ -487,17 +502,26 @@ function start_watching_file(
 
     // Listen for file changes
     watcher.onDidChange(() => {
-      void handle_file_change(`change`, file_path, webview, meta)
+      for (const [subscriber_webview, subscriber_meta] of active_watcher_subscribers.get(
+        file_path,
+      ) ?? []) {
+        void handle_file_change(`change`, file_path, subscriber_webview, subscriber_meta)
+      }
     })
 
     // Listen for file deletion
     watcher.onDidDelete(() => {
-      void handle_file_change(`delete`, file_path, webview, meta)
+      for (const [subscriber_webview, subscriber_meta] of active_watcher_subscribers.get(
+        file_path,
+      ) ?? []) {
+        void handle_file_change(`delete`, file_path, subscriber_webview, subscriber_meta)
+      }
       stop_watching_file(file_path) // Clean up watcher
     })
 
     active_watchers.set(file_path, watcher)
   } catch (error) {
+    active_watcher_subscribers.delete(file_path)
     console.error(`Failed to start watching file ${file_path}:`, error)
     webview.postMessage({
       command: `error`,
@@ -551,7 +575,15 @@ async function handle_file_change(
 }
 
 // Stop watching a file and dispose the watcher
-function stop_watching_file(file_path: string): void {
+function stop_watching_file(file_path: string, webview?: WebviewLike): void {
+  const subscribers = active_watcher_subscribers.get(file_path)
+  if (webview && subscribers) {
+    subscribers.delete(webview)
+    if (subscribers.size > 0) return
+  }
+
+  active_watcher_subscribers.delete(file_path)
+
   const watcher = active_watchers.get(file_path)
   if (watcher) {
     watcher.dispose()
@@ -626,7 +658,7 @@ function create_webview_panel(
   panel.onDidDispose(() => {
     theme_listener.dispose()
     config_listener.dispose()
-    if (file_path) stop_watching_file(file_path)
+    if (file_path) stop_watching_file(file_path, panel.webview)
   })
 
   return panel
@@ -734,7 +766,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
         theme_change_listener.dispose()
         config_change_listener.dispose()
 
-        stop_watching_file(file_path) // Clean up file watcher
+        stop_watching_file(file_path, webview_panel.webview) // Clean up file watcher
       })
       // Note: webview_panel disposal is managed by VSCode for custom editors
     } catch (error: unknown) {
@@ -946,6 +978,7 @@ export const deactivate = (): void => {
   auto_render_timers.clear()
   active_watchers.forEach((watcher) => watcher.dispose())
   active_watchers.clear()
+  active_watcher_subscribers.clear()
   active_frame_loaders.clear()
   active_auto_render_panels.clear()
 }

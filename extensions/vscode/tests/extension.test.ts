@@ -144,6 +144,7 @@ describe(`MatterViz Extension`, () => {
     // Import extension module and clear all watchers
     const ext = await import(`../src/extension`)
     ext.active_watchers.clear()
+    ext.active_watcher_subscribers.clear()
     ext.active_frame_loaders.clear()
     ext.auto_render_timers.clear()
     ext.active_auto_render_panels.clear()
@@ -1592,6 +1593,68 @@ describe(`MatterViz Extension`, () => {
           `matterviz.open`,
           expect.any(Function),
         )
+      })
+
+      test(`shares one file watcher across same-file panels until the final panel closes`, async () => {
+        const shared_watcher = {
+          onDidChange: vi.fn(),
+          onDidDelete: vi.fn(),
+          dispose: vi.fn(),
+        }
+        const webview1 = {
+          ...mock_webview,
+          postMessage: vi.fn(),
+          onDidReceiveMessage: vi.fn(),
+          html: ``,
+        }
+        const webview2 = {
+          ...mock_webview,
+          postMessage: vi.fn(),
+          onDidReceiveMessage: vi.fn(),
+          html: ``,
+        }
+        const panel1 = { webview: webview1, onDidDispose: vi.fn(), visible: true }
+        const panel2 = { webview: webview2, onDidDispose: vi.fn(), visible: true }
+
+        mock_vscode.workspace.createFileSystemWatcher.mockReturnValue(shared_watcher)
+        mock_vscode.window.createWebviewPanel
+          .mockReturnValueOnce(panel1)
+          .mockReturnValueOnce(panel2)
+        mock_vscode.window.activeTextEditor = {
+          document: { fileName: `/test/file.cif`, getText: () => `content` },
+        } as TextEditor
+
+        await render(mock_context)
+        await render(mock_context)
+
+        expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledTimes(1)
+
+        const change_handler = shared_watcher.onDidChange.mock.calls[0]?.[0] as
+          | (() => Promise<void> | void)
+          | undefined
+        expect(change_handler).toBeDefined()
+        await change_handler?.()
+
+        await vi.waitFor(() => {
+          expect(webview1.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              command: `fileUpdated`,
+              file_path: `/test/file.cif`,
+            }),
+          )
+          expect(webview2.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              command: `fileUpdated`,
+              file_path: `/test/file.cif`,
+            }),
+          )
+        })
+
+        panel1.onDidDispose.mock.calls[0]?.[0]()
+        expect(shared_watcher.dispose).not.toHaveBeenCalled()
+
+        panel2.onDidDispose.mock.calls[0]?.[0]()
+        expect(shared_watcher.dispose).toHaveBeenCalledTimes(1)
       })
     })
   })
