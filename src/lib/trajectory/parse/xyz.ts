@@ -2,6 +2,7 @@
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import { coerce_elem_symbol } from '$lib/element/helpers'
+import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
@@ -42,6 +43,30 @@ function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
     .map(Number)
   if (vals?.length !== 9 || !vals.every(Number.isFinite)) return undefined
   return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
+}
+
+const EXTXYZ_BOOL = new Map<string, boolean>([
+  [`t`, true],
+  [`true`, true],
+  [`f`, false],
+  [`false`, false],
+])
+
+// Parse pbc="T F T" / pbc=T F T boolean triples from an extxyz comment line
+export function parse_extxyz_pbc(comment: string): Pbc | undefined {
+  const match =
+    /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>[^\s]+\s+[^\s]+\s+[^\s]+))/iu.exec(
+      comment,
+    )
+  const tokens = (match?.groups?.double ?? match?.groups?.single ?? match?.groups?.bare)
+    ?.trim()
+    .split(/\s+/u)
+  if (tokens?.length !== 3) return undefined
+  const first = EXTXYZ_BOOL.get(tokens[0].toLowerCase())
+  const second = EXTXYZ_BOOL.get(tokens[1].toLowerCase())
+  const third = EXTXYZ_BOOL.get(tokens[2].toLowerCase())
+  if (first === undefined || second === undefined || third === undefined) return undefined
+  return [first, second, third]
 }
 
 // Keys anchored at ^|\s and followed by [=:] so single-letter keys (E/V/P/T) don't match mid-word
@@ -128,6 +153,7 @@ export function build_xyz_frame(
   const { start, num_atoms, comment } = frame
   const { step, properties } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
+  const pbc = parse_extxyz_pbc(comment) ?? ([true, true, true] satisfies Pbc)
   const { elements, positions, force_stats } = parse_xyz_atom_lines(
     lines,
     start + 2,
@@ -141,7 +167,7 @@ export function build_xyz_frame(
     positions,
     elements,
     lattice_matrix,
-    lattice_matrix ? [true, true, true] : undefined,
+    lattice_matrix ? pbc : undefined,
     step ?? opts.default_step,
     metadata,
   )
