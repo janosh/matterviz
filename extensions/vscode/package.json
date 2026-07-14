@@ -54,8 +54,7 @@
     "menus": {
       "explorer/context": [
         {
-          "command": "matterviz.open",
-          "when": "matterviz.supported_resource"
+          "command": "matterviz.open"
         }
       ]
     },

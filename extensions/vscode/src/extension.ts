@@ -648,6 +648,23 @@ export const render = async (
   }
 }
 
+const open_resource = async (
+  context: vscode.ExtensionContext,
+  uri?: vscode.Uri,
+): Promise<void> => {
+  if (uri) {
+    const filename = path.basename(uri.fsPath)
+    if (!should_auto_render(filename)) {
+      vscode.window.showErrorMessage(
+        `MatterViz cannot open ${filename} because it is not a supported structure or trajectory file.`,
+      )
+      return
+    }
+  }
+
+  await render(context, uri)
+}
+
 // Custom editor provider for MatterViz files
 class Provider implements vscode.CustomReadonlyEditorProvider {
   constructor(private readonly context: vscode.ExtensionContext) {}
@@ -736,7 +753,7 @@ export const activate = (context: vscode.ExtensionContext) => {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(`matterviz.open`, (uri?: vscode.Uri) =>
-      render(context, uri),
+      open_resource(context, uri),
     ),
     vscode.commands.registerCommand(`matterviz.report_bug`, report_bug),
     vscode.window.registerCustomEditorProvider(`matterviz.viewer`, new Provider(context), {
