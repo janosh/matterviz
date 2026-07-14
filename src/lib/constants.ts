@@ -19,13 +19,14 @@ export const COMPRESSION_EXTENSIONS = Object.freeze(
 export const TRAJ_KEYWORDS = Object.freeze([
   `trajectory`,
   `traj`,
+  `relaxation`,
   `relax`,
   `npt`,
   `nvt`,
   `nve`,
   `qha`,
+  `dpmd`, // DeePMD trajectory outputs (before `md` so the longer token wins)
   `md`,
-  `dpmd`, // DeePMD trajectory outputs
   `dynamics`,
   `simulation`,
 ])
@@ -53,10 +54,13 @@ export const STRUCT_KEYWORDS_STRICT = Object.freeze(
   STRUCT_KEYWORDS.filter((keyword) => keyword !== `data`),
 )
 
-// Regex patterns for keyword matching. Keywords must start at a token boundary but may
-// continue (matches `relaxation`, `md_300K`; rejects substring noise like `cmd`). Bare
-// `.md` markdown files are rejected by the extension guards in is_trajectory_file.
-export const TRAJ_KEYWORDS_REGEX = new RegExp(`(^|[-_.])(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
+// Regex patterns for keyword matching. Keywords must be delimited on both sides
+// (`md_300K`, `si_md.log`) so bare prefixes like `md/notes.log` or `mdp_run` do not
+// match. `relaxation` is listed explicitly (not only via the `relax` prefix).
+export const TRAJ_KEYWORDS_REGEX = new RegExp(
+  `(^|[-_.])(${TRAJ_KEYWORDS.join(`|`)})([-_.]|$)`,
+  `i`,
+)
 
 export const STRUCT_KEYWORDS_REGEX = new RegExp(`(${STRUCT_KEYWORDS.join(`|`)})`, `i`)
 

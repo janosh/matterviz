@@ -26,6 +26,7 @@ describe(`basename_from_url`, () => {
     [`traj.h5?X-Amz-Expires=300`, `traj.h5`],
     [`https://cdn.example/a/b.cif#frag`, `b.cif`],
     [`bare-name`, `bare-name`],
+    [`https://example.com/dir/`, `https://example.com/dir/`],
   ])(`%s → %s`, (url, expected) => {
     expect(basename_from_url(url)).toBe(expected)
   })

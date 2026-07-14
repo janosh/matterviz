@@ -248,20 +248,29 @@
   })
 
   // Load structure from URL or string
+  let data_url_load_id = 0
   $effect(() => {
     const handle_error = (err: unknown, source: string) => {
       error_msg = to_error(err).message
       on_error?.({ error_msg, filename: source })
     }
 
-    if (data_url && !structure) {
+    const requested_url = data_url
+    if (requested_url && !structure) {
+      const load_id = ++data_url_load_id
       loading = true
       error_msg = undefined
-      io.load_from_url(data_url, (content, filename) =>
-        on_file_drop ? on_file_drop(content, filename) : safe_parse(content, filename),
-      )
-        .catch((err) => handle_error(err, io.basename_from_url(data_url)))
-        .finally(() => (loading = false))
+      io.load_from_url(requested_url, (content, filename) => {
+        if (load_id !== data_url_load_id) return
+        return on_file_drop ? on_file_drop(content, filename) : safe_parse(content, filename)
+      })
+        .catch((err) => {
+          if (load_id !== data_url_load_id) return
+          handle_error(err, io.basename_from_url(requested_url))
+        })
+        .finally(() => {
+          if (load_id === data_url_load_id) loading = false
+        })
     } else if (structure_string && !data_url) {
       loading = true
       error_msg = undefined
