@@ -222,6 +222,24 @@ describe(`Trajectory Streaming`, () => {
       expect(loaded?.metadata?.energy).toBe(-1.5)
       expect(loaded?.metadata?.volume).toBe(216) // derived from lattice (6^3), parity with eager parser
     })
+
+    it(`should preserve EXTXYZ PBC in indexed loads`, async () => {
+      const frame = (pbc_field: string): string => `1
+Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${pbc_field}
+Si 0 0 0`
+      const loader = new TrajFrameReader(`pbc.extxyz`)
+      const source = `${frame(` pbc="F F F"`)}\n${frame(` pbc="T F T"`)}`
+      const lattice_pbc = async (idx: number) => {
+        const loaded = await loader.load_frame(source, idx)
+        expect(loaded?.structure && `lattice` in loaded.structure).toBe(true)
+        return loaded && `lattice` in loaded.structure
+          ? loaded.structure.lattice.pbc
+          : undefined
+      }
+
+      expect(await lattice_pbc(0)).toEqual([false, false, false])
+      expect(await lattice_pbc(1)).toEqual([true, false, true])
+    })
   })
 
   describe(`Plot Metadata Extraction`, () => {
@@ -279,6 +297,29 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Large File Detection & Auto-Streaming`, () => {
+    it(`should return indexed result when use_indexing is forced`, async () => {
+      const small_data = create_synthetic_xyz(20)
+      const result = await parse_trajectory_async(
+        small_data,
+        `simulated_large.xyz`,
+        undefined,
+        { use_indexing: true, index_sample_rate: 1 },
+      )
+
+      expect(result.is_indexed).toBe(true)
+      expect(result.indexed_frames).toBeDefined()
+      expect(result.total_frames).toBe(20)
+
+      // Indexed mode loads only the initial window, not every frame
+      expect(result.frames).toHaveLength(10)
+      expect(result.frames.length).toBeLessThan(result.total_frames ?? 0)
+
+      expect(result.indexed_frames).toBeInstanceOf(Array)
+      expect(result.indexed_frames?.length).toBe(20)
+      expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
+      expect(result.frame_loader).toBeDefined()
+    })
+
     it(`should use direct parsing for small files`, async () => {
       const data = create_synthetic_xyz(5)
 

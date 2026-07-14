@@ -43,16 +43,31 @@ const get_reduced_formula = (composition: Record<string, number>): Record<string
 
 // === Entry Helpers ===
 
-// Get energy per atom for a PhaseData entry
+// Energy per atom; NaN for invalid/non-finite so UI can skip without throwing.
 export function get_energy_per_atom(entry: PhaseData): number {
-  if (typeof entry.energy_per_atom === `number`) return entry.energy_per_atom
-  const atoms = count_atoms_in_composition(entry.composition)
-  if (atoms <= 0) {
-    throw new Error(
-      `Invalid composition with non-positive atom count: ${JSON.stringify(entry.composition)}`,
-    )
+  if (typeof entry.energy_per_atom === `number`) {
+    return Number.isFinite(entry.energy_per_atom) ? entry.energy_per_atom : Number.NaN
   }
+  const atoms = count_atoms_in_composition(entry.composition)
+  if (atoms <= 0 || !Number.isFinite(entry.energy)) return Number.NaN
   return entry.energy / atoms
+}
+
+// Same-formula EPA total order (keep aligned with make_nd_cache_key / entry_fingerprint).
+function prefer_min_entry(
+  candidate: PhaseData,
+  candidate_epa: number,
+  existing: PhaseData,
+  existing_epa: number,
+): boolean {
+  if (candidate_epa !== existing_epa) return candidate_epa < existing_epa
+  if (Boolean(candidate.exclude_from_hull) !== Boolean(existing.exclude_from_hull)) {
+    return !candidate.exclude_from_hull
+  }
+  if ((candidate.is_stable === true) !== (existing.is_stable === true)) {
+    return candidate.is_stable === true
+  }
+  return (candidate.e_above_hull ?? Infinity) < (existing.e_above_hull ?? Infinity)
 }
 
 // Cache for reduced formula strings -- avoids recomputing get_reduced_formula
@@ -86,8 +101,9 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
   for (const entry of entries) {
     const key = formula_key_from_composition(entry.composition)
     const epa = get_energy_per_atom(entry)
+    if (!Number.isFinite(epa)) continue
     const existing = by_formula.get(key)
-    if (!existing || epa < existing.epa) {
+    if (!existing || prefer_min_entry(entry, epa, existing.entry, existing.epa)) {
       by_formula.set(key, { entry, epa })
     }
   }
@@ -112,12 +128,17 @@ function compute_form_energy_per_atom(
 ): number {
   const atom_count = count_atoms_in_composition(entry.composition)
   const energy_per_atom = get_energy_per_atom(entry)
+  if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) return Number.NaN
   let ref_energy = 0
   for (const [element, amount] of Object.entries(entry.composition)) {
     if (amount <= 0) continue
     const fraction = amount / atom_count
     const ref_entry = el_refs[element]
-    if (ref_entry) ref_energy += fraction * get_energy_per_atom(ref_entry)
+    if (ref_entry) {
+      const ref_epa = get_energy_per_atom(ref_entry)
+      if (!Number.isFinite(ref_epa)) return Number.NaN
+      ref_energy += fraction * ref_epa
+    }
   }
   return energy_per_atom - ref_energy
 }
@@ -132,6 +153,7 @@ export function best_form_energy_for_formula(
   for (const entry of entries) {
     if (formula_key_from_composition(entry.composition) !== formula) continue
     const e_form = entry.e_form_per_atom ?? compute_form_energy_per_atom(entry, el_refs)
+    if (!Number.isFinite(e_form)) continue
     if (best_value === undefined || e_form < best_value) best_value = e_form
   }
   return best_value
@@ -150,8 +172,9 @@ export function get_energy_stats_by_formula(
 ): Map<string, FormulaEnergyStats> {
   const stats = new Map<string, FormulaEnergyStats>()
   for (const entry of entries) {
-    const formula_key = formula_key_from_composition(entry.composition)
     const energy_per_atom = get_energy_per_atom(entry)
+    if (!Number.isFinite(energy_per_atom)) continue
+    const formula_key = formula_key_from_composition(entry.composition)
     const existing = stats.get(formula_key)
     if (existing) {
       existing.matching_entry_count += 1
@@ -183,14 +206,18 @@ export const renormalize_entries = (
 ): PhaseData[] =>
   entries.map((entry) => {
     const atoms = count_atoms_in_composition(entry.composition)
+    const base_epa = get_energy_per_atom(entry)
+    if (!(atoms > 0) || !Number.isFinite(base_epa)) return entry
     let renorm_energy = 0
     for (const el of elements) {
-      const frac =
-        atoms > 0 ? ((entry.composition as Record<string, number>)[el] ?? 0) / atoms : 0
+      const frac = ((entry.composition as Record<string, number>)[el] ?? 0) / atoms
       const ref = el_refs[el]
-      if (ref) renorm_energy += frac * get_energy_per_atom(ref)
+      if (!ref) continue
+      const ref_epa = get_energy_per_atom(ref)
+      if (!Number.isFinite(ref_epa)) return entry
+      renorm_energy += frac * ref_epa
     }
-    const new_energy_per_atom = get_energy_per_atom(entry) - renorm_energy
+    const new_energy_per_atom = base_epa - renorm_energy
     return {
       ...entry,
       energy: new_energy_per_atom * atoms,
@@ -209,7 +236,9 @@ export function build_hyperplanes(
   const n_elems = elements.length
   const element_ref_energies = elements.map((element) => {
     const ref_entry = el_refs[element]
-    return ref_entry ? get_energy_per_atom(ref_entry) : 0
+    if (!ref_entry) return 0
+    const epa = get_energy_per_atom(ref_entry)
+    return Number.isFinite(epa) ? epa : 0
   })
   const always_include = new Set<PhaseData>(Object.values(el_refs))
   const tol = 1e-6 // PhaseDiagram.formation_energy_tol
@@ -223,6 +252,7 @@ export function build_hyperplanes(
     const atom_count = count_atoms_in_composition(entry.composition)
     const composition = entry.composition as Record<string, number>
     const energy_per_atom = get_energy_per_atom(entry)
+    if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) continue
     const row = Array(n_elems + 1).fill(0)
     let ref_energy = 0
     for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
@@ -877,26 +907,25 @@ let nd_cache: {
   result: FullNDResult
 } | null = null
 
-// Content-based fingerprint for N-D result caching. Uses sorted formula keys
-// so deserialized Web Worker copies match and different compositions never collide.
+// Fingerprint for N-D / async-compute cache keys (computed EPA; NaN → null).
+export function entry_fingerprint(entry: PhaseData): string {
+  const epa = get_energy_per_atom(entry)
+  return JSON.stringify([
+    formula_key_from_composition(entry.composition),
+    Number.isFinite(epa) ? epa : null,
+    entry.is_stable ?? null,
+    entry.e_above_hull ?? null,
+    entry.exclude_from_hull ?? null,
+  ])
+}
+
 export function make_nd_cache_key(
   entries: PhaseData[],
   formal_chempots: boolean,
   default_min_limit: number,
   limits: ChemPotDiagramConfig[`limits`],
 ): string {
-  const keyed = entries
-    .map((entry) =>
-      [
-        formula_key_from_composition(entry.composition),
-        entry.energy,
-        entry.is_stable ?? ``,
-        entry.e_above_hull ?? ``,
-        entry.exclude_from_hull ?? ``,
-      ].join(`:`),
-    )
-    .sort()
-  return `${keyed.join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
+  return `${entries.map(entry_fingerprint).sort().join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
 }
 
 // === Main Pipeline ===

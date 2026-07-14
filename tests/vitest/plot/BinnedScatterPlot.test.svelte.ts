@@ -160,6 +160,47 @@ describe(`BinnedScatterPlot`, () => {
     expect(errors.map(String).join(`\n`)).toBe(``)
   })
 
+  test(`auto-ranges finite pairs on logarithmic axes`, async () => {
+    const plotted_x: number[] = []
+    const arc = vi.fn((x: number, y: number) => {
+      expect(Number.isFinite(x)).toBe(true)
+      expect(Number.isFinite(y)).toBe(true)
+      plotted_x.push(x)
+    })
+    mock_canvas_context({ arc })
+
+    mount_plot({
+      series: [{ x: [1, 100, 1e9], y: [1, 10, Number.NaN] }],
+      x_axis: { scale_type: `log` },
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+    })
+    await settle()
+
+    expect(arc).toHaveBeenCalledTimes(2)
+    expect(Math.max(...plotted_x) - Math.min(...plotted_x)).toBeGreaterThan(500)
+  })
+
+  test(`keeps explicit partial and reversed ranges authoritative`, async () => {
+    for (const range of [
+      [5, null],
+      [100, 1],
+    ] as [number, number | null][]) {
+      mount_plot({
+        series: [{ x: [1, 10], y: [1, 10] }],
+        x_axis: { range, ticks: [range[0]] },
+        density: point_mode(),
+        style: `width: 800px; height: 600px`,
+      })
+      await settle()
+      const labels = [...document.querySelectorAll(`.x-axis .tick text`)].map((node) =>
+        Number(node.textContent?.replaceAll(`,`, ``)),
+      )
+      expect(labels.some((value) => value === range[0])).toBe(true)
+      document.body.replaceChildren()
+    }
+  })
+
   test(`can hide the fullscreen toggle`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
