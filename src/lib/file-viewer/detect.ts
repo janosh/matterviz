@@ -1,7 +1,10 @@
 // Data type detection for JSON values -- determines which visualization component to use.
 // Used by JsonBrowser and the file renderer to select visualization components.
 
+import { build_path } from '$lib/json-path'
 import { is_optimade_raw } from '$lib/structure/parse'
+
+export { resolve_path } from '$lib/json-path'
 
 // Visualization types supported by the file viewer.
 export type RenderableType =
@@ -396,38 +399,15 @@ export function scan_renderable_paths(
       // For arrays, only scan first few elements to avoid huge arrays
       const scan_count = Math.min(value.length, 20)
       for (let idx = 0; idx < scan_count; idx++) {
-        const child_path = path ? `${path}[${idx}]` : `[${idx}]`
-        walk(value[idx], child_path, depth + 1)
+        walk(value[idx], build_path(path, idx), depth + 1)
       }
     } else {
       for (const [key, child_value] of Object.entries(value as Record<string, unknown>)) {
-        // Use bracket notation for keys containing dots to avoid ambiguity in resolve_path
-        const segment = key.includes(`.`) ? `["${key}"]` : key
-        const child_path = path
-          ? key.includes(`.`)
-            ? `${path}${segment}`
-            : `${path}.${segment}`
-          : segment
-        walk(child_value, child_path, depth + 1)
+        walk(child_value, build_path(path, key), depth + 1)
       }
     }
   }
 
   walk(obj, prefix, 0)
   return results
-}
-
-// Resolve a path produced by scan_renderable_paths back to its value (inverse walk).
-// Handles dotted keys ["foo.bar"], array indices [0], and bare dotted paths a.b.c.
-export function resolve_path(root: unknown, path: string): unknown {
-  if (!path) return root
-  let current: unknown = root
-  for (const match of path.matchAll(
-    /\["(?<quoted_key>[^"]+)"\]|\[(?<array_index>\d+)\]|(?<bare_key>[^.[\]]+)/g,
-  )) {
-    if (current == null || typeof current !== `object`) return undefined
-    const { quoted_key, array_index, bare_key } = match.groups ?? {}
-    current = (current as Record<string, unknown>)[quoted_key ?? array_index ?? bare_key ?? ``]
-  }
-  return current
 }
