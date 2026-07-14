@@ -45,26 +45,24 @@ function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
   return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
 }
 
-const EXTXYZ_BOOL = new Map<string, boolean>([
-  [`t`, true],
-  [`true`, true],
-  [`f`, false],
-  [`false`, false],
-])
+const EXTXYZ_BOOL: Record<string, boolean> = {
+  t: true,
+  true: true,
+  f: false,
+  false: false,
+}
 
 // Parse pbc="T F T" / pbc=T F T boolean triples from an extxyz comment line
-export function parse_extxyz_pbc(comment: string): Pbc | undefined {
+function parse_extxyz_pbc(comment: string): Pbc | undefined {
   const match =
-    /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>[^\s]+\s+[^\s]+\s+[^\s]+))/iu.exec(
+    /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+\s+\S+\s+\S+))/iu.exec(
       comment,
     )
   const tokens = (match?.groups?.double ?? match?.groups?.single ?? match?.groups?.bare)
     ?.trim()
     .split(/\s+/u)
   if (tokens?.length !== 3) return undefined
-  const first = EXTXYZ_BOOL.get(tokens[0].toLowerCase())
-  const second = EXTXYZ_BOOL.get(tokens[1].toLowerCase())
-  const third = EXTXYZ_BOOL.get(tokens[2].toLowerCase())
+  const [first, second, third] = tokens.map((token) => EXTXYZ_BOOL[token.toLowerCase()])
   if (first === undefined || second === undefined || third === undefined) return undefined
   return [first, second, third]
 }

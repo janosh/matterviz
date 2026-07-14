@@ -1037,11 +1037,6 @@ describe(`XYZ Trajectory Format`, () => {
     ])
   })
 
-  const extxyz_pbc_frame = (pbc_field = ``): string => `1
-Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${pbc_field}
-Si 0 0 0
-`
-
   it.each<[string, readonly [boolean, boolean, boolean]]>([
     [` pbc="F F F"`, [false, false, false]],
     [` pbc="T F T"`, [true, false, true]],
@@ -1049,13 +1044,12 @@ Si 0 0 0
     [` pbc="true FALSE t"`, [true, false, true]],
     [``, [true, true, true]],
   ])(`should parse EXTXYZ PBC field %p`, async (field, expected) => {
-    const trajectory = await parse_trajectory_data(
-      `${extxyz_pbc_frame(field)}${extxyz_pbc_frame(field)}`,
-      `pbc.extxyz`,
-    )
-
-    const structure = trajectory.frames[0].structure
-    expect(structure && `lattice` in structure && structure.lattice.pbc).toEqual(expected)
+    const frame = `1
+Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}
+Si 0 0 0
+`
+    const { structure } = (await parse_trajectory_data(frame + frame, `pbc.extxyz`)).frames[0]
+    expect(`lattice` in structure && structure.lattice.pbc).toEqual(expected)
   })
 
   it.each<[string, string, number[][]]>([

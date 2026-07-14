@@ -129,15 +129,15 @@ const series_length = (srs: Pick<DensePointSeries, `x` | `y`>): number =>
 
 const padded_extent = (min: number, max: number, scale_type?: ScaleType): Vec2 => {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1]
-  if (get_scale_type_name(scale_type) === `log`) {
-    if (min === max) return [min / Math.sqrt(10), max * Math.sqrt(10)]
-    const transform = scale_bin_transform(scale_type)
-    const t_min = transform.forward(min)
-    const t_max = transform.forward(max)
-    const padding = (t_max - t_min) * 0.05
-    return [transform.inverse(t_min - padding), transform.inverse(t_max + padding)]
+  const log_scale = get_scale_type_name(scale_type) === `log`
+  if (min === max) {
+    return log_scale ? [min / Math.sqrt(10), max * Math.sqrt(10)] : [min - 0.5, max + 0.5]
   }
-  if (min === max) return [min - 0.5, max + 0.5]
+  if (log_scale) {
+    const { forward, inverse } = scale_bin_transform(scale_type)
+    const padding = (forward(max) - forward(min)) * 0.05
+    return [inverse(forward(min) - padding), inverse(forward(max) + padding)]
+  }
   const padding = (max - min) * 0.05
   return [min - padding, max + padding]
 }

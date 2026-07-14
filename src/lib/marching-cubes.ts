@@ -362,17 +362,12 @@ function compute_gradient(
     ? [wrap_grid_idx(iz - 1, nz), wrap_grid_idx(iz + 1, nz)]
     : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
 
-  const dx =
-    (grid[ix_p][iy_w][iz_w] - grid[ix_m][iy_w][iz_w]) *
-    (periodic ? 0.5 : 1 / Math.max(1, ix_p - ix_m))
-  const dy =
-    (grid[ix_w][iy_p][iz_w] - grid[ix_w][iy_m][iz_w]) *
-    (periodic ? 0.5 : 1 / Math.max(1, iy_p - iy_m))
-  const dz =
-    (grid[ix_w][iy_w][iz_p] - grid[ix_w][iy_w][iz_m]) *
-    (periodic ? 0.5 : 1 / Math.max(1, iz_p - iz_m))
-
-  return [-dx, -dy, -dz]
+  const scale = (lo: number, hi: number) => 1 / Math.max(1, periodic ? 2 : hi - lo)
+  return [
+    -(grid[ix_p][iy_w][iz_w] - grid[ix_m][iy_w][iz_w]) * scale(ix_m, ix_p),
+    -(grid[ix_w][iy_p][iz_w] - grid[ix_w][iy_m][iz_w]) * scale(iy_m, iy_p),
+    -(grid[ix_w][iy_w][iz_p] - grid[ix_w][iy_w][iz_m]) * scale(iz_m, iz_p),
+  ]
 }
 
 // Main marching cubes algorithm (optimized version)
@@ -511,9 +506,9 @@ function marching_cubes_raw(
       fx * kx2 + fy * ky2 + fz * kz2 + position_offset[2],
     )
 
-    // Compute normal from grid gradient (skip if caller will compute from geometry)
+    // Transform index-space gradient → Cartesian covector (skip if normals disabled)
     if (normal_transform) {
-      const grid_gradient = compute_gradient(
+      const [gx, gy, gz] = compute_gradient(
         grid,
         ix + ox1,
         iy + oy1,
@@ -523,18 +518,15 @@ function marching_cubes_raw(
         nz,
         periodic,
       )
-      const fractional_gradient: Vec3 = [
-        grid_gradient[0] / inv_nx,
-        grid_gradient[1] / inv_ny,
-        grid_gradient[2] / inv_nz,
-      ]
-      const cartesian_normal = mat3x3_vec3_multiply(normal_transform, fractional_gradient)
-      const length = Math.hypot(...cartesian_normal)
-      const normal: Vec3 =
-        length > 1e-10
-          ? (cartesian_normal.map((component) => component / length) as Vec3)
-          : [0, 0, 1]
-      normals.push(normal[0], normal[1], normal[2])
+      const cartesian = mat3x3_vec3_multiply(normal_transform, [
+        gx / inv_nx,
+        gy / inv_ny,
+        gz / inv_nz,
+      ])
+      const length = Math.hypot(...cartesian)
+      if (length > 1e-10)
+        normals.push(cartesian[0] / length, cartesian[1] / length, cartesian[2] / length)
+      else normals.push(0, 0, 1)
     }
 
     cache[cache_idx] = vert_idx

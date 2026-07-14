@@ -1936,36 +1936,21 @@ describe(`make_nd_cache_key`, () => {
     expect(make_nd_cache_key([oxygen, li], true, -50, undefined)).toBe(base_key())
   })
 
-  test(`key changes when energy_per_atom changes independently of total energy`, () => {
-    const key_a = make_nd_cache_key(
-      [{ composition: { Li: 2 }, energy: -6, energy_per_atom: -3 }],
-      true,
-      -50,
-      undefined,
+  test.each([
+    {
+      label: `different energy_per_atom same total energy`,
+      a: { composition: { Li: 2 }, energy: -6, energy_per_atom: -3 },
+      b: { composition: { Li: 2 }, energy: -6, energy_per_atom: -2.5 },
+    },
+    {
+      label: `absent vs explicit energy_per_atom`,
+      a: { composition: { Li: 1 }, energy: -3 },
+      b: { composition: { Li: 1 }, energy: -3, energy_per_atom: -3 },
+    },
+  ])(`key changes for $label`, ({ a, b }) => {
+    expect(make_nd_cache_key([a], true, -50, undefined)).not.toBe(
+      make_nd_cache_key([b], true, -50, undefined),
     )
-    const key_b = make_nd_cache_key(
-      [{ composition: { Li: 2 }, energy: -6, energy_per_atom: -2.5 }],
-      true,
-      -50,
-      undefined,
-    )
-    expect(key_b).not.toBe(key_a)
-  })
-
-  test(`key distinguishes absent energy_per_atom from explicit value`, () => {
-    const absent = make_nd_cache_key(
-      [{ composition: { Li: 1 }, energy: -3 }],
-      true,
-      -50,
-      undefined,
-    )
-    const explicit = make_nd_cache_key(
-      [{ composition: { Li: 1 }, energy: -3, energy_per_atom: -3 }],
-      true,
-      -50,
-      undefined,
-    )
-    expect(explicit).not.toBe(absent)
   })
 
   test.each([

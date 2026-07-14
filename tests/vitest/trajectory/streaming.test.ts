@@ -228,18 +228,18 @@ describe(`Trajectory Streaming`, () => {
       const frame = (pbc_field: string): string => `1
 Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${pbc_field}
 Si 0 0 0`
-      const source = `${frame(` pbc="F F F"`)}\n${frame(` pbc="T F T"`)}`
-
       const loader = new TrajFrameReader(`pbc.extxyz`)
-      const frame_0 = await loader.load_frame(source, 0)
-      const frame_1 = await loader.load_frame(source, 1)
+      const source = `${frame(` pbc="F F F"`)}\n${frame(` pbc="T F T"`)}`
+      const lattice_pbc = async (idx: number) => {
+        const loaded = await loader.load_frame(source, idx)
+        expect(loaded?.structure && `lattice` in loaded.structure).toBe(true)
+        return loaded && `lattice` in loaded.structure
+          ? loaded.structure.lattice.pbc
+          : undefined
+      }
 
-      expect(
-        frame_0?.structure && `lattice` in frame_0.structure && frame_0.structure.lattice.pbc,
-      ).toEqual([false, false, false])
-      expect(
-        frame_1?.structure && `lattice` in frame_1.structure && frame_1.structure.lattice.pbc,
-      ).toEqual([true, false, true])
+      expect(await lattice_pbc(0)).toEqual([false, false, false])
+      expect(await lattice_pbc(1)).toEqual([true, false, true])
     })
   })
 
