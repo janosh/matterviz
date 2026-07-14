@@ -16,28 +16,42 @@ const has_species = (site: Crystal[`sites`][number], elem: string | undefined) =
 const sum_occu = (sites: Crystal[`sites`], elem: string | undefined) =>
   sites.reduce((sum, site) => sum + get_occu(site, elem), 0)
 
-// Symmetric ± lattice images on expanded PBC axes (positive-only supercell + min-image
-// can collapse distinct shells). Expanded axes disable PBC; short axes still min-image.
+// Symmetric ± lattice images on expanded PBC axes. Extents use reciprocal-axis norms
+// with search radius cutoff + cell diagonal (length-based ceil undercounts skewed cells).
 function build_rdf_neighbor_sites(
   structure: Crystal,
   pbc: Pbc,
   cutoff: number,
   auto_expand: boolean,
-  expansion_factor: number,
 ): { sites: Site[]; dist_pbc: Pbc; dist_lattice: Matrix3x3 } {
   const dist_lattice = structure.lattice.matrix
   if (!auto_expand) return { sites: structure.sites, dist_pbc: pbc, dist_lattice }
 
-  const { a, b, c } = calc_lattice_params(dist_lattice)
-  const extents = ([a, b, c] as const).map((len, axis) =>
-    pbc[axis] ? Math.max(0, Math.ceil((cutoff * expansion_factor) / len) - 1) : 0,
+  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = dist_lattice
+  let cell_diag = 0
+  for (let bits = 0; bits < 8; bits++) {
+    const [ua, ub, uc] = [bits & 1, (bits >> 1) & 1, (bits >> 2) & 1]
+    cell_diag = Math.max(
+      cell_diag,
+      Math.hypot(
+        ua * ax + ub * bx + uc * cx,
+        ua * ay + ub * by + uc * cy,
+        ua * az + ub * bz + uc * cz,
+      ),
+    )
+  }
+  const { reciprocal_axis_norms } = create_lattice_converters(dist_lattice)
+  const search_radius = cutoff + cell_diag
+  const extents = ([0, 1, 2] as const).map((axis) =>
+    pbc[axis]
+      ? Math.max(0, Math.ceil(search_radius * reciprocal_axis_norms[axis] - 1e-12))
+      : 0,
   ) as Vec3
 
   if (extents.every((extent) => extent === 0)) {
     return { sites: structure.sites, dist_pbc: pbc, dist_lattice }
   }
 
-  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = dist_lattice
   const sites: Site[] = []
   for (let ia = -extents[0]; ia <= extents[0]; ia++) {
     for (let ib = -extents[1]; ib <= extents[1]; ib++) {
@@ -68,14 +82,12 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     cutoff = 15,
     n_bins = 75,
     auto_expand = true,
-    expansion_factor = 2.0,
   } = options
-  const { pbc = [true, true, true] } = options
+  const pbc = options.pbc ?? structure.lattice?.pbc ?? [true, true, true]
   if (cutoff <= 0 || n_bins <= 0) {
     throw new Error(`cutoff and n_bins must be positive`)
   }
 
-  // Validate structure has lattice
   if (!structure.lattice?.matrix) {
     throw new Error(`Crystal must have a lattice for RDF calculation`)
   }
@@ -84,7 +96,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     sites: neighbor_sites,
     dist_pbc,
     dist_lattice,
-  } = build_rdf_neighbor_sites(structure, pbc, cutoff, auto_expand, expansion_factor)
+  } = build_rdf_neighbor_sites(structure, pbc, cutoff, auto_expand)
 
   const bin_size = cutoff / n_bins
   const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)

@@ -8,7 +8,7 @@ import {
   create_trajectory_frame,
   iter_xyz_frames,
 } from '$lib/trajectory/helpers'
-import { traj_warn } from './diagnostics'
+import { get_traj_parse_warnings, traj_warn } from './diagnostics'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 // Resolve species/pos/forces column offsets from an extxyz Properties string of
@@ -170,9 +170,13 @@ export function build_xyz_frame(
   const { step, properties } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
   const parsed_pbc = parse_extxyz_pbc(comment)
-  if (parsed_pbc === undefined && /\bpbc\s*=/iu.test(comment)) {
+  if (
+    parsed_pbc === undefined &&
+    /\bpbc\s*=/iu.test(comment) &&
+    !get_traj_parse_warnings().some((msg) => msg.includes(`Invalid EXTXYZ pbc`))
+  ) {
     traj_warn(
-      `Invalid EXTXYZ pbc in ${opts.frame_label}; defaulting to fully periodic [T, T, T]`,
+      `Invalid EXTXYZ pbc (first seen in ${opts.frame_label}); defaulting to fully periodic [T, T, T]`,
     )
   }
   const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)

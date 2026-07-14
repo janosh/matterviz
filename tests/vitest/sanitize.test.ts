@@ -285,22 +285,27 @@ const without_browser_dom = async <T>(
 }
 
 describe(`sanitizers without a browser DOM`, () => {
-  test(`preserves formula HTML across awaited SSR path`, async () => {
+  test(`allowlists formula HTML on SSR (no raw passthrough)`, async () => {
     await without_browser_dom(async ({ sanitize_html: sanitize }) => {
       expect(globalThis.window).toBeUndefined()
       await Promise.resolve()
       expect(globalThis.window).toBeUndefined()
       expect(sanitize(`Li<sub>2</sub>O`)).toBe(`Li<sub>2</sub>O`)
+      expect(sanitize(`Li<sub>2</sub>O<script>alert(1)</script>`)).toBe(`Li<sub>2</sub>O`)
     })
     expect(globalThis.window).toBeDefined()
   })
 
   test.each([`sanitize_svg`, `sanitize_icon_svg`] as const)(
-    `%s returns markup unchanged when DOMPurify is unavailable`,
+    `%s strips XSS on SSR instead of returning markup unchanged`,
     async (name) => {
-      const payload = `<path d="M0 0" />`
       await without_browser_dom((sanitizers) => {
-        expect(sanitizers[name](payload)).toBe(payload)
+        expect(sanitizers[name](`<path d="M0 0" /><script>alert(1)</script>`)).not.toContain(
+          `script`,
+        )
+        expect(sanitizers[name](`<path d="M0 0" onclick="alert(1)"></path>`)).not.toContain(
+          `onclick`,
+        )
       })
     },
   )

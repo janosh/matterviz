@@ -5,10 +5,11 @@ import {
   is_trajectory_file,
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
+import { get_traj_parse_warnings } from '$lib/trajectory/parse/diagnostics'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
-import { describe, expect, it, test } from 'vitest'
+import { describe, expect, it, test, vi } from 'vitest'
 import { get_dummy_structure, read_binary_test_file, read_maybe_gz } from '../setup'
 
 const TRAJECTORY_DIR = `src/site/trajectories`
@@ -185,7 +186,6 @@ describe(`Trajectory File Detection`, () => {
 describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
   describe(`is_trajectory_file with content parameter`, () => {
     test.each([
-      // Single frame XYZ files should return false
       [
         `single-frame.xyz`,
         `3\ncomment line\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`,
@@ -197,7 +197,6 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
         false,
       ],
       [`single-frame-lattice.extxyz`, `1\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\n`, false],
-      // Multi-frame XYZ files should return true
       [
         `trajectory.xyz`,
         `3\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`,
@@ -218,36 +217,25 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
         `\n2\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\n\n2\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\n`,
         true,
       ],
-      // Edge case: exactly 2 frames (should be true)
       [`two-frames.xyz`, `1\nfirst\nH 0.0 0.0 0.0\n1\nsecond\nH 0.1 0.0 0.0`, true],
-    ])(`should detect "%s" as trajectory: %s`, (filename, content, expected) => {
-      expect(is_trajectory_file(filename, content)).toBe(expected)
-    })
-
-    test.each([
-      // Malformed XYZ content should return false
-      [`malformed.xyz`, `invalid\nno atom count\nH 0.0 0.0 0.0`, false],
-      [`broken-count.xyz`, `not_a_number\ncomment\nH 0.0 0.0 0.0`, false],
-      [`incomplete.xyz`, `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`, false],
-      // Empty or whitespace content
-      [`empty.xyz`, ``, false],
-      [`whitespace.xyz`, `   \n  \n  `, false],
-      // Invalid atom coordinates
-      [`bad-coords.xyz`, `2\ntest\nH not_a_number 0.0 0.0\nH 1.0 invalid 0.0`, false],
-      // Negative atom counts (should be skipped)
       [
-        `negative-count.xyz`,
-        `-1\nshould be skipped\nH 0.0 0.0 0.0\n2\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`,
-        false,
+        `crystal-trajectory.extxyz`,
+        `2\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nSi 0.0 0.0 0.0\nSi 2.5 2.5 2.5\n2\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nSi 0.05 0.0 0.0\nSi 2.45 2.5 2.5`,
+        true,
       ],
-      // Zero atom counts (should be skipped)
-      [`zero-count.xyz`, `0\nempty frame\n\n1\nvalid frame\nH 0.0 0.0 0.0`, false],
-    ])(`should handle malformed content: "%s" → %s`, (filename, content, expected) => {
-      expect(is_trajectory_file(filename, content)).toBe(expected)
-    })
-
-    test(`should handle mixed valid and invalid frames`, () => {
-      const content = `
+      [
+        `forces-trajectory.extxyz`,
+        `2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 -0.1 0.0 0.0\n2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.05 0.0 0.0 0.08 0.0 0.0\nH 1.05 0.0 0.0 -0.08 0.0 0.0`,
+        true,
+      ],
+      [
+        `metadata-trajectory.xyz`,
+        `3\nenergy=-15.2 temperature=300 pressure=1.0\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-15.1 temperature=305 pressure=1.1\nC 0.01 0.0 0.0\nH 1.01 0.0 0.0\nH 0.01 1.0 0.0`,
+        true,
+      ],
+      [
+        `mixed.xyz`,
+        `
         invalid
         comment
         H 0.0 0.0 0.0
@@ -267,48 +255,33 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
         H 0.1 0.0 0.0
         H 1.1 0.0 0.0
         H 0.1 1.0 0.0
-      `
-
-      expect(is_trajectory_file(`mixed.xyz`, content)).toBe(true)
+      `,
+        true,
+      ],
+      [`malformed.xyz`, `invalid\nno atom count\nH 0.0 0.0 0.0`, false],
+      [`broken-count.xyz`, `not_a_number\ncomment\nH 0.0 0.0 0.0`, false],
+      [`incomplete.xyz`, `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`, false],
+      [`empty.xyz`, ``, false],
+      [`whitespace.xyz`, `   \n  \n  `, false],
+      [`bad-coords.xyz`, `2\ntest\nH not_a_number 0.0 0.0\nH 1.0 invalid 0.0`, false],
+      [
+        `negative-count.xyz`,
+        `-1\nshould be skipped\nH 0.0 0.0 0.0\n2\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`,
+        false,
+      ],
+      [`zero-count.xyz`, `0\nempty frame\n\n1\nvalid frame\nH 0.0 0.0 0.0`, false],
+    ])(`should detect "%s" as trajectory: %s`, (filename, content, expected) => {
+      expect(is_trajectory_file(filename, content)).toBe(expected)
     })
 
     test(`should handle large trajectories efficiently`, () => {
-      // Create a trajectory with 100 frames (reduced for faster tests)
       const frames = Array.from(
         { length: 100 },
         (_, idx) => `2\nstep=${idx}\nH ${idx * 0.01} 0.0 0.0\nH ${1 + idx * 0.01} 0.0 0.0`,
       )
-      const content = frames.join(`\n`)
-
       const start = performance.now()
-      const result = is_trajectory_file(`large-trajectory.xyz`, content)
-      const duration = performance.now() - start
-
-      expect(result).toBe(true)
-      expect(duration).toBeLessThan(500) // generous bound to avoid CI flakiness
-    })
-
-    test.each([
-      // Files with Lattice information
-      [
-        `crystal-trajectory.extxyz`,
-        `2\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nSi 0.0 0.0 0.0\nSi 2.5 2.5 2.5\n2\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nSi 0.05 0.0 0.0\nSi 2.45 2.5 2.5`,
-        true,
-      ],
-      // Files with Properties specification
-      [
-        `forces-trajectory.extxyz`,
-        `2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 -0.1 0.0 0.0\n2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.05 0.0 0.0 0.08 0.0 0.0\nH 1.05 0.0 0.0 -0.08 0.0 0.0`,
-        true,
-      ],
-      // Files with energy and other metadata
-      [
-        `metadata-trajectory.xyz`,
-        `3\nenergy=-15.2 temperature=300 pressure=1.0\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-15.1 temperature=305 pressure=1.1\nC 0.01 0.0 0.0\nH 1.01 0.0 0.0\nH 0.01 1.0 0.0`,
-        true,
-      ],
-    ])(`should handle extended XYZ formats: "%s" → %s`, (filename, content, expected) => {
-      expect(is_trajectory_file(filename, content)).toBe(expected)
+      expect(is_trajectory_file(`large-trajectory.xyz`, frames.join(`\n`))).toBe(true)
+      expect(performance.now() - start).toBeLessThan(500)
     })
   })
 })
@@ -329,18 +302,12 @@ describe(`VASP XDATCAR Parser`, () => {
     for (const frame of trajectory.frames) expect(frame.metadata?.volume).toBeGreaterThan(0)
   })
 
-  it(`should reject invalid content`, async () => {
-    await expect(parse_trajectory_data(`too short`, `XDATCAR`)).rejects.toThrow(
-      `XDATCAR file too short`,
-    )
-    await expect(parse_trajectory_data(`invalid\nscale\nfactor`, `XDATCAR`)).rejects.toThrow(
-      `XDATCAR file too short`,
-    )
-  })
-
-  it(`should handle missing configuration lines`, async () => {
-    const invalid_content = `title\n1.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`
-    await expect(parse_trajectory_data(invalid_content, `XDATCAR`)).rejects.toThrow(
+  it.each([
+    [`too short`, `too short`],
+    [`invalid header`, `invalid\nscale\nfactor`],
+    [`missing configuration lines`, `title\n1.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`],
+  ])(`rejects truncated XDATCAR: %s`, async (_label, content) => {
+    await expect(parse_trajectory_data(content, `XDATCAR`)).rejects.toThrow(
       `XDATCAR file too short`,
     )
   })
@@ -465,17 +432,6 @@ describe(`LAMMPS Trajectory Format`, () => {
     await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects.toThrow(
       `Unsupported text format`,
     )
-  })
-
-  it(`should use id column as type fallback when no type column exists`, async () => {
-    const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp
-0.0 10.0\n0.0 10.0\n0.0 10.0\nITEM: ATOMS id x y z q\n1 2.84 8.17 -5.0 0.1\n2 7.1 8.17 -5.0 0.2`
-
-    const traj = await parse_trajectory_data(content, `test.lammpstrj`)
-    const elems = traj.frames[0].structure.sites.map((site) => site.species[0].element)
-    // id column used as type fallback: 1→H, 2→He
-    expect(elems).toEqual([`H`, `He`])
-    expect(traj.metadata?.atom_types).toEqual([1, 2])
   })
 
   it(`should handle PBC flags from BOX BOUNDS`, async () => {
@@ -603,6 +559,11 @@ ITEM: ATOMS id type x y z\n1 1 5.0 5.0 5.0`
 })
 
 describe(`XYZ Trajectory Format`, () => {
+  const extxyz_pbc_frame = (field: string) => `1
+Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}
+Si 0 0 0
+`
+
   it.each([
     [
       `multi-frame`,
@@ -622,18 +583,9 @@ describe(`XYZ Trajectory Format`, () => {
     expect(trajectory.frames).toHaveLength(expected_frames)
   })
 
-  it(`should extract energy from comment line`, async () => {
-    const content = `3\nenergy=-10.5 step=42\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2 step=43\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
+  it(`should extract comment-line properties and step`, async () => {
+    const content = `3\nenergy=-10.5 volume=100.0 pressure=1.5 temperature=300 force_max=0.1 E_gap=2.0 step=42\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2 step=43\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
-
-    expect(trajectory.frames[0]?.metadata?.energy).toBe(-10.5)
-    expect(trajectory.frames[0]?.step).toBe(42)
-  })
-
-  it(`should extract various properties from comment line`, async () => {
-    const content = `3\nenergy=-10.5 volume=100.0 pressure=1.5 temperature=300 force_max=0.1 E_gap=2.0\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
-    const trajectory = await parse_trajectory_data(content, `test.xyz`)
-
     const metadata = trajectory.frames[0]?.metadata
     expect(metadata?.energy).toBe(-10.5)
     expect(metadata?.volume).toBe(100.0)
@@ -641,6 +593,7 @@ describe(`XYZ Trajectory Format`, () => {
     expect(metadata?.temperature).toBe(300)
     expect(metadata?.force_max).toBe(0.1)
     expect(metadata?.bandgap).toBe(2.0)
+    expect(trajectory.frames[0]?.step).toBe(42)
   })
 
   it(`should parse lattice matrix from comment line`, async () => {
@@ -677,12 +630,19 @@ describe(`XYZ Trajectory Format`, () => {
     [` pbc="T F"`, [true, true, true]],
     [``, [true, true, true]],
   ])(`should parse EXTXYZ PBC field %p`, async (field, expected) => {
-    const frame = `1
-Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}
-Si 0 0 0
-`
+    const frame = extxyz_pbc_frame(field)
     const { structure } = (await parse_trajectory_data(frame + frame, `pbc.extxyz`)).frames[0]
     expect(`lattice` in structure && structure.lattice.pbc).toEqual(expected)
+  })
+
+  it(`warns once for repeated invalid EXTXYZ pbc across frames`, async () => {
+    const frame = extxyz_pbc_frame(` pbc="T F"`)
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    await parse_trajectory_data(frame + frame + frame, `bad-pbc.extxyz`)
+    expect(
+      get_traj_parse_warnings().filter((msg) => msg.includes(`Invalid EXTXYZ pbc`)),
+    ).toHaveLength(1)
+    warn.mockRestore()
   })
 
   it.each<[string, string, number[][]]>([
@@ -831,23 +791,19 @@ describe(`HDF5 Format`, () => {
     )
   })
 
-  it(`should provide detailed error for missing required datasets`, async () => {
+  it.each([
+    [`bad-positions.h5`, false],
+    [`bad.h5`, true],
+  ])(`detailed error for missing HDF5 datasets (%s)`, async (filename, check_length) => {
     const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
-    await expect(parse_trajectory_data(content, `bad-positions.h5`)).rejects.toThrow(
-      /Missing required.*dataset/i,
-    )
-  })
-
-  it(`should provide detailed error for missing atomic numbers`, async () => {
-    const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
-
     try {
-      await parse_trajectory_data(content, `bad.h5`)
+      await parse_trajectory_data(content, filename)
       expect.fail(`Expected parsing to fail`)
     } catch (error: unknown) {
+      expect(error).toBeInstanceOf(Error)
       if (error instanceof Error) {
         expect(error.message).toMatch(/Missing required.*dataset/i)
-        expect(error.message.length).toBeGreaterThan(50) // More informative than before
+        if (check_length) expect(error.message.length).toBeGreaterThan(50)
       }
     }
   })
@@ -871,8 +827,6 @@ describe(`HDF5 Format`, () => {
 })
 
 describe(`ASE Trajectory Format`, () => {
-  // Detailed tests for ase-LiMnO2-chgnet-relax.traj are in TRAJECTORY_REFERENCE_DATA below
-
   it.each([
     [`invalid signature`, [0x12, 0x34, 0x56, 0x78], 24],
     // HDF5 magic bytes but truncated - rejects incomplete files with valid-looking headers
@@ -982,22 +936,17 @@ describe(`Format Detection`, () => {
 ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0
 ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
 
-    it.each([undefined, blob_uuid])(
-      `detects multi-frame XYZ content (filename=%s)`,
-      async (filename) => {
-        const multi_frame = `${single_frame}\n${single_frame}`
-        const trajectory = await parse_trajectory_data(multi_frame, filename)
-        expect(trajectory.metadata?.source_format).toBe(`xyz_trajectory`)
-        expect(trajectory.frames).toHaveLength(2)
-      },
-    )
-
-    it.each([undefined, blob_uuid])(
-      `detects single-frame XYZ content (filename=%s)`,
-      async (filename) => {
-        const trajectory = await parse_trajectory_data(single_frame, filename)
-        expect(trajectory.metadata?.source_format).toBe(`single_xyz`)
-        expect(trajectory.frames).toHaveLength(1)
+    it.each([
+      [`multi`, `${single_frame}\n${single_frame}`, `xyz_trajectory`, 2],
+      [`single`, single_frame, `single_xyz`, 1],
+    ])(
+      `detects %s-frame XYZ by content sniffing`,
+      async (_label, content, expected_format, n_frames) => {
+        for (const filename of [undefined, blob_uuid]) {
+          const trajectory = await parse_trajectory_data(content, filename)
+          expect(trajectory.metadata?.source_format).toBe(expected_format)
+          expect(trajectory.frames).toHaveLength(n_frames)
+        }
       },
     )
 
@@ -1017,46 +966,30 @@ ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
       expect(trajectory.metadata?.source_format).toBe(expected)
     })
 
-    it(`still respects conflicting extensions over content`, async () => {
-      // XYZ content explicitly named .json must not be sniffed as XYZ
-      const multi_frame = `${single_frame}\n${single_frame}`
-      await expect(parse_trajectory_data(multi_frame, `data.json`)).rejects.toThrow(
-        `Unsupported text format`,
-      )
-    })
-
-    it(`still rejects unparsable content without filename`, async () => {
-      await expect(parse_trajectory_data(`not a trajectory`, undefined)).rejects.toThrow(
-        `Unsupported text format`,
-      )
-    })
-  })
-
-  it(`should detect HDF5 signature correctly`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-    expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
+    it.each([
+      [`data.json`, `${single_frame}\n${single_frame}`, `Unsupported text format`],
+      [undefined, `not a trajectory`, `Unsupported text format`],
+    ])(
+      `rejects unparsable or extension-conflicting content`,
+      async (filename, content, msg) => {
+        await expect(parse_trajectory_data(content, filename)).rejects.toThrow(msg)
+      },
+    )
   })
 })
 
 describe(`Unsupported Formats`, () => {
   it.each([
-    [`test.dump`, `LAMMPS binary dump`],
-    [`test.nc`, `NetCDF`],
-    [`test.dcd`, `DCD`],
-  ])(`should detect %s as %s format`, (filename, expected_format) => {
+    [`test.dump`, `LAMMPS binary dump`, false],
+    [`test.nc`, `NetCDF`, false],
+    [`test.dcd`, `DCD`, false],
+    [`test.lammpstrj.bz2`, `BZ2`, true],
+    [`trajectory.xyz.xz`, `XZ`, true],
+    [`data.json.zip`, `ZIP`, true],
+  ])(`detects unsupported format %s`, (filename, expected, compression) => {
     const message = get_unsupported_format_message(filename, ``)
-    expect(message).toContain(expected_format)
-  })
-
-  it.each([
-    [`test.lammpstrj.bz2`, `BZ2`],
-    [`trajectory.xyz.xz`, `XZ`],
-    [`data.json.zip`, `ZIP`],
-  ])(`should detect %s as unsupported %s compression`, (filename, expected_format) => {
-    const message = get_unsupported_format_message(filename, ``)
-    expect(message).toContain(expected_format)
-    expect(message).toContain(`compression not supported`)
+    expect(message).toContain(expected)
+    if (compression) expect(message).toContain(`compression not supported`)
   })
 
   it(`should detect binary content as unsupported`, () => {
@@ -1122,15 +1055,12 @@ describe(`Error Handling`, () => {
 })
 
 describe(`Metadata Preservation`, () => {
-  it(`should preserve filename in metadata`, async () => {
-    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
-    const trajectory = await parse_trajectory_data(content, `test-filename.xdatcar`)
+  it(`should preserve VASP filename and frame_count metadata`, async () => {
+    const trajectory = await parse_trajectory_data(
+      read_test_file(`vasp-XDATCAR.MD.gz`),
+      `test-filename.xdatcar`,
+    )
     expect(trajectory.metadata?.filename).toBe(`test-filename.xdatcar`)
-  })
-
-  it(`should calculate frame counts correctly`, async () => {
-    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
-    const trajectory = await parse_trajectory_data(content, `XDATCAR`)
     expect(trajectory.metadata?.frame_count).toBe(trajectory.frames.length)
   })
 

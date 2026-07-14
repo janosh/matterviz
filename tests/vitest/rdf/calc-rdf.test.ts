@@ -250,6 +250,26 @@ describe(`calculate_rdf`, () => {
     expect(all_pair.g_r).toEqual(direct.g_r)
   })
 
+  test(`omitted pbc option defaults to structure.lattice.pbc`, () => {
+    const open = create_test_structure(
+      5,
+      [`Si`, `Si`],
+      [
+        [0, 0, 0],
+        [0.5, 0, 0],
+      ],
+    )
+    open.lattice.pbc = [false, false, false]
+    const opts = { cutoff: 8, n_bins: 40 }
+    const from_lattice = calculate_rdf(open, opts)
+    expect(from_lattice.g_r).toEqual(
+      calculate_rdf(open, { ...opts, pbc: open.lattice.pbc }).g_r,
+    )
+    expect(from_lattice.g_r).not.toEqual(
+      calculate_rdf(open, { ...opts, pbc: [true, true, true] }).g_r,
+    )
+  })
+
   // Guards against input mutation (e.g. by auto-expand supercell construction)
   test(`repeated calls on the same structure give identical results`, () => {
     const result1 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })
@@ -402,29 +422,17 @@ describe(`calculate_all_pair_rdfs`, () => {
     }
   })
 
-  test(`expansion_factors 1.5–3 yield similar, physical Pd RDFs`, () => {
+  test(`auto_expand yields physical Pd RDF`, () => {
     const [cutoff, n_bins] = [10, 100]
-    const factors = [1.5, 2.0, 2.5, 3.0]
-    const results = factors.map((expansion_factor) =>
-      calculate_rdf(pd_structure, { cutoff, n_bins, auto_expand: true, expansion_factor }),
-    )
+    const result = calculate_rdf(pd_structure, { cutoff, n_bins, auto_expand: true })
+    check_basic_rdf_properties(result.r, result.g_r, n_bins)
     const zero_bins = Math.floor(2.0 / (cutoff / n_bins)) // Pd NN ~2.75 Å
-    const sums = results.map((result) => {
-      check_basic_rdf_properties(result.r, result.g_r, n_bins)
-      const max_g_r = Math.max(...result.g_r)
-      expect(max_g_r).toBeGreaterThan(0)
-      expect(max_g_r).toBeLessThan(50)
-      expect(result.g_r.slice(0, zero_bins).every((val) => val === 0)).toBe(true)
-      return result.g_r.reduce((sum, val) => sum + val, 0)
-    })
-    const avg_sum = sums.reduce((sum, val) => sum + val, 0) / sums.length
-    for (const sum of sums) expect(Math.abs(sum - avg_sum) / avg_sum).toBeLessThan(0.2)
+    const max_g_r = Math.max(...result.g_r)
+    expect(max_g_r).toBeGreaterThan(0)
+    expect(max_g_r).toBeLessThan(50)
+    expect(result.g_r.slice(0, zero_bins).every((val) => val === 0)).toBe(true)
 
-    const [all_pair] = calculate_all_pair_rdfs(pd_structure, {
-      cutoff,
-      n_bins: 50,
-      expansion_factor: 2.5,
-    })
+    const [all_pair] = calculate_all_pair_rdfs(pd_structure, { cutoff, n_bins: 50 })
     expect(all_pair.element_pair).toEqual([`Pd`, `Pd`])
     check_basic_rdf_properties(all_pair.r, all_pair.g_r, 50)
   })
