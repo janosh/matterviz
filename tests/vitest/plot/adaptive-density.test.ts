@@ -153,6 +153,13 @@ describe(`adaptive density utilities`, () => {
     })
   })
 
+  it(`falls back to a positive domain when no point renders on a log axis`, () => {
+    expect(series_extents([{ x: [-10, -1], y: [1, 2] }], `log`, `linear`)).toEqual({
+      x: [1, 10],
+      y: [0, 1],
+    })
+  })
+
   it(`does not pick outside visible ranges or radius`, () => {
     const hidden = pick_from_index(
       build_pick_index(series, { ...pick_options, radius_px: 30 }),

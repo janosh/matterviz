@@ -128,8 +128,9 @@ const series_length = (srs: Pick<DensePointSeries, `x` | `y`>): number =>
   Math.min(srs.x.length, srs.y.length)
 
 const padded_extent = (min: number, max: number, scale_type?: ScaleType): Vec2 => {
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1]
   const log_scale = get_scale_type_name(scale_type) === `log`
+  // No renderable points: fall back to a domain the scale can actually map (log needs > 0)
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return log_scale ? [1, 10] : [0, 1]
   if (min === max) {
     return log_scale ? [min / Math.sqrt(10), max * Math.sqrt(10)] : [min - 0.5, max + 0.5]
   }

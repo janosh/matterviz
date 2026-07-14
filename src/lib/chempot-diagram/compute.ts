@@ -89,15 +89,11 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
     const existing = by_formula.get(key)
     // Prefer lower EPA; on ties prefer hull-eligible entries so nd_cache keys (order-
     // normalized) cannot return domains computed from a different exclude_from_hull winner.
-    if (
-      !existing ||
-      epa < existing.epa ||
-      (epa === existing.epa &&
-        Number(entry.exclude_from_hull ?? false) <
-          Number(existing.entry.exclude_from_hull ?? false))
-    ) {
-      by_formula.set(key, { entry, epa })
-    }
+    const wins_tie =
+      epa === existing?.epa &&
+      !entry.exclude_from_hull &&
+      Boolean(existing?.entry.exclude_from_hull)
+    if (!existing || epa < existing.epa || wins_tie) by_formula.set(key, { entry, epa })
   }
 
   const min_entries = Array.from(by_formula.values(), ({ entry }) => entry)

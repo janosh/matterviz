@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3 } from '$lib/math'
 import {
   calc_lattice_params,
   create_lattice_converters,
@@ -38,7 +38,6 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 
   let lattice: Matrix3x3 = structure.lattice.matrix
   let { sites } = structure
-  let center_sites = sites
 
   // Expand structure if needed to ensure shortest lattice vector is expansion_factor× the cutoff
   // This prevents artificial close contacts at cell boundaries when using PBC
@@ -46,12 +45,11 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   if (auto_expand) {
     const { a, b, c } = calc_lattice_params(lattice)
     const min_size = cutoff * expansion_factor
-    const [n_a, n_b, n_c] = ([a, b, c] as Vec3).map((length, axis) =>
-      pbc[axis] ? Math.ceil(min_size / length) : 1,
-    ) as Vec3
+    const [n_a, n_b, n_c] = [a, b, c].map((len, axis) =>
+      pbc[axis] ? Math.ceil(min_size / len) : 1,
+    )
 
     if (n_a > 1 || n_b > 1 || n_c > 1) {
-      // Keep original sites as RDF centers; expanded sites are periodic neighbor images only.
       // Keep PBC: min-image is exact once every lattice vector ≥ 2× cutoff.
       const expanded = make_supercell(structure, [n_a, n_b, n_c], false)
       sites = expanded.sites
@@ -65,8 +63,8 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 
   if (sites.length === 0) return { r, g_r }
 
-  // Get occupancy weight for a site-species pair (supports mixed occupancy)
-  const centers = center_sites.filter((site) => has_species(site, center_species))
+  // Centers are always the original sites; expanded sites only serve as periodic neighbor images
+  const centers = structure.sites.filter((site) => has_species(site, center_species))
   const neighbors = sites.filter((site) => has_species(site, neighbor_species))
 
   const element_pair =
