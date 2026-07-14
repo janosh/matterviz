@@ -259,8 +259,9 @@ describe(`MatterViz Extension`, () => {
       )
 
       expect(trajectory_keyword_pattern).toBeDefined()
-      expect(trajectory_keyword_pattern?.match(/\{(?<keywords>[^}]+)\}/)?.groups?.keywords)
-        .toBeDefined()
+      expect(
+        trajectory_keyword_pattern?.match(/\{(?<keywords>[^}]+)\}/)?.groups?.keywords,
+      ).toBeDefined()
       expect(
         trajectory_keyword_pattern
           ?.match(/\{(?<keywords>[^}]+)\}/)

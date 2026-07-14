@@ -102,40 +102,6 @@
     }
   })
 
-  // Generic reset function using simple object key access
-  function reset_property(prop: keyof typeof defaults): void {
-    const default_value = defaults[prop]
-
-    // Use simple assignment based on property name
-    if (prop === `tile_gap`) tile_gap = default_value as string
-    else if (prop === `symbol_font_size`) symbol_font_size = default_value as number
-    else if (prop === `number_font_size`) number_font_size = default_value as number
-    else if (prop === `name_font_size`) name_font_size = default_value as number
-    else if (prop === `value_font_size`) value_font_size = default_value as number
-    else if (prop === `tooltip_font_size`) tooltip_font_size = default_value as number
-    else if (prop === `tooltip_bg_color`) tooltip_bg_color = default_value as string
-    else if (prop === `tile_border_radius`) tile_border_radius = Number(default_value)
-    else if (prop === `inner_transition_offset`) {
-      inner_transition_offset = Number(default_value)
-    } else if (prop === `tile_font_color`) tile_font_color = String(default_value)
-    else if (prop === `tile_transition_duration`) {
-      tile_transition_duration = Number(default_value)
-    } else if (prop === `hover_border_width`) {
-      hover_border_width = Number(default_value)
-    } else if (prop === `symbol_font_weight`) {
-      symbol_font_weight = Number(default_value)
-    } else if (prop === `number_font_weight`) {
-      number_font_weight = Number(default_value)
-    } else if (prop === `tooltip_border_radius`) {
-      tooltip_border_radius = Number(default_value)
-    } else if (prop === `tooltip_padding`) tooltip_padding = String(default_value)
-    else if (prop === `tooltip_line_height`) {
-      tooltip_line_height = Number(default_value)
-    } else if (prop === `tooltip_text_align`) {
-      tooltip_text_align = String(default_value)
-    }
-  }
-
   // Check if settings in each section have been modified from defaults
   let category_colors_modified = $derived(
     Object.keys(colors.category).some(
@@ -247,21 +213,23 @@
     <label>
       <span>Gap between tiles</span>
       <input type="text" bind:value={tile_gap} placeholder="0.3cqw" />
-      <button onclick={() => reset_property(`tile_gap`)}>reset</button>
+      <button onclick={() => (tile_gap = defaults.tile_gap)}>reset</button>
     </label>
 
     <label>
       <span>Border radius (pt)</span>
       <input type="range" min="0" max="10" step="0.5" bind:value={tile_border_radius} />
       <input type="number" min="0" max="10" step="0.5" bind:value={tile_border_radius} />
-      <button onclick={() => reset_property(`tile_border_radius`)}>reset</button>
+      <button onclick={() => (tile_border_radius = defaults.tile_border_radius)}>reset</button>
     </label>
 
     <label>
       <span>Inner transition offset</span>
       <input type="range" min="0.1" max="2" step="0.1" bind:value={inner_transition_offset} />
       <input type="number" min="0.1" max="2" step="0.1" bind:value={inner_transition_offset} />
-      <button onclick={() => reset_property(`inner_transition_offset`)}>reset</button>
+      <button onclick={() => (inner_transition_offset = defaults.inner_transition_offset)}
+        >reset</button
+      >
     </label>
 
     <label>
@@ -274,20 +242,22 @@
         step="0.1"
         bind:value={tile_transition_duration}
       />
-      <button onclick={() => reset_property(`tile_transition_duration`)}>reset</button>
+      <button onclick={() => (tile_transition_duration = defaults.tile_transition_duration)}
+        >reset</button
+      >
     </label>
 
     <label>
       <span>Hover border width (px)</span>
       <input type="range" min="0" max="5" step="1" bind:value={hover_border_width} />
       <input type="number" min="0" max="5" step="1" bind:value={hover_border_width} />
-      <button onclick={() => reset_property(`hover_border_width`)}>reset</button>
+      <button onclick={() => (hover_border_width = defaults.hover_border_width)}>reset</button>
     </label>
 
     <label>
       <span>Font color</span>
       <input type="color" bind:value={tile_font_color} />
-      <button onclick={() => reset_property(`tile_font_color`)}>reset</button>
+      <button onclick={() => (tile_font_color = defaults.tile_font_color)}>reset</button>
     </label>
   </section>
 
@@ -303,42 +273,42 @@
       <span>Symbol size</span>
       <input type="range" min="20" max="80" step="2" bind:value={symbol_font_size} />
       <input type="number" min="20" max="80" step="2" bind:value={symbol_font_size} />
-      <button onclick={() => reset_property(`symbol_font_size`)}>reset</button>
+      <button onclick={() => (symbol_font_size = defaults.symbol_font_size)}>reset</button>
     </label>
 
     <label>
       <span>Number size</span>
       <input type="range" min="10" max="40" step="1" bind:value={number_font_size} />
       <input type="number" min="10" max="40" step="1" bind:value={number_font_size} />
-      <button onclick={() => reset_property(`number_font_size`)}>reset</button>
+      <button onclick={() => (number_font_size = defaults.number_font_size)}>reset</button>
     </label>
 
     <label>
       <span>Name size</span>
       <input type="range" min="6" max="24" step="1" bind:value={name_font_size} />
       <input type="number" min="6" max="24" step="1" bind:value={name_font_size} />
-      <button onclick={() => reset_property(`name_font_size`)}>reset</button>
+      <button onclick={() => (name_font_size = defaults.name_font_size)}>reset</button>
     </label>
 
     <label>
       <span>Value size</span>
       <input type="range" min="10" max="30" step="1" bind:value={value_font_size} />
       <input type="number" min="10" max="30" step="1" bind:value={value_font_size} />
-      <button onclick={() => reset_property(`value_font_size`)}>reset</button>
+      <button onclick={() => (value_font_size = defaults.value_font_size)}>reset</button>
     </label>
 
     <label>
       <span>Symbol weight</span>
       <input type="range" min="100" max="900" step="100" bind:value={symbol_font_weight} />
       <input type="number" min="100" max="900" step="100" bind:value={symbol_font_weight} />
-      <button onclick={() => reset_property(`symbol_font_weight`)}>reset</button>
+      <button onclick={() => (symbol_font_weight = defaults.symbol_font_weight)}>reset</button>
     </label>
 
     <label>
       <span>Number weight</span>
       <input type="range" min="100" max="900" step="100" bind:value={number_font_weight} />
       <input type="number" min="100" max="900" step="100" bind:value={number_font_weight} />
-      <button onclick={() => reset_property(`number_font_weight`)}>reset</button>
+      <button onclick={() => (number_font_weight = defaults.number_font_weight)}>reset</button>
     </label>
   </section>
 
@@ -354,33 +324,37 @@
       <span>Font size (px)</span>
       <input type="range" min="8" max="24" step="1" bind:value={tooltip_font_size} />
       <input type="number" min="8" max="24" step="1" bind:value={tooltip_font_size} />
-      <button onclick={() => reset_property(`tooltip_font_size`)}>reset</button>
+      <button onclick={() => (tooltip_font_size = defaults.tooltip_font_size)}>reset</button>
     </label>
 
     <label>
       <span>Background color</span>
       <input type="color" bind:value={tooltip_bg_color} />
-      <button onclick={() => reset_property(`tooltip_bg_color`)}>reset</button>
+      <button onclick={() => (tooltip_bg_color = defaults.tooltip_bg_color)}>reset</button>
     </label>
 
     <label>
       <span>Border radius (px)</span>
       <input type="range" min="0" max="20" step="1" bind:value={tooltip_border_radius} />
       <input type="number" min="0" max="20" step="1" bind:value={tooltip_border_radius} />
-      <button onclick={() => reset_property(`tooltip_border_radius`)}>reset</button>
+      <button onclick={() => (tooltip_border_radius = defaults.tooltip_border_radius)}
+        >reset</button
+      >
     </label>
 
     <label>
       <span>Padding</span>
       <input type="text" bind:value={tooltip_padding} placeholder="4px 6px" />
-      <button onclick={() => reset_property(`tooltip_padding`)}>reset</button>
+      <button onclick={() => (tooltip_padding = defaults.tooltip_padding)}>reset</button>
     </label>
 
     <label>
       <span>Line height</span>
       <input type="range" min="0.8" max="2" step="0.1" bind:value={tooltip_line_height} />
       <input type="number" min="0.8" max="2" step="0.1" bind:value={tooltip_line_height} />
-      <button onclick={() => reset_property(`tooltip_line_height`)}>reset</button>
+      <button onclick={() => (tooltip_line_height = defaults.tooltip_line_height)}
+        >reset</button
+      >
     </label>
 
     <label>
@@ -390,7 +364,7 @@
         <option value="center">Center</option>
         <option value="right">Right</option>
       </select>
-      <button onclick={() => reset_property(`tooltip_text_align`)}>reset</button>
+      <button onclick={() => (tooltip_text_align = defaults.tooltip_text_align)}>reset</button>
     </label>
   </section>
 </div>

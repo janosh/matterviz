@@ -98,7 +98,6 @@ describe(`SYM_ELEM_KIND_INFO`, () => {
 
 describe(`SymmetryElementControls`, () => {
   test(`renders one checkbox per PRESENT kind with counts, in display order`, () => {
-    document.body.innerHTML = ``
     mount(SymmetryElementControls, {
       target: document.body,
       props: { elements: SAMPLE_ELEMENTS },
@@ -117,7 +116,6 @@ describe(`SymmetryElementControls`, () => {
   })
 
   test(`default state checks only rotation axes`, () => {
-    document.body.innerHTML = ``
     mount(SymmetryElementControls, {
       target: document.body,
       props: { elements: SAMPLE_ELEMENTS },
@@ -129,7 +127,6 @@ describe(`SymmetryElementControls`, () => {
   })
 
   test(`toggling a checkbox updates the bound show_kinds (reassigned, not mutated)`, () => {
-    document.body.innerHTML = ``
     const initial: ShowSymmetryKinds = { rotation: true }
     let bound = initial
     mount(SymmetryElementControls, {
@@ -156,7 +153,6 @@ describe(`SymmetryElementControls`, () => {
   })
 
   test(`renders nothing for empty elements`, () => {
-    document.body.innerHTML = ``
     mount(SymmetryElementControls, { target: document.body, props: { elements: [] } })
     flushSync()
     expect(document.body.querySelector(`.sym-elem-controls`)).toBeNull()

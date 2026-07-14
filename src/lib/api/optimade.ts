@@ -167,16 +167,21 @@ export function detect_provider_from_slug(slug: string, providers: OptimadeProvi
   return providers.find((provider) => provider.id === prefix)?.id ?? ``
 }
 
+// Resolve a provider id to its versioned API base URL (throws on unknown provider)
+async function get_api_base(provider: string, providers: OptimadeProvider[]): Promise<string> {
+  const provider_config = providers.find((entry) => entry.id === provider)
+  if (!provider_config) throw new Error(`Unknown provider: ${provider}`)
+
+  const base_url = await resolve_provider_url(provider_config.attributes.base_url)
+  return base_url.endsWith(`/v1`) ? base_url : `${base_url}/v1`
+}
+
 export async function fetch_optimade_structure(
   structure_id: string,
   provider: string,
   providers: OptimadeProvider[],
 ): Promise<OptimadeStructure | null> {
-  const provider_config = providers.find((entry) => entry.id === provider)
-  if (!provider_config) throw new Error(`Unknown provider: ${provider}`)
-
-  const base_url = await resolve_provider_url(provider_config.attributes.base_url)
-  const api_base = base_url.endsWith(`/v1`) ? base_url : `${base_url}/v1`
+  const api_base = await get_api_base(provider, providers)
   const encoded_id = encode_structure_id(structure_id)
   const response = await fetch_with_cors_proxy(`${api_base}/structures/${encoded_id}`)
   const data = await response.json()
@@ -190,12 +195,11 @@ export async function fetch_suggested_structures(
   providers: OptimadeProvider[],
   limit: number = 12,
 ): Promise<OptimadeStructure[]> {
-  const provider_config = providers.find((entry) => entry.id === provider)
-  if (!provider_config) throw new Error(`Unknown provider: ${provider}`)
-
   try {
-    const base_url = await resolve_provider_url(provider_config.attributes.base_url)
-    const api_base = base_url.endsWith(`/v1`) ? base_url : `${base_url}/v1`
+    // Keep get_api_base inside try: suggestions are optional, so unknown providers and
+    // URL-resolution failures both soft-fail to []. Note: unknown provider threw
+    // pre-cleanup, which left the sole caller's loading state stuck on rejection.
+    const api_base = await get_api_base(provider, providers)
     const response = await fetch_with_cors_proxy(
       `${api_base}/structures?page_limit=${limit}&page_offset=0`,
     )

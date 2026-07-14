@@ -19,9 +19,13 @@
     color_range,
     symmetric = `auto`,
     contour_levels = 10,
+    contour_color = `currentColor`,
+    contour_width = 1,
+    flip_y = true,
     show_colorbar = true,
     colorbar_title = `Value`,
     canvas = $bindable(),
+    onrender,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     slice?: SliceResult | null
@@ -30,9 +34,18 @@
     color_range?: Vec2
     symmetric?: boolean | `auto`
     contour_levels?: number | number[]
+    contour_color?: string
+    contour_width?: number
+    flip_y?: boolean
     show_colorbar?: boolean
     colorbar_title?: string
     canvas?: HTMLCanvasElement
+    onrender?: (detail: {
+      canvas: HTMLCanvasElement
+      color_range: Vec2
+      contour_thresholds: number[]
+      slice: SliceResult
+    }) => void
   } = $props()
 
   let resolved_color_range = $derived<Vec2>(
@@ -41,14 +54,18 @@
   let contour_thresholds = $derived(
     resolve_contour_thresholds(resolved_color_range, contour_levels),
   )
-  let colorbar_colormap = $derived.by(() => {
+  let colorbar_color_scale = $derived.by(() => {
     const interpolator = get_d3_interpolator(colormap)
-    return resolved_color_range[0] <= resolved_color_range[1]
-      ? interpolator
-      : (value: number) => interpolator(1 - value)
+    const [range_start, range_end] = resolved_color_range
+    const span = range_end - range_start
+    return (value: number): string => {
+      const normalized =
+        span === 0 ? 0.5 : Math.max(0, Math.min(1, (value - range_start) / span))
+      return interpolator(normalized)
+    }
   })
   let image_data: ImageData | undefined
-  let render_generation = 0
+  let contour_values = new Float64Array()
   let aspect_ratio = $derived.by(() => {
     if (!slice) return 1
     const u_span = slice.u_range[1] - slice.u_range[0]
@@ -69,7 +86,7 @@
         ((point[0] - current_slice.u_range[0]) / u_span) * (current_slice.width - 1) + 0.5
       const sampled_y =
         ((point[1] - current_slice.v_range[0]) / v_span) * (current_slice.height - 1) + 0.5
-      const pixel_y = current_slice.height - sampled_y
+      const pixel_y = flip_y ? current_slice.height - sampled_y : sampled_y
       if (point_idx === 0) context.moveTo(pixel_x, pixel_y)
       else context.lineTo(pixel_x, pixel_y)
     }
@@ -77,39 +94,43 @@
     context.clip()
   }
 
-  async function draw_contours(
-    context: CanvasRenderingContext2D,
-    current_slice: SliceResult,
-    generation: number,
-  ): Promise<void> {
+  function draw_contours(context: CanvasRenderingContext2D, current_slice: SliceResult): void {
     if (contour_thresholds.length === 0) return
     const threshold_min = contour_thresholds[0]
-    const color_span = Math.abs(resolved_color_range[1] - resolved_color_range[0])
     const outside_value =
       Math.min(...resolved_color_range, threshold_min) -
-      Math.max(1, Math.abs(threshold_min), color_span)
-    const contour_values = Float64Array.from(current_slice.data, (value, data_idx) =>
-      current_slice.mask[data_idx] && Number.isFinite(value) ? value : outside_value,
-    )
-    const values = contour_values as unknown as number[]
-    const { height, width } = current_slice
-    const contour_generator = create_contours().size([width, height])
-    context.strokeStyle = getComputedStyle(context.canvas).color
-    context.lineWidth = 1
-    context.lineJoin = `round`
-    for (const threshold of contour_thresholds) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      if (generation !== render_generation) return
-      const [shape] = contour_generator.thresholds([threshold])(values)
+      Math.max(
+        1,
+        Math.abs(threshold_min),
+        Math.abs(resolved_color_range[1] - resolved_color_range[0]),
+      )
+    if (contour_values.length !== current_slice.data.length) {
+      contour_values = new Float64Array(current_slice.data.length)
+    }
+    for (let data_idx = 0; data_idx < current_slice.data.length; data_idx++) {
+      const value = current_slice.data[data_idx]
+      contour_values[data_idx] =
+        current_slice.mask[data_idx] && Number.isFinite(value) ? value : outside_value
+    }
+    const shapes = create_contours()
+      .size([current_slice.width, current_slice.height])
+      .thresholds(contour_thresholds)(contour_values as unknown as number[])
 
-      context.save()
-      clip_to_slice_polygon(context, current_slice)
+    context.save()
+    clip_to_slice_polygon(context, current_slice)
+    context.strokeStyle =
+      contour_color === `currentColor` && canvas
+        ? getComputedStyle(canvas).color
+        : contour_color
+    context.lineWidth = Math.max(0.1, contour_width)
+    context.lineJoin = `round`
+    for (const shape of shapes) {
       context.beginPath()
       for (const polygon of shape.coordinates) {
         for (const ring of polygon) {
           for (let point_idx = 0; point_idx < ring.length; point_idx++) {
             const [point_x, sampled_y] = ring[point_idx]
-            const point_y = height - sampled_y
+            const point_y = flip_y ? current_slice.height - sampled_y : sampled_y
             if (point_idx === 0) context.moveTo(point_x, point_y)
             else context.lineTo(point_x, point_y)
           }
@@ -117,12 +138,11 @@
         }
       }
       context.stroke()
-      context.restore()
     }
+    context.restore()
   }
 
   function render_slice(): void {
-    const generation = ++render_generation
     if (!canvas) return
     if (!slice) {
       canvas.getContext(`2d`)?.clearRect(0, 0, canvas.width, canvas.height)
@@ -133,14 +153,24 @@
     canvas.height = slice.height
     const context = canvas.getContext(`2d`)
     if (!context) return
+    context.clearRect(0, 0, slice.width, slice.height)
     if (mode !== `contours`) {
       if (image_data?.width !== slice.width || image_data?.height !== slice.height) {
         image_data = context.createImageData(slice.width, slice.height)
       }
-      slice_to_rgba(slice, colormap, resolved_color_range, { out: image_data.data })
+      slice_to_rgba(slice, colormap, resolved_color_range, {
+        flip_y,
+        out: image_data.data,
+      })
       context.putImageData(image_data, 0, 0)
     }
-    if (mode !== `filled`) void draw_contours(context, slice, generation)
+    if (mode !== `filled`) draw_contours(context, slice)
+    onrender?.({
+      canvas,
+      color_range: resolved_color_range,
+      contour_thresholds,
+      slice,
+    })
   }
 
   $effect(render_slice)
@@ -157,7 +187,9 @@
   {#if show_colorbar && slice}
     <ColorBar
       title={colorbar_title}
-      color_scale={colorbar_colormap}
+      color_scale={colormap}
+      color_scale_fn={colorbar_color_scale}
+      color_scale_domain={resolved_color_range}
       range={resolved_color_range}
       tick_labels={5}
       bar_style="width: 100%"

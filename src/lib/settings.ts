@@ -429,26 +429,11 @@ export interface SettingsConfig {
 }
 
 const DISPLAY_CONFIG = {
-  x_grid: {
-    value: true,
-    description: `Show X-axis grid lines`,
-  },
-  y_grid: {
-    value: true,
-    description: `Show Y-axis grid lines`,
-  },
-  y2_grid: {
-    value: false,
-    description: `Show Y2-axis grid lines`,
-  },
-  x_zero_line: {
-    value: true,
-    description: `Show X-axis zero reference line`,
-  },
-  y_zero_line: {
-    value: true,
-    description: `Show Y-axis zero reference line`,
-  },
+  x_grid: { value: true, description: `Show X-axis grid lines` },
+  y_grid: { value: true, description: `Show Y-axis grid lines` },
+  y2_grid: { value: false, description: `Show Y2-axis grid lines` },
+  x_zero_line: { value: true, description: `Show X-axis zero reference line` },
+  y_zero_line: { value: true, description: `Show Y-axis zero reference line` },
 } as const
 
 // Settings shared by the sunburst + treemap sections below so the two charts'
@@ -500,6 +485,105 @@ const hierarchy_chart_settings = (
     description: `Show a clickable ${
       node === `arc` ? `trail` : `pathbar`
     } of ancestors when zoomed into a subtree`,
+  },
+})
+
+// Settings shared by the binary/ternary/quaternary convex hull sections below so
+// the three systems' options can't drift; only camera/threshold values differ.
+const convex_hull_settings = (
+  system: `binary` | `ternary` | `quaternary`,
+  values: {
+    camera_zoom: number
+    camera_zoom_max: number
+    camera_center_y: number
+    max_hull_dist_show_phases: number
+  },
+): ConvexHullCommonType => {
+  const dim = { binary: `2D`, ternary: `3D`, quaternary: `4D` }[system]
+  const hull = `${dim} convex hull`
+  return {
+    camera_zoom: {
+      value: values.camera_zoom,
+      description: `Initial camera zoom for ${system} (${dim}) convex hull`,
+      minimum: 0.1,
+      maximum: values.camera_zoom_max,
+    },
+    camera_center_x: {
+      value: 0,
+      description: `Initial X center for ${system} (${dim}) convex hull`,
+    },
+    camera_center_y: {
+      value: values.camera_center_y,
+      description: `Initial Y center for ${system} (${dim}) convex hull`,
+    },
+    color_mode: {
+      value: `energy` as const,
+      description: `Color mode for ${hull} points`,
+      enum: { stability: `Stability`, energy: `Energy` },
+    },
+    color_scale: {
+      value: `interpolateViridis`,
+      description: `D3 interpolate color scale for ${hull} energy mode`,
+    },
+    show_stable: { value: true, description: `Show stable phases in ${hull}` },
+    show_unstable: { value: true, description: `Show unstable phases in ${hull}` },
+    show_stable_labels: {
+      value: true,
+      description: `Show labels for stable phases in ${hull}`,
+    },
+    show_unstable_labels: {
+      value: false,
+      description: `Show labels for unstable phases in ${hull}`,
+    },
+    max_hull_dist_show_phases: {
+      value: values.max_hull_dist_show_phases,
+      description: `Max eV/atom above hull for showing unstable entries in ${hull}`,
+      minimum: 0,
+      maximum: 2,
+    },
+    max_hull_dist_show_labels: {
+      value: 0.1,
+      description: `Max eV/atom above hull for labeling unstable entries in ${hull}`,
+      minimum: 0,
+      maximum: 2,
+    },
+    fullscreen: { value: false, description: `Start in fullscreen for ${hull}` },
+    info_pane_open: { value: false, description: `Info pane open by default for ${hull}` },
+    legend_pane_open: {
+      value: false,
+      description: `Legend pane open by default for ${hull}`,
+    },
+  }
+}
+
+// Hull-face settings shared by the 3D-capable hulls (ternary + quaternary)
+const hull_face_settings = (
+  dim: `3D` | `4D`,
+  values: { opacity: number; color_mode: HullFaceColorMode },
+): Pick<
+  ConvexHullWith3DType,
+  `show_hull_faces` | `hull_face_color` | `hull_face_opacity` | `hull_face_color_mode`
+> => ({
+  show_hull_faces: { value: true, description: `Show hull faces in ${dim} convex hull` },
+  hull_face_color: {
+    value: `#4caf50`,
+    description: `Color for hull faces in ${dim} convex hull`,
+  },
+  hull_face_opacity: {
+    value: values.opacity,
+    description: `Opacity for hull faces in ${dim} convex hull (0-1)`,
+    minimum: 0,
+    maximum: 1,
+  },
+  hull_face_color_mode: {
+    value: values.color_mode,
+    description: `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
+    enum: {
+      uniform: `Uniform`,
+      formation_energy: `Formation energy`,
+      dominant_element: `Dominant element`,
+      facet_index: `Facet index`,
+    },
   },
 })
 
@@ -557,10 +641,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: false,
       description: `Render all atoms with the same size regardless of element`,
     },
-    show_atoms: {
-      value: true,
-      description: `Display atoms in the structure`,
-    },
+    show_atoms: { value: true, description: `Display atoms in the structure` },
     show_image_atoms: {
       value: true,
       description: `Show atoms on the edge of the cell that are not part of the primitive basis`,
@@ -591,17 +672,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `When to display bonds between atoms`,
       enum: SHOW_BONDS_ENUM,
     },
-    bond_color: {
-      value: `#666666`,
-      description: `Color for bonds (hex color code)`,
-    },
+    bond_color: { value: `#666666`, description: `Color for bonds (hex color code)` },
     bonding_strategy: {
       value: `electroneg_ratio`,
       description: `Method for determining bonds between atoms`,
-      enum: {
-        electroneg_ratio: `Electronegativity Ratio`,
-        solid_angle: `Solid Angle`,
-      },
+      enum: { electroneg_ratio: `Electronegativity Ratio`, solid_angle: `Solid Angle` },
     },
     show_polyhedra: {
       value: `crystals`,
@@ -625,11 +700,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     polyhedra_color_mode: {
       value: `vertex`,
       description: `Color polyhedra by the atoms at their corners, the center atom, or a single custom color`,
-      enum: {
-        vertex: `Vertex Atoms`,
-        center: `Center Atom`,
-        uniform: `Custom Color`,
-      },
+      enum: { vertex: `Vertex Atoms`, center: `Center Atom`, uniform: `Custom Color` },
     },
     polyhedra_color: {
       value: `#4a90d9`,
@@ -675,10 +746,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     atom_color_scale_type: {
       value: `continuous`,
       description: `Color scale type for property-based coloring`,
-      enum: {
-        continuous: `Continuous Gradient`,
-        categorical: `Discrete Categories`,
-      },
+      enum: { continuous: `Continuous Gradient`, categorical: `Discrete Categories` },
     },
 
     // Camera & Controls
@@ -695,10 +763,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     camera_projection: {
       value: `orthographic` as const,
       description: `Camera projection type`,
-      enum: {
-        perspective: `Perspective`,
-        orthographic: `Orthographic`,
-      },
+      enum: { perspective: `Perspective`, orthographic: `Orthographic` },
     },
     initial_zoom: {
       value: 50,
@@ -762,24 +827,15 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
 
     // Labels & Lighting
-    show_site_labels: {
-      value: false,
-      description: `Show element labels on atoms`,
-    },
-    show_site_indices: {
-      value: false,
-      description: `Show site index numbers on atoms`,
-    },
+    show_site_labels: { value: false, description: `Show element labels on atoms` },
+    show_site_indices: { value: false, description: `Show site index numbers on atoms` },
     site_label_size: {
       value: 1,
       description: `Font size for atom labels`,
       minimum: 0.5,
       maximum: 5,
     },
-    site_label_color: {
-      value: `#111111`,
-      description: `Text color for atom labels`,
-    },
+    site_label_color: { value: `#111111`, description: `Text color for atom labels` },
     site_label_bg_color: {
       value: `color-mix(in srgb, #000000 0%, transparent)`,
       description: `Background color for atom labels`,
@@ -864,14 +920,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: -0.5,
       maximum: 0.5,
     },
-    show_cell: {
-      value: false,
-      description: `Display system cell`,
-    },
-    show_cell_vectors: {
-      value: true,
-      description: `Display cell vectors`,
-    },
+    show_cell: { value: false, description: `Display system cell` },
+    show_cell_vectors: { value: true, description: `Display cell vectors` },
     cell_edge_opacity: {
       value: 0.3,
       description: `Opacity of cell edge lines`,
@@ -884,14 +934,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0,
       maximum: 1,
     },
-    cell_edge_color: {
-      value: `#808080`,
-      description: `Color of cell edges`,
-    },
-    cell_surface_color: {
-      value: `#e0e0e0`,
-      description: `Color of cell surfaces`,
-    },
+    cell_edge_color: { value: `#808080`, description: `Color of cell edges` },
+    cell_surface_color: { value: `#e0e0e0`, description: `Color of cell surfaces` },
     cell_edge_width: {
       value: 1.5,
       description: `Width of cell edge lines`,
@@ -935,10 +979,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         'structure+histogram': `Structure + Histogram`,
       },
     },
-    show_controls: {
-      value: true,
-      description: `Show playback controls`,
-    },
+    show_controls: { value: true, description: `Show playback controls` },
     fullscreen_toggle: {
       value: true,
       description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
@@ -953,11 +994,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     layout: {
       value: `auto` as const,
       description: `Layout arrangement for trajectory viewer`,
-      enum: {
-        auto: `Auto`,
-        horizontal: `Horizontal`,
-        vertical: `Vertical`,
-      },
+      enum: { auto: `Auto`, horizontal: `Horizontal`, vertical: `Vertical` },
     },
 
     // File handling and loading
@@ -1025,10 +1062,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: false,
       description: `Use smooth interpolation between frames`,
     },
-    loop_playback: {
-      value: true,
-      description: `Loop trajectory playback`,
-    },
+    loop_playback: { value: true, description: `Loop trajectory playback` },
     pause_on_hover: {
       value: false,
       description: `Pause playback when hovering over controls`,
@@ -1037,10 +1071,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Highlight current frame in timeline`,
     },
-    show_frame_info: {
-      value: true,
-      description: `Show frame information overlay`,
-    },
+    show_frame_info: { value: true, description: `Show frame information overlay` },
 
     // Performance
     max_frames_in_memory: {
@@ -1065,10 +1096,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0,
       maximum: 100,
     },
-    cache_parsed_data: {
-      value: true,
-      description: `Cache parsed trajectory data`,
-    },
+    cache_parsed_data: { value: true, description: `Cache parsed trajectory data` },
   },
 
   // Histogram specific
@@ -1076,15 +1104,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     mode: {
       value: `overlay` as const,
       description: `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
-      enum: {
-        overlay: `Overlay`,
-        single: `Single`,
-      },
+      enum: { overlay: `Overlay`, single: `Single` },
     },
-    show_legend: {
-      value: true,
-      description: `Show legend in histogram plots`,
-    },
+    show_legend: { value: true, description: `Show legend in histogram plots` },
     bin_count: {
       value: 100,
       description: `Number of bins for histogram plots`,
@@ -1092,10 +1114,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 1000,
     },
     bar: {
-      color: {
-        value: `#4A9EFF`,
-        description: `Histogram bar fill color`,
-      },
+      color: { value: `#4A9EFF`, description: `Histogram bar fill color` },
       opacity: {
         value: 0.7,
         description: `Histogram bar opacity`,
@@ -1108,10 +1127,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: 0,
         maximum: 5,
       },
-      stroke_color: {
-        value: `#000000`,
-        description: `Histogram bar stroke color`,
-      },
+      stroke_color: { value: `#000000`, description: `Histogram bar stroke color` },
       stroke_opacity: {
         value: 0.5,
         description: `Histogram bar stroke opacity`,
@@ -1125,10 +1141,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   // Bar plot specific
   bar: {
     bar: {
-      color: {
-        value: `#4A9EFF`,
-        description: `Bar plot fill color`,
-      },
+      color: { value: `#4A9EFF`, description: `Bar plot fill color` },
       opacity: {
         value: 0.6,
         description: `Bar plot opacity (overlay mode)`,
@@ -1143,16 +1156,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     line: {
-      width: {
-        value: 2,
-        description: `Bar plot line width`,
-        minimum: 0.5,
-        maximum: 10,
-      },
-      color: {
-        value: `#4A9EFF`,
-        description: `Bar plot line color`,
-      },
+      width: { value: 2, description: `Bar plot line width`, minimum: 0.5, maximum: 10 },
+      color: { value: `#4A9EFF`, description: `Bar plot line color` },
     },
     display: DISPLAY_CONFIG,
   },
@@ -1179,10 +1184,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Show outlier points beyond the whiskers`,
     },
-    show_mean: {
-      value: false,
-      description: `Show the mean marker inside each box`,
-    },
+    show_mean: { value: false, description: `Show the mean marker inside each box` },
     kind: {
       value: `box` as const,
       description: `Glyph to draw per series: box, violin (KDE density), or both`,
@@ -1211,16 +1213,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 1,
     },
     box: {
-      color: {
-        value: `#4A9EFF`,
-        description: `Box fill color`,
-      },
-      opacity: {
-        value: 0.6,
-        description: `Box fill opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      color: { value: `#4A9EFF`, description: `Box fill color` },
+      opacity: { value: 0.6, description: `Box fill opacity`, minimum: 0, maximum: 1 },
       stroke_width: {
         value: 0.5,
         description: `Box outline width`,
@@ -1239,12 +1233,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     whisker: {
-      width: {
-        value: 1,
-        description: `Whisker line width`,
-        minimum: 0.5,
-        maximum: 5,
-      },
+      width: { value: 1, description: `Whisker line width`, minimum: 0.5, maximum: 5 },
       color: {
         value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Whisker line color`,
@@ -1257,12 +1246,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     median: {
-      width: {
-        value: 1.5,
-        description: `Median line width`,
-        minimum: 0.5,
-        maximum: 6,
-      },
+      width: { value: 1.5, description: `Median line width`, minimum: 0.5, maximum: 6 },
       color: {
         value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Median line color`,
@@ -1289,12 +1273,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     violin: {
-      opacity: {
-        value: 0.5,
-        description: `Violin fill opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: { value: 0.5, description: `Violin fill opacity`, minimum: 0, maximum: 1 },
       stroke_width: {
         value: 1,
         description: `Violin outline width`,
@@ -1335,10 +1314,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0.05,
       maximum: 1,
     },
-    show_node_labels: {
-      value: true,
-      description: `Show node labels next to each node`,
-    },
+    show_node_labels: { value: true, description: `Show node labels next to each node` },
     iterations: {
       value: 6,
       description: `Number of d3-sankey relaxation iterations for node positioning`,
@@ -1415,11 +1391,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     display_mode: {
       value: `pie` as const,
       description: `Display mode for composition data`,
-      enum: {
-        pie: `Pie`,
-        bubble: `Bubble`,
-        bar: `Bar`,
-      },
+      enum: { pie: `Pie`, bubble: `Bubble`, bar: `Bar` },
     },
     color_scheme: {
       value: `Vesta`,
@@ -1444,18 +1416,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         Record<D3SymbolName, string>
       >,
     },
-    show_legend: {
-      value: true,
-      description: `Show legend in scatter plots`,
-    },
-    show_points: {
-      value: true,
-      description: `Show points in scatter plots`,
-    },
-    show_lines: {
-      value: true,
-      description: `Show connecting lines in scatter plots`,
-    },
+    show_legend: { value: true, description: `Show legend in scatter plots` },
+    show_points: { value: true, description: `Show points in scatter plots` },
+    show_lines: { value: true, description: `Show connecting lines in scatter plots` },
     display: DISPLAY_CONFIG,
     point: {
       size: {
@@ -1464,10 +1427,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: 1,
         maximum: 20,
       },
-      color: {
-        value: `#4A9EFF`,
-        description: `Default color for scatter plot points`,
-      },
+      color: { value: `#4A9EFF`, description: `Default color for scatter plot points` },
       opacity: {
         value: 1,
         description: `Opacity of scatter plot points`,
@@ -1498,10 +1458,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: 0.5,
         maximum: 10,
       },
-      color: {
-        value: `#4A9EFF`,
-        description: `Default color for scatter plot lines`,
-      },
+      color: { value: `#4A9EFF`, description: `Default color for scatter plot lines` },
       opacity: {
         value: 1,
         description: `Opacity of scatter plot lines`,
@@ -1523,52 +1480,22 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0,
       maximum: 2000,
     },
-    enable_zoom: {
-      value: true,
-      description: `Enable zooming in plots`,
-    },
+    enable_zoom: { value: true, description: `Enable zooming in plots` },
     zoom_factor: {
       value: 1.5,
       description: `Zoom factor for plot interactions`,
       minimum: 1.1,
       maximum: 5.0,
     },
-    auto_fit_range: {
-      value: true,
-      description: `Automatically fit plot range to data`,
-    },
-    grid_lines: {
-      value: true,
-      description: `Show grid lines in plots`,
-    },
-    axis_labels: {
-      value: true,
-      description: `Show axis labels in plots`,
-    },
-    show_x_zero_line: {
-      value: true,
-      description: `Show X-axis zero reference line`,
-    },
-    show_y_zero_line: {
-      value: true,
-      description: `Show Y-axis zero reference line`,
-    },
-    show_x_grid: {
-      value: true,
-      description: `Show X-axis grid lines`,
-    },
-    show_x2_grid: {
-      value: false,
-      description: `Show secondary X-axis grid lines`,
-    },
-    show_y_grid: {
-      value: true,
-      description: `Show Y-axis grid lines`,
-    },
-    show_y2_grid: {
-      value: true,
-      description: `Show secondary Y-axis grid lines`,
-    },
+    auto_fit_range: { value: true, description: `Automatically fit plot range to data` },
+    grid_lines: { value: true, description: `Show grid lines in plots` },
+    axis_labels: { value: true, description: `Show axis labels in plots` },
+    show_x_zero_line: { value: true, description: `Show X-axis zero reference line` },
+    show_y_zero_line: { value: true, description: `Show Y-axis zero reference line` },
+    show_x_grid: { value: true, description: `Show X-axis grid lines` },
+    show_x2_grid: { value: false, description: `Show secondary X-axis grid lines` },
+    show_y_grid: { value: true, description: `Show Y-axis grid lines` },
+    show_y2_grid: { value: true, description: `Show secondary Y-axis grid lines` },
     x_format: {
       value: `.2~s`,
       description: `Number format for X-axis ticks (D3 format specifier)`,
@@ -1588,18 +1515,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     x_scale_type: {
       value: `linear`,
       description: `Scale type for X-axis`,
-      enum: {
-        linear: `Linear`,
-        log: `Log`,
-      },
+      enum: { linear: `Linear`, log: `Log` },
     },
     y_scale_type: {
       value: `linear`,
       description: `Scale type for Y-axis`,
-      enum: {
-        linear: `Linear`,
-        log: `Log`,
-      },
+      enum: { linear: `Linear`, log: `Log` },
     },
     x_ticks: {
       value: 8,
@@ -1617,75 +1538,20 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
   convex_hull: {
     // Convex hull defaults (binary/ternary/quaternary)
-    binary: {
-      camera_zoom: {
-        value: 1.0,
-        description: `Initial zoom for binary (2D) convex hull`,
-        minimum: 0.1,
-        maximum: 10,
-      },
-      camera_center_x: {
-        value: 0,
-        description: `Initial X center for binary (2D) convex hull`,
-      },
-      camera_center_y: {
-        value: 0,
-        description: `Initial Y center for binary (2D) convex hull`,
-      },
-      color_mode: {
-        value: `energy`,
-        description: `Color mode for 2D convex hull points`,
-        enum: {
-          stability: `Stability`,
-          energy: `Energy`,
-        },
-      },
-      color_scale: {
-        value: `interpolateViridis`,
-        description: `D3 interpolate color scale for 2D convex hull energy mode`,
-      },
-      show_stable: {
-        value: true,
-        description: `Show stable phases in 2D convex hull`,
-      },
-      show_unstable: {
-        value: true,
-        description: `Show unstable phases in 2D convex hull`,
-      },
-      show_stable_labels: {
-        value: true,
-        description: `Show labels for stable phases in 2D convex hull`,
-      },
-      show_unstable_labels: {
-        value: false,
-        description: `Show labels for unstable phases in 2D convex hull`,
-      },
-      max_hull_dist_show_phases: {
-        value: 0.1,
-        description: `Max eV/atom above hull for showing unstable entries in 2D convex hull`,
-        minimum: 0,
-        maximum: 2,
-      },
-      max_hull_dist_show_labels: {
-        value: 0.1,
-        description: `Max eV/atom above hull for labeling unstable entries in 2D convex hull`,
-        minimum: 0,
-        maximum: 2,
-      },
-      fullscreen: {
-        value: false,
-        description: `Start in fullscreen for 2D convex hull`,
-      },
-      info_pane_open: {
-        value: false,
-        description: `Info pane open by default for 2D convex hull`,
-      },
-      legend_pane_open: {
-        value: false,
-        description: `Legend pane open by default for 2D convex hull`,
-      },
-    },
+    binary: convex_hull_settings(`binary`, {
+      camera_zoom: 1.0,
+      camera_zoom_max: 10,
+      camera_center_y: 0,
+      max_hull_dist_show_phases: 0.1,
+    }),
     ternary: {
+      ...convex_hull_settings(`ternary`, {
+        camera_zoom: 1.5,
+        camera_zoom_max: 10,
+        camera_center_y: -50,
+        max_hull_dist_show_phases: 0.5,
+      }),
+      ...hull_face_settings(`3D`, { opacity: 0.3, color_mode: `uniform` }),
       camera_elevation: {
         value: 45,
         description: `Initial camera elevation (deg) for ternary (3D) convex hull`,
@@ -1698,98 +1564,15 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: -360,
         maximum: 360,
       },
-      camera_zoom: {
-        value: 1.5,
-        description: `Initial camera zoom for ternary (3D) convex hull`,
-        minimum: 0.1,
-        maximum: 10,
-      },
-      camera_center_x: {
-        value: 0,
-        description: `Initial X center for ternary (3D) convex hull`,
-      },
-      camera_center_y: {
-        value: -50,
-        description: `Initial Y center for ternary (3D) convex hull`,
-      },
-      color_mode: {
-        value: `energy`,
-        description: `Color mode for 3D convex hull points`,
-        enum: {
-          stability: `Stability`,
-          energy: `Energy`,
-        },
-      },
-      color_scale: {
-        value: `interpolateViridis`,
-        description: `D3 interpolate color scale for 3D convex hull energy mode`,
-      },
-      show_stable: {
-        value: true,
-        description: `Show stable phases in 3D convex hull`,
-      },
-      show_unstable: {
-        value: true,
-        description: `Show unstable phases in 3D convex hull`,
-      },
-      show_stable_labels: {
-        value: true,
-        description: `Show labels for stable phases in 3D convex hull`,
-      },
-      show_unstable_labels: {
-        value: false,
-        description: `Show labels for unstable phases in 3D convex hull`,
-      },
-      max_hull_dist_show_phases: {
-        value: 0.5,
-        description: `Max eV/atom above hull for showing unstable entries in 3D convex hull`,
-        minimum: 0,
-        maximum: 2,
-      },
-      max_hull_dist_show_labels: {
-        value: 0.1,
-        description: `Max eV/atom above hull for labeling unstable entries in 3D convex hull`,
-        minimum: 0,
-        maximum: 2,
-      },
-      show_hull_faces: {
-        value: true,
-        description: `Render lower hull faces in 3D convex hull`,
-      },
-      hull_face_color: {
-        value: `#4caf50`,
-        description: `Color for lower hull faces in 3D convex hull`,
-      },
-      hull_face_opacity: {
-        value: 0.3,
-        description: `Opacity for hull faces in 3D convex hull (0-1)`,
-        minimum: 0,
-        maximum: 1,
-      },
-      hull_face_color_mode: {
-        value: `uniform`,
-        description: `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
-        enum: {
-          uniform: `Uniform`,
-          formation_energy: `Formation energy`,
-          dominant_element: `Dominant element`,
-          facet_index: `Facet index`,
-        },
-      },
-      fullscreen: {
-        value: false,
-        description: `Start in fullscreen for 3D convex hull`,
-      },
-      info_pane_open: {
-        value: false,
-        description: `Info pane open by default for 3D convex hull`,
-      },
-      legend_pane_open: {
-        value: false,
-        description: `Legend pane open by default for 3D convex hull`,
-      },
     },
     quaternary: {
+      ...convex_hull_settings(`quaternary`, {
+        camera_zoom: 1.4,
+        camera_zoom_max: 20,
+        camera_center_y: 20,
+        max_hull_dist_show_phases: 0.1,
+      }),
+      ...hull_face_settings(`4D`, { opacity: 0.03, color_mode: `dominant_element` }),
       camera_rotation_x: {
         value: -0.6,
         description: `Initial camera X rotation (rad) for quaternary (4D) convex hull`,
@@ -1801,96 +1584,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         description: `Initial camera Y rotation (rad) for quaternary (4D) convex hull`,
         minimum: -6.283,
         maximum: 6.283,
-      },
-      camera_zoom: {
-        value: 1.4,
-        description: `Initial camera zoom for quaternary (4D) convex hull`,
-        minimum: 0.1,
-        maximum: 20,
-      },
-      camera_center_x: {
-        value: 0,
-        description: `Initial X center for quaternary (4D) convex hull`,
-      },
-      camera_center_y: {
-        value: 20,
-        description: `Initial Y center for quaternary (4D) convex hull`,
-      },
-      color_mode: {
-        value: `energy`,
-        description: `Color mode for 4D convex hull points`,
-        enum: {
-          stability: `Stability`,
-          energy: `Energy`,
-        },
-      },
-      color_scale: {
-        value: `interpolateViridis`,
-        description: `D3 interpolate color scale for 4D convex hull energy mode`,
-      },
-      show_stable: {
-        value: true,
-        description: `Show stable phases in 4D convex hull`,
-      },
-      show_unstable: {
-        value: true,
-        description: `Show unstable phases in 4D convex hull`,
-      },
-      show_stable_labels: {
-        value: true,
-        description: `Show labels for stable phases in 4D convex hull`,
-      },
-      show_unstable_labels: {
-        value: false,
-        description: `Show labels for unstable phases in 4D convex hull`,
-      },
-      show_hull_faces: {
-        value: true,
-        description: `Show convex hull faces in 4D convex hull`,
-      },
-      hull_face_color: {
-        value: `#4caf50`,
-        description: `Color for hull faces in 4D convex hull`,
-      },
-      hull_face_opacity: {
-        value: 0.03,
-        description: `Opacity for hull faces in 4D convex hull (0-1)`,
-        minimum: 0,
-        maximum: 1,
-      },
-      hull_face_color_mode: {
-        value: `dominant_element`,
-        description: `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
-        enum: {
-          uniform: `Uniform`,
-          formation_energy: `Formation energy`,
-          dominant_element: `Dominant element`,
-          facet_index: `Facet index`,
-        },
-      },
-      max_hull_dist_show_phases: {
-        value: 0.1,
-        description: `Max eV/atom above hull for showing unstable entries in 4D convex hull`,
-        minimum: 0,
-        maximum: 2,
-      },
-      max_hull_dist_show_labels: {
-        value: 0.1,
-        description: `Max eV/atom above hull for labeling unstable entries in 4D convex hull`,
-        minimum: 0,
-        maximum: 2,
-      },
-      fullscreen: {
-        value: false,
-        description: `Start in fullscreen for 4D convex hull`,
-      },
-      info_pane_open: {
-        value: false,
-        description: `Info pane open by default for 4D convex hull`,
-      },
-      legend_pane_open: {
-        value: false,
-        description: `Legend pane open by default for 4D convex hull`,
       },
     },
   },

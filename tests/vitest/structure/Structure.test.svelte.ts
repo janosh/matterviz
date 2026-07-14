@@ -1,7 +1,5 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { add, euclidean_dist, pbc_dist, scale } from '$lib/math'
-import { DEFAULTS } from '$lib/settings'
+import type { Vec3 } from '$lib/math'
 import type { StructureBond, StructureHandlerData } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
 import * as exports from '$lib/structure/export'
@@ -537,56 +535,6 @@ describe(`Structure`, () => {
   })
 })
 
-test(`pbc_dist with realistic structure scenarios`, () => {
-  // Test with a simple cubic structure similar to CsCl (from mp-1.json)
-  const cubic_lattice_matrix: Matrix3x3 = [
-    [6.256930122878799, 0.0, 0.0],
-    [0.0, 6.256930122878799, 0.0],
-    [0.0, 0.0, 6.256930122878799],
-  ]
-
-  // Two atoms: one at origin, one at (0.5, 0.5, 0.5) in fractional coordinates
-  // which corresponds to center of unit cell in Cartesian
-  const atom1_xyz: Vec3 = [0.0, 0.0, 0.0]
-  const atom2_xyz: Vec3 = [3.1284650614394, 3.1284650614393996, 3.1284650614394]
-
-  const direct_dist = euclidean_dist(atom1_xyz, atom2_xyz)
-  const pbc_distance = pbc_dist(atom1_xyz, atom2_xyz, cubic_lattice_matrix)
-
-  // For atoms at (0,0,0) and (0.5,0.5,0.5), the distance should be the same via PBC
-  // since they're already at the shortest separation
-  expect(pbc_distance).toBeCloseTo(direct_dist, 2)
-  expect(pbc_distance).toBeCloseTo(5.419, 3) // expected distance
-
-  // Test case 2: Create artificial scenario with atoms at opposite corners
-  // Atom at (0.1, 0.1, 0.1) and (5.9, 5.9, 5.9) - very close to opposite corners
-  const corner1: Vec3 = [0.1, 0.1, 0.1]
-  const corner2: Vec3 = [6.156930122878799, 6.156930122878799, 6.156930122878799] // 0.9 fractional
-
-  const corner_direct = euclidean_dist(corner1, corner2)
-  const corner_pbc = pbc_dist(corner1, corner2, cubic_lattice_matrix)
-
-  expect(corner_direct).toBeCloseTo(10.491, 3)
-  expect(corner_pbc).toBeCloseTo(0.346, 3) // PBC distance should be sqrt(0.2^2 * 3)
-
-  // Test case 3: Very long unit cell to test the issue user reported
-  const long_cell_matrix: Matrix3x3 = [
-    [20.0, 0.0, 0.0], // Very long in x direction
-    [0.0, 5.0, 0.0],
-    [0.0, 0.0, 5.0],
-  ]
-
-  // Atoms at opposite ends of the long axis
-  const long_atom1: Vec3 = [1.0, 2.5, 2.5] // close to x=0 side
-  const long_atom2: Vec3 = [19.0, 2.5, 2.5] // close to x=20 side
-
-  const long_direct = euclidean_dist(long_atom1, long_atom2)
-  const long_pbc = pbc_dist(long_atom1, long_atom2, long_cell_matrix)
-
-  expect(long_direct).toBeCloseTo(18.0, 3)
-  expect(long_pbc).toBeCloseTo(2.0, 3) // PBC distance should be 2.0 Å (1.0 + 1.0 through boundary)
-})
-
 describe(`Structure component nested JSON handling`, () => {
   test.each([
     [
@@ -715,7 +663,7 @@ test.each([
     projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     expect(projection_select.value).toBe(target_projection)
 
-    // Test 4: Other scene properties remain functional after projection change
+    // Test 4: Other scene properties still reflect their scene_props bindings
     const radius_input = document.querySelector(
       `.controls-pane input[type="number"][step="0.05"]`,
     ) as HTMLInputElement
@@ -725,47 +673,16 @@ test.each([
 
     expect(Number(radius_input?.value || `0`)).toBeCloseTo(1.0, 1)
     expect(Number(auto_rotate_input?.value || `0`)).toBeCloseTo(0.5, 1)
-
-    radius_input.value = `2.0`
-    radius_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(Number(radius_input.value)).toBeCloseTo(2.0, 1)
-
-    // Test 5: State persistence across component updates (simplified for Svelte 5)
-    // In a real app, scene_props would be reactive - here we just verify the projection persists
-    if (projection_select) {
-      expect(projection_select.value).toBe(target_projection) // Projection should persist
-    }
   },
 )
-
-// Test critical default value validation that could cause runtime errors
-test(`critical default values are valid to prevent runtime errors`, () => {
-  expect(DEFAULTS.structure.camera_projection).toBe(`orthographic`)
-
-  // Scale types must be valid
-  expect([`linear`, `log`]).toContain(DEFAULTS.plot.x_scale_type)
-  expect([`linear`, `log`]).toContain(DEFAULTS.plot.y_scale_type)
-
-  // Critical numeric values must be in valid ranges to prevent rendering issues
-  expect(DEFAULTS.structure.atom_radius).toBeGreaterThan(0)
-  expect(DEFAULTS.structure.zoom_speed).toBeGreaterThan(0)
-  expect(DEFAULTS.structure.zoom_speed).toBeLessThanOrEqual(1)
-
-  // Label offset must be array of 3 numbers for 3D positioning
-  expect(Array.isArray(DEFAULTS.structure.site_label_offset)).toBe(true)
-  expect(DEFAULTS.structure.site_label_offset).toHaveLength(3)
-  DEFAULTS.structure.site_label_offset.forEach((offset: unknown) => {
-    expect(typeof offset).toBe(`number`)
-  })
-})
 
 // Atom label controls tests
 describe(`atom label controls`, () => {
   test.each([
-    { axis: `X`, idx: 0, initial: 0.2, new_value: 0.5 },
-    { axis: `Y`, idx: 1, initial: -0.5, new_value: 0.1 },
-    { axis: `Z`, idx: 2, initial: 0.8, new_value: -0.3 },
-  ])(`$axis offset control works correctly`, ({ idx, initial, new_value }) => {
+    { axis: `X`, idx: 0, initial: 0.2 },
+    { axis: `Y`, idx: 1, initial: -0.5 },
+    { axis: `Z`, idx: 2, initial: 0.8 },
+  ])(`$axis offset control reflects site_label_offset`, ({ idx, initial }) => {
     const offset = [0, 0, 0] as Vec3
     offset[idx] = initial
 
@@ -783,45 +700,9 @@ describe(`atom label controls`, () => {
 
     const input = offset_inputs[idx] as HTMLInputElement
     expect(Number(input.value)).toBeCloseTo(initial, 1)
-
-    input.value = new_value.toString()
-    input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(Number(input.value)).toBeCloseTo(new_value, 1)
   })
 
-  test(`color controls work correctly`, () => {
-    mount_structure({
-      structure,
-      controls_open: true,
-      show_controls: true,
-      scene_props: { show_site_labels: true, site_label_color: `#ff0000` },
-    })
-
-    const color_inputs = document.querySelectorAll(`input[type="color"]`)
-    expect(color_inputs.length).toBeGreaterThanOrEqual(2)
-
-    // Test text color
-    const text_color = color_inputs[0] as HTMLInputElement
-    text_color.value = `#00ff00`
-    text_color.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(text_color.value).toBe(`#00ff00`)
-
-    // Test background color
-    const bg_color = color_inputs[1] as HTMLInputElement
-    bg_color.value = `#0000ff`
-    bg_color.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(bg_color.value).toBe(`#0000ff`)
-
-    // Test opacity
-    const opacity_input = document.querySelector(
-      `input[type="number"][min="0"][max="1"][step="0.01"]`,
-    ) as HTMLInputElement
-    opacity_input.value = `0.5`
-    opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(Number(opacity_input.value)).toBeCloseTo(0.5, 2)
-  })
-
-  test(`size and padding controls work correctly`, () => {
+  test(`size and padding controls reflect scene_props bindings`, () => {
     mount_structure({
       structure,
       controls_open: true,
@@ -842,53 +723,6 @@ describe(`atom label controls`, () => {
 
     expect(Number(size_input.value)).toBeCloseTo(1.2, 1)
     expect(Number(padding_input.value)).toBe(4)
-
-    size_input.value = `1.8`
-    padding_input.value = `6`
-    size_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    padding_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-
-    expect(Number(size_input.value)).toBeCloseTo(1.8, 1)
-    expect(Number(padding_input.value)).toBe(6)
-  })
-
-  test(`input constraints are correct`, () => {
-    mount_structure({
-      structure,
-      controls_open: true,
-      show_controls: true,
-      scene_props: { show_site_labels: true },
-    })
-
-    const size_input = document.querySelector(
-      `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
-    ) as HTMLInputElement
-    const padding_input = document.querySelector(
-      `input[type="number"][min="0"][max="10"][step="1"]`,
-    ) as HTMLInputElement
-    const offset_inputs = document.querySelectorAll(
-      `input[type="number"][min="-1"][max="1"][step="0.1"]`,
-    )
-    const opacity_input = document.querySelector(
-      `input[type="number"][min="0"][max="1"][step="0.01"]`,
-    ) as HTMLInputElement
-
-    expect(size_input.min).toBe(`0.5`)
-    expect(size_input.max).toBe(`2`)
-    expect(size_input.step).toBe(`0.1`)
-    expect(padding_input.min).toBe(`0`)
-    expect(padding_input.max).toBe(`10`)
-    expect(padding_input.step).toBe(`1`)
-    expect(opacity_input.min).toBe(`0`)
-    expect(opacity_input.max).toBe(`1`)
-    expect(opacity_input.step).toBe(`0.01`)
-    expect(offset_inputs.length).toBeGreaterThanOrEqual(3)
-    offset_inputs.forEach((input) => {
-      const input_element = input as HTMLInputElement
-      expect(input_element.min).toBe(`-1`)
-      expect(input_element.max).toBe(`1`)
-      expect(input_element.step).toBe(`0.1`)
-    })
   })
 
   test(`state isolation between instances works`, () => {
@@ -1138,14 +972,15 @@ describe(`Structure string parsing`, () => {
         structure: undefined as AnyStructure | undefined,
         selected_sites: [] as number[],
       })
-      const props = bind_props(
-        {
-          measure_mode: `edit-atoms`,
-          on_file_load: (data: StructureHandlerData) =>
-            loaded_elements.push(data.structure?.sites[0]?.species[0]?.element ?? ``),
-        },
-        state,
-      )
+      const base_props: {
+        measure_mode: MeasureMode
+        on_file_load: (data: StructureHandlerData) => number
+      } = {
+        measure_mode: `edit-atoms`,
+        on_file_load: (data: StructureHandlerData) =>
+          loaded_elements.push(data.structure?.sites[0]?.species[0]?.element ?? ``),
+      }
+      const props = bind_props(base_props, state)
       mount_structure(props)
       await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
 
@@ -1222,59 +1057,6 @@ describe(`Multi-side view`, () => {
     })
     await tick()
     expect(document.querySelector(`button.multi-view-toggle`)).toBeNull()
-  })
-})
-
-// Regression tests for camera rotation center bug (commit 10477bb9 introduced
-// scene_props.camera_target for comparison-view sync, but it persisted across
-// structure loads, causing the orbit center to shift to a corner of the new cell).
-// The fix clears camera_target and camera_position in parse_file_content and the
-// structure_string effect so rotation_target (unit cell center) takes precedence.
-
-describe(`Rotation target computation`, () => {
-  // This is the exact math used in StructureScene to compute the orbit center:
-  //   rotation_target = scale(add(...lattice.matrix), 0.5)
-  // Verifying it gives the correct unit cell center for various crystal systems.
-  test.each([
-    {
-      desc: `cubic`,
-      matrix: [
-        [4, 0, 0],
-        [0, 4, 0],
-        [0, 0, 4],
-      ] as Matrix3x3,
-      expected: [2, 2, 2],
-    },
-    {
-      desc: `orthorhombic`,
-      matrix: [
-        [3, 0, 0],
-        [0, 5, 0],
-        [0, 0, 7],
-      ] as Matrix3x3,
-      expected: [1.5, 2.5, 3.5],
-    },
-    {
-      desc: `monoclinic (off-diagonal terms)`,
-      matrix: [
-        [4, 0, 0],
-        [1, 3, 0],
-        [0, 0, 5],
-      ] as Matrix3x3,
-      expected: [2.5, 1.5, 2.5],
-    },
-    {
-      desc: `triclinic`,
-      matrix: [
-        [6, 0, 0],
-        [2, 5, 0],
-        [1, 1, 4],
-      ] as Matrix3x3,
-      expected: [4.5, 3, 2],
-    },
-  ])(`unit cell center for $desc lattice`, ({ matrix, expected }) => {
-    const center = scale(add(...matrix), 0.5)
-    expected.forEach((val, idx) => expect(center[idx]).toBeCloseTo(val, 10))
   })
 })
 

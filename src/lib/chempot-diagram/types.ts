@@ -33,8 +33,8 @@ export interface ChemPotDiagramConfig {
   formula_colors?: string[] // default Dark2 palette
   show_tooltip?: boolean // default true
   tooltip_detail_level?: `compact` | `detailed` // default detailed
-  // Region coloring mode for 3D diagram
-  color_mode?: ChemPotColorMode // default none
+  // Region coloring mode
+  color_mode?: ChemPotColorMode // default formation_energy (2D) / arity (3D)
   // D3 interpolator for continuous color scales (energy, formation_energy, entries)
   color_scale?: D3InterpolateName // default interpolateSpectral
   // Reverse the color scale direction

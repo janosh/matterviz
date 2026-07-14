@@ -48,7 +48,7 @@
     auto_rotate = DEFAULTS.structure.auto_rotate,
     scene = $bindable(),
     camera = $bindable(),
-    k_path_points = [],
+    k_path_points: input_k_path_points = [],
     k_path_labels = [],
     hovered_k_point = null,
     hovered_qpoint_index = null,
@@ -75,6 +75,7 @@
     hover_data?: BZHoverData | null
     on_kpath_hover?: (qpoint_index: number | null) => void
   } = $props()
+  const k_path_points = $derived(input_k_path_points ?? [])
 
   bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
@@ -114,7 +115,7 @@
   // Band paths are densely sampled, so legit segments are tiny; a discontinuity jumps by
   // a fraction of the zone. Skip segments far longer than the median sampling step.
   const k_path_seg_cutoff = $derived.by(() => {
-    if (!k_path_points || k_path_points.length < 3) return Infinity
+    if (k_path_points.length < 3) return Infinity
     const lens = k_path_points
       .slice(1)
       .map((pt, idx) => Math.hypot(...math.subtract(pt as Vec3, k_path_points[idx] as Vec3)))
@@ -290,7 +291,7 @@
     {/if}
 
     <!-- K-path visualization -->
-    {#if k_path_points && k_path_points.length > 1}
+    {#if k_path_points.length > 1}
       {#each k_path_points.slice(0, -1) as from_point, idx (`${from_point}-${k_path_points[idx + 1]}#${idx}`)}
         {@const to_point = k_path_points[idx + 1]}
         {@const seg_len = Math.hypot(...math.subtract(to_point as Vec3, from_point as Vec3))}
@@ -317,32 +318,22 @@
       {/each}
     {/if}
 
-    <!-- Symmetry point spheres at labeled k-path points -->
-    {#if k_path_labels}
-      {#each k_path_labels as { position, label }, idx (`sphere-${idx}`)}
-        {#if label}
-          <T.Mesh position={[position[0], position[1], position[2]]}>
-            <T.SphereGeometry args={[0.015, 16, 16]} />
-            <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
-          </T.Mesh>
-        {/if}
-      {/each}
-    {/if}
-
-    <!-- Symmetry point labels on k-path -->
-    {#if k_path_labels}
-      {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
-        {#if label}
-          <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
-            <span
-              style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px; color: white"
-            >
-              {label}
-            </span>
-          </extras.HTML>
-        {/if}
-      {/each}
-    {/if}
+    <!-- Symmetry point spheres + labels at labeled k-path points -->
+    {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
+      {#if label}
+        <T.Mesh position={[position[0], position[1], position[2]]}>
+          <T.SphereGeometry args={[0.015, 16, 16]} />
+          <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
+        </T.Mesh>
+        <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
+          <span
+            style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px; color: white"
+          >
+            {label}
+          </span>
+        </extras.HTML>
+      {/if}
+    {/each}
 
     <!-- Hovered k-point highlight -->
     {#if hovered_k_point}

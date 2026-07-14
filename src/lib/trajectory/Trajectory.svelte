@@ -651,10 +651,7 @@
     display_mode !== `structure` &&
       (plot_metadata_loading || !should_hide_plot(trajectory, plot_series)),
   )
-
-  // Determine what to show based on display mode
   let show_structure = $derived(![`scatter`, `histogram`].includes(display_mode))
-  let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(plot_series.some((srs) => srs.y_axis === `y2` && srs.visible))
@@ -673,11 +670,10 @@
       frame: current_frame || undefined,
     })
   }
-  // Step navigation functions
+  // Step navigation functions (streaming frame loading is handled by the reactive effect)
   function next_step() {
     if (current_step_idx < total_frames - 1) {
       current_step_idx++
-      // Streaming frame loading handled by reactive effect
       notify_step_change()
     }
   }
@@ -685,7 +681,6 @@
   function prev_step() {
     if (current_step_idx > 0) {
       current_step_idx--
-      // Streaming frame loading handled by reactive effect
       notify_step_change()
     }
   }
@@ -693,8 +688,6 @@
   function go_to_step(idx: number) {
     if (idx >= 0 && idx < total_frames) {
       current_step_idx = idx
-      // Note: streaming frame loading is handled by reactive effect
-      // Handle callbacks for both traditional and streaming modes
       notify_step_change()
     }
   }
@@ -837,9 +830,7 @@
         await load_trajectory_data(content, filename)
       }).catch(() => false)
 
-      if (handled) {
-        return
-      }
+      if (handled) return
 
       // Handle file system drops with optimized large file support
       const file = event.dataTransfer?.files[0]
@@ -954,28 +945,29 @@
       // Determine loading strategy based on file size
       const bin_file_threshold = loading_options.bin_file_threshold ?? MAX_BIN_FILE_SIZE
       const text_file_threshold = loading_options.text_file_threshold ?? MAX_TEXT_FILE_SIZE
-      if (
+      const is_large_file =
         (data instanceof ArrayBuffer && data_size > bin_file_threshold) ||
         (typeof data === `string` && data_size > text_file_threshold)
-      ) {
-        // Large files: Use indexed loading
-        await load_with_indexing(data, filename, options)
-      } else {
-        // Small files: Use regular loading
-        const merged_options = { ...loading_options, atom_type_mapping }
-        const parsed_trajectory = await parse_trajectory_async(
-          data,
-          filename,
-          (progress) => {
-            if (should_commit()) parsing_progress = progress
-          },
-          merged_options,
-        )
-        if (!should_commit()) return
-        trajectory = parsed_trajectory
-        if (trajectory) on_trajectory_loaded?.(trajectory)
-      }
+
+      // Large files get indexed loading by default (loading_options can override)
+      const parsed_trajectory = await parse_trajectory_async(
+        data,
+        filename,
+        (progress) => {
+          if (should_commit()) parsing_progress = progress
+        },
+        {
+          ...(is_large_file ? { use_indexing: true } : {}),
+          ...loading_options,
+          atom_type_mapping,
+        },
+      )
       if (!should_commit()) return
+      trajectory = parsed_trajectory
+      if (trajectory) on_trajectory_loaded?.(trajectory)
+      // Keep original data only when parsing attached a frame_loader for on-demand loads.
+      // Direct-parse fallbacks load all frames upfront, so retaining a duplicate wastes memory.
+      orig_data = trajectory?.frame_loader ? data : null
 
       current_step_idx = 0
       current_filename = filename
@@ -1012,43 +1004,6 @@
         parsing_progress = null
         loading = false
       }
-    }
-  }
-
-  // Load using indexed parsing for large files
-  async function load_with_indexing(
-    data: string | ArrayBuffer,
-    filename: string,
-    options: LoadTrajectoryDataOptions = {},
-  ) {
-    const { on_trajectory_loaded, should_commit = () => true } = options
-    try {
-      // Use indexed parsing for efficient large file handling
-      const merged_options = {
-        use_indexing: true,
-        ...loading_options,
-        atom_type_mapping,
-      }
-      const parsed_trajectory = await parse_trajectory_async(
-        data,
-        filename,
-        (progress) => {
-          if (should_commit()) parsing_progress = progress
-        },
-        merged_options,
-      )
-      if (!should_commit()) return
-      trajectory = parsed_trajectory
-      if (trajectory) on_trajectory_loaded?.(trajectory)
-
-      // Keep original data for on-demand frame loads only when indexed parsing attached a
-      // frame_loader. Direct-parse fallbacks (e.g. large JSON or extensionless blob:
-      // filenames) load all frames upfront, so retaining a full duplicate payload wastes memory.
-      orig_data = trajectory?.frame_loader ? data : null
-    } catch (error) {
-      if (!should_commit()) return
-      console.error(`Indexed loading failed:`, error)
-      throw error
     }
   }
 
@@ -1187,7 +1142,7 @@
   {...rest}
   class={[`trajectory`, actual_layout, rest.class]}
   class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&
-    actual_show_plot &&
+    show_plot &&
     show_structure}
 >
   {#if loading}
@@ -1429,7 +1384,7 @@
 
     <div
       class="content-area"
-      class:hide-plot={!actual_show_plot}
+      class:hide-plot={!show_plot}
       class:hide-structure={!show_structure}
       class:show-both={[`structure+scatter`, `structure+histogram`].includes(display_mode)}
       class:show-structure-only={display_mode === `structure`}
@@ -1450,7 +1405,7 @@
         />
       {/if}
 
-      {#if actual_show_plot}
+      {#if show_plot}
         {#if plot_metadata_loading}
           <div class="plot-metadata-loading plot">
             <Spinner text="Sampling trajectory plot data..." style="--spinner-size: 1.4em" />

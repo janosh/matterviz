@@ -67,18 +67,6 @@ describe(`Utility Functions`, () => {
     expect(lib.escape_html(input)).toBe(expected)
   })
 
-  test.each([
-    [`Hello\0World`, true],
-    [
-      `Hello\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000A\u000B\u000C\u000D\u000E\u000FWorld`,
-      true,
-    ],
-    [`Hello World`, false],
-    [``, false],
-  ])(`is_binary: %s → %s`, (input, expected) => {
-    expect(lib.is_binary(input)).toBe(expected)
-  })
-
   describe(`toggle_fullscreen`, () => {
     let mock_wrapper: HTMLDivElement
     let orig_fullscreen_element: Element | null

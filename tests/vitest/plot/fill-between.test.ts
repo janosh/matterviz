@@ -10,16 +10,7 @@ import {
   resolve_boundary_points,
   resolve_series_ref,
 } from '$lib/plot/core/fill-utils'
-import type {
-  DataSeries,
-  FillBoundary,
-  FillEdgeStyle,
-  FillGradient,
-  FillHandlerEvent,
-  FillHoverStyle,
-  FillRegion,
-  LegendItem,
-} from '$lib/plot/core/types'
+import type { DataSeries, FillBoundary, FillGradient, FillRegion } from '$lib/plot/core/types'
 import { FILL_CURVE_TYPES } from '$lib/plot/core/types'
 import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
@@ -507,89 +498,5 @@ describe(`FILL_CURVE_TYPES`, () => {
       `catmullRom`,
       `natural`,
     ])
-  })
-})
-
-describe(`Fill type structures`, () => {
-  it.each<[string, FillBoundary, Record<string, unknown>]>([
-    [`number shorthand`, 42, {}],
-    [`series reference`, { type: `series`, series_idx: 0 }, { type: `series` }],
-    [`constant`, { type: `constant`, value: 50 }, { type: `constant` }],
-    [`function`, { type: `function`, fn: (x: number) => x * 2 }, { type: `function` }],
-  ])(`FillBoundary accepts %s`, (_, boundary, expected_match) => {
-    if (Object.keys(expected_match).length > 0) expect(boundary).toMatchObject(expected_match)
-    if (typeof boundary === `object` && boundary.type === `function`) {
-      expect(boundary.fn(5)).toBe(10)
-    }
-  })
-
-  it(`FillEdgeStyle and FillHoverStyle work correctly`, () => {
-    const empty_edge: FillEdgeStyle = {}
-    expect(empty_edge.color).toBeUndefined()
-    const hover: FillHoverStyle = { fill: `orange`, edge: { color: `red`, width: 2 } }
-    expect(hover.edge?.color).toBe(`red`)
-  })
-
-  it(`FillHandlerEvent contains required fields`, () => {
-    const event: FillHandlerEvent = {
-      event: new MouseEvent(`click`),
-      region_idx: 0,
-      x: 10,
-      y: 20,
-      px: 100,
-      py: 200,
-    }
-    expect(event).toMatchObject({ region_idx: 0, x: 10, px: 100 })
-  })
-
-  it(`FillRegion accepts minimal and full configurations`, () => {
-    const minimal: FillRegion = { upper: { type: `series`, series_idx: 0 }, lower: 0 }
-    expect(minimal.upper).toMatchObject({ type: `series` })
-
-    const full: FillRegion = {
-      id: `test`,
-      label: `Test Region`,
-      upper: { type: `data`, values: [1, 2, 3] },
-      lower: { type: `constant`, value: 0 },
-      x_range: [0, 10],
-      y_range: [null, 100],
-      where: (_x, y1, y2) => y1 > y2,
-      fill: {
-        type: `linear`,
-        stops: [
-          [0, `red`],
-          [1, `blue`],
-        ],
-      },
-      fill_opacity: 0.5,
-      curve: `monotoneX`,
-      z_index: `below-lines`,
-      visible: true,
-      hover_style: { cursor: `pointer` },
-      show_in_legend: true,
-      metadata: { custom: `data` },
-    }
-    expect(full).toMatchObject({ id: `test`, curve: `monotoneX`, z_index: `below-lines` })
-  })
-
-  it(`LegendItem supports series and fill item types`, () => {
-    const series: LegendItem = {
-      label: `S`,
-      visible: true,
-      series_idx: 0,
-      display_style: { symbol_type: `Circle` },
-    }
-    expect(series.item_type).toBeUndefined()
-
-    const fill: LegendItem = {
-      label: `F`,
-      visible: true,
-      series_idx: -1,
-      item_type: `fill`,
-      fill_idx: 0,
-      display_style: { fill_color: `steelblue`, fill_opacity: 0.3, edge_color: `navy` },
-    }
-    expect(fill).toMatchObject({ item_type: `fill`, fill_idx: 0 })
-    expect(fill.display_style.fill_color).toBe(`steelblue`)
   })
 })

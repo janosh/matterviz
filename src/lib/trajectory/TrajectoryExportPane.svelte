@@ -9,7 +9,6 @@
   import ExportPane from '$lib/io/ExportPane.svelte'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import type { TrajectoryType } from '$lib/trajectory'
-  import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import { to_error } from '$lib/utils'
 

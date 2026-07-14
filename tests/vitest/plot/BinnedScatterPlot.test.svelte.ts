@@ -160,6 +160,47 @@ describe(`BinnedScatterPlot`, () => {
     expect(errors.map(String).join(`\n`)).toBe(``)
   })
 
+  test(`auto-ranges finite pairs on logarithmic axes`, async () => {
+    const plotted_x: number[] = []
+    const arc = vi.fn((x: number, y: number) => {
+      expect(Number.isFinite(x)).toBe(true)
+      expect(Number.isFinite(y)).toBe(true)
+      plotted_x.push(x)
+    })
+    mock_canvas_context({ arc })
+
+    mount_plot({
+      series: [{ x: [1, 100, 1e9], y: [1, 10, Number.NaN] }],
+      x_axis: { scale_type: `log` },
+      density: point_mode(),
+      style: `width: 800px; height: 600px`,
+    })
+    await settle()
+
+    expect(arc).toHaveBeenCalledTimes(2)
+    expect(Math.max(...plotted_x) - Math.min(...plotted_x)).toBeGreaterThan(500)
+  })
+
+  test(`keeps explicit partial and reversed ranges authoritative`, async () => {
+    for (const range of [
+      [5, null],
+      [100, 1],
+    ] as [number, number | null][]) {
+      mount_plot({
+        series: [{ x: [1, 10], y: [1, 10] }],
+        x_axis: { range, ticks: [range[0]] },
+        density: point_mode(),
+        style: `width: 800px; height: 600px`,
+      })
+      await settle()
+      const labels = [...document.querySelectorAll(`.x-axis .tick text`)].map((node) =>
+        Number(node.textContent?.replaceAll(`,`, ``)),
+      )
+      expect(labels.some((value) => value === range[0])).toBe(true)
+      document.body.replaceChildren()
+    }
+  })
+
   test(`can hide the fullscreen toggle`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
@@ -196,7 +237,7 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const anno_wrapper = doc_query<HTMLElement>(`.binned-scatter .annotation`)
+    const anno_wrapper = doc_query(`.binned-scatter .annotation`)
     expect(anno_wrapper.querySelector(`.custom-annotation`)?.textContent).toBe(`800x600:false`)
     // style.left/top are `${n}px` strings, so strip the unit before Number()
     const style_px = (value: string): number => Number(value.replace(/px$/, ``))
@@ -208,7 +249,7 @@ describe(`BinnedScatterPlot`, () => {
       width: 120,
       height: 50,
     }
-    const bar_wrapper = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
+    const bar_wrapper = doc_query(`.binned-scatter .color-bar`)
     const bar_rect = {
       x: style_px(bar_wrapper.style.left),
       y: style_px(bar_wrapper.style.top),
@@ -241,7 +282,7 @@ describe(`BinnedScatterPlot`, () => {
       style: `width: 800px; height: 600px`,
     })
     await settle()
-    const colorbar = doc_query<HTMLElement>(`.binned-scatter .color-bar`)
+    const colorbar = doc_query(`.binned-scatter .color-bar`)
     const initial_position = { left: colorbar.style.left, top: colorbar.style.top }
     layout_spy.mockClear()
 
@@ -261,7 +302,7 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     expect(document.querySelector(`.color-bar`)).toBeNull()
-    const anno_wrapper = doc_query<HTMLElement>(`.annotation`)
+    const anno_wrapper = doc_query(`.annotation`)
     expect(anno_wrapper.style.left).toMatch(/px$/)
     expect(anno_wrapper.style.top).toMatch(/px$/)
 
@@ -630,7 +671,7 @@ describe(`BinnedScatterPlot`, () => {
 
     const expected_color = document.createElement(`div`)
     expected_color.style.backgroundColor = interpolateViridis(0)
-    const tooltip = doc_query<HTMLElement>(`.plot-tooltip`)
+    const tooltip = doc_query(`.plot-tooltip`)
     expect(tooltip.style.backgroundColor).toBe(expected_color.style.backgroundColor)
     expect(tooltip.style.color).toBe(`#ffffff`)
 
@@ -859,7 +900,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`includes configured point label gap in placement`, async () => {
     mock_label_measurement(40, 10)
     const label_distance = (): number => {
-      const label = doc_query<HTMLElement>(`.point-labels .point-label`)
+      const label = doc_query(`.point-labels .point-label`)
       const left = Number(label.style.left.replace(`px`, ``))
       const top = Number(label.style.top.replace(`px`, ``))
       return Math.hypot(left - 420, top - 284)

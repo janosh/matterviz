@@ -2,7 +2,7 @@
   import Icon from '$lib/Icon.svelte'
   import type { IconName } from '$lib/icons'
   import { DragControlTab } from '$lib/overlays'
-  import type { Snippet } from 'svelte'
+  import { onDestroy, type Snippet } from 'svelte'
   import { draggable, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -118,25 +118,29 @@
     onclose()
   }
 
-  function reset_position() {
-    if (toggle_pane_btn) {
-      const pos = calculate_position()
-      initial_position = pos
-      if (pane_div) {
-        Object.assign(pane_div.style, {
-          left: pos.left,
-          top: pos.top,
-          right: `auto`,
-          bottom: `auto`,
-          width: ``,
-          maxHeight: ``,
-        })
-        // Refresh --pane-viewport-clamp for the new position (matches
-        // handle_resize and the mount effect; without this a reset after a
-        // drag + window resize keeps a stale bottom-edge cap)
-        apply_viewport_clamp()
-      }
+  // Move the pane back under the toggle button, clear manual size overrides and
+  // refresh --pane-viewport-clamp (without which a reset after a drag + window
+  // resize would keep a stale bottom-edge cap)
+  function position_pane() {
+    if (pane_div) {
+      // Clear manual size first so calculate_position() uses natural pane dimensions
+      pane_div.style.width = ``
+      pane_div.style.maxHeight = ``
     }
+    const pos = calculate_position()
+    initial_position = pos
+    if (!pane_div) return
+    Object.assign(pane_div.style, {
+      left: pos.left,
+      top: pos.top,
+      right: `auto`,
+      bottom: `auto`,
+    })
+    apply_viewport_clamp()
+  }
+
+  function reset_position() {
+    if (toggle_pane_btn) position_pane()
     // Hide the control buttons after reset
     show_control_buttons = false
     has_been_dragged = false
@@ -204,37 +208,26 @@
     // (Playwright and some browsers synthesize a click after pointer up)
     if (Date.now() - resize_end_time < 200) return
 
-    const target = event.target
-    const is_toggle_button =
-      target instanceof Node &&
-      (target === toggle_pane_btn || (toggle_pane_btn?.contains(target) ?? false))
-    const is_inside_pane =
-      target instanceof Node && (target === pane_div || (pane_div?.contains(target) ?? false))
-
-    if (!is_toggle_button && !is_inside_pane && !currently_dragging && !resizing) {
-      close_pane()
-    }
+    const target = event.target instanceof Node ? event.target : null
+    const inside_toggle_or_pane = [toggle_pane_btn, pane_div].some(
+      (el) => el && (el === target || el.contains(target)),
+    )
+    if (!inside_toggle_or_pane && !currently_dragging && !resizing) close_pane()
   }
 
   // Debounced resize handler for better performance
-  let resize_timeout: ReturnType<typeof setTimeout> | undefined = $state(undefined)
+  let resize_timeout: ReturnType<typeof setTimeout> | undefined
+  onDestroy(() => resize_timeout && clearTimeout(resize_timeout))
 
   function handle_resize() {
     // Only reposition if pane is visible and hasn't been manually dragged
     if (!show || has_been_dragged || currently_dragging) return
 
     if (resize_timeout) clearTimeout(resize_timeout)
-    const current_timeout = setTimeout(() => {
-      if (resize_timeout !== current_timeout) return
-      if (show && toggle_pane_btn && !has_been_dragged && pane_div) {
-        const pos = calculate_position()
-        initial_position = pos
-        pane_div.style.left = pos.left
-        pane_div.style.top = pos.top
-        apply_viewport_clamp()
-      }
+    resize_timeout = setTimeout(() => {
+      // Re-check state since it may have changed during the debounce window
+      if (show && toggle_pane_btn && !has_been_dragged && pane_div) position_pane()
     }, 50) // Debounce resize events
-    resize_timeout = current_timeout
   }
 
   // Fixed panes must never extend past the bottom viewport edge: cap the
@@ -257,21 +250,7 @@
 
   // Position pane when shown
   $effect(() => {
-    if (show && toggle_pane_btn && !has_been_dragged) {
-      const pos = calculate_position()
-      initial_position = pos
-      if (pane_div) {
-        Object.assign(pane_div.style, {
-          left: pos.left,
-          top: pos.top,
-          right: `auto`,
-          bottom: `auto`,
-          width: ``,
-          maxHeight: ``,
-        })
-        apply_viewport_clamp()
-      }
-    }
+    if (show && toggle_pane_btn && !has_been_dragged) position_pane()
   })
 </script>
 
@@ -374,7 +353,7 @@
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
   div.draggable-pane {
-    position: absolute; /* Use absolute so pane scrolls with page content */
+    /* position set inline via style:position (default absolute: scrolls with page) */
     background: var(--pane-bg, var(--page-bg, light-dark(white, black)));
     border: var(
       --pane-border,

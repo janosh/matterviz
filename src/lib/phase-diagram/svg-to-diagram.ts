@@ -304,14 +304,9 @@ function extract_boundaries(
       const dy = Math.abs(coords.y2 - coords.y1)
       if (dx < 15 && dy < 15) continue
 
-      // Check stroke-width to distinguish boundaries from axis lines
+      // Check stroke-width to distinguish boundaries from axis lines;
+      // only include lines with meaningful stroke
       const stroke_width = parse_stroke_width(path_el) || 1
-
-      // Axis patches (id="patch_*") are axis borders, not phase boundaries
-      const parent_id = group.getAttribute(`id`) ?? ``
-      if (parent_id.startsWith(`patch_`)) continue
-
-      // Only include lines with meaningful stroke
       if (stroke_width < 1) continue
 
       add_boundary(boundaries, coords, x_scale, y_scale, epsilon)
@@ -510,7 +505,13 @@ function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
     if (!comment.includes(`+`)) continue // skip axis labels (no "+")
 
     // Clean LaTeX: "La$_2$NiO$_4$ + NiO" -> "La2NiO4 + NiO"
-    const text = clean_latex(comment.trim())
+    const text = comment
+      .trim()
+      .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
+      .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
+      .replaceAll(`$`, ``) // remove any remaining $
+      .replaceAll(/\s+/g, ` `)
+      .trim()
 
     // Get position from transform="translate(x, y)"
     const pos = parse_translate(group.querySelector(`g[transform]`)) ?? parse_translate(group)
@@ -878,15 +879,6 @@ function find_comment_text(group: Element): string | null {
 
   return null
 }
-
-// Clean LaTeX subscript notation: "La$_2$NiO$_4$" -> "La2NiO4"
-const clean_latex = (text: string): string =>
-  text
-    .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
-    .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
-    .replaceAll(`$`, ``) // remove any remaining $
-    .replaceAll(/\s+/g, ` `)
-    .trim()
 
 // Parse SVG path data into absolute line segments [x1,y1,x2,y2]
 // Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)

@@ -25,7 +25,6 @@ interface MatterVizProps {
 interface ErrorBoundaryState {
   has_error: boolean
   error: Error | null
-  error_info: React.ErrorInfo | null
 }
 
 // Convert non-JSON-serializable values for Dash event payloads.
@@ -136,7 +135,7 @@ function deep_merge(
 class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryState> {
   constructor(props: MatterVizProps) {
     super(props)
-    this.state = { has_error: false, error: null, error_info: null }
+    this.state = { has_error: false, error: null }
   }
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
@@ -144,8 +143,6 @@ class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryStat
   }
 
   componentDidCatch(error: Error, error_info: React.ErrorInfo): void {
-    this.setState({ error_info })
-    // Log error to console for debugging
     console.error(`MatterViz component error:`, error, error_info)
   }
 
@@ -174,7 +171,7 @@ class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryStat
         React.createElement(
           `button`,
           {
-            onClick: () => this.setState({ has_error: false, error: null, error_info: null }),
+            onClick: () => this.setState({ has_error: false, error: null }),
             style: {
               padding: `6px 12px`,
               border: `1px solid #dc3545`,

@@ -1,6 +1,6 @@
 // Integration tests for moyo-wasm symmetry analysis
 // Uses real WASM binary to verify symmetry detection behavior
-// Note: Most symmetry tests use mocks (see index.test.ts, symmetry-utils.test.ts)
+// Note: Most symmetry tests use mocks (see index.test.ts)
 
 import type { Vec3 } from '$lib/math'
 import type { Crystal } from '$lib'

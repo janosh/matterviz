@@ -28,8 +28,6 @@
 
   // Expanded state for long strings
   let is_expanded = $state(false)
-
-  // Extract max_string_length threshold for reuse
   let max_len = $derived(ctx?.settings.max_string_length ?? 200)
   let is_long_string = $derived(value_type === `string` && (value as string).length > max_len)
 
@@ -84,7 +82,6 @@
 
   // Format display value - strings use custom truncation, others use format_preview
   let display_value = $derived.by(() => {
-    if (value_type === `circular`) return `[Circular]`
     if (value_type === `string`) {
       const str = value as string
       return is_long_string && !is_expanded ? `"${str.slice(0, max_len)}..."` : `"${str}"`
@@ -92,10 +89,6 @@
     return format_preview(value)
   })
 
-  // Check if string is truncated
-  let is_truncated = $derived(is_long_string && !is_expanded)
-
-  // Toggle string expansion
   function toggle_expand(event: MouseEvent) {
     event.stopPropagation()
     is_expanded = !is_expanded
@@ -186,18 +179,14 @@
     {:else}
       {display_value}
     {/if}
-    {#if is_truncated}
+    {#if is_long_string}
       <button
         type="button"
         class="expand-btn"
         onclick={toggle_expand}
-        title="Show full string"
+        title={is_expanded ? `Collapse string` : `Show full string`}
       >
-        ...
-      </button>
-    {:else if is_long_string && is_expanded}
-      <button type="button" class="expand-btn" onclick={toggle_expand} title="Collapse string">
-        ▲
+        {is_expanded ? `▲` : `...`}
       </button>
     {/if}
     {#if ctx?.settings.show_data_types && value_type !== `null` && value_type !== `undefined`}
@@ -258,10 +247,6 @@
     }
     &.error {
       color: var(--jt-error, light-dark(#a31515, #f48771));
-    }
-    &.circular {
-      color: var(--jt-circular, light-dark(#808080, #808080));
-      font-style: italic;
     }
     &.changed {
       animation: value-change 1s ease-out;

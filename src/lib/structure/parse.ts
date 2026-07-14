@@ -68,8 +68,6 @@ export interface ParsedStructure {
 
 const cif_coords_key = (coords: Vec3): string =>
   `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
-const cif_site_key = (element: string, abc: Vec3, label: string): string =>
-  `${element}|${label}|${cif_coords_key(abc)}`
 // Bravais lattice centering translations (excluding the identity) keyed by the
 // leading letter of a space-group Hermann-Mauguin symbol. R is the obverse
 // hexagonal setting.
@@ -106,16 +104,11 @@ const vec3_from_values = (values: readonly unknown[] | undefined, context: strin
     throw new Error(`Invalid ${context}: expected 3 coordinates, got ${values?.length ?? 0}`)
   }
   const coords = math.finite_vec3_from_values(values)
-  if (coords) return coords
-  for (let idx = 0; idx < 3; idx++) {
-    const value = values[idx]
-    if (typeof value !== `number` || !Number.isFinite(value)) {
-      throw new TypeError(
-        `Invalid ${context}: coordinate ${idx} must be finite, got ${String(value)}`,
-      )
-    }
-  }
-  throw new Error(`Invalid ${context}: expected 3 finite coordinates`)
+  if (!coords)
+    throw new Error(
+      `Invalid ${context}: expected 3 finite coordinates, got [${values.map(String).join(`, `)}]`,
+    )
+  return coords
 }
 
 export interface PhonopyCell {
@@ -313,10 +306,9 @@ export function parse_poscar(content: string): ParsedStructure | null {
     const has_element_symbols = isNaN(parse_leading_num(lines[line_index]))
 
     if (has_element_symbols) {
-      // VASP 5+ format - parse element symbols (may span multiple lines)
+      // VASP 5+ format - element symbols (possibly spanning multiple lines),
+      // followed by as many atom-count lines. Look ahead to find where numbers start.
       let symbol_lines = 1
-
-      // Look ahead to find where numbers start (atom counts)
       for (let lookahead_idx = 1; lookahead_idx < 10; lookahead_idx++) {
         if (line_index + lookahead_idx >= lines.length) break
         if (!isNaN(parse_leading_num(lines[line_index + lookahead_idx]))) {
@@ -325,22 +317,11 @@ export function parse_poscar(content: string): ParsedStructure | null {
         }
       }
 
-      // Collect all element symbols from the symbol lines
-      for (let symbol_line_idx = 0; symbol_line_idx < symbol_lines; symbol_line_idx++) {
-        if (line_index + symbol_line_idx < lines.length) {
-          element_symbols.push(...lines[line_index + symbol_line_idx].trim().split(/\s+/))
-        }
-      }
-
-      // Parse atom counts (may span multiple lines)
-      for (let count_line_idx = 0; count_line_idx < symbol_lines; count_line_idx++) {
-        if (line_index + symbol_lines + count_line_idx < lines.length) {
-          const counts = lines[line_index + symbol_lines + count_line_idx]
-            .trim()
-            .split(/\s+/)
-            .map(Number)
-          atom_counts.push(...counts)
-        }
+      for (let offset = 0; offset < symbol_lines; offset++) {
+        const symbol_tokens = lines[line_index + offset]?.trim().split(/\s+/) ?? []
+        element_symbols.push(...symbol_tokens)
+        const count_tokens = lines[line_index + symbol_lines + offset]?.trim().split(/\s+/)
+        atom_counts.push(...(count_tokens?.map(Number) ?? []))
       }
 
       line_index += 2 * symbol_lines
@@ -528,7 +509,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
       }
 
       const element = validate_element_symbol(parts[0], atom_idx)
-      const xyz = vec3_from_values(
+      let xyz = vec3_from_values(
         parts.slice(1, 4).map(parse_coordinate),
         `XYZ atom position ${atom_idx + 1}`,
       )
@@ -536,14 +517,10 @@ export function parse_xyz(content: string): ParsedStructure | null {
       // Calculate fractional coordinates if lattice is available
       let abc: Vec3 = [0, 0, 0]
       if (lattice && xyz_frac_to_cart && xyz_cart_to_frac) {
-        // Ensure fractional coordinates are wrapped into [0, 1) for consistency
+        // Wrap fractional coordinates into [0, 1) and recompute xyz from them so
+        // rendered atoms stay inside the primary unit cell
         abc = wrap_to_unit_cell(xyz_cart_to_frac(xyz))
-
-        // Keep rendered atoms inside primary unit cell by recomputing xyz
-        const wrapped_xyz = xyz_frac_to_cart(abc)
-        xyz[0] = wrapped_xyz[0]
-        xyz[1] = wrapped_xyz[1]
-        xyz[2] = wrapped_xyz[2]
+        xyz = xyz_frac_to_cart(abc)
       }
 
       sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
@@ -566,68 +543,31 @@ const parse_symmetry_expression = (
   const coefficients: Vec3 = [0, 0, 0]
   let translation = 0
 
-  // Remove all whitespace
+  // Strip whitespace, then split into signed terms: "x-y+1/3" → ["x", "-y", "+1/3"].
+  // Dangling operators (e.g. "x+") produce no token and are silently ignored.
   const expr = expr_input.replaceAll(/\s+/g, ``)
-  if (!expr) return { coefficients, translation }
+  for (const token of expr.match(/[+-]?[^+-]+/g) ?? []) {
+    const sign = token.startsWith(`-`) ? -1 : 1
+    const term = token.replace(/^[+-]/, ``)
 
-  // Tokenize: split into terms while preserving signs
-  // E.g., "x-y+1/3" → ["x", "-y", "+1/3"] or "-x+y" → ["-x", "+y"]
-  const tokens: string[] = []
-  let current_token = ``
-
-  for (const char of expr) {
-    if ((char === `+` || char === `-`) && current_token.length > 0) {
-      tokens.push(current_token)
-      current_token = char
-    } else {
-      current_token += char
-    }
-  }
-  if (current_token) tokens.push(current_token)
-
-  for (const token of tokens) {
-    // Check if this token is a variable term (x, y, or z with optional sign)
-    const var_match = /^(?<sign>[+-]?)(?<axis>[xyz])$/.exec(token)
-    if (var_match) {
-      const sign = var_match[1] === `-` ? -1 : 1
-      const var_char = var_match[2]
-      const var_idx = var_char === `x` ? 0 : var_char === `y` ? 1 : 2
+    // Variable term (x, y, or z)
+    const var_idx = [`x`, `y`, `z`].indexOf(term)
+    if (var_idx !== -1) {
       coefficients[var_idx] += sign
       continue
     }
 
-    // Check if this is a numeric term (integer, decimal, or fraction)
-    let sign = 1
-    let num_str = token
-
-    // Handle leading sign
-    if (num_str.startsWith(`+`)) {
-      num_str = num_str.slice(1)
-    } else if (num_str.startsWith(`-`)) {
-      sign = -1
-      num_str = num_str.slice(1)
+    // Numeric term: integer, decimal, or fraction like "1/3"
+    const parts = term.split(`/`)
+    // skip malformed terms like "1/2/3"
+    if (parts.length > 2) {
+      diag_warn(`Skipping malformed symmetry term '${term}'`)
+      continue
     }
-
-    // Skip empty tokens (from dangling operators like "x+")
-    if (!num_str || num_str === `+` || num_str === `-`) continue
-
-    if (num_str.includes(`/`)) {
-      // Fraction
-      const parts = num_str.split(`/`)
-      if (parts.length === 2) {
-        const numerator = Number(parts[0])
-        const denominator = Number(parts[1])
-        if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
-          translation += sign * (numerator / denominator)
-        }
-      }
-    } else {
-      // Integer or decimal
-      const val = Number(num_str)
-      if (!isNaN(val)) {
-        translation += sign * val
-      }
-    }
+    const [numerator, denominator = `1`] = parts
+    const value = Number(numerator) / Number(denominator)
+    if (Number.isFinite(value)) translation += sign * value
+    else diag_warn(`Skipping non-finite symmetry term '${term}'`)
   }
 
   return { coefficients, translation }
@@ -796,15 +736,11 @@ const parse_cif_atom_data = (
   coords_type: `fract` | `cart`,
 ): CifAtom => {
   const { label = 0, symbol = -1, occupancy = -1 } = indices
+  // cif_coords_type already guaranteed all three indices for coords_type exist
   const coord_indices = cif_coord_indices(indices, coords_type)
-
-  if (coord_indices.some((idx) => idx === undefined)) {
-    throw new Error(`Missing coordinate indices`)
-  }
 
   const coords_triplet = vec3_from_values(
     coord_indices.map((idx) => {
-      // idx cannot be undefined: the `.some` guard above already threw
       const coord_str = raw_data[idx]
       if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
       const coord = parse_cif_uncertain_number(coord_str)
@@ -818,8 +754,8 @@ const parse_cif_atom_data = (
     occupancy >= 0 && raw_data[occupancy]
       ? parse_cif_uncertain_number(raw_data[occupancy])
       : null
-  // invalid or zero occupancy defaults to fully occupied
-  const occu = raw_occu == null || raw_occu === 0 ? 1.0 : raw_occu
+  // Explicit 0 is kept; missing / `.` / `?` (null) default to fully occupied.
+  const occu = raw_occu ?? 1.0
 
   const from_symbol =
     symbol >= 0 ? /^(?<element>[A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
@@ -1053,7 +989,7 @@ export function parse_cif(
         )
         for (const equiv_atom of equiv_atoms) {
           const abc = wrap_vec3(equiv_atom.coords)
-          const key = cif_site_key(element, abc, equiv_atom.id)
+          const key = `${element}|${equiv_atom.id}|${cif_coords_key(abc)}`
           if (seen_site_keys.has(key)) continue
           seen_site_keys.add(key)
           sites.push(
@@ -1644,10 +1580,7 @@ const unwrap_data = (value: unknown): unknown =>
 // Type guard: verify minimal OPTIMADE structure shape
 function is_optimade_structure_object(value: unknown): value is OptimadeStructure {
   if (!value || typeof value !== `object`) return false
-  const obj = value as { type?: unknown; id?: unknown; attributes?: unknown }
-  const type = obj.type
-  const id = obj.id
-  const attributes = obj.attributes
+  const { type, id, attributes } = value as Record<`type` | `id` | `attributes`, unknown>
   return (
     type === `structures` &&
     typeof id === `string` &&

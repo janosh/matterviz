@@ -88,12 +88,29 @@ describe(`validate_trajectory`, () => {
   })
 
   describe(`streaming properties`, () => {
+    test(`fully valid streaming trajectory returns no errors`, () => {
+      const traj = make_trajectory(3, {
+        with_indexed_frames: true,
+        with_plot_metadata: true,
+        total_frames: 3,
+      })
+      expect(validate_trajectory(traj)).toEqual([])
+    })
+
     test.each([
       [
         (traj: TrajectoryType) => {
           traj.total_frames = -1
         },
         `total_frames must be a positive`,
+        1,
+      ],
+      [
+        (traj: TrajectoryType) => {
+          // @ts-expect-error intentionally setting invalid type
+          traj.total_frames = `invalid`
+        },
+        `total_frames must be a positive number, got invalid`,
         1,
       ],
       [
@@ -111,6 +128,14 @@ describe(`validate_trajectory`, () => {
           traj.is_indexed = true
         },
         `is_indexed is true but indexed_frames is missing`,
+        1,
+      ],
+      [
+        (traj: TrajectoryType) => {
+          traj.is_indexed = true
+          traj.indexed_frames = []
+        },
+        `is_indexed is true but indexed_frames is missing or empty`,
         1,
       ],
     ])(`validates streaming property errors`, (mutate, expected_substr, expected_count) => {
@@ -239,6 +264,8 @@ describe(`get_trajectory_stats`, () => {
     [`constant`, 5, { atoms_per_frame: 10 }, true, 10, undefined],
     [`variable`, 5, { atoms_per_frame: [3, 5, 4, 6, 3] }, false, undefined, [3, 6]],
     [`single frame`, 1, { atoms_per_frame: 5 }, true, 5, undefined],
+    // >100 frames exercises the sampled constant-count detection path
+    [`large constant (sampled)`, 1000, { atoms_per_frame: 2 }, true, 2, undefined],
   ])(`atom count: %s`, (_desc, frame_count, options, const_count, total_atoms, range) => {
     const stats = get_trajectory_stats(make_trajectory(frame_count, options))
     expect(stats.constant_atom_count).toBe(const_count)

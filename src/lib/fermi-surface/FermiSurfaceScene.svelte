@@ -172,21 +172,11 @@
 
   // Map from surface to its render order based on size (inner surfaces first)
   let surface_render_orders = $derived.by((): Map<Isosurface, number> => {
-    const order_map = new SvelteMap<Isosurface, number>()
-    if (visible_surfaces.length === 0) return order_map
-
-    // Compute radius for each surface and sort by it
-    const surfaces_with_radius = visible_surfaces.map((surface) => ({
-      surface,
-      radius: compute_surface_radius(surface),
-    }))
-    surfaces_with_radius.sort((a, b) => a.radius - b.radius)
-
-    // Assign render order: smaller radius (inner) = lower order = rendered first
-    for (let idx = 0; idx < surfaces_with_radius.length; idx++) {
-      order_map.set(surfaces_with_radius[idx].surface, idx)
-    }
-    return order_map
+    const by_radius = visible_surfaces
+      .map((surface) => ({ surface, radius: compute_surface_radius(surface) }))
+      .toSorted((surf_a, surf_b) => surf_a.radius - surf_b.radius)
+    // Smaller radius (inner) = lower order = rendered first
+    return new SvelteMap(by_radius.map(({ surface }, idx) => [surface, idx]))
   })
 
   // Compute property range for color scaling
@@ -538,79 +528,44 @@
 
     {#if geo_data}
       {#each symmetry_ops as sym_matrix, sym_idx (`sym-${sym_idx}`)}
+        {#snippet mesh_pass(order: number, pass: `wireframe` | `front` | `back`)}
+          <T.Mesh
+            geometry={geo_data.geometry}
+            matrix={sym_matrix}
+            matrixAutoUpdate={false}
+            renderOrder={order}
+            onpointermove={(event: ThreltePointerEvent) =>
+              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+            onpointerleave={clear_hover}
+          >
+            {#if pass === `wireframe`}
+              <T.MeshBasicMaterial
+                color={surface_color}
+                wireframe
+                transparent={surface_opacity < 1}
+                opacity={surface_opacity}
+                depthWrite={true}
+                depthTest={true}
+              />
+            {:else}
+              <T.MeshStandardMaterial
+                {...get_material_props(surface_color, use_vertex_colors, surface_idx, pass)}
+                metalness={0.1}
+                roughness={0.6}
+                flatShading={false}
+              />
+            {/if}
+          </T.Mesh>
+        {/snippet}
+
         {#if representation === `wireframe`}
-          <T.Mesh
-            geometry={geo_data.geometry}
-            matrix={sym_matrix}
-            matrixAutoUpdate={false}
-            {renderOrder}
-            onpointermove={(event: ThreltePointerEvent) =>
-              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={clear_hover}
-          >
-            <T.MeshBasicMaterial
-              color={surface_color}
-              wireframe
-              transparent={surface_opacity < 1}
-              opacity={surface_opacity}
-              depthWrite={true}
-              depthTest={true}
-            />
-          </T.Mesh>
+          {@render mesh_pass(renderOrder, `wireframe`)}
         {:else if surface_opacity < 1}
-          <!-- Two-pass rendering for transparent surfaces -->
-          <!-- Pass 1: Back faces (rendered first, lower renderOrder) -->
-          <T.Mesh
-            geometry={geo_data.geometry}
-            matrix={sym_matrix}
-            matrixAutoUpdate={false}
-            renderOrder={renderOrder * 2}
-            onpointermove={(event: ThreltePointerEvent) =>
-              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={clear_hover}
-          >
-            <T.MeshStandardMaterial
-              {...get_material_props(surface_color, use_vertex_colors, surface_idx, `back`)}
-              metalness={0.1}
-              roughness={0.6}
-              flatShading={false}
-            />
-          </T.Mesh>
-          <!-- Pass 2: Front faces (rendered second, higher renderOrder) -->
-          <T.Mesh
-            geometry={geo_data.geometry}
-            matrix={sym_matrix}
-            matrixAutoUpdate={false}
-            renderOrder={renderOrder * 2 + 1}
-            onpointermove={(event: ThreltePointerEvent) =>
-              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={clear_hover}
-          >
-            <T.MeshStandardMaterial
-              {...get_material_props(surface_color, use_vertex_colors, surface_idx, `front`)}
-              metalness={0.1}
-              roughness={0.6}
-              flatShading={false}
-            />
-          </T.Mesh>
+          <!-- Two-pass transparent rendering: back faces first, front faces on top -->
+          {@render mesh_pass(renderOrder * 2, `back`)}
+          {@render mesh_pass(renderOrder * 2 + 1, `front`)}
         {:else}
-          <!-- Single pass for opaque surfaces -->
-          <T.Mesh
-            geometry={geo_data.geometry}
-            matrix={sym_matrix}
-            matrixAutoUpdate={false}
-            {renderOrder}
-            onpointermove={(event: ThreltePointerEvent) =>
-              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
-            onpointerleave={clear_hover}
-          >
-            <T.MeshStandardMaterial
-              {...get_material_props(surface_color, use_vertex_colors, surface_idx, `front`)}
-              metalness={0.1}
-              roughness={0.6}
-              flatShading={false}
-            />
-          </T.Mesh>
+          {@render mesh_pass(renderOrder, `front`)}
         {/if}
       {/each}
     {/if}

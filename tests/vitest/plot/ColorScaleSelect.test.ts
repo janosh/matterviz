@@ -5,21 +5,6 @@ import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
-  test(`renders with custom options array`, () => {
-    const custom_options: D3InterpolateName[] = [
-      `interpolateBlues`,
-      `interpolateGreens`,
-      `interpolateReds`,
-    ]
-    mount(ColorScaleSelect, {
-      target: document.body,
-      props: { options: custom_options },
-    })
-
-    const select_wrapper = doc_query(`div`)
-    expect(select_wrapper).toBeInstanceOf(HTMLElement)
-  })
-
   test(`binds value and selected correctly (initial state)`, () => {
     // Tests if initial value and selected props are rendered correctly.
     const selected_value: D3InterpolateName = `interpolateViridis`

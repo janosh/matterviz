@@ -208,7 +208,7 @@ describe(`composition_to_barycentric_nd`, () => {
     expect(() => composition_to_barycentric_nd({ Li: -1, Na: 2 }, elems)).toThrow(/negative/)
   })
 
-  test(`handles NaN as zero via || 0 fallback`, () => {
+  test(`treats NaN amounts as zero`, () => {
     const elements = [`Li`, `Na`] as ElementSymbol[]
     const result = composition_to_barycentric_nd({ Li: NaN, Na: 1 }, elements)
     expect(result).toEqual([0, 1])

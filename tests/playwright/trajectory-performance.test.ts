@@ -1,7 +1,41 @@
+import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { IS_CI } from './helpers'
 
 const TEST_FRAME_RATE_FPS = 30
+
+// Navigate to the performance test page and wait for the trajectory to finish
+// loading (controls visible), throwing if the error state appears instead.
+// Returns the trajectory locator and the load duration measured after goto.
+async function load_performance_page(
+  page: Page,
+): Promise<{ trajectory: Locator; load_ms: number }> {
+  await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
+  const trajectory = page.locator(`.trajectory`)
+  await expect(trajectory).toBeVisible({ timeout: 30000 })
+
+  const start_time = Date.now()
+  // Wait for content to be loaded (either controls or error state)
+  await Promise.race([
+    trajectory.locator(`.trajectory-controls`).waitFor({ state: `visible`, timeout: 30000 }),
+    trajectory.locator(`.trajectory-error`).waitFor({ state: `visible`, timeout: 30000 }),
+  ])
+  const load_ms = Date.now() - start_time
+
+  // If spinner appeared during loading, wait for it to disappear
+  const spinner = trajectory.locator(`.spinner`)
+  if (await spinner.isVisible()) {
+    await spinner.waitFor({ state: `hidden`, timeout: 30000 })
+  }
+
+  if (await trajectory.locator(`.trajectory-error`).isVisible()) {
+    const error_text = await trajectory
+      .locator(`.trajectory-error .error-message`)
+      .textContent()
+    throw new Error(`Trajectory failed to load: ${error_text}`)
+  }
+  return { trajectory, load_ms }
+}
 
 test.describe(`Trajectory Performance Tests`, () => {
   // TODO: Add CI fixtures for trajectory performance testing
@@ -10,39 +44,7 @@ test.describe(`Trajectory Performance Tests`, () => {
   test(`large MOF5 trajectory playback performance`, async ({ page }) => {
     test.setTimeout(120000) // 2 minutes timeout for performance test
 
-    // Navigate to dedicated performance test page
-    await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
-
-    // Wait for trajectory to load
-    const trajectory = page.locator(`.trajectory`)
-    await expect(trajectory).toBeVisible({ timeout: 30000 })
-
-    // Wait for content to be loaded (either controls or error state)
-    await Promise.race([
-      trajectory.locator(`.trajectory-controls`).waitFor({
-        state: `visible`,
-        timeout: 30000,
-      }),
-      trajectory.locator(`.trajectory-error`).waitFor({
-        state: `visible`,
-        timeout: 30000,
-      }),
-    ])
-
-    // If spinner appeared during loading, wait for it to disappear
-    const spinner = trajectory.locator(`.spinner`)
-    if (await spinner.isVisible()) {
-      await spinner.waitFor({ state: `hidden`, timeout: 30000 })
-    }
-
-    // Check if trajectory loaded successfully
-    const has_error = await trajectory.locator(`.trajectory-error`).isVisible()
-    if (has_error) {
-      const error_text = await trajectory
-        .locator(`.trajectory-error .error-message`)
-        .textContent()
-      throw new Error(`Trajectory failed to load: ${error_text}`)
-    }
+    const { trajectory } = await load_performance_page(page)
 
     // Wait for controls to be fully loaded
     const controls = trajectory.locator(`.trajectory-controls`)
@@ -130,70 +132,17 @@ test.describe(`Trajectory Performance Tests`, () => {
 
   test(`trajectory loading performance with large file`, async ({ page }) => {
     test.setTimeout(120_000) // 2 minutes timeout for performance test
-    // Navigate to dedicated performance test page
-    await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
+    const { load_ms } = await load_performance_page(page)
 
-    const trajectory = page.locator(`.trajectory`)
-
-    // Measure loading time
-    const start_time = Date.now()
-
-    // Wait for loading to complete
-    await Promise.race([
-      trajectory.locator(`.trajectory-controls`).waitFor({
-        state: `visible`,
-        timeout: 30000,
-      }),
-      trajectory.locator(`.trajectory-error`).waitFor({
-        state: `visible`,
-        timeout: 30000,
-      }),
-    ])
-
-    const loading_duration = Date.now() - start_time
-
-    // Check for errors
-    const has_error = await trajectory.locator(`.trajectory-error`).isVisible()
-    if (has_error) {
-      const error_text = await trajectory
-        .locator(`.trajectory-error .error-message`)
-        .textContent()
-      throw new Error(`Trajectory failed to load: ${error_text}`)
-    }
-
-    console.warn(`- Loading time: ${(loading_duration / 1000).toFixed(1)}s`)
+    console.warn(`- Loading time: ${(load_ms / 1000).toFixed(1)}s`)
 
     // Loading should complete in under 10 seconds
-    expect(loading_duration).toBeLessThan(10000)
+    expect(load_ms).toBeLessThan(10000)
   })
 
   test(`memory usage during playback`, async ({ page }) => {
     test.setTimeout(120_000) // 2 minutes timeout for performance test
-    // Navigate to dedicated performance test page
-    await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
-
-    const trajectory = page.locator(`.trajectory`)
-    await expect(trajectory).toBeVisible({ timeout: 30000 })
-
-    // Wait for loading to complete
-    await Promise.race([
-      trajectory.locator(`.trajectory-controls`).waitFor({
-        state: `visible`,
-        timeout: 30000,
-      }),
-      trajectory.locator(`.trajectory-error`).waitFor({
-        state: `visible`,
-        timeout: 30000,
-      }),
-    ])
-
-    const has_error = await trajectory.locator(`.trajectory-error`).isVisible()
-    if (has_error) {
-      const error_text = await trajectory
-        .locator(`.trajectory-error .error-message`)
-        .textContent()
-      throw new Error(`Trajectory failed to load: ${error_text}`)
-    }
+    const { trajectory } = await load_performance_page(page)
 
     const controls = trajectory.locator(`.trajectory-controls`)
     await expect(controls).toBeVisible()

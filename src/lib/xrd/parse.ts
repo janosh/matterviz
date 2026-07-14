@@ -6,12 +6,7 @@ const MAX_POINTS = 1000
 // Default step size in degrees for XRD scans when not specified in file
 const DEFAULT_STEP_SIZE = 0.02
 
-// Generate x values from scan parameters (start angle, step size, point count).
-// Used by formats that store metadata + intensity-only data.
-const generate_x_from_scan = (start: number, step: number, count: number): number[] =>
-  Array.from({ length: count }, (_, idx) => start + idx * step)
-
-// Create normalized XrdPattern from scan metadata and intensities.
+// Create normalized XrdPattern from scan metadata (start angle, step size) and intensities.
 // Returns null if no intensity data. Used by all parsers as final step.
 function create_pattern(
   start: number,
@@ -19,9 +14,8 @@ function create_pattern(
   intensities: number[],
 ): XrdPattern | null {
   if (intensities.length === 0) return null
-  const x_values = generate_x_from_scan(start, step, intensities.length)
-  const normalized = normalize_and_subsample(x_values, intensities)
-  return { x: normalized.x, y: normalized.y }
+  const x_values = intensities.map((_, idx) => start + idx * step)
+  return normalize_and_subsample(x_values, intensities)
 }
 
 // Parse whitespace-separated numbers from text. Used by multiple formats.
@@ -166,8 +160,7 @@ export function parse_xy_file(content: string): XrdPattern | null {
 
   if (x_values.length === 0) return null
 
-  const normalized = normalize_and_subsample(x_values, y_values)
-  return { x: normalized.x, y: normalized.y }
+  return normalize_and_subsample(x_values, y_values)
 }
 
 // Parse a Rigaku .ras file (ASCII format with structured header).
@@ -619,21 +612,14 @@ function extract_scan_parameters_xml(
   let intensities: number[] | null = null
   let two_theta_values: number[] | null = null
 
-  // Method 1: <Intensities> tag with space-separated values
-  const intensities_el = doc.querySelector(`Intensities`)
-  if (intensities_el?.textContent) {
-    intensities = parse_number_list(intensities_el.textContent)
+  // Method 1: <Intensities> or <Counts> tag with space-separated values
+  for (const tag of [`Intensities`, `Counts`]) {
+    const text = doc.querySelector(tag)?.textContent
+    if (text) intensities = parse_number_list(text)
+    if (intensities?.length) break
   }
 
-  // Method 2: <Counts> tag
-  if (!intensities?.length) {
-    const counts_el = doc.querySelector(`Counts`)
-    if (counts_el?.textContent) {
-      intensities = parse_number_list(counts_el.textContent)
-    }
-  }
-
-  // Method 3: Individual <I> or <Count> elements
+  // Method 2: Individual <I> or <Count> elements
   if (!intensities?.length) {
     const intensity_elements = doc.querySelectorAll(`I, Count`)
     if (intensity_elements.length > 0) {
@@ -643,7 +629,7 @@ function extract_scan_parameters_xml(
     }
   }
 
-  // Method 4: <Datum> elements with comma-separated values
+  // Method 3: <Datum> elements with comma-separated values
   // Bruker uses different formats depending on instrument/software version:
   // - 8-column HRXRD: "1,1,TwoTheta,Omega,...,Intensity" (indices 2 and 7)
   // - 5-column powder: "time,1,TwoTheta,Theta,Intensity" (indices 2 and 4)

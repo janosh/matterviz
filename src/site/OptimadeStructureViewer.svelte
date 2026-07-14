@@ -373,15 +373,10 @@
     .main-layout {
       grid-template-columns: 1fr 1fr;
       grid-template-rows: auto 1fr;
-      height: auto;
     }
     .structure-column {
       grid-column: 1 / -1;
       order: -1;
-    }
-    .db-column h3,
-    .suggestions-column h3 {
-      position: static;
     }
   }
 </style>

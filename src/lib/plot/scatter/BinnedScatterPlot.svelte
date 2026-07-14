@@ -266,14 +266,16 @@
   const needs_data_range = (range: AxisConfig[`range`] | undefined): boolean =>
     range?.[0] == null || range?.[1] == null
 
+  let x_scale_type = $derived(x_axis.scale_type ?? `linear`)
+  let y_scale_type = $derived(y_axis.scale_type ?? `linear`)
   let needs_auto_range = $derived(
     needs_data_range(x_axis.range) || needs_data_range(y_axis.range),
   )
   let auto_ranges = $derived(
-    needs_auto_range ? series_extents(series) : { x: [0, 1] as Vec2, y: [0, 1] as Vec2 },
+    needs_auto_range
+      ? series_extents(series, x_scale_type, y_scale_type)
+      : { x: [0, 1] as Vec2, y: [0, 1] as Vec2 },
   )
-  let x_scale_type = $derived(x_axis.scale_type ?? `linear`)
-  let y_scale_type = $derived(y_axis.scale_type ?? `linear`)
   let has_plot_size = $derived(width > 0 && height > 0)
 
   const axis_range = (axis: AxisConfig, fallback: Vec2): Vec2 => [
