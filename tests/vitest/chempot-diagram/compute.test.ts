@@ -19,6 +19,7 @@ import {
   get_3d_domain_simplexes_and_ann_loc,
   get_energy_per_atom,
   get_min_entries_and_el_refs,
+  best_form_energy_for_formula,
   get_ternary_combinations,
   get_visible_domain_labels,
   make_nd_cache_key,
@@ -484,6 +485,26 @@ describe(`get_min_entries_and_el_refs`, () => {
     ])
     expect(min_entries).toHaveLength(2)
     expect(el_refs.Fe.energy_per_atom).toBe(-6.5)
+  })
+
+  test.each([Number.NaN, Infinity, -Infinity])(`ignores non-finite EPA/e_form %s`, (bad) => {
+    expect(
+      get_min_entries_and_el_refs([
+        make_entry({ A: 1 }, bad),
+        make_entry({ A: 1 }, -2),
+        make_entry({ B: 1 }, bad),
+      ]).min_entries.map((entry) => entry.energy_per_atom),
+    ).toEqual([-2])
+    expect(
+      best_form_energy_for_formula(
+        [
+          { ...make_entry({ A: 1, B: 1 }, -1), e_form_per_atom: bad },
+          { ...make_entry({ A: 1, B: 1 }, -1), e_form_per_atom: -0.5 },
+        ],
+        `AB`,
+        { A: make_entry({ A: 1 }, 0), B: make_entry({ B: 1 }, 0) },
+      ),
+    ).toBe(-0.5)
   })
 })
 
@@ -1349,9 +1370,27 @@ describe(`get_energy_per_atom`, () => {
     expect(get_energy_per_atom(entry)).toBeCloseTo(-3.0, 8)
   })
 
-  test(`throws for zero atom count`, () => {
-    const entry = { composition: {}, energy: -1.0 } as PhaseData
-    expect(() => get_energy_per_atom(entry)).toThrow(`non-positive`)
+  test.each([
+    { label: `empty composition`, entry: { composition: {}, energy: -1.0 } },
+    {
+      label: `non-finite explicit EPA`,
+      entry: { composition: { Li: 1 }, energy: -1, energy_per_atom: Number.NaN },
+    },
+    {
+      label: `non-finite total energy`,
+      entry: { composition: { Li: 1 }, energy: Number.POSITIVE_INFINITY },
+    },
+  ])(`returns NaN for $label (safe for $derived)`, ({ entry }) => {
+    expect(Number.isNaN(get_energy_per_atom(entry))).toBe(true)
+  })
+
+  test(`get_min_entries skips invalid compositions instead of throwing`, () => {
+    const { min_entries } = get_min_entries_and_el_refs([
+      { composition: {}, energy: -1 },
+      make_entry({ Li: 1 }, -3),
+    ])
+    expect(min_entries).toHaveLength(1)
+    expect(min_entries[0]?.composition).toEqual({ Li: 1 })
   })
 })
 
@@ -1938,38 +1977,43 @@ describe(`make_nd_cache_key`, () => {
 
   test.each([
     {
-      label: `different energy_per_atom same total energy`,
       a: { composition: { Li: 2 }, energy: -6, energy_per_atom: -3 },
       b: { composition: { Li: 2 }, energy: -6, energy_per_atom: -2.5 },
+      same: false,
     },
     {
-      label: `absent vs explicit energy_per_atom`,
+      a: { composition: { Li: 1 }, energy: -3 },
+      b: { composition: { Li: 2 }, energy: -3 },
+      same: false,
+    },
+    {
       a: { composition: { Li: 1 }, energy: -3 },
       b: { composition: { Li: 1 }, energy: -3, energy_per_atom: -3 },
+      same: true,
     },
-  ])(`key changes for $label`, ({ a, b }) => {
-    expect(make_nd_cache_key([a], true, -50, undefined)).not.toBe(
-      make_nd_cache_key([b], true, -50, undefined),
-    )
+  ])(`nd cache key same=$same for EPA variants`, ({ a, b, same }) => {
+    expect(
+      make_nd_cache_key([a], true, -50, undefined) ===
+        make_nd_cache_key([b], true, -50, undefined),
+    ).toBe(same)
   })
 
-  test(`EPA ties prefer hull-eligible entries independent of input order`, () => {
-    const kept = {
-      composition: { Li: 2, O: 1 },
-      energy: -10,
-      exclude_from_hull: false,
-    }
-    const dropped = {
-      composition: { Li: 4, O: 2 },
-      energy: -20,
-      exclude_from_hull: true,
-    }
-    const forward = get_min_entries_and_el_refs([kept, dropped])
-    const reverse = get_min_entries_and_el_refs([dropped, kept])
-    expect(forward.min_entries).toHaveLength(1)
-    expect(reverse.min_entries).toHaveLength(1)
-    expect(forward.min_entries[0]?.exclude_from_hull).toBe(false)
-    expect(reverse.min_entries[0]?.exclude_from_hull).toBe(false)
+  test.each([
+    {
+      kept: { composition: { Li: 2, O: 1 }, energy: -10, exclude_from_hull: false },
+      dropped: { composition: { Li: 4, O: 2 }, energy: -20, exclude_from_hull: true },
+    },
+    {
+      kept: { composition: { Li: 1 }, energy: -3, is_stable: true },
+      dropped: { composition: { Li: 1 }, energy: -3, is_stable: false },
+    },
+    {
+      kept: { composition: { Li: 1 }, energy: -3, e_above_hull: 0 },
+      dropped: { composition: { Li: 1 }, energy: -3, e_above_hull: 0.1 },
+    },
+  ])(`EPA ties keep preferred entry independent of order`, ({ kept, dropped }) => {
+    expect(get_min_entries_and_el_refs([kept, dropped]).min_entries[0]).toBe(kept)
+    expect(get_min_entries_and_el_refs([dropped, kept]).min_entries[0]).toBe(kept)
     expect(make_nd_cache_key([kept, dropped], true, -50, undefined)).toBe(
       make_nd_cache_key([dropped, kept], true, -50, undefined),
     )

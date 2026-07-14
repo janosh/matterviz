@@ -242,13 +242,9 @@ Direct
         )
 
         // Verify coordinate consistency and bounds
-        expect(reconstructed_xyz).toEqual(
-          expect.arrayContaining([
-            expect.closeTo(site.xyz[0], 10),
-            expect.closeTo(site.xyz[1], 10),
-            expect.closeTo(site.xyz[2], 10),
-          ]),
-        )
+        expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 10)
+        expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 10)
+        expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 10)
         expect(site.xyz[0]).toBeGreaterThanOrEqual(-0.1)
         expect(site.xyz[0]).toBeLessThan(result.lattice.a + 0.1)
         expect(site.xyz[1]).toBeGreaterThanOrEqual(-0.1)
@@ -532,13 +528,9 @@ describe(`Auto-detection & Error Handling`, () => {
       const xyz_site = xyz_result.sites[idx]
 
       // Fractional coordinates should match between parsers
-      expect(poscar_site.abc).toEqual(
-        expect.arrayContaining([
-          expect.closeTo(xyz_site.abc[0], 10),
-          expect.closeTo(xyz_site.abc[1], 10),
-          expect.closeTo(xyz_site.abc[2], 10),
-        ]),
-      )
+      expect(poscar_site.abc[0]).toBeCloseTo(xyz_site.abc[0], 10)
+      expect(poscar_site.abc[1]).toBeCloseTo(xyz_site.abc[1], 10)
+      expect(poscar_site.abc[2]).toBeCloseTo(xyz_site.abc[2], 10)
 
       // Verify perfect reconstruction: fractional → cartesian should match original
       const lattice: Matrix3x3 | undefined = poscar_result.lattice?.matrix

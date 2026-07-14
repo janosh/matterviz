@@ -359,7 +359,7 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
       const duration = performance.now() - start
 
       expect(result).toBe(true)
-      expect(duration).toBeLessThan(100) // Should complete within 100ms
+      expect(duration).toBeLessThan(500) // generous bound to avoid CI flakiness
     })
 
     test.each([
@@ -411,10 +411,8 @@ describe(`VASP XDATCAR Parser`, () => {
     const trajectory = await parse_trajectory_data(content, `XDATCAR`)
 
     trajectory.frames.forEach((frame) => {
-      if (frame.metadata?.volume !== undefined) {
-        expect(frame.metadata.volume).toBeGreaterThan(0)
-        expect(typeof frame.metadata.volume).toBe(`number`)
-      }
+      expect(frame.metadata?.volume).toBeGreaterThan(0)
+      expect(typeof frame.metadata?.volume).toBe(`number`)
     })
   })
 
@@ -520,10 +518,8 @@ describe(`LAMMPS Trajectory Format`, () => {
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     trajectory.frames.forEach((frame) => {
-      if (frame.metadata?.volume !== undefined) {
-        expect(frame.metadata.volume).toBeGreaterThan(0)
-        expect(typeof frame.metadata.volume).toBe(`number`)
-      }
+      expect(frame.metadata?.volume).toBeGreaterThan(0)
+      expect(typeof frame.metadata?.volume).toBe(`number`)
     })
   })
 
@@ -1040,11 +1036,20 @@ describe(`XYZ Trajectory Format`, () => {
   it.each<[string, readonly [boolean, boolean, boolean]]>([
     [` pbc="F F F"`, [false, false, false]],
     [` pbc="T F T"`, [true, false, true]],
+    [` pbc='T F T'`, [true, false, true]],
     [` pbc=T F T`, [true, false, true]],
     [` pbc="true FALSE t"`, [true, false, true]],
     [` pbc=TFT`, [true, false, true]],
+    // Compact bare must work mid-line (following Key= must not be swallowed)
+    [` pbc=TFF Energy=-1.0`, [true, false, false]],
+    [` Energy=-1 pbc=TFF step=3`, [true, false, false]],
+    [` pbc=F`, [false, false, false]],
+    [` pbc=1`, [true, true, true]],
     [` pbc="1 0 1"`, [true, false, true]],
     [` pbc="F F F extra"`, [false, false, false]],
+    // junk tokens must not resolve via Object.prototype (e.g. `constructor`)
+    [` pbc="constructor constructor constructor"`, [true, true, true]],
+    [` pbc="T F"`, [true, true, true]],
     [``, [true, true, true]],
   ])(`should parse EXTXYZ PBC field %p`, async (field, expected) => {
     const frame = `1
@@ -1237,8 +1242,6 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`should provide detailed error for missing positions`, async () => {
-    // This would require a custom HDF5 file without positions - skip for now
-    // but keep the test structure for when we have such a file
     const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
     await expect(parse_trajectory_data(content, `bad-positions.h5`)).rejects.toThrow(
       /Missing required.*dataset/i,

@@ -40,7 +40,11 @@
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
-  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
+  import {
+    ARITY_COLORS,
+    get_chempot_color_bar_config,
+    make_chempot_color_scale,
+  } from './color'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -387,8 +391,8 @@
 
   interface FormulaEnergyStats {
     matching_entry_count: number
-    min_energy_per_atom: number | null
-    max_energy_per_atom: number | null
+    min_energy_per_atom: number
+    max_energy_per_atom: number
   }
   type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
   const domain_annotation_cache = new Map<string, number[]>()
@@ -450,27 +454,18 @@
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats_by_formula = new SvelteMap<string, FormulaEnergyStats>()
       for (const entry of temp_filtered_entries) {
-        const formula_key = formula_key_from_composition(entry.composition)
         const energy_per_atom = get_energy_per_atom(entry)
+        if (!Number.isFinite(energy_per_atom)) continue
+        const formula_key = formula_key_from_composition(entry.composition)
         const existing = stats_by_formula.get(formula_key)
-        if (!existing) {
-          stats_by_formula.set(formula_key, {
-            matching_entry_count: 1,
-            min_energy_per_atom: energy_per_atom,
-            max_energy_per_atom: energy_per_atom,
-          })
-          continue
-        }
         stats_by_formula.set(formula_key, {
-          matching_entry_count: existing.matching_entry_count + 1,
-          min_energy_per_atom: Math.min(
-            existing.min_energy_per_atom ?? energy_per_atom,
-            energy_per_atom,
-          ),
-          max_energy_per_atom: Math.max(
-            existing.max_energy_per_atom ?? energy_per_atom,
-            energy_per_atom,
-          ),
+          matching_entry_count: (existing?.matching_entry_count ?? 0) + 1,
+          min_energy_per_atom: existing
+            ? Math.min(existing.min_energy_per_atom, energy_per_atom)
+            : energy_per_atom,
+          max_energy_per_atom: existing
+            ? Math.max(existing.max_energy_per_atom, energy_per_atom)
+            : energy_per_atom,
         })
       }
       return stats_by_formula
@@ -478,9 +473,6 @@
   )
 
   // === Region coloring ===
-  // Categorical palette for arity mode (element count)
-  const arity_colors = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
-
   // Original (non-renormalized) elemental references for formation energy computation.
   // diagram_data.el_refs may be renormalized to zero when formal_chempots is true,
   // so we compute our own from the raw entries to get true DFT reference energies.
@@ -527,8 +519,8 @@
     if (color_mode === `arity`) {
       for (const domain of render_domains) {
         const n_elements = extract_formula_elements(domain.formula).length
-        const idx = Math.min(n_elements, arity_colors.length) - 1
-        colors.set(domain.formula, arity_colors[Math.max(0, idx)])
+        const idx = Math.min(n_elements, ARITY_COLORS.length) - 1
+        colors.set(domain.formula, ARITY_COLORS[Math.max(0, idx)])
       }
       return colors
     }
@@ -606,9 +598,13 @@
     ]
   })
 
-  function to_render_xyz(point: number[]): Vec3 {
+  function swiz(d0: number, d1: number, d2: number): Vec3 {
     const [scale_x, scale_y, scale_z] = render_axis_scale
-    return [point[1] * scale_x, point[2] * scale_y, point[0] * scale_z]
+    return [d1 * scale_x, d2 * scale_y, d0 * scale_z] // data[0]→Z, data[1]→X, data[2]→Y
+  }
+
+  function to_render_xyz(point: number[]): Vec3 {
+    return swiz(point[0], point[1], point[2])
   }
 
   // Compute data center and extent for camera positioning (in swizzled coords)
@@ -1313,11 +1309,7 @@
       const edge_count = get_domain_edges(swizzled_points).length
       const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
       const touches_limits = get_touches_limits(domain.points_3d, lims)
-      const energy_stats = energy_stats_by_formula.get(domain.formula) ?? {
-        matching_entry_count: 0,
-        min_energy_per_atom: null,
-        max_energy_per_atom: null,
-      }
+      const energy_stats = energy_stats_by_formula.get(domain.formula)
 
       const info: ChemPotHoverInfo3D = {
         formula: domain.formula,
@@ -1330,9 +1322,9 @@
         touches_limits,
         is_elemental: all_entry_elements.includes(domain.formula),
         is_draw_formula: domain.is_draw_formula,
-        matching_entry_count: energy_stats.matching_entry_count,
-        min_energy_per_atom: energy_stats.min_energy_per_atom,
-        max_energy_per_atom: energy_stats.max_energy_per_atom,
+        matching_entry_count: energy_stats?.matching_entry_count ?? 0,
+        min_energy_per_atom: energy_stats?.min_energy_per_atom ?? null,
+        max_energy_per_atom: energy_stats?.max_energy_per_atom ?? null,
         neighbors: domain_neighbors.get(domain.formula) ?? [],
       }
 
@@ -1461,12 +1453,6 @@
       new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3),
     )
     return geom
-  }
-
-  // Swizzle a data-coord triple to Three.js coords
-  function swiz(d0: number, d1: number, d2: number): Vec3 {
-    const [scale_x, scale_y, scale_z] = render_axis_scale
-    return [d1 * scale_x, d2 * scale_y, d0 * scale_z] // data[0]→Z, data[1]→X, data[2]→Y
   }
 
   const axis_colors = [`#e74c3c`, `#2ecc71`, `#3498db`] as const
@@ -2536,7 +2522,7 @@
         <div class="arity-legend">
           {#each arity_legend_labels as label, idx (label)}
             <span>
-              <span style:background={arity_colors[idx]}></span>
+              <span style:background={ARITY_COLORS[idx]}></span>
               {label}
             </span>
           {/each}

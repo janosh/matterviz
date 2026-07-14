@@ -129,18 +129,21 @@ const series_length = (srs: Pick<DensePointSeries, `x` | `y`>): number =>
 
 const padded_extent = (min: number, max: number, scale_type?: ScaleType): Vec2 => {
   const log_scale = get_scale_type_name(scale_type) === `log`
-  // No renderable points: fall back to a domain the scale can actually map (log needs > 0)
   if (!Number.isFinite(min) || !Number.isFinite(max)) return log_scale ? [1, 10] : [0, 1]
-  if (min === max) {
-    return log_scale ? [min / Math.sqrt(10), max * Math.sqrt(10)] : [min - 0.5, max + 0.5]
+
+  const { forward, inverse } = scale_bin_transform(scale_type)
+  const t_min = forward(min)
+  const t_max = forward(max)
+  if (t_min === t_max) {
+    if (log_scale) {
+      const center = Math.max(min, LOG_EPS)
+      return [center, center * 10]
+    }
+    return [inverse(t_min - 0.5), inverse(t_max + 0.5)]
   }
-  if (log_scale) {
-    const { forward, inverse } = scale_bin_transform(scale_type)
-    const padding = (forward(max) - forward(min)) * 0.05
-    return [inverse(forward(min) - padding), inverse(forward(max) + padding)]
-  }
-  const padding = (max - min) * 0.05
-  return [min - padding, max + padding]
+  const padding = (t_max - t_min) * 0.05
+  const clamp = (val: number) => Math.min(Number.MAX_VALUE, Math.max(-Number.MAX_VALUE, val))
+  return [clamp(inverse(t_min - padding)), clamp(inverse(t_max + padding))]
 }
 
 export function series_extents(
@@ -161,7 +164,8 @@ export function series_extents(
       const x = srs.x[idx]
       const y = srs.y[idx]
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue
-      if ((log_x && x <= 0) || (log_y && y <= 0)) continue
+      // Align with bin_points / log scale floor so sub-LOG_EPS samples don't widen extent
+      if ((log_x && x < LOG_EPS) || (log_y && y < LOG_EPS)) continue
       if (x < x_min) x_min = x
       if (x > x_max) x_max = x
       if (y < y_min) y_min = y

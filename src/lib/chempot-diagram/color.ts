@@ -2,6 +2,8 @@ import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import { scaleSequential } from 'd3-scale'
 
+export const ARITY_COLORS = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
+
 // Resolve D3 interpolator with optional reverse for chempot color scales.
 function get_chempot_interpolator(
   name: D3InterpolateName,

@@ -525,12 +525,13 @@ function marching_cubes_raw(
         nz,
         periodic,
       )
-      const cartesian = normal_transform
-        ? mat3x3_vec3_multiply(normal_transform, [gx / inv_nx, gy / inv_ny, gz / inv_nz])
-        : ([gx, gy, gz] as Vec3)
-      const length = Math.hypot(...cartesian)
-      if (length > 1e-10)
-        normals.push(cartesian[0] / length, cartesian[1] / length, cartesian[2] / length)
+      // Scale by grid spacing without a lattice inverse (singular / anisotropic grids)
+      const index_grad: Vec3 = [gx / inv_nx, gy / inv_ny, gz / inv_nz]
+      const [cx, cy, cz] = normal_transform
+        ? mat3x3_vec3_multiply(normal_transform, index_grad)
+        : index_grad
+      const length = Math.hypot(cx, cy, cz)
+      if (length > 1e-10) normals.push(cx / length, cy / length, cz / length)
       else normals.push(0, 0, 1)
     }
 

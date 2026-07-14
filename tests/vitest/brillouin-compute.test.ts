@@ -207,8 +207,14 @@ describe(`generate_bz_vertices`, () => {
   })
 
   test(`max_planes_by_order parameter`, () => {
-    const vertices = generate_bz_vertices(k_lattice, 1, { 1: 10, 2: 20, 3: 30 })
-    expect(vertices.length).toBeGreaterThanOrEqual(4)
+    const skew_lattice = reciprocal_lattice([
+      [3, 0.5, 0.2],
+      [0.1, 4, 0.3],
+      [0.2, 0.4, 5],
+    ])
+    expect(generate_bz_vertices(skew_lattice, 2, { 1: 8, 2: 15, 3: 20 }).length).toBeLessThan(
+      generate_bz_vertices(skew_lattice, 2).length,
+    )
   })
 })
 
@@ -248,10 +254,11 @@ describe(`compute_convex_hull`, () => {
   )
 
   test(`edge_sharp_angle_deg controls edge filtering`, () => {
-    const strict = compute_convex_hull(cube_verts, 1)
-    const loose = compute_convex_hull(cube_verts, 45)
-    expect(strict.edges.length).toBeGreaterThan(0)
-    expect(loose.edges.length).toBeGreaterThan(0)
+    // Flattened tetrahedron so face angles straddle 1° vs 45° (cube does not)
+    const pyramid: Vec3[] = [...tetrahedron_verts.slice(0, 3), [0.5, Math.sqrt(3) / 6, 0.1]]
+    expect(compute_convex_hull(pyramid, 1).edges.length).toBeGreaterThan(
+      compute_convex_hull(pyramid, 45).edges.length,
+    )
   })
 })
 

@@ -14,7 +14,11 @@
   import { sanitize_html } from '$lib/sanitize'
   import { SvelteMap } from 'svelte/reactivity'
   import { compute_chempot_async } from './async-compute.svelte'
-  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
+  import {
+    ARITY_COLORS,
+    get_chempot_color_bar_config,
+    make_chempot_color_scale,
+  } from './color'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -97,7 +101,6 @@
   const color_mode = $derived(overrides.resolve(`color_mode`))
   const color_scale = $derived(overrides.resolve(`color_scale`))
   const reverse_color_scale = $derived(overrides.resolve(`reverse_color_scale`))
-  const arity_colors = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
   const show_tooltip = $derived(config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip)
   const effective_config = $derived({
     ...config,
@@ -187,7 +190,7 @@
 
   interface FormulaEnergyStats {
     matching_entry_count: number
-    min_energy_per_atom: number | null
+    min_energy_per_atom: number
   }
   type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
 
@@ -196,19 +199,13 @@
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats = new SvelteMap<string, FormulaEnergyStats>()
       for (const entry of temp_filtered_entries) {
-        const formula_key = formula_key_from_composition(entry.composition)
         const epa = get_energy_per_atom(entry)
-        const prev_stats = stats.get(formula_key)
-        if (!prev_stats) {
-          stats.set(formula_key, {
-            matching_entry_count: 1,
-            min_energy_per_atom: epa,
-          })
-          continue
-        }
+        if (!Number.isFinite(epa)) continue
+        const formula_key = formula_key_from_composition(entry.composition)
+        const prev = stats.get(formula_key)
         stats.set(formula_key, {
-          matching_entry_count: prev_stats.matching_entry_count + 1,
-          min_energy_per_atom: Math.min(prev_stats.min_energy_per_atom ?? epa, epa),
+          matching_entry_count: (prev?.matching_entry_count ?? 0) + 1,
+          min_energy_per_atom: prev ? Math.min(prev.min_energy_per_atom, epa) : epa,
         })
       }
       return stats
@@ -252,8 +249,8 @@
     if (color_mode === `arity`) {
       for (const formula of domain_formulas) {
         const n_elements = extract_formula_elements(formula).length
-        const color_idx = Math.min(n_elements, arity_colors.length) - 1
-        colors.set(formula, arity_colors[Math.max(0, color_idx)])
+        const color_idx = Math.min(n_elements, ARITY_COLORS.length) - 1
+        colors.set(formula, ARITY_COLORS[Math.max(0, color_idx)])
       }
       return colors
     }
@@ -620,7 +617,7 @@
       <div class="arity-legend">
         {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label_text, color_idx (label_text)}
           <span>
-            <span style:background={arity_colors[color_idx]}></span>
+            <span style:background={ARITY_COLORS[color_idx]}></span>
             {label_text}
           </span>
         {/each}

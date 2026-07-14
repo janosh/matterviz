@@ -1,4 +1,4 @@
-import type { Vec2 } from '$lib/math'
+import { LOG_EPS, type Vec2 } from '$lib/math'
 import {
   build_pick_index,
   bin_points,
@@ -140,24 +140,40 @@ describe(`adaptive density utilities`, () => {
 
   it(`pads log extents in transformed space`, () => {
     const extents = series_extents([{ x: [1, 100], y: [2, 20] }], `log`, `linear`)
-
     expect(extents.x[0]).toBeCloseTo(10 ** -0.1)
     expect(extents.x[1]).toBeCloseTo(10 ** 2.1)
     expect(extents.y).toEqual([1.1, 20.9])
   })
 
-  it(`drops pairs that cannot render on a log axis`, () => {
+  it(`handles log empty domains, floor exclusion, and zero-span decades`, () => {
+    expect(series_extents([{ x: [-10, -1], y: [1, 2] }], `log`, `linear`).x).toEqual([1, 10])
+    expect(series_extents([{ x: [1e-300, 2e-300], y: [1, 2] }], `log`, `linear`).x).toEqual([
+      1, 10,
+    ])
     expect(series_extents([{ x: [-10, 10], y: [1, 2] }], `log`, `linear`)).toEqual({
-      x: [10 / Math.sqrt(10), 10 * Math.sqrt(10)],
+      x: [10, 100],
       y: [1.5, 2.5],
     })
+    expect(series_extents([{ x: [LOG_EPS, LOG_EPS], y: [1, 2] }], `log`, `linear`).x).toEqual([
+      LOG_EPS,
+      LOG_EPS * 10,
+    ])
   })
 
-  it(`falls back to a positive domain when no point renders on a log axis`, () => {
-    expect(series_extents([{ x: [-10, -1], y: [1, 2] }], `log`, `linear`)).toEqual({
-      x: [1, 10],
-      y: [0, 1],
-    })
+  it(`pads arcsinh extents in transform space and keeps extremes finite`, () => {
+    const { forward, inverse } = scale_bin_transform(`arcsinh`)
+    const t = forward(1e6)
+    const equal = series_extents([{ x: [1e6, 1e6], y: [0, 1] }], `arcsinh`, `linear`).x
+    expect(equal[0]).toBeCloseTo(inverse(t - 0.5))
+    expect(equal[1]).toBeCloseTo(inverse(t + 0.5))
+    const t0 = forward(1)
+    const t1 = forward(1000)
+    const pad = (t1 - t0) * 0.05
+    const distinct = series_extents([{ x: [1, 1000], y: [0, 1] }], `arcsinh`, `linear`).x
+    expect(distinct[0]).toBeCloseTo(inverse(t0 - pad))
+    expect(distinct[1]).toBeCloseTo(inverse(t1 + pad))
+    const [lo, hi] = series_extents([{ x: [1, 1.7e308], y: [0, 1] }], `arcsinh`, `linear`).x
+    expect(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo).toBe(true)
   })
 
   it(`does not pick outside visible ranges or radius`, () => {

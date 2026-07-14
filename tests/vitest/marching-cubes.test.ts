@@ -204,6 +204,8 @@ describe(`marching_cubes`, () => {
     })
     expect(normals.length).toBeGreaterThan(0)
     for (const normal of normals) {
+      // MC normals point toward the low side of the field (decreasing ix here)
+      expect(normal[0]).toBeLessThan(0)
       expect(normal[0] * skewed[1][0] + normal[1] * skewed[1][1]).toBeCloseTo(0, 6)
       expect(normal[2]).toBeCloseTo(0, 6)
       expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
@@ -252,9 +254,22 @@ describe(`marching_cubes`, () => {
         return
       }
       expect(result.normals).toHaveLength(result.vertices.length)
-      for (const normal of result.normals) {
-        expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
+      for (const normal of result.normals) expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
+      const grad_grid = (n: number) =>
+        Array.from({ length: n }, (_x, ix) =>
+          Array.from({ length: 2 * n }, () =>
+            Array.from({ length: 2 * n }, () => ix / (n - 1)),
+          ),
+        )
+      const mean_x = (n: number) => {
+        const { normals: ns } = marching_cubes(grad_grid(n), 0.5, singular_lattice, {
+          periodic: false,
+          centered: false,
+          normals: true,
+        })
+        return ns.reduce((sum, normal) => sum + normal[0], 0) / ns.length
       }
+      expect(mean_x(4)).toBeCloseTo(mean_x(8), 2)
     },
   )
 

@@ -298,32 +298,25 @@ Si 0 0 0`
   })
 
   describe(`Large File Detection & Auto-Streaming`, () => {
-    it(`should automatically use streaming for large files`, async () => {
-      // Create small synthetic data for efficiency
-      const small_data = create_synthetic_xyz(10)
-
-      // Simulate large file by forcing use_indexing option
-      // This tests that when streaming is enabled (as it would be for large files),
-      // the correct indexed result structure is returned
+    it(`should return indexed result when use_indexing is forced`, async () => {
+      const small_data = create_synthetic_xyz(20)
       const result = await parse_trajectory_async(
         small_data,
         `simulated_large.xyz`,
         undefined,
-        { use_indexing: true }, // Force streaming mode as large file detection would
+        { use_indexing: true, index_sample_rate: 1 },
       )
 
-      // Should have streaming characteristics that large files would automatically get
       expect(result.is_indexed).toBe(true)
       expect(result.indexed_frames).toBeDefined()
-      expect(result.total_frames).toBe(10)
+      expect(result.total_frames).toBe(20)
 
-      // Should only load initial frames, not all frames
-      expect(result.frames.length).toBeLessThanOrEqual(10)
-      expect(result.frames.length).toBeGreaterThan(0)
+      // Indexed mode loads only the initial window, not every frame
+      expect(result.frames).toHaveLength(10)
+      expect(result.frames.length).toBeLessThan(result.total_frames ?? 0)
 
-      // Verify that indexed_frames contains frame metadata
       expect(result.indexed_frames).toBeInstanceOf(Array)
-      expect(result.indexed_frames?.length).toBeGreaterThan(0)
+      expect(result.indexed_frames?.length).toBe(20)
       expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
       expect(result.frame_loader).toBeDefined()
     })
