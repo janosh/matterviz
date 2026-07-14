@@ -64,4 +64,12 @@ describe(`repository documentation and metadata`, () => {
     expect(bibtex).toContain(`date = {2026-07-09}`)
     expect(bibtex).toContain(`version = {${pkg.version}}`)
   })
+
+  test(`server error reports use the package bug tracker`, () => {
+    const pkg = JSON.parse(read(`package.json`)) as { bugs: string }
+    const error_page = read(`src/routes/+error.svelte`)
+    expect(pkg.bugs).toBe(`https://github.com/janosh/matterviz/issues`)
+    expect(error_page).toContain(`href={pkg.bugs}`)
+    expect(error_page).not.toContain(`{pkg.homepage}/issues`)
+  })
 })
