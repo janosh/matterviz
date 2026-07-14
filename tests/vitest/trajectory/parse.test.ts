@@ -51,7 +51,7 @@ describe(`Trajectory File Detection`, () => {
     [`nve-dynamics.extxyz`, true], // Has trajectory keyword "nve"
     [`qha-analysis.xyz`, true], // Has trajectory keyword "qha"
     [`traj-data.xyz`, true], // Has trajectory keyword "traj"
-    [`relaxation.extxyz`, true], // Has trajectory keyword "relax"
+    [`relaxation.extxyz`, true],
     [`md-run.xyz`, true], // Has trajectory keyword "md"
 
     // Other files with trajectory keywords (excluding specific extensions)
@@ -63,6 +63,12 @@ describe(`Trajectory File Detection`, () => {
     [`qha_analysis.dat`, true],
     [`traj_data.out`, true],
     [`relaxation.data`, true],
+    // Need trailing delimiter after keyword (rejects md/notes, npt2, etc.)
+    [`md/notes.log`, false],
+    [`mdp_run.log`, false],
+    [`npt2.log`, false],
+    [`traj3.out`, false],
+    [`relax2.dat`, false],
     // Negative: not in keywords
     [`md_simulation.out`, false],
 

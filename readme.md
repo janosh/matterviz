@@ -9,7 +9,7 @@
 [![VSCode Extension](https://img.shields.io/badge/Install%20VSCode-Extension-blue?logo=typescript&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz)
 [![Docs](https://img.shields.io/badge/Read-the%20docs-blue?logo=googledocs&logoColor=white)](https://matterviz.janosh.dev)
 [![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-darkblue?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/janosh/matterviz)
-[![Zenodo DOI](https://zenodo.org/badge/498793280.svg)](https://doi.org/10.5281/zenodo.17094509)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17094509-blue)](https://doi.org/10.5281/zenodo.17094509)
 
 </h4>
 

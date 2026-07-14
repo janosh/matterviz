@@ -880,6 +880,120 @@ describe(`Structure string parsing`, () => {
     expect(filename).toBe(`test.poscar`)
   })
 
+  const structure_json = (element: string, count = 1) =>
+    JSON.stringify({
+      sites: Array.from({ length: count }, (_, idx) => ({
+        species: [{ element, occu: 1, oxidation_state: 0 }],
+        abc: [0, 0, 0],
+        xyz: [idx, 0, 0],
+        label: `${element}${idx + 1}`,
+        properties: {},
+      })),
+    })
+  const request_url = (url: string | URL | Request) =>
+    typeof url === `string` ? url : url instanceof URL ? url.href : url.url
+
+  test(`reloads URL-owned structure when data_url changes`, async () => {
+    const loaded_elements: string[] = []
+    const fetch_mock = vi.fn(async (url: string | URL | Request) => {
+      const href = request_url(url)
+      return new Response(structure_json(href.includes(`b.json`) ? `He` : `H`))
+    })
+    vi.stubGlobal(`fetch`, fetch_mock)
+    try {
+      const props = $state<ComponentProps<typeof Structure>>({
+        data_url: `/a.json`,
+        on_file_load: (data: StructureHandlerData) =>
+          loaded_elements.push(data.structure?.sites[0]?.species[0]?.element ?? ``),
+      })
+      mount_structure(props)
+      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
+
+      props.data_url = `/b.json`
+      await vi.waitFor(() => expect(fetch_mock).toHaveBeenCalledWith(`/b.json`))
+      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test(`caller-supplied structure takes precedence over data_url`, async () => {
+    const fetch_mock = vi.fn()
+    vi.stubGlobal(`fetch`, fetch_mock)
+    try {
+      mount_structure({ data_url: `/ignored.json`, structure })
+      await tick()
+      expect(fetch_mock).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test(`ignores a stale structure URL completion`, async () => {
+    const responses = new Map<string, (response: Response) => void>()
+    const fetch_mock = vi.fn(
+      (url: string | URL | Request) =>
+        new Promise<Response>((resolve) => responses.set(request_url(url), resolve)),
+    )
+    vi.stubGlobal(`fetch`, fetch_mock)
+    try {
+      const on_file_load = vi.fn()
+      const props = $state<ComponentProps<typeof Structure>>({
+        data_url: `/a.json`,
+        on_file_load,
+      })
+      mount_structure(props)
+      await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+
+      props.data_url = `/b.json`
+      await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+      responses.get(`/b.json`)?.(new Response(structure_json(`He`)))
+      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+
+      responses.get(`/a.json`)?.(new Response(structure_json(`H`)))
+      await tick()
+      expect(on_file_load).toHaveBeenCalledTimes(1)
+      expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test(`on_error reports the requested URL, not a superseded data_url`, async () => {
+    const responses = new Map<
+      string,
+      { resolve: (response: Response) => void; reject: (error: Error) => void }
+    >()
+    const fetch_mock = vi.fn(
+      (url: string | URL | Request) =>
+        new Promise<Response>((resolve, reject) => {
+          responses.set(request_url(url), { resolve, reject })
+        }),
+    )
+    vi.stubGlobal(`fetch`, fetch_mock)
+    try {
+      const on_error = vi.fn()
+      const props = $state<ComponentProps<typeof Structure>>({
+        data_url: `/a.json`,
+        on_error,
+      })
+      mount_structure(props)
+      await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+
+      props.data_url = `/b.json`
+      await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+      responses.get(`/a.json`)?.reject(new Error(`network down`))
+      await tick()
+      expect(on_error).not.toHaveBeenCalled()
+
+      responses.get(`/b.json`)?.reject(new Error(`gone`))
+      await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+      expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   test(`load error state renders StatusMessage`, async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

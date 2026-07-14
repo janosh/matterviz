@@ -4,7 +4,7 @@ import {
   MD_SIM_EXCLUDE_REGEX,
   TRAJ_EXTENSIONS_REGEX,
   TRAJ_FALLBACK_EXTENSIONS_REGEX,
-  TRAJ_KEYWORDS_SIMPLE_REGEX,
+  TRAJ_KEYWORDS_REGEX,
   XDATCAR_REGEX,
 } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
@@ -88,7 +88,7 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   // For xyz/extxyz files, use content-based detection if available
   if (/\.(?:xyz|extxyz)$/i.test(base_name)) {
     if (content) return count_xyz_frames(content) >= 2
-    return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
+    return TRAJ_KEYWORDS_REGEX.test(base_name)
   }
 
   // Always detect these specific trajectory formats
@@ -100,12 +100,9 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   // For .h5/.hdf5 files, require trajectory keywords. vaspout.h5 (VASP's
   // HDF5 output) is always trajectory-shaped regardless of keywords.
   if (/\.(?:h5|hdf5)$/i.test(base_name)) {
-    return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
+    return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_REGEX.test(base_name)
   }
 
   // For other extensions, require both keywords and specific extensions
-  return (
-    TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name) &&
-    TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
-  )
+  return TRAJ_KEYWORDS_REGEX.test(base_name) && TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
 }
