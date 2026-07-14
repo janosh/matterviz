@@ -322,7 +322,7 @@ export function compute_brillouin_zone(
   const hull = compute_convex_hull(vertices, edge_sharp_angle_deg)
 
   return {
-    order,
+    order: Math.min(order, 3),
     vertices: hull.vertices,
     faces: hull.faces,
     edges: hull.edges.map(([i1, i2]) => [hull.vertices[i1], hull.vertices[i2]]),

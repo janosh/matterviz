@@ -21,7 +21,7 @@
     y_axis = {},
     cutoff = 15,
     n_bins = 75,
-    pbc = [true, true, true],
+    pbc,
     enable_drop = false,
     on_file_drop,
     loading = $bindable(false),

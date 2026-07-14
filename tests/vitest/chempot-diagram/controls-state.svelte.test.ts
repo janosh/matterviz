@@ -5,6 +5,7 @@ import {
 } from '$lib/chempot-diagram/controls-state.svelte'
 import type { ChemPotDiagramConfig } from '$lib/chempot-diagram/types'
 import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 describe(`create_chempot_overrides`, () => {
@@ -73,4 +74,22 @@ test.each([
   ],
 ] as const)(`%s option values match pane selects`, (_label, options, values) => {
   expect(options.map(([value]) => value)).toEqual([...values])
+})
+
+describe(`ChemPotDiagram3D rendering contracts`, () => {
+  const chempot_3d_source = readFileSync(
+    `${import.meta.dirname}/../../../src/lib/chempot-diagram/ChemPotDiagram3D.svelte`,
+    `utf8`,
+  )
+
+  test(`clips HTML portal labels at the component root`, () => {
+    expect(chempot_3d_source).toMatch(/<extras\.HTML[\s\S]*?portal=\{wrapper\}/)
+    expect(chempot_3d_source).toMatch(
+      /\.chempot-diagram-3d\s*\{\s*position:\s*relative;\s*overflow:\s*clip;/,
+    )
+  })
+
+  test(`sanitizes custom axis labels at the raw-HTML sink`, () => {
+    expect(chempot_3d_source).toMatch(/\{@html\s+sanitize_html\(gc\.label\)\}/)
+  })
 })

@@ -23,5 +23,4 @@ export interface RdfOptions {
   n_bins?: number
   pbc?: Pbc
   auto_expand?: boolean
-  expansion_factor?: number
 }

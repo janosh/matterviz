@@ -21,6 +21,7 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import { page_visibility } from '$lib/scene'
+  import { sanitize_html } from '$lib/sanitize'
   import { constrain_tooltip_position, pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -2321,7 +2322,9 @@
                 portal={wrapper}
                 zIndexRange={[1, 0]}
               >
-                <span class="axis-label" style:color={gc.color}>{@html gc.label}</span>
+                <span class="axis-label" style:color={gc.color}
+                  >{@html sanitize_html(gc.label)}</span
+                >
               </extras.HTML>
             {/if}
           {/each}

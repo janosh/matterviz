@@ -1035,6 +1035,31 @@ H1   H   0.500  0.500  0.500  1.000  1.000`
       expect(result.sites[0].species[0].occu).toBe(1.0)
     })
 
+    test.each([
+      [`0`, 0],
+      [`0.25`, 0.25],
+      [`.`, 1],
+      [`?`, 1],
+      [undefined, 1],
+    ])(`preserves occupancy token %p as %p`, (token, expected) => {
+      const occupancy_loop = token === undefined ? `` : `_atom_site_occupancy\n`
+      const cif = `data_occupancy
+_cell_length_a 5
+_cell_length_b 5
+_cell_length_c 5
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_site_label
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+${occupancy_loop}H1 0 0 0${token === undefined ? `` : ` ${token}`}`
+
+      expect(parse_cif(cif)?.sites[0]?.species[0]?.occu).toBe(expected)
+    })
+
     it(`should handle comments and syntax errors`, () => {
       const cif_with_comments = `data_test
 # Comment

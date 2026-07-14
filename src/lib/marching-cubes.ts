@@ -1,6 +1,6 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import { mat3x3_vec3_multiply, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
 const wrap_grid_idx = (val: number, dim: number) => ((val % dim) + dim) % dim
 const clamp_grid_idx = (val: number, max: number) => Math.max(0, Math.min(val, max))
@@ -362,14 +362,14 @@ function compute_gradient(
     ? [wrap_grid_idx(iz - 1, nz), wrap_grid_idx(iz + 1, nz)]
     : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
 
-  const dx = (grid[ix_p][iy_w][iz_w] - grid[ix_m][iy_w][iz_w]) * 0.5
-  const dy = (grid[ix_w][iy_p][iz_w] - grid[ix_w][iy_m][iz_w]) * 0.5
-  const dz = (grid[ix_w][iy_w][iz_p] - grid[ix_w][iy_w][iz_m]) * 0.5
-
-  const len_sq = dx * dx + dy * dy + dz * dz
-  if (len_sq < 1e-20) return [0, 0, 1]
-  const inv_len = 1 / Math.sqrt(len_sq)
-  return [-dx * inv_len, -dy * inv_len, -dz * inv_len]
+  const x_lo = grid[ix_m][iy_w][iz_w]
+  const x_hi = grid[ix_p][iy_w][iz_w]
+  const y_lo = grid[ix_w][iy_m][iz_w]
+  const y_hi = grid[ix_w][iy_p][iz_w]
+  const z_row = grid[ix_w][iy_w]
+  const scale = (lo: number, hi: number) => 1 / Math.max(1, periodic ? 2 : hi - lo)
+  const gz = -(z_row[iz_p] - z_row[iz_m]) * scale(iz_m, iz_p)
+  return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
 }
 
 // Main marching cubes algorithm (optimized version)
@@ -434,6 +434,15 @@ function marching_cubes_raw(
   const inv_nx = 1 / (periodic ? nx : nx - 1)
   const inv_ny = 1 / (periodic ? ny : ny - 1)
   const inv_nz = 1 / (periodic ? nz : nz - 1)
+  // Singular lattices cannot map covectors; fall back to index-space unit gradients.
+  let normal_transform: Matrix3x3 | null = null
+  if (compute_norms) {
+    try {
+      normal_transform = matrix_inverse_3x3(k_lattice)
+    } catch {
+      /* keep null */
+    }
+  }
 
   // Get or create vertex on an edge (fully optimized with flat array lookups)
   const get_vertex_on_edge = (
@@ -512,10 +521,25 @@ function marching_cubes_raw(
       )
     } else positions.push(cart_x, cart_y, cart_z)
 
-    // Compute normal from grid gradient (skip if caller will compute from geometry)
     if (compute_norms) {
-      const normal = compute_gradient(grid, ix + ox1, iy + oy1, iz + oz1, nx, ny, nz, periodic)
-      normals.push(normal[0], normal[1], normal[2])
+      const [gx, gy, gz] = compute_gradient(
+        grid,
+        ix + ox1,
+        iy + oy1,
+        iz + oz1,
+        nx,
+        ny,
+        nz,
+        periodic,
+      )
+      // Scale by grid spacing without a lattice inverse (singular / anisotropic grids)
+      const index_grad: Vec3 = [gx / inv_nx, gy / inv_ny, gz / inv_nz]
+      const [cx, cy, cz] = normal_transform
+        ? mat3x3_vec3_multiply(normal_transform, index_grad)
+        : index_grad
+      const length = Math.hypot(cx, cy, cz)
+      if (length > 1e-10) normals.push(cx / length, cy / length, cz / length)
+      else normals.push(0, 0, 1)
     }
 
     cache[cache_idx] = vert_idx

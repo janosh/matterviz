@@ -1,6 +1,6 @@
 // Async wrapper for compute_chempot_diagram via Web Worker.
 // Falls back to synchronous main-thread computation during SSR.
-import { compute_chempot_diagram, formula_key_from_composition } from './compute'
+import { compute_chempot_diagram, entry_fingerprint } from './compute'
 import type { ChemPotDiagramConfig, ChemPotDiagramData } from './types'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { to_error } from '$lib/utils'
@@ -14,20 +14,7 @@ const pending = new Map<
 const pending_by_key = new Map<string, Promise<ChemPotDiagramData>>()
 
 function make_compute_request_key(entries: PhaseData[], config: ChemPotDiagramConfig): string {
-  const keyed_entries = entries
-    .map((entry) =>
-      [
-        formula_key_from_composition(entry.composition),
-        entry.energy,
-        entry.energy_per_atom ?? ``,
-        entry.e_form_per_atom ?? ``,
-        entry.is_stable ?? ``,
-        entry.e_above_hull ?? ``,
-        entry.exclude_from_hull ?? ``,
-      ].join(`:`),
-    )
-    .sort()
-  return `${keyed_entries.join(`,`)}|${JSON.stringify(config)}`
+  return `${entries.map(entry_fingerprint).sort().join(`,`)}|${JSON.stringify(config)}`
 }
 
 function track_pending(
@@ -68,6 +55,19 @@ function get_worker(): Worker | null {
 export function compute_chempot_async(
   entries: PhaseData[],
   config: ChemPotDiagramConfig = {},
+): Promise<ChemPotDiagramData> {
+  // Never throw synchronously: callers handle errors via .catch() only, so key
+  // construction or Worker instantiation failures (e.g. CSP) must reject instead
+  try {
+    return compute_chempot_async_unsafe(entries, config)
+  } catch (err) {
+    return Promise.reject(to_error(err))
+  }
+}
+
+function compute_chempot_async_unsafe(
+  entries: PhaseData[],
+  config: ChemPotDiagramConfig,
 ): Promise<ChemPotDiagramData> {
   const request_key = make_compute_request_key(entries, config)
   const existing = pending_by_key.get(request_key)

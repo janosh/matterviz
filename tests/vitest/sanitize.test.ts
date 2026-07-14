@@ -6,7 +6,8 @@ import {
   sanitize_icon_svg,
   sanitize_svg,
 } from '$lib'
-import { describe, expect, test } from 'vitest'
+import type * as Sanitize from '$lib/sanitize'
+import { describe, expect, test, vi } from 'vitest'
 
 // XSS payloads that must never survive any sanitizer
 const XSS_PAYLOADS = [
@@ -264,4 +265,48 @@ describe(`sanitize_icon_svg`, () => {
     expect(result).not.toContain(attr)
     expect(result).not.toContain(`javascript:`)
   })
+})
+
+// === SSR (no browser DOM) ===
+
+const without_browser_dom = async <T>(
+  run: (sanitizers: typeof Sanitize) => T | Promise<T>,
+): Promise<T> => {
+  const win = globalThis.window
+  try {
+    // @ts-expect-error - SSR simulation
+    globalThis.window = undefined
+    vi.resetModules()
+    return await run(await import(`$lib/sanitize`))
+  } finally {
+    globalThis.window = win
+    vi.resetModules()
+  }
+}
+
+describe(`sanitizers without a browser DOM`, () => {
+  test(`allowlists formula HTML on SSR (no raw passthrough)`, async () => {
+    await without_browser_dom(async ({ sanitize_html: sanitize }) => {
+      expect(globalThis.window).toBeUndefined()
+      await Promise.resolve()
+      expect(globalThis.window).toBeUndefined()
+      expect(sanitize(`Li<sub>2</sub>O`)).toBe(`Li<sub>2</sub>O`)
+      expect(sanitize(`Li<sub>2</sub>O<script>alert(1)</script>`)).toBe(`Li<sub>2</sub>O`)
+    })
+    expect(globalThis.window).toBeDefined()
+  })
+
+  test.each([`sanitize_svg`, `sanitize_icon_svg`] as const)(
+    `%s strips XSS on SSR instead of returning markup unchanged`,
+    async (name) => {
+      await without_browser_dom((sanitizers) => {
+        expect(sanitizers[name](`<path d="M0 0" /><script>alert(1)</script>`)).not.toContain(
+          `script`,
+        )
+        expect(sanitizers[name](`<path d="M0 0" onclick="alert(1)"></path>`)).not.toContain(
+          `onclick`,
+        )
+      })
+    },
+  )
 })

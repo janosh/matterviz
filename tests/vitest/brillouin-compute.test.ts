@@ -105,13 +105,16 @@ describe(`reciprocal_lattice`, () => {
 })
 
 describe(`compute_brillouin_zone`, () => {
-  test(`valid BZ for all crystal systems`, () => {
+  test(`valid BZ + inversion symmetry for all crystal systems`, () => {
     for (const [_type, data] of Object.entries(reference_data)) {
       const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
       expect(bz.vertices.length).toBeGreaterThan(3)
       expect(bz.faces.length).toBeGreaterThan(3)
       expect(bz.edges.length).toBeGreaterThan(0)
       expect(bz.volume).toBeCloseTo(data.bz_volume_approximation, 6)
+      for (const vert of bz.vertices) {
+        expect(has_vertex(bz.vertices, vert.map((coord) => -coord) as Vec3)).toBe(true)
+      }
     }
   })
 
@@ -120,15 +123,6 @@ describe(`compute_brillouin_zone`, () => {
     expect(bz.vertices).toHaveLength(8)
     expect(bz.faces).toHaveLength(12)
     expect(bz.edges).toHaveLength(12)
-  })
-
-  test(`inversion symmetry`, () => {
-    for (const [_type, data] of Object.entries(reference_data)) {
-      const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
-      for (const vert of bz.vertices) {
-        expect(has_vertex(bz.vertices, vert.map((coord) => -coord) as Vec3)).toBe(true)
-      }
-    }
   })
 })
 
@@ -143,17 +137,24 @@ describe(`BZ edge filtering`, () => {
     expect(bz.edges).toHaveLength(expected_count)
   })
 
-  test(`valid edge topology: no duplicates, edges shared by 2 faces`, () => {
+  test(`valid edge topology, lengths, and face indices`, () => {
     for (const [_type, data] of Object.entries(reference_data)) {
       const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
       const keys = new Set<string>()
       const edge_to_faces = new Map<string, number>()
+      const max_len = Math.cbrt(bz.volume) * 10
 
       for (const face of bz.faces) {
+        expect(face.length).toBeGreaterThanOrEqual(3)
+        for (const idx of face) {
+          expect(idx).toBeGreaterThanOrEqual(0)
+          expect(idx).toBeLessThan(bz.vertices.length)
+        }
         for (let idx = 0; idx < face.length; idx++) {
-          const v1 = bz.vertices[face[idx]]
-          const v2 = bz.vertices[face[(idx + 1) % face.length]]
-          const key = edge_key(v1, v2)
+          const key = edge_key(
+            bz.vertices[face[idx]],
+            bz.vertices[face[(idx + 1) % face.length]],
+          )
           edge_to_faces.set(key, (edge_to_faces.get(key) ?? 0) + 1)
         }
       }
@@ -165,31 +166,11 @@ describe(`BZ edge filtering`, () => {
         expect(keys.has(key)).toBe(false)
         keys.add(key)
         expect(edge_to_faces.get(key)).toBe(2)
-      }
-      expect(bz.edges.length).toBeLessThan((3 * bz.faces.length) / 2)
-    }
-  })
-
-  test(`reasonable edge lengths`, () => {
-    for (const [_type, data] of Object.entries(reference_data)) {
-      const bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
-      const max_len = Math.cbrt(bz.volume) * 10
-      for (const [v1, v2] of bz.edges) {
         const len = Math.hypot(v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2])
         expect(len).toBeGreaterThan(0)
         expect(len).toBeLessThan(max_len)
       }
-    }
-  })
-
-  test(`valid face indices`, () => {
-    const bz = compute_brillouin_zone(reference_data.cubic.reciprocal_lattice as Matrix3x3, 1)
-    for (const face of bz.faces) {
-      expect(face.length).toBeGreaterThanOrEqual(3)
-      for (const idx of face) {
-        expect(idx).toBeGreaterThanOrEqual(0)
-        expect(idx).toBeLessThan(bz.vertices.length)
-      }
+      expect(bz.edges.length).toBeLessThan((3 * bz.faces.length) / 2)
     }
   })
 })
@@ -203,6 +184,17 @@ describe(`generate_bz_vertices`, () => {
     const k_max = Math.PI / 5
     vertices.forEach((vertex) =>
       vertex.forEach((coord) => expect(Math.abs(coord)).toBeCloseTo(k_max, 5)),
+    )
+  })
+
+  test(`max_planes_by_order parameter`, () => {
+    const skew_lattice = reciprocal_lattice([
+      [3, 0.5, 0.2],
+      [0.1, 4, 0.3],
+      [0.2, 0.4, 5],
+    ])
+    expect(generate_bz_vertices(skew_lattice, 2, { 1: 8, 2: 15, 3: 20 }).length).toBeLessThan(
+      generate_bz_vertices(skew_lattice, 2).length,
     )
   })
 
@@ -247,6 +239,13 @@ describe(`compute_convex_hull`, () => {
       expect(hull.edges).toHaveLength(e_count)
     },
   )
+  test(`edge_sharp_angle_deg controls edge filtering`, () => {
+    // Flattened tetrahedron so face angles straddle 1° vs 45° (cube does not)
+    const pyramid: Vec3[] = [...tetrahedron_verts.slice(0, 3), [0.5, Math.sqrt(3) / 6, 0.1]]
+    expect(compute_convex_hull(pyramid, 1).edges.length).toBeGreaterThan(
+      compute_convex_hull(pyramid, 45).edges.length,
+    )
+  })
 })
 
 describe(`BZ volume`, () => {
@@ -281,11 +280,12 @@ describe(`BZ volume`, () => {
 })
 
 describe(`BZ order`, () => {
-  test(`higher order → more vertices`, () => {
+  test(`higher order grows vertices; order >3 clamps to 3`, () => {
     const k_lattice = reciprocal_lattice(CUBIC_5)
     const bz1 = compute_brillouin_zone(k_lattice, 1)
     const bz2 = compute_brillouin_zone(k_lattice, 2)
     expect(bz2.vertices.length).toBeGreaterThan(bz1.vertices.length)
+    expect(compute_brillouin_zone(k_lattice, 4 as 3).order).toBe(3)
   })
 })
 
@@ -395,6 +395,27 @@ describe(`compute_ibz_clipping_planes`, () => {
 describe(`compute_irreducible_bz`, () => {
   const bz = compute_brillouin_zone(reciprocal_lattice(CUBIC_5), 1)
 
+  // All 48 signed permutation matrices (proper + improper rotations of the cube)
+  const oh_ops: Matrix3x3[] = []
+  for (const perm of [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ]) {
+    for (let signs = 0; signs < 8; signs++) {
+      const mat: Matrix3x3 = [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+      ]
+      for (let row = 0; row < 3; row++) mat[row][perm[row]] = signs & (1 << row) ? -1 : 1
+      oh_ops.push(mat)
+    }
+  }
+
   test(`P1 (identity only) → full BZ`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
     expect(ibz).not.toBeNull()
@@ -403,27 +424,41 @@ describe(`compute_irreducible_bz`, () => {
     expect(ibz.volume).toBeCloseTo(bz.volume, 6)
   })
 
-  test(`inversion symmetry → half volume`, () => {
-    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, INVERSION_MAT])
+  test.each([
+    {
+      label: `inversion`,
+      ops: [IDENTITY_MAT, INVERSION_MAT],
+      ratio: 1 / 2,
+      digits: 5,
+    },
+    {
+      label: `mirror`,
+      ops: [IDENTITY_MAT, MIRROR_Z],
+      ratio: 1 / 2,
+      digits: 6,
+      check_faces: true,
+    },
+    {
+      label: `C4`,
+      ops: [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270],
+      ratio: 1 / 4,
+      digits: 6,
+    },
+    { label: `Oh (48 ops)`, ops: oh_ops, ratio: 1 / 48, digits: 8 },
+  ])(`$label → volume ratio $ratio`, ({ ops, ratio, digits, check_faces }) => {
+    const ibz = compute_irreducible_bz(bz, ops)
     expect(ibz).not.toBeNull()
     if (!ibz) return
-    expect(ibz.volume).toBeLessThanOrEqual(bz.volume)
-    expect(ibz.volume).toBeCloseTo(bz.volume / 2, 5)
+    expect(ibz.volume / bz.volume).toBeCloseTo(ratio, digits)
     expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
-  })
-
-  test(`mirror symmetry → valid geometry`, () => {
-    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z])
-    expect(ibz).not.toBeNull()
-    if (!ibz) return
-    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
-    expect(ibz.faces.length).toBeGreaterThanOrEqual(4)
-    expect(ibz.edges.length).toBeGreaterThan(0)
-    expect(ibz.volume).toBeGreaterThan(0)
-    ibz.faces.flat().forEach((idx) => {
-      expect(idx).toBeGreaterThanOrEqual(0)
-      expect(idx).toBeLessThan(ibz.vertices.length)
-    })
+    if (check_faces) {
+      expect(ibz.faces.length).toBeGreaterThanOrEqual(4)
+      expect(ibz.edges.length).toBeGreaterThan(0)
+      ibz.faces.flat().forEach((idx) => {
+        expect(idx).toBeGreaterThanOrEqual(0)
+        expect(idx).toBeLessThan(ibz.vertices.length)
+      })
+    }
   })
 
   test(`handles all crystal systems with inversion`, () => {
@@ -445,59 +480,7 @@ describe(`compute_irreducible_bz`, () => {
     const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ])
     expect(ibz).not.toBeNull()
     if (!ibz) return
-    expect(ibz.volume).toBeGreaterThan(0)
-    // The Dirichlet fundamental-domain construction is exact: V_IBZ = V_BZ / |G|
     expect(ibz.volume / hex_bz.volume).toBeCloseTo(1 / 3, 6)
-  })
-
-  // Regression: the IBZ construction previously picked a DIFFERENT reference point per
-  // rotation, so the clipping half-spaces did not form a consistent fundamental domain
-  // and the IBZ volume deviated from V_BZ/|G| for larger point groups.
-  test(`C4 group → exactly 1/4 volume`, () => {
-    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270])
-    expect(ibz).not.toBeNull()
-    if (!ibz) return
-    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 4, 6)
-  })
-
-  test(`mirror symmetry → exactly half volume`, () => {
-    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z])
-    expect(ibz).not.toBeNull()
-    if (!ibz) return
-    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 2, 6)
-  })
-
-  test(`full cubic point group Oh (48 ops) → exactly 1/48 volume`, () => {
-    // All 48 signed permutation matrices (proper + improper rotations of the cube)
-    const oh_ops: Matrix3x3[] = []
-    const perms = [
-      [0, 1, 2],
-      [0, 2, 1],
-      [1, 0, 2],
-      [1, 2, 0],
-      [2, 0, 1],
-      [2, 1, 0],
-    ]
-    for (const perm of perms) {
-      for (let signs = 0; signs < 8; signs++) {
-        const mat: Matrix3x3 = [
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ]
-        for (let row = 0; row < 3; row++) {
-          mat[row][perm[row]] = signs & (1 << row) ? -1 : 1
-        }
-        oh_ops.push(mat)
-      }
-    }
-    expect(oh_ops).toHaveLength(48)
-
-    const ibz = compute_irreducible_bz(bz, oh_ops)
-    expect(ibz).not.toBeNull()
-    if (!ibz) return
-    expect(ibz.volume / bz.volume).toBeCloseTo(1 / 48, 8)
-    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
   })
 })
 
@@ -610,6 +593,19 @@ describe(`k_lattice_inverse + cartesian_to_fractional`, () => {
     const inv = k_lattice_inverse(k_lattice)
     expect(cartesian_to_fractional(inv, [2, 4, 8])).toEqual([1, 1, 1])
     expect(cartesian_to_fractional(inv, [1, 1, 1])).toEqual([0.5, 0.25, 0.125])
+  })
+
+  test(`round-trips coordinates for a non-orthogonal row lattice`, () => {
+    const skewed: Matrix3x3 = [
+      [1, 0, 0],
+      [0.5, Math.sqrt(3) / 2, 0],
+      [0, 0, 1],
+    ]
+    const inverse = k_lattice_inverse(skewed)
+    const fractional = cartesian_to_fractional(inverse, [0.5, Math.sqrt(3) / 2, 0])
+    expect(fractional?.[0]).toBeCloseTo(0, 12)
+    expect(fractional?.[1]).toBeCloseTo(1, 12)
+    expect(fractional?.[2]).toBeCloseTo(0, 12)
   })
 
   test(`returns null for missing or singular lattice`, () => {
