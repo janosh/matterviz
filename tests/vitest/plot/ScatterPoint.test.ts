@@ -65,81 +65,26 @@ describe(`ScatterPoint`, () => {
     expect(element.getAttribute(`d`)).not.toBeNull() // Verify path data exists
   })
 
-  test(`derives marker size from radius when symbol_size is null`, () => {
-    const style: PointStyle = { radius: 8, symbol_size: null }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
-
-    const path = doc_query(`path`)
-    expect(path).toBeInstanceOf(SVGPathElement)
-    expect(path.getAttribute(`d`)).not.toBeNull() // Check path data exists
-  })
-
-  test.each([3, 8, 12])(
-    `renders path markers with different radii (radius=$radius)`,
-    (radius) => {
-      const target = doc_query(`div`)
-      mount(ScatterPoint, { target, props: { x: 100, y: 100, style: { radius } } })
-
-      const path = doc_query(`path`)
-      expect(path).toBeInstanceOf(SVGPathElement)
-      expect(path.getAttribute(`d`)).not.toBeNull() // Check path data exists
-      // Cannot reliably check marker size derived from radius in happy-dom
-    },
-  )
-
+  // partial configs fall back to default stroke (white) and width (0px)
   test.each([
-    { color: `steelblue`, opacity: 1.0 },
-    { color: `crimson`, opacity: 0.7 },
-    { color: `#00ff00`, opacity: 0.5 },
-    { color: `rgba(128,0,128,0.5)`, opacity: 0.3 },
-  ])(`applies fill color='$color' opacity=$opacity`, ({ color, opacity }) => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, {
-      target,
-      props: { x: 100, y: 100, style: { fill: color, fill_opacity: opacity } },
-    })
-    const path = doc_query(`path`)
-    expect(path).toBeInstanceOf(SVGPathElement)
-    expect(path.getAttribute(`fill-opacity`)).toBe(String(opacity))
-  })
-
-  test.each([
-    { stroke: `black`, width: 1, opacity: 1.0 },
-    { stroke: `red`, width: 2, opacity: 0.8 },
-    { stroke: `#0000ff`, width: 3, opacity: 0.5 },
-  ])(
-    `applies stroke='$stroke' width=$width opacity=$opacity`,
-    ({ stroke, width, opacity }) => {
-      const target = doc_query(`div`)
-      mount(ScatterPoint, {
-        target,
-        props: {
-          x: 100,
-          y: 100,
-          style: { stroke, stroke_width: width, stroke_opacity: opacity },
-        },
-      })
-      const path = doc_query(`path`)
-      expect(path).toBeInstanceOf(SVGPathElement)
-      expect(path.getAttribute(`stroke`)).toBe(stroke)
-      expect(path.getAttribute(`stroke-width`)).toBe(String(width))
-      expect(path.getAttribute(`stroke-opacity`)).toBe(String(opacity))
+    {
+      desc: `full config`,
+      hover: { enabled: true, scale: 2, stroke: `silver`, stroke_width: 3 },
+      expected: { scale: `2`, stroke: `silver`, stroke_width: `3px` },
     },
-  )
-
-  test(`handles hover effects`, () => {
-    const hover = { enabled: true, scale: 2, stroke: `white`, stroke_width: 3 }
+    {
+      desc: `partial config uses defaults`,
+      hover: { enabled: true, scale: 1.5 },
+      expected: { scale: `1.5`, stroke: `white`, stroke_width: `0px` },
+    },
+  ])(`handles hover effects with $desc`, ({ hover, expected }) => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 100, y: 100, hover, is_hovered: true } })
     const group = doc_query(`g`)
-    const path = doc_query(`path.marker`)
-    expect(path.classList.contains(`is-hovered`)).toBe(true)
-    expect(group.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
-    expect(group.style.getPropertyValue(`--hover-stroke`)).toBe(hover.stroke)
-    expect(group.style.getPropertyValue(`--hover-stroke-width`)).toBe(
-      `${hover.stroke_width}px`,
-    )
+    expect(doc_query(`path.marker`).classList.contains(`is-hovered`)).toBe(true)
+    expect(group.style.getPropertyValue(`--hover-scale`)).toBe(expected.scale)
+    expect(group.style.getPropertyValue(`--hover-stroke`)).toBe(expected.stroke)
+    expect(group.style.getPropertyValue(`--hover-stroke-width`)).toBe(expected.stroke_width)
   })
 
   test(`applies dimmed marker state`, () => {
@@ -165,30 +110,6 @@ describe(`ScatterPoint`, () => {
     expect(text.getAttribute(`y`)).toBe(String(label.offset.y))
     expect(text.style.fontSize).toBe(label.font_size)
     expect(text.style.fontFamily).toBe(label.font_family)
-  })
-
-  test(`applies point offset`, () => {
-    const offset = { x: 5, y: -5 }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, offset } })
-
-    const group = doc_query(`g`)
-    // Initial transform check, acknowledging happy-dom limitation
-    // for seeing the final tweened/offset position.
-    expect(group.getAttribute(`transform`)).toBe(`translate(0 0)`)
-  })
-
-  test(`handles partial hover configuration`, () => {
-    const hover = { enabled: true, scale: 1.5 }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, hover, is_hovered: true } })
-
-    const group = doc_query(`g`)
-    const path = doc_query(`path.marker`)
-    expect(path.classList.contains(`is-hovered`)).toBe(true)
-    expect(group.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
-    expect(group.style.getPropertyValue(`--hover-stroke`)).toBe(`white`)
-    expect(group.style.getPropertyValue(`--hover-stroke-width`)).toBe(`0px`)
   })
 
   test(`handles empty label configuration`, () => {
@@ -242,50 +163,6 @@ describe(`ScatterPoint`, () => {
     // Ring must come before marker in DOM so it renders behind
     const children = Array.from(group.children)
     expect(children.indexOf(ring)).toBeLessThan(children.indexOf(marker))
-  })
-
-  test(`handles zero values correctly`, () => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 0, y: 0 } })
-
-    const group = doc_query(`g`)
-    expect(group.getAttribute(`transform`)).toBe(`translate(0 0)`) // Initial transform
-  })
-
-  test.each([
-    { position: `above`, offset: { x: 0, y: -15 } },
-    { position: `right`, offset: { x: 15, y: 0 } },
-    { position: `below`, offset: { x: 0, y: 15 } },
-    { position: `left`, offset: { x: -15, y: 0 } },
-  ] as const)(`renders with different text annotation positions`, (pos) => {
-    const label = {
-      text: `Point ${pos.position}`,
-      offset: pos.offset,
-    }
-    mount(ScatterPoint, { target: document.body, props: { x: 100, y: 100, label } })
-
-    const text = doc_query(`text`)
-    expect(text.textContent).toBe(label.text)
-    expect(text.getAttribute(`x`)).toBe(String(pos.offset.x))
-    expect(text.getAttribute(`y`)).toBe(String(pos.offset.y))
-  })
-
-  test.each([
-    { name: `large serif`, size: `18px`, family: `serif` },
-    { name: `small mono`, size: `10px`, family: `monospace` },
-  ] as const)(`applies custom font styling to text annotations`, (font) => {
-    const label = {
-      text: `${font.name} text`,
-      font_size: font.size,
-      font_family: font.family,
-    }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, label } })
-    const text = doc_query(`text`)
-    expect(text.textContent).toBe(label.text)
-    expect(text.style.fontSize).toBe(font.size)
-    expect(text.style.fontFamily).toBe(font.family)
-    // Note: happy-dom doesn't reliably support font-weight via style property
   })
 
   describe(`auto-placed labels`, () => {

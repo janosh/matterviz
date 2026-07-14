@@ -1,18 +1,18 @@
-import { BarChart, count_atoms_in_composition, fractional_composition } from '$lib/composition'
+import { BarChart } from '$lib/composition'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`BarChart component`, () => {
-  test(`renders container with correct dimensions`, () => {
+  test.each([300, 400])(`renders container with correct dimensions (size=%i)`, (size) => {
     mount(BarChart, {
       target: document.body,
-      props: { composition: { H: 2, O: 1 }, size: 300 },
+      props: { composition: { H: 2, O: 1 }, size },
     })
 
     const container = document.querySelector(`.bar-chart`)
     expect(container).toBeInstanceOf(SVGSVGElement)
-    expect(container?.getAttribute(`viewBox`)).toContain(`0 0 300`)
+    expect(container?.getAttribute(`viewBox`)).toContain(`0 0 ${size}`)
   })
 
   test(`renders segments for each element`, () => {
@@ -72,24 +72,6 @@ describe(`BarChart component`, () => {
     )
   })
 
-  test(`renders with basic composition`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: { composition: { H: 2, O: 1 } },
-    })
-    expect(doc_query(`.bar-chart`)).toBeInstanceOf(SVGSVGElement)
-  })
-
-  test(`renders bar segments correctly`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: { composition: { H: 2, O: 1 } },
-    })
-
-    const segments = document.querySelectorAll(`rect.bar-segment`)
-    expect(segments).toHaveLength(2) // H and O segments
-  })
-
   test(`external label positioning balances above and below`, () => {
     // Create composition with many thin segments to trigger external labels
     const composition = { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 }
@@ -117,16 +99,6 @@ describe(`BarChart component`, () => {
     // (perfect balance or one extra in one direction)
     const difference = Math.abs(above_labels.length - below_labels.length)
     expect(difference).toBeLessThanOrEqual(1)
-  })
-
-  test(`handles custom dimensions`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: { composition: { H: 2, O: 1 }, size: 400 },
-    })
-
-    const container = doc_query(`.bar-chart`)
-    expect(container.getAttribute(`viewBox`)).toContain(`0 0 400`)
   })
 
   test(`applies custom styling and classes`, () => {
@@ -173,47 +145,6 @@ describe(`BarChart component`, () => {
     expect(document.querySelector(`.amount`)).toBeInstanceOf(SVGTSpanElement)
   })
 
-  test(`handles custom bar dimensions`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: {
-        composition: { H: 2, O: 1 },
-        bar_height: 50,
-        label_height: 30,
-        gap: 5,
-      },
-    })
-
-    const container = document.querySelector(`.bar-chart`)
-    expect(container).toBeInstanceOf(SVGSVGElement)
-
-    // Check that CSS variables are set
-    const style = container?.getAttribute(`style`)
-    expect(style).toContain(`max-width: 200px`)
-  })
-
-  test(`handles custom thresholds`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: {
-        composition: { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 },
-        min_segment_size_for_label: 50, // Very high threshold
-        thin_segment_threshold: 30, // Higher threshold
-        external_label_size_threshold: 10, // Higher threshold
-      },
-    })
-
-    // With high thresholds, segments should have different label behavior
-    const bar_labels = document.querySelectorAll(`text.bar-label`)
-    const external_labels = document.querySelectorAll(`text.external-label`)
-
-    // Should have some labels (either internal or external)
-    expect(bar_labels.length + external_labels.length).toBeGreaterThan(0)
-
-    // With high min_segment_size_for_label, fewer internal labels should be shown
-    expect(bar_labels.length).toBeLessThanOrEqual(6)
-  })
-
   test(`renders children content`, () => {
     mount(BarChart, {
       target: document.body,
@@ -226,35 +157,5 @@ describe(`BarChart component`, () => {
     })
 
     expect(document.querySelector(`.custom-child`)).toBeInstanceOf(HTMLElement)
-  })
-})
-
-describe(`BarChart calculations`, () => {
-  test.each([
-    [{ H: 2, O: 1 }, { H: 0.6667, O: 0.3333 }, 3],
-    [{}, {}, 0],
-    [{ H: 5 }, { H: 1.0 }, 5],
-    [{ C: 8, H: 10, N: 4, O: 2 }, { C: 0.3333, H: 0.4167, N: 0.1667, O: 0.0833 }, 24],
-  ])(`processes composition correctly`, (composition, expected_fractions, expected_total) => {
-    expect(count_atoms_in_composition(composition)).toBe(expected_total)
-
-    const fractions = fractional_composition(composition)
-    if (Object.keys(expected_fractions).length === 0) {
-      expect(Object.keys(fractions)).toHaveLength(0)
-    } else {
-      Object.entries(expected_fractions).forEach(([element, expected_frac]) => {
-        expect(fractions[element as keyof typeof fractions]).toBeCloseTo(expected_frac, 3)
-      })
-    }
-  })
-
-  test(`calculates font scaling correctly`, () => {
-    const min_font_scale = 0.6
-    const max_font_scale = 1.2
-
-    // Test different segment sizes
-    expect(Math.min(max_font_scale, Math.max(min_font_scale, 80 / 40))).toBe(max_font_scale)
-    expect(Math.min(max_font_scale, Math.max(min_font_scale, 20 / 40))).toBe(min_font_scale)
-    expect(Math.min(max_font_scale, Math.max(min_font_scale, 40 / 40))).toBe(1.0)
   })
 })

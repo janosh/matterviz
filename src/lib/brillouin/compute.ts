@@ -9,10 +9,6 @@ import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './typ
 
 const TOL = 1e-8
 
-// Check if rotation matrix is identity
-const is_identity_rotation = (rot: Matrix3x3): boolean =>
-  rot.every((row, idx) => row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL))
-
 // Extract unique point group rotation matrices from space group operations.
 // Returns fractional-coordinate rotations (W matrices from spglib convention).
 // These must be converted to Cartesian k-space before use in clipping.
@@ -147,13 +143,12 @@ export function generate_bz_vertices(
   // Default values: 26 (1st order), 80 (2nd order), 150 (3rd+ order)
   max_planes_by_order: Record<1 | 2 | 3, number> = { 1: 26, 2: 80, 3: 150 },
 ): Vec3[] {
-  if (order > 3) order = 3 // Performance limit
-
-  const k_points = generate_k_space_grid(k_lattice, order)
+  const clamped_order = Math.min(order, 3) as typeof order
+  const k_points = generate_k_space_grid(k_lattice, clamped_order)
   const center_idx = Math.floor(k_points.length / 2)
 
-  // Determine max planes for this order (default to highest value for orders > 3)
-  const max_planes = max_planes_by_order[order] ?? 150
+  // Fallback for partial records passed through compute_brillouin_zone
+  const max_planes = max_planes_by_order[clamped_order] ?? 150
 
   // Create Bragg planes (perpendicular bisectors of k-points)
   const planes = k_points
@@ -193,12 +188,12 @@ export function generate_bz_vertices(
             vertex[2] * normals[p_idx][2]
           if (dot > distances[p_idx] + TOL) {
             beyond_count++
-            if (beyond_count >= order) break
+            if (beyond_count >= clamped_order) break
           }
         }
 
         // Vertex belongs to nth BZ if it's beyond fewer than n planes
-        if (beyond_count < order && !dedup.has_duplicate(vertex)) {
+        if (beyond_count < clamped_order && !dedup.has_duplicate(vertex)) {
           vertices.push(vertex)
           dedup.add(vertex)
         }
@@ -209,12 +204,11 @@ export function generate_bz_vertices(
   return vertices
 }
 
-// Compute polyhedron volume via divergence theorem (sum of signed tetrahedral volumes)
+// Compute polyhedron volume via divergence theorem (sum of signed tetrahedral volumes).
+// Faces always come from compute_convex_hull, so each is a valid triangle.
 function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
-  if (faces.length === 0) return 0
   return Math.abs(
     faces.reduce((sum, face) => {
-      if (face.length < 3) return sum
       const [v0, v1, v2] = face.slice(0, 3).map((idx) => vertices[idx])
       const area_normal = math.scale(
         math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
@@ -328,7 +322,7 @@ export function compute_brillouin_zone(
   const hull = compute_convex_hull(vertices, edge_sharp_angle_deg)
 
   return {
-    order,
+    order: Math.min(order, 3),
     vertices: hull.vertices,
     faces: hull.faces,
     edges: hull.edges.map(([i1, i2]) => [hull.vertices[i1], hull.vertices[i2]]),
@@ -389,7 +383,12 @@ export function find_ibz_reference_direction(non_identity_ops: Matrix3x3[]): Vec
 // of exactly volume(BZ)/|G|. (Using a different reference point per operation — or
 // flipping individual planes — does NOT yield a fundamental domain in general.)
 export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): ClippingPlane[] {
-  const non_identity_ops = point_group_ops.filter((rot) => !is_identity_rotation(rot))
+  const non_identity_ops = point_group_ops.filter(
+    (rot) =>
+      !rot.every((row, idx) =>
+        row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL),
+      ),
+  )
   if (non_identity_ops.length === 0) return []
 
   const ref_dir = find_ibz_reference_direction(non_identity_ops)

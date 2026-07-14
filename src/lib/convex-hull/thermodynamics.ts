@@ -551,46 +551,35 @@ export interface HullFaceModel {
 
 export const build_lower_hull_model = (faces: ConvexHullTriangle[]): HullFaceModel[] =>
   faces.map((tri) => {
-    const [p1, p2, p3] = tri.vertices
-    const plane = (() => {
-      const x1 = p1.x,
-        y1 = p1.y,
-        z1 = p1.z
-      const x2 = p2.x,
-        y2 = p2.y,
-        z2 = p2.z
-      const x3 = p3.x,
-        y3 = p3.y,
-        z3 = p3.z
-      const det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
-      if (Math.abs(det) < 1e-12) return { a: 0, b: 0, c: (z1 + z2 + z3) / 3 }
-      const a = (z1 * (y2 - y3) + z2 * (y3 - y1) + z3 * (y1 - y2)) / det
-      const b = (z1 * (x3 - x2) + z2 * (x1 - x3) + z3 * (x2 - x1)) / det
-      const c =
-        (z1 * (x2 * y3 - x3 * y2) + z2 * (x3 * y1 - x1 * y3) + z3 * (x1 * y2 - x2 * y1)) / det
-      return { a, b, c }
-    })()
-    const [min_x, _mx, max_x] = [p1.x, p2.x, p3.x].sort((a, b) => a - b)
-    const [min_y, _my, max_y] = [p1.y, p2.y, p3.y].sort((a, b) => a - b)
-    const { x: x1, y: y1 } = p1
-    const { x: x2, y: y2 } = p2
-    const { x: x3, y: y3 } = p3
-    const denom = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+    const [{ x: x1, y: y1, z: z1 }, { x: x2, y: y2, z: z2 }, { x: x3, y: y3, z: z3 }] =
+      tri.vertices
+    // Fit plane z = a*x + b*y + c through the three vertices (flat fallback if degenerate)
+    const det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
+    const plane =
+      Math.abs(det) < 1e-12
+        ? { a: 0, b: 0, c: (z1 + z2 + z3) / 3 }
+        : {
+            a: (z1 * (y2 - y3) + z2 * (y3 - y1) + z3 * (y1 - y2)) / det,
+            b: (z1 * (x3 - x2) + z2 * (x1 - x3) + z3 * (x2 - x1)) / det,
+            c:
+              (z1 * (x2 * y3 - x3 * y2) +
+                z2 * (x3 * y1 - x1 * y3) +
+                z3 * (x1 * y2 - x2 * y1)) /
+              det,
+          }
     return {
-      a: plane.a,
-      b: plane.b,
-      c: plane.c,
+      ...plane,
       x1,
       y1,
       x2,
       y2,
       x3,
       y3,
-      min_x,
-      max_x,
-      min_y,
-      max_y,
-      denom,
+      min_x: Math.min(x1, x2, x3),
+      max_x: Math.max(x1, x2, x3),
+      min_y: Math.min(y1, y2, y3),
+      max_y: Math.max(y1, y2, y3),
+      denom: det,
     }
   })
 

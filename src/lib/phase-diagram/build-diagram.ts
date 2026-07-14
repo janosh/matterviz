@@ -173,12 +173,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
     title: meta.title,
     regions: built_regions,
     boundaries,
-    special_points: special_points?.map((sp) => ({
-      id: sp.id,
-      type: sp.type,
-      position: sp.position,
-      label: sp.label,
-    })),
+    special_points,
     ...(meta.pseudo_binary && { pseudo_binary: meta.pseudo_binary }),
     ...(meta.x_axis_label && { x_axis_label: meta.x_axis_label }),
     ...(meta.y_axis_label && { y_axis_label: meta.y_axis_label }),

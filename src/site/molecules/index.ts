@@ -15,14 +15,11 @@ const molecules = Object.entries(
 // Object of molecules by ID
 export const test_molecules = Object.fromEntries(molecules.map((mol) => [mol.id, mol]))
 
-export const molecule_files: FileInfo[] = Object.entries(
-  // all structure files as raw text
-  import.meta.glob<string>(`$site/molecules/*`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  }),
-).map(([path]) => {
+// Only the glob keys (paths) are needed to build FileInfo entries, so don't eager-load
+// file contents
+export const molecule_files: FileInfo[] = Object.keys(
+  import.meta.glob(`$site/molecules/*`),
+).map((path) => {
   const filename = path.split(`/`).pop() ?? path
   const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
   const url = path.replace(`/src/site`, ``)

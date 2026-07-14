@@ -57,6 +57,8 @@ describe(`HeatmapTable`, () => {
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
     expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
+    expect(document.querySelector(`tfoot`)).toBeNull() // no footer snippet -> no tfoot
+    expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
   })
 
   it(`re-wires cell tooltips after cells re-render`, async () => {
@@ -460,25 +462,16 @@ describe(`HeatmapTable`, () => {
 
     mount_table({ data, columns: [c1, c2] })
 
-    // Get cells for both columns
-    const linear_cells = document.querySelectorAll(`td[data-col="Linear"]`)
-    const log_cells = document.querySelectorAll(`td[data-col="Log"]`)
+    const styles_of = (col: string) =>
+      Array.from(document.querySelectorAll(`td[data-col="${col}"]`)).map(
+        (cell) => cell.getAttribute(`style`) ?? ``,
+      )
+    const linear_styles = styles_of(`Linear`)
+    const log_styles = styles_of(`Log`)
 
-    // Check --cell-bg is set on cells
-    const linear_styles = Array.from(linear_cells).map(
-      (cell) => cell.getAttribute(`style`) ?? ``,
-    )
-    const log_styles = Array.from(log_cells).map((cell) => cell.getAttribute(`style`) ?? ``)
-
-    // Both types should have --cell-bg set
+    // Both scale types color every cell, but map the same values differently
     expect(linear_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
     expect(log_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
-
-    // The color distribution should be different between linear and log scale
-    // In linear scale, 10->100->1000 should have increasingly spaced colors
-    // In log scale, the color difference between 10->100 should be similar to 100->1000
-    // Difficult to test precisely without mocking d3 scales, but we can check
-    // there are differences between the two scale types.
     expect(linear_styles).not.toEqual(log_styles)
   })
 
@@ -528,56 +521,29 @@ describe(`HeatmapTable`, () => {
   it(`prevents HTML strings from being used as data-sort-value attributes`, () => {
     const html_data = [
       {
-        Name: `Test Model`,
         HTML: `<span data-sort-value="100" title="This is a tooltip">100 units</span>`,
         Complex: `<span data-sort-value="3373529" title="Complex tooltip with multiple lines&#013;• Line item 1&#013;• Line item 2">3.37M <small>(details)</small> (<a href="https://example.com">Link</a>)</span>`,
       },
     ]
+    mount_table({
+      data: html_data,
+      columns: [
+        { label: `HTML`, description: `` },
+        { label: `Complex`, description: `` },
+      ],
+    })
 
-    const html_columns: Label[] = [
-      { label: `Name`, description: `` },
-      { label: `HTML`, description: `` },
-      { label: `Complex`, description: `` },
-    ]
-
-    mount_table({ data: html_data, columns: html_columns })
-
-    // Get the cells with HTML content
-    const html_cell = document.querySelector(`td[data-col="HTML"]`)
-    const complex_cell = document.querySelector(`td[data-col="Complex"]`)
-
-    // Verify cells exist and contain the expected HTML
-    expect(html_cell).not.toBeNull()
-    expect(complex_cell).not.toBeNull()
-
-    // HTML should be rendered correctly
-    expect(html_cell?.innerHTML).toContain(`<span data-sort-value="100"`)
-    expect(complex_cell?.innerHTML).toContain(`<span data-sort-value="3373529"`)
-
-    // The data-sort-value attribute on the td should not contain HTML
-    const html_cell_sort_value = html_cell?.getAttribute(`data-sort-value`)
-    const complex_cell_sort_value = complex_cell?.getAttribute(`data-sort-value`)
-
-    // Either undefined (meaning HTML was detected and no sort value was set)
-    // or not containing HTML tags
-    if (html_cell_sort_value !== null) {
-      expect(html_cell_sort_value?.includes(`<`)).toBe(false)
-      expect(html_cell_sort_value?.includes(`>`)).toBe(false)
+    for (const [col, sort_value, title] of [
+      [`HTML`, `100`, `This is a tooltip`],
+      [`Complex`, `3373529`, `Complex tooltip`],
+    ]) {
+      const cell = document.querySelector(`td[data-col="${col}"]`)
+      // HTML renders inside the cell, but the raw HTML string must not leak
+      // into the td's own data-sort-value attribute
+      expect(cell?.innerHTML).toContain(`<span data-sort-value="${sort_value}"`)
+      expect(cell?.getAttribute(`data-sort-value`)).toBeNull()
+      expect(cell?.querySelector(`span[title]`)?.getAttribute(`title`)).toContain(title)
     }
-
-    if (complex_cell_sort_value !== null) {
-      expect(complex_cell_sort_value?.includes(`<`)).toBe(false)
-      expect(complex_cell_sort_value?.includes(`>`)).toBe(false)
-    }
-
-    // Check that tooltips are present and accessible
-    const tooltip_span = html_cell?.querySelector(`span[title]`)
-    expect(tooltip_span).not.toBeNull()
-    expect(tooltip_span?.getAttribute(`title`)).toBe(`This is a tooltip`)
-
-    const complex_tooltip_span = complex_cell?.querySelector(`span[title]`)
-    expect(complex_tooltip_span).not.toBeNull()
-    expect(complex_tooltip_span?.getAttribute(`title`)).toContain(`Complex tooltip`)
   })
 
   describe(`Heatmap Toggle Functionality`, () => {
@@ -649,44 +615,23 @@ describe(`HeatmapTable`, () => {
 
       mount_table({ data: grouped_data, columns: grouped_columns })
 
-      // Should have two rows in the header
       const header_rows = document.querySelectorAll(`thead tr`)
       expect(header_rows).toHaveLength(2)
 
-      // First row should contain the group headers
-      const group_headers = header_rows[0].querySelectorAll(`th`)
-      expect(group_headers).toHaveLength(4) // Name (empty), Values, Metrics, Second Values
-
-      // Get the text content of the group headers (excluding the empty one)
-      const group_texts = Array.from(group_headers)
-        .filter((th) => th.textContent?.trim())
-        .map((th) => th.textContent?.trim())
-
-      // Should have all three groups rendered
-      expect(group_texts).toEqual([`Values`, `Metrics`, `Second Values`])
-
-      // Check the group headers have correct colspan
-      const values_header = Array.from(group_headers).find((th) =>
-        th.textContent?.includes(`Values`),
-      )
-      const metrics_header = Array.from(group_headers).find((th) =>
-        th.textContent?.includes(`Metrics`),
-      )
-      const second_values_header = Array.from(group_headers).find((th) =>
-        th.textContent?.includes(`Second Values`),
-      )
-
-      expect(values_header?.getAttribute(`colspan`)).toBe(`2`) // Values spans 2 columns
-      expect(metrics_header?.getAttribute(`colspan`)).toBe(`2`) // Metrics spans 2 columns
-      expect(second_values_header?.getAttribute(`colspan`)).toBe(`2`) // Second Values spans 2 columns
-
-      // Check column headers in second row
-      const col_headers = header_rows[1].querySelectorAll(`th`)
-      expect(col_headers).toHaveLength(7)
-
-      // Column headers should have duplicate label names (Value 1, Value 2) rendered for each group
+      // First row: group headers (empty th for ungrouped Name), each spanning its columns
+      const group_headers = Array.from(header_rows[0].querySelectorAll(`th`))
       expect(
-        Array.from(col_headers).map((header) =>
+        group_headers.map((th) => [th.textContent?.trim(), th.getAttribute(`colspan`)]),
+      ).toEqual([
+        [``, null], // Name (ungrouped)
+        [`Values`, `2`],
+        [`Metrics`, `2`],
+        [`Second Values`, `2`],
+      ])
+
+      // Second row: duplicate labels (Value 1, Value 2) render once per group
+      expect(
+        Array.from(header_rows[1].querySelectorAll(`th`)).map((header) =>
           header.textContent?.trim().replaceAll(/\s+|[↑↓]/g, ``),
         ),
       ).toEqual([`Name`, `Value1`, `Value2`, `Metric1`, `Metric2`, `Value1`, `Value2`])
@@ -884,76 +829,45 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Export Functionality`, () => {
-    it(`renders export dropdown when export_data is enabled`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns, export_data: true })
-
-      // Export dropdown lives in the control buttons row
-      expect(
-        document.querySelector(`.control-buttons .dropdown-wrapper .icon-btn`),
-      ).not.toBeNull()
+    it.each([
+      { desc: `true shows CSV and JSON`, export_data: true, present: [`CSV`, `JSON`] },
+      {
+        desc: `formats restricts the options`,
+        export_data: { formats: [`csv`] as `csv`[] },
+        present: [`CSV`],
+        absent: [`JSON`],
+      },
+    ])(`export_data=$desc`, async ({ export_data, present, absent }) => {
+      mount_table({ data: sample_data, columns: sample_columns, export_data })
       await open_export_menu()
 
-      // Should show CSV and JSON options
       const dropdown = document.querySelector(`.dropdown-pane`)
-      expect(dropdown?.textContent).toContain(`CSV`)
-      expect(dropdown?.textContent).toContain(`JSON`)
+      for (const fmt of present) expect(dropdown?.textContent).toContain(fmt)
+      for (const fmt of absent ?? []) expect(dropdown?.textContent).not.toContain(fmt)
     })
 
     it(`does not render export button when export_data is false`, () => {
       mount_table({ data: sample_data, columns: sample_columns, export_data: false })
-
-      const dropdown_wrappers = document.querySelectorAll(`.dropdown-wrapper`)
-      expect(dropdown_wrappers).toHaveLength(0)
-    })
-
-    it(`respects export_data.formats to show only specified formats`, async () => {
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        export_data: { formats: [`csv`] },
-      })
-      await open_export_menu()
-
-      const dropdown = document.querySelector(`.dropdown-pane`)
-      expect(dropdown?.textContent).toContain(`CSV`)
-      expect(dropdown?.textContent).not.toContain(`JSON`)
+      expect(document.querySelectorAll(`.dropdown-wrapper`)).toHaveLength(0)
     })
   })
 
   describe(`Column Visibility Toggle`, () => {
-    it(`renders toggle button and shows dropdown with all columns`, async () => {
+    it(`dropdown lists all columns and unchecking one hides it`, async () => {
       mount_table({ data: sample_data, columns: sample_columns, show_column_toggle: true })
-
-      const dropdown_wrapper = document.querySelector(`.dropdown-wrapper`)
-      expect(dropdown_wrapper).not.toBeNull()
-
-      const toggle_btn = dropdown_wrapper?.querySelector(`.icon-btn`) as HTMLButtonElement
-      toggle_btn.click()
-      await tick()
-
-      const dropdown = document.querySelector(`.dropdown-pane`)
-      expect(dropdown).not.toBeNull()
-      expect(dropdown?.querySelectorAll(`input[type="checkbox"]`)).toHaveLength(3)
-    })
-
-    it(`hides column when unchecked`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns, show_column_toggle: true })
-
-      // Initial: all 3 columns visible
       expect(document.querySelectorAll(`th`)).toHaveLength(3)
 
-      // Open dropdown
-      const dropdown_wrapper = document.querySelector(`.dropdown-wrapper`)
-      const toggle_btn = dropdown_wrapper?.querySelector(`.icon-btn`) as HTMLButtonElement
+      const toggle_btn = document.querySelector(
+        `.dropdown-wrapper .icon-btn`,
+      ) as HTMLButtonElement
       toggle_btn.click()
       await tick()
 
-      // Uncheck first column
       const checkboxes = document.querySelectorAll(`.dropdown-pane input[type="checkbox"]`)
+      expect(checkboxes).toHaveLength(3)
       ;(checkboxes[0] as HTMLInputElement).click()
       await tick()
 
-      // Should now have 2 columns
       expect(document.querySelectorAll(`th`)).toHaveLength(2)
     })
   })
@@ -989,19 +903,7 @@ describe(`HeatmapTable`, () => {
       },
     )
 
-    it(`clears selection when clear button clicked`, async () => {
-      mount_selectable()[0].click()
-      await tick()
-
-      // Click clear button (now a selection-badge icon-btn)
-      const clear_btn = document.querySelector(`.selection-badge`) as HTMLButtonElement
-      clear_btn.click()
-      await tick()
-
-      expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
-    })
-
-    it(`header checkbox unchecked on partial selection`, async () => {
+    it(`partial selection leaves header checkbox unchecked; clear button resets`, async () => {
       mount_selectable()[0].click()
       await tick()
 
@@ -1010,15 +912,19 @@ describe(`HeatmapTable`, () => {
         (document.querySelector(`th.select-col input[type="checkbox"]`) as HTMLInputElement)
           .checked,
       ).toBe(false)
+
+      // Click clear button (the selection-badge icon-btn)
+      ;(document.querySelector(`.selection-badge`) as HTMLButtonElement).click()
+      await tick()
+      expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
     })
   })
 
   describe(`Multi-Column Sorting`, () => {
-    it(`adds secondary sort with Shift+click and shows numbered badges`, async () => {
+    it(`Shift+click adds numbered sort badges, regular click clears them`, async () => {
       mount_table({ data: sample_data, columns: sample_columns })
 
       const headers = document.querySelectorAll(`th`)
-
       headers[0].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
       await tick()
       headers[1].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
@@ -1029,27 +935,13 @@ describe(`HeatmapTable`, () => {
       expect(headers[1].innerHTML).toContain(`<sup>2</sup>`)
       expect(headers[0].textContent).toMatch(/[↑↓]/)
       expect(headers[1].textContent).toMatch(/[↑↓]/)
-    })
 
-    it(`clears multi-sort on regular click`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns })
-
-      const headers = document.querySelectorAll(`th`)
-
-      // Add multi-sort
-      const shift_event = new MouseEvent(`click`, { shiftKey: true, bubbles: true })
-      headers[0].dispatchEvent(shift_event)
-      await tick()
-      headers[1].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
-      await tick()
-
-      // Regular click should clear multi-sort
+      // Regular click clears multi-sort, leaving only the third header sorted
       headers[2].click()
       await tick()
-
-      // Only third header should have sort indicator
       expect(headers[0].innerHTML).not.toContain(`<sup>`)
       expect(headers[1].innerHTML).not.toContain(`<sup>`)
+      expect(headers[2].textContent).toMatch(/[↑↓]/)
     })
   })
 
@@ -1076,14 +968,8 @@ describe(`HeatmapTable`, () => {
     ])(
       `renders $expected_arrow for Value header after $click_count click(s)`,
       async ({ click_count, expected_arrow }) => {
-        const headers = render_table()
-        const value_header = headers[2]
-
-        if (click_count >= 1) {
-          value_header.click()
-          await tick()
-        }
-        if (click_count >= 2) {
+        const value_header = render_table()[2]
+        for (let click_idx = 0; click_idx < click_count; click_idx++) {
           value_header.click()
           await tick()
         }
@@ -1547,19 +1433,6 @@ describe(`HeatmapTable`, () => {
     })
 
     describe(`integration scenarios`, () => {
-      it(`sort hint works with onsort`, () => {
-        mount_table({
-          data: initial_data,
-          columns: sample_columns,
-          onsort: vi.fn().mockResolvedValue(initial_data),
-          sort_hint: { text: `Server-side sort`, permanent: true },
-        })
-
-        const hint = document.querySelector(`.sort-hint`)
-        expect(hint?.textContent).toContain(`Server-side sort`)
-        expect(hint?.classList.contains(`permanent`)).toBe(true)
-      })
-
       it(`other features work with async sort props`, () => {
         mount_table({
           data: large_data,
@@ -1730,11 +1603,6 @@ describe(`HeatmapTable`, () => {
       })
       // 3 data columns + 1 select + 1 row number = 5
       expect(document.querySelector(`.empty-row td`)?.getAttribute(`colspan`)).toBe(`5`)
-    })
-
-    it(`not shown when data is present`, () => {
-      mount_table({ data: sample_data, columns: sample_columns })
-      expect(document.querySelector(`.empty-row`)).toBeNull()
     })
   })
 
@@ -1914,11 +1782,6 @@ describe(`HeatmapTable`, () => {
       })
       expect(text).toContain(expected)
     })
-  })
-
-  it(`does not render tfoot when footer is not provided`, () => {
-    mount_table({ data: sample_data, columns: sample_columns })
-    expect(document.querySelector(`tfoot`)).toBeNull()
   })
 
   describe(`root_style prop`, () => {

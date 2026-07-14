@@ -6,7 +6,7 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { create_file_drop_handler, drag_over_handlers, load_from_url } from '$lib/io'
+  import * as io from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
@@ -305,20 +305,39 @@
   // completions so a newer data_url (or an externally-supplied structure, via the cleanup)
   // can't be clobbered by a slow earlier fetch.
   let data_url_load_id = 0
+  let loaded_data_url: string | undefined
+  let url_owned_structure: AnyStructure | undefined
+
   $effect(() => {
-    if (!data_url || structure) return
+    const requested_url = data_url
+    const current_structure = structure
+    // Host on_file_drop owns the structure; don't treat it as caller-owned cancel.
+    const caller_owns_structure = Boolean(
+      !on_file_drop && current_structure && current_structure !== url_owned_structure,
+    )
+    if (!requested_url || caller_owns_structure) {
+      loaded_data_url = undefined
+      url_owned_structure = undefined
+      return
+    }
+    if (loaded_data_url === requested_url) return
+
     const load_id = ++data_url_load_id
     const is_current = () => load_id === data_url_load_id
     loading = true
     error_msg = undefined
 
-    load_from_url(data_url, (content, filename) => {
+    io.load_from_url(requested_url, (content, filename) => {
       if (!is_current()) return // stale response
-      if (on_file_drop) on_file_drop(content, filename)
-      else {
+      if (on_file_drop) {
+        on_file_drop(content, filename)
+        loaded_data_url = requested_url
+      } else {
         // Parse structure internally when no handler provided
         try {
           parse_and_emit_file(content, filename)
+          url_owned_structure = structure
+          loaded_data_url = requested_url
         } catch (error) {
           error_msg = `Failed to parse structure: ${to_error(error).message}`
           on_error?.({ error_msg, filename })
@@ -329,7 +348,7 @@
         if (!is_current()) return
         console.error(`Failed to load structure from URL:`, error)
         error_msg = `Failed to load structure: ${error.message}`
-        on_error?.({ error_msg, filename: data_url })
+        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
       })
       .finally(() => {
         if (is_current()) loading = false
@@ -680,6 +699,14 @@
   // Flag set before internal edits (undo/redo/delete/add/move) to distinguish
   // them from external structure changes (file load, trajectory step, etc.)
   let is_internal_edit = false
+  // Claim URL ownership before regular effects so internal edits aren't treated as caller-owned.
+  $effect.pre(() => {
+    void structure
+    if (is_internal_edit && loaded_data_url && loaded_data_url === data_url && structure) {
+      url_owned_structure = structure
+    }
+  })
+
   // Add-atom sub-mode state (bound to StructureScene)
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
@@ -1196,7 +1223,7 @@
     emit_file_load_event(parse_file_content(text, filename), filename, content)
   }
 
-  const handle_file_drop = create_file_drop_handler({
+  const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
     // Parse errors propagate so multi-file batches aggregate all failures into
     // one message instead of the last error overwriting earlier ones
@@ -1527,13 +1554,14 @@
 
   // Only set background override when background_color is explicitly provided
   $effect(() => {
-    if (typeof window !== `undefined` && wrapper && background_color) {
+    if (!wrapper) return
+    if (background_color) {
       // Convert opacity (0-1) to hex alpha value (00-FF)
       const alpha_hex = Math.round(background_opacity * 255)
         .toString(16)
         .padStart(2, `0`)
       wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
-    } else if (typeof window !== `undefined` && wrapper) {
+    } else {
       // Remove override to use theme system
       wrapper.style.removeProperty(`--struct-bg-override`)
     }
@@ -1574,7 +1602,7 @@
     }
   }}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({
+  {...io.drag_over_handlers({
     allow: () => allow_file_drop,
     set_dragover: (over) => (dragover = over),
   })}
@@ -1696,36 +1724,43 @@
           {/if}
         </div>
 
-        <!-- Undo/redo buttons (only in edit-atoms mode) -->
-        {#if measure_mode === `edit-atoms`}
+        {#snippet undo_redo_snippet(
+          buttons: {
+            icon: `Undo` | `Redo`
+            title: string
+            stack: unknown[]
+            action: () => void
+          }[],
+        )}
           <div class="undo-redo-container">
-            <button
-              type="button"
-              aria-label="Undo (Cmd/Ctrl+Z)"
-              disabled={undo_stack.length === 0}
-              onclick={undo}
-              title="Undo (Cmd/Ctrl+Z)"
-              class="undo-redo-btn"
-            >
-              <Icon icon="Undo" />
-              {#if undo_stack.length > 0}
-                <span class="history-count">{undo_stack.length}</span>
-              {/if}
-            </button>
-            <button
-              type="button"
-              aria-label="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-              disabled={redo_stack.length === 0}
-              onclick={redo}
-              title="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-              class="undo-redo-btn"
-            >
-              <Icon icon="Redo" />
-              {#if redo_stack.length > 0}
-                <span class="history-count">{redo_stack.length}</span>
-              {/if}
-            </button>
+            {#each buttons as { icon, title, stack, action } (icon)}
+              <button
+                type="button"
+                aria-label={title}
+                disabled={stack.length === 0}
+                onclick={action}
+                {title}
+                class="undo-redo-btn"
+              >
+                <Icon {icon} />
+                {#if stack.length > 0}
+                  <span class="history-count">{stack.length}</span>
+                {/if}
+              </button>
+            {/each}
           </div>
+        {/snippet}
+
+        {#if measure_mode === `edit-atoms`}
+          {@render undo_redo_snippet([
+            { icon: `Undo`, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
+            {
+              icon: `Redo`,
+              title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+              stack: redo_stack,
+              action: redo,
+            },
+          ])}
         {/if}
 
         {#if measure_mode === `edit-bonds`}
@@ -1754,34 +1789,20 @@
               {/each}
             </div>
           </div>
-          <div class="undo-redo-container">
-            <button
-              type="button"
-              aria-label="Undo bond edit (Cmd/Ctrl+Z)"
-              disabled={bond_undo_stack.length === 0}
-              onclick={undo_bond_edit}
-              title="Undo bond edit (Cmd/Ctrl+Z)"
-              class="undo-redo-btn"
-            >
-              <Icon icon="Undo" />
-              {#if bond_undo_stack.length > 0}
-                <span class="history-count">{bond_undo_stack.length}</span>
-              {/if}
-            </button>
-            <button
-              type="button"
-              aria-label="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-              disabled={bond_redo_stack.length === 0}
-              onclick={redo_bond_edit}
-              title="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
-              class="undo-redo-btn"
-            >
-              <Icon icon="Redo" />
-              {#if bond_redo_stack.length > 0}
-                <span class="history-count">{bond_redo_stack.length}</span>
-              {/if}
-            </button>
-          </div>
+          {@render undo_redo_snippet([
+            {
+              icon: `Undo`,
+              title: `Undo bond edit (Cmd/Ctrl+Z)`,
+              stack: bond_undo_stack,
+              action: undo_bond_edit,
+            },
+            {
+              icon: `Redo`,
+              title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+              stack: bond_redo_stack,
+              action: redo_bond_edit,
+            },
+          ])}
         {/if}
 
         <!-- Add-atom element input (shown when add_atom_mode is active) -->

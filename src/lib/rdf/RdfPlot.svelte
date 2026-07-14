@@ -21,7 +21,7 @@
     y_axis = {},
     cutoff = 15,
     n_bins = 75,
-    pbc = [true, true, true],
+    pbc,
     enable_drop = false,
     on_file_drop,
     loading = $bindable(false),
@@ -87,41 +87,23 @@
   }
 
   const entries = $derived.by(() => {
-    const result: RdfEntry[] = []
+    const result: RdfEntry[] = patterns
+      ? Array.isArray(patterns)
+        ? [...patterns]
+        : [patterns]
+      : []
 
-    // Add patterns
-    if (patterns) {
-      if (Array.isArray(patterns)) result.push(...patterns)
-      else result.push(patterns)
-    }
-
-    // Add structures
-    const struct_list: { struct: Crystal; label: string }[] = []
-    if (structures) {
-      if (Array.isArray(structures)) {
-        structures.forEach((struct, idx) =>
-          struct_list.push({
-            struct,
-            label: format_structure_label(struct, `Crystal ${idx + 1}`),
-          }),
-        )
-      } else if (is_crystal(structures)) {
-        struct_list.push({
-          struct: structures,
-          label: format_structure_label(structures, ``),
-        })
-      } else {
-        Object.entries(structures).forEach(([label, struct]) =>
-          struct_list.push({ struct, label: format_structure_label(struct, label) }),
-        )
-      }
-    }
-    drag_dropped.forEach((struct, idx) =>
-      struct_list.push({
-        struct,
-        label: format_structure_label(struct, `Dropped ${idx + 1}`),
-      }),
-    )
+    // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
+    const struct_list = [
+      ...(!structures
+        ? []
+        : Array.isArray(structures)
+          ? structures.map((struct, idx) => ({ struct, base: `Crystal ${idx + 1}` }))
+          : is_crystal(structures)
+            ? [{ struct: structures, base: `` }]
+            : Object.entries(structures).map(([base, struct]) => ({ struct, base }))),
+      ...drag_dropped.map((struct, idx) => ({ struct, base: `Dropped ${idx + 1}` })),
+    ].map(({ struct, base }) => ({ struct, label: format_structure_label(struct, base) }))
 
     for (const { struct, label } of struct_list) {
       if (mode === `element_pairs`) {

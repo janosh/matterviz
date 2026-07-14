@@ -5,7 +5,7 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { drag_over_handlers, handle_url_drop, load_from_url } from '$lib/io'
+  import * as io from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
@@ -17,6 +17,7 @@
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
+  import type { AnyStructure } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -233,6 +234,9 @@
   let element_size = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
+  let data_url_load_id = 0
+  let loaded_data_url: string | undefined
+  let url_owned_trajectory: TrajectoryType | undefined
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -280,6 +284,7 @@
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
       if (trajectory.frame_loader) {
         // Load frame on demand (works for both indexed files and external streaming)
+        current_frame = null
         schedule_frame_load_on_demand(current_step_idx)
       } else {
         clear_frame_load_timeout()
@@ -310,21 +315,27 @@
     frame_load_timeout = undefined
   }
 
-  const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
-    if (!trajectory || batch.length === 0) return
-    trajectory = {
-      ...trajectory,
-      plot_metadata: [...(trajectory.plot_metadata ?? []), ...batch],
-    }
+  const skip_stale_url_stream = () =>
+    Boolean(data_url && loaded_data_url && data_url !== loaded_data_url)
+
+  // Replace the trajectory with an updated copy, keeping URL ownership if it applied.
+  // No-ops while a data_url switch is in flight so stale streams can't mutate the old model.
+  const update_trajectory = (updates: Partial<TrajectoryType>) => {
+    if (!trajectory || skip_stale_url_stream()) return
+    const preserves_url_ownership = trajectory === url_owned_trajectory
+    trajectory = { ...trajectory, ...updates }
+    if (preserves_url_ownership) url_owned_trajectory = trajectory
   }
 
-  const finish_plot_metadata_loading = () => {
-    if (!trajectory) return
-    trajectory = {
-      ...trajectory,
-      metadata: { ...trajectory.metadata, plot_metadata_loading: false },
-    }
+  const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
+    if (batch.length === 0) return
+    update_trajectory({ plot_metadata: [...(trajectory?.plot_metadata ?? []), ...batch] })
   }
+
+  const finish_plot_metadata_loading = () =>
+    update_trajectory({
+      metadata: { ...trajectory?.metadata, plot_metadata_loading: false },
+    })
 
   onMount(() => {
     const handle_plot_metadata_stream = (event: MessageEvent<PlotMetadataStreamMessage>) => {
@@ -489,8 +500,14 @@
     }
   }
 
-  // Current frame structure for display
-  let current_structure = $derived(current_frame?.structure)
+  // Current frame structure for display. Holds the last resolved structure so the 3D
+  // view doesn't blank while an uncached frame loads on demand (current_frame is nulled
+  // during loads to keep the info pane from showing the previous frame's data).
+  let current_structure = $state<AnyStructure | undefined>(undefined)
+  $effect(() => {
+    if (current_frame?.structure) current_structure = current_frame.structure
+    else if (!trajectory) current_structure = undefined
+  })
 
   // Track hidden elements (persists across frame changes)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
@@ -637,10 +654,7 @@
     display_mode !== `structure` &&
       (plot_metadata_loading || !should_hide_plot(trajectory, plot_series)),
   )
-
-  // Determine what to show based on display mode
   let show_structure = $derived(![`scatter`, `histogram`].includes(display_mode))
-  let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(plot_series.some((srs) => srs.y_axis === `y2` && srs.visible))
@@ -659,11 +673,10 @@
       frame: current_frame || undefined,
     })
   }
-  // Step navigation functions
+  // Step navigation functions (streaming frame loading is handled by the reactive effect)
   function next_step() {
     if (current_step_idx < total_frames - 1) {
       current_step_idx++
-      // Streaming frame loading handled by reactive effect
       notify_step_change()
     }
   }
@@ -671,7 +684,6 @@
   function prev_step() {
     if (current_step_idx > 0) {
       current_step_idx--
-      // Streaming frame loading handled by reactive effect
       notify_step_change()
     }
   }
@@ -679,8 +691,6 @@
   function go_to_step(idx: number) {
     if (idx >= 0 && idx < total_frames) {
       current_step_idx = idx
-      // Note: streaming frame loading is handled by reactive effect
-      // Handle callbacks for both traditional and streaming modes
       notify_step_change()
     }
   }
@@ -816,16 +826,16 @@
       }
 
       // Handle URL-based files (e.g. from FilePicker)
-      const handled = await handle_url_drop(event, async (content, filename) => {
-        current_filename = filename
-        file_size =
-          content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
-        await load_trajectory_data(content, filename)
-      }).catch(() => false)
+      const handled = await io
+        .handle_url_drop(event, async (content, filename) => {
+          current_filename = filename
+          file_size =
+            content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
+          await load_trajectory_data(content, filename)
+        })
+        .catch(() => false)
 
-      if (handled) {
-        return
-      }
+      if (handled) return
 
       // Handle file system drops with optimized large file support
       const file = event.dataTransfer?.files[0]
@@ -857,33 +867,58 @@
     }
   }
 
+  // Load trajectory from URL when data_url is provided. Track the model produced by
+  // this effect so caller-owned trajectory props keep precedence while URL-owned
+  // models can reload when data_url changes.
   $effect(() => {
-    // Load trajectory from URL when data_url is provided
-    if (data_url && !trajectory) {
-      loading = true
-      error_msg = null
+    const requested_url = data_url
+    const current_trajectory = trajectory
+    const caller_owns_trajectory = Boolean(
+      current_trajectory && current_trajectory !== url_owned_trajectory,
+    )
+    if (!requested_url || caller_owns_trajectory) {
+      loaded_data_url = undefined
+      url_owned_trajectory = undefined
+      return
+    }
+    if (loaded_data_url === requested_url) return
 
-      load_from_url(data_url, async (content, filename) => {
-        current_filename = filename
-        file_size =
-          content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
-        await load_trajectory_data(content, filename)
+    const load_id = ++data_url_load_id
+    const is_current = () => load_id === data_url_load_id
+    loading = true
+    error_msg = null
+
+    io.load_from_url(requested_url, async (content, filename) => {
+      if (!is_current()) return
+      current_filename = filename
+      file_size =
+        content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
+      await load_trajectory_data(content, filename, {
+        on_trajectory_loaded: (loaded_trajectory) => {
+          if (!is_current()) return
+          url_owned_trajectory = loaded_trajectory
+          loaded_data_url = requested_url
+        },
+        should_commit: is_current,
       })
-        .then(() => {
-          loading = false
-        })
-        .catch((err: Error) => {
-          console.error(`Failed to load trajectory from URL:`, err)
-          error_msg = `Failed to load trajectory: ${err.message}`
-          current_filename = undefined
-          file_size = undefined
-          loading = false
-          on_error?.({
-            error_msg,
-            filename: current_filename || undefined,
-            file_size: file_size || undefined,
-          })
-        })
+    })
+      .catch((err: Error) => {
+        if (!is_current()) return
+        console.error(`Failed to load trajectory from URL:`, err)
+        error_msg = `Failed to load trajectory: ${err.message}`
+        current_filename = undefined
+        file_size = undefined
+        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
+      })
+      .finally(() => {
+        if (is_current()) loading = false
+      })
+
+    return () => {
+      if (is_current()) {
+        data_url_load_id += 1
+        loading = false
+      }
     }
   })
 
@@ -892,13 +927,23 @@
     on_frame_rate_change?.({ trajectory, fps })
   })
 
-  async function load_trajectory_data(data: string | ArrayBuffer, filename: string) {
+  async function load_trajectory_data(
+    data: string | ArrayBuffer,
+    filename: string,
+    options: {
+      on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
+      should_commit?: () => boolean
+    } = {},
+  ) {
+    const { on_trajectory_loaded, should_commit = () => true } = options
     loading = true
     error_msg = null
     parsing_progress = null
 
     // Reset previous loading state
     orig_data = null
+    const file_size_bytes =
+      data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
 
     try {
       const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
@@ -906,84 +951,58 @@
       // Determine loading strategy based on file size
       const bin_file_threshold = loading_options.bin_file_threshold ?? MAX_BIN_FILE_SIZE
       const text_file_threshold = loading_options.text_file_threshold ?? MAX_TEXT_FILE_SIZE
-      if (
+      const is_large_file =
         (data instanceof ArrayBuffer && data_size > bin_file_threshold) ||
         (typeof data === `string` && data_size > text_file_threshold)
-      ) {
-        // Large files: Use indexed loading
-        await load_with_indexing(data, filename)
-      } else {
-        // Small files: Use regular loading
-        const merged_options = { ...loading_options, atom_type_mapping }
-        trajectory = await parse_trajectory_async(
-          data,
-          filename,
-          (progress) => {
-            parsing_progress = progress
-          },
-          merged_options,
-        )
-      }
+
+      // Large files get indexed loading by default (loading_options can override)
+      const parsed_trajectory = await parse_trajectory_async(
+        data,
+        filename,
+        (progress) => {
+          if (should_commit()) parsing_progress = progress
+        },
+        {
+          ...(is_large_file ? { use_indexing: true } : {}),
+          ...loading_options,
+          atom_type_mapping,
+        },
+      )
+      if (!should_commit()) return
+      trajectory = parsed_trajectory
+      if (trajectory) on_trajectory_loaded?.(trajectory)
+      // Keep original data only when parsing attached a frame_loader for on-demand loads.
+      // Direct-parse fallbacks load all frames upfront, so retaining a duplicate wastes memory.
+      orig_data = trajectory?.frame_loader ? data : null
 
       current_step_idx = 0
       current_filename = filename
+      file_size = file_size_bytes
 
-      const file_size_bytes =
-        data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
+      const loaded_trajectory = trajectory
       on_file_load?.({
         // emit file load event
-        trajectory,
-        frame_count: trajectory?.frames.length ?? 0,
-        total_atoms: trajectory?.frames[0]?.structure.sites.length ?? 0,
+        trajectory: loaded_trajectory,
+        frame_count: loaded_trajectory?.frames.length ?? 0,
+        total_atoms: loaded_trajectory?.frames[0]?.structure.sites.length ?? 0,
         filename,
         file_size: file_size_bytes,
       })
     } catch (err) {
+      if (!should_commit()) return
       const unsupported_message = get_unsupported_format_message(
         filename,
         typeof data === `string` ? data : ``,
       )
       error_msg = unsupported_message || `Failed to parse trajectory: ${err}`
+      on_error?.({ error_msg, filename, file_size: file_size_bytes })
       current_filename = undefined
       file_size = undefined
-
-      on_error?.({
-        // emit error event
-        error_msg,
-        filename: current_filename || undefined,
-        file_size: file_size || undefined,
-      })
     } finally {
-      parsing_progress = null
-      loading = false
-    }
-  }
-
-  // Load using indexed parsing for large files
-  async function load_with_indexing(data: string | ArrayBuffer, filename: string) {
-    try {
-      // Use indexed parsing for efficient large file handling
-      const merged_options = {
-        use_indexing: true,
-        ...loading_options,
-        atom_type_mapping,
+      if (should_commit()) {
+        parsing_progress = null
+        loading = false
       }
-      trajectory = await parse_trajectory_async(
-        data,
-        filename,
-        (progress) => {
-          parsing_progress = progress
-        },
-        merged_options,
-      )
-
-      // Keep original data for on-demand frame loads only when indexed parsing attached a
-      // frame_loader. Direct-parse fallbacks (e.g. large JSON or extensionless blob:
-      // filenames) load all frames upfront, so retaining a full duplicate payload wastes memory.
-      orig_data = trajectory?.frame_loader ? data : null
-    } catch (error) {
-      console.error(`Indexed loading failed:`, error)
-      throw error
     }
   }
 
@@ -1113,7 +1132,7 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
-  {...drag_over_handlers({
+  {...io.drag_over_handlers({
     allow: () => allow_file_drop,
     set_dragover: (over) => (dragover = over),
   })}
@@ -1122,7 +1141,7 @@
   {...rest}
   class={[`trajectory`, actual_layout, rest.class]}
   class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&
-    actual_show_plot &&
+    show_plot &&
     show_structure}
 >
   {#if loading}
@@ -1283,6 +1302,7 @@
             {#if trajectory && controls_config.visible(`info-pane`)}
               <TrajectoryInfoPane
                 {trajectory}
+                {current_frame}
                 {current_step_idx}
                 {current_filename}
                 {current_file_path}
@@ -1363,7 +1383,7 @@
 
     <div
       class="content-area"
-      class:hide-plot={!actual_show_plot}
+      class:hide-plot={!show_plot}
       class:hide-structure={!show_structure}
       class:show-both={[`structure+scatter`, `structure+histogram`].includes(display_mode)}
       class:show-structure-only={display_mode === `structure`}
@@ -1384,7 +1404,7 @@
         />
       {/if}
 
-      {#if actual_show_plot}
+      {#if show_plot}
         {#if plot_metadata_loading}
           <div class="plot-metadata-loading plot">
             <Spinner text="Sampling trajectory plot data..." style="--spinner-size: 1.4em" />

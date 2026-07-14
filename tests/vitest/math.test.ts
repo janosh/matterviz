@@ -86,52 +86,17 @@ describe(`angle conversions`, () => {
 })
 
 describe(`euclidean_dist`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      point1: [0, 0, 0],
-      point2: [1, 0, 0],
-      expected: 1.0,
-      desc: `unit distance along x-axis`,
-    },
-    {
-      point1: [0, 0, 0],
-      point2: [0, 1, 0],
-      expected: 1.0,
-      desc: `unit distance along y-axis`,
-    },
-    {
-      point1: [0, 0, 0],
-      point2: [0, 0, 1],
-      expected: 1.0,
-      desc: `unit distance along z-axis`,
-    },
-    {
-      point1: [0, 0, 0],
-      point2: [1, 1, 1],
-      expected: Math.sqrt(3),
-      desc: `diagonal distance`,
-    },
-    {
-      point1: [1, 2, 3],
-      point2: [4, 6, 8],
-      expected: Math.hypot(3, 4, 5),
-      desc: `arbitrary points`,
-    },
-    {
-      point1: [-1, -1, -1],
-      point2: [1, 1, 1],
-      expected: Math.sqrt(12),
-      desc: `negative to positive`,
-    },
-    {
-      point1: [1, 2, 3],
-      point2: [1, 2, 3],
-      expected: 0.0,
-      desc: `identical points`,
-    },
-  ])(`should calculate $desc correctly`, ({ point1, point2, expected }) => {
-    const result = math.euclidean_dist(point1, point2)
-    expect(result).toBeCloseTo(expected, 6)
+    [[0, 0, 0], [1, 0, 0], 1.0], // unit distance along x-axis
+    [[0, 0, 0], [0, 1, 0], 1.0], // unit distance along y-axis
+    [[0, 0, 0], [0, 0, 1], 1.0], // unit distance along z-axis
+    [[0, 0, 0], [1, 1, 1], Math.sqrt(3)], // diagonal distance
+    [[1, 2, 3], [4, 6, 8], Math.hypot(3, 4, 5)], // arbitrary points
+    [[-1, -1, -1], [1, 1, 1], Math.sqrt(12)], // negative to positive
+    [[1, 2, 3], [1, 2, 3], 0.0], // identical points
+  ])(`dist(%j, %j) = %f`, (point1, point2, expected) => {
+    expect(math.euclidean_dist(point1, point2)).toBeCloseTo(expected, 6)
   })
 })
 
@@ -244,123 +209,39 @@ test.each([
   [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [0, 0, 0], [0, 0, 0]],
   // Basic multiplication
   [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [1, 2, 3], [14, 32, 50]],
+  // General matrix with unit vector picks out first column
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [1, 0, 0], [1, 4, 7]],
   // Scaling matrix
   [[[2, 0, 0], [0, 3, 0], [0, 0, 4]], [1, 2, 3], [2, 6, 12]],
   // Rotation around z-axis (90 degrees)
   [[[0, -1, 0], [1, 0, 0], [0, 0, 1]], [1, 0, 0], [0, 1, 0]],
+  // Negative identity
+  [[[-1, 0, 0], [0, -1, 0], [0, 0, -1]], [1, 2, 3], [-1, -2, -3]],
   // Complex example
   [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], [2, 3, 1], [11, 7, 28]],
 ])(`mat3x3_vec3_multiply`, (matrix, vector, expected) => {
   expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as Vec3)).toEqual(expected)
 })
 
-test(`dot matrix operations`, () => {
-  const matrix = [
-    [1, 2, 3],
-    [4, 5, 6],
-    [7, 8, 9],
-  ]
-  const vector = [2, 3, 4]
-  expect(math.dot(matrix, vector)).toEqual([20, 47, 74])
-
-  const matrix1 = [
-    [1, 2, 3],
-    [4, 5, 6],
-  ]
-  const matrix2 = [
-    [7, 8],
-    [9, 10],
-    [11, 12],
-  ]
-  expect(math.dot(matrix1, matrix2)).toEqual([
-    [58, 64],
-    [139, 154],
-  ])
-})
-
 // oxfmt-ignore
 test.each([
   // Cubic lattices
-  [
-    [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
-    {
-      a: 5,
-      b: 5,
-      c: 5,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125,
-    },
-  ],
-  [
-    [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-    {
-      a: 1,
-      b: 1,
-      c: 1,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 1,
-    },
-  ],
+  [[[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+    { a: 5, b: 5, c: 5, alpha: 90, beta: 90, gamma: 90, volume: 125 }],
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    { a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 }],
   // Tetragonal
-  [
-    [[3, 0, 0], [0, 3, 0], [0, 0, 6]],
-    {
-      a: 3,
-      b: 3,
-      c: 6,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 54,
-    },
-  ],
+  [[[3, 0, 0], [0, 3, 0], [0, 0, 6]],
+    { a: 3, b: 3, c: 6, alpha: 90, beta: 90, gamma: 90, volume: 54 }],
   // Orthorhombic
-  [
-    [[4, 0, 0], [0, 5, 0], [0, 0, 6]],
-    {
-      a: 4,
-      b: 5,
-      c: 6,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 120,
-    },
-  ],
+  [[[4, 0, 0], [0, 5, 0], [0, 0, 6]],
+    { a: 4, b: 5, c: 6, alpha: 90, beta: 90, gamma: 90, volume: 120 }],
   // Hexagonal (60° angle)
-  [
-    [
-      [4, 0, 0],
-      [2, 2 * Math.sqrt(3), 0],
-      [0, 0, 8],
-    ],
-    {
-      a: 4,
-      b: 4,
-      c: 8,
-      alpha: 90,
-      beta: 90,
-      gamma: 60,
-      volume: 110.85,
-    },
-  ],
+  [[[4, 0, 0], [2, 2 * Math.sqrt(3), 0], [0, 0, 8]],
+    { a: 4, b: 4, c: 8, alpha: 90, beta: 90, gamma: 60, volume: 110.85 }],
   // Triclinic
-  [
-    [[3, 0, 0], [1, 2, 0], [0.5, 1, 2]],
-    {
-      a: 3,
-      b: Math.sqrt(5),
-      c: Math.sqrt(5.25),
-      alpha: 60.79,
-      beta: 77.4,
-      gamma: 63.43,
-      volume: 12,
-    },
-  ],
+  [[[3, 0, 0], [1, 2, 0], [0.5, 1, 2]],
+    { a: 3, b: Math.sqrt(5), c: Math.sqrt(5.25), alpha: 60.79, beta: 77.4, gamma: 63.43, volume: 12 }],
 ])(`calc_lattice_params`, (matrix, expected) => {
   const result = math.calc_lattice_params(matrix as math.Matrix3x3)
   expect(result.a).toBeCloseTo(expected.a, 2)
@@ -382,239 +263,85 @@ describe(`pbc_dist`, () => {
     expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.592, 3)
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      pos1: [5.0, 5.0, 5.0],
-      pos2: [5.0, 5.0, 5.0],
-      expected: 0.0,
-      desc: `identical atoms`,
-    },
-    {
-      pos1: [0.0, 0.0, 0.0],
-      pos2: [10.0, 0.0, 0.0],
-      expected: 0.0,
-      desc: `boundary atoms`,
-    },
-    {
-      pos1: [0.0, 0.0, 0.0],
-      pos2: [5.0, 0.0, 0.0],
-      expected: 5.0,
-      desc: `exactly 0.5 fractional`,
-    },
-    {
-      pos1: [0.01, 5.0, 5.0],
-      pos2: [9.99, 5.0, 5.0],
-      expected: 0.02,
-      desc: `face-to-face x`,
-    },
-    {
-      pos1: [5.0, 0.01, 5.0],
-      pos2: [5.0, 9.99, 5.0],
-      expected: 0.02,
-      desc: `face-to-face y`,
-    },
-    {
-      pos1: [5.0, 5.0, 0.01],
-      pos2: [5.0, 5.0, 9.99],
-      expected: 0.02,
-      desc: `face-to-face z`,
-    },
-    {
-      pos1: [0.0000001, 0.0, 0.0],
-      pos2: [9.9999999, 0.0, 0.0],
-      expected: 0.0000002,
-      desc: `numerical precision`,
-    },
+    { pos1: [5, 5, 5], pos2: [5, 5, 5], expected: 0, desc: `identical atoms` },
+    { pos1: [0, 0, 0], pos2: [10, 0, 0], expected: 0, desc: `boundary atoms` },
+    { pos1: [0, 0, 0], pos2: [5, 0, 0], expected: 5, desc: `exactly 0.5 fractional` },
+    { pos1: [0.01, 5, 5], pos2: [9.99, 5, 5], expected: 0.02, desc: `face-to-face x` },
+    { pos1: [5, 0.01, 5], pos2: [5, 9.99, 5], expected: 0.02, desc: `face-to-face y` },
+    { pos1: [5, 5, 0.01], pos2: [5, 5, 9.99], expected: 0.02, desc: `face-to-face z` },
+    { pos1: [1e-7, 0, 0], pos2: [9.9999999, 0, 0], expected: 2e-7, desc: `numerical precision` },
   ])(`edge cases: $desc`, ({ pos1, pos2, expected }) => {
-    const lattice: math.Matrix3x3 = [
-      [10.0, 0.0, 0.0],
-      [0.0, 10.0, 0.0],
-      [0.0, 0.0, 10.0],
-    ]
-
+    // oxfmt-ignore
+    const lattice: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
     const result = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, lattice)
     const precision = expected < 0.001 ? 7 : expected < 0.1 ? 4 : 3
     expect(result).toBeCloseTo(expected, precision)
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      name: `orthorhombic`,
-      lattice: [
-        [8.0, 0.0, 0.0],
-        [0.0, 12.0, 0.0],
-        [0.0, 0.0, 6.0],
-      ] as math.Matrix3x3,
-      pos1: [0.5, 0.5, 0.5] as Vec3,
-      pos2: [7.7, 11.7, 5.7] as Vec3,
-      expected_pbc: 1.386,
-      expected_direct: 14.294,
-    },
-    {
-      name: `triclinic with 60° angle`,
-      lattice: [
-        [5.0, 0.0, 0.0],
-        [2.5, 4.33, 0.0],
-        [1.0, 1.0, 4.0],
-      ] as math.Matrix3x3,
-      pos1: [0.2, 0.2, 0.2] as Vec3,
-      pos2: [7.3, 4.9, 3.9] as Vec3,
-      expected_pbc: 1.564,
-      expected_direct: 9.284,
-    },
-    {
-      name: `anisotropic layered material`,
-      lattice: [
-        [3.0, 0.0, 0.0],
-        [0.0, 3.0, 0.0],
-        [0.0, 0.0, 30.0],
-      ] as math.Matrix3x3,
-      pos1: [0.1, 0.1, 1.0] as Vec3,
-      pos2: [2.9, 2.9, 29.0] as Vec3,
-      expected_pbc: 2.02,
-      expected_direct: 28.279,
-    },
-    {
-      name: `large Perovskite supercell`,
-      lattice: [
-        [15.6, 0.0, 0.0],
-        [0.0, 15.6, 0.0],
-        [0.0, 0.0, 15.6],
-      ] as math.Matrix3x3,
-      pos1: [0.2, 0.2, 0.2] as Vec3,
-      pos2: [15.4, 15.4, 15.4] as Vec3,
-      expected_pbc: Math.LN2,
-      expected_direct: 26.327,
-    },
-    {
-      name: `polymer chain with extreme aspect ratio`,
-      lattice: [
-        [50.0, 0.0, 0.0],
-        [0.0, 4.0, 0.0],
-        [0.0, 0.0, 4.0],
-      ] as math.Matrix3x3,
-      pos1: [1.0, 2.0, 2.0] as Vec3,
-      pos2: [49.0, 2.0, 2.0] as Vec3,
-      expected_pbc: 2.0,
-      expected_direct: 48.0,
-    },
-    {
-      name: `small molecular crystal`,
-      lattice: [
-        [2.1, 0.0, 0.0],
-        [0.0, 2.1, 0.0],
-        [0.0, 0.0, 2.1],
-      ] as math.Matrix3x3,
-      pos1: [0.05, 0.05, 0.05] as Vec3,
-      pos2: [2.05, 2.05, 2.05] as Vec3,
-      expected_pbc: 0.173,
-      expected_direct: 3.464,
-    },
-  ])(
-    `crystal systems and scenarios: $name`,
-    ({ lattice, pos1, pos2, expected_pbc, expected_direct }) => {
-      const pbc_result = math.pbc_dist(pos1, pos2, lattice)
-      const direct_result = math.euclidean_dist(pos1, pos2)
-
-      expect(pbc_result).toBeCloseTo(expected_pbc, 3)
-      expect(direct_result).toBeCloseTo(expected_direct, 3)
+    [`orthorhombic`, [[8, 0, 0], [0, 12, 0], [0, 0, 6]],
+      [0.5, 0.5, 0.5], [7.7, 11.7, 5.7], 1.386, 14.294],
+    [`triclinic with 60° angle`, [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]],
+      [0.2, 0.2, 0.2], [7.3, 4.9, 3.9], 1.564, 9.284],
+    [`anisotropic layered material`, [[3, 0, 0], [0, 3, 0], [0, 0, 30]],
+      [0.1, 0.1, 1], [2.9, 2.9, 29], 2.02, 28.279],
+    [`large Perovskite supercell`, [[15.6, 0, 0], [0, 15.6, 0], [0, 0, 15.6]],
+      [0.2, 0.2, 0.2], [15.4, 15.4, 15.4], Math.LN2, 26.327],
+    [`polymer chain with extreme aspect ratio`, [[50, 0, 0], [0, 4, 0], [0, 0, 4]],
+      [1, 2, 2], [49, 2, 2], 2, 48],
+    [`small molecular crystal`, [[2.1, 0, 0], [0, 2.1, 0], [0, 0, 2.1]],
+      [0.05, 0.05, 0.05], [2.05, 2.05, 2.05], 0.173, 3.464],
+  ] as [string, math.Matrix3x3, Vec3, Vec3, number, number][])(
+    `crystal systems and scenarios: %s`,
+    (_name, lattice, pos1, pos2, expected_pbc, expected_direct) => {
+      expect(math.pbc_dist(pos1, pos2, lattice)).toBeCloseTo(expected_pbc, 3)
+      expect(math.euclidean_dist(pos1, pos2)).toBeCloseTo(expected_direct, 3)
     },
   )
 
   // Pre-built converters must match standard pbc_dist across lattice types and positions
+  // oxfmt-ignore
   test.each([
-    {
-      lattice: [
-        [8, 0, 0],
-        [0, 12, 0],
-        [0, 0, 6],
-      ] as math.Matrix3x3,
-      pos1: [0.5, 0.5, 0.5] as Vec3,
-      pos2: [7.7, 11.7, 5.7] as Vec3,
-      desc: `orthorhombic corner-to-corner`,
-    },
-    {
-      lattice: [
-        [8, 0, 0],
-        [0, 12, 0],
-        [0, 0, 6],
-      ] as math.Matrix3x3,
-      pos1: [0.1, 0.1, 0.1] as Vec3,
-      pos2: [7.9, 11.9, 5.9] as Vec3,
-      desc: `orthorhombic near boundaries`,
-    },
-    {
-      lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ] as math.Matrix3x3,
-      pos1: [0, 0, 0] as Vec3,
-      pos2: [1, 0, 0] as Vec3,
-      desc: `unit lattice at boundary`,
-    },
-    {
-      lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ] as math.Matrix3x3,
-      pos1: [0.9999999, 0, 0] as Vec3,
-      pos2: [0.0000001, 0, 0] as Vec3,
-      desc: `unit lattice across boundary`,
-    },
-    {
-      lattice: [
-        [100, 0, 0],
-        [0, 200, 0],
-        [0, 0, 50],
-      ] as math.Matrix3x3,
-      pos1: [1, 1, 1] as Vec3,
-      pos2: [99, 199, 49] as Vec3,
-      desc: `large lattice wrap-around`,
-    },
-    {
-      lattice: [
-        [5, 0, 0],
-        [2.5, 4.33, 0],
-        [1, 1, 4],
-      ] as math.Matrix3x3,
-      pos1: [0.2, 0.2, 0.2] as Vec3,
-      pos2: [4.8, 4.1, 3.8] as Vec3,
-      desc: `triclinic`,
-    },
-  ])(`pre-built converters match standard: $desc`, ({ lattice, pos1, pos2 }) => {
-    const converters = math.create_lattice_converters(lattice)
-    const standard = math.pbc_dist(pos1, pos2, lattice)
-    const with_converters = math.pbc_dist(pos1, pos2, lattice, converters)
+    [`orthorhombic corner-to-corner`, [[8, 0, 0], [0, 12, 0], [0, 0, 6]],
+      [0.5, 0.5, 0.5], [7.7, 11.7, 5.7]],
+    [`orthorhombic near boundaries`, [[8, 0, 0], [0, 12, 0], [0, 0, 6]],
+      [0.1, 0.1, 0.1], [7.9, 11.9, 5.9]],
+    [`unit lattice at boundary`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      [0, 0, 0], [1, 0, 0]],
+    [`unit lattice across boundary`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      [0.9999999, 0, 0], [0.0000001, 0, 0]],
+    [`large lattice wrap-around`, [[100, 0, 0], [0, 200, 0], [0, 0, 50]],
+      [1, 1, 1], [99, 199, 49]],
+    [`triclinic`, [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]],
+      [0.2, 0.2, 0.2], [4.8, 4.1, 3.8]],
+  ] as [string, math.Matrix3x3, Vec3, Vec3][])(
+    `pre-built converters match standard: %s`,
+    (_name, lattice, pos1, pos2) => {
+      const converters = math.create_lattice_converters(lattice)
+      const standard = math.pbc_dist(pos1, pos2, lattice)
+      const with_converters = math.pbc_dist(pos1, pos2, lattice, converters)
 
-    expect(with_converters).toBeCloseTo(standard, 10)
-    expect(with_converters).toBeGreaterThanOrEqual(0)
-    expect(isFinite(with_converters)).toBe(true)
-  })
+      expect(with_converters).toBeCloseTo(standard, 10)
+      expect(with_converters).toBeGreaterThanOrEqual(0)
+      expect(isFinite(with_converters)).toBe(true)
+    },
+  )
 
   // Math.round wrapping at 0.5 fractional boundary — unit lattice
+  // oxfmt-ignore
   test.each([
     // sqrt(0.75) is the same for the +0.5 and -0.5 tie-break because the cubic norm is symmetric.
     { pos2: [0.5, 0.5, 0.5], expected: Math.sqrt(0.75), desc: `exactly 0.5` },
-    {
-      pos2: [0.499999, 0.499999, 0.499999],
-      expected: Math.sqrt(0.75),
-      desc: `just below 0.5`,
-    },
-    {
-      pos2: [0.500001, 0.500001, 0.500001],
-      expected: Math.sqrt(0.75),
-      desc: `just above 0.5`,
-    },
+    { pos2: [0.499999, 0.499999, 0.499999], expected: Math.sqrt(0.75), desc: `just below 0.5` },
+    { pos2: [0.500001, 0.500001, 0.500001], expected: Math.sqrt(0.75), desc: `just above 0.5` },
     { pos2: [0.999999, 0.999999, 0.999999], expected: 0.000001732, desc: `near boundary` },
     { pos2: [0.000001, 0.000001, 0.000001], expected: 0.000001732, desc: `near origin` },
   ])(`minimal-image wrapping: $desc`, ({ pos2, expected }) => {
-    const unit: math.Matrix3x3 = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
+    // oxfmt-ignore
+    const unit: math.Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     expect(math.pbc_dist([0, 0, 0] as Vec3, pos2 as Vec3, unit)).toBeCloseTo(expected, 4)
   })
 
@@ -630,64 +357,31 @@ describe(`pbc_dist`, () => {
     ).toThrow(/Minimum-image search would test/)
   })
 
-  test(`axis-specific PBC flags (mixed boundary conditions)`, () => {
-    // Test slab geometry: periodic in xy, not in z
-    const slab_lattice: math.Matrix3x3 = [
-      [10, 0, 0],
-      [0, 10, 0],
-      [0, 0, 20],
-    ]
+  // oxfmt-ignore
+  const slab_lattice: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 20]]
+  // oxfmt-ignore
+  const wire_lattice: math.Matrix3x3 = [[20, 0, 0], [0, 20, 0], [0, 0, 10]]
 
-    // Slab: periodic in xy, not in z
-    expect(
-      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, false]),
-    ).toBeCloseTo(18, 5)
-    expect(
-      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, true]),
-    ).toBeCloseTo(2, 5)
-    expect(
-      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [true, true, false]),
-    ).toBeCloseTo(1, 5)
-    expect(
-      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [
-        false,
-        false,
-        false,
-      ]),
-    ).toBeCloseTo(9, 5)
+  // oxfmt-ignore
+  test.each([
+    [`slab: z not periodic`, slab_lattice, [5, 5, 1], [5, 5, 19], [true, true, false], 18],
+    [`slab: fully periodic`, slab_lattice, [5, 5, 1], [5, 5, 19], [true, true, true], 2],
+    [`slab: x wraps`, slab_lattice, [0.5, 5, 10], [9.5, 5, 10], [true, true, false], 1],
+    [`no PBC at all`, slab_lattice, [0.5, 5, 10], [9.5, 5, 10], [false, false, false], 9],
+    [`nanowire: z periodic`, wire_lattice, [10, 10, 1], [10, 10, 9], [false, false, true], 2],
+    [`nanowire: z not periodic`, wire_lattice, [10, 10, 1], [10, 10, 9], [false, false, false], 8],
+    [`only x periodic`, slab_lattice, [0.5, 10, 10], [9.5, 10, 10], [true, false, false], 1],
+    [`only y periodic`, slab_lattice, [5, 0.5, 10], [5, 9.5, 10], [false, true, false], 1],
+  ] as [string, math.Matrix3x3, Vec3, Vec3, [boolean, boolean, boolean], number][])(
+    `axis-specific PBC flags: %s`,
+    (_name, lattice, pos1, pos2, pbc, expected) => {
+      expect(math.pbc_dist(pos1, pos2, lattice, undefined, pbc)).toBeCloseTo(expected, 5)
+    },
+  )
 
-    // Nanowire: periodic only in z
-    const wire_lattice: math.Matrix3x3 = [
-      [20, 0, 0],
-      [0, 20, 0],
-      [0, 0, 10],
-    ]
-    expect(
-      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [false, false, true]),
-    ).toBeCloseTo(2, 5)
-    expect(
-      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [false, false, false]),
-    ).toBeCloseTo(8, 5)
-
-    // Single-axis periodicity: only x-axis periodic
-    expect(
-      math.pbc_dist([0.5, 10, 10], [9.5, 10, 10], slab_lattice, undefined, [
-        true,
-        false,
-        false,
-      ]),
-    ).toBeCloseTo(1, 5)
-    expect(
-      math.pbc_dist([5, 0.5, 10], [5, 9.5, 10], slab_lattice, undefined, [false, true, false]),
-    ).toBeCloseTo(1, 5)
-
-    // Triclinic lattice with mixed PBC
-    const triclinic: math.Matrix3x3 = [
-      [10.0, 0.0, 0.0],
-      [2.0, 8.0, 0.0],
-      [1.0, 1.0, 12.0],
-    ]
-    // Test that wrapping respects each axis independently in a triclinic system
+  test(`triclinic lattice with mixed PBC wraps each axis independently`, () => {
+    // oxfmt-ignore
+    const triclinic: math.Matrix3x3 = [[10, 0, 0], [2, 8, 0], [1, 1, 12]]
     // Key property: enabling PBC on specific axes should give different results than no PBC
     const pos1: Vec3 = [0.5, 1.0, 1.0]
     const pos2: Vec3 = [9.5, 1.0, 11.0]
@@ -697,29 +391,27 @@ describe(`pbc_dist`, () => {
     const dist_z_only = math.pbc_dist(pos1, pos2, triclinic, undefined, [false, false, true])
     const dist_xz = math.pbc_dist(pos1, pos2, triclinic, undefined, [true, false, true])
 
-    // Each PBC setting should give different results
     expect(dist_x_only).toBeLessThan(dist_no_pbc)
     expect(dist_z_only).toBeLessThan(dist_no_pbc)
     expect(dist_xz).toBeLessThan(dist_x_only)
     expect(dist_xz).toBeLessThan(dist_z_only)
 
-    // Verify wrapping is selective: enabling one axis shouldn't affect orthogonal separations
-    // Points separated only in z with PBC only in x should not wrap
-    const dist_z_sep_x_pbc = math.pbc_dist(
-      [5.0, 4.0, 1.0],
-      [5.0, 4.0, 11.0],
-      triclinic,
-      undefined,
-      [true, false, false],
-    )
-    const dist_z_sep_no_pbc = math.pbc_dist(
-      [5.0, 4.0, 1.0],
-      [5.0, 4.0, 11.0],
-      triclinic,
-      undefined,
-      [false, false, false],
-    )
-    // These should be equal (x-wrapping shouldn't affect z-separation)
+    // Verify wrapping is selective: points separated only in z with PBC only in x
+    // should not wrap (x-wrapping shouldn't affect z-separation)
+    const z_sep: [Vec3, Vec3] = [
+      [5, 4, 1],
+      [5, 4, 11],
+    ]
+    const dist_z_sep_x_pbc = math.pbc_dist(...z_sep, triclinic, undefined, [
+      true,
+      false,
+      false,
+    ])
+    const dist_z_sep_no_pbc = math.pbc_dist(...z_sep, triclinic, undefined, [
+      false,
+      false,
+      false,
+    ])
     expect(dist_z_sep_x_pbc).toBeCloseTo(dist_z_sep_no_pbc, 5)
   })
 
@@ -767,17 +459,6 @@ describe(`tensor conversion utilities`, () => {
     ])(`throws for %s matrix`, (_, invalid_tensor) => {
       expect(() => math.to_voigt(invalid_tensor)).toThrow(`Expected 3x3 tensor`)
     })
-
-    it(`preserves floating point precision`, () => {
-      const precise = [
-        [1.123456789, 0.987654321, 0.555555555],
-        [0.987654321, 2.111111111, 0.333333333],
-        [0.555555555, 0.333333333, 3.777777777],
-      ]
-      const result = math.to_voigt(precise)
-      expect(result[0]).toBeCloseTo(1.123456789, 9)
-      expect(result[5]).toBeCloseTo(0.987654321, 9)
-    })
   })
 
   describe(`from_voigt`, () => {
@@ -814,13 +495,6 @@ describe(`tensor conversion utilities`, () => {
     ])(`throws for %s array`, (_, invalid_voigt) => {
       expect(() => math.from_voigt(invalid_voigt)).toThrow(`Expected 6-element Voigt vector`)
     })
-
-    it(`maintains tensor symmetry`, () => {
-      const result = math.from_voigt([1.5, 2.5, 3.5, 0.8, 0.6, 0.4])
-      expect(result[0][1]).toBeCloseTo(result[1][0], 10)
-      expect(result[0][2]).toBeCloseTo(result[2][0], 10)
-      expect(result[1][2]).toBeCloseTo(result[2][1], 10)
-    })
   })
 
   describe(`vec9_to_mat3x3`, () => {
@@ -848,14 +522,6 @@ describe(`tensor conversion utilities`, () => {
       [`long`, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]],
     ])(`throws for %s array`, (_, invalid_array) => {
       expect(() => math.vec9_to_mat3x3(invalid_array)).toThrow(`Expected 9-element array`)
-    })
-
-    it(`preserves row-major order`, () => {
-      const input = [11, 12, 13, 21, 22, 23, 31, 32, 33]
-      const result = math.vec9_to_mat3x3(input)
-      expect(result[0]).toEqual([11, 12, 13])
-      expect(result[1]).toEqual([21, 22, 23])
-      expect(result[2]).toEqual([31, 32, 33])
     })
   })
 
@@ -916,29 +582,20 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`cell_to_lattice_matrix`, () => {
-    it(`creates orthogonal lattice matrix`, () => {
-      const matrix = math.cell_to_lattice_matrix(5, 6, 7, 90, 90, 90)
-
-      expect(matrix[0]).toEqual([5, 0, 0])
-      expect(matrix[1][0]).toBeCloseTo(0, 10)
-      expect(matrix[1][1]).toBeCloseTo(6, 10)
-      expect(matrix[1][2]).toBeCloseTo(0, 10)
-      expect(matrix[2][0]).toBeCloseTo(0, 10)
-      expect(matrix[2][1]).toBeCloseTo(0, 10)
-      expect(matrix[2][2]).toBeCloseTo(7, 10)
-    })
-
-    it(`creates hexagonal lattice matrix`, () => {
-      const matrix = math.cell_to_lattice_matrix(4, 4, 6, 90, 90, 120)
-
-      expect(matrix[0]).toEqual([4, 0, 0])
-      expect(matrix[1][0]).toBeCloseTo(-2, 6) // 4 * cos(120°) = 4 * (-0.5) = -2
-      expect(matrix[1][1]).toBeCloseTo(3.464, 3) // 4 * sin(120°) ≈ 3.464
-      expect(matrix[1][2]).toBeCloseTo(0, 10)
-      expect(matrix[2][0]).toBeCloseTo(0, 10)
-      expect(matrix[2][1]).toBeCloseTo(0, 10)
-      expect(matrix[2][2]).toBeCloseTo(6, 10)
-    })
+    // oxfmt-ignore
+    it.each([
+      [`orthogonal`, [5, 6, 7, 90, 90, 90], [[5, 0, 0], [0, 6, 0], [0, 0, 7]]],
+      // hexagonal: b*cos(120°) = -2, b*sin(120°) ≈ 3.4641016
+      [`hexagonal`, [4, 4, 6, 90, 90, 120], [[4, 0, 0], [-2, 3.4641016, 0], [0, 0, 6]]],
+    ] as [string, [number, number, number, number, number, number], number[][]][])(
+      `creates %s lattice matrix`,
+      (_name, cell_params, expected) => {
+        const matrix = math.cell_to_lattice_matrix(...cell_params)
+        expect(matrix).toEqual(
+          expected.map((row) => row.map((val) => expect.closeTo(val, 6))),
+        )
+      },
+    )
 
     it(`creates triclinic lattice matrix`, () => {
       const matrix = math.cell_to_lattice_matrix(5, 6, 7, 80, 85, 95)
@@ -1071,22 +728,11 @@ describe(`tensor conversion utilities`, () => {
           ] as math.Matrix3x3,
       )
 
+      // oxfmt-ignore
       const edge_cases: math.Matrix3x3[] = [
-        [
-          [1, 2, 3],
-          [4, 5, 6],
-          [7, 8, 9],
-        ], // singular
-        [
-          [1e-12, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ], // near-singular
-        [
-          [1, 1e-12, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ], // near-singular
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], // singular
+        [[1e-12, 0, 0], [0, 1, 0], [0, 0, 1]], // near-singular
+        [[1, 1e-12, 0], [0, 1, 0], [0, 0, 1]], // near-singular
       ]
 
       for (const matrix of [...random_matrices, ...edge_cases]) {
@@ -1233,25 +879,6 @@ describe(`tensor conversion utilities`, () => {
 
 // oxfmt-ignore
 test.each([
-  [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 2, 3], [1, 2, 3], `identity matrix`],
-  [[[2, 0, 0], [0, 2, 0], [0, 0, 2]], [1, 2, 3], [2, 4, 6], `scaling matrix`],
-  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [1, 0, 0], [1, 4, 7], `general matrix with unit vector`],
-  [
-    [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
-    [1, 0, 0],
-    [0, 1, 0],
-    `rotation matrix (90° around z-axis)`,
-  ],
-  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [0, 0, 0], [0, 0, 0], `zero vector`],
-  [[[-1, 0, 0], [0, -1, 0], [0, 0, -1]], [1, 2, 3], [-1, -2, -3], `negative values`],
-])(`mat3x3_vec3_multiply: %s`, (matrix, vector, expected) => {
-  expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as math.Vec3)).toEqual(
-    expected,
-  )
-})
-
-// oxfmt-ignore
-test.each([
   [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], 1, `identity`],
   [[[0, 0, 0], [0, 0, 0], [0, 0, 0]], 0, `zero`],
   [[[1, 2, 3], [2, 4, 6], [3, 6, 9]], 0, `singular`],
@@ -1295,75 +922,34 @@ describe(`get_coefficient_of_variation`, () => {
 })
 
 describe(`det_nxn`, () => {
-  test(`returns 1 for empty matrix`, () => {
-    expect(math.det_nxn([])).toBe(1)
+  // oxfmt-ignore
+  test.each([
+    [`empty matrix`, [], 1],
+    [`1x1`, [[5]], 5],
+    [`1x1 negative`, [[-3]], -3],
+    [`2x2`, [[1, 2], [3, 4]], -2],
+    [`2x2 positive det`, [[4, 6], [3, 8]], 14],
+  ] as [string, number[][], number][])(`%s -> det=%d`, (_name, matrix, expected) => {
+    expect(math.det_nxn(matrix)).toBeCloseTo(expected, 10)
   })
 
-  test(`1x1 matrix`, () => {
-    expect(math.det_nxn([[5]])).toBe(5)
-    expect(math.det_nxn([[-3]])).toBe(-3)
-  })
-
-  test(`2x2 matrix`, () => {
-    expect(
-      math.det_nxn([
-        [1, 2],
-        [3, 4],
-      ]),
-    ).toBeCloseTo(-2, 10)
-    expect(
-      math.det_nxn([
-        [4, 6],
-        [3, 8],
-      ]),
-    ).toBeCloseTo(14, 10)
-  })
-
-  test(`matches det_3x3 for 3x3 matrices`, () => {
-    const matrices: math.Matrix3x3[] = [
-      [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [
-        [1, 2, 3],
-        [0, 1, 4],
-        [5, 6, 0],
-      ],
-      [
-        [2, 1, 1],
-        [1, 3, 2],
-        [1, 0, 0],
-      ],
+  test(`matches det_3x3 and det_4x4 fast paths`, () => {
+    // oxfmt-ignore
+    const matrices_3x3: math.Matrix3x3[] = [
+      [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      [[1, 2, 3], [0, 1, 4], [5, 6, 0]],
+      [[2, 1, 1], [1, 3, 2], [1, 0, 0]],
     ]
-    for (const matrix of matrices) {
+    for (const matrix of matrices_3x3) {
       expect(math.det_nxn(matrix)).toBeCloseTo(math.det_3x3(matrix), 10)
     }
-  })
-
-  test(`matches det_4x4 for 4x4 matrices`, () => {
-    const matrices: math.Matrix4x4[] = [
-      [
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [0, 0, 1, 0],
-        [0, 0, 0, 1],
-      ],
-      [
-        [2, 0, 0, 0],
-        [0, 3, 0, 0],
-        [0, 0, 4, 0],
-        [0, 0, 0, 5],
-      ],
-      [
-        [1, 2, 3, 4],
-        [0, 5, 6, 7],
-        [0, 0, 8, 9],
-        [0, 0, 0, 10],
-      ],
+    // oxfmt-ignore
+    const matrices_4x4: math.Matrix4x4[] = [
+      [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+      [[2, 0, 0, 0], [0, 3, 0, 0], [0, 0, 4, 0], [0, 0, 0, 5]],
+      [[1, 2, 3, 4], [0, 5, 6, 7], [0, 0, 8, 9], [0, 0, 0, 10]],
     ]
-    for (const matrix of matrices) {
+    for (const matrix of matrices_4x4) {
       expect(math.det_nxn(matrix)).toBeCloseTo(math.det_4x4(matrix), 10)
     }
   })
@@ -1397,19 +983,10 @@ describe(`det_nxn`, () => {
   })
 
   test(`throws for non-square matrix`, () => {
-    expect(() =>
-      math.det_nxn([
-        [1, 2, 3],
-        [4, 5, 6],
-      ]),
-    ).toThrow(/square matrix/)
-    expect(() =>
-      math.det_nxn([
-        [1, 2],
-        [3, 4],
-        [5, 6],
-      ]),
-    ).toThrow(/square matrix/)
+    // oxfmt-ignore
+    expect(() => math.det_nxn([[1, 2, 3], [4, 5, 6]])).toThrow(/square matrix/)
+    // oxfmt-ignore
+    expect(() => math.det_nxn([[1, 2], [3, 4], [5, 6]])).toThrow(/square matrix/)
   })
 
   test(`numerical stability for near-singular matrix`, () => {
@@ -1520,36 +1097,13 @@ describe(`cross_3d`, () => {
 })
 
 describe(`cell_heights`, () => {
+  // oxfmt-ignore
   test.each([
-    [
-      `unit cube`,
-      [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [1, 1, 1],
-    ],
-    [
-      `orthorhombic → vector lengths`,
-      [
-        [2, 0, 0],
-        [0, 3, 0],
-        [0, 0, 4],
-      ],
-      [2, 3, 4],
-    ],
+    [`unit cube`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 1, 1]],
+    [`orthorhombic → vector lengths`, [[2, 0, 0], [0, 3, 0], [0, 0, 4]], [2, 3, 4]],
     // Oblique: heights drop below the vector lengths (|a|=2, |b|=√5, |c|=3) on the
     // two sheared axes; the orthogonal c-axis stays at 3.
-    [
-      `oblique`,
-      [
-        [2, 0, 0],
-        [1, 2, 0],
-        [0, 0, 3],
-      ],
-      [12 / Math.sqrt(45), 2, 3],
-    ],
+    [`oblique`, [[2, 0, 0], [1, 2, 0], [0, 0, 3]], [12 / Math.sqrt(45), 2, 3]],
   ] satisfies [string, math.Matrix3x3, Vec3][])(`%s`, (_name, matrix, expected) => {
     const heights = math.cell_heights(matrix)
     expect(heights).toEqual(expected.map((val) => expect.closeTo(val, 12)))
@@ -1559,37 +1113,19 @@ describe(`cell_heights`, () => {
 
   test(`degenerate (zero-volume) cell → Infinity heights`, () => {
     // parallel a, b → no enclosed volume → ill-defined heights
-    const heights = math.cell_heights([
-      [1, 0, 0],
-      [2, 0, 0],
-      [0, 0, 1],
-    ])
+    // oxfmt-ignore
+    const heights = math.cell_heights([[1, 0, 0], [2, 0, 0], [0, 0, 1]])
     expect(heights).toEqual([Infinity, Infinity, Infinity])
   })
 })
 
 describe(`frac_cutoff_per_axis`, () => {
+  // oxfmt-ignore
   test.each([
     // Orthorhombic: pad = dist / vector length
-    [
-      `orthorhombic`,
-      [
-        [2, 0, 0],
-        [0, 3, 0],
-        [0, 0, 4],
-      ],
-      [5 / 2, 5 / 3, 5 / 4],
-    ],
+    [`orthorhombic`, [[2, 0, 0], [0, 3, 0], [0, 0, 4]], [5 / 2, 5 / 3, 5 / 4]],
     // Degenerate (zero-volume) cell → 0 pad (no images)
-    [
-      `degenerate`,
-      [
-        [1, 0, 0],
-        [2, 0, 0],
-        [0, 0, 1],
-      ],
-      [0, 0, 0],
-    ],
+    [`degenerate`, [[1, 0, 0], [2, 0, 0], [0, 0, 1]], [0, 0, 0]],
   ] satisfies [string, math.Matrix3x3, Vec3][])(`%s`, (_name, matrix, expected) => {
     expect(math.frac_cutoff_per_axis(matrix, 5)).toEqual(
       expected.map((val) => expect.closeTo(val, 12)),
@@ -1599,11 +1135,8 @@ describe(`frac_cutoff_per_axis`, () => {
   test(`oblique pad exceeds the naive lattice-vector-length cutoff`, () => {
     // height < |vec| on sheared axes → dist/height > dist/|vec|: the latent fix
     // images neighbors the old 5/|vec| cutoff missed
-    const matrix: math.Matrix3x3 = [
-      [2, 0, 0],
-      [1, 2, 0],
-      [0, 0, 3],
-    ]
+    // oxfmt-ignore
+    const matrix: math.Matrix3x3 = [[2, 0, 0], [1, 2, 0], [0, 0, 3]]
     const cutoff = math.frac_cutoff_per_axis(matrix, 5)
     expect(cutoff[0]).toBeGreaterThan(5 / Math.hypot(...matrix[0]))
     expect(cutoff[1]).toBeGreaterThan(5 / Math.hypot(...matrix[1]))
@@ -1680,55 +1213,32 @@ describe(`lerp`, () => {
 })
 
 describe(`lerp_vec3`, () => {
-  it(`interpolates Vec3 at t=0`, () => {
-    const result = math.lerp_vec3([0, 0, 0], [10, 20, 30], 0)
-    expect(result).toEqual([0, 0, 0])
-  })
-
-  it(`interpolates Vec3 at t=1`, () => {
-    const result = math.lerp_vec3([0, 0, 0], [10, 20, 30], 1)
-    expect(result).toEqual([10, 20, 30])
-  })
-
-  it(`interpolates Vec3 at t=0.5`, () => {
-    const result = math.lerp_vec3([0, 0, 0], [10, 20, 30], 0.5)
-    expect(result).toEqual([5, 10, 15])
-  })
-
-  it(`handles negative values`, () => {
-    const result = math.lerp_vec3([-10, -20, -30], [10, 20, 30], 0.5)
-    expect(result).toEqual([0, 0, 0])
-  })
+  // oxfmt-ignore
+  it.each([
+    [[0, 0, 0], [10, 20, 30], 0, [0, 0, 0]],
+    [[0, 0, 0], [10, 20, 30], 1, [10, 20, 30]],
+    [[0, 0, 0], [10, 20, 30], 0.5, [5, 10, 15]],
+    [[-10, -20, -30], [10, 20, 30], 0.5, [0, 0, 0]],
+  ] as [Vec3, Vec3, number, Vec3][])(
+    `lerp_vec3(%j, %j, %d) = %j`,
+    (start, end, t, expected) => {
+      expect(math.lerp_vec3(start, end, t)).toEqual(expected)
+    },
+  )
 })
 
 describe(`normalize_vec`, () => {
-  it(`normalizes unit vector along x-axis`, () => {
-    const result = math.normalize_vec([5, 0, 0])
-    expect(result).toEqual([1, 0, 0])
-  })
-
-  it(`normalizes diagonal vector`, () => {
-    const result = math.normalize_vec([1, 1, 1])
-    const expected_component = 1 / Math.sqrt(3)
-    expect(result[0]).toBeCloseTo(expected_component)
-    expect(result[1]).toBeCloseTo(expected_component)
-    expect(result[2]).toBeCloseTo(expected_component)
-  })
-
-  it(`returns zero vector for zero input`, () => {
-    const result = math.normalize_vec([0, 0, 0])
-    expect(result).toEqual([0, 0, 0])
-  })
-
-  it(`uses fallback for zero input when provided`, () => {
-    const fallback: Vec3 = [0, 1, 0]
-    const result = math.normalize_vec([0, 0, 0], fallback)
-    expect(result).toEqual([0, 1, 0])
-  })
-
-  it(`preserves unit vectors`, () => {
-    const result = math.normalize_vec([0, 1, 0])
-    expect(result).toEqual([0, 1, 0])
+  const inv_sqrt3 = 1 / Math.sqrt(3)
+  // oxfmt-ignore
+  it.each([
+    [`x-axis vector`, [5, 0, 0], undefined, [1, 0, 0]],
+    [`diagonal vector`, [1, 1, 1], undefined, [inv_sqrt3, inv_sqrt3, inv_sqrt3]],
+    [`zero vector → zeros`, [0, 0, 0], undefined, [0, 0, 0]],
+    [`zero vector → fallback`, [0, 0, 0], [0, 1, 0], [0, 1, 0]],
+    [`unit vector preserved`, [0, 1, 0], undefined, [0, 1, 0]],
+  ] as [string, Vec3, Vec3 | undefined, Vec3][])(`%s`, (_name, vec, fallback, expected) => {
+    const result = math.normalize_vec(vec, fallback)
+    expect(result).toEqual(expected.map((val) => expect.closeTo(val, 10)))
   })
 })
 
@@ -1757,63 +1267,30 @@ describe(`vecs_equal`, () => {
 })
 
 describe(`compute_bounding_box`, () => {
-  it(`returns zero box for empty array`, () => {
-    const result = math.compute_bounding_box([])
-    expect(result).toEqual({ min: [0, 0, 0], max: [0, 0, 0] })
-  })
-
-  it(`returns point for single vertex`, () => {
-    const result = math.compute_bounding_box([[5, 10, 15]])
-    expect(result).toEqual({ min: [5, 10, 15], max: [5, 10, 15] })
-  })
-
-  it(`computes correct bounding box for multiple vertices`, () => {
-    const vertices: Vec3[] = [
-      [0, 0, 0],
-      [10, 5, 3],
-      [-5, 20, -10],
-      [3, -3, 15],
-    ]
-    const result = math.compute_bounding_box(vertices)
-    expect(result).toEqual({ min: [-5, -3, -10], max: [10, 20, 15] })
-  })
-
-  it(`handles all negative coordinates`, () => {
-    const vertices: Vec3[] = [
-      [-10, -20, -30],
-      [-5, -10, -15],
-    ]
-    const result = math.compute_bounding_box(vertices)
-    expect(result).toEqual({ min: [-10, -20, -30], max: [-5, -10, -15] })
+  // oxfmt-ignore
+  it.each([
+    [`empty array → zero box`, [], [0, 0, 0], [0, 0, 0]],
+    [`single vertex`, [[5, 10, 15]], [5, 10, 15], [5, 10, 15]],
+    [`multiple vertices`, [[0, 0, 0], [10, 5, 3], [-5, 20, -10], [3, -3, 15]],
+      [-5, -3, -10], [10, 20, 15]],
+    [`all negative`, [[-10, -20, -30], [-5, -10, -15]], [-10, -20, -30], [-5, -10, -15]],
+  ] as [string, Vec3[], Vec3, Vec3][])(`%s`, (_name, vertices, min, max) => {
+    expect(math.compute_bounding_box(vertices)).toEqual({ min, max })
   })
 })
 
 describe(`create_frac_to_cart and create_cart_to_frac`, () => {
-  const cubic: math.Matrix3x3 = [
-    [5, 0, 0],
-    [0, 5, 0],
-    [0, 0, 5],
-  ]
-  const triclinic: math.Matrix3x3 = [
-    [5, 0, 0],
-    [2.5, 4.33, 0],
-    [1, 1, 4],
-  ]
-  const hexagonal: math.Matrix3x3 = [
-    [4, 0, 0],
-    [2, 3.464, 0],
-    [0, 0, 8],
-  ]
+  // oxfmt-ignore
+  const cubic: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+  // oxfmt-ignore
+  const triclinic: math.Matrix3x3 = [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]]
+  // oxfmt-ignore
+  const hexagonal: math.Matrix3x3 = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
 
   test.each([
     { frac: [0, 0, 0], lattice: cubic, expected: [0, 0, 0], desc: `origin` },
     { frac: [1, 0, 0], lattice: cubic, expected: [5, 0, 0], desc: `a-vector` },
-    {
-      frac: [0.5, 0.5, 0.5],
-      lattice: cubic,
-      expected: [2.5, 2.5, 2.5],
-      desc: `body center`,
-    },
+    { frac: [0.5, 0.5, 0.5], lattice: cubic, expected: [2.5, 2.5, 2.5], desc: `body center` },
     {
       frac: [0.5, 0.5, 0],
       lattice: hexagonal,
@@ -1836,115 +1313,53 @@ describe(`create_frac_to_cart and create_cart_to_frac`, () => {
     { lattice: cubic, name: `cubic` },
     { lattice: triclinic, name: `triclinic` },
     { lattice: hexagonal, name: `hexagonal` },
-  ])(`round-trip frac→cart→frac for $name`, ({ lattice }) => {
+  ])(`round-trips frac↔cart for $name`, ({ lattice }) => {
     const frac_to_cart = math.create_frac_to_cart(lattice)
     const cart_to_frac = math.create_cart_to_frac(lattice)
     const frac: Vec3 = [0.25, 0.5, 0.75]
-    const cart = frac_to_cart(frac)
-    const recovered = cart_to_frac(cart)
-    recovered.forEach((val, idx) => expect(val).toBeCloseTo(frac[idx], 10))
-  })
-
-  test.each([
-    { lattice: cubic, name: `cubic` },
-    { lattice: triclinic, name: `triclinic` },
-    { lattice: hexagonal, name: `hexagonal` },
-  ])(`round-trip cart→frac→cart for $name`, ({ lattice }) => {
-    const frac_to_cart = math.create_frac_to_cart(lattice)
-    const cart_to_frac = math.create_cart_to_frac(lattice)
+    cart_to_frac(frac_to_cart(frac)).forEach((val, idx) =>
+      expect(val).toBeCloseTo(frac[idx], 10),
+    )
     const cart: Vec3 = [2.5, 3.5, 1.5]
-    const frac = cart_to_frac(cart)
-    const recovered = frac_to_cart(frac)
-    recovered.forEach((val, idx) => expect(val).toBeCloseTo(cart[idx], 10))
+    frac_to_cart(cart_to_frac(cart)).forEach((val, idx) =>
+      expect(val).toBeCloseTo(cart[idx], 10),
+    )
   })
 })
 
-// === point_in_polygon ===
-
 describe(`point_in_polygon`, () => {
-  const square: Vec2[] = [
-    [0, 0],
-    [4, 0],
-    [4, 4],
-    [0, 4],
-  ]
-  const tri: Vec2[] = [
-    [0, 0],
-    [10, 0],
-    [5, 10],
-  ]
+  // oxfmt-ignore
+  const square: Vec2[] = [[0, 0], [4, 0], [4, 4], [0, 4]]
+  // oxfmt-ignore
+  const tri: Vec2[] = [[0, 0], [10, 0], [5, 10]]
 
+  // oxfmt-ignore
   test.each([
     { point_x: 2, point_y: 2, poly: square, expected: true, label: `inside square` },
     { point_x: 5, point_y: 5, poly: square, expected: false, label: `outside square` },
     { point_x: 5, point_y: 3, poly: tri, expected: true, label: `inside triangle` },
     { point_x: 0, point_y: 10, poly: tri, expected: false, label: `outside triangle` },
-    {
-      point_x: 0,
-      point_y: 0,
-      poly: [] as Vec2[],
-      expected: false,
-      label: `empty polygon`,
-    },
-    {
-      point_x: 0,
-      point_y: 0,
-      poly: [
-        [0, 0],
-        [1, 1],
-      ] as Vec2[],
-      expected: false,
-      label: `< 3 vertices`,
-    },
+    { point_x: 0, point_y: 0, poly: [] as Vec2[], expected: false, label: `empty polygon` },
+    { point_x: 0, point_y: 0, poly: [[0, 0], [1, 1]] as Vec2[], expected: false, label: `< 3 vertices` },
   ])(`$label`, ({ point_x, point_y, poly, expected }) => {
     expect(math.point_in_polygon(point_x, point_y, poly)).toBe(expected)
   })
 })
 
-// === compute_bounding_box_2d ===
-
 describe(`compute_bounding_box_2d`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      pts: [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-      ] as Vec2[],
-      min: [0, 0],
-      max: [1, 1],
-      width: 1,
-      height: 1,
-      label: `unit square`,
+    [`unit square`, [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0], [1, 1], 1, 1],
+    [`negative coords`, [[-3, -2], [1, 4]], [-3, -2], [1, 4], 4, 6],
+    [`empty`, [], [0, 0], [0, 0], 0, 0],
+    [`single point`, [[5, 7]], [5, 7], [5, 7], 0, 0],
+  ] as [string, Vec2[], Vec2, Vec2, number, number][])(
+    `%s`,
+    (_name, pts, min, max, width, height) => {
+      expect(math.compute_bounding_box_2d(pts)).toEqual({ min, max, width, height })
     },
-    {
-      pts: [
-        [-3, -2],
-        [1, 4],
-      ] as Vec2[],
-      min: [-3, -2],
-      max: [1, 4],
-      width: 4,
-      height: 6,
-      label: `negative coords`,
-    },
-    { pts: [] as Vec2[], min: [0, 0], max: [0, 0], width: 0, height: 0, label: `empty` },
-    {
-      pts: [[5, 7]] as Vec2[],
-      min: [5, 7],
-      max: [5, 7],
-      width: 0,
-      height: 0,
-      label: `single point`,
-    },
-  ])(`$label`, ({ pts, min, max, width, height }) => {
-    const bbox = math.compute_bounding_box_2d(pts)
-    expect(bbox).toEqual({ min, max, width, height })
-  })
+  )
 })
-
-// === solve_linear_system ===
 
 describe(`solve_linear_system`, () => {
   test(`1x1 system`, () => {
@@ -1962,63 +1377,33 @@ describe(`solve_linear_system`, () => {
   })
 
   test(`non-square returns null`, () => {
-    expect(
-      math.solve_linear_system(
-        [
-          [1, 2, 3],
-          [4, 5, 6],
-        ],
-        [1, 2],
-      ),
-    ).toBeNull()
+    // oxfmt-ignore
+    expect(math.solve_linear_system([[1, 2, 3], [4, 5, 6]], [1, 2])).toBeNull()
   })
 })
 
-// === convex_hull_2d ===
-
 describe(`convex_hull_2d`, () => {
   test(`pentagon with interior point`, () => {
-    const pts: Vec2[] = [
-      [0, 0],
-      [4, 0],
-      [5, 3],
-      [2.5, 5],
-      [0, 3],
-      [2.5, 2], // interior
-    ]
-    const hull = math.convex_hull_2d(pts)
-    expect(hull).toHaveLength(5) // interior excluded
+    // oxfmt-ignore
+    const pts: Vec2[] = [[0, 0], [4, 0], [5, 3], [2.5, 5], [0, 3], [2.5, 2]] // last is interior
+    expect(math.convex_hull_2d(pts)).toHaveLength(5) // interior excluded
   })
 
   test(`duplicate points`, () => {
-    const pts: Vec2[] = [
-      [0, 0],
-      [1, 0],
-      [1, 0],
-      [0, 1],
-      [0, 1],
-    ]
-    const hull = math.convex_hull_2d(pts)
-    expect(hull).toHaveLength(3)
+    // oxfmt-ignore
+    const pts: Vec2[] = [[0, 0], [1, 0], [1, 0], [0, 1], [0, 1]]
+    expect(math.convex_hull_2d(pts)).toHaveLength(3)
   })
 
   test(`all same point`, () => {
-    const hull = math.convex_hull_2d([
-      [3, 3],
-      [3, 3],
-      [3, 3],
-    ])
+    // oxfmt-ignore
+    const hull = math.convex_hull_2d([[3, 3], [3, 3], [3, 3]])
     expect(hull.length).toBeLessThanOrEqual(3)
   })
 
   test(`counter-clockwise winding`, () => {
-    const pts: Vec2[] = [
-      [0, 0],
-      [1, 0],
-      [1, 1],
-      [0, 1],
-    ]
-    const hull = math.convex_hull_2d(pts)
+    // oxfmt-ignore
+    const hull = math.convex_hull_2d([[0, 0], [1, 0], [1, 1], [0, 1]])
     // Shoelace signed area should be positive for CCW
     let signed_area = 0
     for (let idx = 0; idx < hull.length; idx++) {
@@ -2030,130 +1415,53 @@ describe(`convex_hull_2d`, () => {
   })
 })
 
-// === polygon_centroid ===
-
 describe(`polygon_centroid (from math)`, () => {
   test(`rectangle centroid`, () => {
-    const pts: Vec2[] = [
-      [0, 0],
-      [4, 0],
-      [4, 2],
-      [0, 2],
-    ]
-    const centroid = math.polygon_centroid(pts)
+    // oxfmt-ignore
+    const centroid = math.polygon_centroid([[0, 0], [4, 0], [4, 2], [0, 2]])
     expect(centroid[0]).toBeCloseTo(2, 6)
     expect(centroid[1]).toBeCloseTo(1, 6)
   })
 
   test(`degenerate collinear polygon falls back to average`, () => {
-    const pts: Vec2[] = [
-      [0, 0],
-      [1, 0],
-      [2, 0],
-    ]
-    const centroid = math.polygon_centroid(pts)
+    // oxfmt-ignore
+    const centroid = math.polygon_centroid([[0, 0], [1, 0], [2, 0]])
     expect(centroid[0]).toBeCloseTo(1, 6)
     expect(centroid[1]).toBeCloseTo(0, 6)
   })
+
+  test(`empty polygon returns [0, 0] without throwing`, () => {
+    expect(math.polygon_centroid([])).toEqual([0, 0])
+  })
 })
 
-// === are_coplanar ===
-
 describe(`are_coplanar`, () => {
+  // oxfmt-ignore
   it.each([
-    {
-      desc: `4 points on xy-plane`,
-      pts: [
-        [0, 0, 0],
-        [1, 0, 0],
-        [1, 1, 0],
-        [0, 1, 0],
-      ],
-      expected: true,
-    },
-    {
-      desc: `4 points on tilted plane (x+y+z=3)`,
-      pts: [
-        [3, 0, 0],
-        [0, 3, 0],
-        [0, 0, 3],
-        [1, 1, 1],
-      ],
-      expected: true,
-    },
-    {
-      desc: `5 points on plane 2x-y+3z=6`,
-      pts: [
-        [3, 0, 0],
-        [0, -6, 0],
-        [0, 0, 2],
-        [1, -1, 1],
-        [1.5, 0, 1],
-      ],
-      expected: true,
-    },
-    {
-      desc: `tetrahedron (non-coplanar)`,
-      pts: [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      expected: false,
-    },
-    {
-      desc: `3 collinear points`,
-      pts: [
-        [0, 0, 0],
-        [1, 1, 1],
-        [2, 2, 2],
-      ],
-      expected: true,
-    },
-    {
-      desc: `2 points (trivial)`,
-      pts: [
-        [0, 0, 0],
-        [1, 2, 3],
-      ],
-      expected: true,
-    },
-    { desc: `1 point (trivial)`, pts: [[5, 5, 5]], expected: true },
-  ])(`$desc → $expected`, ({ pts, expected }) => {
+    [`4 points on xy-plane`, [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], true],
+    [`4 points on tilted plane (x+y+z=3)`, [[3, 0, 0], [0, 3, 0], [0, 0, 3], [1, 1, 1]], true],
+    [`5 points on plane 2x-y+3z=6`,
+      [[3, 0, 0], [0, -6, 0], [0, 0, 2], [1, -1, 1], [1.5, 0, 1]], true],
+    [`tetrahedron (non-coplanar)`, [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], false],
+    [`3 collinear points`, [[0, 0, 0], [1, 1, 1], [2, 2, 2]], true],
+    [`2 points (trivial)`, [[0, 0, 0], [1, 2, 3]], true],
+    [`1 point (trivial)`, [[5, 5, 5]], true],
+  ] as [string, number[][], boolean][])(`%s → %s`, (_desc, pts, expected) => {
     expect(math.are_coplanar(pts)).toBe(expected)
   })
 
   test(`nearly coplanar within tolerance returns true`, () => {
-    expect(
-      math.are_coplanar(
-        [
-          [0, 0, 0],
-          [1, 0, 0],
-          [0, 1, 0],
-          [1, 1, 1e-8],
-        ],
-        1e-6,
-      ),
-    ).toBe(true)
+    // oxfmt-ignore
+    const pts = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1e-8]]
+    expect(math.are_coplanar(pts, 1e-6)).toBe(true)
   })
 
   test(`point offset beyond tolerance returns false`, () => {
-    expect(
-      math.are_coplanar(
-        [
-          [0, 0, 0],
-          [1, 0, 0],
-          [0, 1, 0],
-          [0.5, 0.5, 0.01],
-        ],
-        1e-6,
-      ),
-    ).toBe(false)
+    // oxfmt-ignore
+    const pts = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.5, 0.01]]
+    expect(math.are_coplanar(pts, 1e-6)).toBe(false)
   })
 })
-
-// === merge_coplanar_triangles ===
 
 describe(`merge_coplanar_triangles`, () => {
   test(`empty input returns empty Float32Array`, () => {
@@ -2178,35 +1486,16 @@ describe(`merge_coplanar_triangles`, () => {
     // Input triangles start with DIFFERENT vertices (A and C), so only
     // a successful merge + fan re-triangulation can produce output where
     // both triangles share a common fan origin.
+    // oxfmt-ignore
     const input = new Float32Array([
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      1,
-      1,
-      0, // tri1: A-B-C  (starts with A)
-      1,
-      1,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0, // tri2: C-D-A  (starts with C)
+      0, 0, 0, 1, 0, 0, 1, 1, 0, // tri1: A-B-C (starts with A)
+      1, 1, 0, 0, 1, 0, 0, 0, 0, // tri2: C-D-A (starts with C)
     ])
     const result = math.merge_coplanar_triangles(input)
     expect(result).toHaveLength(18)
     const out_verts = extract_triangle_verts(result)
-    const expected_verts: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [1, 1, 0],
-      [0, 1, 0],
-    ]
+    // oxfmt-ignore
+    const expected_verts: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
     for (const ev of expected_verts) {
       expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
     }
@@ -2219,25 +1508,10 @@ describe(`merge_coplanar_triangles`, () => {
 
   test(`two non-coplanar adjacent triangles remain unchanged`, () => {
     // Two triangles sharing edge (0,0,0)-(1,0,0) but at 90° dihedral
+    // oxfmt-ignore
     const input = new Float32Array([
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0.5,
-      1,
-      0, // xy-plane
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0.5,
-      0,
-      1, // xz-plane
+      0, 0, 0, 1, 0, 0, 0.5, 1, 0, // xy-plane
+      0, 0, 0, 1, 0, 0, 0.5, 0, 1, // xz-plane
     ])
     const result = math.merge_coplanar_triangles(input)
     expect(result).toHaveLength(18)
@@ -2249,28 +1523,18 @@ describe(`merge_coplanar_triangles`, () => {
   test(`four coplanar triangles forming a hexagonal face`, () => {
     // Regular hexagon on z=0 centered at origin, split into 4 triangles
     // (fan from center would give 6, but convex hull gives 6 vertices → 4 fan triangles)
+    // oxfmt-ignore
     const hex_verts: Vec3[] = [
-      [1, 0, 0],
-      [0.5, 0.866, 0],
-      [-0.5, 0.866, 0],
-      [-1, 0, 0],
-      [-0.5, -0.866, 0],
-      [0.5, -0.866, 0],
+      [1, 0, 0], [0.5, 0.866, 0], [-0.5, 0.866, 0],
+      [-1, 0, 0], [-0.5, -0.866, 0], [0.5, -0.866, 0],
     ]
     // Triangulate as fan from vertex 0
+    // oxfmt-ignore
     const input = new Float32Array([
-      ...hex_verts[0],
-      ...hex_verts[1],
-      ...hex_verts[2],
-      ...hex_verts[0],
-      ...hex_verts[2],
-      ...hex_verts[3],
-      ...hex_verts[0],
-      ...hex_verts[3],
-      ...hex_verts[4],
-      ...hex_verts[0],
-      ...hex_verts[4],
-      ...hex_verts[5],
+      ...hex_verts[0], ...hex_verts[1], ...hex_verts[2],
+      ...hex_verts[0], ...hex_verts[2], ...hex_verts[3],
+      ...hex_verts[0], ...hex_verts[3], ...hex_verts[4],
+      ...hex_verts[0], ...hex_verts[4], ...hex_verts[5],
     ])
     const result = math.merge_coplanar_triangles(input)
     // Should merge to 4 fan triangles from 6 hull vertices
@@ -2284,34 +1548,11 @@ describe(`merge_coplanar_triangles`, () => {
 
   test(`mixed coplanar and non-coplanar triangles`, () => {
     // Two coplanar triangles on z=0 (a quad) + one triangle on z=1
+    // oxfmt-ignore
     const input = new Float32Array([
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      1,
-      1,
-      0, // quad tri1
-      0,
-      0,
-      0,
-      1,
-      1,
-      0,
-      0,
-      1,
-      0, // quad tri2
-      0,
-      0,
-      1,
-      1,
-      0,
-      1,
-      0.5,
-      1,
-      1, // separate triangle on z=1
+      0, 0, 0, 1, 0, 0, 1, 1, 0, // quad tri1
+      0, 0, 0, 1, 1, 0, 0, 1, 0, // quad tri2
+      0, 0, 1, 1, 0, 1, 0.5, 1, 1, // separate triangle on z=1
     ])
     const result = math.merge_coplanar_triangles(input)
     expect(result).toHaveLength(3 * 9)
@@ -2342,80 +1583,33 @@ describe(`merge_coplanar_triangles`, () => {
 
   test(`coplanar triangles on axis-aligned plane merge despite winding differences`, () => {
     // Two triangles on x=5 plane with opposite winding. Tests CANON_EPS fix.
+    // oxfmt-ignore
     const input = new Float32Array([
-      5,
-      0,
-      0,
-      5,
-      1,
-      0,
-      5,
-      1,
-      1, // tri1
-      5,
-      0,
-      0,
-      5,
-      1,
-      1,
-      5,
-      0,
-      1, // tri2 (opposite winding)
+      5, 0, 0, 5, 1, 0, 5, 1, 1, // tri1
+      5, 0, 0, 5, 1, 1, 5, 0, 1, // tri2 (opposite winding)
     ])
     const result = math.merge_coplanar_triangles(input)
     expect(result).toHaveLength(18)
     const out_verts = extract_triangle_verts(result)
-    for (const ev of [
-      [5, 0, 0],
-      [5, 1, 0],
-      [5, 1, 1],
-      [5, 0, 1],
-    ] as Vec3[]) {
+    // oxfmt-ignore
+    for (const ev of [[5, 0, 0], [5, 1, 0], [5, 1, 1], [5, 0, 1]] as Vec3[]) {
       expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
     }
   })
 
   test(`three coplanar triangles sharing fan vertex merge correctly`, () => {
     // Pentagon A-B-C-D-E split into 3 fan triangles from A
+    // oxfmt-ignore
     const input = new Float32Array([
-      0,
-      0,
-      0,
-      2,
-      0,
-      0,
-      2,
-      1,
-      0, // A-B-C
-      0,
-      0,
-      0,
-      2,
-      1,
-      0,
-      1,
-      2,
-      0, // A-C-D
-      0,
-      0,
-      0,
-      1,
-      2,
-      0,
-      0,
-      1,
-      0, // A-D-E
+      0, 0, 0, 2, 0, 0, 2, 1, 0, // A-B-C
+      0, 0, 0, 2, 1, 0, 1, 2, 0, // A-C-D
+      0, 0, 0, 1, 2, 0, 0, 1, 0, // A-D-E
     ])
     const result = math.merge_coplanar_triangles(input)
     expect(result).toHaveLength(3 * 9)
     const out_verts = extract_triangle_verts(result)
-    for (const ev of [
-      [0, 0, 0],
-      [2, 0, 0],
-      [2, 1, 0],
-      [1, 2, 0],
-      [0, 1, 0],
-    ] as Vec3[]) {
+    // oxfmt-ignore
+    for (const ev of [[0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 2, 0], [0, 1, 0]] as Vec3[]) {
       expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
     }
   })

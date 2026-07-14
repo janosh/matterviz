@@ -1,4 +1,4 @@
-import { handle_url_drop, load_from_url } from '$lib/io'
+import { basename_from_url, handle_url_drop, load_from_url } from '$lib/io'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
@@ -17,6 +17,19 @@ vi.mock(`$lib/io/decompress`, async (import_original) => {
     decompress_data: mock_decompress,
     decompress_data_binary: mock_decompress_binary,
   }
+})
+
+describe(`basename_from_url`, () => {
+  test.each([
+    [`https://example.com/path/traj.xyz`, `traj.xyz`],
+    [`/bad.xyz`, `bad.xyz`],
+    [`traj.h5?X-Amz-Expires=300`, `traj.h5`],
+    [`https://cdn.example/a/b.cif#frag`, `b.cif`],
+    [`bare-name`, `bare-name`],
+    [`https://example.com/dir/`, `https://example.com/dir/`],
+  ])(`%s → %s`, (url, expected) => {
+    expect(basename_from_url(url)).toBe(expected)
+  })
 })
 
 describe(`handle_url_drop`, () => {
@@ -147,25 +160,13 @@ describe(`load_from_url`, () => {
     [`https://example.com/script.py`, `script.py`],
     [`https://example.com/style.css`, `style.css`],
   ])(`text files %s`, async (url, expected_filename) => {
-    // Known text formats skip Range requests and fetch directly
-    const mock_response = create_mock_response(`text content`, {
+    const { received_content, received_filename } = await load_test_url(url, `text content`, {
       'content-type': `text/plain`,
     })
-
-    globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
-
-    let received_content: string | ArrayBuffer | null = null
-    let received_filename: string | null = null
-
-    await load_from_url(url, (content, filename) => {
-      received_content = content
-      received_filename = filename
-    })
-
-    expect(typeof received_content).toBe(`string`)
     expect(received_content).toBe(`text content`)
     expect(received_filename).toBe(expected_filename)
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1) // Only one fetch for known text formats
+    // Known text formats skip the Range sniff and fetch directly, exactly once
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
   })
 
   // content-encoding gzip: browser already decompressed the stored .gz, so the body is
@@ -339,19 +340,11 @@ describe(`load_from_url`, () => {
 
   test(`blob: object URL with text content passes UUID basename to callback`, async () => {
     const xyz_content = `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const mock_response = create_mock_response(xyz_content, {})
-    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-    let received_content: string | ArrayBuffer | null = null
-    let received_filename: string | null = null
-    await load_from_url(
+    const { received_content, received_filename } = await load_test_url(
       `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`,
-      (content, filename) => {
-        received_content = content
-        received_filename = filename
-      },
+      xyz_content,
+      {},
     )
-
     expect(received_content).toBe(xyz_content)
     expect(received_filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
   })
@@ -406,25 +399,10 @@ describe(`load_from_url`, () => {
     )
   })
 
-  test(`Content-Disposition filename is respected`, async () => {
-    const mock_response = new Response(`some content`, {
-      headers: {
-        'content-type': `text/plain`,
-        'content-disposition': `attachment; filename="server-name.xyz"`,
-      },
-    })
-    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-    let received_filename: string | null = null
-    await load_from_url(`https://example.com/ignored-name.xyz`, (_, filename) => {
-      received_filename = filename
-    })
-
-    expect(received_filename).toBe(`server-name.xyz`)
-  })
-
   describe(`Content-Disposition edge cases`, () => {
     test.each([
+      // Quoted filename takes precedence over the URL basename
+      [`filename="server-name.xyz"`, `server-name.xyz`, `quoted filename`],
       // filename* with UTF-8 encoding
       [
         `filename*=UTF-8''structure%20data.xyz`,
@@ -464,116 +442,62 @@ describe(`load_from_url`, () => {
         `f%FCr.txt`,
         `RFC 5987 filename* with non-UTF-8 charset`,
       ],
+      // No filename at all -> fall back to URL basename
+      [``, `url-name.xyz`, `no filename falls back to URL basename`],
     ])(`%s -> %s (%s)`, async (disposition, expected, _desc) => {
-      const mock_response = new Response(`content`, {
-        headers: {
+      const { received_filename } = await load_test_url(
+        `https://example.com/url-name.xyz`,
+        `content`,
+        {
           'content-type': `text/plain`,
-          'content-disposition': `attachment; ${disposition}`,
-        },
-      })
-      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-      let received_filename: string | null = null
-      await load_from_url(`https://example.com/url-name.xyz`, (_, filename) => {
-        received_filename = filename
-      })
-
-      expect(received_filename).toBe(expected)
-    })
-
-    test(`falls back to URL basename when Content-Disposition has no filename`, async () => {
-      const mock_response = new Response(`content`, {
-        headers: {
-          'content-type': `text/plain`,
-          'content-disposition': `attachment`,
-        },
-      })
-      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-      let received_filename: string | null = null
-      await load_from_url(`https://example.com/fallback.xyz`, (_, filename) => {
-        received_filename = filename
-      })
-
-      expect(received_filename).toBe(`fallback.xyz`)
-    })
-  })
-
-  describe(`VASP file detection`, () => {
-    test.each([
-      [`POSCAR`, `POSCAR`],
-      [`poscar`, `poscar`],
-      [`XDATCAR`, `XDATCAR`],
-      [`xdatcar`, `xdatcar`],
-      [`CONTCAR`, `CONTCAR`],
-      [`contcar`, `contcar`],
-    ])(`recognizes VASP file %s as text`, async (basename, expected_filename) => {
-      const mock_response = new Response(`Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43`, {
-        headers: { 'content-type': `text/plain` },
-      })
-      globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
-
-      let received_content: string | ArrayBuffer | null = null
-      let received_filename: string | null = null
-
-      await load_from_url(`https://example.com/${basename}`, (content, filename) => {
-        received_content = content
-        received_filename = filename
-      })
-
-      expect(typeof received_content).toBe(`string`)
-      expect(received_filename).toBe(expected_filename)
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1) // No Range request for VASP files
-    })
-  })
-
-  describe(`async callback support`, () => {
-    test(`awaits async callback`, async () => {
-      const mock_response = new Response(`content`, {
-        headers: { 'content-type': `text/plain` },
-      })
-      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-      const processed_files: string[] = []
-      await load_from_url(`https://example.com/test.xyz`, async (_content, filename) => {
-        // Async callback with zero delay - still tests await behavior
-        await Promise.resolve()
-        processed_files.push(filename)
-      })
-
-      expect(processed_files).toContain(`test.xyz`)
-    })
-  })
-
-  describe(`non-gzip binary files with content-encoding`, () => {
-    test(`gzip content-encoding on binary extension stays ArrayBuffer`, async () => {
-      // Content-Encoding is transparent: fetch auto-decompresses, so the body is
-      // the original binary and must not be lossily decoded to text
-      const payload = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00, 0x80])
-      const mock_response = new Response(payload, {
-        headers: {
-          'content-encoding': `gzip`,
-          'content-type': `application/octet-stream`,
-        },
-      })
-      Object.defineProperty(mock_response, `arrayBuffer`, {
-        value: () => Promise.resolve(payload.buffer),
-      })
-      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-      let received_content: string | ArrayBuffer | null = null
-      let received_filename: string | null = null
-      await load_from_url(
-        `https://example.com/data.npz`, // binary extension with gzip content-encoding
-        (content, filename) => {
-          received_content = content
-          received_filename = filename
+          'content-disposition': `attachment${disposition ? `; ${disposition}` : ``}`,
         },
       )
-
-      expect(received_content).toBeInstanceOf(ArrayBuffer)
-      expect(new Uint8Array(received_content as unknown as ArrayBuffer)).toEqual(payload)
-      expect(received_filename).toBe(`data.npz`)
+      expect(received_filename).toBe(expected)
     })
+  })
+
+  test.each([`POSCAR`, `poscar`, `XDATCAR`, `xdatcar`, `CONTCAR`, `contcar`])(
+    `recognizes extensionless VASP file %s as text`,
+    async (basename) => {
+      const poscar = `Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43`
+      const { received_content, received_filename } = await load_test_url(
+        `https://example.com/${basename}`,
+        poscar,
+        { 'content-type': `text/plain` },
+      )
+      expect(received_content).toBe(poscar)
+      expect(received_filename).toBe(basename)
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1) // No Range request for VASP files
+    },
+  )
+
+  test(`awaits async callback`, async () => {
+    const mock_response = new Response(`content`, {
+      headers: { 'content-type': `text/plain` },
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
+
+    const processed_files: string[] = []
+    await load_from_url(`https://example.com/test.xyz`, async (_content, filename) => {
+      await Promise.resolve()
+      processed_files.push(filename)
+    })
+
+    expect(processed_files).toContain(`test.xyz`)
+  })
+
+  test(`gzip content-encoding on binary extension stays ArrayBuffer`, async () => {
+    // Content-Encoding is transparent: fetch auto-decompresses, so the body is
+    // the original binary and must not be lossily decoded to text
+    const payload = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00, 0x80])
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/data.npz`,
+      payload.buffer,
+      { 'content-encoding': `gzip`, 'content-type': `application/octet-stream` },
+    )
+    expect(received_content).toBeInstanceOf(ArrayBuffer)
+    expect(new Uint8Array(received_content as unknown as ArrayBuffer)).toEqual(payload)
+    expect(received_filename).toBe(`data.npz`)
   })
 })

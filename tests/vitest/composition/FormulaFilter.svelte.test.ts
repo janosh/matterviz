@@ -61,10 +61,9 @@ describe(`FormulaFilter`, () => {
   })
 
   test.each([
+    // LiFePO4 -> elements/chemsys reformats are covered by the mode-cycling test above
     { from: `Li-Fe-O`, to_mode: `elements`, expected: `Fe,Li,O` },
     { from: `Li,Fe,O`, to_mode: `chemsys`, expected: `Fe-Li-O` },
-    { from: `LiFePO4`, to_mode: `elements`, expected: `Fe,Li,O,P` },
-    { from: `LiFePO4`, to_mode: `chemsys`, expected: `Fe-Li-O-P` },
     { from: `Fe,Li,O`, to_mode: `exact`, expected: `FeLiO` },
   ])(
     `reformats "$from" to "$expected" when cycling to $to_mode mode`,
@@ -417,10 +416,9 @@ describe(`FormulaFilter`, () => {
     })
 
     test.each([
+      // Li-Fe-*-* -> elements/exact reformats are covered by the wildcard cycling test above
       { from: `Li,Fe,*,*`, to_mode: `chemsys`, expected: `Fe-Li-*-*` },
       { from: `Li,Fe,*,*`, to_mode: `exact`, expected: `FeLi**` },
-      { from: `Li-Fe-*-*`, to_mode: `elements`, expected: `Fe,Li,*,*` },
-      { from: `Li-Fe-*-*`, to_mode: `exact`, expected: `FeLi**` },
       { from: `LiFe*2*`, to_mode: `elements`, expected: `Fe,Li,*,*` },
       { from: `LiFe*2*`, to_mode: `chemsys`, expected: `Fe-Li-*-*` },
     ])(

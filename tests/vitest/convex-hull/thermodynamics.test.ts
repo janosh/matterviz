@@ -337,31 +337,37 @@ describe(`calculate_e_above_hull`, () => {
     ).toBeCloseTo(0.5, 10)
   })
 
-  test(`binary: unstable FeO > 0, on-hull FeO ≈ 0`, () => {
+  test(`binary: interpolates hull tie-line, on-hull entries ≈ 0`, () => {
+    // Hull: Fe (x=0, e_form 0) — FeO (x=0.5, e_form -4.5) — O (x=1, e_form 0)
     const refs = [...fe_o_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` })]
+    // FeO polymorph at -6.5 eV/atom has e_form -3.5 → exactly 1.0 above the hull
     expect(
       calculate_e_above_hull(
         make_phase({ Fe: 1, O: 1 }, -6.5, { entry_id: `FeO-unstable` }),
         refs,
       ),
-    ).toBeGreaterThan(0)
+    ).toBeCloseTo(1.0, 10)
+    // Fe3O at x=0.25: tie-line gives -2.25, entry e_form -1.75 → 0.5 above
+    expect(
+      calculate_e_above_hull(make_phase({ Fe: 3, O: 1 }, -5.25, { entry_id: `Fe3O` }), refs),
+    ).toBeCloseTo(0.5, 10)
     expect(
       calculate_e_above_hull(make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-test` }), refs),
     ).toBeCloseTo(0, 10)
   })
 
-  test(`ternary system`, () => {
+  // A compound below the elemental tie-plane shapes the hull; a same-composition
+  // polymorph 0.5 eV/atom higher must land exactly 0.5 above it (N-dim hull branch)
+  test.each([
+    { arity: 3, comp: { Li: 1, Fe: 1, O: 1 } },
+    { arity: 4, comp: { Li: 1, Fe: 1, P: 1, O: 1 } },
+  ])(`arity-$arity: compound below tie-plane sets exact hull distance`, ({ comp }) => {
     const refs: PhaseData[] = [
-      make_phase({ Li: 1 }, -1.9, { entry_id: `Li` }),
-      ...fe_o_refs,
-      make_phase({ Li: 1, Fe: 1, O: 2 }, -8.5, { entry_id: `LiFeO2` }),
+      ...Object.keys(comp).map((el) => make_quinary_elem(el, 0)),
+      make_phase(comp, -1.0, { entry_id: `stable-compound` }),
     ]
-    expect(
-      calculate_e_above_hull(
-        make_phase({ Li: 1, Fe: 1, O: 2 }, -7.5, { entry_id: `LiFeO2-unstable` }),
-        refs,
-      ),
-    ).toBeGreaterThanOrEqual(0)
+    const query = make_phase(comp, -0.5, { entry_id: `query` })
+    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0.5, 5)
   })
 
   // exclude_from_hull guard exists in all arity branches (ternary, quaternary, N-D);
@@ -580,15 +586,6 @@ describe(`get_convex_hull_stats`, () => {
 })
 
 describe(`Edge cases`, () => {
-  test(`formation energy with explicit energy_per_atom`, () => {
-    const refs = [make_phase({ Fe: 1 }, -4.0), make_phase({ O: 1 }, -2.0)]
-    const compound = make_phase({ Fe: 1, O: 1 }, -3.5)
-    expect(compute_e_form_per_atom(compound, find_lowest_energy_unary_refs(refs))).toBeCloseTo(
-      -0.5,
-      10,
-    )
-  })
-
   test(`pre-computed e_form_per_atom is used`, () => {
     const refs = [
       make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
@@ -738,10 +735,8 @@ describe(`N-Dimensional Convex Hull`, () => {
     [0.2, 0.2, 0.2, 0.2, -1], // Interior point below corners
   ]
 
-  test(`compute_quickhull_nd: 5D simplex produces correct number of facets`, () => {
-    const hull = compute_quickhull_nd(simplex_5d)
-    // A convex hull of 6 points in 5D should have facets
-    expect(hull.length).toBeGreaterThan(0)
+  test(`compute_quickhull_nd produces facets for 5D simplex`, () => {
+    expect(compute_quickhull_nd(simplex_5d).length).toBeGreaterThan(0)
   })
 
   test(`compute_quickhull_nd returns empty for <N+1 points`, () => {

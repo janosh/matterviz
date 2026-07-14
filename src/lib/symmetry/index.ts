@@ -144,10 +144,9 @@ function get_site_atomic_number(site: Crystal[`sites`][number], site_idx: number
     }
   })
 
-  if (selected_element === undefined) {
-    throw new Error(`Unknown element at site ${site_idx}: ${selected_element}`)
-  }
-  const atomic_number = SYMBOL_TO_ATOMIC_NUMBER[selected_element]
+  const atomic_number = selected_element
+    ? SYMBOL_TO_ATOMIC_NUMBER[selected_element]
+    : undefined
   if (atomic_number === undefined) {
     throw new Error(`Unknown element at site ${site_idx}: ${selected_element}`)
   }
@@ -250,11 +249,7 @@ export async function analyze_structure_symmetry(
   }
   const moyo_input_cell = build_moyo_input_cell(struct_or_mol)
   const cell_json = JSON.stringify(
-    build_moyo_cell(
-      struct_or_mol,
-      moyo_input_cell.positions,
-      moyo_input_cell.numbers,
-    ) satisfies MoyoCell,
+    build_moyo_cell(struct_or_mol, moyo_input_cell.positions, moyo_input_cell.numbers),
   )
   const { symprec, algo } = { ...default_sym_settings, ...settings }
   // Map "Moyo" to "Standard" for moyo-wasm
@@ -351,15 +346,13 @@ function wyckoff_rows_from_input_orbits(sym_data: SymmetryDataset): WyckoffPos[]
   })
 }
 
-// Generate Wyckoff table rows from symmetry data by grouping moyo's input-cell sites into
-// crystallographic orbits. moyo's per-site arrays (wyckoffs, orbits, site_symmetry_symbols)
-// always index the input cell and analyze_structure_symmetry always attaches input_cell, so
-// the orbit grouping is the single source of truth for any input cell setting.
-// Rows sort by ascending multiplicity, then Wyckoff label.
 // Numeric multiplicity prefix of a Wyckoff label like `4a` (NaN when absent)
 export const wyckoff_multiplicity = (label: string): number =>
   Number(/^\d+/.exec(label)?.[0] ?? NaN)
 
+// Generate Wyckoff table rows from symmetry data via wyckoff_rows_from_input_orbits
+// (analyze_structure_symmetry always attaches the input_cell that grouping needs).
+// Rows sort by ascending multiplicity, then Wyckoff label.
 export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): WyckoffPos[] {
   if (!sym_data) return []
   const orbit_rows = wyckoff_rows_from_input_orbits(sym_data)

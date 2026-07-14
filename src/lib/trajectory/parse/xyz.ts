@@ -2,12 +2,13 @@
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import { coerce_elem_symbol } from '$lib/element/helpers'
+import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
   iter_xyz_frames,
 } from '$lib/trajectory/helpers'
-import { traj_warn } from './diagnostics'
+import { get_traj_parse_warnings, traj_warn } from './diagnostics'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 // Resolve species/pos/forces column offsets from an extxyz Properties string of
@@ -42,6 +43,46 @@ function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
     .map(Number)
   if (vals?.length !== 9 || !vals.every(Number.isFinite)) return undefined
   return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
+}
+
+const EXTXYZ_BOOL = new Map([
+  [`t`, true],
+  [`true`, true],
+  [`1`, true],
+  [`f`, false],
+  [`false`, false],
+  [`0`, false],
+]) // Map avoids Object.prototype hits (e.g. `constructor`)
+
+function lookup_extxyz_bools(tokens: string[]): Pbc | undefined {
+  if (tokens.length !== 3) return undefined
+  const [first, second, third] = tokens.map((token) => EXTXYZ_BOOL.get(token.toLowerCase()))
+  if (first === undefined || second === undefined || third === undefined) return undefined
+  return [first, second, third]
+}
+
+function parse_extxyz_pbc(comment: string): Pbc | undefined {
+  const match =
+    /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+(?:\s+\S+){0,2}))/iu.exec(
+      comment,
+    )
+  const raw = (match?.groups?.double ?? match?.groups?.single ?? match?.groups?.bare)?.trim()
+  if (!raw) return undefined
+  // Stop before a following `Key=` token that bare matching may have swallowed
+  const split = raw.split(/\s+/u)
+  const cut = split.findIndex((word) => word.includes(`=`))
+  const words = cut === -1 ? split : split.slice(0, cut)
+  if (words.length === 0) return undefined
+  const [first] = words
+  if (first.length === 3) {
+    const compact = lookup_extxyz_bools(first.split(``))
+    if (compact) return compact
+  }
+  if (words.length === 1) {
+    const only = EXTXYZ_BOOL.get(first.toLowerCase())
+    return only === undefined ? undefined : [only, only, only]
+  }
+  return lookup_extxyz_bools(words.slice(0, 3))
 }
 
 // Keys anchored at ^|\s and followed by [=:] so single-letter keys (E/V/P/T) don't match mid-word
@@ -128,6 +169,17 @@ export function build_xyz_frame(
   const { start, num_atoms, comment } = frame
   const { step, properties } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
+  const parsed_pbc = parse_extxyz_pbc(comment)
+  if (
+    parsed_pbc === undefined &&
+    /\bpbc\s*=/iu.test(comment) &&
+    !get_traj_parse_warnings().some((msg) => msg.includes(`Invalid EXTXYZ pbc`))
+  ) {
+    traj_warn(
+      `Invalid EXTXYZ pbc (first seen in ${opts.frame_label}); defaulting to fully periodic [T, T, T]`,
+    )
+  }
+  const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
   const { elements, positions, force_stats } = parse_xyz_atom_lines(
     lines,
     start + 2,
@@ -141,7 +193,7 @@ export function build_xyz_frame(
     positions,
     elements,
     lattice_matrix,
-    lattice_matrix ? [true, true, true] : undefined,
+    lattice_matrix ? pbc : undefined,
     step ?? opts.default_step,
     metadata,
   )

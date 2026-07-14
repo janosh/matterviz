@@ -5,8 +5,8 @@ import {
   euclidean_dist,
   pbc_dist,
 } from '$lib/math'
-import type { Crystal } from '$lib/structure'
-import { make_supercell } from '$lib/structure/supercell'
+import type { Crystal, Site } from '$lib/structure'
+import type { Pbc } from '$lib/structure/pbc'
 import type { RdfOptions, RdfPattern } from './index'
 
 const get_occu = (site: Crystal[`sites`][number], elem: string | undefined) =>
@@ -16,6 +16,64 @@ const has_species = (site: Crystal[`sites`][number], elem: string | undefined) =
 const sum_occu = (sites: Crystal[`sites`], elem: string | undefined) =>
   sites.reduce((sum, site) => sum + get_occu(site, elem), 0)
 
+// Symmetric ± lattice images on expanded PBC axes. Extents use reciprocal-axis norms
+// with search radius cutoff + cell diagonal (length-based ceil undercounts skewed cells).
+function build_rdf_neighbor_sites(
+  structure: Crystal,
+  pbc: Pbc,
+  cutoff: number,
+  auto_expand: boolean,
+): { sites: Site[]; dist_pbc: Pbc; dist_lattice: Matrix3x3 } {
+  const dist_lattice = structure.lattice.matrix
+  if (!auto_expand) return { sites: structure.sites, dist_pbc: pbc, dist_lattice }
+
+  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = dist_lattice
+  let cell_diag = 0
+  for (let bits = 0; bits < 8; bits++) {
+    const [ua, ub, uc] = [bits & 1, (bits >> 1) & 1, (bits >> 2) & 1]
+    cell_diag = Math.max(
+      cell_diag,
+      Math.hypot(
+        ua * ax + ub * bx + uc * cx,
+        ua * ay + ub * by + uc * cy,
+        ua * az + ub * bz + uc * cz,
+      ),
+    )
+  }
+  const { reciprocal_axis_norms } = create_lattice_converters(dist_lattice)
+  const search_radius = cutoff + cell_diag
+  const extents = ([0, 1, 2] as const).map((axis) =>
+    pbc[axis]
+      ? Math.max(0, Math.ceil(search_radius * reciprocal_axis_norms[axis] - 1e-12))
+      : 0,
+  ) as Vec3
+
+  if (extents.every((extent) => extent === 0)) {
+    return { sites: structure.sites, dist_pbc: pbc, dist_lattice }
+  }
+
+  const sites: Site[] = []
+  for (let ia = -extents[0]; ia <= extents[0]; ia++) {
+    for (let ib = -extents[1]; ib <= extents[1]; ib++) {
+      for (let ic = -extents[2]; ic <= extents[2]; ic++) {
+        const tx = ia * ax + ib * bx + ic * cx
+        const ty = ia * ay + ib * by + ic * cy
+        const tz = ia * az + ib * bz + ic * cz
+        for (const site of structure.sites) {
+          sites.push({ ...site, xyz: [site.xyz[0] + tx, site.xyz[1] + ty, site.xyz[2] + tz] })
+        }
+      }
+    }
+  }
+
+  const dist_pbc: Pbc = [
+    pbc[0] && extents[0] === 0,
+    pbc[1] && extents[1] === 0,
+    pbc[2] && extents[2] === 0,
+  ]
+  return { sites, dist_pbc, dist_lattice }
+}
+
 // Calculate radial distribution function
 export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): RdfPattern {
   const {
@@ -24,54 +82,31 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     cutoff = 15,
     n_bins = 75,
     auto_expand = true,
-    expansion_factor = 2.0,
   } = options
-  const { pbc = [true, true, true] } = options
+  const pbc = options.pbc ?? structure.lattice?.pbc ?? [true, true, true]
   if (cutoff <= 0 || n_bins <= 0) {
     throw new Error(`cutoff and n_bins must be positive`)
   }
 
-  // Validate structure has lattice
   if (!structure.lattice?.matrix) {
     throw new Error(`Crystal must have a lattice for RDF calculation`)
   }
 
-  let lattice: Matrix3x3 = structure.lattice.matrix
-  let { sites } = structure
-  let center_sites = sites
-
-  // Expand structure if needed to ensure shortest lattice vector is expansion_factor× the cutoff
-  // This prevents artificial close contacts at cell boundaries when using PBC
-  // Standard practice uses 2.0-2.5× to eliminate finite-size effects
-  if (auto_expand) {
-    const { a, b, c } = calc_lattice_params(lattice)
-    const min_size = cutoff * expansion_factor
-    const [n_a, n_b, n_c] = [a, b, c].map((len) => Math.ceil(min_size / len))
-
-    if (n_a > 1 || n_b > 1 || n_c > 1) {
-      const expanded_structure = make_supercell(
-        structure,
-        [n_a, n_b, n_c] as Vec3,
-        false, // Don't fold back to unit cell
-      )
-      sites = expanded_structure.sites
-      lattice = expanded_structure.lattice.matrix
-      // Keep PBC: min-image is exact once every lattice vector ≥ 2× cutoff (disabling PBC
-      // starves boundary atoms and biases g(r) low). Under full PBC all periodic copies are
-      // equivalent, so restrict centers to the first copy (make_supercell emits (0,0,0) first)
-      center_sites = pbc.every(Boolean) ? sites.slice(0, structure.sites.length) : sites
-    }
-  }
+  const {
+    sites: neighbor_sites,
+    dist_pbc,
+    dist_lattice,
+  } = build_rdf_neighbor_sites(structure, pbc, cutoff, auto_expand)
 
   const bin_size = cutoff / n_bins
   const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)
   const g_r = Array(n_bins).fill(0)
 
-  if (sites.length === 0) return { r, g_r }
-
-  // Get occupancy weight for a site-species pair (supports mixed occupancy)
-  const centers = center_sites.filter((site) => has_species(site, center_species))
-  const neighbors = sites.filter((site) => has_species(site, neighbor_species))
+  // Centers stay in the original cell; neighbor_sites may include periodic images
+  const centers = structure.sites.filter((site) => has_species(site, center_species))
+  const neighbors = neighbor_sites.filter((site) => has_species(site, neighbor_species))
+  // Normalization density uses the original cell (not the image cloud)
+  const norm_neighbors = structure.sites.filter((site) => has_species(site, neighbor_species))
 
   const element_pair =
     center_species && neighbor_species
@@ -79,16 +114,13 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
       : undefined
   if (centers.length === 0 || neighbors.length === 0) return { r, g_r, element_pair }
 
-  // Calculate distances and bin them with occupancy weighting
-  const use_pbc = pbc.some(Boolean)
-  const converters = use_pbc ? create_lattice_converters(lattice) : undefined
+  const use_pbc = dist_pbc.some(Boolean)
+  const converters = use_pbc ? create_lattice_converters(dist_lattice) : undefined
 
   for (const center of centers) {
     for (const neighbor of neighbors) {
-      if (center === neighbor) continue
-
       const dist = use_pbc
-        ? pbc_dist(center.xyz, neighbor.xyz, lattice, converters, pbc)
+        ? pbc_dist(center.xyz, neighbor.xyz, dist_lattice, converters, dist_pbc)
         : euclidean_dist(center.xyz, neighbor.xyz)
 
       if (dist > 0 && dist < cutoff) {
@@ -99,19 +131,16 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     }
   }
 
-  // Normalize using occupancy-weighted pair count (excludes self-interactions for same species)
+  // Ideal-gas normalization with original-cell density. Do not subtract self-pairs:
+  // dist > 0 already drops the true self term, while periodic images of the same atom
+  // are valid neighbors (critical for 1-atom cells).
   const center_weight = sum_occu(centers, center_species)
-  const neighbor_weight = sum_occu(neighbors, neighbor_species)
-  const self_weight =
-    center_species === neighbor_species
-      ? centers.reduce((sum, site) => sum + get_occu(site, center_species) ** 2, 0)
-      : 0
-  const n_pairs = center_weight * neighbor_weight - self_weight
-
-  if (n_pairs > 0) {
-    const volume = calc_lattice_params(lattice).volume
+  const neighbor_weight = sum_occu(norm_neighbors, neighbor_species)
+  const volume = calc_lattice_params(structure.lattice.matrix).volume
+  if (center_weight > 0 && neighbor_weight > 0 && volume > 0) {
     for (let idx = 0; idx < n_bins; idx++) {
-      g_r[idx] /= n_pairs * ((4 * Math.PI * r[idx] ** 2 * bin_size) / volume)
+      g_r[idx] /=
+        center_weight * neighbor_weight * ((4 * Math.PI * r[idx] ** 2 * bin_size) / volume)
     }
   }
 
