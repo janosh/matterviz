@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { load } from 'js-yaml'
 import { describe, expect, test } from 'vitest'
 
 const root = join(import.meta.dirname, `../..`)
@@ -44,5 +45,23 @@ describe(`repository documentation and metadata`, () => {
       ``,
     )
     expect(existsSync(join(root, repo_path))).toBe(true)
+  })
+
+  test(`citation metadata matches the current package release`, () => {
+    const pkg = JSON.parse(read(`package.json`)) as { version: string }
+    const citation = load(read(`citation.cff`)) as {
+      version: string
+      'date-released': Date | string
+    }
+    const release_date =
+      citation[`date-released`] instanceof Date
+        ? citation[`date-released`].toISOString().slice(0, 10)
+        : citation[`date-released`]
+    const bibtex = /```bib(?<entry>[\s\S]*?)```/.exec(read(`readme.md`))?.groups?.entry ?? ``
+
+    expect(citation.version).toBe(pkg.version)
+    expect(release_date).toBe(`2026-07-09`)
+    expect(bibtex).toContain(`date = {2026-07-09}`)
+    expect(bibtex).toContain(`version = {${pkg.version}}`)
   })
 })
