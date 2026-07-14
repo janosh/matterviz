@@ -632,6 +632,19 @@ describe(`k_lattice_inverse + cartesian_to_fractional`, () => {
     expect(cartesian_to_fractional(inv, [1, 1, 1])).toEqual([0.5, 0.25, 0.125])
   })
 
+  test(`round-trips coordinates for a non-orthogonal row lattice`, () => {
+    const skewed: Matrix3x3 = [
+      [1, 0, 0],
+      [0.5, Math.sqrt(3) / 2, 0],
+      [0, 0, 1],
+    ]
+    const inverse = k_lattice_inverse(skewed)
+    const fractional = cartesian_to_fractional(inverse, [0.5, Math.sqrt(3) / 2, 0])
+    expect(fractional?.[0]).toBeCloseTo(0, 12)
+    expect(fractional?.[1]).toBeCloseTo(1, 12)
+    expect(fractional?.[2]).toBeCloseTo(0, 12)
+  })
+
   test(`returns null for missing or singular lattice`, () => {
     expect(k_lattice_inverse(undefined)).toBeNull()
     expect(

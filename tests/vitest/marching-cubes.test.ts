@@ -189,6 +189,68 @@ describe(`marching_cubes`, () => {
     ).toBe(true)
   })
 
+  test(`returns Cartesian normals perpendicular to a skewed constant-x surface`, () => {
+    const skewed: Matrix3x3 = [
+      [1, 0, 0],
+      [0.5, Math.sqrt(3) / 2, 0],
+      [0, 0, 1],
+    ]
+    const grid = Array.from({ length: 4 }, (_, ix) =>
+      Array.from({ length: 5 }, () => Array.from({ length: 6 }, () => ix)),
+    )
+    const { normals } = marching_cubes(grid, 1.5, skewed, {
+      periodic: false,
+      centered: false,
+    })
+    expect(normals.length).toBeGreaterThan(0)
+    for (const normal of normals) {
+      expect(normal[0] * skewed[1][0] + normal[1] * skewed[1][1]).toBeCloseTo(0, 6)
+      expect(normal[2]).toBeCloseTo(0, 6)
+      expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
+    }
+  })
+
+  test(`accounts for unequal grid spacing before normalizing`, () => {
+    const [nx, ny, nz] = [3, 5, 4]
+    const grid = Array.from({ length: nx }, (_x, ix) =>
+      Array.from({ length: ny }, (_y, iy) =>
+        Array.from({ length: nz }, () => ix / (nx - 1) + iy / (ny - 1)),
+      ),
+    )
+    const { normals } = marching_cubes(grid, 0.75, IDENTITY, {
+      periodic: false,
+      centered: false,
+    })
+    expect(normals.length).toBeGreaterThan(0)
+    for (const [x, y, z] of normals) {
+      expect(Math.abs(x)).toBeCloseTo(Math.SQRT1_2, 5)
+      expect(Math.abs(y)).toBeCloseTo(Math.SQRT1_2, 5)
+      expect(z).toBeCloseTo(0, 5)
+    }
+  })
+
+  test(`skips singular-lattice normal transform when normals are disabled`, () => {
+    const singular_lattice: Matrix3x3 = [
+      [1, 0, 0],
+      [1, 0, 0],
+      [0, 0, 1],
+    ]
+    const grid = Array.from({ length: 4 }, (_x, ix) =>
+      Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => ix)),
+    )
+    let result: ReturnType<typeof marching_cubes> | undefined
+    expect(() => {
+      result = marching_cubes(grid, 1.5, singular_lattice, {
+        periodic: false,
+        centered: false,
+        normals: false,
+      })
+    }).not.toThrow()
+    expect(result?.vertices.length).toBeGreaterThan(0)
+    expect(result?.faces.length).toBeGreaterThan(0)
+    expect(result?.normals).toEqual([])
+  })
+
   test(`higher isovalue produces fewer faces for a blob`, () => {
     const grid = gaussian_grid(8)
     const low = marching_cubes(grid, 0.3, IDENTITY, NON_PERIODIC)

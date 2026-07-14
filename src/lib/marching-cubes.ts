@@ -1,6 +1,6 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import { mat3x3_vec3_multiply, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
 const wrap_grid_idx = (val: number, dim: number) => ((val % dim) + dim) % dim
 const clamp_grid_idx = (val: number, max: number) => Math.max(0, Math.min(val, max))
@@ -362,14 +362,17 @@ function compute_gradient(
     ? [wrap_grid_idx(iz - 1, nz), wrap_grid_idx(iz + 1, nz)]
     : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
 
-  const dx = (grid[ix_p][iy_w][iz_w] - grid[ix_m][iy_w][iz_w]) * 0.5
-  const dy = (grid[ix_w][iy_p][iz_w] - grid[ix_w][iy_m][iz_w]) * 0.5
-  const dz = (grid[ix_w][iy_w][iz_p] - grid[ix_w][iy_w][iz_m]) * 0.5
+  const dx =
+    (grid[ix_p][iy_w][iz_w] - grid[ix_m][iy_w][iz_w]) *
+    (periodic ? 0.5 : 1 / Math.max(1, ix_p - ix_m))
+  const dy =
+    (grid[ix_w][iy_p][iz_w] - grid[ix_w][iy_m][iz_w]) *
+    (periodic ? 0.5 : 1 / Math.max(1, iy_p - iy_m))
+  const dz =
+    (grid[ix_w][iy_w][iz_p] - grid[ix_w][iy_w][iz_m]) *
+    (periodic ? 0.5 : 1 / Math.max(1, iz_p - iz_m))
 
-  const len_sq = dx * dx + dy * dy + dz * dz
-  if (len_sq < 1e-20) return [0, 0, 1]
-  const inv_len = 1 / Math.sqrt(len_sq)
-  return [-dx * inv_len, -dy * inv_len, -dz * inv_len]
+  return [-dx, -dy, -dz]
 }
 
 // Main marching cubes algorithm (optimized version)
@@ -434,6 +437,7 @@ function marching_cubes_raw(
   const inv_nx = 1 / (periodic ? nx : nx - 1)
   const inv_ny = 1 / (periodic ? ny : ny - 1)
   const inv_nz = 1 / (periodic ? nz : nz - 1)
+  const normal_transform = compute_norms ? matrix_inverse_3x3(k_lattice) : null
 
   // Get or create vertex on an edge (fully optimized with flat array lookups)
   const get_vertex_on_edge = (
@@ -508,8 +512,28 @@ function marching_cubes_raw(
     )
 
     // Compute normal from grid gradient (skip if caller will compute from geometry)
-    if (compute_norms) {
-      const normal = compute_gradient(grid, ix + ox1, iy + oy1, iz + oz1, nx, ny, nz, periodic)
+    if (normal_transform) {
+      const grid_gradient = compute_gradient(
+        grid,
+        ix + ox1,
+        iy + oy1,
+        iz + oz1,
+        nx,
+        ny,
+        nz,
+        periodic,
+      )
+      const fractional_gradient: Vec3 = [
+        grid_gradient[0] / inv_nx,
+        grid_gradient[1] / inv_ny,
+        grid_gradient[2] / inv_nz,
+      ]
+      const cartesian_normal = mat3x3_vec3_multiply(normal_transform, fractional_gradient)
+      const length = Math.hypot(...cartesian_normal)
+      const normal: Vec3 =
+        length > 1e-10
+          ? (cartesian_normal.map((component) => component / length) as Vec3)
+          : [0, 0, 1]
       normals.push(normal[0], normal[1], normal[2])
     }
 
