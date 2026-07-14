@@ -850,13 +850,14 @@ export function make_nd_cache_key(
 ): string {
   const keyed = entries
     .map((entry) =>
-      [
+      JSON.stringify([
         formula_key_from_composition(entry.composition),
-        entry.energy,
-        entry.is_stable ?? ``,
-        entry.e_above_hull ?? ``,
-        entry.exclude_from_hull ?? ``,
-      ].join(`:`),
+        entry.energy ?? null,
+        entry.energy_per_atom ?? null,
+        entry.is_stable ?? null,
+        entry.e_above_hull ?? null,
+        entry.exclude_from_hull ?? null,
+      ]),
     )
     .sort()
   return `${keyed.join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
