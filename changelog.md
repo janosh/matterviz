@@ -1,5 +1,36 @@
 # Changelog
 
+## [v0.4.3](https://github.com/janosh/matterviz/compare/v0.4.2...v0.4.3)
+
+> 15 July 2026
+
+### 🚀 New Features
+
+- Add multi-volume isosurface scenes with simultaneous surfaces, cross-volume scalar coloring, trilinear sampling across mismatched grids, fractional display ranges, and grouped volume/layer controls https://github.com/janosh/matterviz/pull/376
+- Expose the VS Code webview as a reusable `matterviz/file-viewer` module with host protocols, worker-safe parsing, transfer planning, automatic plot selection, and combined trajectory/DOS views https://github.com/janosh/matterviz/pull/373
+
+### 🛠 Enhancements
+
+- Add multiline Treemap labels with hide/shrink/clip fitting, rotation, and anywidget zoom-root writeback; improve SVG export padding and plot overlay stability https://github.com/janosh/matterviz/pull/373
+- Harden large and compressed trajectory loading, embedded theme handling, plot pan/zoom bounds, stale reload behavior, and structure/treemap UI https://github.com/janosh/matterviz/pull/374
+- Add configurable volume-slice contours, Y flipping, synchronous rendering callbacks, bounded contour levels, and robust sampler-cache invalidation https://github.com/janosh/matterviz/pull/400
+- Improve VS Code auto-render eligibility, Explorer commands, shared file watchers, resource validation, and error reporting https://github.com/janosh/matterviz/pull/409
+
+### 🐛 Bug Fixes
+
+- Correct partial-PBC RDF expansion, nonorthogonal reciprocal coordinates and marching-cubes normals, chemical-potential cache keys, CIF zero occupancy, EXTXYZ periodicity, and binned-scatter automatic ranges https://github.com/janosh/matterviz/pull/405
+- Reload reactive `Structure`/`Trajectory` URLs safely, reject stale completions and streams, and keep lazy-frame details synchronized with the displayed trajectory frame https://github.com/janosh/matterviz/pull/409
+- Round-trip arbitrary JSON object keys, fix site metadata/error links, and align browser compression and VS Code file-size documentation with actual support https://github.com/janosh/matterviz/pull/410
+
+### 💡 Refactoring
+
+- Remove dead branches, exports, styles, and redundant tests across the library and extensions; consolidate shared helpers and settings factories while strengthening volume rendering and restored regression coverage https://github.com/janosh/matterviz/pull/400
+- Consolidate file-viewer, element, structure, scene, tooltip, trajectory, and embedded-theme infrastructure and move extension coverage into the main Vitest suite https://github.com/janosh/matterviz/pull/374
+
+### 🔒 Security Fixes
+
+- Sanitize chemical-potential axis-label HTML and make SSR sanitization fail closed instead of returning unsafe input when DOM emulation is unavailable https://github.com/janosh/matterviz/pull/405
+
 ## [v0.4.2](https://github.com/janosh/matterviz/compare/v0.4.1...v0.4.2)
 
 > 9 July 2026

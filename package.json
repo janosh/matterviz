@@ -1,6 +1,6 @@
 {
   "name": "matterviz",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Interactive visualizations for materials science: periodic tables, 3D structures, MD trajectories, heatmaps, scatter plots.",
   "keywords": [
     "chemistry",
@@ -216,8 +216,8 @@
     "prepublishOnly": "pnpm run package:dist"
   },
   "dependencies": {
-    "@spglib/moyo-wasm": "^0.14.0",
-    "@sveltejs/kit": "2.69.2",
+    "@spglib/moyo-wasm": "^0.15.0",
+    "@sveltejs/kit": "2.69.3",
     "@threlte/core": "^8.5.16",
     "@threlte/extras": "^9.21.0",
     "d3-array": "^3.2.4",
@@ -259,12 +259,12 @@
     "@vitest/coverage-v8": "4.1.10",
     "@wooorm/starry-night": "^3.10.0",
     "happy-dom": "^20.10.6",
-    "knip": "^6.25.0",
+    "knip": "^6.26.0",
     "mdsvex": "^0.12.7",
     "publint": "^0.3.21",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
-    "svelte": "^5.56.4",
+    "svelte": "^5.56.5",
     "svelte-check": "^4.7.2",
     "typescript": "^6.0.3",
     "vite": "^8.1.4",

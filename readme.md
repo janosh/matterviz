@@ -136,12 +136,12 @@ Use [`citation.cff`](citation.cff) or cite the [Zenodo record](https://zenodo.or
 @software{riebesell_matterviz_2022,
   title = {matterviz: visualization toolkit for materials informatics},
   author = {Riebesell, Janosh and Evans, Matthew},
-  date = {2026-07-09},
+  date = {2026-07-15},
   year = {2026},
   doi = {10.5281/zenodo.17094509},
   url = {https://github.com/janosh/matterviz},
   note = {10.5281/zenodo.17094509 - https://github.com/janosh/matterviz},
-  urldate = {2026-07-14}, % optional, replace with your date of access
-  version = {0.4.2}, % replace with the version you use
+  urldate = {2026-07-15}, % optional, replace with your date of access
+  version = {0.4.3}, % replace with the version you use
 }
 ```
