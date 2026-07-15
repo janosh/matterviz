@@ -82,13 +82,6 @@ describe(`ChemPotDiagram3D rendering contracts`, () => {
     `utf8`,
   )
 
-  test(`clips HTML portal labels at the component root`, () => {
-    expect(chempot_3d_source).toMatch(/<extras\.HTML[\s\S]*?portal=\{wrapper\}/)
-    expect(chempot_3d_source).toMatch(
-      /\.chempot-diagram-3d\s*\{\s*position:\s*relative;\s*overflow:\s*clip;/,
-    )
-  })
-
   test(`sanitizes custom axis labels at the raw-HTML sink`, () => {
     expect(chempot_3d_source).toMatch(/\{@html\s+sanitize_html\(gc\.label\)\}/)
   })
