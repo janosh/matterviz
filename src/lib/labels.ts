@@ -34,6 +34,17 @@ export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.from
   symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
 )
 
+// Format standalone scientific notation as HTML, e.g. 1.2e-3 → 1.2×10<sup>-3</sup>.
+// The result contains markup; sanitize untrusted surrounding text before rendering as HTML.
+export const format_power_ten = (text: string): string =>
+  text
+    .replaceAll(
+      /(?<![\w.])(?<base>\d+(?:\.\d+)?)e(?<exponent>[+-]?\d+)(?![\w.])/gi,
+      (_match, base: string, exponent: string) =>
+        `${base}×10<sup>${exponent.replace(/^\+/, ``)}</sup>`,
+    )
+    .replaceAll(/(?<![\d.])1×10(?=<sup>)/g, `10`)
+
 // Format a value for display with optional time formatting
 export function format_value(value: number, formatter?: string): string {
   if (!formatter) return `${value}`

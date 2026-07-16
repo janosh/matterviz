@@ -18,8 +18,10 @@ export * as bonding_strategies from './bonding'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
+export * from './measure'
 export * from './pbc'
 export * from './polyhedra'
+export * from './serialize'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCarousel } from './StructureCarousel.svelte'
@@ -39,6 +41,7 @@ export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 export { default as StructureViewport } from './StructureViewport.svelte'
 export * from './supercell'
+export * from './validation'
 
 export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
 export type BondEditMode = `add` | `delete`

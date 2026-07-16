@@ -16,4 +16,5 @@ export const element_by_symbol: ReadonlyMap<ElementSymbol, ChemicalElement> = ne
   element_data.map((element) => [element.symbol, element]),
 )
 
+export * from './groups'
 export { default } from './data.json.gz'

@@ -55,12 +55,64 @@ describe(`package.json exports`, () => {
   })
 
   test.each([
+    `./constants`,
+    `./controls`,
     `./file-viewer/eligibility`,
     `./file-viewer/host-protocol`,
     `./file-viewer/host-transfer`,
+    `./icons`,
+    `./isosurface/parse-vaspwave`,
+    `./json-path`,
+    `./keyboard`,
+    `./marching-cubes`,
+    `./optimade`,
+    `./sanitize`,
+    `./settings`,
+    `./structure/export`,
+    `./structure/measure`,
     `./theme/embedded`,
+    `./trajectory/parse`,
+    `./url-params`,
   ])(`publishes dedicated subpath %s`, (subpath) => {
     expect(pkg.exports[subpath]).toBeDefined()
+  })
+
+  test(`built structure and element entry points retain strict public exports`, async () => {
+    const structure_export = await import(`../../dist/structure/serialize.js`)
+    expect(pkg.exports[`./structure/export`]).toEqual({
+      types: `./dist/structure/serialize.d.ts`,
+      default: `./dist/structure/serialize.js`,
+    })
+    expect(Object.keys(structure_export).sort()).toEqual(
+      [
+        `create_structure_filename`,
+        `export_structure_as`,
+        `STRUCT_TEXT_FORMATS`,
+        `structure_to_cif_str`,
+        `structure_to_json_str`,
+        `structure_to_poscar_str`,
+        `structure_to_xyz_str`,
+      ].sort(),
+    )
+
+    const element_data = await import(`../../dist/element/data.js`)
+    const expected_group_keys = [
+      `all`,
+      `alkali`,
+      `alkaline_earth`,
+      `transition`,
+      `post_transition`,
+      `metalloid`,
+      `nonmetal`,
+      `halogen`,
+      `noble_gas`,
+      `lanthanide`,
+      `actinide`,
+    ]
+    expect(element_data.element_group_keys).toEqual(new Set(expected_group_keys))
+    expect(element_data.element_groups.map((group) => group.value)).toEqual(
+      expected_group_keys,
+    )
   })
 
   test(`embedded theme side effects stay isolated from the normal theme barrel`, () => {
