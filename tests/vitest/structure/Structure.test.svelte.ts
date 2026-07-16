@@ -1060,11 +1060,13 @@ describe(`Multi-side view`, () => {
   })
 
   test.each([
-    [`default width gap`, 601, 600, 4, 300, 200, false],
-    [`default height gap`, 800, 401, 4, 300, 200, false],
-    [`custom view rows below boundary`, 800, 603, 6, 300, 200, false],
-    [`custom view rows at boundary`, 800, 604, 6, 300, 200, true],
-    [`custom pane minimum boundary`, 402, 302, 4, 200, 150, true],
+    [`default width gap`, 601, 600, 4, 300, 200, 2, false],
+    [`default height gap`, 800, 401, 4, 300, 200, 2, false],
+    [`custom view rows below boundary`, 800, 603, 6, 300, 200, 2, false],
+    [`custom view rows at boundary`, 800, 604, 6, 300, 200, 2, true],
+    [`custom pane minimum boundary`, 402, 302, 4, 200, 150, 2, true],
+    [`larger gap below boundary`, 409, 310, 4, 200, 150, 10, false],
+    [`larger gap at boundary`, 410, 310, 4, 200, 150, 10, true],
   ] as const)(
     `responsive multi-view availability: %s`,
     async (
@@ -1074,6 +1076,7 @@ describe(`Multi-side view`, () => {
       view_count,
       min_pane_width,
       min_pane_height,
+      view_gap,
       expected_active,
     ) => {
       const size_spies = mock_viewer_size(client_width, client_height)
@@ -1087,6 +1090,7 @@ describe(`Multi-side view`, () => {
               multi_view: true,
               multi_view_min_pane_width: min_pane_width,
               multi_view_min_pane_height: min_pane_height,
+              multi_view_gap: view_gap,
               show_controls: `always` as const,
               views,
             },
@@ -1098,6 +1102,9 @@ describe(`Multi-side view`, () => {
 
         expect(document.querySelector(`button.multi-view-toggle`) !== null).toBe(
           expected_active,
+        )
+        expect(doc_query(`.structure`).style.getPropertyValue(`--struct-viewport-gap`)).toBe(
+          `${view_gap}px`,
         )
         expect(state.multi_view_active).toBe(expected_active)
       } finally {

@@ -126,6 +126,7 @@
     multi_view_active = $bindable(false),
     multi_view_min_pane_width = DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH,
     multi_view_min_pane_height = DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT,
+    multi_view_gap = DEFAULT_MULTI_VIEW_GAP,
     views = DEFAULT_STRUCTURE_VIEWS,
     enable_measure_mode = $bindable(true),
     measure_mode = $bindable<MeasureMode>(`distance`),
@@ -243,6 +244,7 @@
     // Minimum CSS-pixel dimensions for each pane before multi-view becomes available.
     multi_view_min_pane_width?: number
     multi_view_min_pane_height?: number
+    multi_view_gap?: number
     // The 4 (or more) view definitions used by multi_view. Defaults to an
     // Ovito-like set: one perspective + three orthographic axis views.
     views?: StructureView[]
@@ -868,13 +870,14 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
   let multi_view_row_count = $derived(Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT))
+  let multi_view_gap_px = $derived(Math.max(0, multi_view_gap))
   let multi_view_required_width = $derived(
     MULTI_VIEW_COLUMN_COUNT * Math.max(0, multi_view_min_pane_width) +
-      (MULTI_VIEW_COLUMN_COUNT - 1) * DEFAULT_MULTI_VIEW_GAP,
+      (MULTI_VIEW_COLUMN_COUNT - 1) * multi_view_gap_px,
   )
   let multi_view_required_height = $derived(
     multi_view_row_count * Math.max(0, multi_view_min_pane_height) +
-      Math.max(0, multi_view_row_count - 1) * DEFAULT_MULTI_VIEW_GAP,
+      Math.max(0, multi_view_row_count - 1) * multi_view_gap_px,
   )
   let multi_view_available = $derived(
     views.length > 1 &&
@@ -1649,6 +1652,7 @@
   class:active={info_pane_open || controls_open || export_pane_open}
   class:gizmo-visible={viewer_active && Boolean(scene_gizmo)}
   class:multi-view={is_multi_view_active}
+  style:--struct-viewport-gap="{multi_view_gap_px}px"
   role="application"
   tabindex="0"
   aria-label="Structure viewer"
@@ -2144,7 +2148,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-auto-rows: 1fr;
-    gap: var(--struct-viewport-gap, 2px);
+    gap: var(--struct-viewport-gap);
   }
   .multi-view-toggle.active {
     color: var(--accent-color, #4a9eff);
