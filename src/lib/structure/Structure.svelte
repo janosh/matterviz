@@ -390,12 +390,9 @@
     clear_camera_state()
     try {
       const parsed = parse_any_structure(structure_string, `string`)
-      if (parsed) {
-        structure = parsed
-        untrack(() => emit_file_load_event(parsed, `string`, structure_string))
-      } else {
-        throw new Error(`Failed to parse structure from string`)
-      }
+      if (!parsed) throw new Error(`Failed to parse structure from string`)
+      structure = parsed
+      untrack(() => emit_file_load_event(parsed, `string`, structure_string))
     } catch (err) {
       error_msg = `Failed to parse structure from string: ${to_error(err).message}`
       untrack(() => on_error?.({ error_msg, filename: `string` }))
@@ -436,14 +433,12 @@
 
   // Optimize scene props for performance based on structure size and mode
   $effect(() => {
-    if (structure?.sites && performance_mode === `speed`) {
-      const site_count = structure.sites.length
-      const current_sphere_segments = scene_props.sphere_segments || 20
+    if (!structure?.sites || performance_mode !== `speed`) return
+    const current_sphere_segments = scene_props.sphere_segments || 20
 
-      // Reduce sphere segments for large structures in speed mode
-      if (site_count > 200) {
-        scene_props.sphere_segments = Math.min(current_sphere_segments, 12)
-      }
+    // Reduce sphere segments for large structures in speed mode
+    if (structure.sites.length > 200) {
+      scene_props.sphere_segments = Math.min(current_sphere_segments, 12)
     }
   })
 
@@ -576,7 +571,6 @@
   }
 
   function undo_bond_edit() {
-    if (bond_undo_stack.length === 0) return
     const restored = bond_undo_stack.pop()
     if (!restored) return
     bond_redo_stack.push(snapshot_bond_edits())
@@ -584,7 +578,6 @@
   }
 
   function redo_bond_edit() {
-    if (bond_redo_stack.length === 0) return
     const restored = bond_redo_stack.pop()
     if (!restored) return
     bond_undo_stack.push(snapshot_bond_edits())
@@ -870,7 +863,9 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
   let multi_view_row_count = $derived(Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT))
-  let multi_view_gap_px = $derived(Math.max(0, multi_view_gap))
+  let multi_view_gap_px = $derived(
+    Math.max(0, Number.isFinite(multi_view_gap) ? multi_view_gap : DEFAULT_MULTI_VIEW_GAP),
+  )
   let multi_view_required_width = $derived(
     MULTI_VIEW_COLUMN_COUNT * Math.max(0, multi_view_min_pane_width) +
       (MULTI_VIEW_COLUMN_COUNT - 1) * multi_view_gap_px,
@@ -885,10 +880,12 @@
       height >= multi_view_required_height,
   )
   // Preserve the caller's multi_view preference while temporarily collapsing small viewers.
-  let is_multi_view_active = $derived(multi_view && multi_view_available)
+  let is_multi_view_active = $state(false)
   // This is output-only state: parent writes are overwritten with the actual render state.
   $effect(() => {
-    if (multi_view_active !== is_multi_view_active) multi_view_active = is_multi_view_active
+    const active = multi_view && multi_view_available
+    is_multi_view_active = active
+    if (multi_view_active !== active) multi_view_active = active
   })
   let multi_view_unavailable_reason = $derived(
     views.length < 2
@@ -1011,30 +1008,30 @@
     ) {
       supercell_structure = base_structure
       supercell_loading = false
-    } else {
-      // For large supercells, show loading state and use async generation
-      const sites_count = base_structure.sites?.length || 0
-      // lenient parse just for a size estimate (invalid factors count as 1)
-      const scaling_mult = supercell_scaling
-        .split(/[x×]/)
-        .reduce((product, factor) => product * (Number(factor) || 1), 1)
-      const estimated_sites = sites_count * scaling_mult
+      return
+    }
+    // For large supercells, show loading state and use async generation
+    const sites_count = base_structure.sites?.length || 0
+    // lenient parse just for a size estimate (invalid factors count as 1)
+    const scaling_mult = supercell_scaling
+      .split(/[x×]/)
+      .reduce((product, factor) => product * (Number(factor) || 1), 1)
+    const estimated_sites = sites_count * scaling_mult
 
-      // Show spinner for supercells with >1000 estimated sites or scaling >8
-      const show_loading = estimated_sites > 1000 || scaling_mult > 8
+    // Show spinner for supercells with >1000 estimated sites or scaling >8
+    const show_loading = estimated_sites > 1000 || scaling_mult > 8
 
-      if (show_loading) {
-        supercell_loading = true
-        // Use setTimeout to allow UI to update before heavy computation
-        supercell_timeout = setTimeout(() => {
-          supercell_structure = make_supercell_safe(base_structure as Crystal)
-          supercell_loading = false
-        }, 10)
-      } else {
+    if (show_loading) {
+      supercell_loading = true
+      // Use setTimeout to allow UI to update before heavy computation
+      supercell_timeout = setTimeout(() => {
         supercell_structure = make_supercell_safe(base_structure as Crystal)
         supercell_loading = false
-      }
+      }, 10)
+      return
     }
+    supercell_structure = make_supercell_safe(base_structure as Crystal)
+    supercell_loading = false
   })
 
   // Clear selections, site overrides, and stale camera target when transformations
@@ -1371,33 +1368,31 @@
 
       if (event.key === `Delete` || event.key === `Backspace`) {
         // Delete selected atoms
-        if (selected_sites.length > 0 && structure?.sites) {
-          is_internal_edit = true
-          push_undo()
-          const to_delete = scene_to_structure_indices(selected_sites, true)
-          const n_deleted = to_delete.size
-          clear_selection()
-          // Remap explicit bond metadata so surviving bonds track shifted site indices.
-          // structure_with_bonds prefers the bindable `bonds` prop, so remap that too.
-          if (bonds !== undefined) bonds = remap_bonds_after_deletion(bonds, to_delete)
-          const old_bonds = structure.properties?.bonds
-          structure = {
-            ...structure,
-            sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
-            ...(old_bonds && {
-              properties: {
-                ...structure.properties,
-                bonds: remap_bonds_after_deletion(old_bonds, to_delete),
-              },
-            }),
-          }
-          // Clear per-site overrides since indices shifted after deletion
-          if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-          clear_bond_edits()
-          show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
-          return true
+        if (selected_sites.length === 0 || !structure?.sites) return false
+        is_internal_edit = true
+        push_undo()
+        const to_delete = scene_to_structure_indices(selected_sites, true)
+        const n_deleted = to_delete.size
+        clear_selection()
+        // Remap explicit bond metadata so surviving bonds track shifted site indices.
+        // structure_with_bonds prefers the bindable `bonds` prop, so remap that too.
+        if (bonds !== undefined) bonds = remap_bonds_after_deletion(bonds, to_delete)
+        const old_bonds = structure.properties?.bonds
+        structure = {
+          ...structure,
+          sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
+          ...(old_bonds && {
+            properties: {
+              ...structure.properties,
+              bonds: remap_bonds_after_deletion(old_bonds, to_delete),
+            },
+          }),
         }
-        return false
+        // Clear per-site overrides since indices shifted after deletion
+        if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
+        clear_bond_edits()
+        show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
+        return true
       }
       const key = event.key.toLowerCase()
       const plain = !event.ctrlKey && !event.metaKey && !event.altKey
@@ -1596,9 +1591,7 @@
   function handle_add_atom(xyz: Vec3, element: ElementSymbol) {
     if (!structure) return
     const elem = normalize_element(element)
-    if (!elem) {
-      return console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
-    }
+    if (!elem) return console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
     is_internal_edit = true
     push_undo()
     structure = {

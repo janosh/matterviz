@@ -1067,6 +1067,8 @@ describe(`Multi-side view`, () => {
     [`custom pane minimum boundary`, 402, 302, 4, 200, 150, 2, true],
     [`larger gap below boundary`, 409, 310, 4, 200, 150, 10, false],
     [`larger gap at boundary`, 410, 310, 4, 200, 150, 10, true],
+    [`NaN gap uses default`, 602, 402, 4, 300, 200, Number.NaN, true],
+    [`infinite gap uses default`, 602, 402, 4, 300, 200, Number.POSITIVE_INFINITY, true],
   ] as const)(
     `responsive multi-view availability: %s`,
     async (
@@ -1103,8 +1105,9 @@ describe(`Multi-side view`, () => {
         expect(document.querySelector(`button.multi-view-toggle`) !== null).toBe(
           expected_active,
         )
+        const expected_gap = Number.isFinite(view_gap) ? Math.max(0, view_gap) : 2
         expect(doc_query(`.structure`).style.getPropertyValue(`--struct-viewport-gap`)).toBe(
-          `${view_gap}px`,
+          `${expected_gap}px`,
         )
         expect(state.multi_view_active).toBe(expected_active)
       } finally {
