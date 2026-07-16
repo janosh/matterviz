@@ -1,5 +1,11 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
+import {
+  grid_dimensions,
+  grid_value,
+  is_scalar_grid,
+  type ScalarGridLike,
+} from '$lib/isosurface/grid'
 import { mat3x3_vec3_multiply, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
 const wrap_grid_idx = (val: number, dim: number) => ((val % dim) + dim) % dim
@@ -339,7 +345,7 @@ export interface MarchingCubesOptions {
 
 // Compute gradient (normal) at a grid point using central differences
 function compute_gradient(
-  grid: number[][][],
+  grid: ScalarGridLike,
   ix: number,
   iy: number,
   iz: number,
@@ -362,19 +368,33 @@ function compute_gradient(
     ? [wrap_grid_idx(iz - 1, nz), wrap_grid_idx(iz + 1, nz)]
     : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
 
-  const x_lo = grid[ix_m][iy_w][iz_w]
-  const x_hi = grid[ix_p][iy_w][iz_w]
-  const y_lo = grid[ix_w][iy_m][iz_w]
-  const y_hi = grid[ix_w][iy_p][iz_w]
-  const z_row = grid[ix_w][iy_w]
   const scale = (lo: number, hi: number) => 1 / Math.max(1, periodic ? 2 : hi - lo)
-  const gz = -(z_row[iz_p] - z_row[iz_m]) * scale(iz_m, iz_p)
+  if (!is_scalar_grid(grid)) {
+    const x_lo = grid[ix_m][iy_w][iz_w]
+    const x_hi = grid[ix_p][iy_w][iz_w]
+    const y_lo = grid[ix_w][iy_m][iz_w]
+    const y_hi = grid[ix_w][iy_p][iz_w]
+    const z_row = grid[ix_w][iy_w]
+    const gz = -(z_row[iz_p] - z_row[iz_m]) * scale(iz_m, iz_p)
+    return [
+      -(x_hi - x_lo) * scale(ix_m, ix_p),
+      -(y_hi - y_lo) * scale(iy_m, iy_p),
+      gz,
+    ]
+  }
+  const x_lo = grid_value(grid, ix_m, iy_w, iz_w)
+  const x_hi = grid_value(grid, ix_p, iy_w, iz_w)
+  const y_lo = grid_value(grid, ix_w, iy_m, iz_w)
+  const y_hi = grid_value(grid, ix_w, iy_p, iz_w)
+  const gz =
+    -(grid_value(grid, ix_w, iy_w, iz_p) - grid_value(grid, ix_w, iy_w, iz_m)) *
+    scale(iz_m, iz_p)
   return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
 }
 
 // Main marching cubes algorithm (optimized version)
 function marching_cubes_raw(
-  grid: number[][][],
+  grid: ScalarGridLike,
   iso_value: number,
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
@@ -390,9 +410,7 @@ function marching_cubes_raw(
   // centered at the origin (Γ point). This is needed for proper BZ visualization.
   const center_offset = centered ? 0.5 : 0
 
-  const nx = grid.length
-  const ny = grid[0]?.length || 0
-  const nz = grid[0]?.[0]?.length || 0
+  const [nx, ny, nz] = grid_dimensions(grid)
 
   if (nx < 2 || ny < 2 || nz < 2) {
     return { positions: [], indices: [], normals: [] }
@@ -548,32 +566,47 @@ function marching_cubes_raw(
 
   // Preallocate cube_values array (reuse across iterations)
   const cube_values: number[] = Array(8)
+  const scalar_grid = is_scalar_grid(grid) ? grid : null
+  const nested_grid = scalar_grid ? null : (grid as number[][][])
 
   for (let ix = 0; ix < max_x; ix++) {
     x_edge_cache.fill(-1)
     y_edge_next.fill(-1)
     z_edge_next.fill(-1)
-    const ix_row = grid[ix]
-    const ix1_row = grid[(ix + 1) % nx]
+    const ix1 = (ix + 1) % nx
+    const ix_row = nested_grid?.[ix] ?? []
+    const ix1_row = nested_grid?.[ix1] ?? []
 
     for (let iy = 0; iy < max_y; iy++) {
-      const iy_col = ix_row[iy]
-      const iy1_col = ix_row[(iy + 1) % ny]
-      const ix1_iy_col = ix1_row[iy]
-      const ix1_iy1_col = ix1_row[(iy + 1) % ny]
+      const iy1 = (iy + 1) % ny
+      const iy_col = ix_row[iy] ?? []
+      const iy1_col = ix_row[iy1] ?? []
+      const ix1_iy_col = ix1_row[iy] ?? []
+      const ix1_iy1_col = ix1_row[iy1] ?? []
 
       for (let iz = 0; iz < max_z; iz++) {
         const iz1 = (iz + 1) % nz
 
-        // Get corner values (inlined for speed)
-        cube_values[0] = iy_col[iz]
-        cube_values[1] = ix1_iy_col[iz]
-        cube_values[2] = ix1_iy1_col[iz]
-        cube_values[3] = iy1_col[iz]
-        cube_values[4] = iy_col[iz1]
-        cube_values[5] = ix1_iy_col[iz1]
-        cube_values[6] = ix1_iy1_col[iz1]
-        cube_values[7] = iy1_col[iz1]
+        if (scalar_grid) {
+          cube_values[0] = grid_value(scalar_grid, ix, iy, iz)
+          cube_values[1] = grid_value(scalar_grid, ix1, iy, iz)
+          cube_values[2] = grid_value(scalar_grid, ix1, iy1, iz)
+          cube_values[3] = grid_value(scalar_grid, ix, iy1, iz)
+          cube_values[4] = grid_value(scalar_grid, ix, iy, iz1)
+          cube_values[5] = grid_value(scalar_grid, ix1, iy, iz1)
+          cube_values[6] = grid_value(scalar_grid, ix1, iy1, iz1)
+          cube_values[7] = grid_value(scalar_grid, ix, iy1, iz1)
+        } else {
+          // Preserve direct nested-array reads for the existing hot path.
+          cube_values[0] = iy_col[iz]
+          cube_values[1] = ix1_iy_col[iz]
+          cube_values[2] = ix1_iy1_col[iz]
+          cube_values[3] = iy1_col[iz]
+          cube_values[4] = iy_col[iz1]
+          cube_values[5] = ix1_iy_col[iz1]
+          cube_values[6] = ix1_iy1_col[iz1]
+          cube_values[7] = iy1_col[iz1]
+        }
 
         // Compute cube index (unrolled for speed)
         let cube_index = 0
@@ -617,7 +650,7 @@ function marching_cubes_raw(
 // compatibility arrays. This avoids one Vec3 and one triangle-array allocation
 // per emitted vertex/face while preserving the public marching_cubes() API.
 export function marching_cubes_buffers(
-  grid: number[][][],
+  grid: ScalarGridLike,
   iso_value: number,
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
@@ -637,7 +670,7 @@ const packed_to_vec3 = (values: number[]): Vec3[] =>
   })
 
 export function marching_cubes(
-  grid: number[][][],
+  grid: ScalarGridLike,
   iso_value: number,
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
