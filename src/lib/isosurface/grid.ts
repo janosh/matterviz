@@ -26,8 +26,11 @@ export const grid_dimensions = (grid: ScalarGridLike): Vec3 => {
     return [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
   }
   const dimensions: Vec3 = [...grid.dimensions]
-  if (dimensions.some((count) => !Number.isInteger(count) || count < 0)) {
-    throw new RangeError(`Scalar grid dimensions must be non-negative integers`)
+  if (
+    dimensions.length !== 3 ||
+    dimensions.some((count) => !Number.isInteger(count) || count < 0)
+  ) {
+    throw new RangeError(`Scalar grid dimensions must contain three non-negative integers`)
   }
   if (grid.order !== `x_fastest` && grid.order !== `z_fastest`) {
     throw new RangeError(`Unsupported scalar grid order: ${String(grid.order)}`)

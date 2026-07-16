@@ -226,6 +226,16 @@ describe(`marching_cubes`, () => {
       error: RangeError,
     },
     {
+      label: `missing dimension`,
+      grid: { data: new Float64Array(4), dimensions: [2, 2], order: `z_fastest` },
+      error: RangeError,
+    },
+    {
+      label: `extra dimension`,
+      grid: { data: new Float64Array(8), dimensions: [2, 2, 2, 4], order: `z_fastest` },
+      error: RangeError,
+    },
+    {
       label: `unsupported order`,
       grid: { data: new Float64Array(8), dimensions: [2, 2, 2], order: `y_fastest` },
       error: RangeError,
