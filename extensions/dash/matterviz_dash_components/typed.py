@@ -54,6 +54,7 @@ class Structure(MatterViz):
         measured_sites: list[int] | None = None,
         multi_view: bool | None = None,
         multi_view_active: bool | None = None,
+        multi_view_gap: float | None = None,
         multi_view_min_pane_height: float | None = None,
         multi_view_min_pane_width: float | None = None,
         performance_mode: Any | None = None,
@@ -142,6 +143,8 @@ class Structure(MatterViz):
             mv_props["multi_view"] = multi_view
         if multi_view_active is not None:
             mv_props["multi_view_active"] = multi_view_active
+        if multi_view_gap is not None:
+            mv_props["multi_view_gap"] = multi_view_gap
         if multi_view_min_pane_height is not None:
             mv_props["multi_view_min_pane_height"] = multi_view_min_pane_height
         if multi_view_min_pane_width is not None:
