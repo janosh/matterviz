@@ -38,9 +38,9 @@ export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.from
 export const format_power_ten = (text: string): string =>
   escape_html(text)
     .replaceAll(
-      /(?<![\w.])(?<base>\d+(?:\.\d*)?|\.\d+)e(?<exponent>[+-]?\d+)(?![\w.])/gi,
+      /(?<![\w.])(?<base>\d+(?:\.\d*)?|\.\d+)e(?<exponent>[-+−]?\d+)(?![\w.])/gi,
       (_match, base: string, exponent: string) =>
-        `${base}×10<sup>${exponent.replace(/^\+/, ``)}</sup>`,
+        `${base}×10<sup>${exponent.replace(/^\+/, ``).replace(`−`, `-`)}</sup>`,
     )
     .replaceAll(/(?<![\d.])1×10(?=<sup>)/g, `10`)
 

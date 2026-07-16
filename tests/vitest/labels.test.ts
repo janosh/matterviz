@@ -70,6 +70,7 @@ test(`format_num uses defaults and respects overrides`, () => {
 
 test.each([
   [`1.23e-4`, `1.23×10<sup>-4</sup>`],
+  [`1e−3`, `10<sup>-3</sup>`],
   [`.5e3`, `.5×10<sup>3</sup>`],
   [`1.e3`, `1.×10<sup>3</sup>`],
   [`5.67e+8`, `5.67×10<sup>8</sup>`],

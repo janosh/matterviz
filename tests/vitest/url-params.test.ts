@@ -6,6 +6,7 @@ import {
   sort_url_entries,
   sync_url_params,
   url_with_params,
+  valid_query_param,
   weights_to_param,
   type WeightsConfig,
 } from '$lib/url-params'
@@ -46,6 +47,15 @@ test.each([
     [`sort`, expected.column, `force`],
     [`dir`, expected.dir, `desc`],
   ])
+})
+
+test(`valid_query_param accepts ReadonlySet implementations`, () => {
+  const valid_values = {
+    has: (value: string) => value === `energy`,
+  } as unknown as ReadonlySet<`energy`>
+  expect(
+    valid_query_param(new URLSearchParams(`sort=energy`), `sort`, `force`, valid_values),
+  ).toBe(`energy`)
 })
 
 const make_weights = (weights: number[]): WeightsConfig => ({

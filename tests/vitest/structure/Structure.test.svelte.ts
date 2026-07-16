@@ -196,6 +196,10 @@ describe(`Structure`, () => {
   test.each([
     [{ supercell_scaling: `2x1x1` }, true],
     [{ supercell_scaling: `invalid` }, false],
+    [{ supercell_scaling: `1×1×1` }, false],
+    [{ supercell_scaling: `1,1,1` }, false],
+    [{ supercell_scaling: `1 1 1` }, false],
+    [{ supercell_scaling: ` 1 ` }, false],
     [{ cell_type: `conventional` }, true],
   ] as const)(
     `sets edit-bonds availability for %o to disabled=%s`,
@@ -236,7 +240,17 @@ describe(`Structure`, () => {
       throw new Error(`malformed scaling matrix`)
     })
     try {
-      mount_structure({ structure, supercell_scaling: `2x2x2` })
+      let measure_mode: MeasureMode = `edit-bonds`
+      mount_structure({
+        structure,
+        supercell_scaling: `2x2x2`,
+        get measure_mode() {
+          return measure_mode
+        },
+        set measure_mode(value) {
+          measure_mode = value
+        },
+      })
 
       await vi.waitFor(() => {
         // error log proves make_supercell was called, threw, and was caught
@@ -254,6 +268,7 @@ describe(`Structure`, () => {
         )
         expect(legend_total).toBe(base_total)
       })
+      expect(measure_mode).toBe(`edit-bonds`)
     } finally {
       vi.mocked(make_supercell).mockReset()
       error_spy.mockRestore()
@@ -1069,6 +1084,8 @@ describe(`Multi-side view`, () => {
     [`larger gap at boundary`, 410, 310, 4, 200, 150, 10, true],
     [`NaN gap uses default`, 602, 402, 4, 300, 200, Number.NaN, true],
     [`infinite gap uses default`, 602, 402, 4, 300, 200, Number.POSITIVE_INFINITY, true],
+    [`NaN pane width uses default`, 602, 402, 4, Number.NaN, 200, 2, true],
+    [`infinite pane height uses default`, 602, 402, 4, 300, Infinity, 2, true],
   ] as const)(
     `responsive multi-view availability: %s`,
     async (

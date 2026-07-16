@@ -1,13 +1,6 @@
 import type { ChemicalElement, ElementCategory } from './types'
 
-export type ElementGroup = {
-  value: string
-  label: string
-  tooltip?: string
-  includes: (element: ChemicalElement) => boolean
-}
-
-const category_groups: [string, string, ElementCategory][] = [
+const category_groups = [
   [`alkali`, `Alkali metals`, `alkali metal`],
   [`alkaline_earth`, `Alkaline earth metals`, `alkaline earth metal`],
   [`transition`, `Transition metals`, `transition metal`],
@@ -16,7 +9,16 @@ const category_groups: [string, string, ElementCategory][] = [
   [`noble_gas`, `Noble gases`, `noble gas`],
   [`lanthanide`, `Lanthanides`, `lanthanide`],
   [`actinide`, `Actinides`, `actinide`],
-]
+] as const satisfies readonly (readonly [string, string, ElementCategory])[]
+
+type CategoryGroupKey = (typeof category_groups)[number][0]
+export type ElementGroupKey = `all` | `nonmetal` | `halogen` | CategoryGroupKey
+export type ElementGroup = {
+  readonly value: ElementGroupKey
+  readonly label: string
+  readonly tooltip?: string
+  readonly includes: (element: ChemicalElement) => boolean
+}
 
 const to_group = ([value, label, category]: (typeof category_groups)[number]) => ({
   value,
@@ -25,7 +27,7 @@ const to_group = ([value, label, category]: (typeof category_groups)[number]) =>
 })
 
 /** Overlapping element filters; a single element can belong to multiple groups. */
-export const element_groups: ElementGroup[] = [
+export const element_groups: readonly ElementGroup[] = [
   { value: `all`, label: `All`, tooltip: `Show all elements`, includes: () => true },
   ...category_groups.slice(0, 5).map(to_group),
   {
@@ -44,4 +46,6 @@ export const element_groups: ElementGroup[] = [
   ...category_groups.slice(5).map(to_group),
 ]
 
-export const element_group_keys = new Set(element_groups.map(({ value }) => value))
+export const element_group_keys: ReadonlySet<ElementGroupKey> = new Set(
+  element_groups.map(({ value }) => value),
+)

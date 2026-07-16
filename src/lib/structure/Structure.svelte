@@ -43,11 +43,7 @@
   } from '$lib/structure'
   import { push_edit, step_history } from '$lib/structure/edit-history'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
-  import {
-    is_valid_supercell_input,
-    make_supercell,
-    parse_supercell_scaling,
-  } from '$lib/structure/supercell'
+  import { make_supercell, parse_supercell_scaling } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import { transform_cell } from '$lib/symmetry'
@@ -866,12 +862,28 @@
   let multi_view_gap_px = $derived(
     Math.max(0, Number.isFinite(multi_view_gap) ? multi_view_gap : DEFAULT_MULTI_VIEW_GAP),
   )
+  let multi_view_min_pane_width_px = $derived(
+    Math.max(
+      0,
+      Number.isFinite(multi_view_min_pane_width)
+        ? multi_view_min_pane_width
+        : DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH,
+    ),
+  )
+  let multi_view_min_pane_height_px = $derived(
+    Math.max(
+      0,
+      Number.isFinite(multi_view_min_pane_height)
+        ? multi_view_min_pane_height
+        : DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT,
+    ),
+  )
   let multi_view_required_width = $derived(
-    MULTI_VIEW_COLUMN_COUNT * Math.max(0, multi_view_min_pane_width) +
+    MULTI_VIEW_COLUMN_COUNT * multi_view_min_pane_width_px +
       (MULTI_VIEW_COLUMN_COUNT - 1) * multi_view_gap_px,
   )
   let multi_view_required_height = $derived(
-    multi_view_row_count * Math.max(0, multi_view_min_pane_height) +
+    multi_view_row_count * multi_view_min_pane_height_px +
       Math.max(0, multi_view_row_count - 1) * multi_view_gap_px,
   )
   let multi_view_available = $derived(
@@ -956,11 +968,17 @@
   // measured ~15x slower for compute_bonds on a 704-site supercell.
   let supercell_structure = $state.raw(structure)
   let supercell_loading = $state(false)
-  let has_supercell = $derived(
-    is_valid_supercell_input(supercell_scaling) && ![`1x1x1`, `1`].includes(supercell_scaling),
-  )
+  let supercell_applied = $state(false)
+  let supercell_factors = $derived.by((): Vec3 | undefined => {
+    try {
+      return parse_supercell_scaling(supercell_scaling)
+    } catch {
+      return undefined
+    }
+  })
+  let has_supercell = $derived(supercell_factors?.some((factor) => factor !== 1) ?? false)
   let bond_edits_enabled = $derived(
-    cell_type === `original` && !has_supercell && !supercell_loading,
+    cell_type === `original` && !(has_supercell && supercell_applied) && !supercell_loading,
   )
 
   $effect(() => {
@@ -978,20 +996,19 @@
   // volumes). Gate on !supercell_loading so tiled surfaces and the supercell
   // structure update in the same frame (large supercells defer via setTimeout).
   let volume_scaling = $derived.by((): Vec3 => {
-    if (!has_supercell || supercell_loading) return [1, 1, 1]
-    try {
-      return parse_supercell_scaling(supercell_scaling)
-    } catch {
-      return [1, 1, 1]
-    }
+    if (!has_supercell || !supercell_applied || supercell_loading) return [1, 1, 1]
+    return supercell_factors ?? [1, 1, 1]
   })
 
   let supercell_timeout: ReturnType<typeof setTimeout> | undefined
   // Compute the supercell, falling back to the unscaled structure on error
   const make_supercell_safe = (base: Crystal): Crystal => {
     try {
-      return make_supercell(base, supercell_scaling)
+      const next_structure = make_supercell(base, supercell_scaling)
+      supercell_applied = true
+      return next_structure
     } catch (error) {
+      supercell_applied = false
       console.error(`Failed to create supercell:`, error)
       show_toast(`Failed to create supercell: ${to_error(error).message}`)
       return base
@@ -1000,12 +1017,8 @@
   $effect(() => {
     const base_structure = cell_transformed_structure
     clearTimeout(supercell_timeout)
-    if (
-      !base_structure ||
-      !(`lattice` in base_structure) ||
-      !has_supercell ||
-      !is_valid_supercell_input(supercell_scaling)
-    ) {
+    supercell_applied = false
+    if (!base_structure || !(`lattice` in base_structure) || !has_supercell) {
       supercell_structure = base_structure
       supercell_loading = false
       return
