@@ -787,20 +787,21 @@
   async function handle_internal_file_drop(internal_data: string): Promise<boolean> {
     try {
       const file_info = JSON.parse(internal_data)
+      const source = { source_filename: file_info.name }
 
       // Check if this is a binary file
       if (file_info.is_binary) {
         if (file_info.content instanceof ArrayBuffer) {
-          await load_trajectory_data(file_info.content, file_info.name)
+          await load_trajectory_data(file_info.content, file_info.name, { source })
         } else if (file_info.content_url) {
           const response = await fetch(file_info.content_url)
           const array_buffer = await response.arrayBuffer()
-          await load_trajectory_data(array_buffer, file_info.name)
+          await load_trajectory_data(array_buffer, file_info.name, { source })
         } else {
           console.warn(`Binary file without ArrayBuffer or blob URL:`, file_info.name)
         }
       } else {
-        await load_trajectory_data(file_info.content, file_info.name)
+        await load_trajectory_data(file_info.content, file_info.name, { source })
       }
       return true
     } catch (error) {
@@ -827,11 +828,11 @@
 
       // Handle URL-based files (e.g. from FilePicker)
       const handled = await io
-        .handle_url_drop(event, async (content, filename) => {
+        .handle_url_drop(event, async (content, filename, metadata) => {
           current_filename = filename
           file_size =
             content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
-          await load_trajectory_data(content, filename)
+          await load_trajectory_data(content, filename, { source: metadata })
         })
         .catch(() => false)
 
@@ -846,7 +847,8 @@
 
         // Read file content directly
         const content = await read_file_content(file)
-        await load_trajectory_data(content, file.name)
+        const source = { source_filename: file.name }
+        await load_trajectory_data(content, file.name, { source })
         // Don't fall through: drops from IDEs/file managers often also carry a
         // text/plain payload (the file path) which would clobber the loaded data
         return
@@ -888,12 +890,13 @@
     loading = true
     error_msg = null
 
-    io.load_from_url(requested_url, async (content, filename) => {
+    io.load_from_url(requested_url, async (content, filename, metadata) => {
       if (!is_current()) return
       current_filename = filename
       file_size =
         content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
       await load_trajectory_data(content, filename, {
+        source: metadata,
         on_trajectory_loaded: (loaded_trajectory) => {
           if (!is_current()) return
           url_owned_trajectory = loaded_trajectory
@@ -933,9 +936,10 @@
     options: {
       on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
       should_commit?: () => boolean
+      source?: io.FileLoadMeta
     } = {},
   ) {
-    const { on_trajectory_loaded, should_commit = () => true } = options
+    const { on_trajectory_loaded, should_commit = () => true, source } = options
     loading = true
     error_msg = null
     parsing_progress = null
@@ -986,6 +990,7 @@
         frame_count: loaded_trajectory?.frames.length ?? 0,
         total_atoms: loaded_trajectory?.frames[0]?.structure.sites.length ?? 0,
         filename,
+        ...source,
         file_size: file_size_bytes,
       })
     } catch (err) {

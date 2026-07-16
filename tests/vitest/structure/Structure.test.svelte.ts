@@ -885,7 +885,7 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`prioritizes data_url over structure_string`, async () => {
-    let filename = ``
+    let load_data: StructureHandlerData | undefined
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       text: () => Promise.resolve(SAMPLE_POSCAR_CONTENT),
@@ -893,10 +893,30 @@ describe(`Structure string parsing`, () => {
     mount_structure({
       data_url: `/test.poscar`,
       structure_string: `ignored`,
-      on_file_load: (data: StructureHandlerData) => (filename = data.filename ?? ``),
+      on_file_load: (data: StructureHandlerData) => (load_data = data),
     })
     await tick()
-    expect(filename).toBe(`test.poscar`)
+    expect(load_data?.filename).toBe(`test.poscar`)
+    expect(load_data?.source_filename).toBe(`test.poscar`)
+    expect(load_data?.source_url).toBe(`/test.poscar`)
+  })
+
+  test(`keeps compressed source identity separate from the logical filename`, async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(SAMPLE_POSCAR_CONTENT, {
+        headers: { 'content-encoding': `gzip` },
+      }),
+    )
+    let load_data: StructureHandlerData | undefined
+    mount_structure({
+      data_url: `/test.poscar.gz`,
+      on_file_load: (data: StructureHandlerData) => (load_data = data),
+    })
+
+    await vi.waitFor(() => expect(load_data).toBeDefined())
+    expect(load_data?.filename).toBe(`test.poscar`)
+    expect(load_data?.source_filename).toBe(`test.poscar.gz`)
+    expect(load_data?.source_url).toBe(`/test.poscar.gz`)
   })
 
   const structure_json = (element: string, count = 1) =>

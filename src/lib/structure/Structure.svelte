@@ -248,8 +248,8 @@
     bottom_left?: Snippet<[{ structure?: AnyStructure }]>
     top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
     data_url?: string // URL to load structure from (alternative to providing structure directly)
-    // Generic callback for when files are dropped - receives raw content and filename
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    // Generic callback for dropped content, its logical filename, and stable source identity.
+    on_file_drop?: io.FileLoadCallback
     // spinner props (passed to Spinner component)
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
@@ -342,15 +342,15 @@
     loading = true
     error_msg = undefined
 
-    io.load_from_url(requested_url, (content, filename) => {
+    io.load_from_url(requested_url, (content, filename, metadata) => {
       if (!is_current()) return // stale response
       if (on_file_drop) {
-        on_file_drop(content, filename)
+        on_file_drop(content, filename, metadata)
         loaded_data_url = requested_url
       } else {
         // Parse structure internally when no handler provided
         try {
-          parse_and_emit_file(content, filename)
+          parse_and_emit_file(content, filename, metadata)
           url_owned_structure = structure
           loaded_data_url = requested_url
         } catch (error) {
@@ -1193,10 +1193,12 @@
     loaded_structure: AnyStructure,
     filename: string,
     content: string | ArrayBuffer,
+    metadata?: io.FileLoadMeta,
   ) =>
     on_file_load?.({
       structure: loaded_structure,
       filename,
+      ...metadata,
       file_size: typeof content === `string` ? new Blob([content]).size : content.byteLength,
       total_atoms: loaded_structure.sites?.length || 0,
     })
@@ -1288,18 +1290,22 @@
     return parsed
   }
 
-  function parse_and_emit_file(content: string | ArrayBuffer, filename: string): void {
+  function parse_and_emit_file(
+    content: string | ArrayBuffer,
+    filename: string,
+    metadata?: io.FileLoadMeta,
+  ): void {
     const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-    emit_file_load_event(parse_file_content(text, filename), filename, content)
+    emit_file_load_event(parse_file_content(text, filename), filename, content, metadata)
   }
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
     // Parse errors propagate so multi-file batches aggregate all failures into
     // one message instead of the last error overwriting earlier ones
-    on_drop: (content, filename) => {
-      if (on_file_drop) return on_file_drop(content, filename)
-      parse_and_emit_file(content, filename)
+    on_drop: (content, filename, metadata) => {
+      if (on_file_drop) return on_file_drop(content, filename, metadata)
+      parse_and_emit_file(content, filename, metadata)
     },
     on_error: (msg) => {
       error_msg = msg

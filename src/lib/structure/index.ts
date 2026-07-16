@@ -2,6 +2,7 @@ import type { CompositionType } from '$lib/composition'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
+import type { FileLoadData } from '$lib/io/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
@@ -293,9 +294,8 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
   return [...seen].sort(compare_vector_keys)
 }
 
-export interface StructureHandlerData {
+export interface StructureHandlerData extends FileLoadData {
   structure?: AnyStructure
-  filename?: string
   file_size?: number
   total_atoms?: number
   error_msg?: string

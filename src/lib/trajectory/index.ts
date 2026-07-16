@@ -1,5 +1,6 @@
 // Utility functions for working with trajectory data
 import type { ComponentProps } from 'svelte'
+import type { FileLoadData } from '$lib/io/types'
 import type { AnyStructure } from '$lib/structure/index'
 import type Trajectory from './Trajectory.svelte'
 
@@ -68,12 +69,11 @@ export interface TrajectoryType {
 }
 
 // Unified handler data interface
-export interface TrajHandlerData {
+export interface TrajHandlerData extends FileLoadData {
   trajectory?: TrajectoryType
   step_idx?: number
   frame_count?: number
   frame?: TrajectoryFrame
-  filename?: string
   file_size?: number
   total_atoms?: number
   error_msg?: string

@@ -35,7 +35,7 @@
     IrreducibleBZData,
   } from './types'
 
-  type BZHandlerData = {
+  type BZHandlerData = io.FileLoadData & {
     structure?: Crystal
     bz_data?: BrillouinZoneData
     bz_order?: number
@@ -127,7 +127,7 @@
     allow_file_drop?: boolean
     fullscreen_toggle?: FullscreenToggleProp
     data_url?: string
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    on_file_drop?: io.FileLoadCallback
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
@@ -176,7 +176,11 @@
   let controls_config = $derived(normalize_show_controls(show_controls))
 
   // Parse and load structure from content
-  function parse_structure(content: string | ArrayBuffer, filename: string) {
+  function parse_structure(
+    content: string | ArrayBuffer,
+    filename: string,
+    metadata?: io.FileLoadMeta,
+  ) {
     const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
     const parsed = parse_any_structure(text, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
@@ -184,13 +188,17 @@
     structure = parsed as Crystal
     current_filename = filename
     const file_size = new Blob([content]).size
-    on_file_load?.({ structure, bz_data, bz_order, filename, file_size })
+    on_file_load?.({ structure, bz_data, bz_order, filename, ...metadata, file_size })
   }
 
   // Load with error handling
-  function safe_parse(content: string | ArrayBuffer, filename: string) {
+  function safe_parse(
+    content: string | ArrayBuffer,
+    filename: string,
+    metadata?: io.FileLoadMeta,
+  ) {
     try {
-      parse_structure(content, filename)
+      parse_structure(content, filename, metadata)
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename })
@@ -260,9 +268,11 @@
       const load_id = ++data_url_load_id
       loading = true
       error_msg = undefined
-      io.load_from_url(requested_url, (content, filename) => {
+      io.load_from_url(requested_url, (content, filename, metadata) => {
         if (load_id !== data_url_load_id) return
-        return on_file_drop ? on_file_drop(content, filename) : safe_parse(content, filename)
+        return on_file_drop
+          ? on_file_drop(content, filename, metadata)
+          : safe_parse(content, filename, metadata)
       })
         .catch((err) => {
           if (load_id !== data_url_load_id) return
@@ -286,7 +296,8 @@
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: (content, filename) => (on_file_drop || safe_parse)(content, filename),
+    on_drop: (content, filename, metadata) =>
+      (on_file_drop || safe_parse)(content, filename, metadata),
     on_error: (msg) => {
       error_msg = msg
       on_error?.({ error_msg: msg })

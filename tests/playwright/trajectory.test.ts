@@ -1,5 +1,6 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { IS_CI } from './helpers'
 
 // Extended timeout for elements that load after trajectory data (plots, controls)
@@ -13,6 +14,23 @@ const describe_local_only = (title: string, callback: () => void): void => {
 
 const has_orientation_layout_class = (class_name: string | null): boolean =>
   class_name?.includes(`vertical`) === true || class_name?.includes(`horizontal`) === true
+
+test(`homepage keeps the compressed trajectory source URL after loading`, async ({ page }) => {
+  const compressed_path = `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
+  const compressed_data = await readFile(`src/site${compressed_path}`)
+  const trajectory_requests: string[] = []
+  await page.route(`**${compressed_path}`, (route) =>
+    route.fulfill({ body: compressed_data, contentType: `application/gzip` }),
+  )
+  page.on(`request`, (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.startsWith(compressed_path.replace(/\.gz$/, ``))) trajectory_requests.push(path)
+  })
+
+  await page.goto(`/`, { waitUntil: `networkidle` })
+
+  expect(trajectory_requests).toEqual([compressed_path])
+})
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {

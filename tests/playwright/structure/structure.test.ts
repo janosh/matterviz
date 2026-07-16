@@ -1,6 +1,7 @@
 import { DEFAULTS } from '$lib/settings'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
+import { gzipSync } from 'node:zlib'
 import {
   canvas_screenshot,
   dispatch_cancelable_keydown,
@@ -16,6 +17,53 @@ import {
 } from '../helpers'
 
 const is_mac = process.platform === `darwin`
+const compressed_source_path = `/structures/source-loop.json.gz`
+const source_structure = JSON.stringify({
+  lattice: {
+    matrix: [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  },
+  sites: [
+    {
+      species: [{ element: `H`, occu: 1 }],
+      abc: [0, 0, 0],
+      xyz: [0, 0, 0],
+      label: `H1`,
+      properties: {},
+    },
+  ],
+})
+async function expect_compressed_source_url(
+  page: Page,
+  route_path: string,
+  heading_tag: string,
+): Promise<void> {
+  const requests: string[] = []
+  await page.route(`**${compressed_source_path}`, (route) =>
+    route.fulfill({ body: gzipSync(source_structure), contentType: `application/gzip` }),
+  )
+  page.on(`request`, (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.startsWith(compressed_source_path.replace(/\.gz$/, ``))) requests.push(path)
+  })
+
+  await page.goto(`${route_path}?file=${compressed_source_path.split(`/`).at(-1)}`, {
+    waitUntil: `networkidle`,
+  })
+
+  await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(
+    `source-loop.json`,
+  )
+  expect(requests.length).toBeGreaterThan(0)
+  expect(new Set(requests)).toEqual(new Set([compressed_source_path]))
+}
+test(`/structure keeps the compressed source URL after loading`, ({ page }) =>
+  expect_compressed_source_url(page, `/structure`, `h3`))
+test(`/structure/symmetry keeps the compressed source URL after loading`, ({ page }) =>
+  expect_compressed_source_url(page, `/structure/symmetry`, `h2`))
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {

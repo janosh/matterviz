@@ -133,7 +133,7 @@
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
-    on_file_drop?: (filename: string) => void
+    on_file_drop?: (filename: string, metadata: io.FileLoadMeta) => void
     on_file_load?: (data: FermiFileLoadData) => void
     on_error?: (data: FermiErrorData) => void
     on_fullscreen_change?: (data: FermiFullscreenData) => void
@@ -171,7 +171,11 @@
     )
 
   // Parse and load Fermi surface from content (async for UI responsiveness)
-  async function parse_fermi_content(content: string | ArrayBuffer, filename: string) {
+  async function parse_fermi_content(
+    content: string | ArrayBuffer,
+    filename: string,
+    metadata?: io.FileLoadMeta,
+  ) {
     const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
 
     // parse_fermi_file throws a descriptive error when parsing fails
@@ -189,13 +193,17 @@
       fermi_data = extract_fermi_surface(band_data, { mu, wigner_seitz: true })
     }
 
-    on_file_load?.({ fermi_data, band_data, filename, file_size })
+    on_file_load?.({ fermi_data, band_data, filename, ...metadata, file_size })
   }
 
   // Load with error handling
-  async function safe_parse(content: string | ArrayBuffer, filename: string) {
+  async function safe_parse(
+    content: string | ArrayBuffer,
+    filename: string,
+    metadata?: io.FileLoadMeta,
+  ) {
     try {
-      await parse_fermi_content(content, filename)
+      await parse_fermi_content(content, filename, metadata)
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename })
@@ -304,9 +312,9 @@
     const current_load_id = ++load_id
     loading = true
     error_msg = undefined
-    io.load_from_url(requested_url, (content, filename) => {
+    io.load_from_url(requested_url, (content, filename, metadata) => {
       if (current_load_id !== load_id) return
-      return safe_parse(content, filename)
+      return safe_parse(content, filename, metadata)
     })
       .catch((err) => {
         if (current_load_id !== load_id) return
@@ -320,9 +328,9 @@
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: async (content, filename) => {
-      on_file_drop?.(filename)
-      await safe_parse(content, filename)
+    on_drop: async (content, filename, metadata) => {
+      on_file_drop?.(filename, metadata)
+      await safe_parse(content, filename, metadata)
     },
     on_error: (msg) => {
       error_msg = msg

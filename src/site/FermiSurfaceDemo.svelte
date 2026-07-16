@@ -119,12 +119,11 @@
   bind:error_msg
   bind:loading
   show_controls="hover"
-  on_file_drop={(filename: string) => {
-    active_file = filename
-    update_url(filename)
+  on_file_drop={(_filename, { source_filename }) => {
+    active_file = source_filename
+    update_url(source_filename)
   }}
   on_file_load={(data: FermiFileLoadData) => {
-    active_file = data.filename
     fermi_data = data.fermi_data
     band_data = data.band_data
     error_msg = undefined

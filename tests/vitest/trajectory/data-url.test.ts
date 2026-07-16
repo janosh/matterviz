@@ -52,6 +52,8 @@ describe(`Trajectory data_url loading`, () => {
     expect(error_data).toBeUndefined()
     expect(load_data?.frame_count).toBe(2)
     expect(load_data?.filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
+    expect(load_data?.source_filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
+    expect(load_data?.source_url).toBe(BLOB_URL)
     expect(load_data?.trajectory?.metadata?.source_format).toBe(`xyz_trajectory`)
   })
 

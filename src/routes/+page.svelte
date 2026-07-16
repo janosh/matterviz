@@ -3,7 +3,6 @@
   import Icon from '$lib/Icon.svelte'
   import Structure from '$lib/structure/Structure.svelte'
   import Trajectory from '$lib/trajectory/Trajectory.svelte'
-  import type { TrajHandlerData } from '$lib/trajectory'
   import {
     ConvexHullDemo,
     FermiSurfaceDemo,
@@ -120,9 +119,6 @@
 <Trajectory
   data_url="/trajectories/{active_trajectory_file}"
   class="full-bleed"
-  on_file_load={(data: TrajHandlerData) => {
-    if (data.filename) active_trajectory_file = data.filename
-  }}
   style="max-height: 700px"
 />
 
