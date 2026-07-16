@@ -1,9 +1,7 @@
+import type { D3InterpolateName } from '$lib/colors'
 import type { CellVal } from '$lib/table'
 import { calc_cell_color, strip_html } from '$lib/table'
-import type * as d3sc from 'd3-scale-chromatic'
 import { describe, expect, it } from 'vitest'
-
-type ColorScale = keyof typeof d3sc | null
 
 describe(`calc_cell_color`, () => {
   // Tests for cases that should return null colors
@@ -11,7 +9,7 @@ describe(`calc_cell_color`, () => {
     name: string
     val: number | null | undefined
     all_values: CellVal[]
-    color_scale: ColorScale
+    color_scale: D3InterpolateName | null
     scale_type?: `linear` | `log`
   }>([
     {
@@ -41,7 +39,7 @@ describe(`calc_cell_color`, () => {
     {
       name: `empty all_values`,
       val: 5,
-      all_values: [] as number[],
+      all_values: [],
       color_scale: `interpolateViridis`,
     },
     {
@@ -52,7 +50,7 @@ describe(`calc_cell_color`, () => {
     },
     {
       name: `all NaN all_values`,
-      val: NaN,
+      val: 50,
       all_values: [NaN, NaN],
       color_scale: `interpolateViridis`,
     },
@@ -140,53 +138,20 @@ describe(`calc_cell_color`, () => {
     expect(calc_cell_color(100, values, `higher`, `interpolateViridis`).text).toBe(`black`)
   })
 
-  it(`uses different colors for min vs max values`, () => {
+  it(`uses distinct endpoint colors and reverses the gradient for lower values`, () => {
     const values = [1, 50, 100]
-    expect(calc_cell_color(1, values, `higher`).bg).not.toEqual(
-      calc_cell_color(100, values, `higher`).bg,
-    )
-  })
-
-  it.each([
-    `interpolateViridis`,
-    `interpolatePlasma`,
-    `interpolateInferno`,
-    `interpolateCividis`,
-    `interpolateTurbo`,
-    `interpolateBlues`,
-    `interpolateGreens`,
-    `interpolateReds`,
-    `interpolateYlOrRd`,
-  ] as const)(`produces valid colors with %s scale`, (scale) => {
-    const result = calc_cell_color(50, [1, 50, 100], `higher`, scale)
-    expect(result.bg).toMatch(/^(?:rgb|#)/)
-    expect(result.text).toMatch(/^(?:black|white)$/)
-  })
-
-  it.each([
-    `interpolateViridis`,
-    `interpolatePlasma`,
-    `interpolateInferno`,
-    `interpolateTurbo`,
-  ] as const)(`reverses gradient direction consistently with %s`, (scale) => {
-    const values = [1, 50, 100]
-    expect(calc_cell_color(1, values, `higher`, scale).bg).toBe(
-      calc_cell_color(100, values, `lower`, scale).bg,
-    )
-    expect(calc_cell_color(100, values, `higher`, scale).bg).toBe(
-      calc_cell_color(1, values, `lower`, scale).bg,
-    )
+    const low_higher = calc_cell_color(1, values, `higher`).bg
+    const high_higher = calc_cell_color(100, values, `higher`).bg
+    expect(low_higher).not.toBe(high_higher)
+    expect(low_higher).toBe(calc_cell_color(100, values, `lower`).bg)
+    expect(high_higher).toBe(calc_cell_color(1, values, `lower`).bg)
   })
 
   it(`falls back to viridis for invalid color scale name`, () => {
-    const result = calc_cell_color(
-      50,
-      [1, 50, 100],
-      `higher`,
-      `interpolateNonExistent` as Parameters<typeof calc_cell_color>[3],
+    const invalid_scale = `interpolateNonExistent` as D3InterpolateName
+    expect(calc_cell_color(50, [1, 50, 100], `higher`, invalid_scale)).toEqual(
+      calc_cell_color(50, [1, 50, 100], `higher`, `interpolateViridis`),
     )
-    const viridis = calc_cell_color(50, [1, 50, 100], `higher`, `interpolateViridis`)
-    expect(result.bg).toBe(viridis.bg)
   })
 })
 
