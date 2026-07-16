@@ -40,16 +40,12 @@ const as_scalar_grid = (
   const dimensions: Vec3 = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
   const [nx, ny, nz] = dimensions
   const data =
-    precision === `f32`
-      ? new Float32Array(nx * ny * nz)
-      : new Float64Array(nx * ny * nz)
+    precision === `f32` ? new Float32Array(nx * ny * nz) : new Float64Array(nx * ny * nz)
   for (let ix = 0; ix < nx; ix++) {
     for (let iy = 0; iy < ny; iy++) {
       for (let iz = 0; iz < nz; iz++) {
         const offset =
-          order === `x_fastest`
-            ? ix + nx * (iy + ny * iz)
-            : iz + nz * (iy + ny * ix)
+          order === `x_fastest` ? ix + nx * (iy + ny * iz) : iz + nz * (iy + ny * ix)
         data[offset] = grid[ix][iy][iz]
       }
     }
@@ -166,8 +162,7 @@ describe(`marching_cubes`, () => {
   test(`ScalarGrid3D preserves periodic wrapped geometry`, () => {
     const min_frac = (idx: number, size: number) => Math.min(idx / size, 1 - idx / size)
     const grid = make_grid(5, 4, 6, (ix, iy, iz) => {
-      const radius =
-        min_frac(ix, 5) ** 2 + min_frac(iy, 4) ** 2 + min_frac(iz, 6) ** 2
+      const radius = min_frac(ix, 5) ** 2 + min_frac(iy, 4) ** 2 + min_frac(iz, 6) ** 2
       return Math.exp(-radius / 0.04)
     })
     const expected = marching_cubes(grid, 0.35, IDENTITY, PERIODIC)
@@ -206,9 +201,11 @@ describe(`marching_cubes`, () => {
       const result = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
       expect([result.vertices, result.faces, result.normals]).toEqual([[], [], []])
       const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, NON_PERIODIC)
-      expect([buffers.positions.length, buffers.indices.length, buffers.normals.length]).toEqual([
-        0, 0, 0,
-      ])
+      expect([
+        buffers.positions.length,
+        buffers.indices.length,
+        buffers.normals.length,
+      ]).toEqual([0, 0, 0])
     },
   )
 

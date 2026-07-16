@@ -376,11 +376,7 @@ function compute_gradient(
     const y_hi = grid[ix_w][iy_p][iz_w]
     const z_row = grid[ix_w][iy_w]
     const gz = -(z_row[iz_p] - z_row[iz_m]) * scale(iz_m, iz_p)
-    return [
-      -(x_hi - x_lo) * scale(ix_m, ix_p),
-      -(y_hi - y_lo) * scale(iy_m, iy_p),
-      gz,
-    ]
+    return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
   }
   const x_lo = grid_value(grid, ix_m, iy_w, iz_w)
   const x_hi = grid_value(grid, ix_p, iy_w, iz_w)

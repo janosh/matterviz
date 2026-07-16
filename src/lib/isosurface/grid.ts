@@ -1,6 +1,6 @@
 import type { Vec3 } from '$lib/math'
 
-export type ScalarGridArray = Float32Array | Float64Array
+type ScalarGridArray = Float32Array | Float64Array
 export type ScalarGridOrder = `x_fastest` | `z_fastest`
 
 // Contiguous scalar storage with explicit dimensions and linearization order.
@@ -55,9 +55,7 @@ const flat_index = (
   y_idx: number,
   z_idx: number,
 ): number =>
-  order === `x_fastest`
-    ? x_idx + nx * (y_idx + ny * z_idx)
-    : z_idx + nz * (y_idx + ny * x_idx)
+  order === `x_fastest` ? x_idx + nx * (y_idx + ny * z_idx) : z_idx + nz * (y_idx + ny * x_idx)
 
 export function grid_value(
   grid: ScalarGridLike,
