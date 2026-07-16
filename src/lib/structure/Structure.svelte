@@ -957,7 +957,7 @@
   let supercell_structure = $state.raw(structure)
   let supercell_loading = $state(false)
   let has_supercell = $derived(
-    Boolean(supercell_scaling) && ![``, `1x1x1`, `1`].includes(supercell_scaling),
+    is_valid_supercell_input(supercell_scaling) && ![`1x1x1`, `1`].includes(supercell_scaling),
   )
   let bond_edits_enabled = $derived(
     cell_type === `original` && !has_supercell && !supercell_loading,
@@ -1832,8 +1832,10 @@
               <div class="add-atom-input">
                 <label>
                   <span>Element:</span>
+                  <!-- svelte-ignore a11y_autofocus (focus is intentional for keyboard-driven atom editing) -->
                   <input
                     type="text"
+                    autofocus
                     bind:value={add_element}
                     maxlength="2"
                     placeholder="C"

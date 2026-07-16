@@ -194,37 +194,41 @@ describe(`Structure`, () => {
   })
 
   test.each([
-    { props: { supercell_scaling: `2x1x1` }, reason: `supercell` },
-    { props: { cell_type: `conventional` }, reason: `transformed cell` },
-  ] as const)(`disables edit-bonds mode for $reason views`, async ({ props }) => {
-    let measure_mode: MeasureMode = `distance`
-    mount_structure({
-      structure,
-      show_controls: true,
-      get measure_mode() {
-        return measure_mode
-      },
-      set measure_mode(value) {
-        measure_mode = value
-      },
-      ...props,
-    })
+    [{ supercell_scaling: `2x1x1` }, true],
+    [{ supercell_scaling: `invalid` }, false],
+    [{ cell_type: `conventional` }, true],
+  ] as const)(
+    `sets edit-bonds availability for %o to disabled=%s`,
+    async (props, disabled) => {
+      let measure_mode: MeasureMode = `distance`
+      mount_structure({
+        structure,
+        show_controls: true,
+        get measure_mode() {
+          return measure_mode
+        },
+        set measure_mode(value) {
+          measure_mode = value
+        },
+        ...props,
+      })
 
-    const measure_btn = doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`)
-    // icon-only button needs an accessible name (title alone is unreliable for AT)
-    expect(measure_btn.getAttribute(`aria-label`)).toBe(`Measure / Edit`)
-    measure_btn.click()
-    await tick()
-    const edit_bonds_button = [
-      ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-    ].find((button) => button.textContent?.includes(`Edit Bonds`))
+      const measure_btn = doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`)
+      // icon-only button needs an accessible name (title alone is unreliable for AT)
+      expect(measure_btn.getAttribute(`aria-label`)).toBe(`Measure / Edit`)
+      measure_btn.click()
+      await tick()
+      const edit_bonds_button = [
+        ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
+      ].find((button) => button.textContent?.includes(`Edit Bonds`))
 
-    expect(edit_bonds_button).toBeDefined()
-    expect(edit_bonds_button?.disabled).toBe(true)
-    edit_bonds_button?.click()
-    await tick()
-    expect(measure_mode).toBe(`distance`)
-  })
+      expect(edit_bonds_button).toBeDefined()
+      expect(edit_bonds_button?.disabled).toBe(disabled)
+      edit_bonds_button?.click()
+      await tick()
+      expect(measure_mode).toBe(disabled ? `distance` : `edit-bonds`)
+    },
+  )
 
   test(`falls back to untransformed structure when make_supercell throws`, async () => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
