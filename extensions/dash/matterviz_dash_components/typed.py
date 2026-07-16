@@ -53,10 +53,6 @@ class Structure(MatterViz):
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
         multi_view: bool | None = None,
-        multi_view_active: bool | None = None,
-        multi_view_gap: float | None = None,
-        multi_view_min_pane_height: float | None = None,
-        multi_view_min_pane_width: float | None = None,
         performance_mode: Any | None = None,
         png_dpi: float | None = None,
         reset_text: str | None = None,
@@ -79,6 +75,10 @@ class Structure(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
+        multi_view_active: bool | None = None,
+        multi_view_min_pane_height: float | None = None,
+        multi_view_min_pane_width: float | None = None,
+        multi_view_gap: float | None = None,
         **kwargs,
     ):
         if mv_props is None:

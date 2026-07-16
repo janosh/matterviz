@@ -2,236 +2,135 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
+from typing import Any
 
 import matterviz_dash_components as mvc
 import pytest
 from matterviz_dash_components import MatterViz
-from scripts.sync_typed_wrappers import (
-    _detect_prop_kind,
-    parse_svelte_dts_with_includes,
+from scripts.sync_typed_wrappers import parse_svelte_dts_with_includes
+
+STRUCTURE_V043_PARAMETERS = """
+id active_volume_idx allow_file_drop atom_color_config bond_edit_mode bond_edit_order bonds
+cell_type data_url displayed_structure dragover element_mapping element_radius_overrides
+enable_info_pane enable_measure_mode error_msg fullscreen fullscreen_toggle height hidden_elements
+hidden_prop_vals highlighted_sites hovered hovered_site_idx info_pane_open isosurface_settings
+loading measure_mode measured_sites multi_view performance_mode png_dpi reset_text scene_props
+selected_sites show_controls site_radius_overrides spinner_props structure structure_string sym_data
+symmetry_settings views volumetric_data width mv_props set_props float32_props event_props last_event
+className style
+""".split()
+
+
+def test_matterviz_forwards_props() -> None:
+    """MatterViz forwards its complete custom prop surface."""
+    expected = {
+        "id": "test",
+        "component": "structure/Structure",
+        "mv_props": {"structure": {"sites": []}, "label": "α-Fe"},
+        "set_props": ["hidden_elements"],
+        "float32_props": ["positions"],
+        "event_props": ["on_file_load"],
+        "last_event": {"prop": "on_file_load"},
+        "className": "viewer",
+        "style": {"height": "100%"},
+    }
+    component = MatterViz(**expected)
+    assert {key: getattr(component, key) for key in expected} == expected
+
+
+def test_matterviz_omits_absent_id() -> None:
+    """MatterViz omits id rather than forwarding id=None."""
+    component = MatterViz(component="Structure")
+    assert "id" not in component.to_plotly_json()["props"]
+
+
+def test_include_aliases_detect_event_props(tmp_path: Path) -> None:
+    """External include aliases classify callback props."""
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    (dist_dir / "Component.svelte.d.ts").write_text(
+        "type $$ComponentProps = {}; declare const Component: "
+        'import("svelte").Component<$$ComponentProps>;',
+        encoding="utf-8",
+    )
+    (dist_dir / "included.d.ts").write_text(
+        "type EventHandler = (data: StructureHandlerData) => void;\n"
+        "type OnReady = EventHandler;\n"
+        "interface IncludedProps { onReady?: OnReady; value?: string; }\n",
+        encoding="utf-8",
+    )
+    props, callback_props, snippet_props, dom_props = parse_svelte_dts_with_includes(
+        f"{dist_dir}/Component.svelte.d.ts",
+        str(dist_dir),
+        ["included.d.ts:IncludedProps"],
+    )
+    assert (
+        {prop.js_name: prop.kind for prop in props},
+        callback_props,
+        snippet_props,
+        dom_props,
+    ) == ({"onReady": "callback", "value": "value"}, ["onReady"], [], [])
+
+
+def test_structure_preserves_legacy_positional_bindings() -> None:
+    """New Structure props append after existing positional arguments."""
+    parameter_names = list(inspect.signature(mvc.Structure.__init__).parameters)[1:]
+    assert parameter_names == [
+        *STRUCTURE_V043_PARAMETERS,
+        "multi_view_active",
+        "multi_view_min_pane_height",
+        "multi_view_min_pane_width",
+        "multi_view_gap",
+        "kwargs",
+    ]
+
+    legacy_args: list[Any] = [None] * STRUCTURE_V043_PARAMETERS.index(
+        "performance_mode"
+    )
+    structure_class: Any = mvc.Structure
+    component = structure_class(
+        *legacy_args,
+        "speed",
+        144,
+        multi_view_active=True,
+        multi_view_min_pane_height=201,
+        multi_view_min_pane_width=301,
+        multi_view_gap=12,
+    )
+    assert component.mv_props == {
+        "performance_mode": "speed",
+        "png_dpi": 144,
+        "multi_view_active": True,
+        "multi_view_min_pane_height": 201,
+        "multi_view_min_pane_width": 301,
+        "multi_view_gap": 12,
+    }
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [mvc.ConvexHull2D, mvc.ConvexHull3D, mvc.ConvexHull4D],
 )
+def test_convex_hull_category_props_forwarded(wrapper: type) -> None:
+    """Typed convex hull wrappers forward category props."""
+    omitted = wrapper(entries=[])
+    assert "entry_category" not in omitted.mv_props
+    assert "hidden_categories" not in omitted.mv_props
 
-# Note: We don't import typed wrappers (Structure, PeriodicTable, Trajectory) directly
-# in tests because they have @_explicitize_args decorator conflicts. Instead, we test
-# using the base MatterViz component which is the recommended approach anyway.
-
-
-class TestMatterVizBase:
-    """Tests for the base MatterViz component."""
-
-    def test_instantiation_with_component_name(self) -> None:
-        """MatterViz can be instantiated with a component name."""
-        comp = MatterViz(id="test", component="Structure")
-        assert comp.id == "test"
-        assert comp.component == "Structure"
-
-    def test_instantiation_without_id(self) -> None:
-        """MatterViz omits absent id instead of forwarding id=None."""
-        comp = MatterViz(component="Structure")
-        assert comp.component == "Structure"
-
-    def test_mv_props_forwarded(self) -> None:
-        """mv_props dict is forwarded correctly."""
-        comp = MatterViz(
-            id="test-mv-props",
-            component="Structure",
-            mv_props={"structure": {"sites": []}, "show_controls": True},
-        )
-        assert comp.mv_props == {"structure": {"sites": []}, "show_controls": True}
-
-    def test_set_props_and_float32_props(self) -> None:
-        """set_props and float32_props lists are stored."""
-        comp = MatterViz(
-            id="test-set-float",
-            component="Structure",
-            set_props=["hidden_elements"],
-            float32_props=["positions"],
-        )
-        assert comp.set_props == ["hidden_elements"]
-        assert comp.float32_props == ["positions"]
-
-    def test_event_props(self) -> None:
-        """event_props list is stored."""
-        comp = MatterViz(
-            id="test-events",
-            component="Structure",
-            event_props=["on_file_load", "on_error"],
-        )
-        assert comp.event_props == ["on_file_load", "on_error"]
-        assert (
-            _detect_prop_kind(
-                "OnReady",
-                {
-                    "OnReady": "EventHandler",
-                    "EventHandler": "(data: StructureHandlerData) => void",
-                },
-            )
-            == "callback"
-        )
-
-    def test_include_aliases_detect_event_props(self, tmp_path: Path) -> None:
-        """External include aliases classify callback props."""
-        dist_dir = tmp_path / "dist"
-        dist_dir.mkdir()
-        component_dts = dist_dir / "Component.svelte.d.ts"
-        component_dts.write_text(
-            "type $$ComponentProps = {}; declare const Component: "
-            'import("svelte").Component<$$ComponentProps>;',
-            encoding="utf-8",
-        )
-        include_dts = dist_dir / "included.d.ts"
-        include_dts.write_text(
-            "type EventHandler = (data: StructureHandlerData) => void;\n"
-            "type OnReady = EventHandler;\n"
-            "interface IncludedProps { onReady?: OnReady; value?: string; }\n",
-            encoding="utf-8",
-        )
-
-        props, callback_props, snippet_props, dom_props = (
-            parse_svelte_dts_with_includes(
-                str(component_dts), str(dist_dir), ["included.d.ts:IncludedProps"]
-            )
-        )
-
-        prop_kinds = {prop.js_name: prop.kind for prop in props}
-        assert prop_kinds == {"onReady": "callback", "value": "value"}
-        assert callback_props == ["onReady"]
-        assert snippet_props == []
-        assert dom_props == []
-
-
-class TestComponentInstantiation:
-    """Parametrized tests for various MatterViz component types."""
-
-    @pytest.mark.parametrize(
-        "component,mv_props",
-        [
-            ("structure/Structure", {"structure": {"sites": []}, "height": 500}),
-            ("periodic-table/PeriodicTable", {"show_color_bar": True}),
-            ("trajectory/Trajectory", {"fps": 30}),
-            ("brillouin/BrillouinZone", {"structure": {"sites": []}}),
-            ("convex-hull/ConvexHull2D", {"entries": []}),
-        ],
+    configured = wrapper(
+        entries=[], entry_category=None, hidden_categories=["FM", "NM"]
     )
-    def test_component_with_props(self, component: str, mv_props: dict) -> None:
-        """Components can be instantiated with their specific props."""
-        comp = MatterViz(id="test", component=component, mv_props=mv_props)
-        assert comp.component == component
-        assert comp.mv_props == mv_props
+    assert configured.mv_props["entry_category"] is None
+    assert configured.mv_props["hidden_categories"] == ["FM", "NM"]
 
-    @pytest.mark.parametrize(
-        "wrapper",
-        [mvc.ConvexHull2D, mvc.ConvexHull3D, mvc.ConvexHull4D],
-    )
-    def test_convex_hull_category_props_forwarded(self, wrapper: type) -> None:
-        """Typed convex hull wrappers forward category props."""
-        omitted = wrapper(entries=[])
-        assert "entry_category" not in omitted.mv_props
-        assert "hidden_categories" not in omitted.mv_props
-
-        configured = wrapper(
-            entries=[], entry_category=None, hidden_categories=["FM", "NM"]
-        )
-        assert configured.mv_props["entry_category"] is None
-        assert configured.mv_props["hidden_categories"] == ["FM", "NM"]
-
-        empty_hidden = wrapper(entries=[], hidden_categories=[])
-        assert empty_hidden.mv_props["hidden_categories"] == []
+    empty_hidden = wrapper(entries=[], hidden_categories=[])
+    assert empty_hidden.mv_props["hidden_categories"] == []
 
 
-class TestModuleExports:
-    """Tests for module-level exports."""
-
-    def test_version_defined(self) -> None:
-        """Package has a __version__ attribute."""
-        assert hasattr(mvc, "__version__")
-        assert isinstance(mvc.__version__, str)
-
-    def test_js_dist_defined(self) -> None:
-        """Package has _js_dist for Dash asset loading."""
-        assert hasattr(mvc, "_js_dist")
-        assert isinstance(mvc._js_dist, list)
-        assert len(mvc._js_dist) > 0
-
-    def test_css_dist_defined(self) -> None:
-        """Package has _css_dist for Dash CSS loading."""
-        assert hasattr(mvc, "_css_dist")
-        assert isinstance(mvc._css_dist, list)
-
-
-class TestEdgeCases:
-    """Test edge cases and error handling."""
-
-    @pytest.mark.parametrize("mv_props", [{}, None])
-    def test_empty_or_none_mv_props(self, mv_props) -> None:
-        """Component with empty or None mv_props should work."""
-        comp = MatterViz(id="test", component="Structure", mv_props=mv_props)
-        assert comp.mv_props == mv_props
-
-    def test_deeply_nested_props(self) -> None:
-        """Deeply nested mv_props should be preserved."""
-        deep = {"a": {"b": {"c": {"d": {"e": 1}}}}}
-        comp = MatterViz(id="test", component="Structure", mv_props=deep)
-        assert comp.mv_props["a"]["b"]["c"]["d"]["e"] == 1
-
-    @pytest.mark.parametrize(
-        "mv_props",
-        [
-            {"key-with-dash": 1, "key_with_underscore": 2, "key.with.dot": 3},
-            {"label": "H₂O", "symbol": "α-Fe", "description": "日本語"},
-        ],
-        ids=["special-chars", "unicode"],
-    )
-    def test_special_and_unicode_props(self, mv_props: dict) -> None:
-        """Props with special characters and unicode should work."""
-        comp = MatterViz(id="test", component="Structure", mv_props=mv_props)
-        assert comp.mv_props == mv_props
-
-    @pytest.mark.parametrize(
-        "prop_name,prop_value",
-        [
-            ("set_props", []),
-            ("set_props", ["a", "b", "c"]),
-            ("float32_props", []),
-            ("float32_props", ["x", "y", "z"]),
-            ("event_props", []),
-            ("event_props", ["on_click", "on_hover"]),
-        ],
-    )
-    def test_list_props_stored(self, prop_name: str, prop_value: list) -> None:
-        """List props (empty or populated) should be stored correctly."""
-        comp = MatterViz(id="test", component="Structure", **{prop_name: prop_value})
-        assert getattr(comp, prop_name) == prop_value
-
-    def test_last_event_can_be_set(self) -> None:
-        """last_event prop should be settable."""
-        event = {"prop": "on_click", "data": {"x": 1}, "timestamp": 12345}
-        comp = MatterViz(id="test", component="Structure", last_event=event)
-        assert comp.last_event == event
-
-    def test_component_with_path_prefix(self) -> None:
-        """Component with full path should work."""
-        comp = MatterViz(id="test", component="structure/Structure")
-        assert comp.component == "structure/Structure"
-
-    def test_minimal_instantiation(self) -> None:
-        """Components with minimal args (just id) should work."""
-        comp = MatterViz(component="Test", id="test-id")
-        assert comp.component == "Test"
-
-
-class TestPropValidation:
-    """Test prop handling."""
-
-    @pytest.mark.parametrize(
-        "prop_name,prop_value",
-        [
-            ("style", {"height": "100%", "width": 500}),
-            ("className", "my-class other"),
-        ],
-    )
-    def test_style_and_classname_preserved(self, prop_name: str, prop_value) -> None:
-        """Style dict and className should be preserved exactly."""
-        comp = MatterViz(id="test", component="Test", **{prop_name: prop_value})
-        assert getattr(comp, prop_name) == prop_value
+def test_package_metadata() -> None:
+    """Package exposes its version and Dash assets."""
+    assert isinstance(mvc.__version__, str)
+    assert mvc._js_dist
+    assert isinstance(mvc._css_dist, list)

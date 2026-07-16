@@ -13,6 +13,13 @@ doc = "3D crystal structure / molecule viewer."
 # Structure expects a few props as JS Set / Float32Array; Dash must pass JSON arrays.
 # This wrapper defaults set_props/float32_props accordingly.
 set_props = ["hidden_elements", "hidden_prop_vals"]
+# Append newly added props to preserve positional compatibility.
+trailing_props = [
+  "multi_view_active",
+  "multi_view_min_pane_height",
+  "multi_view_min_pane_width",
+  "multi_view_gap",
+]
 
 [components.Structure.extra_props]
 bond_edit_mode = "'add' | 'delete'"

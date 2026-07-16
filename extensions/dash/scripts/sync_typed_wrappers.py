@@ -657,6 +657,9 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         alias_overrides = spec.get("aliases", {}) or {}
         type_hints = spec.get("type_hints", {}) or {}
         forward_none_props = set(spec.get("forward_none_props", []))
+        trailing_props: list[str] = spec.get("trailing_props", []) or []
+        if len(trailing_props) != len(set(trailing_props)):
+            raise ValueError(f"[{class_name}] trailing props must be unique")
 
         # Build python->js mapping with unique identifiers
         py_to_js: dict[str, str] = {}
@@ -691,6 +694,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         # Build signature
         sig = ["self", "id=None"]
+        trailing_params: dict[str, str] = {}
         js_to_prop = {prop.js_name: prop for prop in value_props}
         for py, js in py_to_js.items():
             prop = js_to_prop.get(js)
@@ -704,7 +708,11 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             if "None" not in py_type:
                 py_type += " | None"
             default = "_UNSET" if js in forward_none_props else "None"
-            sig.append(f"{py}: {py_type} = {default}")
+            param = f"{py}: {py_type} = {default}"
+            if js in trailing_props:
+                trailing_params[js] = param
+            else:
+                sig.append(param)
         sig += [
             "mv_props: dict | None = None",
             "set_props: list[str] | None = None",
@@ -713,8 +721,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             "last_event: dict | None = None",
             "className: str | None = None",
             "style: dict | None = None",
-            "**kwargs",
         ]
+        sig += [trailing_params[prop] for prop in trailing_props] + ["**kwargs"]
 
         params = ",\n        ".join(sig)
         lines.append(f"    def __init__(\n        {params},\n    ):")
