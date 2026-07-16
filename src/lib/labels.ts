@@ -1,6 +1,6 @@
 import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
-import { normalize_unicode_minus } from '$lib/utils'
+import { escape_html, normalize_unicode_minus } from '$lib/utils'
 import { format } from 'd3-format'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
@@ -35,9 +35,8 @@ export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.from
 )
 
 // Format standalone scientific notation as HTML, e.g. 1.2e-3 → 1.2×10<sup>-3</sup>.
-// The result contains markup; sanitize untrusted surrounding text before rendering as HTML.
 export const format_power_ten = (text: string): string =>
-  text
+  escape_html(text)
     .replaceAll(
       /(?<![\w.])(?<base>\d+(?:\.\d+)?)e(?<exponent>[+-]?\d+)(?![\w.])/gi,
       (_match, base: string, exponent: string) =>

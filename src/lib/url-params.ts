@@ -104,6 +104,7 @@ export function apply_weights_param(
     if (
       values.length === keys.length &&
       values.every((value) => Number.isFinite(value) && value >= 0) &&
+      Number.isFinite(total) &&
       total > 0
     ) {
       for (const [idx, key] of keys.entries()) config[key].weight = values[idx] / total

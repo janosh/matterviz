@@ -89,7 +89,8 @@
     toggle_props?: PaneToggleProps
   } = $props()
 
-  const multi_view_hint_id = `multi-view-hint-${crypto.randomUUID()}`
+  const controls_id = $props.id()
+  const multi_view_hint_id = `multi-view-hint-${controls_id}`
 
   // Color scheme selection state
   let color_scheme_selected = $state([color_scheme])
