@@ -57,6 +57,9 @@
     volumetric_data = $bindable<VolumetricData[]>(),
     isosurface_settings = $bindable<IsosurfaceSettings>(),
     active_volume_idx = $bindable(0),
+    multi_view = $bindable(false),
+    multi_view_control_visible = true,
+    multi_view_unavailable_reason = undefined,
     polyhedra_rendered_elements = [],
     pane_props = {},
     toggle_props = {},
@@ -78,10 +81,15 @@
     volumetric_data?: VolumetricData[] // Volumetric data volumes for isosurface controls
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Active volume index
+    multi_view?: boolean
+    multi_view_control_visible?: boolean
+    multi_view_unavailable_reason?: string
     polyhedra_rendered_elements?: string[] // elements currently anchoring polyhedra
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
   } = $props()
+
+  const multi_view_hint_id = `multi-view-hint-${crypto.randomUUID()}`
 
   // Color scheme selection state
   let color_scheme_selected = $state([color_scheme])
@@ -316,6 +324,30 @@
       bind:volumes={volumetric_data}
       bind:active_volume_idx
     />
+  {/if}
+
+  {#if multi_view_control_visible}
+    <SettingsSection
+      title="Layout"
+      current_values={{ multi_view }}
+      on_reset={() => (multi_view = false)}
+      class="layout-settings"
+    >
+      <label class:disabled={Boolean(multi_view_unavailable_reason) && !multi_view}>
+        <input
+          type="checkbox"
+          bind:checked={multi_view}
+          disabled={Boolean(multi_view_unavailable_reason) && !multi_view}
+          aria-describedby={multi_view_unavailable_reason ? multi_view_hint_id : undefined}
+        />
+        Multi-view grid
+      </label>
+      {#if multi_view_unavailable_reason}
+        <small id={multi_view_hint_id} class="setting-hint">
+          {multi_view_unavailable_reason}
+        </small>
+      {/if}
+    </SettingsSection>
   {/if}
 
   <SettingsSection
@@ -1215,6 +1247,14 @@
     display: flex;
     align-items: center;
     gap: 10pt;
+  }
+  label.disabled {
+    opacity: 0.6;
+  }
+  .setting-hint {
+    color: var(--text-color-muted, color-mix(in srgb, currentColor 65%, transparent));
+    line-height: 1.35;
+    max-width: 32em;
   }
   input,
   select {

@@ -1016,6 +1016,11 @@ describe(`Structure string parsing`, () => {
 // happy-dom; these cover the toggle button + wrapper class. The 4-canvas render
 // and independent rotation are exercised by the playwright suite.
 describe(`Multi-side view`, () => {
+  const mock_viewer_size = (client_width: number, client_height: number) => [
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(client_width),
+    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(client_height),
+  ]
+
   test(`toggle button renders and flips multi_view + wrapper class`, async () => {
     mount_structure({ structure, show_controls: `always` })
     await tick()
@@ -1039,19 +1044,80 @@ describe(`Multi-side view`, () => {
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
   })
 
-  test(`multi_view prop initial value reflects on wrapper`, async () => {
-    mount_structure({ structure, multi_view: true, show_controls: `always` })
-    await tick()
-    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
-  })
-
   test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {
     mount_structure({
       structure,
+      controls_open: true,
       show_controls: { mode: `always`, hidden: [`multi-view`] },
     })
     await tick()
     expect(document.querySelector(`button.multi-view-toggle`)).toBeNull()
+    expect(document.body.textContent).not.toContain(`Multi-view grid`)
+  })
+
+  test.each([
+    [`default width gap`, 601, 600, 4, 300, 200, false],
+    [`default height gap`, 800, 401, 4, 300, 200, false],
+    [`custom view rows below boundary`, 800, 603, 6, 300, 200, false],
+    [`custom view rows at boundary`, 800, 604, 6, 300, 200, true],
+    [`custom pane minimum boundary`, 402, 302, 4, 200, 150, true],
+  ] as const)(
+    `responsive multi-view availability: %s`,
+    async (
+      _scenario,
+      client_width,
+      client_height,
+      view_count,
+      min_pane_width,
+      min_pane_height,
+      expected_active,
+    ) => {
+      const size_spies = mock_viewer_size(client_width, client_height)
+      try {
+        const views = Array.from({ length: view_count }, () => ({}))
+        const state = { multi_view_active: !expected_active }
+        mount_structure(
+          bind_props(
+            {
+              structure,
+              multi_view: true,
+              multi_view_min_pane_width: min_pane_width,
+              multi_view_min_pane_height: min_pane_height,
+              show_controls: `always` as const,
+              views,
+            },
+            state,
+          ),
+        )
+        await tick()
+        await tick()
+
+        expect(document.querySelector(`button.multi-view-toggle`) !== null).toBe(
+          expected_active,
+        )
+        expect(state.multi_view_active).toBe(expected_active)
+      } finally {
+        size_spies.forEach((size_spy) => size_spy.mockRestore())
+      }
+    },
+  )
+
+  test(`collapsed multi-view preference can be cleared with its keyboard shortcut`, async () => {
+    const size_spies = mock_viewer_size(599, 399)
+    try {
+      const state = { multi_view: true, multi_view_active: true }
+      mount_structure(bind_props({ structure, show_controls: `always` as const }, state))
+      await tick()
+      await tick()
+
+      doc_query(`.structure`).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `g`, ctrlKey: true, bubbles: true }),
+      )
+      await tick()
+      expect(state).toEqual({ multi_view: false, multi_view_active: false })
+    } finally {
+      size_spies.forEach((size_spy) => size_spy.mockRestore())
+    }
   })
 })
 

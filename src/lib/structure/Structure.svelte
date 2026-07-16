@@ -97,6 +97,11 @@
     bond_edit_order: BondOrder
   }
   type SceneProps = ComponentProps<typeof StructureScene> & typeof DEFAULTS.structure
+  // Keep each pane large enough for useful orbit controls, labels, and atom picking.
+  const MULTI_VIEW_COLUMN_COUNT = 2
+  const DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH = 300
+  const DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT = 200
+  const DEFAULT_MULTI_VIEW_GAP = 2
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
@@ -118,6 +123,9 @@
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     multi_view = $bindable(false),
+    multi_view_active = $bindable(false),
+    multi_view_min_pane_width = DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH,
+    multi_view_min_pane_height = DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT,
     views = DEFAULT_STRUCTURE_VIEWS,
     enable_measure_mode = $bindable(true),
     measure_mode = $bindable<MeasureMode>(`distance`),
@@ -226,9 +234,15 @@
     bond_edit_mode?: BondEditMode
     bond_edit_order?: BondOrder
     info_pane_open?: boolean
-    // When true, split the canvas into a 2x2 grid showing the structure from
-    // different angles (Ovito-style). Each pane has independent orbit controls.
+    // Requests a grid showing the structure from different angles (Ovito-style).
+    // The preference is preserved while responsive sizing temporarily collapses
+    // viewers whose panes would be smaller than the configured minimum.
     multi_view?: boolean
+    // Output-only: whether the responsive multi-view grid is currently rendered.
+    multi_view_active?: boolean
+    // Minimum CSS-pixel dimensions for each pane before multi-view becomes available.
+    multi_view_min_pane_width?: number
+    multi_view_min_pane_height?: number
     // The 4 (or more) view definitions used by multi_view. Defaults to an
     // Ovito-like set: one perspective + three orthographic axis views.
     views?: StructureView[]
@@ -288,7 +302,10 @@
     on_camera_move?: EventHandler
     on_camera_reset?: EventHandler
     on_bonds_change?: (bonds: StructureBond[] | undefined) => void
-  } & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`> &
+  } & Omit<
+    ComponentProps<typeof StructureControls>,
+    `children` | `onclose` | `multi_view_control_visible` | `multi_view_unavailable_reason`
+  > &
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
@@ -850,6 +867,35 @@
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
+  let multi_view_row_count = $derived(Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT))
+  let multi_view_required_width = $derived(
+    MULTI_VIEW_COLUMN_COUNT * Math.max(0, multi_view_min_pane_width) +
+      (MULTI_VIEW_COLUMN_COUNT - 1) * DEFAULT_MULTI_VIEW_GAP,
+  )
+  let multi_view_required_height = $derived(
+    multi_view_row_count * Math.max(0, multi_view_min_pane_height) +
+      Math.max(0, multi_view_row_count - 1) * DEFAULT_MULTI_VIEW_GAP,
+  )
+  let multi_view_available = $derived(
+    views.length > 1 &&
+      width >= multi_view_required_width &&
+      height >= multi_view_required_height,
+  )
+  // Preserve the caller's multi_view preference while temporarily collapsing small viewers.
+  let is_multi_view_active = $derived(multi_view && multi_view_available)
+  // This is output-only state: parent writes are overwritten with the actual render state.
+  $effect(() => {
+    if (multi_view_active !== is_multi_view_active) multi_view_active = is_multi_view_active
+  })
+  let multi_view_unavailable_reason = $derived(
+    views.length < 2
+      ? `Configure at least two views to enable multi-view`
+      : !multi_view_available
+        ? `Requires at least ${Math.ceil(multi_view_required_width)}×${Math.ceil(
+            multi_view_required_height,
+          )} px. Enlarge the viewer or use fullscreen.`
+        : undefined,
+  )
   // $effect instead of `$derived(hovered || focused)`: the $derived reading the $bindable
   // `hovered` prop went stale after the first hover/leave cycle, so the gizmo + mode toggle only
   // appeared on the first mouseenter until reload.
@@ -1054,6 +1100,17 @@
   // SvelteSet is already reactive; do NOT wrap in $state (double-proxying breaks it)
   const moved_panes = new SvelteSet<number>()
   let any_camera_moved = $derived(moved_panes.size > 0)
+
+  // Side-pane camera state is irrelevant whenever responsive sizing collapses to one pane.
+  $effect(() => {
+    if (is_multi_view_active) return
+    untrack(() => {
+      active_pane_idx = 0
+      for (const pane_idx of moved_panes) {
+        if (pane_idx !== 0) moved_panes.delete(pane_idx)
+      }
+    })
+  })
 
   // Inputs shared by every StructureViewport (single + all multi-view panes). Camera,
   // selection bindings, and per-pane chrome differ and stay on each snippet below.
@@ -1407,7 +1464,12 @@
     } else if (event.key === `i` && has_modifier && enable_info_pane) {
       info_pane_open = !info_pane_open
       return true
-    } else if (event.key === `g` && has_modifier && controls_config.visible(`multi-view`)) {
+    } else if (
+      event.key === `g` &&
+      has_modifier &&
+      controls_config.visible(`multi-view`) &&
+      (multi_view_available || multi_view)
+    ) {
       multi_view = !multi_view
       return true
     } else if (event.key === `Escape`) {
@@ -1586,7 +1648,7 @@
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
   class:gizmo-visible={viewer_active && Boolean(scene_gizmo)}
-  class:multi-view={multi_view}
+  class:multi-view={is_multi_view_active}
   role="application"
   tabindex="0"
   aria-label="Structure viewer"
@@ -1642,14 +1704,16 @@
       before={reset_camera_btn}
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
-      {#if controls_config.visible(`multi-view`)}
+      {#if multi_view_available && controls_config.visible(`multi-view`)}
         <button
+          type="button"
           class="multi-view-toggle"
-          class:active={multi_view}
+          class:active={is_multi_view_active}
           onclick={() => (multi_view = !multi_view)}
-          title="Toggle multi-side view 2×2 grid (Cmd/Ctrl+G)"
+          title="Toggle multi-side view grid (Cmd/Ctrl+G)"
           aria-label="Toggle multi-side view"
-          aria-pressed={multi_view}
+          aria-keyshortcuts="Control+G Meta+G"
+          aria-pressed={is_multi_view_active}
           {@attach tooltip()}
         >
           <Icon icon="Grid2x2" />
@@ -1751,102 +1815,106 @@
           </div>
         {/snippet}
 
-        {#if measure_mode === `edit-atoms`}
-          {@render undo_redo_snippet([
-            { icon: `Undo`, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
-            {
-              icon: `Redo`,
-              title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-              stack: redo_stack,
-              action: redo,
-            },
-          ])}
-        {/if}
+        {#if measure_mode === `edit-atoms` && !measure_menu_open}
+          <div class="edit-mode-toolbar" aria-label="Atom editing controls">
+            {@render undo_redo_snippet([
+              { icon: `Undo`, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
+              {
+                icon: `Redo`,
+                title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+                stack: redo_stack,
+                action: redo,
+              },
+            ])}
 
-        {#if measure_mode === `edit-bonds`}
-          <div class="bond-edit-toolbar" aria-label="Bond editing controls">
-            {#if bond_edit_mode === `add`}
-              <label>
-                <span>Bond order</span>
-                <select bind:value={bond_edit_order}>
-                  {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-                    <option value={order}>{label}</option>
-                  {/each}
-                </select>
-              </label>
+            <!-- Add-atom element input (shown when add_atom_mode is active) -->
+            {#if add_atom_mode}
+              <div class="add-atom-input">
+                <label>
+                  <span>Element:</span>
+                  <input
+                    type="text"
+                    bind:value={add_element}
+                    maxlength="2"
+                    placeholder="C"
+                    style="width: 3em; text-align: center"
+                  />
+                </label>
+                <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
+              </div>
             {/if}
-            <div class="bond-edit-mode-toggle">
-              {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
-                <button
-                  type="button"
-                  class:selected={bond_edit_mode === mode}
-                  aria-pressed={bond_edit_mode === mode}
-                  title="{title} ({label[0]})"
-                  onclick={() => (bond_edit_mode = mode)}
-                >
-                  {label}
-                </button>
-              {/each}
+
+            <!-- Change-element input (shown when 'e' pressed with selection) -->
+            {#if change_element_mode && selected_sites.length > 0}
+              <div class="add-atom-input">
+                <label>
+                  <span>New element:</span>
+                  <input
+                    type="text"
+                    bind:value={change_element_value}
+                    maxlength="2"
+                    placeholder="Fe"
+                    style="width: 3em; text-align: center"
+                    onkeydown={(event: KeyboardEvent) => {
+                      if (event.key === `Enter`) {
+                        handle_change_element(change_element_value)
+                      } else if (event.key === `Escape`) {
+                        change_element_mode = false
+                      }
+                      event.stopPropagation()
+                    }}
+                    {@attach (node: HTMLInputElement) => {
+                      node.focus()
+                    }}
+                  />
+                </label>
+                <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        {#if measure_mode === `edit-bonds` && !measure_menu_open}
+          <div class="edit-mode-toolbar" aria-label="Bond editing controls">
+            <div class="bond-edit-toolbar">
+              {#if bond_edit_mode === `add`}
+                <label>
+                  <span>Bond order</span>
+                  <select bind:value={bond_edit_order}>
+                    {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+                      <option value={order}>{label}</option>
+                    {/each}
+                  </select>
+                </label>
+              {/if}
+              <div class="bond-edit-mode-toggle">
+                {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
+                  <button
+                    type="button"
+                    class:selected={bond_edit_mode === mode}
+                    aria-pressed={bond_edit_mode === mode}
+                    title="{title} ({label[0]})"
+                    onclick={() => (bond_edit_mode = mode)}
+                  >
+                    {label}
+                  </button>
+                {/each}
+              </div>
             </div>
-          </div>
-          {@render undo_redo_snippet([
-            {
-              icon: `Undo`,
-              title: `Undo bond edit (Cmd/Ctrl+Z)`,
-              stack: bond_undo_stack,
-              action: undo_bond_edit,
-            },
-            {
-              icon: `Redo`,
-              title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-              stack: bond_redo_stack,
-              action: redo_bond_edit,
-            },
-          ])}
-        {/if}
-
-        <!-- Add-atom element input (shown when add_atom_mode is active) -->
-        {#if measure_mode === `edit-atoms` && add_atom_mode}
-          <div class="add-atom-input">
-            <label>
-              <span>Element:</span>
-              <input
-                type="text"
-                bind:value={add_element}
-                maxlength="2"
-                placeholder="C"
-                style="width: 3em; text-align: center"
-              />
-            </label>
-            <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
-          </div>
-        {/if}
-
-        <!-- Change-element input (shown when 'e' pressed with selection) -->
-        {#if measure_mode === `edit-atoms` && change_element_mode && selected_sites.length > 0}
-          <div class="add-atom-input">
-            <label>
-              <span>New element:</span>
-              <input
-                type="text"
-                bind:value={change_element_value}
-                maxlength="2"
-                placeholder="Fe"
-                style="width: 3em; text-align: center"
-                onkeydown={(event: KeyboardEvent) => {
-                  if (event.key === `Enter`) {
-                    handle_change_element(change_element_value)
-                  } else if (event.key === `Escape`) {
-                    change_element_mode = false
-                  }
-                  event.stopPropagation()
-                }}
-                {@attach (node: HTMLInputElement) => {
-                  node.focus()
-                }}
-              />
-            </label>
-            <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
+            {@render undo_redo_snippet([
+              {
+                icon: `Undo`,
+                title: `Undo bond edit (Cmd/Ctrl+Z)`,
+                stack: bond_undo_stack,
+                action: undo_bond_edit,
+              },
+              {
+                icon: `Redo`,
+                title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+                stack: bond_redo_stack,
+                action: redo_bond_edit,
+              },
+            ])}
           </div>
         {/if}
       {/if}
@@ -1890,6 +1958,9 @@
           bind:volumetric_data
           bind:isosurface_settings
           bind:active_volume_idx
+          bind:multi_view
+          multi_view_control_visible={controls_config.visible(`multi-view`)}
+          {multi_view_unavailable_reason}
           {structure}
           {supercell_loading}
           {sym_data}
@@ -1934,10 +2005,10 @@
       on_camera_move/on_camera_reset. All camera handling itself lives in StructureViewport. -->
     {#snippet primary_viewport(view: StructureView)}
       <StructureViewport
-        in_grid={multi_view}
-        label={multi_view ? view.label : undefined}
-        active={multi_view && active_pane_idx === 0}
-        interactive={!multi_view || active_pane_idx === 0}
+        in_grid={is_multi_view_active}
+        label={is_multi_view_active ? view.label : undefined}
+        active={is_multi_view_active && active_pane_idx === 0}
+        interactive={!is_multi_view_active || active_pane_idx === 0}
         onactivate={() => (active_pane_idx = 0)}
         {reset_token}
         report_moved={(moved) => (moved ? moved_panes.add(0) : moved_panes.delete(0))}
@@ -2000,9 +2071,9 @@
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
-      <div class:multi={multi_view} class="viewport-stage">
-        {@render primary_viewport(multi_view ? (views[0] ?? {}) : {})}
-        {#if multi_view}
+      <div class:multi={is_multi_view_active} class="viewport-stage">
+        {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
+        {#if is_multi_view_active}
           {#each views.slice(1) as view, idx (idx)}
             {@render extra_viewport(view, idx + 1)}
           {/each}
@@ -2065,12 +2136,11 @@
     height: 100%;
     width: 100%;
   }
-  /* 2x2 multi-side view grid: four equal subcanvases. grid-auto-rows keeps rows
-    equal-height if a custom `views` array supplies more than four entries. */
+  /* Two-column multi-side view grid. Implicit rows divide the available height
+    equally, including when a custom `views` array changes the number of panes. */
   .viewport-stage.multi {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
     grid-auto-rows: 1fr;
     gap: var(--struct-viewport-gap, 2px);
   }
@@ -2231,6 +2301,28 @@
   }
   .undo-redo-container {
     display: flex;
+  }
+  .edit-mode-toolbar {
+    position: absolute;
+    top: calc(100% + 4pt);
+    right: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.4em;
+    width: max-content;
+    max-width: calc(100cqw - 2ex);
+    box-sizing: border-box;
+    padding: 0.25em;
+    border-radius: var(--border-radius, 3pt);
+    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, transparent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  }
+  .edit-mode-toolbar > .add-atom-input {
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
   }
   .undo-redo-btn {
     position: relative;

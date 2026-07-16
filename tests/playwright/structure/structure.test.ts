@@ -1,5 +1,5 @@
 import { DEFAULTS } from '$lib/settings'
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import {
   canvas_screenshot,
@@ -2645,9 +2645,73 @@ test.describe(`Edit Atoms Mode`, () => {
   })
 })
 
+const set_viewer_size = async (
+  structure_div: Locator,
+  width: number,
+  height: number,
+): Promise<void> => {
+  await structure_div.evaluate(
+    (element, size) => {
+      element.style.setProperty(`--struct-width`, `${size.width}px`)
+      element.style.setProperty(`--struct-height`, `${size.height}px`)
+    },
+    { width, height },
+  )
+}
+
+test.describe(`Responsive edit controls`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await goto_structure_test(page, `/test/structure?show_controls=always`)
+  })
+
+  test(`keeps the bond-edit toolbar inside a narrow viewer on a second row`, async ({
+    page,
+  }) => {
+    const structure_div = page.locator(`#test-structure`)
+    await set_viewer_size(structure_div, 300, 500)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    const edit_toolbar = structure_div.locator(`.edit-mode-toolbar`)
+    const [structure_box, controls_box, toolbar_box] = await Promise.all([
+      structure_div.boundingBox(),
+      structure_div.locator(`section.control-buttons`).boundingBox(),
+      edit_toolbar.boundingBox(),
+    ])
+    if (!structure_box || !controls_box || !toolbar_box) {
+      throw new Error(`responsive control boxes were not rendered`)
+    }
+    expect(toolbar_box.x).toBeGreaterThanOrEqual(structure_box.x - 1)
+    expect(toolbar_box.x + toolbar_box.width).toBeLessThanOrEqual(
+      structure_box.x + structure_box.width + 1,
+    )
+    expect(toolbar_box.y).toBeGreaterThanOrEqual(controls_box.y + controls_box.height)
+    expect(toolbar_box.y + toolbar_box.height).toBeLessThanOrEqual(
+      structure_box.y + structure_box.height + 1,
+    )
+  })
+})
+
 test.describe(`Multi-side view (2x2 grid)`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
+  })
+
+  test(`collapses and restores multi-view across its responsive size threshold`, async ({
+    page,
+  }) => {
+    const structure_div = page.locator(`#test-structure`)
+    const toggle = structure_div.locator(`button.multi-view-toggle`)
+    await expect(toggle).toBeVisible()
+    await toggle.click()
+    await expect(structure_div).toHaveClass(/multi-view/)
+
+    await set_viewer_size(structure_div, 599, 399)
+    await expect(toggle).toHaveCount(0)
+    await expect(structure_div).not.toHaveClass(/multi-view/)
+
+    await set_viewer_size(structure_div, 800, 600)
+    await expect(toggle).toBeVisible()
+    await expect(structure_div).toHaveClass(/multi-view/)
   })
 
   test(`toggle splits canvas into 4 labeled viewports and back`, async ({ page }) => {
