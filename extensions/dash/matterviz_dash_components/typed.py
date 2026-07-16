@@ -16,7 +16,7 @@ class Structure(MatterViz):
 
     Component key: ``structure/Structure``
 
-    Events: on_bonds_change, on_camera_move, on_camera_reset, on_error, on_file_drop, on_file_load, on_fullscreen_change
+    Events: on_bonds_change, on_camera_move, on_camera_reset, on_error, on_file_load, on_fullscreen_change
 
     Unsupported snippets: top_right_controls
     """
@@ -53,6 +53,7 @@ class Structure(MatterViz):
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
         multi_view: bool | None = None,
+        on_file_drop: Any | None = None,
         performance_mode: Any | None = None,
         png_dpi: float | None = None,
         reset_text: str | None = None,
@@ -149,6 +150,8 @@ class Structure(MatterViz):
             mv_props["multi_view_min_pane_height"] = multi_view_min_pane_height
         if multi_view_min_pane_width is not None:
             mv_props["multi_view_min_pane_width"] = multi_view_min_pane_width
+        if on_file_drop is not None:
+            mv_props["on_file_drop"] = on_file_drop
         if performance_mode is not None:
             mv_props["performance_mode"] = performance_mode
         if png_dpi is not None:
@@ -462,7 +465,7 @@ class BrillouinZone(MatterViz):
 
     Component key: ``brillouin/BrillouinZone``
 
-    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover, on_kpath_hover, on_point_hover
+    Events: on_error, on_file_load, on_fullscreen_change, on_hover, on_kpath_hover, on_point_hover
     """
 
     def __init__(
@@ -490,6 +493,7 @@ class BrillouinZone(MatterViz):
         info_pane_open: bool | None = None,
         k_path_points: list[list[float]] | None = None,
         loading: bool | None = None,
+        on_file_drop: Any | None = None,
         png_dpi: float | None = None,
         show_controls: Any | None = None,
         show_ibz: bool | None = None,
@@ -557,6 +561,8 @@ class BrillouinZone(MatterViz):
             mv_props["k_path_points"] = k_path_points
         if loading is not None:
             mv_props["loading"] = loading
+        if on_file_drop is not None:
+            mv_props["on_file_drop"] = on_file_drop
         if png_dpi is not None:
             mv_props["png_dpi"] = png_dpi
         if show_controls is not None:
