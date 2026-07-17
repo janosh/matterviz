@@ -7,7 +7,6 @@ export type { SortDir, TableSort } from '$lib/table'
 export type UrlParamEntry = [key: string, value: string, default_value?: string]
 export type ReadonlySetLike<Value> = Pick<ReadonlySet<Value>, `has`>
 export type ValidQueryValues<Value extends string> =
-  | ReadonlySet<Value>
   | ReadonlySetLike<Value>
   | Record<string, unknown>
 export type WeightsConfig = Record<string, { weight: number }>
@@ -67,9 +66,9 @@ export function valid_query_param<Value extends string>(
   valid_values?: ValidQueryValues<Value>,
 ): string {
   const value = params.get(key)
-  if (!value) return fallback
-  if (!valid_values) return value
-  return is_valid_query_value(value, valid_values) ? value : fallback
+  return !value || (valid_values && !is_valid_query_value(value, valid_values))
+    ? fallback
+    : value
 }
 
 export const sort_from_query = (
@@ -113,18 +112,16 @@ export function apply_weights_param(
   default_config: WeightsConfig,
 ): void {
   const keys = canonical_weight_keys(config, default_config)
-  if (param) {
-    const values = param.split(`,`).map(parse_num_token)
-    const total = values.reduce((sum, value) => sum + value, 0)
-    if (
-      values.length === keys.length &&
-      values.every((value) => Number.isFinite(value) && value >= 0) &&
-      Number.isFinite(total) &&
-      total > 0
-    ) {
-      for (const [idx, key] of keys.entries()) config[key].weight = values[idx] / total
-      return
-    }
+  const values = param?.split(`,`).map(parse_num_token) ?? []
+  const total = values.reduce((sum, value) => sum + value, 0)
+  if (
+    values.length === keys.length &&
+    values.every((value) => Number.isFinite(value) && value >= 0) &&
+    Number.isFinite(total) &&
+    total > 0
+  ) {
+    for (const [idx, key] of keys.entries()) config[key].weight = values[idx] / total
+    return
   }
   for (const key of keys) config[key].weight = default_config[key].weight
 }
@@ -148,6 +145,5 @@ export function sync_url_params(
   write_url: (url: string) => void,
 ): void {
   const next_url = url_with_params(entries, current_url)
-  const current_path = url_with_params([], current_url)
-  if (next_url !== current_path) write_url(next_url)
+  if (next_url !== url_with_params([], current_url)) write_url(next_url)
 }

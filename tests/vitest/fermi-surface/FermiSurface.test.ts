@@ -23,17 +23,23 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component)
 })
 
-test(`custom file drop handler receives content and replaces default parsing`, async () => {
-  const on_file_drop = vi.fn()
+test(`custom file drop handler receives content and bypasses default parsing`, async () => {
+  const drop_deferred = Promise.withResolvers<undefined>()
+  const on_file_drop = vi.fn(() => drop_deferred.promise)
   const on_error = vi.fn()
   const content = `custom Fermi surface content`
   const file = new File([content], `custom.txt`)
   drop_file(file, { on_file_drop, on_error })
 
-  await vi.waitFor(() =>
+  await vi.waitFor(() => {
     expect(on_file_drop).toHaveBeenCalledWith(content, file.name, {
       source_filename: file.name,
-    }),
+    })
+    expect(document.body.textContent).toContain(`Loading Fermi surface...`)
+  })
+  drop_deferred.resolve(undefined)
+  await vi.waitFor(() =>
+    expect(document.body.textContent).toContain(`Drop Fermi Surface File`),
   )
   expect(on_error).not.toHaveBeenCalled()
 })

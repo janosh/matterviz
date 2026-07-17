@@ -30,6 +30,8 @@ test.each([
   expect(bool_url_entry(`flag`, value, fallback)).toEqual(expected)
 })
 
+const default_sort = { column: `force`, dir: `desc` } as const
+
 test.each([
   [`sort=energy&dir=asc`, undefined, { column: `energy`, dir: `asc` }],
   [`sort=energy&dir=sideways`, undefined, { column: `energy`, dir: `desc` }],
@@ -39,13 +41,15 @@ test.each([
   [`sort=constructor`, { energy: true }, { column: `force`, dir: `desc` }],
   [`sort=unknown`, new Set([`energy`, `force`]), { column: `force`, dir: `desc` }],
 ] as const)(`sort_from_query(%s)`, (query, valid_columns, expected) => {
-  const default_sort = { column: `force`, dir: `desc` } as const
   expect(sort_from_query(new URLSearchParams(query), default_sort, valid_columns)).toEqual(
     expected,
   )
-  expect(sort_url_entries(expected, default_sort)).toEqual([
-    [`sort`, expected.column, `force`],
-    [`dir`, expected.dir, `desc`],
+})
+
+test(`sort_url_entries includes current and default values`, () => {
+  expect(sort_url_entries({ column: `energy`, dir: `asc` }, default_sort)).toEqual([
+    [`sort`, `energy`, `force`],
+    [`dir`, `asc`, `desc`],
   ])
 })
 
@@ -72,11 +76,8 @@ const make_weights = (weights: number[]): WeightsConfig => ({
   force: { weight: weights[1] },
   stress: { weight: weights[2] },
 })
-const make_reversed_weights = (weights: number[]): WeightsConfig => ({
-  stress: { weight: weights[2] },
-  force: { weight: weights[1] },
-  energy: { weight: weights[0] },
-})
+const make_reversed_weights = (weights: number[]): WeightsConfig =>
+  Object.fromEntries(Object.entries(make_weights(weights)).toReversed())
 const default_weights = make_weights([0.5, 0.4, 0.1])
 
 test.each([
@@ -137,6 +138,12 @@ test(`URL entries preserve unrelated params, commas, and hashes`, () => {
       current_url,
     ),
   ).toBe(`/tasks/md?keep=1&weights=0.6,0.3,0.1#results`)
+  expect(
+    url_with_params(
+      [[`drop`, `default`, `default`]],
+      new URL(`https://example.com/tasks/md?drop=default#results`),
+    ),
+  ).toBe(`/tasks/md#results`)
 })
 
 test(`sync_url_params writes only semantic URL changes`, () => {

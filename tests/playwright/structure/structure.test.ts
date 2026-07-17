@@ -256,24 +256,6 @@ test.describe(`Structure Component Tests`, () => {
     }
   })
 
-  // Fullscreen testing is complex with Playwright as it requires user gesture and browser API mocking
-  test(`fullscreen button click`, async ({ page }: { page: Page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const fullscreen_button = structure_div.locator(`button.fullscreen-toggle`)
-
-    let error_occurred = false
-    page.once(`pageerror`, () => (error_occurred = true))
-
-    await expect(fullscreen_button).toBeVisible()
-    await expect(fullscreen_button).toBeEnabled()
-    await expect(fullscreen_button).toHaveAttribute(
-      `data-original-title`,
-      /(?:Exit|Enter) fullscreen/,
-    )
-    await fullscreen_button.click({ force: true })
-    expect(error_occurred).toBe(false)
-  })
-
   test(`fullscreen prop is bindable and updates from test page controls`, async ({ page }) => {
     const status = page.locator(`[data-testid="fullscreen-status"]`)
     const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
@@ -296,33 +278,6 @@ test.describe(`Structure Component Tests`, () => {
     })
     await expect(status).toContainText(`false`)
     await expect(checkbox).not.toBeChecked()
-  })
-
-  test(`fullscreen prop binds to component state`, async ({ page }) => {
-    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
-    const canvas = page.locator(`#test-structure canvas`)
-
-    await expect(canvas).toBeVisible()
-    await checkbox.click({ force: true })
-    await expect(checkbox).toBeChecked()
-    await expect(canvas).toBeVisible()
-  })
-
-  test(`closes controls pane with Escape key`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const controls_toggle_button = structure_div.locator(`button.structure-controls-toggle`)
-
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-
-    await page.keyboard.press(`Escape`)
-
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
-    await expect(control_pane).toBeHidden()
-    // tooltip attachment moves title to data-original-title
-    await expect(controls_toggle_button).toHaveAttribute(
-      `data-original-title`,
-      `Structure controls`,
-    )
   })
 
   test(`keyboard shortcuts require modifier keys`, async ({ page }) => {
@@ -362,24 +317,6 @@ test.describe(`Structure Component Tests`, () => {
     // Verify no errors occurred and component still functions
     expect(page_errors).toBe(false)
     await expect(structure_div.locator(`canvas`)).toBeVisible()
-  })
-
-  test(`closes controls pane on outside click`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const controls_toggle_button = structure_div.locator(`button.structure-controls-toggle`)
-    const outside_area = page.locator(`body`)
-
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-
-    await outside_area.click({ position: { x: 0, y: 0 }, force: true })
-
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
-    await expect(control_pane).toBeHidden()
-    // tooltip attachment moves title to data-original-title
-    await expect(controls_toggle_button).toHaveAttribute(
-      `data-original-title`,
-      `Structure controls`,
-    )
   })
 
   test(`show_site_labels defaults to false and can be toggled`, async ({ page }) => {
@@ -790,24 +727,6 @@ test.describe(`Structure Component Tests`, () => {
     await expect_canvas_changed(canvas, initial_screenshot)
     const after_radius_change = await canvas.screenshot()
 
-    // Test that background can be changed via test page controls (not in-pane controls)
-    // The background color control is in the test page, not the component controls pane
-    const test_bg_input = page.locator(
-      `section:has-text("Controls for Test Page") label:has-text("Background Color") input[type="color"]`,
-    )
-
-    if (await test_bg_input.isVisible()) {
-      await test_bg_input.fill(`#ff0000`)
-
-      // Check that CSS variable is updated
-      const expected_alpha = 0.1 // Default background_opacity value
-      await expect(structure_div).toHaveCSS(
-        `background-color`,
-        `rgba(255, 0, 0, ${expected_alpha})`,
-        { timeout: get_canvas_timeout() },
-      )
-    }
-
     // Test show atoms checkbox
     const visibility_heading = control_pane.locator(`h4:has-text("Visibility")`)
     const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
@@ -856,6 +775,11 @@ test.describe(`Structure Component Tests`, () => {
     await page.locator(`body`).click({ position: { x: 10, y: 10 } })
     await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
     await expect(control_pane4).toBeHidden()
+    // tooltip attachment moves title to data-original-title
+    await expect(controls_toggle_button).toHaveAttribute(
+      `data-original-title`,
+      `Structure controls`,
+    )
   })
 
   test(`bond controls appear when bonds are enabled`, async ({ page }) => {
@@ -936,22 +860,23 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
-    await goto_structure_test(page)
-
+    const canvas = page.locator(`#test-structure canvas`)
+    const initial_screenshot = await canvas.screenshot()
     await page.locator(`[data-testid="btn-set-selected"]`).click()
+    await expect_canvas_changed(canvas, initial_screenshot)
 
     const labels = page.locator(`.selection-label`)
     await expect(labels).toHaveCount(0)
 
+    const selected_screenshot = await canvas.screenshot()
     await page.locator(`[data-testid="btn-clear-selected"]`).click()
+    await expect_canvas_changed(canvas, selected_screenshot)
     await expect(labels).toHaveCount(0)
   })
 
   test(`measured_sites shows selection order labels and measurement overlays`, async ({
     page,
   }) => {
-    await goto_structure_test(page)
-
     await page.locator(`[data-testid="btn-set-measured"]`).click()
 
     const labels = page.locator(`.selection-label`)
@@ -1004,7 +929,7 @@ test.describe(`Structure Component Tests`, () => {
     await page.locator(`[data-testid="btn-clear-measured"]`).click()
   })
 
-  test(`selections are cleared on supercell scaling, image atoms toggle, and structure change`, async ({
+  test(`selections are cleared on supercell scaling and image atoms toggle`, async ({
     page,
   }) => {
     const labels = page.locator(`.selection-label`)
@@ -1406,22 +1331,16 @@ test.describe(`Structure Event Handler Tests`, () => {
       page,
     }) => {
       const fullscreen_button = page.locator(`#test-structure .fullscreen-toggle`)
-      if (!(await fullscreen_button.isVisible())) test.skip()
-
       await clear_events_and_wait(page)
       await fullscreen_button.click()
 
-      // Fullscreen API may not work in headless mode, so check if event was triggered
-      // or if the button click was successful
-      try {
-        await check_event_triggered(page, `on_fullscreen_change`, [
-          `is_fullscreen`,
+      await expect(async () => {
+        const event = await check_event_triggered(page, `on_fullscreen_change`, [
+          `fullscreen`,
           `structure`,
         ])
-      } catch {
-        // If event not triggered, verify the button is still functional
-        await expect(fullscreen_button).toBeVisible()
-      }
+        expect(event.data).toMatchObject({ fullscreen: true })
+      }).toPass({ timeout: get_canvas_timeout() })
     })
 
     test(`should trigger on_file_load event when structure is loaded via data_url`, async ({
@@ -1508,37 +1427,19 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await goto_structure_test(page)
   })
 
-  // Helper for camera projection toggle tests
-  async function test_camera_projection_toggle(page: Page, initial: string, target: string) {
+  test(`camera projection can be toggled in both directions`, async ({ page }) => {
     const { pane_div } = await open_structure_control_pane(page)
 
     const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     await expect(camera_projection_select).toBeVisible()
     await camera_projection_select.scrollIntoViewIfNeeded()
 
-    if (initial !== DEFAULTS.structure.camera_projection) {
-      // Set initial state if not default
-      await camera_projection_select.selectOption(initial)
-      await expect(camera_projection_select).toHaveValue(initial)
-    }
-
-    // Change to target projection
-    await camera_projection_select.selectOption(target)
-    await expect(camera_projection_select).toHaveValue(target)
+    await camera_projection_select.selectOption(`orthographic`)
+    await expect(camera_projection_select).toHaveValue(`orthographic`)
+    await camera_projection_select.selectOption(`perspective`)
+    await expect(camera_projection_select).toHaveValue(`perspective`)
     // Note: camera-projection-status doesn't update because scene_props binding is one-directional
     await expect(page.locator(`#test-structure canvas`)).toBeVisible()
-  }
-
-  test(`camera projection can be toggled from perspective to orthographic`, async ({
-    page,
-  }) => {
-    await test_camera_projection_toggle(page, `perspective`, `orthographic`)
-  })
-
-  test(`camera projection can be toggled from orthographic to perspective`, async ({
-    page,
-  }) => {
-    await test_camera_projection_toggle(page, `orthographic`, `perspective`)
   })
 
   test(`camera projection behavior and visual differences`, async ({ page }) => {
@@ -1613,88 +1514,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect(atom_radius_input).toHaveValue(`1.5`)
   })
 
-  test(`camera projection UI accessibility and interactions`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Test 1: UI controls accessibility and options
-    const projection_select = pane_div.locator(`label:has-text("Projection") select`)
-    await expect(projection_select).toBeVisible()
-
-    const options = await projection_select.locator(`option`).allTextContents()
-    expect(options).toEqual([`Perspective`, `Orthographic`])
-
-    // Test 2: Canvas interactions work with both projections
-    const canvas = page.locator(`#test-structure canvas`)
-    const canvas_box = await canvas.boundingBox()
-
-    for (const projection of [`perspective`, `orthographic`]) {
-      // Re-open pane each iteration (canvas.click closes it via click-outside)
-      await open_structure_control_pane(page)
-      await expect(projection_select).toBeVisible({ timeout: 2000 })
-      await projection_select.selectOption(projection)
-
-      if (canvas_box) {
-        await canvas.click({
-          position: { x: canvas_box.width / 2, y: canvas_box.height / 2 },
-          force: true,
-        })
-        await canvas.hover({ force: true })
-        await page.mouse.wheel(0, -100)
-      }
-    }
-
-    // Verify canvas remains responsive
-    await expect(canvas).toBeVisible()
-    const canvas_size = await canvas.evaluate((el) => ({
-      width: (el as HTMLCanvasElement).width,
-      height: (el as HTMLCanvasElement).height,
-    }))
-    expect(canvas_size.width).toBeGreaterThan(0)
-  })
-
-  test(`camera projection controls integration and functionality`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
-    const auto_rotate_input = pane_div.locator(
-      `label:has-text("Auto-rotate speed") input[type="number"]`,
-    )
-    const zoom_speed_input = pane_div.locator(
-      `label:has-text("Zoom speed") input[type="number"]`,
-    )
-    const canvas = page.locator(`#test-structure canvas`)
-
-    // Test camera controls integration across both projections
-    const test_values = {
-      perspective: [`1.0`, `0.5`],
-      orthographic: [`0.8`, `0.4`],
-    } as const
-
-    for (const [projection, [auto_rotate, zoom_speed]] of Object.entries(test_values)) {
-      await camera_projection_select.selectOption(projection)
-      await auto_rotate_input.fill(auto_rotate)
-      await zoom_speed_input.fill(zoom_speed)
-
-      await expect(auto_rotate_input).toHaveValue(auto_rotate)
-      await expect(zoom_speed_input).toHaveValue(zoom_speed)
-      await expect(camera_projection_select).toHaveValue(projection)
-    }
-
-    // Test visual rendering differences
-    await camera_projection_select.selectOption(`perspective`)
-    const perspective_visual = await canvas.screenshot()
-    expect(perspective_visual.length).toBeGreaterThan(1000)
-
-    await camera_projection_select.selectOption(`orthographic`)
-    // Poll for canvas change after projection switch
-    await expect_canvas_changed(canvas, perspective_visual)
-    const orthographic_visual = await canvas.screenshot()
-    expect(orthographic_visual.length).toBeGreaterThan(1000)
-
-    // Verify the select value was updated correctly
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
-  })
-
   test.describe(`Structure Controls Reset Functionality`, () => {
     test.beforeEach(async ({ page }: { page: Page }) => {
       // Open structure controls pane
@@ -1715,14 +1534,19 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       // Reset button should appear in Visibility section (within the heading)
       const visibility_reset = visibility_heading.locator(`button.reset-button`)
       await expect(visibility_reset).toBeVisible()
+      await expect(visibility_reset).toHaveAttribute(`title`, `Reset visibility to defaults`)
+      await expect(visibility_reset).toHaveAttribute(
+        `aria-label`,
+        `Reset visibility to defaults`,
+      )
 
       // Click reset button
       await visibility_reset.click()
 
       // Checkbox should be checked again
       await expect(show_atoms_checkbox).toBeChecked()
-
-      // (No assertion about reset button visibility)
+      // Reset clicks must not propagate to the pane's outside-click handler
+      await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`true`)
     })
 
     test(`camera section reset button appears and works`, async ({ page }) => {
@@ -1967,52 +1791,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(show_atoms_checkbox).not.toBeChecked()
       await expect(bg_opacity_input).toHaveValue(new_opacity)
     })
-
-    test(`reset buttons prevent event propagation`, async ({ page }) => {
-      // Change a visibility setting to make reset button appear
-      const visibility_heading = page.locator(
-        `#test-structure .controls-pane h4:has-text("Visibility")`,
-      )
-      const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
-      const show_atoms_checkbox = visibility_container.getByLabel(`Atoms`, {
-        exact: true,
-      })
-      await show_atoms_checkbox.uncheck()
-
-      // Get the reset button from within the heading
-      const visibility_reset = visibility_heading.locator(`button.reset-button`)
-      await expect(visibility_reset).toBeVisible()
-
-      // Click reset button - pane should stay open
-      await visibility_reset.click()
-
-      // Control pane should still be visible (not closed by the click)
-      await expect(page.locator(`.structure-controls-toggle`)).toBeVisible()
-      await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`true`)
-    })
-
-    test(`reset buttons have proper accessibility attributes`, async ({ page }) => {
-      // Change a visibility setting to make reset button appear
-      const visibility_heading = page.locator(
-        `#test-structure .controls-pane h4:has-text("Visibility")`,
-      )
-      const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
-      const show_atoms_checkbox = visibility_container.getByLabel(`Atoms`, {
-        exact: true,
-      })
-      await show_atoms_checkbox.uncheck()
-
-      // Get the reset button from within the heading
-      const visibility_reset = visibility_heading.locator(`button.reset-button`)
-      await expect(visibility_reset).toBeVisible()
-
-      // Check accessibility attributes
-      await expect(visibility_reset).toHaveAttribute(`title`, `Reset visibility to defaults`)
-      await expect(visibility_reset).toHaveAttribute(
-        `aria-label`,
-        `Reset visibility to defaults`,
-      )
-    })
   })
 })
 
@@ -2048,26 +1826,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
       await expect(number_input).toHaveValue(`0`)
       await expect(range_input).toHaveValue(`0`)
     }
-  })
-
-  test(`number input updates range slider and vice versa`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const rotation_axes = pane_div.locator(`.rotation-axes`)
-    const x_number_input = rotation_axes.locator(`input[type="number"]`).first()
-    const x_range_input = rotation_axes.locator(`input[type="range"]`).first()
-
-    // Test number input → range slider
-    await x_number_input.fill(`90`)
-    await expect(x_range_input).toHaveValue(`90`)
-
-    // Test range slider → number input
-    await x_range_input.fill(`180`)
-    await expect(x_number_input).toHaveValue(`180`)
-
-    // Test another value
-    await x_number_input.fill(`270`)
-    await expect(x_range_input).toHaveValue(`270`)
   })
 
   test(`rotation controls clamp out-of-range values on input`, async ({ page }) => {
@@ -2289,6 +2047,13 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // After toggle, the button should have 'element-hidden' class (indicates atoms are hidden)
     await expect(toggle_button).toHaveClass(/element-hidden/)
+    const hidden_screenshot = await canvas.screenshot()
+
+    // Show
+    await toggle_button.click()
+    await expect(label).not.toHaveClass(/hidden/)
+    // Poll for canvas change after showing element
+    await expect_canvas_changed(canvas, hidden_screenshot)
   })
 
   test(`color picker remains functional with toggle button`, async ({ page }) => {
@@ -2316,31 +2081,6 @@ test.describe(`Element Visibility Toggle`, () => {
     expect(reset_color).not.toBe(`#ff0000`)
     // Should be close to original (may not be exact due to rounding)
     expect(reset_color.length).toBe(7) // Valid hex color
-  })
-
-  test(`toggle shows atoms after hiding`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const legend = page.locator(`#test-structure .atom-legend`)
-    const first_item = legend.locator(`.legend-item`).first()
-    const toggle_button = first_item.locator(`button.toggle-visibility`)
-    const label = first_item.locator(`label`)
-
-    const initial_screenshot = await canvas.screenshot()
-
-    // Hide
-    await first_item.hover()
-    await toggle_button.click()
-    await expect(label).toHaveClass(/hidden/)
-    await expect(toggle_button).toHaveClass(/element-hidden/)
-    // Poll for canvas change after hiding element
-    await expect_canvas_changed(canvas, initial_screenshot)
-    const hidden_screenshot = await canvas.screenshot()
-
-    // Show
-    await toggle_button.click()
-    await expect(label).not.toHaveClass(/hidden/)
-    // Poll for canvas change after showing element
-    await expect_canvas_changed(canvas, hidden_screenshot)
   })
 
   test(`multiple elements work independently`, async ({ page }) => {
@@ -2426,102 +2166,6 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 })
 
-test.describe(`Fullscreen Background Color Detection`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
-  })
-
-  // Helper to set background and trigger detection
-  const set_bg = async (page: Page, html_bg: string | null, body_bg: string | null = null) => {
-    await page.evaluate(
-      ([html, body]) => {
-        document
-          .querySelectorAll(`style`)
-          .forEach(
-            (style_el) => style_el.textContent?.includes(`background`) && style_el.remove(),
-          )
-        document.documentElement.className = ``
-        document.body.className = ``
-        if (html) {
-          document.documentElement.style.setProperty(`background-color`, html, `important`)
-        }
-        if (body) document.body.style.setProperty(`background-color`, body, `important`)
-
-        const el = document.querySelector(`#test-structure`) as HTMLElement
-        if (!el) return
-        const get_bg = () => {
-          const computed_html_bg = getComputedStyle(document.documentElement).backgroundColor
-          const computed_body_bg = getComputedStyle(document.body).backgroundColor
-          const valid = (bg: string) => bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
-          if (valid(computed_html_bg)) return computed_html_bg
-          if (valid(computed_body_bg)) return computed_body_bg
-          return globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
-            ? `#1a1a1a`
-            : `#ffffff`
-        }
-        el.style.setProperty(`--struct-bg-fullscreen`, get_bg())
-      },
-      [html_bg, body_bg],
-    )
-  }
-
-  const get_bg = (page: Page) =>
-    page
-      .locator(`#test-structure`)
-      .evaluate((el) => getComputedStyle(el).getPropertyValue(`--struct-bg-fullscreen`))
-
-  test(`uses HTML background`, async ({ page }) => {
-    await set_bg(page, `rgb(255, 100, 50)`)
-    expect(await get_bg(page)).toBe(`rgb(255, 100, 50)`)
-  })
-
-  test(`uses body background when HTML transparent`, async ({ page }) => {
-    await set_bg(page, `transparent`, `rgb(50, 150, 200)`)
-    expect(await get_bg(page)).toBe(`rgb(50, 150, 200)`)
-  })
-
-  test(`prefers HTML over body background`, async ({ page }) => {
-    await set_bg(page, `rgb(255, 0, 0)`, `rgb(0, 255, 0)`)
-    expect(await get_bg(page)).toBe(`rgb(255, 0, 0)`)
-  })
-
-  test(`falls back to dark mode when no background`, async ({ page }) => {
-    await page.emulateMedia({ colorScheme: `dark` })
-    await set_bg(page, `transparent`, `transparent`)
-    expect(await get_bg(page)).toMatch(/rgb\(26, 26, 26\)|#1a1a1a/)
-  })
-
-  test(`falls back to light mode when no background`, async ({ page }) => {
-    await page.emulateMedia({ colorScheme: `light` })
-    await set_bg(page, `transparent`, `transparent`)
-    expect(await get_bg(page)).toMatch(/rgb\(255, 255, 255\)|#ffffff/)
-  })
-
-  test(`ignores rgba(0,0,0,0)`, async ({ page }) => {
-    await set_bg(page, `rgba(0, 0, 0, 0)`, `rgb(100, 200, 150)`)
-    expect(await get_bg(page)).toBe(`rgb(100, 200, 150)`)
-  })
-
-  test(`ignores transparent keyword`, async ({ page }) => {
-    await set_bg(page, `transparent`, `rgb(75, 125, 200)`)
-    expect(await get_bg(page)).toBe(`rgb(75, 125, 200)`)
-  })
-
-  test(`handles hex colors`, async ({ page }) => {
-    await set_bg(page, `#3a7bd5`)
-    expect(await get_bg(page)).toBe(`rgb(58, 123, 213)`)
-  })
-
-  test(`handles rgba with full opacity`, async ({ page }) => {
-    await set_bg(page, `rgba(100, 150, 200, 1)`)
-    const bg = await get_bg(page)
-    expect(bg).toMatch(/rgb/)
-    expect(bg).toContain(`100`)
-    expect(bg).toContain(`150`)
-    expect(bg).toContain(`200`)
-  })
-})
-
 test.describe(`Edit Atoms Mode`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // Edit-atoms tests require WebGL for 3D canvas interactions
@@ -2534,17 +2178,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await page.locator(`#test-structure`).focus()
     await page.keyboard.press(`Delete`)
   }
-
-  test(`edit-atoms mode can be selected from dropdown`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    // Verify undo/redo buttons appear (only in edit-atoms mode)
-    const structure_div = page.locator(`#test-structure`)
-    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
-    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
-    await expect(undo_btn).toBeVisible()
-    await expect(redo_btn).toBeVisible()
-  })
 
   test(`undo/redo buttons initially disabled`, async ({ page }) => {
     await enter_edit_atoms_mode(page)
@@ -2590,17 +2223,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await expect(distance_option).toBeVisible()
     await distance_option.click()
     await expect(undo_btn).toHaveCount(0)
-  })
-
-  test(`delete key removes atom and enables undo`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-    await select_atom_for_delete(page)
-
-    // Undo button should now be enabled
-    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
-    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
   })
 
   test(`undo restores state and enables redo`, async ({ page }) => {

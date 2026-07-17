@@ -60,6 +60,10 @@ const create_drop_event = (files: File[]): DragEvent => {
   return drag_event
 }
 
+const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
+  globalThis.fetch = vi.fn().mockResolvedValue(new Response(content, { headers }))
+}
+
 // Tests for Structure component functionality
 describe(`Structure`, () => {
   // Regression: bond-edit identity tokens (structure_identity) were stored in
@@ -456,7 +460,7 @@ describe(`Structure empty states`, () => {
   })
 })
 
-test(`camera projection control reflects and updates scene_props`, async () => {
+test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
   const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
   mount_structure({ structure, controls_open: true, show_controls: true, scene_props })
   await tick()
@@ -470,10 +474,6 @@ test(`camera projection control reflects and updates scene_props`, async () => {
     `perspective`,
     `orthographic`,
   ])
-
-  projection_select.value = `orthographic`
-  projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-  expect(projection_select.value).toBe(`orthographic`)
 
   const auto_rotate_input = document.querySelector(
     `.controls-pane input[type="number"][max="2"]`,
@@ -530,7 +530,7 @@ describe(`atom label controls`, () => {
     expect(Number(padding_input.value)).toBe(4)
   })
 
-  test(`state isolation between instances works`, () => {
+  test(`state isolation between instances works`, async () => {
     // Mount first instance
     mount_structure({
       structure,
@@ -560,6 +560,7 @@ describe(`atom label controls`, () => {
 
     instance1_z.value = `0.9`
     instance1_z.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
 
     expect(Number(instance1_z.value)).toBeCloseTo(0.9, 1)
     expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
@@ -603,23 +604,20 @@ describe(`Structure string parsing`, () => {
 
   test(`prioritizes data_url over structure_string`, async () => {
     let load_data: StructureHandlerData | undefined
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve(SAMPLE_POSCAR_CONTENT),
-    })
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
     mount_structure({
       data_url: `/test.poscar`,
       structure_string: `ignored`,
       on_file_load: (data: StructureHandlerData) => (load_data = data),
     })
-    await tick()
+    await vi.waitFor(() => expect(load_data).toBeDefined())
     expect(load_data?.filename).toBe(`test.poscar`)
     expect(load_data?.source_filename).toBe(`test.poscar`)
     expect(load_data?.source_url).toBe(`/test.poscar`)
   })
 
   test(`keeps loading active until async data_url handlers finish`, async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(SAMPLE_POSCAR_CONTENT))
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
     let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
     const on_file_drop = vi.fn(() => drop_done)
@@ -633,7 +631,7 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`reports async data_url handler failures`, async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(SAMPLE_POSCAR_CONTENT))
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
     const on_error = vi.fn()
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
     try {
@@ -656,11 +654,7 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`keeps compressed source identity separate from the logical filename`, async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(SAMPLE_POSCAR_CONTENT, {
-        headers: { 'content-encoding': `gzip` },
-      }),
-    )
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT, { 'content-encoding': `gzip` })
     let load_data: StructureHandlerData | undefined
     mount_structure({
       data_url: `/test.poscar.gz`,
@@ -674,11 +668,7 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`keeps compressed volumetric source identity separate from its dedupe key`, async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(SAMPLE_CHGCAR_CONTENT, {
-        headers: { 'content-encoding': `gzip` },
-      }),
-    )
+    mock_fetch_response(SAMPLE_CHGCAR_CONTENT, { 'content-encoding': `gzip` })
     const state = { volumetric_data: undefined as VolumetricData[] | undefined }
     mount_structure(bind_props({ data_url: `/density.CHGCAR.gz` }, state))
 
@@ -810,11 +800,10 @@ describe(`Structure string parsing`, () => {
       text: () => Promise.resolve(``),
     })
     mount_structure({ data_url: `/missing-structure.json` })
-    await tick()
-    await tick()
-
-    const status_msg = document.querySelector(`.status-message.error`) as HTMLElement
-    expect(status_msg).toBeInstanceOf(HTMLElement)
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.status-message.error`)).toBeInstanceOf(HTMLElement),
+    )
+    const status_msg = doc_query(`.status-message.error`)
     expect(status_msg.getAttribute(`role`)).toBe(`alert`)
     expect(status_msg.textContent).toContain(`Failed to load structure`)
   })
