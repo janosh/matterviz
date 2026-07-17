@@ -161,7 +161,7 @@ Showcasing structures with different crystal systems.
 </script>
 
 <ul class="crystal-systems">
-  {#each structures.filter( (struct) => CRYSTAL_SYSTEMS.some( (system) => struct.id.includes(system), ), ) as structure (structure.id)}
+  {#each structures.filter( (struct) => CRYSTAL_SYSTEMS.some( (system) => struct.id.includes(system) ) ) as structure (structure.id)}
     {@const mp_id = structure.id.split(`-`).slice(0, 2).join(`-`)}
     {@const href = `https://materialsproject.org/materials/${mp_id}`}
     {@const crystal_system = structure.id.split(`-`).at(-1) || 'unknown'}

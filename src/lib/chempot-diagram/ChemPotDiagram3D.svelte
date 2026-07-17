@@ -275,7 +275,7 @@
         .filter(([, amount]) => amount > 0)
         .map(([element]) => element),
     )
-    return Array.from(new SvelteSet(elements)).sort()
+    return Array.from(new SvelteSet(elements)).toSorted()
   })
   const has_multinary_system = $derived(all_entry_elements.length > 3)
   let projection_elements_override = $state<string[] | null>(null)
@@ -356,7 +356,7 @@
   })
   const current_projection_key = $derived(plot_elements.join(`|`))
   let formula_filter_query = $state(``)
-  const available_formulas = $derived(Object.keys(diagram_data?.domains ?? {}).sort())
+  const available_formulas = $derived(Object.keys(diagram_data?.domains ?? {}).toSorted())
   const filtered_formulas = $derived.by(() => {
     const query = formula_filter_query.trim().toLowerCase()
     if (!query) return available_formulas

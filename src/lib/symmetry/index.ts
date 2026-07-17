@@ -356,7 +356,7 @@ export const wyckoff_multiplicity = (label: string): number =>
 export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): WyckoffPos[] {
   if (!sym_data) return []
   const orbit_rows = wyckoff_rows_from_input_orbits(sym_data)
-  return (orbit_rows ?? []).sort((w1, w2) => {
+  return (orbit_rows ?? []).toSorted((w1, w2) => {
     const [w1_mult, w2_mult] = [
       wyckoff_multiplicity(w1.wyckoff),
       wyckoff_multiplicity(w2.wyckoff),

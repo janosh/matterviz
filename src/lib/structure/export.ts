@@ -494,7 +494,7 @@ function get_cif_block_name(structure: AnyStructure): string {
     }
 
     // Sort elements alphabetically and build formula string
-    const elements = Object.keys(element_counts).sort()
+    const elements = Object.keys(element_counts).toSorted()
     if (elements.length === 0) throw new Error(`No elements found`)
 
     const formula = elements

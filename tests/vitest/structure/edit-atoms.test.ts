@@ -302,7 +302,7 @@ function format_bond_summary(neighbors: string[]): string {
   const counts: Record<string, number> = {}
   for (const elem of neighbors) counts[elem] = (counts[elem] ?? 0) + 1
   const parts = Object.entries(counts)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([elem, count]) => `${elem}: ${count}`)
   return ` (${parts.join(`, `)})`
 }

@@ -83,7 +83,7 @@ describe(`package.json exports`, () => {
       types: `./dist/structure/serialize.d.ts`,
       default: `./dist/structure/serialize.js`,
     })
-    expect(Object.keys(structure_export).sort()).toEqual(
+    expect(Object.keys(structure_export).toSorted()).toEqual(
       [
         `create_structure_filename`,
         `export_structure_as`,
@@ -92,7 +92,7 @@ describe(`package.json exports`, () => {
         `structure_to_json_str`,
         `structure_to_poscar_str`,
         `structure_to_xyz_str`,
-      ].sort(),
+      ].toSorted(),
     )
 
     const element_data = await import(`../../dist/element/data.js`)

@@ -229,7 +229,7 @@
       // Count all pairs present in this entry
       for (let idx_a = 0; idx_a < active.length; idx_a++) {
         for (let idx_b = idx_a + 1; idx_b < active.length; idx_b++) {
-          const key = [active[idx_a], active[idx_b]].sort().join(`-`)
+          const key = [active[idx_a], active[idx_b]].toSorted().join(`-`)
           pair_counts.set(key, (pair_counts.get(key) ?? 0) + 1)
         }
       }
@@ -237,7 +237,7 @@
     // Build pairs list sorted by element order in chemical_system
     return elements.flatMap((el_a, idx_a) =>
       elements.slice(idx_a + 1).map((el_b) => {
-        const key = [el_a, el_b].sort().join(`-`)
+        const key = [el_a, el_b].toSorted().join(`-`)
         return { pair: key, count: pair_counts.get(key) ?? 0 }
       }),
     )
@@ -313,7 +313,7 @@
   let poly_formulas = $derived(
     [...polymorph_counts.entries()]
       .filter(([, count]) => count > 1)
-      .sort(([, count_a], [, count_b]) => count_b - count_a),
+      .toSorted(([, count_a], [, count_b]) => count_b - count_a),
   )
   let has_polymorphs = $derived(poly_formulas.length > 0)
   let active_formula_filter = $derived.by(() => {

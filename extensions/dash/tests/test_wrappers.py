@@ -119,6 +119,7 @@ def test_trailing_props_use_python_names(tmp_path: Path) -> None:
         "        some_prop: str | None = None,\n"
         "        **kwargs" in generated
     )
+    assert 'mv_props["someProp"] = some_prop' in generated
 
 
 def test_structure_preserves_legacy_positional_bindings() -> None:

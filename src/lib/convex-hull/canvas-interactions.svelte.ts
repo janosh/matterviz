@@ -299,7 +299,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
         entry,
         projected: inputs.project_point(entry.x, entry.y, entry.z),
       }))
-      .sort((left, right) => left.projected.depth - right.projected.depth)
+      .toSorted((left, right) => left.projected.depth - right.projected.depth)
   })
 
   return {

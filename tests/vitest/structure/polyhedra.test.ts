@@ -461,7 +461,7 @@ describe(`VESTA-style detection rules`, () => {
     const with_li = compute_polyhedra(structure, bonds, {
       included_center_elements: [`Li`],
     })
-    expect(with_li.map((poly) => poly.center_element).sort()).toEqual([`Fe`, `Li`])
+    expect(with_li.map((poly) => poly.center_element).toSorted()).toEqual([`Fe`, `Li`])
 
     // Li as the only cation (e.g. Li2O-like) keeps its polyhedra
     const li_only = make_crystal(18, octahedron_sites(`Li`, `O`, [4, 4, 4], 2.1))

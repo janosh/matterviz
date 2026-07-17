@@ -344,7 +344,7 @@ describe(`binary system (2 elements)`, () => {
   })
 
   test(`A-B-AB structure, refs, and AB vertices between refs`, () => {
-    expect(Object.keys(binary_simple.domains).sort()).toEqual([`A`, `AB`, `B`])
+    expect(Object.keys(binary_simple.domains).toSorted()).toEqual([`A`, `AB`, `B`])
     expect(binary_simple.el_refs.A.energy_per_atom).toBe(-2.0)
     expect(binary_simple.el_refs.B.energy_per_atom).toBe(-3.0)
     for (const pt of dedup_vertices(binary_simple.domains.AB)) {
@@ -383,7 +383,7 @@ describe(`pure binary (no compounds)`, () => {
   )
 
   test(`produces exactly 2 domains`, () => {
-    expect(Object.keys(pure_binary.domains).sort()).toEqual([`X`, `Y`])
+    expect(Object.keys(pure_binary.domains).toSorted()).toEqual([`X`, `Y`])
   })
 
   test.each([
@@ -996,8 +996,8 @@ describe(`config.elements projection vs subsystem`, () => {
       default_min_limit: -25,
       formal_chempots: false,
     })
-    const formulas = Object.keys(result.domains).sort()
-    const expected = Object.keys(cpd_binary.domains).sort()
+    const formulas = Object.keys(result.domains).toSorted()
+    const expected = Object.keys(cpd_binary.domains).toSorted()
     expect(formulas).toEqual(expected)
   })
 
@@ -1044,8 +1044,8 @@ describe(`config.elements projection vs subsystem`, () => {
     })
 
     test(`formal vs absolute produces same domains`, () => {
-      expect(Object.keys(cpd_ternary_formal.domains).sort()).toEqual(
-        Object.keys(cpd_ternary.domains).sort(),
+      expect(Object.keys(cpd_ternary_formal.domains).toSorted()).toEqual(
+        Object.keys(cpd_ternary.domains).toSorted(),
       )
     })
   })
@@ -1491,7 +1491,7 @@ describe(`compute_domains`, () => {
 
   test(`stable compound → 3 domains with valid vertices`, () => {
     const { domains, hyperplanes } = make_ab_domains(-6.0)
-    expect(Object.keys(domains).sort()).toEqual([`A`, `AB`, `B`])
+    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`, `B`])
     for (const pts of Object.values(domains)) {
       expect(pts.length).toBeGreaterThanOrEqual(2)
     }
@@ -1540,16 +1540,16 @@ describe(`compute_chempot_diagram edge cases`, () => {
     expect(reordered.elements).toEqual([`O`, `Fe`, `Li`])
     // Same domains as default order, just reordered columns
     expect(
-      Object.keys(reordered.domains).sort((str_a, str_b) => str_a.localeCompare(str_b)),
+      Object.keys(reordered.domains).toSorted((str_a, str_b) => str_a.localeCompare(str_b)),
     ).toEqual(
-      Object.keys(cpd_ternary.domains).sort((str_a, str_b) => str_a.localeCompare(str_b)),
+      Object.keys(cpd_ternary.domains).toSorted((str_a, str_b) => str_a.localeCompare(str_b)),
     )
     // Verify axes actually swapped: Fe domain's O-axis range (col 0 in reordered)
     // should match its col 2 range in default [Fe,Li,O] order
     const fe_reordered = dedup_vertices(reordered.domains.Fe)
     const fe_default = dedup_vertices(cpd_ternary.domains.Fe)
-    const re_o_vals = fe_reordered.map((pt) => pt[0]).sort((val_a, val_b) => val_a - val_b)
-    const def_o_vals = fe_default.map((pt) => pt[2]).sort((val_a, val_b) => val_a - val_b) // O is axis 2 in default
+    const re_o_vals = fe_reordered.map((pt) => pt[0]).toSorted((val_a, val_b) => val_a - val_b)
+    const def_o_vals = fe_default.map((pt) => pt[2]).toSorted((val_a, val_b) => val_a - val_b) // O is axis 2 in default
     expect(re_o_vals).toHaveLength(def_o_vals.length)
     for (let idx = 0; idx < re_o_vals.length; idx++) {
       expect(re_o_vals[idx]).toBeCloseTo(def_o_vals[idx], 4)
@@ -1569,7 +1569,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
       [make_entry({ A: 1 }, -2.0), make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)],
       { default_min_limit: -10, formal_chempots: false },
     )
-    expect(Object.keys(result.domains).sort()).toEqual([`A`, `B`])
+    expect(Object.keys(result.domains).toSorted()).toEqual([`A`, `B`])
   })
 
   test.each([
@@ -1899,7 +1899,9 @@ describe(`N-D projection cache consistency`, () => {
       elements: [`S`, `Ti`, `Y`],
     })
     // Both projections see the same N-D domains; formula keys match
-    expect(Object.keys(proj_a.domains).sort()).toEqual(Object.keys(proj_b.domains).sort())
+    expect(Object.keys(proj_a.domains).toSorted()).toEqual(
+      Object.keys(proj_b.domains).toSorted(),
+    )
 
     const binary_proj = compute_chempot_diagram(ytos_entries, {
       ...config_base,

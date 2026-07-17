@@ -202,7 +202,7 @@ export function parse_lammps_trajectory(
         `lattice` in first_frame.structure
           ? first_frame.structure.lattice.pbc
           : [true, true, true],
-      atom_types: Array.from(atom_types_found).sort((a, b) => a - b),
+      atom_types: Array.from(atom_types_found).toSorted((a, b) => a - b),
       element_counts,
     },
   }

@@ -653,6 +653,6 @@ export function clip_plane_to_cell(
       const rel = math.subtract(vert, centroid)
       return { vert, angle: Math.atan2(math.dot(rel, cross_ref), math.dot(rel, ref_vec)) }
     })
-    .sort((pt_a, pt_b) => pt_a.angle - pt_b.angle)
+    .toSorted((pt_a, pt_b) => pt_a.angle - pt_b.angle)
     .map(({ vert }) => vert)
 }

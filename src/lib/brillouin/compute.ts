@@ -162,7 +162,7 @@ export function generate_bz_vertices(
       }
     })
     .filter((plane): plane is NonNullable<typeof plane> => plane !== null)
-    .sort((a, b) => a.dist_sq - b.dist_sq)
+    .toSorted((a, b) => a.dist_sq - b.dist_sq)
     .slice(0, max_planes)
 
   // Pre-compute plane data for fast access

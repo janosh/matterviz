@@ -74,7 +74,7 @@ export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
   // Extract unique element symbols from normalized compositions
   const elements = Array.from(
     new Set(normalized_entries.flatMap((entry) => Object.keys(entry.composition))),
-  ).sort() as ElementSymbol[]
+  ).toSorted() as ElementSymbol[]
 
   const el_refs = Object.fromEntries(
     stable_entries
@@ -166,7 +166,7 @@ export function calculate_e_above_hull(
   // 1. Identify chemical system
   const elements = Array.from(
     new Set(reference_entries.flatMap((entry) => Object.keys(entry.composition))),
-  ).sort() as ElementSymbol[]
+  ).toSorted() as ElementSymbol[]
 
   // 2. Validate subset
   const element_set = new Set(elements)
@@ -1024,7 +1024,7 @@ export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
     }
 
     // Remove visible faces (in reverse order to maintain indices)
-    const sorted_visible = Array.from(visible_indices).sort((a, b) => b - a)
+    const sorted_visible = Array.from(visible_indices).toSorted((a, b) => b - a)
     for (const idx of sorted_visible) {
       faces.splice(idx, 1)
     }

@@ -32,7 +32,7 @@
           /^(?<mp_id>mp-\d+)-(?<formula>.+)$/.exec(material) ?? []
         return { material, keys, label: mp_id ? `${formula} (${mp_id})` : material }
       })
-      .sort((grp_a, grp_b) => grp_a.label.localeCompare(grp_b.label))
+      .toSorted((grp_a, grp_b) => grp_a.label.localeCompare(grp_b.label))
   })()
 
   const default_group = groups.find((grp) => grp.material === `mp-2758-Sr4Se4`) ?? groups[0]

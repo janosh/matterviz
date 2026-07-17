@@ -108,7 +108,7 @@ function subsample_preserve_peaks(
   // Select top peaks by height
   const top_peaks = peaks
     .map((idx) => ({ idx, y: y_vals[idx] }))
-    .sort((a, b) => b.y - a.y)
+    .toSorted((a, b) => b.y - a.y)
     .slice(0, peak_slots)
     .map((peak) => peak.idx)
 

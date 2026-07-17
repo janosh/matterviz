@@ -22,13 +22,18 @@ export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
   ? Name
   : never
+const d3_interpolators = Object.fromEntries(
+  Object.entries(d3_sc).filter(
+    ([name, candidate]) => name.startsWith(`interpolate`) && typeof candidate === `function`,
+  ),
+) as Record<D3InterpolateName, (t: number) => string>
 export const D3_INTERPOLATE_NAMES = new Set(
-  Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`)),
+  Object.keys(d3_interpolators),
 ) as ReadonlySet<D3InterpolateName>
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
   D3_INTERPOLATE_NAMES.has(name as D3InterpolateName)
 export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {
-  const candidate = d3_sc[name]
+  const candidate = d3_interpolators[name]
   return typeof candidate === `function` ? candidate : d3_sc.interpolateViridis
 }
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const

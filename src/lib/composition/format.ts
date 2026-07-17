@@ -88,7 +88,7 @@ export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymb
 // This is the standard notation for organic compounds in chemistry.
 export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[] => {
   const has_carbon = symbols.includes(`C`)
-  return symbols.sort((el_a, el_b) => {
+  return symbols.toSorted((el_a, el_b) => {
     // Equal elements must return 0 (sort invariant)
     if (el_a === el_b) return 0
     // Carbon always comes first

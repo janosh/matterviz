@@ -111,7 +111,7 @@ export function generate_plot_series(
   // Apply final assignments to series
   apply_group_assignments(all_series, unit_groups)
 
-  return all_series.sort((a, b) => Number(b.visible) - Number(a.visible))
+  return all_series.toSorted((a, b) => Number(b.visible) - Number(a.visible))
 }
 
 // Extract statistics for all properties in a single pass
@@ -217,7 +217,7 @@ function group_and_assign_series(
 
       return { unit, series: group_series, priority, is_visible }
     })
-    .sort((a, b) => a.priority - b.priority)
+    .toSorted((a, b) => a.priority - b.priority)
 
   // Apply 2-group visibility limit
   const visible_groups = groups.filter((group) => group.is_visible)

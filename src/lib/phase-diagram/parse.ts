@@ -280,7 +280,7 @@ export const get_system_name = (elements: string[]): string =>
   elements
     .filter(is_real_element)
     .map((el) => el.toUpperCase())
-    .sort()
+    .toSorted()
     .join(`-`)
 
 // Check if a TDB file represents a binary system
@@ -347,5 +347,5 @@ export function normalize_system_name(input: string): string {
   }
 
   // Sort alphabetically and join with hyphen
-  return elements.sort().join(`-`)
+  return elements.toSorted().join(`-`)
 }
