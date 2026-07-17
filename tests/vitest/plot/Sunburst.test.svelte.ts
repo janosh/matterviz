@@ -66,7 +66,8 @@ const fire = async (
   node: Element | null | undefined,
   event: Event = mouse(`click`),
 ): Promise<void> => {
-  node?.dispatchEvent(event)
+  if (!node) throw new Error(`event target not found`)
+  node.dispatchEvent(event)
   await tick()
 }
 
@@ -83,6 +84,21 @@ describe(`Sunburst`, () => {
     expect(fill(`B`)).toBe(DEFAULT_SERIES_COLORS[0]) // palette
   })
 
+  test(`forwards group gaps into arc projection`, async () => {
+    const plain_plot = await mount_sized_sunburst({ data: tree, pad_angle: 0 })
+    const select_group = vi.fn((arc: PositionedArc) => arc.depth === 1)
+    const grouped_plot = await mount_sized_sunburst({
+      data: tree,
+      pad_angle: 0,
+      group_gap: { select: select_group, gap_px: 20 },
+    })
+
+    expect(select_group).toHaveBeenCalled()
+    expect(arc_path(grouped_plot, `A`).getAttribute(`d`)).not.toBe(
+      arc_path(plain_plot, `A`).getAttribute(`d`),
+    )
+  })
+
   test.each([
     [{ data: [] as SunburstNode[] }, 0],
     [{ data: [{ label: `solo`, value: 1 }] }, 1],
@@ -91,11 +107,13 @@ describe(`Sunburst`, () => {
     expect(n_arcs(plot)).toBe(expected)
   })
 
-  test(`shows a tooltip and fires hover callback with breadcrumb payload`, async () => {
+  test(`shows the default tooltip and fires hover callback with breadcrumb payload`, async () => {
     const on_node_hover = vi.fn()
     const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(
+      /A › A1[\s\S]*20% of total[\s\S]*40% of parent/,
+    )
     expect(on_node_hover).toHaveBeenCalledOnce()
     expect(on_node_hover.mock.calls[0][0] as SunburstNodeHandlerProps).toMatchObject({
       type: `node`,
@@ -110,10 +128,12 @@ describe(`Sunburst`, () => {
     })
   })
 
-  test(`clicking a branch arc zooms in (fires on_zoom + on_node_click, hides siblings)`, async () => {
+  test(`clicking a branch zooms, fires callbacks, and dismisses its tooltip`, async () => {
     const on_node_click = vi.fn()
     const on_zoom = vi.fn()
     const plot = await mount_sized_sunburst({ data: tree, on_node_click, on_zoom })
+    await fire(arc_path(plot, `A`), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     await fire(arc_path(plot, `A`))
     expect(on_node_click).toHaveBeenCalledOnce()
     expect(on_zoom).toHaveBeenCalledOnce()
@@ -122,6 +142,8 @@ describe(`Sunburst`, () => {
     // outside the angular window); center shows the zoom root + its value
     expect(n_arcs(plot)).toBe(2)
     expect(plot.querySelector(`.center-label`)?.textContent).toMatch(/A[\s\S]*10/)
+    // the clicked arc collapsed into the hole - its tooltip must not linger
+    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
   })
 
   test.each([
@@ -167,21 +189,17 @@ describe(`Sunburst`, () => {
     expect(plot.querySelector(`.arc-label`)?.getAttribute(`fill`)).toBe(expected_fill)
   })
 
-  test(`renders a legend with one item per depth-1 category`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree, show_legend: true })
-    const items = [...plot.querySelectorAll(`.legend-item`)]
-    expect(items.map((el) => el.querySelector(`.legend-label`)?.textContent)).toEqual([
-      `A`,
-      `B`,
-    ])
-  })
-
-  test(`legend toggle mutes a category's subtree (labels too); re-click restores it`, async () => {
+  test(`legend renders categories and toggles subtree and label opacity`, async () => {
     const plot = await mount_sized_sunburst({
       data: tree,
       show_legend: true,
       show_labels: true,
     })
+    const items = [...plot.querySelectorAll(`.legend-item`)]
+    expect(items.map((item) => item.querySelector(`.legend-label`)?.textContent)).toEqual([
+      `A`,
+      `B`,
+    ])
     const opacities = () =>
       ([`A`, `A1`, `A2`, `B`] as const).map((lbl) =>
         arc_path(plot, lbl).getAttribute(`fill-opacity`),
@@ -205,12 +223,6 @@ describe(`Sunburst`, () => {
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
     const opacity = (lbl: keyof typeof IDX) => arc_path(plot, lbl).getAttribute(`fill-opacity`)
     expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `0.3`])
-  })
-
-  test(`default tooltip shows breadcrumb + percent of total`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree })
-    await fire(arc_path(plot, `A`), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(/A[\s\S]*50% of total/)
   })
 
   test(`value_mode total respects authoritative parent values`, async () => {
@@ -279,7 +291,7 @@ describe(`Sunburst`, () => {
   )
 
   // regression for cf6e3e62: leaving the chart must reset the bindable hover state
-  test(`mouseleave on the svg clears the tooltip and reports a null hover`, async () => {
+  test(`mouseleave clears the tooltip and reports one null hover`, async () => {
     const on_node_hover = vi.fn()
     const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
@@ -287,15 +299,10 @@ describe(`Sunburst`, () => {
     await fire(plot.querySelector(`svg[role="application"]`), new MouseEvent(`mouseleave`))
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
     expect(on_node_hover).toHaveBeenLastCalledWith(null)
-  })
-
-  test(`click-to-zoom dismisses the tooltip of the clicked arc`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree })
-    await fire(arc_path(plot, `A`), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
-    await fire(arc_path(plot, `A`))
-    // the clicked arc collapsed into the hole - its tooltip must not linger
-    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+    // leaving the chart fires mouseleave on both the chart <g> and the <svg>; a hover
+    // clear must only report null once (and not at all when nothing was hovered)
+    await fire(plot.querySelector(`svg[role="application"]`), new MouseEvent(`mouseleave`))
+    expect(on_node_hover.mock.calls.map((args) => args[0] && `info`)).toEqual([`info`, null])
   })
 
   // hover/focus state is index-based - swapping data must clear it, else the old
@@ -336,18 +343,6 @@ describe(`Sunburst`, () => {
     await fire(legend_item, mouse(`mouseenter`))
     await fire(arc_path(plot, `A`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
-  })
-
-  // leaving the chart fires mouseleave on both the chart <g> and the <svg>; a hover
-  // clear must only report null once (and not at all when nothing was hovered)
-  test(`clearing an empty hover does not re-fire null callbacks`, async () => {
-    const on_node_hover = vi.fn()
-    const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
-    const svg = plot.querySelector(`svg[role="application"]`)
-    await fire(arc_path(plot, `A`), mouse(`mousemove`)) // 1 call (hover info)
-    await fire(svg, new MouseEvent(`mouseleave`)) // 2nd call (null)
-    await fire(svg, new MouseEvent(`mouseleave`)) // already clear - no 3rd call
-    expect(on_node_hover.mock.calls.map((args) => args[0] && `info`)).toEqual([`info`, null])
   })
 
   // a fast double-click on the center zoom-out button fires click+click+dblclick;
@@ -546,6 +541,61 @@ describe(`Sunburst display options`, () => {
       `var(--sunburst-colorbar-height, 150px)`,
     )
   })
+
+  test.each([
+    [`right`, 210, 130],
+    [`left`, 290, 370],
+  ] as const)(
+    `vertical colorbar on %s reserves capped width`,
+    async (colorbar_side, expected_center, expected_capped_center) => {
+      const color_values = (arc: PositionedArc): number => arc.value
+      const base_props = { data: tree, color_values, inner_radius: 0.5 }
+      const mount_vertical_colorbar = () =>
+        mount_sized_sunburst({
+          ...base_props,
+          colorbar: { orientation: `vertical` },
+          colorbar_side,
+        })
+      let measured_colorbar_width = 64
+      const client_width = vi
+        .spyOn(HTMLElement.prototype, `clientWidth`, `get`)
+        .mockImplementation(function (this: HTMLElement): number {
+          return this.classList.contains(`colorbar`) ? measured_colorbar_width : 800
+        })
+      try {
+        const without_colorbar = await mount_sized_sunburst({
+          ...base_props,
+          colorbar: null,
+        })
+        const expected_path = arc_path(without_colorbar, `A`).getAttribute(`d`)
+        const with_vertical_colorbar = await mount_vertical_colorbar()
+        const chart_group = with_vertical_colorbar.querySelector(`svg > g[transform]`)
+        expect(chart_group?.getAttribute(`transform`)).toBe(
+          `translate(${expected_center}, 180)`,
+        )
+        expect(arc_path(with_vertical_colorbar, `A`).getAttribute(`d`)).toBe(expected_path)
+        expect(with_vertical_colorbar.querySelector(`.center-circle`)?.getAttribute(`r`)).toBe(
+          `85`,
+        )
+        expect(
+          with_vertical_colorbar
+            .querySelector(`.colorbar .tick-label`)
+            ?.classList.contains(`tick-${colorbar_side === `left` ? `secondary` : `primary`}`),
+        ).toBe(true)
+
+        measured_colorbar_width = 1000
+        const width_limited = await mount_vertical_colorbar()
+        // The reserve is capped at half of the 480px padded width, leaving a
+        // 240px diameter and radius 120 (half-radius center circle = 60).
+        expect(
+          width_limited.querySelector(`svg > g[transform]`)?.getAttribute(`transform`),
+        ).toBe(`translate(${expected_capped_center}, 180)`)
+        expect(width_limited.querySelector(`.center-circle`)?.getAttribute(`r`)).toBe(`60`)
+      } finally {
+        client_width.mockRestore()
+      }
+    },
+  )
 
   test(`min_fraction prop buckets small arcs into Other`, async () => {
     const data: SunburstNode[] = [

@@ -46,7 +46,20 @@ const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
 export const MAX_BIN_FILE_SIZE = DEFAULTS.trajectory.bin_file_threshold // 50MB
 export const MAX_TEXT_FILE_SIZE = DEFAULTS.trajectory.text_file_threshold // 25MB
 export type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
-export { is_trajectory_file } from '$lib/trajectory/format-detect'
+export {
+  ext_hint,
+  FORMAT_PATTERNS,
+  indexed_trajectory_format,
+  is_indexable_trajectory_filename,
+  is_trajectory_file,
+} from '$lib/trajectory/format-detect'
+export {
+  calc_force_stats,
+  count_xyz_frames,
+  iter_xyz_frames,
+  read_ndarray_from_view,
+  validate_3x3_matrix,
+} from '$lib/trajectory/helpers'
 export { TrajFrameReader } from '$lib/trajectory/frame-reader'
 
 export async function parse_trajectory_data(

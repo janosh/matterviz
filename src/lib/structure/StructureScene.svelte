@@ -1522,7 +1522,7 @@
     const site_vec_maps = structure.sites.map((site, site_idx) => {
       if (!is_site_visible(site_idx)) return null
       const map = new Map<string, Vec3>()
-      for (const { key, vec } of get_all_site_vectors(site)) {
+      for (const { key, vec } of get_all_site_vectors(site, false)) {
         map.set(key, vec)
         if (active_set.has(key)) {
           max_mag = Math.max(max_mag, Math.hypot(...vec))

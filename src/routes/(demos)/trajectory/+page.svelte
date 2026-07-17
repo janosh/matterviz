@@ -5,6 +5,9 @@
 
   let active_file = $state(``) // last drag-and-dropped trajectory file
   let visible_props_cantor_qha = $state<string[] | undefined>(undefined)
+  const handle_file_load = ({ source_filename }: TrajHandlerData): void => {
+    if (source_filename) active_file = source_filename
+  }
 
   const trajectory_files_paths = [
     `/trajectories/flame-gold-cluster-55-atoms.h5`,
@@ -36,18 +39,14 @@
       bind:visible_properties={visible_props_cantor_qha}
       class="full-bleed"
       style="margin-top: 1em; max-height: 700px"
-      on_file_load={(data: TrajHandlerData) => {
-        if (data.filename) active_file = data.filename
-      }}
+      on_file_load={handle_file_load}
     />
   {:else}
     <Trajectory
       data_url={file}
       class="full-bleed"
       style="margin-top: 5em; max-height: 700px"
-      on_file_load={(data: TrajHandlerData) => {
-        if (data.filename) active_file = data.filename
-      }}
+      on_file_load={handle_file_load}
     />
   {/if}
 {/each}

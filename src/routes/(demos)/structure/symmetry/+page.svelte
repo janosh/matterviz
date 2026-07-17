@@ -25,7 +25,9 @@
 
   let wasm_ready = $state(false)
   let error = $state<string | null>(null)
-  let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
+  const default_filename = `Bi2Zr2O8-Fm3m.json`
+  let source_filename = $state(default_filename)
+  let display_filename = $state(default_filename)
   let current_structure = $state<AnyStructure | null>(null)
   let displayed_structure = $state<AnyStructure>()
   let hovered_wyckoff_sites = $state<number[]>([])
@@ -64,7 +66,10 @@
   $effect(() => {
     if (!browser) return
     const file = page.url.searchParams.get(`file`)
-    if (file && file !== current_filename) current_filename = file
+    if (file && file !== source_filename) {
+      source_filename = file
+      display_filename = file
+    }
   })
 
   // Derived values for wyckoff positions
@@ -153,7 +158,7 @@
   </div>
 
   <Structure
-    data_url="/structures/{current_filename}"
+    data_url="/structures/{source_filename}"
     bind:displayed_structure
     bind:sym_data={top_ex_sym_data}
     bind:symmetry_settings={wide_example_symmetry_settings}
@@ -164,9 +169,10 @@
       symmetry_elements: sym_elements,
       symmetry_elements_props: { show_kinds: show_sym_kinds },
     }}
-    on_file_load={({ structure, filename = `` }) => {
-      current_filename = filename
-      page.url.searchParams.set(`file`, current_filename)
+    on_file_load={({ structure, filename = ``, source_filename: loaded_source_filename }) => {
+      display_filename = filename || source_filename
+      source_filename = loaded_source_filename ?? source_filename
+      page.url.searchParams.set(`file`, source_filename)
       goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
         replaceState: true,
         keepFocus: true,
@@ -179,7 +185,7 @@
     <h2
       style="position: absolute; left: 1em; top: 1ex; margin: 0; font-family: monospace; font-size: 1em"
     >
-      {current_filename}
+      {display_filename}
     </h2>
   </Structure>
 </div>
@@ -208,7 +214,7 @@
           <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
         </div>
         <Structure
-          data_url="/structures/{current_filename}"
+          data_url="/structures/{source_filename}"
           show_controls={true}
           bind:sym_data={two_col_sym_data}
           bind:symmetry_settings={two_col_sym_settings}
@@ -223,7 +229,7 @@
       <div class="stacked-layout">
         <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
         <Structure
-          data_url="/structures/{current_filename}"
+          data_url="/structures/{source_filename}"
           show_controls={true}
           bind:sym_data={stacked_sym_data}
           bind:symmetry_settings={stacked_sym_settings}

@@ -86,7 +86,11 @@
       x_axis?: AxisConfig
       y_axis?: AxisConfig
       allow_file_drop?: boolean
-      on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+      on_file_drop?: (
+        content: string | ArrayBuffer,
+        filename: string,
+        metadata: io.FileLoadMeta,
+      ) => Promise<void> | void
       loading?: boolean
       error_msg?: string
       broadening_enabled?: boolean
@@ -160,27 +164,20 @@
       // Determine which peaks to annotate
       let selected_indices: number[] = []
       if (annotate_peaks > 0) {
-        let candidates: { idx: number; y_val: number }[] = []
-        if (annotate_peaks < 1) {
-          const thresh = annotate_peaks * 100
-          candidates = ys
-            .map((y_val, idx) => ({ y_val, idx }))
-            .filter(({ y_val }) => y_val > thresh)
-        } else {
-          const max_peaks = Math.min(ys.length, Math.floor(annotate_peaks))
-          candidates = ys
-            .map((y_val, idx) => ({ y_val, idx }))
-            // map() returns a fresh peak array.
-            .toSorted((a, b) => b.y_val - a.y_val)
-            .slice(0, max_peaks)
-        }
+        const threshold = annotate_peaks < 1 ? annotate_peaks * 100 : -Infinity
+        const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
+        const candidates = ys
+          .map((y_val, idx) => ({ y_val, idx }))
+          .filter(({ y_val }) => y_val > threshold)
 
         // Filter out overlapping labels: keep higher intensity peaks when x values are close
         // Min spacing as fraction of x-range to avoid overlaps (roughly 3% of range)
         const x_range = Math.max(...xs) - Math.min(...xs)
         const min_spacing = x_range * 0.03
         // Sort by intensity descending so we keep highest peaks first
+        // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- candidates is fresh
         candidates.sort((a, b) => b.y_val - a.y_val)
+        candidates.length = Math.min(candidates.length, max_peaks)
         const kept: { idx: number; y_val: number }[] = []
         for (const cand of candidates) {
           const cand_x = xs[cand.idx]
@@ -267,7 +264,7 @@
     loading = true
     error_msg = undefined
 
-    const compute_and_add = async (content: string | ArrayBuffer, filename: string) => {
+    const compute_and_add: io.FileLoadCallback = async (content, filename, _metadata) => {
       const result = await add_xrd_pattern(content, filename, wavelength)
       if (result.error) {
         error_msg = result.error
@@ -275,44 +272,39 @@
         dropped_entries = [result.pattern, ...dropped_entries]
       }
     }
+    const process_file: io.FileLoadCallback = on_file_drop ?? compute_and_add
 
     try {
       // Handle URL-based drops
-      const handled = await io
-        .handle_url_drop(event, on_file_drop || compute_and_add)
-        .catch(() => false)
+      const handled = await io.handle_url_drop(event, process_file).catch(() => false)
       if (handled) return
 
       const file = event.dataTransfer?.files?.[0]
-      if (file) {
-        try {
-          const lower_name = file.name.toLowerCase()
-          const compression_format = io.detect_compression_format(lower_name)
-          // Get base filename without compression extension
-          const base_name = compression_format
-            ? lower_name.replace(/\.(?:gz|gzip)$/i, ``)
-            : lower_name
-          const base_ext = base_name.split(`.`).pop()
+      if (!file) return
+      const metadata = { source_filename: file.name }
+      try {
+        const compression_format = io.detect_compression_format(file.name)
+        // Get base filename without compression extension
+        const base_name = compression_format
+          ? file.name.replace(/\.(?:gz|gzip)$/i, ``)
+          : file.name
+        const base_ext = base_name.toLowerCase().split(`.`).pop()
 
-          // Handle .brml files (ZIP archives) - both plain and gzipped
-          if (base_ext === `brml`) {
-            let buffer = await file.arrayBuffer()
-            // Decompress if gzipped
-            if (compression_format === `gzip`) {
-              buffer = await io.decompress_data_binary(buffer, `gzip`)
-            }
-            const output_name = base_name.endsWith(`.brml`)
-              ? base_name
-              : file.name.replace(/\.gz$/i, ``)
-            await (on_file_drop || compute_and_add)(buffer, output_name)
-          } else {
-            // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
-            const { content, filename } = await io.decompress_file(file)
-            if (content) await (on_file_drop || compute_and_add)(content, filename)
+        // Handle .brml files (ZIP archives) - both plain and gzipped
+        if (base_ext === `brml`) {
+          let buffer = await file.arrayBuffer()
+          // Decompress if gzipped
+          if (compression_format === `gzip`) {
+            buffer = await io.decompress_data_binary(buffer, `gzip`)
           }
-        } catch (exc) {
-          error_msg = `Failed to load file ${file.name}: ${to_error(exc).message}`
+          await process_file(buffer, base_name, metadata)
+        } else {
+          // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
+          const { content, filename } = await io.decompress_file(file)
+          await process_file(content, filename, metadata)
         }
+      } catch (exc) {
+        error_msg = `Failed to load file ${file.name}: ${to_error(exc).message}`
       }
     } finally {
       loading = false

@@ -54,6 +54,14 @@
       "types": "./dist/colors/index.d.ts",
       "default": "./dist/colors/index.js"
     },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "default": "./dist/constants.js"
+    },
+    "./controls": {
+      "types": "./dist/controls.d.ts",
+      "default": "./dist/controls.js"
+    },
     "./coordination": {
       "types": "./dist/coordination/index.d.ts",
       "default": "./dist/coordination/index.js"
@@ -98,6 +106,10 @@
       "types": "./dist/heatmap-matrix/index.d.ts",
       "default": "./dist/heatmap-matrix/index.js"
     },
+    "./icons": {
+      "types": "./dist/icons.d.ts",
+      "default": "./dist/icons.js"
+    },
     "./io": {
       "types": "./dist/io/index.d.ts",
       "default": "./dist/io/index.js"
@@ -105,6 +117,18 @@
     "./isosurface": {
       "types": "./dist/isosurface/index.d.ts",
       "default": "./dist/isosurface/index.js"
+    },
+    "./isosurface/parse-vaspwave": {
+      "types": "./dist/isosurface/parse-vaspwave.d.ts",
+      "default": "./dist/isosurface/parse-vaspwave.js"
+    },
+    "./json-path": {
+      "types": "./dist/json-path.d.ts",
+      "default": "./dist/json-path.js"
+    },
+    "./keyboard": {
+      "types": "./dist/keyboard.d.ts",
+      "default": "./dist/keyboard.js"
     },
     "./labels": {
       "types": "./dist/labels.d.ts",
@@ -117,6 +141,14 @@
     "./math": {
       "types": "./dist/math.d.ts",
       "default": "./dist/math.js"
+    },
+    "./marching-cubes": {
+      "types": "./dist/marching-cubes.d.ts",
+      "default": "./dist/marching-cubes.js"
+    },
+    "./optimade": {
+      "types": "./dist/api/optimade.d.ts",
+      "default": "./dist/api/optimade.js"
     },
     "./overlays": {
       "types": "./dist/overlays/index.d.ts",
@@ -150,6 +182,14 @@
       "types": "./dist/scene/index.d.ts",
       "default": "./dist/scene/index.js"
     },
+    "./sanitize": {
+      "types": "./dist/sanitize.d.ts",
+      "default": "./dist/sanitize.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "default": "./dist/settings.js"
+    },
     "./spectral": {
       "types": "./dist/spectral/index.d.ts",
       "default": "./dist/spectral/index.js"
@@ -161,6 +201,14 @@
     "./structure/parse": {
       "types": "./dist/structure/parse.d.ts",
       "default": "./dist/structure/parse.js"
+    },
+    "./structure/export": {
+      "types": "./dist/structure/serialize.d.ts",
+      "default": "./dist/structure/serialize.js"
+    },
+    "./structure/measure": {
+      "types": "./dist/structure/measure.d.ts",
+      "default": "./dist/structure/measure.js"
     },
     "./symmetry": {
       "types": "./dist/symmetry/index.d.ts",
@@ -193,9 +241,17 @@
       "types": "./dist/trajectory/index.d.ts",
       "default": "./dist/trajectory/index.js"
     },
+    "./trajectory/parse": {
+      "types": "./dist/trajectory/parse/index.d.ts",
+      "default": "./dist/trajectory/parse/index.js"
+    },
     "./utils": {
       "types": "./dist/utils.d.ts",
       "default": "./dist/utils.js"
+    },
+    "./url-params": {
+      "types": "./dist/url-params.d.ts",
+      "default": "./dist/url-params.js"
     },
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",

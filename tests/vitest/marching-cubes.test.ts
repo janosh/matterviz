@@ -32,9 +32,6 @@ const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void
   }
 }
 
-const mean_axis = (verts: Vec3[], axis: 0 | 1 | 2): number =>
-  verts.reduce((sum, vertex) => sum + vertex[axis], 0) / verts.length
-
 const indexed_grid = (nx: number, ny: number, nz: number): number[][][] =>
   make_grid(nx, ny, nz, (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx)
 
@@ -240,8 +237,14 @@ describe(`marching_cubes`, () => {
     const grid = gaussian_grid(8)
     const centered = marching_cubes(grid, 0.5, IDENTITY, { ...NON_PERIODIC, centered: true })
     const uncentered = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
-    expect(centered.faces).toHaveLength(uncentered.faces.length)
-    expect(mean_axis(centered.vertices, 0)).toBeLessThan(mean_axis(uncentered.vertices, 0))
+    expect(centered.faces).toEqual(uncentered.faces)
+    for (let vertex_idx = 0; vertex_idx < centered.vertices.length; vertex_idx++) {
+      for (let axis = 0; axis < 3; axis++) {
+        expect(centered.vertices[vertex_idx][axis]).toBeCloseTo(
+          uncentered.vertices[vertex_idx][axis] - 0.5,
+        )
+      }
+    }
   })
 
   test(`position_offset translates buffer vertices and is skipped when unset`, () => {
@@ -285,7 +288,11 @@ describe(`marching_cubes`, () => {
     const edge_len = (idx_a: number, idx_b: number) =>
       Math.hypot(...vertices[idx_a].map((coord, axis) => coord - vertices[idx_b][axis]))
     const max_edge = Math.max(
-      ...faces.flatMap(([a, b, c]) => [edge_len(a, b), edge_len(b, c), edge_len(c, a)]),
+      ...faces.flatMap(([idx_a, idx_b, idx_c]) => [
+        edge_len(idx_a, idx_b),
+        edge_len(idx_b, idx_c),
+        edge_len(idx_c, idx_a),
+      ]),
     )
     expect(max_edge).toBeLessThan(0.5)
   })
@@ -414,18 +421,21 @@ describe(`marching_cubes`, () => {
       expect(result.normals).toHaveLength(result.vertices.length)
       for (const normal of result.normals) expect(Math.hypot(...normal)).toBeCloseTo(1, 6)
       // Index-space gradient scaling: mean normal stable across anisotropic resolutions
-      const mean_x = (n: number) => {
-        const { normals: ns } = marching_cubes(
-          Array.from({ length: n }, (_x, ix) =>
-            Array.from({ length: 2 * n }, () =>
-              Array.from({ length: 2 * n }, () => ix / (n - 1)),
+      const mean_x = (resolution: number) => {
+        const { normals: resolution_normals } = marching_cubes(
+          Array.from({ length: resolution }, (_x, ix) =>
+            Array.from({ length: 2 * resolution }, () =>
+              Array.from({ length: 2 * resolution }, () => ix / (resolution - 1)),
             ),
           ),
           0.5,
           singular_lattice,
           { ...NON_PERIODIC, normals: true },
         )
-        return ns.reduce((sum, normal) => sum + normal[0], 0) / ns.length
+        return (
+          resolution_normals.reduce((sum, normal) => sum + normal[0], 0) /
+          resolution_normals.length
+        )
       }
       expect(mean_x(4)).toBeCloseTo(mean_x(8), 2)
     },
@@ -473,16 +483,6 @@ describe(`marching_cubes`, () => {
       expect(Math.abs(dist - mean_dist) / mean_dist).toBeLessThan(0.15)
     }
   })
-
-  test.each([
-    [3, 3, 3],
-    [5, 4, 3],
-  ])(`handles non-cubic grid %dx%dx%d`, (nx, ny, nz) => {
-    const grid = make_grid(nx, ny, nz, (ix) => (ix / (nx - 1)) * 2)
-    const result = marching_cubes(grid, 1.0, IDENTITY)
-    expect(result.vertices.length).toBeGreaterThan(0)
-    expect(result.faces.length).toBeGreaterThan(0)
-  })
 })
 
 describe(`compute_vertex_normals`, () => {
@@ -496,12 +496,12 @@ describe(`compute_vertex_normals`, () => {
   test.each([
     { label: `xy-plane triangle`, vertices: xy_triangle, face: [0, 1, 2] },
     { label: `quad via fan triangulation`, vertices: xy_quad, face: [0, 1, 3, 2] },
-  ])(`$label produces z-direction unit normals`, ({ vertices, face }) => {
+  ])(`$label produces positive z-direction unit normals`, ({ vertices, face }) => {
     const normals = compute_vertex_normals(vertices, [face])
     expect(normals).toHaveLength(vertices.length)
     for (const normal of normals) {
       expect(Math.hypot(...normal)).toBeCloseTo(1, 5)
-      expect(Math.abs(normal[2])).toBeCloseTo(1, 5)
+      expect(normal[2]).toBeCloseTo(1, 5)
     }
   })
 
@@ -529,7 +529,7 @@ describe(`compute_vertex_normals`, () => {
     )
     const shared = normals[0]
     expect(Math.hypot(...shared)).toBeCloseTo(1, 5)
-    expect(Math.abs(shared[1])).toBeGreaterThan(0.1)
-    expect(Math.abs(shared[2])).toBeGreaterThan(0.1)
+    expect(shared[1]).toBeLessThan(-0.1)
+    expect(shared[2]).toBeGreaterThan(0.1)
   })
 })

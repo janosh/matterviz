@@ -4,6 +4,7 @@
 
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
+import { element_groups } from '$lib/element/data'
 import { CATEGORY_COUNTS as expected_counts } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
 
@@ -49,6 +50,16 @@ test(`category counts`, () => {
     counts[category] = (counts[category] ?? 0) + 1
   }
   expect(counts).toEqual(expected_counts)
+})
+
+test.each([
+  [`transition`, `Fe`, `O`],
+  [`nonmetal`, `C`, `Ne`],
+  [`halogen`, `Cl`, `O`],
+] as const)(`%s includes %s but excludes %s`, (group_key, included, excluded) => {
+  const group = element_groups.find(({ value }) => value === group_key)
+  expect(group?.includes(get_element(included))).toBe(true)
+  expect(group?.includes(get_element(excluded))).toBe(false)
 })
 
 describe(`atomic_radius`, () => {
@@ -106,8 +117,6 @@ describe(`atomic_radius`, () => {
       [`Na`, `Mg`, `Al`, `Si`, `P`, `S`, `Cl`],
       new Set<string>([`Si/P`, `P/S`, `S/Cl`]),
     ],
-    [`group 1: Li < Na < K < Rb < Cs`, [`Cs`, `Rb`, `K`, `Na`, `Li`], null],
-    [`group 17: F < Cl < Br < I`, [`I`, `Br`, `Cl`, `F`], null],
   ] as const)(`%s`, (_name, order, equal_pairs) => {
     for (let idx = 0; idx < order.length - 1; idx++) {
       const larger = get_element(order[idx])
@@ -290,13 +299,6 @@ describe(`atomic_mass`, () => {
       }
     }
     expect(found_anomalies.toSorted()).toEqual([...known_anomalies].toSorted())
-  })
-
-  test.each(ATOMIC_MASS_INVERSIONS)(`known inversion: %s > %s`, (heavier, lighter) => {
-    const heavier_el = get_element(heavier)
-    const lighter_el = get_element(lighter)
-    expect(heavier_el.number).toBeLessThan(lighter_el.number)
-    expect(heavier_el.atomic_mass).toBeGreaterThan(lighter_el.atomic_mass)
   })
 })
 

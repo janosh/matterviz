@@ -215,18 +215,23 @@ export function compute_node_infos<Metadata>(
   })
 }
 
-// Attachment factory reporting an element's rendered height (immediately, on
-// resize, and 0 on unmount) — used to reserve chart space below the cells/arcs
-// for the colorbar without an extra measuring wrapper div.
-export const observe_height = (on_height: (px: number) => void) => (element: Element) => {
-  const observer = new ResizeObserver(() => on_height(element.clientHeight))
-  observer.observe(element)
-  on_height(element.clientHeight)
-  return () => {
-    observer.disconnect()
-    on_height(0) // release the reserved space when the element unmounts
+// Attachment factory reporting an element's rendered size (immediately, on
+// resize, and zeroed on unmount) without an extra measuring wrapper div.
+export const observe_size =
+  (on_size: (size: { height: number; width: number }) => void) => (element: Element) => {
+    const update = () => on_size({ height: element.clientHeight, width: element.clientWidth })
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    update()
+    return () => {
+      observer.disconnect()
+      on_size({ height: 0, width: 0 })
+    }
   }
-}
+
+// Height-only compatibility wrapper used by hierarchy charts with bottom colorbars.
+export const observe_height = (on_height: (px: number) => void) =>
+  observe_size(({ height }) => on_height(height))
 
 // The font node labels actually render in (respects the chart's font-size CSS
 // var instead of assuming 11px), for canvas-measured label fitting

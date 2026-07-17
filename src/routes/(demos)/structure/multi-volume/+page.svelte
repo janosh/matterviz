@@ -365,9 +365,7 @@
 <FilePicker
   files={volumetric_files}
   active_files={[
-    ...new Set(
-      (volumetric_data ?? []).flatMap((vol) => (vol.source ? [`${vol.source}.gz`] : [])),
-    ),
+    ...new Set(volumetric_data?.flatMap(({ source_filename }) => source_filename || []) ?? []),
   ]}
   on_click={(file) => add_or_replace_file(file.name)}
   style="margin-bottom: 0.5em"

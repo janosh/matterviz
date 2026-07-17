@@ -519,9 +519,7 @@ function convert_pymatgen_band_structure(
   const steps = qpoints
     .slice(1)
     .map((qpoint, idx) => euclidean_dist(qpoints[idx].frac_coords, qpoint.frac_coords))
-  const sorted = steps.slice()
-  // slice() already copied the input.
-  sorted.sort((a, b) => a - b)
+  const sorted = steps.slice().toSorted((a, b) => a - b)
   const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
   const disc_set = new Set(
     steps

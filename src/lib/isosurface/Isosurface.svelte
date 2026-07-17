@@ -499,7 +499,7 @@
       for (const geometry of geometries.values()) geometry.dispose()
       return
     }
-    const entries: MeshEntry[] = []
+    let entries: MeshEntry[] = []
     for (const plan of plans) {
       if (`geometry` in plan) entries.push(plan)
       else {
@@ -528,10 +528,10 @@
       const abs_max = all_volumes[layer.volume_idx]?.data_range.abs_max ?? 1
       return layer.isovalue / Math.max(abs_max, 1e-30)
     }
-    entries
-      // entries is rebuilt locally above.
-      .toSorted((entry_a, entry_b) => shell_fraction(entry_a) - shell_fraction(entry_b))
-      .forEach((entry, rank) => (entry.render_order = rank * 2))
+    entries = entries.toSorted(
+      (entry_a, entry_b) => shell_fraction(entry_a) - shell_fraction(entry_b),
+    )
+    entries.forEach((entry, rank) => (entry.render_order = rank * 2))
 
     // Dispose old geometries that were not reused, then swap in the new list
     const kept = new Set(entries.map((entry) => entry.geometry))

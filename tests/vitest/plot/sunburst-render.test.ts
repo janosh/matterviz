@@ -5,8 +5,8 @@ import {
   compute_sunburst_layout,
   project_arcs,
 } from '$lib/plot'
-import type { ScreenGeometry, ViewWindow } from '$lib/plot/sunburst/render'
-import { describe, expect, test } from 'vitest'
+import type { ScreenArc, ScreenGeometry, ViewWindow } from '$lib/plot/sunburst/render'
+import { describe, expect, test, vi } from 'vitest'
 
 const TWO_PI = 2 * Math.PI
 // pre-order: root=0, a=1 (x [0, 0.25]), a1=2 (x [0, 0.25]), b=3 (x [0.25, 1])
@@ -15,6 +15,11 @@ const tree: SunburstNode[] = [
   { label: `b`, value: 3 },
 ]
 const { arcs } = compute_sunburst_layout(tree)
+const grouped_tree: SunburstNode[] = [`A`, `B`].map((label) => ({
+  label,
+  children: [1, 2].map((child_idx) => ({ label: `${label}${child_idx}`, value: 1 })),
+}))
+const { arcs: grouped_arcs } = compute_sunburst_layout(grouped_tree)
 
 const sun_geom: ScreenGeometry = {
   shape: `sunburst`,
@@ -24,6 +29,9 @@ const sun_geom: ScreenGeometry = {
   hole_r: 20,
 }
 const full_win: ViewWindow = { x0: 0, x1: 1, y0: 0, n_rings: 2 }
+const angular_span = (screen: { a0: number; a1: number }): number => screen.a1 - screen.a0
+const screens_by_label = (screens: ScreenArc[]): Record<string, ScreenArc> =>
+  Object.fromEntries(screens.map((screen) => [screen.arc.label, screen]))
 
 describe(`project_arcs`, () => {
   test(`sunburst full view: angles span [0, 2π], radii start at hole_r, root excluded`, () => {
@@ -37,6 +45,132 @@ describe(`project_arcs`, () => {
     expect(scr_a.r0).toBe(20) // hole_r
     expect(scr_a.r1).toBeCloseTo(110, 9) // hole_r + (radius - hole_r) / n_rings
     expect(scr_a1.r1).toBeCloseTo(200, 9) // outer radius
+  })
+
+  test(`group gaps align selected subtree boundaries across rings`, () => {
+    const { all } = project_arcs(grouped_arcs, full_win, sun_geom, {
+      group_gap: {
+        select: (arc) => arc.depth === 1,
+        gap_px: 20,
+        max_fraction: 0.5,
+      },
+    })
+    const screen_by_label = screens_by_label(all)
+    expect((screen_by_label.B.a0 - screen_by_label.A.a1) * sun_geom.radius).toBeCloseTo(20, 9)
+    expect(screen_by_label.A1.a0).toBeCloseTo(screen_by_label.A.a0, 9)
+    expect(screen_by_label.A2.a1).toBeCloseTo(screen_by_label.A.a1, 9)
+    expect(screen_by_label.B1.a0).toBeCloseTo(screen_by_label.B.a0, 9)
+    expect(screen_by_label.B2.a1).toBeCloseTo(screen_by_label.B.a1, 9)
+  })
+
+  test(`composes nested group gaps while preserving each subtree's boundaries`, () => {
+    const { arcs: nested_arcs } = compute_sunburst_layout([
+      {
+        label: `A`,
+        children: [
+          {
+            label: `A1`,
+            children: [
+              { label: `A1a`, value: 1 },
+              { label: `A1b`, value: 1 },
+            ],
+          },
+          { label: `A2`, value: 2 },
+        ],
+      },
+      { label: `B`, value: 4 },
+    ])
+    const { all } = project_arcs(nested_arcs, { ...full_win, n_rings: 3 }, sun_geom, {
+      group_gap: {
+        select: (arc) => arc.label === `A` || arc.label === `A1`,
+        gap_px: 20,
+      },
+    })
+    const screen_by_label = screens_by_label(all)
+
+    expect((screen_by_label.A1.a0 - screen_by_label.A.a0) * sun_geom.radius).toBeCloseTo(10, 9)
+    expect((screen_by_label.A2.a0 - screen_by_label.A1.a1) * sun_geom.radius).toBeCloseTo(
+      10,
+      9,
+    )
+    expect(screen_by_label.A1a.a0).toBeCloseTo(screen_by_label.A1.a0, 9)
+    expect(screen_by_label.A1b.a1).toBeCloseTo(screen_by_label.A1.a1, 9)
+    expect(screen_by_label.A2.a1).toBeCloseTo(screen_by_label.A.a1, 9)
+  })
+
+  test(`keeps selected sibling gaps aligned after zooming their parent`, () => {
+    const { arcs: zoom_arcs } = compute_sunburst_layout([
+      { label: `user`, children: grouped_tree },
+    ])
+    const user = zoom_arcs.find((arc) => arc.label === `user`)
+    if (!user) throw new Error(`expected user arc`)
+    const zoom_win: ViewWindow = {
+      x0: user.x0,
+      x1: user.x1,
+      y0: user.y0,
+      n_rings: 2,
+    }
+    const { all } = project_arcs(zoom_arcs, zoom_win, sun_geom, {
+      group_gap: { select: (arc) => arc.depth === 2, gap_px: 20 },
+    })
+    const screen_by_label = screens_by_label(all)
+
+    expect((screen_by_label.B.a0 - screen_by_label.A.a1) * sun_geom.radius).toBeCloseTo(20, 9)
+    expect(screen_by_label.A1.a0).toBeCloseTo(screen_by_label.A.a0, 9)
+    expect(screen_by_label.B2.a1).toBeCloseTo(screen_by_label.B.a1, 9)
+  })
+
+  test(`removes a selected group's gap when that group becomes the zoom root`, () => {
+    const group_a = grouped_arcs.find((arc) => arc.label === `A`)
+    if (!group_a) throw new Error(`expected group A`)
+    const mid_zoom = project_arcs(grouped_arcs, { ...full_win, y0: 0.5 }, sun_geom, {
+      group_gap: { select: (arc) => arc.depth === 1, gap_px: 20 },
+    })
+    const mid_screen_by_label = screens_by_label(mid_zoom.all)
+    expect(
+      (mid_screen_by_label.B.a0 - mid_screen_by_label.A.a1) * sun_geom.radius,
+    ).toBeCloseTo(10, 9)
+
+    const { all } = project_arcs(
+      grouped_arcs,
+      { x0: group_a.x0, x1: group_a.x1, y0: group_a.y0, n_rings: 1 },
+      sun_geom,
+      { group_gap: { select: (arc) => arc.depth === 1, gap_px: 20 } },
+    )
+    const screen_by_label = screens_by_label(all)
+
+    expect(screen_by_label.A1.a0).toBeCloseTo(0, 9)
+    expect(screen_by_label.A2.a1).toBeCloseTo(TWO_PI, 9)
+  })
+
+  test(`capped group gaps scale rather than erase tiny boundary leaves`, () => {
+    const tiny_tree: SunburstNode[] = [
+      {
+        label: `A`,
+        children: [
+          { label: `tiny`, value: 0.001 },
+          { label: `rest`, value: 49.999 },
+        ],
+      },
+      { label: `B`, value: 50 },
+    ]
+    const { arcs: tiny_arcs } = compute_sunburst_layout(tiny_tree)
+    const plain = project_arcs(tiny_arcs, full_win, sun_geom).all
+    const grouped = project_arcs(tiny_arcs, full_win, sun_geom, {
+      group_gap: {
+        select: (arc) => arc.label === `A`,
+        gap_px: 10_000,
+        max_fraction: 0.5,
+      },
+    }).all
+    const plain_by_label = screens_by_label(plain)
+    const grouped_by_label = screens_by_label(grouped)
+    expect(angular_span(grouped_by_label.A)).toBeCloseTo(angular_span(plain_by_label.A) / 2, 9)
+    expect(angular_span(grouped_by_label.tiny)).toBeCloseTo(
+      angular_span(plain_by_label.tiny) / 2,
+      9,
+    )
+    expect(grouped_by_label.tiny.visible).toBe(true)
   })
 
   test(`zoomed window: the zoom root's child fills the circle, everything else collapses`, () => {
@@ -62,8 +196,17 @@ describe(`project_arcs`, () => {
       radius: 0,
       hole_r: 0,
     }
-    const { visible } = project_arcs(arcs, full_win, geom)
-    expect(visible.map(({ arc, a0, a1, r0, r1 }) => [arc.label, a0, a1, r0, r1])).toEqual([
+    const projection = project_arcs(arcs, full_win, geom)
+    const select_group = vi.fn(() => true)
+    expect(
+      project_arcs(arcs, full_win, geom, {
+        group_gap: { select: select_group, gap_px: 20 },
+      }),
+    ).toEqual(projection)
+    expect(select_group).not.toHaveBeenCalled()
+    expect(
+      projection.visible.map(({ arc, a0, a1, r0, r1 }) => [arc.label, a0, a1, r0, r1]),
+    ).toEqual([
       [`a`, 0, 100, 0, 150],
       [`a1`, 0, 100, 150, 300],
       [`b`, 100, 400, 0, 150],
@@ -177,7 +320,6 @@ describe(`arrow_nav_target`, () => {
     [`ArrowDown on a leaf is a no-op`, 6, `ArrowDown`, null], // c has no children
     [`ArrowUp returns to the parent`, 2, `ArrowUp`, 1], // a1 -> a
     [`ArrowUp never targets the hidden root at depth 0`, 1, `ArrowUp`, null], // a -> root
-    [`single visible sibling: left/right are no-ops`, 5, `ArrowRight`, null], // b1 alone
     [`non-arrow keys are ignored`, 1, `Enter`, null],
     [`unknown current index returns null`, 99, `ArrowRight`, null],
   ] as const)(`%s`, (_name, current_idx, key, expected) => {
@@ -189,7 +331,7 @@ describe(`arrow_nav_target`, () => {
     // a -> c directly (b hidden), and c wraps back to a
     expect(arrow_nav_target(nav_arcs, b_hidden, 1, `ArrowRight`)).toBe(6)
     expect(arrow_nav_target(nav_arcs, b_hidden, 6, `ArrowRight`)).toBe(1)
-    // only one sibling left visible -> no-op
+    // only one sibling left visible (like b1 alone) -> no-op
     const only_a_visible = (idx: number) => idx === 1
     expect(arrow_nav_target(nav_arcs, only_a_visible, 1, `ArrowLeft`)).toBeNull()
   })

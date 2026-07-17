@@ -16,13 +16,16 @@
     InitialSort,
     Label,
     MultiSortState,
+    OnSortCallback,
     Pagination,
     VirtualScroll,
     RowData,
     Search,
+    SortDir,
     SortHint,
     SortState,
     SpecialCells,
+    TableSort,
   } from '$lib/table'
   import { make_cell_color_scale, strip_html } from '$lib/table'
   import { sanitize_html } from '$lib/sanitize'
@@ -196,7 +199,7 @@
     special_cells?: SpecialCells
     controls?: Snippet
     initial_sort?: InitialSort
-    sort?: { column: string; dir: `asc` | `desc` }
+    sort?: TableSort
     fixed_header?: boolean
     default_num_format?: string
     show_heatmap?: boolean
@@ -238,9 +241,9 @@
     root_style?: string
     // Async callback for server-side sorting. When provided, client-side sorting is skipped
     // and the callback is called with (column_id, direction) to fetch new data from server.
-    onsort?: (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
+    onsort?: OnSortCallback
     // Callback when onsort fails, receives the error for parent handling (e.g. toast notification)
-    onsorterror?: (error: unknown, column: string, dir: `asc` | `desc`) => void
+    onsorterror?: (error: unknown, column: string, dir: SortDir) => void
     // Loading state during async sort operations
     loading?: boolean
     // Whether to sort data client-side. Set to false when parent handles sorting externally.

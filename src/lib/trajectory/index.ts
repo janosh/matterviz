@@ -1,5 +1,6 @@
 // Utility functions for working with trajectory data
 import type { ComponentProps } from 'svelte'
+import type { FileLoadData } from '$lib/io/types'
 import type { AnyStructure } from '$lib/structure/index'
 import type Trajectory from './Trajectory.svelte'
 
@@ -7,6 +8,20 @@ export { default as Trajectory } from './Trajectory.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryExportPane } from './TrajectoryExportPane.svelte'
 export { default as TrajectoryInfoPane } from './TrajectoryInfoPane.svelte'
+export {
+  energy_data_extractor,
+  force_stress_data_extractor,
+  full_data_extractor,
+  structural_data_extractor,
+} from './extract'
+export {
+  generate_axis_labels,
+  generate_axis_scale_types,
+  generate_plot_series,
+  generate_streaming_plot_series,
+  should_hide_plot,
+} from './plotting'
+export type { PlotSeriesOptions } from './plotting'
 
 export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
 export type { AtomTypeMapping } from './types'
@@ -54,12 +69,11 @@ export interface TrajectoryType {
 }
 
 // Unified handler data interface
-export interface TrajHandlerData {
+export interface TrajHandlerData extends FileLoadData {
   trajectory?: TrajectoryType
   step_idx?: number
   frame_count?: number
   frame?: TrajectoryFrame
-  filename?: string
   file_size?: number
   total_atoms?: number
   error_msg?: string

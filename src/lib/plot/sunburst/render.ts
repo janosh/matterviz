@@ -42,6 +42,25 @@ export interface ScreenGeometry {
   hole_r: number // center hole radius in px (sunburst only)
 }
 
+// Opt-in angular separation for selected hierarchy groups. The selected arc and
+// its entire subtree are scaled into the inset span, keeping radial partition
+// boundaries aligned without subtracting a fixed angle from tiny descendants.
+export interface SunburstGroupGap<Metadata = Record<string, unknown>> {
+  // Select groups (typically one hierarchy ring). Nested matches intentionally
+  // receive both their ancestor's inset and their own.
+  select: (arc: PositionedArc<Metadata>) => boolean
+  // Target total gap between selected neighbors at the outer radius. A
+  // selected/unselected boundary receives half; Sunburst pad_angle adds to it.
+  gap_px: number
+  max_fraction?: number // maximum fraction removed from a selected group's span (default 0.5)
+}
+
+export interface ProjectArcsOptions<Metadata = Record<string, unknown>> {
+  group_gap?: SunburstGroupGap<Metadata> | null
+}
+
+type AngularTransform = { offset: number; scale: number }
+
 // Project all arcs through a view window into screen space. The two shapes share the
 // same window-mapping math, only the scale constants differ. Returns `all` (indexed
 // by node_idx, for event lookups) and `visible` (collapsed arcs pruned) from one pass.
@@ -49,6 +68,7 @@ export function project_arcs<Metadata>(
   arcs: PositionedArc<Metadata>[],
   win: ViewWindow,
   geom: ScreenGeometry,
+  { group_gap }: ProjectArcsOptions<Metadata> = {},
 ): { all: ScreenArc<Metadata>[]; visible: ScreenArc<Metadata>[] } {
   const span = Math.max(win.x1 - win.x0, 1e-9)
   const icicle = geom.shape === `icicle`
@@ -65,14 +85,56 @@ export function project_arcs<Metadata>(
   const y_of = (ring: number) =>
     y_offset + Math.min(Math.max(ring - win.y0 - 1, 0), win.n_rings) * y_unit
 
+  const gap_px = group_gap?.gap_px ?? 0
+  const valid_gap_px = Number.isFinite(gap_px) ? Math.max(0, gap_px) : 0
+  const requested_max_fraction = group_gap?.max_fraction ?? 0.5
+  // Keep a non-zero remainder even when callers pass max_fraction >= 1.
+  const max_gap_fraction = Number.isFinite(requested_max_fraction)
+    ? Math.min(Math.max(requested_max_fraction, 0), 1 - 1e-6)
+    : 0.5
+  const target_gap = !icicle && geom.radius > 0 ? valid_gap_px / geom.radius : 0
+  const descendant_transforms: AngularTransform[] | null =
+    group_gap && target_gap > 0 && max_gap_fraction > 0 ? [] : null
+  const identity_transform: AngularTransform = { scale: 1, offset: 0 }
   const all: ScreenArc<Metadata>[] = []
   const visible: ScreenArc<Metadata>[] = []
   for (const arc of arcs) {
-    const a0 = x_of(arc.x0)
-    const a1 = x_of(arc.x1)
+    const raw_a0 = x_of(arc.x0)
+    const raw_a1 = x_of(arc.x1)
+    let a0 = raw_a0
+    let a1 = raw_a1
+    if (descendant_transforms && group_gap) {
+      const inherited_transform =
+        arc.parent_idx == null
+          ? identity_transform
+          : (descendant_transforms[arc.parent_idx] ?? identity_transform)
+      a0 = raw_a0 * inherited_transform.scale + inherited_transform.offset
+      a1 = raw_a1 * inherited_transform.scale + inherited_transform.offset
+      let descendant_transform = inherited_transform
+      const group_span = a1 - a0
+      // Fade a selected ring's gap as it collapses into the zoom root. Otherwise
+      // its hidden arc would keep the visible descendants inset from the full circle.
+      const visible_group_gap = target_gap * clamp01(arc.y1 - win.y0 - 1)
+      if (visible_group_gap > 0 && arc.depth > 0 && group_span > 0 && group_gap.select(arc)) {
+        const applied_gap = Math.min(visible_group_gap, group_span * max_gap_fraction)
+        const inset = applied_gap / 2
+        const retained_scale = (group_span - applied_gap) / group_span
+        const transformed_scale = inherited_transform.scale * retained_scale
+        a0 += inset
+        a1 -= inset
+        descendant_transform = {
+          scale: transformed_scale,
+          offset: a0 - raw_a0 * transformed_scale,
+        }
+      }
+      descendant_transforms[arc.node_idx] = descendant_transform
+    }
     const r0 = y_of(arc.y0)
     const r1 = y_of(arc.y1)
-    const is_visible = arc.depth > 0 && a1 - a0 > min_x_extent && r1 - r0 > 0.1
+    // Visibility follows the pre-gap extent: the affine subtree inset always
+    // retains positive width and therefore cannot erase an otherwise-visible leaf.
+    const is_visible =
+      arc.depth > 0 && raw_a1 - raw_a0 > min_x_extent && a1 > a0 && r1 - r0 > 0.1
     const screen = { arc, a0, a1, r0, r1, visible: is_visible }
     all.push(screen)
     if (screen.visible) visible.push(screen)

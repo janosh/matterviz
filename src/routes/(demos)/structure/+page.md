@@ -5,14 +5,16 @@
   import { page } from '$app/state'
   import { goto } from '$app/navigation'
   import { browser } from '$app/environment'
-  import { Structure } from 'matterviz'
+  import { Structure, type StructureHandlerData } from 'matterviz'
   import Select from 'svelte-multiselect'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
   import FilePicker from '$lib/FilePicker.svelte'
   import { decode_url_safe_base64, get_electro_neg_formula } from '$lib'
 
-  let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
+  const default_filename = `Bi2Zr2O8-Fm3m.json`
+  let source_filename = $state(default_filename)
+  let display_filename = $state(default_filename)
   // Inline structure data from URL hash (used by ferrox render CLI)
   let hash_structure_string = $state<string>()
 
@@ -32,23 +34,28 @@
       const decoded = decode_url_safe_base64(raw)
       if (decoded !== undefined) {
         hash_structure_string = decoded
-        current_filename = `CLI structure`
+        display_filename = `CLI structure`
       } else {
         console.error(`Failed to decode base64 structure from URL hash`)
       }
       return
     }
     const file = page.url.searchParams.get(`file`)
-    if (file && file !== current_filename) current_filename = file
+    if (file && file !== source_filename) {
+      source_filename = file
+      display_filename = file
+    }
   })
 </script>
 
 <Structure
-  data_url={hash_structure_string ? undefined : get_file_url(current_filename)}
+  data_url={hash_structure_string ? undefined : get_file_url(source_filename)}
   structure_string={hash_structure_string}
-  on_file_load={(data: { filename: string }) => {
-    current_filename = data.filename
-    page.url.searchParams.set(`file`, current_filename)
+  on_file_load={(data: StructureHandlerData) => {
+    display_filename = data.filename ?? source_filename
+    if (hash_structure_string) return
+    source_filename = data.source_filename ?? source_filename
+    page.url.searchParams.set(`file`, source_filename)
     goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
       replaceState: true,
       keepFocus: true,
@@ -57,7 +64,7 @@
   }}
 >
   <h3 style="position: absolute; margin: 1ex 1em; font-family: monospace; z-index: 1">
-    {current_filename}
+    {display_filename}
   </h3>
 </Structure>
 

@@ -1,4 +1,4 @@
-import { basename_from_url, handle_url_drop, load_from_url } from '$lib/io'
+import { basename_from_url, handle_url_drop, load_from_url, type FileLoadMeta } from '$lib/io'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
@@ -67,7 +67,10 @@ describe(`handle_url_drop`, () => {
     } as Response)
 
     expect(await handle_url_drop(drag_event, callback)).toBe(true)
-    expect(callback).toHaveBeenCalledWith(`data`, `test.json`)
+    expect(callback).toHaveBeenCalledWith(`data`, `test.json`, {
+      source_filename: `test.json`,
+      source_url: `https://example.com/test.json`,
+    })
   })
 
   test(`returns false for malformed JSON`, async () => {
@@ -106,29 +109,39 @@ describe(`load_from_url`, () => {
     url: string,
     content: string | ArrayBuffer,
     headers: Record<string, string>,
-  ) => {
+  ): Promise<{
+    received_content: string | ArrayBuffer | null
+    received_filename: string | null
+    received_metadata: FileLoadMeta | null
+  }> => {
     const mock_response = create_mock_response(content, headers)
     globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
     let received_content: string | ArrayBuffer | null = null
     let received_filename: string | null = null
+    let received_metadata: FileLoadMeta | null = null
 
-    await load_from_url(url, (loaded_content, filename) => {
+    await load_from_url(url, (loaded_content, filename, metadata) => {
       received_content = loaded_content
       received_filename = filename
+      received_metadata = metadata
     })
 
-    return { received_content, received_filename }
+    return { received_content, received_filename, received_metadata }
   }
 
   test(`text content`, async () => {
-    const { received_content, received_filename } = await load_test_url(
+    const { received_content, received_filename, received_metadata } = await load_test_url(
       `https://example.com/test.json`,
       `data`,
       { 'content-type': `text/plain` },
     )
     expect(received_content).toBe(`data`)
     expect(received_filename).toBe(`test.json`)
+    expect(received_metadata).toEqual({
+      source_filename: `test.json`,
+      source_url: `https://example.com/test.json`,
+    })
     expect(fetch).toHaveBeenCalledWith(`https://example.com/test.json`)
   })
 
@@ -176,13 +189,14 @@ describe(`load_from_url`, () => {
     [`file.xyz.gz`, `decompressed content`],
     [`data.h5.gz`, new Uint8Array([0x89, 0x48, 0x44, 0x46]).buffer],
   ] as const)(`content-encoding gzip body passes through: %s`, async (name, body) => {
-    const { received_content, received_filename } = await load_test_url(
+    const { received_content, received_filename, received_metadata } = await load_test_url(
       `https://example.com/${name}`,
       body,
       { 'content-encoding': `gzip` },
     )
     expect(received_content).toBe(body)
-    expect(received_filename).toBe(name)
+    expect(received_filename).toBe(name.replace(/\.gz$/, ``))
+    expect(received_metadata?.source_filename).toBe(name)
   })
 
   // No content-encoding: the .gz body is gunzipped manually, the .gz suffix stripped
@@ -193,7 +207,7 @@ describe(`load_from_url`, () => {
   ] as const)(`manual gunzip: %s -> %s (%s)`, async (name, expected_name, kind) => {
     const inner = new TextEncoder().encode(`inner bytes`).buffer
     mock_decompress_binary.mockResolvedValue(inner)
-    const { received_content, received_filename } = await load_test_url(
+    const { received_content, received_filename, received_metadata } = await load_test_url(
       `https://example.com/${name}`,
       new ArrayBuffer(8),
       { 'content-type': `application/octet-stream` },
@@ -201,6 +215,7 @@ describe(`load_from_url`, () => {
     expect(mock_decompress_binary).toHaveBeenCalledWith(new ArrayBuffer(8), `gzip`)
     expect(received_content).toBe(kind === `string` ? `inner bytes` : inner)
     expect(received_filename).toBe(expected_name)
+    expect(received_metadata?.source_filename).toBe(name)
   })
 
   test(`propagates decompress errors instead of falling through to a text fetch`, async () => {

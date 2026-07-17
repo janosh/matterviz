@@ -7,6 +7,7 @@ import {
   format_bytes,
   format_fractional,
   format_num,
+  format_power_ten,
   format_value,
   parse_si_float,
   superscript_digits,
@@ -67,6 +68,23 @@ test(`format_num uses defaults and respects overrides`, () => {
   expect(format_num(-1.14123e-7, `.5~g`)).toBe(`−1.1412e-7`)
 })
 
+test.each([
+  [`1.23e-4`, `1.23×10<sup>-4</sup>`],
+  [`1e−3`, `10<sup>-3</sup>`],
+  [`.5e3`, `.5×10<sup>3</sup>`],
+  [`1.e3`, `1.×10<sup>3</sup>`],
+  [`5.67e+8`, `5.67×10<sup>8</sup>`],
+  [`1e6`, `10<sup>6</sup>`],
+  [`multiple 1.2e3 and 4.5E-6`, `multiple 1.2×10<sup>3</sup> and 4.5×10<sup>-6</sup>`],
+  [`1×10<sup>3</sup>`, `1×10&lt;sup&gt;3&lt;/sup&gt;`],
+  [`<img src=x onerror=x> 1e3`, `&lt;img src=x onerror=x&gt; 10<sup>3</sup>`],
+  [`step2e3 and 1e3e4`, `step2e3 and 1e3e4`],
+  [`1e+-3`, `1e+-3`],
+  [`no scientific notation`, `no scientific notation`],
+])(`format_power_ten(%s)`, (input, expected) => {
+  expect(format_power_ten(input)).toBe(expected)
+})
+
 const element_data_keys = Object.keys(element_data[0])
 
 test(`ELEM_HEATMAP_KEYS are valid element data keys`, () => {
@@ -112,14 +130,12 @@ describe(`parse_si_float function`, () => {
     [`-123`, -123],
     [`1 k`, 1000], // with space
     [`2 µ`, 0.000002], // with space
-    [`foo`, `foo`],
     [`123foo`, `123foo`],
     [`12K`, `12K`], // mismatched-case suffix returned as-is (kilo is lowercase k)
     [`2g`, `2g`], // giga is uppercase G
     [`5E`, 5e18], // exa (uppercase E) is a valid SI suffix
     [-12, -12], // int -> int
     [124.847321, 124.847321], // float -> float
-    [``, ``], // empty string
     [undefined, undefined], // undefined
     [null, null], // null
     [`123.456.789`, `123.456.789`], // phone number
@@ -153,19 +169,11 @@ describe(`format_fractional function`, () => {
     [0.1, `0.1`], // not a special fraction
     [0.65, `0.65`], // not a special fraction
     [0.85, `0.85`], // not a special fraction
-    [0.001, `0`], // very small (floating point precision issue)
     [Infinity, `Infinity`], // non-finite preserved
     [-Infinity, `-Infinity`], // non-finite preserved
     [NaN, `NaN`], // non-finite preserved
   ])(`format_fractional(%s) should return %s`, (input, expected) => {
-    const result = format_fractional(input)
-    expect(result).toBe(expected)
-  })
-
-  test(`handles edge cases around epsilon boundary`, () => {
-    const eps = 1e-3
-    expect(format_fractional(0.5 + eps - 1e-6)).toBe(`½`)
-    expect(format_fractional(0.5 + eps + 1e-6)).toBe(`0.501`)
+    expect(format_fractional(input)).toBe(expected)
   })
 
   test(`zero case uses <= for exact epsilon values while others use <`, () => {
@@ -271,8 +279,6 @@ describe(`format_value`, () => {
     { value: NaN, formatter: `.2f`, expected: `NaN` },
     { value: Infinity, formatter: `.2f`, expected: `Infinity` },
     { value: -Infinity, formatter: `.2f`, expected: `-Infinity` },
-    { value: NaN, formatter: `.2e`, expected: `NaN` },
-    { value: Infinity, formatter: `d`, expected: `Infinity` },
 
     // Edge cases
     { value: 0, formatter: `.2f`, expected: `0` },

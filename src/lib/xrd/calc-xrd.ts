@@ -56,13 +56,20 @@ const ELEMENT_Z = Object.fromEntries(
   element_data.map((entry) => [entry.symbol, entry.number]),
 ) as CompositionType
 
+function hkl_family_key([h_idx, k_idx, l_idx]: Hkl): string {
+  const abs_h = Math.abs(h_idx)
+  const abs_k = Math.abs(k_idx)
+  const abs_l = Math.abs(l_idx)
+  const min_abs = Math.min(abs_h, abs_k, abs_l)
+  const max_abs = Math.max(abs_h, abs_k, abs_l)
+  return `${min_abs},${abs_h + abs_k + abs_l - min_abs - max_abs},${max_abs}`
+}
+
 function get_unique_families(hkls: Hkl[]): Map<string, number> {
   // Port of pymatgen's get_unique_families: group Miller indices by absolute-value permutations
   const key_map = new Map<string, Hkl[]>()
   for (const hkl of hkls) {
-    // map() returns a fresh array.
-    const abs_sorted = hkl.map((val) => Math.abs(val)).toSorted((x, y) => x - y)
-    const key = abs_sorted.join(`,`)
+    const key = hkl_family_key(hkl)
     const list = key_map.get(key)
     if (list) list.push(hkl)
     else key_map.set(key, [hkl])
@@ -279,9 +286,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   const hkls_out: HklObj[][] = []
   const d_out: number[] = []
 
-  const sorted_two_thetas = Array.from(peaks.keys())
-  // Array.from() returns a fresh array.
-  sorted_two_thetas.sort((a, b) => a - b)
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- Array.from() returns a fresh array
+  const sorted_two_thetas = Array.from(peaks.keys()).sort((a, b) => a - b)
   for (const angle of sorted_two_thetas) {
     const item = peaks.get(angle)
     if (!item) continue

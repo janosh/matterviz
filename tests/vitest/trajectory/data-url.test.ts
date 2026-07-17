@@ -11,14 +11,15 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 const MULTI_FRAME_XYZ = `2\nStep 1\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74
 2\nStep 2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.78`
 const BLOB_URL = `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
+const BLOB_FILENAME = BLOB_URL.split(`/`).at(-1) ?? BLOB_URL
 
 // Fresh response per fetch call since load_from_url may fetch twice (magic-byte
 // sniff via Range request, then full body)
-const mock_fetch_text = (content: string) =>
+const mock_fetch_text = (content: string, headers = new Headers()) =>
   vi.fn().mockImplementation(() =>
     Promise.resolve({
       ok: true,
-      headers: new Headers(),
+      headers,
       text: () => Promise.resolve(content),
       arrayBuffer: () => Promise.resolve(new TextEncoder().encode(content).buffer),
     }),
@@ -51,29 +52,43 @@ describe(`Trajectory data_url loading`, () => {
     await vi.waitFor(() => expect(load_data).toBeDefined())
     expect(error_data).toBeUndefined()
     expect(load_data?.frame_count).toBe(2)
-    expect(load_data?.filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
+    expect(load_data?.filename).toBe(BLOB_FILENAME)
+    expect(load_data?.source_filename).toBe(BLOB_FILENAME)
+    expect(load_data?.source_url).toBe(BLOB_URL)
     expect(load_data?.trajectory?.metadata?.source_format).toBe(`xyz_trajectory`)
   })
 
-  test(`still reports error for unparsable blob: URL content`, async () => {
-    globalThis.fetch = mock_fetch_text(`not a trajectory in any format`)
+  test.each([
+    [`blob URL`, BLOB_URL, new Headers(), BLOB_FILENAME],
+    [
+      `compressed URL`,
+      `https://example.com/bad.xyz.gz`,
+      new Headers({ 'content-encoding': `gzip` }),
+      `bad.xyz.gz`,
+    ],
+  ] as const)(
+    `reports source identity for unparsable $label content`,
+    async (_label, data_url, headers, source_filename) => {
+      globalThis.fetch = mock_fetch_text(`not a trajectory in any format`, headers)
 
-    let load_data: TrajHandlerData | undefined
-    let error_data: TrajHandlerData | undefined
-    mounted.push(
-      mount(Trajectory, {
-        target: document.body,
-        props: {
-          data_url: BLOB_URL,
-          display_mode: `structure`,
-          show_controls: `never`,
-          on_file_load: (data: TrajHandlerData) => (load_data = data),
-          on_error: (data: TrajHandlerData) => (error_data = data),
-        },
-      }),
-    )
+      let load_data: TrajHandlerData | undefined
+      let error_data: TrajHandlerData | undefined
+      mounted.push(
+        mount(Trajectory, {
+          target: document.body,
+          props: {
+            data_url,
+            display_mode: `structure`,
+            show_controls: `never`,
+            on_file_load: (data: TrajHandlerData) => (load_data = data),
+            on_error: (data: TrajHandlerData) => (error_data = data),
+          },
+        }),
+      )
 
-    await vi.waitFor(() => expect(error_data).toBeDefined())
-    expect(load_data).toBeUndefined()
-  })
+      await vi.waitFor(() => expect(error_data).toBeDefined())
+      expect(load_data).toBeUndefined()
+      expect(error_data).toMatchObject({ source_filename, source_url: data_url })
+    },
+  )
 })

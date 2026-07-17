@@ -48,7 +48,7 @@ class Structure(MatterViz):
         hovered: bool | None = None,
         hovered_site_idx: int | None = None,
         info_pane_open: bool | None = None,
-        isosurface_settings: list | None = None,
+        isosurface_settings: Any | None = None,
         loading: bool | None = None,
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
@@ -75,6 +75,10 @@ class Structure(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
+        multi_view_gap: float | None = None,
+        multi_view_active: bool | None = None,
+        multi_view_min_pane_height: float | None = None,
+        multi_view_min_pane_width: float | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -137,6 +141,14 @@ class Structure(MatterViz):
             mv_props["measured_sites"] = measured_sites
         if multi_view is not None:
             mv_props["multi_view"] = multi_view
+        if multi_view_active is not None:
+            mv_props["multi_view_active"] = multi_view_active
+        if multi_view_gap is not None:
+            mv_props["multi_view_gap"] = multi_view_gap
+        if multi_view_min_pane_height is not None:
+            mv_props["multi_view_min_pane_height"] = multi_view_min_pane_height
+        if multi_view_min_pane_width is not None:
+            mv_props["multi_view_min_pane_width"] = multi_view_min_pane_width
         if performance_mode is not None:
             mv_props["performance_mode"] = performance_mode
         if png_dpi is not None:
@@ -188,7 +200,7 @@ class PeriodicTable(MatterViz):
 
     Component key: ``periodic-table/PeriodicTable``
 
-    Events: color_scale, onenter
+    Events: onenter
 
     Unsupported snippets: children
     """
@@ -222,6 +234,7 @@ class PeriodicTable(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
+        color_scale: Any | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -236,6 +249,8 @@ class PeriodicTable(MatterViz):
             mv_props["color_bar_props"] = color_bar_props
         if color_overrides is not None:
             mv_props["color_overrides"] = color_overrides
+        if color_scale is not None:
+            mv_props["color_scale"] = color_scale
         if color_scale_range is not None:
             mv_props["color_scale_range"] = color_scale_range
         if disabled is not None:

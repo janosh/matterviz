@@ -1,7 +1,7 @@
 import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { resize_element } from '../setup'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
 
@@ -16,6 +16,19 @@ const pattern: XrdPattern = {
     [{ hkl: [2, 1, 0] }],
   ],
   d_hkls: [8.9, 6.3, 5.1, 4.5, 4.0],
+}
+
+const gzip = async (content: string): Promise<ArrayBuffer> => {
+  const stream = new Blob([content]).stream().pipeThrough(new CompressionStream(`gzip`))
+  return new Response(stream).arrayBuffer()
+}
+
+const create_drop_event = (file: File): DragEvent => {
+  const drag_event = new DragEvent(`drop`, { bubbles: true })
+  Object.defineProperty(drag_event, `dataTransfer`, {
+    value: { files: [file], getData: () => `` },
+  })
+  return drag_event
 }
 
 // Helper to create a sized container for proper plot rendering.
@@ -387,4 +400,37 @@ describe(`XrdPlot`, () => {
     await tick()
     expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
   })
+
+  test.each([
+    [`pattern.xy.gz`, `pattern.xy`, false, `10 100\n20 50`],
+    [`Sample.BRML.gz`, `Sample.BRML`, true, `10 100\n20 50`],
+    [`empty.xy`, `empty.xy`, false, ``],
+  ] as const)(
+    `file drop %s preserves content and source identity`,
+    async (source_filename, logical_filename, binary, content) => {
+      const on_file_drop = vi.fn()
+      const target = await mount_xrd({
+        patterns: [],
+        on_file_drop,
+      })
+
+      const payload = source_filename.toLowerCase().endsWith(`.gz`)
+        ? await gzip(content)
+        : content
+      const file = new File([payload], source_filename)
+      const drop_zone = target.querySelector<HTMLElement>(`.xrd-empty-state`)
+      if (!drop_zone) throw new Error(`XRD drop zone not found`)
+      drop_zone.dispatchEvent(create_drop_event(file))
+
+      await vi.waitFor(() =>
+        expect(on_file_drop).toHaveBeenCalledWith(
+          binary ? expect.any(ArrayBuffer) : content,
+          logical_filename,
+          {
+            source_filename,
+          },
+        ),
+      )
+    },
+  )
 })

@@ -5,7 +5,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { load_from_url } from '$lib/io'
+  import { load_from_url, type FileLoadMeta } from '$lib/io'
   import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type { VolumeSliceMode } from '$lib/isosurface/slice-rendering'
@@ -204,8 +204,12 @@
     }
   })
 
-  function handle_dropped_file(content: string | ArrayBuffer, filename: string) {
-    active_file = filename
+  function handle_dropped_file(
+    content: string | ArrayBuffer,
+    filename: string,
+    metadata: FileLoadMeta,
+  ) {
+    active_file = metadata.source_filename
     error_msg = undefined
     parse_time_ms = undefined
     reset_loaded_content()
@@ -270,10 +274,6 @@
       bind:error_msg
       show_controls="always"
       on_file_drop={handle_dropped_file}
-      on_file_load={(data) => {
-        active_file = data.filename
-        parse_time_ms = undefined
-      }}
     >
       {#if active_file}
         <p class="filename-label">

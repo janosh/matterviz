@@ -10,7 +10,7 @@ import {
   is_known_text_file,
   strip_gz_ext,
 } from './is-binary'
-import type { FileInfo } from './types'
+import type { FileInfo, FileLoadCallback } from './types'
 
 // Strip query/hash; last path segment (same basename load_from_url uses).
 // Trailing-slash URLs yield an empty segment — fall back to the original URL.
@@ -76,7 +76,7 @@ export function dropped_file_url(drag_event: DragEvent): string | undefined {
 // Handle URL-based file drop data by fetching content lazily
 export async function handle_url_drop(
   drag_event: DragEvent,
-  callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
+  callback: FileLoadCallback,
 ): Promise<boolean> {
   const url = dropped_file_url(drag_event)
   if (!url) return false
@@ -84,32 +84,39 @@ export async function handle_url_drop(
   return true
 }
 
-export async function load_from_url(
-  url: string,
-  callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
-): Promise<void> {
+export async function load_from_url(url: string, callback: FileLoadCallback): Promise<void> {
   // Strip query string/hash before basename/extension detection so pre-signed
   // URLs like traj.h5?X-Amz-Expires=300 still hit the right format path
   const url_basename = basename_from_url(url)
   const ext = ext_of(url_basename)
+  const emit_loaded = (
+    content: string | ArrayBuffer,
+    filename: string,
+    source_filename = filename,
+  ) => callback(content, filename, { source_filename, source_url: url })
 
   if (BINARY_EXTENSIONS.has(ext)) {
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
     const resp = await fetch(url)
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-    const filename = extract_filename(resp.headers, url_basename)
+    const source_filename = extract_filename(resp.headers, url_basename)
 
     // Handle gzipped files with proper content-encoding detection
     if (ext === `gz` || ext === `gzip`) {
       if (resp.headers.get(`content-encoding`) === `gzip`) {
         // Browser already decompressed the stored .gz (GitHub Pages-style serving), so
         // the body is the inner file — keep binary inner formats (.h5.gz, ...) binary
-        return callback(
-          await (has_binary_inner_ext(filename) ? resp.arrayBuffer() : resp.text()),
-          filename,
+        return emit_loaded(
+          await (has_binary_inner_ext(source_filename) ? resp.arrayBuffer() : resp.text()),
+          strip_gz_ext(source_filename),
+          source_filename,
         )
       }
-      return callback(...(await decompress_gz_payload(await resp.arrayBuffer(), filename)))
+      const [content, filename] = await decompress_gz_payload(
+        await resp.arrayBuffer(),
+        source_filename,
+      )
+      return emit_loaded(content, filename, source_filename)
     }
 
     // For H5 files, always load as binary regardless of signature
@@ -126,19 +133,19 @@ export async function load_from_url(
         console.warn(`File has .h5/.hdf5 extension but missing HDF5 signature`)
       }
 
-      return callback(result, filename)
+      return emit_loaded(result, source_filename)
     }
 
     // For .traj files, ensure we always get ArrayBuffer for proper ASE parsing
     if (ext === `traj`) {
       const buffer = await load_binary_traj(resp, `.traj`)
-      return callback(buffer, filename)
+      return emit_loaded(buffer, source_filename)
     }
 
     // Content-Encoding is transparent transport compression: fetch already
     // decompressed the body, so binary formats (npz, pkl, brml, ...) must still
     // be read as ArrayBuffer — .text() would corrupt them via lossy UTF-8 decode
-    return callback(await resp.arrayBuffer(), filename)
+    return emit_loaded(await resp.arrayBuffer(), source_filename)
   }
 
   // Skip Range requests for known text formats to avoid production server issues
@@ -165,16 +172,19 @@ export async function load_from_url(
     if (sniffed) {
       const resp = await fetch(url)
       if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-      const filename = extract_filename(resp.headers, url_basename)
+      const source_filename = extract_filename(resp.headers, url_basename)
       const buffer = await resp.arrayBuffer()
       // Gunzip sniffed gzip — downstream parsers can't handle raw gzip bytes
-      const args: [content: string | ArrayBuffer, filename: string] =
-        sniffed === `gzip` ? await decompress_gz_payload(buffer, filename) : [buffer, filename]
-      return callback(...args)
+      if (sniffed === `gzip`) {
+        const [content, filename] = await decompress_gz_payload(buffer, source_filename)
+        return emit_loaded(content, filename, source_filename)
+      }
+      return emit_loaded(buffer, source_filename)
     }
   }
 
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-  return callback(await resp.text(), extract_filename(resp.headers, url_basename))
+  const source_filename = extract_filename(resp.headers, url_basename)
+  return emit_loaded(await resp.text(), source_filename)
 }

@@ -38,7 +38,8 @@
   const reference_values = untrack(() => deep_copy(current_values) as Record<string, unknown>)
 
   // unique per-instance id so aria-labelledby stays valid with multiple sections on a page
-  const title_id = `settings-section-title-${crypto.randomUUID()}`
+  const section_id = $props.id()
+  const title_id = `settings-section-title-${section_id}`
 
   // Order-independent deep equality for setting values
   const setting_equal = (left: unknown, right: unknown): boolean => {

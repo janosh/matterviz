@@ -22,7 +22,6 @@ export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
   ? Name
   : never
-// D3 interpolators are selected dynamically from a validated plain-object snapshot.
 const d3_interpolators = Object.fromEntries(
   Object.entries(d3_sc).filter(
     ([name, candidate]) => name.startsWith(`interpolate`) && typeof candidate === `function`,
