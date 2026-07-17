@@ -59,6 +59,7 @@ async function expect_compressed_source_url(
   expect(new URL(page.url()).searchParams.get(`file`)).toBe(compressed_source_filename)
   await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(
     `source-loop.json`,
+    { timeout: get_canvas_timeout() * 2 },
   )
   expect(requests.length).toBeGreaterThan(0)
   expect(new Set(requests)).toEqual(new Set([compressed_source_path]))

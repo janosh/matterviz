@@ -662,7 +662,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         default_set_props = spec.get("set_props", auto_set)
         default_float32_props = spec.get("float32_props", auto_float32)
-        alias_overrides = spec.get("aliases", {})
+        alias_overrides = spec.get("aliases") or {}
         type_hints = spec.get("type_hints", {})
         forward_none_props = set(spec.get("forward_none_props", []))
         trailing_props: list[str] = spec.get("trailing_props", [])

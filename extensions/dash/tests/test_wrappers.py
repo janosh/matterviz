@@ -95,7 +95,7 @@ def test_prop_kind_detection(tmp_path: Path) -> None:
 
 
 def test_trailing_props_use_python_names(tmp_path: Path) -> None:
-    """Trailing props accept snake_case Python names for camelCase JS props."""
+    """Trailing props accept Python names when aliases are explicitly null."""
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir()
     (dist_dir / "Test.svelte.d.ts").write_text(
@@ -108,6 +108,7 @@ def test_trailing_props_use_python_names(tmp_path: Path) -> None:
             "components": {
                 "Test": {
                     "key": "Test",
+                    "aliases": None,
                     "trailing_props": ["some_prop"],
                 }
             }
