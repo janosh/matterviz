@@ -18,6 +18,8 @@ import {
 
 const is_mac = process.platform === `darwin`
 const compressed_source_path = `/structures/source-loop.json.gz`
+const compressed_source_filename =
+  compressed_source_path.split(`/`).at(-1) ?? compressed_source_path
 const source_structure = JSON.stringify({
   lattice: {
     matrix: [
@@ -50,10 +52,11 @@ async function expect_compressed_source_url(
     if (path.startsWith(compressed_source_path.replace(/\.gz$/, ``))) requests.push(path)
   })
 
-  await page.goto(`${route_path}?file=${compressed_source_path.split(`/`).at(-1)}`, {
+  await page.goto(`${route_path}?file=${compressed_source_filename}`, {
     waitUntil: `networkidle`,
   })
 
+  expect(new URL(page.url()).searchParams.get(`file`)).toBe(compressed_source_filename)
   await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(
     `source-loop.json`,
   )

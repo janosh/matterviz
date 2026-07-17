@@ -5,8 +5,10 @@ export type { SortDir, TableSort } from '$lib/table'
 
 // To preserve an intentional `key=` value, pass a non-empty default as the third item.
 export type UrlParamEntry = [key: string, value: string, default_value?: string]
+export type ReadonlySetLike<Value> = Pick<ReadonlySet<Value>, `has`>
 export type ValidQueryValues<Value extends string> =
   | ReadonlySet<Value>
+  | ReadonlySetLike<Value>
   | Record<string, unknown>
 export type WeightsConfig = Record<string, { weight: number }>
 export type UrlLocation = Pick<URL, `pathname` | `search` | `hash`>

@@ -49,10 +49,10 @@ test.each([
   ])
 })
 
-test(`valid_query_param accepts ReadonlySet implementations`, () => {
-  const valid_values = {
-    has: (value: string) => value === `energy`,
-  } as unknown as ReadonlySet<`energy`>
+test(`valid_query_param accepts ReadonlySet-like objects`, () => {
+  const valid_values: { has(value: string): boolean } = {
+    has: (value) => value === `energy`,
+  }
   expect(
     valid_query_param(new URLSearchParams(`sort=energy`), `sort`, `force`, valid_values),
   ).toBe(`energy`)

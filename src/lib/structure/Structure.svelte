@@ -249,7 +249,11 @@
     top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
     data_url?: string // URL to load structure from (alternative to providing structure directly)
     // Generic callback for dropped content, its logical filename, and stable source identity.
-    on_file_drop?: io.FileLoadCallback
+    on_file_drop?: (
+      content: string | ArrayBuffer,
+      filename: string,
+      metadata: io.FileLoadMeta,
+    ) => Promise<void> | void
     // spinner props (passed to Spinner component)
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean

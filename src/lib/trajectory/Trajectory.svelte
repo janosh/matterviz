@@ -1000,7 +1000,7 @@
         typeof data === `string` ? data : ``,
       )
       error_msg = unsupported_message || `Failed to parse trajectory: ${err}`
-      on_error?.({ error_msg, filename, file_size: file_size_bytes })
+      on_error?.({ error_msg, filename, ...source, file_size: file_size_bytes })
       current_filename = undefined
       file_size = undefined
     } finally {

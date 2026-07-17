@@ -79,10 +79,10 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
     parameter_names = list(inspect.signature(mvc.Structure.__init__).parameters)[1:]
     assert parameter_names == [
         *STRUCTURE_V043_PARAMETERS,
+        "multi_view_gap",
         "multi_view_active",
         "multi_view_min_pane_height",
         "multi_view_min_pane_width",
-        "multi_view_gap",
         "kwargs",
     ]
 

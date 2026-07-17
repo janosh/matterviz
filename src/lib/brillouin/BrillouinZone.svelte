@@ -127,7 +127,11 @@
     allow_file_drop?: boolean
     fullscreen_toggle?: FullscreenToggleProp
     data_url?: string
-    on_file_drop?: io.FileLoadCallback
+    on_file_drop?: (
+      content: string | ArrayBuffer,
+      filename: string,
+      metadata: io.FileLoadMeta,
+    ) => Promise<void> | void
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
