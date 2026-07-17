@@ -10,7 +10,7 @@ import {
   weights_to_param,
   type WeightsConfig,
 } from '$lib/url-params'
-import { expect, test, vi } from 'vitest'
+import { expect, expectTypeOf, test, vi } from 'vitest'
 
 test.each([
   [``, false, false],
@@ -49,13 +49,22 @@ test.each([
   ])
 })
 
-test(`valid_query_param accepts ReadonlySet-like objects`, () => {
+test(`valid_query_param validates set-like values and narrows validated calls`, () => {
+  const params = new URLSearchParams(`sort=energy`)
   const valid_values: { has(value: string): boolean } = {
     has: (value) => value === `energy`,
   }
-  expect(
-    valid_query_param(new URLSearchParams(`sort=energy`), `sort`, `force`, valid_values),
-  ).toBe(`energy`)
+  const unvalidated = valid_query_param(params, `sort`, `force`)
+  const set_like_validated = valid_query_param(params, `sort`, `force`, valid_values)
+  const narrowed = valid_query_param(
+    params,
+    `sort`,
+    `force`,
+    new Set<`energy` | `force`>([`energy`, `force`]),
+  )
+  expectTypeOf(unvalidated).toEqualTypeOf<string>()
+  expectTypeOf(narrowed).toEqualTypeOf<`energy` | `force`>()
+  expect([unvalidated, set_like_validated, narrowed]).toEqual([`energy`, `energy`, `energy`])
 })
 
 const make_weights = (weights: number[]): WeightsConfig => ({

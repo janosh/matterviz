@@ -41,20 +41,35 @@ export const bool_url_entry = (
   fallback = false,
 ): UrlParamEntry => [key, value === fallback ? `` : value ? `1` : `0`]
 
+const is_valid_query_value = <Value extends string>(
+  value: string,
+  valid_values: ValidQueryValues<Value>,
+): value is Value =>
+  `has` in valid_values && typeof valid_values.has === `function`
+    ? valid_values.has(value)
+    : Object.hasOwn(valid_values, value)
+
+export function valid_query_param<Value extends string>(
+  params: URLSearchParams,
+  key: string,
+  fallback: Value,
+  valid_values: ValidQueryValues<Value>,
+): Value
+export function valid_query_param(
+  params: URLSearchParams,
+  key: string,
+  fallback: string,
+): string
 export function valid_query_param<Value extends string>(
   params: URLSearchParams,
   key: string,
   fallback: Value,
   valid_values?: ValidQueryValues<Value>,
-): Value {
+): string {
   const value = params.get(key)
   if (!value) return fallback
-  if (!valid_values) return value as Value
-  const is_valid =
-    `has` in valid_values && typeof valid_values.has === `function`
-      ? valid_values.has(value)
-      : Object.hasOwn(valid_values, value)
-  return is_valid ? (value as Value) : fallback
+  if (!valid_values) return value
+  return is_valid_query_value(value, valid_values) ? value : fallback
 }
 
 export const sort_from_query = (
@@ -62,7 +77,9 @@ export const sort_from_query = (
   default_sort: TableSort,
   valid_columns?: ValidQueryValues<string>,
 ): TableSort => ({
-  column: valid_query_param(params, `sort`, default_sort.column, valid_columns),
+  column: valid_columns
+    ? valid_query_param(params, `sort`, default_sort.column, valid_columns)
+    : valid_query_param(params, `sort`, default_sort.column),
   dir: valid_query_param(params, `dir`, default_sort.dir, sort_dirs),
 })
 
