@@ -377,10 +377,9 @@
 
     return () => {
       // invalidate in-flight load on data_url change / structure arrival / unmount
-      if (is_current()) {
-        data_url_load_id += 1
-        loading = false
-      }
+      if (!is_current()) return
+      data_url_load_id += 1
+      loading = false
     }
   })
 
@@ -435,13 +434,10 @@
 
   // Optimize scene props for performance based on structure size and mode
   $effect(() => {
-    if (!structure?.sites || performance_mode !== `speed`) return
-    const current_sphere_segments = scene_props.sphere_segments || 20
-
+    if (!structure?.sites || performance_mode !== `speed` || structure.sites.length <= 200)
+      return
     // Reduce sphere segments for large structures in speed mode
-    if (structure.sites.length > 200) {
-      scene_props.sphere_segments = Math.min(current_sphere_segments, 12)
-    }
+    scene_props.sphere_segments = Math.min(scene_props.sphere_segments || 20, 12)
   })
 
   $effect(() => {
@@ -500,16 +496,14 @@
           : null,
       )
       .then((data) => {
-        if (data && run_id === symmetry_run_id) {
-          untrack(() => (sym_data = data))
-        }
+        if (!data || run_id !== symmetry_run_id) return
+        untrack(() => (sym_data = data))
       })
       .catch((err) => {
-        if (run_id === symmetry_run_id) {
-          untrack(() => (sym_data = null))
-          symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
-          console.error(`Symmetry analysis failed:`, err)
-        }
+        if (run_id !== symmetry_run_id) return
+        untrack(() => (sym_data = null))
+        symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
+        console.error(`Symmetry analysis failed:`, err)
       })
   })
 
@@ -723,7 +717,8 @@
 
   // Add-atom sub-mode state (bound to StructureScene)
   let add_atom_mode = $state(false)
-  let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
+  let add_element = $state<ElementSymbol>(`C`)
+  const has_selection = () => selected_sites.length > 0 || measured_sites.length > 0
   let is_measure_selection_mode = $derived(
     measure_mode === `distance` || measure_mode === `angle`,
   )
@@ -814,7 +809,7 @@
       }
       if (highlighted_sites.length > 0) highlighted_sites = []
       if (measure_mode === `edit-atoms`) {
-        if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+        if (has_selection()) clear_selection()
         if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
       }
     })
@@ -829,7 +824,7 @@
       return
     }
     untrack(() => {
-      if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+      if (has_selection()) clear_selection()
       if (measure_mode === `edit-bonds`) bond_edit_mode = `add`
     })
   })
@@ -837,12 +832,7 @@
   $effect(() => {
     void bond_edit_mode
     untrack(() => {
-      if (
-        measure_mode === `edit-bonds` &&
-        (selected_sites.length > 0 || measured_sites.length > 0)
-      ) {
-        clear_selection()
-      }
+      if (measure_mode === `edit-bonds` && has_selection()) clear_selection()
     })
   })
 
@@ -864,22 +854,20 @@
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
-  let multi_view_row_count = $derived(Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT))
   let multi_view_gap_px = $derived(finite_nonnegative(multi_view_gap, DEFAULT_MULTI_VIEW_GAP))
-  let multi_view_min_pane_width_px = $derived(
-    finite_nonnegative(multi_view_min_pane_width, DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH),
-  )
-  let multi_view_min_pane_height_px = $derived(
-    finite_nonnegative(multi_view_min_pane_height, DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT),
-  )
   let multi_view_required_width = $derived(
-    MULTI_VIEW_COLUMN_COUNT * multi_view_min_pane_width_px +
+    MULTI_VIEW_COLUMN_COUNT *
+      finite_nonnegative(multi_view_min_pane_width, DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH) +
       (MULTI_VIEW_COLUMN_COUNT - 1) * multi_view_gap_px,
   )
-  let multi_view_required_height = $derived(
-    multi_view_row_count * multi_view_min_pane_height_px +
-      Math.max(0, multi_view_row_count - 1) * multi_view_gap_px,
-  )
+  let multi_view_required_height = $derived.by(() => {
+    const row_count = Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT)
+    return (
+      row_count *
+        finite_nonnegative(multi_view_min_pane_height, DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT) +
+      Math.max(0, row_count - 1) * multi_view_gap_px
+    )
+  })
   let multi_view_available = $derived(
     views.length > 1 &&
       width >= multi_view_required_width &&
@@ -937,15 +925,13 @@
   // Apply cell type transformation (original, conventional, or primitive)
   // This must happen BEFORE supercell transformation
   let cell_transformed_structure = $derived.by(() => {
+    // Cell type transformation requires symmetry data
     if (
       !structure_with_bonds ||
       !(`lattice` in structure_with_bonds) ||
-      cell_type === `original`
+      cell_type === `original` ||
+      !sym_data
     ) {
-      return structure_with_bonds
-    }
-    // Cell type transformation requires symmetry data
-    if (!sym_data) {
       return structure_with_bonds
     }
     try {
@@ -1002,7 +988,6 @@
       supercell_applied = true
       return next_structure
     } catch (error) {
-      supercell_applied = false
       console.error(`Failed to create supercell:`, error)
       show_toast(`Failed to create supercell: ${to_error(error).message}`)
       return base
@@ -1018,17 +1003,14 @@
       return
     }
     // For large supercells, show loading state and use async generation
-    const sites_count = base_structure.sites?.length || 0
     // lenient parse just for a size estimate (invalid factors count as 1)
     const scaling_mult = supercell_scaling
       .split(/[x×]/)
       .reduce((product, factor) => product * (Number(factor) || 1), 1)
-    const estimated_sites = sites_count * scaling_mult
+    const estimated_sites = (base_structure.sites?.length ?? 0) * scaling_mult
 
     // Show spinner for supercells with >1000 estimated sites or scaling >8
-    const show_loading = estimated_sites > 1000 || scaling_mult > 8
-
-    if (show_loading) {
+    if (estimated_sites > 1000 || scaling_mult > 8) {
       supercell_loading = true
       // Use setTimeout to allow UI to update before heavy computation
       supercell_timeout = setTimeout(() => {
@@ -1054,7 +1036,7 @@
       // In edit-atoms mode, structure changes are intentional user edits
       // (move/add/delete) — preserve the selection so TransformControls stays active
       if (measure_mode === `edit-atoms`) return
-      if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+      if (has_selection()) clear_selection()
       // Clear site radius overrides since site indices are no longer valid
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
       // Clear stale camera target so orbit controls re-center on the new cell
@@ -1336,11 +1318,12 @@
     }
 
     if (is_input_focused) return false
+    const key = event.key.toLowerCase()
+    const has_modifier = event.ctrlKey || event.metaKey
+    const plain = !has_modifier && !event.altKey
 
     if (measure_mode === `edit-bonds`) {
-      const key = event.key.toLowerCase()
-      const plain = !event.ctrlKey && !event.metaKey && !event.altKey
-      if (event.ctrlKey || event.metaKey) {
+      if (has_modifier) {
         if (key === `z` && !event.shiftKey) {
           if (bond_undo_stack.length === 0) return false
           undo_bond_edit()
@@ -1370,8 +1353,7 @@
     // Edit-atoms mode shortcuts (including undo/redo)
     if (measure_mode === `edit-atoms`) {
       // Undo/redo shortcuts (Ctrl/Cmd + Z/Y) — only active in edit-atoms mode
-      if (event.ctrlKey || event.metaKey) {
-        const key = event.key.toLowerCase()
+      if (has_modifier) {
         if (key === `z` && !event.shiftKey) {
           if (undo_stack.length === 0) return false
           undo()
@@ -1413,8 +1395,6 @@
         show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
         return true
       }
-      const key = event.key.toLowerCase()
-      const plain = !event.ctrlKey && !event.metaKey && !event.altKey
 
       if (key === `a` && plain) {
         // Enter add-atom sub-mode (plain 'a' only, not Ctrl+A/Cmd+A/Alt+A)
@@ -1427,12 +1407,7 @@
         return true
       }
       // Duplicate selected atoms at a small offset
-      if (
-        key === `d` &&
-        (event.ctrlKey || event.metaKey) &&
-        selected_sites.length > 0 &&
-        structure?.sites
-      ) {
+      if (key === `d` && has_modifier && selected_sites.length > 0 && structure?.sites) {
         is_internal_edit = true
         push_undo()
         const orig_indices = scene_to_structure_indices(selected_sites)
@@ -1474,7 +1449,6 @@
     }
 
     // Interface shortcuts (require Ctrl/Cmd modifier to avoid accidental triggers)
-    const has_modifier = event.ctrlKey || event.metaKey
     if (event.key === `f` && has_modifier && fullscreen_toggle) {
       toggle_fullscreen(wrapper)
       return true
@@ -1632,16 +1606,16 @@
   // Only set background override when background_color is explicitly provided
   $effect(() => {
     if (!wrapper) return
-    if (background_color) {
-      // Convert opacity (0-1) to hex alpha value (00-FF)
-      const alpha_hex = Math.round(background_opacity * 255)
-        .toString(16)
-        .padStart(2, `0`)
-      wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
-    } else {
+    if (!background_color) {
       // Remove override to use theme system
       wrapper.style.removeProperty(`--struct-bg-override`)
+      return
     }
+    // Convert opacity (0-1) to hex alpha value (00-FF)
+    const alpha_hex = Math.round(background_opacity * 255)
+      .toString(16)
+      .padStart(2, `0`)
+    wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
   })
 
   sync_fullscreen({
@@ -2405,7 +2379,6 @@
     align-items: center;
     gap: 0.5em;
     color: var(--text-color, currentColor);
-    border-radius: var(--border-radius, 3pt);
     font-size: 0.8rem;
     label {
       display: flex;
