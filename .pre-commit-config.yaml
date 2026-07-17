@@ -40,7 +40,7 @@ repos:
         entry: npx --package=vite-plus@0.2.5 vp check --fix
         types_or: [file]
         language: system
-        pass_filenames: true
+        pass_filenames: false
         stages: [pre-commit]
       - id: svelte-check
         name: Svelte type check
