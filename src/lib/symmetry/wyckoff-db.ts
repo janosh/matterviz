@@ -56,11 +56,8 @@ export function enrich_wyckoff_rows(
   return rows.map((row) => {
     const entry = db_by_letter.get(wyckoff_letter(row.wyckoff))
     if (!entry) return row
-    return {
-      ...row,
-      coordinates: entry.coordinates,
-      site_symmetry: row.site_symmetry ?? entry.site_symmetry,
-    }
+    const site_symmetry = row.site_symmetry ?? entry.site_symmetry
+    return { ...row, coordinates: entry.coordinates, site_symmetry }
   })
 }
 

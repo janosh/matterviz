@@ -1,4 +1,5 @@
 // Type definitions for Fermi surface visualization
+import type { FileLoadData } from '$lib/io/types'
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
@@ -120,7 +121,7 @@ export interface FermiSliceOptions {
 }
 
 // Event data for file load
-export interface FermiFileLoadData {
+export interface FermiFileLoadData extends FileLoadData {
   fermi_data?: FermiSurfaceData
   band_data?: BandGridData
   filename: string
@@ -128,9 +129,8 @@ export interface FermiFileLoadData {
 }
 
 // Event data for errors
-export interface FermiErrorData {
+export interface FermiErrorData extends FileLoadData {
   error_msg: string
-  filename?: string
 }
 
 // Hover data emitted when user hovers over a Fermi surface

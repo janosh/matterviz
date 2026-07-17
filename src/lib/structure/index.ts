@@ -2,6 +2,7 @@ import type { CompositionType } from '$lib/composition'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
+import type { FileLoadData } from '$lib/io/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
@@ -18,8 +19,10 @@ export * as bonding_strategies from './bonding'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
+export * from './measure'
 export * from './pbc'
 export * from './polyhedra'
+export * from './serialize'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCarousel } from './StructureCarousel.svelte'
@@ -39,6 +42,7 @@ export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 export { default as StructureViewport } from './StructureViewport.svelte'
 export * from './supercell'
+export * from './validation'
 
 export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
 export type BondEditMode = `add` | `delete`
@@ -267,8 +271,11 @@ function compare_vector_keys(left: string, right: string): number {
 
 // Extract ALL vector properties from a site (not just the first match).
 // Returns entries for every key that is_vector_key() and has a valid 3D vector value.
-// Ordered by VECTOR_KEY_PREFIXES priority, then alphabetically for prefixed keys.
-export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
+// Ordered by VECTOR_KEY_PREFIXES priority by default; callers may skip sorting when order is unused.
+export function get_all_site_vectors(
+  site: Site,
+  ordered = true,
+): { vec: Vec3; key: string }[] {
   const props = site.properties
   if (!props) return []
   const results: { vec: Vec3; key: string }[] = []
@@ -277,8 +284,8 @@ export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
     const vec = try_parse_vec3(props[key])
     if (vec) results.push({ vec, key })
   }
-  // results is local and no longer reused.
-  return results.toSorted((left, right) => compare_vector_keys(left.key, right.key))
+  if (ordered) results.sort((left, right) => compare_vector_keys(left.key, right.key))
+  return results
 }
 
 // Collect the union of all vector property keys across all sites in a structure,
@@ -286,14 +293,17 @@ export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
 export function get_structure_vector_keys(structure: AnyStructure): string[] {
   const seen = new Set<string>()
   for (const site of structure.sites) {
-    for (const { key } of get_all_site_vectors(site)) seen.add(key)
+    const props = site.properties ?? {}
+    for (const key of Object.keys(props)) {
+      if (is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
+    }
   }
-  return [...seen].toSorted(compare_vector_keys)
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
+  return [...seen].sort(compare_vector_keys)
 }
 
-export interface StructureHandlerData {
+export interface StructureHandlerData extends FileLoadData {
   structure?: AnyStructure
-  filename?: string
   file_size?: number
   total_atoms?: number
   error_msg?: string

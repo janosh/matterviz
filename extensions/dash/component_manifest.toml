@@ -11,16 +11,19 @@ key = "structure/Structure"
 doc = "3D crystal structure / molecule viewer."
 
 # Structure expects a few props as JS Set / Float32Array; Dash must pass JSON arrays.
-# This wrapper defaults set_props/float32_props accordingly.
-set_props = ["hidden_elements", "hidden_prop_vals"]
-
-[components.Structure.extra_props]
-bond_edit_mode = "'add' | 'delete'"
-bond_edit_order = "1 | 1.5 | 2 | 3 | 'aromatic'"
+# The generator auto-detects set_props/float32_props from their TypeScript types.
+# Append newly added Python parameters to preserve positional compatibility.
+trailing_props = [
+  "multi_view_gap",
+  "multi_view_active",
+  "multi_view_min_pane_height",
+  "multi_view_min_pane_width",
+]
 
 [components.PeriodicTable]
 key = "periodic-table/PeriodicTable"
 doc = "Interactive periodic table with heatmaps and tooltips."
+trailing_props = ["color_scale"]
 
 [components.Composition]
 key = "composition/Composition"
@@ -30,9 +33,7 @@ doc = "Composition chart (pie/bubble/bar) for a chemical formula or composition 
 key = "trajectory/Trajectory"
 doc = "Molecular dynamics trajectory viewer with structure + plots."
 
-# Trajectory has an ALL_CAPS prop in TS (ELEM_PROPERTY_LABELS); map to pythonic name.
-[components.Trajectory.aliases]
-elem_property_labels = "ELEM_PROPERTY_LABELS"
+# ALL_CAPS prop ELEM_PROPERTY_LABELS is converted to Pythonic snake_case automatically.
 
 # fps_range is a fixed [min_fps, max_fps] pair (Vec2 in TS)
 [components.Trajectory.type_hints]
@@ -98,16 +99,10 @@ key = "plot/scatter/ScatterPlot"
 doc = "General-purpose scatter plot with customizable axes and tooltips."
 # Generic component with complex props - add key ones manually
 [components.ScatterPlot.extra_props]
-series = "DataSeries[]"
 x_axis = "{ label?: string; range?: [number | null, number | null]; scale_type?: 'linear' | 'log'; format?: string; ticks?: number | string }?"
 y_axis = "{ label?: string; range?: [number | null, number | null]; scale_type?: 'linear' | 'log'; format?: string; ticks?: number | string }?"
 height = "number?"
 width = "number?"
-legend = "LegendConfig | null?"
-color_scale = "{ type?: ScaleType; scheme?: string; value_range?: [number, number] } | string?"
-size_scale = "{ type?: ScaleType; radius_range?: [number, number]; value_range?: [number, number] }?"
-on_point_click = "((data: ScatterHandlerEvent) => void)?"
-on_point_hover = "((data: ScatterHandlerEvent | null) => void)?"
 
 [components.Histogram]
 key = "plot/histogram/Histogram"

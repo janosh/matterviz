@@ -336,6 +336,12 @@ describe(`get_all_site_vectors`, () => {
     expect(get_all_site_vectors(make_site(props)).map((vec) => vec.key)).toEqual(expected_keys)
   })
 
+  test(`can skip ordering when callers only need vector lookup`, () => {
+    const site = make_site({ magmom: [0, 0, 1], force: [1, 0, 0] })
+    const keys = get_all_site_vectors(site, false).map(({ key }) => key)
+    expect(keys).toEqual([`magmom`, `force`])
+  })
+
   test.each([
     {
       desc: `non-vector property keys ignored`,

@@ -134,7 +134,8 @@
 
   let hovered_element: ElementSymbol | null = $state(null)
   // Generate unique ID for clipPath to avoid collisions across BarCharts
-  let clip_path_id = $derived(`bar-clip-${crypto.randomUUID()}`)
+  const component_id = $props.id()
+  const clip_path_id = `bar-clip-${component_id}`
 </script>
 
 {#snippet label_content(segment: BarSegmentData)}

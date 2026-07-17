@@ -2,10 +2,11 @@
 import { decompress_file } from './decompress'
 import { dropped_file_url, load_from_url } from './url-drop'
 import { to_error } from '$lib/utils'
+import type { FileLoadCallback } from './types'
 
 export interface FileDropOptions {
   allow: () => boolean
-  on_drop: (content: string | ArrayBuffer, filename: string) => void | Promise<void>
+  on_drop: FileLoadCallback
   on_error?: (msg: string) => void
   set_loading?: (loading: boolean) => void
 }
@@ -57,7 +58,7 @@ export const create_file_drop_handler = (
       for (const file of files) {
         try {
           const { content, filename } = await decompress_file(file)
-          if (content) await opts.on_drop(content, filename)
+          if (content) await opts.on_drop(content, filename, { source_filename: file.name })
           else failures.push(`${file.name}: file is empty`)
         } catch (exc) {
           failures.push(`${file.name}: ${to_error(exc).message}`)

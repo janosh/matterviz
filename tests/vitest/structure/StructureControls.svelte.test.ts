@@ -122,4 +122,43 @@ describe(`StructureControls reactive props`, () => {
     expect(center_label(`F`)).toBeUndefined()
     expect(center_label(`e`)).toBeUndefined()
   })
+
+  test(`explains unavailable multi-view and enables it when space becomes available`, async () => {
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const state = $state<{
+      multi_view: boolean
+      multi_view_unavailable_reason: string | undefined
+    }>({
+      multi_view: false,
+      multi_view_unavailable_reason: `Requires at least 600×400 px. Enlarge the viewer or use fullscreen.`,
+    })
+
+    mount(StructureControls, {
+      target,
+      props: bind_props({ controls_open: true }, state),
+    })
+    await tick()
+
+    const multi_view_input = [...target.querySelectorAll<HTMLInputElement>(`input`)].find(
+      (input) => input.closest(`label`)?.textContent?.includes(`Multi-view grid`),
+    )
+    expect(multi_view_input?.disabled).toBe(true)
+    const hint_id = multi_view_input?.getAttribute(`aria-describedby`) ?? ``
+    expect(document.querySelector(`#${hint_id}`)?.textContent).toContain(
+      state.multi_view_unavailable_reason,
+    )
+
+    state.multi_view = true
+    await tick()
+    expect(multi_view_input?.disabled).toBe(false)
+    multi_view_input?.click()
+    expect(state.multi_view).toBe(false)
+
+    state.multi_view_unavailable_reason = undefined
+    await tick()
+    expect(multi_view_input?.disabled).toBe(false)
+    multi_view_input?.click()
+    expect(state.multi_view).toBe(true)
+  })
 })

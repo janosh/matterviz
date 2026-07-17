@@ -119,7 +119,6 @@
     const lens = k_path_points
       .slice(1)
       .map((pt, idx) => Math.hypot(...math.subtract(pt as Vec3, k_path_points[idx] as Vec3)))
-      // map() returns a fresh length array.
       .toSorted((len_a, len_b) => len_a - len_b)
     return lens[Math.floor(lens.length / 2)] * 10
   })

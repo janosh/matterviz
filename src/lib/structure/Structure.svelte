@@ -43,11 +43,7 @@
   } from '$lib/structure'
   import { push_edit, step_history } from '$lib/structure/edit-history'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
-  import {
-    is_valid_supercell_input,
-    make_supercell,
-    parse_supercell_scaling,
-  } from '$lib/structure/supercell'
+  import { make_supercell, parse_supercell_scaling } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import { transform_cell } from '$lib/symmetry'
@@ -97,6 +93,13 @@
     bond_edit_order: BondOrder
   }
   type SceneProps = ComponentProps<typeof StructureScene> & typeof DEFAULTS.structure
+  // Keep each pane large enough for useful orbit controls, labels, and atom picking.
+  const MULTI_VIEW_COLUMN_COUNT = 2
+  const DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH = 300
+  const DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT = 200
+  const DEFAULT_MULTI_VIEW_GAP = 2
+  const finite_nonnegative = (value: number, fallback: number) =>
+    Math.max(0, Number.isFinite(value) ? value : fallback)
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
@@ -118,6 +121,10 @@
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     multi_view = $bindable(false),
+    multi_view_active = $bindable(false),
+    multi_view_min_pane_width = DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH,
+    multi_view_min_pane_height = DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT,
+    multi_view_gap = DEFAULT_MULTI_VIEW_GAP,
     views = DEFAULT_STRUCTURE_VIEWS,
     enable_measure_mode = $bindable(true),
     measure_mode = $bindable<MeasureMode>(`distance`),
@@ -226,9 +233,16 @@
     bond_edit_mode?: BondEditMode
     bond_edit_order?: BondOrder
     info_pane_open?: boolean
-    // When true, split the canvas into a 2x2 grid showing the structure from
-    // different angles (Ovito-style). Each pane has independent orbit controls.
+    // Requests a grid showing the structure from different angles (Ovito-style).
+    // The preference is preserved while responsive sizing temporarily collapses
+    // viewers whose panes would be smaller than the configured minimum.
     multi_view?: boolean
+    // Output-only: whether the responsive multi-view grid is currently rendered.
+    multi_view_active?: boolean
+    // Minimum CSS-pixel dimensions for each pane before multi-view becomes available.
+    multi_view_min_pane_width?: number
+    multi_view_min_pane_height?: number
+    multi_view_gap?: number
     // The 4 (or more) view definitions used by multi_view. Defaults to an
     // Ovito-like set: one perspective + three orthographic axis views.
     views?: StructureView[]
@@ -236,8 +250,12 @@
     bottom_left?: Snippet<[{ structure?: AnyStructure }]>
     top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
     data_url?: string // URL to load structure from (alternative to providing structure directly)
-    // Generic callback for when files are dropped - receives raw content and filename
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    // Generic callback for dropped content, its logical filename, and stable source identity.
+    on_file_drop?: (
+      content: string | ArrayBuffer,
+      filename: string,
+      metadata: io.FileLoadMeta,
+    ) => Promise<void> | void
     // spinner props (passed to Spinner component)
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
@@ -288,7 +306,10 @@
     on_camera_move?: EventHandler
     on_camera_reset?: EventHandler
     on_bonds_change?: (bonds: StructureBond[] | undefined) => void
-  } & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`> &
+  } & Omit<
+    ComponentProps<typeof StructureControls>,
+    `children` | `onclose` | `multi_view_control_visible` | `multi_view_unavailable_reason`
+  > &
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
@@ -327,15 +348,15 @@
     loading = true
     error_msg = undefined
 
-    io.load_from_url(requested_url, (content, filename) => {
+    io.load_from_url(requested_url, async (content, filename, metadata) => {
       if (!is_current()) return // stale response
       if (on_file_drop) {
-        on_file_drop(content, filename)
-        loaded_data_url = requested_url
+        await on_file_drop(content, filename, metadata)
+        if (is_current()) loaded_data_url = requested_url
       } else {
         // Parse structure internally when no handler provided
         try {
-          parse_and_emit_file(content, filename)
+          parse_and_emit_file(content, filename, metadata)
           url_owned_structure = structure
           loaded_data_url = requested_url
         } catch (error) {
@@ -356,10 +377,9 @@
 
     return () => {
       // invalidate in-flight load on data_url change / structure arrival / unmount
-      if (is_current()) {
-        data_url_load_id += 1
-        loading = false
-      }
+      if (!is_current()) return
+      data_url_load_id += 1
+      loading = false
     }
   })
 
@@ -371,12 +391,9 @@
     clear_camera_state()
     try {
       const parsed = parse_any_structure(structure_string, `string`)
-      if (parsed) {
-        structure = parsed
-        untrack(() => emit_file_load_event(parsed, `string`, structure_string))
-      } else {
-        throw new Error(`Failed to parse structure from string`)
-      }
+      if (!parsed) throw new Error(`Failed to parse structure from string`)
+      structure = parsed
+      untrack(() => emit_file_load_event(parsed, `string`, structure_string))
     } catch (err) {
       error_msg = `Failed to parse structure from string: ${to_error(err).message}`
       untrack(() => on_error?.({ error_msg, filename: `string` }))
@@ -417,15 +434,10 @@
 
   // Optimize scene props for performance based on structure size and mode
   $effect(() => {
-    if (structure?.sites && performance_mode === `speed`) {
-      const site_count = structure.sites.length
-      const current_sphere_segments = scene_props.sphere_segments || 20
-
-      // Reduce sphere segments for large structures in speed mode
-      if (site_count > 200) {
-        scene_props.sphere_segments = Math.min(current_sphere_segments, 12)
-      }
-    }
+    if (!structure?.sites || performance_mode !== `speed` || structure.sites.length <= 200)
+      return
+    // Reduce sphere segments for large structures in speed mode
+    scene_props.sphere_segments = Math.min(scene_props.sphere_segments || 20, 12)
   })
 
   $effect(() => {
@@ -484,16 +496,14 @@
           : null,
       )
       .then((data) => {
-        if (data && run_id === symmetry_run_id) {
-          untrack(() => (sym_data = data))
-        }
+        if (!data || run_id !== symmetry_run_id) return
+        untrack(() => (sym_data = data))
       })
       .catch((err) => {
-        if (run_id === symmetry_run_id) {
-          untrack(() => (sym_data = null))
-          symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
-          console.error(`Symmetry analysis failed:`, err)
-        }
+        if (run_id !== symmetry_run_id) return
+        untrack(() => (sym_data = null))
+        symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
+        console.error(`Symmetry analysis failed:`, err)
       })
   })
 
@@ -557,7 +567,6 @@
   }
 
   function undo_bond_edit() {
-    if (bond_undo_stack.length === 0) return
     const restored = bond_undo_stack.pop()
     if (!restored) return
     bond_redo_stack.push(snapshot_bond_edits())
@@ -565,7 +574,6 @@
   }
 
   function redo_bond_edit() {
-    if (bond_redo_stack.length === 0) return
     const restored = bond_redo_stack.pop()
     if (!restored) return
     bond_undo_stack.push(snapshot_bond_edits())
@@ -709,7 +717,8 @@
 
   // Add-atom sub-mode state (bound to StructureScene)
   let add_atom_mode = $state(false)
-  let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
+  let add_element = $state<ElementSymbol>(`C`)
+  const has_selection = () => selected_sites.length > 0 || measured_sites.length > 0
   let is_measure_selection_mode = $derived(
     measure_mode === `distance` || measure_mode === `angle`,
   )
@@ -800,7 +809,7 @@
       }
       if (highlighted_sites.length > 0) highlighted_sites = []
       if (measure_mode === `edit-atoms`) {
-        if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+        if (has_selection()) clear_selection()
         if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
       }
     })
@@ -815,7 +824,7 @@
       return
     }
     untrack(() => {
-      if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+      if (has_selection()) clear_selection()
       if (measure_mode === `edit-bonds`) bond_edit_mode = `add`
     })
   })
@@ -823,12 +832,7 @@
   $effect(() => {
     void bond_edit_mode
     untrack(() => {
-      if (
-        measure_mode === `edit-bonds` &&
-        (selected_sites.length > 0 || measured_sites.length > 0)
-      ) {
-        clear_selection()
-      }
+      if (measure_mode === `edit-bonds` && has_selection()) clear_selection()
     })
   })
 
@@ -850,6 +854,42 @@
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
+  let multi_view_gap_px = $derived(finite_nonnegative(multi_view_gap, DEFAULT_MULTI_VIEW_GAP))
+  let multi_view_required_width = $derived(
+    MULTI_VIEW_COLUMN_COUNT *
+      finite_nonnegative(multi_view_min_pane_width, DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH) +
+      (MULTI_VIEW_COLUMN_COUNT - 1) * multi_view_gap_px,
+  )
+  let multi_view_required_height = $derived.by(() => {
+    const row_count = Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT)
+    return (
+      row_count *
+        finite_nonnegative(multi_view_min_pane_height, DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT) +
+      Math.max(0, row_count - 1) * multi_view_gap_px
+    )
+  })
+  let multi_view_available = $derived(
+    views.length > 1 &&
+      width >= multi_view_required_width &&
+      height >= multi_view_required_height,
+  )
+  // Preserve the caller's multi_view preference while temporarily collapsing small viewers.
+  let is_multi_view_active = $state(false)
+  // This is output-only state: parent writes are overwritten with the actual render state.
+  $effect(() => {
+    const active = multi_view && multi_view_available
+    is_multi_view_active = active
+    if (multi_view_active !== active) multi_view_active = active
+  })
+  let multi_view_unavailable_reason = $derived(
+    views.length < 2
+      ? `Configure at least two views to enable multi-view`
+      : !multi_view_available
+        ? `Requires at least ${Math.ceil(multi_view_required_width)}×${Math.ceil(
+            multi_view_required_height,
+          )} px. Enlarge the viewer or use fullscreen.`
+        : undefined,
+  )
   // $effect instead of `$derived(hovered || focused)`: the $derived reading the $bindable
   // `hovered` prop went stale after the first hover/leave cycle, so the gizmo + mode toggle only
   // appeared on the first mouseenter until reload.
@@ -885,15 +925,13 @@
   // Apply cell type transformation (original, conventional, or primitive)
   // This must happen BEFORE supercell transformation
   let cell_transformed_structure = $derived.by(() => {
+    // Cell type transformation requires symmetry data
     if (
       !structure_with_bonds ||
       !(`lattice` in structure_with_bonds) ||
-      cell_type === `original`
+      cell_type === `original` ||
+      !sym_data
     ) {
-      return structure_with_bonds
-    }
-    // Cell type transformation requires symmetry data
-    if (!sym_data) {
       return structure_with_bonds
     }
     try {
@@ -910,11 +948,17 @@
   // measured ~15x slower for compute_bonds on a 704-site supercell.
   let supercell_structure = $state.raw(structure)
   let supercell_loading = $state(false)
-  let has_supercell = $derived(
-    Boolean(supercell_scaling) && ![``, `1x1x1`, `1`].includes(supercell_scaling),
-  )
+  let supercell_applied = $state(false)
+  let supercell_factors = $derived.by((): Vec3 | undefined => {
+    try {
+      return parse_supercell_scaling(supercell_scaling)
+    } catch {
+      return undefined
+    }
+  })
+  let has_supercell = $derived(supercell_factors?.some((factor) => factor !== 1) ?? false)
   let bond_edits_enabled = $derived(
-    cell_type === `original` && !has_supercell && !supercell_loading,
+    cell_type === `original` && !(has_supercell && supercell_applied) && !supercell_loading,
   )
 
   $effect(() => {
@@ -932,19 +976,17 @@
   // volumes). Gate on !supercell_loading so tiled surfaces and the supercell
   // structure update in the same frame (large supercells defer via setTimeout).
   let volume_scaling = $derived.by((): Vec3 => {
-    if (!has_supercell || supercell_loading) return [1, 1, 1]
-    try {
-      return parse_supercell_scaling(supercell_scaling)
-    } catch {
-      return [1, 1, 1]
-    }
+    if (!has_supercell || !supercell_applied || supercell_loading) return [1, 1, 1]
+    return supercell_factors ?? [1, 1, 1]
   })
 
   let supercell_timeout: ReturnType<typeof setTimeout> | undefined
   // Compute the supercell, falling back to the unscaled structure on error
   const make_supercell_safe = (base: Crystal): Crystal => {
     try {
-      return make_supercell(base, supercell_scaling)
+      const next_structure = make_supercell(base, supercell_scaling)
+      supercell_applied = true
+      return next_structure
     } catch (error) {
       console.error(`Failed to create supercell:`, error)
       show_toast(`Failed to create supercell: ${to_error(error).message}`)
@@ -954,38 +996,31 @@
   $effect(() => {
     const base_structure = cell_transformed_structure
     clearTimeout(supercell_timeout)
-    if (
-      !base_structure ||
-      !(`lattice` in base_structure) ||
-      !has_supercell ||
-      !is_valid_supercell_input(supercell_scaling)
-    ) {
+    supercell_applied = false
+    if (!base_structure || !(`lattice` in base_structure) || !has_supercell) {
       supercell_structure = base_structure
       supercell_loading = false
-    } else {
-      // For large supercells, show loading state and use async generation
-      const sites_count = base_structure.sites?.length || 0
-      // lenient parse just for a size estimate (invalid factors count as 1)
-      const scaling_mult = supercell_scaling
-        .split(/[x×]/)
-        .reduce((product, factor) => product * (Number(factor) || 1), 1)
-      const estimated_sites = sites_count * scaling_mult
+      return
+    }
+    // For large supercells, show loading state and use async generation
+    // lenient parse just for a size estimate (invalid factors count as 1)
+    const scaling_mult = supercell_scaling
+      .split(/[x×]/)
+      .reduce((product, factor) => product * (Number(factor) || 1), 1)
+    const estimated_sites = (base_structure.sites?.length ?? 0) * scaling_mult
 
-      // Show spinner for supercells with >1000 estimated sites or scaling >8
-      const show_loading = estimated_sites > 1000 || scaling_mult > 8
-
-      if (show_loading) {
-        supercell_loading = true
-        // Use setTimeout to allow UI to update before heavy computation
-        supercell_timeout = setTimeout(() => {
-          supercell_structure = make_supercell_safe(base_structure as Crystal)
-          supercell_loading = false
-        }, 10)
-      } else {
+    // Show spinner for supercells with >1000 estimated sites or scaling >8
+    if (estimated_sites > 1000 || scaling_mult > 8) {
+      supercell_loading = true
+      // Use setTimeout to allow UI to update before heavy computation
+      supercell_timeout = setTimeout(() => {
         supercell_structure = make_supercell_safe(base_structure as Crystal)
         supercell_loading = false
-      }
+      }, 10)
+      return
     }
+    supercell_structure = make_supercell_safe(base_structure as Crystal)
+    supercell_loading = false
   })
 
   // Clear selections, site overrides, and stale camera target when transformations
@@ -1001,7 +1036,7 @@
       // In edit-atoms mode, structure changes are intentional user edits
       // (move/add/delete) — preserve the selection so TransformControls stays active
       if (measure_mode === `edit-atoms`) return
-      if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+      if (has_selection()) clear_selection()
       // Clear site radius overrides since site indices are no longer valid
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
       // Clear stale camera target so orbit controls re-center on the new cell
@@ -1054,6 +1089,17 @@
   // SvelteSet is already reactive; do NOT wrap in $state (double-proxying breaks it)
   const moved_panes = new SvelteSet<number>()
   let any_camera_moved = $derived(moved_panes.size > 0)
+
+  // Side-pane camera state is irrelevant whenever responsive sizing collapses to one pane.
+  $effect(() => {
+    if (is_multi_view_active) return
+    untrack(() => {
+      active_pane_idx = 0
+      for (const pane_idx of moved_panes) {
+        if (pane_idx !== 0) moved_panes.delete(pane_idx)
+      }
+    })
+  })
 
   // Inputs shared by every StructureViewport (single + all multi-view panes). Camera,
   // selection bindings, and per-pane chrome differ and stay on each snippet below.
@@ -1123,10 +1169,12 @@
     loaded_structure: AnyStructure,
     filename: string,
     content: string | ArrayBuffer,
+    metadata?: io.FileLoadMeta,
   ) =>
     on_file_load?.({
       structure: loaded_structure,
       filename,
+      ...metadata,
       file_size: typeof content === `string` ? new Blob([content]).size : content.byteLength,
       total_atoms: loaded_structure.sites?.length || 0,
     })
@@ -1144,11 +1192,15 @@
   // fields — e.g. density + ESP — coexist and can cross-color each other's isosurfaces.
   // A file with a different lattice replaces the current structure and volumes.
   // Returns the parsed structure on success, or null if the file isn't a volumetric format.
-  function try_parse_volumetric(text_content: string, filename: string): AnyStructure | null {
+  function try_parse_volumetric(
+    text_content: string,
+    filename: string,
+    source_filename = filename,
+  ): AnyStructure | null {
     const vol_result = parse_volumetric_file(text_content, filename)
     if (!vol_result) return null
 
-    const incoming = label_file_volumes(vol_result.volumes, filename)
+    const incoming = label_file_volumes(vol_result.volumes, filename, source_filename)
     const same_cell = shares_current_lattice(vol_result.structure.lattice?.matrix)
     const added_toast = (count: number) =>
       `Added ${count} volume${count > 1 ? `s` : ``} from ${filename}`
@@ -1199,8 +1251,12 @@
 
   // Parse file content, trying volumetric format first then falling back to plain structure.
   // Returns the parsed structure on success, throws on failure.
-  function parse_file_content(text_content: string, filename: string): AnyStructure {
-    const vol_struct = try_parse_volumetric(text_content, filename)
+  function parse_file_content(
+    text_content: string,
+    filename: string,
+    source_filename?: string,
+  ): AnyStructure {
+    const vol_struct = try_parse_volumetric(text_content, filename, source_filename)
     if (vol_struct) return vol_struct
     const parsed = parse_any_structure(text_content, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
@@ -1218,18 +1274,23 @@
     return parsed
   }
 
-  function parse_and_emit_file(content: string | ArrayBuffer, filename: string): void {
+  function parse_and_emit_file(
+    content: string | ArrayBuffer,
+    filename: string,
+    metadata?: io.FileLoadMeta,
+  ): void {
     const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-    emit_file_load_event(parse_file_content(text, filename), filename, content)
+    const parsed = parse_file_content(text, filename, metadata?.source_filename)
+    emit_file_load_event(parsed, filename, content, metadata)
   }
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
     // Parse errors propagate so multi-file batches aggregate all failures into
     // one message instead of the last error overwriting earlier ones
-    on_drop: (content, filename) => {
-      if (on_file_drop) return on_file_drop(content, filename)
-      parse_and_emit_file(content, filename)
+    on_drop: (content, filename, metadata) => {
+      if (on_file_drop) return on_file_drop(content, filename, metadata)
+      parse_and_emit_file(content, filename, metadata)
     },
     on_error: (msg) => {
       error_msg = msg
@@ -1248,10 +1309,7 @@
     const target = event.target
     const is_input_focused =
       target instanceof HTMLElement &&
-      (target.tagName === `INPUT` ||
-        target.tagName === `TEXTAREA` ||
-        target.tagName === `SELECT` ||
-        target.isContentEditable)
+      ([`INPUT`, `TEXTAREA`, `SELECT`].includes(target.tagName) || target.isContentEditable)
 
     // Allow Escape to cancel add-atom mode even when the element input is focused
     if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
@@ -1260,11 +1318,12 @@
     }
 
     if (is_input_focused) return false
+    const key = event.key.toLowerCase()
+    const has_modifier = event.ctrlKey || event.metaKey
+    const plain = !has_modifier && !event.altKey
 
     if (measure_mode === `edit-bonds`) {
-      const key = event.key.toLowerCase()
-      const plain = !event.ctrlKey && !event.metaKey && !event.altKey
-      if (event.ctrlKey || event.metaKey) {
+      if (has_modifier) {
         if (key === `z` && !event.shiftKey) {
           if (bond_undo_stack.length === 0) return false
           undo_bond_edit()
@@ -1294,8 +1353,7 @@
     // Edit-atoms mode shortcuts (including undo/redo)
     if (measure_mode === `edit-atoms`) {
       // Undo/redo shortcuts (Ctrl/Cmd + Z/Y) — only active in edit-atoms mode
-      if (event.ctrlKey || event.metaKey) {
-        const key = event.key.toLowerCase()
+      if (has_modifier) {
         if (key === `z` && !event.shiftKey) {
           if (undo_stack.length === 0) return false
           undo()
@@ -1311,36 +1369,32 @@
 
       if (event.key === `Delete` || event.key === `Backspace`) {
         // Delete selected atoms
-        if (selected_sites.length > 0 && structure?.sites) {
-          is_internal_edit = true
-          push_undo()
-          const to_delete = scene_to_structure_indices(selected_sites, true)
-          const n_deleted = to_delete.size
-          clear_selection()
-          // Remap explicit bond metadata so surviving bonds track shifted site indices.
-          // structure_with_bonds prefers the bindable `bonds` prop, so remap that too.
-          if (bonds !== undefined) bonds = remap_bonds_after_deletion(bonds, to_delete)
-          const old_bonds = structure.properties?.bonds
-          structure = {
-            ...structure,
-            sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
-            ...(old_bonds && {
-              properties: {
-                ...structure.properties,
-                bonds: remap_bonds_after_deletion(old_bonds, to_delete),
-              },
-            }),
-          }
-          // Clear per-site overrides since indices shifted after deletion
-          if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-          clear_bond_edits()
-          show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
-          return true
+        if (selected_sites.length === 0 || !structure?.sites) return false
+        is_internal_edit = true
+        push_undo()
+        const to_delete = scene_to_structure_indices(selected_sites, true)
+        const n_deleted = to_delete.size
+        clear_selection()
+        // Remap explicit bond metadata so surviving bonds track shifted site indices.
+        // structure_with_bonds prefers the bindable `bonds` prop, so remap that too.
+        if (bonds !== undefined) bonds = remap_bonds_after_deletion(bonds, to_delete)
+        const old_bonds = structure.properties?.bonds
+        structure = {
+          ...structure,
+          sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
+          ...(old_bonds && {
+            properties: {
+              ...structure.properties,
+              bonds: remap_bonds_after_deletion(old_bonds, to_delete),
+            },
+          }),
         }
-        return false
+        // Clear per-site overrides since indices shifted after deletion
+        if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
+        clear_bond_edits()
+        show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
+        return true
       }
-      const key = event.key.toLowerCase()
-      const plain = !event.ctrlKey && !event.metaKey && !event.altKey
 
       if (key === `a` && plain) {
         // Enter add-atom sub-mode (plain 'a' only, not Ctrl+A/Cmd+A/Alt+A)
@@ -1353,12 +1407,7 @@
         return true
       }
       // Duplicate selected atoms at a small offset
-      if (
-        key === `d` &&
-        (event.ctrlKey || event.metaKey) &&
-        selected_sites.length > 0 &&
-        structure?.sites
-      ) {
+      if (key === `d` && has_modifier && selected_sites.length > 0 && structure?.sites) {
         is_internal_edit = true
         push_undo()
         const orig_indices = scene_to_structure_indices(selected_sites)
@@ -1400,14 +1449,18 @@
     }
 
     // Interface shortcuts (require Ctrl/Cmd modifier to avoid accidental triggers)
-    const has_modifier = event.ctrlKey || event.metaKey
     if (event.key === `f` && has_modifier && fullscreen_toggle) {
       toggle_fullscreen(wrapper)
       return true
     } else if (event.key === `i` && has_modifier && enable_info_pane) {
       info_pane_open = !info_pane_open
       return true
-    } else if (event.key === `g` && has_modifier && controls_config.visible(`multi-view`)) {
+    } else if (
+      event.key === `g` &&
+      has_modifier &&
+      controls_config.visible(`multi-view`) &&
+      (multi_view_available || multi_view)
+    ) {
       multi_view = !multi_view
       return true
     } else if (event.key === `Escape`) {
@@ -1531,9 +1584,7 @@
   function handle_add_atom(xyz: Vec3, element: ElementSymbol) {
     if (!structure) return
     const elem = normalize_element(element)
-    if (!elem) {
-      return console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
-    }
+    if (!elem) return console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
     is_internal_edit = true
     push_undo()
     structure = {
@@ -1555,16 +1606,16 @@
   // Only set background override when background_color is explicitly provided
   $effect(() => {
     if (!wrapper) return
-    if (background_color) {
-      // Convert opacity (0-1) to hex alpha value (00-FF)
-      const alpha_hex = Math.round(background_opacity * 255)
-        .toString(16)
-        .padStart(2, `0`)
-      wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
-    } else {
+    if (!background_color) {
       // Remove override to use theme system
       wrapper.style.removeProperty(`--struct-bg-override`)
+      return
     }
+    // Convert opacity (0-1) to hex alpha value (00-FF)
+    const alpha_hex = Math.round(background_opacity * 255)
+      .toString(16)
+      .padStart(2, `0`)
+    wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
   })
 
   sync_fullscreen({
@@ -1586,7 +1637,8 @@
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
   class:gizmo-visible={viewer_active && Boolean(scene_gizmo)}
-  class:multi-view={multi_view}
+  class:multi-view={is_multi_view_active}
+  style:--struct-viewport-gap="{multi_view_gap_px}px"
   role="application"
   tabindex="0"
   aria-label="Structure viewer"
@@ -1642,14 +1694,16 @@
       before={reset_camera_btn}
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
-      {#if controls_config.visible(`multi-view`)}
+      {#if multi_view_available && controls_config.visible(`multi-view`)}
         <button
+          type="button"
           class="multi-view-toggle"
-          class:active={multi_view}
+          class:active={is_multi_view_active}
           onclick={() => (multi_view = !multi_view)}
-          title="Toggle multi-side view 2×2 grid (Cmd/Ctrl+G)"
+          title="Toggle multi-side view grid (Cmd/Ctrl+G)"
           aria-label="Toggle multi-side view"
-          aria-pressed={multi_view}
+          aria-keyshortcuts="Control+G Meta+G"
+          aria-pressed={is_multi_view_active}
           {@attach tooltip()}
         >
           <Icon icon="Grid2x2" />
@@ -1751,102 +1805,108 @@
           </div>
         {/snippet}
 
-        {#if measure_mode === `edit-atoms`}
-          {@render undo_redo_snippet([
-            { icon: `Undo`, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
-            {
-              icon: `Redo`,
-              title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-              stack: redo_stack,
-              action: redo,
-            },
-          ])}
-        {/if}
+        {#if measure_mode === `edit-atoms` && !measure_menu_open}
+          <div class="edit-mode-toolbar" aria-label="Atom editing controls">
+            {@render undo_redo_snippet([
+              { icon: `Undo`, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
+              {
+                icon: `Redo`,
+                title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+                stack: redo_stack,
+                action: redo,
+              },
+            ])}
 
-        {#if measure_mode === `edit-bonds`}
-          <div class="bond-edit-toolbar" aria-label="Bond editing controls">
-            {#if bond_edit_mode === `add`}
-              <label>
-                <span>Bond order</span>
-                <select bind:value={bond_edit_order}>
-                  {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-                    <option value={order}>{label}</option>
-                  {/each}
-                </select>
-              </label>
+            <!-- Add-atom element input (shown when add_atom_mode is active) -->
+            {#if add_atom_mode}
+              <div class="add-atom-input">
+                <label>
+                  <span>Element:</span>
+                  <!-- svelte-ignore a11y_autofocus (focus is intentional for keyboard-driven atom editing) -->
+                  <input
+                    type="text"
+                    autofocus
+                    bind:value={add_element}
+                    maxlength="2"
+                    placeholder="C"
+                    style="width: 3em; text-align: center"
+                  />
+                </label>
+                <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
+              </div>
             {/if}
-            <div class="bond-edit-mode-toggle">
-              {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
-                <button
-                  type="button"
-                  class:selected={bond_edit_mode === mode}
-                  aria-pressed={bond_edit_mode === mode}
-                  title="{title} ({label[0]})"
-                  onclick={() => (bond_edit_mode = mode)}
-                >
-                  {label}
-                </button>
-              {/each}
+
+            <!-- Change-element input (shown when 'e' pressed with selection) -->
+            {#if change_element_mode && selected_sites.length > 0}
+              <div class="add-atom-input">
+                <label>
+                  <span>New element:</span>
+                  <input
+                    type="text"
+                    bind:value={change_element_value}
+                    maxlength="2"
+                    placeholder="Fe"
+                    style="width: 3em; text-align: center"
+                    onkeydown={(event: KeyboardEvent) => {
+                      if (event.key === `Enter`) {
+                        handle_change_element(change_element_value)
+                      } else if (event.key === `Escape`) {
+                        change_element_mode = false
+                      }
+                      event.stopPropagation()
+                    }}
+                    {@attach (node: HTMLInputElement) => {
+                      node.focus()
+                    }}
+                  />
+                </label>
+                <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        {#if measure_mode === `edit-bonds` && !measure_menu_open}
+          <div class="edit-mode-toolbar" aria-label="Bond editing controls">
+            <div class="bond-edit-toolbar">
+              {#if bond_edit_mode === `add`}
+                <label>
+                  <span>Bond order</span>
+                  <select bind:value={bond_edit_order}>
+                    {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+                      <option value={order}>{label}</option>
+                    {/each}
+                  </select>
+                </label>
+              {/if}
+              <div class="bond-edit-mode-toggle">
+                {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
+                  <button
+                    type="button"
+                    class:selected={bond_edit_mode === mode}
+                    aria-pressed={bond_edit_mode === mode}
+                    title="{title} ({label[0]})"
+                    onclick={() => (bond_edit_mode = mode)}
+                  >
+                    {label}
+                  </button>
+                {/each}
+              </div>
             </div>
-          </div>
-          {@render undo_redo_snippet([
-            {
-              icon: `Undo`,
-              title: `Undo bond edit (Cmd/Ctrl+Z)`,
-              stack: bond_undo_stack,
-              action: undo_bond_edit,
-            },
-            {
-              icon: `Redo`,
-              title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-              stack: bond_redo_stack,
-              action: redo_bond_edit,
-            },
-          ])}
-        {/if}
-
-        <!-- Add-atom element input (shown when add_atom_mode is active) -->
-        {#if measure_mode === `edit-atoms` && add_atom_mode}
-          <div class="add-atom-input">
-            <label>
-              <span>Element:</span>
-              <input
-                type="text"
-                bind:value={add_element}
-                maxlength="2"
-                placeholder="C"
-                style="width: 3em; text-align: center"
-              />
-            </label>
-            <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
-          </div>
-        {/if}
-
-        <!-- Change-element input (shown when 'e' pressed with selection) -->
-        {#if measure_mode === `edit-atoms` && change_element_mode && selected_sites.length > 0}
-          <div class="add-atom-input">
-            <label>
-              <span>New element:</span>
-              <input
-                type="text"
-                bind:value={change_element_value}
-                maxlength="2"
-                placeholder="Fe"
-                style="width: 3em; text-align: center"
-                onkeydown={(event: KeyboardEvent) => {
-                  if (event.key === `Enter`) {
-                    handle_change_element(change_element_value)
-                  } else if (event.key === `Escape`) {
-                    change_element_mode = false
-                  }
-                  event.stopPropagation()
-                }}
-                {@attach (node: HTMLInputElement) => {
-                  node.focus()
-                }}
-              />
-            </label>
-            <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
+            {@render undo_redo_snippet([
+              {
+                icon: `Undo`,
+                title: `Undo bond edit (Cmd/Ctrl+Z)`,
+                stack: bond_undo_stack,
+                action: undo_bond_edit,
+              },
+              {
+                icon: `Redo`,
+                title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+                stack: bond_redo_stack,
+                action: redo_bond_edit,
+              },
+            ])}
           </div>
         {/if}
       {/if}
@@ -1890,6 +1950,9 @@
           bind:volumetric_data
           bind:isosurface_settings
           bind:active_volume_idx
+          bind:multi_view
+          multi_view_control_visible={controls_config.visible(`multi-view`)}
+          {multi_view_unavailable_reason}
           {structure}
           {supercell_loading}
           {sym_data}
@@ -1934,10 +1997,10 @@
       on_camera_move/on_camera_reset. All camera handling itself lives in StructureViewport. -->
     {#snippet primary_viewport(view: StructureView)}
       <StructureViewport
-        in_grid={multi_view}
-        label={multi_view ? view.label : undefined}
-        active={multi_view && active_pane_idx === 0}
-        interactive={!multi_view || active_pane_idx === 0}
+        in_grid={is_multi_view_active}
+        label={is_multi_view_active ? view.label : undefined}
+        active={is_multi_view_active && active_pane_idx === 0}
+        interactive={!is_multi_view_active || active_pane_idx === 0}
         onactivate={() => (active_pane_idx = 0)}
         {reset_token}
         report_moved={(moved) => (moved ? moved_panes.add(0) : moved_panes.delete(0))}
@@ -2000,9 +2063,9 @@
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
-      <div class:multi={multi_view} class="viewport-stage">
-        {@render primary_viewport(multi_view ? (views[0] ?? {}) : {})}
-        {#if multi_view}
+      <div class:multi={is_multi_view_active} class="viewport-stage">
+        {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
+        {#if is_multi_view_active}
           {#each views.slice(1) as view, idx (idx)}
             {@render extra_viewport(view, idx + 1)}
           {/each}
@@ -2065,14 +2128,13 @@
     height: 100%;
     width: 100%;
   }
-  /* 2x2 multi-side view grid: four equal subcanvases. grid-auto-rows keeps rows
-    equal-height if a custom `views` array supplies more than four entries. */
+  /* Two-column multi-side view grid. Implicit rows divide the available height
+    equally, including when a custom `views` array changes the number of panes. */
   .viewport-stage.multi {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
     grid-auto-rows: 1fr;
-    gap: var(--struct-viewport-gap, 2px);
+    gap: var(--struct-viewport-gap);
   }
   .multi-view-toggle.active {
     color: var(--accent-color, #4a9eff);
@@ -2232,6 +2294,23 @@
   .undo-redo-container {
     display: flex;
   }
+  .edit-mode-toolbar {
+    position: absolute;
+    top: calc(100% + 4pt);
+    right: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.4em;
+    width: max-content;
+    max-width: calc(100cqw - 2ex);
+    box-sizing: border-box;
+    padding: 0.25em;
+    border-radius: var(--border-radius, 3pt);
+    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, transparent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  }
   .undo-redo-btn {
     position: relative;
     display: flex;
@@ -2299,12 +2378,8 @@
     display: flex;
     align-items: center;
     gap: 0.5em;
-    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
     color: var(--text-color, currentColor);
-    padding: 0.3em 0.6em;
-    border-radius: var(--border-radius, 3pt);
     font-size: 0.8rem;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     label {
       display: flex;
       align-items: center;

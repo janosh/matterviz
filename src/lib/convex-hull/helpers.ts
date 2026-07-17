@@ -550,7 +550,6 @@ function get_label_representative_energy(entry: PhaseData): number {
 
 const get_fractional_composition_key = (composition: Record<string, number>): string =>
   Object.entries(get_fractional_composition(composition))
-    // Object.entries() returns a fresh array.
     .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
     .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
     .join(`|`)

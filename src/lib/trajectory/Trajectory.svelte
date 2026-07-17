@@ -702,19 +702,6 @@
     }
   }
 
-  // Helper function to read file content
-  const read_file_content = (file: File): Promise<string | ArrayBuffer> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.addEventListener(`load`, () => resolve(reader.result as string | ArrayBuffer))
-      reader.addEventListener(`error`, () => reject(new Error(`Failed to read file`)))
-
-      // Read as text for text-based formats, binary for others
-      if (/\.(?:xyz|json|extxyz|lammpstrj)$/.test(file.name.toLowerCase())) {
-        reader.readAsText(file)
-      } else reader.readAsArrayBuffer(file)
-    })
-
   // Play/pause functionality
   function toggle_play() {
     if (is_playing) pause_playback()
@@ -787,21 +774,19 @@
   async function handle_internal_file_drop(internal_data: string): Promise<boolean> {
     try {
       const file_info = JSON.parse(internal_data)
+      const source = { source_filename: file_info.name }
 
       // Check if this is a binary file
-      if (file_info.is_binary) {
-        if (file_info.content instanceof ArrayBuffer) {
-          await load_trajectory_data(file_info.content, file_info.name)
-        } else if (file_info.content_url) {
-          const response = await fetch(file_info.content_url)
-          const array_buffer = await response.arrayBuffer()
-          await load_trajectory_data(array_buffer, file_info.name)
-        } else {
+      let content = file_info.content
+      if (file_info.is_binary && !(content instanceof ArrayBuffer)) {
+        if (!file_info.content_url) {
           console.warn(`Binary file without ArrayBuffer or blob URL:`, file_info.name)
+          return true
         }
-      } else {
-        await load_trajectory_data(file_info.content, file_info.name)
+        const response = await fetch(file_info.content_url)
+        content = await response.arrayBuffer()
       }
+      await load_trajectory_data(content, file_info.name, source)
       return true
     } catch (error) {
       console.warn(`Failed to parse internal file data:`, error)
@@ -816,6 +801,7 @@
     if (!allow_file_drop) return
 
     loading = true
+    let source_filename: string | undefined
 
     try {
       // Check for our custom internal file format first
@@ -827,11 +813,11 @@
 
       // Handle URL-based files (e.g. from FilePicker)
       const handled = await io
-        .handle_url_drop(event, async (content, filename) => {
+        .handle_url_drop(event, (content, filename, metadata) => {
           current_filename = filename
           file_size =
             content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
-          await load_trajectory_data(content, filename)
+          return load_trajectory_data(content, filename, metadata)
         })
         .catch(() => false)
 
@@ -840,13 +826,14 @@
       // Handle file system drops with optimized large file support
       const file = event.dataTransfer?.files[0]
       if (file) {
+        source_filename = file.name
+        current_filename = file.name
         file_size = file.size
         current_file_path = file.webkitRelativePath || file.name
         file_object = file
 
-        // Read file content directly
-        const content = await read_file_content(file)
-        await load_trajectory_data(content, file.name)
+        const { content, filename } = await io.decompress_file(file)
+        await load_trajectory_data(content, filename, { source_filename: file.name })
         // Don't fall through: drops from IDEs/file managers often also carry a
         // text/plain payload (the file path) which would clobber the loaded data
         return
@@ -861,7 +848,7 @@
     } catch (error) {
       console.error(`File drop failed:`, error)
       error_msg = `Failed to load file: ${error}`
-      on_error?.({ error_msg, filename: current_filename, file_size })
+      on_error?.({ error_msg, filename: current_filename, source_filename, file_size })
     } finally {
       loading = false
     }
@@ -888,12 +875,13 @@
     loading = true
     error_msg = null
 
-    io.load_from_url(requested_url, async (content, filename) => {
+    io.load_from_url(requested_url, (content, filename, metadata) => {
       if (!is_current()) return
       current_filename = filename
       file_size =
         content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
-      await load_trajectory_data(content, filename, {
+      return load_trajectory_data(content, filename, {
+        ...metadata,
         on_trajectory_loaded: (loaded_trajectory) => {
           if (!is_current()) return
           url_owned_trajectory = loaded_trajectory
@@ -933,9 +921,9 @@
     options: {
       on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
       should_commit?: () => boolean
-    } = {},
+    } & Partial<io.FileLoadMeta> = {},
   ) {
-    const { on_trajectory_loaded, should_commit = () => true } = options
+    const { on_trajectory_loaded, should_commit = () => true, ...source } = options
     loading = true
     error_msg = null
     parsing_progress = null
@@ -986,6 +974,7 @@
         frame_count: loaded_trajectory?.frames.length ?? 0,
         total_atoms: loaded_trajectory?.frames[0]?.structure.sites.length ?? 0,
         filename,
+        ...source,
         file_size: file_size_bytes,
       })
     } catch (err) {
@@ -995,7 +984,7 @@
         typeof data === `string` ? data : ``,
       )
       error_msg = unsupported_message || `Failed to parse trajectory: ${err}`
-      on_error?.({ error_msg, filename, file_size: file_size_bytes })
+      on_error?.({ error_msg, filename, ...source, file_size: file_size_bytes })
       current_filename = undefined
       file_size = undefined
     } finally {

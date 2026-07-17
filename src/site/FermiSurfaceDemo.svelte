@@ -6,7 +6,7 @@
   import type { FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import type { BandGridData, FermiFileLoadData, FermiSurfaceData } from '$lib/fermi-surface'
+  import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface'
   import {
     extract_fermi_surface,
     FermiSlice,
@@ -119,15 +119,11 @@
   bind:error_msg
   bind:loading
   show_controls="hover"
-  on_file_drop={(filename: string) => {
-    active_file = filename
-    update_url(filename)
-  }}
-  on_file_load={(data: FermiFileLoadData) => {
-    active_file = data.filename
-    fermi_data = data.fermi_data
-    band_data = data.band_data
+  on_file_load={({ source_filename }) => {
     error_msg = undefined
+    if (!source_filename) return
+    active_file = source_filename
+    update_url(source_filename)
   }}
   tooltip_config={{
     suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,

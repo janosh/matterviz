@@ -2,12 +2,15 @@ import type { ContrastOptions } from '$lib/colors'
 import {
   add_alpha,
   css_color_to_hex,
+  D3_INTERPOLATE_NAMES,
   DEFAULT_CATEGORY_COLORS,
   ELEMENT_COLOR_SCHEMES,
   get_bg_color,
+  get_d3_interpolator,
   get_page_background,
   is_color,
   is_dark_mode,
+  is_d3_interpolate_name,
   luminance,
   pick_contrast_color,
   PLOT_COLORS,
@@ -18,6 +21,19 @@ import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
+
+test.each([
+  [`interpolateViridis`, true],
+  [`schemeViridis`, false],
+] as const)(`is_d3_interpolate_name(%s) is %s`, (name, expected) => {
+  expect(is_d3_interpolate_name(name)).toBe(expected)
+})
+
+test(`registered D3 interpolation names resolve to functions`, () => {
+  for (const name of D3_INTERPOLATE_NAMES) {
+    expect(get_d3_interpolator(name)).toBeTypeOf(`function`)
+  }
+})
 
 describe(`Element Color Schemes`, () => {
   test(`all schemes have identical, complete element coverage`, () => {

@@ -317,7 +317,9 @@
 
   // === Panel management ===
 
-  const make_panel_id = (): string => `panel_${crypto.randomUUID()}`
+  const browser_id = $props.id()
+  let panel_id_count = 0
+  const make_panel_id = (): string => `panel_${browser_id}_${panel_id_count++}`
 
   // Click replaces the single/first panel; drag adds a split
   function replace_or_add_panel(

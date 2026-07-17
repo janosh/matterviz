@@ -483,7 +483,6 @@ export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
   // Andrew's monotone chain lower hull (Point2D adapter over math.monotone_chain)
   const sorted = points
     .map((pt): Vec2 => [pt.x, pt.y])
-    // map() returns a fresh array.
     .toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
   return math.monotone_chain(sorted).map(([x, y]) => ({ x, y }))
 }
@@ -1025,9 +1024,7 @@ export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
     }
 
     // Remove visible faces (in reverse order to maintain indices)
-    const sorted_visible = Array.from(visible_indices)
-    // Array.from() returns a fresh array.
-    sorted_visible.sort((a, b) => b - a)
+    const sorted_visible = Array.from(visible_indices).toSorted((a, b) => b - a)
     for (const idx of sorted_visible) {
       faces.splice(idx, 1)
     }

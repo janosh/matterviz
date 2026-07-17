@@ -12,6 +12,7 @@
     LegendItem,
     SunburstLabelRotation,
     SunburstLabelText,
+    SunburstGroupGap,
     SunburstNode,
     SunburstNodeHandlerProps,
     SunburstShape,
@@ -32,7 +33,7 @@
     hierarchy_legend_items,
     is_activation_key,
     node_handler_props,
-    observe_height,
+    observe_size,
     pointer_pos,
     prune_muted_ids,
     safe_hierarchy_layout,
@@ -63,6 +64,9 @@
 
   // Preserve the established outer inset; pass `padding` to override chart-edge space.
   const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
+  const COLORBAR_GAP = 8
+  const reserve_colorbar_space = (size: number, available: number): number =>
+    size > 0 ? Math.min(size + 2 * COLORBAR_GAP, available / 2) : 0
 
   // An arc with its current screen-space geometry (angles in radians, radii in px)
   type ScreenArc = ScreenArcOf<Metadata>
@@ -78,6 +82,7 @@
     max_depth = $bindable(DEFAULTS.sunburst.max_depth),
     inner_radius = $bindable(DEFAULTS.sunburst.inner_radius),
     pad_angle = $bindable(DEFAULTS.sunburst.pad_angle),
+    group_gap,
     show_labels = $bindable(DEFAULTS.sunburst.show_labels),
     label_rotation = $bindable(DEFAULTS.sunburst.label_rotation),
     label_text = $bindable(DEFAULTS.sunburst.label_text),
@@ -88,6 +93,7 @@
     color_scale = SCALE_DEFAULTS.scheme,
     color_range,
     colorbar = {},
+    colorbar_side = `right`,
     export_buttons = true,
     export_filename = `sunburst`,
     tween,
@@ -139,6 +145,8 @@
       color_scale?: D3InterpolateName
       color_range?: Vec2 // defaults to the metric's [min, max]
       colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
+      colorbar_side?: `left` | `right` // side reserved for vertical colorbars
+      group_gap?: SunburstGroupGap<Metadata> | null
       export_buttons?: boolean // SVG/PNG download buttons in the controls pane
       export_filename?: string
       tween?: TweenOptions<{ x0: number; x1: number; y0: number; n_rings: number }>
@@ -184,17 +192,42 @@
   let muted_ids = new SvelteSet<string | number>()
 
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
-  let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
+  let avail_width = $derived(Math.max(0, width - pad.l - pad.r))
   let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // measured height of the bottom colorbar (via observe_height, which resets it
-  // to 0 on unmount), reserved from the chart so it never overlaps the arcs
-  // (16px covers its bottom offset + a small gap); capped at half the area so a
-  // bad measurement can't collapse the chart
-  let colorbar_height = $state(0)
-  let colorbar_reserve = $derived(
-    colorbar_height > 0 ? Math.min(colorbar_height + 16, avail_height / 2) : 0,
+  // Reserve measured height only for horizontal bottom colorbars. Vertical
+  // colorbars sit beside the rings and must not shrink their radius.
+  let colorbar_size = $state({ height: 0, width: 0 })
+  let colorbar_is_vertical = $derived(colorbar?.orientation === `vertical`)
+  let colorbar_tick_side = $derived(
+    colorbar?.tick_side ??
+      (colorbar_is_vertical && colorbar_side === `left` ? `secondary` : `primary`),
   )
+  let colorbar_has_ticks = $derived(
+    Array.isArray(colorbar?.tick_labels)
+      ? colorbar.tick_labels.length > 0
+      : (colorbar?.tick_labels ?? 4) > 0,
+  )
+  let colorbar_tick_padding = $derived(
+    !colorbar_has_ticks || colorbar_tick_side === `inside`
+      ? `0`
+      : colorbar_tick_side === `primary`
+        ? `0 var(--sunburst-colorbar-tick-space, 5em) 0 0`
+        : `0 0 0 var(--sunburst-colorbar-tick-space, 5em)`,
+  )
+  let colorbar_reserve = $derived(
+    colorbar_is_vertical ? 0 : reserve_colorbar_space(colorbar_size.height, avail_height),
+  )
+  // Vertical colorbars reserve their full measured wrapper width plus a small
+  // gutter, capped at half the plot width so a bad measurement cannot collapse it.
+  let vertical_colorbar_reserve = $derived(
+    colorbar_is_vertical ? reserve_colorbar_space(colorbar_size.width, avail_width) : 0,
+  )
+  let inner_width = $derived(avail_width - vertical_colorbar_reserve)
   let inner_height = $derived(avail_height - colorbar_reserve)
+  let plot_left = $derived(pad.l + (colorbar_side === `left` ? vertical_colorbar_reserve : 0))
+  let vertical_colorbar_offset = $derived(
+    (colorbar_side === `left` ? pad.l : pad.r) + COLORBAR_GAP,
+  )
 
   // Layout depends only on data/value semantics - not on size or zoom.
   let layout = $derived(
@@ -248,7 +281,7 @@
 
   // Pixel geometry
   let radius = $derived(Math.max(0, Math.min(inner_width, inner_height) / 2))
-  let cx = $derived(pad.l + inner_width / 2)
+  let cx = $derived(plot_left + inner_width / 2)
   let cy = $derived(pad.t + inner_height / 2)
   // Min 14px center hole when zoomed so there's always a zoom-out click target
   let hole_r = $derived(Math.max(inner_radius * radius, zoomed ? 14 : 0))
@@ -258,7 +291,9 @@
   // Projected with view.current once per animation frame; project_arcs is also called
   // with view.target where settled geometry suffices (e.g. legend placement, which
   // shouldn't rerun per frame)
-  let projection = $derived(project_arcs(layout.arcs, view.current, screen_geom))
+  let projection = $derived(
+    project_arcs(layout.arcs, view.current, screen_geom, { group_gap }),
+  )
   let screen_arcs = $derived(projection.all)
   // Rendering iterates only non-collapsed arcs - when zoomed into a small subtree of
   // a large hierarchy this keeps per-frame template work proportional to what's on screen
@@ -292,13 +327,16 @@
   // The chart group's transform: sunburst draws around the center, icicle from the
   // top-left of the padded plot area
   let chart_transform = $derived(
-    shape === `icicle` ? `translate(${pad.l}, ${pad.t})` : `translate(${cx}, ${cy})`,
+    shape === `icicle` ? `translate(${plot_left}, ${pad.t})` : `translate(${cx}, ${cy})`,
   )
 
   // Arc centroid in container (pad-offset) pixel space, for tooltip + legend placement
   const arc_center = (screen: ScreenArc): { x: number; y: number } => {
     if (shape === `icicle`) {
-      return { x: pad.l + (screen.a0 + screen.a1) / 2, y: pad.t + (screen.r0 + screen.r1) / 2 }
+      return {
+        x: plot_left + (screen.a0 + screen.a1) / 2,
+        y: pad.t + (screen.r0 + screen.r1) / 2,
+      }
     }
     const mid_a = (screen.a0 + screen.a1) / 2
     const mid_r = (screen.r0 + screen.r1) / 2
@@ -505,9 +543,9 @@
     // Place against the settled (target) geometry, not the animated view - placement
     // is stable during zoom tweens and compute_element_placement runs once per zoom
     // instead of once per frame
-    const settled = project_arcs(layout.arcs, view.target, screen_geom).visible
+    const settled = project_arcs(layout.arcs, view.target, screen_geom, { group_gap }).visible
     return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },
+      plot_bounds: { x: plot_left, y: pad.t, width: inner_width, height: inner_height },
       element: legend_element,
       element_size: { width: 120, height: 60 },
       axis_clearance: legend?.axis_clearance,
@@ -792,12 +830,15 @@
       {color_scale}
       range={metric.range}
       {...colorbar}
-      wrapper_style="{colorbar?.orientation === `vertical`
-        ? `--cbar-height: var(--sunburst-colorbar-height, 150px);`
+      tick_side={colorbar_tick_side}
+      wrapper_style="{colorbar_is_vertical
+        ? `--cbar-height: var(--sunburst-colorbar-height, 150px); --cbar-padding: ${colorbar_tick_padding};`
         : ``} {colorbar?.wrapper_style ?? ``}"
-      style="position: absolute; bottom: var(--sunburst-colorbar-bottom, 8px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
+      style="{colorbar_is_vertical
+        ? `position: absolute; top: var(--sunburst-colorbar-top, 50%); ${colorbar_side}: var(--sunburst-colorbar-${colorbar_side}, ${vertical_colorbar_offset}px); transform: var(--sunburst-colorbar-transform, translateY(-50%)); width: var(--sunburst-colorbar-width, auto); min-width: var(--sunburst-colorbar-min-width, 0); pointer-events: auto;`
+        : `position: absolute; bottom: var(--sunburst-colorbar-bottom, ${COLORBAR_GAP}px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;`} {colorbar?.style ??
         ``}"
-      {@attach observe_height((px) => (colorbar_height = px))}
+      {@attach observe_size((size) => (colorbar_size = size))}
     />
   {/if}
 

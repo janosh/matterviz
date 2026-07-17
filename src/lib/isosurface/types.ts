@@ -30,6 +30,8 @@ export interface VolumetricData {
   // Stable identity of the file this volume came from (compression-stripped
   // filename). Reimporting the same source replaces its previous volumes.
   source?: string
+  // Original filename including compression suffix, for picker/URL identity.
+  source_filename?: string
 }
 
 // Result of parsing a volumetric file (contains both structure and volumetric data)
@@ -363,11 +365,13 @@ export function remove_volume(
 export function label_file_volumes(
   volumes: VolumetricData[],
   filename: string,
+  source_filename = filename,
 ): VolumetricData[] {
   const source = filename.replace(/\.(?:gz|gzip|bz2|xz|zst)$/i, ``)
   return volumes.map((vol, idx) => ({
     ...vol,
     source,
+    source_filename,
     label: volumes.length > 1 ? `${source}: ${vol.label ?? idx + 1}` : source,
   }))
 }

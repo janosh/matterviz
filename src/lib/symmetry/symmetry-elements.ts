@@ -648,14 +648,11 @@ export function clip_plane_to_cell(
   const normal_unit = math.normalize_vec(normal_cart)
   const ref_vec = math.normalize_vec(math.subtract(cart_points[0], centroid))
   const cross_ref = math.cross_3d(normal_unit, ref_vec)
-  return (
-    cart_points
-      .map((vert) => {
-        const rel = math.subtract(vert, centroid)
-        return { vert, angle: Math.atan2(math.dot(rel, cross_ref), math.dot(rel, ref_vec)) }
-      })
-      // map() returns a fresh point array.
-      .toSorted((pt_a, pt_b) => pt_a.angle - pt_b.angle)
-      .map(({ vert }) => vert)
-  )
+  return cart_points
+    .map((vert) => {
+      const rel = math.subtract(vert, centroid)
+      return { vert, angle: Math.atan2(math.dot(rel, cross_ref), math.dot(rel, ref_vec)) }
+    })
+    .toSorted((pt_a, pt_b) => pt_a.angle - pt_b.angle)
+    .map(({ vert }) => vert)
 }

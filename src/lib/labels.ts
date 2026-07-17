@@ -1,6 +1,6 @@
 import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
-import { normalize_unicode_minus } from '$lib/utils'
+import { escape_html, normalize_unicode_minus } from '$lib/utils'
 import { format } from 'd3-format'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
@@ -29,7 +29,6 @@ export const symbol_names = [
   .map(name_for_symbol)
   .filter((name): name is D3SymbolName => name !== null)
 
-// D3 symbols are selected dynamically from a plain-object lookup by display name.
 const d3_symbols_by_name = Object.fromEntries(
   Object.entries(d3_symbols)
     .filter(([key]) => /^symbol[A-Z]/.test(key))
@@ -40,6 +39,16 @@ export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.from
   // Symbol lookup from d3-shape
   symbol_names.map((name) => [name, d3_symbols_by_name[name]]),
 )
+
+// Format standalone scientific notation as HTML, e.g. 1.2e-3 → 1.2×10<sup>-3</sup>.
+export const format_power_ten = (text: string): string =>
+  escape_html(text)
+    .replaceAll(
+      /(?<![\w.])(?<base>\d+(?:\.\d*)?|\.\d+)e(?<exponent>[-+−]?\d+)(?![\w.])/gi,
+      (_match, base: string, exponent: string) =>
+        `${base}×10<sup>${exponent.replace(/^\+/, ``).replace(`−`, `-`)}</sup>`,
+    )
+    .replaceAll(/(?<![\d.])1×10(?=<sup>)/g, `10`)
 
 // Format a value for display with optional time formatting
 export function format_value(value: number, formatter?: string): string {

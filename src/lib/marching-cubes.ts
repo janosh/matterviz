@@ -443,16 +443,11 @@ function marching_cubes_raw(
   // and never create cell-spanning triangles.
   const edge_stride = max_z + 1
   const edge_plane_size = (max_y + 1) * edge_stride
-  const x_edge_cache = new Int32Array(edge_plane_size)
-  let y_edge_current = new Int32Array(edge_plane_size)
-  let y_edge_next = new Int32Array(edge_plane_size)
-  let z_edge_current = new Int32Array(edge_plane_size)
-  let z_edge_next = new Int32Array(edge_plane_size)
-  x_edge_cache.fill(-1)
-  y_edge_current.fill(-1)
-  y_edge_next.fill(-1)
-  z_edge_current.fill(-1)
-  z_edge_next.fill(-1)
+  const x_edge_cache = new Int32Array(edge_plane_size).fill(-1)
+  let y_edge_current = new Int32Array(edge_plane_size).fill(-1)
+  let y_edge_next = new Int32Array(edge_plane_size).fill(-1)
+  let z_edge_current = new Int32Array(edge_plane_size).fill(-1)
+  let z_edge_next = new Int32Array(edge_plane_size).fill(-1)
 
   // Precompute k_lattice values for faster coordinate transform
   const [kx0, kx1, kx2] = k_lattice[0]
@@ -514,30 +509,15 @@ function marching_cubes_raw(
     const v1 = cube_values[v1_idx]
     const v2 = cube_values[v2_idx]
 
-    let fx: number, fy: number, fz: number
-    if (interpolate) {
-      const f1x = (ix + ox1) * inv_nx - center_offset
-      const f1y = (iy + oy1) * inv_ny - center_offset
-      const f1z = (iz + oz1) * inv_nz - center_offset
-      const f2x = (ix + ox2) * inv_nx - center_offset
-      const f2y = (iy + oy2) * inv_ny - center_offset
-      const f2z = (iz + oz2) * inv_nz - center_offset
-      const dv = v2 - v1
-      if (Math.abs(dv) < 1e-10) {
-        fx = f1x
-        fy = f1y
-        fz = f1z
-      } else {
-        const lerp = (iso_value - v1) / dv
-        fx = f1x + lerp * (f2x - f1x)
-        fy = f1y + lerp * (f2y - f1y)
-        fz = f1z + lerp * (f2z - f1z)
-      }
-    } else {
-      fx = (ix + (ox1 + ox2) * 0.5) * inv_nx - center_offset
-      fy = (iy + (oy1 + oy2) * 0.5) * inv_ny - center_offset
-      fz = (iz + (oz1 + oz2) * 0.5) * inv_nz - center_offset
-    }
+    const value_delta = v2 - v1
+    const interpolation_fraction = interpolate
+      ? Math.abs(value_delta) < 1e-10
+        ? 0
+        : (iso_value - v1) / value_delta
+      : 0.5
+    const fx = (ix + ox1 + interpolation_fraction * (ox2 - ox1)) * inv_nx - center_offset
+    const fy = (iy + oy1 + interpolation_fraction * (oy2 - oy1)) * inv_ny - center_offset
+    const fz = (iz + oz1 + interpolation_fraction * (oz2 - oz1)) * inv_nz - center_offset
 
     // Transform to Cartesian (inlined)
     const vert_idx = positions.length / 3

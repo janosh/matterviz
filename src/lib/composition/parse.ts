@@ -450,7 +450,6 @@ export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcard
     }
   }
 
-  // elements is local and no longer reused.
   return { elements: elements.toSorted(), wildcard_count }
 }
 

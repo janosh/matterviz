@@ -293,16 +293,13 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   // Performance: Pre-compute and cache all point projections + depth sorting
   const sorted_points_cache = $derived.by(() => {
     if (!inputs.canvas() || inputs.visible_entries().length === 0) return []
-    return (
-      inputs
-        .visible_entries()
-        .map((entry) => ({
-          entry,
-          projected: inputs.project_point(entry.x, entry.y, entry.z),
-        }))
-        // map() returns a fresh projection array.
-        .toSorted((left, right) => left.projected.depth - right.projected.depth)
-    )
+    return inputs
+      .visible_entries()
+      .map((entry) => ({
+        entry,
+        projected: inputs.project_point(entry.x, entry.y, entry.z),
+      }))
+      .toSorted((left, right) => left.projected.depth - right.projected.depth)
   })
 
   return {

@@ -1,7 +1,6 @@
 import { type D3InterpolateName, get_d3_interpolator, pick_contrast_color } from '$lib/colors'
 import { max, min } from 'd3-array'
 import { scaleLog, scaleSequential } from 'd3-scale'
-import type * as d3sc from 'd3-scale-chromatic'
 import type { Snippet } from 'svelte'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
@@ -38,7 +37,7 @@ export type Label = {
   format_type?: `datetime`
   datetime_format?: DateTimeFormatMode
   better?: `higher` | `lower`
-  color_scale?: keyof typeof d3sc | null
+  color_scale?: D3InterpolateName | null
   scale_type?: `linear` | `log`
   sticky?: boolean
   visible?: boolean
@@ -63,7 +62,11 @@ export type CellSnippet = Snippet<[CellSnippetArgs]>
 // Type for special_cells prop - maps column labels to cell snippets
 export type SpecialCells = Record<string, CellSnippet>
 
-// Sort state for single-column sorting
+// Externally bindable table sort used by HeatmapTable's `sort` prop.
+export type SortDir = `asc` | `desc`
+export type TableSort = { column: string; dir: SortDir }
+
+// Internal ascending criterion, not HeatmapTable's external sort prop (use TableSort).
 export type SortState = { column: string; ascending: boolean }
 
 // Multi-column sort state (for Shift+click sorting)
@@ -81,7 +84,7 @@ export type SortHint =
     }
 
 // Initial sort configuration (string for column name, object for full control)
-export type InitialSort = string | { column: string; direction?: `asc` | `desc` }
+export type InitialSort = string | { column: string; direction?: SortDir }
 
 // Pagination configuration (boolean to enable, object for full control)
 export type Pagination =
@@ -110,7 +113,7 @@ export type Search =
 export type ExportData = boolean | { formats?: (`csv` | `json`)[]; filename?: string }
 
 // Callback type for async server-side sorting
-export type OnSortCallback = (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
+export type OnSortCallback = (column: string, dir: SortDir) => Promise<RowData[]>
 
 // Strip HTML tags from a string (for search, export, etc.)
 export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``)
@@ -125,7 +128,7 @@ const NULL_CELL_COLOR: CellColor = { bg: null, text: null }
 export function make_cell_color_scale(
   all_values: CellVal[], // all values in the column
   better: `higher` | `lower` | undefined, // sort direction
-  color_scale: keyof typeof d3sc | null = `interpolateViridis`, // color scale name
+  color_scale: D3InterpolateName | null = `interpolateViridis`, // color scale name
   scale_type: `linear` | `log` = `linear`, // scale type
 ): (val: number | null | undefined) => CellColor {
   if (color_scale === null) return () => NULL_CELL_COLOR
@@ -142,7 +145,7 @@ export function make_cell_color_scale(
   // Reverse the range if lower values are better
   if (better === `lower`) range.reverse()
 
-  const interpolator = get_d3_interpolator(color_scale as D3InterpolateName)
+  const interpolator = get_d3_interpolator(color_scale)
 
   // Use log scale for positive values, otherwise linear/sequential scale
   const use_log = scale_type === `log` && range[0] > 0 && range[1] > 0
@@ -166,7 +169,7 @@ export function calc_cell_color(
   val: number | null | undefined, // cell value
   all_values: CellVal[], // all values in the column
   better: `higher` | `lower` | undefined, // sort direction
-  color_scale: keyof typeof d3sc | null = `interpolateViridis`, // color scale name
+  color_scale: D3InterpolateName | null = `interpolateViridis`, // color scale name
   scale_type: `linear` | `log` = `linear`, // scale type
 ): CellColor {
   return make_cell_color_scale(all_values, better, color_scale, scale_type)(val)

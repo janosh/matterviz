@@ -15,6 +15,8 @@ const make_event = (files: File[] = []) =>
     preventDefault: vi.fn(),
     dataTransfer: { files, getData: vi.fn() },
   }) as unknown as DragEvent
+const source_meta = (source_filename: string, source_url?: string) =>
+  source_url ? { source_filename, source_url } : { source_filename }
 
 describe(`create_file_drop_handler`, () => {
   let on_drop: FileDropOptions[`on_drop`]
@@ -59,7 +61,7 @@ describe(`create_file_drop_handler`, () => {
   test(`processes a URL and files sequentially when both are present`, async () => {
     vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
     vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
-      await callback(`remote`, `f.cif`)
+      await callback(`remote`, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`))
     })
     const file = new File([`local`], `test.txt`)
     vi.mocked(decompress_file).mockResolvedValue({ content: `local`, filename: file.name })
@@ -69,8 +71,8 @@ describe(`create_file_drop_handler`, () => {
     expect(load_from_url).toHaveBeenCalledWith(`https://example.com/f.cif`, on_drop)
     expect(decompress_file).toHaveBeenCalledWith(file)
     expect(vi.mocked(on_drop).mock.calls).toEqual([
-      [`remote`, `f.cif`],
-      [`local`, `test.txt`],
+      [`remote`, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`)],
+      [`local`, `test.txt`, source_meta(`test.txt`)],
     ])
   })
 
@@ -79,7 +81,7 @@ describe(`create_file_drop_handler`, () => {
     vi.mocked(load_from_url).mockRejectedValue(new Error(`404`))
     vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: `b.cube` })
     await run({}, [new File([`y`], `b.cube.gz`)])
-    expect(on_drop).toHaveBeenCalledWith(`data`, `b.cube`)
+    expect(on_drop).toHaveBeenCalledWith(`data`, `b.cube`, source_meta(`b.cube.gz`))
     expect(on_error).toHaveBeenCalledWith(
       `Failed to load 1 file — URL https://example.com/f.cif: 404`,
     )
@@ -90,7 +92,7 @@ describe(`create_file_drop_handler`, () => {
     const file = new File([`data`], `f.cif.gz`)
     await run({}, [file])
     expect(decompress_file).toHaveBeenCalledWith(file)
-    expect(on_drop).toHaveBeenCalledWith(`data`, `f.cif`)
+    expect(on_drop).toHaveBeenCalledWith(`data`, `f.cif`, source_meta(`f.cif.gz`))
   })
 
   test(`does nothing when no files and no URL error`, async () => {
@@ -142,8 +144,8 @@ describe(`create_file_drop_handler`, () => {
     await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
     expect(on_drop).toHaveBeenCalledTimes(2)
     expect(vi.mocked(on_drop).mock.calls).toEqual([
-      [`first`, `a.cube`],
-      [`second`, `b.cube`],
+      [`first`, `a.cube`, source_meta(`a.cube.gz`)],
+      [`second`, `b.cube`, source_meta(`b.cube.gz`)],
     ])
   })
 
@@ -152,7 +154,7 @@ describe(`create_file_drop_handler`, () => {
       .mockRejectedValueOnce(new Error(`corrupt`))
       .mockResolvedValueOnce({ content: `ok`, filename: `b.cube` })
     await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
-    expect(on_drop).toHaveBeenCalledWith(`ok`, `b.cube`)
+    expect(on_drop).toHaveBeenCalledWith(`ok`, `b.cube`, source_meta(`b.cube.gz`))
     expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — a.cube.gz: corrupt`)
     expect(set_loading).toHaveBeenLastCalledWith(false)
   })
@@ -220,14 +222,18 @@ describe(`create_file_drop_handler`, () => {
         handler(make_event([second_file])),
       ])
 
-      expect(queue_drop).toHaveBeenCalledExactlyOnceWith(`second`, `second.cube`)
+      expect(queue_drop).toHaveBeenCalledExactlyOnceWith(
+        `second`,
+        `second.cube`,
+        source_meta(`second.cube`),
+      )
     },
   )
 
   test(`works without optional callbacks`, async () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
     await run({ on_error: undefined, set_loading: undefined }, [new File([`ok`], `f.cif`)])
-    expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`)
+    expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`))
   })
 })
 
