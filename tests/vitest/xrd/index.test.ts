@@ -62,7 +62,7 @@ describe(`@xrd/ api and compute_xrd_pattern options`, () => {
       })
       expect(pattern.x.every((angle) => angle >= t_range[0] && angle <= t_range[1])).toBe(true)
       const xs = pattern.x.slice()
-      const sorted = [...xs].sort((a, b) => a - b)
+      const sorted = [...xs].toSorted((a, b) => a - b)
       expect(xs).toEqual(sorted)
     },
   )

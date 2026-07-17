@@ -1512,7 +1512,7 @@ Na Na 0.000 0.000 0.000`
     const oxygen_sites = result.sites.filter(
       (site) => site.species[0].element === `O` || site.label === `OH` || site.label === `OH2`,
     )
-    expect(oxygen_sites.map((site) => site.label).sort()).toEqual([
+    expect(oxygen_sites.map((site) => site.label).toSorted()).toEqual([
       `O1`,
       `O2`,
       `O3`,

@@ -52,7 +52,7 @@
   })
 
   // Create sorted list of space groups for x-axis
-  const sorted_spacegroups = $derived(Array.from(histogram.keys()).sort((a, b) => a - b))
+  const sorted_spacegroups = $derived(Array.from(histogram.keys()).toSorted((a, b) => a - b))
 
   // Smart tick selection: thin out ticks for dense data
   const x_axis_ticks = $derived.by(() => {

@@ -39,7 +39,7 @@ export const fermi_surface_files: FileInfo[] = Object.keys(fermi_file_modules)
         : (CATEGORY_BY_EXT[ext] ?? { category: `Unknown`, category_icon: `📄` })
     return { name, url, type: ext, ...category }
   })
-  .sort((a, b) => a.name.localeCompare(b.name))
+  .toSorted((a, b) => a.name.localeCompare(b.name))
 
 // File type colors for FilePicker
 export const fermi_file_colors: Record<string, string> = {

@@ -155,7 +155,7 @@ export function calculate_all_pair_rdfs(
   // Collect all unique elements across all species (supports mixed occupancy)
   const elems = [
     ...new Set(structure.sites.flatMap((site) => site.species.map((spec) => spec.element))),
-  ].sort()
+  ].toSorted()
 
   // Forward options unchanged (preserves caller's pbc); each calculate_rdf expands itself
   return elems.flatMap((el1, idx1) =>

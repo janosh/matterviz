@@ -762,7 +762,7 @@ describe(`Export functionality`, () => {
 
       // Round-trip: each element keeps its own partial occupancy through parse_cif
       const species = parse_cif(cif_content)?.sites.flatMap((site) => site.species) ?? []
-      expect(species.map((sp) => sp.element).sort()).toEqual([`Au`, `Cu`])
+      expect(species.map((sp) => sp.element).toSorted()).toEqual([`Au`, `Cu`])
       expect(species.find((sp) => sp.element === `Cu`)?.occu).toBeCloseTo(0.7, 8)
       expect(species.find((sp) => sp.element === `Au`)?.occu).toBeCloseTo(0.3, 8)
     })
@@ -922,7 +922,7 @@ describe(`Export functionality`, () => {
 
 // Helper function to sort sites for consistent comparison
 const sort_sites = (sites: AnyStructure[`sites`]): AnyStructure[`sites`] =>
-  [...sites].sort((site_a, site_b) => {
+  [...sites].toSorted((site_a, site_b) => {
     const elem_a = site_a.species[0].element
     const elem_b = site_b.species[0].element
     if (elem_a !== elem_b) {

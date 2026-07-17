@@ -74,7 +74,7 @@ export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
   // Extract unique element symbols from normalized compositions
   const elements = Array.from(
     new Set(normalized_entries.flatMap((entry) => Object.keys(entry.composition))),
-  ).sort() as ElementSymbol[]
+  ).toSorted() as ElementSymbol[]
 
   const el_refs = Object.fromEntries(
     stable_entries
@@ -166,7 +166,7 @@ export function calculate_e_above_hull(
   // 1. Identify chemical system
   const elements = Array.from(
     new Set(reference_entries.flatMap((entry) => Object.keys(entry.composition))),
-  ).sort() as ElementSymbol[]
+  ).toSorted() as ElementSymbol[]
 
   // 2. Validate subset
   const element_set = new Set(elements)
@@ -483,6 +483,7 @@ export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
   // Andrew's monotone chain lower hull (Point2D adapter over math.monotone_chain)
   const sorted = points
     .map((pt): Vec2 => [pt.x, pt.y])
+    // map() returns a fresh array.
     .toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
   return math.monotone_chain(sorted).map(([x, y]) => ({ x, y }))
 }
@@ -936,7 +937,7 @@ function build_horizon_nd(faces: SimplexFaceND[], visible_indices: Set<number>):
     // Each face has n_verts ridges, each ridge omits one vertex
     for (let skip = 0; skip < n_verts; skip++) {
       const ridge = verts.filter((_, idx) => idx !== skip)
-      const sorted = [...ridge].sort((a, b) => a - b)
+      const sorted = [...ridge].toSorted((a, b) => a - b)
       const key = sorted.join(`|`)
 
       if (!ridge_count.has(key)) {
@@ -1024,7 +1025,9 @@ export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
     }
 
     // Remove visible faces (in reverse order to maintain indices)
-    const sorted_visible = Array.from(visible_indices).sort((a, b) => b - a)
+    const sorted_visible = Array.from(visible_indices)
+    // Array.from() returns a fresh array.
+    sorted_visible.sort((a, b) => b - a)
     for (const idx of sorted_visible) {
       faces.splice(idx, 1)
     }

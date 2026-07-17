@@ -69,7 +69,7 @@ describe(`built-in orderings`, () => {
     const axis = elements_to_axis(undefined, `alphabetical`)
     const labels = axis.map((item) => item.label)
     expect(labels[0]).toBe(`Ac`)
-    expect(labels).toEqual([...labels].sort())
+    expect(labels).toEqual([...labels].toSorted())
   })
 
   test(`mendeleev_number: He near start, superheavy Og at end`, () => {

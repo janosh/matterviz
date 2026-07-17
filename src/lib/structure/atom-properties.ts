@@ -73,8 +73,8 @@ const make_categorical = <T>(
 ): { colors: string[]; unique_values: T[] } => {
   const interp_fn = get_d3_interpolator(scale as D3InterpolateName)
   const uniq = sort_fn
-    ? [...new Set(vals)].sort(sort_fn)
-    : [...new Set(vals)].sort((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
+    ? [...new Set(vals)].toSorted(sort_fn)
+    : [...new Set(vals)].toSorted((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
   const colors = uniq.map((_, idx) =>
     to_hex(interp_fn, uniq.length === 1 ? 0.5 : idx / (uniq.length - 1)),
   )
@@ -90,7 +90,7 @@ const build_prop_colors = (
   colors: string[],
   unique_values?: number[],
 ): AtomPropertyColors => {
-  const uniq = unique_values ?? [...new Set(vals)].sort((val_a, val_b) => val_a - val_b)
+  const uniq = unique_values ?? [...new Set(vals)].toSorted((val_a, val_b) => val_a - val_b)
   // Use sorted uniq array to avoid spreading large arrays into Math.min/max
   const min_value = uniq.length > 0 ? uniq[0] : undefined
   const max_value = uniq.at(-1)

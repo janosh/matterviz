@@ -111,7 +111,7 @@ export function generate_plot_series(
   // Apply final assignments to series
   apply_group_assignments(all_series, unit_groups)
 
-  return all_series.sort((a, b) => Number(b.visible) - Number(a.visible))
+  return all_series.toSorted((a, b) => Number(b.visible) - Number(a.visible))
 }
 
 // Extract statistics for all properties in a single pass
@@ -217,7 +217,7 @@ function group_and_assign_series(
 
       return { unit, series: group_series, priority, is_visible }
     })
-    .sort((a, b) => a.priority - b.priority)
+    .toSorted((a, b) => a.priority - b.priority)
 
   // Apply 2-group visibility limit
   const visible_groups = groups.filter((group) => group.is_visible)
@@ -355,7 +355,7 @@ function get_axis_label(axis_series: DataSeries[]): string {
   }
 
   const [unit, labels] = [...unit_groups.entries()][0]
-  const unique_labels = [...new Set(labels)].sort().join(` / `)
+  const unique_labels = [...new Set(labels)].toSorted().join(` / `)
   return unit ? `${unique_labels} (${unit})` : unique_labels
 }
 
@@ -422,7 +422,7 @@ export function generate_streaming_plot_series(
   } = options
 
   const ordered_metadata = [...metadata_list]
-    .sort((metadata_a, metadata_b) => metadata_a.frame_number - metadata_b.frame_number)
+    .toSorted((metadata_a, metadata_b) => metadata_a.frame_number - metadata_b.frame_number)
     .filter(
       (metadata, idx, sorted_metadata) =>
         idx === 0 || metadata.frame_number !== sorted_metadata[idx - 1].frame_number,

@@ -81,6 +81,7 @@ export function formula_key_from_composition(composition: Record<string, number>
   const reduced = get_reduced_formula(composition)
   const key = Object.entries(reduced)
     .filter(([, amt]) => amt > 0)
+    // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- filter() returns a fresh array
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([el, amt]) => (amt === 1 ? el : `${el}${amt}`))
     .join(``)
@@ -863,7 +864,7 @@ export function get_visible_domain_labels(
     }
   }
 
-  return visible_labels.sort((label_a, label_b) =>
+  return visible_labels.toSorted((label_a, label_b) =>
     label_a.formula.localeCompare(label_b.formula),
   )
 }
@@ -873,6 +874,7 @@ export function get_visible_domain_labels(
 // Generate all C(n,3) ternary element combinations from a sorted element list.
 // Each triplet is sorted alphabetically. Returns empty array for fewer than 3 elements.
 export function get_ternary_combinations(elements: string[]): string[][] {
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
   const sorted = [...elements].sort()
   const n_elems = sorted.length
   if (n_elems < 3) return []
@@ -925,7 +927,10 @@ export function make_nd_cache_key(
   default_min_limit: number,
   limits: ChemPotDiagramConfig[`limits`],
 ): string {
-  return `${entries.map(entry_fingerprint).sort().join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
+  const fingerprints = entries.map(entry_fingerprint)
+  // map() returns a fresh array.
+  fingerprints.sort()
+  return `${fingerprints.join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
 }
 
 // === Main Pipeline ===
@@ -956,7 +961,7 @@ export function compute_chempot_diagram(
       if (amount > 0) all_data_elements_set.add(element)
     }
   }
-  const all_data_elements = Array.from(all_data_elements_set).sort()
+  const all_data_elements = Array.from(all_data_elements_set).toSorted()
 
   // Display elements: user-specified order (controls axis mapping), or auto-detect
   const display_elements = config.elements?.length ? [...config.elements] : all_data_elements
@@ -993,6 +998,7 @@ export function compute_chempot_diagram(
     // Sort entries by composition (Schwartzian transform to avoid recomputing keys)
     const sorted_entries = working_entries
       .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
+      // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- map() returns a fresh array
       .sort((a, b) => a.key.localeCompare(b.key))
       .map(({ entry }) => entry)
 

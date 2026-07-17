@@ -50,7 +50,7 @@ describe(`normalize_marginals`, () => {
     const active_sides = (Object.keys(result) as MarginalSide[]).filter(
       (side) => result[side] != null,
     )
-    expect(active_sides.sort()).toEqual([...active].sort())
+    expect(active_sides.toSorted()).toEqual([...active].toSorted())
   })
 
   // a bare type string activates top+right (the default sides), even when none are passed

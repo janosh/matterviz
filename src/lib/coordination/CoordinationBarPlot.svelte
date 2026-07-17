@@ -104,7 +104,7 @@
     for (const entry of entries_with_data) {
       for (const [cn] of entry.data.cn_histogram) all_cns.add(cn)
     }
-    return Array.from(all_cns).sort((cn1, cn2) => cn1 - cn2)
+    return Array.from(all_cns).toSorted((cn1, cn2) => cn1 - cn2)
   })
 
   // CN axis spans all ticks with half-bar margin; count axis always starts at 0
@@ -136,11 +136,11 @@
       }
 
       // Sort CNs for consistent x-axis
-      const sorted_cns = Array.from(all_cns).sort((a, b) => a - b)
+      const sorted_cns = Array.from(all_cns).toSorted((a, b) => a - b)
 
       // Convert map to array and ensure all series have same x-values
       return Array.from(element_series_map.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
+        .toSorted((a, b) => a[0].localeCompare(b[0]))
         .map(([element, cn_map], idx) => {
           return {
             x: sorted_cns,
@@ -161,7 +161,7 @@
           all_cns.add(cn)
         }
       }
-      const sorted_cns = Array.from(all_cns).sort((a, b) => a - b)
+      const sorted_cns = Array.from(all_cns).toSorted((a, b) => a - b)
 
       return entries_with_data.map((entry, idx) => {
         return {
@@ -184,7 +184,7 @@
       }
     }
 
-    const x_vals = Array.from(combined_histogram.keys()).sort((a, b) => a - b)
+    const x_vals = Array.from(combined_histogram.keys()).toSorted((a, b) => a - b)
     const y_vals = x_vals.map((cn) => combined_histogram.get(cn) ?? 0)
 
     return [

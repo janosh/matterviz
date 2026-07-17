@@ -368,8 +368,8 @@ describe(`generate_chem_sys_subspaces`, () => {
     [{}, [], `object: empty`],
   ])(`%s -> %j (%s)`, (input, expected, _desc) => {
     const result = generate_chem_sys_subspaces(input)
-    expect(result.sort((str_a, str_b) => str_a.localeCompare(str_b))).toEqual(
-      expected.sort((str_a, str_b) => str_a.localeCompare(str_b)),
+    expect(result.toSorted((str_a, str_b) => str_a.localeCompare(str_b))).toEqual(
+      expected.toSorted((str_a, str_b) => str_a.localeCompare(str_b)),
     )
   })
 
@@ -386,9 +386,9 @@ describe(`generate_chem_sys_subspaces`, () => {
   )
 
   test(`consistent across input types`, () => {
-    const formula = generate_chem_sys_subspaces(`Fe2O3`).sort()
-    const array = generate_chem_sys_subspaces([`Fe`, `O`]).sort()
-    const obj = generate_chem_sys_subspaces({ Fe: 2, O: 3 }).sort()
+    const formula = generate_chem_sys_subspaces(`Fe2O3`).toSorted()
+    const array = generate_chem_sys_subspaces([`Fe`, `O`]).toSorted()
+    const obj = generate_chem_sys_subspaces({ Fe: 2, O: 3 }).toSorted()
     expect(formula).toEqual(array)
     expect(array).toEqual(obj)
   })
@@ -397,7 +397,7 @@ describe(`generate_chem_sys_subspaces`, () => {
     const result = generate_chem_sys_subspaces([`Zr`, `Mo`, `Nb`])
     result.forEach((subspace) => {
       const parts = subspace.split(`-`)
-      expect(parts).toEqual([...parts].sort())
+      expect(parts).toEqual([...parts].toSorted())
     })
   })
 

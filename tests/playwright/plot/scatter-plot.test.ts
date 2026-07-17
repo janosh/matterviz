@@ -555,7 +555,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const tick_values = tick_texts
         .map(Number)
         .filter((val) => !isNaN(val) && val > 0)
-        .sort((a, b) => a - b)
+        .toSorted((a, b) => a - b)
 
       // Log scale should have at least 2 positive tick values to check ratios
       expect(tick_values.length).toBeGreaterThanOrEqual(2)
@@ -1627,7 +1627,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     if (!plot_box) return
 
     // Find marker closest to right edge (most likely to cause overflow)
-    const rightmost = valid_markers.sort((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
+    const rightmost = valid_markers.toSorted((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
 
     // Test tooltip on rightmost marker - verify it doesn't overflow viewport
     await hover_to_show_tooltip(page, plot_locator, rightmost.marker)
@@ -1644,7 +1644,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
 
     // Find marker closest to bottom edge
-    const bottommost = valid_markers.sort((a, b) => (b.bbox?.y ?? 0) - (a.bbox?.y ?? 0))[0]
+    const bottommost = valid_markers.toSorted((a, b) => (b.bbox?.y ?? 0) - (a.bbox?.y ?? 0))[0]
 
     // Test tooltip on bottommost marker - verify it doesn't overflow viewport
     await hover_to_show_tooltip(page, plot_locator, bottommost.marker)

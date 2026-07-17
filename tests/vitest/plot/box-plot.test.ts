@@ -159,7 +159,7 @@ describe(`compute_box_stats`, () => {
             ? (rand() - 0.5) * 1000 // floats incl. negatives
             : Math.floor((rand() - 0.5) * 20),
       )
-      const sorted = [...arr].sort((left, right) => left - right)
+      const sorted = [...arr].toSorted((left, right) => left - right)
       const q1 = d3_quantile(sorted, 0.25) as number
       const q3 = d3_quantile(sorted, 0.75) as number
       const stats = compute_box_stats(arr, { whisker_mode: `tukey` })

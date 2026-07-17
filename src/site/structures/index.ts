@@ -27,7 +27,7 @@ export const structures = Object.entries(
     (structure): structure is Crystal =>
       structure && `sites` in structure && Array.isArray(structure.sites),
   )
-  .sort((struct_a, struct_b) =>
+  .toSorted((struct_a, struct_b) =>
     (struct_a.id?.split(`-`)[1] ?? ``)
       .padStart(6, `0`)
       .localeCompare((struct_b.id?.split(`-`)[1] ?? ``).padStart(6, `0`)),
