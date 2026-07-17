@@ -557,7 +557,7 @@ function convert_pymatgen_band_structure(
     )
     // Discontinuity indices mark points where the path jumps (disc before that index)
     // Create continuous segments between discontinuities
-    const disc_indices = [...disc_set].sort((a, b) => a - b)
+    const disc_indices = [...disc_set].toSorted((a, b) => a - b)
     // Segment boundaries: [0, first_disc), [first_disc, second_disc), ..., [last_disc, end]
     const segment_starts = [0, ...disc_indices]
     const segment_ends = [...disc_indices.map((idx) => idx - 1), qpoints.length - 1]

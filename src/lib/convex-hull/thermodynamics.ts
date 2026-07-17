@@ -936,7 +936,7 @@ function build_horizon_nd(faces: SimplexFaceND[], visible_indices: Set<number>):
     // Each face has n_verts ridges, each ridge omits one vertex
     for (let skip = 0; skip < n_verts; skip++) {
       const ridge = verts.filter((_, idx) => idx !== skip)
-      const sorted = [...ridge].sort((a, b) => a - b)
+      const sorted = [...ridge].toSorted((a, b) => a - b)
       const key = sorted.join(`|`)
 
       if (!ridge_count.has(key)) {

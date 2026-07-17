@@ -298,7 +298,7 @@ describe(`atomic_mass`, () => {
         found_anomalies.push(to_key(current.symbol, next.symbol))
       }
     }
-    expect(found_anomalies.toSorted()).toEqual([...known_anomalies].sort())
+    expect(found_anomalies.toSorted()).toEqual([...known_anomalies].toSorted())
   })
 })
 

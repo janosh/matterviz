@@ -375,7 +375,7 @@ export function generate_chem_sys_subspaces(
     }
   }
 
-  const sorted = [...elements].sort()
+  const sorted = [...elements].toSorted()
   const subspaces: string[] = []
   const subset_count = 2 ** sorted.length
 

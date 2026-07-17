@@ -263,7 +263,7 @@ describe(`compute_polyhedra`, () => {
     expect(poly.faces).toHaveLength(8)
     expect(poly.volume).toBeCloseTo((4 / 3) * 2 ** 3, 6)
     // vertex_site_idxs maps each hull vertex to the site at that exact position
-    expect([...poly.vertex_site_idxs].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+    expect([...poly.vertex_site_idxs].toSorted((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
     for (const [v_idx, site_idx] of poly.vertex_site_idxs.entries()) {
       expect(poly.vertices[v_idx]).toEqual(structure.sites[site_idx].xyz)
     }
@@ -416,7 +416,7 @@ describe(`VESTA-style detection rules`, () => {
     const polyhedra = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4, 5, 6]))
     expect(polyhedra).toHaveLength(1)
     // trimmed to the true tetrahedron
-    expect([...polyhedra[0].vertex_site_idxs].sort((a, b) => a - b)).toEqual([1, 2, 3, 4])
+    expect([...polyhedra[0].vertex_site_idxs].toSorted((a, b) => a - b)).toEqual([1, 2, 3, 4])
     expect(polyhedra[0].faces).toHaveLength(4)
   })
 

@@ -873,7 +873,7 @@ export function get_visible_domain_labels(
 // Generate all C(n,3) ternary element combinations from a sorted element list.
 // Each triplet is sorted alphabetically. Returns empty array for fewer than 3 elements.
 export function get_ternary_combinations(elements: string[]): string[][] {
-  const sorted = [...elements].sort()
+  const sorted = [...elements].toSorted()
   const n_elems = sorted.length
   if (n_elems < 3) return []
   const combos: string[][] = []

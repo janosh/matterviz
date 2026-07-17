@@ -1176,7 +1176,7 @@
       }
     }
     const result = new SvelteMap<string, string[]>()
-    for (const [formula, set] of neighbors) result.set(formula, [...set].sort())
+    for (const [formula, set] of neighbors) result.set(formula, [...set].toSorted())
     return result
   })
 

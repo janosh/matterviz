@@ -397,7 +397,7 @@ describe(`generate_chem_sys_subspaces`, () => {
     const result = generate_chem_sys_subspaces([`Zr`, `Mo`, `Nb`])
     result.forEach((subspace) => {
       const parts = subspace.split(`-`)
-      expect(parts).toEqual([...parts].sort())
+      expect(parts).toEqual([...parts].toSorted())
     })
   })
 

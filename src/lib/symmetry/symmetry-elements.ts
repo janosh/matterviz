@@ -526,7 +526,7 @@ export function symmetry_elements_from_ops(
     }
   }
   // Stable order: by kind (SYM_ELEM_KINDS sequence), then descending order, label, point
-  return [...seen.values()].sort(
+  return [...seen.values()].toSorted(
     (el1, el2) =>
       SYM_ELEM_KINDS.indexOf(el1.kind) - SYM_ELEM_KINDS.indexOf(el2.kind) ||
       el2.order - el1.order ||

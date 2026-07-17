@@ -754,7 +754,7 @@
     if (sort_criteria.length === 0) return filtered_data
 
     const valid_column_ids = new Set(ordered_columns.map(get_col_id))
-    return [...filtered_data].sort((row1, row2) => {
+    return [...filtered_data].toSorted((row1, row2) => {
       for (const { column, ascending } of sort_criteria) {
         // criteria hold column IDs; skip stale entries referencing removed columns
         if (!valid_column_ids.has(column)) continue
