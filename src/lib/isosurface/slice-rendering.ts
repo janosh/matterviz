@@ -86,18 +86,20 @@ export function resolve_contour_thresholds(
   if (Array.isArray(contour_levels)) {
     // Sort before truncating so the cap keeps the lowest thresholds deterministically
     // regardless of input order
-    return contour_levels
-      .filter(Number.isFinite)
-      .sort((left, right) => left - right)
-      .slice(0, MAX_CONTOUR_LEVELS)
+    const thresholds = contour_levels.filter(Number.isFinite)
+    // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- filter() returns a fresh array
+    thresholds.sort((left, right) => left - right)
+    return thresholds.slice(0, MAX_CONTOUR_LEVELS)
   }
   const count = Number.isFinite(contour_levels)
     ? Math.min(MAX_CONTOUR_LEVELS, Math.max(0, Math.floor(contour_levels)))
     : 0
   const [range_min, range_max] = color_range
   if (count === 0 || range_min === range_max) return []
+  const lower_bound = Math.min(range_min, range_max)
+  const range_span = Math.abs(range_max - range_min)
   return Array.from(
     { length: count },
-    (_, level_idx) => range_min + ((level_idx + 1) / (count + 1)) * (range_max - range_min),
-  ).sort((left, right) => left - right)
+    (_, level_idx) => lower_bound + ((level_idx + 1) / (count + 1)) * range_span,
+  )
 }

@@ -271,8 +271,11 @@ function compare_vector_keys(left: string, right: string): number {
 
 // Extract ALL vector properties from a site (not just the first match).
 // Returns entries for every key that is_vector_key() and has a valid 3D vector value.
-// Ordered by VECTOR_KEY_PREFIXES priority, then alphabetically for prefixed keys.
-export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
+// Ordered by VECTOR_KEY_PREFIXES priority by default; callers may skip sorting when order is unused.
+export function get_all_site_vectors(
+  site: Site,
+  ordered = true,
+): { vec: Vec3; key: string }[] {
   const props = site.properties
   if (!props) return []
   const results: { vec: Vec3; key: string }[] = []
@@ -281,7 +284,8 @@ export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
     const vec = try_parse_vec3(props[key])
     if (vec) results.push({ vec, key })
   }
-  return results.sort((left, right) => compare_vector_keys(left.key, right.key))
+  if (ordered) results.sort((left, right) => compare_vector_keys(left.key, right.key))
+  return results
 }
 
 // Collect the union of all vector property keys across all sites in a structure,
@@ -289,9 +293,15 @@ export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
 export function get_structure_vector_keys(structure: AnyStructure): string[] {
   const seen = new Set<string>()
   for (const site of structure.sites) {
-    for (const { key } of get_all_site_vectors(site)) seen.add(key)
+    const props = site.properties ?? {}
+    for (const key of Object.keys(props)) {
+      if (is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
+    }
   }
-  return [...seen].sort(compare_vector_keys)
+  const keys = [...seen]
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
+  keys.sort(compare_vector_keys)
+  return keys
 }
 
 export interface StructureHandlerData extends FileLoadData {

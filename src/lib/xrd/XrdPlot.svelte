@@ -164,26 +164,21 @@
       // Determine which peaks to annotate
       let selected_indices: number[] = []
       if (annotate_peaks > 0) {
-        let candidates: { idx: number; y_val: number }[] = []
-        if (annotate_peaks < 1) {
-          const thresh = annotate_peaks * 100
-          candidates = ys
-            .map((y_val, idx) => ({ y_val, idx }))
-            .filter(({ y_val }) => y_val > thresh)
-        } else {
-          const max_peaks = Math.min(ys.length, Math.floor(annotate_peaks))
-          candidates = ys
-            .map((y_val, idx) => ({ y_val, idx }))
-            .sort((a, b) => b.y_val - a.y_val)
-            .slice(0, max_peaks)
-        }
+        const threshold = annotate_peaks < 1 ? annotate_peaks * 100 : -Infinity
+        const max_peaks =
+          annotate_peaks < 1 ? ys.length : Math.min(ys.length, Math.floor(annotate_peaks))
+        const candidates = ys
+          .map((y_val, idx) => ({ y_val, idx }))
+          .filter(({ y_val }) => y_val > threshold)
 
         // Filter out overlapping labels: keep higher intensity peaks when x values are close
         // Min spacing as fraction of x-range to avoid overlaps (roughly 3% of range)
         const x_range = Math.max(...xs) - Math.min(...xs)
         const min_spacing = x_range * 0.03
         // Sort by intensity descending so we keep highest peaks first
+        // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- candidates is fresh
         candidates.sort((a, b) => b.y_val - a.y_val)
+        candidates.length = Math.min(candidates.length, max_peaks)
         const kept: { idx: number; y_val: number }[] = []
         for (const cand of candidates) {
           const cand_x = xs[cand.idx]

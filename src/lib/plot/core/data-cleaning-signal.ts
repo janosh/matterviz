@@ -2,6 +2,8 @@
 // detection, smoothing (moving average, Savitzky-Golay) and local (MAD-based) outlier removal.
 // Pure numeric helpers with no plot/series dependencies; orchestration lives in ./data-cleaning.
 
+import { median as d3_median } from 'd3-array'
+
 // Oscillation detection weights (all default to 1.0)
 export interface OscillationWeights {
   derivative_variance?: number // Weight for derivative variance method
@@ -544,10 +546,7 @@ export function remove_local_outliers(
 // --- Utility Functions ---
 
 function median(values: number[]): number {
-  if (values.length === 0) return 0
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+  return d3_median(values) ?? 0
 }
 
 // Simple matrix operations for Savitzky-Golay

@@ -807,6 +807,28 @@
     return Number.POSITIVE_INFINITY
   }
 
+  const hull_label_entries = $derived.by(() => {
+    if (!merged_config.show_labels) return []
+    const prioritized_label_entries = helpers.get_composition_label_entries(
+      visible_entries.filter((entry) => {
+        if (entry.is_element) return false
+        const is_stable_point = helpers.entry_is_stable(entry)
+        return (
+          (is_stable_point && show_stable_labels) ||
+          (!is_stable_point &&
+            show_unstable_labels &&
+            (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
+        )
+      }),
+    )
+    // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- helper returns a fresh array
+    return prioritized_label_entries.sort((entry_1, entry_2) => {
+      const energy_diff = label_priority_energy(entry_1) - label_priority_energy(entry_2)
+      if (energy_diff !== 0) return energy_diff
+      return (entry_1.e_above_hull ?? 0) - (entry_2.e_above_hull ?? 0)
+    })
+  })
+
   function get_label_placements(
     projected: { x: number; y: number },
     point_size: number,
@@ -883,25 +905,6 @@
     ctx.textBaseline = `top`
     const label_height = hull_label_font_size + 2
 
-    const label_entries = helpers
-      .get_composition_label_entries(
-        visible_entries.filter((entry) => {
-          if (entry.is_element) return false
-          const is_stable_point = helpers.entry_is_stable(entry)
-          return (
-            (is_stable_point && show_stable_labels) ||
-            (!is_stable_point &&
-              show_unstable_labels &&
-              (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
-          )
-        }),
-      )
-      .sort((entry_1, entry_2) => {
-        const energy_diff = label_priority_energy(entry_1) - label_priority_energy(entry_2)
-        if (energy_diff !== 0) return energy_diff
-        return (entry_1.e_above_hull ?? 0) - (entry_2.e_above_hull ?? 0)
-      })
-
     const occupied_rects: Rect[] = []
     const canvas_rect: Rect = {
       x: 0,
@@ -909,7 +912,7 @@
       width: canvas_dims.width,
       height: canvas_dims.height,
     }
-    for (const entry of label_entries) {
+    for (const entry of hull_label_entries) {
       const projected = project_3d_point(entry.x, entry.y, entry.z)
       const formula_segments = get_formula_label_segments(
         helpers.get_entry_label(entry, elements),
