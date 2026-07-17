@@ -2,6 +2,7 @@
   import { PLOT_COLORS } from '$lib/colors'
   import { StatusMessage } from '$lib/feedback'
   import { create_file_drop_handler, drag_over_handlers } from '$lib/io'
+  import type { FileLoadCallback, FileLoadMeta } from '$lib/io'
   import { format_value } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { BarPlot } from '$lib/plot'
@@ -56,7 +57,11 @@
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     allow_file_drop?: boolean
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    on_file_drop?: (
+      content: string | ArrayBuffer,
+      filename: string,
+      metadata: FileLoadMeta,
+    ) => Promise<void> | void
     loading?: boolean
     error_msg?: string
   } = $props()
@@ -200,7 +205,7 @@
     ]
   })
 
-  const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
+  const compute_and_add: FileLoadCallback = (content, filename, _metadata) => {
     try {
       const text_content =
         content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
@@ -223,7 +228,8 @@
 
   const handle_file_drop = create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: (content, filename) => (on_file_drop || compute_and_add)(content, filename),
+    on_drop: (content, filename, metadata) =>
+      (on_file_drop ?? compute_and_add)(content, filename, metadata),
     on_error: (msg) => {
       error_msg = msg
     },

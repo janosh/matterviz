@@ -45,10 +45,11 @@ export function valid_query_param<Value extends string>(
   params: URLSearchParams,
   key: string,
   fallback: Value,
-  valid_values: ValidQueryValues<Value>,
+  valid_values?: ValidQueryValues<Value>,
 ): Value {
   const value = params.get(key)
   if (!value) return fallback
+  if (!valid_values) return value as Value
   const is_valid =
     `has` in valid_values && typeof valid_values.has === `function`
       ? valid_values.has(value)
@@ -60,17 +61,10 @@ export const sort_from_query = (
   params: URLSearchParams,
   default_sort: TableSort,
   valid_columns?: ValidQueryValues<string>,
-): TableSort => {
-  const column = params.get(`sort`)
-  return {
-    column: valid_columns
-      ? valid_query_param(params, `sort`, default_sort.column, valid_columns)
-      : column !== null && column !== ``
-        ? column
-        : default_sort.column,
-    dir: valid_query_param(params, `dir`, default_sort.dir, sort_dirs),
-  }
-}
+): TableSort => ({
+  column: valid_query_param(params, `sort`, default_sort.column, valid_columns),
+  dir: valid_query_param(params, `dir`, default_sort.dir, sort_dirs),
+})
 
 export const sort_url_entries = (
   sort: TableSort,

@@ -129,9 +129,8 @@ export interface FermiFileLoadData extends FileLoadData {
 }
 
 // Event data for errors
-export interface FermiErrorData {
+export interface FermiErrorData extends FileLoadData {
   error_msg: string
-  filename?: string
 }
 
 // Hover data emitted when user hovers over a Fermi surface

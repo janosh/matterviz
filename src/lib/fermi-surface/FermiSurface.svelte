@@ -133,7 +133,7 @@
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
-    on_file_drop?: (filename: string, metadata: io.FileLoadMeta) => void
+    on_file_drop?: io.FileLoadCallback
     on_file_load?: (data: FermiFileLoadData) => void
     on_error?: (data: FermiErrorData) => void
     on_fullscreen_change?: (data: FermiFullscreenData) => void
@@ -170,43 +170,35 @@
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     )
 
-  // Parse and load Fermi surface from content (async for UI responsiveness)
-  async function parse_fermi_content(
-    content: string | ArrayBuffer,
-    filename: string,
-    metadata?: io.FileLoadMeta,
-  ) {
-    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-
-    // parse_fermi_file throws a descriptive error when parsing fails
-    const parsed = parse_fermi_file(text, filename)
-
-    const file_size = new Blob([content]).size
-    current_filename = filename
-
-    // Check if it's already FermiSurfaceData or BandGridData
-    if (`isosurfaces` in parsed) {
-      fermi_data = parsed as FermiSurfaceData
-      band_data = undefined
-    } else {
-      band_data = parsed as BandGridData
-      fermi_data = extract_fermi_surface(band_data, { mu, wigner_seitz: true })
-    }
-
-    on_file_load?.({ fermi_data, band_data, filename, ...metadata, file_size })
-  }
-
-  // Load with error handling
+  // Parse and load Fermi surface with error handling
   async function safe_parse(
     content: string | ArrayBuffer,
     filename: string,
     metadata?: io.FileLoadMeta,
   ) {
     try {
-      await parse_fermi_content(content, filename, metadata)
+      await tick()
+      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+
+      // parse_fermi_file throws a descriptive error when parsing fails
+      const parsed = parse_fermi_file(text, filename)
+
+      const file_size = new Blob([content]).size
+      current_filename = filename
+
+      // Check if it's already FermiSurfaceData or BandGridData
+      if (`isosurfaces` in parsed) {
+        fermi_data = parsed
+        band_data = undefined
+      } else {
+        band_data = parsed
+        fermi_data = extract_fermi_surface(parsed, { mu, wigner_seitz: true })
+      }
+
+      on_file_load?.({ fermi_data, band_data, filename, ...metadata, file_size })
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
-      on_error?.({ error_msg, filename })
+      on_error?.({ error_msg, filename, ...metadata })
     }
   }
 
@@ -328,10 +320,8 @@
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: async (content, filename, metadata) => {
-      on_file_drop?.(filename, metadata)
-      await safe_parse(content, filename, metadata)
-    },
+    on_drop: (content, filename, metadata) =>
+      (on_file_drop || safe_parse)(content, filename, metadata),
     on_error: (msg) => {
       error_msg = msg
       on_error?.({ error_msg: msg })

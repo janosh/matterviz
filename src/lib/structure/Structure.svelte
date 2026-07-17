@@ -98,6 +98,8 @@
   const DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH = 300
   const DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT = 200
   const DEFAULT_MULTI_VIEW_GAP = 2
+  const finite_nonnegative = (value: number, fallback: number) =>
+    Math.max(0, Number.isFinite(value) ? value : fallback)
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
@@ -863,24 +865,12 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
   let multi_view_row_count = $derived(Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT))
-  let multi_view_gap_px = $derived(
-    Math.max(0, Number.isFinite(multi_view_gap) ? multi_view_gap : DEFAULT_MULTI_VIEW_GAP),
-  )
+  let multi_view_gap_px = $derived(finite_nonnegative(multi_view_gap, DEFAULT_MULTI_VIEW_GAP))
   let multi_view_min_pane_width_px = $derived(
-    Math.max(
-      0,
-      Number.isFinite(multi_view_min_pane_width)
-        ? multi_view_min_pane_width
-        : DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH,
-    ),
+    finite_nonnegative(multi_view_min_pane_width, DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH),
   )
   let multi_view_min_pane_height_px = $derived(
-    Math.max(
-      0,
-      Number.isFinite(multi_view_min_pane_height)
-        ? multi_view_min_pane_height
-        : DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT,
-    ),
+    finite_nonnegative(multi_view_min_pane_height, DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT),
   )
   let multi_view_required_width = $derived(
     MULTI_VIEW_COLUMN_COUNT * multi_view_min_pane_width_px +
@@ -1220,11 +1210,15 @@
   // fields — e.g. density + ESP — coexist and can cross-color each other's isosurfaces.
   // A file with a different lattice replaces the current structure and volumes.
   // Returns the parsed structure on success, or null if the file isn't a volumetric format.
-  function try_parse_volumetric(text_content: string, filename: string): AnyStructure | null {
+  function try_parse_volumetric(
+    text_content: string,
+    filename: string,
+    source_filename = filename,
+  ): AnyStructure | null {
     const vol_result = parse_volumetric_file(text_content, filename)
     if (!vol_result) return null
 
-    const incoming = label_file_volumes(vol_result.volumes, filename)
+    const incoming = label_file_volumes(vol_result.volumes, filename, source_filename)
     const same_cell = shares_current_lattice(vol_result.structure.lattice?.matrix)
     const added_toast = (count: number) =>
       `Added ${count} volume${count > 1 ? `s` : ``} from ${filename}`
@@ -1275,8 +1269,12 @@
 
   // Parse file content, trying volumetric format first then falling back to plain structure.
   // Returns the parsed structure on success, throws on failure.
-  function parse_file_content(text_content: string, filename: string): AnyStructure {
-    const vol_struct = try_parse_volumetric(text_content, filename)
+  function parse_file_content(
+    text_content: string,
+    filename: string,
+    source_filename?: string,
+  ): AnyStructure {
+    const vol_struct = try_parse_volumetric(text_content, filename, source_filename)
     if (vol_struct) return vol_struct
     const parsed = parse_any_structure(text_content, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
@@ -1300,7 +1298,8 @@
     metadata?: io.FileLoadMeta,
   ): void {
     const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-    emit_file_load_event(parse_file_content(text, filename), filename, content, metadata)
+    const parsed = parse_file_content(text, filename, metadata?.source_filename)
+    emit_file_load_event(parsed, filename, content, metadata)
   }
 
   const handle_file_drop = io.create_file_drop_handler({
@@ -1328,10 +1327,7 @@
     const target = event.target
     const is_input_focused =
       target instanceof HTMLElement &&
-      (target.tagName === `INPUT` ||
-        target.tagName === `TEXTAREA` ||
-        target.tagName === `SELECT` ||
-        target.isContentEditable)
+      ([`INPUT`, `TEXTAREA`, `SELECT`].includes(target.tagName) || target.isContentEditable)
 
     // Allow Escape to cancel add-atom mode even when the element input is focused
     if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
@@ -2341,11 +2337,6 @@
     background: color-mix(in srgb, var(--page-bg, Canvas) 85%, transparent);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   }
-  .edit-mode-toolbar > .add-atom-input {
-    padding: 0;
-    background: transparent;
-    box-shadow: none;
-  }
   .undo-redo-btn {
     position: relative;
     display: flex;
@@ -2413,12 +2404,9 @@
     display: flex;
     align-items: center;
     gap: 0.5em;
-    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
     color: var(--text-color, currentColor);
-    padding: 0.3em 0.6em;
     border-radius: var(--border-radius, 3pt);
     font-size: 0.8rem;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     label {
       display: flex;
       align-items: center;

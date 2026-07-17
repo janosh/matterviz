@@ -86,7 +86,11 @@
       x_axis?: AxisConfig
       y_axis?: AxisConfig
       allow_file_drop?: boolean
-      on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+      on_file_drop?: (
+        content: string | ArrayBuffer,
+        filename: string,
+        metadata: io.FileLoadMeta,
+      ) => Promise<void> | void
       loading?: boolean
       error_msg?: string
       broadening_enabled?: boolean
@@ -266,7 +270,7 @@
     loading = true
     error_msg = undefined
 
-    const compute_and_add = async (content: string | ArrayBuffer, filename: string) => {
+    const compute_and_add: io.FileLoadCallback = async (content, filename, _metadata) => {
       const result = await add_xrd_pattern(content, filename, wavelength)
       if (result.error) {
         error_msg = result.error
@@ -274,44 +278,39 @@
         dropped_entries = [result.pattern, ...dropped_entries]
       }
     }
+    const process_file: io.FileLoadCallback = on_file_drop ?? compute_and_add
 
     try {
       // Handle URL-based drops
-      const handled = await io
-        .handle_url_drop(event, on_file_drop || compute_and_add)
-        .catch(() => false)
+      const handled = await io.handle_url_drop(event, process_file).catch(() => false)
       if (handled) return
 
       const file = event.dataTransfer?.files?.[0]
-      if (file) {
-        try {
-          const lower_name = file.name.toLowerCase()
-          const compression_format = io.detect_compression_format(lower_name)
-          // Get base filename without compression extension
-          const base_name = compression_format
-            ? lower_name.replace(/\.(?:gz|gzip)$/i, ``)
-            : lower_name
-          const base_ext = base_name.split(`.`).pop()
+      if (!file) return
+      const metadata = { source_filename: file.name }
+      try {
+        const compression_format = io.detect_compression_format(file.name)
+        // Get base filename without compression extension
+        const base_name = compression_format
+          ? file.name.replace(/\.(?:gz|gzip)$/i, ``)
+          : file.name
+        const base_ext = base_name.toLowerCase().split(`.`).pop()
 
-          // Handle .brml files (ZIP archives) - both plain and gzipped
-          if (base_ext === `brml`) {
-            let buffer = await file.arrayBuffer()
-            // Decompress if gzipped
-            if (compression_format === `gzip`) {
-              buffer = await io.decompress_data_binary(buffer, `gzip`)
-            }
-            const output_name = base_name.endsWith(`.brml`)
-              ? base_name
-              : file.name.replace(/\.gz$/i, ``)
-            await (on_file_drop || compute_and_add)(buffer, output_name)
-          } else {
-            // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
-            const { content, filename } = await io.decompress_file(file)
-            if (content) await (on_file_drop || compute_and_add)(content, filename)
+        // Handle .brml files (ZIP archives) - both plain and gzipped
+        if (base_ext === `brml`) {
+          let buffer = await file.arrayBuffer()
+          // Decompress if gzipped
+          if (compression_format === `gzip`) {
+            buffer = await io.decompress_data_binary(buffer, `gzip`)
           }
-        } catch (exc) {
-          error_msg = `Failed to load file ${file.name}: ${to_error(exc).message}`
+          await process_file(buffer, base_name, metadata)
+        } else {
+          // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
+          const { content, filename } = await io.decompress_file(file)
+          await process_file(content, filename, metadata)
         }
+      } catch (exc) {
+        error_msg = `Failed to load file ${file.name}: ${to_error(exc).message}`
       }
     } finally {
       loading = false

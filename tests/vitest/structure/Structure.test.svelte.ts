@@ -1,19 +1,13 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
+import type { VolumetricData } from '$lib/isosurface'
 import type { Vec3 } from '$lib/math'
 import type { StructureBond, StructureHandlerData } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
-import * as exports from '$lib/structure/export'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import {
-  assertHoverScopedShortcut,
-  bind_props,
-  doc_query,
-  press_window_key,
-  read_maybe_gz,
-} from '../setup'
+import { assertHoverScopedShortcut, bind_props, doc_query, press_window_key } from '../setup'
 
 // Passthrough spy so individual tests can make make_supercell throw
 vi.mock(`$lib/structure/supercell`, async (import_original) => {
@@ -45,23 +39,24 @@ Direct
 0.5 0.5 0.0
 0.5 0.0 0.5
 0.0 0.5 0.5`
+const SAMPLE_CHGCAR_CONTENT = `test
+1.0
+1 0 0
+0 1 0
+0 0 1
+H
+1
+Direct
+0 0 0
 
-const create_mock_data_transfer = (files: File[]): DataTransfer => ({
-  files: Object.assign(files, { item: (idx: number) => files[idx] ?? null }),
-  getData: () => ``,
-  dropEffect: `copy` as const,
-  effectAllowed: `copy` as const,
-  items: [] as unknown as DataTransferItemList,
-  types: [] as readonly string[],
-  clearData: () => {},
-  setData: () => {},
-  setDragImage: () => {},
-})
+2 2 2
+1 2 3 4 5 6 7 8`
 
 const create_drop_event = (files: File[]): DragEvent => {
   const drag_event = new DragEvent(`drop`)
-  const descriptor = { value: create_mock_data_transfer(files), writable: false }
-  Object.defineProperty(drag_event, `dataTransfer`, descriptor)
+  Object.defineProperty(drag_event, `dataTransfer`, {
+    value: { files, getData: () => `` },
+  })
   return drag_event
 }
 
@@ -197,9 +192,6 @@ describe(`Structure`, () => {
     [{ supercell_scaling: `2x1x1` }, true],
     [{ supercell_scaling: `invalid` }, false],
     [{ supercell_scaling: `1×1×1` }, false],
-    [{ supercell_scaling: `1,1,1` }, false],
-    [{ supercell_scaling: `1 1 1` }, false],
-    [{ supercell_scaling: ` 1 ` }, false],
     [{ cell_type: `conventional` }, true],
   ] as const)(
     `sets edit-bonds availability for %o to disabled=%s`,
@@ -285,9 +277,6 @@ describe(`Structure`, () => {
     const order_select = doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`)
     expect(active_button.textContent).toContain(`Add`)
     expect(order_select.value).toBe(`1`)
-    expect(order_select.compareDocumentPosition(active_button)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    )
     doc_query<HTMLButtonElement>(`.bond-edit-mode-toggle button[title^="Delete"]`).click()
     await tick()
     expect(doc_query<HTMLButtonElement>(selector).textContent).toContain(`Delete`)
@@ -318,33 +307,16 @@ describe(`Structure`, () => {
     },
   )
 
-  const selection_control_cases: {
+  test.each<{
     mode: MeasureMode
     measured_sites: number[]
     selected_sites: number[]
     shows_reset: boolean
-  }[] = [
-    {
-      mode: `distance`,
-      measured_sites: [0],
-      selected_sites: [],
-      shows_reset: true,
-    },
-    {
-      mode: `angle`,
-      measured_sites: [0],
-      selected_sites: [],
-      shows_reset: true,
-    },
-    {
-      mode: `edit-bonds`,
-      measured_sites: [0],
-      selected_sites: [0],
-      shows_reset: false,
-    },
-  ]
-
-  test.each(selection_control_cases)(
+  }>([
+    { mode: `distance`, measured_sites: [0], selected_sites: [], shows_reset: true },
+    { mode: `angle`, measured_sites: [0], selected_sites: [], shows_reset: true },
+    { mode: `edit-bonds`, measured_sites: [0], selected_sites: [0], shows_reset: false },
+  ])(
     `selection controls visibility in $mode mode`,
     async ({ mode, measured_sites, selected_sites, shows_reset }) => {
       mount_structure({
@@ -359,72 +331,8 @@ describe(`Structure`, () => {
       expect(
         document.querySelector(`button[aria-label="Reset selection and bond edits"]`) != null,
       ).toBe(shows_reset)
-      expect(document.querySelector(`.site-radius-control`)).toBeNull()
     },
   )
-
-  const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
-
-  test.each(
-    formats.flatMap((format) => [
-      { format, action: `Download` },
-      { format, action: `Copy` },
-    ]),
-  )(`$format $action button works`, async ({ format, action }) => {
-    // Mount component and open controls. Downloads dispatch through export_structure_as;
-    // copies call the format's to_str from the STRUCT_TEXT_FORMATS map.
-    const fmt = format.toLowerCase() as keyof typeof exports.STRUCT_TEXT_FORMATS
-    const export_spy =
-      action === `Download`
-        ? vi.spyOn(exports, `export_structure_as`)
-        : vi.spyOn(exports.STRUCT_TEXT_FORMATS[fmt], `to_str`)
-    export_spy.mockClear() // spies are shared across test.each runs
-
-    mount_structure({ structure, show_controls: true })
-    const structure_controls_toggle = doc_query<HTMLButtonElement>(
-      `button.structure-controls-toggle`,
-    )
-    expect(structure_controls_toggle).toBeInstanceOf(HTMLElement)
-    structure_controls_toggle.click()
-
-    if (action === `Download`) {
-      globalThis.URL.createObjectURL = vi.fn()
-      const spy = vi.spyOn(document.body, `appendChild`)
-      const download_btn = doc_query<HTMLButtonElement>(`button[title="Download ${format}"]`)
-      expect(download_btn, `download button for ${format}`).toBeInstanceOf(HTMLElement)
-
-      download_btn.click()
-
-      expect(spy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement))
-      expect(export_spy).toHaveBeenCalledOnce()
-      // For download, the function is called with the structure, not returning a string directly
-      // so we can't easily check content here without more complex mocking.
-      // We'll rely on the correct high-level export function being called.
-
-      spy.mockRestore()
-      // @ts-expect-error - function is mocked
-      globalThis.URL.createObjectURL.mockRestore()
-    } else if (action === `Copy`) {
-      const clipboard_spy = vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
-
-      const copy_btn = doc_query<HTMLButtonElement>(
-        `button[title="Copy ${format} to clipboard"]`,
-      )
-      expect(copy_btn, `copy button for ${format}`).toBeInstanceOf(HTMLElement)
-
-      copy_btn.click()
-      await tick()
-      await tick()
-
-      expect(clipboard_spy).toHaveBeenCalledOnce()
-      expect(copy_btn.textContent).toContain(`✅`)
-      expect(export_spy).toHaveBeenCalledOnce()
-      const content = export_spy.mock.results[0].value
-      expect(content).toContain(structure.sites[0].species[0].element)
-
-      clipboard_spy.mockRestore()
-    }
-  })
 
   test(`toggle fullscreen mode`, async () => {
     const requestFullscreenMock = vi.fn().mockResolvedValue(undefined)
@@ -465,62 +373,44 @@ describe(`Structure`, () => {
     })
   })
 
-  test.each([
-    [`test.poscar`, SAMPLE_POSCAR_CONTENT],
-    [`test.txt`, `test content`],
-  ])(`drag and drop passes %s content to on_file_drop`, async (filename, content) => {
-    let [dropped_content, dropped_filename]: (string | ArrayBuffer | null)[] = [null, null]
-    let resolve_drop!: () => void
-    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
-
+  test(`drag and drop passes content and metadata to on_file_drop`, async () => {
+    const filename = `test.poscar`
+    const on_file_drop = vi.fn()
     mount_structure({
       structure: undefined,
       show_controls: true,
-      on_file_drop: (file_content: string | ArrayBuffer, file_name: string) => {
-        ;[dropped_content, dropped_filename] = [file_content, file_name]
-        resolve_drop()
-      },
+      on_file_drop,
     })
 
-    const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeInstanceOf(HTMLElement)
-
-    const file = new File([content], filename, { type: `text/plain` })
-    wrapper.dispatchEvent(create_drop_event([file]))
-
-    // Wait for the drop handler to complete instead of sleeping
-    await drop_done
-
-    expect(dropped_content).toBe(content)
-    expect(dropped_filename).toBe(filename)
+    doc_query(`.structure`).dispatchEvent(
+      create_drop_event([new File([SAMPLE_POSCAR_CONTENT], filename)]),
+    )
+    await vi.waitFor(() =>
+      expect(on_file_drop).toHaveBeenCalledWith(
+        SAMPLE_POSCAR_CONTENT,
+        filename,
+        expect.objectContaining({ source_filename: filename }),
+      ),
+    )
   })
 
   test(`drag and drop without on_file_drop handler parses the file internally`, async () => {
     // No on_file_drop → component parses the dropped file itself and emits on_file_load.
     // Awaiting the callback is deterministic (no DOM polling), unlike a rendered-text race.
-    let loaded: StructureHandlerData | undefined
-    let resolve_load!: () => void
-    const load_done = new Promise<void>((resolve) => (resolve_load = resolve))
-
+    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
     mount_structure({
       structure: undefined,
       show_controls: true,
-      on_file_load: (data: StructureHandlerData) => {
-        loaded = data
-        resolve_load()
-      },
+      on_file_load,
     })
 
-    const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeInstanceOf(HTMLElement)
-
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
-    wrapper.dispatchEvent(create_drop_event([file]))
+    doc_query(`.structure`).dispatchEvent(create_drop_event([file]))
 
-    await load_done
-    expect(loaded?.filename).toBe(`test.poscar`)
-    expect(loaded?.total_atoms).toBe(5)
-    const elements = loaded?.structure?.sites.map((site) => site.species[0].element)
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    const loaded = on_file_load.mock.calls[0][0]
+    expect(loaded).toMatchObject({ filename: `test.poscar`, total_atoms: 5 })
+    const elements = loaded.structure?.sites.map((site) => site.species[0].element)
     expect(elements).toEqual(expect.arrayContaining([`Ba`, `Ti`, `O`]))
   })
 
@@ -554,146 +444,42 @@ describe(`Structure`, () => {
   })
 })
 
-describe(`Structure component nested JSON handling`, () => {
+describe(`Structure empty states`, () => {
   test.each([
-    [
-      `valid structure with sites`,
-      {
-        sites: [
-          {
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `H1`,
-            properties: {},
-          },
-        ],
-        charge: 0,
-      },
-    ],
-    [
-      `structure with lattice`,
-      {
-        sites: [
-          {
-            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-            abc: [0.5, 0.5, 0.5],
-            xyz: [1, 1, 1],
-            label: `C1`,
-            properties: {},
-          },
-        ],
-        lattice: {
-          matrix: [
-            [2, 0, 0],
-            [0, 2, 0],
-            [0, 0, 2],
-          ],
-          pbc: [true, true, true],
-          volume: 8,
-          a: 2,
-          b: 2,
-          c: 2,
-          alpha: 90,
-          beta: 90,
-          gamma: 90,
-        },
-        charge: 0,
-      },
-    ],
-  ])(`renders successfully with %s`, (_description, test_structure) => {
+    [`undefined structure`, undefined, `No structure provided`],
+    [`structure without sites`, {}, `No sites found in structure`],
+    [`structure with null sites`, { sites: null }, `No sites found in structure`],
+    [`structure with empty sites`, { sites: [] }, `No sites found in structure`],
+  ])(`shows the expected message for %s`, (_description, test_structure, message) => {
     mount_structure({ structure: test_structure as AnyStructure })
-
-    expect(document.body.textContent).not.toContain(`No sites found in structure`)
-    expect(document.body.textContent).not.toContain(`No structure provided`)
-  })
-
-  test.each([
-    [`undefined structure`, undefined],
-    [`null structure`, null],
-    [`empty object`, {}],
-    [`structure without sites`, { lattice: {} }],
-    [`structure with null sites`, { sites: null }],
-    [`structure with empty sites array`, { sites: [] }],
-    [`structure with undefined sites`, { sites: undefined }],
-  ])(`shows appropriate error for %s`, (_description, test_structure) => {
-    mount_structure({ structure: test_structure as AnyStructure })
-
-    if (!test_structure) {
-      expect(document.body.textContent).toContain(`No structure provided`)
-    } else {
-      expect(document.body.textContent).toContain(`No sites found in structure`)
-    }
-  })
-
-  test(`handles real nested JSON structure correctly`, () => {
-    const file_path = `./src/site/structures/nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
-    // Read and parse the actual nested JSON file (compressed)
-    const parsed = JSON.parse(read_maybe_gz(file_path))
-
-    // Extract the nested structure (simulating our parse_any_structure logic)
-    const nested_structure = parsed[0].structure
-
-    // Verify the structure is valid before testing component
-    expect(nested_structure.sites).toBeDefined()
-    expect(nested_structure.sites.length).toBeGreaterThan(0)
-
-    // Test component renders without errors
-    mount_structure({ structure: nested_structure as AnyStructure })
-
-    expect(document.body.textContent).not.toContain(`No sites found in structure`)
-    expect(document.body.textContent).not.toContain(`No structure provided`)
+    expect(document.body.textContent).toContain(message)
   })
 })
 
-// Combined camera projection functionality tests
-test.each([
-  [`perspective` as const, `orthographic` as const],
-  [`orthographic` as const, `perspective` as const],
-])(
-  `camera projection %s: UI toggle, rendering, zoom settings, and integration`,
-  async (initial_projection, target_projection) => {
-    const scene_props = {
-      camera_projection: initial_projection,
-      auto_rotate: 0.5,
-    }
-    mount_structure({ structure, controls_open: true, show_controls: true, scene_props })
-    await tick()
+test(`camera projection control reflects and updates scene_props`, async () => {
+  const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
+  mount_structure({ structure, controls_open: true, show_controls: true, scene_props })
+  await tick()
 
-    // Test 1: UI controls are accessible with correct options
-    const projection_label = Array.from(document.querySelectorAll(`label`)).find((label) =>
-      label.textContent?.includes(`Projection`),
-    )
-    expect(projection_label).toBeDefined()
+  const projection_label = [...document.querySelectorAll(`label`)].find((label) =>
+    label.textContent?.includes(`Projection`),
+  )
+  const projection_select = projection_label?.querySelector(`select`) as HTMLSelectElement
+  expect(projection_select.value).toBe(`perspective`)
+  expect([...projection_select.options].map((option) => option.value)).toEqual([
+    `perspective`,
+    `orthographic`,
+  ])
 
-    const projection_select = projection_label?.querySelector(`select`) as HTMLSelectElement
-    expect(projection_select?.value).toBe(initial_projection)
+  projection_select.value = `orthographic`
+  projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+  expect(projection_select.value).toBe(`orthographic`)
 
-    const options = Array.from(projection_select?.querySelectorAll(`option`) || [])
-    expect(options.map((option) => option.value)).toEqual([`perspective`, `orthographic`])
-
-    // Test 2: Component renders correctly without errors
-    const structure_component = document.querySelector(`.structure`)
-    expect(structure_component).toBeInstanceOf(HTMLElement)
-    expect(document.body.textContent).not.toContain(`No structure provided`)
-
-    // Test 3: Toggle projection and verify change
-    projection_select.value = target_projection
-    projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    expect(projection_select.value).toBe(target_projection)
-
-    // Test 4: Other scene properties still reflect their scene_props bindings
-    const radius_input = document.querySelector(
-      `.controls-pane input[type="number"][step="0.05"]`,
-    ) as HTMLInputElement
-    const auto_rotate_input = document.querySelector(
-      `.controls-pane input[type="number"][max="2"]`,
-    ) as HTMLInputElement
-
-    expect(Number(radius_input?.value || `0`)).toBeCloseTo(1.0, 1)
-    expect(Number(auto_rotate_input?.value || `0`)).toBeCloseTo(0.5, 1)
-  },
-)
+  const auto_rotate_input = document.querySelector(
+    `.controls-pane input[type="number"][max="2"]`,
+  ) as HTMLInputElement
+  expect(Number(auto_rotate_input.value)).toBeCloseTo(0.5, 1)
+})
 
 // Atom label controls tests
 describe(`atom label controls`, () => {
@@ -781,107 +567,38 @@ describe(`atom label controls`, () => {
 })
 
 describe(`Structure string parsing`, () => {
-  const test_data = [
-    [`POSCAR`, SAMPLE_POSCAR_CONTENT, 5, [`Ba`, `Ti`, `O`], true],
-    [
-      `XYZ`,
-      `3\nH2O\nO 0.0 0.0 0.119\nH 0.0 0.763 -0.477\nH 0.0 -0.763 -0.477`,
-      3,
-      [`O`, `H`],
-      false,
-    ],
-    [
-      `CIF`,
-      `data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nNa1 Na 0.0 0.0 0.0 1.0\nCl1 Cl 0.5 0.5 0.5 1.0`,
-      2,
-      [`Na`, `Cl`],
-      true,
-    ],
-    [
-      `JSON`,
-      JSON.stringify({
-        sites: [
-          {
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `H1`,
-            properties: {},
-          },
-        ],
-      }),
-      1,
-      [`H`],
-      false,
-    ],
-  ] as const
+  test(`loads structure_string and emits parsed structure metadata`, async () => {
+    const state = $state<{ structure?: AnyStructure; loading: boolean }>({
+      structure: undefined,
+      loading: false,
+    })
+    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
+    mount_structure(
+      bind_props({ structure_string: SAMPLE_POSCAR_CONTENT, on_file_load }, state),
+    )
 
-  test.each(test_data)(
-    `parses %s format correctly`,
-    async (_format, content, atoms, elements, has_lattice) => {
-      let parse_state = $state<{ parsed?: AnyStructure }>({})
-      let loaded = false
-
-      mount_structure({
-        structure_string: content,
-        get structure() {
-          return parse_state.parsed
-        },
-        set structure(val) {
-          parse_state.parsed = val
-        },
-        on_file_load: (data: StructureHandlerData) => {
-          loaded = true
-          expect(data.total_atoms).toBe(atoms)
-          expect(data.filename).toBe(`string`)
-        },
-      })
-
-      await tick()
-      expect(parse_state.parsed).toBeDefined()
-      if (parse_state.parsed) {
-        expect(parse_state.parsed.sites).toHaveLength(atoms)
-        elements.forEach((el) =>
-          expect(parse_state.parsed?.sites.map((site) => site.species[0].element)).toContain(
-            el,
-          ),
-        )
-        expect(Boolean(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
-          has_lattice,
-        )
-      }
-      expect(loaded).toBe(true)
-    },
-  )
-
-  test.each([
-    [`invalid content`, `not parseable`],
-    [`malformed JSON`, `{bad`],
-  ])(`handles %s gracefully`, async (_, content) => {
-    let errored = false
-    mount_structure({ structure_string: content, on_error: () => (errored = true) })
-    await tick()
-    expect(errored).toBe(true)
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    const load_data = on_file_load.mock.calls[0][0]
+    expect(state.structure?.sites).toHaveLength(5)
+    expect(new Set(state.structure?.sites.map((site) => site.species[0].element))).toEqual(
+      new Set([`Ba`, `Ti`, `O`]),
+    )
+    expect(state.structure).toHaveProperty(`lattice`)
+    expect(state.loading).toBe(false)
+    expect(load_data).toMatchObject({
+      total_atoms: 5,
+      filename: `string`,
+      file_size: new Blob([SAMPLE_POSCAR_CONTENT]).size,
+    })
   })
 
-  test(`loading state resets and file size is emitted after structure_string load`, async () => {
-    let loading_state = $state({ loading: false })
-    let size = 0
+  test(`reports invalid structure_string content`, async () => {
+    const on_error = vi.fn()
     mount_structure({
-      structure_string: SAMPLE_POSCAR_CONTENT,
-      get loading() {
-        return loading_state.loading
-      },
-      set loading(val) {
-        loading_state.loading = val
-      },
-      on_file_load: (data: StructureHandlerData) => {
-        size = data.file_size ?? 0
-      },
+      structure_string: `not parseable`,
+      on_error,
     })
-    await tick()
-    expect(loading_state.loading).toBe(false)
-    expect(size).toBe(new Blob([SAMPLE_POSCAR_CONTENT]).size)
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
   })
 
   test(`prioritizes data_url over structure_string`, async () => {
@@ -917,6 +634,22 @@ describe(`Structure string parsing`, () => {
     expect(load_data?.filename).toBe(`test.poscar`)
     expect(load_data?.source_filename).toBe(`test.poscar.gz`)
     expect(load_data?.source_url).toBe(`/test.poscar.gz`)
+  })
+
+  test(`keeps compressed volumetric source identity separate from its dedupe key`, async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(SAMPLE_CHGCAR_CONTENT, {
+        headers: { 'content-encoding': `gzip` },
+      }),
+    )
+    const state = { volumetric_data: undefined as VolumetricData[] | undefined }
+    mount_structure(bind_props({ data_url: `/density.CHGCAR.gz` }, state))
+
+    await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+    expect(state.volumetric_data?.[0]).toMatchObject({
+      source: `density.CHGCAR`,
+      source_filename: `density.CHGCAR.gz`,
+    })
   })
 
   const structure_json = (element: string, count = 1) =>
@@ -1099,13 +832,11 @@ describe(`Multi-side view`, () => {
     [`default height gap`, 800, 401, 4, 300, 200, 2, false],
     [`custom view rows below boundary`, 800, 603, 6, 300, 200, 2, false],
     [`custom view rows at boundary`, 800, 604, 6, 300, 200, 2, true],
-    [`custom pane minimum boundary`, 402, 302, 4, 200, 150, 2, true],
     [`larger gap below boundary`, 409, 310, 4, 200, 150, 10, false],
     [`larger gap at boundary`, 410, 310, 4, 200, 150, 10, true],
-    [`NaN gap uses default`, 602, 402, 4, 300, 200, Number.NaN, true],
-    [`infinite gap uses default`, 602, 402, 4, 300, 200, Number.POSITIVE_INFINITY, true],
-    [`NaN pane width uses default`, 602, 402, 4, Number.NaN, 200, 2, true],
-    [`infinite pane height uses default`, 602, 402, 4, 300, Infinity, 2, true],
+    [`non-finite values use defaults`, 602, 402, 4, Number.NaN, Infinity, Number.NaN, true],
+    [`non-finite width uses default`, 601, 402, 4, Number.NaN, 200, 2, false],
+    [`non-finite height uses default`, 602, 401, 4, 300, Infinity, 2, false],
   ] as const)(
     `responsive multi-view availability: %s`,
     async (

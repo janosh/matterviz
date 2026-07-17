@@ -200,7 +200,7 @@ class PeriodicTable(MatterViz):
 
     Component key: ``periodic-table/PeriodicTable``
 
-    Events: color_scale, onenter
+    Events: onenter
 
     Unsupported snippets: children
     """
@@ -234,6 +234,7 @@ class PeriodicTable(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
+        color_scale: Any | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -248,6 +249,8 @@ class PeriodicTable(MatterViz):
             mv_props["color_bar_props"] = color_bar_props
         if color_overrides is not None:
             mv_props["color_overrides"] = color_overrides
+        if color_scale is not None:
+            mv_props["color_scale"] = color_scale
         if color_scale_range is not None:
             mv_props["color_scale_range"] = color_scale_range
         if disabled is not None:
@@ -1177,8 +1180,6 @@ class XrdPlot(MatterViz):
     """X-ray diffraction pattern plot.
 
     Component key: ``xrd/XrdPlot``
-
-    Events: on_file_drop
     """
 
     def __init__(
@@ -1192,6 +1193,7 @@ class XrdPlot(MatterViz):
         error_msg: str | None = None,
         hkl_format: Any | None = None,
         loading: bool | None = None,
+        on_file_drop: Any | None = None,
         peak_width: float | None = None,
         show_angles: bool | None = None,
         wavelength: float | None = None,
@@ -1225,6 +1227,8 @@ class XrdPlot(MatterViz):
             mv_props["hkl_format"] = hkl_format
         if loading is not None:
             mv_props["loading"] = loading
+        if on_file_drop is not None:
+            mv_props["on_file_drop"] = on_file_drop
         if peak_width is not None:
             mv_props["peak_width"] = peak_width
         if show_angles is not None:
@@ -1746,8 +1750,6 @@ class RdfPlot(MatterViz):
     """Radial distribution function (RDF) plot.
 
     Component key: ``rdf/RdfPlot``
-
-    Events: on_file_drop
     """
 
     def __init__(
@@ -1761,6 +1763,7 @@ class RdfPlot(MatterViz):
         loading: bool | None = None,
         mode: Any | None = None,
         n_bins: int | None = None,
+        on_file_drop: Any | None = None,
         patterns: list | None = None,
         pbc: Any | None = None,
         show_reference_line: bool | None = None,
@@ -1794,6 +1797,8 @@ class RdfPlot(MatterViz):
             mv_props["mode"] = mode
         if n_bins is not None:
             mv_props["n_bins"] = n_bins
+        if on_file_drop is not None:
+            mv_props["on_file_drop"] = on_file_drop
         if patterns is not None:
             mv_props["patterns"] = patterns
         if pbc is not None:

@@ -175,11 +175,11 @@ export async function load_from_url(url: string, callback: FileLoadCallback): Pr
       const source_filename = extract_filename(resp.headers, url_basename)
       const buffer = await resp.arrayBuffer()
       // Gunzip sniffed gzip — downstream parsers can't handle raw gzip bytes
-      const args: [content: string | ArrayBuffer, filename: string] =
-        sniffed === `gzip`
-          ? await decompress_gz_payload(buffer, source_filename)
-          : [buffer, source_filename]
-      return emit_loaded(...args, source_filename)
+      if (sniffed === `gzip`) {
+        const [content, filename] = await decompress_gz_payload(buffer, source_filename)
+        return emit_loaded(content, filename, source_filename)
+      }
+      return emit_loaded(buffer, source_filename)
     }
   }
 

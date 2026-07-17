@@ -49,7 +49,6 @@ class Prop:
     js_name: str
     py_name: str
     ts_type: str
-    required: bool
     kind: str  # "value" | "callback" | "snippet" | "dom"
 
 
@@ -255,8 +254,8 @@ def _extract_props_root_expr(src: str, *, debug: bool = False) -> tuple[str, str
     return args[0].strip(), "Component<...>"
 
 
-def _parse_object_literal(obj: str) -> dict[str, tuple[str, bool]]:
-    """Parse `{ foo?: string; bar: number }` into {foo: (type, required)}."""
+def _parse_object_literal(obj: str) -> dict[str, str]:
+    """Parse `{ foo?: string; bar: number }` into prop types."""
     obj = obj.strip()
     if not (obj.startswith("{") and obj.endswith("}")):
         raise ValueError("Expected {...} object literal")
@@ -280,19 +279,19 @@ def _parse_object_literal(obj: str) -> dict[str, tuple[str, bool]]:
     if tail := inner[start:].strip():
         items.append(tail)
 
-    props: dict[str, tuple[str, bool]] = {}
+    props: dict[str, str] = {}
     for item in items:
         if item.startswith("[") or item.startswith("..."):  # index sig or spread
             continue
-        if match := re.match(r"^([A-Za-z0-9_]+)\s*(\?)?\s*:\s*(.+)$", item):
-            props[match.group(1)] = (match.group(3).strip(), match.group(2) != "?")
+        if match := re.match(r"^([A-Za-z0-9_]+)\s*(?:\?)?\s*:\s*(.+)$", item):
+            props[match.group(1)] = match.group(2).strip()
 
     return props
 
 
 def _resolve_component_props_ref(
     term: str, src: str, dist_dir: str | None, visited: set[str]
-) -> dict[str, tuple[str, bool]]:
+) -> dict[str, str]:
     """Resolve ComponentProps<typeof X> to the props of component X."""
     match = re.match(r"ComponentProps\s*<\s*typeof\s+(\w+)\s*>", term)
     if not match or not dist_dir:
@@ -337,11 +336,11 @@ def _collect_props(
     dist_dir: str | None = None,
     visited: set[str] | None = None,
     src: str = "",
-) -> dict[str, tuple[str, bool]]:
+) -> dict[str, str]:
     """Collect props from an intersection type expression."""
     if visited is None:
         visited = set()
-    out: dict[str, tuple[str, bool]] = {}
+    out: dict[str, str] = {}
 
     for term in _split_top_level(expr, "&"):
         term = term.strip()
@@ -375,9 +374,7 @@ def _collect_props(
     return out
 
 
-def _parse_interface_props(
-    src: str, interface_name: str
-) -> dict[str, tuple[str, bool]]:
+def _parse_interface_props(src: str, interface_name: str) -> dict[str, str]:
     """Extract props from an interface definition in a .d.ts file."""
     pattern = rf"\binterface\s+{re.escape(interface_name)}(?:<[^>]*>)?(?:\s+extends\s+[^{{]+)?\s*\{{"
     if not (match := re.search(pattern, src)):
@@ -398,7 +395,7 @@ def _parse_interface_props(
 
 def _parse_external_type_with_aliases(
     dist_dir: str, include_spec: str
-) -> tuple[dict[str, tuple[str, bool]], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str]]:
     """Parse an external type/interface and return same-file aliases.
 
     include_spec format: "path/to/file.d.ts:TypeName"
@@ -426,6 +423,35 @@ def _parse_external_type_with_aliases(
     return {}, aliases
 
 
+def _strip_outer_parentheses(expr: str) -> str:
+    """Strip optional markers and parentheses enclosing the complete expression."""
+    stripped = expr.strip().removesuffix("?").strip()
+    while stripped.startswith("(") and stripped.endswith(")"):
+        tracker = BracketTracker()
+        for idx in range(len(stripped)):
+            tracker.update(stripped, idx)
+            if tracker.par == 0:
+                if idx != len(stripped) - 1:
+                    return stripped
+                stripped = stripped[1:-1].strip()
+                break
+    return stripped
+
+
+def _has_top_level_arrow(expr: str) -> bool:
+    """Return whether a TypeScript expression contains a top-level function arrow."""
+    tracker = BracketTracker()
+    for idx in range(len(expr) - 1):
+        if (
+            expr.startswith("=>", idx)
+            and tracker.at_top_level
+            and not tracker.in_string
+        ):
+            return True
+        tracker.update(expr, idx)
+    return False
+
+
 def _detect_prop_kind(ts_type: str, aliases: dict[str, str] | None = None) -> str:
     """Determine prop kind based on TypeScript type signature."""
     resolved = ts_type
@@ -433,7 +459,15 @@ def _detect_prop_kind(ts_type: str, aliases: dict[str, str] | None = None) -> st
     while aliases and resolved in aliases and resolved not in seen_aliases:
         seen_aliases.add(resolved)
         resolved = aliases[resolved]
-    if "=>" in resolved:
+    resolved = _strip_outer_parentheses(resolved)
+    if _has_top_level_arrow(resolved):
+        return "callback"
+    union_terms = [
+        _strip_outer_parentheses(term)
+        for term in _split_top_level(resolved, "|")
+        if term.strip() not in {"null", "undefined"}
+    ]
+    if union_terms and all(_has_top_level_arrow(term) for term in union_terms):
         return "callback"
     if "Snippet" in resolved:
         return "snippet"
@@ -447,7 +481,7 @@ def parse_svelte_dts(
     dist_dir: str | None = None,
     *,
     debug: bool = False,
-) -> tuple[list[Prop], list[str], list[str], list[str]]:
+) -> list[Prop]:
     """Parse a *.svelte.d.ts file into prop metadata."""
     with open(dts_path, encoding="utf-8") as fh:
         src = fh.read()
@@ -458,69 +492,49 @@ def parse_svelte_dts(
         print(f"  Extracted props via: {strategy}")
 
     js_props = _collect_props(root_expr, aliases, dist_dir, src=src)
-
-    props: list[Prop] = []
-    callback_props: list[str] = []
-    snippet_props: list[str] = []
-    dom_props: list[str] = []
-
-    for js_name, (ts_type, required) in sorted(js_props.items()):
-        kind = _detect_prop_kind(ts_type, aliases)
-        if kind == "callback":
-            callback_props.append(js_name)
-        elif kind == "snippet":
-            snippet_props.append(js_name)
-        elif kind == "dom":
-            dom_props.append(js_name)
-
-        props.append(Prop(js_name, _to_snake(js_name), ts_type, required, kind))
-
-    return props, callback_props, snippet_props, dom_props
+    return [
+        Prop(js_name, _to_snake(js_name), ts_type, _detect_prop_kind(ts_type, aliases))
+        for js_name, ts_type in sorted(js_props.items())
+    ]
 
 
 def parse_svelte_dts_with_includes(
     dts_path: str, dist_dir: str, include_from: list[str]
-) -> tuple[list[Prop], list[str], list[str], list[str]]:
+) -> list[Prop]:
     """Parse a *.svelte.d.ts file with additional external type includes."""
-    props, callback_props, snippet_props, dom_props = parse_svelte_dts(
-        dts_path, dist_dir
-    )
+    props = parse_svelte_dts(dts_path, dist_dir)
     existing = {prop.js_name for prop in props}
 
     for include_spec in include_from:
         include_props, aliases = _parse_external_type_with_aliases(
             dist_dir, include_spec
         )
-        for js_name, (ts_type, required) in include_props.items():
+        for js_name, ts_type in include_props.items():
             if js_name in existing:
                 continue
 
-            kind = _detect_prop_kind(ts_type, aliases)
-            if kind == "callback":
-                callback_props.append(js_name)
-            elif kind == "snippet":
-                snippet_props.append(js_name)
-            elif kind == "dom":
-                dom_props.append(js_name)
-
-            props.append(Prop(js_name, _to_snake(js_name), ts_type, required, kind))
+            props.append(
+                Prop(
+                    js_name,
+                    _to_snake(js_name),
+                    ts_type,
+                    _detect_prop_kind(ts_type, aliases),
+                )
+            )
             existing.add(js_name)
 
-    return props, callback_props, snippet_props, dom_props
+    return props
 
 
-def add_extra_props(
-    props: list[Prop], extra_props: dict[str, str], callback_props: list[str]
-) -> None:
+def add_extra_props(props: list[Prop], extra_props: dict[str, str]) -> None:
     """Add manually-specified extra props to the props list."""
     existing = {prop.js_name for prop in props}
     for js_name, ts_type in extra_props.items():
         if js_name in existing:
             continue
-        kind = "callback" if "=>" in ts_type else "value"
-        if kind == "callback":
-            callback_props.append(js_name)
-        props.append(Prop(js_name, _to_snake(js_name), ts_type, True, kind))
+        props.append(
+            Prop(js_name, _to_snake(js_name), ts_type, _detect_prop_kind(ts_type))
+        )
 
 
 def find_component_dts(dist_dir: str, key: str) -> str:
@@ -619,19 +633,14 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             raise SystemExit(f"[components.{class_name}] missing 'key'")
 
         dts_path = find_component_dts(dist_dir, key)
-        include_from = spec.get("include_from", [])
-
-        if include_from:
-            props, callback_props, snippet_props, dom_props = (
-                parse_svelte_dts_with_includes(dts_path, dist_dir, include_from)
-            )
-        else:
-            props, callback_props, snippet_props, dom_props = parse_svelte_dts(
-                dts_path, dist_dir
-            )
+        props = parse_svelte_dts_with_includes(
+            dts_path, dist_dir, spec.get("include_from", [])
+        )
 
         if extra := spec.get("extra_props", {}):
-            add_extra_props(props, extra, callback_props)
+            add_extra_props(props, extra)
+        callback_props = [prop.js_name for prop in props if prop.kind == "callback"]
+        snippet_props = [prop.js_name for prop in props if prop.kind == "snippet"]
 
         # Filter to JSON-serializable value props
         # These are handled by the base MatterViz wrapper args and must not be
@@ -641,7 +650,6 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             prop
             for prop in props
             if prop.kind == "value"
-            and prop.js_name not in dom_props
             and prop.js_name not in reserved_base_args
             and prop.js_name != "children"
         ]
@@ -654,12 +662,13 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         default_set_props = spec.get("set_props", auto_set)
         default_float32_props = spec.get("float32_props", auto_float32)
-        alias_overrides = spec.get("aliases", {}) or {}
-        type_hints = spec.get("type_hints", {}) or {}
+        alias_overrides = spec.get("aliases", {})
+        type_hints = spec.get("type_hints", {})
         forward_none_props = set(spec.get("forward_none_props", []))
-        trailing_props: list[str] = spec.get("trailing_props", []) or []
+        trailing_props: list[str] = spec.get("trailing_props", [])
         if len(trailing_props) != len(set(trailing_props)):
             raise ValueError(f"[{class_name}] trailing props must be unique")
+        js_to_prop = {prop.js_name: prop for prop in value_props}
 
         # Build python->js mapping with unique identifiers
         py_to_js: dict[str, str] = {}
@@ -673,6 +682,15 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
                 suffix += 1
             used_py.add(py)
             py_to_js[py] = js
+
+        invalid_trailing_props = [
+            prop for prop in trailing_props if prop not in py_to_js
+        ]
+        if invalid_trailing_props:
+            raise ValueError(
+                f"[{class_name}] unknown trailing Python props: "
+                f"{invalid_trailing_props}"
+            )
 
         # Generate class
         doc = (spec.get("doc") or "").strip() or f"Typed wrapper for '{key}'."
@@ -695,7 +713,6 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         # Build signature
         sig = ["self", "id=None"]
         trailing_params: dict[str, str] = {}
-        js_to_prop = {prop.js_name: prop for prop in value_props}
         for py, js in py_to_js.items():
             prop = js_to_prop.get(js)
             if prop is None:
@@ -709,8 +726,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
                 py_type += " | None"
             default = "_UNSET" if js in forward_none_props else "None"
             param = f"{py}: {py_type} = {default}"
-            if js in trailing_props:
-                trailing_params[js] = param
+            if py in trailing_props:
+                trailing_params[py] = param
             else:
                 sig.append(param)
         sig += [

@@ -16,8 +16,9 @@
   import { CopyButton } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
 
-  // Track the currently loaded trajectory file
-  let active_trajectory_file = $state(`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`)
+  const default_trajectory_file = `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
+  // Track the currently loaded trajectory separately from the fixed initial data URL.
+  let active_trajectory_file = $state(default_trajectory_file)
   let structure_filenames = $state([`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`])
   let vscode_ext_url = `https://marketplace.visualstudio.com/items?itemName=Janosh.matterviz`
   let open_vsx_ext_url = `https://open-vsx.org/extension/janosh/matterviz`
@@ -117,9 +118,12 @@
 <h2><a href="/trajectory">Trajectory Viewer</a></h2>
 
 <Trajectory
-  data_url="/trajectories/{active_trajectory_file}"
+  data_url="/trajectories/{default_trajectory_file}"
   class="full-bleed"
   style="max-height: 700px"
+  on_file_load={({ source_filename }) => {
+    if (source_filename) active_trajectory_file = source_filename
+  }}
 />
 
 <p style="margin: 2em auto; text-align: center">

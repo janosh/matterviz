@@ -2,7 +2,7 @@
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
-  import { create_file_drop_handler } from '$lib/io'
+  import { create_file_drop_handler, type FileLoadCallback, type FileLoadMeta } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { Crystal, Pbc } from '$lib/structure'
@@ -41,7 +41,11 @@
     n_bins?: number
     pbc?: Pbc
     enable_drop?: boolean
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    on_file_drop?: (
+      content: string | ArrayBuffer,
+      filename: string,
+      metadata: FileLoadMeta,
+    ) => Promise<void> | void
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
@@ -54,7 +58,7 @@
     return formula && label_base ? `${formula}: ${label_base}` : formula || label_base
   }
 
-  const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
+  const compute_and_add: FileLoadCallback = (content, filename, _metadata) => {
     try {
       const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
       const parsed_struct = parse_any_structure(text, filename)
@@ -70,7 +74,8 @@
 
   const handle_drop = create_file_drop_handler({
     allow: () => enable_drop,
-    on_drop: (content, filename) => (on_file_drop || compute_and_add)(content, filename),
+    on_drop: (content, filename, metadata) =>
+      (on_file_drop ?? compute_and_add)(content, filename, metadata),
     on_error: (msg) => {
       error_msg = msg
     },

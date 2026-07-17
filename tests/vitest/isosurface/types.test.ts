@@ -271,6 +271,12 @@ describe(`label_file_volumes`, () => {
     const [labeled] = label_file_volumes([vol(`charge density`)], `esp.cube.gz`)
     expect(labeled.label).toBe(`esp.cube`)
     expect(labeled.source).toBe(`esp.cube`)
+    expect(labeled.source_filename).toBe(`esp.cube.gz`)
+  })
+
+  test(`keeps source filename separate from the logical parse filename`, () => {
+    const [labeled] = label_file_volumes([vol()], `esp.cube`, `esp.cube.gz`)
+    expect([labeled.source, labeled.source_filename]).toEqual([`esp.cube`, `esp.cube.gz`])
   })
 
   test(`multi-block files get "file: block" labels sharing one source`, () => {

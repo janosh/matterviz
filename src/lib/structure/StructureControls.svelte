@@ -91,6 +91,7 @@
 
   const controls_id = $props.id()
   const multi_view_hint_id = `multi-view-hint-${controls_id}`
+  let multi_view_blocked = $derived(Boolean(multi_view_unavailable_reason) && !multi_view)
 
   // Color scheme selection state
   let color_scheme_selected = $state([color_scheme])
@@ -334,11 +335,11 @@
       on_reset={() => (multi_view = false)}
       class="layout-settings"
     >
-      <label class:disabled={Boolean(multi_view_unavailable_reason) && !multi_view}>
+      <label class:disabled={multi_view_blocked}>
         <input
           type="checkbox"
           bind:checked={multi_view}
-          disabled={Boolean(multi_view_unavailable_reason) && !multi_view}
+          disabled={multi_view_blocked}
           aria-describedby={multi_view_unavailable_reason ? multi_view_hint_id : undefined}
         />
         Multi-view grid

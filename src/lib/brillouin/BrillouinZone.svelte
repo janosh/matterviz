@@ -39,7 +39,6 @@
     structure?: Crystal
     bz_data?: BrillouinZoneData
     bz_order?: number
-    filename?: string
     file_size?: number
     error_msg?: string
     fullscreen?: boolean
@@ -179,33 +178,24 @@
   // Normalize show_controls prop into consistent config
   let controls_config = $derived(normalize_show_controls(show_controls))
 
-  // Parse and load structure from content
-  function parse_structure(
-    content: string | ArrayBuffer,
-    filename: string,
-    metadata?: io.FileLoadMeta,
-  ) {
-    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-    const parsed = parse_any_structure(text, filename)
-    if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
-
-    structure = parsed as Crystal
-    current_filename = filename
-    const file_size = new Blob([content]).size
-    on_file_load?.({ structure, bz_data, bz_order, filename, ...metadata, file_size })
-  }
-
-  // Load with error handling
+  // Parse and load structure with error handling
   function safe_parse(
     content: string | ArrayBuffer,
     filename: string,
     metadata?: io.FileLoadMeta,
   ) {
     try {
-      parse_structure(content, filename, metadata)
+      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+      const parsed = parse_any_structure(text, filename)
+      if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
+
+      structure = parsed as Crystal
+      current_filename = filename
+      const file_size = new Blob([content]).size
+      on_file_load?.({ structure, bz_data, bz_order, filename, ...metadata, file_size })
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
-      on_error?.({ error_msg, filename })
+      on_error?.({ error_msg, filename, ...metadata })
     }
   }
 

@@ -13,7 +13,7 @@ doc = "3D crystal structure / molecule viewer."
 # Structure expects a few props as JS Set / Float32Array; Dash must pass JSON arrays.
 # This wrapper defaults set_props/float32_props accordingly.
 set_props = ["hidden_elements", "hidden_prop_vals"]
-# Append newly added props to preserve positional compatibility.
+# Append newly added Python parameters to preserve positional compatibility.
 trailing_props = [
   "multi_view_gap",
   "multi_view_active",
@@ -28,6 +28,7 @@ bond_edit_order = "1 | 1.5 | 2 | 3 | 'aromatic'"
 [components.PeriodicTable]
 key = "periodic-table/PeriodicTable"
 doc = "Interactive periodic table with heatmaps and tooltips."
+trailing_props = ["color_scale"]
 
 [components.Composition]
 key = "composition/Composition"
