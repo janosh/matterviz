@@ -255,7 +255,9 @@
     "@types/d3-scale-chromatic": "^3.1.0",
     "@types/d3-shape": "^3.1.8",
     "@types/d3-time-format": "^4.0.3",
+    "@types/node": "^26.1.1",
     "@types/three": "^0.185.1",
+    "@types/vscode": "~1.105.0",
     "@vitest/coverage-v8": "4.1.10",
     "@wooorm/starry-night": "^3.10.0",
     "happy-dom": "^20.10.6",
@@ -268,7 +270,7 @@
     "svelte-check": "^4.7.2",
     "typescript": "^6.0.3",
     "vite": "^8.1.4",
-    "vite-plus": "^0.2.4",
+    "vite-plus": "^0.2.5",
     "vitest": "4.1.10"
   },
   "peerDependencies": {

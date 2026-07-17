@@ -354,7 +354,7 @@ export function extract_formula_elements(
     return elements
   }
   const symbols = Object.keys(parse_formula(formula)).filter(is_elem_symbol)
-  return sorted ? symbols.sort() : symbols
+  return sorted ? symbols.toSorted() : symbols
 }
 
 // Generate all non-empty subsets of a chemical system as hyphenated strings.
@@ -450,7 +450,8 @@ export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcard
     }
   }
 
-  return { elements: elements.sort(), wildcard_count }
+  // elements is local and no longer reused.
+  return { elements: elements.toSorted(), wildcard_count }
 }
 
 // Placeholder for wildcards during parentheses expansion (Zz is not a real element symbol).
@@ -554,7 +555,7 @@ export function matches_formula_wildcard(
     const remaining_counts = Object.entries(composition)
       .filter(([elem]) => !explicit_counts.has(elem as ElementSymbol))
       .map(([, count]) => count)
-      .sort((cnt_a, cnt_b) => cnt_a - cnt_b)
+      .toSorted((cnt_a, cnt_b) => cnt_a - cnt_b)
     if (remaining_counts.length !== wildcard_counts.length) return false
 
     wildcard_counts.sort((cnt_a, cnt_b) => cnt_a - cnt_b)

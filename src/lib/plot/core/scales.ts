@@ -328,7 +328,7 @@ export function generate_ticks(
     return Object.keys(ticks_option)
       .map(Number)
       .filter((val) => Number.isFinite(val) && val >= domain_min && val <= domain_max)
-      .sort((a, b) => a - b)
+      .toSorted((a, b) => a - b)
   }
 
   // If ticks_option is already an array, use it directly

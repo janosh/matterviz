@@ -32,12 +32,13 @@ worker_scope.addEventListener(`message`, ({ data: request }): void => {
       const prepare_start = performance.now()
       const volume = inflate_volume(job.volume)
       const { grid, lattice, origin } = prepare_geometry_grid(volume, job.range)
-      const { values: prepared_values, dims: grid_dims } = flatten_grid(grid)
+      const prepared_grid = flatten_grid(grid)
+      const { values: prepared_values, dims: grid_dims } = prepared_grid
       transfer.push(prepared_values.buffer)
       const prepare_geometry_ms = performance.now() - prepare_start
       const surfaces = job.surfaces.map(({ token, isovalue }) => {
         const marching_start = performance.now()
-        const buffers = marching_cubes_buffers(grid, isovalue, lattice, {
+        const buffers = marching_cubes_buffers(prepared_grid, isovalue, lattice, {
           periodic: false,
           interpolate: true,
           centered: false,

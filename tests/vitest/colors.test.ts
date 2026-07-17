@@ -21,7 +21,7 @@ const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[i
 
 describe(`Element Color Schemes`, () => {
   test(`all schemes have identical, complete element coverage`, () => {
-    expect(Object.keys(ELEMENT_COLOR_SCHEMES).sort()).toEqual([
+    expect(Object.keys(ELEMENT_COLOR_SCHEMES).toSorted()).toEqual([
       `Alloy`,
       `Dark Mode`,
       `Jmol`,
@@ -29,11 +29,11 @@ describe(`Element Color Schemes`, () => {
       `Pastel`,
       `Vesta`,
     ])
-    const expected_keys = Object.keys(ELEMENT_COLOR_SCHEMES.Vesta).sort()
+    const expected_keys = Object.keys(ELEMENT_COLOR_SCHEMES.Vesta).toSorted()
     expect(expected_keys.length).toBeGreaterThanOrEqual(109)
     expect(expected_keys).toEqual(expect.arrayContaining(EXPECTED_ELEMENTS))
     for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
-      expect(Object.keys(colors).sort(), `${scheme_name} coverage`).toEqual(expected_keys)
+      expect(Object.keys(colors).toSorted(), `${scheme_name} coverage`).toEqual(expected_keys)
     }
   })
 

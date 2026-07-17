@@ -444,7 +444,7 @@ export function sunburst_from_labels_parents<Metadata = Record<string, unknown>>
       )
     }
     // Mark the walked chain as verified
-    for (let mark: number | null = idx; mark != null && state[mark] === 1; ) {
+    for (let mark: number | null = idx; mark != null && state[mark] === 1;) {
       state[mark] = 2
       mark = parent_idxs[mark]
     }

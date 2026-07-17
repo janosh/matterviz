@@ -2,14 +2,23 @@
 // Based on the classic algorithm by Lorensen & Cline (1987)
 import {
   grid_dimensions,
-  grid_value,
   is_scalar_grid,
+  scalar_grid_strides,
+  type ScalarGridArray,
   type ScalarGridLike,
 } from '$lib/isosurface/grid'
 import { mat3x3_vec3_multiply, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
+export type {
+  ScalarGrid3D,
+  ScalarGridArray,
+  ScalarGridLike,
+  ScalarGridOrder,
+} from '$lib/isosurface/grid'
+
 const wrap_grid_idx = (val: number, dim: number) => ((val % dim) + dim) % dim
 const clamp_grid_idx = (val: number, max: number) => Math.max(0, Math.min(val, max))
+const EMPTY_GRID: never[] = []
 
 // Edge table: for each cube configuration (256 cases), which edges are intersected
 // Each bit indicates whether that edge has an intersection
@@ -346,6 +355,10 @@ export interface MarchingCubesOptions {
 // Compute gradient (normal) at a grid point using central differences
 function compute_gradient(
   grid: ScalarGridLike,
+  scalar_values: ScalarGridArray | undefined,
+  stride_x: number,
+  stride_y: number,
+  stride_z: number,
   ix: number,
   iy: number,
   iz: number,
@@ -369,22 +382,23 @@ function compute_gradient(
     : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
 
   const scale = (lo: number, hi: number) => 1 / Math.max(1, periodic ? 2 : hi - lo)
-  if (!is_scalar_grid(grid)) {
-    const x_lo = grid[ix_m][iy_w][iz_w]
-    const x_hi = grid[ix_p][iy_w][iz_w]
-    const y_lo = grid[ix_w][iy_m][iz_w]
-    const y_hi = grid[ix_w][iy_p][iz_w]
-    const z_row = grid[ix_w][iy_w]
+  if (scalar_values === undefined) {
+    const nested_grid = grid as number[][][]
+    const x_lo = nested_grid[ix_m][iy_w][iz_w]
+    const x_hi = nested_grid[ix_p][iy_w][iz_w]
+    const y_lo = nested_grid[ix_w][iy_m][iz_w]
+    const y_hi = nested_grid[ix_w][iy_p][iz_w]
+    const z_row = nested_grid[ix_w][iy_w]
     const gz = -(z_row[iz_p] - z_row[iz_m]) * scale(iz_m, iz_p)
     return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
   }
-  const x_lo = grid_value(grid, ix_m, iy_w, iz_w)
-  const x_hi = grid_value(grid, ix_p, iy_w, iz_w)
-  const y_lo = grid_value(grid, ix_w, iy_m, iz_w)
-  const y_hi = grid_value(grid, ix_w, iy_p, iz_w)
-  const gz =
-    -(grid_value(grid, ix_w, iy_w, iz_p) - grid_value(grid, ix_w, iy_w, iz_m)) *
-    scale(iz_m, iz_p)
+  const x_lo = scalar_values[ix_m * stride_x + iy_w * stride_y + iz_w * stride_z]
+  const x_hi = scalar_values[ix_p * stride_x + iy_w * stride_y + iz_w * stride_z]
+  const y_lo = scalar_values[ix_w * stride_x + iy_m * stride_y + iz_w * stride_z]
+  const y_hi = scalar_values[ix_w * stride_x + iy_p * stride_y + iz_w * stride_z]
+  const z_lo = scalar_values[ix_w * stride_x + iy_w * stride_y + iz_m * stride_z]
+  const z_hi = scalar_values[ix_w * stride_x + iy_w * stride_y + iz_p * stride_z]
+  const gz = -(z_hi - z_lo) * scale(iz_m, iz_p)
   return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
 }
 
@@ -407,6 +421,12 @@ function marching_cubes_raw(
   const center_offset = centered ? 0.5 : 0
 
   const [nx, ny, nz] = grid_dimensions(grid)
+  const scalar_source = is_scalar_grid(grid) ? grid : null
+  const nested_grid = scalar_source ? null : (grid as number[][][])
+  const scalar_values = scalar_source?.values
+  const [stride_x, stride_y, stride_z] = scalar_source
+    ? scalar_grid_strides(scalar_source)
+    : [0, 0, 0]
 
   if (nx < 2 || ny < 2 || nz < 2) {
     return { positions: [], indices: [], normals: [] }
@@ -538,6 +558,10 @@ function marching_cubes_raw(
     if (compute_norms) {
       const [gx, gy, gz] = compute_gradient(
         grid,
+        scalar_values,
+        stride_x,
+        stride_y,
+        stride_z,
         ix + ox1,
         iy + oy1,
         iz + oz1,
@@ -562,36 +586,44 @@ function marching_cubes_raw(
 
   // Preallocate cube_values array (reuse across iterations)
   const cube_values: number[] = Array(8)
-  const scalar_grid = is_scalar_grid(grid) ? grid : null
-  const nested_grid = scalar_grid ? null : (grid as number[][][])
 
   for (let ix = 0; ix < max_x; ix++) {
     x_edge_cache.fill(-1)
     y_edge_next.fill(-1)
     z_edge_next.fill(-1)
     const ix1 = (ix + 1) % nx
-    const ix_row = nested_grid?.[ix] ?? []
-    const ix1_row = nested_grid?.[ix1] ?? []
+    const ix_row = nested_grid?.[ix] ?? EMPTY_GRID
+    const ix1_row = nested_grid?.[ix1] ?? EMPTY_GRID
+    const x_offset = ix * stride_x
+    const x1_offset = ix1 * stride_x
 
     for (let iy = 0; iy < max_y; iy++) {
       const iy1 = (iy + 1) % ny
-      const iy_col = ix_row[iy] ?? []
-      const iy1_col = ix_row[iy1] ?? []
-      const ix1_iy_col = ix1_row[iy] ?? []
-      const ix1_iy1_col = ix1_row[iy1] ?? []
+      const iy_col = ix_row[iy] ?? EMPTY_GRID
+      const iy1_col = ix_row[iy1] ?? EMPTY_GRID
+      const ix1_iy_col = ix1_row[iy] ?? EMPTY_GRID
+      const ix1_iy1_col = ix1_row[iy1] ?? EMPTY_GRID
+      const y_offset = iy * stride_y
+      const y1_offset = iy1 * stride_y
+      const offset_00 = x_offset + y_offset
+      const offset_10 = x1_offset + y_offset
+      const offset_11 = x1_offset + y1_offset
+      const offset_01 = x_offset + y1_offset
 
       for (let iz = 0; iz < max_z; iz++) {
         const iz1 = (iz + 1) % nz
 
-        if (scalar_grid) {
-          cube_values[0] = grid_value(scalar_grid, ix, iy, iz)
-          cube_values[1] = grid_value(scalar_grid, ix1, iy, iz)
-          cube_values[2] = grid_value(scalar_grid, ix1, iy1, iz)
-          cube_values[3] = grid_value(scalar_grid, ix, iy1, iz)
-          cube_values[4] = grid_value(scalar_grid, ix, iy, iz1)
-          cube_values[5] = grid_value(scalar_grid, ix1, iy, iz1)
-          cube_values[6] = grid_value(scalar_grid, ix1, iy1, iz1)
-          cube_values[7] = grid_value(scalar_grid, ix, iy1, iz1)
+        if (scalar_values) {
+          const z_offset = iz * stride_z
+          const z1_offset = iz1 * stride_z
+          cube_values[0] = scalar_values[offset_00 + z_offset]
+          cube_values[1] = scalar_values[offset_10 + z_offset]
+          cube_values[2] = scalar_values[offset_11 + z_offset]
+          cube_values[3] = scalar_values[offset_01 + z_offset]
+          cube_values[4] = scalar_values[offset_00 + z1_offset]
+          cube_values[5] = scalar_values[offset_10 + z1_offset]
+          cube_values[6] = scalar_values[offset_11 + z1_offset]
+          cube_values[7] = scalar_values[offset_01 + z1_offset]
         } else {
           // Preserve direct nested-array reads for the existing hot path.
           cube_values[0] = iy_col[iz]

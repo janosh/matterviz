@@ -81,7 +81,8 @@ export function formula_key_from_composition(composition: Record<string, number>
   const reduced = get_reduced_formula(composition)
   const key = Object.entries(reduced)
     .filter(([, amt]) => amt > 0)
-    .sort(([a], [b]) => a.localeCompare(b))
+    // filter() returns a fresh array.
+    .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([el, amt]) => (amt === 1 ? el : `${el}${amt}`))
     .join(``)
   formula_cache.set(composition, key)
@@ -863,7 +864,7 @@ export function get_visible_domain_labels(
     }
   }
 
-  return visible_labels.sort((label_a, label_b) =>
+  return visible_labels.toSorted((label_a, label_b) =>
     label_a.formula.localeCompare(label_b.formula),
   )
 }
@@ -925,7 +926,10 @@ export function make_nd_cache_key(
   default_min_limit: number,
   limits: ChemPotDiagramConfig[`limits`],
 ): string {
-  return `${entries.map(entry_fingerprint).sort().join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
+  const fingerprints = entries.map(entry_fingerprint)
+  // map() returns a fresh array.
+  fingerprints.sort()
+  return `${fingerprints.join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
 }
 
 // === Main Pipeline ===
@@ -956,7 +960,7 @@ export function compute_chempot_diagram(
       if (amount > 0) all_data_elements_set.add(element)
     }
   }
-  const all_data_elements = Array.from(all_data_elements_set).sort()
+  const all_data_elements = Array.from(all_data_elements_set).toSorted()
 
   // Display elements: user-specified order (controls axis mapping), or auto-detect
   const display_elements = config.elements?.length ? [...config.elements] : all_data_elements
@@ -993,7 +997,8 @@ export function compute_chempot_diagram(
     // Sort entries by composition (Schwartzian transform to avoid recomputing keys)
     const sorted_entries = working_entries
       .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
-      .sort((a, b) => a.key.localeCompare(b.key))
+      // map() returns a fresh array.
+      .toSorted((a, b) => a.key.localeCompare(b.key))
       .map(({ entry }) => entry)
 
     // Get min entries and elemental references

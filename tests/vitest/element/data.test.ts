@@ -289,7 +289,7 @@ describe(`atomic_mass`, () => {
         found_anomalies.push(to_key(current.symbol, next.symbol))
       }
     }
-    expect(found_anomalies.sort()).toEqual([...known_anomalies].sort())
+    expect(found_anomalies.toSorted()).toEqual([...known_anomalies].sort())
   })
 
   test.each(ATOMIC_MASS_INVERSIONS)(`known inversion: %s > %s`, (heavier, lighter) => {

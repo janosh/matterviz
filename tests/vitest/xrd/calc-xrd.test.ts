@@ -63,7 +63,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
       // Compare peak positions set-wise over the strongest expected peaks (by intensity)
       // to avoid discrepancies from low-intensity filtering differences between implementations
       const top_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
-        .sort((i1, i2) => expected.y[i2] - expected.y[i1])
+        .toSorted((i1, i2) => expected.y[i2] - expected.y[i1])
         .slice(0, Math.min(200, expected.x.length))
       const matched = top_indices.filter((idx) =>
         has_close(computed.x, expected.x[idx], angle_tol),

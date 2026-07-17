@@ -602,7 +602,7 @@ describe(`compute_label_positions`, () => {
       default_scales,
       default_bounds,
     )
-    expect(Object.keys(result).sort()).toEqual([...kept].sort())
+    expect(Object.keys(result).toSorted()).toEqual([...kept].sort())
   })
 
   test(`high distance weight keeps labels closer to anchors than high overlap weight`, () => {

@@ -538,7 +538,7 @@
     }
 
     Object.entries(x_positions ?? {})
-      .sort(([, [a]], [, [b]]) => a - b)
+      .toSorted(([, [a]], [, [b]]) => a - b)
       .forEach(([segment_key, [x_start, x_end]]) => {
         const [start_lbl, end_lbl] = segment_key.split(`_`)
         const pretty_start = start_lbl !== `null` ? helpers.pretty_sym_point(start_lbl) : ``

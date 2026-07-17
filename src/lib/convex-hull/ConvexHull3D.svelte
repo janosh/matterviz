@@ -896,7 +896,8 @@
           )
         }),
       )
-      .sort((entry_1, entry_2) => {
+      // The helper returns a fresh array.
+      .toSorted((entry_1, entry_2) => {
         const energy_diff = label_priority_energy(entry_1) - label_priority_energy(entry_2)
         if (energy_diff !== 0) return energy_diff
         return (entry_1.e_above_hull ?? 0) - (entry_2.e_above_hull ?? 0)

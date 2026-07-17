@@ -1188,7 +1188,7 @@ describe(`Trajectory Files with Exact Reference Data`, () => {
         const found = new Set(
           traj.frames[0].structure.sites.map((site) => site.species[0]?.element),
         )
-        expect([...found].sort()).toEqual(expect.arrayContaining(elements.sort()))
+        expect([...found].sort()).toEqual(expect.arrayContaining(elements.toSorted()))
       }
 
       // Periodic structures should have lattice

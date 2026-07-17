@@ -14,7 +14,10 @@ const pending = new Map<
 const pending_by_key = new Map<string, Promise<ChemPotDiagramData>>()
 
 function make_compute_request_key(entries: PhaseData[], config: ChemPotDiagramConfig): string {
-  return `${entries.map(entry_fingerprint).sort().join(`,`)}|${JSON.stringify(config)}`
+  const fingerprints = entries.map(entry_fingerprint)
+  // map() returns a fresh array.
+  fingerprints.sort()
+  return `${fingerprints.join(`,`)}|${JSON.stringify(config)}`
 }
 
 function track_pending(

@@ -37,13 +37,13 @@ repos:
     hooks:
       - id: vp-fmt
         name: Format (oxfmt)
-        entry: npx --package=vite-plus vp check --fix
+        entry: npx --package=vite-plus@0.2.5 vp check --fix
         types_or: [file]
         language: system
         pass_filenames: false
       - id: svelte-check
         name: Svelte type check
-        entry: bash -c "npx svelte-kit sync && npx svelte-check --threshold error"
+        entry: bash -c "npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json --threshold error"
         language: system
         types_or: [ts, svelte]
         pass_filenames: false

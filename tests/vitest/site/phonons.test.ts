@@ -153,8 +153,8 @@ describe(`Phonon Module Tests`, () => {
       // Transformation preserves data dimensions and labels
       expect(transformed.qpoints, id).toHaveLength(raw.qpoints.length)
       expect(transformed.nb_bands, id).toBe(raw.bands.length)
-      expect(Object.keys(transformed.labels_dict).sort(), id).toEqual(
-        Object.keys(raw.labels_dict).sort(),
+      expect(Object.keys(transformed.labels_dict).toSorted(), id).toEqual(
+        Object.keys(raw.labels_dict).toSorted(),
       )
     },
   )

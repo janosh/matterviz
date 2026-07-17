@@ -82,7 +82,7 @@ export function chem_sys_sunburst_data(
   // final order; consecutive same-arity runs then collapse into one branch each
   const sorted = [...counts]
     .map(([chem_sys, count]) => ({ chem_sys, count, arity: chem_sys.split(`-`).length }))
-    .sort((sys_a, sys_b) => sys_a.arity - sys_b.arity || sys_b.count - sys_a.count)
+    .toSorted((sys_a, sys_b) => sys_a.arity - sys_b.arity || sys_b.count - sys_a.count)
   const roots: SunburstNode<ChemSysSunburstMetadata>[] = []
   let branch: SunburstNode<ChemSysSunburstMetadata> | undefined
   for (const { chem_sys, count, arity } of sorted) {

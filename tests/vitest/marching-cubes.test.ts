@@ -4,7 +4,12 @@ import {
   marching_cubes,
   marching_cubes_buffers,
 } from '$lib/marching-cubes'
-import { grid_value, type ScalarGrid3D, type ScalarGridOrder } from '$lib/isosurface/grid'
+import {
+  flatten_grid,
+  grid_value,
+  type ScalarGrid3D,
+  type ScalarGridOrder,
+} from '$lib/isosurface/grid'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_grid } from './setup'
@@ -50,7 +55,7 @@ const as_scalar_grid = (
       }
     }
   }
-  return { data, dimensions, order }
+  return { values: data, dims: dimensions, order }
 }
 
 const expect_result_parity = (
@@ -114,13 +119,13 @@ describe(`marching_cubes`, () => {
 
   test(`ScalarGrid3D uses the declared storage order`, () => {
     const x_fastest: ScalarGrid3D = {
-      data: new Float64Array([0, 100, 10, 110, 1, 101, 11, 111]),
-      dimensions: [2, 2, 2],
+      values: new Float64Array([0, 100, 10, 110, 1, 101, 11, 111]),
+      dims: [2, 2, 2],
       order: `x_fastest`,
     }
     const z_fastest: ScalarGrid3D = {
-      data: new Float64Array([0, 1, 10, 11, 100, 101, 110, 111]),
-      dimensions: [2, 2, 2],
+      values: new Float64Array([0, 1, 10, 11, 100, 101, 110, 111]),
+      dims: [2, 2, 2],
       order: `z_fastest`,
     }
     for (const grid of [x_fastest, z_fastest]) {
@@ -129,6 +134,26 @@ describe(`marching_cubes`, () => {
       expect(grid_value(grid, 1, 0, 0)).toBe(100)
       expect(grid_value(grid, 1, 1, 1)).toBe(111)
     }
+  })
+
+  test(`flatten_grid returns canonical z-fastest marching-cubes input`, () => {
+    const nested = make_grid(
+      3,
+      2,
+      4,
+      (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx,
+    )
+    const flattened = flatten_grid(nested)
+    expect(flattened).toEqual({
+      values: new Float64Array([
+        0, 1, 2, 3, 10, 11, 12, 13, 100, 101, 102, 103, 110, 111, 112, 113, 200, 201, 202, 203,
+        210, 211, 212, 213,
+      ]),
+      dims: [3, 2, 4],
+      order: `z_fastest`,
+    })
+    const expected = marching_cubes(nested, 105, IDENTITY, NON_PERIODIC)
+    expect_result_parity(marching_cubes(flattened, 105, IDENTITY, NON_PERIODIC), expected)
   })
 
   test(`ScalarGrid3D x_fastest and z_fastest match nested grids`, () => {
@@ -146,8 +171,8 @@ describe(`marching_cubes`, () => {
       [`z_fastest`, `f64`],
     ] as const) {
       const scalar_grid = as_scalar_grid(grid, order, precision)
-      const actual = marching_cubes(scalar_grid, 0.45, IDENTITY, NON_PERIODIC)
-      expect_result_parity(actual, expected)
+      const original_values = scalar_grid.values.slice()
+      expect_result_parity(marching_cubes(scalar_grid, 0.45, IDENTITY, NON_PERIODIC), expected)
 
       const buffers = marching_cubes_buffers(scalar_grid, 0.45, IDENTITY, {
         ...NON_PERIODIC,
@@ -156,6 +181,7 @@ describe(`marching_cubes`, () => {
       expect(Array.from(buffers.indices)).toEqual(expected.faces.flat())
       expect_array_close(buffers.positions, expected.vertices.flat())
       expect_array_close(buffers.normals, expected.normals.flat())
+      expect(scalar_grid.values).toEqual(original_values)
     }
   })
 
@@ -194,8 +220,8 @@ describe(`marching_cubes`, () => {
     `ScalarGrid3D degenerate dimensions $dimensions return empty geometry`,
     ({ dimensions }) => {
       const grid: ScalarGrid3D = {
-        data: new Float64Array(dimensions[0] * dimensions[1] * dimensions[2]),
-        dimensions,
+        values: new Float64Array(dimensions[0] * dimensions[1] * dimensions[2]),
+        dims: dimensions,
         order: `z_fastest`,
       }
       const result = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
@@ -211,38 +237,43 @@ describe(`marching_cubes`, () => {
 
   test.each([
     {
-      label: `data length mismatch`,
-      grid: { data: new Float64Array(7), dimensions: [2, 2, 2], order: `z_fastest` },
+      label: `values length mismatch`,
+      grid: { values: new Float64Array(7), dims: [2, 2, 2], order: `z_fastest` },
       error: RangeError,
     },
     {
+      label: `legacy field names`,
+      grid: { data: new Float64Array(8), dimensions: [2, 2, 2], order: `z_fastest` },
+      error: TypeError,
+    },
+    {
       label: `negative dimension`,
-      grid: { data: new Float64Array(), dimensions: [-1, 2, 2], order: `z_fastest` },
+      grid: { values: new Float64Array(), dims: [-1, 2, 2], order: `z_fastest` },
       error: RangeError,
     },
     {
       label: `fractional dimension`,
-      grid: { data: new Float64Array(8), dimensions: [2, 2, 1.5], order: `x_fastest` },
+      grid: { values: new Float64Array(8), dims: [2, 2, 1.5], order: `x_fastest` },
       error: RangeError,
     },
     {
       label: `missing dimension`,
-      grid: { data: new Float64Array(4), dimensions: [2, 2], order: `z_fastest` },
+      grid: { values: new Float64Array(4), dims: [2, 2], order: `z_fastest` },
       error: RangeError,
     },
     {
       label: `extra dimension`,
-      grid: { data: new Float64Array(8), dimensions: [2, 2, 2, 4], order: `z_fastest` },
+      grid: { values: new Float64Array(8), dims: [2, 2, 2, 4], order: `z_fastest` },
       error: RangeError,
     },
     {
       label: `unsupported order`,
-      grid: { data: new Float64Array(8), dimensions: [2, 2, 2], order: `y_fastest` },
+      grid: { values: new Float64Array(8), dims: [2, 2, 2], order: `y_fastest` },
       error: RangeError,
     },
     {
       label: `unsupported typed array`,
-      grid: { data: new Int32Array(8), dimensions: [2, 2, 2], order: `z_fastest` },
+      grid: { values: new Int32Array(8), dims: [2, 2, 2], order: `z_fastest` },
       error: TypeError,
     },
   ])(`ScalarGrid3D rejects $label`, ({ grid, error }) => {
