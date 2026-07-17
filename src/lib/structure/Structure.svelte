@@ -348,11 +348,11 @@
     loading = true
     error_msg = undefined
 
-    io.load_from_url(requested_url, (content, filename, metadata) => {
+    io.load_from_url(requested_url, async (content, filename, metadata) => {
       if (!is_current()) return // stale response
       if (on_file_drop) {
-        on_file_drop(content, filename, metadata)
-        loaded_data_url = requested_url
+        await on_file_drop(content, filename, metadata)
+        if (is_current()) loaded_data_url = requested_url
       } else {
         // Parse structure internally when no handler provided
         try {

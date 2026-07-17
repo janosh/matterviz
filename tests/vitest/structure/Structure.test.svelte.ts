@@ -618,6 +618,43 @@ describe(`Structure string parsing`, () => {
     expect(load_data?.source_url).toBe(`/test.poscar`)
   })
 
+  test(`keeps loading active until async data_url handlers finish`, async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(SAMPLE_POSCAR_CONTENT))
+    let resolve_drop!: () => void
+    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
+    const on_file_drop = vi.fn(() => drop_done)
+    const state = { loading: false }
+    mount_structure(bind_props({ data_url: `/test.poscar`, on_file_drop }, state))
+
+    await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
+    expect(state.loading).toBe(true)
+    resolve_drop()
+    await vi.waitFor(() => expect(state.loading).toBe(false))
+  })
+
+  test(`reports async data_url handler failures`, async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(SAMPLE_POSCAR_CONTENT))
+    const on_error = vi.fn()
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+    try {
+      mount_structure({
+        data_url: `/test.poscar`,
+        on_file_drop: async () => {
+          throw new Error(`handler failed`)
+        },
+        on_error,
+      })
+      await vi.waitFor(() =>
+        expect(on_error).toHaveBeenCalledWith({
+          error_msg: `Failed to load structure: handler failed`,
+          filename: `test.poscar`,
+        }),
+      )
+    } finally {
+      console_error.mockRestore()
+    }
+  })
+
   test(`keeps compressed source identity separate from the logical filename`, async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(SAMPLE_POSCAR_CONTENT, {
