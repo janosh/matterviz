@@ -10,6 +10,7 @@ import matterviz_dash_components as mvc
 import pytest
 from matterviz_dash_components import MatterViz
 from scripts.sync_typed_wrappers import (
+    _py_type_hint,
     add_extra_props,
     generate_wrappers,
     parse_svelte_dts_with_includes,
@@ -92,6 +93,19 @@ def test_prop_kind_detection(tmp_path: Path) -> None:
         "onOverloaded": "callback",
         "onOptional": "callback",
     }
+
+
+@pytest.mark.parametrize(
+    ("ts_type", "expected"),
+    [
+        ("Set<string>", "list"),
+        ("ReadonlySet<number>", "list"),
+        ("IsosurfaceSettings", "Any"),
+    ],
+)
+def test_set_type_hints_require_set_generics(ts_type: str, expected: str) -> None:
+    """Set type inference excludes class names that merely contain 'Set'."""
+    assert _py_type_hint(ts_type) == expected
 
 
 def test_trailing_props_use_python_names(tmp_path: Path) -> None:

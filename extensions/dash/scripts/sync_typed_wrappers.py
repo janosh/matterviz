@@ -117,11 +117,8 @@ class BracketTracker:
 
 def _to_snake(name: str) -> str:
     """Convert a TS prop name to a Python-friendly snake_case identifier."""
-    if name.isupper():
-        out = name.lower()
-    else:
-        s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
-        out = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+    out = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    out = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", out).lower()
 
     out = out.replace("-", "_") or "prop"
     if out[0].isdigit():
@@ -144,8 +141,7 @@ def _split_top_level(expr: str, sep: str) -> list[str]:
             parts.append(expr[start:idx].strip())
             start = idx + 1
 
-    tail = expr[start:].strip()
-    if tail:
+    if tail := expr[start:].strip():
         parts.append(tail)
     return parts
 
@@ -153,25 +149,12 @@ def _split_top_level(expr: str, sep: str) -> list[str]:
 def _find_matching_angle(src: str, open_idx: int) -> int:
     """Find matching '>' for '<' at open_idx, respecting nested generics."""
     assert src[open_idx] == "<"
-    depth = 0
     tracker = BracketTracker()
 
     for idx in range(open_idx, len(src)):
-        ch = src[idx]
-        prev = src[idx - 1] if idx > 0 else ""
-
-        if ch in "`'\"":
-            tracker.update(src, idx)
-            continue
-        if tracker.in_string:
-            continue
-
-        if ch == "<":
-            depth += 1
-        elif ch == ">" and prev != "=":
-            depth -= 1
-            if depth == 0:
-                return idx
+        tracker.update(src, idx)
+        if tracker.ang == 0:
+            return idx
 
     raise ValueError("Unmatched '<' while scanning generic type arguments")
 
@@ -182,58 +165,37 @@ def _extract_type_aliases(src: str) -> dict[str, str]:
 
     for match in re.finditer(r"\btype\s+([A-Za-z0-9_]+)\s*=", src):
         name = match.group(1)
-        expr_start = match.end()
-        tracker = BracketTracker()
-
-        for idx in range(expr_start, len(src)):
-            if tracker.update(src, idx):
-                continue
-            if src[idx] == ";" and tracker.at_top_level:
-                aliases[name] = src[expr_start:idx].strip()
-                break
+        if expression := _read_until_top_level_semicolon(src, match.end()):
+            aliases[name] = expression
 
     return aliases
 
 
-def _extract_props_root_expr(src: str, *, debug: bool = False) -> tuple[str, str]:
-    """
-    Extract the type expression that represents component props.
+def _read_until_top_level_semicolon(src: str, start: int) -> str | None:
+    """Read a type expression through its first top-level semicolon."""
+    tracker = BracketTracker()
+    for idx in range(start, len(src)):
+        if tracker.update(src, idx):
+            continue
+        if src[idx] == ";" and tracker.at_top_level:
+            return src[start:idx].strip()
+    return None
 
-    Returns: (props_expression, strategy_name)
 
-    Tries in order:
-      1) `type $$ComponentProps = ...`
-      2) `declare function $$render<...>(): { props: ... }`
-      3) First type arg of `import("svelte").Component<...>`
-    """
+def _extract_props_root_expr(src: str) -> str:
+    """Extract the component props type expression from supported declaration formats."""
     # Strategy 1: type $$ComponentProps = ...
     if match := re.search(r"type\s+\$\$ComponentProps\s*=", src):
-        expr_start = match.end()
-        if m_end := re.search(r";\s*declare\s+const", src[expr_start:]):
-            result = src[expr_start : expr_start + m_end.start()].strip()
-            if debug:
-                print("  [props] Strategy '$$ComponentProps' succeeded")
-            return result, "$$ComponentProps"
-        if (semi := src.find(";", expr_start)) != -1:
-            if debug:
-                print("  [props] Strategy '$$ComponentProps' succeeded")
-            return src[expr_start:semi].strip(), "$$ComponentProps"
+        if expression := _read_until_top_level_semicolon(src, match.end()):
+            return expression
 
     # Strategy 2: $$render function format (generic components)
     if match := re.search(r"declare\s+function\s+\$\$render[^{]*\{\s*props\s*:", src):
         props_start = match.end()
-        tracker = BracketTracker()
-        for idx in range(props_start, len(src)):
-            if tracker.update(src, idx):
-                continue
-            if src[idx] == ";" and tracker.at_top_level:
-                if debug:
-                    print("  [props] Strategy '$$render' succeeded")
-                return src[props_start:idx].strip(), "$$render"
+        if expression := _read_until_top_level_semicolon(src, props_start):
+            return expression
         # Fallback
-        if debug:
-            print("  [props] Strategy '$$render' succeeded (fallback)")
-        return src[props_start:].split(";")[0].strip(), "$$render"
+        return src[props_start:].split(";")[0].strip()
 
     # Strategy 3: parse Component<...> generic
     if not (match := re.search(r'import\("svelte"\)\.Component<', src)):
@@ -249,9 +211,7 @@ def _extract_props_root_expr(src: str, *, debug: bool = False) -> tuple[str, str
     if not args:
         raise ValueError("Could not parse Component<...> type arguments")
 
-    if debug:
-        print("  [props] Strategy 'Component<...>' succeeded")
-    return args[0].strip(), "Component<...>"
+    return args[0].strip()
 
 
 def _parse_object_literal(obj: str) -> dict[str, str]:
@@ -261,26 +221,8 @@ def _parse_object_literal(obj: str) -> dict[str, str]:
         raise ValueError("Expected {...} object literal")
 
     inner = obj[1:-1].strip()
-    if not inner:
-        return {}
-
-    items: list[str] = []
-    start = 0
-    tracker = BracketTracker()
-
-    for idx, ch in enumerate(inner):
-        if tracker.update(inner, idx):
-            continue
-        if ch == ";" and tracker.at_top_level:
-            if item := inner[start:idx].strip():
-                items.append(item)
-            start = idx + 1
-
-    if tail := inner[start:].strip():
-        items.append(tail)
-
     props: dict[str, str] = {}
-    for item in items:
+    for item in _split_top_level(inner, ";"):
         if item.startswith("[") or item.startswith("..."):  # index sig or spread
             continue
         if match := re.match(r"^([A-Za-z0-9_]+)\s*(?:\?)?\s*:\s*(.+)$", item):
@@ -322,7 +264,7 @@ def _resolve_component_props_ref(
     with open(candidates[0], encoding="utf-8") as file:
         ref_src = file.read()
     try:
-        ref_expr, _ = _extract_props_root_expr(ref_src)
+        ref_expr = _extract_props_root_expr(ref_src)
         return _collect_props(
             ref_expr, _extract_type_aliases(ref_src), dist_dir, visited, ref_src
         )
@@ -442,13 +384,10 @@ def _has_top_level_arrow(expr: str) -> bool:
     """Return whether a TypeScript expression contains a top-level function arrow."""
     tracker = BracketTracker()
     for idx in range(len(expr) - 1):
-        if (
-            expr.startswith("=>", idx)
-            and tracker.at_top_level
-            and not tracker.in_string
-        ):
+        if tracker.update(expr, idx):
+            continue
+        if expr.startswith("=>", idx) and tracker.at_top_level:
             return True
-        tracker.update(expr, idx)
     return False
 
 
@@ -476,24 +415,27 @@ def _detect_prop_kind(ts_type: str, aliases: dict[str, str] | None = None) -> st
     return "value"
 
 
+def _make_prop(
+    js_name: str, ts_type: str, aliases: dict[str, str] | None = None
+) -> Prop:
+    """Create normalized prop metadata from a TypeScript declaration."""
+    return Prop(
+        js_name, _to_snake(js_name), ts_type, _detect_prop_kind(ts_type, aliases)
+    )
+
+
 def parse_svelte_dts(
     dts_path: str,
     dist_dir: str | None = None,
-    *,
-    debug: bool = False,
 ) -> list[Prop]:
     """Parse a *.svelte.d.ts file into prop metadata."""
     with open(dts_path, encoding="utf-8") as fh:
         src = fh.read()
     aliases = _extract_type_aliases(src)
-    root_expr, strategy = _extract_props_root_expr(src, debug=debug)
-
-    if debug:
-        print(f"  Extracted props via: {strategy}")
-
+    root_expr = _extract_props_root_expr(src)
     js_props = _collect_props(root_expr, aliases, dist_dir, src=src)
     return [
-        Prop(js_name, _to_snake(js_name), ts_type, _detect_prop_kind(ts_type, aliases))
+        _make_prop(js_name, ts_type, aliases)
         for js_name, ts_type in sorted(js_props.items())
     ]
 
@@ -513,14 +455,7 @@ def parse_svelte_dts_with_includes(
             if js_name in existing:
                 continue
 
-            props.append(
-                Prop(
-                    js_name,
-                    _to_snake(js_name),
-                    ts_type,
-                    _detect_prop_kind(ts_type, aliases),
-                )
-            )
+            props.append(_make_prop(js_name, ts_type, aliases))
             existing.add(js_name)
 
     return props
@@ -529,12 +464,13 @@ def parse_svelte_dts_with_includes(
 def add_extra_props(props: list[Prop], extra_props: dict[str, str]) -> None:
     """Add manually-specified extra props to the props list."""
     existing = {prop.js_name for prop in props}
-    for js_name, ts_type in extra_props.items():
-        if js_name in existing:
-            continue
-        props.append(
-            Prop(js_name, _to_snake(js_name), ts_type, _detect_prop_kind(ts_type))
+    props.extend(
+        (
+            _make_prop(js_name, ts_type)
+            for js_name, ts_type in extra_props.items()
+            if js_name not in existing
         )
+    )
 
 
 def find_component_dts(dist_dir: str, key: str) -> str:
@@ -557,6 +493,7 @@ def find_component_dts(dist_dir: str, key: str) -> str:
 # Heuristic keywords for inferring int type from TS number type.
 # Override in manifest via [components.Name.type_hints] if this fails.
 _INT_KEYWORDS = ("_idx", "_index", "_count", "n_bins", "n_ticks", "num_", "sites")
+_SET_TYPE_PATTERN = re.compile(r"\b(?:Readonly)?Set\s*<")
 
 
 def _py_type_hint(
@@ -584,7 +521,7 @@ def _py_type_hint(
         return f"list[{inner}]" if inner != "Any" else "list"
     if "Record" in type_str or "Partial" in type_str or "ComponentProps" in type_str:
         return "dict"
-    if "Set" in type_str:
+    if _SET_TYPE_PATTERN.search(type_str):
         return "list"
     if "Float32Array" in type_str:
         return "list[float]"
@@ -645,17 +582,19 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         # Filter to JSON-serializable value props
         # These are handled by the base MatterViz wrapper args and must not be
         # re-emitted as component-specific params.
-        reserved_base_args = {"id", "className", "style"}
+        reserved_base_args = {"id", "className", "style", "children"}
         value_props = [
             prop
             for prop in props
-            if prop.kind == "value"
-            and prop.js_name not in reserved_base_args
-            and prop.js_name != "children"
+            if prop.kind == "value" and prop.js_name not in reserved_base_args
         ]
 
         # Auto-detect conversion defaults
-        auto_set = [prop.js_name for prop in value_props if "Set" in prop.ts_type]
+        auto_set = [
+            prop.js_name
+            for prop in value_props
+            if _SET_TYPE_PATTERN.search(prop.ts_type)
+        ]
         auto_float32 = [
             prop.js_name for prop in value_props if "Float32Array" in prop.ts_type
         ]
@@ -672,21 +611,18 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         # Build python->js mapping with unique identifiers
         py_to_js: dict[str, str] = {}
-        used_py: set[str] = set()
         for prop in value_props:
             py, js = prop.py_name, alias_overrides.get(prop.py_name, prop.js_name)
             base = py
             suffix = 2
-            while py in used_py:
+            while py in py_to_js:
                 py = f"{base}_{suffix}"
                 suffix += 1
-            used_py.add(py)
             py_to_js[py] = js
 
-        invalid_trailing_props = [
+        if invalid_trailing_props := [
             prop for prop in trailing_props if prop not in py_to_js
-        ]
-        if invalid_trailing_props:
+        ]:
             raise ValueError(
                 f"[{class_name}] unknown trailing Python props: "
                 f"{invalid_trailing_props}"
@@ -749,16 +685,14 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             sentinel = "_UNSET" if js in forward_none_props else "None"
             lines.append(f"        if {py} is not {sentinel}:")
             lines.append(f'            mv_props["{js}"] = {py}')
-        if default_set_props:
-            lines.append("        if set_props is None:")
-            formatted = "[" + ", ".join(f'"{name}"' for name in default_set_props) + "]"
-            lines.append(f"            set_props = {formatted}")
-        if default_float32_props:
-            lines.append("        if float32_props is None:")
-            formatted = (
-                "[" + ", ".join(f'"{name}"' for name in default_float32_props) + "]"
-            )
-            lines.append(f"            float32_props = {formatted}")
+        for arg_name, default_props in {
+            "set_props": default_set_props,
+            "float32_props": default_float32_props,
+        }.items():
+            if default_props:
+                lines.append(f"        if {arg_name} is None:")
+                formatted = "[" + ", ".join(f'"{name}"' for name in default_props) + "]"
+                lines.append(f"            {arg_name} = {formatted}")
         lines.append("")
         lines.append("        super().__init__(")
         lines.append("            id=id,")

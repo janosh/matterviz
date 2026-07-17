@@ -48,7 +48,7 @@ class Structure(MatterViz):
         hovered: bool | None = None,
         hovered_site_idx: int | None = None,
         info_pane_open: bool | None = None,
-        isosurface_settings: list | None = None,
+        isosurface_settings: Any | None = None,
         loading: bool | None = None,
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
