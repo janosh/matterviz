@@ -107,7 +107,7 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
     expect(mount).toHaveBeenCalledTimes(4)
   })
   cleanup_parse.resolve(result(`during-cleanup`))
-  await new Promise((resolve) => setTimeout(resolve))
+  await new Promise((resolve) => setTimeout(resolve, 0))
   expect(mount).toHaveBeenCalledTimes(4)
   await window.cleanupMatterViz?.()
 

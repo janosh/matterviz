@@ -189,7 +189,7 @@ export function reactive_widget(
       if (!equal(props[spec.prop], value)) props[spec.prop] = value
     } else if (spec.prop in props) {
       // drive-only trait cleared (None): drop the key so the component falls back
-      delete props[spec.prop]
+      Reflect.deleteProperty(props, spec.prop)
     }
   }
 

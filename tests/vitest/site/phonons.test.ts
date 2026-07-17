@@ -121,7 +121,7 @@ describe(`Phonon Module Tests`, () => {
       }
 
       // Branches are contiguous (each starts where the previous ends) and span the path
-      const sorted_branches = [...band_struct.branches].sort(
+      const sorted_branches = [...band_struct.branches].toSorted(
         (branch_a, branch_b) => branch_a.start_index - branch_b.start_index,
       )
       expect(sorted_branches[0].start_index, id).toBe(0)
@@ -153,8 +153,8 @@ describe(`Phonon Module Tests`, () => {
       // Transformation preserves data dimensions and labels
       expect(transformed.qpoints, id).toHaveLength(raw.qpoints.length)
       expect(transformed.nb_bands, id).toBe(raw.bands.length)
-      expect(Object.keys(transformed.labels_dict).sort(), id).toEqual(
-        Object.keys(raw.labels_dict).sort(),
+      expect(Object.keys(transformed.labels_dict).toSorted(), id).toEqual(
+        Object.keys(raw.labels_dict).toSorted(),
       )
     },
   )

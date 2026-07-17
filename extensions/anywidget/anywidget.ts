@@ -43,6 +43,7 @@ import {
   throttle,
   writeback_prop,
 } from './reactive.svelte'
+
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
 // Static widget chrome + bundled app styles. Only the theme-variable block
@@ -336,7 +337,7 @@ export const mount_spec = (model: AnyModel, el: HTMLElement, spec: WidgetSpec): 
     [...(spec.base_drive ?? top_level_base_drive), ...spec.drive],
     {
       allow_file_drop: false, // off in notebooks
-      ...(interaction?.props ?? {}),
+      ...interaction?.props,
     },
   )
   reactive_disposers.set(el, () => {

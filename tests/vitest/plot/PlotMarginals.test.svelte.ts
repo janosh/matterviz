@@ -254,7 +254,7 @@ describe(`PlotMarginals integration`, () => {
     const nums = (line_path.getAttribute(`d`) ?? ``).match(/-?\d+\.?\d*/g)?.map(Number) ?? []
     const ys = nums.filter((_, idx) => idx % 2 === 1)
     expect(ys.length).toBeGreaterThan(2)
-    const ascending = [...ys].sort((a, b) => a - b)
+    const ascending = [...ys].toSorted((a, b) => a - b)
     const is_monotonic =
       ys.every((val, idx) => val === ascending[idx]) ||
       ys.every((val, idx) => val === ascending[ascending.length - 1 - idx])

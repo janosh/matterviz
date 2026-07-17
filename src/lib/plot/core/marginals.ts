@@ -559,7 +559,9 @@ function compute_histogram(
 }
 
 function compute_cdf(positions: number[], weights: number[] | undefined): MarginalCurve {
-  const order = positions.map((_, idx) => idx).sort((a, b) => positions[a] - positions[b])
+  const order = positions.map((_, idx) => idx)
+  // map() returns a fresh index array.
+  order.sort((a, b) => positions[a] - positions[b])
   const total = weights ? weights.reduce((sum, weight) => sum + weight, 0) : positions.length
   const points: { pos: number; value: number }[] = []
   let cum = 0

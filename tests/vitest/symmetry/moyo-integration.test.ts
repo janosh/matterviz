@@ -253,7 +253,7 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     for (const row of rows) expect(row.wyckoff).toBe(`1a`)
     // each row maps to exactly one distinct original site
     const all_indices = rows.flatMap((row) => row.site_indices ?? [])
-    expect(all_indices.sort((idx_a, idx_b) => idx_a - idx_b)).toEqual([0, 1, 2])
+    expect(all_indices.toSorted((idx_a, idx_b) => idx_a - idx_b)).toEqual([0, 1, 2])
   })
 
   test(`std→orig site mapping uses the std_linear transform (primitive NaCl input)`, async () => {

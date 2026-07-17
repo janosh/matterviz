@@ -453,7 +453,7 @@ export function spacegroup_sunburst_data(
   return CRYSTAL_SYSTEMS.flatMap((system) => {
     const nums = [...counts.keys()]
       .filter((num) => spacegroup_num_to_crystal_sys(num) === system)
-      .sort((num_a, num_b) => num_a - num_b)
+      .toSorted((num_a, num_b) => num_a - num_b)
     if (nums.length === 0) return []
     return [
       {

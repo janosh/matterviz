@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { get_d3_interpolator, luminance } from '$lib/colors'
+  import { get_d3_interpolator, is_d3_interpolate_name, luminance } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -8,10 +8,8 @@
   import * as math from '$lib/math'
   import { format } from 'd3-format'
   import * as d3 from 'd3-scale'
-  import * as d3_sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { D3InterpolateName } from '$lib/colors'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
   import { generate_arcsinh_ticks, scale_arcsinh } from '$lib/plot/core/scales'
   import type {
@@ -285,8 +283,8 @@
       const func_name = color_scale.startsWith(`interpolate`)
         ? color_scale
         : `interpolate${color_scale}`
-      if (func_name in d3_sc) {
-        interpolator = d3_sc[func_name as D3InterpolateName]
+      if (is_d3_interpolate_name(func_name)) {
+        interpolator = get_d3_interpolator(func_name)
       } else {
         console.error(`Color scale '${color_scale}' not found. Falling back on 'Viridis'.`)
       }

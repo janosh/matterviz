@@ -88,7 +88,7 @@ export function resolve_contour_thresholds(
     // regardless of input order
     return contour_levels
       .filter(Number.isFinite)
-      .sort((left, right) => left - right)
+      .toSorted((left, right) => left - right)
       .slice(0, MAX_CONTOUR_LEVELS)
   }
   const count = Number.isFinite(contour_levels)
@@ -99,5 +99,5 @@ export function resolve_contour_thresholds(
   return Array.from(
     { length: count },
     (_, level_idx) => range_min + ((level_idx + 1) / (count + 1)) * (range_max - range_min),
-  ).sort((left, right) => left - right)
+  ).toSorted((left, right) => left - right)
 }

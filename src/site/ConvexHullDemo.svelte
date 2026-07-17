@@ -22,7 +22,7 @@
       path,
       loader,
     }))
-    .sort((sys_a, sys_b) => sys_a.name.localeCompare(sys_b.name))
+    .toSorted((sys_a, sys_b) => sys_a.name.localeCompare(sys_b.name))
 
   const loaded_data = new SvelteMap<string, PhaseData[]>()
   let active_name = $state(systems[0]?.name ?? ``)

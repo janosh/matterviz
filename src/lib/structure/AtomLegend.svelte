@@ -172,7 +172,7 @@
     })
     const unknown_entries = Object.entries(element_amounts)
       .filter(([element_symbol]) => !is_elem_symbol(element_symbol))
-      .sort(([element_a], [element_b]) => element_a.localeCompare(element_b))
+      .toSorted(([element_a], [element_b]) => element_a.localeCompare(element_b))
     return [...ordered_known_entries, ...unknown_entries]
   })
 

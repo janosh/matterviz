@@ -3,7 +3,11 @@ import {
   compute_vertex_normals,
   marching_cubes,
   marching_cubes_buffers,
+  type ScalarGrid3D,
+  type ScalarGridArray,
+  type ScalarGridOrder,
 } from '$lib/marching-cubes'
+import { flatten_grid } from '$lib/isosurface/grid'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_grid } from './setup'
@@ -30,6 +34,39 @@ const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void
 
 const mean_axis = (verts: Vec3[], axis: 0 | 1 | 2): number =>
   verts.reduce((sum, vertex) => sum + vertex[axis], 0) / verts.length
+
+const indexed_grid = (nx: number, ny: number, nz: number): number[][][] =>
+  make_grid(nx, ny, nz, (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx)
+
+const as_scalar_grid = (
+  grid: number[][][],
+  order: ScalarGridOrder,
+  precision: `f32` | `f64` = `f64`,
+): ScalarGrid3D => {
+  const dimensions: Vec3 = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
+  const [nx, ny, nz] = dimensions
+  const data: ScalarGridArray =
+    precision === `f32` ? new Float32Array(nx * ny * nz) : new Float64Array(nx * ny * nz)
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iy = 0; iy < ny; iy++) {
+      for (let iz = 0; iz < nz; iz++) {
+        const offset =
+          order === `x_fastest` ? ix + nx * (iy + ny * iz) : iz + nz * (iy + ny * ix)
+        data[offset] = grid[ix][iy][iz]
+      }
+    }
+  }
+  return { values: data, dims: dimensions, order }
+}
+
+const expect_result_parity = (
+  actual: ReturnType<typeof marching_cubes>,
+  expected: ReturnType<typeof marching_cubes>,
+): void => {
+  expect(actual.faces).toEqual(expected.faces)
+  expect_array_close(actual.vertices.flat(), expected.vertices.flat())
+  expect_array_close(actual.normals.flat(), expected.normals.flat())
+}
 
 describe(`marching_cubes`, () => {
   test.each([
@@ -78,6 +115,126 @@ describe(`marching_cubes`, () => {
     expect_array_close(buffers.positions, result.vertices.flat())
     expect_array_close(buffers.normals, result.normals.flat())
   })
+
+  test(`flatten_grid returns canonical z-fastest marching-cubes input`, () => {
+    const nested = indexed_grid(3, 2, 4)
+    const flattened = flatten_grid(nested)
+    expect(flattened).toEqual({
+      values: new Float64Array([
+        0, 1, 2, 3, 10, 11, 12, 13, 100, 101, 102, 103, 110, 111, 112, 113, 200, 201, 202, 203,
+        210, 211, 212, 213,
+      ]),
+      dims: [3, 2, 4],
+      order: `z_fastest`,
+    })
+  })
+
+  test(`ScalarGrid3D x_fastest and z_fastest match nested grids`, () => {
+    const grid = make_grid(5, 4, 6, (ix, iy, iz) => {
+      const [dx, dy, dz] = [(ix - 2) / 2, (iy - 1.5) / 1.5, (iz - 2.5) / 2.5]
+      return Math.exp(-(dx * dx + dy * dy + dz * dz))
+    })
+    const expected = marching_cubes(grid, 0.45, IDENTITY, NON_PERIODIC)
+    expect(expected.faces.length).toBeGreaterThan(0)
+
+    for (const [order, precision] of [
+      [`x_fastest`, `f32`],
+      [`x_fastest`, `f64`],
+      [`z_fastest`, `f32`],
+      [`z_fastest`, `f64`],
+    ] as const) {
+      const scalar_grid = as_scalar_grid(grid, order, precision)
+      const original_values = scalar_grid.values.slice()
+      expect_result_parity(marching_cubes(scalar_grid, 0.45, IDENTITY, NON_PERIODIC), expected)
+
+      const buffers = marching_cubes_buffers(scalar_grid, 0.45, IDENTITY, {
+        ...NON_PERIODIC,
+        normals: true,
+      })
+      expect(Array.from(buffers.indices)).toEqual(expected.faces.flat())
+      expect_array_close(buffers.positions, expected.vertices.flat())
+      expect_array_close(buffers.normals, expected.normals.flat())
+      expect(scalar_grid.values).toEqual(original_values)
+    }
+  })
+
+  test(`ScalarGrid3D preserves periodic wrapped geometry`, () => {
+    const min_frac = (idx: number, size: number) => Math.min(idx / size, 1 - idx / size)
+    const grid = make_grid(5, 4, 6, (ix, iy, iz) => {
+      const radius = min_frac(ix, 5) ** 2 + min_frac(iy, 4) ** 2 + min_frac(iz, 6) ** 2
+      return Math.exp(-radius / 0.04)
+    })
+    const expected = marching_cubes(grid, 0.35, IDENTITY, PERIODIC)
+    expect(expected.faces.length).toBeGreaterThan(0)
+
+    for (const [order, precision] of [
+      [`x_fastest`, `f32`],
+      [`z_fastest`, `f64`],
+    ] as const) {
+      expect_result_parity(
+        marching_cubes(as_scalar_grid(grid, order, precision), 0.35, IDENTITY, PERIODIC),
+        expected,
+      )
+    }
+  })
+
+  test.each([
+    { dimensions: [0, 0, 0] as Vec3 },
+    { dimensions: [0, 3, 3] as Vec3 },
+    { dimensions: [1, 3, 3] as Vec3 },
+    { dimensions: [3, 0, 3] as Vec3 },
+    { dimensions: [3, 1, 3] as Vec3 },
+    { dimensions: [3, 3, 0] as Vec3 },
+    { dimensions: [3, 3, 1] as Vec3 },
+  ])(
+    `ScalarGrid3D degenerate dimensions $dimensions return empty geometry`,
+    ({ dimensions }) => {
+      const grid: ScalarGrid3D = {
+        values: new Float64Array(dimensions[0] * dimensions[1] * dimensions[2]),
+        dims: dimensions,
+        order: `z_fastest`,
+      }
+      const result = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
+      expect([result.vertices, result.faces, result.normals]).toEqual([[], [], []])
+      const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, NON_PERIODIC)
+      expect([
+        buffers.positions.length,
+        buffers.indices.length,
+        buffers.normals.length,
+      ]).toEqual([0, 0, 0])
+    },
+  )
+
+  const valid_scalar_grid = {
+    values: new Float64Array(8),
+    dims: [2, 2, 2],
+    order: `z_fastest`,
+  } satisfies ScalarGrid3D
+  const { values: data, dims: dimensions, order } = valid_scalar_grid
+
+  test.each([
+    [
+      `values length mismatch`,
+      { ...valid_scalar_grid, values: new Float64Array(7) },
+      RangeError,
+    ],
+    [`legacy field names`, { data, dimensions, order }, TypeError],
+    [`negative dimension`, { ...valid_scalar_grid, dims: [-1, 2, 2] }, RangeError],
+    [`fractional dimension`, { ...valid_scalar_grid, dims: [2, 2, 1.5] }, RangeError],
+    [`missing dimension`, { ...valid_scalar_grid, dims: [2, 2] }, RangeError],
+    [`extra dimension`, { ...valid_scalar_grid, dims: [2, 2, 2, 4] }, RangeError],
+    [`unsupported order`, { ...valid_scalar_grid, order: `y_fastest` }, RangeError],
+    [
+      `unsupported typed array`,
+      { ...valid_scalar_grid, values: new Int32Array(8) },
+      TypeError,
+    ],
+  ] satisfies [string, unknown, ErrorConstructor][])(
+    `ScalarGrid3D rejects %s`,
+    (_label, grid, error) => {
+      expect(() => marching_cubes(grid as ScalarGrid3D, 0.5, IDENTITY)).toThrow(error)
+    },
+  )
 
   test(`centered=true shifts vertices relative to uncentered`, () => {
     const grid = gaussian_grid(8)

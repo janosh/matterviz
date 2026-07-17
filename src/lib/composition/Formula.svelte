@@ -59,7 +59,7 @@
       return sorted[0] === el1.element ? -1 : 1
     },
   }
-  const sorted_elements = $derived([...parsed_elements].sort(COMPARATORS[ordering]))
+  const sorted_elements = $derived([...parsed_elements].toSorted(COMPARATORS[ordering]))
 
   let hovered_element = $state<ElementSymbol | null>(null)
   let tooltip_pos = $state({ x: 0, y: 0 })

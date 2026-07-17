@@ -61,6 +61,6 @@ describe(`slice rendering helpers`, () => {
   ])(`caps contour counts at 256 for $levels`, ({ levels, range }) => {
     const thresholds = resolve_contour_thresholds([...range], levels)
     expect(thresholds).toHaveLength(256)
-    expect(thresholds).toEqual([...thresholds].sort((left, right) => left - right))
+    expect(thresholds).toEqual([...thresholds].toSorted((left, right) => left - right))
   })
 })

@@ -112,7 +112,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     )
     const result = wyckoff_positions_from_moyo(mixed)
     expect(result).toHaveLength(2)
-    expect(result.map((pos) => pos.wyckoff).sort()).toEqual([`1j`, `4i`])
+    expect(result.map((pos) => pos.wyckoff).toSorted()).toEqual([`1j`, `4i`])
     expect(result.map((pos) => pos.elem)).toEqual([`O`, `O`])
     result.forEach((pos) => expect(mixed.std_cell.positions).toContainEqual(pos.abc))
 
@@ -149,7 +149,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
     )
     const multi_result = wyckoff_positions_from_moyo(multi_elem)
     expect(multi_result).toHaveLength(4)
-    expect(multi_result.map((pos) => `${pos.wyckoff}-${pos.elem}`).sort()).toEqual([
+    expect(multi_result.map((pos) => `${pos.wyckoff}-${pos.elem}`).toSorted()).toEqual([
       `1a-H`,
       `1a-O`,
       `1b-C`,
@@ -603,7 +603,7 @@ describe(`site coverage verification`, () => {
       )
       const covered = rows
         .flatMap((pos) => pos.site_indices ?? [])
-        .sort((idx_a, idx_b) => idx_a - idx_b)
+        .toSorted((idx_a, idx_b) => idx_a - idx_b)
       expect(covered).toEqual(expected_coverage)
 
       const total_multiplicity = rows.reduce(

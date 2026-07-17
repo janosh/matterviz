@@ -39,10 +39,10 @@ export function group_demo_routes(demos: string[]): RouteEntry[] {
 
   const result: RouteEntry[] = [...standalone]
   for (const [parent, children] of grouped) {
-    if (children.length > 0) result.push([parent, children.sort()])
+    if (children.length > 0) result.push([parent, children.toSorted()])
   }
 
-  return result.sort((r1, r2) => {
+  return result.toSorted((r1, r2) => {
     const r1_str = typeof r1 === `string` ? r1 : r1[0]
     const r2_str = typeof r2 === `string` ? r2 : r2[0]
     return r1_str.localeCompare(r2_str)

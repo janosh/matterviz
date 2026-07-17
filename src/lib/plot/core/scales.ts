@@ -30,7 +30,7 @@ import * as d3_sc from 'd3-scale-chromatic'
 export type TicksOption = number | number[] | TimeInterval | Record<number, string>
 
 // Dedupe and sort numeric array (used in tick generation)
-const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].sort((a, b) => a - b)
+const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].toSorted((a, b) => a - b)
 
 // --- Arcsinh Scale Implementation ---
 // The arcsinh scale provides smooth transition between linear (near zero) and
@@ -328,7 +328,7 @@ export function generate_ticks(
     return Object.keys(ticks_option)
       .map(Number)
       .filter((val) => Number.isFinite(val) && val >= domain_min && val <= domain_max)
-      .sort((a, b) => a - b)
+      .toSorted((a, b) => a - b)
   }
 
   // If ticks_option is already an array, use it directly

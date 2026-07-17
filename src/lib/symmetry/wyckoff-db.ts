@@ -77,7 +77,7 @@ export function wyckoff_sequence(rows: WyckoffPos[]): string {
     if (letter) counts.set(letter, (counts.get(letter) ?? 0) + 1)
   }
   return [...counts.entries()]
-    .sort(([letter_1], [letter_2]) => letter_rank(letter_2) - letter_rank(letter_1))
+    .toSorted(([letter_1], [letter_2]) => letter_rank(letter_2) - letter_rank(letter_1))
     .map(([letter, count]) =>
       count > 1 ? `${letter}${superscript_digits(String(count))}` : letter,
     )

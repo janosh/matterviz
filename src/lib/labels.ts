@@ -29,9 +29,16 @@ export const symbol_names = [
   .map(name_for_symbol)
   .filter((name): name is D3SymbolName => name !== null)
 
+// D3 symbols are selected dynamically from a plain-object lookup by display name.
+const d3_symbols_by_name = Object.fromEntries(
+  Object.entries(d3_symbols)
+    .filter(([key]) => /^symbol[A-Z]/.test(key))
+    .map(([key, symbol]) => [key.slice(6), symbol]),
+) as Partial<Record<D3SymbolName, SymbolType>>
+
 export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.fromEntries(
   // Symbol lookup from d3-shape
-  symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
+  symbol_names.map((name) => [name, d3_symbols_by_name[name]]),
 )
 
 // Format a value for display with optional time formatting

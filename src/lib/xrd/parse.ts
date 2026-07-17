@@ -108,7 +108,8 @@ function subsample_preserve_peaks(
   // Select top peaks by height
   const top_peaks = peaks
     .map((idx) => ({ idx, y: y_vals[idx] }))
-    .sort((a, b) => b.y - a.y)
+    // map() returns a fresh peak array.
+    .toSorted((a, b) => b.y - a.y)
     .slice(0, peak_slots)
     .map((peak) => peak.idx)
 
@@ -124,7 +125,7 @@ function subsample_preserve_peaks(
   }
 
   // Merge and sort all selected indices
-  const selected = [...new Set([...uniform_indices, ...top_peaks])].sort((a, b) => a - b)
+  const selected = [...new Set([...uniform_indices, ...top_peaks])].toSorted((a, b) => a - b)
 
   return {
     x: selected.map((idx) => x_vals[idx]),

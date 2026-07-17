@@ -13,7 +13,7 @@
 <ol>
   {#each Array(27)
     .fill(0)
-    .map( (_, idx) => ({ bg_color: rand_color(), element: element_data[idx] }), ) as { bg_color, element } (element.symbol)}
+    .map( (_, idx) => ({ bg_color: rand_color(), element: element_data[idx] }) ) as { bg_color, element } (element.symbol)}
     <ElementTile {bg_color} {element} style="width: 4em; margin: 0" />
   {/each}
 </ol>

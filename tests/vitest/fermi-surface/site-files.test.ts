@@ -39,6 +39,6 @@ describe(`fermi_surface_files`, () => {
   })
 
   it(`exposes file type colors`, () => {
-    expect(Object.keys(fermi_file_colors).sort()).toEqual([`bxsf`, `frmsf`, `json`])
+    expect(Object.keys(fermi_file_colors).toSorted()).toEqual([`bxsf`, `frmsf`, `json`])
   })
 })

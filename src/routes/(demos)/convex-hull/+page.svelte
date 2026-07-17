@@ -87,7 +87,7 @@
         log_load_error(quaternary_entries[result_idx]?.[0] ?? `unknown`, result.reason)
       }
     }
-    const quinary_paths = Object.keys(quinary_files).sort()
+    const quinary_paths = Object.keys(quinary_files).toSorted()
     if (quinary_paths.length > 0) selected_quinary_path = quinary_paths[0]
 
     const mount_next_section = () => {
@@ -287,7 +287,7 @@
   ]
   const quinary_options = $derived(
     Object.keys(quinary_files)
-      .sort()
+      .toSorted()
       .map((path) => ({
         path,
         title: path.split(`/`).pop()?.replace(`.json.gz`, ``) ?? path,
@@ -446,7 +446,7 @@
     <h2>Quaternary Chemical Systems</h2>
     {@render feature_list(quaternary_features)}
     <div class="quaternary-grid">
-      {#each [...loaded_data.entries()].filter( ([p]) => p.includes(`quaternaries`), ) as [path, data] (path)}
+      {#each [...loaded_data.entries()].filter( ([p]) => p.includes(`quaternaries`) ) as [path, data] (path)}
         {@const title = path.split(`/`).pop()?.split(`.`).shift()?.replace(`.json`, ``)}
         <ConvexHull4D
           entries={entries_map.get(path) || data}

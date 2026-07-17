@@ -330,6 +330,7 @@ function find_polygon_intersections(
       )
     }
   }
+  // intersections is local to this scan.
   return intersections.toSorted((a, b) => a - b)
 }
 

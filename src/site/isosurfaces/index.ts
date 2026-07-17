@@ -121,4 +121,4 @@ export const volumetric_files: VolumetricFileInfo[] = Object.keys(volumetric_fil
     }
     return { name, url, ...meta }
   })
-  .sort((a, b) => a.name.localeCompare(b.name))
+  .toSorted((a, b) => a.name.localeCompare(b.name))

@@ -2,6 +2,7 @@
 export { default as Isosurface } from './Isosurface.svelte'
 export { default as IsosurfaceControls } from './IsosurfaceControls.svelte'
 export { default as VolumeSlice } from './VolumeSlice.svelte'
+export type { ScalarGrid3D, ScalarGridArray, ScalarGridLike, ScalarGridOrder } from './grid'
 
 export * from './coloring'
 export * from './parse'

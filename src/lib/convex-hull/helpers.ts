@@ -550,7 +550,8 @@ function get_label_representative_energy(entry: PhaseData): number {
 
 const get_fractional_composition_key = (composition: Record<string, number>): string =>
   Object.entries(get_fractional_composition(composition))
-    .sort(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+    // Object.entries() returns a fresh array.
+    .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
     .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
     .join(`|`)
 
@@ -855,7 +856,7 @@ export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnaly
     if (!entry_has_temp_data(entry)) continue
     for (const temperature of entry.temperatures ?? []) unique_temperatures.add(temperature)
   }
-  const available_temperatures = [...unique_temperatures].sort((a, b) => a - b)
+  const available_temperatures = [...unique_temperatures].toSorted((a, b) => a - b)
   return {
     has_temp_data: available_temperatures.length > 0,
     available_temperatures,
@@ -1049,7 +1050,7 @@ export function get_entry_label(
   type Pairs = [ElementSymbol, number][]
   let pairs = Object.entries(entry.composition).filter(([, amt]) => (amt ?? 0) > 0) as Pairs
   if (elements) {
-    pairs = pairs.sort(([el1], [el2]) => elements.indexOf(el1) - elements.indexOf(el2))
+    pairs = pairs.toSorted(([el1], [el2]) => elements.indexOf(el1) - elements.indexOf(el2))
   }
   return pairs
     .map(([el, amt]) => (Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`))

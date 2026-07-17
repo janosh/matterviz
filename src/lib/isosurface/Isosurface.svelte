@@ -529,7 +529,8 @@
       return layer.isovalue / Math.max(abs_max, 1e-30)
     }
     entries
-      .sort((entry_a, entry_b) => shell_fraction(entry_a) - shell_fraction(entry_b))
+      // entries is rebuilt locally above.
+      .toSorted((entry_a, entry_b) => shell_fraction(entry_a) - shell_fraction(entry_b))
       .forEach((entry, rank) => (entry.render_order = rank * 2))
 
     // Dispose old geometries that were not reused, then swap in the new list

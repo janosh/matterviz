@@ -126,8 +126,8 @@
   }
 
   // Get unique file types/categories for format/category filters
-  let uniq_formats = $derived([...new Set(files.map(get_base_file_type))].sort())
-  let uniq_categories = $derived([...new Set(files.map(get_category_id))].sort())
+  let uniq_formats = $derived([...new Set(files.map(get_base_file_type))].toSorted())
+  let uniq_categories = $derived([...new Set(files.map(get_category_id))].toSorted())
 </script>
 
 <div class="file-picker" class:vertical={layout === `vertical`} {...rest}>

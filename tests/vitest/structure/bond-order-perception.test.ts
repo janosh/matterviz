@@ -93,7 +93,7 @@ describe(`valence-maximization core (neutral)`, () => {
     expect(
       result
         .map((bond) => bond.bond_order)
-        .sort((left, right) => Number(left) - Number(right)),
+        .toSorted((left, right) => Number(left) - Number(right)),
     ).toEqual([2, 2])
     expect(result.every((bond) => bond.perceived)).toBe(true)
   })
@@ -175,7 +175,7 @@ describe(`charge support`, () => {
     expect(
       result
         .map((bond) => bond.bond_order)
-        .sort((left, right) => Number(left) - Number(right)),
+        .toSorted((left, right) => Number(left) - Number(right)),
     ).toEqual([1, 1, 2])
     expect(result.every((bond) => bond.perceived)).toBe(true)
   })

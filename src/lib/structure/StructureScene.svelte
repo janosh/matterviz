@@ -1299,7 +1299,7 @@
   // per-element toggles reflect the actual render state incl. spectator hiding)
   $effect(() => {
     if (!interactive) return
-    const elems = [...new Set(polyhedra.map((poly) => poly.center_element))].sort()
+    const elems = [...new Set(polyhedra.map((poly) => poly.center_element))].toSorted()
     if (elems.join(`,`) !== polyhedra_rendered_elements.join(`,`)) {
       polyhedra_rendered_elements = elems
     }

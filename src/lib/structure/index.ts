@@ -277,7 +277,8 @@ export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
     const vec = try_parse_vec3(props[key])
     if (vec) results.push({ vec, key })
   }
-  return results.sort((left, right) => compare_vector_keys(left.key, right.key))
+  // results is local and no longer reused.
+  return results.toSorted((left, right) => compare_vector_keys(left.key, right.key))
 }
 
 // Collect the union of all vector property keys across all sites in a structure,
@@ -287,7 +288,7 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
   for (const site of structure.sites) {
     for (const { key } of get_all_site_vectors(site)) seen.add(key)
   }
-  return [...seen].sort(compare_vector_keys)
+  return [...seen].toSorted(compare_vector_keys)
 }
 
 export interface StructureHandlerData {

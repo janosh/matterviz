@@ -170,7 +170,8 @@
           const max_peaks = Math.min(ys.length, Math.floor(annotate_peaks))
           candidates = ys
             .map((y_val, idx) => ({ y_val, idx }))
-            .sort((a, b) => b.y_val - a.y_val)
+            // map() returns a fresh peak array.
+            .toSorted((a, b) => b.y_val - a.y_val)
             .slice(0, max_peaks)
         }
 

@@ -80,7 +80,7 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   // Detect branches (segments between labeled points)
   // Include head/tail segments if path doesn't start/end on a labeled point
   // Branch endpoints are inclusive (start_index and end_index both included in segment)
-  const sorted_indices = [...labeled_indices.keys()].sort((a, b) => a - b)
+  const sorted_indices = [...labeled_indices.keys()].toSorted((a, b) => a - b)
   const branches: Branch[] = []
   if (sorted_indices.length === 0) {
     branches.push({ start_index: 0, end_index: n_qpoints - 1, name: `full` })

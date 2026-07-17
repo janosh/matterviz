@@ -372,7 +372,7 @@ function where_intervals(
         (x) => x >= xa && x <= xb,
       ),
     ),
-  ].sort((a, b) => a - b)
+  ].toSorted((a, b) => a - b)
 
   const intervals: Vec2[] = []
   let seg_start: number | null = null

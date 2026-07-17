@@ -591,7 +591,7 @@ describe(`Explicit Bond Metadata`, () => {
       ]),
     )
 
-    expect([...bonds_by_key.keys()].sort()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
+    expect([...bonds_by_key.keys()].toSorted()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
     expect(bonds_by_key.get(`0-1@1,0,0`)?.bond_order).toBe(2)
     expect(bonds_by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
   })

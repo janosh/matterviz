@@ -323,7 +323,7 @@
         if (existing) existing.count += token.count
         else merged_explicit.push(token)
       }
-      const sorted_explicit = merged_explicit.sort((elem_a, elem_b) =>
+      const sorted_explicit = merged_explicit.toSorted((elem_a, elem_b) =>
         elem_a.element.localeCompare(elem_b.element),
       )
       const wildcard_str = wildcard_tokens
@@ -453,7 +453,7 @@
           ? `*`
           : normalize_element_symbols(token.element).at(0) || token.element,
       }))
-      .sort((token_a, token_b) => {
+      .toSorted((token_a, token_b) => {
         if (token_a.operator !== token_b.operator) {
           return token_a.operator === `include` ? -1 : 1
         }
@@ -519,14 +519,14 @@
       const wildcards = parts.filter((part) => part === `*`)
       const regular_parts = parts.filter((part) => part !== `*`)
       // Filter valid elements and sort alphabetically, then append wildcards
-      const valid_elements = normalize_element_symbols(regular_parts.join(`,`)).sort()
+      const valid_elements = normalize_element_symbols(regular_parts.join(`,`)).toSorted()
       return [...valid_elements, ...wildcards]
     }
     // Otherwise parse as formula (already returns sorted by default)
     // For formulas with wildcards, we can't parse them normally
     if (has_wildcards(trimmed)) {
       const tokens = parse_formula_with_wildcards(trimmed)
-      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))].sort()
+      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))].toSorted()
       const wildcards = tokens.filter((token) => token.element === null).map(() => `*`)
       return [...elements, ...wildcards]
     }

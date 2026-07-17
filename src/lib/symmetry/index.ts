@@ -340,7 +340,7 @@ function wyckoff_rows_from_input_orbits(sym_data: SymmetryDataset): WyckoffPos[]
       wyckoff: letter ? `${multiplicity}${letter}` : `${multiplicity}`,
       elem,
       abc: best_pos,
-      site_indices: [...new Set(orig_site_indices)].sort((idx_a, idx_b) => idx_a - idx_b),
+      site_indices: [...new Set(orig_site_indices)].toSorted((idx_a, idx_b) => idx_a - idx_b),
       ...(site_symmetry ? { site_symmetry } : {}),
     }
   })
@@ -356,7 +356,7 @@ export const wyckoff_multiplicity = (label: string): number =>
 export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): WyckoffPos[] {
   if (!sym_data) return []
   const orbit_rows = wyckoff_rows_from_input_orbits(sym_data)
-  return (orbit_rows ?? []).sort((w1, w2) => {
+  return (orbit_rows ?? []).toSorted((w1, w2) => {
     const [w1_mult, w2_mult] = [
       wyckoff_multiplicity(w1.wyckoff),
       wyckoff_multiplicity(w2.wyckoff),
@@ -592,7 +592,7 @@ export function map_wyckoff_to_all_atoms(
       }
 
       if (matched.size > 0) any_matched = true
-      return { ...wyckoff_pos, site_indices: [...matched].sort((a, b) => a - b) }
+      return { ...wyckoff_pos, site_indices: [...matched].toSorted((a, b) => a - b) }
     })
     return any_matched || displayed_structure.sites.length === 0 ? rows : null
   }

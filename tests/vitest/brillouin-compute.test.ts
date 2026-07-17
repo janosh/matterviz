@@ -61,7 +61,7 @@ const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
 const edge_key = (v1: Vec3, v2: Vec3) =>
   [v1, v2]
     .map((vertex) => vertex.map((coord) => coord.toFixed(8)).join(`,`))
-    .sort()
+    .toSorted()
     .join(`|`)
 
 describe(`reciprocal_lattice`, () => {

@@ -121,7 +121,7 @@
   let structure_elements = $derived(
     [
       ...new Set((structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? [])),
-    ].sort(),
+    ].toSorted(),
   )
 
   // An element counts as an enabled polyhedra center if it isn't excluded and is
