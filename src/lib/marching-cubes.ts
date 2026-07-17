@@ -2,7 +2,6 @@
 // Based on the classic algorithm by Lorensen & Cline (1987)
 import {
   grid_dimensions,
-  is_scalar_grid,
   scalar_grid_strides,
   type ScalarGridArray,
   type ScalarGridLike,
@@ -421,16 +420,14 @@ function marching_cubes_raw(
   const center_offset = centered ? 0.5 : 0
 
   const [nx, ny, nz] = grid_dimensions(grid)
-  const scalar_source = is_scalar_grid(grid) ? grid : null
-  const nested_grid = scalar_source ? null : (grid as number[][][])
-  const scalar_values = scalar_source?.values
-  const [stride_x, stride_y, stride_z] = scalar_source
-    ? scalar_grid_strides(scalar_source)
-    : [0, 0, 0]
+  if (nx < 2 || ny < 2 || nz < 2) return { positions: [], indices: [], normals: [] }
 
-  if (nx < 2 || ny < 2 || nz < 2) {
-    return { positions: [], indices: [], normals: [] }
-  }
+  const scalar_grid = Array.isArray(grid) ? null : grid
+  const nested_grid = Array.isArray(grid) ? grid : null
+  const scalar_values = scalar_grid?.values
+  const [stride_x, stride_y, stride_z] = scalar_grid
+    ? scalar_grid_strides(scalar_grid)
+    : [0, 0, 0]
 
   const positions: number[] = []
   const indices: number[] = []

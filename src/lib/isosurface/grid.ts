@@ -43,9 +43,8 @@ export const grid_dimensions = (grid: ScalarGridLike): Vec3 => {
   }
   const expected_length = dimensions[0] * dimensions[1] * dimensions[2]
   if (grid.values.length !== expected_length) {
-    const shape = dimensions.join(`×`)
     throw new RangeError(
-      `Scalar grid values length ${grid.values.length} does not match dimensions ${shape}`,
+      `Scalar grid values length ${grid.values.length} does not match dimensions ${dimensions.join(`×`)}`,
     )
   }
   return dimensions
@@ -58,31 +57,6 @@ export function scalar_grid_strides({ dims: [nx, ny, nz], order }: ScalarGrid3D)
   if (order === `x_fastest`) return [1, nx, nx * ny]
   if (order === `z_fastest`) return [ny * nz, nz, 1]
   throw new RangeError(`Unsupported scalar grid order: ${String(order)}`)
-}
-
-export function create_grid_value_accessor(
-  grid: ScalarGridLike,
-): (x_idx: number, y_idx: number, z_idx: number) => number {
-  if (is_scalar_grid(grid)) {
-    const [stride_x, stride_y, stride_z] = scalar_grid_strides(grid)
-    const { values } = grid
-    return (x_idx, y_idx, z_idx) =>
-      values[x_idx * stride_x + y_idx * stride_y + z_idx * stride_z]
-  }
-  return (x_idx, y_idx, z_idx) => grid[x_idx][y_idx][z_idx]
-}
-
-export function grid_value(
-  grid: ScalarGridLike,
-  x_idx: number,
-  y_idx: number,
-  z_idx: number,
-): number {
-  if (is_scalar_grid(grid)) {
-    const [stride_x, stride_y, stride_z] = scalar_grid_strides(grid)
-    return grid.values[x_idx * stride_x + y_idx * stride_y + z_idx * stride_z]
-  }
-  return grid[x_idx][y_idx][z_idx]
 }
 
 export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
