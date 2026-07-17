@@ -81,8 +81,8 @@ export function formula_key_from_composition(composition: Record<string, number>
   const reduced = get_reduced_formula(composition)
   const key = Object.entries(reduced)
     .filter(([, amt]) => amt > 0)
-    // filter() returns a fresh array.
-    .toSorted(([a], [b]) => a.localeCompare(b))
+    // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- filter() returns a fresh array
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([el, amt]) => (amt === 1 ? el : `${el}${amt}`))
     .join(``)
   formula_cache.set(composition, key)
@@ -874,6 +874,7 @@ export function get_visible_domain_labels(
 // Generate all C(n,3) ternary element combinations from a sorted element list.
 // Each triplet is sorted alphabetically. Returns empty array for fewer than 3 elements.
 export function get_ternary_combinations(elements: string[]): string[][] {
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
   const sorted = [...elements].sort()
   const n_elems = sorted.length
   if (n_elems < 3) return []
@@ -997,8 +998,8 @@ export function compute_chempot_diagram(
     // Sort entries by composition (Schwartzian transform to avoid recomputing keys)
     const sorted_entries = working_entries
       .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
-      // map() returns a fresh array.
-      .toSorted((a, b) => a.key.localeCompare(b.key))
+      // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- map() returns a fresh array
+      .sort((a, b) => a.key.localeCompare(b.key))
       .map(({ entry }) => entry)
 
     // Get min entries and elemental references

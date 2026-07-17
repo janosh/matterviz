@@ -40,7 +40,8 @@ repos:
         entry: npx --package=vite-plus@0.2.5 vp check --fix
         types_or: [file]
         language: system
-        pass_filenames: false
+        pass_filenames: true
+        stages: [pre-commit]
       - id: svelte-check
         name: Svelte type check
         entry: bash -c "npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json --threshold error"

@@ -3,13 +3,11 @@ import {
   compute_vertex_normals,
   marching_cubes,
   marching_cubes_buffers,
-} from '$lib/marching-cubes'
-import {
-  flatten_grid,
-  grid_value,
   type ScalarGrid3D,
+  type ScalarGridArray,
   type ScalarGridOrder,
-} from '$lib/isosurface/grid'
+} from '$lib/marching-cubes'
+import { create_grid_value_accessor, flatten_grid, grid_value } from '$lib/isosurface/grid'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_grid } from './setup'
@@ -44,7 +42,7 @@ const as_scalar_grid = (
 ): ScalarGrid3D => {
   const dimensions: Vec3 = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
   const [nx, ny, nz] = dimensions
-  const data =
+  const data: ScalarGridArray =
     precision === `f32` ? new Float32Array(nx * ny * nz) : new Float64Array(nx * ny * nz)
   for (let ix = 0; ix < nx; ix++) {
     for (let iy = 0; iy < ny; iy++) {
@@ -117,7 +115,13 @@ describe(`marching_cubes`, () => {
     expect_array_close(buffers.normals, result.normals.flat())
   })
 
-  test(`ScalarGrid3D uses the declared storage order`, () => {
+  test(`grid accessors support nested grids and declared storage orders`, () => {
+    const nested = make_grid(
+      2,
+      2,
+      2,
+      (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx,
+    )
     const x_fastest: ScalarGrid3D = {
       values: new Float64Array([0, 100, 10, 110, 1, 101, 11, 111]),
       dims: [2, 2, 2],
@@ -128,11 +132,18 @@ describe(`marching_cubes`, () => {
       dims: [2, 2, 2],
       order: `z_fastest`,
     }
-    for (const grid of [x_fastest, z_fastest]) {
-      expect(grid_value(grid, 0, 0, 1)).toBe(1)
-      expect(grid_value(grid, 0, 1, 0)).toBe(10)
-      expect(grid_value(grid, 1, 0, 0)).toBe(100)
-      expect(grid_value(grid, 1, 1, 1)).toBe(111)
+    const samples: [Vec3, number][] = [
+      [[0, 0, 1], 1],
+      [[0, 1, 0], 10],
+      [[1, 0, 0], 100],
+      [[1, 1, 1], 111],
+    ]
+    for (const grid of [nested, x_fastest, z_fastest]) {
+      const get_value = create_grid_value_accessor(grid)
+      for (const [indices, expected] of samples) {
+        expect(grid_value(grid, ...indices)).toBe(expected)
+        expect(get_value(...indices)).toBe(expected)
+      }
     }
   })
 
