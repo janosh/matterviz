@@ -165,8 +165,7 @@
       let selected_indices: number[] = []
       if (annotate_peaks > 0) {
         const threshold = annotate_peaks < 1 ? annotate_peaks * 100 : -Infinity
-        const max_peaks =
-          annotate_peaks < 1 ? ys.length : Math.min(ys.length, Math.floor(annotate_peaks))
+        const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
         const candidates = ys
           .map((y_val, idx) => ({ y_val, idx }))
           .filter(({ y_val }) => y_val > threshold)

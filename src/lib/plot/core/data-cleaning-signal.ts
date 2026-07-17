@@ -545,9 +545,7 @@ export function remove_local_outliers(
 
 // --- Utility Functions ---
 
-function median(values: number[]): number {
-  return d3_median(values) ?? 0
-}
+const median = (values: number[]): number => d3_median(values) ?? 0
 
 // Simple matrix operations for Savitzky-Golay
 function transpose(matrix: number[][]): number[][] {

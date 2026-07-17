@@ -338,10 +338,8 @@ describe(`get_all_site_vectors`, () => {
 
   test(`can skip ordering when callers only need vector lookup`, () => {
     const site = make_site({ magmom: [0, 0, 1], force: [1, 0, 0] })
-    expect(get_all_site_vectors(site, false).map((vec) => vec.key)).toEqual([
-      `magmom`,
-      `force`,
-    ])
+    const keys = get_all_site_vectors(site, false).map(({ key }) => key)
+    expect(keys).toEqual([`magmom`, `force`])
   })
 
   test.each([

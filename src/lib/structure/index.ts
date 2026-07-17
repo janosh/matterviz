@@ -298,10 +298,8 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
       if (is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
     }
   }
-  const keys = [...seen]
   // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
-  keys.sort(compare_vector_keys)
-  return keys
+  return [...seen].sort(compare_vector_keys)
 }
 
 export interface StructureHandlerData extends FileLoadData {

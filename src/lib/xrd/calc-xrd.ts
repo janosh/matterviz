@@ -286,9 +286,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   const hkls_out: HklObj[][] = []
   const d_out: number[] = []
 
-  const sorted_two_thetas = Array.from(peaks.keys())
   // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- Array.from() returns a fresh array
-  sorted_two_thetas.sort((a, b) => a - b)
+  const sorted_two_thetas = Array.from(peaks.keys()).sort((a, b) => a - b)
   for (const angle of sorted_two_thetas) {
     const item = peaks.get(angle)
     if (!item) continue

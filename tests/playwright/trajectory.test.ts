@@ -28,9 +28,8 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
   })
 
   await page.goto(`/`, { waitUntil: `networkidle` })
-  await expect(page.locator(`.trajectory button.filename`)).toBeVisible({
-    timeout: LOAD_TIMEOUT,
-  })
+  const filename = page.locator(`.trajectory button.filename`)
+  await expect(filename).toBeVisible({ timeout: LOAD_TIMEOUT })
 
   expect(trajectory_requests).toEqual([compressed_path])
 })
