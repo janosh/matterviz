@@ -288,7 +288,7 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
   for (const site of structure.sites) {
     for (const { key } of get_all_site_vectors(site)) seen.add(key)
   }
-  return [...seen].sort(compare_vector_keys)
+  return [...seen].toSorted(compare_vector_keys)
 }
 
 export interface StructureHandlerData {

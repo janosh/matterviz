@@ -220,7 +220,7 @@ function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
   }
   const uniq = new Map<string, number[]>()
   for (const ring of rings) {
-    const key = [...ring].sort((left_idx, right_idx) => left_idx - right_idx).join(`,`)
+    const key = [...ring].toSorted((left_idx, right_idx) => left_idx - right_idx).join(`,`)
     if (!uniq.has(key)) uniq.set(key, ring)
   }
   return [...uniq.values()]

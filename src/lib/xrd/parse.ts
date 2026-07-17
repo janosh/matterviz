@@ -125,7 +125,7 @@ function subsample_preserve_peaks(
   }
 
   // Merge and sort all selected indices
-  const selected = [...new Set([...uniform_indices, ...top_peaks])].sort((a, b) => a - b)
+  const selected = [...new Set([...uniform_indices, ...top_peaks])].toSorted((a, b) => a - b)
 
   return {
     x: selected.map((idx) => x_vals[idx]),

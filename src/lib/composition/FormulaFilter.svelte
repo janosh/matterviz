@@ -526,7 +526,7 @@
     // For formulas with wildcards, we can't parse them normally
     if (has_wildcards(trimmed)) {
       const tokens = parse_formula_with_wildcards(trimmed)
-      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))].sort()
+      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))].toSorted()
       const wildcards = tokens.filter((token) => token.element === null).map(() => `*`)
       return [...elements, ...wildcards]
     }

@@ -922,7 +922,7 @@ describe(`Export functionality`, () => {
 
 // Helper function to sort sites for consistent comparison
 const sort_sites = (sites: AnyStructure[`sites`]): AnyStructure[`sites`] =>
-  [...sites].sort((site_a, site_b) => {
+  [...sites].toSorted((site_a, site_b) => {
     const elem_a = site_a.species[0].element
     const elem_b = site_b.species[0].element
     if (elem_a !== elem_b) {

@@ -13,7 +13,7 @@ export interface ScalarGrid3D<ArrayType extends ScalarGridArray = ScalarGridArra
 
 export type ScalarGridLike = ScalarGrid3D | number[][][]
 
-export const is_scalar_grid = (grid: unknown): grid is ScalarGrid3D =>
+const is_scalar_grid = (grid: unknown): grid is ScalarGrid3D =>
   typeof grid === `object` &&
   grid !== null &&
   !Array.isArray(grid) &&

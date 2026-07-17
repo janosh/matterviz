@@ -53,7 +53,7 @@ export function chem_sys_sunburst_data(
       }
     }
     if (elements.length === 0) return null
-    return [...new Set(elements)].sort().join(`-`)
+    return [...new Set(elements)].toSorted().join(`-`)
   }
 
   const counts = new Map<string, number>()

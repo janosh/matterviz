@@ -121,7 +121,7 @@ describe(`Phonon Module Tests`, () => {
       }
 
       // Branches are contiguous (each starts where the previous ends) and span the path
-      const sorted_branches = [...band_struct.branches].sort(
+      const sorted_branches = [...band_struct.branches].toSorted(
         (branch_a, branch_b) => branch_a.start_index - branch_b.start_index,
       )
       expect(sorted_branches[0].start_index, id).toBe(0)

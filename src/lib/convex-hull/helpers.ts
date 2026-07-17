@@ -856,7 +856,7 @@ export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnaly
     if (!entry_has_temp_data(entry)) continue
     for (const temperature of entry.temperatures ?? []) unique_temperatures.add(temperature)
   }
-  const available_temperatures = [...unique_temperatures].sort((a, b) => a - b)
+  const available_temperatures = [...unique_temperatures].toSorted((a, b) => a - b)
   return {
     has_temp_data: available_temperatures.length > 0,
     available_temperatures,
