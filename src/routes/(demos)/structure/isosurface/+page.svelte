@@ -1,6 +1,5 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import type { D3InterpolateName } from '$lib/colors'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
@@ -18,6 +17,7 @@
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { parse_any_structure } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
+  import { replace_url } from '$site/state.svelte'
   import type { AnyStructure, IsosurfaceSettings, VolumetricData } from 'matterviz'
   import { auto_isosurface_settings, DEFAULT_ISOSURFACE_SETTINGS, Structure } from 'matterviz'
   import { onMount } from 'svelte'
@@ -119,11 +119,7 @@
     }
     // Use window.location instead of page.url to avoid creating a reactive
     // dependency that would cause an infinite loop with the $effect
-    goto(`${globalThis.location.pathname}?${params.toString()}`, {
-      replaceState: true,
-      keepFocus: true,
-      noScroll: true,
-    })
+    replace_url(`${globalThis.location.pathname}?${params.toString()}`)
   }
 
   async function load_file(name: string, url: string) {

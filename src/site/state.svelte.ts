@@ -1,4 +1,17 @@
+import { goto } from '$app/navigation'
 import { SvelteMap } from 'svelte/reactivity'
+
+// Remove adapter-static HTML filenames before SvelteKit client navigation.
+export const normalize_static_url = (url: string): string =>
+  url.replace(/\/index\.html(?=[?#]|$)/, `/`).replace(/\.html(?=[?#]|$)/, ``)
+
+// Replace URL state without moving focus or scrolling.
+export const replace_url = (url: string | URL): Promise<void> =>
+  goto(normalize_static_url(String(url)), {
+    replaceState: true,
+    keepFocus: true,
+    noScroll: true,
+  })
 
 export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svelte,md}`))
   .filter((filename) => !filename.includes(`/(tmi)/`) && !filename.includes(`/(hide)/`))

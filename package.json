@@ -263,6 +263,7 @@
     "access": "public"
   },
   "scripts": {
+    "build:site": "vp build && pagefind --site build",
     "test": "vp test --run && playwright test",
     "knip": "knip --include dependencies,exports,types,nsExports",
     "publint": "publint",
@@ -318,6 +319,7 @@
     "happy-dom": "^20.10.6",
     "knip": "^6.26.0",
     "mdsvex": "^0.12.7",
+    "pagefind": "^1.5.2",
     "publint": "^0.3.21",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
