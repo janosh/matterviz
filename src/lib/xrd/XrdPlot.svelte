@@ -460,10 +460,6 @@
           label: orientation === `horizontal` ? intensity_label : angle_label,
 
           ...(orientation === `horizontal` ? y_axis : x_axis),
-          label_shift: {
-            y: 20,
-            ...(orientation === `horizontal` ? y_axis : x_axis).label_shift,
-          },
           range: orientation === `horizontal` ? intensity_range : angle_range,
         }}
         y_axis={{

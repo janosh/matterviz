@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { is_present } from '../helpers'
+import { expect_bottom_within, get_chart_svg, is_present } from '../helpers'
 
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -22,6 +22,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Check axes render
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
+    await expect_bottom_within(get_chart_svg(plot), plot.locator(`.axis-label.x-label`))
 
     // Check crystal system overlay rectangles exist
     const system_rects = plot.locator(`g.crystal-system-overlays rect`)
