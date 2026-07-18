@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { expect_bottom_within, get_chart_svg } from './helpers'
 
 test.describe(`XrdPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -12,6 +13,7 @@ test.describe(`XrdPlot Component Tests`, () => {
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
     // Bars are rendered as path elements inside .bar-series
     await expect(plot.locator(`svg .bar-series path`).first()).toBeVisible()
+    await expect_bottom_within(get_chart_svg(plot), plot.locator(`.axis-label.x-label`))
   })
 
   test(`shows labels for annotated peaks`, async ({ page }) => {

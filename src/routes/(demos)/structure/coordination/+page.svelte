@@ -196,12 +196,13 @@
     {/each}
   </nav>
 
-  <section>
+  <section class="multi-structure-layout" style="height: 400px">
     <CoordinationBarPlot
       structures={selected_structures}
       strategy={multi_strategy}
       split_mode={multi_split_mode}
-      style="height: 400px"
+      padding={{ l: 50, b: 50 }}
+      style="height: 100%"
     />
     <div class="selected-structures-grid">
       {#each selected_ids as struct_id, idx (struct_id)}
@@ -217,7 +218,7 @@
               structure={struct_obj}
               atom_color_config={multi_color_config}
               scene_props={multi_scene_props}
-              style="height: 180px; width: 100%"
+              style="height: 100%"
               enable_info_pane={false}
               enable_measure_mode={false}
             />
@@ -229,6 +230,9 @@
 </div>
 
 <style>
+  .bleed-1400 {
+    container-type: inline-size;
+  }
   .controls {
     display: flex;
     gap: 1em;
@@ -271,10 +275,30 @@
   .selected-structures-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-auto-rows: minmax(0, 1fr);
     gap: 0.5em;
-    align-content: start;
+  }
+  @container (min-width: 901px) {
+    .structure-tile:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
+  }
+  @container (max-width: 900px) {
+    .bleed-1400 > .multi-structure-layout {
+      --barplot-min-height: 0;
+      grid-template:
+        minmax(0, 1.1fr) minmax(0, 0.9fr) /
+        minmax(0, 1.1fr) minmax(0, 0.9fr);
+      gap: 0.5em;
+    }
+    .selected-structures-grid {
+      display: contents;
+    }
   }
   .structure-tile {
+    --struct-min-width: 0;
+    min-width: 0;
+    min-height: 0;
     border-radius: 4px;
     position: relative;
     h3 {

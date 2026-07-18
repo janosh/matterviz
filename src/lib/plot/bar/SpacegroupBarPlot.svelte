@@ -118,7 +118,6 @@
           range: x_range,
           ticks: x_axis_ticks,
           tick: with_rotation(x_axis.tick, 90), // Rotate ticks 90° to avoid overlap
-          label_shift: { x: 0, y: 20, ...x_axis.label_shift }, // Move label down for rotated ticks
         },
   )
 

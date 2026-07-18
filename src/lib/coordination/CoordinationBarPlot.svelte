@@ -285,7 +285,7 @@
       range: is_horizontal ? ranges.count : ranges.cn,
       ticks: is_horizontal ? undefined : cn_ticks,
       ...x_axis,
-      label_shift: { y: 20, ...(is_horizontal ? y_axis : x_axis).label_shift },
+      label_shift: (is_horizontal ? y_axis : x_axis).label_shift,
     }}
     y_axis={{
       ...(is_horizontal ? cn_axis : count_axis),

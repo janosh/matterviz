@@ -194,6 +194,12 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="application"]`)
 
+export async function expect_bottom_within(outer: Locator, inner: Locator): Promise<void> {
+  const [outer_box, inner_box] = await Promise.all([outer.boundingBox(), inner.boundingBox()])
+  if (!outer_box || !inner_box) throw new Error(`Missing bounding box`)
+  expect(inner_box.y + inner_box.height).toBeLessThanOrEqual(outer_box.y + outer_box.height)
+}
+
 // Capture canvas pixels without hanging on busy pages.
 // - 2D canvases: read via toDataURL (Playwright screenshots hang under CI load on the
 //   isosurface page while fonts/paint wait on a saturated main thread).
