@@ -16,6 +16,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
+  import { normalize_static_url } from '$site/state.svelte'
   import { error } from '@sveltejs/kit'
   import { PrevNext } from 'svelte-multiselect'
 
@@ -221,7 +222,7 @@
 
 <PrevNext
   items={element_data.map((elem) => [elem.name.toLowerCase(), elem])}
-  current={page.url.pathname.slice(1)}
+  current={normalize_static_url(page.url.pathname).slice(1)}
 >
   {#snippet children({ item, kind })}
     {@const element = assert_chemical_element(item[1])}

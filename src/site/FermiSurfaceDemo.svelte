@@ -1,7 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment'
   import { to_error } from '$lib/utils'
-  import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import type { FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
@@ -17,6 +16,7 @@
   } from '$lib/fermi-surface'
   import type { Vec3 } from '$lib/math'
   import { fermi_file_colors, fermi_surface_files } from '$site/fermi-surfaces'
+  import { replace_url } from '$site/state.svelte'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -46,7 +46,7 @@
     // Clone page.url (read-only reactive state from $app/state) instead of mutating in place
     const url = new URL(page.url)
     url.searchParams.set(`file`, filename)
-    goto(url, { replaceState: true, keepFocus: true, noScroll: true })
+    replace_url(url)
   }
 
   const load_file = async (file: FileInfo) => {

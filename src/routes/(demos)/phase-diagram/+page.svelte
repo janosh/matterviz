@@ -1,6 +1,5 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import FilePicker from '$lib/FilePicker.svelte'
   import { decompress_data } from '$lib/io/decompress'
@@ -17,6 +16,7 @@
     find_precomputed_url,
     load_binary_phase_diagram,
   } from '$site/phase-diagrams'
+  import { replace_url } from '$site/state.svelte'
 
   // Track currently loaded diagram
   let current_data = $state<PhaseDiagramData | null>(null)
@@ -64,11 +64,7 @@
   function update_url(filename: string): void {
     if (!browser) return
     page.url.searchParams.set(`file`, filename)
-    goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
-      replaceState: true,
-      keepFocus: true,
-      noScroll: true,
-    })
+    replace_url(`${page.url.pathname}?${page.url.searchParams.toString()}`)
   }
 
   // Unified file loader with race condition protection

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
   import FilePicker from '$lib/FilePicker.svelte'
@@ -23,6 +22,7 @@
   } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import { volumetric_files } from '$site/isosurfaces'
+  import { replace_url } from '$site/state.svelte'
   import type { AnyStructure } from 'matterviz'
   import { Structure } from 'matterviz'
   import { untrack } from 'svelte'
@@ -44,8 +44,6 @@
 
   // Monotonic token so a stale async load can never overwrite a newer selection
   let load_counter = 0
-  const replace_url = (url: string) =>
-    goto(url, { replaceState: true, keepFocus: true, noScroll: true })
 
   // Fetch and parse one demo file from /isosurfaces/<name>
   async function fetch_volumetric(name: string): Promise<VolumetricFileData> {

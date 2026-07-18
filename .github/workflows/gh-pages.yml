@@ -33,7 +33,7 @@ jobs:
             case "$target" in ../src/site/*) rm "$link"; cp -r "${target#../}" "$link" ;; esac
           done
 
-      - run: pnpm exec vp build
+      - run: pnpm run build:site
 
       - uses: actions/upload-pages-artifact@v3
         with:

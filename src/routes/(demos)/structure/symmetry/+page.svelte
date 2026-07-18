@@ -1,6 +1,5 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import EmptyState from '$lib/EmptyState.svelte'
   import FilePicker from '$lib/FilePicker.svelte'
@@ -20,6 +19,7 @@
     WyckoffTable,
   } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
+  import { replace_url } from '$site/state.svelte'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { onMount } from 'svelte'
 
@@ -173,11 +173,7 @@
       display_filename = filename || source_filename
       source_filename = loaded_source_filename ?? source_filename
       page.url.searchParams.set(`file`, source_filename)
-      goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
-        replaceState: true,
-        keepFocus: true,
-        noScroll: true,
-      })
+      replace_url(`${page.url.pathname}?${page.url.searchParams.toString()}`)
       current_structure = structure || null
     }}
     style="height: 100%; min-height: 500px"

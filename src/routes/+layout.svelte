@@ -15,6 +15,7 @@
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
   import { Footer } from '$site'
+  import { create_site_search_loader, type SiteSearchAction } from '$site/search'
   import type { RouteEntry } from '$site/state.svelte'
   import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
@@ -57,10 +58,24 @@
     }
   })
 
-  const actions = routes
+  const actions: SiteSearchAction[] = routes
+    .filter(
+      ({ filename, route }) =>
+        !filename.includes(`/test/`) && route !== `/404` && route !== `/[slug]`,
+    )
     .map(({ route }) => route)
     .concat(element_data.map(({ name }) => `/${name.toLowerCase()}`))
-    .map((name) => ({ label: name, action: () => goto(name) }))
+    .map((url) => ({
+      id: `route:${url}`,
+      label: url,
+      description: `Open page`,
+      url,
+      action: (_label) => void goto(url),
+    }))
+  const load_search_options = create_site_search_loader({
+    route_actions: actions,
+    navigate: goto,
+  })
 
   const route_path = (route_entry: RouteEntry): string =>
     typeof route_entry === `string` ? route_entry : route_entry[0]
@@ -71,14 +86,22 @@
       return !path.startsWith(`/layout`)
     }),
   )
+  const pagefind_enabled = $derived(
+    !page.url.pathname.startsWith(`/test`) && page.url.pathname !== `/404`,
+  )
 </script>
 
 <!-- z-index: above nav dropdown and Structure control toggles -->
 <CmdPalette
   bind:open={cmd_palette_open}
   {actions}
-  placeholder="Go to..."
-  dialog_style="left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog)"
+  aria_label="Search the MatterViz site"
+  placeholder="Search every page..."
+  loadOptions={{ fetch: load_search_options, debounceMs: 120, batchSize: 12 }}
+  noMatchingOptionsMsg="No matching pages"
+  maxOptions={12}
+  dialog_props={{ class: `site-search-dialog` }}
+  dialog_style="left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog); --sms-width: min(42em, 90vw); --sms-options-li-padding: 2pt 1ex"
 />
 <GitHubCorner href={pkg.repository} --github-corner-bg-hover="var(--github-corner-bg-hover)" />
 <CopyButton global class="copy-btn" />
@@ -118,6 +141,7 @@
 </Nav>
 
 <main
+  data-pagefind-body={pagefind_enabled ? `` : undefined}
   {@attach heading_anchors({
     selector: `:scope > :is(h2, h3, h4, h5, h6), :scope > * > :is(h2, h3, h4, h5, h6)`,
   })}
@@ -126,3 +150,19 @@
 </main>
 
 <Footer />
+
+<style>
+  :global(dialog.site-search-dialog :is(.cmd-label, .cmd-description)) {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  :global(dialog.site-search-dialog .cmd-label) {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+  }
+  :global(dialog.site-search-dialog .cmd-description) {
+    text-overflow: ellipsis;
+  }
+</style>
