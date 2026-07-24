@@ -96,6 +96,8 @@
   section.control-buttons > :global(button) {
     background-color: transparent;
     display: flex;
+    align-items: center;
+    justify-content: center;
     padding: var(--viewer-buttons-btn-padding, 4px);
     border-radius: var(--border-radius, 3pt);
     font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));

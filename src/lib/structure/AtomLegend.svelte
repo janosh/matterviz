@@ -542,7 +542,7 @@
 <style>
   .atom-legend {
     position: absolute;
-    z-index: var(--legend-z-index, 1);
+    z-index: var(--legend-z-index, 2);
     /* own compositing layer, or WKWebView paints the canvas over this (see app.css) */
     will-change: transform;
     pointer-events: auto;

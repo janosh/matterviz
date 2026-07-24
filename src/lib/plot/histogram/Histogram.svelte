@@ -26,11 +26,8 @@
     normalize_marginals,
     reserve_marginal_pad,
   } from '$lib/plot/core/marginals'
-  import {
-    AXIS_DEFAULTS,
-    type AxisChangeState,
-    create_axis_loader,
-  } from '$lib/plot/core/axis-utils'
+  import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/core/data-transform'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'

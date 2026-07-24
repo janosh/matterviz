@@ -3,9 +3,12 @@ import { trilinear_interpolate } from '$lib/isosurface/sampling'
 import {
   type CartesianPlane,
   type PlaneSliceOptions,
+  resolve_slice_cartesian_point,
   sample_hkl_slice,
   sample_plane_slice,
+  volume_center,
 } from '$lib/isosurface/slice'
+import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../setup'
@@ -152,6 +155,47 @@ describe(`sample_hkl_slice`, () => {
     const nonzero = result.data.filter((val) => val > 0).length
     expect(nonzero).toBeGreaterThan(0)
   })
+})
+
+describe(`Cartesian slice point helpers`, () => {
+  const volume = make_volume([[[0]]], {
+    lattice: [
+      [2, 0, 0],
+      [1, 4, 0],
+      [0.5, 1, 6],
+    ],
+    origin: [10, -2, 5],
+  })
+  const expected_center: Vec3 = [11.75, 0.5, 8]
+
+  test(`converts the fractional volume center into absolute Cartesian coordinates`, () => {
+    expect(volume_center(volume)).toEqual(expected_center)
+  })
+
+  test(`preserves a provided Cartesian point`, () => {
+    const point: Vec3 = [7, 8, 9]
+    expect(resolve_slice_cartesian_point(point, volume)).toBe(point)
+  })
+
+  test.each([
+    [`volume center`, volume, expected_center],
+    [`Cartesian origin`, undefined, [0, 0, 0] as Vec3],
+  ])(`defaults an omitted point to the %s`, (_fallback, fallback_volume, expected) => {
+    expect(resolve_slice_cartesian_point(undefined, fallback_volume)).toEqual(expected)
+  })
+})
+
+test(`slice settings factory returns independent nested values`, () => {
+  const first = create_volume_slice_settings()
+  const second = create_volume_slice_settings({ miller_indices: [1, 1, 0] })
+
+  first.miller_indices[0] = 9
+  first.cartesian_normal[2] = 4
+
+  expect(second.miller_indices).toEqual([1, 1, 0])
+  expect(second.cartesian_normal).toEqual([0, 0, 1])
+  expect(create_volume_slice_settings().miller_indices).toEqual([0, 0, 1])
+  expect(create_volume_slice_settings({ resolution: undefined }).resolution).toBe(512)
 })
 
 describe(`sample_plane_slice`, () => {

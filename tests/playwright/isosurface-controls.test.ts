@@ -5,6 +5,7 @@ import {
   get_canvas_timeout,
   IS_CI,
   open_settings_pane,
+  select_view_layout,
   set_input_value,
   wait_for_canvas_rendered,
 } from './helpers'
@@ -14,6 +15,14 @@ const ISO_URL = `/structure/isosurface?file=Si-CHGCAR.gz`
 async function wait_for_isosurface(page: Page, url = ISO_URL) {
   await page.goto(url, { waitUntil: `networkidle` })
   await expect(page.locator(`text=Grid:`)).toBeVisible({ timeout: 15_000 })
+}
+
+async function open_slice_view(page: Page) {
+  await select_view_layout(page, `2D cross-section`)
+  const slice = page.getByTestId(`volume-slice`)
+  await expect(slice).toBeVisible()
+  await open_settings_pane(page)
+  return slice
 }
 
 // Get center of a bounding box, throwing if null
@@ -61,9 +70,64 @@ test.describe(`Isosurface page`, () => {
   })
 
   test.describe(`Volumetric slices`, () => {
+    test(`fills the viewer without stretching and overlays vertical chrome`, async ({
+      page,
+    }) => {
+      await select_view_layout(page, `2D cross-section`)
+      const slice = page.getByTestId(`volume-slice`)
+      const canvas = slice.locator(`canvas`)
+      const viewer = page.locator(`.viewer-pane .structure`)
+      const colorbar = slice.locator(`.slice-colorbar`)
+      await wait_for_canvas_rendered(canvas)
+
+      const [viewer_box, canvas_box, colorbar_box] = await Promise.all([
+        viewer.boundingBox(),
+        canvas.boundingBox(),
+        colorbar.boundingBox(),
+      ])
+      if (!viewer_box || !canvas_box || !colorbar_box) {
+        throw new Error(`Missing slice layout bounding box`)
+      }
+      expect(canvas_box.width).toBeCloseTo(viewer_box.width, 0)
+      expect(canvas_box.height).toBeCloseTo(viewer_box.height, 0)
+      await expect(canvas).toHaveCSS(`object-fit`, `contain`)
+      expect(colorbar_box.height).toBeGreaterThan(colorbar_box.width)
+      expect(colorbar_box.x).toBeLessThan(canvas_box.x + canvas_box.width / 4)
+      await expect(colorbar.locator(`.tick-label.vertical`).first()).toBeVisible()
+
+      for (const overlay of [
+        colorbar,
+        viewer.locator(`section.control-buttons`),
+        page.locator(`.filename-label`),
+      ]) {
+        const overlay_box = await overlay.boundingBox()
+        if (!overlay_box) throw new Error(`Missing slice overlay bounding box`)
+        expect(overlay_box.x).toBeGreaterThanOrEqual(canvas_box.x)
+        expect(overlay_box.y).toBeGreaterThanOrEqual(canvas_box.y)
+        expect(overlay_box.x + overlay_box.width).toBeLessThanOrEqual(
+          canvas_box.x + canvas_box.width,
+        )
+        expect(overlay_box.y + overlay_box.height).toBeLessThanOrEqual(
+          canvas_box.y + canvas_box.height,
+        )
+      }
+
+      await page.getByRole(`button`, { name: /^View layout:/ }).click()
+      const selected_color = await page
+        .getByRole(`button`, { name: `2D cross-section`, exact: true })
+        .evaluate((element) => getComputedStyle(element).color)
+      for (const name of [`2D cross-section`, `3D single view`]) {
+        const option = page.getByRole(`button`, { name, exact: true })
+        await option.hover()
+        expect(await option.evaluate((element) => getComputedStyle(element).color)).toBe(
+          selected_color,
+        )
+      }
+    })
+
     test(`switches between HKL, Cartesian, filled, and contour views`, async ({ page }) => {
       test.setTimeout(IS_CI ? 90_000 : 45_000)
-      const slice = page.getByTestId(`volume-slice`)
+      const slice = await open_slice_view(page)
       const canvas = slice.locator(`canvas`)
       await wait_for_canvas_rendered(canvas)
       expect(Number(await canvas.getAttribute(`width`))).toBeGreaterThanOrEqual(512)
@@ -82,32 +146,39 @@ test.describe(`Isosurface page`, () => {
       await expect(page.getByLabel(`Slice colormap`)).toBeVisible()
       await page.getByLabel(`Slice colormap`).selectOption(`interpolateViridis`)
       await expect(canvas).toBeVisible()
+
+      await select_view_layout(page, `3D single view`)
+      await expect(slice).not.toBeVisible()
     })
 
     test(`keeps Miller input responsive at high slice resolution`, async ({ page }) => {
+      const slice = await open_slice_view(page)
+      const canvas = slice.locator(`canvas`)
       const input = page.getByRole(`textbox`, { name: `hkl` })
       await input.fill(`11`)
+      const initial_image = await canvas_screenshot(canvas)
       const update_ms = await input.evaluate(async (input_element) => {
         const input_node = input_element as HTMLInputElement
         const start = performance.now()
         input_node.value += `0`
         input_node.dispatchEvent(new Event(`input`, { bubbles: true }))
-        await new Promise<number>((resolve) => requestAnimationFrame(resolve))
-        await new Promise<number>((resolve) => requestAnimationFrame(resolve))
+        await Promise.resolve()
         return performance.now() - start
       })
 
+      expect(update_ms).toBeLessThan(100)
+      await expect_canvas_changed(canvas, initial_image)
       await expect(input).toHaveValue(`110`)
-      expect(update_ms).toBeLessThan(400)
     })
 
     test(`masks pixels outside an oblique triclinic cross-section`, async ({ page }) => {
       await wait_for_isosurface(page, `/structure/isosurface?file=hBN-CHGCAR.gz`)
+      const slice = await open_slice_view(page)
       await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
       for (const axis of [`x`, `y`, `z`]) {
         await set_input_value(page.getByLabel(`Cartesian normal ${axis}`), `1`)
       }
-      const canvas = page.getByTestId(`volume-slice`).locator(`canvas`)
+      const canvas = slice.locator(`canvas`)
       await wait_for_canvas_rendered(canvas)
 
       const alpha_values = await canvas.evaluate((canvas_element) => {

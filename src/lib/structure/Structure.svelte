@@ -9,7 +9,10 @@
   import * as io from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
+  import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
+  import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
+  import VolumeSliceView from '$lib/isosurface/VolumeSliceView.svelte'
   import {
     auto_isosurface_settings,
     DEFAULT_ISOSURFACE_SETTINGS,
@@ -17,6 +20,7 @@
     lattices_match,
     materialize_layers,
     merge_imported_volumes,
+    normalize_active_volume_idx,
   } from '$lib/isosurface/types'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
@@ -32,6 +36,7 @@
     Crystal,
     MeasureMode,
     StructureBond,
+    StructureDisplayMode,
     StructureView,
   } from '$lib/structure'
   import {
@@ -74,6 +79,7 @@
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
+  type StructureLayoutMode = `single` | `multi` | `slice`
   type BondEditContext = {
     structure_identity: AnyStructure | undefined
     source_bond_signature: string
@@ -98,8 +104,23 @@
   const DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH = 300
   const DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT = 200
   const DEFAULT_MULTI_VIEW_GAP = 2
+  const STRUCTURE_LAYOUTS = {
+    single: { mode: `single`, icon: `BrillouinZone`, label: `3D single view` },
+    multi: { mode: `multi`, icon: `Grid2x2`, label: `3D 2×2 grid` },
+    slice: { mode: `slice`, icon: `HeatmapMatrix`, label: `2D cross-section` },
+  } as const
   const finite_nonnegative = (value: number, fallback: number) =>
     Math.max(0, Number.isFinite(value) ? value : fallback)
+
+  function track_change(get_value: () => unknown, on_change: () => void): void {
+    let previous = get_value()
+    $effect(() => {
+      const value = get_value()
+      if (value === previous) return
+      previous = value
+      on_change()
+    })
+  }
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
@@ -191,6 +212,10 @@
     isosurface_settings = $bindable<IsosurfaceSettings>({
       ...DEFAULT_ISOSURFACE_SETTINGS,
     }),
+    // Cross-section sampling and rendering settings
+    slice_settings = $bindable<Partial<VolumeSliceSettings>>({}),
+    // Primary volumetric display: 3D structure/isosurface or 2D cross-section
+    display_mode = $bindable<StructureDisplayMode>(`structure`),
     // Active volume index when multiple volumes are present
     active_volume_idx = $bindable(0),
     children,
@@ -201,6 +226,9 @@
     on_camera_move,
     on_camera_reset,
     on_bonds_change,
+    on_display_mode_change,
+    on_active_volume_idx_change,
+    on_slice_settings_change,
     ...rest
   }: {
     structure?: AnyStructure
@@ -212,7 +240,7 @@
     // - 'never': controls never visible
     // - object: { mode, hidden, style } for fine-grained control
     //
-    // Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
+    // Control names: 'reset-camera', 'fullscreen', 'view-mode', 'multi-view', 'measure-mode', 'info-pane', 'export-pane', 'controls'
     show_controls?: ShowControlsProp
     fullscreen?: boolean
     // bindable width of the canvas
@@ -293,6 +321,10 @@
     volumetric_data?: VolumetricData[]
     // Isosurface rendering settings
     isosurface_settings?: IsosurfaceSettings
+    // Cross-section plane and rendering settings
+    slice_settings?: Partial<VolumeSliceSettings>
+    // Switch between the 3D structure/isosurface and 2D cross-section
+    display_mode?: StructureDisplayMode
     // Active volume index when multiple volumes are present
     active_volume_idx?: number
     // structure content as string (alternative to providing structure directly or via data_url)
@@ -306,6 +338,9 @@
     on_camera_move?: EventHandler
     on_camera_reset?: EventHandler
     on_bonds_change?: (bonds: StructureBond[] | undefined) => void
+    on_display_mode_change?: EventHandler
+    on_active_volume_idx_change?: EventHandler
+    on_slice_settings_change?: (settings: VolumeSliceSettings) => void
   } & Omit<
     ComponentProps<typeof StructureControls>,
     `children` | `onclose` | `multi_view_control_visible` | `multi_view_unavailable_reason`
@@ -321,6 +356,40 @@
       Object.assign(lattice_props, lattice_props_in)
     }
   })
+
+  // Keep stale externally-controlled indices from blanking either volumetric view.
+  $effect(() => {
+    const normalized_idx = normalize_active_volume_idx(
+      active_volume_idx,
+      volumetric_data?.length ?? 0,
+    )
+    if (normalized_idx !== active_volume_idx) active_volume_idx = normalized_idx
+  })
+  track_change(
+    () => active_volume_idx,
+    () => on_active_volume_idx_change?.(volumetric_event_data()),
+  )
+  track_change(
+    () => display_mode,
+    () => on_display_mode_change?.(volumetric_event_data()),
+  )
+  track_change(
+    () => JSON.stringify(create_volume_slice_settings(slice_settings)),
+    () => on_slice_settings_change?.(create_volume_slice_settings(slice_settings)),
+  )
+
+  function volumetric_event_data(): StructureHandlerData {
+    return { structure, display_mode, active_volume_idx, slice_settings }
+  }
+
+  function select_structure_layout(mode: StructureLayoutMode): void {
+    if (mode === `slice`) display_mode = `slice`
+    else {
+      display_mode = `structure`
+      multi_view = mode === `multi`
+    }
+    view_layout_menu_open = false
+  }
 
   // Load structure from URL when data_url is provided. A monotonic load_id ignores stale
   // completions so a newer data_url (or an externally-supplied structure, via the cleanup)
@@ -508,6 +577,7 @@
   })
 
   let measure_menu_open = $state(false)
+  let view_layout_menu_open = $state(false)
   let export_pane_open = $state(false)
   let focused = $state(false)
 
@@ -877,10 +947,27 @@
   let is_multi_view_active = $state(false)
   // This is output-only state: parent writes are overwritten with the actual render state.
   $effect(() => {
-    const active = multi_view && multi_view_available
+    const active = display_mode === `structure` && multi_view && multi_view_available
     is_multi_view_active = active
     if (multi_view_active !== active) multi_view_active = active
   })
+  let slice_layout_available = $derived(
+    Boolean(volumetric_data?.length || display_mode === `slice`) &&
+      controls_config.visible(`view-mode`),
+  )
+  let multi_layout_available = $derived(
+    multi_view_available && controls_config.visible(`multi-view`),
+  )
+  let layout_control_visible = $derived(
+    (display_mode === `slice` && !volumetric_data?.length) ||
+      slice_layout_available ||
+      (display_mode === `structure` && multi_layout_available),
+  )
+  let current_layout = $derived(
+    STRUCTURE_LAYOUTS[
+      display_mode === `slice` ? `slice` : is_multi_view_active ? `multi` : `single`
+    ],
+  )
   let multi_view_unavailable_reason = $derived(
     views.length < 2
       ? `Configure at least two views to enable multi-view`
@@ -1080,6 +1167,7 @@
   // handling (move tracking, reset, re-framing) lives in StructureViewport.
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
+  let slice_canvas = $state<HTMLCanvasElement | undefined>(undefined)
 
   // Multi-side view state: index of the pane the pointer is over (gets edit interactions),
   // a token bumped to reset every pane, and the set of panes whose camera has moved (so
@@ -1452,12 +1540,18 @@
     if (event.key === `f` && has_modifier && fullscreen_toggle) {
       toggle_fullscreen(wrapper)
       return true
-    } else if (event.key === `i` && has_modifier && enable_info_pane) {
+    } else if (
+      event.key === `i` &&
+      has_modifier &&
+      display_mode === `structure` &&
+      enable_info_pane
+    ) {
       info_pane_open = !info_pane_open
       return true
     } else if (
       event.key === `g` &&
       has_modifier &&
+      display_mode === `structure` &&
       controls_config.visible(`multi-view`) &&
       (multi_view_available || multi_view)
     ) {
@@ -1671,9 +1765,9 @@
     />
   {:else if error_msg}
     <StatusMessage bind:message={error_msg} type="error" dismissible />
-  {:else if (structure?.sites?.length ?? 0) > 0}
+  {:else if (structure?.sites?.length ?? 0) > 0 || (volumetric_data?.length ?? 0) > 0}
     {#snippet reset_camera_btn()}
-      {#if any_camera_moved && controls_config.visible(`reset-camera`)}
+      {#if display_mode === `structure` && any_camera_moved && controls_config.visible(`reset-camera`)}
         <button
           class="reset-camera"
           onclick={reset_all_cameras}
@@ -1692,27 +1786,55 @@
       fullscreen_btn_style="padding: 0 3px"
       {wrapper}
       before={reset_camera_btn}
-      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
+      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-right: calc(1ex - 5px); --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
-      {#if multi_view_available && controls_config.visible(`multi-view`)}
-        <button
-          type="button"
-          class="multi-view-toggle"
-          class:active={is_multi_view_active}
-          onclick={() => (multi_view = !multi_view)}
-          title="Toggle multi-side view grid (Cmd/Ctrl+G)"
-          aria-label="Toggle multi-side view"
-          aria-keyshortcuts="Control+G Meta+G"
-          aria-pressed={is_multi_view_active}
-          {@attach tooltip()}
+      {#if layout_control_visible}
+        <div
+          class="view-layout-dropdown view-mode-control"
+          {@attach click_outside({ callback: () => (view_layout_menu_open = false) })}
         >
-          <Icon icon="Grid2x2" />
-        </button>
+          <button
+            type="button"
+            class="view-mode-button"
+            class:active={view_layout_menu_open}
+            onclick={() => (view_layout_menu_open = !view_layout_menu_open)}
+            title="View layout: {current_layout.label}"
+            aria-label="View layout: {current_layout.label}"
+            aria-expanded={view_layout_menu_open}
+            {@attach tooltip()}
+          >
+            <Icon icon={current_layout.icon} />
+            <Icon
+              class="view-mode-caret"
+              icon="Arrow{view_layout_menu_open ? `Up` : `Down`}"
+            />
+          </button>
+          {#if view_layout_menu_open}
+            <div class="view-mode-dropdown">
+              {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
+                {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available)}
+                  <button
+                    type="button"
+                    class="view-mode-option"
+                    class:selected={current_layout.mode === mode}
+                    title={mode === `multi` ? `${label} (Cmd/Ctrl+G)` : label}
+                    aria-keyshortcuts={mode === `multi` ? `Control+G Meta+G` : undefined}
+                    aria-pressed={current_layout.mode === mode}
+                    onclick={() => select_structure_layout(mode)}
+                  >
+                    <Icon {icon} />
+                    <span>{label}</span>
+                  </button>
+                {/if}
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
 
-      {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
+      {#if display_mode === `structure` && enable_measure_mode && controls_config.visible(`measure-mode`)}
         <div
-          class="measure-mode-dropdown"
+          class="measure-mode-dropdown view-mode-control"
           {@attach click_outside({ callback: () => (measure_menu_open = false) })}
         >
           <button
@@ -1722,7 +1844,6 @@
             class="view-mode-button"
             class:active={measure_menu_open}
             aria-expanded={measure_menu_open}
-            style="transform: scale(1.2)"
             {@attach tooltip()}
           >
             {#if show_measure_selection_limit}
@@ -1741,7 +1862,7 @@
                 )[measure_mode]}
               />
             {/if}
-            <Icon icon="Arrow{measure_menu_open ? `Up` : `Down`}" style="margin-left: -2px" />
+            <Icon class="view-mode-caret" icon="Arrow{measure_menu_open ? `Up` : `Down`}" />
           </button>
           {#if show_selection_reset}
             <button
@@ -1911,7 +2032,7 @@
         {/if}
       {/if}
 
-      {#if enable_info_pane && normalized_structure && controls_config.visible(`info-pane`)}
+      {#if display_mode === `structure` && enable_info_pane && normalized_structure && controls_config.visible(`info-pane`)}
         <StructureInfoPane
           structure={normalized_structure}
           bind:pane_open={info_pane_open}
@@ -1930,6 +2051,11 @@
           {wrapper}
           {scene}
           {camera}
+          image_canvas={display_mode === `slice` ? slice_canvas : undefined}
+          image_filename={display_mode === `slice`
+            ? `${volumetric_data?.[active_volume_idx]?.label ?? `volume`}-slice`
+            : undefined}
+          enable_3d_export={display_mode === `structure`}
           bind:png_dpi
           pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
         />
@@ -1949,7 +2075,9 @@
           bind:cell_type
           bind:volumetric_data
           bind:isosurface_settings
+          bind:slice_settings
           bind:active_volume_idx
+          {display_mode}
           bind:multi_view
           multi_view_control_visible={controls_config.visible(`multi-view`)}
           {multi_view_unavailable_reason}
@@ -1963,33 +2091,35 @@
       {@render top_right_controls?.()}
     </ViewerChrome>
 
-    <AtomLegend
-      bind:atom_color_config
-      {property_colors}
-      elements={get_element_counts(supercell_structure ?? structure!)}
-      bind:hidden_elements
-      bind:hidden_prop_vals
-      bind:element_mapping
-      bind:element_radius_overrides
-      bind:site_radius_overrides
-      selected_sites={atom_legend_selected_sites}
-      structure={internal_displayed_structure}
-      show_mode_toggle={viewer_active}
-      {sym_data}
-    >
-      {#snippet children({ mode_menu_open })}
-        {#if structure && `lattice` in structure}
-          <CellSelect
-            bind:supercell_scaling
-            bind:cell_type
-            {sym_data}
-            loading={supercell_loading}
-            direction="up"
-            suppress_hover={mode_menu_open}
-          />
-        {/if}
-      {/snippet}
-    </AtomLegend>
+    {#if display_mode === `structure` && (structure?.sites?.length ?? 0) > 0}
+      <AtomLegend
+        bind:atom_color_config
+        {property_colors}
+        elements={get_element_counts(supercell_structure ?? structure!)}
+        bind:hidden_elements
+        bind:hidden_prop_vals
+        bind:element_mapping
+        bind:element_radius_overrides
+        bind:site_radius_overrides
+        selected_sites={atom_legend_selected_sites}
+        structure={internal_displayed_structure}
+        show_mode_toggle={viewer_active}
+        {sym_data}
+      >
+        {#snippet children({ mode_menu_open })}
+          {#if structure && `lattice` in structure}
+            <CellSelect
+              bind:supercell_scaling
+              bind:cell_type
+              {sym_data}
+              loading={supercell_loading}
+              direction="up"
+              suppress_hover={mode_menu_open}
+            />
+          {/if}
+        {/snippet}
+      </AtomLegend>
+    {/if}
 
     <!-- One StructureViewport renders the single view; four render the 2x2 multi-view.
       The primary pane (index 0) carries the external camera API: scene/camera are bound
@@ -1998,7 +2128,6 @@
     {#snippet primary_viewport(view: StructureView)}
       <StructureViewport
         in_grid={is_multi_view_active}
-        label={is_multi_view_active ? view.label : undefined}
         active={is_multi_view_active && active_pane_idx === 0}
         interactive={!is_multi_view_active || active_pane_idx === 0}
         onactivate={() => (active_pane_idx = 0)}
@@ -2061,8 +2190,14 @@
       />
     {/snippet}
 
-    <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
-    {#if typeof WebGLRenderingContext !== `undefined`}
+    {#if display_mode === `slice`}
+      <VolumeSliceView
+        volume={volumetric_data?.[active_volume_idx]}
+        settings={slice_settings}
+        bind:canvas={slice_canvas}
+      />
+      <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
+    {:else if typeof WebGLRenderingContext !== `undefined`}
       <div class:multi={is_multi_view_active} class="viewport-stage">
         {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
         {#if is_multi_view_active}
@@ -2136,7 +2271,9 @@
     grid-auto-rows: 1fr;
     gap: var(--struct-viewport-gap);
   }
-  .multi-view-toggle.active {
+  .view-mode-button.active,
+  .view-layout-dropdown .view-mode-button.active:hover,
+  .view-mode-dropdown .view-mode-option:hover {
     color: var(--accent-color, #4a9eff);
   }
   /* Ensure canvas is transparent so the themed --struct-bg shows through */
@@ -2201,16 +2338,29 @@
     text-overflow: ellipsis;
     flex: 1;
   }
-  .measure-mode-dropdown {
+  .view-mode-control {
     display: flex;
     position: relative;
     height: fit-content;
     place-self: center;
   }
-  .measure-mode-dropdown > button {
+  .view-mode-control > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     padding: 1px 6px;
     font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+  }
+  .view-mode-control > .view-mode-button {
+    padding-right: 2px;
+  }
+  .view-mode-button :global(.view-mode-caret) {
+    display: none;
+    margin-left: 2px;
+  }
+  .view-mode-button:is(:hover, :focus-visible) :global(.view-mode-caret) {
+    display: inline-block;
   }
   .selection-limit-text {
     font-weight: bold;

@@ -1,5 +1,7 @@
-import { to_query } from '$lib/io/fetch'
-import { describe, expect, test } from 'vitest'
+import { download, to_query } from '$lib/io/fetch'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+afterEach(() => vi.restoreAllMocks())
 
 describe(`to_query`, () => {
   test.each([
@@ -17,5 +19,20 @@ describe(`to_query`, () => {
     [{ emoji: `🎉` }, `emoji=%F0%9F%8E%89`, `percent-encodes unicode as UTF-8`],
   ])(`%s -> %s (%s)`, (input, expected, _description) => {
     expect(to_query(input)).toBe(expected)
+  })
+})
+
+describe(`download`, () => {
+  test(`releases browser resources when the synthetic click throws`, () => {
+    const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
+    vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
+    const remove_link = vi.spyOn(Element.prototype, `remove`)
+    vi.spyOn(HTMLAnchorElement.prototype, `click`).mockImplementation(() => {
+      throw new Error(`click failed`)
+    })
+
+    expect(() => download(`content`, `test.txt`, `text/plain`)).toThrow(`click failed`)
+    expect(remove_link).toHaveBeenCalledOnce()
+    expect(revoke_url).toHaveBeenCalledExactlyOnceWith(`blob:test`)
   })
 })

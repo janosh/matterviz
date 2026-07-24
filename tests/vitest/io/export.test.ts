@@ -99,6 +99,29 @@ describe(`canvas_to_png_blob`, () => {
     expect(blob.type).toBe(`image/png`)
   })
 
+  test(`scales plain 2D canvases for high-DPI export`, async () => {
+    const context = { drawImage: vi.fn() }
+    const scaled_canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn().mockReturnValue(context),
+      toBlob: vi.fn((callback: BlobCallback) =>
+        callback(new Blob([`scaled`], { type: `image/png` })),
+      ),
+    } as unknown as HTMLCanvasElement
+    const create_element_spy = vi
+      .spyOn(document, `createElement`)
+      .mockReturnValue(scaled_canvas)
+    const canvas = make_mock_canvas()
+
+    await canvas_to_png_blob(canvas, 150)
+
+    expect([scaled_canvas.width, scaled_canvas.height]).toEqual([1667, 1250])
+    expect(context.drawImage).toHaveBeenCalledWith(canvas, 0, 0, 1667, 1250)
+    expect(scaled_canvas.toBlob).toHaveBeenCalledOnce()
+    create_element_spy.mockRestore()
+  })
+
   test(`uses direct capture when DPI <= ~72 (multiplier ≤ 1.1)`, async () => {
     const { canvas, renderer } = make_canvas_with_renderer()
     await canvas_to_png_blob(canvas, 72)
@@ -133,13 +156,31 @@ describe(`canvas_to_png_blob`, () => {
     await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Canvas tainted`)
   })
 
-  test(`restores renderer state when toBlob throws during high-DPI capture`, async () => {
-    const { canvas, renderer } = make_canvas_with_renderer(() => {
-      throw new Error(`tainted`)
-    })
-    await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`tainted`)
-    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
-  })
+  test.each([`toBlob`, `setSize`, `render`] as const)(
+    `restores renderer state when %s throws during high-DPI capture`,
+    async (failure_stage) => {
+      const to_blob_impl =
+        failure_stage === `toBlob`
+          ? () => {
+              throw new Error(`toBlob failed`)
+            }
+          : undefined
+      const { canvas, renderer } = make_canvas_with_renderer(to_blob_impl)
+      if (failure_stage !== `toBlob`) {
+        const failing_method = renderer[failure_stage]
+        if (!failing_method) throw new Error(`Mock renderer is missing ${failure_stage}`)
+        vi.mocked(failing_method).mockImplementationOnce(() => {
+          throw new Error(`${failure_stage} failed`)
+        })
+      }
+
+      await expect(canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)).rejects.toThrow(
+        `${failure_stage} failed`,
+      )
+      expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+      expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
+    },
+  )
 
   test(`caps DPI multiplier at 10x`, async () => {
     const { canvas, renderer } = make_canvas_with_renderer()
@@ -364,6 +405,24 @@ describe(`svg_to_png_blob`, () => {
       globalThis.Image = orig_image
     }
   })
+
+  test(`revokes object URL when image setup throws`, async () => {
+    const orig_image = globalThis.Image
+    globalThis.Image = class MockImage {
+      addEventListener(): void {}
+      set src(_url: string) {
+        throw new Error(`image setup failed`)
+      }
+    } as unknown as typeof Image
+    try {
+      await expect(svg_to_png_blob(make_svg(`0 0 100 100`), 72)).rejects.toThrow(
+        `image setup failed`,
+      )
+      expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith(`blob:test-url`)
+    } finally {
+      globalThis.Image = orig_image
+    }
+  })
 })
 
 // === export_canvas_as_png (download wrapper, regression tests) ===
@@ -510,6 +569,7 @@ describe(`export_trajectory_video`, () => {
     vi.clearAllMocks()
     vi.spyOn(console, `error`).mockImplementation(() => {})
   })
+  afterEach(() => vi.unstubAllGlobals())
 
   test.each<[string | null, string]>([
     [null, `null canvas`],
@@ -527,5 +587,63 @@ describe(`export_trajectory_video`, () => {
     await expect(export_trajectory_video(canvas, `test.webm`)).rejects.toThrow(
       `WebM video recording not supported`,
     )
+  })
+
+  test(`restores renderer state when high-resolution setup throws`, async () => {
+    vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+    const { canvas, renderer } = make_canvas_with_renderer()
+    const set_size = renderer.setSize
+    if (!set_size) throw new Error(`Mock renderer is missing setSize`)
+    vi.mocked(set_size).mockImplementationOnce(() => {
+      throw new Error(`resize failed`)
+    })
+
+    await expect(
+      export_trajectory_video(canvas, `test.webm`, { resolution_multiplier: 2 }),
+    ).rejects.toThrow(`resize failed`)
+    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
+  })
+
+  test(`stops recorder and capture tracks when stepping rejects`, async () => {
+    const recorder_stop = vi.fn()
+    class MockMediaRecorder {
+      static isTypeSupported(): boolean {
+        return true
+      }
+      state: MediaRecorder[`state`] = `inactive`
+      addEventListener = vi.fn()
+      start = vi.fn(() => (this.state = `recording`))
+      stop = vi.fn(() => {
+        this.state = `inactive`
+        recorder_stop()
+      })
+    }
+    vi.stubGlobal(`MediaRecorder`, MockMediaRecorder)
+
+    const tracks = [
+      { requestFrame: vi.fn(), stop: vi.fn() },
+      { requestFrame: vi.fn(), stop: vi.fn() },
+    ]
+    const stream = {
+      getVideoTracks: vi.fn().mockReturnValue([tracks[0]]),
+      getTracks: vi.fn().mockReturnValue(tracks),
+    }
+    const canvas = {
+      captureStream: vi.fn().mockReturnValue(stream),
+      width: 800,
+      height: 600,
+    } as unknown as HTMLCanvasElement
+
+    const step_error = new Error(`step failed`)
+    const on_step = vi.fn().mockRejectedValue(step_error)
+    await expect(
+      export_trajectory_video(canvas, `test.webm`, {
+        total_frames: 1,
+        on_step,
+      }),
+    ).rejects.toThrow(`step failed`)
+    expect(recorder_stop).toHaveBeenCalledOnce()
+    for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
   })
 })

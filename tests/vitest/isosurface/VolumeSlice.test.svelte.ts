@@ -4,6 +4,7 @@ import type { SliceResult } from '$lib/isosurface/slice'
 import type { VolumeSliceMode } from '$lib/isosurface/slice-rendering'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 const make_slice = (): SliceResult => {
   const width = 4
@@ -96,6 +97,22 @@ describe(`VolumeSlice`, () => {
     const { canvas } = await mount_volume_slice()
     expect(canvas?.getAttribute(`aria-label`)).toBe(`Volumetric scalar-field slice`)
     expect(canvas?.getAttribute(`style`)).toContain(`aspect-ratio: 2`)
+  })
+
+  test(`centers a bounded horizontal colorbar`, async () => {
+    await mount_volume_slice({
+      show_colorbar: true,
+      colorbar_orientation: `horizontal`,
+    })
+    const colorbar = doc_query(`.slice-colorbar.horizontal`, HTMLElement)
+    const colorbar_style = getComputedStyle(colorbar)
+
+    expect(colorbar_style.left).toBe(`50%`)
+    expect([``, `auto`]).toContain(colorbar_style.right)
+    expect(colorbar_style.getPropertyValue(`--cbar-width`)).toContain(
+      `--volume-slice-colorbar-size`,
+    )
+    expect(colorbar_style.transform).toBe(`translateX(-50%)`)
   })
 
   test(`co-registers flipped contours with filled pixel rows`, async () => {

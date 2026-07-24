@@ -34,6 +34,15 @@ export interface VolumetricData {
   source_filename?: string
 }
 
+/** Reset an out-of-range active volume index while preserving valid or empty states. */
+export const normalize_active_volume_idx = (
+  active_volume_idx: number,
+  volume_count: number,
+): number =>
+  volume_count > 0 && (active_volume_idx < 0 || active_volume_idx >= volume_count)
+    ? 0
+    : active_volume_idx
+
 // Result of parsing a volumetric file (contains both structure and volumetric data)
 export interface VolumetricFileData {
   structure: ParsedStructure

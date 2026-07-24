@@ -73,7 +73,7 @@ def dash_server() -> Generator[str, None, None]:
 @pytest.fixture
 def dash_page(page: Page, dash_server: str) -> Page:
     """Navigate to the Dash app and return the page."""
-    page.goto(dash_server)
+    page.goto(dash_server, wait_until="domcontentloaded", timeout=60_000)
     # Wait for the app to load
     page.wait_for_selector("mv-matterviz", timeout=30000)
     return page
