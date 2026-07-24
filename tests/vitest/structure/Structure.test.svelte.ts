@@ -220,7 +220,7 @@ describe(`Structure`, () => {
     mount_volumetric({
       structure: { ...structure, sites: [] },
       display_mode: `slice`,
-      slice_settings: { plane_mode: `hkl` },
+      slice_settings: { plane_mode: `hkl`, resolution: 2 },
     })
     await tick()
 
