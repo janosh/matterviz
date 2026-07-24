@@ -237,8 +237,9 @@
     transform: translateY(-50%);
   }
   .volume-slice :global(.slice-colorbar.horizontal) {
-    right: var(--volume-slice-colorbar-offset, 1rem);
     bottom: var(--volume-slice-colorbar-offset, 1rem);
-    left: var(--volume-slice-colorbar-offset, 1rem);
+    left: 50%;
+    --cbar-width: var(--volume-slice-colorbar-size, min(70%, 360px));
+    transform: translateX(-50%);
   }
 </style>

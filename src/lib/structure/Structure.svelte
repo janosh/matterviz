@@ -959,7 +959,9 @@
     multi_view_available && controls_config.visible(`multi-view`),
   )
   let layout_control_visible = $derived(
-    slice_layout_available || (display_mode === `structure` && multi_layout_available),
+    (display_mode === `slice` && !volumetric_data?.length) ||
+      slice_layout_available ||
+      (display_mode === `structure` && multi_layout_available),
   )
   let current_layout_mode = $derived<StructureLayoutMode>(
     display_mode === `slice` ? `slice` : is_multi_view_active ? `multi` : `single`,

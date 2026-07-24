@@ -5,7 +5,7 @@ import { get_element_counts } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   assertHoverScopedShortcut,
   bind_props,
@@ -227,13 +227,13 @@ describe(`Structure`, () => {
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
   })
 
-  test(`keeps a 3D escape available when volumes clear in slice mode`, async () => {
+  test(`keeps a 3D escape when volumes clear with the view control hidden`, async () => {
     const props = $state<ComponentProps<typeof Structure>>({
       structure,
       volumetric_data,
       display_mode: `slice`,
       slice_settings: { resolution: 2 },
-      show_controls: `always`,
+      show_controls: { mode: `always`, hidden: [`view-mode`] },
     })
     mount_structure(props)
     await tick()
@@ -365,18 +365,8 @@ describe(`Structure`, () => {
   ] as const)(
     `sets edit-bonds availability for %o to disabled=%s`,
     async (props, disabled) => {
-      let measure_mode: MeasureMode = `distance`
-      mount_structure({
-        structure,
-        show_controls: true,
-        get measure_mode() {
-          return measure_mode
-        },
-        set measure_mode(value) {
-          measure_mode = value
-        },
-        ...props,
-      })
+      const state = { measure_mode: `distance` as MeasureMode }
+      mount_structure(bind_props({ structure, show_controls: true, ...props }, state))
 
       const measure_btn = doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`)
       // icon-only button needs an accessible name (title alone is unreliable for AT)
@@ -391,7 +381,7 @@ describe(`Structure`, () => {
       expect(edit_bonds_button?.disabled).toBe(disabled)
       edit_bonds_button?.click()
       await tick()
-      expect(measure_mode).toBe(disabled ? `distance` : `edit-bonds`)
+      expect(state.measure_mode).toBe(disabled ? `distance` : `edit-bonds`)
     },
   )
 
@@ -401,17 +391,8 @@ describe(`Structure`, () => {
       throw new Error(`malformed scaling matrix`)
     })
     try {
-      let measure_mode: MeasureMode = `edit-bonds`
-      mount_structure({
-        structure,
-        supercell_scaling: `2x2x2`,
-        get measure_mode() {
-          return measure_mode
-        },
-        set measure_mode(value) {
-          measure_mode = value
-        },
-      })
+      const state = { measure_mode: `edit-bonds` as MeasureMode }
+      mount_structure(bind_props({ structure, supercell_scaling: `2x2x2` }, state))
 
       await vi.waitFor(() => {
         // error log proves make_supercell was called, threw, and was caught
@@ -429,7 +410,7 @@ describe(`Structure`, () => {
         )
         expect(legend_total).toBe(base_total)
       })
-      expect(measure_mode).toBe(`edit-bonds`)
+      expect(state.measure_mode).toBe(`edit-bonds`)
     } finally {
       vi.mocked(make_supercell).mockReset()
       error_spy.mockRestore()
@@ -510,8 +491,7 @@ describe(`Structure`, () => {
     mount_structure({ structure, show_controls: true })
 
     // Find the wrapper element that was created by the component
-    const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeInstanceOf(HTMLElement)
+    const wrapper = doc_query(`.structure`)
 
     // Mock wrapper element
     wrapper.requestFullscreen = requestFullscreenMock
@@ -519,8 +499,7 @@ describe(`Structure`, () => {
     await tick()
 
     // Click the fullscreen button
-    const fullscreen_button = document.querySelector(`.fullscreen-toggle`) as HTMLButtonElement
-    expect(fullscreen_button).toBeInstanceOf(HTMLElement)
+    const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-toggle`)
 
     fullscreen_button.click()
 
@@ -715,6 +694,8 @@ describe(`atom label controls`, () => {
 })
 
 describe(`Structure string parsing`, () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   test(`loads structure_string and emits parsed structure metadata`, async () => {
     const state = $state<{ structure?: AnyStructure; loading: boolean }>({
       structure: undefined,
@@ -846,33 +827,25 @@ describe(`Structure string parsing`, () => {
       return new Response(structure_json(href.includes(`b.json`) ? `He` : `H`))
     })
     vi.stubGlobal(`fetch`, fetch_mock)
-    try {
-      const props = $state<ComponentProps<typeof Structure>>({
-        data_url: `/a.json`,
-        on_file_load: (data: StructureHandlerData) =>
-          loaded_elements.push(data.structure?.sites[0]?.species[0]?.element ?? ``),
-      })
-      mount_structure(props)
-      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      on_file_load: (data: StructureHandlerData) =>
+        loaded_elements.push(data.structure?.sites[0]?.species[0]?.element ?? ``),
+    })
+    mount_structure(props)
+    await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
 
-      props.data_url = `/b.json`
-      await vi.waitFor(() => expect(fetch_mock).toHaveBeenCalledWith(`/b.json`))
-      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
-    } finally {
-      vi.unstubAllGlobals()
-    }
+    props.data_url = `/b.json`
+    await vi.waitFor(() => expect(fetch_mock).toHaveBeenCalledWith(`/b.json`))
+    await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
   })
 
   test(`caller-supplied structure takes precedence over data_url`, async () => {
     const fetch_mock = vi.fn()
     vi.stubGlobal(`fetch`, fetch_mock)
-    try {
-      mount_structure({ data_url: `/ignored.json`, structure })
-      await tick()
-      expect(fetch_mock).not.toHaveBeenCalled()
-    } finally {
-      vi.unstubAllGlobals()
-    }
+    mount_structure({ data_url: `/ignored.json`, structure })
+    await tick()
+    expect(fetch_mock).not.toHaveBeenCalled()
   })
 
   test(`ignores a stale structure URL completion`, async () => {
@@ -882,27 +855,23 @@ describe(`Structure string parsing`, () => {
         new Promise<Response>((resolve) => responses.set(request_url(url), resolve)),
     )
     vi.stubGlobal(`fetch`, fetch_mock)
-    try {
-      const on_file_load = vi.fn()
-      const props = $state<ComponentProps<typeof Structure>>({
-        data_url: `/a.json`,
-        on_file_load,
-      })
-      mount_structure(props)
-      await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+    const on_file_load = vi.fn()
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      on_file_load,
+    })
+    mount_structure(props)
+    await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
 
-      props.data_url = `/b.json`
-      await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-      responses.get(`/b.json`)?.(new Response(structure_json(`He`)))
-      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    props.data_url = `/b.json`
+    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+    responses.get(`/b.json`)?.(new Response(structure_json(`He`)))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
 
-      responses.get(`/a.json`)?.(new Response(structure_json(`H`)))
-      await tick()
-      expect(on_file_load).toHaveBeenCalledTimes(1)
-      expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
-    } finally {
-      vi.unstubAllGlobals()
-    }
+    responses.get(`/a.json`)?.(new Response(structure_json(`H`)))
+    await tick()
+    expect(on_file_load).toHaveBeenCalledTimes(1)
+    expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
   })
 
   test(`on_error reports the requested URL, not a superseded data_url`, async () => {
@@ -917,27 +886,23 @@ describe(`Structure string parsing`, () => {
         }),
     )
     vi.stubGlobal(`fetch`, fetch_mock)
-    try {
-      const on_error = vi.fn()
-      const props = $state<ComponentProps<typeof Structure>>({
-        data_url: `/a.json`,
-        on_error,
-      })
-      mount_structure(props)
-      await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+    const on_error = vi.fn()
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      on_error,
+    })
+    mount_structure(props)
+    await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
 
-      props.data_url = `/b.json`
-      await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-      responses.get(`/a.json`)?.reject(new Error(`network down`))
-      await tick()
-      expect(on_error).not.toHaveBeenCalled()
+    props.data_url = `/b.json`
+    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+    responses.get(`/a.json`)?.reject(new Error(`network down`))
+    await tick()
+    expect(on_error).not.toHaveBeenCalled()
 
-      responses.get(`/b.json`)?.reject(new Error(`gone`))
-      await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-      expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
-    } finally {
-      vi.unstubAllGlobals()
-    }
+    responses.get(`/b.json`)?.reject(new Error(`gone`))
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+    expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
   })
 
   test(`load error state renders StatusMessage`, async () => {
@@ -961,10 +926,11 @@ describe(`Structure string parsing`, () => {
 // happy-dom; these cover the toggle button + wrapper class. The 4-canvas render
 // and independent rotation are exercised by the playwright suite.
 describe(`Multi-side view`, () => {
-  const mock_viewer_size = (client_width: number, client_height: number) => [
-    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(client_width),
-    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(client_height),
-  ]
+  const mock_viewer_size = (client_width: number, client_height: number): void => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(client_width)
+    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(client_height)
+  }
+  afterEach(() => vi.restoreAllMocks())
 
   test(`layout dropdown switches multi_view and wrapper class`, async () => {
     const props = $state<ComponentProps<typeof Structure>>({
@@ -1021,57 +987,49 @@ describe(`Multi-side view`, () => {
       view_gap,
       expected_active,
     ) => {
-      const size_spies = mock_viewer_size(client_width, client_height)
-      try {
-        const views = Array.from({ length: view_count }, () => ({}))
-        const state = { multi_view_active: !expected_active }
-        mount_structure(
-          bind_props(
-            {
-              structure,
-              multi_view: true,
-              multi_view_min_pane_width: min_pane_width,
-              multi_view_min_pane_height: min_pane_height,
-              multi_view_gap: view_gap,
-              show_controls: `always` as const,
-              views,
-            },
-            state,
-          ),
-        )
-        await tick()
-        await tick()
+      mock_viewer_size(client_width, client_height)
+      const views = Array.from({ length: view_count }, () => ({}))
+      const state = { multi_view_active: !expected_active }
+      mount_structure(
+        bind_props(
+          {
+            structure,
+            multi_view: true,
+            multi_view_min_pane_width: min_pane_width,
+            multi_view_min_pane_height: min_pane_height,
+            multi_view_gap: view_gap,
+            show_controls: `always` as const,
+            views,
+          },
+          state,
+        ),
+      )
+      await tick()
+      await tick()
 
-        expect(document.querySelector(`button[aria-label^="View layout:"]`) !== null).toBe(
-          expected_active,
-        )
-        const expected_gap = Number.isFinite(view_gap) ? Math.max(0, view_gap) : 2
-        expect(doc_query(`.structure`).style.getPropertyValue(`--struct-viewport-gap`)).toBe(
-          `${expected_gap}px`,
-        )
-        expect(state.multi_view_active).toBe(expected_active)
-      } finally {
-        size_spies.forEach((size_spy) => size_spy.mockRestore())
-      }
+      expect(document.querySelector(`button[aria-label^="View layout:"]`) !== null).toBe(
+        expected_active,
+      )
+      const expected_gap = Number.isFinite(view_gap) ? Math.max(0, view_gap) : 2
+      expect(doc_query(`.structure`).style.getPropertyValue(`--struct-viewport-gap`)).toBe(
+        `${expected_gap}px`,
+      )
+      expect(state.multi_view_active).toBe(expected_active)
     },
   )
 
   test(`collapsed multi-view preference can be cleared with its keyboard shortcut`, async () => {
-    const size_spies = mock_viewer_size(599, 399)
-    try {
-      const state = { multi_view: true, multi_view_active: true }
-      mount_structure(bind_props({ structure, show_controls: `always` as const }, state))
-      await tick()
-      await tick()
+    mock_viewer_size(599, 399)
+    const state = { multi_view: true, multi_view_active: true }
+    mount_structure(bind_props({ structure, show_controls: `always` as const }, state))
+    await tick()
+    await tick()
 
-      doc_query(`.structure`).dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `g`, ctrlKey: true, bubbles: true }),
-      )
-      await tick()
-      expect(state).toEqual({ multi_view: false, multi_view_active: false })
-    } finally {
-      size_spies.forEach((size_spy) => size_spy.mockRestore())
-    }
+    doc_query(`.structure`).dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `g`, ctrlKey: true, bubbles: true }),
+    )
+    await tick()
+    expect(state).toEqual({ multi_view: false, multi_view_active: false })
   })
 })
 
