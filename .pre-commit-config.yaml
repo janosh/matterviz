@@ -37,7 +37,7 @@ repos:
     hooks:
       - id: vp-fmt
         name: Format (oxfmt)
-        entry: npx --package=vite-plus@0.2.5 vp check --fix
+        entry: pnpm exec vp check --fix
         types_or: [file]
         language: system
         pass_filenames: false
