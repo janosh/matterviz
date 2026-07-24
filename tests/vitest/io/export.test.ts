@@ -604,4 +604,46 @@ describe(`export_trajectory_video`, () => {
     expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
     expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
   })
+
+  test(`stops recorder and capture tracks when stepping rejects`, async () => {
+    const recorder_stop = vi.fn()
+    class MockMediaRecorder {
+      static isTypeSupported(): boolean {
+        return true
+      }
+      state: MediaRecorder[`state`] = `inactive`
+      addEventListener = vi.fn()
+      start = vi.fn(() => (this.state = `recording`))
+      stop = vi.fn(() => {
+        this.state = `inactive`
+        recorder_stop()
+      })
+    }
+    vi.stubGlobal(`MediaRecorder`, MockMediaRecorder)
+
+    const tracks = [
+      { requestFrame: vi.fn(), stop: vi.fn() },
+      { requestFrame: vi.fn(), stop: vi.fn() },
+    ]
+    const stream = {
+      getVideoTracks: vi.fn().mockReturnValue([tracks[0]]),
+      getTracks: vi.fn().mockReturnValue(tracks),
+    }
+    const canvas = {
+      captureStream: vi.fn().mockReturnValue(stream),
+      width: 800,
+      height: 600,
+    } as unknown as HTMLCanvasElement
+
+    const step_error = new Error(`step failed`)
+    const on_step = vi.fn().mockRejectedValue(step_error)
+    await expect(
+      export_trajectory_video(canvas, `test.webm`, {
+        total_frames: 1,
+        on_step,
+      }),
+    ).rejects.toThrow(`step failed`)
+    expect(recorder_stop).toHaveBeenCalledOnce()
+    for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
+  })
 })

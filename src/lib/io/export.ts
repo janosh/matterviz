@@ -412,7 +412,8 @@ export async function export_trajectory_video(
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined
   let orig_size: Vector2 | undefined
-  let recorder: MediaRecorder
+  let recorder: MediaRecorder | undefined = undefined
+  let stream: MediaStream | undefined
   const chunks: Blob[] = []
 
   try {
@@ -428,7 +429,7 @@ export async function export_trajectory_video(
     // (canvas dimensions include device pixel ratio and any resolution_multiplier)
     const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
 
-    const stream = canvas.captureStream(0)
+    stream = canvas.captureStream(0)
     recorder = new MediaRecorder(stream, {
       mimeType: `video/webm;codecs=vp9`,
       videoBitsPerSecond: bitrate,
@@ -471,6 +472,10 @@ export async function export_trajectory_video(
         await new Promise((resolve) => setTimeout(resolve, remaining))
       }
     }
+  } catch (error) {
+    if (recorder && recorder.state !== `inactive`) recorder.stop()
+    for (const track of stream?.getTracks() ?? []) track.stop()
+    throw error
   } finally {
     // Restore original renderer settings
     if (orig_pixel_ratio !== undefined && orig_size && renderer) {
