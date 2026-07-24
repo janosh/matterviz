@@ -43,6 +43,12 @@ const select_structure_layout = async (label: string): Promise<void> => {
   await tick()
 }
 
+const set_aria_input = (aria_label: string, value: string): void => {
+  const input = doc_query<HTMLInputElement>(`input[aria-label="${aria_label}"]`)
+  input.value = value
+  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+}
+
 // Shared test utilities to reduce duplication
 const SAMPLE_POSCAR_CONTENT = `BaTiO3 tetragonal
 1.0
@@ -84,6 +90,18 @@ const volumetric_data = [
   ),
 ]
 
+const mount_volumetric = (
+  overrides: Partial<ComponentProps<typeof Structure>> = {},
+): ComponentProps<typeof Structure> => {
+  const props = $state<ComponentProps<typeof Structure>>({
+    structure,
+    volumetric_data,
+    ...overrides,
+  })
+  mount_structure(props)
+  return props
+}
+
 const create_drop_event = (files: File[]): DragEvent => {
   const drag_event = new DragEvent(`drop`)
   Object.defineProperty(drag_event, `dataTransfer`, {
@@ -123,16 +141,13 @@ describe(`Structure`, () => {
   test(`switches a volumetric structure between shared 3D and slice views`, async () => {
     const on_slice_settings_change = vi.fn()
     const on_display_mode_change = vi.fn()
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      volumetric_data,
+    const props = mount_volumetric({
       show_controls: `always`,
       display_mode: `structure`,
       slice_settings: { plane_mode: `hkl`, resolution: 2 },
       on_slice_settings_change,
       on_display_mode_change,
     })
-    mount_structure(props)
     await tick()
 
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
@@ -146,20 +161,13 @@ describe(`Structure`, () => {
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`button[title="Measure / Edit"]`)).toBeNull()
 
-    // Check that the controls toggle button exists and is clickable
     const controls_toggle = doc_query<HTMLButtonElement>(`button.structure-controls-toggle`)
-    expect(controls_toggle).toBeInstanceOf(HTMLElement)
     controls_toggle.click()
     await tick()
-    // Check that the control pane is now visible by looking for control elements
     expect(document.querySelector(`.controls-pane`)).toBeInstanceOf(HTMLElement)
     const plane_select = doc_query<HTMLSelectElement>(`select[aria-label="Slice plane mode"]`)
     expect(plane_select.value).toBe(`hkl`)
-    const resolution_input = doc_query<HTMLInputElement>(
-      `input[aria-label="Slice resolution"]`,
-    )
-    resolution_input.value = `3`
-    resolution_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_aria_input(`Slice resolution`, `3`)
     await tick()
     expect(on_slice_settings_change).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
@@ -168,31 +176,25 @@ describe(`Structure`, () => {
       expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
     )
 
-    const color_min_input = doc_query<HTMLInputElement>(
-      `input[aria-label="Slice color minimum"]`,
-    )
-    color_min_input.value = `1`
-    color_min_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
-    expect(props.slice_settings?.color_range).toEqual([1, 7])
-    color_min_input.value = ``
-    color_min_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
-    expect(props.slice_settings?.color_range).toBeUndefined()
+    for (const [value, color_range] of [
+      [`1`, [1, 7]],
+      [``, undefined],
+    ] as const) {
+      set_aria_input(`Slice color minimum`, value)
+      await tick()
+      expect(props.slice_settings?.color_range).toEqual(color_range)
+    }
   })
 
   test(`reports externally bound volumetric view changes`, async () => {
     const on_display_mode_change = vi.fn()
     const on_slice_settings_change = vi.fn()
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      volumetric_data,
+    const props = mount_volumetric({
       display_mode: `structure`,
       slice_settings: { plane_mode: `hkl`, resolution: 2 },
       on_display_mode_change,
       on_slice_settings_change,
     })
-    mount_structure(props)
     await tick()
 
     expect(on_display_mode_change).not.toHaveBeenCalled()
@@ -215,9 +217,8 @@ describe(`Structure`, () => {
   })
 
   test(`renders slice mode for volume-only data with no atomic sites`, async () => {
-    mount_structure({
+    mount_volumetric({
       structure: { ...structure, sites: [] },
-      volumetric_data,
       display_mode: `slice`,
       slice_settings: { plane_mode: `hkl` },
     })
@@ -228,14 +229,11 @@ describe(`Structure`, () => {
   })
 
   test(`keeps a 3D escape when volumes clear with the view control hidden`, async () => {
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      volumetric_data,
+    const props = mount_volumetric({
       display_mode: `slice`,
       slice_settings: { resolution: 2 },
       show_controls: { mode: `always`, hidden: [`view-mode`] },
     })
-    mount_structure(props)
     await tick()
 
     props.volumetric_data = []
@@ -248,15 +246,12 @@ describe(`Structure`, () => {
 
   test(`clamps stale active volume indices with controls closed`, async () => {
     const on_active_volume_idx_change = vi.fn()
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      volumetric_data,
+    const props = mount_volumetric({
       active_volume_idx: 9,
       display_mode: `slice`,
       slice_settings: { resolution: 2 },
       on_active_volume_idx_change,
     })
-    mount_structure(props)
     await tick()
 
     expect(props.active_volume_idx).toBe(0)

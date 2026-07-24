@@ -1,7 +1,6 @@
 <script lang="ts">
   import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
-  import { normalize_active_volume_idx } from '$lib/isosurface/types'
-  import type { VolumetricData } from '$lib/isosurface/types'
+  import { normalize_active_volume_idx, type VolumetricData } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
@@ -52,19 +51,15 @@
     value: number,
   ): void {
     if (!Number.isFinite(value)) return
-    const vector = [
-      ...(key === `cartesian_point` ? cartesian_point : resolved_settings[key]),
-    ] as Vec3
+    const source = key === `cartesian_point` ? cartesian_point : resolved_settings[key]
+    const vector = [...source] as Vec3
     vector[axis_idx] = value
     update_settings({ [key]: vector })
   }
 
   function update_color_bound(bound_idx: 0 | 1, raw_value: string): void {
-    if (raw_value.trim() === ``) {
-      update_settings({ color_range: undefined })
-      return
-    }
-    const value = Number(raw_value)
+    const value = raw_value.trim() === `` ? undefined : Number(raw_value)
+    if (value === undefined) return update_settings({ color_range: undefined })
     if (!Number.isFinite(value)) return
     const [minimum, maximum] = resolved_settings.color_range ?? [
       active_volume?.data_range.min ?? 0,

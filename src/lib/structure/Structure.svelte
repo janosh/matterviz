@@ -963,8 +963,10 @@
       slice_layout_available ||
       (display_mode === `structure` && multi_layout_available),
   )
-  let current_layout_mode = $derived<StructureLayoutMode>(
-    display_mode === `slice` ? `slice` : is_multi_view_active ? `multi` : `single`,
+  let current_layout = $derived(
+    STRUCTURE_LAYOUTS[
+      display_mode === `slice` ? `slice` : is_multi_view_active ? `multi` : `single`
+    ],
   )
   let multi_view_unavailable_reason = $derived(
     views.length < 2
@@ -1787,7 +1789,6 @@
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 6px; --viewer-buttons-right: calc(1ex - 5px); --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
-        {@const current_layout = STRUCTURE_LAYOUTS[current_layout_mode]}
         <div
           class="view-layout-dropdown view-mode-control"
           {@attach click_outside({ callback: () => (view_layout_menu_open = false) })}
@@ -1815,10 +1816,10 @@
                   <button
                     type="button"
                     class="view-mode-option"
-                    class:selected={current_layout_mode === mode}
+                    class:selected={current_layout.mode === mode}
                     title={mode === `multi` ? `${label} (Cmd/Ctrl+G)` : label}
                     aria-keyshortcuts={mode === `multi` ? `Control+G Meta+G` : undefined}
-                    aria-pressed={current_layout_mode === mode}
+                    aria-pressed={current_layout.mode === mode}
                     onclick={() => select_structure_layout(mode)}
                   >
                     <Icon {icon} />
@@ -2344,16 +2345,12 @@
     place-self: center;
   }
   .view-mode-control > button {
-    --icon-size: 1em;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     padding: 1px 6px;
     font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
-  }
-  .structure :global(section.control-buttons > button) {
-    --icon-size: 1em;
   }
   .view-mode-control > .view-mode-button {
     padding-right: 2px;

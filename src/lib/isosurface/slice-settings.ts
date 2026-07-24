@@ -33,29 +33,25 @@ export const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
   symmetric: `auto`,
 }
 
-const clone_vec3 = (vector: Vec3): Vec3 => [...vector] as Vec3
-
 /** Return independent slice settings so nested vectors never leak across viewers. */
 export function create_volume_slice_settings(
   overrides: Partial<VolumeSliceSettings> = {},
 ): VolumeSliceSettings {
+  const {
+    miller_indices = DEFAULT_VOLUME_SLICE_SETTINGS.miller_indices,
+    cartesian_point,
+    cartesian_normal = DEFAULT_VOLUME_SLICE_SETTINGS.cartesian_normal,
+    cartesian_up = DEFAULT_VOLUME_SLICE_SETTINGS.cartesian_up,
+    color_range,
+    ...rest
+  } = overrides
   return {
     ...DEFAULT_VOLUME_SLICE_SETTINGS,
-    ...Object.fromEntries(
-      Object.entries(overrides).filter(([, value]) => value !== undefined),
-    ),
-    miller_indices: clone_vec3(
-      overrides.miller_indices ?? DEFAULT_VOLUME_SLICE_SETTINGS.miller_indices,
-    ),
-    cartesian_point: overrides.cartesian_point
-      ? clone_vec3(overrides.cartesian_point)
-      : undefined,
-    cartesian_normal: clone_vec3(
-      overrides.cartesian_normal ?? DEFAULT_VOLUME_SLICE_SETTINGS.cartesian_normal,
-    ),
-    cartesian_up: clone_vec3(
-      overrides.cartesian_up ?? DEFAULT_VOLUME_SLICE_SETTINGS.cartesian_up,
-    ),
-    color_range: overrides.color_range ? ([...overrides.color_range] as Vec2) : undefined,
+    ...Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined)),
+    miller_indices: [...miller_indices] as Vec3,
+    cartesian_point: cartesian_point ? ([...cartesian_point] as Vec3) : undefined,
+    cartesian_normal: [...cartesian_normal] as Vec3,
+    cartesian_up: [...cartesian_up] as Vec3,
+    color_range: color_range ? ([...color_range] as Vec2) : undefined,
   }
 }

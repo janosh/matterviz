@@ -113,25 +113,16 @@ test.describe(`Isosurface page`, () => {
       }
 
       await page.getByRole(`button`, { name: /^View layout:/ }).click()
-      const selected_option = page.getByRole(`button`, {
-        name: `2D cross-section`,
-        exact: true,
-      })
-      const selected_color = await selected_option.evaluate(
-        (element) => getComputedStyle(element).color,
-      )
-      await selected_option.hover()
-      expect(
-        await selected_option.evaluate((element) => getComputedStyle(element).color),
-      ).toBe(selected_color)
-      const single_option = page.getByRole(`button`, {
-        name: `3D single view`,
-        exact: true,
-      })
-      await single_option.hover()
-      expect(await single_option.evaluate((element) => getComputedStyle(element).color)).toBe(
-        selected_color,
-      )
+      const selected_color = await page
+        .getByRole(`button`, { name: `2D cross-section`, exact: true })
+        .evaluate((element) => getComputedStyle(element).color)
+      for (const name of [`2D cross-section`, `3D single view`]) {
+        const option = page.getByRole(`button`, { name, exact: true })
+        await option.hover()
+        expect(await option.evaluate((element) => getComputedStyle(element).color)).toBe(
+          selected_color,
+        )
+      }
     })
 
     test(`switches between HKL, Cartesian, filled, and contour views`, async ({ page }) => {
@@ -163,11 +154,9 @@ test.describe(`Isosurface page`, () => {
     test(`keeps Miller input responsive at high slice resolution`, async ({ page }) => {
       const slice = await open_slice_view(page)
       const canvas = slice.locator(`canvas`)
-      const initial_image = await canvas.evaluate((canvas_element) =>
-        (canvas_element as HTMLCanvasElement).toDataURL(),
-      )
       const input = page.getByRole(`textbox`, { name: `hkl` })
       await input.fill(`11`)
+      const initial_image = await canvas_screenshot(canvas)
       const update_ms = await input.evaluate(async (input_element) => {
         const input_node = input_element as HTMLInputElement
         const start = performance.now()
@@ -178,15 +167,7 @@ test.describe(`Isosurface page`, () => {
       })
 
       expect(update_ms).toBeLessThan(100)
-      await expect
-        .poll(
-          () =>
-            canvas.evaluate((canvas_element) =>
-              (canvas_element as HTMLCanvasElement).toDataURL(),
-            ),
-          { timeout: get_canvas_timeout() },
-        )
-        .not.toBe(initial_image)
+      await expect_canvas_changed(canvas, initial_image)
       await expect(input).toHaveValue(`110`)
     })
 

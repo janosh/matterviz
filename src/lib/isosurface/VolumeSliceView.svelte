@@ -2,12 +2,7 @@
   import { StatusMessage } from '$lib/feedback'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import {
-    resolve_slice_cartesian_point,
-    sample_hkl_slice,
-    sample_plane_slice,
-    type SliceResult,
-  } from './slice'
+  import { resolve_slice_cartesian_point, sample_hkl_slice, sample_plane_slice } from './slice'
   import { create_volume_slice_settings, type VolumeSliceSettings } from './slice-settings'
   import type { VolumetricData } from './types'
   import VolumeSlice from './VolumeSlice.svelte'
@@ -37,17 +32,13 @@
     return () => clearTimeout(timer)
   })
 
-  let computed_slice = $derived.by((): SliceResult | null => {
+  let computed_slice = $derived.by(() => {
     if (!volume || !sampling_settings) return null
     const resolution =
       sampling_settings.resolution > 0 ? sampling_settings.resolution : undefined
     if (sampling_settings.plane_mode === `hkl`) {
-      return sample_hkl_slice(
-        volume,
-        sampling_settings.miller_indices,
-        sampling_settings.position,
-        resolution,
-      )
+      const { miller_indices, position } = sampling_settings
+      return sample_hkl_slice(volume, miller_indices, position, resolution)
     }
     return sample_plane_slice(
       volume,
