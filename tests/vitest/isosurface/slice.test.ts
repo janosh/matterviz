@@ -3,8 +3,10 @@ import { trilinear_interpolate } from '$lib/isosurface/sampling'
 import {
   type CartesianPlane,
   type PlaneSliceOptions,
+  resolve_slice_cartesian_point,
   sample_hkl_slice,
   sample_plane_slice,
+  volume_center,
 } from '$lib/isosurface/slice'
 import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -152,6 +154,34 @@ describe(`sample_hkl_slice`, () => {
     // Interior should have value 5, edges may have 0 if they extend beyond [0,1]
     const nonzero = result.data.filter((val) => val > 0).length
     expect(nonzero).toBeGreaterThan(0)
+  })
+})
+
+describe(`Cartesian slice point helpers`, () => {
+  const volume = make_volume([[[0]]], {
+    lattice: [
+      [2, 0, 0],
+      [1, 4, 0],
+      [0.5, 1, 6],
+    ],
+    origin: [10, -2, 5],
+  })
+  const expected_center: Vec3 = [11.75, 0.5, 8]
+
+  test(`converts the fractional volume center into absolute Cartesian coordinates`, () => {
+    expect(volume_center(volume)).toEqual(expected_center)
+  })
+
+  test(`preserves a provided Cartesian point`, () => {
+    const point: Vec3 = [7, 8, 9]
+    expect(resolve_slice_cartesian_point(point, volume)).toBe(point)
+  })
+
+  test.each([
+    [`volume center`, volume, expected_center],
+    [`Cartesian origin`, undefined, [0, 0, 0] as Vec3],
+  ])(`defaults an omitted point to the %s`, (_fallback, fallback_volume, expected) => {
+    expect(resolve_slice_cartesian_point(undefined, fallback_volume)).toEqual(expected)
   })
 })
 
