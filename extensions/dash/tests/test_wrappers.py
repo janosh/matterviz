@@ -139,7 +139,11 @@ def test_trailing_props_use_python_names(tmp_path: Path) -> None:
 
 def test_structure_preserves_legacy_positional_bindings() -> None:
     """Structure documents file drops without shifting legacy arguments."""
-    assert "on_file_drop" in (inspect.getdoc(mvc.Structure) or "")
+    structure_docs = inspect.getdoc(mvc.Structure) or ""
+    assert "on_file_drop" in structure_docs
+    assert "on_display_mode_change" in structure_docs
+    assert "on_active_volume_idx_change" in structure_docs
+    assert "on_slice_settings_change" in structure_docs
     parameter_names = list(inspect.signature(mvc.Structure.__init__).parameters)[1:]
     assert parameter_names == [
         *STRUCTURE_V043_PARAMETERS,
@@ -147,6 +151,8 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
         "multi_view_active",
         "multi_view_min_pane_height",
         "multi_view_min_pane_width",
+        "display_mode",
+        "slice_settings",
         "kwargs",
     ]
 
@@ -161,6 +167,8 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
         multi_view_min_pane_height=201,
         multi_view_min_pane_width=301,
         multi_view_gap=12,
+        display_mode="slice",
+        slice_settings={"plane_mode": "hkl", "miller_indices": [1, 1, 0]},
     )
     assert component.mv_props == {
         "performance_mode": "speed",
@@ -169,6 +177,8 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
         "multi_view_min_pane_height": 201,
         "multi_view_min_pane_width": 301,
         "multi_view_gap": 12,
+        "display_mode": "slice",
+        "slice_settings": {"plane_mode": "hkl", "miller_indices": [1, 1, 0]},
     }
 
 

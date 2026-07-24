@@ -28,6 +28,18 @@ const UNIT_CELL_RANGE: DisplayRange = [
   [0, 1],
 ]
 
+export const volume_center = (volume: VolumetricData): Vec3 =>
+  math.add(volume.origin, math.create_frac_to_cart(volume.lattice)([0.5, 0.5, 0.5]))
+
+/** Resolve a Cartesian slice point, defaulting to the volume center or origin. */
+export const resolve_slice_cartesian_point = (
+  point: Vec3 | undefined,
+  volume?: VolumetricData,
+): Vec3 => point ?? (volume ? volume_center(volume) : [0, 0, 0])
+
+const default_slice_resolution = (volume: VolumetricData): number =>
+  Math.max(...volume.grid_dims)
+
 export interface CartesianPlane {
   point: Vec3 // absolute Cartesian point on the plane
   normal: Vec3 // Cartesian plane normal (normalization is handled internally)
@@ -207,7 +219,7 @@ export function sample_plane_slice(
     options.resolution,
     u_span,
     v_span,
-    Math.max(...volume.grid_dims),
+    default_slice_resolution(volume),
     options.max_pixels ?? DEFAULT_MAX_PIXELS,
   )
   const data = new Float64Array(width * height)
@@ -293,7 +305,7 @@ export function sample_hkl_slice(
     d_cartesian * unit_normal[1],
     d_cartesian * unit_normal[2],
   ]
-  const resolution = n_points ?? Math.max(...volume.grid_dims)
+  const resolution = n_points ?? default_slice_resolution(volume)
   return sample_plane_slice(
     volume,
     { point, normal: unit_normal },

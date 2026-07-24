@@ -6,6 +6,7 @@ import {
   sample_hkl_slice,
   sample_plane_slice,
 } from '$lib/isosurface/slice'
+import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../setup'
@@ -152,6 +153,19 @@ describe(`sample_hkl_slice`, () => {
     const nonzero = result.data.filter((val) => val > 0).length
     expect(nonzero).toBeGreaterThan(0)
   })
+})
+
+test(`slice settings factory returns independent nested values`, () => {
+  const first = create_volume_slice_settings()
+  const second = create_volume_slice_settings({ miller_indices: [1, 1, 0] })
+
+  first.miller_indices[0] = 9
+  first.cartesian_normal[2] = 4
+
+  expect(second.miller_indices).toEqual([1, 1, 0])
+  expect(second.cartesian_normal).toEqual([0, 0, 1])
+  expect(create_volume_slice_settings().miller_indices).toEqual([0, 0, 1])
+  expect(create_volume_slice_settings({ resolution: undefined }).resolution).toBe(512)
 })
 
 describe(`sample_plane_slice`, () => {

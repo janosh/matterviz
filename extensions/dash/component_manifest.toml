@@ -8,7 +8,7 @@ matterviz_version = "0.3.2"
 
 [components.Structure]
 key = "structure/Structure"
-doc = "3D crystal structure / molecule viewer."
+doc = "Crystal structure, volumetric isosurface, and cross-section viewer."
 
 # Structure expects a few props as JS Set / Float32Array; Dash must pass JSON arrays.
 # The generator auto-detects set_props/float32_props from their TypeScript types.
@@ -18,6 +18,8 @@ trailing_props = [
   "multi_view_active",
   "multi_view_min_pane_height",
   "multi_view_min_pane_width",
+  "display_mode",
+  "slice_settings",
 ]
 
 [components.PeriodicTable]

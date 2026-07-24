@@ -9,12 +9,8 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import {
-    FullscreenButton,
-    type FullscreenToggleProp,
-    SettingsSection,
-    toggle_fullscreen,
-  } from '$lib/layout'
+  import { FullscreenButton, SettingsSection, toggle_fullscreen } from '$lib/layout'
+  import type { FullscreenToggleProp } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec2, Vec3 } from '$lib/math'
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'

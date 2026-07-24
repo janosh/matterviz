@@ -1,13 +1,19 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { VolumetricData } from '$lib/isosurface'
-import type { Vec3 } from '$lib/math'
 import type { StructureBond, StructureHandlerData } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { assertHoverScopedShortcut, bind_props, doc_query, press_window_key } from '../setup'
+import {
+  assertHoverScopedShortcut,
+  bind_props,
+  doc_query,
+  make_grid,
+  make_volume,
+  press_window_key,
+} from '../setup'
 
 // Passthrough spy so individual tests can make make_supercell throw
 vi.mock(`$lib/structure/supercell`, async (import_original) => {
@@ -23,6 +29,18 @@ const structure = structures[0]
 // Mount Structure into document.body (queries are left to each test via doc_query)
 const mount_structure = (props: ComponentProps<typeof Structure>): void => {
   mount(Structure, { target: document.body, props })
+}
+
+const select_structure_layout = async (label: string): Promise<void> => {
+  doc_query<HTMLButtonElement>(`button[aria-label^="View layout:"]`).click()
+  await tick()
+  const option = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(`.view-layout-dropdown .view-mode-option`),
+  ).find((button) => button.textContent?.trim() === label)
+  if (!option) throw new Error(`Missing structure layout option: ${label}`)
+  option.click()
+  flushSync()
+  await tick()
 }
 
 // Shared test utilities to reduce duplication
@@ -51,6 +69,20 @@ Direct
 
 2 2 2
 1 2 3 4 5 6 7 8`
+const volumetric_data = [
+  make_volume(
+    make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
+    {
+      lattice: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
+      label: `Charge density`,
+    },
+  ),
+]
 
 const create_drop_event = (files: File[]): DragEvent => {
   const drag_event = new DragEvent(`drop`)
@@ -88,17 +120,150 @@ describe(`Structure`, () => {
     expect(proxy_warns).toEqual([])
   })
 
-  test(`open control pane when clicking toggle button`, () => {
-    mount_structure({ structure, controls_open: false, show_controls: true })
+  test(`switches a volumetric structure between shared 3D and slice views`, async () => {
+    const on_slice_settings_change = vi.fn()
+    const on_display_mode_change = vi.fn()
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      volumetric_data,
+      show_controls: `always`,
+      display_mode: `structure`,
+      slice_settings: { plane_mode: `hkl`, resolution: 2 },
+      on_slice_settings_change,
+      on_display_mode_change,
+    })
+    mount_structure(props)
+    await tick()
+
+    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
+
+    await select_structure_layout(`2D cross-section`)
+
+    expect(props.display_mode).toBe(`slice`)
+    expect(on_display_mode_change).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ display_mode: `slice`, active_volume_idx: 0 }),
+    )
+    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`button[title="Measure / Edit"]`)).toBeNull()
 
     // Check that the controls toggle button exists and is clickable
-    const controls_toggle = doc_query(`button.structure-controls-toggle`)
+    const controls_toggle = doc_query<HTMLButtonElement>(`button.structure-controls-toggle`)
     expect(controls_toggle).toBeInstanceOf(HTMLElement)
-
     controls_toggle.click()
-
+    await tick()
     // Check that the control pane is now visible by looking for control elements
     expect(document.querySelector(`.controls-pane`)).toBeInstanceOf(HTMLElement)
+    const plane_select = doc_query<HTMLSelectElement>(`select[aria-label="Slice plane mode"]`)
+    expect(plane_select.value).toBe(`hkl`)
+    const resolution_input = doc_query<HTMLInputElement>(
+      `input[aria-label="Slice resolution"]`,
+    )
+    resolution_input.value = `3`
+    resolution_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(on_slice_settings_change).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
+    )
+    expect(props.slice_settings).toEqual(
+      expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
+    )
+
+    const color_min_input = doc_query<HTMLInputElement>(
+      `input[aria-label="Slice color minimum"]`,
+    )
+    color_min_input.value = `1`
+    color_min_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(props.slice_settings?.color_range).toEqual([1, 7])
+    color_min_input.value = ``
+    color_min_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(props.slice_settings?.color_range).toBeUndefined()
+  })
+
+  test(`reports externally bound volumetric view changes`, async () => {
+    const on_display_mode_change = vi.fn()
+    const on_slice_settings_change = vi.fn()
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      volumetric_data,
+      display_mode: `structure`,
+      slice_settings: { plane_mode: `hkl`, resolution: 2 },
+      on_display_mode_change,
+      on_slice_settings_change,
+    })
+    mount_structure(props)
+    await tick()
+
+    expect(on_display_mode_change).not.toHaveBeenCalled()
+    expect(on_slice_settings_change).not.toHaveBeenCalled()
+
+    props.display_mode = `slice`
+    props.slice_settings = { plane_mode: `cartesian`, resolution: 4 }
+    await tick()
+    expect(on_display_mode_change).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ display_mode: `slice`, active_volume_idx: 0 }),
+    )
+
+    expect(on_slice_settings_change).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        plane_mode: `cartesian`,
+        resolution: 4,
+        cartesian_normal: [0, 0, 1],
+      }),
+    )
+  })
+
+  test(`renders slice mode for volume-only data with no atomic sites`, async () => {
+    mount_structure({
+      structure: { ...structure, sites: [] },
+      volumetric_data,
+      display_mode: `slice`,
+      slice_settings: { plane_mode: `hkl` },
+    })
+    await tick()
+
+    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
+    expect(document.body.textContent).not.toContain(`No sites found in structure`)
+  })
+
+  test(`keeps a 3D escape available when volumes clear in slice mode`, async () => {
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      volumetric_data,
+      display_mode: `slice`,
+      slice_settings: { resolution: 2 },
+      show_controls: `always`,
+    })
+    mount_structure(props)
+    await tick()
+
+    props.volumetric_data = []
+    await tick()
+    await select_structure_layout(`3D single view`)
+
+    expect(props.display_mode).toBe(`structure`)
+    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
+  })
+
+  test(`clamps stale active volume indices with controls closed`, async () => {
+    const on_active_volume_idx_change = vi.fn()
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      volumetric_data,
+      active_volume_idx: 9,
+      display_mode: `slice`,
+      slice_settings: { resolution: 2 },
+      on_active_volume_idx_change,
+    })
+    mount_structure(props)
+    await tick()
+
+    expect(props.active_volume_idx).toBe(0)
+    expect(on_active_volume_idx_change).toHaveBeenCalledWith(
+      expect.objectContaining({ active_volume_idx: 0, display_mode: `slice` }),
+    )
+    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`hides atom color mode toggle until viewer hover or focus`, async () => {
@@ -483,51 +648,33 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
 
 // Atom label controls tests
 describe(`atom label controls`, () => {
-  test.each([
-    { axis: `X`, idx: 0, initial: 0.2 },
-    { axis: `Y`, idx: 1, initial: -0.5 },
-    { axis: `Z`, idx: 2, initial: 0.8 },
-  ])(`$axis offset control reflects site_label_offset`, ({ idx, initial }) => {
-    const offset = [0, 0, 0] as Vec3
-    offset[idx] = initial
-
-    mount_structure({
-      structure,
-      controls_open: true,
-      show_controls: true,
-      scene_props: { show_site_labels: true, site_label_offset: offset },
-    })
-
-    const offset_inputs = document.querySelectorAll(
-      `input[type="number"][min="-1"][max="1"][step="0.1"]`,
-    )
-    expect(offset_inputs.length).toBeGreaterThanOrEqual(3)
-
-    const input = offset_inputs[idx] as HTMLInputElement
-    expect(Number(input.value)).toBeCloseTo(initial, 1)
-  })
-
-  test(`size and padding controls reflect scene_props bindings`, () => {
+  test(`controls reflect scene_props bindings`, () => {
     mount_structure({
       structure,
       controls_open: true,
       show_controls: true,
       scene_props: {
         show_site_labels: true,
+        site_label_offset: [0.2, -0.5, 0.8],
         site_label_size: 1.2,
         site_label_padding: 4,
       },
     })
 
-    const size_input = document.querySelector(
-      `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
-    ) as HTMLInputElement
-    const padding_input = document.querySelector(
-      `input[type="number"][min="0"][max="10"][step="1"]`,
-    ) as HTMLInputElement
+    const offset_inputs = document.querySelectorAll<HTMLInputElement>(
+      `input[type="number"][min="-1"][max="1"][step="0.1"]`,
+    )
+    expect([...offset_inputs].map((input) => Number(input.value))).toEqual([0.2, -0.5, 0.8])
 
-    expect(Number(size_input.value)).toBeCloseTo(1.2, 1)
-    expect(Number(padding_input.value)).toBe(4)
+    const size_input = document.querySelector<HTMLInputElement>(
+      `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
+    )
+    const padding_input = document.querySelector<HTMLInputElement>(
+      `input[type="number"][min="0"][max="10"][step="1"]`,
+    )
+
+    expect(size_input?.valueAsNumber).toBeCloseTo(1.2, 1)
+    expect(padding_input?.valueAsNumber).toBe(4)
   })
 
   test(`state isolation between instances works`, async () => {
@@ -819,26 +966,26 @@ describe(`Multi-side view`, () => {
     vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(client_height),
   ]
 
-  test(`toggle button renders and flips multi_view + wrapper class`, async () => {
-    mount_structure({ structure, show_controls: `always` })
+  test(`layout dropdown switches multi_view and wrapper class`, async () => {
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      show_controls: `always`,
+      multi_view: false,
+    })
+    mount_structure(props)
     await tick()
 
-    const toggle = doc_query<HTMLButtonElement>(`button.multi-view-toggle`)
-    expect(toggle).toBeInstanceOf(HTMLButtonElement)
-    expect(toggle.getAttribute(`aria-pressed`)).toBe(`false`)
+    expect(doc_query(`button[aria-label="View layout: 3D single view"]`)).toBeInstanceOf(
+      HTMLButtonElement,
+    )
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
-    toggle.click()
-    flushSync()
-    await tick()
-
-    expect(toggle.getAttribute(`aria-pressed`)).toBe(`true`)
+    await select_structure_layout(`3D 2×2 grid`)
+    expect(props.multi_view).toBe(true)
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
 
-    toggle.click()
-    flushSync()
-    await tick()
-    expect(toggle.getAttribute(`aria-pressed`)).toBe(`false`)
+    await select_structure_layout(`3D single view`)
+    expect(props.multi_view).toBe(false)
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
   })
 
@@ -849,8 +996,7 @@ describe(`Multi-side view`, () => {
       show_controls: { mode: `always`, hidden: [`multi-view`] },
     })
     await tick()
-    expect(document.querySelector(`button.multi-view-toggle`)).toBeNull()
-    expect(document.body.textContent).not.toContain(`Multi-view grid`)
+    expect(document.querySelector(`button[aria-label^="View layout:"]`)).toBeNull()
   })
 
   test.each([
@@ -896,7 +1042,7 @@ describe(`Multi-side view`, () => {
         await tick()
         await tick()
 
-        expect(document.querySelector(`button.multi-view-toggle`) !== null).toBe(
+        expect(document.querySelector(`button[aria-label^="View layout:"]`) !== null).toBe(
           expected_active,
         )
         const expected_gap = Number.isFinite(view_gap) ? Math.max(0, view_gap) : 2

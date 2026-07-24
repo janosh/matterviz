@@ -99,6 +99,29 @@ describe(`canvas_to_png_blob`, () => {
     expect(blob.type).toBe(`image/png`)
   })
 
+  test(`scales plain 2D canvases for high-DPI export`, async () => {
+    const context = { drawImage: vi.fn() }
+    const scaled_canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn().mockReturnValue(context),
+      toBlob: vi.fn((callback: BlobCallback) =>
+        callback(new Blob([`scaled`], { type: `image/png` })),
+      ),
+    } as unknown as HTMLCanvasElement
+    const create_element_spy = vi
+      .spyOn(document, `createElement`)
+      .mockReturnValue(scaled_canvas)
+    const canvas = make_mock_canvas()
+
+    await canvas_to_png_blob(canvas, 150)
+
+    expect([scaled_canvas.width, scaled_canvas.height]).toEqual([1667, 1250])
+    expect(context.drawImage).toHaveBeenCalledWith(canvas, 0, 0, 1667, 1250)
+    expect(scaled_canvas.toBlob).toHaveBeenCalledOnce()
+    create_element_spy.mockRestore()
+  })
+
   test(`uses direct capture when DPI <= ~72 (multiplier ≤ 1.1)`, async () => {
     const { canvas, renderer } = make_canvas_with_renderer()
     await canvas_to_png_blob(canvas, 72)

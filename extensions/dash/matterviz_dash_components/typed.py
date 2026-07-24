@@ -12,11 +12,11 @@ from .MatterViz import MatterViz
 _UNSET = object()
 
 class Structure(MatterViz):
-    """3D crystal structure / molecule viewer.
+    """Crystal structure, volumetric isosurface, and cross-section viewer.
 
     Component key: ``structure/Structure``
 
-    Events: on_bonds_change, on_camera_move, on_camera_reset, on_error, on_file_drop, on_file_load, on_fullscreen_change
+    Events: on_active_volume_idx_change, on_bonds_change, on_camera_move, on_camera_reset, on_display_mode_change, on_error, on_file_drop, on_file_load, on_fullscreen_change, on_slice_settings_change
 
     Unsupported snippets: top_right_controls
     """
@@ -79,6 +79,8 @@ class Structure(MatterViz):
         multi_view_active: bool | None = None,
         multi_view_min_pane_height: float | None = None,
         multi_view_min_pane_width: float | None = None,
+        display_mode: Any | None = None,
+        slice_settings: dict | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -99,6 +101,8 @@ class Structure(MatterViz):
             mv_props["cell_type"] = cell_type
         if data_url is not None:
             mv_props["data_url"] = data_url
+        if display_mode is not None:
+            mv_props["display_mode"] = display_mode
         if displayed_structure is not None:
             mv_props["displayed_structure"] = displayed_structure
         if dragover is not None:
@@ -163,6 +167,8 @@ class Structure(MatterViz):
             mv_props["show_controls"] = show_controls
         if site_radius_overrides is not None:
             mv_props["site_radius_overrides"] = site_radius_overrides
+        if slice_settings is not None:
+            mv_props["slice_settings"] = slice_settings
         if spinner_props is not None:
             mv_props["spinner_props"] = spinner_props
         if structure is not None:

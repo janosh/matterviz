@@ -401,7 +401,6 @@
   }}
   open_icon="Cross"
   closed_icon="Info"
-  icon_style="transform: scale(1.15)"
   pane_props={{
     ...pane_props,
     class: `structure-info-pane ${pane_props?.class ?? ``}`,

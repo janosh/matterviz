@@ -2,6 +2,7 @@
   import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
   import type { Vec2 } from '$lib/math'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+  import type { Orientation } from '$lib/plot/core/types'
   import { contours as create_contours } from 'd3-contour'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { SliceResult } from './slice'
@@ -9,8 +10,8 @@
     resolve_contour_thresholds,
     resolve_slice_color_range,
     slice_to_rgba,
-    type VolumeSliceMode,
   } from './slice-rendering'
+  import type { VolumeSliceMode } from './slice-rendering'
 
   let {
     slice,
@@ -24,6 +25,7 @@
     flip_y = true,
     show_colorbar = true,
     colorbar_title = `Value`,
+    colorbar_orientation = `vertical`,
     canvas = $bindable(),
     onrender,
     ...rest
@@ -39,6 +41,7 @@
     flip_y?: boolean
     show_colorbar?: boolean
     colorbar_title?: string
+    colorbar_orientation?: Orientation
     canvas?: HTMLCanvasElement
     onrender?: (detail: {
       canvas: HTMLCanvasElement
@@ -177,13 +180,11 @@
 </script>
 
 <div {...rest} class={[`volume-slice`, rest.class]}>
-  <div class="canvas-wrapper">
-    <canvas
-      bind:this={canvas}
-      aria-label="Volumetric scalar-field slice"
-      style:aspect-ratio={aspect_ratio}
-    ></canvas>
-  </div>
+  <canvas
+    bind:this={canvas}
+    aria-label="Volumetric scalar-field slice"
+    style:aspect-ratio={aspect_ratio}
+  ></canvas>
   {#if show_colorbar && slice}
     <ColorBar
       title={colorbar_title}
@@ -192,8 +193,8 @@
       color_scale_domain={resolved_color_range}
       range={resolved_color_range}
       tick_labels={5}
-      bar_style="width: 100%"
-      wrapper_style="width: 100%"
+      orientation={colorbar_orientation}
+      class="slice-colorbar {colorbar_orientation}"
       --cbar-font-size="0.75em"
       --cbar-tick-label-font-weight="normal"
     />
@@ -202,23 +203,42 @@
 
 <style>
   .volume-slice {
-    display: grid;
-    gap: 0.5rem;
+    position: relative;
     width: 100%;
-  }
-  .canvas-wrapper {
-    display: grid;
-    place-items: center;
+    height: var(--volume-slice-height, auto);
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
   }
   canvas {
     display: block;
-    width: min(100%, var(--volume-slice-max-width, 600px));
-    height: auto;
-    max-height: var(--volume-slice-max-height, 600px);
+    width: 100%;
+    height: var(--volume-slice-canvas-height, auto);
+    object-fit: contain;
     color: var(--volume-slice-contour-color, currentColor);
     outline: 1px solid var(--border-color, #ccc);
     border-radius: 4px;
     image-rendering: auto;
+  }
+  .volume-slice :global(.slice-colorbar) {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    color: var(--volume-slice-colorbar-color, currentColor);
+    text-shadow: var(
+      --volume-slice-colorbar-text-shadow,
+      0 1px 2px color-mix(in srgb, var(--struct-bg, #fff) 85%, transparent)
+    );
+  }
+  .volume-slice :global(.slice-colorbar.vertical) {
+    top: 50%;
+    left: var(--volume-slice-colorbar-offset, 1rem);
+    --cbar-height: var(--volume-slice-colorbar-size, min(70%, 360px));
+    transform: translateY(-50%);
+  }
+  .volume-slice :global(.slice-colorbar.horizontal) {
+    right: var(--volume-slice-colorbar-offset, 1rem);
+    bottom: var(--volume-slice-colorbar-offset, 1rem);
+    left: var(--volume-slice-colorbar-offset, 1rem);
   }
 </style>

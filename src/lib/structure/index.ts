@@ -3,6 +3,7 @@ import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
 import type { FileLoadData } from '$lib/io/types'
+import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
@@ -46,6 +47,7 @@ export * from './validation'
 
 export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
 export type BondEditMode = `add` | `delete`
+export type StructureDisplayMode = `structure` | `slice`
 
 // A single viewport definition for the multi-side (2x2) view. `direction` is the
 // camera offset direction from the structure center (target-relative); `projection`
@@ -313,6 +315,9 @@ export interface StructureHandlerData extends FileLoadData {
   camera_has_moved?: boolean
   color_scheme?: string
   performance_mode?: `quality` | `speed`
+  display_mode?: StructureDisplayMode
+  active_volume_idx?: number
+  slice_settings?: Partial<VolumeSliceSettings>
   scene_props?: ComponentProps<typeof StructureSceneComponent>
   lattice_props?: ComponentProps<typeof LatticeComponent>
 }

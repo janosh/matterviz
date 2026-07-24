@@ -21,12 +21,31 @@ export const scene_registry = new WeakMap<
 export const dpi_to_scale = (png_dpi: number): number =>
   Math.min(Math.max(1, Number.isFinite(png_dpi) ? png_dpi : 72) / 72, 10)
 
-// Capture a WebGL canvas as a PNG Blob at the given DPI.
-// Temporarily adjusts renderer pixel ratio for high-res capture, then restores.
+function canvas_to_blob(
+  canvas: HTMLCanvasElement,
+  failure_message: string,
+  cleanup?: () => void,
+): Promise<Blob> {
+  const blob_promise = new Promise<Blob>((resolve, reject) => {
+    try {
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error(failure_message))),
+        `image/png`,
+      )
+    } catch (error) {
+      reject(to_error(error))
+    }
+  })
+  return cleanup ? blob_promise.finally(cleanup) : blob_promise
+}
+
+// Capture a canvas as a PNG Blob at the given DPI.
+// WebGL canvases temporarily adjust renderer pixel ratio; plain 2D canvases are
+// drawn into a scaled offscreen canvas.
 // Returns data directly (no browser download), suitable for programmatic capture
 // in test suites, server-side rendering, or Python widget integration via anywidget.
 // DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
-export function canvas_to_png_blob(
+export async function canvas_to_png_blob(
   canvas: HTMLCanvasElement,
   png_dpi = 150,
   scene: Scene | null = null,
@@ -35,18 +54,19 @@ export function canvas_to_png_blob(
   const resolution_multiplier = dpi_to_scale(png_dpi)
   const renderer = renderer_registry.get(canvas)
 
-  if (resolution_multiplier <= 1.1 || !renderer) {
+  if (resolution_multiplier <= 1.1) {
     if (renderer && scene && camera) renderer.render(scene, camera)
-    return new Promise((resolve, reject) => {
-      try {
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob)
-          else reject(new Error(`Failed to generate PNG - canvas may be empty`))
-        }, `image/png`)
-      } catch (error) {
-        reject(to_error(error))
-      }
-    })
+    return canvas_to_blob(canvas, `Failed to generate PNG - canvas may be empty`)
+  }
+
+  if (!renderer) {
+    const scaled_canvas = document.createElement(`canvas`)
+    scaled_canvas.width = Math.max(1, Math.round(canvas.width * resolution_multiplier))
+    scaled_canvas.height = Math.max(1, Math.round(canvas.height * resolution_multiplier))
+    const context = scaled_canvas.getContext(`2d`)
+    if (!context) throw new Error(`Canvas 2D context not available`)
+    context.drawImage(canvas, 0, 0, scaled_canvas.width, scaled_canvas.height)
+    return canvas_to_blob(scaled_canvas, `Failed to generate high-resolution PNG`)
   }
 
   // Temporarily modify the renderer's pixel ratio for high-res capture
@@ -61,18 +81,7 @@ export function canvas_to_png_blob(
   renderer.setSize(orig_size.width, orig_size.height, false)
   if (scene && camera) renderer.render(scene, camera)
 
-  return new Promise((resolve, reject) => {
-    try {
-      canvas.toBlob((blob) => {
-        restore()
-        if (blob) resolve(blob)
-        else reject(new Error(`Failed to generate high-resolution PNG`))
-      }, `image/png`)
-    } catch (error) {
-      restore()
-      reject(to_error(error))
-    }
-  })
+  return canvas_to_blob(canvas, `Failed to generate high-resolution PNG`, restore)
 }
 
 // Export structure as PNG image from canvas (triggers browser download)

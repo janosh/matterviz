@@ -65,6 +65,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 - **CUBE** - Gaussian cube files
 - **CHGCAR/ELFCAR/LOCPOT/AECCAR/PARCHG** - VASP volumetric output
+- **3D + 2D views** - Switch between interactive isosurfaces and HKL/arbitrary Cartesian cross-sections with filled or contour rendering
 
 #### Compressed Files
 

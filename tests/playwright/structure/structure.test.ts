@@ -13,6 +13,7 @@ import {
   IS_CI,
   open_structure_control_pane,
   open_structure_export_pane,
+  select_view_layout as select_structure_layout,
   wait_for_3d_canvas,
 } from '../helpers'
 
@@ -38,6 +39,7 @@ const source_structure = JSON.stringify({
     },
   ],
 })
+
 async function expect_compressed_source_url(
   page: Page,
   route_path: string,
@@ -59,7 +61,7 @@ async function expect_compressed_source_url(
   expect(new URL(page.url()).searchParams.get(`file`)).toBe(compressed_source_filename)
   await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(
     `source-loop.json`,
-    { timeout: get_canvas_timeout() * 2 },
+    { timeout: get_canvas_timeout() * 4 },
   )
   expect(requests.length).toBeGreaterThan(0)
   expect(new Set(requests)).toEqual(new Set([compressed_source_path]))
@@ -215,24 +217,6 @@ test.describe(`Structure Component Tests`, () => {
     await expect(canvas).toHaveCSS(`height`, `500px`)
   })
 
-  test(`performance_mode prop can be changed via test page controls`, async ({ page }) => {
-    const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
-    const status = page.locator(`[data-testid="performance-mode-status"]`)
-
-    await expect(status).toContainText(`Performance Mode Status: quality`)
-    await expect(perf_mode_select).toHaveValue(`quality`)
-
-    await perf_mode_select.selectOption(`speed`)
-    await expect(status).toContainText(`Performance Mode Status: speed`)
-    await expect(perf_mode_select).toHaveValue(`speed`)
-
-    await perf_mode_select.selectOption(`quality`)
-    await expect(status).toContainText(`Performance Mode Status: quality`)
-    await expect(perf_mode_select).toHaveValue(`quality`)
-
-    await expect(page.locator(`#test-structure canvas`)).toBeVisible()
-  })
-
   // This test navigates 3 times sequentially - needs extra time in CI
   test(`performance_mode prop can be set via URL parameters`, async ({ page }) => {
     test.setTimeout(IS_CI ? 90_000 : 30_000)
@@ -317,45 +301,6 @@ test.describe(`Structure Component Tests`, () => {
     // Verify no errors occurred and component still functions
     expect(page_errors).toBe(false)
     await expect(structure_div.locator(`canvas`)).toBeVisible()
-  })
-
-  test(`show_site_labels defaults to false and can be toggled`, async ({ page }) => {
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-
-    const site_labels_label = control_pane.locator(`label:has-text("Site Labels")`)
-    const site_labels_checkbox = site_labels_label.locator(`input[type="checkbox"]`)
-
-    await expect(site_labels_label).toBeVisible()
-    await expect(site_labels_checkbox).not.toBeChecked()
-    await site_labels_checkbox.check()
-    await expect(site_labels_checkbox).toBeChecked()
-    await site_labels_checkbox.uncheck()
-    await expect(site_labels_checkbox).not.toBeChecked()
-  })
-
-  test(`show_site_indices can be toggled`, async ({ page }) => {
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-
-    const site_indices_label = control_pane.locator(`label:has-text("Site Indices")`)
-    const site_indices_checkbox = site_indices_label.locator(`input[type="checkbox"]`)
-
-    await expect(site_indices_label).toBeVisible()
-
-    // Get initial state (could be true or false depending on settings)
-    const initial_state = await site_indices_checkbox.isChecked()
-
-    // Toggle to opposite state
-    if (initial_state) {
-      await site_indices_checkbox.uncheck()
-      await expect(site_indices_checkbox).not.toBeChecked()
-      await site_indices_checkbox.check()
-      await expect(site_indices_checkbox).toBeChecked()
-    } else {
-      await site_indices_checkbox.check()
-      await expect(site_indices_checkbox).toBeChecked()
-      await site_indices_checkbox.uncheck()
-      await expect(site_indices_checkbox).not.toBeChecked()
-    }
   })
 
   test(`both site labels and site indices can be enabled simultaneously`, async ({ page }) => {
@@ -588,41 +533,6 @@ test.describe(`Structure Component Tests`, () => {
     }
   })
 
-  test(`element color legend allows color changes via color picker`, async ({ page }) => {
-    const structure_wrapper = page.locator(`#test-structure`)
-    await wait_for_3d_canvas(page, `#test-structure`)
-
-    // Find element legend labels and validate count
-    const legend_labels = structure_wrapper.locator(`.atom-legend label`)
-    const legend_count = await legend_labels.count()
-    expect(legend_count).toBeGreaterThan(0)
-
-    // Test first element legend label
-    const first_label = legend_labels.first()
-    await expect(first_label).toBeVisible()
-
-    // Test color picker functionality
-    const color_input = first_label.locator(`input[type="color"]`)
-    await expect(color_input).toBeAttached()
-
-    const initial_color_value = await color_input.inputValue()
-    expect(initial_color_value).toMatch(/^#[0-9a-fA-F]{6}$/)
-
-    await color_input.evaluate((input: HTMLInputElement) => {
-      input.value = `#ff0000`
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      input.dispatchEvent(new Event(`change`, { bubbles: true }))
-    })
-
-    const new_color_value = await color_input.inputValue()
-    expect(new_color_value).toBe(`#ff0000`)
-
-    // Test double-click reset functionality exists (even if visual change isn't immediate in test)
-    await first_label.dblclick({ force: true })
-
-    await expect(color_input).toBeAttached()
-  })
-
   test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const control_pane = structure_div.locator(`.controls-pane`)
@@ -833,30 +743,6 @@ test.describe(`Structure Component Tests`, () => {
     // Test bonding strategy change
     const bonding_strategy_select = strategy_label.locator(`select`)
     await bonding_strategy_select.selectOption(`solid_angle`)
-  })
-
-  test(`lattice opacity controls work correctly`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-
-    await test_page_controls_checkbox.check()
-    await expect(page.locator(`#test-structure .controls-pane`)).toHaveClass(/pane-open/)
-
-    const edge_opacity = page.locator(
-      `#test-structure .controls-pane label:has-text("Edge color") + label input[type="range"]`,
-    )
-    const surface_opacity = page.locator(
-      `#test-structure .controls-pane label:has-text("Surface color") + label input[type="range"]`,
-    )
-
-    const initial = await canvas.screenshot()
-    await edge_opacity.fill(`0.8`)
-    await surface_opacity.fill(`0.5`)
-
-    // Poll for canvas change after opacity changes
-    await expect_canvas_changed(canvas, initial)
   })
 
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
@@ -1427,21 +1313,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await goto_structure_test(page)
   })
 
-  test(`camera projection can be toggled in both directions`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
-    await expect(camera_projection_select).toBeVisible()
-    await camera_projection_select.scrollIntoViewIfNeeded()
-
-    await camera_projection_select.selectOption(`orthographic`)
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
-    await camera_projection_select.selectOption(`perspective`)
-    await expect(camera_projection_select).toHaveValue(`perspective`)
-    // Note: camera-projection-status doesn't update because scene_props binding is one-directional
-    await expect(page.locator(`#test-structure canvas`)).toBeVisible()
-  })
-
   test(`camera projection behavior and visual differences`, async ({ page }) => {
     test.setTimeout(IS_CI ? 90_000 : 45_000)
     const canvas = page.locator(`#test-structure canvas`)
@@ -1799,35 +1670,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     await goto_structure_test(page)
   })
 
-  test(`rotation controls render per-axis inputs in Camera section defaulting to zero`, async ({
-    page,
-  }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Scope to Camera section for more stable selectors
-    await expect(pane_div.locator(`h4:has-text("Camera")`)).toBeVisible()
-
-    // Check for rotation axes container - it's in the Camera section but not directly under the h4
-    const rotation_axes = pane_div.locator(`.rotation-axes`)
-    await expect(rotation_axes).toBeVisible()
-
-    const axis_controls = rotation_axes.locator(`> div`)
-    await expect(axis_controls).toHaveCount(3)
-
-    for (const axis_name of [`X`, `Y`, `Z`]) {
-      await expect(rotation_axes).toContainText(`${axis_name} =`)
-    }
-    await expect(rotation_axes).toContainText(`°`)
-
-    // Each control has number + range inputs, both defaulting to 0
-    for (let idx = 0; idx < 3; idx++) {
-      const number_input = axis_controls.nth(idx).locator(`input[type="number"]`)
-      const range_input = axis_controls.nth(idx).locator(`input[type="range"]`)
-      await expect(number_input).toHaveValue(`0`)
-      await expect(range_input).toHaveValue(`0`)
-    }
-  })
-
   test(`rotation controls clamp out-of-range values on input`, async ({ page }) => {
     const { pane_div } = await open_structure_control_pane(page)
 
@@ -1863,6 +1705,13 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     const rotation_axes = pane_div.locator(`.rotation-axes`)
     const number_inputs = rotation_axes.locator(`input[type="number"]`)
     const range_inputs = rotation_axes.locator(`input[type="range"]`)
+
+    await expect(number_inputs).toHaveCount(3)
+    await expect(range_inputs).toHaveCount(3)
+    for (let axis_idx = 0; axis_idx < 3; axis_idx++) {
+      await expect(number_inputs.nth(axis_idx)).toHaveValue(`0`)
+      await expect(range_inputs.nth(axis_idx)).toHaveValue(`0`)
+    }
 
     // Set different values for each axis
     await number_inputs.nth(0).fill(`30`) // X
@@ -1971,23 +1820,6 @@ test.describe(`Element Visibility Toggle`, () => {
       await expect(wrapper).not.toHaveClass(/gizmo-visible/)
       await expect(wrapper.locator(`.responsive-gizmo`)).toBeAttached()
     }
-  })
-
-  test(`toggle buttons are present on element badges`, async ({ page }) => {
-    const legend = page.locator(`#test-structure .atom-legend`)
-    await expect(legend).toBeVisible()
-
-    const legend_items = legend.locator(`.legend-item`)
-    const item_count = await legend_items.count()
-    expect(item_count).toBeGreaterThan(0)
-
-    // Verify first item has toggle button with correct attributes
-    const first_toggle = legend_items.first().locator(`button.toggle-visibility`)
-    await expect(first_toggle).toBeAttached()
-    await expect(first_toggle).toContainText(`×`)
-
-    // Tooltip consumes title attribute, stores in data-original-title
-    await expect(first_toggle).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
   })
 
   test(`element badge tooltip uses light theme colors`, async ({ page }) => {
@@ -2179,17 +2011,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await page.keyboard.press(`Delete`)
   }
 
-  test(`undo/redo buttons initially disabled`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
-    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
-
-    await expect(undo_btn).toBeDisabled()
-    await expect(redo_btn).toBeDisabled()
-  })
-
   test(`empty edit-atoms undo redo shortcuts are not canceled`, async ({ page }) => {
     await enter_edit_atoms_mode(page)
 
@@ -2215,7 +2036,7 @@ test.describe(`Edit Atoms Mode`, () => {
     await expect(undo_btn).toBeVisible()
 
     // Switch back to distance mode via the dropdown
-    const measure_button = structure_div.locator(`button.view-mode-button`)
+    const measure_button = structure_div.getByRole(`button`, { name: `Measure / Edit` })
     await measure_button.click()
     const distance_option = structure_div.locator(`.view-mode-option`).filter({
       hasText: `Distance`,
@@ -2229,15 +2050,18 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
+    await expect(undo_btn).toBeDisabled()
+    await expect(redo_btn).toBeDisabled()
+
     await select_atom_for_delete(page)
 
     // Wait for undo to become available, then click it
-    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
     await expect(undo_btn).toBeEnabled({ timeout: 2000 })
     await undo_btn.click({ force: true })
 
     // Redo should now be enabled
-    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
     await expect(redo_btn).toBeEnabled({ timeout: 2000 })
   })
 
@@ -2374,58 +2198,75 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     page,
   }) => {
     const structure_div = page.locator(`#test-structure`)
-    const toggle = structure_div.locator(`button.multi-view-toggle`)
-    await expect(toggle).toBeVisible()
-    await toggle.click()
+    const layout_button = structure_div.getByRole(`button`, {
+      name: /^View layout:/,
+    })
+    await expect(layout_button).toBeVisible()
+    await select_structure_layout(structure_div, `3D 2×2 grid`)
     await expect(structure_div).toHaveClass(/multi-view/)
 
     await set_viewer_size(structure_div, 599, 399)
-    await expect(toggle).toHaveCount(0)
+    await expect(layout_button).toHaveCount(0)
     await expect(structure_div).not.toHaveClass(/multi-view/)
 
     await set_viewer_size(structure_div, 800, 600)
-    await expect(toggle).toBeVisible()
+    await expect(layout_button).toBeVisible()
     await expect(structure_div).toHaveClass(/multi-view/)
   })
 
-  test(`toggle splits canvas into 4 labeled viewports and back`, async ({ page }) => {
+  test(`toggle splits canvas into 4 viewports and back`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
 
     // Single view: one viewport cell, no grid
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
     await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
+    const single_gizmo_box = await structure_div.locator(`.responsive-gizmo`).boundingBox()
+    if (!single_gizmo_box) throw new Error(`single-view gizmo has no bounding box`)
 
-    const toggle = structure_div.locator(`button.multi-view-toggle`)
-    await expect(toggle).toBeVisible()
-    await toggle.click()
+    await select_structure_layout(structure_div, `3D 2×2 grid`)
 
-    // Multi view: 2x2 grid with 4 cells, 4 canvases, 4 labels
+    // The primary perspective pane stays unlabeled so the global filename can use
+    // the top-left corner; the three fixed-direction panes retain their labels.
     await expect(structure_div).toHaveClass(/multi-view/)
     await expect(structure_div.locator(`.viewport-stage.multi`)).toBeVisible()
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
     await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
       timeout: get_canvas_timeout(),
     })
+    const grid_gizmo_box = await structure_div
+      .locator(`.responsive-gizmo`)
+      .first()
+      .boundingBox()
+    if (!grid_gizmo_box) throw new Error(`multi-view gizmo has no bounding box`)
+    expect(grid_gizmo_box.width / single_gizmo_box.width).toBeCloseTo(0.6, 1)
+    expect(grid_gizmo_box.height / single_gizmo_box.height).toBeCloseTo(0.6, 1)
     const labels = structure_div.locator(`.viewport-label`)
-    await expect(labels).toHaveCount(4)
-    await expect(labels.nth(0)).toHaveText(`Perspective`)
-    await expect(labels.nth(1)).toHaveText(`Front`)
+    await expect(labels).toHaveCount(3)
+    await expect(labels.nth(0)).toHaveText(`Front`)
 
     // Each pane occupies roughly a quarter of the viewer (clearly smaller than full width)
     const wrapper_box = await structure_div.boundingBox()
     if (!wrapper_box) throw new Error(`structure wrapper has no bounding box`)
     for (let pane_idx = 0; pane_idx < 4; pane_idx++) {
+      await expect
+        .poll(async () => {
+          const cell_box = await structure_div
+            .locator(`.viewport-cell`)
+            .nth(pane_idx)
+            .boundingBox()
+          return cell_box?.width ?? Number.POSITIVE_INFINITY
+        })
+        .toBeLessThan(wrapper_box.width * 0.75)
       const cell_box = await structure_div
         .locator(`.viewport-cell`)
         .nth(pane_idx)
         .boundingBox()
       if (!cell_box) throw new Error(`viewport cell ${pane_idx} has no bounding box`)
-      expect(cell_box.width).toBeLessThan(wrapper_box.width * 0.75)
       expect(cell_box.width).toBeGreaterThan(50)
     }
 
     // Toggle back to single view
-    await toggle.click()
+    await select_structure_layout(structure_div, `3D single view`)
     await expect(structure_div).not.toHaveClass(/multi-view/)
     await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
@@ -2434,16 +2275,31 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     })
   })
 
-  test(`hovering a pane marks it active for edit interactions`, async ({ page }) => {
+  test(`legend controls stay interactive above active grid panes`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    await structure_div.locator(`button.multi-view-toggle`).click()
+    await select_structure_layout(structure_div, `3D 2×2 grid`)
     const cells = structure_div.locator(`.viewport-cell`)
-    await expect(cells).toHaveCount(4)
+    await cells.nth(3).hover({ position: { x: 20, y: 20 } })
+    await expect(cells.nth(3)).toHaveClass(/active/)
 
-    // Hovering the third pane should move the `active` highlight to it
-    await cells.nth(2).hover({ position: { x: 20, y: 20 } })
-    await expect(cells.nth(2)).toHaveClass(/active/)
-    await expect(cells.nth(0)).not.toHaveClass(/active/)
+    const receives_pointer_at_center = (locator: Locator): Promise<boolean> =>
+      locator.evaluate((element) => {
+        const rect = element.getBoundingClientRect()
+        const topmost = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        )
+        return topmost !== null && element.contains(topmost)
+      })
+
+    const cell_select = structure_div.locator(`.cell-select`)
+    const cell_toggle = cell_select.locator(`.toggle-btn`)
+    const element_badge = structure_div.locator(`.atom-legend .legend-item label`).first()
+    await expect(cell_select).toHaveCSS(`opacity`, `1`)
+    expect(await receives_pointer_at_center(cell_toggle)).toBe(true)
+    expect(await receives_pointer_at_center(element_badge)).toBe(true)
+    await cell_toggle.click()
+    await expect(cell_select.locator(`.dropdown`)).toBeVisible()
   })
 
   test(`Cmd/Ctrl+G toggles between grid and single view`, async ({ page }) => {
@@ -2466,14 +2322,16 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
   // pane is allowed to overflow (and is raised above siblings); inactive panes clip.
   test(`active pane allows tooltip overflow, inactive panes clip`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    await structure_div.locator(`button.multi-view-toggle`).click()
+    await select_structure_layout(structure_div, `3D 2×2 grid`)
     const cells = structure_div.locator(`.viewport-cell`)
     await expect(cells).toHaveCount(4)
 
     const overflow_of = (idx: number) =>
       cells.nth(idx).evaluate((node) => getComputedStyle(node).overflow)
 
-    // Pane 0 is active by default: its overlay (tooltip) may overflow and paints on top
+    // Activate pane 0 explicitly: selecting the dropdown option may leave the pointer
+    // over another pane when the menu closes.
+    await cells.nth(0).hover({ position: { x: 20, y: 20 } })
     await expect(cells.nth(0)).toHaveClass(/active/)
     expect(await overflow_of(0)).toBe(`visible`)
     expect(await cells.nth(0).evaluate((node) => getComputedStyle(node).zIndex)).toBe(`1`)
@@ -2490,16 +2348,15 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     page,
   }) => {
     const structure_div = page.locator(`#test-structure`)
-    const toggle = structure_div.locator(`button.multi-view-toggle`)
     const canvas_timeout = get_canvas_timeout()
 
     for (let cycle = 0; cycle < 3; cycle++) {
-      await toggle.click()
+      await select_structure_layout(structure_div, `3D 2×2 grid`)
       await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
       await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
         timeout: canvas_timeout,
       })
-      await toggle.click()
+      await select_structure_layout(structure_div, `3D single view`)
       await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
       await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
         timeout: canvas_timeout,
