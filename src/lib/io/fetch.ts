@@ -21,10 +21,13 @@ function default_download(data: DownloadData, filename: string, type: string) {
   // (e.g. DraggablePane's click-outside) that would dismiss an open pane the export
   // button lives in
   link.addEventListener(`click`, (evt) => evt.stopPropagation())
-  document.body.append(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  try {
+    document.body.append(link)
+    link.click()
+  } finally {
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
 }
 
 // Function to download data to a file - checks for global override first

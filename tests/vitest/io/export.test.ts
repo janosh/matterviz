@@ -156,13 +156,31 @@ describe(`canvas_to_png_blob`, () => {
     await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Canvas tainted`)
   })
 
-  test(`restores renderer state when toBlob throws during high-DPI capture`, async () => {
-    const { canvas, renderer } = make_canvas_with_renderer(() => {
-      throw new Error(`tainted`)
-    })
-    await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`tainted`)
-    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
-  })
+  test.each([`toBlob`, `setSize`, `render`] as const)(
+    `restores renderer state when %s throws during high-DPI capture`,
+    async (failure_stage) => {
+      const to_blob_impl =
+        failure_stage === `toBlob`
+          ? () => {
+              throw new Error(`toBlob failed`)
+            }
+          : undefined
+      const { canvas, renderer } = make_canvas_with_renderer(to_blob_impl)
+      if (failure_stage !== `toBlob`) {
+        const failing_method = renderer[failure_stage]
+        if (!failing_method) throw new Error(`Mock renderer is missing ${failure_stage}`)
+        vi.mocked(failing_method).mockImplementationOnce(() => {
+          throw new Error(`${failure_stage} failed`)
+        })
+      }
+
+      await expect(canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)).rejects.toThrow(
+        `${failure_stage} failed`,
+      )
+      expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+      expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
+    },
+  )
 
   test(`caps DPI multiplier at 10x`, async () => {
     const { canvas, renderer } = make_canvas_with_renderer()
@@ -387,6 +405,24 @@ describe(`svg_to_png_blob`, () => {
       globalThis.Image = orig_image
     }
   })
+
+  test(`revokes object URL when image setup throws`, async () => {
+    const orig_image = globalThis.Image
+    globalThis.Image = class MockImage {
+      addEventListener(): void {}
+      set src(_url: string) {
+        throw new Error(`image setup failed`)
+      }
+    } as unknown as typeof Image
+    try {
+      await expect(svg_to_png_blob(make_svg(`0 0 100 100`), 72)).rejects.toThrow(
+        `image setup failed`,
+      )
+      expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith(`blob:test-url`)
+    } finally {
+      globalThis.Image = orig_image
+    }
+  })
 })
 
 // === export_canvas_as_png (download wrapper, regression tests) ===
@@ -533,6 +569,7 @@ describe(`export_trajectory_video`, () => {
     vi.clearAllMocks()
     vi.spyOn(console, `error`).mockImplementation(() => {})
   })
+  afterEach(() => vi.unstubAllGlobals())
 
   test.each<[string | null, string]>([
     [null, `null canvas`],
@@ -550,5 +587,21 @@ describe(`export_trajectory_video`, () => {
     await expect(export_trajectory_video(canvas, `test.webm`)).rejects.toThrow(
       `WebM video recording not supported`,
     )
+  })
+
+  test(`restores renderer state when high-resolution setup throws`, async () => {
+    vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+    const { canvas, renderer } = make_canvas_with_renderer()
+    const set_size = renderer.setSize
+    if (!set_size) throw new Error(`Mock renderer is missing setSize`)
+    vi.mocked(set_size).mockImplementationOnce(() => {
+      throw new Error(`resize failed`)
+    })
+
+    await expect(
+      export_trajectory_video(canvas, `test.webm`, { resolution_multiplier: 2 }),
+    ).rejects.toThrow(`resize failed`)
+    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
   })
 })

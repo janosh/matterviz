@@ -21,12 +21,8 @@ export const scene_registry = new WeakMap<
 export const dpi_to_scale = (png_dpi: number): number =>
   Math.min(Math.max(1, Number.isFinite(png_dpi) ? png_dpi : 72) / 72, 10)
 
-function canvas_to_blob(
-  canvas: HTMLCanvasElement,
-  failure_message: string,
-  cleanup?: () => void,
-): Promise<Blob> {
-  const blob_promise = new Promise<Blob>((resolve, reject) => {
+function canvas_to_blob(canvas: HTMLCanvasElement, failure_message: string): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
     try {
       canvas.toBlob(
         (blob) => (blob ? resolve(blob) : reject(new Error(failure_message))),
@@ -36,7 +32,6 @@ function canvas_to_blob(
       reject(to_error(error))
     }
   })
-  return cleanup ? blob_promise.finally(cleanup) : blob_promise
 }
 
 // Capture a canvas as a PNG Blob at the given DPI.
@@ -77,11 +72,14 @@ export async function canvas_to_png_blob(
     renderer.setSize(orig_size.width, orig_size.height, false)
   }
 
-  renderer.setPixelRatio(resolution_multiplier)
-  renderer.setSize(orig_size.width, orig_size.height, false)
-  if (scene && camera) renderer.render(scene, camera)
-
-  return canvas_to_blob(canvas, `Failed to generate high-resolution PNG`, restore)
+  try {
+    renderer.setPixelRatio(resolution_multiplier)
+    renderer.setSize(orig_size.width, orig_size.height, false)
+    if (scene && camera) renderer.render(scene, camera)
+    return await canvas_to_blob(canvas, `Failed to generate high-resolution PNG`)
+  } finally {
+    restore()
+  }
 }
 
 // Export structure as PNG image from canvas (triggers browser download)
@@ -295,32 +293,43 @@ export function svg_to_png_blob(
   const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, padding > 0)
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
+  let url_revoked = false
+  const revoke_url = () => {
+    if (url_revoked) return
+    url_revoked = true
+    URL.revokeObjectURL(svg_data_url)
+  }
 
   return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.addEventListener(`load`, () => {
-      try {
-        ctx.clearRect(0, 0, pixel_width, pixel_height)
-        ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
-        canvas.toBlob(
-          (blob) => {
-            if (blob) resolve(blob)
-            else reject(new Error(`Failed to generate PNG blob`))
-          },
-          `image/png`,
-          1,
-        )
-      } catch (error) {
-        reject(to_error(error))
-      } finally {
-        URL.revokeObjectURL(svg_data_url)
-      }
-    })
-    img.addEventListener(`error`, () => {
-      URL.revokeObjectURL(svg_data_url)
-      reject(new Error(`Failed to load SVG for PNG export`))
-    })
-    img.src = svg_data_url
+    try {
+      const img = new Image()
+      img.addEventListener(`load`, () => {
+        try {
+          ctx.clearRect(0, 0, pixel_width, pixel_height)
+          ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
+          canvas.toBlob(
+            (blob) => {
+              if (blob) resolve(blob)
+              else reject(new Error(`Failed to generate PNG blob`))
+            },
+            `image/png`,
+            1,
+          )
+        } catch (error) {
+          reject(to_error(error))
+        } finally {
+          revoke_url()
+        }
+      })
+      img.addEventListener(`error`, () => {
+        revoke_url()
+        reject(new Error(`Failed to load SVG for PNG export`))
+      })
+      img.src = svg_data_url
+    } catch (error) {
+      revoke_url()
+      reject(to_error(error))
+    }
   })
 }
 
@@ -403,40 +412,41 @@ export async function export_trajectory_video(
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined
   let orig_size: Vector2 | undefined
-
-  if (resolution_multiplier !== 1 && renderer) {
-    orig_pixel_ratio = renderer.getPixelRatio()
-    orig_size = renderer.getSize(new Vector2())
-    // Adjust pixel ratio for different resolution export
-    renderer.setPixelRatio(orig_pixel_ratio * resolution_multiplier)
-    renderer.setSize(orig_size.width, orig_size.height, false)
-  }
-
-  // Calculate bitrate based on actual video dimensions
-  // (canvas dimensions include device pixel ratio and any resolution_multiplier)
-  const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
-
-  const stream = canvas.captureStream(0)
+  let recorder: MediaRecorder
   const chunks: Blob[] = []
-  const recorder = new MediaRecorder(stream, {
-    mimeType: `video/webm;codecs=vp9`,
-    videoBitsPerSecond: bitrate,
-  })
-
-  recorder.addEventListener(`dataavailable`, (event) => {
-    if (event.data.size > 0) chunks.push(event.data)
-  })
-
-  const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
-    requestFrame?: () => void
-  }
-
-  // Start recording
-  recorder.start()
-
-  const frame_duration = 1000 / fps
 
   try {
+    if (resolution_multiplier !== 1 && renderer) {
+      orig_pixel_ratio = renderer.getPixelRatio()
+      orig_size = renderer.getSize(new Vector2())
+      // Adjust pixel ratio for different resolution export
+      renderer.setPixelRatio(orig_pixel_ratio * resolution_multiplier)
+      renderer.setSize(orig_size.width, orig_size.height, false)
+    }
+
+    // Calculate bitrate based on actual video dimensions
+    // (canvas dimensions include device pixel ratio and any resolution_multiplier)
+    const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
+
+    const stream = canvas.captureStream(0)
+    recorder = new MediaRecorder(stream, {
+      mimeType: `video/webm;codecs=vp9`,
+      videoBitsPerSecond: bitrate,
+    })
+
+    recorder.addEventListener(`dataavailable`, (event) => {
+      if (event.data.size > 0) chunks.push(event.data)
+    })
+
+    const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
+      requestFrame?: () => void
+    }
+
+    // Start recording
+    recorder.start()
+
+    const frame_duration = 1000 / fps
+
     // Render each frame sequentially with precise timing
     for (let idx = 0; idx < total_frames; idx++) {
       const frame_start = performance.now()
