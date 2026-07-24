@@ -12,10 +12,10 @@
   import type { VolumeSliceMode } from './slice-rendering'
 
   const CARTESIAN_PLANE_PRESETS = [
-    { label: `XY`, normal: [0, 0, 1], up: [1, 0, 0] },
-    { label: `XZ`, normal: [0, 1, 0], up: [1, 0, 0] },
-    { label: `YZ`, normal: [1, 0, 0], up: [0, 1, 0] },
-  ] satisfies { label: string; normal: Vec3; up: Vec3 }[]
+    { label: `XY`, cartesian_normal: [0, 0, 1], cartesian_up: [1, 0, 0] },
+    { label: `XZ`, cartesian_normal: [0, 1, 0], cartesian_up: [1, 0, 0] },
+    { label: `YZ`, cartesian_normal: [1, 0, 0], cartesian_up: [0, 1, 0] },
+  ] satisfies { label: string; cartesian_normal: Vec3; cartesian_up: Vec3 }[]
 
   let {
     settings = $bindable(create_volume_slice_settings()),
@@ -59,10 +59,6 @@
     update_settings({ [key]: vector })
   }
 
-  function set_cartesian_plane(normal: Vec3, up: Vec3): void {
-    update_settings({ cartesian_point, cartesian_normal: normal, cartesian_up: up })
-  }
-
   function update_color_bound(bound_idx: 0 | 1, raw_value: string): void {
     if (raw_value.trim() === ``) {
       update_settings({ color_range: undefined })
@@ -77,11 +73,6 @@
     update_settings({
       color_range: bound_idx === 0 ? [value, maximum] : [minimum, value],
     })
-  }
-
-  function reset_settings(): void {
-    active_volume_idx = 0
-    update_settings(create_volume_slice_settings())
   }
 </script>
 
@@ -99,7 +90,10 @@
 <SettingsSection
   title="Cross-section"
   current_values={{ ...resolved_settings, active_volume_idx }}
-  on_reset={reset_settings}
+  on_reset={() => {
+    active_volume_idx = 0
+    update_settings(create_volume_slice_settings())
+  }}
   class="slice-settings"
 >
   <div class="control-row">
@@ -174,8 +168,10 @@
       </label>
     {/each}
     <div class="plane-presets" aria-label="Cartesian plane presets">
-      {#each CARTESIAN_PLANE_PRESETS as { label, normal, up } (label)}
-        <button type="button" onclick={() => set_cartesian_plane(normal, up)}>{label}</button>
+      {#each CARTESIAN_PLANE_PRESETS as { label, ...plane } (label)}
+        <button type="button" onclick={() => update_settings({ cartesian_point, ...plane })}>
+          {label}
+        </button>
       {/each}
       <button type="button" onclick={() => update_settings({ cartesian_point: undefined })}>
         Center

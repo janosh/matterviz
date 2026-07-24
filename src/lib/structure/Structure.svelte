@@ -105,17 +105,22 @@
   const DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT = 200
   const DEFAULT_MULTI_VIEW_GAP = 2
   const STRUCTURE_LAYOUTS = {
-    single: { icon: `BrillouinZone`, label: `3D single view` },
-    multi: { icon: `Grid2x2`, label: `3D 2×2 grid` },
-    slice: { icon: `HeatmapMatrix`, label: `2D cross-section` },
+    single: { mode: `single`, icon: `BrillouinZone`, label: `3D single view` },
+    multi: { mode: `multi`, icon: `Grid2x2`, label: `3D 2×2 grid` },
+    slice: { mode: `slice`, icon: `HeatmapMatrix`, label: `2D cross-section` },
   } as const
-  const STRUCTURE_LAYOUT_OPTIONS = [
-    { mode: `single`, ...STRUCTURE_LAYOUTS.single },
-    { mode: `multi`, ...STRUCTURE_LAYOUTS.multi },
-    { mode: `slice`, ...STRUCTURE_LAYOUTS.slice },
-  ] as const
   const finite_nonnegative = (value: number, fallback: number) =>
     Math.max(0, Number.isFinite(value) ? value : fallback)
+
+  function track_change(get_value: () => unknown, on_change: () => void): void {
+    let previous = get_value()
+    $effect(() => {
+      const value = get_value()
+      if (value === previous) return
+      previous = value
+      on_change()
+    })
+  }
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
@@ -360,28 +365,18 @@
     )
     if (normalized_idx !== active_volume_idx) active_volume_idx = normalized_idx
   })
-  let last_active_volume_idx = $state(active_volume_idx)
-  $effect(() => {
-    if (active_volume_idx === last_active_volume_idx) return
-    last_active_volume_idx = active_volume_idx
-    on_active_volume_idx_change?.(volumetric_event_data())
-  })
-  let last_display_mode = $state(display_mode)
-  $effect(() => {
-    if (display_mode === last_display_mode) return
-    last_display_mode = display_mode
-    on_display_mode_change?.(volumetric_event_data())
-  })
-  let last_slice_settings_signature = $state(
-    JSON.stringify(create_volume_slice_settings(slice_settings)),
+  track_change(
+    () => active_volume_idx,
+    () => on_active_volume_idx_change?.(volumetric_event_data()),
   )
-  $effect(() => {
-    const resolved_slice_settings = create_volume_slice_settings(slice_settings)
-    const signature = JSON.stringify(resolved_slice_settings)
-    if (signature === last_slice_settings_signature) return
-    last_slice_settings_signature = signature
-    on_slice_settings_change?.(resolved_slice_settings)
-  })
+  track_change(
+    () => display_mode,
+    () => on_display_mode_change?.(volumetric_event_data()),
+  )
+  track_change(
+    () => JSON.stringify(create_volume_slice_settings(slice_settings)),
+    () => on_slice_settings_change?.(create_volume_slice_settings(slice_settings)),
+  )
 
   function volumetric_event_data(): StructureHandlerData {
     return { structure, display_mode, active_volume_idx, slice_settings }
@@ -1813,7 +1808,7 @@
           </button>
           {#if view_layout_menu_open}
             <div class="view-mode-dropdown">
-              {#each STRUCTURE_LAYOUT_OPTIONS as { mode, icon, label } (mode)}
+              {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
                 {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available)}
                   <button
                     type="button"
