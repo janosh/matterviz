@@ -25,7 +25,7 @@
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { create_renderer } from '$lib/scene'
+  import { create_renderer, responsive_gizmo_size } from '$lib/scene'
   import type { Camera, OrthographicCamera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
   import StructureScene from './StructureScene.svelte'
@@ -176,12 +176,11 @@
   let height = $state(0)
   let cursor = $state(`default`)
 
-  // Multi-view panes are ~half the viewer, so shrink the (fixed 86px) viewport gizmo to
-  // stay proportional. Single view keeps the default size.
+  // Multi-view panes are ~half the viewer, so shrink the viewport gizmo to stay proportional.
+  // Single view keeps the default size.
   let gizmo_prop = $derived.by(() => {
     if (!gizmo || !in_grid) return gizmo
-    const fifth_of_min_dim = Math.min(width, height) * 0.2
-    const size = Math.round(Math.max(34, Math.min(72, fifth_of_min_dim)))
+    const size = responsive_gizmo_size(width, height)
     return { ...(typeof gizmo === `object` ? gizmo : {}), size }
   })
 

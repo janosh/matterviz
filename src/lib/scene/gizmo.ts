@@ -35,6 +35,15 @@ export type GizmoOptions = {
   animation_duration?: number
 } & Partial<Record<GizmoAxisKey, GizmoAxisStyle>>
 
+// Gizmo edge length for a pane in the multi-view grid. Panes are roughly half the viewer, so
+// the fixed single-view size would dominate them; scale with the pane's short side instead,
+// clamped to stay legible when small and to never exceed the single-view size when large.
+// (Overflow isn't a concern — Gizmo further clamps its box to the canvas dimensions.)
+export const responsive_gizmo_size = (width: number, height: number): number => {
+  const fifth_of_short_side = Math.min(width, height) * 0.2
+  return Math.round(Math.max(34, Math.min(72, fifth_of_short_side)))
+}
+
 export const GIZMO_AXES: readonly (readonly [GizmoAxisKey, Vec3, boolean])[] = [
   [`x`, [1, 0, 0], false],
   [`y`, [0, 1, 0], false],
@@ -56,8 +65,9 @@ export const GIZMO_DEFAULT_COLORS = Object.fromEntries(
 export const GIZMO_LAYOUT = {
   frustum: 1.5, // half-height of the ortho frustum; handles sit at radius 1
   cam_distance: 4,
-  handle_radius: 0.34,
-  neg_handle_radius: 0.26,
+  handle_radius: 0.2,
+  neg_handle_radius: 0.23,
   axis_line_radius: 0.045,
-  label_scale: 0.5,
+  // Letters fill a bit more of the smaller handle so they stay legible at ~90px gizmos
+  label_scale: 0.46,
 } as const

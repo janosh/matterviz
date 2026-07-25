@@ -292,26 +292,24 @@
     ]),
   )
 
-  // Extract placement from gizmo options (not a Threlte Gizmo prop)
+  // Extract placement from gizmo options — it positions the wrapper div rather than the
+  // gizmo inside its canvas, so it never reaches <Gizmo>.
   const gizmo_placement = $derived(
     typeof gizmo === `object` && gizmo?.placement ? gizmo.placement : `top-right`,
   )
 
-  // Merge constant axis options with consumer overrides (exclude our custom placement, which
-  // positions the wrapper div). The gizmo gets its own canvas here, so it fills it.
+  // Merge constant axis options with consumer overrides. `placement` is dropped since it
+  // positions the wrapper div; the gizmo has its own canvas here, so it fills it.
   const gizmo_props = $derived.by(() => {
-    const base = {
+    const overrides: ConvexHullGizmoOptions = typeof gizmo === `object` && gizmo ? gizmo : {}
+    const { placement: _placement, ...appearance } = overrides
+    return {
       background: { enabled: false },
       ...gizmo_axis_options,
-      ...(typeof gizmo === `object` && gizmo ? omit_placement(gizmo) : {}),
+      ...appearance,
+      placement: `fill` as const,
     }
-    return { ...base, placement: `fill` as const }
   })
-
-  const omit_placement = ({
-    placement: _placement,
-    ...without_placement
-  }: ConvexHullGizmoOptions) => without_placement
 
   // Shared canvas-interaction scaffold (mouse/keyboard handlers, hover/drag/popup
   // state, canvas sizing, render scheduler). Rotation math + keydown actions stay local.
@@ -1207,7 +1205,6 @@
     width: clamp(80px, 18cqmin, 110px);
     height: clamp(80px, 18cqmin, 110px);
     pointer-events: auto;
-    isolation: isolate; /* contain z-index: 1000 from three-viewport-gizmo overlay */
     transition: opacity 0.2s ease-in-out;
   }
   .gizmo-wrapper[data-placement='top-right'] {

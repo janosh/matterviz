@@ -1801,12 +1801,11 @@ test.describe(`Element Visibility Toggle`, () => {
     await goto_structure_test(page)
   })
 
-  test(`hover chrome reveals repeatedly without remounting the gizmo`, async ({ page }) => {
+  test(`hover chrome reveals repeatedly`, async ({ page }) => {
     // Regression: `viewer_active` was a `$derived(hovered || focused)` reading the $bindable
-    // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle (and
-    // gizmo) only appeared on the very first mouseenter until page reload.
+    // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle
+    // only appeared on the very first mouseenter until page reload.
     await page.setViewportSize({ width: 1400, height: 1200 })
-    const wrapper = page.locator(`#test-structure`)
     const toggle = page.locator(`#test-structure .atom-legend .mode-toggle`)
     const box = await page.locator(`#test-structure canvas`).boundingBox()
     if (!box) throw new Error(`canvas has no bounding box`)
@@ -1814,11 +1813,8 @@ test.describe(`Element Visibility Toggle`, () => {
     for (let cycle = 0; cycle < 3; cycle++) {
       await page.mouse.move(box.x + 40, box.y + 40) // hover the canvas (not the icon)
       await expect(toggle).toHaveCSS(`opacity`, `1`)
-      await expect(wrapper).toHaveClass(/gizmo-visible/)
       await page.mouse.move(3, 3) // move off the viewer
       await expect(toggle).toHaveCSS(`opacity`, `0`)
-      await expect(wrapper).not.toHaveClass(/gizmo-visible/)
-      await expect(wrapper.locator(`.responsive-gizmo`)).toBeAttached()
     }
   })
 
@@ -2220,8 +2216,6 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // Single view: one viewport cell, no grid
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
     await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
-    const single_gizmo_box = await structure_div.locator(`.responsive-gizmo`).boundingBox()
-    if (!single_gizmo_box) throw new Error(`single-view gizmo has no bounding box`)
 
     await select_structure_layout(structure_div, `3D 2×2 grid`)
 
@@ -2233,13 +2227,6 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
       timeout: get_canvas_timeout(),
     })
-    const grid_gizmo_box = await structure_div
-      .locator(`.responsive-gizmo`)
-      .first()
-      .boundingBox()
-    if (!grid_gizmo_box) throw new Error(`multi-view gizmo has no bounding box`)
-    expect(grid_gizmo_box.width / single_gizmo_box.width).toBeCloseTo(0.6, 1)
-    expect(grid_gizmo_box.height / single_gizmo_box.height).toBeCloseTo(0.6, 1)
     const labels = structure_div.locator(`.viewport-label`)
     await expect(labels).toHaveCount(3)
     await expect(labels.nth(0)).toHaveText(`Front`)
@@ -2264,6 +2251,12 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
       if (!cell_box) throw new Error(`viewport cell ${pane_idx} has no bounding box`)
       expect(cell_box.width).toBeGreaterThan(50)
     }
+
+    // No gizmo assertions here on purpose. They used to measure `.responsive-gizmo`'s DOM box,
+    // which only existed because three-viewport-gizmo rendered an HTML overlay that could
+    // escape its pane. The WebGPU gizmo draws into a sub-viewport of the pane's own canvas and
+    // clamps its box to the canvas dimensions, so overflow is no longer possible to express.
+    // The per-pane sizing rule is covered by tests/vitest/scene/gizmo.test.ts instead.
 
     // Toggle back to single view
     await select_structure_layout(structure_div, `3D single view`)

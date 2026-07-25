@@ -987,13 +987,14 @@
   })
   // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
   // OrbitControls/Gizmo and resets camera rotation. Reveal it with the gizmo's own `visible`
-  // flag instead (it draws inside the canvas, so CSS can't gate it).
-  let scene_gizmo = $derived(scene_props.gizmo ?? scene_props.show_gizmo)
-  let scene_gizmo_props = $derived(
-    scene_gizmo
-      ? { ...(typeof scene_gizmo === `object` ? scene_gizmo : {}), visible: viewer_active }
-      : scene_gizmo,
-  )
+  // flag instead, since it draws inside the canvas where CSS can't reach it.
+  let scene_gizmo_props = $derived.by(() => {
+    const gizmo = scene_props.gizmo ?? scene_props.show_gizmo
+    if (!gizmo) return gizmo
+    const overrides = typeof gizmo === `object` ? gizmo : {}
+    // `??` not `||`, so an explicit `visible: false` is honored rather than treated as unset
+    return { ...overrides, visible: overrides.visible ?? viewer_active }
+  })
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
   ])
@@ -1737,7 +1738,6 @@
 <div
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
-  class:gizmo-visible={viewer_active && Boolean(scene_gizmo)}
   class:multi-view={is_multi_view_active}
   style:--struct-viewport-gap="{multi_view_gap_px}px"
   role="application"

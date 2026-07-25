@@ -45,7 +45,6 @@
     onend?: () => void
   } = $props()
 
-  const threlte = useThrelte<THREE.WebGPURenderer>()
   const {
     autoRenderTask,
     camera,
@@ -54,7 +53,7 @@
     renderer,
     shouldRender,
     size: canvas_size,
-  } = threlte
+  } = useThrelte<THREE.WebGPURenderer>()
   const parent = useParent()
   const active_controls = $derived(controls ?? ($parent as OrbitControls | undefined))
 
@@ -144,6 +143,8 @@
     }
     return handle
   })
+
+  const handle_meshes = handles.map((handle) => handle.mesh)
 
   // Optional disc behind the handles. Drawn first with depth disabled so it never occludes
   // handles regardless of how the camera swings around.
@@ -249,23 +250,17 @@
   function start_fly_to(dir: Vec3) {
     const main_camera = $camera
     if (!main_camera) return
-    const target = active_controls?.target ?? new THREE.Vector3()
+    const { up } = main_camera
+    const target = active_controls?.target ?? ORIGIN
     const distance = main_camera.position.distanceTo(target) || 1
     const to = new THREE.Vector3(...dir).multiplyScalar(distance)
-    // Looking straight down the camera's up vector is degenerate for OrbitControls (polar
-    // angle 0), so tilt off-axis by a hair to keep a stable frame.
-    if (Math.abs(to.clone().normalize().dot(main_camera.up)) > 0.999) {
-      const nudge =
-        Math.abs(main_camera.up.z) > 0.5
-          ? new THREE.Vector3(0, 1e-3, 0)
-          : new THREE.Vector3(0, 0, 1e-3)
-      to.add(nudge.multiplyScalar(distance))
+    // `dir` is a unit axis, so this dot is its cosine to the camera's up vector. Looking
+    // straight down `up` is degenerate for OrbitControls (polar angle 0), so tilt off the pole.
+    if (Math.abs(dir[0] * up.x + dir[1] * up.y + dir[2] * up.z) > 0.999) {
+      if (Math.abs(up.z) > 0.5) to.y += 1e-3 * distance
+      else to.z += 1e-3 * distance
     }
-    animation = {
-      from: main_camera.position.clone().sub(target),
-      to,
-      elapsed: 0,
-    }
+    animation = { from: main_camera.position.clone().sub(target), to, elapsed: 0 }
     if (active_controls) active_controls.enabled = false
     onstart?.()
     invalidate()
@@ -281,7 +276,7 @@
     animation.elapsed += delta * 1000
     const progress =
       animation_duration > 0 ? Math.min(1, animation.elapsed / animation_duration) : 1
-    const target = active_controls?.target ?? new THREE.Vector3()
+    const target = active_controls?.target ?? ORIGIN
     lerped.copy(animation.from).lerp(animation.to, ease_in_out(progress))
     main_camera.position.copy(target).add(lerped)
     main_camera.lookAt(target)
@@ -298,39 +293,29 @@
   const raycaster = new THREE.Raycaster()
   const pointer_ndc = new THREE.Vector2()
 
-  // Pointer position within the gizmo box, or null when outside it.
-  function to_gizmo_ndc(event: PointerEvent): THREE.Vector2 | null {
+  // The handle under the pointer, or null when outside the gizmo box or off every handle.
+  function pick_handle(event: PointerEvent): Handle | null {
     const canvas = renderer?.domElement
-    if (!canvas) return null
+    if (!visible || !canvas) return null
     const bounds = canvas.getBoundingClientRect()
     const px = event.clientX - bounds.left
     const py = event.clientY - bounds.top
     const { x, y, width, height } = rect
     if (px < x || px > x + width || py < y || py > y + height) return null
-    pointer_ndc.set(((px - x) / width) * 2 - 1, -(((py - y) / height) * 2 - 1))
-    return pointer_ndc
-  }
 
-  function pick_axis(event: PointerEvent): GizmoAxisKey | null {
-    if (!visible) return null
-    const ndc = to_gizmo_ndc(event)
-    if (!ndc) return null
+    pointer_ndc.set(((px - x) / width) * 2 - 1, -(((py - y) / height) * 2 - 1))
     sync_gizmo_camera()
-    raycaster.setFromCamera(ndc, gizmo_camera)
-    const hit = raycaster.intersectObjects(
-      handles.map((handle) => handle.mesh),
-      false,
-    )[0]
-    if (!hit) return null
-    return handles.find((handle) => handle.mesh === hit.object)?.axis ?? null
+    raycaster.setFromCamera(pointer_ndc, gizmo_camera)
+    const hit = raycaster.intersectObjects(handle_meshes, false)[0]
+    return handles.find((handle) => handle.mesh === hit?.object) ?? null
   }
 
   // Which handle the press started on — a click only counts if press and release agree,
   // and only then do we swallow the event so orbiting still works everywhere else.
-  let pressed: GizmoAxisKey | null = null
+  let pressed: Handle | null = null
 
   function handle_pointer_move(event: PointerEvent) {
-    const next = animation ? null : pick_axis(event)
+    const next = animation ? null : (pick_handle(event)?.axis ?? null)
     if (next !== hovered) {
       hovered = next
       invalidate()
@@ -338,18 +323,14 @@
   }
 
   function handle_pointer_down(event: PointerEvent) {
-    pressed = pick_axis(event)
-    // Keep OrbitControls (which listens on the canvas itself) from starting a drag. The
-    // listener is registered on the container in the capture phase so it runs first.
-    if (pressed) event.stopPropagation()
+    pressed = pick_handle(event)
+    if (pressed) event.stopPropagation() // don't let OrbitControls start a drag
   }
 
   function handle_pointer_up(event: PointerEvent) {
-    const released = pick_axis(event)
-    if (pressed && released === pressed) {
+    if (pressed && pick_handle(event) === pressed) {
       event.stopPropagation()
-      const handle = handles.find((entry) => entry.axis === pressed)
-      if (handle) start_fly_to(handle.dir)
+      start_fly_to(pressed.dir)
     }
     pressed = null
   }
@@ -360,19 +341,34 @@
     invalidate()
   }
 
+  // Show the handles are clickable. The gizmo lives inside the canvas, so there's no element
+  // to hang a CSS :hover rule on — drive the canvas cursor directly and restore whatever the
+  // host had set (viewers use `grab`/`--canvas-cursor`) once the pointer moves off.
+  $effect(() => {
+    const canvas = renderer?.domElement
+    if (!canvas || !hovered) return
+    const prev_cursor = canvas.style.cursor
+    canvas.style.cursor = `pointer`
+    return () => {
+      canvas.style.cursor = prev_cursor
+    }
+  })
+
+  // Capture phase on the container (not the canvas) so these run before OrbitControls' own
+  // canvas listeners, letting handle clicks be swallowed before a drag starts.
   $effect(() => {
     const container = dom
     if (!container) return
     const opts = { capture: true } as const
-    container.addEventListener(`pointermove`, handle_pointer_move, opts)
-    container.addEventListener(`pointerdown`, handle_pointer_down, opts)
-    container.addEventListener(`pointerup`, handle_pointer_up, opts)
-    container.addEventListener(`pointerleave`, handle_pointer_leave, opts)
+    const listeners = [
+      [`pointermove`, handle_pointer_move],
+      [`pointerdown`, handle_pointer_down],
+      [`pointerup`, handle_pointer_up],
+      [`pointerleave`, handle_pointer_leave],
+    ] as const
+    for (const [type, fn] of listeners) container.addEventListener(type, fn, opts)
     return () => {
-      container.removeEventListener(`pointermove`, handle_pointer_move, opts)
-      container.removeEventListener(`pointerdown`, handle_pointer_down, opts)
-      container.removeEventListener(`pointerup`, handle_pointer_up, opts)
-      container.removeEventListener(`pointerleave`, handle_pointer_leave, opts)
+      for (const [type, fn] of listeners) container.removeEventListener(type, fn, opts)
     }
   })
 
@@ -394,24 +390,32 @@
       const prev_scissor_test = renderer.getScissorTest()
       const prev_auto_clear = renderer.autoClear
 
-      // Draw over the frame the main pass just produced instead of clearing it, but reset
-      // depth so scene geometry can't occlude the gizmo.
-      renderer.autoClear = false
-      renderer.setViewport(rect.x, rect.y, rect.width, rect.height)
-      renderer.setScissor(rect.x, rect.y, rect.width, rect.height)
-      renderer.setScissorTest(true)
-      renderer.clearDepth()
-      renderer.render(gizmo_scene, gizmo_camera)
-
-      renderer.setScissorTest(prev_scissor_test)
-      renderer.setScissor(prev_scissor)
-      renderer.setViewport(prev_viewport)
-      renderer.autoClear = prev_auto_clear
+      // Restore in `finally`: these are renderer-wide, so letting a throw (device loss, say)
+      // escape mid-frame would leave every later main-scene render clipped to this corner
+      // and never clearing.
+      try {
+        // Draw over the frame the main pass just produced instead of clearing it, but reset
+        // depth so scene geometry can't occlude the gizmo.
+        renderer.autoClear = false
+        renderer.setViewport(rect.x, rect.y, rect.width, rect.height)
+        renderer.setScissor(rect.x, rect.y, rect.width, rect.height)
+        renderer.setScissorTest(true)
+        renderer.clearDepth()
+        renderer.render(gizmo_scene, gizmo_camera)
+      } finally {
+        renderer.setScissorTest(prev_scissor_test)
+        renderer.setScissor(prev_scissor)
+        renderer.setViewport(prev_viewport)
+        renderer.autoClear = prev_auto_clear
+      }
     },
     { after: autoRenderTask, autoInvalidate: false },
   )
 
   $effect(() => () => {
+    // A fly-to disables orbiting until it finishes. Unmounting mid-flight (e.g. the `gizmo`
+    // prop flips false) would otherwise strand the host's controls disabled for good.
+    if (animation && active_controls) active_controls.enabled = true
     for (const { mesh, label, line } of handles) {
       mesh.geometry.dispose()
       mesh.material.dispose()

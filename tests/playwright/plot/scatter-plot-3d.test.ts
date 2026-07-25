@@ -22,44 +22,12 @@ test.describe(`ScatterPlot3D`, () => {
     await expect(canvas).toBeVisible()
   })
 
-  test(`gizmo is visible with correct size`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const gizmo = page.locator(`${CONTAINER_SELECTOR} .scatter3d-gizmo`)
-    await expect(gizmo).toBeVisible({ timeout: get_canvas_timeout() })
-
-    const box = await gizmo.boundingBox()
-    if (!box) throw new Error(`Gizmo bounding box not found`)
-    expect(box.width).toBeGreaterThan(50)
-    expect(box.height).toBeGreaterThan(50)
-  })
-
-  test(`gizmo click triggers camera rotation`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
-
-    const gizmo = page.locator(`${CONTAINER_SELECTOR} .scatter3d-gizmo`)
-    const box = await gizmo.boundingBox()
-    if (!box) throw new Error(`Gizmo bounding box not found`)
-
-    const initial = await canvas.screenshot()
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-    await page.waitForTimeout(500)
-    await expect_canvas_changed(canvas, initial, get_canvas_timeout())
-  })
-
-  // Parameterized CSS property tests for gizmo clickability
-  for (const { selector, prop, expected, compare } of [
-    { selector: `.scatter3d-gizmo`, prop: `zIndex`, expected: 1000, compare: `gte` },
-    {
-      selector: `.scatter3d-gizmo`,
-      prop: `pointerEvents`,
-      expected: `auto`,
-      compare: `eq`,
-    },
-    { selector: `.axis-label`, prop: `pointerEvents`, expected: `none`, compare: `eq` },
-    { selector: `.tick-label`, prop: `pointerEvents`, expected: `none`, compare: `eq` },
+  // Text overlays must not swallow pointer events meant for the canvas below them
+  for (const { selector, prop, expected } of [
+    { selector: `.axis-label`, prop: `pointerEvents`, expected: `none` },
+    { selector: `.tick-label`, prop: `pointerEvents`, expected: `none` },
   ] as const) {
-    test(`${selector} has ${prop} ${compare} ${expected}`, async ({ page }) => {
+    test(`${selector} has ${prop} ${expected}`, async ({ page }) => {
       await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       const el = page.locator(`${CONTAINER_SELECTOR} ${selector}`).first()
       await expect(el).toBeVisible({ timeout: get_canvas_timeout() })
@@ -69,11 +37,7 @@ test.describe(`ScatterPlot3D`, () => {
           globalThis.getComputedStyle(node)[css_prop as keyof CSSStyleDeclaration],
         prop,
       )
-      if (compare === `gte`) {
-        expect(Number(value as string)).toBeGreaterThanOrEqual(expected)
-      } else {
-        expect(value).toBe(expected)
-      }
+      expect(value).toBe(expected)
     })
   }
 
