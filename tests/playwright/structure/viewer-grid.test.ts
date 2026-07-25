@@ -6,7 +6,7 @@ import { IS_CI } from '../helpers'
 const VIEWER_COUNT = 24
 
 // A GPU canvas reads back blank via drawImage once presented, so go through the compositor
-// with an element screenshot (a blank one compresses to a tiny PNG). Retry because a viewport
+// with an element screenshot (a blank one compresses to a tiny PNG). Retry since a viewport
 // rebuilds its <Canvas> after device loss, detaching the element mid-capture.
 const is_painted = async (canvas: Locator): Promise<boolean> => {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -20,9 +20,8 @@ const is_painted = async (canvas: Locator): Promise<boolean> => {
   return false
 }
 
-// Probe for a real adapter rather than trusting the API's presence: navigator.gpu exists in
-// any secure context, but headless Chromium only hands one out with the WebGPU flags in
-// playwright.config.
+// navigator.gpu exists in any secure context, but headless Chromium only hands out an adapter
+// with the WebGPU flags in playwright.config — so probe for a real one.
 const has_webgpu_adapter = (page: Page): Promise<boolean> =>
   page.evaluate(async () => {
     if (!(`gpu` in navigator)) return false
@@ -37,16 +36,15 @@ test.describe(`Viewer grid`, () => {
   test(`every viewer keeps its canvas across ${VIEWER_COUNT} simultaneous viewers`, async ({
     page,
   }) => {
-    // 24 GPU canvases on a software adapter measured ~57s warm, ~5min on a cold dev server
+    // 24 GPU canvases on a software adapter measured ~57s warm, ~5 min on a cold dev server
     // that must compile the route first. The timeouts below have the same cause.
     test.setTimeout(600_000)
-    // Adapter check on a static asset first: it only needs a secure context, while the grid
-    // route costs a compile plus 24 canvases before we could bail out.
+    // Probe on a static asset first: that only needs a secure context, while the grid route
+    // costs a compile plus 24 canvases before we could bail out.
     await page.goto(`/favicon.svg`, { waitUntil: `domcontentloaded` })
     const has_adapter = await has_webgpu_adapter(page)
     // Fail rather than skip on CI: the launch flags there guarantee a software adapter, so a
-    // missing one means they regressed — and skipping would silently retire the guard this
-    // test exists to be. Only a dev machine without WebGPU is allowed to opt out.
+    // missing one is a regression and skipping would silently retire this guard.
     if (IS_CI) {
       expect(has_adapter, `WebGPU adapter from playwright.config launch flags`).toBe(true)
     } else test.skip(!has_adapter, `no WebGPU adapter on this machine`)
@@ -61,7 +59,7 @@ test.describe(`Viewer grid`, () => {
     await expect(canvases).toHaveCount(VIEWER_COUNT, { timeout: 120_000 })
 
     // An adapter proves the browser can do WebGPU, not that the viewers used it: three falls
-    // back to WebGL on init failure, which is the context-capped path this test exists to catch.
+    // back to WebGL on init failure, the context-capped path this test exists to catch.
     await expect(page.locator(`[data-testid="viewer-grid"]`)).toHaveAttribute(
       `data-backend`,
       `webgpu`,

@@ -29,9 +29,9 @@ export async function wait_for_3d_canvas(
   container_selector: string,
   timeout?: number,
 ): Promise<Locator> {
-  const eff_timeout = timeout ?? get_canvas_timeout()
+  const effective_timeout = timeout ?? get_canvas_timeout()
   const canvas = page.locator(`${container_selector} canvas`)
-  await expect(canvas).toBeVisible({ timeout: eff_timeout })
+  await expect(canvas).toBeVisible({ timeout: effective_timeout })
   // Wait for WebGL context to be ready (canvas has non-zero dimensions)
   await page.waitForFunction(
     (selector) => {
@@ -41,7 +41,7 @@ export async function wait_for_3d_canvas(
       return rect.width > 0 && rect.height > 0
     },
     container_selector,
-    { timeout: eff_timeout },
+    { timeout: effective_timeout },
   )
   return canvas
 }
@@ -260,11 +260,11 @@ export async function expect_canvas_changed(
   initial: Buffer,
   timeout?: number,
 ): Promise<void> {
-  const eff_timeout = timeout ?? get_canvas_timeout()
+  const effective_timeout = timeout ?? get_canvas_timeout()
   await expect(async () => {
     const current = await canvas_screenshot(canvas)
     expect(initial.equals(current)).toBe(false)
-  }).toPass({ timeout: eff_timeout })
+  }).toPass({ timeout: effective_timeout })
 }
 
 export type GizmoHandleHit = { key: string; x: number; y: number }
@@ -272,8 +272,8 @@ export type GizmoHandleHit = { key: string; x: number; y: number }
 // Find the gizmo's axis handles in a canvas. It has no DOM element, so hover a grid of cells
 // over the corner it's anchored in and keep those that flip the cursor to `pointer`, returning
 // viewport coords ready for page.mouse. `bottom_offset` lifts the swept square (for gizmos
-// parked above a ColorBar). Synthetic moves keep this to one round trip; page.mouse overruns
-// the test timeout.
+// parked above a ColorBar). Synthetic moves keep this to one round trip — page.mouse would
+// overrun the test timeout.
 export function sweep_gizmo_handles(
   canvas: Locator,
   options: { probe?: number; steps?: number; bottom_offset?: number } = {},
@@ -308,16 +308,15 @@ export function sweep_gizmo_handles(
 
 // Click the first handle a sweep finds and assert the camera flew there. Handles are fixed in
 // gizmo space, so their screen positions shift only if the camera moved — unlike canvas pixels,
-// which hover alone disturbs. Re-sweeping also has to find handles, else a gizmo that simply
-// stopped drawing would trivially differ from the sweep before.
+// which hover alone disturbs. The re-sweep must find handles too, else a gizmo that stopped
+// drawing would trivially differ from the sweep before.
 export async function expect_gizmo_click_flies_camera(
   canvas: Locator,
   options: Parameters<typeof sweep_gizmo_handles>[1] = {},
 ): Promise<void> {
   const before = await sweep_gizmo_handles(canvas, options)
-  // There is nothing to click where the scene never composites: CI's software WebGPU hands out
-  // an adapter but paints no pixels, so the sweep comes up empty however healthy the gizmo is.
-  // Off CI an empty sweep is a real regression, so keep the assertion strict there.
+  // Nothing to click where the scene never composites: CI's software WebGPU hands out an
+  // adapter but paints no pixels, so the sweep comes up empty however healthy the gizmo is.
   if (before.length === 0 && IS_CI) return
   expect(before.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
 

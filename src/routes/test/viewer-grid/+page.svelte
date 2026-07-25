@@ -3,8 +3,10 @@
   // contexts (~16) and silently evict the oldest, which used to blank out earlier canvases and
   // forced StructureViewport to carry context-loss recovery. WebGPU has no equivalent cap, so
   // this route exists to keep that regression visible: every canvas should stay drawn.
-  import type { Crystal, Vec3 } from '$lib'
+  import type { Crystal, ElementSymbol } from '$lib'
   import { renderer_registry } from '$lib/io/export'
+  import { calc_lattice_params, type Matrix3x3, type Vec3 } from '$lib/math'
+  import type { Pbc } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
 
   let viewer_count = $state(24)
@@ -13,11 +15,20 @@
   // device, so navigator.gpu alone doesn't tell the test what ran.
   let backend: string | undefined = $state()
 
-  // Distinct-looking cell per viewer so a blanked canvas is obvious at a glance.
-  function make_structure(seed: number): Crystal {
-    const size = 5
-    const elements = [`Fe`, `Cu`, `O`, `Si`, `C`, `N`] as const
-    const sites = Array.from({ length: 8 }, (_, idx) => {
+  // A structure of its own per viewer: distinct enough that a blanked canvas stands out, and
+  // small enough that 24 of them still paint promptly.
+  const cell = 5
+  const matrix: Matrix3x3 = [
+    [cell, 0, 0],
+    [0, cell, 0],
+    [0, 0, cell],
+  ]
+  const elements: ElementSymbol[] = [`Fe`, `Cu`, `O`, `Si`, `C`, `N`]
+  const lattice = { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+  const make_structure = (seed: number): Crystal => ({
+    lattice,
+    charge: 0,
+    sites: Array.from({ length: 8 }, (_, idx) => {
       const abc: Vec3 = [
         (idx % 2) * 0.5,
         (Math.trunc(idx / 2) % 2) * 0.5,
@@ -27,29 +38,16 @@
       return {
         species: [{ element, occu: 1, oxidation_state: 0 }],
         abc,
-        xyz: abc.map((frac) => frac * size) as Vec3,
+        xyz: abc.map((frac) => frac * cell) as Vec3,
         label: `${element}${idx + 1}`,
         properties: {},
       }
-    })
-    const matrix: [Vec3, Vec3, Vec3] = [
-      [size, 0, 0],
-      [0, size, 0],
-      [0, 0, size],
-    ]
-    const lattice = {
-      matrix,
-      a: size,
-      b: size,
-      c: size,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      pbc: [true, true, true] as [boolean, boolean, boolean],
-      volume: size ** 3,
-    }
-    return { lattice, sites, charge: 0 } as Crystal
-  }
+    }),
+  })
+
+  let structures = $derived(
+    Array.from({ length: viewer_count }, (_, idx) => make_structure(idx)),
+  )
 
   $effect(() => {
     const requested = Number(new URLSearchParams(globalThis.location.search).get(`count`))
@@ -57,10 +55,6 @@
       viewer_count = Math.trunc(requested)
     }
   })
-
-  let structures = $derived(
-    Array.from({ length: viewer_count }, (_, idx) => make_structure(idx)),
-  )
 
   $effect(() => {
     const grid_el = grid
@@ -71,12 +65,20 @@
     // later canvases only. Poll since bind_renderer registers each canvas in its own effect,
     // and await init() since that's when three settles on a backend.
     const timer = setInterval(async () => {
-      const renderers = [...grid_el.querySelectorAll(`canvas`)]
-        .map((canvas) => renderer_registry.get(canvas))
-        .filter((renderer) => renderer !== undefined)
-      if (renderers.length < expected) return
+      const canvases = [...grid_el.querySelectorAll(`canvas`)]
+      // One registered renderer per canvas, no filtering: a canvas still awaiting registration
+      // would otherwise let a partial grid pass as ready.
+      if (canvases.length !== expected) return
+      const renderers = canvases.map((canvas) => renderer_registry.get(canvas))
+      if (!renderers.every((renderer) => renderer !== undefined)) return
       clearInterval(timer)
-      await Promise.all(renderers.map((renderer) => renderer.init()))
+      try {
+        await Promise.all(renderers.map((renderer) => renderer.init()))
+      } catch (error) {
+        console.error(`renderer init failed`, error)
+        if (!cancelled) backend = `error`
+        return
+      }
       const all_webgpu = renderers.every(
         (renderer) => (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend,
       )
