@@ -3,9 +3,7 @@
   import { clamp01 } from '$lib/utils'
   import {
     add_alpha,
-    AXIS_COLORS,
     is_dark_mode,
-    NEG_AXIS_COLORS,
     PLOT_COLORS,
     vesta_hex,
     watch_dark_mode,
@@ -279,19 +277,6 @@
     center_camera(elev_deg)
   }
 
-  // Gizmo axis colors (constant — AXIS_COLORS/NEG_AXIS_COLORS never change)
-  const gizmo_axis_options = Object.fromEntries(
-    [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover_color]) => [
-      axis,
-      {
-        color,
-        labelColor: `#111`,
-        opacity: 0.85,
-        hover: { color: hover_color, labelColor: `#222`, opacity: 1 },
-      },
-    ]),
-  )
-
   // Extract placement from gizmo options — it positions the wrapper div rather than the
   // gizmo inside its canvas, so it never reaches <Gizmo>.
   const gizmo_placement = $derived(
@@ -303,12 +288,7 @@
   const gizmo_props = $derived.by(() => {
     const overrides: ConvexHullGizmoOptions = typeof gizmo === `object` && gizmo ? gizmo : {}
     const { placement: _placement, ...appearance } = overrides
-    return {
-      background: { enabled: false },
-      ...gizmo_axis_options,
-      ...appearance,
-      placement: `fill` as const,
-    }
+    return { ...appearance, placement: `fill` as const }
   })
 
   // Shared canvas-interaction scaffold (mouse/keyboard handlers, hover/drag/popup

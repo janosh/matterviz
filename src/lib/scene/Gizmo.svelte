@@ -1,28 +1,23 @@
 <script lang="ts">
   // Orientation gizmo: colored +/- axis handles in a corner of the canvas showing camera
-  // orientation, clickable to fly the camera to that axis.
-  //
-  // Replaces @threlte/extras' Gizmo, which can't run on WebGPU: it delegates to
-  // three-viewport-gizmo, whose handles are raw GLSL ShaderMaterials from the ShaderLib
-  // registries our WebGPU shim stubs out. MeshBasicMaterial/SpriteMaterial below map to node
-  // materials automatically, so this renders on either backend.
-  //
+  // orientation, clickable to fly the camera to that axis. Replaces @threlte/extras' Gizmo,
+  // which delegates to three-viewport-gizmo and its raw GLSL ShaderMaterials — those can't
+  // compile on WebGPU, while the materials below map to node materials automatically.
   // Like upstream it draws into a corner viewport of the *existing* canvas after the main
-  // render, costing no extra canvas and staying out of PNG exports (scene+camera only).
+  // render, so it costs no extra canvas and stays out of PNG exports (scene+camera only).
   import type { Vec3 } from '$lib/math'
   import { useParent, useTask, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import type { GizmoAxisKey, GizmoAxisStyle, GizmoOptions } from './gizmo'
-  import { GIZMO_AXES, GIZMO_DEFAULT_COLORS, GIZMO_LAYOUT } from './gizmo'
+  import { GIZMO_AXES, GIZMO_DEFAULT_STYLES, GIZMO_LAYOUT } from './gizmo'
 
   let {
     visible = true,
     placement = `bottom-left`,
     size,
     offset = {},
-    background = { enabled: false },
     animation_duration = 400,
     fade_duration = 200,
     controls,
@@ -60,8 +55,7 @@
     GIZMO_LAYOUT.cam_distance * 2,
   )
 
-  // Label sprites are tiny canvas textures; cache per letter+color so hover recolors don't
-  // allocate a new texture every pointer move.
+  // Cache per letter+color so hover recolors don't allocate a texture every pointer move
   const label_textures = new Map<string, THREE.CanvasTexture>()
 
   function label_texture(letter: string, color: string): THREE.CanvasTexture {
@@ -108,8 +102,7 @@
     const handle: Handle = { axis, dir, negative, mesh, base_opacity: 1 }
 
     if (!negative) {
-      // Stem from origin to the handle. A cylinder (not a Line) so width is in world units
-      // and stays visible — line widths above 1px are not portable across backends.
+      // A cylinder, not a Line: line widths above 1px aren't portable across backends
       const ax_line_radius = GIZMO_LAYOUT.axis_line_radius
       const line = new THREE.Mesh(
         new THREE.CylinderGeometry(ax_line_radius, ax_line_radius, 1, 12),
@@ -121,8 +114,8 @@
       gizmo_scene.add(line)
       handle.line = line
 
-      // depthWrite off + a per-frame nudge toward the camera (see sync_gizmo_camera) keeps
-      // each letter on top of its own sphere while still being occluded by nearer handles.
+      // depthWrite off + the per-frame nudge in sync_gizmo_camera keeps each letter on top of
+      // its own sphere while still being occluded by nearer handles
       const label = new THREE.Sprite(
         new THREE.SpriteMaterial({ transparent: true, depthWrite: false }),
       )
@@ -137,72 +130,52 @@
 
   const handle_meshes = handles.map((handle) => handle.mesh)
 
-  // Optional disc behind the handles. Drawn first with depth disabled so it never occludes
-  // handles regardless of how the camera swings around.
-  const backdrop = new THREE.Mesh(
-    new THREE.CircleGeometry(GIZMO_LAYOUT.frustum, 48),
-    new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }),
-  )
-  backdrop.renderOrder = -1
-  gizmo_scene.add(backdrop)
-
   let hovered: GizmoAxisKey | null = $state(null)
 
-  // Fade instead of popping, since `visible` follows viewer hover like the CSS-transitioned
-  // chrome around it. Advanced in the render task to step with frame time; plain `let` since
-  // only that task reads it and per-frame $state writes would schedule pointless re-runs.
-  // untrack: the initial value is all we want — mounting visible should start opaque rather
-  // than fading in, and every later change is picked up by the render task.
+  // Advanced in the render task to step with frame time; a plain `let` since only that task
+  // reads it and per-frame $state writes would schedule pointless re-runs. untrack so mounting
+  // visible starts opaque instead of fading in; later changes come via the task.
   let fade = untrack(() => (visible ? 1 : 0))
-  let backdrop_base_opacity = 0.2
 
   // Drop a stuck highlight if the gizmo is hidden mid-hover (pointer events stop resolving).
   $effect(() => {
     if (!visible) hovered = null
   })
 
-  // Resolve each handle's current appearance from props + hover state, then push it onto the
-  // three objects. Reading `hovered` and `axis_styles` here keeps this reactive to both.
+  // Resolve each handle's appearance from props + hover state onto the three objects
   $effect(() => {
     for (const handle of handles) {
-      const style =
+      const defaults = GIZMO_DEFAULT_STYLES[handle.axis]
+      const overrides =
         (axis_styles as Partial<Record<GizmoAxisKey, GizmoAxisStyle>>)[handle.axis] ?? {}
-      const is_hovered = hovered === handle.axis
-      const hover = style.hover ?? {}
-      const fallback = GIZMO_DEFAULT_COLORS[handle.axis]
-      const color = is_hovered
-        ? (hover.color ?? fallback.hover)
-        : (style.color ?? fallback.color)
-      const opacity =
-        (is_hovered ? hover.opacity : undefined) ??
-        style.opacity ??
-        (handle.negative ? 0.9 : 1)
+      const style = { ...defaults, ...overrides }
+      // Hovering swaps in the hover variant of each field, but a caller's explicit color or
+      // opacity still wins over the default hover — else a custom axis color would flip to
+      // the stock tint on hover. The stem keeps its base color either way.
+      const shown =
+        hovered === handle.axis
+          ? { ...defaults.hover, ...overrides, ...overrides.hover }
+          : style
 
-      handle.mesh.material.color.set(color)
-      handle.base_opacity = opacity
-      if (handle.line) handle.line.material.color.set(style.color ?? color)
+      handle.mesh.material.color.set(shown.color ?? `#888888`)
+      handle.base_opacity = shown.opacity ?? 1
+      if (handle.line) handle.line.material.color.set(style.color ?? `#888888`)
 
       if (handle.label) {
         const letter = style.label ?? handle.axis.toUpperCase()
-        const label_color =
-          (is_hovered ? hover.labelColor : undefined) ?? style.labelColor ?? `#111111`
-        handle.label.material.map = label_texture(letter, label_color)
+        handle.label.material.map = label_texture(letter, shown.labelColor ?? `#111`)
         handle.label.material.needsUpdate = true
       }
     }
-    backdrop.visible = background.enabled ?? false
-    backdrop.material.color.set(background.color ?? `#000000`)
-    backdrop_base_opacity = background.opacity ?? 0.2
     invalidate()
   })
 
-  // Where the gizmo draws, in CSS px measured from the canvas's top-left — the origin both
-  // Renderer.setViewport/setScissor and pointer coordinates use.
+  // Where the gizmo draws, in CSS px from the canvas's top-left — the origin both
+  // Renderer.setViewport/setScissor and pointer coordinates use
   const rect = $derived.by(() => {
     const { width, height } = $canvas_size
     if (placement === `fill`) return { x: 0, y: 0, width, height }
-    // Unsized gizmos scale with the viewport, reproducing the clamp(70px, 18cqmin, 100px)
-    // the old DOM-based gizmo got from CSS.
+    // Unsized gizmos scale with the viewport, as the old DOM gizmo did via CSS clamp()
     const responsive = Math.min(100, Math.max(70, 0.18 * Math.min(width, height)))
     const box = Math.min(size ?? responsive, width, height)
     const gap = 5
@@ -215,8 +188,8 @@
     return { x, y, width: box, height: box }
   })
 
-  // Point the gizmo camera the same way as the scene camera so the handles read as the
-  // scene's world axes. Distance is fixed; the ortho frustum sets the on-screen size.
+  // Point the gizmo camera like the scene camera so handles read as the scene's world axes.
+  // Distance is fixed; the ortho frustum sets the on-screen size.
   const ORIGIN = new THREE.Vector3()
   const view_dir = new THREE.Vector3()
   const label_nudge = new THREE.Vector3()
@@ -236,11 +209,10 @@
     for (const { dir, label } of handles) {
       label?.position.set(...dir).add(label_nudge)
     }
-    backdrop.quaternion.copy(gizmo_camera.quaternion)
   }
 
-  // Camera fly-to. Interpolating the offset from the orbit target (rather than the absolute
-  // position) keeps the distance constant while the direction swings around.
+  // Camera fly-to. Interpolating the offset from the orbit target (not the absolute position)
+  // keeps the distance constant while the direction swings around.
   let animation: { from: THREE.Vector3; to: THREE.Vector3; elapsed: number } | null = null
 
   function start_fly_to(dir: Vec3) {
@@ -337,9 +309,8 @@
     invalidate()
   }
 
-  // Show the handles are clickable. The gizmo lives inside the canvas, so there's no element
-  // to hang a CSS :hover rule on — drive the canvas cursor directly and restore whatever the
-  // host had set (viewers use `grab`/`--canvas-cursor`) once the pointer moves off.
+  // The gizmo has no DOM element to hang a CSS :hover rule on, so drive the canvas cursor
+  // directly and restore whatever the host had set once the pointer moves off.
   $effect(() => {
     const canvas = renderer?.domElement
     if (!canvas || !hovered) return
@@ -381,13 +352,12 @@
       if (fade !== target) {
         const step = fade_duration > 0 ? (delta * 1000) / fade_duration : 1
         fade = target > fade ? Math.min(target, fade + step) : Math.max(target, fade - step)
-        // This task opts out of auto-invalidation, so drive frames until the fade lands. The
-        // frame that reaches 0 matters most: it's the one that repaints the gizmo away.
+        // This task opts out of auto-invalidation, so drive frames until the fade lands —
+        // above all the frame reaching 0, which is the one that repaints the gizmo away.
         invalidate()
       }
 
-      // Keep drawing through a fade-out, and skip entirely once fully faded.
-      // `initialized` guards the frames before the GPU device resolves; render() throws then.
+      // `initialized` guards the frames before the GPU device resolves; render() throws then
       if (fade <= 0 || !shouldRender() || !renderer?.initialized) return
 
       for (const handle of handles) {
@@ -395,7 +365,6 @@
         if (handle.line) handle.line.material.opacity = handle.base_opacity * fade
         if (handle.label) handle.label.material.opacity = fade
       }
-      backdrop.material.opacity = backdrop_base_opacity * fade
 
       sync_gizmo_camera()
 
@@ -404,9 +373,8 @@
       const prev_scissor_test = renderer.getScissorTest()
       const prev_auto_clear = renderer.autoClear
 
-      // Restore in `finally`: these are renderer-wide, so letting a throw (device loss, say)
-      // escape mid-frame would leave every later main-scene render clipped to this corner
-      // and never clearing.
+      // Restore in `finally`: these are renderer-wide, so a throw escaping mid-frame would
+      // leave every later main-scene render clipped to this corner and never clearing.
       try {
         // Draw over the frame the main pass just produced instead of clearing it, but reset
         // depth so scene geometry can't occlude the gizmo.
@@ -437,8 +405,6 @@
       line?.material.dispose()
       label?.material.dispose()
     }
-    backdrop.geometry.dispose()
-    backdrop.material.dispose()
     for (const texture of label_textures.values()) texture.dispose()
     label_textures.clear()
   })

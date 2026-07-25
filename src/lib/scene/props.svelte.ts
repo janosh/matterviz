@@ -1,4 +1,3 @@
-import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
 import type { Camera, Scene, Vector3 } from 'three/webgpu'
@@ -44,30 +43,11 @@ export type SceneControlProps = {
 // ColorBar-aware and its orbit controls differ by design (no zoom-to-cursor / ortho
 // zoom-doubling / camera-moving tracking).
 
-// Shared Gizmo config: colored +/- axis handles, transparent background, responsive sizing. An object `gizmo` overrides the per-axis defaults.
+// Shared Gizmo config; per-axis appearance comes from GIZMO_DEFAULT_STYLES inside the gizmo
 export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
   const overrides = typeof gizmo === `object` ? gizmo : {}
-  return {
-    background: { enabled: false },
-    ...Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
-        axis,
-        {
-          color,
-          labelColor: `#111`,
-          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
-          hover: {
-            color: hover,
-            labelColor: `#222`,
-            opacity: axis.startsWith(`n`) ? 1 : 0.9,
-          },
-        },
-      ]),
-    ),
-    ...overrides,
-    // merged, not replaced, so callers can nudge one edge (e.g. to clear a ColorBar)
-    offset: { left: 5, bottom: 5, ...overrides.offset },
-  }
+  // offset is merged, not replaced, so callers can nudge one edge (e.g. to clear a ColorBar)
+  return { ...overrides, offset: { left: 5, bottom: 5, ...overrides.offset } }
 }
 
 // Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving (e.g. StructureScene closes hover tooltips/context menus)

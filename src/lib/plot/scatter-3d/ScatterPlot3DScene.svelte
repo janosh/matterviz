@@ -488,11 +488,7 @@
 
   // Gizmo props - parent (ScatterPlot3D) handles className and ColorBar offset adjustments
   let gizmo_props = $derived(
-    gizmo === false
-      ? null
-      : gizmo === true
-        ? { background: { enabled: false }, offset: { left: 5, bottom: 5 } }
-        : gizmo,
+    gizmo === false ? null : gizmo === true ? { offset: { left: 5, bottom: 5 } } : gizmo,
   )
 
   // Orbit controls - snappy with minimal inertia

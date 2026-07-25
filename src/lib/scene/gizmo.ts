@@ -1,6 +1,5 @@
-// Types + geometry constants for Gizmo.svelte, our WebGPU-compatible orientation gizmo.
-// Kept out of the component so build_gizmo_props (props.svelte.ts) can type its return
-// value without importing a .svelte module into plain .ts consumers.
+// Types + geometry constants for Gizmo.svelte, kept out of the component so build_gizmo_props
+// (props.svelte.ts) can type its return value without importing a .svelte module.
 import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
 
@@ -16,10 +15,9 @@ export type GizmoAxisStyle = {
   hover?: { color?: string; labelColor?: string; opacity?: number }
 }
 
-// Where the gizmo sits inside its canvas. `fill` uses the whole canvas, for callers that
-// already give the gizmo its own <Canvas> and position that element with CSS (ConvexHull3D).
-// Named GizmoAnchor rather than GizmoPlacement because $lib/convex-hull already exports a
-// GizmoPlacement (its CSS-level corner) and both barrels are re-exported from $lib.
+// Where the gizmo sits inside its canvas. `fill` uses the whole canvas, for callers that give
+// the gizmo its own <Canvas> and place that element with CSS (ConvexHull3D). Not named
+// GizmoPlacement because $lib/convex-hull exports that already (its CSS-level corner).
 export type GizmoAnchor = `top-left` | `top-right` | `bottom-left` | `bottom-right` | `fill`
 
 export type GizmoOptions = {
@@ -29,8 +27,6 @@ export type GizmoOptions = {
   placement?: GizmoAnchor
   size?: number // edge length in CSS px of the square the gizmo renders into
   offset?: { left?: number; right?: number; top?: number; bottom?: number }
-  // color accepts anything THREE.Color.set() takes, so callers can pass 0xrrggbb or `#rrggbb`
-  background?: { enabled?: boolean; color?: string | number; opacity?: number }
   // Duration in ms of the camera fly-to when an axis handle is clicked. 0 snaps instantly.
   animation_duration?: number
   // Duration in ms of the opacity fade when `visible` flips. 0 appears/disappears instantly.
@@ -54,12 +50,20 @@ export const GIZMO_AXES: readonly (readonly [GizmoAxisKey, Vec3, boolean])[] = [
   [`nz`, [0, 0, -1], true],
 ] as const
 
-// Fallback palette so a bare `gizmo` (no per-axis config) still renders the familiar
-// red/green/blue axes rather than flat grey. build_gizmo_props sets these explicitly;
-// callers like ScatterPlot3D that pass only layout options rely on these.
-export const GIZMO_DEFAULT_COLORS = Object.fromEntries(
-  [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [axis, { color, hover }]),
-) as Record<GizmoAxisKey, { color: string; hover: string }>
+// Per-axis appearance every gizmo starts from, so a bare `gizmo` renders the familiar
+// red/green/blue axes. Negatives sit denser to read as pointing away. Callers override
+// individual axes through GizmoOptions.
+export const GIZMO_DEFAULT_STYLES = Object.fromEntries(
+  [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
+    axis,
+    {
+      color,
+      labelColor: `#111`,
+      opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
+      hover: { color: hover, labelColor: `#222`, opacity: axis.startsWith(`n`) ? 1 : 0.9 },
+    },
+  ]),
+) as Record<GizmoAxisKey, GizmoAxisStyle>
 
 // Gizmo-space layout. The camera is orthographic with a fixed frustum, so these are
 // effectively fractions of the rendered square.

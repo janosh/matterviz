@@ -1,16 +1,18 @@
-import { build_gizmo_props, build_orbit_props, page_visibility } from '$lib/scene'
+import {
+  build_gizmo_props,
+  build_orbit_props,
+  GIZMO_DEFAULT_STYLES,
+  page_visibility,
+} from '$lib/scene'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 describe(`build_gizmo_props`, () => {
   test(`shared axis defaults`, () => {
-    const props = build_gizmo_props(true) as Record<string, unknown>
-    expect(props.background).toEqual({ enabled: false })
-    expect(props.offset).toEqual({ left: 5, bottom: 5 })
+    expect(build_gizmo_props(true)).toEqual({ offset: { left: 5, bottom: 5 } })
     // negative axes render denser than positive ones
-    const nx = props.nx as { opacity: number; hover: { opacity: number } }
-    const px = props.x as { opacity: number; hover: { opacity: number } }
-    expect([nx.opacity, nx.hover.opacity]).toEqual([0.9, 1])
-    expect([px.opacity, px.hover.opacity]).toEqual([0.8, 0.9])
+    const { nx, x: px } = GIZMO_DEFAULT_STYLES
+    expect([nx.opacity, nx.hover?.opacity]).toEqual([0.9, 1])
+    expect([px.opacity, px.hover?.opacity]).toEqual([0.8, 0.9])
   })
 
   test(`object gizmo overrides axes and merges offset over the defaults`, () => {

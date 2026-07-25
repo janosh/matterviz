@@ -158,7 +158,6 @@ export type GizmoPlacement = `top-right` | `bottom-right` | `top-left` | `bottom
 export type ConvexHullGizmoOptions = Record<string, unknown> & {
   placement?: GizmoPlacement
   size?: number
-  background?: { enabled?: boolean; color?: number; opacity?: number }
 }
 
 // Energy source mode determination result

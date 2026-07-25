@@ -250,7 +250,7 @@
   let computed_gizmo = $derived.by(() => {
     if (gizmo === false) return false
     const base_offset = { left: 5, bottom: has_color_bar ? 70 : 5 }
-    const base = { background: { enabled: false }, offset: base_offset }
+    const base = { offset: base_offset }
     if (gizmo === true) return base
     return { ...base, ...gizmo, offset: { ...base_offset, ...gizmo.offset } }
   })
