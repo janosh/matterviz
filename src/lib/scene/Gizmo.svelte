@@ -11,16 +11,11 @@
   // render, costing no extra canvas and staying out of PNG exports (scene+camera only).
   import type { Vec3 } from '$lib/math'
   import { useParent, useTask, useThrelte } from '@threlte/core'
+  import { untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-  import {
-    GIZMO_AXES,
-    type GizmoAxisKey,
-    type GizmoAxisStyle,
-    GIZMO_DEFAULT_COLORS,
-    GIZMO_LAYOUT,
-    type GizmoOptions,
-  } from './gizmo'
+  import type { GizmoAxisKey, GizmoAxisStyle, GizmoOptions } from './gizmo'
+  import { GIZMO_AXES, GIZMO_DEFAULT_COLORS, GIZMO_LAYOUT } from './gizmo'
 
   let {
     visible = true,
@@ -115,13 +110,9 @@
     if (!negative) {
       // Stem from origin to the handle. A cylinder (not a Line) so width is in world units
       // and stays visible — line widths above 1px are not portable across backends.
+      const ax_line_radius = GIZMO_LAYOUT.axis_line_radius
       const line = new THREE.Mesh(
-        new THREE.CylinderGeometry(
-          GIZMO_LAYOUT.axis_line_radius,
-          GIZMO_LAYOUT.axis_line_radius,
-          1,
-          12,
-        ),
+        new THREE.CylinderGeometry(ax_line_radius, ax_line_radius, 1, 12),
         new THREE.MeshBasicMaterial({ transparent: true }),
       )
       // Cylinders are built along +Y; point it down the axis and center it on the stem.
@@ -160,7 +151,9 @@
   // Fade instead of popping, since `visible` follows viewer hover like the CSS-transitioned
   // chrome around it. Advanced in the render task to step with frame time; plain `let` since
   // only that task reads it and per-frame $state writes would schedule pointless re-runs.
-  let fade = visible ? 1 : 0
+  // untrack: the initial value is all we want — mounting visible should start opaque rather
+  // than fading in, and every later change is picked up by the render task.
+  let fade = untrack(() => (visible ? 1 : 0))
   let backdrop_base_opacity = 0.2
 
   // Drop a stuck highlight if the gizmo is hidden mid-hover (pointer events stop resolving).
