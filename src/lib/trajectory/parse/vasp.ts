@@ -58,10 +58,14 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
   let frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
-    const config_idx = lines.findIndex(
-      (line, idx) => idx >= line_idx && line.includes(`Direct configuration=`),
-    )
-    if (config_idx === -1) break
+    // Scan forward from the cursor. `lines.findIndex` restarts at 0 on every frame, which
+    // makes locating F frames O(F x total_lines) — quadratic in frame count on long MD runs.
+    let config_idx = line_idx
+    while (config_idx < lines.length) {
+      if (lines[config_idx].includes(`Direct configuration=`)) break
+      config_idx++
+    }
+    if (config_idx === lines.length) break
 
     // Variable-cell runs (NPT/ISIF=3) repeat the full 7-line header before each configuration
     if (config_idx - line_idx >= 7) {
@@ -89,9 +93,12 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
 
     const positions = []
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {
-      const coords = lines[line_idx].trim().split(/\s+/).slice(0, 3).map(Number)
-      if (coords.length === 3 && !coords.some(isNaN)) {
-        positions.push(frac_to_cart(coords as Vec3))
+      // Read the three tokens directly rather than slice().map(Number), which allocated two
+      // throwaway arrays per atom line — the dominant per-frame cost on long trajectories.
+      const tokens = lines[line_idx].trim().split(/\s+/)
+      if (tokens.length >= 3) {
+        const coords: Vec3 = [Number(tokens[0]), Number(tokens[1]), Number(tokens[2])]
+        if (!coords.some(isNaN)) positions.push(frac_to_cart(coords))
       }
       line_idx++
     }

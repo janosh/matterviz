@@ -339,20 +339,45 @@ function apply_gaussian_smearing_core(
   const orig_sum = densities.reduce((acc, dens) => acc + dens, 0)
   if (sigma <= 0 || orig_sum === 0) return densities
 
+  const n_pts = freqs_or_energies.length
   const smeared = Array(densities.length).fill(0)
   const cutoff = 4 * sigma // Truncate Gaussian at ±4σ (contribution < 0.01%)
   const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
 
-  for (let idx = 0; idx < freqs_or_energies.length; idx++) {
-    const energy = freqs_or_energies[idx]
+  // On an ascending grid — every DOS/band grid — the ±cutoff window is a contiguous index
+  // range that only moves forward, so two pointers bound the inner loop and this becomes the
+  // O(n·w) the doc claims rather than O(n²). Anything else falls back to scanning all points.
+  let ascending = true
+  for (let idx = 1; idx < n_pts; idx++) {
+    if (freqs_or_energies[idx] < freqs_or_energies[idx - 1]) {
+      ascending = false
+      break
+    }
+  }
 
-    for (let jdx = 0; jdx < freqs_or_energies.length; jdx++) {
+  let window_start = 0
+  let window_end = 0
+  for (let idx = 0; idx < n_pts; idx++) {
+    const energy = freqs_or_energies[idx]
+    if (ascending) {
+      while (window_start < n_pts && energy - freqs_or_energies[window_start] > cutoff) {
+        window_start++
+      }
+      while (window_end < n_pts && freqs_or_energies[window_end] - energy <= cutoff) {
+        window_end++
+      }
+    } else window_end = n_pts
+
+    let sum = 0
+    for (let jdx = window_start; jdx < window_end; jdx++) {
       const delta = energy - freqs_or_energies[jdx]
-      // Skip points beyond truncation width
+      // Still guard per point: the bounds are exact for ascending grids but the fallback
+      // range is the whole array. Same terms, same order, so the sum is unchanged.
       if (Math.abs(delta) > cutoff) continue
 
-      smeared[idx] += densities[jdx] * Math.exp(-(delta ** 2) * inv_two_sigma_sq)
+      sum += densities[jdx] * Math.exp(-(delta ** 2) * inv_two_sigma_sq)
     }
+    smeared[idx] = sum
   }
 
   // Normalize to preserve integral
@@ -427,10 +452,9 @@ const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
 }
 
 // Extract frac_coords/label from pymatgen qpoint, matching label from labels_dict if needed
-const parse_qpoint = (
-  qpt: unknown,
-  labels_dict?: Record<string, Vec3>,
-): types.QPoint | null => {
+// `label_entries` is Object.entries(labels_dict) hoisted by the caller: it is the same for
+// every qpoint, and rebuilding it per qpoint allocated an array of pairs per point.
+const parse_qpoint = (qpt: unknown, label_entries: [string, Vec3][]): types.QPoint | null => {
   const frac_coords = is_vec3(qpt)
     ? ([qpt[0], qpt[1], qpt[2]] as Vec3)
     : is_kpoint(qpt)
@@ -440,9 +464,7 @@ const parse_qpoint = (
 
   const label =
     ((is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
-      Object.entries(labels_dict ?? {}).find(
-        ([, c]) => euclidean_dist(frac_coords, c) < 1e-4,
-      )?.[0]) ??
+      label_entries.find(([, c]) => euclidean_dist(frac_coords, c) < 1e-4)?.[0]) ??
     null
   return { label, frac_coords }
 }
@@ -510,8 +532,9 @@ function convert_pymatgen_band_structure(
   )
     return null
 
+  const label_entries = Object.entries(labels_dict ?? {})
   const qpoints = raw_qpts
-    .map((qpoint) => parse_qpoint(qpoint, labels_dict))
+    .map((qpoint) => parse_qpoint(qpoint, label_entries))
     .filter((qpoint): qpoint is types.QPoint => qpoint !== null)
   if (qpoints.length === 0) return null
 
@@ -527,11 +550,12 @@ function convert_pymatgen_band_structure(
       .filter((disc_idx) => disc_idx >= 0),
   )
 
-  // Cumulative distance (skip discontinuities)
-  const distance = steps.reduce(
-    (acc, step, idx) => [...acc, disc_set.has(idx + 1) ? acc[idx] : acc[idx] + step],
-    [0],
-  )
+  // Cumulative distance (skip discontinuities). Spreading the accumulator per step would
+  // copy the whole array n times, i.e. O(n²) for what is one pass.
+  const distance = [0]
+  for (const [idx, step] of steps.entries()) {
+    distance.push(disc_set.has(idx + 1) ? distance[idx] : distance[idx] + step)
+  }
 
   // Use pymatgen's branches if available - they correctly handle discontinuities
   // Otherwise, infer branches from discontinuities (robust fallback covering all qpoints)
