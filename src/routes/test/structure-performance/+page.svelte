@@ -20,6 +20,9 @@
   let force_large_structure = $state(false)
   let is_generating = $state(false)
   let test_structure = $state<Crystal | undefined>(undefined)
+  let fps = $state<number | undefined>()
+  let frame_ms = $state<number | undefined>()
+  let measuring = $state(false)
 
   let scene_props = $derived<ComponentProps<typeof Structure>[`scene_props`]>({
     show_atoms,
@@ -29,7 +32,34 @@
     sphere_segments,
     bonding_strategy,
     bonding_options: { force_large_structure },
+    // Threlte renders on-demand, so an idle scene would just report the vsync rate. Spinning
+    // the camera keeps the frame invalidated so the measurement reflects real render cost.
+    auto_rotate: measuring ? 2 : 0,
   })
+
+  // Frames actually drawn over a fixed window, with the scene forced to render every frame.
+  async function measure_fps(): Promise<void> {
+    fps = undefined
+    frame_ms = undefined
+    measuring = true
+    await new Promise((resolve) => setTimeout(resolve, 100)) // let auto_rotate take effect
+
+    let frames = 0
+    const start = performance.now()
+    await new Promise<void>((resolve) => {
+      const on_frame = (timestamp: number): void => {
+        frames++
+        if (timestamp - start >= 2000) resolve()
+        else requestAnimationFrame(on_frame)
+      }
+      requestAnimationFrame(on_frame)
+    })
+
+    const elapsed = performance.now() - start
+    fps = (frames * 1000) / elapsed
+    frame_ms = elapsed / frames
+    measuring = false
+  }
 
   // Generate a test structure with the specified number of atoms
   function generate_structure(count: number): Crystal {
@@ -246,6 +276,17 @@
       {option}
     </label>
   {/each}
+</div>
+
+<div class="controls">
+  <button data-testid="measure-fps" onclick={measure_fps} disabled={measuring}>
+    {measuring ? `Measuring…` : `Measure FPS`}
+  </button>
+  {#if fps !== undefined && frame_ms !== undefined}
+    <span data-testid="fps-readout">
+      {fps.toFixed(1)} FPS ({frame_ms.toFixed(2)} ms/frame)
+    </span>
+  {/if}
 </div>
 
 <div class="controls">
