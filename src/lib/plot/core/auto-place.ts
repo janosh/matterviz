@@ -29,7 +29,10 @@ export const has_explicit_position = (style?: string | null): boolean =>
 
 // A decoration's pixel footprint: its rendered box once laid out, else `fallback` (offset dims read
 // 0 before first render). Used to decide crowding before the real size is known.
-export const measured_footprint = (el: HTMLElement | null | undefined, fallback: Size): Size =>
+export const measured_footprint = (
+  el: HTMLElement | null | undefined,
+  fallback: Size,
+): Size =>
   el?.offsetWidth && el?.offsetHeight
     ? { width: el.offsetWidth, height: el.offsetHeight }
     : fallback
