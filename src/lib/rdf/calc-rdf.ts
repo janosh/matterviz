@@ -69,8 +69,8 @@ function build_rdf_neighbor_sites(
 
 type NeighborCloud = ReturnType<typeof build_rdf_neighbor_sites>
 
-// Shared validation + expansion. The cloud depends only on the structure, pbc, cutoff and
-// auto_expand — never on the species pair — so all-pair callers build it once.
+// The image cloud depends only on structure, pbc, cutoff and auto_expand — never on the
+// species pair — so all-pair callers build it once.
 function prepare_rdf(structure: Crystal, options: RdfOptions) {
   const { cutoff = 15, n_bins = 75, auto_expand = true } = options
   const pbc = options.pbc ?? structure.lattice?.pbc ?? [true, true, true]
@@ -85,17 +85,11 @@ function prepare_rdf(structure: Crystal, options: RdfOptions) {
   }
 }
 
-// Below this many neighbors the bookkeeping costs more than the pairs it skips.
-const CELL_LIST_MIN_NEIGHBORS = 512
-// Guard against a huge sparse grid when the cloud spans far more than the cutoff.
-const CELL_LIST_MAX_CELLS = 2_000_000
-
-// Bin distances into `g_r`, weighting each pair by the product of its occupancies. The image
-// cloud spans cutoff + cell diagonal, so most images sit outside the cutoff: bucketing
+// Bin pair distances into `g_r`, weighted by the product of the pair's occupancies. The image
+// cloud spans cutoff + cell diagonal, so most images sit beyond the cutoff: bucketing
 // neighbors into cutoff-sized cells lets each center scan the 27 cells around it instead of
-// every image. A one-cell grid degenerates to brute force, covering small and sparse inputs
-// without a second loop. Euclidean only — the PBC path needs minimum-image distances, but it
-// only runs when no cloud was built, so it stays small.
+// every image. Euclidean only — the PBC path needs minimum-image distances, but it only runs
+// when no cloud was built, so it stays small.
 function accumulate_pairs(
   centers: Site[],
   center_occu: Float64Array,
@@ -106,75 +100,60 @@ function accumulate_pairs(
   n_bins: number,
   g_r: number[],
 ): void {
-  const count = neighbors.length
-  const pos_x = new Float64Array(count)
-  const pos_y = new Float64Array(count)
-  const pos_z = new Float64Array(count)
   let [min_x, min_y, min_z] = [Infinity, Infinity, Infinity]
   let [max_x, max_y, max_z] = [-Infinity, -Infinity, -Infinity]
-  for (let idx = 0; idx < count; idx++) {
-    const [nx, ny, nz] = neighbors[idx].xyz
-    pos_x[idx] = nx
-    pos_y[idx] = ny
-    pos_z[idx] = nz
-    if (nx < min_x) min_x = nx
-    if (ny < min_y) min_y = ny
-    if (nz < min_z) min_z = nz
-    if (nx > max_x) max_x = nx
-    if (ny > max_y) max_y = ny
-    if (nz > max_z) max_z = nz
+  for (const { xyz } of neighbors) {
+    min_x = Math.min(min_x, xyz[0])
+    min_y = Math.min(min_y, xyz[1])
+    min_z = Math.min(min_z, xyz[2])
+    max_x = Math.max(max_x, xyz[0])
+    max_y = Math.max(max_y, xyz[1])
+    max_z = Math.max(max_z, xyz[2])
   }
+  const dim_x = Math.floor((max_x - min_x) / cutoff) + 1
+  const dim_y = Math.floor((max_y - min_y) / cutoff) + 1
+  const dim_z = Math.floor((max_z - min_z) / cutoff) + 1
 
-  const cutoff_sq = cutoff * cutoff
-  const add_pair = (dist_sq: number, weight: number): void => {
-    if (dist_sq <= 0 || dist_sq >= cutoff_sq) return
-    g_r[Math.min(Math.floor(Math.sqrt(dist_sq) / bin_size), n_bins - 1)] += weight
-  }
-
-  const span = (min: number, max: number) => Math.max(1, Math.floor((max - min) / cutoff) + 1)
-  const spans = [span(min_x, max_x), span(min_y, max_y), span(min_z, max_z)]
-  const skip_grid =
-    count < CELL_LIST_MIN_NEIGHBORS || spans[0] * spans[1] * spans[2] > CELL_LIST_MAX_CELLS
-  const [dim_x, dim_y, dim_z] = skip_grid ? [1, 1, 1] : spans
-  const n_cells = dim_x * dim_y * dim_z
-
-  // With dim 1 on an axis this always yields 0, so the single-cell case scans everything.
   const axis_bin = (value: number, min: number, dim: number): number =>
     Math.min(dim - 1, Math.max(0, Math.floor((value - min) / cutoff)))
 
-  // Counting sort neighbors into cells: cell_start holds each cell's slice of `order`.
-  const cell_start = new Int32Array(n_cells + 1)
-  const cell_of = new Int32Array(count)
-  for (let idx = 0; idx < count; idx++) {
-    const cell =
-      (axis_bin(pos_z[idx], min_z, dim_z) * dim_y + axis_bin(pos_y[idx], min_y, dim_y)) *
-        dim_x +
-      axis_bin(pos_x[idx], min_x, dim_x)
-    cell_of[idx] = cell
-    cell_start[cell + 1]++
+  // Flat positions: the inner loop reads these millions of times, where a site object plus
+  // its xyz array costs measurably more than an indexed read (48 ms vs 83 ms on 444 sites).
+  const pos = new Float64Array(neighbors.length * 3)
+  const grid = new Map<number, number[]>()
+  for (let idx = 0; idx < neighbors.length; idx++) {
+    const [nx, ny, nz] = neighbors[idx].xyz
+    pos[idx * 3] = nx
+    pos[idx * 3 + 1] = ny
+    pos[idx * 3 + 2] = nz
+    const key =
+      (axis_bin(nz, min_z, dim_z) * dim_y + axis_bin(ny, min_y, dim_y)) * dim_x +
+      axis_bin(nx, min_x, dim_x)
+    const cell = grid.get(key)
+    if (cell) cell.push(idx)
+    else grid.set(key, [idx])
   }
-  for (let cell = 0; cell < n_cells; cell++) cell_start[cell + 1] += cell_start[cell]
-  const cursor = cell_start.slice(0, n_cells)
-  const order = new Int32Array(count)
-  for (let idx = 0; idx < count; idx++) order[cursor[cell_of[idx]]++] = idx
 
+  const cutoff_sq = cutoff * cutoff
   for (let ci = 0; ci < centers.length; ci++) {
     const [cx, cy, cz] = centers[ci].xyz
-    const center_weight = center_occu[ci]
     const bin_x = axis_bin(cx, min_x, dim_x)
     const bin_y = axis_bin(cy, min_y, dim_y)
     const bin_z = axis_bin(cz, min_z, dim_z)
     for (let iz = Math.max(0, bin_z - 1); iz <= Math.min(dim_z - 1, bin_z + 1); iz++) {
       for (let iy = Math.max(0, bin_y - 1); iy <= Math.min(dim_y - 1, bin_y + 1); iy++) {
-        const row = (iz * dim_y + iy) * dim_x
-        const from = cell_start[row + Math.max(0, bin_x - 1)]
-        const to = cell_start[row + Math.min(dim_x - 1, bin_x + 1) + 1]
-        for (let slot = from; slot < to; slot++) {
-          const ni = order[slot]
-          const dx = cx - pos_x[ni]
-          const dy = cy - pos_y[ni]
-          const dz = cz - pos_z[ni]
-          add_pair(dx * dx + dy * dy + dz * dz, center_weight * neighbor_occu[ni])
+        for (let ix = Math.max(0, bin_x - 1); ix <= Math.min(dim_x - 1, bin_x + 1); ix++) {
+          const cell = grid.get((iz * dim_y + iy) * dim_x + ix)
+          if (!cell) continue
+          for (const ni of cell) {
+            const dist_sq =
+              (cx - pos[ni * 3]) ** 2 +
+              (cy - pos[ni * 3 + 1]) ** 2 +
+              (cz - pos[ni * 3 + 2]) ** 2
+            if (dist_sq <= 0 || dist_sq >= cutoff_sq) continue
+            const bin = Math.min(Math.floor(Math.sqrt(dist_sq) / bin_size), n_bins - 1)
+            g_r[bin] += center_occu[ci] * neighbor_occu[ni]
+          }
         }
       }
     }
@@ -185,9 +164,8 @@ function accumulate_pairs(
 type SpeciesSubset = { sites: Site[]; occu: Float64Array }
 type SubsetCache = Map<string, SpeciesSubset>
 
-// Selecting a species out of the image cloud walks every site and every site's species list,
-// which costs more than the distance scan itself. An all-pairs run calls this E(E+1)/2 times
-// over only E distinct species, so memoize per species for the duration of that run.
+// Walks every site and its species list, which costs more than the distance scan itself, so
+// all-pair runs (E(E+1)/2 calls over E species) memoize this for the duration of the run.
 function species_subset(
   sites: Site[],
   species: string | undefined,
@@ -220,9 +198,7 @@ function rdf_from_cloud(
   const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)
   const g_r = Array(n_bins).fill(0)
 
-  // Centers stay in the original cell; neighbor_sites may include periodic images.
-  // Occupancies come resolved, since get_occu scans a site's species list and the pair loop
-  // below would otherwise repeat that for every center-neighbor combination.
+  // Centers stay in the original cell; neighbor_sites may include periodic images
   const { sites: centers, occu: center_occu } = species_subset(
     structure.sites,
     center_species,
@@ -275,7 +251,6 @@ function rdf_from_cloud(
   // Ideal-gas normalization with original-cell density. Do not subtract self-pairs:
   // dist > 0 already drops the true self term, while periodic images of the same atom
   // are valid neighbors (critical for 1-atom cells).
-  // Sum the already-resolved occupancies rather than re-deriving them per site
   const center_weight = center_occu.reduce((sum, occu) => sum + occu, 0)
   const neighbor_weight = norm_neighbors.occu.reduce((sum, occu) => sum + occu, 0)
   const volume = calc_lattice_params(structure.lattice.matrix).volume
@@ -312,9 +287,7 @@ export function calculate_all_pair_rdfs(
     ...new Set(structure.sites.flatMap((site) => site.species.map((spec) => spec.element))),
   ].toSorted()
 
-  // Expand once and reuse: the image cloud is species-independent, so rebuilding it per
-  // element pair repeated the most expensive step O(pairs) times for identical output. The
-  // caches do the same for the per-species subsets, which every pair would otherwise re-derive.
+  // Expand once and reuse: the cloud and the per-species subsets are the same for every pair
   const { cutoff, n_bins, cloud } = prepare_rdf(structure, options)
   const cell_cache: SubsetCache = new Map()
   const cloud_cache: SubsetCache = new Map()
