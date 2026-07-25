@@ -569,7 +569,10 @@ describe(`export_trajectory_video`, () => {
     vi.clearAllMocks()
     vi.spyOn(console, `error`).mockImplementation(() => {})
   })
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
 
   test.each<[string | null, string]>([
     [null, `null canvas`],
@@ -605,18 +608,23 @@ describe(`export_trajectory_video`, () => {
     expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
   })
 
-  test(`stops recorder and capture tracks when stepping rejects`, async () => {
+  test.each([
+    [`successful finalization`, `success`],
+    [`download failure`, `download-error`],
+    [`recording timeout`, `timeout`],
+    [`step failure`, `step-error`],
+  ] as const)(`releases recording resources after %s`, async (_label, outcome) => {
     const recorder_stop = vi.fn()
-    class MockMediaRecorder {
+    class MockMediaRecorder extends EventTarget {
       static isTypeSupported(): boolean {
         return true
       }
       state: MediaRecorder[`state`] = `inactive`
-      addEventListener = vi.fn()
       start = vi.fn(() => (this.state = `recording`))
       stop = vi.fn(() => {
         this.state = `inactive`
         recorder_stop()
+        if (outcome !== `timeout`) this.dispatchEvent(new Event(`stop`))
       })
     }
     vi.stubGlobal(`MediaRecorder`, MockMediaRecorder)
@@ -634,15 +642,34 @@ describe(`export_trajectory_video`, () => {
       width: 800,
       height: 600,
     } as unknown as HTMLCanvasElement
+    const expected_error = new Error(
+      outcome === `step-error` ? `step failed` : `download failed`,
+    )
+    if (outcome === `download-error`) {
+      vi.mocked(download).mockImplementationOnce(() => {
+        throw expected_error
+      })
+    }
+    if (outcome === `timeout`) vi.useFakeTimers()
+    const on_step = vi.fn()
+    if (outcome === `step-error`) on_step.mockRejectedValue(expected_error)
 
-    const step_error = new Error(`step failed`)
-    const on_step = vi.fn().mockRejectedValue(step_error)
-    await expect(
-      export_trajectory_video(canvas, `test.webm`, {
-        total_frames: 1,
-        on_step,
-      }),
-    ).rejects.toThrow(`step failed`)
+    const export_promise = export_trajectory_video(canvas, `test.webm`, {
+      total_frames: outcome === `step-error` ? 1 : 0,
+      on_step,
+    })
+    if (outcome === `success`) {
+      await expect(export_promise).resolves.toBeUndefined()
+    } else if (outcome === `timeout`) {
+      const timeout_error = export_promise.catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(await timeout_error).toEqual(
+        new Error(`Recording timeout - recorder did not stop`),
+      )
+    } else {
+      await expect(export_promise).rejects.toThrow(expected_error)
+    }
+
     expect(recorder_stop).toHaveBeenCalledOnce()
     for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
   })

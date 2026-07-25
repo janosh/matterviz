@@ -414,6 +414,11 @@ export async function export_trajectory_video(
   let orig_size: Vector2 | undefined
   let recorder: MediaRecorder | undefined = undefined
   let stream: MediaStream | undefined
+  const cleanup_stream = (): void => {
+    const active_stream = stream
+    stream = undefined
+    for (const track of active_stream?.getTracks() ?? []) track.stop()
+  }
   const chunks: Blob[] = []
 
   try {
@@ -474,7 +479,7 @@ export async function export_trajectory_video(
     }
   } catch (error) {
     if (recorder && recorder.state !== `inactive`) recorder.stop()
-    for (const track of stream?.getTracks() ?? []) track.stop()
+    cleanup_stream()
     throw error
   } finally {
     // Restore original renderer settings
@@ -485,7 +490,7 @@ export async function export_trajectory_video(
   }
 
   // Finalize recording
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     let is_resolved = false
 
     recorder.addEventListener(`stop`, () => {
@@ -529,5 +534,5 @@ export async function export_trajectory_video(
         reject(to_error(error))
       }
     }
-  })
+  }).finally(cleanup_stream)
 }
