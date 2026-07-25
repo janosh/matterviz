@@ -3,6 +3,7 @@ import {
   expect_canvas_changed,
   get_canvas_timeout,
   IS_CI,
+  sweep_gizmo_handles,
   wait_for_3d_canvas,
   wait_for_canvas_rendered,
 } from '../helpers'
@@ -40,6 +41,30 @@ test.describe(`ScatterPlot3D`, () => {
       expect(value).toBe(expected)
     })
   }
+
+  test(`gizmo handles stay reachable beside the color bar and fly the camera`, async ({
+    page,
+  }) => {
+    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+    await wait_for_canvas_rendered(canvas)
+
+    // The gizmo draws inside the canvas, so no CSS can lift it above the ColorBar and Legend
+    // that share this container — the bottom offset it gets when a color bar is present is the
+    // only thing keeping it clear. The sweep only locates handles (its synthetic moves go
+    // straight to the canvas and would ignore an overlay); it's the real mouse click below
+    // that fails if anything sits on top of the gizmo and intercepts it.
+    const sweep = { probe: 110, steps: 11, bottom_offset: 65 }
+    const before_click = await sweep_gizmo_handles(canvas, sweep)
+    expect(before_click.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+
+    await page.mouse.click(before_click[0].x, before_click[0].y)
+    await page.waitForTimeout(800) // the fly-to animates over 400ms; let it land
+
+    // Handles are fixed in gizmo space and the gizmo mirrors the scene camera, so they only
+    // move on screen if the camera did — unlike canvas pixels, which hover alone disturbs.
+    const after_click = await sweep_gizmo_handles(canvas, sweep)
+    expect(after_click.map((hit) => hit.key)).not.toEqual(before_click.map((hit) => hit.key))
+  })
 
   test(`drag to rotate changes view`, async ({ page }) => {
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)

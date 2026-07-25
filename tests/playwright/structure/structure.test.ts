@@ -14,6 +14,7 @@ import {
   open_structure_control_pane,
   open_structure_export_pane,
   select_view_layout as select_structure_layout,
+  sweep_gizmo_handles,
   wait_for_3d_canvas,
 } from '../helpers'
 
@@ -503,7 +504,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(gizmo_status).toContainText(`Gizmo Status: true`)
   })
 
-  test(`clicking gizmo rotates the structure`, async ({ page }) => {
+  test(`dragging the canvas orbits the camera`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
 
@@ -531,6 +532,35 @@ test.describe(`Structure Component Tests`, () => {
         await expect_canvas_changed(canvas, baseline_before_second_drag)
       }
     }
+  })
+
+  test(`clicking a gizmo handle flies the camera`, async ({ page }) => {
+    // Same viewport as the hover-chrome test: the legend (whose mode toggle signals that the
+    // viewer went active, which is also what un-hides the gizmo) needs the room.
+    await page.setViewportSize({ width: 1400, height: 1200 })
+    const canvas = page.locator(`#test-structure canvas`)
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error(`canvas has no bounding box`)
+
+    // The gizmo only draws while the viewer is active, so hover it first and wait for the
+    // chrome that shares that state before probing.
+    await page.mouse.move(box.x + 40, box.y + 40)
+    await expect(page.locator(`#test-structure .atom-legend .mode-toggle`)).toHaveCSS(
+      `opacity`,
+      `1`,
+    )
+
+    const before_click = await sweep_gizmo_handles(canvas)
+    expect(before_click.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+
+    await page.mouse.click(before_click[0].x, before_click[0].y)
+    await page.waitForTimeout(800) // the fly-to animates over 400ms; let it land
+
+    // Handles sit at fixed points in gizmo space and the gizmo mirrors the scene camera, so
+    // they only move on screen if the camera did. Comparing where they land tests the fly-to
+    // itself, unlike canvas pixels, which any hover or selection would also disturb.
+    const after_click = await sweep_gizmo_handles(canvas)
+    expect(after_click.map((hit) => hit.key)).not.toEqual(before_click.map((hit) => hit.key))
   })
 
   test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
@@ -2211,11 +2241,31 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
   })
 
   test(`toggle splits canvas into 4 viewports and back`, async ({ page }) => {
+    test.setTimeout(60_000) // the gizmo sweeps below add a few seconds per measurement
     const structure_div = page.locator(`#test-structure`)
+
+    // How far apart the gizmo's handles sit on screen, which scales with the gizmo box. The
+    // gizmo has no DOM element to measure, and it only draws while the viewer is active, so
+    // hover first and read the handles back off the canvas.
+    const gizmo_span = async (canvas: Locator) => {
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`canvas has no bounding box`)
+      await page.mouse.move(box.x + 40, box.y + 40)
+      await expect(page.locator(`#test-structure .atom-legend .mode-toggle`)).toHaveCSS(
+        `opacity`,
+        `1`,
+      )
+      const hits = await sweep_gizmo_handles(canvas, { steps: 14 })
+      expect(hits.length, `gizmo handles on this canvas`).toBeGreaterThan(0)
+      const xs = hits.map((hit) => hit.x)
+      const ys = hits.map((hit) => hit.y)
+      return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+    }
 
     // Single view: one viewport cell, no grid
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
     await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
+    const single_span = await gizmo_span(structure_div.locator(`canvas`).first())
 
     await select_structure_layout(structure_div, `3D 2×2 grid`)
 
@@ -2252,11 +2302,14 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
       expect(cell_box.width).toBeGreaterThan(50)
     }
 
-    // No gizmo assertions here on purpose. They used to measure `.responsive-gizmo`'s DOM box,
-    // which only existed because three-viewport-gizmo rendered an HTML overlay that could
-    // escape its pane. The WebGPU gizmo draws into a sub-viewport of the pane's own canvas and
-    // clamps its box to the canvas dimensions, so overflow is no longer possible to express.
-    // The per-pane sizing rule is covered by tests/vitest/scene/gizmo.test.ts instead.
+    // Panes are ~half the viewer, so StructureViewport hands them a smaller gizmo
+    // (responsive_gizmo_size, unit-tested separately). Measuring the handle spread is what
+    // ties that rule to what actually renders — the old check measured `.responsive-gizmo`,
+    // a DOM box that only existed while three-viewport-gizmo drew an HTML overlay.
+    const pane_span = await gizmo_span(
+      structure_div.locator(`.viewport-stage.multi canvas`).first(),
+    )
+    expect(pane_span).toBeLessThan(single_span * 0.8)
 
     // Toggle back to single view
     await select_structure_layout(structure_div, `3D single view`)

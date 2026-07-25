@@ -64,18 +64,23 @@
 
   $effect(() => {
     const grid_el = grid
+    const expected = viewer_count
     if (!grid_el) return
     let cancelled = false
-    // bind_renderer registers the canvas in its own effect, and three only settles on a
-    // backend once init() resolves, so poll until the first viewer's renderer shows up.
+    // Wait for every viewer, not just the first: a backend that degrades under load would
+    // fall back on the later canvases while the early ones still report WebGPU. bind_renderer
+    // registers each canvas in its own effect and three only settles on a backend once init()
+    // resolves, so poll until all of them are registered, then await each device.
     const timer = setInterval(async () => {
-      const canvas = grid_el.querySelector(`canvas`)
-      const renderer = canvas ? renderer_registry.get(canvas) : undefined
-      if (!renderer) return
+      const canvases = [...grid_el.querySelectorAll(`canvas`)]
+      const renderers = canvases.map((canvas) => renderer_registry.get(canvas))
+      if (renderers.length < expected || !renderers.every(Boolean)) return
       clearInterval(timer)
-      await renderer.init()
-      const { isWebGPUBackend } = renderer.backend as { isWebGPUBackend?: boolean }
-      if (!cancelled) backend = isWebGPUBackend ? `webgpu` : `webgl`
+      await Promise.all(renderers.map((renderer) => renderer?.init()))
+      const all_webgpu = renderers.every(
+        (renderer) => (renderer?.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend,
+      )
+      if (!cancelled) backend = all_webgpu ? `webgpu` : `webgl`
     }, 100)
     return () => {
       cancelled = true

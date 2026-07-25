@@ -267,6 +267,47 @@ export async function expect_canvas_changed(
   }).toPass({ timeout: effective_timeout })
 }
 
+export type GizmoHandleHit = { key: string; x: number; y: number }
+
+// Locate the orientation gizmo's axis handles inside a canvas. The gizmo draws into a corner
+// of the canvas and has no DOM element, so the only way to find a handle is the `pointer`
+// cursor it sets while one is hovered. Sweeps a grid over the corner it's anchored in and
+// returns the cells that report a handle, in viewport coordinates ready for page.mouse.
+// `bottom_offset` lifts the swept square off the canvas bottom (callers whose gizmo sits
+// above a color bar need this). Probing with synthetic moves keeps the whole sweep to one
+// round trip — driving the same probes through page.mouse overruns the test timeout.
+export function sweep_gizmo_handles(
+  canvas: Locator,
+  options: { probe?: number; steps?: number; bottom_offset?: number } = {},
+): Promise<GizmoHandleHit[]> {
+  return canvas.evaluate(
+    async (cvs: HTMLCanvasElement, { probe, steps, lift }) => {
+      const bounds = cvs.getBoundingClientRect()
+      const hits: GizmoHandleHit[] = []
+      for (let row = 0; row < steps; row++) {
+        for (let col = 0; col < steps; col++) {
+          const x = bounds.left + ((col + 0.5) / steps) * probe
+          const y = bounds.bottom - lift - ((row + 0.5) / steps) * probe
+          const move = new PointerEvent(`pointermove`, {
+            clientX: x,
+            clientY: y,
+            bubbles: true,
+          })
+          cvs.dispatchEvent(move)
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+          if (cvs.style.cursor === `pointer`) hits.push({ key: `${row},${col}`, x, y })
+        }
+      }
+      return hits
+    },
+    {
+      probe: options.probe ?? 100,
+      steps: options.steps ?? 10,
+      lift: options.bottom_offset ?? 0,
+    },
+  )
+}
+
 // Seeded random number generator using Linear Congruential Generator (LCG).
 // Parameters match glibc for reproducibility.
 class SeededRandom {
