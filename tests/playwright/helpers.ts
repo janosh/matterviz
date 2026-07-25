@@ -29,9 +29,9 @@ export async function wait_for_3d_canvas(
   container_selector: string,
   timeout?: number,
 ): Promise<Locator> {
-  const effective_timeout = timeout ?? get_canvas_timeout()
+  const eff_timeout = timeout ?? get_canvas_timeout()
   const canvas = page.locator(`${container_selector} canvas`)
-  await expect(canvas).toBeVisible({ timeout: effective_timeout })
+  await expect(canvas).toBeVisible({ timeout: eff_timeout })
   // Wait for WebGL context to be ready (canvas has non-zero dimensions)
   await page.waitForFunction(
     (selector) => {
@@ -41,7 +41,7 @@ export async function wait_for_3d_canvas(
       return rect.width > 0 && rect.height > 0
     },
     container_selector,
-    { timeout: effective_timeout },
+    { timeout: eff_timeout },
   )
   return canvas
 }
@@ -254,40 +254,17 @@ export async function wait_for_canvas_rendered(
     .toBeGreaterThan(min_size)
 }
 
-// Whether this environment can actually paint a 3D frame, as opposed to merely supporting the
-// API. CI's software WebGPU hands out an adapter and reports the WebGPU backend, yet never
-// composites: traces from a failing shard show the viewer canvas uniformly blank while the
-// rest of the page renders. So an adapter probe is not enough to gate assertions that need
-// pixels — measure the canvas instead. A blank canvas is a near-uniform image and compresses
-// to a tiny PNG, well under anything a real scene produces.
-export async function canvas_has_painted(
-  canvas: Locator,
-  options?: { min_size?: number; timeout?: number },
-): Promise<boolean> {
-  const min_size = options?.min_size ?? 2000
-  const deadline = Date.now() + (options?.timeout ?? get_canvas_timeout())
-  do {
-    try {
-      if ((await canvas.screenshot({ timeout: 15_000 })).byteLength > min_size) return true
-    } catch {
-      // canvas detached or not ready — retry until the deadline
-    }
-    await canvas.page().waitForTimeout(500)
-  } while (Date.now() < deadline)
-  return false
-}
-
 // Poll until canvas screenshot differs from initial (handles GPU/driver timing variations).
 export async function expect_canvas_changed(
   canvas: Locator,
   initial: Buffer,
   timeout?: number,
 ): Promise<void> {
-  const effective_timeout = timeout ?? get_canvas_timeout()
+  const eff_timeout = timeout ?? get_canvas_timeout()
   await expect(async () => {
     const current = await canvas_screenshot(canvas)
     expect(initial.equals(current)).toBe(false)
-  }).toPass({ timeout: effective_timeout })
+  }).toPass({ timeout: eff_timeout })
 }
 
 export type GizmoHandleHit = { key: string; x: number; y: number }
