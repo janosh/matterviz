@@ -41,11 +41,12 @@ export type SceneControlProps = {
 }
 
 // ScatterPlot3DScene keeps its own gizmo/orbit props on purpose: its gizmo offset is
-// ColorBar-aware (build_gizmo_props' fixed offset would clobber it) and its orbit controls
-// differ by design (no zoom-to-cursor / ortho zoom-doubling / camera-moving tracking).
+// ColorBar-aware and its orbit controls differ by design (no zoom-to-cursor / ortho
+// zoom-doubling / camera-moving tracking).
 
 // Shared Gizmo config: colored +/- axis handles, transparent background, responsive sizing. An object `gizmo` overrides the per-axis defaults.
 export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
+  const overrides = typeof gizmo === `object` ? gizmo : {}
   return {
     background: { enabled: false },
     ...Object.fromEntries(
@@ -63,8 +64,10 @@ export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
         },
       ]),
     ),
-    ...(typeof gizmo === `object` ? gizmo : {}),
-    offset: { left: 5, bottom: 5 },
+    ...overrides,
+    // Merge rather than replace, so a caller can nudge one edge (say, to clear a ColorBar)
+    // without restating the others — and so `offset` isn't silently dropped by the spread.
+    offset: { left: 5, bottom: 5, ...overrides.offset },
   }
 }
 

@@ -32,6 +32,7 @@
     offset = {},
     background = { enabled: false },
     animation_duration = 400,
+    fade_duration = 200,
     controls,
     onstart,
     onchange,
@@ -99,6 +100,8 @@
     mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>
     label?: THREE.Sprite
     line?: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>
+    // Opacity before the fade multiplier; the render task scales this by `fade` each frame.
+    base_opacity: number
   }
 
   const handles: Handle[] = GIZMO_AXES.map(([axis, dir, negative]) => {
@@ -110,7 +113,7 @@
     mesh.position.set(...dir)
     gizmo_scene.add(mesh)
 
-    const handle: Handle = { axis, dir, negative, mesh }
+    const handle: Handle = { axis, dir, negative, mesh, base_opacity: 1 }
 
     if (!negative) {
       // Stem from origin to the handle. A cylinder (not a Line) so width is in world units
@@ -157,6 +160,13 @@
 
   let hovered: GizmoAxisKey | null = $state(null)
 
+  // Fade in/out instead of popping. `visible` is driven by viewer hover, so a hard cut reads
+  // as a glitch next to the CSS-transitioned chrome around it. Advanced in the render task
+  // rather than via a $effect so it steps with actual frame time; plain `let` because only
+  // that task reads it, and mutating $state per frame would schedule pointless re-runs.
+  let fade = visible ? 1 : 0
+  let backdrop_base_opacity = 0.2
+
   // Drop a stuck highlight if the gizmo is hidden mid-hover (pointer events stop resolving).
   $effect(() => {
     if (!visible) hovered = null
@@ -180,11 +190,8 @@
         (handle.negative ? 0.9 : 1)
 
       handle.mesh.material.color.set(color)
-      handle.mesh.material.opacity = opacity
-      if (handle.line) {
-        handle.line.material.color.set(style.color ?? color)
-        handle.line.material.opacity = opacity
-      }
+      handle.base_opacity = opacity
+      if (handle.line) handle.line.material.color.set(style.color ?? color)
 
       if (handle.label) {
         const letter = style.label ?? handle.axis.toUpperCase()
@@ -196,7 +203,7 @@
     }
     backdrop.visible = background.enabled ?? false
     backdrop.material.color.set(background.color ?? `#000000`)
-    backdrop.material.opacity = background.opacity ?? 0.2
+    backdrop_base_opacity = background.opacity ?? 0.2
     invalidate()
   })
 
@@ -380,8 +387,26 @@
     (delta) => {
       // Let an in-flight fly-to finish even if the gizmo was hidden mid-animation.
       step_animation(delta)
+
+      const target = visible ? 1 : 0
+      if (fade !== target) {
+        const step = fade_duration > 0 ? (delta * 1000) / fade_duration : 1
+        fade = target > fade ? Math.min(target, fade + step) : Math.max(target, fade - step)
+        // This task opts out of auto-invalidation, so drive frames until the fade lands. The
+        // frame that reaches 0 matters most: it's the one that repaints the gizmo away.
+        invalidate()
+      }
+
+      // Keep drawing through a fade-out, and skip entirely once fully faded.
       // `initialized` guards the frames before the GPU device resolves; render() throws then.
-      if (!visible || !shouldRender() || !renderer?.initialized) return
+      if (fade <= 0 || !shouldRender() || !renderer?.initialized) return
+
+      for (const handle of handles) {
+        handle.mesh.material.opacity = handle.base_opacity * fade
+        if (handle.line) handle.line.material.opacity = handle.base_opacity * fade
+        if (handle.label) handle.label.material.opacity = fade
+      }
+      backdrop.material.opacity = backdrop_base_opacity * fade
 
       sync_gizmo_camera()
 

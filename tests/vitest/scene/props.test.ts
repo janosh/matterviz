@@ -13,14 +13,16 @@ describe(`build_gizmo_props`, () => {
     expect([px.opacity, px.hover.opacity]).toEqual([0.8, 0.9])
   })
 
-  test(`object gizmo overrides axes but offset is applied last`, () => {
-    const props = build_gizmo_props({ size: 42, x: { color: `#abc` } }) as Record<
-      string,
-      unknown
-    >
+  test(`object gizmo overrides axes and merges offset over the defaults`, () => {
+    const props = build_gizmo_props({
+      size: 42,
+      x: { color: `#abc` },
+      offset: { right: 10, bottom: 20 },
+    }) as Record<string, unknown>
     expect(props.size).toBe(42)
     expect(props.x).toEqual({ color: `#abc` })
-    expect(props.offset).toEqual({ left: 5, bottom: 5 })
+    // caller edges win; edges it left out keep their defaults
+    expect(props.offset).toEqual({ left: 5, bottom: 20, right: 10 })
   })
 })
 

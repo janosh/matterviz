@@ -33,6 +33,8 @@ export type GizmoOptions = {
   background?: { enabled?: boolean; color?: string | number; opacity?: number }
   // Duration in ms of the camera fly-to when an axis handle is clicked. 0 snaps instantly.
   animation_duration?: number
+  // Duration in ms of the opacity fade when `visible` flips. 0 appears/disappears instantly.
+  fade_duration?: number
 } & Partial<Record<GizmoAxisKey, GizmoAxisStyle>>
 
 // Gizmo edge length for a pane in the multi-view grid. Panes are roughly half the viewer, so
