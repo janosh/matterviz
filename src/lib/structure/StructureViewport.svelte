@@ -411,6 +411,11 @@
   .viewport-cell.multi {
     border: 1px solid var(--struct-viewport-border, rgba(128, 128, 128, 0.35));
   }
+  /* Scale the shared 70–100px gizmo range to 60% inside each 2×2 pane. */
+  .viewport-cell.multi :global(.responsive-gizmo) {
+    width: clamp(42px, 10.8cqmin, 60px) !important;
+    height: clamp(42px, 10.8cqmin, 60px) !important;
+  }
   /* Let the active pane's hover tooltip overflow into neighboring panes instead of
     being clipped, and raise it above sibling panes so it paints on top. The WebGL
     canvas is sized to the cell by JS, so only HTML overlays (the tooltip) overflow. */

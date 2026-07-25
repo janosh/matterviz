@@ -372,6 +372,9 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         // hover (high frequency), so writeback would flood the comm channel.
         `highlighted_sites`,
       ]),
+      writeback_prop(`active_volume_idx`, 0),
+      writeback_prop(`display_mode`, `structure`),
+      writeback_prop(`slice_settings`, {}),
       writeback_prop(`selected_sites`, []),
       writeback_prop(`hovered_site_idx`),
       derived_prop(`scene_props`, scene_prop_keys, get_scene_props),

@@ -268,7 +268,7 @@ test.describe(`Histogram Component Tests`, () => {
     // Tooltip visibility is optional - histograms may not have tooltips configured,
     // or tooltip positioning may fail silently. If visible, verify content is correct.
     const tooltip = basic_histogram.locator(`.plot-tooltip`)
-    if (await tooltip.isVisible({ timeout: 3000 })) {
+    if (await tooltip.isVisible()) {
       await expect(tooltip).toContainText(`Value:`)
       await expect(tooltip).toContainText(`Count:`)
     }

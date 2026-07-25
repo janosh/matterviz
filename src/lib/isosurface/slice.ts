@@ -21,12 +21,21 @@ const CELL_EDGES = [
   [6, 7],
 ] as const
 const PLANE_TOLERANCE = 1e-9
-const DEFAULT_MAX_PIXELS = 512 * 512
+const DEFAULT_MAX_PIXELS = 1024 * 1024
 const UNIT_CELL_RANGE: DisplayRange = [
   [0, 1],
   [0, 1],
   [0, 1],
 ]
+
+export const volume_center = (volume: VolumetricData): Vec3 =>
+  math.add(volume.origin, math.create_frac_to_cart(volume.lattice)([0.5, 0.5, 0.5]))
+
+/** Resolve a Cartesian slice point, defaulting to the volume center or origin. */
+export const resolve_slice_cartesian_point = (
+  point: Vec3 | undefined,
+  volume?: VolumetricData,
+): Vec3 => point ?? (volume ? volume_center(volume) : [0, 0, 0])
 
 export interface CartesianPlane {
   point: Vec3 // absolute Cartesian point on the plane

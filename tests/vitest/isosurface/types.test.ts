@@ -12,6 +12,7 @@ import {
   LAYER_COLORS,
   materialize_layers,
   merge_imported_volumes,
+  normalize_active_volume_idx,
   pad_periodic_grid,
   remove_volume,
   tile_volumetric_data,
@@ -20,6 +21,18 @@ import {
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { make_grid, make_volume as make_volume_fixture } from '../setup'
+
+test.each([
+  { active_volume_idx: -1, volume_count: 3, expected: 0 },
+  { active_volume_idx: 3, volume_count: 3, expected: 0 },
+  { active_volume_idx: 2, volume_count: 3, expected: 2 },
+  { active_volume_idx: 4, volume_count: 0, expected: 4 },
+])(
+  `normalize_active_volume_idx($active_volume_idx, $volume_count) returns $expected`,
+  ({ active_volume_idx, volume_count, expected }) => {
+    expect(normalize_active_volume_idx(active_volume_idx, volume_count)).toBe(expected)
+  },
+)
 
 describe(`grid_data_range`, () => {
   test.each([

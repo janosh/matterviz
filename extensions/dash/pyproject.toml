@@ -1,42 +1,31 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.11.32"]
+build-backend = "uv_build"
 
 [project]
 name = "matterviz-dash-components"
-version = "0.0.2"
+version = "0.4.3"
 description = "Plotly Dash wrapper for MatterViz (Svelte) components"
 readme = "readme.md"
-license = { file = "LICENSE" }
+license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "matterviz-dash-components contributors" }]
-# Tested with Dash 3.3.0; floor set to 3.0 for broader compatibility
-dependencies = ["dash>=3.0"]
+dependencies = ["dash>=4.4.1"]
 
 [project.optional-dependencies]
-dev = ["pytest-playwright>=0.4.0", "pytest>=7.0.0"]
+dev = ["pytest-playwright>=0.8.0", "pytest>=9.1.1"]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["matterviz_dash_components"]
-
-[tool.setuptools.package-data]
-matterviz_dash_components = [
-  "*.css",
-  "*.js",
-  "*.json",
-  "*.map",
-  "*.txt",
-  "assets/*.js",
-  "py.typed",
-]
+[tool.uv.build-backend]
+module-root = "" # flat layout: the module sits next to pyproject.toml
+source-exclude = [".DS_Store"] # uv_build ships the whole module dir verbatim
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_functions = ["test_*"]
 # Playwright tests require: pip install pytest-playwright && playwright install chromium
-markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
 
 [tool.ruff]
 extend-exclude = ["**/typed.py"] # auto-generated file
+
+[tool.ruff.lint.per-file-ignores]
+# Dash resolves components by module name, which must match the React component
+"matterviz_dash_components/MatterViz.py" = ["N999"]

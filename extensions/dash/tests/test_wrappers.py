@@ -6,8 +6,9 @@ import inspect
 from pathlib import Path
 from typing import Any, cast
 
-import matterviz_dash_components as mvc
 import pytest
+
+import matterviz_dash_components as mvc
 from matterviz_dash_components import MatterViz
 from scripts.sync_typed_wrappers import (
     _py_type_hint,
@@ -25,7 +26,7 @@ loading measure_mode measured_sites multi_view performance_mode png_dpi reset_te
 selected_sites show_controls site_radius_overrides spinner_props structure structure_string sym_data
 symmetry_settings views volumetric_data width mv_props set_props float32_props event_props last_event
 className style
-""".split()
+""".split()  # noqa: SIM905
 
 BRILLOUIN_ZONE_V043_PARAMETERS = """
 id allow_file_drop bz_data bz_order camera_projection controls_open data_url dragover edge_color
@@ -34,14 +35,14 @@ hovered_qpoint_index ibz_color ibz_data ibz_opacity info_pane_open k_path_points
 show_controls show_ibz show_vectors spinner_props structure structure_string surface_color
 surface_opacity tooltip_config vector_scale width mv_props set_props float32_props event_props
 last_event className style
-""".split()
+""".split()  # noqa: SIM905
 
 PERIODIC_TABLE_V043_PARAMETERS = """
 id active_category active_element active_elements color_bar_props color_overrides color_scale_range
 disabled gap heatmap_values inner_transition_metal_offset labels lanth_act_style links log missing
 show_color_bar show_photo split_layout tile_props mv_props set_props float32_props event_props
 last_event className style
-""".split()
+""".split()  # noqa: SIM905
 
 
 def test_matterviz_forwards_props() -> None:
@@ -139,7 +140,11 @@ def test_trailing_props_use_python_names(tmp_path: Path) -> None:
 
 def test_structure_preserves_legacy_positional_bindings() -> None:
     """Structure documents file drops without shifting legacy arguments."""
-    assert "on_file_drop" in (inspect.getdoc(mvc.Structure) or "")
+    structure_docs = inspect.getdoc(mvc.Structure) or ""
+    assert "on_file_drop" in structure_docs
+    assert "on_display_mode_change" in structure_docs
+    assert "on_active_volume_idx_change" in structure_docs
+    assert "on_slice_settings_change" in structure_docs
     parameter_names = list(inspect.signature(mvc.Structure.__init__).parameters)[1:]
     assert parameter_names == [
         *STRUCTURE_V043_PARAMETERS,
@@ -147,6 +152,8 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
         "multi_view_active",
         "multi_view_min_pane_height",
         "multi_view_min_pane_width",
+        "display_mode",
+        "slice_settings",
         "kwargs",
     ]
 
@@ -161,6 +168,8 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
         multi_view_min_pane_height=201,
         multi_view_min_pane_width=301,
         multi_view_gap=12,
+        display_mode="slice",
+        slice_settings={"plane_mode": "hkl", "miller_indices": [1, 1, 0]},
     )
     assert component.mv_props == {
         "performance_mode": "speed",
@@ -169,6 +178,8 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
         "multi_view_min_pane_height": 201,
         "multi_view_min_pane_width": 301,
         "multi_view_gap": 12,
+        "display_mode": "slice",
+        "slice_settings": {"plane_mode": "hkl", "miller_indices": [1, 1, 0]},
     }
 
 

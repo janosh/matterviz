@@ -19,6 +19,7 @@
     DEFAULT_ISOSURFACE_SETTINGS,
     generate_layers,
     materialize_layers,
+    normalize_active_volume_idx,
     remove_volume,
   } from './types'
 
@@ -34,9 +35,8 @@
 
   // Clamp active_volume_idx when volumes list changes (e.g. dataset swap)
   $effect(() => {
-    if (volumes.length > 0 && active_volume_idx >= volumes.length) {
-      active_volume_idx = 0
-    }
+    const normalized_idx = normalize_active_volume_idx(active_volume_idx, volumes.length)
+    if (normalized_idx !== active_volume_idx) active_volume_idx = normalized_idx
   })
 
   // Use precomputed data_range from the active volume
@@ -94,7 +94,7 @@
     settings.layers = result.layers
     // Keep the active volume pointing at the same physical volume (indices shift)
     if (active_volume_idx > vol_idx) active_volume_idx -= 1
-    if (active_volume_idx >= result.volumes.length) active_volume_idx = 0
+    active_volume_idx = normalize_active_volume_idx(active_volume_idx, result.volumes.length)
   }
 
   // Set (or clear) a layer's scalar-color source. The colormap is auto-picked

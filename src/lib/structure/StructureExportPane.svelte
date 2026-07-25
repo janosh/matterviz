@@ -15,6 +15,9 @@
     wrapper = undefined,
     scene = undefined,
     camera = undefined,
+    image_canvas = undefined,
+    image_filename = undefined,
+    enable_3d_export = true,
     png_dpi = $bindable(150),
     pane_props = {},
     toggle_props = {},
@@ -25,6 +28,9 @@
     wrapper?: HTMLDivElement
     scene?: Scene
     camera?: Camera
+    image_canvas?: HTMLCanvasElement
+    image_filename?: string
+    enable_3d_export?: boolean
     png_dpi?: number
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
@@ -90,9 +96,10 @@
     }
   }
 
-  let has_canvas = $state(false)
+  let wrapper_has_canvas = $state(false)
 
-  $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
+  $effect(() => observe_canvas_presence(wrapper, (val) => (wrapper_has_canvas = val)))
+  let has_canvas = $derived(Boolean(image_canvas) || wrapper_has_canvas)
 
   const sections = $derived<ExportSection[]>([
     {
@@ -113,22 +120,33 @@
           disabled: !has_canvas,
           show_dpi: true,
           on_download: () => {
-            const canvas = wrapper?.querySelector(`canvas`)
-            if (canvas) export_canvas_as_png(canvas, structure, png_dpi, scene, camera)
-            else console.warn(`Canvas element not found for PNG export`)
+            const canvas = image_canvas ?? wrapper?.querySelector(`canvas`)
+            if (canvas) {
+              export_canvas_as_png(
+                canvas,
+                image_filename ?? structure,
+                png_dpi,
+                image_canvas ? null : scene,
+                image_canvas ? null : camera,
+              )
+            } else console.warn(`Canvas element not found for PNG export`)
           },
         },
       ],
     },
-    {
-      title: `Export as 3D model`,
-      items: model_3d_formats.map(({ label, format, hint }) => ({
-        label,
-        hint,
-        disabled: !scene,
-        on_download: () => handle_3d_export(format),
-      })),
-    },
+    ...(enable_3d_export
+      ? [
+          {
+            title: `Export as 3D model`,
+            items: model_3d_formats.map(({ label, format, hint }) => ({
+              label,
+              hint,
+              disabled: !scene,
+              on_download: () => handle_3d_export(format),
+            })),
+          },
+        ]
+      : []),
   ])
 </script>
 
@@ -138,7 +156,7 @@
   {sections}
   {pane_props}
   toggle_props={{
-    title: export_pane_open ? `` : `Export Structure`,
+    title: export_pane_open ? `` : enable_3d_export ? `Export Structure` : `Export Slice`,
     ...toggle_props,
     class: `structure-export-toggle ${toggle_props?.class ?? ``}`,
   }}

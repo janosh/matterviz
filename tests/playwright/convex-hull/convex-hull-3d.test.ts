@@ -137,7 +137,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     // Toggle hull faces via control pane switch if present
     const pane = page.locator(`.draggable-pane.convex-hull-controls-pane`).last()
     const hull_toggle = pane.getByText(`Hull Faces`, { exact: false })
-    if (await hull_toggle.isVisible({ timeout: 2000 })) {
+    if (await hull_toggle.isVisible()) {
       await hull_toggle.click()
     }
 
@@ -151,7 +151,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
 
     // Info pane is conditionally rendered (needs phase_stats data)
     const info = await open_info_pane(page, diagram)
-    if (!(await info.isVisible({ timeout: 3000 }))) {
+    if (!(await info.isVisible())) {
       test.skip(true, `Info pane not available — phase_stats not yet computed`)
       return
     }
@@ -244,7 +244,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
 
     // Check if tooltip appears with fractional compositions
     const tooltip = page.locator(`.plot-tooltip`)
-    if (await tooltip.isVisible({ timeout: 5000 })) {
+    if (await tooltip.isVisible()) {
       const tooltip_text = await tooltip.textContent()
       // Verify fractional compositions don't have long decimals like "666.67"
       if (tooltip_text?.includes(`Fractional:`)) {

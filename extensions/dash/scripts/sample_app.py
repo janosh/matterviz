@@ -5,8 +5,9 @@ from __future__ import annotations
 import gzip
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import dash
 from dash import Input, Output, dcc, html
@@ -1022,10 +1023,13 @@ def create_app() -> dash.Dash:
         latest = None
         latest_source = None
         for event, source in events:
-            if event and event.get("timestamp"):
-                if not latest or event["timestamp"] > latest.get("timestamp", 0):
-                    latest = event
-                    latest_source = source
+            if (
+                event
+                and event.get("timestamp")
+                and (not latest or event["timestamp"] > latest.get("timestamp", 0))
+            ):
+                latest = event
+                latest_source = source
         if not latest:
             return "Click an element or hull point..."
         return f"Source: {latest_source}\n{json.dumps(latest, indent=2)}"

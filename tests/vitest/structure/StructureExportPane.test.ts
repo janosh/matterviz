@@ -229,6 +229,32 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => expect(png_btn?.disabled).toBe(true))
   })
 
+  test(`slice export uses its explicit canvas and hides 3D formats`, async () => {
+    const slice_canvas = document.createElement(`canvas`)
+    mount(StructureExportPane, {
+      target: document.body,
+      props: {
+        structure: simple_structure,
+        wrapper: wrapper_div,
+        image_canvas: slice_canvas,
+        image_filename: `charge-density-slice`,
+        enable_3d_export: false,
+      },
+    })
+
+    get_button(`PNG`).click()
+    await vi.waitFor(() => {
+      expect(export_canvas_as_png).toHaveBeenCalledWith(
+        slice_canvas,
+        `charge-density-slice`,
+        150,
+        null,
+        null,
+      )
+    })
+    expect(document.body.textContent).not.toContain(`Export as 3D model`)
+  })
+
   test.each([
     { format: `glb`, label: `GLB`, fn_name: `export_structure_as_glb` },
     { format: `obj`, label: `OBJ`, fn_name: `export_structure_as_obj` },
@@ -349,7 +375,7 @@ describe(`StructureExportPane`, () => {
   const mock_camera = { type: `PerspectiveCamera` } as Camera
   test.each([
     { desc: `explicit dpi + camera`, props: { png_dpi: 200, camera: mock_camera } },
-    { desc: `default dpi (150), no camera`, props: {} }, // default png_dpi is 150
+    { desc: `default dpi (150), no camera`, props: {} },
   ])(`PNG export button invokes export_canvas_as_png with $desc`, async ({ props }) => {
     mount(StructureExportPane, {
       target: document.body,

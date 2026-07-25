@@ -6,12 +6,8 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import {
-    chart_segment_label,
-    chart_segment_suffix,
-    type ChartSegmentData,
-    get_chart_font_scale,
-  } from './index'
+  import { chart_segment_label, chart_segment_suffix, get_chart_font_scale } from './index'
+  import type { ChartSegmentData } from './index'
   import { fractional_composition } from './parse'
 
   type BarSegmentData = ChartSegmentData & {
