@@ -37,10 +37,9 @@ export type GizmoOptions = {
   fade_duration?: number
 } & Partial<Record<GizmoAxisKey, GizmoAxisStyle>>
 
-// Gizmo edge length for a pane in the multi-view grid. Panes are roughly half the viewer, so
-// the fixed single-view size would dominate them; scale with the pane's short side instead,
-// clamped to stay legible when small and to never exceed the single-view size when large.
-// (Overflow isn't a concern — Gizmo further clamps its box to the canvas dimensions.)
+// Gizmo edge length for a multi-view pane. Panes are ~half the viewer, so the fixed
+// single-view size would dominate them: scale with the pane's short side instead, clamped to
+// stay legible when small and below the single-view size when large.
 export const responsive_gizmo_size = (width: number, height: number): number => {
   const fifth_of_short_side = Math.min(width, height) * 0.2
   return Math.round(Math.max(34, Math.min(72, fifth_of_short_side)))

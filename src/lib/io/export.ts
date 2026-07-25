@@ -33,9 +33,8 @@ function canvas_to_blob(canvas: HTMLCanvasElement, failure_message: string): Pro
   })
 }
 
-// Re-render a GPU canvas so its drawing buffer holds a fresh frame at capture time.
-// WebGPURenderer.render() throws if the GPU device isn't ready yet, and these calls happen
-// outside Threlte's animation loop (which awaits init itself), so await readiness first.
+// Re-render a GPU canvas so its drawing buffer holds a fresh frame at capture time. Awaits the
+// device because render() throws before init() resolves and this runs outside Threlte's loop.
 async function render_for_capture(
   renderer: WebGPURenderer,
   scene: Scene | null,

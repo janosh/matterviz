@@ -65,8 +65,7 @@ export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
       ]),
     ),
     ...overrides,
-    // Merge rather than replace, so a caller can nudge one edge (say, to clear a ColorBar)
-    // without restating the others — and so `offset` isn't silently dropped by the spread.
+    // merged, not replaced, so callers can nudge one edge (e.g. to clear a ColorBar)
     offset: { left: 5, bottom: 5, ...overrides.offset },
   }
 }

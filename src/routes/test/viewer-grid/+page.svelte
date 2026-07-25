@@ -9,8 +9,8 @@
 
   let viewer_count = $state(24)
   let grid: HTMLDivElement | undefined = $state()
-  // Which backend the viewers actually got. three silently falls back to WebGL if the GPU
-  // device can't be acquired, so navigator.gpu alone doesn't tell the test what ran.
+  // Which backend the viewers actually got: three falls back to WebGL when it can't acquire a
+  // device, so navigator.gpu alone doesn't tell the test what ran.
   let backend: string | undefined = $state()
 
   // Distinct-looking cell per viewer so a blanked canvas is obvious at a glance.
@@ -67,18 +67,18 @@
     const expected = viewer_count
     if (!grid_el) return
     let cancelled = false
-    // Wait for every viewer, not just the first: a backend that degrades under load would
-    // fall back on the later canvases while the early ones still report WebGPU. bind_renderer
-    // registers each canvas in its own effect and three only settles on a backend once init()
-    // resolves, so poll until all of them are registered, then await each device.
+    // Every viewer, not just the first: a backend degrading under load would fall back on the
+    // later canvases only. Poll since bind_renderer registers each canvas in its own effect,
+    // and await init() since that's when three settles on a backend.
     const timer = setInterval(async () => {
-      const canvases = [...grid_el.querySelectorAll(`canvas`)]
-      const renderers = canvases.map((canvas) => renderer_registry.get(canvas))
-      if (renderers.length < expected || !renderers.every(Boolean)) return
+      const renderers = [...grid_el.querySelectorAll(`canvas`)]
+        .map((canvas) => renderer_registry.get(canvas))
+        .filter((renderer) => renderer !== undefined)
+      if (renderers.length < expected) return
       clearInterval(timer)
-      await Promise.all(renderers.map((renderer) => renderer?.init()))
+      await Promise.all(renderers.map((renderer) => renderer.init()))
       const all_webgpu = renderers.every(
-        (renderer) => (renderer?.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend,
+        (renderer) => (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend,
       )
       if (!cancelled) backend = all_webgpu ? `webgpu` : `webgl`
     }, 100)

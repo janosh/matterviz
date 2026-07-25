@@ -90,14 +90,12 @@ const CELL_LIST_MIN_NEIGHBORS = 512
 // Guard against a huge sparse grid when the cloud spans far more than the cutoff.
 const CELL_LIST_MAX_CELLS = 2_000_000
 
-// Bin distances into `g_r`, weighting each pair by the product of its occupancies.
-// The image cloud spans cutoff + cell diagonal, so at typical cell sizes the overwhelming
-// majority of images sit outside the cutoff. Bucketing neighbors into cutoff-sized cells lets
-// each center scan only the 27 cells around it instead of measuring every image. Collapsing
-// the grid to one cell degenerates to a brute-force scan, which is how small inputs and
-// pathologically sparse clouds are handled without a second copy of the loop.
-// Euclidean only: the PBC path needs minimum-image distances, which don't correspond to raw
-// coordinates — but that path only runs when no cloud was built, so it stays small.
+// Bin distances into `g_r`, weighting each pair by the product of its occupancies. The image
+// cloud spans cutoff + cell diagonal, so most images sit outside the cutoff: bucketing
+// neighbors into cutoff-sized cells lets each center scan the 27 cells around it instead of
+// every image. A one-cell grid degenerates to brute force, covering small and sparse inputs
+// without a second loop. Euclidean only — the PBC path needs minimum-image distances, but it
+// only runs when no cloud was built, so it stays small.
 function accumulate_pairs(
   centers: Site[],
   center_occu: Float64Array,

@@ -269,13 +269,11 @@ export async function expect_canvas_changed(
 
 export type GizmoHandleHit = { key: string; x: number; y: number }
 
-// Locate the orientation gizmo's axis handles inside a canvas. The gizmo draws into a corner
-// of the canvas and has no DOM element, so the only way to find a handle is the `pointer`
-// cursor it sets while one is hovered. Sweeps a grid over the corner it's anchored in and
-// returns the cells that report a handle, in viewport coordinates ready for page.mouse.
-// `bottom_offset` lifts the swept square off the canvas bottom (callers whose gizmo sits
-// above a color bar need this). Probing with synthetic moves keeps the whole sweep to one
-// round trip — driving the same probes through page.mouse overruns the test timeout.
+// Find the gizmo's axis handles in a canvas. It has no DOM element, so hover a grid of cells
+// over the corner it's anchored in and keep those that flip the cursor to `pointer`, returning
+// viewport coords ready for page.mouse. `bottom_offset` lifts the swept square (for gizmos
+// parked above a ColorBar). Synthetic moves keep this to one round trip; page.mouse overruns
+// the test timeout.
 export function sweep_gizmo_handles(
   canvas: Locator,
   options: { probe?: number; steps?: number; bottom_offset?: number } = {},
@@ -306,6 +304,25 @@ export function sweep_gizmo_handles(
       lift: options.bottom_offset ?? 0,
     },
   )
+}
+
+// Click the first handle a sweep finds and assert the camera flew there. Handles are fixed in
+// gizmo space, so their screen positions shift only if the camera moved — unlike canvas pixels,
+// which hover alone disturbs. Re-sweeping also has to find handles, else a gizmo that simply
+// stopped drawing would trivially differ from the sweep before.
+export async function expect_gizmo_click_flies_camera(
+  canvas: Locator,
+  options: Parameters<typeof sweep_gizmo_handles>[1] = {},
+): Promise<void> {
+  const before = await sweep_gizmo_handles(canvas, options)
+  expect(before.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+
+  await canvas.page().mouse.click(before[0].x, before[0].y)
+  await canvas.page().waitForTimeout(800) // the fly-to animates over 400ms; let it land
+
+  const after = await sweep_gizmo_handles(canvas, options)
+  expect(after.length, `gizmo handles after the fly-to`).toBeGreaterThan(0)
+  expect(after.map((hit) => hit.key)).not.toEqual(before.map((hit) => hit.key))
 }
 
 // Seeded random number generator using Linear Congruential Generator (LCG).

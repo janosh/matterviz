@@ -872,14 +872,12 @@ export function electroneg_ratio(
   // Closest normalized bond distance per original atom (typed array instead of Map)
   const closest = new Float64Array(n_sites).fill(Infinity)
 
-  // Grid cells must be at least as wide as the longest possible bond, since only a 3x3x3 block
-  // of cells is scanned per center. Taking the max over the whole periodic table pins that at
-  // Cs/Fr (2.6 Å) for every structure, but candidate pairs scale with cell volume, so an
-  // all-carbon cell paid for a 10.4 Å cell where 3.0 Å suffices. `radii` holds only the
-  // elements present, and the pair loop rejects anything beyond (r_a + r_b) * ratio, so the
-  // max over it is an exact bound. Fall back to a positive size if the bound degenerates (no
-  // known radius, or a caller-supplied ratio of zero or non-finite): the grid divides by this,
-  // and a zero/NaN cell size buckets every site under one key, quietly reverting to O(N^2).
+  // Cells must span the longest possible bond, since only a 3x3x3 block is scanned per center.
+  // Sizing that off the whole periodic table pins every structure at Cs/Fr (2.6 Å), so an
+  // all-carbon cell paid for a 10.4 Å cell where 3.0 Å suffices; `radii` holds only the
+  // elements present, making its max an exact bound. Fall back to a positive size when that
+  // bound degenerates (no known radius, or a zero/non-finite ratio), since dividing by it
+  // would bucket every site under one key and quietly revert to O(N^2).
   let max_radius = 0
   for (const radius of radii) {
     if (radius > max_radius) max_radius = radius

@@ -1,9 +1,9 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   expect_canvas_changed,
+  expect_gizmo_click_flies_camera,
   get_canvas_timeout,
   IS_CI,
-  sweep_gizmo_handles,
   wait_for_3d_canvas,
   wait_for_canvas_rendered,
 } from '../helpers'
@@ -48,22 +48,14 @@ test.describe(`ScatterPlot3D`, () => {
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
 
-    // The gizmo draws inside the canvas, so no CSS can lift it above the ColorBar and Legend
-    // that share this container — the bottom offset it gets when a color bar is present is the
-    // only thing keeping it clear. The sweep only locates handles (its synthetic moves go
-    // straight to the canvas and would ignore an overlay); it's the real mouse click below
-    // that fails if anything sits on top of the gizmo and intercepts it.
-    const sweep = { probe: 110, steps: 11, bottom_offset: 65 }
-    const before_click = await sweep_gizmo_handles(canvas, sweep)
-    expect(before_click.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
-
-    await page.mouse.click(before_click[0].x, before_click[0].y)
-    await page.waitForTimeout(800) // the fly-to animates over 400ms; let it land
-
-    // Handles are fixed in gizmo space and the gizmo mirrors the scene camera, so they only
-    // move on screen if the camera did — unlike canvas pixels, which hover alone disturbs.
-    const after_click = await sweep_gizmo_handles(canvas, sweep)
-    expect(after_click.map((hit) => hit.key)).not.toEqual(before_click.map((hit) => hit.key))
+    // No CSS can lift an in-canvas gizmo above the ColorBar/Legend, so only its bottom offset
+    // keeps it clear. The sweep's synthetic moves ignore overlays; the real click below is what
+    // fails if one covers the gizmo.
+    await expect_gizmo_click_flies_camera(canvas, {
+      probe: 110,
+      steps: 11,
+      bottom_offset: 65,
+    })
   })
 
   test(`drag to rotate changes view`, async ({ page }) => {

@@ -1,17 +1,14 @@
 <script lang="ts">
-  // Orientation gizmo: colored +/- axis handles in a corner of the canvas that show the
-  // current camera orientation and fly the camera to an axis when clicked.
+  // Orientation gizmo: colored +/- axis handles in a corner of the canvas showing camera
+  // orientation, clickable to fly the camera to that axis.
   //
-  // Replaces @threlte/extras' Gizmo, which cannot run here: it delegates to
-  // three-viewport-gizmo, whose handles are raw GLSL ShaderMaterials built from
-  // ShaderLib/UniformsLib. WebGPURenderer compiles node materials, not GLSL, and our build
-  // aliases bare `three` to the WebGPU shim where those registries are stubbed. Everything
-  // below is drawn with MeshBasicMaterial/SpriteMaterial, which three maps to node
-  // materials automatically, so it renders identically on either backend.
+  // Replaces @threlte/extras' Gizmo, which can't run on WebGPU: it delegates to
+  // three-viewport-gizmo, whose handles are raw GLSL ShaderMaterials from the ShaderLib
+  // registries our WebGPU shim stubs out. MeshBasicMaterial/SpriteMaterial below map to node
+  // materials automatically, so this renders on either backend.
   //
-  // Like the upstream component this draws into a corner viewport of the *existing* canvas
-  // after the main render, so it costs no extra canvas and stays out of PNG exports (which
-  // re-render scene+camera only).
+  // Like upstream it draws into a corner viewport of the *existing* canvas after the main
+  // render, costing no extra canvas and staying out of PNG exports (scene+camera only).
   import type { Vec3 } from '$lib/math'
   import { useParent, useTask, useThrelte } from '@threlte/core'
   import * as THREE from 'three/webgpu'
@@ -160,10 +157,9 @@
 
   let hovered: GizmoAxisKey | null = $state(null)
 
-  // Fade in/out instead of popping. `visible` is driven by viewer hover, so a hard cut reads
-  // as a glitch next to the CSS-transitioned chrome around it. Advanced in the render task
-  // rather than via a $effect so it steps with actual frame time; plain `let` because only
-  // that task reads it, and mutating $state per frame would schedule pointless re-runs.
+  // Fade instead of popping, since `visible` follows viewer hover like the CSS-transitioned
+  // chrome around it. Advanced in the render task to step with frame time; plain `let` since
+  // only that task reads it and per-frame $state writes would schedule pointless re-runs.
   let fade = visible ? 1 : 0
   let backdrop_base_opacity = 0.2
 

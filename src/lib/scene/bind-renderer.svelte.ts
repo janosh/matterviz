@@ -13,11 +13,10 @@ export const webgpu_available = (): boolean =>
 // out upstream (three skips reason === 'destroyed'), so any call is a real eviction or reset.
 export type DeviceLostInfo = Parameters<WebGPURenderer[`onDeviceLost`]>[0]
 
-// Shared factory for every Threlte <Canvas> in the library, so all viewports get identical
-// GPU settings. WebGPURenderer acquires its device asynchronously and render() *throws* if
-// called before init() resolves — Threlte drives ordinary frames through setAnimationLoop(),
-// which awaits init() internally, so the render loop needs no guarding. Only direct render()
-// calls outside the loop (PNG/video capture) do, and those await renderer.init() first.
+// Shared factory for every Threlte <Canvas> in the library, so all viewports get identical GPU
+// settings. WebGPURenderer acquires its device asynchronously and render() *throws* before
+// init() resolves, but Threlte's setAnimationLoop awaits it — only direct render() calls
+// outside the loop (PNG/video capture) need their own await.
 export function create_renderer(
   canvas: HTMLCanvasElement,
   { on_device_lost }: { on_device_lost?: (info: DeviceLostInfo) => void } = {},
@@ -28,10 +27,9 @@ export function create_renderer(
     antialias: true,
     powerPreference: `high-performance`,
   })
-  // A lost WebGPU device is never restored in place — recovery means building a new renderer,
-  // which callers do by remounting the <Canvas>. Chain rather than replace three's handler:
-  // it logs the failure and flags the device lost, which is what stops render() drawing to a
-  // dead device until the remount lands.
+  // A lost WebGPU device is never restored in place; recovery means a new renderer, which
+  // callers get by remounting the <Canvas>. Chain rather than replace three's handler, since
+  // its device-lost flag is what stops render() drawing to a dead device until then.
   if (on_device_lost) {
     const three_on_device_lost = renderer.onDeviceLost.bind(renderer)
     renderer.onDeviceLost = (info: DeviceLostInfo) => {
