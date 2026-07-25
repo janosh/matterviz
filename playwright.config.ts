@@ -21,11 +21,14 @@ export default {
       // hide regressions in the backend we ship and break pixel readback (a WebGL drawing
       // buffer is cleared after compositing; three gives the WebGPU canvas COPY_SRC).
       // --enable-unsafe-swiftshader stays for the 2D/WebGL canvases elsewhere in the suite.
+      // Force the software adapter on CI only, so local runs exercise the backend users
+      // actually get. Measured no local speedup from dropping it (scatter-plot-3d: 56s vs 48s
+      // serialized), so this buys realism, at the cost of local and CI rendering differently.
       args: [
         `--enable-unsafe-webgpu`,
         `--enable-features=Vulkan`,
-        `--use-webgpu-adapter=swiftshader`,
         `--enable-unsafe-swiftshader`,
+        ...(is_ci ? [`--use-webgpu-adapter=swiftshader`] : []),
       ],
     },
   },
