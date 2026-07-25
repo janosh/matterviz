@@ -2197,17 +2197,22 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(structure_div).toHaveClass(/multi-view/)
   })
 
+  // Both grid tests below drive interactions that only settle once the panes have painted.
+  // On CI's software WebGPU — an adapter that hands out a device but composites nothing — the
+  // layout never finishes switching back and the cell-select dropdown never opens, while every
+  // structural assertion around them passes. Gated on IS_CI rather than a pixel probe because
+  // the byte-size heuristic tried earlier reported a blank 800x500 canvas as painted.
+  const GRID_NEEDS_PIXELS = `grid interactions need a composited frame, unavailable in CI`
+
   test(`toggle splits canvas into 4 viewports and back`, async ({ page }) => {
+    test.skip(IS_CI, GRID_NEEDS_PIXELS)
     // each sweep probe costs a frame, and a frame here draws all 4 panes (~1 min under load)
     test.setTimeout(IS_CI ? 180_000 : 120_000)
     const structure_div = page.locator(`#test-structure`)
 
     // Handle spread on screen, which scales with the gizmo box — the only way to measure a
     // gizmo with no DOM element. Hover first since it draws only while the viewer is active.
-    // Returns null when no handle is pickable: CI's software WebGPU reports the WebGPU backend
-    // and hands out an adapter but never composites (traces from a failing shard show this
-    // canvas uniformly blank), so there is nothing to sweep there.
-    const gizmo_span = async (canvas: Locator): Promise<number | null> => {
+    const gizmo_span = async (canvas: Locator): Promise<number> => {
       const box = await canvas.boundingBox()
       if (!box) throw new Error(`canvas has no bounding box`)
       await page.mouse.move(box.x + 40, box.y + 40)
@@ -2216,7 +2221,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
         `1`,
       )
       const hits = await sweep_gizmo_handles(canvas)
-      if (hits.length === 0) return null
+      expect(hits.length, `gizmo handles on this canvas`).toBeGreaterThan(0)
       const xs = hits.map((hit) => hit.x)
       const ys = hits.map((hit) => hit.y)
       return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
@@ -2226,9 +2231,6 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
     await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
     const single_span = await gizmo_span(structure_div.locator(`canvas`).first())
-    // Where the scene renders, a missing gizmo is a real regression — only CI is allowed to
-    // come up empty, and there the span comparison below is simply skipped.
-    if (!IS_CI) expect(single_span, `gizmo handles in single view`).not.toBeNull()
 
     await select_structure_layout(structure_div, `3D 2×2 grid`)
 
@@ -2268,13 +2270,10 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // Panes are ~half the viewer, so StructureViewport hands them a smaller gizmo. Ties
     // responsive_gizmo_size (unit-tested) to what renders, now that the old `.responsive-gizmo`
     // DOM box is gone with three-viewport-gizmo's HTML overlay.
-    if (single_span !== null) {
-      const pane_span = await gizmo_span(
-        structure_div.locator(`.viewport-stage.multi canvas`).first(),
-      )
-      if (!IS_CI) expect(pane_span, `gizmo handles in a grid pane`).not.toBeNull()
-      if (pane_span !== null) expect(pane_span).toBeLessThan(single_span * 0.8)
-    }
+    const pane_span = await gizmo_span(
+      structure_div.locator(`.viewport-stage.multi canvas`).first(),
+    )
+    expect(pane_span).toBeLessThan(single_span * 0.8)
 
     // Toggle back to single view
     await select_structure_layout(structure_div, `3D single view`)
@@ -2287,6 +2286,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
   })
 
   test(`legend controls stay interactive above active grid panes`, async ({ page }) => {
+    test.skip(IS_CI, GRID_NEEDS_PIXELS)
     const structure_div = page.locator(`#test-structure`)
     await select_structure_layout(structure_div, `3D 2×2 grid`)
     const cells = structure_div.locator(`.viewport-cell`)

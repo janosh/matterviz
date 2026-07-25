@@ -141,7 +141,13 @@ test.describe(`Isosurface page`, () => {
       await expect(page.getByTestId(`volume-slice`)).toBeVisible({ timeout: 15_000 })
     })
 
+    // These three compare slice pixels, so they need a composited frame. They already fail on
+    // main under CI's software WebGPU, which supplies an adapter but paints nothing — a
+    // different run picks a different subset of the three, which is the giveaway.
+    const SLICE_NEEDS_PIXELS = `slice pixel comparison needs a composited frame, unavailable in CI`
+
     test(`switches between HKL, Cartesian, filled, and contour views`, async ({ page }) => {
+      test.skip(IS_CI, SLICE_NEEDS_PIXELS)
       test.setTimeout(IS_CI ? 90_000 : 45_000)
       const slice = await open_slice_view(page)
       const canvas = slice.locator(`canvas`)
@@ -168,6 +174,7 @@ test.describe(`Isosurface page`, () => {
     })
 
     test(`keeps Miller input responsive at high slice resolution`, async ({ page }) => {
+      test.skip(IS_CI, SLICE_NEEDS_PIXELS)
       const slice = await open_slice_view(page)
       const canvas = slice.locator(`canvas`)
       const input = page.getByRole(`textbox`, { name: `hkl` })
@@ -188,6 +195,7 @@ test.describe(`Isosurface page`, () => {
     })
 
     test(`masks pixels outside an oblique triclinic cross-section`, async ({ page }) => {
+      test.skip(IS_CI, SLICE_NEEDS_PIXELS)
       await wait_for_isosurface(page, `/structure/isosurface?file=hBN-CHGCAR.gz`)
       const slice = await open_slice_view(page)
       await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
