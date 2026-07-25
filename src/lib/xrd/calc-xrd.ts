@@ -179,8 +179,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
   // Flatten species with occupancies. Scattering factors and Debye-Waller corrections depend
   // only on the element, so keep one entry per distinct element and have each site-species
-  // index into it — evaluating the 9-term exponential sum per atom instead repeats identical
-  // work once per site (216x over on a 216-atom two-element cell).
+  // index into it — per-atom, the 9-term exponential sum repeats identical work per site.
   type ScatteringCoeffs = { a: number[]; b: number[]; z: number; dw: number }
   const element_coeffs: ScatteringCoeffs[] = []
   const element_ids: number[] = [] // per site-species -> index into element_coeffs
@@ -241,9 +240,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     const sin_theta_over_lambda = g_norm / 2
     const sin_theta_over_lambda_sq = sin_theta_over_lambda * sin_theta_over_lambda
 
-    // Atomic scattering factors: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²) (pymatgen fitted params),
-    // plus the Debye-Waller correction. Both are per-element, so this runs once per distinct
-    // element rather than once per atom.
+    // Atomic scattering factors: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²) (pymatgen fitted params)
+    // plus the Debye-Waller correction, both per-element so this runs once per element
     for (let elem = 0; elem < n_elements; elem++) {
       const { a: a_arr, b: b_arr, z: atomic_number, dw } = element_coeffs[elem]
       let sum_terms = 0
@@ -254,9 +252,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
       dw_by_element[elem] = Math.exp(-dw * sin_theta_over_lambda_sq)
     }
 
-    // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW). Accumulated into scalars in
-    // the original order, so the result is unchanged; the previous reduce allocated a fresh
-    // {real, imag} object per atom per reciprocal point.
+    // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW), accumulated into scalars in the
+    // original order — the previous reduce allocated an object per atom per reciprocal point.
     let f_real = 0
     let f_imag = 0
     for (let idx = 0; idx < n_species; idx++) {

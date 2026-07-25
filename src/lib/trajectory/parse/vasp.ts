@@ -58,8 +58,8 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
   let frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
-    // Scan forward from the cursor. `lines.findIndex` restarts at 0 on every frame, which
-    // makes locating F frames O(F x total_lines) — quadratic in frame count on long MD runs.
+    // Scan forward from the cursor: `lines.findIndex` restarts at 0 every frame, making this
+    // O(F x total_lines) — quadratic in frame count on long MD runs.
     let config_idx = line_idx
     while (config_idx < lines.length) {
       if (lines[config_idx].includes(`Direct configuration=`)) break
@@ -93,8 +93,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
 
     const positions = []
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {
-      // Read the three tokens directly rather than slice().map(Number), which allocated two
-      // throwaway arrays per atom line — the dominant per-frame cost on long trajectories.
+      // Read the tokens directly: slice().map(Number) allocated two throwaway arrays per line
       const tokens = lines[line_idx].trim().split(/\s+/)
       if (tokens.length >= 3) {
         const coords: Vec3 = [Number(tokens[0]), Number(tokens[1]), Number(tokens[2])]

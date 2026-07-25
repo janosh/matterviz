@@ -345,7 +345,7 @@ function apply_gaussian_smearing_core(
   const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
 
   // On an ascending grid — every DOS/band grid — the ±cutoff window is a contiguous index
-  // range that only moves forward, so two pointers bound the inner loop and this becomes the
+  // range that only moves forward, so two pointers bound the inner loop, making this the
   // O(n·w) the doc claims rather than O(n²). Anything else falls back to scanning all points.
   let ascending = true
   for (let idx = 1; idx < n_pts; idx++) {

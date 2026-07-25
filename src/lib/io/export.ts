@@ -35,9 +35,8 @@ function canvas_to_blob(canvas: HTMLCanvasElement, failure_message: string): Pro
 
 const device_timeout_ms = 5000
 
-// Wait for the GPU device, but never indefinitely: an adapter that hands out a device request
-// it never fulfills would otherwise leave every export promise pending forever, so the user
-// gets neither a file nor an error. Returns whether the device came up in time.
+// Wait for the GPU device, but never indefinitely: an unfulfilled device request would leave
+// the export promise pending forever, giving the user neither a file nor an error.
 async function device_ready(renderer: WebGPURenderer): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -55,9 +54,8 @@ async function device_ready(renderer: WebGPURenderer): Promise<boolean> {
 }
 
 // Re-render a GPU canvas so its drawing buffer holds a fresh frame at capture time. Awaits the
-// device because render() throws before init() resolves and this runs outside Threlte's loop.
-// Without a device we skip the re-render and capture whatever the canvas already holds — a
-// stale or empty image still beats an export that never resolves.
+// device since render() throws before init() resolves and this runs outside Threlte's loop.
+// Without one, capture whatever the canvas holds — stale beats an export that never resolves.
 async function render_for_capture(
   renderer: WebGPURenderer,
   scene: Scene | null,

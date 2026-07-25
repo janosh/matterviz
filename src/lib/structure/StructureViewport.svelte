@@ -30,10 +30,8 @@
   import type { AtomColorConfig } from './atom-properties'
   import StructureScene from './StructureScene.svelte'
 
-  // Self-heal a lost GPU device: the browser can evict a device on driver reset or resource
-  // pressure, leaving the canvas permanently blank. Unlike WebGL there is no "restored"
-  // event — a lost device is gone for good — so recovery means remounting the <Canvas> to
-  // build a fresh renderer. Bounded retries avoid ping-pong when the page is over budget.
+  // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
+  // "restored" event, so recovery means remounting the <Canvas> for a fresh renderer.
   let canvas_remount_token = $state(0)
   let remount_timer: ReturnType<typeof setTimeout> | undefined
   let recovery_reset_timer: ReturnType<typeof setTimeout> | undefined
@@ -176,8 +174,7 @@
   let height = $state(0)
   let cursor = $state(`default`)
 
-  // Multi-view panes are ~half the viewer, so shrink the viewport gizmo to stay proportional.
-  // Single view keeps the default size.
+  // Multi-view panes are ~half the viewer, so shrink the gizmo to stay proportional
   let gizmo_prop = $derived.by(() => {
     if (!gizmo || !in_grid) return gizmo
     const size = responsive_gizmo_size(width, height)

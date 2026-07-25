@@ -115,10 +115,9 @@ export default defineConfig({
   },
 
   resolve: {
-    // Keep a single copy of three in the bundle: matterviz imports three/webgpu, while
-    // three's own addons and @threlte still import bare `three`. Exact-match regex so
-    // three/webgpu, three/tsl and three/examples/* keep resolving normally (a string alias
-    // would prefix-match and rewrite those too).
+    // One copy of three in the bundle: matterviz imports three/webgpu, its addons and @threlte
+    // plain three. Exact-match regex, else three/webgpu, three/tsl and three/examples/* would
+    // be rewritten too.
     alias: [
       {
         find: /^three$/,

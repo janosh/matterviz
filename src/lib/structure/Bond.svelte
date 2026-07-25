@@ -33,10 +33,9 @@
   const color_brightness = uniform(0.7)
 
   // Each instance carries the colors of the two atoms it connects; blend them along the
-  // unit-height cylinder's local Y (-0.5..0.5 remapped to 0..1). Desaturating and darkening
-  // keeps bonds visually distinct from the atoms. Lighting is a deliberately simple
-  // fixed-direction Lambert term rather than the scene lights, so bond shading responds only
-  // to the explicit ambient/directional settings.
+  // unit-height cylinder's local Y (-0.5..0.5 remapped to 0..1), then desaturate and darken to
+  // keep bonds distinct from atoms. Lighting is a fixed-direction Lambert term rather than the
+  // scene lights, so bond shading responds only to the explicit ambient/directional settings.
   const gradient = mix(
     attribute(`instanceColorStart`, `vec3`),
     attribute(`instanceColorEnd`, `vec3`),
@@ -97,10 +96,9 @@
     mesh.count = count
   })
 
-  // Colors are uploaded in linear space; the renderer applies tone mapping and the sRGB
-  // output conversion. The old GLSL shader wrote gl_FragColor directly and so escaped tone
-  // mapping — node materials have no per-material opt-out, so bonds are now tone-mapped
-  // consistently with atoms and everything else in the scene.
+  // Colors are uploaded in linear space; the renderer applies tone mapping and sRGB output.
+  // The old GLSL shader wrote gl_FragColor and so escaped tone mapping — node materials have
+  // no per-material opt-out, so bonds are now tone-mapped like everything else in the scene.
   const bond_material = new MeshBasicNodeMaterial()
   bond_material.colorNode = bond_color
 

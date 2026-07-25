@@ -3,20 +3,18 @@ import { useThrelte } from '@threlte/core'
 import type { Camera, Scene } from 'three/webgpu'
 import { WebGPURenderer } from 'three/webgpu'
 
-// True once the browser can actually give us a GPU device. Used to gate <Canvas> mounting:
-// false under SSR and in happy-dom unit tests (no navigator.gpu), true in real browsers and
-// in Playwright, which serves over localhost and therefore gets a secure context.
+// Gates <Canvas> mounting: false under SSR and in happy-dom unit tests (no navigator.gpu),
+// true in real browsers and in Playwright, which gets a secure context over localhost.
 export const webgpu_available = (): boolean =>
   typeof navigator !== `undefined` && `gpu` in navigator
 
-// What three passes to renderer.onDeviceLost. Losses caused by our own dispose() are filtered
-// out upstream (three skips reason === 'destroyed'), so any call is a real eviction or reset.
+// What three passes to renderer.onDeviceLost. Losses from our own dispose() are filtered out
+// upstream (three skips reason === 'destroyed'), so any call is a real eviction or reset.
 export type DeviceLostInfo = Parameters<WebGPURenderer[`onDeviceLost`]>[0]
 
-// Shared factory for every Threlte <Canvas> in the library, so all viewports get identical GPU
-// settings. WebGPURenderer acquires its device asynchronously and render() *throws* before
-// init() resolves, but Threlte's setAnimationLoop awaits it — only direct render() calls
-// outside the loop (PNG/video capture) need their own await.
+// Shared factory for every Threlte <Canvas> in the library. WebGPURenderer acquires its device
+// asynchronously and render() *throws* before init() resolves, but Threlte's setAnimationLoop
+// awaits it — only render() calls outside the loop (PNG/video capture) need their own await.
 export function create_renderer(
   canvas: HTMLCanvasElement,
   { on_device_lost }: { on_device_lost?: (info: DeviceLostInfo) => void } = {},
@@ -28,8 +26,8 @@ export function create_renderer(
     powerPreference: `high-performance`,
   })
   // A lost WebGPU device is never restored in place; recovery means a new renderer, which
-  // callers get by remounting the <Canvas>. Chain rather than replace three's handler, since
-  // its device-lost flag is what stops render() drawing to a dead device until then.
+  // callers get by remounting the <Canvas>. Chain rather than replace three's handler: its
+  // device-lost flag is what stops render() drawing to a dead device until then.
   if (on_device_lost) {
     const three_on_device_lost = renderer.onDeviceLost.bind(renderer)
     renderer.onDeviceLost = (info: DeviceLostInfo) => {
@@ -37,8 +35,8 @@ export function create_renderer(
       on_device_lost(info)
     }
   }
-  // Start device acquisition immediately rather than waiting for Threlte's first frame.
-  // init() caches its own promise, so this races nothing and is safe to call repeatedly.
+  // Start device acquisition now rather than on Threlte's first frame. init() caches its own
+  // promise, so this races nothing and is safe to call repeatedly.
   renderer.init().catch((error) => {
     console.error(`WebGPU renderer initialization failed`, error)
   })
@@ -50,8 +48,7 @@ export function bind_renderer(
   on_bind: (scene: Scene, camera: Camera) => void,
   on_renderer?: (renderer: WebGPURenderer) => void,
 ) {
-  // Threlte's context is generic over the renderer and defaults to WebGLRenderer; every
-  // <Canvas> here is created by our WebGPU factory, so pin the generic to match.
+  // Threlte's context defaults to WebGLRenderer; every <Canvas> here comes from create_renderer
   const threlte = useThrelte<WebGPURenderer>()
   $effect(() => {
     const renderer = threlte.renderer
