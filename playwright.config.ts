@@ -11,6 +11,10 @@ export default {
     timeout: 60_000, // Allow 1 min for dev server to start on CI
   },
   use: {
+    // Several 3D failures reproduce only on CI's software renderer, where a bare log line says
+    // nothing about what the page was doing. Trace from the first retry rather than every run,
+    // since recording costs time on the same saturated box that causes the failures.
+    trace: `on-first-retry`,
     launchOptions: {
       // Headless Chromium exposes navigator.gpu over localhost but hands out no adapter
       // without these flags, leaving WebGPURenderer to fall back to WebGL2. That would both

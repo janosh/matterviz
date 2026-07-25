@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import { IS_CI } from '../helpers'
 
 // Browsers cap live WebGL contexts (~16) and evict the oldest: on the pre-WebGPU commit, 24
 // viewers left 16 live and 8 blank. WebGPU has no such cap, so every canvas should stay drawn.
@@ -19,9 +20,9 @@ const is_painted = async (canvas: Locator): Promise<boolean> => {
   return false
 }
 
-// Gate on a real adapter, not on IS_CI: navigator.gpu exists in any secure context but
-// headless Chromium only hands out an adapter with the WebGPU flags in playwright.config, and
-// CI is exactly where a silent fallback would slip in.
+// Probe for a real adapter rather than trusting the API's presence: navigator.gpu exists in
+// any secure context, but headless Chromium only hands one out with the WebGPU flags in
+// playwright.config.
 const has_webgpu_adapter = (page: Page): Promise<boolean> =>
   page.evaluate(async () => {
     if (!(`gpu` in navigator)) return false
@@ -42,7 +43,13 @@ test.describe(`Viewer grid`, () => {
     // Adapter check on a static asset first: it only needs a secure context, while the grid
     // route costs a compile plus 24 canvases before we could bail out.
     await page.goto(`/favicon.svg`, { waitUntil: `domcontentloaded` })
-    test.skip(!(await has_webgpu_adapter(page)), `no WebGPU adapter available`)
+    const has_adapter = await has_webgpu_adapter(page)
+    // Fail rather than skip on CI: the launch flags there guarantee a software adapter, so a
+    // missing one means they regressed — and skipping would silently retire the guard this
+    // test exists to be. Only a dev machine without WebGPU is allowed to opt out.
+    if (IS_CI) {
+      expect(has_adapter, `WebGPU adapter from playwright.config launch flags`).toBe(true)
+    } else test.skip(!has_adapter, `no WebGPU adapter on this machine`)
 
     // this route is server-rendered, so a cold compile delays even the HTML past goto's 30s
     await page.goto(`/test/viewer-grid?count=${VIEWER_COUNT}`, {
