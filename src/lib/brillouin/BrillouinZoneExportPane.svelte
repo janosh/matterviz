@@ -4,7 +4,7 @@
   import { export_canvas_as_png } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Scene } from 'three/webgpu'
   import type { BrillouinZoneData } from './types'
 
   let {

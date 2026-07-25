@@ -8,6 +8,7 @@
   } from '$lib/isosurface/types'
   import { DEFAULT_ISOSURFACE_SETTINGS, grid_data_range } from '$lib/isosurface/types'
   import type { Matrix3x3, Vec3 } from '$lib/math'
+  import { create_renderer } from '$lib/scene'
   import { Canvas, T } from '@threlte/core'
   import { onMount } from 'svelte'
 
@@ -168,7 +169,7 @@
 
 <div class="benchmark-canvas" data-testid="isosurface-benchmark-canvas">
   {#if volumes.length}
-    <Canvas>
+    <Canvas createRenderer={create_renderer}>
       <T.PerspectiveCamera makeDefault position={[2, 2, 12] satisfies Vec3} />
       <T.AmbientLight intensity={1.4} />
       <T.DirectionalLight position={[5, 8, 10]} intensity={2} />

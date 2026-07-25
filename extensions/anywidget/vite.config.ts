@@ -73,11 +73,19 @@ const plugins = [
 export default defineConfig({
   ...config, // shared lint/fmt/build from @janosh/vite-config (dotfiles)
   resolve: {
-    alias: {
+    // Array form (not object) so `three` can be matched exactly — a string alias
+    // prefix-matches and would also rewrite three/webgpu, three/tsl and three/examples/*.
+    alias: [
       // The widget never parses HDF5 client-side (pymatviz parses on the Python
       // side), so stub out h5wasm to drop ~5 MB of HDF5 WASM from the bundle.
-      h5wasm: resolve(import.meta.dirname, `h5wasm-stub.ts`),
-    },
+      { find: `h5wasm`, replacement: resolve(import.meta.dirname, `h5wasm-stub.ts`) },
+      // Keep a single copy of three: matterviz imports three/webgpu, while three's addons
+      // and @threlte import bare `three`.
+      {
+        find: /^three$/,
+        replacement: resolve(import.meta.dirname, `../../src/lib/scene/three-compat.ts`),
+      },
+    ],
   },
   plugins,
   build: {

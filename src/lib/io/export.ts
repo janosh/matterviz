@@ -2,15 +2,14 @@ import { download } from '$lib/io/fetch'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
 import { to_error } from '$lib/utils'
-import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
+import { type Camera, type Scene, Vector2, type WebGPURenderer } from 'three/webgpu'
 
-// Maps a Threlte canvas to its WebGLRenderer so PNG export can look up the renderer for a
+// Maps a Threlte canvas to its renderer so PNG export can look up the renderer for a
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
-export const renderer_registry = new WeakMap<HTMLCanvasElement, WebGLRenderer>()
+export const renderer_registry = new WeakMap<HTMLCanvasElement, WebGPURenderer>()
 
-// Companion scene+camera mapping: WebGL buffers are cleared after present
-// (preserveDrawingBuffer is off), so any capture of a live canvas must
-// re-render synchronously first — which needs the scene and active camera.
+// Companion scene+camera mapping: the drawing buffer is cleared after present, so any
+// capture of a live canvas must re-render it first — which needs the scene and active camera.
 export const scene_registry = new WeakMap<
   HTMLCanvasElement,
   { scene: Scene; camera: Camera }
@@ -34,8 +33,21 @@ function canvas_to_blob(canvas: HTMLCanvasElement, failure_message: string): Pro
   })
 }
 
+// Re-render a GPU canvas so its drawing buffer holds a fresh frame at capture time.
+// WebGPURenderer.render() throws if the GPU device isn't ready yet, and these calls happen
+// outside Threlte's animation loop (which awaits init itself), so await readiness first.
+async function render_for_capture(
+  renderer: WebGPURenderer,
+  scene: Scene | null,
+  camera: Camera | null,
+): Promise<void> {
+  if (!scene || !camera) return
+  await renderer.init() // caches its own promise, so this is a no-op once initialized
+  renderer.render(scene, camera)
+}
+
 // Capture a canvas as a PNG Blob at the given DPI.
-// WebGL canvases temporarily adjust renderer pixel ratio; plain 2D canvases are
+// GPU canvases temporarily adjust renderer pixel ratio; plain 2D canvases are
 // drawn into a scaled offscreen canvas.
 // Returns data directly (no browser download), suitable for programmatic capture
 // in test suites, server-side rendering, or Python widget integration via anywidget.
@@ -50,7 +62,7 @@ export async function canvas_to_png_blob(
   const renderer = renderer_registry.get(canvas)
 
   if (resolution_multiplier <= 1.1) {
-    if (renderer && scene && camera) renderer.render(scene, camera)
+    if (renderer) await render_for_capture(renderer, scene, camera)
     return canvas_to_blob(canvas, `Failed to generate PNG - canvas may be empty`)
   }
 
@@ -75,7 +87,7 @@ export async function canvas_to_png_blob(
   try {
     renderer.setPixelRatio(resolution_multiplier)
     renderer.setSize(orig_size.width, orig_size.height, false)
-    if (scene && camera) renderer.render(scene, camera)
+    await render_for_capture(renderer, scene, camera)
     return await canvas_to_blob(canvas, `Failed to generate high-resolution PNG`)
   } finally {
     restore()
@@ -408,6 +420,9 @@ export async function export_trajectory_video(
     throw new Error(`WebM video recording not supported in this browser`)
 
   const renderer = renderer_registry.get(canvas)
+  // Recording captures the canvas stream while Threlte drives frames, but resizing the
+  // renderer below touches GPU resources, so make sure the device exists first.
+  if (renderer) await renderer.init()
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined

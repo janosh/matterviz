@@ -6,7 +6,7 @@
   import type { Vec3 } from '$lib/math'
   import { T, useTask, useThrelte } from '@threlte/core'
   import type { Snippet } from 'svelte'
-  import { Group } from 'three'
+  import { Group } from 'three/webgpu'
   import { type LabelPlacement, LabelProjector } from './atom-label-placement'
 
   type SiteLabelEntry = {

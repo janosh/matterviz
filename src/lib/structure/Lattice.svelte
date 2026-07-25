@@ -8,7 +8,7 @@
   import Arrow from './Arrow.svelte'
   import Cylinder from './Cylinder.svelte'
   import { T } from '@threlte/core'
-  import { BoxGeometry, EdgesGeometry, Matrix4, Vector3 } from 'three'
+  import { BoxGeometry, EdgesGeometry, Matrix4, Vector3 } from 'three/webgpu'
 
   let {
     matrix = undefined,

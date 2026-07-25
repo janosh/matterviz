@@ -8,6 +8,7 @@
   import Icon from '$lib/Icon.svelte'
   import * as io from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
+  import { webgpu_available } from '$lib/scene'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
@@ -58,7 +59,7 @@
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
@@ -985,8 +986,14 @@
     viewer_active = hovered || focused
   })
   // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
-  // OrbitControls/Gizmo and resets camera rotation. Visibility is CSS-gated by `gizmo-visible`.
+  // OrbitControls/Gizmo and resets camera rotation. Reveal it with the gizmo's own `visible`
+  // flag instead (it draws inside the canvas, so CSS can't gate it).
   let scene_gizmo = $derived(scene_props.gizmo ?? scene_props.show_gizmo)
+  let scene_gizmo_props = $derived(
+    scene_gizmo
+      ? { ...(typeof scene_gizmo === `object` ? scene_gizmo : {}), visible: viewer_active }
+      : scene_gizmo,
+  )
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
   ])
@@ -1195,7 +1202,7 @@
     structure: internal_displayed_structure,
     base_structure: cell_transformed_structure,
     scene_props,
-    gizmo: scene_gizmo,
+    gizmo: scene_gizmo_props,
     lattice_props,
     volumetric_data,
     volume_scaling,
@@ -2195,8 +2202,8 @@
         bind:settings={slice_settings}
         bind:canvas={slice_canvas}
       />
-      <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
-    {:else if typeof WebGLRenderingContext !== `undefined`}
+      <!-- prevent from rendering in SSR and the vitest runner, where there's no GPU adapter -->
+    {:else if webgpu_available()}
       <div class:multi={is_multi_view_active} class="viewport-stage">
         {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
         {#if is_multi_view_active}
@@ -2279,11 +2286,6 @@
   .structure :global(canvas) {
     background: transparent;
     cursor: var(--canvas-cursor, default);
-  }
-  .structure:not(.gizmo-visible) :global(.responsive-gizmo) {
-    opacity: 0;
-    pointer-events: none;
-    visibility: hidden;
   }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),

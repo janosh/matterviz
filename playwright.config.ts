@@ -12,13 +12,19 @@ export default {
   },
   use: {
     launchOptions: {
-      // Headless Chromium intermittently fails WebGL context creation on our CI/dev hosts
-      // (ANGLE/SwiftShader error: "Error creating WebGL context"). When that happens,
-      // 3D test pages can throw runtime errors and downstream UI assertions become flaky
-      // (e.g. controls-pane state not updating in /test/structure). These flags force a
-      // stable software GL path via SwiftShader+ANGLE so Playwright sees deterministic
-      // rendering and interaction behavior across environments.
-      args: [`--enable-unsafe-swiftshader`, `--use-angle=swiftshader`, `--use-gl=angle`],
+      // Headless Chromium exposes navigator.gpu (pages are served over localhost, a secure
+      // context) but hands out no adapter unless WebGPU is explicitly enabled with a
+      // software adapter. Without these flags WebGPURenderer silently falls back to its
+      // WebGL2 backend, which both hides regressions in the backend we actually ship and
+      // breaks canvas pixel readback: a WebGL drawing buffer is cleared after compositing,
+      // whereas three configures the WebGPU canvas with COPY_SRC so drawImage/toBlob work.
+      // --enable-unsafe-swiftshader stays for the 2D/WebGL canvases elsewhere in the suite.
+      args: [
+        `--enable-unsafe-webgpu`,
+        `--enable-features=Vulkan`,
+        `--use-webgpu-adapter=swiftshader`,
+        `--enable-unsafe-swiftshader`,
+      ],
     },
   },
   // CI runners have 4 vCPUs and software WebGL (SwiftShader) is CPU-bound, so oversubscribing

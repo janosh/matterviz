@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 describe(`build_gizmo_props`, () => {
   test(`shared axis defaults`, () => {
     const props = build_gizmo_props(true) as Record<string, unknown>
-    expect(props.className).toBe(`responsive-gizmo`)
+    expect(props.background).toEqual({ enabled: false })
     expect(props.offset).toEqual({ left: 5, bottom: 5 })
     // negative axes render denser than positive ones
     const nx = props.nx as { opacity: number; hover: { opacity: number } }

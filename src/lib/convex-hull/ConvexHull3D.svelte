@@ -18,6 +18,7 @@
   import { format_num } from '$lib/labels'
   import { to_radians, type Vec2, type Vec3 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
+  import { create_renderer, Gizmo, webgpu_available } from '$lib/scene'
   import {
     centered_rect,
     pad_rect,
@@ -31,7 +32,7 @@
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { ticks } from 'd3-array'
-  import { PerspectiveCamera, WebGLRenderer } from 'three'
+  import { PerspectiveCamera } from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import {
     get_ternary_3d_coordinates,
@@ -45,7 +46,7 @@
   import GasPressureControls from './GasPressureControls.svelte'
   import * as helpers from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
-  import type { BaseConvexHullProps, Hull3DProps } from './index'
+  import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
   import TemperatureSlider from './TemperatureSlider.svelte'
   import * as thermo from './thermodynamics'
@@ -296,19 +297,21 @@
     typeof gizmo === `object` && gizmo?.placement ? gizmo.placement : `top-right`,
   )
 
-  // Merge constant axis options with consumer overrides (exclude our custom placement)
+  // Merge constant axis options with consumer overrides (exclude our custom placement, which
+  // positions the wrapper div). The gizmo gets its own canvas here, so it fills it.
   const gizmo_props = $derived.by(() => {
-    if (typeof gizmo !== `object` || !gizmo) {
-      return { background: { enabled: false }, size: 80, ...gizmo_axis_options }
-    }
-    const { placement: _, ...threlte_opts } = gizmo
-    return {
+    const base = {
       background: { enabled: false },
-      size: 80,
       ...gizmo_axis_options,
-      ...threlte_opts,
+      ...(typeof gizmo === `object` && gizmo ? omit_placement(gizmo) : {}),
     }
+    return { ...base, placement: `fill` as const }
   })
+
+  const omit_placement = ({
+    placement: _placement,
+    ...without_placement
+  }: ConvexHullGizmoOptions) => without_placement
 
   // Shared canvas-interaction scaffold (mouse/keyboard handlers, hover/drag/popup
   // state, canvas sizing, render scheduler). Rotation math + keydown actions stay local.
@@ -1105,12 +1108,9 @@
   />
 
   <!-- Orientation gizmo (configurable placement, default top-right) -->
-  {#if gizmo && typeof WebGLRenderingContext !== `undefined`}
+  {#if gizmo && webgpu_available()}
     <div class="gizmo-wrapper {controls_config.class}" data-placement={gizmo_placement}>
-      <Canvas
-        createRenderer={(cvs: HTMLCanvasElement) =>
-          new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
-      >
+      <Canvas createRenderer={create_renderer}>
         <T.PerspectiveCamera
           makeDefault
           bind:ref={gizmo_cam_ref}
@@ -1124,7 +1124,7 @@
             enableZoom={false}
             enablePan={false}
           >
-            <extras.Gizmo
+            <Gizmo
               {...gizmo_props}
               onstart={() => (gizmo_active = true)}
               onchange={sync_gizmo_to_camera}

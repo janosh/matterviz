@@ -18,16 +18,15 @@
     Surface3DConfig,
   } from '$lib/plot/core/types'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { bind_renderer } from '$lib/scene'
+  import { bind_renderer, Gizmo, type GizmoOptions } from '$lib/scene'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
   import { type ComponentProps, onDestroy, type Snippet, untrack } from 'svelte'
-  import type { Camera, Scene } from 'three'
-  import * as THREE from 'three'
-  import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+  import type { Camera, Scene } from 'three/webgpu'
+  import * as THREE from 'three/webgpu'
+  import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
   import { get_series_color } from '$lib/plot/core/data-transform'
   import { normalize_to_scene } from '$lib/plot/core/reference-line'
   import ReferenceLine3D from '$lib/plot/core/components/ReferenceLine3D.svelte'
@@ -98,7 +97,7 @@
     ambient_light?: number
     directional_light?: number
     sphere_segments?: number
-    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
+    gizmo?: boolean | GizmoOptions
     hovered_point?: InternalPoint3D<Metadata> | null
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
@@ -329,7 +328,7 @@
   type SeriesLineData = SeriesLineInput & {
     line2: Line2
     geometry: LineGeometry
-    material: LineMaterial
+    material: THREE.Line2NodeMaterial
   }
 
   // Per-series fat-line inputs (ordered positions + resolved stroke style) as a derived so
@@ -386,16 +385,15 @@
         // Create fat line geometry (LineGeometry for Line2)
         const geometry = new LineGeometry()
         geometry.setPositions(input.positions)
-        // Create LineMaterial for fat lines (linewidth is in pixels when resolution
-        // is set). Use placeholder resolution; the separate resolution effect updates it
-        const material = new LineMaterial({
+        // Node material for fat lines; it reads screen size from the viewport internally,
+        // so linewidth is in pixels without any resolution uniform to maintain.
+        const material = new THREE.Line2NodeMaterial({
           color: new THREE.Color(input.color).getHex(),
           linewidth: input.width, // Width in pixels
           dashed: input.dashed,
-          dashScale: input.dashed ? 2 : 1,
+          scale: input.dashed ? 2 : 1, // node materials name the dash scale `scale`
           dashSize: 0.1,
           gapSize: 0.05,
-          resolution: new THREE.Vector2(1, 1),
         })
         const line2 = new Line2(geometry, material)
         line2.computeLineDistances()
@@ -412,15 +410,6 @@
         next_lines.every((line, idx) => line === series_lines[idx])
       if (!unchanged) series_lines = next_lines
     })
-  })
-
-  // Update LineMaterial resolution when canvas size changes
-  $effect(() => {
-    const canvas_width = width || 1
-    const canvas_height = height || 1
-    for (const line_data of series_lines) {
-      line_data.material.resolution.set(canvas_width, canvas_height)
-    }
   })
 
   // Cleanup on component destroy
@@ -683,7 +672,7 @@
 {#if camera_projection === `perspective`}
   <T.PerspectiveCamera makeDefault position={camera_position} {fov} near={0.1} far={1000}>
     <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo_props}<extras.Gizmo {...gizmo_props} />{/if}
+      {#if gizmo_props}<Gizmo {...gizmo_props} />{/if}
     </extras.OrbitControls>
   </T.PerspectiveCamera>
 {:else}
@@ -695,7 +684,7 @@
     far={1000}
   >
     <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo_props}<extras.Gizmo {...gizmo_props} />{/if}
+      {#if gizmo_props}<Gizmo {...gizmo_props} />{/if}
     </extras.OrbitControls>
   </T.OrthographicCamera>
 {/if}

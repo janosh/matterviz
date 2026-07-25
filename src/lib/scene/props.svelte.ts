@@ -1,9 +1,8 @@
 import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
-import type { Gizmo } from '@threlte/extras'
-import type { ComponentProps } from 'svelte'
-import type { Camera, Scene, Vector3 } from 'three'
+import type { Camera, Scene, Vector3 } from 'three/webgpu'
+import type { GizmoOptions } from './gizmo'
 
 // Reactive page visibility — pause auto-rotation while the tab/window is
 // hidden. Desktop embedders like Tauri often disable background throttling,
@@ -35,7 +34,7 @@ export type SceneControlProps = {
   initial_zoom?: number // initial orthographic camera zoom
   ambient_light?: number
   directional_light?: number
-  gizmo?: boolean | ComponentProps<typeof Gizmo>
+  gizmo?: boolean | GizmoOptions
   auto_rotate?: number // speed; 0 disables auto-rotation
   scene?: Scene // bindable: Threlte scene for external use (e.g. export pane)
   camera?: Camera // bindable: active camera for external use
@@ -46,10 +45,9 @@ export type SceneControlProps = {
 // differ by design (no zoom-to-cursor / ortho zoom-doubling / camera-moving tracking).
 
 // Shared Gizmo config: colored +/- axis handles, transparent background, responsive sizing. An object `gizmo` overrides the per-axis defaults.
-export function build_gizmo_props(gizmo: boolean | ComponentProps<typeof Gizmo>) {
+export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
   return {
     background: { enabled: false },
-    className: `responsive-gizmo`,
     ...Object.fromEntries(
       [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
         axis,

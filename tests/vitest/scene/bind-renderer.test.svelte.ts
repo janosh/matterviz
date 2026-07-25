@@ -3,7 +3,7 @@ import { bind_renderer } from '$lib/scene/bind-renderer.svelte'
 import { currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
 import { flushSync } from 'svelte'
-import type { Camera, Scene, WebGLRenderer } from 'three'
+import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { describe, expect, test, vi } from 'vitest'
 
 // Stub only useThrelte and keep the real @threlte/core exports - using the real
@@ -12,7 +12,7 @@ import { describe, expect, test, vi } from 'vitest'
 let fake_threlte: {
   scene: Scene
   camera: ReturnType<typeof currentWritable<Camera>>
-  renderer?: WebGLRenderer
+  renderer?: WebGPURenderer
 }
 vi.mock(`@threlte/core`, async (original) => ({
   ...(await original<typeof threlte_core>()),
@@ -50,7 +50,7 @@ describe(`bind_renderer`, () => {
 
   test(`registers the renderer and scene for canvas lookup`, () => {
     const dom_element = document.createElement(`canvas`)
-    const renderer = { domElement: dom_element } as unknown as WebGLRenderer
+    const renderer = { domElement: dom_element } as unknown as WebGPURenderer
     fake_threlte = { scene: fake_scene, camera: currentWritable(fake_camera(1)), renderer }
     const on_renderer = vi.fn()
 

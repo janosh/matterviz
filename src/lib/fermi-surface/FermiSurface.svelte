@@ -9,6 +9,7 @@
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import { PlotTooltip } from '$lib/plot'
+  import { create_renderer, webgpu_available } from '$lib/scene'
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
@@ -16,7 +17,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Scene } from 'three/webgpu'
   import { detect_irreducible_bz, extract_fermi_surface } from './compute'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
@@ -423,8 +424,12 @@
       {/if}
     </ViewerChrome>
 
-    {#if typeof WebGLRenderingContext !== `undefined`}
-      <Canvas renderMode="on-demand" dpr={Math.min(2, window.devicePixelRatio)}>
+    {#if webgpu_available()}
+      <Canvas
+        createRenderer={create_renderer}
+        renderMode="on-demand"
+        dpr={Math.min(2, window.devicePixelRatio)}
+      >
         <FermiSurfaceScene
           {fermi_data}
           {bz_data}

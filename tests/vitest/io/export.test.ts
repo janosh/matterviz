@@ -11,8 +11,8 @@ import {
   svg_to_svg_string,
 } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
-import type { Camera, Scene, WebGLRenderer } from 'three'
-import { Vector2 } from 'three'
+import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
+import { Vector2 } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
@@ -28,7 +28,10 @@ const make_mock_canvas = (toBlob_impl?: (cb: BlobCallback) => void): HTMLCanvasE
     height: 600,
   }) as unknown as HTMLCanvasElement
 
-const make_mock_renderer = (): Partial<WebGLRenderer> => ({
+const make_mock_renderer = (): Partial<WebGPURenderer> => ({
+  // Capture paths await init() before rendering, since WebGPURenderer.render() throws
+  // while the GPU device is still being acquired.
+  init: vi.fn().mockResolvedValue(undefined),
   render: vi.fn(),
   getPixelRatio: vi.fn().mockReturnValue(1),
   setPixelRatio: vi.fn(),
@@ -38,11 +41,11 @@ const make_mock_renderer = (): Partial<WebGLRenderer> => ({
 
 function make_canvas_with_renderer(toBlob_impl?: (cb: BlobCallback) => void): {
   canvas: HTMLCanvasElement
-  renderer: Partial<WebGLRenderer>
+  renderer: Partial<WebGPURenderer>
 } {
   const renderer = make_mock_renderer()
   const canvas = make_mock_canvas(toBlob_impl)
-  renderer_registry.set(canvas, renderer as WebGLRenderer)
+  renderer_registry.set(canvas, renderer as WebGPURenderer)
   return { canvas, renderer }
 }
 

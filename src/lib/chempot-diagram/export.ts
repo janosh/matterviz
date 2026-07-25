@@ -2,7 +2,7 @@
 import { dpi_to_scale } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
 import { escape_html as xml_escape } from '$lib/utils'
-import * as THREE from 'three'
+import * as THREE from 'three/webgpu'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
 export const get_json_string = (payload: unknown): string => JSON.stringify(payload, null, 2)

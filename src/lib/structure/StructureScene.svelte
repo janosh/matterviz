@@ -52,8 +52,8 @@
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { BufferAttribute, BufferGeometry, Color, DoubleSide, Vector3 } from 'three'
-  import type { Mesh, Object3D } from 'three'
+  import { BufferAttribute, BufferGeometry, Color, DoubleSide, Vector3 } from 'three/webgpu'
+  import type { Mesh, Object3D } from 'three/webgpu'
   import Bond from './Bond.svelte'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
