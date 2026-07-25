@@ -11,34 +11,38 @@ import {
 const TEST_URL = `/test/scatter-plot-3d`
 const CONTAINER_SELECTOR = `#test-scatter-3d`
 
+// Opens the controls pane and asserts it got there, so callers that only need the pane don't
+// repeat the toggle dance — and the one test that is *about* opening it can just call this.
+async function open_controls_pane(page: Page): Promise<Locator> {
+  const container = page.locator(CONTAINER_SELECTOR)
+  await container.hover()
+  const toggle = container.locator(`button.pane-toggle`)
+  await expect(toggle).toBeVisible({ timeout: 5000 })
+  await toggle.click()
+  const pane = container.locator(`.draggable-pane`)
+  await expect(pane).toBeVisible({ timeout: 5000 })
+  return pane
+}
+
 test.describe(`ScatterPlot3D`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 
+  // Both helpers assert: wait_for_3d_canvas requires a visible, non-zero-size canvas and
+  // wait_for_canvas_rendered requires it to have actually painted.
   test(`renders 3D canvas with content`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
-    await expect(canvas).toBeVisible()
+    await wait_for_canvas_rendered(await wait_for_3d_canvas(page, CONTAINER_SELECTOR))
   })
 
   // Text overlays must not swallow pointer events meant for the canvas below them
-  for (const { selector, prop, expected } of [
-    { selector: `.axis-label`, prop: `pointerEvents`, expected: `none` },
-    { selector: `.tick-label`, prop: `pointerEvents`, expected: `none` },
-  ] as const) {
-    test(`${selector} has ${prop} ${expected}`, async ({ page }) => {
+  for (const selector of [`.axis-label`, `.tick-label`]) {
+    test(`${selector} does not intercept pointer events`, async ({ page }) => {
       await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-      const el = page.locator(`${CONTAINER_SELECTOR} ${selector}`).first()
-      await expect(el).toBeVisible({ timeout: get_canvas_timeout() })
-
-      const value = await el.evaluate(
-        (node, css_prop) =>
-          globalThis.getComputedStyle(node)[css_prop as keyof CSSStyleDeclaration],
-        prop,
-      )
-      expect(value).toBe(expected)
+      const label = page.locator(`${CONTAINER_SELECTOR} ${selector}`).first()
+      await expect(label).toBeVisible({ timeout: get_canvas_timeout() })
+      await expect(label).toHaveCSS(`pointer-events`, `none`)
     })
   }
 
@@ -94,30 +98,11 @@ test.describe(`ScatterPlot3D`, () => {
 
   test(`controls pane opens on toggle click`, async ({ page }) => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const container = page.locator(CONTAINER_SELECTOR)
-    await container.hover()
-
-    const toggle = container.locator(`button.pane-toggle`)
-    await expect(toggle).toBeVisible({ timeout: 5000 })
-    await toggle.click()
-
-    await expect(container.locator(`.draggable-pane`)).toBeVisible({ timeout: 5000 })
+    await open_controls_pane(page) // asserts the toggle appears and the pane opens
   })
 })
 
 test.describe(`ScatterPlot3D Projections`, () => {
-  // Helper to open controls pane
-  async function open_controls_pane(page: Page) {
-    const container = page.locator(CONTAINER_SELECTOR)
-    await container.hover()
-    const toggle = container.locator(`button.pane-toggle`)
-    await expect(toggle).toBeVisible({ timeout: 5000 })
-    await toggle.click()
-    const pane = container.locator(`.draggable-pane`)
-    await expect(pane).toBeVisible({ timeout: 5000 })
-    return pane
-  }
-
   // Helper to get projection checkbox
   const get_projection_checkbox = (pane: Locator, plane: string) =>
     pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
@@ -148,17 +133,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
       await expect_canvas_changed(canvas, initial, get_canvas_timeout())
     })
   }
-
-  test(`multiple projections can be enabled simultaneously`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const pane = await open_controls_pane(page)
-
-    for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = get_projection_checkbox(pane, plane)
-      await checkbox.click()
-      await expect(checkbox).toBeChecked()
-    }
-  })
 
   // Parameterized slider default and range tests
   for (const { name, label, default_val, min, max } of [
@@ -227,9 +201,12 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     const pane = await open_controls_pane(page)
 
-    // Enable all projections and change sliders
+    // Enable all projections and change sliders. Asserting each stays checked as we go also
+    // covers that the three planes are independent and can be on simultaneously.
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      await get_projection_checkbox(pane, plane).click()
+      const checkbox = get_projection_checkbox(pane, plane)
+      await checkbox.click()
+      await expect(checkbox).toBeChecked()
     }
     const opacity_row = get_slider_row(pane, `Opacity`)
     const size_row = get_slider_row(pane, `Size`)
