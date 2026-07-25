@@ -1,10 +1,5 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import {
-  calc_lattice_params,
-  create_lattice_converters,
-  euclidean_dist,
-  pbc_dist,
-} from '$lib/math'
+import { calc_lattice_params, create_lattice_converters, pbc_dist } from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import type { RdfOptions, RdfPattern } from './index'
@@ -74,30 +69,131 @@ function build_rdf_neighbor_sites(
   return { sites, dist_pbc, dist_lattice }
 }
 
-// Calculate radial distribution function
-export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): RdfPattern {
-  const {
-    center_species,
-    neighbor_species,
-    cutoff = 15,
-    n_bins = 75,
-    auto_expand = true,
-  } = options
-  const pbc = options.pbc ?? structure.lattice?.pbc ?? [true, true, true]
-  if (cutoff <= 0 || n_bins <= 0) {
-    throw new Error(`cutoff and n_bins must be positive`)
-  }
+type NeighborCloud = ReturnType<typeof build_rdf_neighbor_sites>
 
+// Shared validation + expansion. The cloud depends only on the structure, pbc, cutoff and
+// auto_expand — never on the species pair — so all-pair callers build it once.
+function prepare_rdf(structure: Crystal, options: RdfOptions) {
+  const { cutoff = 15, n_bins = 75, auto_expand = true } = options
+  const pbc = options.pbc ?? structure.lattice?.pbc ?? [true, true, true]
+  if (cutoff <= 0 || n_bins <= 0) throw new Error(`cutoff and n_bins must be positive`)
   if (!structure.lattice?.matrix) {
     throw new Error(`Crystal must have a lattice for RDF calculation`)
   }
+  return {
+    cutoff,
+    n_bins,
+    cloud: build_rdf_neighbor_sites(structure, pbc, cutoff, auto_expand),
+  }
+}
 
-  const {
-    sites: neighbor_sites,
-    dist_pbc,
-    dist_lattice,
-  } = build_rdf_neighbor_sites(structure, pbc, cutoff, auto_expand)
+// Below this many neighbors the bookkeeping costs more than the pairs it skips.
+const CELL_LIST_MIN_NEIGHBORS = 512
+// Guard against a huge sparse grid when the cloud spans far more than the cutoff.
+const CELL_LIST_MAX_CELLS = 2_000_000
 
+// Bin distances into `g_r`, weighting each pair by the product of its occupancies.
+// The image cloud spans cutoff + cell diagonal, so at typical cell sizes the overwhelming
+// majority of images sit outside the cutoff. Bucketing neighbors into cutoff-sized cells lets
+// each center scan only the 27 cells around it instead of measuring every image. Collapsing
+// the grid to one cell degenerates to a brute-force scan, which is how small inputs and
+// pathologically sparse clouds are handled without a second copy of the loop.
+// Euclidean only: the PBC path needs minimum-image distances, which don't correspond to raw
+// coordinates — but that path only runs when no cloud was built, so it stays small.
+function accumulate_pairs(
+  centers: Site[],
+  center_occu: Float64Array,
+  neighbors: Site[],
+  neighbor_occu: Float64Array,
+  cutoff: number,
+  bin_size: number,
+  n_bins: number,
+  g_r: number[],
+): void {
+  const count = neighbors.length
+  const pos_x = new Float64Array(count)
+  const pos_y = new Float64Array(count)
+  const pos_z = new Float64Array(count)
+  let [min_x, min_y, min_z] = [Infinity, Infinity, Infinity]
+  let [max_x, max_y, max_z] = [-Infinity, -Infinity, -Infinity]
+  for (let idx = 0; idx < count; idx++) {
+    const [nx, ny, nz] = neighbors[idx].xyz
+    pos_x[idx] = nx
+    pos_y[idx] = ny
+    pos_z[idx] = nz
+    if (nx < min_x) min_x = nx
+    if (ny < min_y) min_y = ny
+    if (nz < min_z) min_z = nz
+    if (nx > max_x) max_x = nx
+    if (ny > max_y) max_y = ny
+    if (nz > max_z) max_z = nz
+  }
+
+  const cutoff_sq = cutoff * cutoff
+  const add_pair = (dist_sq: number, weight: number): void => {
+    if (dist_sq <= 0 || dist_sq >= cutoff_sq) return
+    g_r[Math.min(Math.floor(Math.sqrt(dist_sq) / bin_size), n_bins - 1)] += weight
+  }
+
+  const span = (min: number, max: number) => Math.max(1, Math.floor((max - min) / cutoff) + 1)
+  const spans = [span(min_x, max_x), span(min_y, max_y), span(min_z, max_z)]
+  const skip_grid =
+    count < CELL_LIST_MIN_NEIGHBORS || spans[0] * spans[1] * spans[2] > CELL_LIST_MAX_CELLS
+  const [dim_x, dim_y, dim_z] = skip_grid ? [1, 1, 1] : spans
+  const n_cells = dim_x * dim_y * dim_z
+
+  // With dim 1 on an axis this always yields 0, so the single-cell case scans everything.
+  const axis_bin = (value: number, min: number, dim: number): number =>
+    Math.min(dim - 1, Math.max(0, Math.floor((value - min) / cutoff)))
+
+  // Counting sort neighbors into cells: cell_start holds each cell's slice of `order`.
+  const cell_start = new Int32Array(n_cells + 1)
+  const cell_of = new Int32Array(count)
+  for (let idx = 0; idx < count; idx++) {
+    const cell =
+      (axis_bin(pos_z[idx], min_z, dim_z) * dim_y + axis_bin(pos_y[idx], min_y, dim_y)) *
+        dim_x +
+      axis_bin(pos_x[idx], min_x, dim_x)
+    cell_of[idx] = cell
+    cell_start[cell + 1]++
+  }
+  for (let cell = 0; cell < n_cells; cell++) cell_start[cell + 1] += cell_start[cell]
+  const cursor = cell_start.slice(0, n_cells)
+  const order = new Int32Array(count)
+  for (let idx = 0; idx < count; idx++) order[cursor[cell_of[idx]]++] = idx
+
+  for (let ci = 0; ci < centers.length; ci++) {
+    const [cx, cy, cz] = centers[ci].xyz
+    const center_weight = center_occu[ci]
+    const bin_x = axis_bin(cx, min_x, dim_x)
+    const bin_y = axis_bin(cy, min_y, dim_y)
+    const bin_z = axis_bin(cz, min_z, dim_z)
+    for (let iz = Math.max(0, bin_z - 1); iz <= Math.min(dim_z - 1, bin_z + 1); iz++) {
+      for (let iy = Math.max(0, bin_y - 1); iy <= Math.min(dim_y - 1, bin_y + 1); iy++) {
+        const row = (iz * dim_y + iy) * dim_x
+        const from = cell_start[row + Math.max(0, bin_x - 1)]
+        const to = cell_start[row + Math.min(dim_x - 1, bin_x + 1) + 1]
+        for (let slot = from; slot < to; slot++) {
+          const ni = order[slot]
+          const dx = cx - pos_x[ni]
+          const dy = cy - pos_y[ni]
+          const dz = cz - pos_z[ni]
+          add_pair(dx * dx + dy * dy + dz * dz, center_weight * neighbor_occu[ni])
+        }
+      }
+    }
+  }
+}
+
+function rdf_from_cloud(
+  structure: Crystal,
+  cloud: NeighborCloud,
+  cutoff: number,
+  n_bins: number,
+  center_species: string | undefined,
+  neighbor_species: string | undefined,
+): RdfPattern {
+  const { sites: neighbor_sites, dist_pbc, dist_lattice } = cloud
   const bin_size = cutoff / n_bins
   const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)
   const g_r = Array(n_bins).fill(0)
@@ -114,21 +210,39 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
       : undefined
   if (centers.length === 0 || neighbors.length === 0) return { r, g_r, element_pair }
 
-  const use_pbc = dist_pbc.some(Boolean)
-  const converters = use_pbc ? create_lattice_converters(dist_lattice) : undefined
+  // Resolve occupancies once: get_occu scans a site's species list, which is far too costly
+  // to repeat inside a loop running over every center-neighbor pair.
+  const center_occu = Float64Array.from(centers, (site) => get_occu(site, center_species))
+  const neighbor_occu = Float64Array.from(neighbors, (s) => get_occu(s, neighbor_species))
 
-  for (const center of centers) {
-    for (const neighbor of neighbors) {
-      const dist = use_pbc
-        ? pbc_dist(center.xyz, neighbor.xyz, dist_lattice, converters, dist_pbc)
-        : euclidean_dist(center.xyz, neighbor.xyz)
-
-      if (dist > 0 && dist < cutoff) {
-        // Weight by product of occupancies for the species pair
-        const weight = get_occu(center, center_species) * get_occu(neighbor, neighbor_species)
-        g_r[Math.min(Math.floor(dist / bin_size), n_bins - 1)] += weight
+  if (dist_pbc.some(Boolean)) {
+    const converters = create_lattice_converters(dist_lattice)
+    for (let ci = 0; ci < centers.length; ci++) {
+      for (let ni = 0; ni < neighbors.length; ni++) {
+        const dist = pbc_dist(
+          centers[ci].xyz,
+          neighbors[ni].xyz,
+          dist_lattice,
+          converters,
+          dist_pbc,
+        )
+        if (dist > 0 && dist < cutoff) {
+          g_r[Math.min(Math.floor(dist / bin_size), n_bins - 1)] +=
+            center_occu[ci] * neighbor_occu[ni]
+        }
       }
     }
+  } else {
+    accumulate_pairs(
+      centers,
+      center_occu,
+      neighbors,
+      neighbor_occu,
+      cutoff,
+      bin_size,
+      n_bins,
+      g_r,
+    )
   }
 
   // Ideal-gas normalization with original-cell density. Do not subtract self-pairs:
@@ -147,6 +261,19 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   return { r, g_r, element_pair }
 }
 
+// Calculate radial distribution function
+export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): RdfPattern {
+  const { cutoff, n_bins, cloud } = prepare_rdf(structure, options)
+  return rdf_from_cloud(
+    structure,
+    cloud,
+    cutoff,
+    n_bins,
+    options.center_species,
+    options.neighbor_species,
+  )
+}
+
 // Calculate RDF for all element pairs
 export function calculate_all_pair_rdfs(
   structure: Crystal,
@@ -157,14 +284,11 @@ export function calculate_all_pair_rdfs(
     ...new Set(structure.sites.flatMap((site) => site.species.map((spec) => spec.element))),
   ].toSorted()
 
-  // Forward options unchanged (preserves caller's pbc); each calculate_rdf expands itself
+  // Expand once and reuse: the image cloud is species-independent, so rebuilding it per
+  // element pair repeated the most expensive step O(pairs) times for identical output.
+  const { cutoff, n_bins, cloud } = prepare_rdf(structure, options)
+
   return elems.flatMap((el1, idx1) =>
-    elems.slice(idx1).map((el2) =>
-      calculate_rdf(structure, {
-        ...options,
-        center_species: el1,
-        neighbor_species: el2,
-      }),
-    ),
+    elems.slice(idx1).map((el2) => rdf_from_cloud(structure, cloud, cutoff, n_bins, el1, el2)),
   )
 }

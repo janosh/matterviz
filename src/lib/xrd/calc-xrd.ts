@@ -177,12 +177,16 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     min_radius,
   )
 
-  // Flatten species with occupancies; gather coeffs, frac coords, occu, DW factors.
-  type ScatteringCoeffs = { a: number[]; b: number[]; z: number }
-  const coeffs: ScatteringCoeffs[] = []
+  // Flatten species with occupancies. Scattering factors and Debye-Waller corrections depend
+  // only on the element, so keep one entry per distinct element and have each site-species
+  // index into it — evaluating the 9-term exponential sum per atom instead repeats identical
+  // work once per site (216x over on a 216-atom two-element cell).
+  type ScatteringCoeffs = { a: number[]; b: number[]; z: number; dw: number }
+  const element_coeffs: ScatteringCoeffs[] = []
+  const element_ids: number[] = [] // per site-species -> index into element_coeffs
+  const element_index = new Map<string, number>()
   const frac_coords: math.Vec3[] = []
   const occus: number[] = []
-  const dw_factors: number[] = []
 
   const debye_waller_factors = options.debye_waller_factors ?? {}
 
@@ -192,22 +196,34 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
       if (ELEMENT_Z[element_symbol] === undefined) {
         throw new Error(`Unknown atomic number for element ${element_symbol}`)
       }
-      const raw_coeff = (ATOMIC_SCATTERING_PARAMS as ScatteringParamsRecord)[element_symbol]
-      if (!raw_coeff) {
-        throw new Error(
-          `No atomic scattering coefficients for ${element_symbol}. Extend ATOMIC_SCATTERING_PARAMS.`,
-        )
+      let element_id = element_index.get(element_symbol)
+      if (element_id === undefined) {
+        const raw_coeff = (ATOMIC_SCATTERING_PARAMS as ScatteringParamsRecord)[element_symbol]
+        if (!raw_coeff) {
+          throw new Error(
+            `No atomic scattering coefficients for ${element_symbol}. Extend ATOMIC_SCATTERING_PARAMS.`,
+          )
+        }
+        element_id = element_coeffs.length
+        element_index.set(element_symbol, element_id)
+        element_coeffs.push({
+          a: raw_coeff.map((row) => row[0]),
+          b: raw_coeff.map((row) => row[1]),
+          z: ELEMENT_Z[element_symbol],
+          dw: debye_waller_factors[element_symbol] ?? 0,
+        })
       }
-      coeffs.push({
-        a: raw_coeff.map((row) => row[0]),
-        b: raw_coeff.map((row) => row[1]),
-        z: ELEMENT_Z[element_symbol],
-      })
+      element_ids.push(element_id)
       frac_coords.push(site.abc)
       occus.push(species.occu)
-      dw_factors.push(debye_waller_factors[element_symbol] ?? 0)
     }
   }
+
+  // Scratch reused across reciprocal points to keep the loop allocation-free
+  const n_species = element_ids.length
+  const n_elements = element_coeffs.length
+  const f_by_element = new Float64Array(n_elements)
+  const dw_by_element = new Float64Array(n_elements)
 
   // Accumulate peaks by merging two_thetas within tolerance
   const peaks = new Map<number, { intensity: number; hkls: Hkl[]; d_hkl: number }>()
@@ -225,34 +241,31 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     const sin_theta_over_lambda = g_norm / 2
     const sin_theta_over_lambda_sq = sin_theta_over_lambda * sin_theta_over_lambda
 
-    // g.r for all fractional coords
-    const g_dot_r_all = frac_coords.map((frac_coord) => math.dot(frac_coord, hkl))
+    // Atomic scattering factors: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²) (pymatgen fitted params),
+    // plus the Debye-Waller correction. Both are per-element, so this runs once per distinct
+    // element rather than once per atom.
+    for (let elem = 0; elem < n_elements; elem++) {
+      const { a: a_arr, b: b_arr, z: atomic_number, dw } = element_coeffs[elem]
+      let sum_terms = 0
+      for (let term = 0; term < a_arr.length; term++) {
+        sum_terms += a_arr[term] * Math.exp(-b_arr[term] * sin_theta_over_lambda_sq)
+      }
+      f_by_element[elem] = atomic_number - 41.78214 * sin_theta_over_lambda_sq * sum_terms
+      dw_by_element[elem] = Math.exp(-dw * sin_theta_over_lambda_sq)
+    }
 
-    // Atomic scattering factors: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²) (pymatgen fitted params)
-    const f_scattering: number[] = coeffs.map(({ a: a_arr, b: b_arr, z: atomic_number }) => {
-      const sum_terms = a_arr.reduce(
-        (sum, a_i, term_idx) =>
-          sum + a_i * Math.exp(-b_arr[term_idx] * sin_theta_over_lambda_sq),
-        0,
-      )
-      return atomic_number - 41.78214 * sin_theta_over_lambda_sq * sum_terms
-    })
-
-    const dw_corr: number[] = dw_factors.map((dw_b) =>
-      Math.exp(-dw_b * sin_theta_over_lambda_sq),
-    )
-
-    // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW)
-    const { real: f_real, imag: f_imag } = f_scattering.reduce(
-      (acc, fs, idx) => {
-        const phase = 2 * Math.PI * g_dot_r_all[idx]
-        const weight = fs * occus[idx] * dw_corr[idx]
-        const real = acc.real + weight * Math.cos(phase)
-        const imag = acc.imag + weight * Math.sin(phase)
-        return { real, imag }
-      },
-      { real: 0, imag: 0 },
-    )
+    // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW). Accumulated into scalars in
+    // the original order, so the result is unchanged; the previous reduce allocated a fresh
+    // {real, imag} object per atom per reciprocal point.
+    let f_real = 0
+    let f_imag = 0
+    for (let idx = 0; idx < n_species; idx++) {
+      const elem = element_ids[idx]
+      const phase = 2 * Math.PI * math.dot(frac_coords[idx], hkl)
+      const weight = f_by_element[elem] * occus[idx] * dw_by_element[elem]
+      f_real += weight * Math.cos(phase)
+      f_imag += weight * Math.sin(phase)
+    }
 
     const sin_theta = Math.sin(theta)
     const cos_theta = Math.cos(theta)
@@ -278,8 +291,12 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
   if (peaks.size === 0) return { x: [], y: [] }
 
-  // Scale intensities so that the max intensity is 100, and filter by scaled tol
-  const max_intensity = Math.max(...Array.from(peaks.values()).map((peak) => peak.intensity))
+  // Scale intensities so that the max intensity is 100, and filter by scaled tol.
+  // Looped rather than spread: Math.max(...) over a large peak list can overflow the stack.
+  let max_intensity = -Infinity
+  for (const peak of peaks.values()) {
+    if (peak.intensity > max_intensity) max_intensity = peak.intensity
+  }
 
   const xs: number[] = []
   const ys: number[] = []

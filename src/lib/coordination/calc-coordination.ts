@@ -1,6 +1,6 @@
 import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { BONDING_STRATEGIES, get_majority_element } from '$lib/structure/bonding'
+import { compute_bonds, get_majority_element } from '$lib/structure/bonding'
 
 export interface CoordinationSite {
   site_idx: number
@@ -35,8 +35,9 @@ export function calc_coordination_nums(
   // but aren't iterated as centers — identical coordination for the originals, faster.
   center_count?: number,
 ): CoordinationData {
-  // Get bonds using the specified strategy
-  const bonds = BONDING_STRATEGIES[strategy](structure, { center_count })
+  // Go through compute_bonds rather than the raw strategy so repeated coordination passes
+  // over the same structure reuse the memoized neighbor search instead of redoing it.
+  const bonds = compute_bonds(structure, strategy, { center_count })
 
   const sites = structure.sites
 
