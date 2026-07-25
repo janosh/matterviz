@@ -33,16 +33,38 @@ function canvas_to_blob(canvas: HTMLCanvasElement, failure_message: string): Pro
   })
 }
 
+const device_timeout_ms = 5000
+
+// Wait for the GPU device, but never indefinitely: an adapter that hands out a device request
+// it never fulfills would otherwise leave every export promise pending forever, so the user
+// gets neither a file nor an error. Returns whether the device came up in time.
+async function device_ready(renderer: WebGPURenderer): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      renderer.init().then(() => true), // caches its own promise, so repeat calls are free
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), device_timeout_ms)
+      }),
+    ])
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // Re-render a GPU canvas so its drawing buffer holds a fresh frame at capture time. Awaits the
 // device because render() throws before init() resolves and this runs outside Threlte's loop.
+// Without a device we skip the re-render and capture whatever the canvas already holds — a
+// stale or empty image still beats an export that never resolves.
 async function render_for_capture(
   renderer: WebGPURenderer,
   scene: Scene | null,
   camera: Camera | null,
 ): Promise<void> {
   if (!scene || !camera) return
-  await renderer.init() // caches its own promise, so this is a no-op once initialized
-  renderer.render(scene, camera)
+  if (await device_ready(renderer)) renderer.render(scene, camera)
 }
 
 // Capture a canvas as a PNG Blob at the given DPI.
@@ -421,7 +443,7 @@ export async function export_trajectory_video(
   const renderer = renderer_registry.get(canvas)
   // Recording captures the canvas stream while Threlte drives frames, but resizing the
   // renderer below touches GPU resources, so make sure the device exists first.
-  if (renderer) await renderer.init()
+  if (renderer) await device_ready(renderer)
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined

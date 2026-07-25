@@ -147,6 +147,21 @@ describe(`canvas_to_png_blob`, () => {
     expect(renderer.render).toHaveBeenCalledWith(scene, camera)
   })
 
+  test(`still resolves when the GPU device never comes up`, async () => {
+    vi.useFakeTimers()
+    try {
+      const { canvas, renderer } = make_canvas_with_renderer()
+      renderer.init = vi.fn().mockReturnValue(new Promise<void>(() => {})) // never settles
+      const pending = canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(await pending).toBeInstanceOf(Blob)
+      expect(renderer.render).not.toHaveBeenCalled() // render() would throw without a device
+      expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1) // still restored
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test(`rejects when toBlob returns null`, async () => {
     const canvas = make_mock_canvas((cb) => cb(null))
     await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Failed to generate PNG`)
