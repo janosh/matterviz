@@ -877,13 +877,15 @@ export function electroneg_ratio(
   // Cs/Fr (2.6 Å) for every structure, but candidate pairs scale with cell volume, so an
   // all-carbon cell paid for a 10.4 Å cell where 3.0 Å suffices. `radii` holds only the
   // elements present, and the pair loop rejects anything beyond (r_a + r_b) * ratio, so the
-  // max over it is an exact bound. Fall back to a positive size when no radius is known —
-  // the pair loop skips zero-radius sites anyway, but the grid still needs to divide by it.
+  // max over it is an exact bound. Fall back to a positive size if the bound degenerates (no
+  // known radius, or a caller-supplied ratio of zero or non-finite): the grid divides by this,
+  // and a zero/NaN cell size buckets every site under one key, quietly reverting to O(N^2).
   let max_radius = 0
   for (const radius of radii) {
     if (radius > max_radius) max_radius = radius
   }
-  const max_cutoff = max_radius > 0 ? max_radius * 2 * max_distance_ratio : 1
+  const bond_reach = max_radius * 2 * max_distance_ratio
+  const max_cutoff = bond_reach > 0 && Number.isFinite(bond_reach) ? bond_reach : 1
   const spatial = setup_spatial_grid(sites, max_cutoff)
 
   // Two-pass approach to ensure symmetry between original and image atoms:

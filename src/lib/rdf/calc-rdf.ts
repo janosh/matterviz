@@ -8,8 +8,6 @@ const get_occu = (site: Crystal[`sites`][number], elem: string | undefined) =>
   elem ? (site.species.find((spec) => spec.element === elem)?.occu ?? 0) : 1
 const has_species = (site: Crystal[`sites`][number], elem: string | undefined) =>
   !elem || site.species.some((spec) => spec.element === elem)
-const sum_occu = (sites: Crystal[`sites`], elem: string | undefined) =>
-  sites.reduce((sum, site) => sum + get_occu(site, elem), 0)
 
 // Symmetric ± lattice images on expanded PBC axes. Extents use reciprocal-axis norms
 // with search radius cutoff + cell diagonal (length-based ceil undercounts skewed cells).
@@ -185,6 +183,29 @@ function accumulate_pairs(
   }
 }
 
+// Sites carrying a species, with that species' occupancy per site resolved up front.
+type SpeciesSubset = { sites: Site[]; occu: Float64Array }
+type SubsetCache = Map<string, SpeciesSubset>
+
+// Selecting a species out of the image cloud walks every site and every site's species list,
+// which costs more than the distance scan itself. An all-pairs run calls this E(E+1)/2 times
+// over only E distinct species, so memoize per species for the duration of that run.
+function species_subset(
+  sites: Site[],
+  species: string | undefined,
+  cache: SubsetCache | undefined,
+): SpeciesSubset {
+  const cached = cache?.get(species ?? ``)
+  if (cached) return cached
+  const filtered = sites.filter((site) => has_species(site, species))
+  const subset = {
+    sites: filtered,
+    occu: Float64Array.from(filtered, (site) => get_occu(site, species)),
+  }
+  cache?.set(species ?? ``, subset)
+  return subset
+}
+
 function rdf_from_cloud(
   structure: Crystal,
   cloud: NeighborCloud,
@@ -192,28 +213,36 @@ function rdf_from_cloud(
   n_bins: number,
   center_species: string | undefined,
   neighbor_species: string | undefined,
+  // Per-run caches keyed by species: one over the original cell, one over the image cloud.
+  cell_cache?: SubsetCache,
+  cloud_cache?: SubsetCache,
 ): RdfPattern {
   const { sites: neighbor_sites, dist_pbc, dist_lattice } = cloud
   const bin_size = cutoff / n_bins
   const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)
   const g_r = Array(n_bins).fill(0)
 
-  // Centers stay in the original cell; neighbor_sites may include periodic images
-  const centers = structure.sites.filter((site) => has_species(site, center_species))
-  const neighbors = neighbor_sites.filter((site) => has_species(site, neighbor_species))
+  // Centers stay in the original cell; neighbor_sites may include periodic images.
+  // Occupancies come resolved, since get_occu scans a site's species list and the pair loop
+  // below would otherwise repeat that for every center-neighbor combination.
+  const { sites: centers, occu: center_occu } = species_subset(
+    structure.sites,
+    center_species,
+    cell_cache,
+  )
+  const { sites: neighbors, occu: neighbor_occu } = species_subset(
+    neighbor_sites,
+    neighbor_species,
+    cloud_cache,
+  )
   // Normalization density uses the original cell (not the image cloud)
-  const norm_neighbors = structure.sites.filter((site) => has_species(site, neighbor_species))
+  const norm_neighbors = species_subset(structure.sites, neighbor_species, cell_cache)
 
   const element_pair =
     center_species && neighbor_species
       ? ([center_species, neighbor_species] as [string, string])
       : undefined
   if (centers.length === 0 || neighbors.length === 0) return { r, g_r, element_pair }
-
-  // Resolve occupancies once: get_occu scans a site's species list, which is far too costly
-  // to repeat inside a loop running over every center-neighbor pair.
-  const center_occu = Float64Array.from(centers, (site) => get_occu(site, center_species))
-  const neighbor_occu = Float64Array.from(neighbors, (s) => get_occu(s, neighbor_species))
 
   if (dist_pbc.some(Boolean)) {
     const converters = create_lattice_converters(dist_lattice)
@@ -248,8 +277,9 @@ function rdf_from_cloud(
   // Ideal-gas normalization with original-cell density. Do not subtract self-pairs:
   // dist > 0 already drops the true self term, while periodic images of the same atom
   // are valid neighbors (critical for 1-atom cells).
-  const center_weight = sum_occu(centers, center_species)
-  const neighbor_weight = sum_occu(norm_neighbors, neighbor_species)
+  // Sum the already-resolved occupancies rather than re-deriving them per site
+  const center_weight = center_occu.reduce((sum, occu) => sum + occu, 0)
+  const neighbor_weight = norm_neighbors.occu.reduce((sum, occu) => sum + occu, 0)
   const volume = calc_lattice_params(structure.lattice.matrix).volume
   if (center_weight > 0 && neighbor_weight > 0 && volume > 0) {
     for (let idx = 0; idx < n_bins; idx++) {
@@ -285,10 +315,17 @@ export function calculate_all_pair_rdfs(
   ].toSorted()
 
   // Expand once and reuse: the image cloud is species-independent, so rebuilding it per
-  // element pair repeated the most expensive step O(pairs) times for identical output.
+  // element pair repeated the most expensive step O(pairs) times for identical output. The
+  // caches do the same for the per-species subsets, which every pair would otherwise re-derive.
   const { cutoff, n_bins, cloud } = prepare_rdf(structure, options)
+  const cell_cache: SubsetCache = new Map()
+  const cloud_cache: SubsetCache = new Map()
 
   return elems.flatMap((el1, idx1) =>
-    elems.slice(idx1).map((el2) => rdf_from_cloud(structure, cloud, cutoff, n_bins, el1, el2)),
+    elems
+      .slice(idx1)
+      .map((el2) =>
+        rdf_from_cloud(structure, cloud, cutoff, n_bins, el1, el2, cell_cache, cloud_cache),
+      ),
   )
 }
