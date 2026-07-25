@@ -3,6 +3,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import { gzipSync } from 'node:zlib'
 import {
+  canvas_has_painted,
   canvas_screenshot,
   dispatch_cancelable_keydown,
   drop_file,
@@ -2202,6 +2203,12 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     test.setTimeout(IS_CI ? 180_000 : 120_000)
     const structure_div = page.locator(`#test-structure`)
 
+    // The gizmo span below needs the scene to actually paint. CI's software WebGPU reports the
+    // WebGPU backend and hands out an adapter but never composites a frame — traces from a
+    // failing shard show this canvas uniformly blank — so probe for pixels rather than for API
+    // support, and skip only the render-dependent half of this test when they never arrive.
+    const can_render = await canvas_has_painted(structure_div.locator(`canvas`).first())
+
     // Handle spread on screen, which scales with the gizmo box — the only way to measure a
     // gizmo with no DOM element. Hover first since it draws only while the viewer is active.
     const gizmo_span = async (canvas: Locator) => {
@@ -2222,7 +2229,9 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // Single view: one viewport cell, no grid
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
     await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
-    const single_span = await gizmo_span(structure_div.locator(`canvas`).first())
+    const single_span = can_render
+      ? await gizmo_span(structure_div.locator(`canvas`).first())
+      : null
 
     await select_structure_layout(structure_div, `3D 2×2 grid`)
 
@@ -2262,10 +2271,12 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // Panes are ~half the viewer, so StructureViewport hands them a smaller gizmo. Ties
     // responsive_gizmo_size (unit-tested) to what renders, now that the old `.responsive-gizmo`
     // DOM box is gone with three-viewport-gizmo's HTML overlay.
-    const pane_span = await gizmo_span(
-      structure_div.locator(`.viewport-stage.multi canvas`).first(),
-    )
-    expect(pane_span).toBeLessThan(single_span * 0.8)
+    if (single_span !== null) {
+      const pane_span = await gizmo_span(
+        structure_div.locator(`.viewport-stage.multi canvas`).first(),
+      )
+      expect(pane_span).toBeLessThan(single_span * 0.8)
+    }
 
     // Toggle back to single view
     await select_structure_layout(structure_div, `3D single view`)
