@@ -39,6 +39,7 @@ def run_js_test(js_code: str) -> dict:
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
     except FileNotFoundError:
         pytest.skip("Node.js not available")

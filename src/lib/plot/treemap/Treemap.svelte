@@ -47,10 +47,12 @@
     normalize_treemap_label_lines,
     place_treemap_label,
     safe_font_size,
-    type TreemapLabelFit,
-    type TreemapLabelFormatter,
-    type TreemapLabelLine,
-    type TreemapLabelPlacement,
+  } from '$lib/plot/treemap/labels'
+  import type {
+    TreemapLabelFit,
+    TreemapLabelFormatter,
+    TreemapLabelLine,
+    TreemapLabelPlacement,
   } from '$lib/plot/treemap/labels'
   import type { TreemapNode, TreemapNodeHandlerProps } from '$lib/plot/treemap/treemap'
   import { lerp_rects, tile_rects } from '$lib/plot/treemap/treemap'

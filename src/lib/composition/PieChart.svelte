@@ -6,12 +6,8 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import {
-    chart_segment_label,
-    chart_segment_suffix,
-    type ChartSegmentData,
-    get_chart_font_scale,
-  } from './index'
+  import { chart_segment_label, chart_segment_suffix, get_chart_font_scale } from './index'
+  import type { ChartSegmentData } from './index'
   import { count_atoms_in_composition, fractional_composition } from './parse'
 
   // Constants for pie chart calculations

@@ -11,6 +11,7 @@ Usage:
 """
 
 import mimetypes
+from importlib.metadata import PackageNotFoundError, version
 
 from .MatterViz import MatterViz
 from .typed import (  # noqa: F401
@@ -35,7 +36,11 @@ from .typed import (  # noqa: F401
 _js_dist = MatterViz._js_dist
 _css_dist = MatterViz._css_dist
 
-__version__ = "0.0.2"
+try:
+    __version__ = version("matterviz-dash-components")
+except PackageNotFoundError:
+    # the flat layout makes this importable from a source checkout that was never installed
+    __version__ = "0.0.0+unknown"
 
 if mimetypes.guess_type("x.wasm")[0] != "application/wasm":
     mimetypes.add_type("application/wasm", ".wasm")

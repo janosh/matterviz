@@ -303,6 +303,9 @@ describe(`writeback wiring`, () => {
   test.each([
     [`structure`, `selected_sites`, [], [3], [5, 6]],
     [`structure`, `hovered_site_idx`, null, 2, 9],
+    [`structure`, `active_volume_idx`, 0, 2, 1],
+    [`structure`, `display_mode`, `structure`, `slice`, `structure`],
+    [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `structure+scatter`, `scatter`, `structure`],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],

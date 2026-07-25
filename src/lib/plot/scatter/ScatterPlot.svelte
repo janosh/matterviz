@@ -63,11 +63,8 @@
     place_decorations,
     placed_coords,
   } from '$lib/plot/core/auto-place'
-  import {
-    AXIS_DEFAULTS,
-    type AxisChangeState,
-    create_axis_loader,
-  } from '$lib/plot/core/axis-utils'
+  import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
+  import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {

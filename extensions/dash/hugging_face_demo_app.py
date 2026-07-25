@@ -400,7 +400,7 @@ def create_app() -> dash.Dash:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("DASH_PORT", 7860))
+    port = int(os.environ.get("DASH_PORT", "7860"))
     host = os.environ.get("DASH_HOST", "0.0.0.0")
     debug = os.environ.get("DASH_DEBUG", "0").lower() in ("1", "true")
     create_app().run(debug=debug, port=port, host=host)

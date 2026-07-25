@@ -4,6 +4,8 @@
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
+  import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
+  import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
@@ -12,7 +14,7 @@
   import { ColorScaleSelect } from '$lib/plot'
   import type { VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG, VECTOR_COLOR_MODES } from '$lib/settings'
-  import type { AnyStructure } from '$lib/structure'
+  import type { AnyStructure, StructureDisplayMode } from '$lib/structure'
   import {
     default_vector_configs,
     get_structure_vector_keys,
@@ -56,7 +58,10 @@
     cell_type = $bindable(`original`),
     volumetric_data = $bindable<VolumetricData[]>(),
     isosurface_settings = $bindable<IsosurfaceSettings>(),
+    slice_settings = $bindable<Partial<VolumeSliceSettings>>(),
     active_volume_idx = $bindable(0),
+    display_mode = $bindable<StructureDisplayMode>(`structure`),
+    on_slice_settings_change,
     multi_view = $bindable(false),
     multi_view_control_visible = true,
     multi_view_unavailable_reason = undefined,
@@ -80,7 +85,10 @@
     cell_type?: CellType // Cell type: original, conventional, or primitive
     volumetric_data?: VolumetricData[] // Volumetric data volumes for isosurface controls
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
+    slice_settings?: Partial<VolumeSliceSettings> // 2D cross-section sampling and rendering settings
     active_volume_idx?: number // Active volume index
+    display_mode?: StructureDisplayMode
+    on_slice_settings_change?: (settings: VolumeSliceSettings) => void
     multi_view?: boolean
     multi_view_control_visible?: boolean
     multi_view_unavailable_reason?: string
@@ -320,15 +328,24 @@
   }}
   {...rest}
 >
-  {#if volumetric_data?.length && isosurface_settings}
-    <IsosurfaceControls
-      bind:settings={isosurface_settings}
-      bind:volumes={volumetric_data}
-      bind:active_volume_idx
-    />
+  {#if volumetric_data?.length}
+    {#if display_mode === `slice` && slice_settings}
+      <VolumeSliceControls
+        bind:settings={slice_settings}
+        volumes={volumetric_data}
+        bind:active_volume_idx
+        on_settings_change={on_slice_settings_change}
+      />
+    {:else if isosurface_settings}
+      <IsosurfaceControls
+        bind:settings={isosurface_settings}
+        bind:volumes={volumetric_data}
+        bind:active_volume_idx
+      />
+    {/if}
   {/if}
 
-  {#if multi_view_control_visible}
+  {#if multi_view_control_visible && display_mode === `structure`}
     <SettingsSection
       title="Layout"
       current_values={{ multi_view }}

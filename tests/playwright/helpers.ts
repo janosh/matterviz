@@ -18,6 +18,11 @@ export const is_present = <Value>(value: Value | null | undefined): value is Val
 export const get_canvas_timeout = (): number =>
   IS_CI ? CI_CANVAS_TIMEOUT : LOCAL_CANVAS_TIMEOUT
 
+export async function select_view_layout(root: Page | Locator, label: string): Promise<void> {
+  await root.getByRole(`button`, { name: /^View layout:/ }).click()
+  await root.getByRole(`button`, { name: label, exact: true }).click()
+}
+
 // Wait for a 3D canvas (WebGL) to be ready with non-zero dimensions
 export async function wait_for_3d_canvas(
   page: Page,
@@ -303,7 +308,7 @@ export async function enter_edit_atoms_mode(page: Page): Promise<void> {
   })
   const timeout = get_canvas_timeout()
   const structure_div = page.locator(`#test-structure`)
-  const measure_button = structure_div.locator(`button.view-mode-button`)
+  const measure_button = structure_div.getByRole(`button`, { name: `Measure / Edit` })
   await expect(measure_button).toBeVisible({ timeout })
   await measure_button.click()
   const edit_option = structure_div.locator(`.view-mode-option`).filter({

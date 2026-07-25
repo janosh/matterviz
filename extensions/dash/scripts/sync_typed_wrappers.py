@@ -55,7 +55,7 @@ class Prop:
 class BracketTracker:
     """Track nesting depth for (), [], {}, <> and string quotes."""
 
-    __slots__ = ("par", "brk", "brc", "ang", "in_bt", "in_sq", "in_dq")
+    __slots__ = ("ang", "brc", "brk", "in_bt", "in_dq", "in_sq", "par")
 
     def __init__(self) -> None:
         self.par = self.brk = self.brc = self.ang = 0
@@ -185,9 +185,10 @@ def _read_until_top_level_semicolon(src: str, start: int) -> str | None:
 def _extract_props_root_expr(src: str) -> str:
     """Extract the component props type expression from supported declaration formats."""
     # Strategy 1: type $$ComponentProps = ...
-    if match := re.search(r"type\s+\$\$ComponentProps\s*=", src):
-        if expression := _read_until_top_level_semicolon(src, match.end()):
-            return expression
+    if (match := re.search(r"type\s+\$\$ComponentProps\s*=", src)) and (
+        expression := _read_until_top_level_semicolon(src, match.end())
+    ):
+        return expression
 
     # Strategy 2: $$render function format (generic components)
     if match := re.search(r"declare\s+function\s+\$\$render[^{]*\{\s*props\s*:", src):
@@ -223,7 +224,7 @@ def _parse_object_literal(obj: str) -> dict[str, str]:
     inner = obj[1:-1].strip()
     props: dict[str, str] = {}
     for item in _split_top_level(inner, ";"):
-        if item.startswith("[") or item.startswith("..."):  # index sig or spread
+        if item.startswith(("[", "...")):  # index sig or spread
             continue
         if match := re.match(r"^([A-Za-z0-9_]+)\s*(?:\?)?\s*:\s*(.+)$", item):
             props[match.group(1)] = match.group(2).strip()

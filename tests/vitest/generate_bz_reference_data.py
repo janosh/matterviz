@@ -156,7 +156,7 @@ def generate_all_reference_data() -> dict[str, Any]:
                 f"    Space group: {bz_data['space_group_international']} (#{bz_data['space_group_number']})"
             )
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 (record any failure and keep going)
             print(f"  ✗ Failed to generate data for {lattice_type}: {exc}")
             reference_data[lattice_type] = {"error": str(exc)}
 
