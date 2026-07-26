@@ -1,6 +1,6 @@
 import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { BONDING_STRATEGIES, get_majority_element } from '$lib/structure/bonding'
+import { compute_bonds, get_majority_element } from '$lib/structure/bonding'
 
 export interface CoordinationSite {
   site_idx: number
@@ -16,17 +16,10 @@ export interface CoordinationData {
   cn_histogram_by_element: Map<string, Map<number, number>>
 }
 
-// Calculate coordination numbers for all sites in a structure using the specified bonding strategy.
-//
-// Note: This function operates on the sites present in the structure. For structures with periodic
-// boundary conditions (PBC), image atoms should be added to the structure BEFORE calling this function
-// to ensure atoms at cell boundaries have their full coordination environment calculated correctly.
-// Use get_pbc_image_sites() from '$lib/structure/pbc' to expand the structure with image atoms.
-//
-// When working with PBC-expanded structures:
-// - Image atoms are appended after the original sites
-// - Bonds will be calculated between original and image atoms
-// - Caller should extract coordination numbers for only the first N sites (original atoms)
+// Coordination numbers for all sites in a structure under the given bonding strategy. Only
+// sees the sites it's handed, so for PBC structures expand with get_pbc_image_sites()
+// ($lib/structure/pbc) first, else boundary atoms come out under-coordinated. Images are
+// appended after the originals, so read back only the first N coordination numbers.
 export function calc_coordination_nums(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
@@ -35,8 +28,8 @@ export function calc_coordination_nums(
   // but aren't iterated as centers — identical coordination for the originals, faster.
   center_count?: number,
 ): CoordinationData {
-  // Get bonds using the specified strategy
-  const bonds = BONDING_STRATEGIES[strategy](structure, { center_count })
+  // via compute_bonds, not the raw strategy, so repeat passes reuse its memoized neighbor search
+  const bonds = compute_bonds(structure, strategy, { center_count })
 
   const sites = structure.sites
 

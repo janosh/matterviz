@@ -7,7 +7,7 @@
   import { EPS } from '$lib/math'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
-  import type { BufferGeometry } from 'three'
+  import type { BufferGeometry } from 'three/webgpu'
   import {
     Color,
     ConeGeometry,
@@ -17,7 +17,7 @@
     MeshStandardMaterial,
     Quaternion,
     Vector3,
-  } from 'three'
+  } from 'three/webgpu'
 
   type ArrowInstance = {
     position: Vec3

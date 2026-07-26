@@ -111,6 +111,18 @@ export default defineConfig({
 
   optimizeDeps: {
     // Pre-bundle these dependencies
-    include: [`three`, `prop-types`],
+    include: [`three/webgpu`, `prop-types`],
+  },
+
+  resolve: {
+    // One copy of three in the bundle: matterviz imports three/webgpu, its addons and @threlte
+    // plain three. Exact-match regex, else three/webgpu, three/tsl and three/examples/* would
+    // be rewritten too.
+    alias: [
+      {
+        find: /^three$/,
+        replacement: resolve(import.meta.dirname, `../../src/lib/scene/three-compat.ts`),
+      },
+    ],
   },
 })

@@ -8,6 +8,7 @@
   import Icon from '$lib/Icon.svelte'
   import * as io from '$lib/io'
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
+  import { webgpu_available } from '$lib/scene'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
@@ -58,12 +59,13 @@
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
   import { BOND_ORDER_OPTIONS, merge_bond_edits, remap_bonds_after_deletion } from './bonding'
+  import { mirror_scene_props } from '$lib/scene/props.svelte'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import {
@@ -350,11 +352,13 @@
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
-      Object.assign(scene_props, scene_props_in)
+      mirror_scene_props(scene_props, scene_props_in, !camera_seeded)
+      camera_seeded = true
     }
     if (lattice_props_in && typeof lattice_props_in === `object`) {
       Object.assign(lattice_props, lattice_props_in)
     }
+  let camera_seeded = false // camera keys mirror only while seeding, see mirror_scene_props
   })
 
   // Keep stale externally-controlled indices from blanking either volumetric view.
@@ -985,8 +989,15 @@
     viewer_active = hovered || focused
   })
   // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
-  // OrbitControls/Gizmo and resets camera rotation. Visibility is CSS-gated by `gizmo-visible`.
-  let scene_gizmo = $derived(scene_props.gizmo ?? scene_props.show_gizmo)
+  // OrbitControls/Gizmo and resets camera rotation. Reveal it with the gizmo's own `visible`
+  // flag instead, since it draws inside the canvas where CSS can't reach it.
+  let scene_gizmo_props = $derived.by(() => {
+    const gizmo = scene_props.gizmo ?? scene_props.show_gizmo
+    if (!gizmo) return gizmo
+    const overrides = typeof gizmo === `object` ? gizmo : {}
+    // `??` not `||`, so an explicit `visible: false` is honored rather than treated as unset
+    return { ...overrides, visible: overrides.visible ?? viewer_active }
+  })
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
   ])
@@ -1195,7 +1206,7 @@
     structure: internal_displayed_structure,
     base_structure: cell_transformed_structure,
     scene_props,
-    gizmo: scene_gizmo,
+    gizmo: scene_gizmo_props,
     lattice_props,
     volumetric_data,
     volume_scaling,
@@ -1730,7 +1741,6 @@
 <div
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
-  class:gizmo-visible={viewer_active && Boolean(scene_gizmo)}
   class:multi-view={is_multi_view_active}
   style:--struct-viewport-gap="{multi_view_gap_px}px"
   role="application"
@@ -2195,8 +2205,8 @@
         bind:settings={slice_settings}
         bind:canvas={slice_canvas}
       />
-      <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
-    {:else if typeof WebGLRenderingContext !== `undefined`}
+      <!-- prevent from rendering in SSR and the vitest runner, where there's no GPU adapter -->
+    {:else if webgpu_available()}
       <div class:multi={is_multi_view_active} class="viewport-stage">
         {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
         {#if is_multi_view_active}
@@ -2279,11 +2289,6 @@
   .structure :global(canvas) {
     background: transparent;
     cursor: var(--canvas-cursor, default);
-  }
-  .structure:not(.gizmo-visible) :global(.responsive-gizmo) {
-    opacity: 0;
-    pointer-events: none;
-    visibility: hidden;
   }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),

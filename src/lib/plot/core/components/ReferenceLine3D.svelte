@@ -1,12 +1,11 @@
 <script lang="ts">
   // ReferenceLine3D: 3D reference lines for axis-parallel, segments, and extended lines
-  // Uses Line2 for proper variable-width lines (WebGL ignores linewidth on basic lines)
+  // Uses Line2 for proper variable-width lines (GPU APIs ignore linewidth on basic lines)
   import type { Point3D, Vec2, Vec3 } from '$lib/math'
-  import { T, useThrelte } from '@threlte/core'
-  import * as THREE from 'three'
-  import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+  import { T } from '@threlte/core'
+  import * as THREE from 'three/webgpu'
+  import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
   import { create_to_threejs, span_or } from '$lib/plot/core/reference-line'
   import type { RefLine3D } from '$lib/plot/core/types'
 
@@ -20,7 +19,6 @@
     ranges: { x: Vec2; y: Vec2; z: Vec2 }
   } = $props()
 
-  const { size } = useThrelte()
   let [scene_x, scene_y, scene_z] = $derived(scene_size)
   let { x: x_range, y: y_range, z: z_range } = $derived(ranges)
 
@@ -102,14 +100,14 @@
     dashed: Boolean(ref_line.style?.dash),
   })
 
-  // Create Line2 with LineGeometry and LineMaterial for proper variable-width lines
+  // Create Line2 with LineGeometry and a node material for proper variable-width lines.
+  // Unlike the WebGL LineMaterial, Line2NodeMaterial reads the screen size from the viewport
+  // internally, so there's no resolution uniform to keep in sync on resize.
   let line2: Line2 | null = $state(null)
-  let material: LineMaterial | null = $state(null)
 
   $effect(() => {
     if (!endpoints) {
       line2 = null
-      material = null
       return
     }
     const [p1, p2] = endpoints
@@ -117,7 +115,7 @@
     const geo = new LineGeometry()
     geo.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z])
 
-    const mat = new LineMaterial({
+    const mat = new THREE.Line2NodeMaterial({
       color: new THREE.Color(style.color).getHex(),
       linewidth: style.width,
       transparent: style.opacity < 1,
@@ -125,25 +123,16 @@
       dashed: style.dashed,
       dashSize: 0.3,
       gapSize: 0.1,
-      resolution: new THREE.Vector2($size.width || 1, $size.height || 1),
     })
 
     const line = new Line2(geo, mat)
     line.computeLineDistances() // Required for dashed lines
 
-    material = mat
     line2 = line
 
     return () => {
       geo.dispose()
       mat.dispose()
-    }
-  })
-
-  // Update material resolution when canvas size changes
-  $effect(() => {
-    if (material) {
-      material.resolution.set($size.width || 1, $size.height || 1)
     }
   })
 </script>

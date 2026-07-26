@@ -147,18 +147,17 @@ export interface Hull3DProps {
   hull_face_color_mode?: HullFaceColorMode
   element_colors?: Record<string, string>
   // Orientation gizmo: false to disable, true for defaults, object to customize
-  // Supports placement and Threlte Gizmo appearance options (size, colors, background, etc.)
+  // Supports placement plus the appearance options in GizmoOptions ($lib/scene)
   gizmo?: boolean | ConvexHullGizmoOptions
 }
 
 export type GizmoPlacement = `top-right` | `bottom-right` | `top-left` | `bottom-left`
 
-// Gizmo options for ConvexHull3D. Includes placement + common @threlte/extras Gizmo props.
-// Defined here to avoid exposing @threlte/extras types to consumers.
+// Gizmo options for ConvexHull3D: where to park the gizmo's wrapper element, plus the
+// appearance options forwarded to <Gizmo>.
 export type ConvexHullGizmoOptions = Record<string, unknown> & {
   placement?: GizmoPlacement
   size?: number
-  background?: { enabled?: boolean; color?: number; opacity?: number }
 }
 
 // Energy source mode determination result

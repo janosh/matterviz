@@ -1,6 +1,6 @@
 // Tests for Fermi surface export functionality
 import { export_scene, export_to_gltf, export_to_stl } from '$lib/fermi-surface/export'
-import type { Scene } from 'three'
+import type { Scene } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const stl_spy = vi.fn()

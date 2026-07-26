@@ -4,8 +4,8 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 import { is_plain_object } from '$lib/utils'
-import type { BufferGeometry, InstancedMesh, Material, Object3D, Scene } from 'three'
-import { Color, Group, Matrix4, Mesh, MeshStandardMaterial, ShaderMaterial } from 'three'
+import type { BufferGeometry, InstancedMesh, Material, Object3D, Scene } from 'three/webgpu'
+import { Color, Group, Matrix4, Mesh, MeshStandardMaterial } from 'three/webgpu'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js'
 
@@ -20,34 +20,14 @@ export function has_color_property(mat: Material): mat is Material & { color: Co
   return typeof red === `number` && typeof green === `number` && typeof blue === `number`
 }
 
-// Extract color from a ShaderMaterial by checking common color uniform patterns
-function extract_shader_color(shader_mat: ShaderMaterial): Color | null {
-  const uniforms = shader_mat.uniforms
-  if (!uniforms) return null
-
-  // Check for common color uniform names
-  for (const key of [`color`, `diffuse`, `baseColor`, `uColor`]) {
-    if (uniforms[key]?.value instanceof Color) {
-      return uniforms[key].value.clone()
-    }
-  }
-
-  // Gradient bonds store colors as instanceColorStart/End geometry attributes,
-  // not uniforms — nothing to extract here (caller falls back to gray)
-  return null
-}
-
-// Convert ShaderMaterial to MeshStandardMaterial for export compatibility
-function convert_shader_to_standard(shader_mat: ShaderMaterial): MeshStandardMaterial {
-  const extracted_color = extract_shader_color(shader_mat)
-  const standard_mat = new MeshStandardMaterial({
-    color: extracted_color ?? new Color(0.5, 0.5, 0.5),
-    metalness: 0.1,
-    roughness: 0.5,
-  })
-  standard_mat.name = shader_mat.name || `converted_shader_material`
-  return standard_mat
-}
+// @internal exported only for tests - not part of the public API.
+// Identifies gradient bond meshes. Their two per-instance colors live in these geometry
+// attributes and are consumed by a TSL node graph, so unlike ordinary meshes their color
+// cannot be read off the material — it has to be recovered from the attributes below.
+export const has_bond_gradient_attributes = (geometry: BufferGeometry): boolean =>
+  Boolean(
+    geometry.getAttribute(`instanceColorStart`) && geometry.getAttribute(`instanceColorEnd`),
+  )
 
 // @internal exported only for tests - not part of the public API.
 // Extract bond gradient colors from geometry attributes for a specific instance.
@@ -210,31 +190,21 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
     const instanced_mesh = object
     const mesh_id = instanced_mesh.uuid
 
-    // Check if this is a shader material (bonds)
-    const mat = instanced_mesh.material
-    const is_shader = Array.isArray(mat)
-      ? mat.some((material) => material instanceof ShaderMaterial)
-      : mat instanceof ShaderMaterial
-
-    if (is_shader) {
+    if (has_bond_gradient_attributes(instanced_mesh.geometry)) {
       // Extract bond colors for each instance from geometry attributes
       const instance_colors = new Map<number, Color>()
       for (let idx = 0; idx < instanced_mesh.count; idx++) {
         const bond_color = extract_bond_color_for_instance(instanced_mesh.geometry, idx)
-        if (bond_color) {
-          instance_colors.set(idx, bond_color)
-        }
+        if (bond_color) instance_colors.set(idx, bond_color)
       }
       bond_colors_map.set(mesh_id, instance_colors)
     } else {
       // Extract shared material color for atoms
+      const mat = instanced_mesh.material
       const single_mat = Array.isArray(mat) ? mat[0] : mat
       if (has_color_property(single_mat)) {
-        material_colors.set(mesh_id, {
-          r: single_mat.color.r,
-          g: single_mat.color.g,
-          b: single_mat.color.b,
-        })
+        const { r, g, b } = single_mat.color
+        material_colors.set(mesh_id, { r, g, b })
       }
     }
   })
@@ -275,11 +245,7 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
     const stored_color = material_colors.get(original_uuid)
     const stored_bond_colors = bond_colors_map.get(original_uuid)
 
-    // Check if material is a ShaderMaterial
-    const original_material = instanced_mesh.material
-    const has_shader = Array.isArray(original_material)
-      ? original_material.some((mat) => mat instanceof ShaderMaterial)
-      : original_material instanceof ShaderMaterial
+    const has_bond_gradient = has_bond_gradient_attributes(instanced_mesh.geometry)
 
     // Create individual meshes for each instance
     const instance_matrix = new Matrix4()
@@ -289,8 +255,9 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
       // Clone geometry
       const cloned_geometry = instanced_mesh.geometry.clone()
 
-      // Clean up custom attributes from shader-based geometries
-      if (has_shader) {
+      // Instance color attributes have one entry per bond, not per vertex, so they break
+      // GLTF accessor-count validation once instances become standalone meshes.
+      if (has_bond_gradient) {
         clean_geometry_for_export(cloned_geometry)
       }
 
@@ -331,24 +298,11 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // Update all world matrices in the modified scene
   cloned_scene.updateMatrixWorld(true)
 
-  // Convert any remaining ShaderMaterials to standard materials (e.g. non-instanced bonds)
-  // Also clean up custom geometry attributes that cause export validation errors
+  // Strip leftover per-instance color attributes from any mesh the instancing pass didn't
+  // rewrite, so they can't trip GLTF accessor-count validation.
   cloned_scene.traverse((object) => {
-    if (object instanceof Mesh) {
-      let has_shader_material = false
-      if (object.material instanceof ShaderMaterial) {
-        object.material = convert_shader_to_standard(object.material)
-        has_shader_material = true
-      } else if (Array.isArray(object.material)) {
-        has_shader_material = object.material.some((mat) => mat instanceof ShaderMaterial)
-        object.material = object.material.map((mat) =>
-          mat instanceof ShaderMaterial ? convert_shader_to_standard(mat) : mat,
-        )
-      }
-      // Clean up custom attributes from geometries that had shader materials
-      if (has_shader_material && object.geometry) {
-        clean_geometry_for_export(object.geometry)
-      }
+    if (object instanceof Mesh && has_bond_gradient_attributes(object.geometry)) {
+      clean_geometry_for_export(object.geometry)
     }
   })
 

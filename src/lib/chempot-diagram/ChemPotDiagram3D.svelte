@@ -16,7 +16,7 @@
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
-  import { page_visibility } from '$lib/scene'
+  import { create_renderer, page_visibility, webgpu_available } from '$lib/scene'
   import { sanitize_html } from '$lib/sanitize'
   import { constrain_tooltip_position, pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
@@ -31,7 +31,7 @@
   import type { Snippet } from 'svelte'
   import { onDestroy, onMount, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import * as THREE from 'three'
+  import * as THREE from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
@@ -2145,7 +2145,7 @@
         <p>Cannot compute chemical potential diagram.</p>
         <p>Need at least 2 elements with elemental reference entries.</p>
       </div>
-    {:else if mounted && typeof WebGLRenderingContext !== `undefined`}
+    {:else if mounted && webgpu_available()}
       {#snippet orbit_controls()}
         <extras.OrbitControls
           bind:ref={orbit_controls_ref}
@@ -2157,15 +2157,7 @@
           target={camera_target}
         />
       {/snippet}
-      <Canvas
-        createRenderer={(cvs) =>
-          new THREE.WebGLRenderer({
-            canvas: cvs,
-            alpha: true,
-            antialias: true,
-            preserveDrawingBuffer: true,
-          })}
-      >
+      <Canvas createRenderer={create_renderer}>
         <ChemPotScene3D>
           {#if camera_projection === `orthographic`}
             <!-- Orthographic camera matching pymatgen's projection style -->

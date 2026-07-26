@@ -573,12 +573,32 @@ const parse_symmetry_expression = (
   return { coefficients, translation }
 }
 
+// A symmetry op resolved to numbers: row `dim` maps (x,y,z) to coefficients·(x,y,z) + shift.
+type ParsedSymOp = { coefficients: [Vec3, Vec3, Vec3]; translations: Vec3 }
+
+// Every atom in a file is expanded by the same ops, so resolve the strings once here instead
+// of re-running the expression parser (regex match, split, indexOf) per atom — that was
+// O(atoms x ops x 3) string parses where O(ops x 3) suffices.
+// Ops arrive pre-normalized (quotes + whitespace already stripped, see normalized_ops).
+const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
+  operations.flatMap((operation) => {
+    const parts = operation.split(`,`)
+    if (parts.length !== 3) return []
+    const [x_expr, y_expr, z_expr] = parts.map(parse_symmetry_expression)
+    return [
+      {
+        coefficients: [x_expr.coefficients, y_expr.coefficients, z_expr.coefficients],
+        translations: [x_expr.translation, y_expr.translation, z_expr.translation],
+      },
+    ]
+  })
+
 // Apply symmetry operations (and optional lattice-centering translations) to
 // generate all equivalent positions. Deduplication uses 6 decimal places to
 // absorb floating point error from compound ops like x-y, -x+y.
 const apply_symmetry_ops = (
   atom: CifAtom,
-  symmetry_ops: string[],
+  symmetry_ops: ParsedSymOp[],
   wrap_fractional_coords: boolean,
   centering: Vec3[] = [],
 ): CifAtom[] => {
@@ -606,16 +626,11 @@ const apply_symmetry_ops = (
 
   add_position(atom.coords) // base atom (+ centering images)
 
-  // ops arrive pre-normalized (quotes + whitespace already stripped, see normalized_ops)
-  for (const operation of symmetry_ops) {
-    const parts = operation.split(`,`)
-    if (parts.length !== 3) continue
-
+  for (const { coefficients, translations } of symmetry_ops) {
     const new_coords: Vec3 = [0, 0, 0]
     for (let dim = 0; dim < 3; dim++) {
-      const { coefficients, translation } = parse_symmetry_expression(parts[dim])
       // new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
-      new_coords[dim] = math.dot(coefficients, atom.coords) + translation
+      new_coords[dim] = math.dot(coefficients[dim], atom.coords) + translations[dim]
     }
     add_position(new_coords)
   }
@@ -954,7 +969,7 @@ export function parse_cif(
       has_expected_counts &&
       Object.entries(atom_type_counts).every(([el, exp]) => (observed_counts[el] || 0) >= exp)
 
-    const ops_to_use = already_enumerated ? [] : normalized_ops
+    const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : normalized_ops)
 
     // Candidate lattice-centering translations from the space-group symbol (R
     // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually

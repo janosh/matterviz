@@ -1,4 +1,4 @@
-import { DEFAULTS, merge } from '$lib/settings'
+import { build_structure_props_from_settings, DEFAULTS, merge } from '$lib/settings'
 import { describe, expect, test } from 'vitest'
 
 describe(`Settings`, () => {
@@ -81,4 +81,12 @@ describe(`Settings`, () => {
       expect(settings.hull_face_opacity).toBeLessThanOrEqual(1)
     })
   })
+})
+
+test(`settings builder groups structure props`, () => {
+  const props = build_structure_props_from_settings(DEFAULTS)
+
+  expect(props.scene_props).toMatchObject(DEFAULTS.structure)
+  expect(props.scene_props.gizmo).toBe(DEFAULTS.structure.show_gizmo)
+  expect(props.lattice_props.cell_edge_width).toBe(DEFAULTS.structure.cell_edge_width)
 })

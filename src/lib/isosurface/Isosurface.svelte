@@ -18,7 +18,7 @@
     DoubleSide,
     FrontSide,
     Uint32BufferAttribute,
-  } from 'three'
+  } from 'three/webgpu'
   import {
     compute_scalar_range,
     DEFAULT_ISO_COLORMAP,

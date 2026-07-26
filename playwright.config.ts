@@ -11,29 +11,38 @@ export default {
     timeout: 60_000, // Allow 1 min for dev server to start on CI
   },
   use: {
+    // 3D failures that only reproduce on CI's software renderer say nothing as a bare log
+    // line. Only from the first retry: recording costs time on an already saturated box.
+    trace: `on-first-retry`,
     launchOptions: {
-      // Headless Chromium intermittently fails WebGL context creation on our CI/dev hosts
-      // (ANGLE/SwiftShader error: "Error creating WebGL context"). When that happens,
-      // 3D test pages can throw runtime errors and downstream UI assertions become flaky
-      // (e.g. controls-pane state not updating in /test/structure). These flags force a
-      // stable software GL path via SwiftShader+ANGLE so Playwright sees deterministic
-      // rendering and interaction behavior across environments.
-      args: [`--enable-unsafe-swiftshader`, `--use-angle=swiftshader`, `--use-gl=angle`],
+      // Headless Chromium exposes navigator.gpu over localhost but hands out no adapter
+      // without these flags, leaving WebGPURenderer to fall back to WebGL2 — which would hide
+      // regressions in the backend we ship. --enable-unsafe-swiftshader stays for the 2D/WebGL
+      // canvases elsewhere. The software adapter is forced on CI only so local runs exercise
+      // the backend users actually get (measured no local speedup from dropping it).
+      args: [
+        `--enable-unsafe-webgpu`,
+        `--enable-features=Vulkan`,
+        `--enable-unsafe-swiftshader`,
+        ...(is_ci ? [`--use-webgpu-adapter=swiftshader`] : []),
+      ],
     },
   },
-  // CI runners have 4 vCPUs and software WebGL (SwiftShader) is CPU-bound, so oversubscribing
-  // workers starves the render path and makes timing-sensitive assertions miss their windows.
-  // Keep CI at 1 worker/vCPU to avoid contention; allow more parallelism locally.
-  workers: is_ci ? 4 : 16,
+  // Software WebGPU spreads one canvas over several SwiftShader threads, so a worker per vCPU
+  // no longer fits CI's 4 and starves the render path: measured on a 14-core box, shard 3/4
+  // took 6.1 min with 4 failures at 4 workers vs 3.3 min with 1 at 2. A real GPU allows more.
+  workers: is_ci ? 2 : 16,
   // Distribute tests across CI shards (npx playwright test --shard=x/4) at the individual-test
   // level instead of per-file. Files are very unevenly sized (structure.test.ts has ~130 tests,
   // most others have 1-4), so file-level sharding would pile the big files onto one runner.
   // Files that need ordering opt into test.describe.configure({ mode: `serial` }) explicitly.
   fullyParallel: true,
-  timeout: is_ci ? 45_000 : 30_000, // CI gets longer timeout due to slower shared resources
+  // CI gets longer timeouts: on software WebGPU, 3D tests that run in ~4s alone were measured
+  // at 25-50s alongside other GPU work.
+  timeout: is_ci ? 90_000 : 30_000,
   // default expect timeout is 5s; give assertions more headroom on slower CI so transient
   // contention (theme/tooltip/render updates) doesn't trip them before retries can help
-  expect: { timeout: is_ci ? 15_000 : 5000 },
+  expect: { timeout: is_ci ? 30_000 : 5000 },
   retries: is_ci ? 2 : 0, // Retry flaky tests in CI
   testDir: `tests/playwright`,
   // list reporter keeps each shard's pass/fail + error output readable in its CI log

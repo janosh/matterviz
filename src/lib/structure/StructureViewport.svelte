@@ -25,68 +25,42 @@
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { WebGLRenderer, type Camera, type OrthographicCamera, type Scene } from 'three'
+  import { create_renderer, responsive_gizmo_size } from '$lib/scene'
+  import type { Camera, OrthographicCamera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
   import StructureScene from './StructureScene.svelte'
 
-  // WebGL contexts survive renderer.dispose() unless explicitly released.
-  class StructureRenderer extends WebGLRenderer {
-    constructor(parameters: ConstructorParameters<typeof WebGLRenderer>[0]) {
-      super(parameters)
-      globalThis.addEventListener(`pagehide`, this.release_context, { once: true })
-    }
-
-    private release_context = (): void => {
-      if (!this.getContext().isContextLost()) this.forceContextLoss()
-    }
-
-    override dispose() {
-      globalThis.removeEventListener(`pagehide`, this.release_context)
-      super.dispose()
-      this.release_context()
-    }
-  }
-
-  // Self-heal evicted WebGL contexts: browsers cap live contexts (~8-16 per
-  // page) and evict the oldest without notice, leaving its canvas permanently
-  // blank. three.js handles `webglcontextrestored` when the browser restores
-  // on its own; when it doesn't, remount the <Canvas> for a fresh context.
-  // Bounded retries avoid eviction ping-pong when over the context budget.
+  // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
+  // "restored" event, so recovery means remounting the <Canvas> for a fresh renderer.
   let canvas_remount_token = $state(0)
   let remount_timer: ReturnType<typeof setTimeout> | undefined
   let recovery_reset_timer: ReturnType<typeof setTimeout> | undefined
   let recovery_attempts = 0
   let recovery_failed = $state(false)
 
-  const create_renderer = (canvas: HTMLCanvasElement) => {
-    canvas.addEventListener(`webglcontextlost`, () => {
-      // canvas.isConnected is false when the loss came from our own dispose()
-      // (component unmounted), not from browser eviction
-      if (!canvas.isConnected) return
-      clearTimeout(recovery_reset_timer)
-      if (recovery_attempts >= 3) {
-        recovery_failed = true
-        return
-      }
-      recovery_attempts += 1
-      remount_timer = setTimeout(() => (canvas_remount_token += 1), 1000)
+  const create_viewport_renderer = (canvas: HTMLCanvasElement) =>
+    create_renderer(canvas, {
+      // three suppresses losses caused by our own dispose(), so this only fires on real ones.
+      on_device_lost: () => {
+        // Recovery rebuilds the <Canvas> and a fresh scene re-derives the default camera, so
+        // capture the live view first and resume there rather than discarding the user's orbit.
+        camera_position = read_camera_position() ?? camera_position
+        camera_target = read_orbit_target() ?? camera_target
+        clearTimeout(recovery_reset_timer)
+        if (recovery_attempts >= 3) {
+          recovery_failed = true
+          return
+        }
+        recovery_attempts += 1
+        // Losses can arrive in bursts (e.g. both panes of a grid evicted at once); keep a
+        // single pending remount so the burst doesn't tear down the renderer it just built.
+        clearTimeout(remount_timer)
+        remount_timer = setTimeout(() => (canvas_remount_token += 1), 1000)
+        // Reset only after a stable remount; an immediate reset would allow endless
+        // eviction ping-pong while the page exceeds its GPU budget.
+        recovery_reset_timer = setTimeout(() => (recovery_attempts = 0), 5000)
+      },
     })
-    canvas.addEventListener(`webglcontextrestored`, () => {
-      clearTimeout(remount_timer)
-      recovery_attempts = 0
-      recovery_failed = false
-    })
-    const renderer = new StructureRenderer({
-      canvas,
-      powerPreference: `high-performance`,
-      antialias: true,
-      alpha: true,
-    })
-    // Reset only after a stable remount; an immediate reset would allow
-    // endless eviction ping-pong while the page exceeds its context budget.
-    recovery_reset_timer = setTimeout(() => (recovery_attempts = 0), 5000)
-    return renderer
-  }
 
   let {
     // Multi-view chrome
@@ -204,12 +178,10 @@
   let height = $state(0)
   let cursor = $state(`default`)
 
-  // Multi-view panes are ~half the viewer, so shrink the (fixed 86px) viewport gizmo to
-  // stay proportional. Single view keeps the default size.
+  // Multi-view panes are ~half the viewer, so shrink the gizmo to stay proportional
   let gizmo_prop = $derived.by(() => {
     if (!gizmo || !in_grid) return gizmo
-    const fifth_of_min_dim = Math.min(width, height) * 0.2
-    const size = Math.round(Math.max(34, Math.min(72, fifth_of_min_dim)))
+    const size = responsive_gizmo_size(width, height)
     return { ...(typeof gizmo === `object` ? gizmo : {}), size }
   })
 
@@ -335,20 +307,20 @@
   {#if recovery_failed}
     <div class="context-recovery-error">
       <StatusMessage
-        message="Unable to restore the 3D view after repeated WebGL context loss. Reload the page to retry."
+        message="Unable to restore the 3D view after repeated GPU device loss. Reload the page to retry."
         type="error"
       />
     </div>
   {/if}
   {#key canvas_remount_token}
-    <Canvas createRenderer={create_renderer}>
+    <Canvas createRenderer={create_viewport_renderer}>
       <StructureScene
         {structure}
         {base_structure}
         {...scene_props}
         {...in_grid ? { auto_rotate: 0 } : {}}
-        {camera_position}
-        {camera_target}
+        bind:camera_position
+        bind:camera_target
         {camera_projection}
         {camera_direction}
         {interactive}
@@ -410,11 +382,6 @@
   /* In multi-view, give each pane a subtle separator and highlight the active one */
   .viewport-cell.multi {
     border: 1px solid var(--struct-viewport-border, rgba(128, 128, 128, 0.35));
-  }
-  /* Scale the shared 70–100px gizmo range to 60% inside each 2×2 pane. */
-  .viewport-cell.multi :global(.responsive-gizmo) {
-    width: clamp(42px, 10.8cqmin, 60px) !important;
-    height: clamp(42px, 10.8cqmin, 60px) !important;
   }
   /* Let the active pane's hover tooltip overflow into neighboring panes instead of
     being clipped, and raise it above sibling panes so it paints on top. The WebGL

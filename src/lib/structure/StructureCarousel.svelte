@@ -170,8 +170,8 @@
   }
 
   // Cards entering the render window mid-scroll render instantly as label
-  // shells and get their WebGL canvas (tracked in live_ids) later: mounting a
-  // Threlte scene (context creation + shader compile) takes long enough that a
+  // shells and get their GPU canvas (tracked in live_ids) later: mounting a
+  // Threlte scene (device setup + pipeline compile) takes long enough that a
   // burst of simultaneous mounts stalls fast flings — the main source of
   // scroll jank. While scrolling, at most one card is promoted to live per
   // promote_interval_ms so structures still fill in mid-scroll without

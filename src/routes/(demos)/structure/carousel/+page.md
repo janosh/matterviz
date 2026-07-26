@@ -1,6 +1,6 @@
 # StructureCarousel
 
-A scrollable strip of 3D structure viewers with bounded WebGL usage: only the cards near the viewport hold live canvases (`max_rendered_items`, default 8), while spacer-based virtualization keeps scroll geometry correct for any item count. Mouse wheel, trackpad and the pager (‹ 1–8 / 40 ›) all page through the strip. The track is keyboard-navigable too: when focused, main-axis arrow keys move one card, <kbd>PageUp</kbd>/<kbd>PageDown</kbd> one page, and <kbd>Home</kbd>/<kbd>End</kbd> jump to the ends. At the first/last card, wheel and arrow events pass through to the surrounding page.
+A scrollable strip of 3D structure viewers with bounded GPU usage: only the cards near the viewport hold live canvases (`max_rendered_items`, default 8), while spacer-based virtualization keeps scroll geometry correct for any item count. Mouse wheel, trackpad and the pager (‹ 1–8 / 40 ›) all page through the strip. The track is keyboard-navigable too: when focused, main-axis arrow keys move one card, <kbd>PageUp</kbd>/<kbd>PageDown</kbd> one page, and <kbd>Home</kbd>/<kbd>End</kbd> jump to the ends. At the first/last card, wheel and arrow events pass through to the surrounding page.
 
 ## Horizontal carousel
 
