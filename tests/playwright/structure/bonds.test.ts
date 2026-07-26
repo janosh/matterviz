@@ -6,14 +6,11 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
-// Known open bug, seen only on CI: after an undo, traces show the edit state restored correctly
-// (undo disabled, redo enabled, order select reverted) while the emitted `bonds` still holds the
-// value merged from the reverted edit — verified by reading the value straight out of the CI
-// trace. The suspect is the early return in Structure.svelte's bond-edit effect when no snapshot
-// remains, but that return is load-bearing: making it fall back to the structure's own bonds
-// turns 1 local failure into 10. So the fix has to be narrower than "reset whenever no edits
-// remain". Not reproducible locally: survives CI=1 with the software adapter, 12 runs at 3
-// workers, and repeat-each runs against a warm dev server.
+// Known open bug, CI only: once the edit state is discarded (undo, reset or source change) the
+// UI resets correctly while the emitted `bonds` keeps the merged value, read out of the CI
+// trace. Suspect is the early return in Structure.svelte's bond-edit effect when no snapshot
+// remains, but falling back to the structure's own bonds there turns 1 local failure into 10,
+// so the fix has to be narrower. Not reproducible locally, where all four still pass.
 const UNDO_STALE_BONDS_IN_CI = `bond undo leaves stale bonds on CI, see comment above`
 
 // Get non-white pixel count to detect if content is rendered.
