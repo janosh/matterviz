@@ -38,6 +38,11 @@
   let color_mode = $state<`cross_grid` | `same_grid`>(`cross_grid`)
   let volumes = $state.raw<VolumetricData[]>([])
   let settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] })
+  // Deliberately unproxied: this route measures isosurface build cost, and $state would deep
+  // proxy every pushed event (and $state.raw would force a fresh array per event), charging the
+  // profiler to the thing being profiled. `event_count` below is the reactive half — the markup
+  // reads it, so it re-renders on every push and picks up the current array contents.
+  // svelte-ignore non_reactive_update
   let profile_events: IsosurfaceProfileEvent[] = []
   let event_count = $state(0)
   let fps = $state<number | undefined>()
