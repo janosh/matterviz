@@ -650,6 +650,114 @@ describe(`Explicit Bond Metadata`, () => {
   )
 })
 
+describe(`explicit_only strategy`, () => {
+  // All 3 pairs are within covalent bonding range, so electroneg_ratio perceives bonds
+  // between them regardless of what the structure declares
+  const make_bonded_triangle = (bonds?: StructureBond[]): Crystal => {
+    const structure = get_test_structure([
+      { xyz: [0, 0, 0], element: `C` },
+      { xyz: [1.4, 0, 0], element: `C` },
+      { xyz: [0, 1.2, 0], element: `O` },
+    ])
+    if (bonds) structure.properties = { bonds }
+    return structure
+  }
+
+  test.each([
+    { desc: `no bonds property`, declared: undefined, expected: [] },
+    { desc: `an empty bonds array`, declared: [], expected: [] },
+    {
+      desc: `a single declared bond`,
+      declared: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
+      expected: [[0, 1, 2]],
+    },
+    {
+      desc: `declared bonds of mixed order`,
+      declared: [
+        { site_idx_1: 2, site_idx_2: 0, order: 1 },
+        { site_idx_1: 0, site_idx_2: 1, order: `aromatic` },
+      ],
+      // reversed indices are normalized to ascending order, declaration order is kept
+      expected: [
+        [0, 2, 1],
+        [0, 1, `aromatic`],
+      ],
+    },
+  ] satisfies {
+    desc: string
+    declared?: StructureBond[]
+    expected: [number, number, BondOrder][]
+  }[])(`returns exactly the bonds for $desc`, ({ declared, expected }) => {
+    const structure = make_bonded_triangle(declared)
+    const bonds = bonding.explicit_only(structure)
+
+    expect(bonds.map((bond) => [bond.site_idx_1, bond.site_idx_2, bond.bond_order])).toEqual(
+      expected,
+    )
+    for (const bond of bonds) {
+      expect(bond.pos_1).toEqual(structure.sites[bond.site_idx_1].xyz)
+      expect(bond.pos_2).toEqual(structure.sites[bond.site_idx_2].xyz)
+      expect(bond.bond_length).toBeCloseTo(
+        Math.hypot(...bond.pos_2.map((coord, idx) => coord - bond.pos_1[idx])),
+      )
+      expect(bond.transform_matrix).toHaveLength(16)
+    }
+  })
+
+  test(`returns no bonds instead of perceived ones when none are declared`, () => {
+    const structure = make_bonded_triangle()
+
+    // key regression guard: no silent fallback to a proximity strategy, which would
+    // mask a missing or unparsed bond block in formats like PDB/MOL/MOL2/SDF
+    expect(bonding.explicit_only(structure)).toEqual([])
+    expect(bonding.electroneg_ratio(structure).length).toBeGreaterThan(0)
+  })
+
+  test(`does not invent bonds that electroneg_ratio perceives`, () => {
+    const declared: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    const structure = make_bonded_triangle(declared)
+
+    const explicit_bonds = bonding.explicit_only(structure)
+    // electroneg_ratio merges the declared bond in, so its count is the perceived superset
+    const perceived_bonds = bonding.electroneg_ratio(structure)
+
+    expect(explicit_bonds).toHaveLength(1)
+    expect(perceived_bonds.length).toBeGreaterThan(explicit_bonds.length)
+    // the undeclared C-O pair is perceived but must not show up in explicit_only
+    expect(find_bond(perceived_bonds, 0, 2)).toBeDefined()
+    expect(find_bond(explicit_bonds, 0, 2)).toBeUndefined()
+  })
+
+  test(`respects cell_shift on periodic structures`, () => {
+    const structure = make_crystal(10, [
+      [`C`, [0.95, 0.5, 0.5]],
+      [`O`, [0.05, 0.5, 0.5]],
+    ])
+    structure.properties = {
+      bonds: [
+        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
+        { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
+      ],
+    }
+
+    const bonds = bonding.explicit_only(structure)
+    const by_key = new Map(
+      bonds.map((bond) => [
+        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
+        bond,
+      ]),
+    )
+
+    expect([...by_key.keys()].toSorted()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
+    // the +1 image of O sits at x=10.5, 1 A from C at x=9.5 (not the 9 A in-cell distance)
+    expect(by_key.get(`0-1@1,0,0`)?.pos_2).toEqual([10.5, 5, 5])
+    expect(by_key.get(`0-1@1,0,0`)?.bond_length).toBeCloseTo(1)
+    expect(by_key.get(`0-1@1,0,0`)?.bond_order).toBe(2)
+    expect(by_key.get(`0-1@-1,0,0`)?.pos_2).toEqual([-9.5, 5, 5])
+    expect(by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
+  })
+})
+
 describe(`Molecular Bonding Analysis`, () => {
   test.each([
     [`water`, test_molecules.water, 2, 0.8, 1.2],
@@ -941,6 +1049,7 @@ describe(`compute_bonds memo`, () => {
   test.each([
     [`different structure`, other_structure, `electroneg_ratio`, {}],
     [`different strategy`, structure, `solid_angle`, {}],
+    [`explicit_only strategy`, structure, `explicit_only`, {}],
     [`different options`, structure, `electroneg_ratio`, { max_distance_ratio: 3 }],
   ] as const)(`recomputes on %s`, (_desc, struct, strategy, options) => {
     const base = bonding.compute_bonds(structure, `electroneg_ratio`, {})
@@ -1004,6 +1113,53 @@ describe(`spatial grid scratch array reuse`, () => {
       expect(second_a.map(bond_key)).toEqual(first_a.map(bond_key))
       expect(new Set(first_a.map(bond_key)).size).toBe(first_a.length)
       expect(new Set(first_b.map(bond_key)).size).toBe(first_b.length)
+    },
+  )
+
+  // The grid scan visits only the 13 "forward" neighbor cells of each center, relying on
+  // the other 13 pairs being found from the opposite end — a wrong offset set would
+  // silently drop bonds in whole directions. Each strategy's cell is its own bond cutoff
+  // wide (0.76 = C covalent radius), so a mid-cell center puts every partner just past a
+  // face, and strength_threshold 0 keeps the distance model from dropping the diagonals.
+  test.each([
+    [`electroneg_ratio`, 2 * 0.76 * 2],
+    [`solid_angle`, 5],
+  ] as const)(
+    `%s grid scan finds partners in the own cell and all 26 neighbors`,
+    (strategy, cell_size) => {
+      const center = cell_size / 2
+      const offset = center + 0.1
+      const partner_sites = [-1, 0, 1].flatMap((dx) =>
+        [-1, 0, 1].flatMap((dy) =>
+          [-1, 0, 1]
+            .filter((dz) => dx || dy || dz)
+            .map((dz) => ({
+              element: `C` as const,
+              xyz: [center + dx * offset, center + dy * offset, center + dz * offset] as Vec3,
+            })),
+        ),
+      )
+      const structure = make_crystal(500, [
+        { element: `C`, xyz: [center, center, center] },
+        ...partner_sites,
+        // 27th partner stays inside the center's own cell, which the scan reaches by a
+        // different route (index filter rather than a neighbor offset)
+        { element: `C`, xyz: [center + 1, center, center] },
+        // pad past the 50-site grid threshold with far-apart, non-bonding atoms
+        ...Array.from({ length: 40 }, (_, idx) => ({
+          element: `C` as const,
+          xyz: [200 + idx * 20, 200, 200] as Vec3,
+        })),
+      ])
+
+      const partners = bonding.BONDING_STRATEGIES[strategy](structure, {
+        strength_threshold: 0,
+      })
+        .filter((bond) => bond.site_idx_1 === 0 || bond.site_idx_2 === 0)
+        .map((bond) => (bond.site_idx_1 === 0 ? bond.site_idx_2 : bond.site_idx_1))
+      expect(partners.toSorted((a, b) => a - b)).toEqual(
+        Array.from({ length: 27 }, (_, idx) => idx + 1),
+      )
     },
   )
 })

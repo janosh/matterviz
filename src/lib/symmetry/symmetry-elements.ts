@@ -162,9 +162,6 @@ function invariant_projector(mat: Matrix3x3): { proj: Matrix3x3; order: number }
   throw new Error(`Matrix is not of finite crystallographic order`)
 }
 
-const gcd = (val_a: number, val_b: number): number =>
-  val_b === 0 ? val_a : gcd(val_b, val_a % val_b)
-
 // Extract the (1D) invariant axis of a proper rotation as a reduced integer vector with
 // canonical sign (first nonzero component positive). proj must have rank 1.
 function axis_from_projector(proj: Matrix3x3, order: number): Vec3 | null {
@@ -181,7 +178,7 @@ function axis_from_projector(proj: Matrix3x3, order: number): Vec3 | null {
     }
   }
   if (!best) return null
-  const divisor = best.reduce((acc, val) => gcd(acc, Math.abs(val)), 0)
+  const divisor = math.gcd_all(best)
   let axis = best.map((val) => val / divisor) as Vec3
   const first_nonzero = axis.find((val) => val !== 0) ?? 1
   // normalize -0 to 0 when flipping to canonical sign (first nonzero positive)

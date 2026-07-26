@@ -256,7 +256,8 @@
           "description": "Method for determining bonds between atoms",
           "enum": [
             "electroneg_ratio",
-            "solid_angle"
+            "solid_angle",
+            "explicit_only"
           ]
         },
         "matterviz.structure.show_polyhedra": {
@@ -344,7 +345,8 @@
           "enum": [
             "element",
             "coordination",
-            "wyckoff"
+            "wyckoff",
+            "selective_dynamics"
           ]
         },
         "matterviz.structure.atom_color_scale": {

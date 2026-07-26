@@ -1,0 +1,31 @@
+# two SPC/E water molecules in a 10 A box (LAMMPS data, atom_style full)
+
+6 atoms
+4 bonds
+2 atom types
+1 bond types
+
+0.0 10.0 xlo xhi
+0.0 10.0 ylo yhi
+0.0 10.0 zlo zhi
+
+Masses
+
+1 15.9994  # O
+2 1.008    # H
+
+Atoms # full
+
+1 1 1 -0.8476 5.0000 5.0000 5.0000
+2 1 2  0.4238 5.8165 5.5774 5.0000
+3 1 2  0.4238 4.1835 5.5774 5.0000
+4 2 1 -0.8476 7.9000 5.0000 5.0000
+5 2 2  0.4238 8.7165 5.5774 5.0000
+6 2 2  0.4238 7.0835 5.5774 5.0000
+
+Bonds
+
+1 1 1 2
+2 1 1 3
+3 1 4 5
+4 1 4 6

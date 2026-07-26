@@ -1,16 +1,50 @@
-import { calc_coordination_nums } from '$lib/coordination'
+// to_structure_entries and its two types are imported from the package ROOT on purpose: they
+// are the headline prop type of CoordinationBarPlot and BondAnglePlot, and used to be
+// reachable only through $lib/plot/core/structure-input.
+import { to_structure_entries } from '$lib'
+import type { StructureEntry, StructureInput } from '$lib'
+import { calc_coordination_nums, CoordinationBarPlot } from '$lib/coordination'
+import type { Molecule } from '$lib/structure'
+import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal, mount_sized } from '../setup'
+
+// Simple cubic structure (NaCl-like)
+const simple_cubic = make_crystal(5, [
+  [`Na`, [0, 0, 0], 1],
+  [`Cl`, [0.5, 0.5, 0.5], -1],
+  [`Na`, [0.5, 0, 0], 1],
+  { element: `Cl`, abc: [0, 0.5, 0.5], oxidation_state: -1 },
+])
+// Water, so a lattice-less molecule exercises the single-structure input shape. Built in a
+// 10 Å box and stripped of its lattice, so the O-H separation stays a plain 0.958 Å.
+const water: Molecule = {
+  sites: make_crystal(10, [
+    [`O`, [0.5, 0.5, 0.5]],
+    [`H`, [0.5757, 0.5587, 0.5]],
+    [`H`, [0.4243, 0.5587, 0.5]],
+  ]).sites,
+}
+
+test.each([
+  [`lone crystal`, simple_cubic, [`Structure`]],
+  // detected by its `sites` array, not is_crystal(): a lattice-less molecule used to be read
+  // as a Record of structures, which then blew up on Object.entries of its sites array
+  [`lone lattice-less molecule`, water, [`Structure`]],
+  [`record`, { cubic: simple_cubic, water }, [`cubic`, `water`]],
+  [
+    `record with per-entry color`,
+    { cubic: { structure: simple_cubic, color: `#f00` } },
+    [`cubic`],
+  ],
+  [`entry array`, [{ label: `cubic`, structure: simple_cubic }], [`cubic`]],
+])(`to_structure_entries labels a %s`, (_name, input: StructureInput, labels) => {
+  const entries: StructureEntry[] = to_structure_entries(input)
+  expect(entries.map((entry) => entry.label)).toEqual(labels)
+  expect(entries.every((entry) => entry.structure.sites.length > 0)).toBe(true)
+})
 
 describe(`calc_coordination_nums`, () => {
-  // Simple cubic structure (NaCl-like)
-  const simple_cubic = make_crystal(5, [
-    [`Na`, [0, 0, 0], 1],
-    [`Cl`, [0.5, 0.5, 0.5], -1],
-    [`Na`, [0.5, 0, 0], 1],
-    { element: `Cl`, abc: [0, 0.5, 0.5], oxidation_state: -1 },
-  ])
-
   test.each([`electroneg_ratio`, `solid_angle`] as const)(
     `computes per-element coordination (%s)`,
     (strategy) => {
@@ -77,5 +111,55 @@ describe(`calc_coordination_nums`, () => {
     // Minority element must NOT create its own bucket for the disordered site
     expect(result.cn_by_element.has(`Na`)).toBe(false)
     expect(result.sites[0].element).toBe(`Cl`)
+  })
+})
+
+// Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
+describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
+  const mount_plot = (props: Record<string, unknown>) =>
+    mount_sized(CoordinationBarPlot, props, {
+      selector: `.bar-plot, .status-message, section`,
+    })
+
+  test.each([
+    [`single crystal`, { structures: simple_cubic }],
+    [`single lattice-less molecule`, { structures: water }],
+    [`record of structures`, { structures: { cubic: simple_cubic } }],
+    [`array of entries`, { structures: [{ label: `cubic`, structure: simple_cubic }] }],
+  ])(`renders coordination bars for %s`, async (_name, props) => {
+    const root = await mount_plot(props)
+    expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+    expect(root.textContent).toContain(`Coordination Number`)
+    expect(root.textContent).toContain(`Count`)
+  })
+
+  test.each([`by_structure`, `none`] as const)(
+    `split_mode=%s renders without error`,
+    async (split_mode) => {
+      const root = await mount_plot({ structures: { cubic: simple_cubic }, split_mode })
+      expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+    },
+  )
+
+  test.each([
+    [true, `Drag and drop structure files`],
+    [false, `No coordination data to display`],
+  ])(`allow_file_drop=%s shows %s when empty`, async (allow_file_drop, message) => {
+    const root = await mount_plot({ structures: {}, allow_file_drop })
+    expect(root.textContent).toContain(message)
+  })
+
+  // Series identity (element here, triplet in BondAnglePlot) reaches the tooltip as string
+  // metadata that StructureBarPlot turns into a `value —` prefix. Both wrappers rely on the
+  // shell for it, so nothing in either component would notice if the prefix disappeared.
+  test(`tooltip prefixes the hovered bar with its string metadata`, async () => {
+    const root = await mount_plot({ structures: simple_cubic })
+    const bar = root.querySelector(`path[role="button"]`)
+    expect(bar).toBeInstanceOf(SVGPathElement)
+    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    expect(tooltip).toMatch(/^\s*(?<element>Cl|Na)\s+—/)
+    expect(tooltip).toContain(`CN:`)
   })
 })

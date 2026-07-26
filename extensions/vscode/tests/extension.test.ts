@@ -4,7 +4,7 @@ import {
   TRAJ_KEYWORDS,
   VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
-import { DEFAULTS } from '$lib/settings'
+import { DEFAULTS, SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file, LARGE_FILE_THRESHOLD } from '$lib/trajectory/parse'
@@ -186,6 +186,33 @@ describe(`MatterViz Extension`, () => {
   test(`extension volumetric regex stays in sync with app detection`, () => {
     expect(VOLUMETRIC_VASP_RE.source).toBe(VASP_VOLUMETRIC_REGEX.source)
     expect(VOLUMETRIC_VASP_RE.flags).toBe(VASP_VOLUMETRIC_REGEX.flags)
+  })
+
+  test(`setting enums in package.json match SETTINGS_CONFIG`, () => {
+    // scripts/sync-config.ts only regenerates package.json on `prebuild`, so a new enum
+    // option is silently missing from the editor's dropdown until someone runs it.
+    const expected: Record<string, string[]> = {}
+    const collect = (node: unknown, key_path: string): void => {
+      if (!node || typeof node !== `object`) return
+      if (!(`value` in node)) {
+        for (const [key, val] of Object.entries(node)) collect(val, `${key_path}.${key}`)
+        return
+      }
+      const schema = node as SettingType
+      // sync-config.ts emits nothing for settings scoped away from the editor
+      if (schema.context && ![`editor`, `all`].includes(schema.context)) return
+      if (schema.enum) expected[key_path] = Object.keys(schema.enum)
+    }
+    collect(SETTINGS_CONFIG, `matterviz`)
+
+    const props = pkg_json.contributes.configuration.properties as unknown as Record<
+      string,
+      { enum?: string[] } | undefined
+    >
+    const actual = Object.fromEntries(
+      Object.keys(expected).map((key) => [key, props[key]?.enum]),
+    )
+    expect(actual).toEqual(expected)
   })
 
   describe(`Custom Editor File Patterns`, () => {

@@ -79,16 +79,20 @@ export function find_image_atoms(
 
   const pbc: Pbc = structure.lattice.pbc ?? [true, true, true] // no images across vacuum
 
+  // Faces this atom sits on, as ±(dim + 1) so axis and direction fit one number. Reused
+  // across sites: interior atoms are the vast majority in a supercell and touch no face,
+  // so a fresh array each time would allocate for nothing.
+  const edge_dims: number[] = []
   // Phase 1: true periodic copies of atoms within `tolerance` of a cell face (bond
   // lengths preserved, rather than clamping the copy to the cell face)
   for (const [idx, site] of structure.sites.entries()) {
-    const edge_dims: { dim: number; direction: number }[] = []
+    edge_dims.length = 0
     for (let dim = 0; dim < 3; dim++) {
       if (!pbc[dim]) continue
       const coord = site.abc[dim]
       const dim_tolerance = tolerances[dim]
-      if (Math.abs(coord) < dim_tolerance) edge_dims.push({ dim, direction: 1 })
-      if (Math.abs(coord - 1) < dim_tolerance) edge_dims.push({ dim, direction: -1 })
+      if (Math.abs(coord) < dim_tolerance) edge_dims.push(dim + 1)
+      if (Math.abs(coord - 1) < dim_tolerance) edge_dims.push(-dim - 1)
     }
 
     // Generate all translation combinations; if both +1 and -1 are selected for a dim the
@@ -97,8 +101,7 @@ export function find_image_atoms(
       const selected_shift: Vec3 = [0, 0, 0]
       for (let bit = 0; bit < edge_dims.length; bit++) {
         if (mask & (1 << bit)) {
-          const { dim, direction } = edge_dims[bit]
-          selected_shift[dim] += direction
+          selected_shift[Math.abs(edge_dims[bit]) - 1] += Math.sign(edge_dims[bit])
         }
       }
       if (selected_shift.every((val) => val === 0)) continue
@@ -148,9 +151,12 @@ export function find_image_atoms(
   // included_center_elements) is still skipped here, so its boundary polyhedra truncate at
   // cell faces - accepted to keep image generation independent of render-only settings.
   const skip_spectators = has_framework_potential(present_elements)
-  const site_skipped = site_elements.map(
-    (elem) => skip_spectators && elem !== null && is_spectator_center(elem),
+  // resolved per element, not per site: is_spectator_center does two lookups and a
+  // supercell repeats the same handful of elements thousands of times
+  const spectators = new Set(
+    skip_spectators ? [...present_elements].filter(is_spectator_center) : [],
   )
+  const site_skipped = site_elements.map((elem) => elem !== null && spectators.has(elem))
 
   // Phase 2: anion images that complete coordination polyhedra / bonds at cell faces.
   // Phase 1's ~0.5 Å face tolerance misses anions just beyond a face that still bond a
@@ -179,15 +185,13 @@ export function find_image_atoms(
 
     // Bond-test anchors = base atoms + phase-1 boundary images, so every displayed
     // boundary cation gets its shell completed (VESTA-like; e.g. all 8 rutile corners).
+    // Anchor = base atom or phase-1 image; anchor_src maps each back to the site it copies
+    // so radius/EN/skipped stay single-sourced instead of being duplicated per anchor.
     const anchor_positions: Vec3[] = structure.sites.map((site) => site.xyz)
-    const anchor_radii: (number | null)[] = [...site_radii]
-    const anchor_en: (number | null)[] = [...site_en]
-    const anchor_skipped: boolean[] = [...site_skipped]
+    const anchor_src: number[] = structure.sites.map((_site, idx) => idx)
     for (const [src_idx, img_xyz] of image_sites) {
       anchor_positions.push(img_xyz)
-      anchor_radii.push(site_radii[src_idx])
-      anchor_en.push(site_en[src_idx])
-      anchor_skipped.push(site_skipped[src_idx])
+      anchor_src.push(src_idx)
     }
 
     // Spatial grid over anchors for the bond check (integer-packed keys: this
@@ -210,17 +214,22 @@ export function find_image_atoms(
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dz = -1; dz <= 1; dz++) {
-            for (const anchor_idx of grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz)) ??
-              []) {
-              if (anchor_skipped[anchor_idx]) continue
-              const anchor_radius = anchor_radii[anchor_idx]
-              const anchor_electroneg = anchor_en[anchor_idx]
-              if (anchor_radius === null) continue
+            const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
+            if (!cell) continue
+            for (const anchor_idx of cell) {
+              const src_idx = anchor_src[anchor_idx]
+              const anchor_radius = site_radii[src_idx]
+              const anchor_electroneg = site_en[src_idx]
+              if (site_skipped[src_idx] || anchor_radius === null) continue
               if (anchor_electroneg === null || en <= anchor_electroneg) continue
-              const dist = math.euclidean_dist(pos, anchor_positions[anchor_idx])
-              if (dist > MIN_BOND_DIST && dist <= radius + anchor_radius + BOND_SLACK) {
-                return true
-              }
+              // squared compare: this runs hundreds of thousands of times per supercell
+              const anchor_pos = anchor_positions[anchor_idx]
+              const diff_x = pos[0] - anchor_pos[0]
+              const diff_y = pos[1] - anchor_pos[1]
+              const diff_z = pos[2] - anchor_pos[2]
+              const dist_sq = diff_x * diff_x + diff_y * diff_y + diff_z * diff_z
+              const max_dist = radius + anchor_radius + BOND_SLACK
+              if (dist_sq > MIN_BOND_DIST ** 2 && dist_sq <= max_dist * max_dist) return true
             }
           }
         }
@@ -238,6 +247,13 @@ export function find_image_atoms(
       ),
     )
 
+    // reused scratch: shifts[axis] holds [0, +1?, -1?], counts[axis] how many are live
+    const shifts = [
+      [0, 1, -1],
+      [0, 1, -1],
+      [0, 1, -1],
+    ]
+    const counts = [1, 1, 1]
     for (const [idx, site] of structure.sites.entries()) {
       const radius = site_radii[idx]
       const en = site_en[idx]
@@ -247,18 +263,22 @@ export function find_image_atoms(
       if (radius === null || en === null || en <= min_anchor_en) continue
       if (site_is_metal[idx]) continue
       // Per-axis shifts that could land a copy of this atom within bonding reach of the
-      // cell: {0} plus +1/-1 when the atom is within max_bond_dist of the boundary
-      const axis_shifts = [0, 1, 2].map((axis) => {
-        if (!pbc[axis]) return [0]
-        const pad = pad_per_axis[axis]
-        const shifts = [0]
-        if (site.abc[axis] < pad) shifts.push(1)
-        if (site.abc[axis] > 1 - pad) shifts.push(-1)
-        return shifts
-      })
-      for (const shift_a of axis_shifts[0]) {
-        for (const shift_b of axis_shifts[1]) {
-          for (const shift_c of axis_shifts[2]) {
+      // cell: {0} plus +1/-1 when the atom is within max_bond_dist of the boundary.
+      // Counted into the reused scratch above instead of building four arrays per site.
+      for (let axis = 0; axis < 3; axis++) {
+        const below = pbc[axis] && site.abc[axis] < pad_per_axis[axis]
+        const above = pbc[axis] && site.abc[axis] > 1 - pad_per_axis[axis]
+        shifts[axis][1] = below ? 1 : -1 // slot 2 stays -1, only read when both apply
+        counts[axis] = 1 + Number(below) + Number(above)
+      }
+      if (counts[0] * counts[1] * counts[2] === 1) continue // interior atom, no images
+
+      for (let idx_a = 0; idx_a < counts[0]; idx_a++) {
+        const shift_a = shifts[0][idx_a]
+        for (let idx_b = 0; idx_b < counts[1]; idx_b++) {
+          const shift_b = shifts[1][idx_b]
+          for (let idx_c = 0; idx_c < counts[2]; idx_c++) {
+            const shift_c = shifts[2][idx_c]
             if (shift_a === 0 && shift_b === 0 && shift_c === 0) continue
             const key = `${idx}|${shift_a},${shift_b},${shift_c}`
             if (seen_images.has(key)) continue

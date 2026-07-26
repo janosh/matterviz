@@ -1,11 +1,8 @@
 import { parse_structure_file } from '$lib/structure/parse'
 import type * as TrajectoryParseModule from '$lib/trajectory/parse'
 import { create_display, VSCodeFrameLoader } from '$lib/file-viewer/main'
-import {
-  base64_to_array_buffer,
-  parse_file_content,
-  type ParseResult,
-} from '$lib/file-viewer/parse'
+import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
+import type { ParseResult } from '$lib/file-viewer/parse'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {

@@ -6,9 +6,9 @@ import { group } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
 import {
   best_form_energy_for_formula as best_form_energy,
-  type FormulaEnergyStats,
   formula_key_from_composition,
 } from './compute'
+import type { FormulaEnergyStats } from './compute'
 import type { ChemPotColorMode } from './types'
 
 // Categorical palette for arity mode (element count)

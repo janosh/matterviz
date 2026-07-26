@@ -45,7 +45,7 @@ export { default as StructureViewport } from './StructureViewport.svelte'
 export * from './supercell'
 export * from './validation'
 
-export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
+export type MeasureMode = `distance` | `angle` | `dihedral` | `edit-bonds` | `edit-atoms`
 export type BondEditMode = `add` | `delete`
 export type StructureDisplayMode = `structure` | `slice`
 

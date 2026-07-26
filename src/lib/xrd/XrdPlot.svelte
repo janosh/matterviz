@@ -18,40 +18,16 @@
   import { BarPlot, ScatterPlot } from '$lib/plot'
   import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps } from 'svelte'
+  import type { RadiationType } from '$lib/scattering'
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
+  import { format_hkl } from './index'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
   import { to_error } from '$lib/utils'
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
-    if (!obj || typeof obj !== `object`) return false
-    const pattern_obj = obj as { x?: unknown; y?: unknown }
-    const x_vals = pattern_obj.x
-    const y_vals = pattern_obj.y
+    const { x: x_vals, y: y_vals } = (obj ?? {}) as { x?: unknown; y?: unknown }
     return Array.isArray(x_vals) && Array.isArray(y_vals) && x_vals.length === y_vals.length
-  }
-
-  function format_hkl(hkl: Hkl, format: HklFormat): string {
-    if (format === `compact`) {
-      // Use crystallographic overbar notation for negative indices (e.g. 1̄ instead of -1)
-      // Note: Requires font support for Unicode combining characters (U+0305)
-      return hkl
-        .map((val) => {
-          // Use combining overline character (U+0305) for negative values
-          // Apply overbar to each digit for multi-digit numbers
-          if (val < 0) {
-            const digits = String(Math.abs(val))
-            return digits
-              .split(``)
-              .map((digit) => `${digit}\u0305`)
-              .join(``)
-          }
-          return `${val}`
-        })
-        .join(``)
-    }
-    if (format === `full`) return `(${hkl.join(`, `)})`
-    return ``
   }
 
   let {
@@ -62,6 +38,7 @@
     show_angles = null,
     orientation = `vertical`,
     wavelength = null,
+    radiation = $bindable(`xray`),
     x_axis = {},
     y_axis = {},
     allow_file_drop = true,
@@ -83,6 +60,9 @@
       hkl_format?: HklFormat
       show_angles?: boolean | null
       wavelength?: number | null
+      // Probe used when recomputing a pattern from a dropped structure file. Neutron and
+      // electron both require an explicit `wavelength` (no anode default exists for them).
+      radiation?: RadiationType
       x_axis?: AxisConfig
       y_axis?: AxisConfig
       allow_file_drop?: boolean
@@ -100,6 +80,20 @@
 
   let dragover = $state(false)
   let dropped_entries = $state<PatternEntry[]>([])
+
+  // Miller indices of one peak, joined for a bar label or a tooltip line
+  const join_hkls = (hkls: Hkl[] | undefined): string =>
+    hkl_format && hkls ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `) : ``
+
+  // Legend label and colour, shared by the stick and profile views. Overlapping series get
+  // 60% alpha so a peak sitting behind another still shows through.
+  const series_style = (entry: PatternEntry, entry_idx: number) => ({
+    label: pattern_entries.length > 1 ? entry.label : ``,
+    color: add_alpha(
+      entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length],
+      pattern_entries.length > 1 ? 0.6 : 1,
+    ),
+  })
 
   // Normalize various input shapes to a consistent array of { label, pattern, color }
   const pattern_entries = $derived.by<PatternEntry[]>(() => {
@@ -129,19 +123,18 @@
     return max_val || 1
   })
 
-  // Compute overall 2θ domain (degrees)
+  // Overall 2θ domain (degrees). Looped rather than spread: Math.min(...xs) over a
+  // multi-thousand-point profile can overflow the argument stack.
   const angle_range = $derived.by((): Vec2 => {
-    const valid = pattern_entries.filter((entry) => entry.pattern.x.length > 0)
-    if (valid.length === 0) return [0, 90]
     let [min_x, max_x] = [Infinity, 0]
-    for (const entry of valid) {
-      const entry_min = Math.min(...entry.pattern.x)
-      const entry_max = Math.max(...entry.pattern.x)
-      if (entry_min < min_x) min_x = entry_min
-      if (entry_max > max_x) max_x = entry_max
+    for (const entry of pattern_entries) {
+      for (const angle of entry.pattern.x) {
+        if (angle < min_x) min_x = angle
+        if (angle > max_x) max_x = angle
+      }
     }
-    const x_min = min_x > 10 ? Math.floor(min_x) : 0
-    return [x_min, Math.ceil(max_x)]
+    if (!Number.isFinite(min_x)) return [0, 90] // every pattern was empty
+    return [min_x > 10 ? Math.floor(min_x) : 0, Math.ceil(max_x)]
   })
 
   // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels
@@ -151,43 +144,31 @@
   const bar_series = $derived.by<BarSeries[]>(() => {
     if (broadening_enabled) return [] // Optimization: skip if not used
 
-    const include_name = pattern_entries.length > 1
-    // Add transparency when multiple series overlap
-    const alpha = pattern_entries.length > 1 ? 0.6 : 1
-    const scale = (y_val: number) => (y_val / global_max_intensity) * 100
     return pattern_entries.map((entry, entry_idx) => {
       const xs = entry.pattern.x
-      const ys = entry.pattern.y.map((val) => scale(val || 0))
+      const ys = entry.pattern.y.map((val) => ((val || 0) / global_max_intensity) * 100)
       const metadata: Record<string, unknown>[] = []
       const labels: (string | null)[] = []
 
       // Determine which peaks to annotate
-      let selected_indices: number[] = []
+      const selected_indices: number[] = []
       if (annotate_peaks > 0) {
         const threshold = annotate_peaks < 1 ? annotate_peaks * 100 : -Infinity
         const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
+        // Strongest first, so a crowded neighbourhood is won by its tallest peak
         const candidates = ys
           .map((y_val, idx) => ({ y_val, idx }))
           .filter(({ y_val }) => y_val > threshold)
-
-        // Filter out overlapping labels: keep higher intensity peaks when x values are close
-        // Min spacing as fraction of x-range to avoid overlaps (roughly 3% of range)
-        const x_range = Math.max(...xs) - Math.min(...xs)
-        const min_spacing = x_range * 0.03
-        // Sort by intensity descending so we keep highest peaks first
-        // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- candidates is fresh
-        candidates.sort((a, b) => b.y_val - a.y_val)
-        candidates.length = Math.min(candidates.length, max_peaks)
-        const kept: { idx: number; y_val: number }[] = []
-        for (const cand of candidates) {
-          const cand_x = xs[cand.idx]
-          // Check if any already-kept peak is too close
-          const too_close = kept.some(
-            (kept_peak) => Math.abs(xs[kept_peak.idx] - cand_x) < min_spacing,
+          .toSorted((peak_a, peak_b) => peak_b.y_val - peak_a.y_val)
+          .slice(0, max_peaks)
+        // Drop a label sitting within 3% of the x-range of one already kept, else they overlap
+        const min_spacing = (Math.max(...xs) - Math.min(...xs)) * 0.03
+        for (const { idx } of candidates) {
+          const too_close = selected_indices.some(
+            (kept_idx) => Math.abs(xs[kept_idx] - xs[idx]) < min_spacing,
           )
-          if (!too_close) kept.push(cand)
+          if (!too_close) selected_indices.push(idx)
         }
-        selected_indices = kept.map((kept_peak) => kept_peak.idx)
       }
 
       for (let idx = 0; idx < xs.length; idx++) {
@@ -200,9 +181,7 @@
 
         if (selected_indices.includes(idx)) {
           const angle_text = actual_show_angles ? `${format_value(xs[idx], `.2f`)}°` : ``
-          const hkl_text = hkl_format
-            ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `)
-            : ``
+          const hkl_text = join_hkls(hkls)
           // Use @ separator between hkl and angle for better clarity
           const separator = hkl_text && angle_text ? ` @ ` : ``
           const text = [hkl_text, angle_text].filter(Boolean).join(separator)
@@ -210,12 +189,10 @@
         } else labels.push(null)
       }
 
-      const base_color = entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length]
       return {
         x: xs,
         y: ys,
-        label: include_name ? entry.label : ``,
-        color: add_alpha(base_color, alpha),
+        ...series_style(entry, entry_idx),
         bar_width: Math.max(peak_width, 0.8),
         visible: true,
         metadata,
@@ -228,7 +205,6 @@
   const scatter_series = $derived.by<DataSeries[]>(() => {
     if (!broadening_enabled) return []
 
-    const include_name = pattern_entries.length > 1
     // Normalize so the highest peak across ALL broadened profiles is 100: per-profile
     // normalization would lose relative scaling between patterns, while the stick-view
     // global max would make broadened peaks tiny (broadening spreads intensity)
@@ -239,22 +215,18 @@
     for (const profile of broadened) {
       for (const y_val of profile.y) max_y = Math.max(max_y, y_val)
     }
-    // Add transparency when multiple series overlap
-    const alpha = pattern_entries.length > 1 ? 0.6 : 1
 
-    return broadened.map((profile, entry_idx) => {
-      const entry = pattern_entries[entry_idx]
-      const base_color = entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length]
-      return {
-        x: profile.x,
-        y: profile.y.map((y_val) => (y_val / max_y) * 100),
-        label: include_name ? entry.label : ``,
-        color: add_alpha(base_color, alpha),
-        markers: `line`, // Only line for profile
-        line_style: { stroke_width: 2 },
-        visible: true,
-      } as DataSeries
-    })
+    return broadened.map(
+      (profile, entry_idx) =>
+        ({
+          x: profile.x,
+          y: profile.y.map((y_val) => (y_val / max_y) * 100),
+          ...series_style(pattern_entries[entry_idx], entry_idx),
+          markers: `line`, // Only line for profile
+          line_style: { stroke_width: 2 },
+          visible: true,
+        }) as DataSeries,
+    )
   })
 
   async function handle_file_drop(event: DragEvent) {
@@ -265,7 +237,7 @@
     error_msg = undefined
 
     const compute_and_add: io.FileLoadCallback = async (content, filename, _metadata) => {
-      const result = await add_xrd_pattern(content, filename, wavelength)
+      const result = await add_xrd_pattern(content, filename, wavelength, radiation)
       if (result.error) {
         error_msg = result.error
       } else if (result.pattern) {
@@ -312,9 +284,55 @@
   }
 
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
+  // In the horizontal layout the 2θ and intensity axes trade places
+  const is_horizontal = $derived(orientation === `horizontal`)
+
+  const drop_handlers = io.drag_over_handlers({
+    allow: () => allow_file_drop,
+    set_dragover: (over) => (dragover = over),
+  })
+
+  // [key, label, tooltip, step, min?, max?]
+  type BroadeningInput = [keyof BroadeningParams, string, string, number, number?, number?]
+  const broadening_inputs: BroadeningInput[] = [
+    [`U`, `U`, `Caglioti U parameter`, 0.001],
+    [`V`, `V`, `Caglioti V parameter`, 0.001],
+    [`W`, `W`, `Caglioti W parameter`, 0.001],
+    [`shape_factor`, `η`, `Pseudo-Voigt shape factor (0=Gaussian, 1=Lorentzian)`, 0.05, 0, 1],
+  ]
 </script>
 
+{#snippet readout(label: string, angle: number, intensity: number)}
+  {@html sanitize_html(label)}<br />
+  2θ: {format_value(angle, `.2f`)}°<br />
+  Intensity: {format_value(intensity, `.1f`)}
+{/snippet}
+
 {#snippet broadening_controls_snippet()}
+  <!-- Scoped to dropped files: this component gets finished patterns, never structures -->
+  {#if allow_file_drop}
+    <SettingsSection
+      title="Dropped structure files"
+      current_values={{ radiation }}
+      on_reset={() => (radiation = `xray`)}
+    >
+      <label class="toggle">
+        Compute with
+        <select bind:value={radiation}>
+          {#each [[`xray`, `X-rays`], [`neutron`, `Neutrons`], [`electron`, `Electrons`]] as const as [key, text] (key)}
+            <option value={key}>{text}</option>
+          {/each}
+        </select>
+      </label>
+      <small>
+        Applies to structure files dropped here; patterns already shown are not recomputed.
+        {#if radiation !== `xray` && wavelength === null}
+          {radiation} patterns also need an explicit <code>wavelength</code> prop in Å.
+        {/if}
+      </small>
+    </SettingsSection>
+  {/if}
+
   <SettingsSection
     title="Broadening"
     current_values={broadening_params}
@@ -330,44 +348,19 @@
 
     {#if broadening_enabled}
       <div class="pane-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1ex">
-        <label title="Caglioti U parameter"
-          >U:
-          <input
-            type="number"
-            step="0.001"
-            bind:value={broadening_params.U}
-            class="param-input"
-          />
-        </label>
-        <label title="Caglioti V parameter"
-          >V:
-          <input
-            type="number"
-            step="0.001"
-            bind:value={broadening_params.V}
-            class="param-input"
-          />
-        </label>
-        <label title="Caglioti W parameter"
-          >W:
-          <input
-            type="number"
-            step="0.001"
-            bind:value={broadening_params.W}
-            class="param-input"
-          />
-        </label>
-        <label title="Pseudo-Voigt shape factor (0=Gaussian, 1=Lorentzian)"
-          >η:
-          <input
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            bind:value={broadening_params.shape_factor}
-            class="param-input"
-          />
-        </label>
+        {#each broadening_inputs as [key, text, title, step, min, max] (key)}
+          <label {title}>
+            {text}:
+            <input
+              type="number"
+              {step}
+              {min}
+              {max}
+              bind:value={broadening_params[key]}
+              class="param-input"
+            />
+          </label>
+        {/each}
       </div>
     {/if}
   </SettingsSection>
@@ -402,11 +395,7 @@
     {#if broadening_enabled}
       <!-- Broadened Profile View -->
       {#snippet tooltip(info: ScatterHandlerProps)}
-        {@const angle_text = `${format_value(info.x, `.2f`)}°`}
-        {@const intensity_text = `${format_value(info.y, `.1f`)}`}
-        {@html sanitize_html(info.label ?? ``)}<br />
-        2θ: {angle_text}<br />
-        Intensity: {intensity_text}
+        {@render readout(info.label ?? ``, info.x, info.y)}
       {/snippet}
 
       <ScatterPlot
@@ -424,10 +413,7 @@
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        {...io.drag_over_handlers({
-          allow: () => allow_file_drop,
-          set_dragover: (over) => (dragover = over),
-        })}
+        {...drop_handlers}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         {controls}
@@ -436,20 +422,11 @@
     {:else}
       <!-- Discrete Stick View -->
       {#snippet tooltip(info: BarHandlerProps<{ label?: string; hkls?: Hkl[]; d?: number }>)}
-        {@const angle_text = `${format_value(info.x, `.2f`)}°`}
-        {@const intensity_text = `${format_value(info.y, `.1f`)}`}
-        {@const hkls = info.metadata?.hkls}
         {@const d_spacing = info.metadata?.d}
-        {@const hkl_text =
-          hkls && hkl_format
-            ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
-            : ``}
-        {@const d_text = d_spacing != null ? `${format_value(d_spacing, `.3f`)} Å` : ``}
-        {@html sanitize_html(info.metadata?.label ?? ``)}<br />
-        2θ: {angle_text}<br />
-        Intensity: {intensity_text}
+        {@const hkl_text = join_hkls(info.metadata?.hkls)}
+        {@render readout(info.metadata?.label ?? ``, info.x, info.y)}
         {#if hkl_text}<br />hkl: {hkl_text}{/if}
-        {#if d_text}<br />d: {d_text}{/if}
+        {#if d_spacing != null}<br />d: {format_value(d_spacing, `.3f`)} Å{/if}
       {/snippet}
 
       <BarPlot
@@ -457,26 +434,19 @@
         series={bar_series}
         bind:orientation
         x_axis={{
-          label: orientation === `horizontal` ? intensity_label : angle_label,
-
-          ...(orientation === `horizontal` ? y_axis : x_axis),
-          range: orientation === `horizontal` ? intensity_range : angle_range,
+          label: is_horizontal ? intensity_label : angle_label,
+          ...(is_horizontal ? y_axis : x_axis),
+          range: is_horizontal ? intensity_range : angle_range,
         }}
         y_axis={{
-          label: orientation === `horizontal` ? angle_label : intensity_label,
-          ...(orientation === `horizontal` ? x_axis : y_axis),
-          label_shift: {
-            x: 2,
-            ...(orientation === `horizontal` ? x_axis : y_axis).label_shift,
-          },
-          range: orientation === `horizontal` ? angle_range : intensity_range,
+          label: is_horizontal ? angle_label : intensity_label,
+          ...(is_horizontal ? x_axis : y_axis),
+          label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
+          range: is_horizontal ? angle_range : intensity_range,
         }}
         {tooltip}
         ondrop={handle_file_drop}
-        {...io.drag_over_handlers({
-          allow: () => allow_file_drop,
-          set_dragover: (over) => (dragover = over),
-        })}
+        {...drop_handlers}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         show_controls={controls.show}

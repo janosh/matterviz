@@ -10,6 +10,7 @@ import type { AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { get_majority_element } from '$lib/structure/bonding'
+import type { Pbc } from '$lib/structure/pbc'
 import { wrap_frac_coord } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
@@ -145,15 +146,18 @@ export const get_orig_site_idx = (site: Site | undefined, site_idx: number): num
 // of the [0,1] cell and capping at MAX_IMAGE_SHELLS/axis (warns + may undercount beyond
 // that — near-degenerate cells only). Smaller atoms image less; atoms with no covalent
 // radius form no bonds and get no images.
-function expand_structure_for_pbc(
+// `pbc_override` lets callers (bond angles) analyse a structure under different
+// periodicity than the lattice declares, without copying this whole routine.
+export function expand_structure_for_pbc(
   structure: AnyStructure,
   strategy: BondingStrategy,
+  pbc_override?: Pbc,
 ): AnyStructure {
   if (!(`lattice` in structure) || !structure.lattice || structure.sites.length === 0) {
     return structure
   }
   const { sites, lattice } = structure
-  const pbc = lattice.pbc ?? [true, true, true]
+  const pbc = pbc_override ?? lattice.pbc ?? [true, true, true]
   if (!pbc.some(Boolean)) return structure
 
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
@@ -314,6 +318,60 @@ export function get_wyckoff_colors(
   return { colors, values: orbit_ids, unique_values }
 }
 
+// POSCAR selective dynamics is a PER-AXIS flag triple (`T`/`F` per lattice direction), so an
+// atom can be frozen along some axes only. Collapsing to a binary free/fixed split would hide
+// that, hence the separate `partially fixed` category. `unknown` = site never declared the
+// property, which the POSCAR parser emits for coordinate lines too short to carry flags.
+export const SELECTIVE_DYNAMICS_CATEGORIES = [
+  `free`,
+  `partially fixed`,
+  `fixed`,
+  `unknown`,
+] as const
+export type SelectiveDynamicsCategory = (typeof SELECTIVE_DYNAMICS_CATEGORIES)[number]
+
+// `true` means the atom may relax along that axis (POSCAR `T`), `false` means frozen (`F`).
+// Every parser MatterViz ships writes exactly three booleans or nothing at all, so anything
+// else is a hand-authored structure object and throws rather than growing a legend category.
+export function categorize_selective_dynamics(value: unknown): SelectiveDynamicsCategory {
+  if (value === undefined || value === null) return `unknown`
+  if (
+    !Array.isArray(value) ||
+    value.length !== 3 ||
+    value.some((flag) => typeof flag !== `boolean`)
+  ) {
+    throw new Error(`selective_dynamics must be 3 booleans, got ${JSON.stringify(value)}`)
+  }
+  if (value.every(Boolean)) return `free`
+  if (value.some(Boolean)) return `partially fixed`
+  return `fixed`
+}
+
+export const structure_has_selective_dynamics = (
+  structure: AnyStructure | undefined | null,
+): boolean =>
+  structure?.sites.some((site) => site.properties?.selective_dynamics !== undefined) ?? false
+
+export function get_selective_dynamics_colors(
+  structure: AnyStructure,
+  scale = DEFAULT_COLOR_SCALE,
+): AtomPropertyColors {
+  if (structure.sites.length === 0) return { colors: [], values: [] }
+  const categories = structure.sites.map((site) =>
+    categorize_selective_dynamics(site.properties?.selective_dynamics),
+  )
+  // Order the legend free → partially fixed → fixed (mobility descending) instead of
+  // alphabetically, so the color ramp reads as a constraint gradient
+  const { colors, unique_values } = make_categorical(
+    categories,
+    scale,
+    (cat_a, cat_b) =>
+      SELECTIVE_DYNAMICS_CATEGORIES.indexOf(cat_a) -
+      SELECTIVE_DYNAMICS_CATEGORIES.indexOf(cat_b),
+  )
+  return { colors, values: categories, unique_values }
+}
+
 export function get_custom_colors(
   structure: AnyStructure,
   fn: (site: Site, idx: number) => number | string,
@@ -346,6 +404,7 @@ export function get_atom_colors(
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
+  if (mode === `selective_dynamics`) return get_selective_dynamics_colors(structure, scale)
   if (mode === `custom` && config.color_fn) {
     return get_custom_colors(structure, config.color_fn, scale, scale_type)
   }

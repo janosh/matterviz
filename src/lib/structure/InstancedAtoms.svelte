@@ -90,22 +90,30 @@
   })
 
   const scratch_matrix = new Matrix4()
-  const scratch_color = new Color()
   const gray = new Color(0x999999)
 
   $effect(() => {
     const current = mesh
     if (!current) return
     const limit = Math.min(atoms.length, current.count)
+    // Color.set(string) parses CSS with regexes. Atoms draw from a handful of distinct
+    // colors, so resolve each one once per update instead of once per atom (>10k here).
+    const resolved = new Map<string | undefined, Color>()
+    const resolve_color = (color: string | undefined): Color => {
+      let hit = resolved.get(color)
+      if (!hit) {
+        hit = color === undefined ? gray.clone() : new Color(color)
+        resolved.set(color, ghost ? hit.lerp(gray, 0.4) : hit)
+      }
+      return hit
+    }
     for (let idx = 0; idx < limit; idx++) {
       const { position, radius, color } = atoms[idx]
       scratch_matrix
         .makeScale(radius, radius, radius)
         .setPosition(position[0], position[1], position[2])
       current.setMatrixAt(idx, scratch_matrix)
-      scratch_color.set(color ?? gray)
-      if (ghost) scratch_color.lerp(gray, 0.4)
-      current.setColorAt(idx, scratch_color)
+      current.setColorAt(idx, resolve_color(color))
     }
     current.instanceMatrix.needsUpdate = true
     if (current.instanceColor) current.instanceColor.needsUpdate = true

@@ -12,6 +12,17 @@ import { traj_warn } from './diagnostics'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
 
+// Position column sets LAMMPS can dump, most to least informative. `scaled` coords are
+// fractional and need the cell to become Cartesian. `unwrapped` means LAMMPS already
+// removed the periodic images, so consumers (e.g. math.unwrap_positions) must not
+// re-apply the minimum image convention. x/y/z and xs/ys/zs are wrapped into the box.
+const POS_COL_VARIANTS = [
+  { keys: [`xu`, `yu`, `zu`], scaled: false, unwrapped: true },
+  { keys: [`xsu`, `ysu`, `zsu`], scaled: true, unwrapped: true },
+  { keys: [`xs`, `ys`, `zs`], scaled: true, unwrapped: false },
+  { keys: [`x`, `y`, `z`], scaled: false, unwrapped: false },
+] as const
+
 // Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
 // Lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
@@ -101,23 +112,17 @@ export function parse_lammps_trajectory(
     const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
     const col = Object.fromEntries(cols.map((name, col_idx) => [name, col_idx]))
 
-    // Determine position columns: prefer unwrapped (xu/yu/zu) > scaled (xs/ys/zs) > regular (x/y/z)
-    const pos_keys = [`xu`, `yu`, `zu`].every((key) => key in col)
-      ? [`xu`, `yu`, `zu`]
-      : [`xs`, `ys`, `zs`].every((key) => key in col)
-        ? [`xs`, `ys`, `zs`]
-        : [`x`, `y`, `z`]
-    const pos_cols = pos_keys.map((key) => col[key])
+    const pos_variant = POS_COL_VARIANTS.find(({ keys }) => keys.every((key) => key in col))
+    if (!pos_variant) continue
+    const pos_cols = pos_variant.keys.map((key) => col[key])
     // Atom identity: prefer numeric type, else explicit element symbol.
     // Fallback to ID-based mapping only for legacy dumps; this can be inaccurate
     // for large or non-element-like IDs, so prefer TYPE column when available.
     const type_col = col.type
     const element_col = col.element
     const id_col = col.id
-    const use_scaled = pos_keys[0] === `xs`
     const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1, id_col ?? -1)
 
-    if (pos_cols.some((col_idx) => col_idx === undefined)) continue
     if (type_col === undefined && element_col === undefined && id_col === undefined) {
       traj_warn(
         `Skipping LAMMPS frame at timestep ${timestep}: missing type/element/id column`,
@@ -128,7 +133,7 @@ export function parse_lammps_trajectory(
     // Parse atom data
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
-    const frac_to_cart = use_scaled ? math.create_frac_to_cart(lattice_matrix) : null
+    const frac_to_cart = pos_variant.scaled ? math.create_frac_to_cart(lattice_matrix) : null
 
     for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
       const parts = read_line().split(/\s+/)
@@ -177,6 +182,7 @@ export function parse_lammps_trajectory(
         create_trajectory_frame(positions, elements, lattice_matrix, pbc, timestep, {
           volume,
           timestep,
+          coords_unwrapped: pos_variant.unwrapped,
         }),
       )
     }

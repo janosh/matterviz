@@ -1,11 +1,8 @@
 import { full_data_extractor } from '$lib/trajectory/extract'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
 import { expand_ion_types, with_h5_file } from '$lib/trajectory/parse/h5-utils'
-import {
-  line_mode_labels,
-  read_vaspout_bands,
-  type VaspoutElectronicData,
-} from '$lib/trajectory/parse/vaspout-electronic'
+import { line_mode_labels, read_vaspout_bands } from '$lib/trajectory/parse/vaspout-electronic'
+import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
 import { is_trajectory_file } from '$lib/trajectory/format-detect'
 import { describe, expect, it } from 'vitest'

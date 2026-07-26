@@ -9,7 +9,11 @@
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
+  import type { Vec3 } from '$lib/math'
   import { to_degrees, to_radians } from '$lib/math'
+  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
+  import type { ZoneAxisMode } from '$lib/scene'
+  import { is_valid_zone_axis, ZONE_AXIS_MODE_LABELS, zone_axis_direction } from '$lib/scene'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
   import type { VectorLayerConfig } from '$lib/settings'
@@ -23,6 +27,8 @@
     VECTOR_PALETTE,
   } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  import { structure_has_selective_dynamics } from '$lib/structure/atom-properties'
+  import type { DisplacementSummary } from '$lib/structure/measure'
   import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
@@ -66,6 +72,8 @@
     multi_view_control_visible = true,
     multi_view_unavailable_reason = undefined,
     polyhedra_rendered_elements = [],
+    displacement_summary = null,
+    fly_to_request = $bindable(undefined),
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -93,9 +101,29 @@
     multi_view_control_visible?: boolean
     multi_view_unavailable_reason?: string
     polyhedra_rendered_elements?: string[] // elements currently anchoring polyhedra
+    // Displacement-vs-reference readout, bound out of the scene; null hides the whole section
+    displacement_summary?: DisplacementSummary | null
+    fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
   } = $props()
+
+  // Both halves of a section's reset wiring come from one key list, so a new setting can't be
+  // registered in the "changed" indicator and forgotten in the reset (or the other way round).
+  // `extra_reset` covers section state that doesn't live in scene_props.
+  type SceneSettingKey = keyof ComponentProps<typeof StructureScene> &
+    keyof typeof DEFAULTS.structure
+  const scene_section = (keys: SceneSettingKey[], extra_reset?: () => void) => ({
+    current_values: Object.fromEntries(keys.map((key) => [key, scene_props[key]])),
+    on_reset: () => {
+      for (const key of keys) {
+        const value = DEFAULTS.structure[key]
+        // copy array defaults, else editing one in place later would corrupt DEFAULTS
+        Object.assign(scene_props, { [key]: Array.isArray(value) ? [...value] : value })
+      }
+      extra_reset?.()
+    },
+  })
 
   const controls_id = $props.id()
   const multi_view_hint_id = `multi-view-hint-${controls_id}`
@@ -126,12 +154,34 @@
   })
   // Auto-set scale_type based on mode
   $effect(() => {
-    if (atom_color_config.mode === `wyckoff`) {
+    if (
+      atom_color_config.mode === `wyckoff` ||
+      atom_color_config.mode === `selective_dynamics`
+    ) {
       atom_color_config.scale_type = `categorical`
     } else if (atom_color_config.mode === `coordination`) {
       atom_color_config.scale_type = `continuous`
     }
   })
+
+  // Selective-dynamics coloring needs at least one site declaring the property (POSCAR
+  // "Selective dynamics" block); without it every atom would land in one `unknown` bucket.
+  let has_selective_dynamics = $derived(structure_has_selective_dynamics(structure))
+
+  // Zone-axis camera: [uvw] is a direct-lattice direction, (hkl) a reciprocal one, so both
+  // need a lattice — molecules have no crystallographic directions to look down.
+  let zone_axis_indices = $state<Vec3>([0, 0, 1])
+  let zone_axis_mode = $state<ZoneAxisMode>(`uvw`)
+  let lattice_matrix = $derived(
+    structure && `lattice` in structure ? structure.lattice.matrix : null,
+  )
+
+  function fly_to_zone_axis() {
+    if (!lattice_matrix || !is_valid_zone_axis(zone_axis_indices)) return
+    const indices = [...zone_axis_indices] as Vec3
+    // The scene clears this as it starts the flight, so re-clicking the same axis flies again
+    fly_to_request = zone_axis_direction(lattice_matrix, indices, zone_axis_mode)
+  }
 
   // Unique majority elements in the structure, for polyhedra center toggles.
   // Majority (not all) species so the list matches what compute_polyhedra can
@@ -490,26 +540,16 @@
 
   <SettingsSection
     title="Camera"
-    current_values={{
-      camera_projection: scene_props.camera_projection,
-      auto_rotate: scene_props.auto_rotate,
-      rotate_speed: scene_props.rotate_speed,
-      zoom_speed: scene_props.zoom_speed,
-      pan_speed: scene_props.pan_speed,
-      zoom_to_cursor: scene_props.zoom_to_cursor,
-      rotation_damping: scene_props.rotation_damping,
-      rotation: scene_props.rotation,
-    }}
-    on_reset={() => {
-      scene_props.camera_projection = DEFAULTS.structure.camera_projection
-      scene_props.auto_rotate = DEFAULTS.structure.auto_rotate
-      scene_props.rotate_speed = DEFAULTS.structure.rotate_speed
-      scene_props.zoom_speed = DEFAULTS.structure.zoom_speed
-      scene_props.pan_speed = DEFAULTS.structure.pan_speed
-      scene_props.zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor
-      scene_props.rotation_damping = DEFAULTS.structure.rotation_damping
-      scene_props.rotation = [...DEFAULTS.structure.rotation]
-    }}
+    {...scene_section([
+      `camera_projection`,
+      `auto_rotate`,
+      `rotate_speed`,
+      `zoom_speed`,
+      `pan_speed`,
+      `zoom_to_cursor`,
+      `rotation_damping`,
+      `rotation`,
+    ])}
   >
     <label>
       <span
@@ -598,6 +638,34 @@
         </div>
       {/each}
     </div>
+
+    Crystallographic View
+    <div class="pane-row zone-axis">
+      <select
+        bind:value={zone_axis_mode}
+        aria-label="Zone axis index type"
+        disabled={!lattice_matrix}
+      >
+        {#each Object.entries(ZONE_AXIS_MODE_LABELS) as [mode, mode_label] (mode)}
+          <option value={mode}>{mode_label}</option>
+        {/each}
+      </select>
+      <MillerIndexInput
+        bind:value={zone_axis_indices}
+        label={zone_axis_mode}
+        disabled={!lattice_matrix}
+      />
+      <button
+        type="button"
+        onclick={fly_to_zone_axis}
+        disabled={!lattice_matrix || !is_valid_zone_axis(zone_axis_indices)}
+        title={lattice_matrix
+          ? `Point the camera along this crystallographic direction`
+          : `Needs a lattice — molecules have no crystallographic directions`}
+      >
+        View
+      </button>
+    </div>
   </SettingsSection>
 
   <SettingsSection
@@ -667,7 +735,10 @@
       Atom coloring
       <select bind:value={atom_color_config.mode}>
         {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
-          <option {value} disabled={!sym_data && value === `wyckoff`}>{label}</option>
+          {@const disabled =
+            (value === `wyckoff` && !sym_data) ||
+            (value === `selective_dynamics` && !has_selective_dynamics)}
+          <option {value} {disabled}>{label}</option>
         {/each}
       </select>
     </label>
@@ -796,30 +867,76 @@
     </SettingsSection>
   {/if}
 
+  {#if displacement_summary}
+    <SettingsSection
+      title="Displacement Overlay"
+      {...scene_section([
+        `show_displacement_arrows`,
+        `displacement_arrow_scale`,
+        `displacement_arrow_color`,
+      ])}
+    >
+      <!-- `!== null` (not truthiness) so the union discriminates: an empty error string
+        would leave the else branch un-narrowed and rmsd possibly undefined -->
+      {#if displacement_summary.error !== null}
+        <span class="displacement-error">{displacement_summary.error}</span>
+      {:else}
+        <div class="displacement-readout">
+          <span>RMSD <strong>{format_num(displacement_summary.rmsd, `.4~f`)} Å</strong></span>
+          <span>
+            Max <strong>{format_num(displacement_summary.max_displacement, `.4~f`)} Å</strong>
+          </span>
+        </div>
+        <label
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.show_displacement_arrows.description,
+          })}
+          style="gap: 6pt"
+        >
+          <input type="checkbox" bind:checked={scene_props.show_displacement_arrows} />
+          Show displacement arrows
+        </label>
+        <NumberRangeInput
+          min={0.1}
+          max={20}
+          step={0.1}
+          bind:value={scene_props.displacement_arrow_scale}
+          title={SETTINGS_CONFIG.structure.displacement_arrow_scale.description}
+          >Arrow scale</NumberRangeInput
+        >
+        <label
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.displacement_arrow_color.description,
+          })}
+        >
+          Arrow color
+          <input
+            type="color"
+            aria-label="Displacement arrow color"
+            bind:value={scene_props.displacement_arrow_color}
+          />
+        </label>
+      {/if}
+    </SettingsSection>
+  {/if}
+
   {#if available_vector_keys.length > 0 && any_vectors_visible}
     <SettingsSection
       title="Site Vectors"
-      current_values={{
-        vector_scale: scene_props.vector_scale,
-        vector_color: scene_props.vector_color,
-        vector_normalize: scene_props.vector_normalize,
-        vector_uniform_thickness: scene_props.vector_uniform_thickness,
-        vector_color_mode: scene_props.vector_color_mode,
-        vector_color_scale: scene_props.vector_color_scale,
-        vector_origin_gap: scene_props.vector_origin_gap,
-      }}
-      on_reset={() => {
-        scene_props.vector_scale = DEFAULTS.structure.vector_scale
-        scene_props.vector_color = DEFAULTS.structure.vector_color
-        scene_props.vector_color_mode = DEFAULTS.structure.vector_color_mode
-        scene_props.vector_color_scale = DEFAULTS.structure.vector_color_scale
-        scene_props.vector_normalize = DEFAULTS.structure.vector_normalize
-        scene_props.vector_uniform_thickness = DEFAULTS.structure.vector_uniform_thickness
-        scene_props.vector_origin_gap = DEFAULTS.structure.vector_origin_gap
-        for (const key of available_vector_keys) {
-          update_vector_config(key, { scale: null })
-        }
-      }}
+      {...scene_section(
+        [
+          `vector_scale`,
+          `vector_color`,
+          `vector_normalize`,
+          `vector_uniform_thickness`,
+          `vector_color_mode`,
+          `vector_color_scale`,
+          `vector_origin_gap`,
+        ],
+        () => {
+          for (const key of available_vector_keys) update_vector_config(key, { scale: null })
+        },
+      )}
     >
       <NumberRangeInput min={0.001} max={5} step={0.001} bind:value={scene_props.vector_scale}
         >Global Scale</NumberRangeInput
@@ -1027,17 +1144,7 @@
     </div>
   </SettingsSection>
 
-  <SettingsSection
-    title="Lighting"
-    current_values={{
-      directional_light: scene_props.directional_light,
-      ambient_light: scene_props.ambient_light,
-    }}
-    on_reset={() => {
-      scene_props.directional_light = DEFAULTS.structure.directional_light
-      scene_props.ambient_light = DEFAULTS.structure.ambient_light
-    }}
-  >
+  <SettingsSection title="Lighting" {...scene_section([`directional_light`, `ambient_light`])}>
     <NumberRangeInput
       min={0}
       max={4}
@@ -1059,20 +1166,13 @@
   {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
     <SettingsSection
       title="Bonds"
-      current_values={{
-        bonding_strategy: scene_props.bonding_strategy,
-        auto_bond_order: scene_props.auto_bond_order,
-        aromatic_display: scene_props.aromatic_display,
-        bond_color: scene_props.bond_color,
-        bond_thickness: scene_props.bond_thickness,
-      }}
-      on_reset={() => {
-        scene_props.bonding_strategy = DEFAULTS.structure.bonding_strategy
-        scene_props.auto_bond_order = DEFAULTS.structure.auto_bond_order
-        scene_props.aromatic_display = DEFAULTS.structure.aromatic_display
-        scene_props.bond_color = DEFAULTS.structure.bond_color
-        scene_props.bond_thickness = DEFAULTS.structure.bond_thickness
-      }}
+      {...scene_section([
+        `bonding_strategy`,
+        `auto_bond_order`,
+        `aromatic_display`,
+        `bond_color`,
+        `bond_thickness`,
+      ])}
     >
       <label>
         Strategy <select bind:value={scene_props.bonding_strategy}>
@@ -1118,33 +1218,18 @@
   {#if scene_props.show_polyhedra && scene_props.show_polyhedra !== `never`}
     <SettingsSection
       title="Polyhedra"
-      current_values={{
-        polyhedra_opacity: scene_props.polyhedra_opacity,
-        polyhedra_show_edges: scene_props.polyhedra_show_edges,
-        polyhedra_edge_color: scene_props.polyhedra_edge_color,
-        polyhedra_color_mode: scene_props.polyhedra_color_mode,
-        polyhedra_color: scene_props.polyhedra_color,
-        polyhedra_hide_center_atoms: scene_props.polyhedra_hide_center_atoms,
-        polyhedra_min_neighbors: scene_props.polyhedra_min_neighbors,
-        polyhedra_max_neighbors: scene_props.polyhedra_max_neighbors,
-        polyhedra_excluded_elements: scene_props.polyhedra_excluded_elements,
-        polyhedra_included_elements: scene_props.polyhedra_included_elements,
-      }}
-      on_reset={() => {
-        scene_props.polyhedra_opacity = DEFAULTS.structure.polyhedra_opacity
-        scene_props.polyhedra_show_edges = DEFAULTS.structure.polyhedra_show_edges
-        scene_props.polyhedra_edge_color = DEFAULTS.structure.polyhedra_edge_color
-        scene_props.polyhedra_color_mode = DEFAULTS.structure.polyhedra_color_mode
-        scene_props.polyhedra_color = DEFAULTS.structure.polyhedra_color
-        scene_props.polyhedra_hide_center_atoms =
-          DEFAULTS.structure.polyhedra_hide_center_atoms
-        scene_props.polyhedra_min_neighbors = DEFAULTS.structure.polyhedra_min_neighbors
-        scene_props.polyhedra_max_neighbors = DEFAULTS.structure.polyhedra_max_neighbors
-        scene_props.polyhedra_excluded_elements =
-          DEFAULTS.structure.polyhedra_excluded_elements
-        scene_props.polyhedra_included_elements =
-          DEFAULTS.structure.polyhedra_included_elements
-      }}
+      {...scene_section([
+        `polyhedra_opacity`,
+        `polyhedra_show_edges`,
+        `polyhedra_edge_color`,
+        `polyhedra_color_mode`,
+        `polyhedra_color`,
+        `polyhedra_hide_center_atoms`,
+        `polyhedra_min_neighbors`,
+        `polyhedra_max_neighbors`,
+        `polyhedra_excluded_elements`,
+        `polyhedra_included_elements`,
+      ])}
     >
       <NumberRangeInput
         min={0}
@@ -1261,6 +1346,24 @@
     gap: 12pt;
     justify-content: space-between;
     width: 100%;
+  }
+  .zone-axis {
+    align-items: center;
+    gap: 6pt;
+    select {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+  .displacement-readout {
+    display: flex;
+    gap: 12pt;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .displacement-error {
+    color: var(--error-color, #e74c3c);
+    font-size: 0.9em;
   }
   label {
     display: flex;

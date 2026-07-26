@@ -15,38 +15,19 @@ export const COMPRESSION_EXTENSIONS = Object.freeze(
   Object.values(COMPRESSION_FORMATS).flat(),
 ) as readonly string[]
 
-// Keywords that indicate a file is likely a trajectory file
+// Keywords that indicate a file is likely a trajectory file.
+// `dpmd` (DeePMD trajectory outputs) precedes `md` so the longer token wins.
+// oxfmt-ignore
 export const TRAJ_KEYWORDS = Object.freeze([
-  `trajectory`,
-  `traj`,
-  `relaxation`,
-  `relax`,
-  `npt`,
-  `nvt`,
-  `nve`,
-  `qha`,
-  `dpmd`, // DeePMD trajectory outputs (before `md` so the longer token wins)
-  `md`,
-  `dynamics`,
-  `simulation`,
+  `trajectory`, `traj`, `relaxation`, `relax`, `npt`, `nvt`, `nve`, `qha`, `dpmd`, `md`,
+  `dynamics`, `simulation`,
 ])
 
 // Keywords that indicate a file is likely a structure file
+// oxfmt-ignore
 export const STRUCT_KEYWORDS = Object.freeze([
-  `structure`,
-  `phono`,
-  `vasp`,
-  `crystal`,
-  `material`,
-  `lattice`,
-  `geometry`,
-  `unit_cell`,
-  `unitcell`,
-  `atoms`,
-  `sites`,
-  `data`,
-  `phono3py`,
-  `phonopy`,
+  `structure`, `phono`, `vasp`, `crystal`, `material`, `lattice`, `geometry`, `unit_cell`,
+  `unitcell`, `atoms`, `sites`, `data`, `phono3py`, `phonopy`,
 ])
 
 // More restrictive keywords for JSON/YAML files (excludes generic terms like "data")
@@ -76,20 +57,10 @@ const ext_regex = (exts: readonly string[]): RegExp =>
 // File extensions for different file types
 export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`, `.lammpstrj`])
 export const TRAJ_EXTENSIONS_REGEX = ext_regex(TRAJ_EXTENSIONS)
+// oxfmt-ignore
 export const STRUCTURE_EXTENSIONS = Object.freeze([
-  `.cif`,
-  `.mcif`,
-  `.poscar`,
-  `.vasp`,
-  `.cube`,
-  `.lmp`,
-  `.data`,
-  `.dump`,
-  `.pdb`,
-  `.mol`,
-  `.mol2`,
-  `.sdf`,
-  `.mmcif`,
+  `.cif`, `.mcif`, `.poscar`, `.vasp`, `.cube`, `.lmp`, `.data`, `.dump`, `.pdb`, `.mol`,
+  `.mol2`, `.sdf`, `.mmcif`,
 ])
 export const STRUCTURE_EXTENSIONS_REGEX = ext_regex(STRUCTURE_EXTENSIONS)
 export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([

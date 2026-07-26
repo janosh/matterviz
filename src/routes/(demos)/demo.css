@@ -1,0 +1,40 @@
+/* Styles shared by the demo pages under src/routes/(demos). Loaded once by the group
+   layout. Class names are demo- prefixed so they can't leak into the scoped .controls
+   and .grid rules that library components and test pages define for themselves. */
+
+/* Centered row of sliders, selects and checkboxes above a plot */
+.demo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  place-content: center;
+  gap: 1ex 1em;
+  margin: 1em 0;
+}
+.demo-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+/* Live numeric readout beside a slider. Fixed width and tabular figures keep the flex
+   item from resizing as the digit count changes: otherwise dragging a slider past a
+   half-step widens its label by ~13px, tips the next control onto a new row, and jumps
+   everything below the controls down by a whole row height. Pages whose widest value
+   exceeds 4 characters raise min-width inline. */
+.demo-controls .demo-value {
+  display: inline-block;
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Plot beside structure viewer, stacked once there is no room for two columns */
+.demo-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+}
+@media (max-width: 1024px) {
+  .demo-2col {
+    grid-template-columns: 1fr;
+  }
+}

@@ -520,6 +520,7 @@ describe(`get_reduced_formula`, () => {
     [{ C: 1 }, { C: 1 }, `single element`],
     [{}, {}, `empty composition`],
     [{ Fe: 1.5, O: 3 }, { Fe: 1.5, O: 3 }, `non-integer unchanged`],
+    [{ Fe: 1e300, O: 2 }, { Fe: 1e300, O: 2 }, `beyond safe integer range unchanged`],
   ])(`%j -> %j (%s)`, (input, expected, _desc) => {
     expect(get_reduced_formula(input)).toEqual(expected)
   })

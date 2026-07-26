@@ -149,6 +149,27 @@ export function make_supercell(
   let write_idx = 0
   const sites = structure.sites
 
+  // wrap_frac_coord rounds via toFixed, which costs more than the rest of the loop body.
+  // A coordinate only depends on its own axis' cell index, so precomputing per axis runs
+  // it n_sites * (scale_x + scale_y + scale_z) times instead of 3 * n_sites * total_cells.
+  const wrapped_frac = supercell_scaling.map((scale, axis) => {
+    const coords = new Float64Array(n_sites * scale)
+    for (let cell_idx = 0; cell_idx < scale; cell_idx++) {
+      for (let site_idx = 0; site_idx < n_sites; site_idx++) {
+        const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
+        coords[cell_idx * n_sites + site_idx] = to_unit_cell ? wrap_frac_coord(coord) : coord
+      }
+    }
+    return coords
+  })
+
+  // Identical for every image of a base site, so build once and share the reference —
+  // supercell sites already share their base site's `species` array the same way.
+  const site_properties = sites.map((site, site_idx) => ({
+    ...site.properties,
+    orig_unit_cell_idx: site_idx,
+  }))
+
   // Loop order: k, j, i to match typical pymatgen/standard ordering
   for (let kk = 0; kk < scale_z; kk++) {
     for (let jj = 0; jj < scale_y; jj++) {
@@ -164,23 +185,16 @@ export function make_supercell(
         for (let site_idx = 0; site_idx < n_sites; site_idx++) {
           const site = sites[site_idx]
 
-          // new_abc = (old_abc + [ii, jj, kk]) / supercell_scaling
-          let new_a = (site.abc[0] + ii) / scale_x
-          let new_b = (site.abc[1] + jj) / scale_y
-          let new_c = (site.abc[2] + kk) / scale_z
-
-          if (to_unit_cell) {
-            new_a = wrap_frac_coord(new_a)
-            new_b = wrap_frac_coord(new_b)
-            new_c = wrap_frac_coord(new_c)
-          }
-
           new_sites[write_idx++] = {
             species: site.species,
             xyz: [site.xyz[0] + tx, site.xyz[1] + ty, site.xyz[2] + tz],
-            abc: [new_a, new_b, new_c],
+            abc: [
+              wrapped_frac[0][ii * n_sites + site_idx],
+              wrapped_frac[1][jj * n_sites + site_idx],
+              wrapped_frac[2][kk * n_sites + site_idx],
+            ],
             label: `${site.label}${label_suffix}`,
-            properties: { ...site.properties, orig_unit_cell_idx: site_idx },
+            properties: site_properties[site_idx],
           }
         }
       }

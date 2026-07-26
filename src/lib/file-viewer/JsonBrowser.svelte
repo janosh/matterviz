@@ -13,7 +13,8 @@
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
   import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
   import type { PhaseDiagramData } from '$lib/phase-diagram/types'
-  import { merge, type DefaultSettings,build_structure_props_from_settings as structure_props } from '$lib/settings'
+  import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
+  import type { DefaultSettings } from '$lib/settings'
   import Bands from '$lib/spectral/Bands.svelte'
   import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
   import Dos from '$lib/spectral/Dos.svelte'
@@ -24,7 +25,7 @@
     normalize_fractional_coords,
     parse_optimade_from_raw,
   } from '$lib/structure/parse'
-    import Structure from '$lib/structure/Structure.svelte'
+  import Structure from '$lib/structure/Structure.svelte'
   import type { XrdPattern } from '$lib/xrd'
   import XrdPlot from '$lib/xrd/XrdPlot.svelte'
   import { mount, unmount } from 'svelte'

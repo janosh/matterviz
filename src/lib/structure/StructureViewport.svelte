@@ -20,6 +20,7 @@
     StructureBond,
     StructureHandlerData,
   } from '$lib/structure'
+  import type { DisplacementSummary } from '$lib/structure/measure'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
@@ -77,6 +78,7 @@
     // Shared scene inputs (one-way)
     structure = undefined,
     base_structure = undefined,
+    reference_structure = undefined,
     scene_props = {},
     gizmo = false,
     lattice_props = {},
@@ -94,6 +96,11 @@
     camera_projection = `orthographic`,
     camera_position = $bindable([0, 0, 0]),
     camera_target = $bindable(undefined),
+    // One-shot fly-to, routed to the primary pane only: `scene_props` is spread into every
+    // pane, so putting the request there would collapse all four fixed multi-view directions
+    // onto one axis. Bindable because StructureScene clears it as it starts the flight.
+    fly_to_request = $bindable(undefined),
+    displacement_summary = $bindable(null),
 
     // Edit-mode callbacks
     on_sites_moved = undefined,
@@ -133,6 +140,7 @@
     on_camera_reset?: (data: StructureHandlerData) => void
     structure?: AnyStructure
     base_structure?: AnyStructure
+    reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
     lattice_props?: ComponentProps<typeof StructureScene>[`lattice_props`]
@@ -150,6 +158,8 @@
     camera_projection?: CameraProjection
     camera_position?: Vec3
     camera_target?: Vec3
+    fly_to_request?: Vec3
+    displacement_summary?: DisplacementSummary | null
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
     on_bond_edit_start?: () => void
@@ -246,7 +256,13 @@
     }
     sync()
     const interval = setInterval(sync, 200)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      // Movement always stops between ticks (mouse release, fly-to landing), so the final
+      // pose needs one more sync. Skipped when the effect re-runs for any other reason —
+      // e.g. a structure swap mid-drag, where the pose is about to be reset anyway.
+      if (!camera_is_moving) sync()
+    }
   })
 
   // Reset on parent request (reset-all button bumps reset_token for every pane)
@@ -317,10 +333,13 @@
       <StructureScene
         {structure}
         {base_structure}
+        {reference_structure}
         {...scene_props}
         {...in_grid ? { auto_rotate: 0 } : {}}
         bind:camera_position
         bind:camera_target
+        bind:fly_to_request
+        bind:displacement_summary
         {camera_projection}
         {camera_direction}
         {interactive}

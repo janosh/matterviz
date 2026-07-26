@@ -10,6 +10,7 @@
   import { untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+  import { create_fly_to } from './fly-to'
   import type { GizmoAxisKey, GizmoAxisStyle, GizmoOptions } from './gizmo'
   import { GIZMO_AXES, GIZMO_DEFAULT_STYLES, GIZMO_LAYOUT } from './gizmo'
 
@@ -211,52 +212,16 @@
     }
   }
 
-  // Camera fly-to. Interpolating the offset from the orbit target (not the absolute position)
-  // keeps the distance constant while the direction swings around.
-  let animation: { from: THREE.Vector3; to: THREE.Vector3; elapsed: number } | null = null
-
-  function start_fly_to(dir: Vec3) {
-    const main_camera = $camera
-    if (!main_camera) return
-    const { up } = main_camera
-    const target = active_controls?.target ?? ORIGIN
-    const distance = main_camera.position.distanceTo(target) || 1
-    const to = new THREE.Vector3(...dir).multiplyScalar(distance)
-    // `dir` is a unit axis, so this dot is its cosine to the camera's up vector. Looking
-    // straight down `up` is degenerate for OrbitControls (polar angle 0), so tilt off the pole.
-    if (Math.abs(dir[0] * up.x + dir[1] * up.y + dir[2] * up.z) > 0.999) {
-      if (Math.abs(up.z) > 0.5) to.y += 1e-3 * distance
-      else to.z += 1e-3 * distance
-    }
-    animation = { from: main_camera.position.clone().sub(target), to, elapsed: 0 }
-    if (active_controls) active_controls.enabled = false
-    onstart?.()
-    invalidate()
-  }
-
-  const ease_in_out = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
-  const lerped = new THREE.Vector3()
-
-  function step_animation(delta: number) {
-    if (!animation) return
-    const main_camera = $camera
-    if (!main_camera) return
-    animation.elapsed += delta * 1000
-    const progress =
-      animation_duration > 0 ? Math.min(1, animation.elapsed / animation_duration) : 1
-    const target = active_controls?.target ?? ORIGIN
-    lerped.copy(animation.from).lerp(animation.to, ease_in_out(progress))
-    main_camera.position.copy(target).add(lerped)
-    main_camera.lookAt(target)
-    active_controls?.update()
-    onchange?.()
-    invalidate()
-    if (progress >= 1) {
-      animation = null
-      if (active_controls) active_controls.enabled = true
-      onend?.()
-    }
-  }
+  // Camera fly-to, shared with the zone-axis control (see $lib/scene/fly-to)
+  const fly_to = create_fly_to({
+    camera: () => $camera,
+    controls: () => active_controls,
+    duration_ms: () => animation_duration,
+    invalidate,
+    onstart: () => onstart?.(),
+    onchange: () => onchange?.(),
+    onend: () => onend?.(),
+  })
 
   const raycaster = new THREE.Raycaster()
   const pointer_ndc = new THREE.Vector2()
@@ -283,7 +248,7 @@
   let pressed: Handle | null = null
 
   function handle_pointer_move(event: PointerEvent) {
-    const next = animation ? null : (pick_handle(event)?.axis ?? null)
+    const next = fly_to.active ? null : (pick_handle(event)?.axis ?? null)
     if (next !== hovered) {
       hovered = next
       invalidate()
@@ -298,7 +263,7 @@
   function handle_pointer_up(event: PointerEvent) {
     if (pressed && pick_handle(event) === pressed) {
       event.stopPropagation()
-      start_fly_to(pressed.dir)
+      fly_to.start(pressed.dir)
     }
     pressed = null
   }
@@ -346,7 +311,7 @@
     Symbol(`matterviz-gizmo-render`),
     (delta) => {
       // Let an in-flight fly-to finish even if the gizmo was hidden mid-animation.
-      step_animation(delta)
+      fly_to.step(delta)
 
       const target = visible ? 1 : 0
       if (fade !== target) {
@@ -397,7 +362,7 @@
   $effect(() => () => {
     // A fly-to disables orbiting until it finishes. Unmounting mid-flight (e.g. the `gizmo`
     // prop flips false) would otherwise strand the host's controls disabled for good.
-    if (animation && active_controls) active_controls.enabled = true
+    fly_to.release()
     for (const { mesh, label, line } of handles) {
       mesh.geometry.dispose()
       mesh.material.dispose()

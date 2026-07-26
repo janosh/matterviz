@@ -8,8 +8,8 @@ import {
   url_with_params,
   valid_query_param,
   weights_to_param,
-  type WeightsConfig,
 } from '$lib/url-params'
+import type { WeightsConfig } from '$lib/url-params'
 import { expect, expectTypeOf, test, vi } from 'vitest'
 
 test.each([

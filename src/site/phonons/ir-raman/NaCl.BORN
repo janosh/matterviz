@@ -1,0 +1,10 @@
+# Born effective charges and dielectric tensor for the NaCl fixture.
+# Z*(Na) = +1.10 e and eps_inf = 2.34 are the values commonly quoted for rocksalt NaCl;
+# they are literature-typical magnitudes, not the output of a calculation run here.
+# Cubic site symmetry makes both tensors isotropic and the sum rule Z*(Na) + Z*(Cl) = 0
+# is satisfied exactly.
+# Line 1 = NAC unit conversion factor, line 2 = dielectric tensor, then one tensor/atom.
+14.400
+2.34000000 0.00000000 0.00000000 0.00000000 2.34000000 0.00000000 0.00000000 0.00000000 2.34000000
+1.10000000 0.00000000 0.00000000 0.00000000 1.10000000 0.00000000 0.00000000 0.00000000 1.10000000
+-1.10000000 0.00000000 0.00000000 0.00000000 -1.10000000 0.00000000 0.00000000 0.00000000 -1.10000000

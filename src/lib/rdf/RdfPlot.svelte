@@ -2,15 +2,16 @@
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
-  import { create_file_drop_handler, type FileLoadCallback, type FileLoadMeta } from '$lib/io'
+  import type { FileLoadCallback } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
+  import { create_structure_drop_handler } from '$lib/plot/core/structure-input'
   import type { Crystal, Pbc } from '$lib/structure'
-  import { parse_any_structure } from '$lib/structure/parse'
   import { is_crystal } from '$lib/structure/validation'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { calculate_all_pair_rdfs, calculate_rdf, type RdfEntry } from './index'
-  import { to_error } from '$lib/utils'
+  import BaselineLine from './BaselineLine.svelte'
+  import { calculate_all_pair_rdfs, calculate_rdf, label_structures } from './index'
+  import type { RdfEntry } from './index'
 
   let {
     patterns,
@@ -35,17 +36,11 @@
     structures?: Crystal | Crystal[] | Record<string, Crystal>
     mode?: `element_pairs` | `full`
     show_reference_line?: boolean
-    x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
-    y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
     cutoff?: number
     n_bins?: number
     pbc?: Pbc
     enable_drop?: boolean
-    on_file_drop?: (
-      content: string | ArrayBuffer,
-      filename: string,
-      metadata: FileLoadMeta,
-    ) => Promise<void> | void
+    on_file_drop?: FileLoadCallback
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
@@ -53,29 +48,15 @@
     dragging?: boolean
   } & ComponentProps<typeof ScatterPlot> = $props()
 
-  function format_structure_label(struct: Crystal, label_base: string): string {
-    const formula = get_electro_neg_formula(struct)
-    return formula && label_base ? `${formula}: ${label_base}` : formula || label_base
-  }
-
-  const compute_and_add: FileLoadCallback = (content, filename, _metadata) => {
-    try {
-      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-      const parsed_struct = parse_any_structure(text, filename)
-      if (is_crystal(parsed_struct)) {
-        drag_dropped = [...drag_dropped, parsed_struct]
-      } else {
-        error_msg = `Crystal has no lattice or sites; cannot compute RDF`
-      }
-    } catch (exc) {
-      error_msg = `Failed to process structure: ${to_error(exc).message}`
-    }
-  }
-
-  const handle_drop = create_file_drop_handler({
+  const handle_drop = create_structure_drop_handler({
     allow: () => enable_drop,
-    on_drop: (content, filename, metadata) =>
-      (on_file_drop ?? compute_and_add)(content, filename, metadata),
+    on_file_drop: () => on_file_drop,
+    // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected here
+    // rather than in the shared handler, which only insists on sites
+    on_entry: ({ structure }) => {
+      if (is_crystal(structure)) drag_dropped = [...drag_dropped, structure]
+      else error_msg = `Crystal has no lattice or sites; cannot compute RDF`
+    },
     on_error: (msg) => {
       error_msg = msg
     },
@@ -92,56 +73,40 @@
   }
 
   const entries = $derived.by(() => {
-    const result: RdfEntry[] = patterns
-      ? Array.isArray(patterns)
-        ? [...patterns]
-        : [patterns]
-      : []
-
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
     const struct_list = [
-      ...(!structures
-        ? []
-        : Array.isArray(structures)
-          ? structures.map((struct, idx) => ({ struct, base: `Crystal ${idx + 1}` }))
-          : is_crystal(structures)
-            ? [{ struct: structures, base: `` }]
-            : Object.entries(structures).map(([base, struct]) => ({ struct, base }))),
-      ...drag_dropped.map((struct, idx) => ({ struct, base: `Dropped ${idx + 1}` })),
-    ].map(({ struct, base }) => ({ struct, label: format_structure_label(struct, base) }))
+      ...label_structures(structures),
+      ...drag_dropped.map((struct, idx) => ({ struct, label: `Dropped ${idx + 1}` })),
+    ].map(({ struct, label }) => {
+      const formula = get_electro_neg_formula(struct)
+      return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
+    })
 
-    for (const { struct, label } of struct_list) {
-      if (mode === `element_pairs`) {
-        const pairs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
-        result.push(
-          ...pairs.map((pair) => ({
-            label: pair.element_pair
-              ? `${pair.element_pair[0]}-${pair.element_pair[1]}`
-              : label,
-            legend_group: label, // Group by structure name for multi-structure plots
-            pattern: pair,
-          })),
-        )
-      } else {
-        const pattern = calculate_rdf(struct, { cutoff, n_bins, pbc })
-        result.push({ label, pattern })
-      }
-    }
-    return result
+    const computed = struct_list.flatMap(({ struct, label }): RdfEntry[] => {
+      const options = { cutoff, n_bins, pbc }
+      if (mode === `full`) return [{ label, pattern: calculate_rdf(struct, options) }]
+      return calculate_all_pair_rdfs(struct, options).map((pair) => ({
+        label: pair.element_pair?.join(`-`) ?? label,
+        legend_group: label, // Group by structure name for multi-structure plots
+        pattern: pair,
+      }))
+    })
+    // Explicitly supplied patterns come first, in the order they were given
+    return [...(patterns ? [patterns].flat() : []), ...computed]
   })
 
   const max_r = $derived(Math.max(...entries.flatMap((entry) => entry.pattern.r), 0))
   const max_g = $derived(Math.max(1.2, ...entries.flatMap((entry) => entry.pattern.g_r)))
   const series = $derived<DataSeries[]>(
-    entries.map((ent, idx) => ({
-      x: ent.pattern.r,
-      y: ent.pattern.g_r,
-      label: ent.label,
-      legend_group: ent.legend_group,
+    entries.map((entry, idx) => ({
+      x: entry.pattern.r,
+      y: entry.pattern.g_r,
+      label: entry.label,
+      legend_group: entry.legend_group,
       visible: mode === `element_pairs` ? idx < 3 : true,
       markers: `line` as const,
       line_style: {
-        stroke: ent.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
+        stroke: entry.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
         stroke_width: 2,
       },
     })),
@@ -187,13 +152,7 @@
   >
     {#snippet user_content({ width, y_scale_fn, pad })}
       {#if show_reference_line}
-        {@const y1 = y_scale_fn(1)}
-        {#if isFinite(y1)}
-          {@const [x1, x2] = [pad.l, width - pad.r]}
-          {@const [x, y] = [width - pad.r - 5, y1 - 5]}
-          <line {x1} {x2} {y1} y2={y1} stroke="gray" stroke-dasharray="4" opacity="0.5" />
-          <text {x} {y} text-anchor="end" fill="gray" font-size="0.8em"> g(r) = 1 </text>
-        {/if}
+        <BaselineLine {width} {pad} y_value={y_scale_fn(1)} label="g(r) = 1" />
       {/if}
     {/snippet}
 

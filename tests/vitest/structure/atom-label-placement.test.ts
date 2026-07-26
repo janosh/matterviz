@@ -1,10 +1,7 @@
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import {
-  choose_site_label_offset,
-  type LabelPlacement,
-  LabelProjector,
-} from '$lib/structure/atom-label-placement'
+import { choose_site_label_offset, LabelProjector } from '$lib/structure/atom-label-placement'
+import type { LabelPlacement } from '$lib/structure/atom-label-placement'
 import type { Camera } from 'three/webgpu'
 import { Matrix4, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'

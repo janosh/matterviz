@@ -65,6 +65,7 @@ export const ATOM_COLOR_MODE_OPTIONS = [
   `element`,
   `coordination`,
   `wyckoff`,
+  `selective_dynamics`,
   `custom`,
 ] as const
 export type AtomColorMode = (typeof ATOM_COLOR_MODE_OPTIONS)[number]
@@ -255,6 +256,10 @@ export interface SettingsConfig {
     vector_shaft_radius: SettingType<number>
     vector_arrow_head_radius: SettingType<number>
     vector_arrow_head_length: SettingType<number>
+    // Displacement overlay (current structure vs a reference structure)
+    show_displacement_arrows: SettingType<boolean>
+    displacement_arrow_scale: SettingType<number>
+    displacement_arrow_color: SettingType<string>
     show_cell: SettingType<boolean>
     show_cell_vectors: SettingType<boolean>
     cell_edge_opacity: SettingType<number>
@@ -676,7 +681,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     bonding_strategy: {
       value: `electroneg_ratio`,
       description: `Method for determining bonds between atoms`,
-      enum: { electroneg_ratio: `Electronegativity Ratio`, solid_angle: `Solid Angle` },
+      enum: {
+        electroneg_ratio: `Electronegativity Ratio`,
+        solid_angle: `Solid Angle`,
+        explicit_only: `Explicit Bonds Only`,
+      },
     },
     show_polyhedra: {
       value: `crystals`,
@@ -737,6 +746,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         element: `Element`,
         coordination: `Coordination Number`,
         wyckoff: `Wyckoff Position`,
+        selective_dynamics: `Selective Dynamics`,
       } as Readonly<Record<AtomColorMode, string>>,
     },
     atom_color_scale: {
@@ -919,6 +929,20 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Length of vector arrow head (negative = relative to length or atom spacing with uniform thickness, positive = absolute)`,
       minimum: -0.5,
       maximum: 0.5,
+    },
+    show_displacement_arrows: {
+      value: true,
+      description: `Draw an arrow per atom from its position in the reference structure to its current one (only when a reference structure is supplied)`,
+    },
+    displacement_arrow_scale: {
+      value: 1,
+      description: `Length multiplier for displacement arrows. Arrows are auto-scaled first so the largest displacement spans ~0.9x the characteristic atom spacing (true magnitudes are reported as RMSD/max), since real relaxations are smaller than an atomic radius and would otherwise hide inside their atoms`,
+      minimum: 0.1,
+      maximum: 20,
+    },
+    displacement_arrow_color: {
+      value: `#ff7f0e`,
+      description: `Color of displacement arrows`,
     },
     show_cell: { value: false, description: `Display system cell` },
     show_cell_vectors: { value: true, description: `Display cell vectors` },

@@ -1,0 +1,272 @@
+// mmCIF (PDBx/mmCIF): a CIF dialect whose data names use dot notation
+// (`_atom_site.Cartn_x`) rather than the underscore tags (`_atom_site_fract_x`) that
+// parse_cif understands, which is why it needs its own atom-site loop reader.
+import type { ElementSymbol } from '$lib/element'
+import type { Vec3 } from '$lib/math'
+import * as math from '$lib/math'
+import type { Site } from '$lib/structure'
+import type { ParsedStructure } from '$lib/structure/parse'
+import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import { make_site } from '$lib/structure/site'
+import {
+  cart_to_frac_with_fallback,
+  cell_params_to_matrix,
+  diag_error,
+  diag_warn,
+  element_from_candidates,
+  guard_parse,
+  is_placeholder_cell,
+  iter_cif_loops,
+  parsed_result,
+  parse_cif_uncertain_number,
+  split_cif_tokens,
+  vec3_from_values,
+} from './shared'
+
+// Dot-notation atom-site tags are the distinguishing feature of mmCIF; a plain CIF (or a
+// magnetic .mcif, which uses underscore tags) never has them
+export const is_mmcif_content = (content: string): boolean =>
+  /^\s*_atom_site\./im.test(content)
+
+// mmCIF writes unset values as `.` (inapplicable) or `?` (unknown)
+const is_missing = (token: string | undefined): boolean =>
+  token === undefined || token === `.` || token === `?`
+
+// Map the part after `_atom_site.` to the field we need, lowercased for case-insensitive
+// matching (mmCIF mixes cases, e.g. `Cartn_x` and `B_iso_or_equiv`)
+const ATOM_SITE_FIELDS: Record<string, string> = {
+  type_symbol: `symbol`,
+  label_atom_id: `label`,
+  auth_atom_id: `auth_label`,
+  cartn_x: `cart_x`,
+  cartn_y: `cart_y`,
+  cartn_z: `cart_z`,
+  fract_x: `frac_x`,
+  fract_y: `frac_y`,
+  fract_z: `frac_z`,
+  occupancy: `occupancy`,
+  label_alt_id: `alt_id`,
+  label_comp_id: `residue`,
+  auth_asym_id: `chain`,
+  b_iso_or_equiv: `b_factor`,
+  pdbx_pdb_model_num: `model`,
+}
+
+const build_atom_site_indices = (headers: string[]): Record<string, number> => {
+  const indices: Record<string, number> = {}
+  headers.forEach((header, col_idx) => {
+    const suffix = header.trim().toLowerCase().split(`.`)[1]
+    const field = suffix ? ATOM_SITE_FIELDS[suffix] : undefined
+    if (field && indices[field] === undefined) indices[field] = col_idx
+  })
+  return indices
+}
+
+// Key-value cell parameters (`_cell.length_a   5.43`); mmCIF never puts these in a loop.
+// Tags match exactly: a prefix match would let `_cell.length_a_esd` (the uncertainty,
+// which some writers emit first) win over `_cell.length_a`.
+const read_cell_params = (lines: string[]): number[] | null => {
+  const tags = [`length_a`, `length_b`, `length_c`, `angle_alpha`, `angle_beta`, `angle_gamma`]
+  const values = tags.map((tag) => {
+    const line = lines.find(
+      (candidate) => candidate.trim().toLowerCase().split(/\s+/)[0] === `_cell.${tag}`,
+    )
+    const token = line?.trim().split(/\s+/)[1]
+    if (token === undefined || is_missing(token)) return null
+    return parse_cif_uncertain_number(token)
+  })
+  if (values.some((value) => value === null)) return null
+  const params = values.filter((value): value is number => value !== null)
+  if (is_placeholder_cell(params)) {
+    diag_warn(`mmCIF: ignoring placeholder _cell (1 1 1 90 90 90), treating as molecule`)
+    return null
+  }
+  if (params.slice(0, 3).some((length) => length <= 0)) {
+    diag_error(`mmCIF _cell has non-positive edge lengths: [${params.join(`, `)}]`)
+    return null
+  }
+  return params
+}
+
+// type_symbol is an element symbol, so its two-character reading wins (`FE` is iron).
+// label_atom_id is the unpadded PDB atom name, where the element is the FIRST character
+// unless the two-character reading is the only valid one — a protein's `CA` is the alpha
+// carbon, not calcium.
+const mmcif_element = (
+  raw_symbol: string | undefined,
+  raw_label: string | undefined,
+  atom_idx: number,
+): ElementSymbol => {
+  const leading_letters = (raw: string | undefined): string =>
+    is_missing(raw) ? `` : (/^(?<letters>[A-Za-z]+)/.exec(raw ?? ``)?.groups?.letters ?? ``)
+  const symbol = leading_letters(raw_symbol)
+  const label = leading_letters(raw_label)
+  return element_from_candidates(
+    [symbol.slice(0, 2), symbol.slice(0, 1), label.slice(0, 1), label.slice(0, 2)],
+    atom_idx,
+  )
+}
+
+// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse mmCIF/PDBx.
+export const parse_mmcif = (content: string): ParsedStructure | null =>
+  guard_parse(`mmCIF`, () => {
+    const lines = content.split(/\r?\n/)
+
+    let headers: string[] = []
+    const data_rows: string[][] = []
+    for (const loop of iter_cif_loops(lines)) {
+      const is_atom_site = (header: string) =>
+        header.trim().toLowerCase().startsWith(`_atom_site.`)
+      if (!loop.headers.some(is_atom_site)) continue
+      headers = loop.headers
+      for (let row_idx = loop.data_start; row_idx < lines.length; row_idx++) {
+        const line = lines[row_idx].trim()
+        // mmCIF terminates a loop with `#`, a new tag, a new loop or a new data block
+        if (!line || line === `#` || line === `loop_` || /^_|^data_/.test(line)) break
+        data_rows.push(split_cif_tokens(line))
+      }
+      break
+    }
+
+    if (headers.length === 0) {
+      diag_error(`No _atom_site loop found in mmCIF file`)
+      return null
+    }
+    if (data_rows.length === 0) {
+      diag_error(`mmCIF _atom_site loop has no data rows`)
+      return null
+    }
+
+    const indices = build_atom_site_indices(headers)
+    const has_coords = (kind: `frac` | `cart`) =>
+      [`x`, `y`, `z`].every((axis) => indices[`${kind}_${axis}`] !== undefined)
+    const is_fractional = has_coords(`frac`)
+    if (!is_fractional && !has_coords(`cart`)) {
+      diag_error(
+        `mmCIF _atom_site loop missing coordinates (need Cartn_x/y/z or fract_x/y/z), got tags: ${headers.join(
+          `, `,
+        )}`,
+      )
+      return null
+    }
+    const coord_indices = is_fractional
+      ? [indices.frac_x, indices.frac_y, indices.frac_z]
+      : [indices.cart_x, indices.cart_y, indices.cart_z]
+    // type_symbol is mandatory in the PDBx dictionary; without it elements have to come
+    // from the atom names, which are ambiguous (`CA` is an alpha carbon in a protein but
+    // calcium in a ligand)
+    if (indices.symbol === undefined) {
+      diag_warn(
+        `mmCIF _atom_site loop has no type_symbol column; inferring elements from label_atom_id`,
+      )
+    }
+
+    // Only the first model of an NMR / MD ensemble is parsed (see multi-model policy)
+    const model_col = indices.model
+    const first_model = model_col === undefined ? undefined : data_rows[0]?.[model_col]
+    const model_rows =
+      model_col === undefined
+        ? data_rows
+        : data_rows.filter((row) => row[model_col] === first_model)
+    if (model_rows.length < data_rows.length) {
+      const model_count = new Set(data_rows.map((row) => row[model_col])).size
+      diag_warn(
+        `mmCIF contains ${model_count} models; parsed model ${first_model} and skipped ${
+          data_rows.length - model_rows.length
+        } atom rows from the rest`,
+      )
+    }
+
+    // Alternate conformers would render as overlapping ghost atoms
+    const alt_col = indices.alt_id
+    const rows =
+      alt_col === undefined
+        ? model_rows
+        : model_rows.filter(
+            (row) => is_missing(row[alt_col]) || row[alt_col].toUpperCase() === `A`,
+          )
+    if (rows.length < model_rows.length) {
+      diag_warn(
+        `mmCIF: skipped ${
+          model_rows.length - rows.length
+        } atom(s) with alternate location indicators`,
+      )
+    }
+    if (rows.length === 0) {
+      diag_error(`mmCIF _atom_site loop has no atoms left after model/altloc filtering`)
+      return null
+    }
+
+    const symmetry_ops = lines.filter((line) =>
+      /^\s*_(?:space_group_symop|symmetry_equiv)\./i.test(line),
+    )
+    if (symmetry_ops.length > 0) {
+      diag_warn(
+        `mmCIF: symmetry operations and assembly generation are not applied; showing the deposited coordinates only`,
+      )
+    }
+
+    const cell_params = read_cell_params(lines)
+    const lattice_matrix = cell_params ? cell_params_to_matrix(cell_params) : null
+    if (is_fractional && !lattice_matrix) {
+      diag_error(`mmCIF has fractional coordinates but no usable _cell parameters`)
+      return null
+    }
+    // Cartesian mmCIF coordinates are left unwrapped so macromolecules stay intact;
+    // fractional input is wrapped into the primary cell like parse_cif does
+    const converters =
+      lattice_matrix && cell_params
+        ? {
+            cart_to_frac: cart_to_frac_with_fallback(lattice_matrix, {
+              axis_lengths: [cell_params[0], cell_params[1], cell_params[2]],
+              context: `mmCIF _cell`,
+            }),
+            frac_to_cart: math.create_frac_to_cart(lattice_matrix),
+          }
+        : null
+
+    // Read a row's value for a field the loop may not declare at all
+    const text_at = (row: string[], field: string): string | undefined =>
+      indices[field] === undefined ? undefined : row[indices[field]]
+    const number_at = (row: string[], field: string): number | null =>
+      parse_cif_uncertain_number(text_at(row, field) ?? ``)
+
+    const sites: Site[] = []
+    for (const [atom_idx, row] of rows.entries()) {
+      const coords = vec3_from_values(
+        coord_indices.map((col_idx) => {
+          const token = row[col_idx]
+          if (is_missing(token)) throw new Error(`Missing coordinate in row: ${row.join(` `)}`)
+          const value = parse_cif_uncertain_number(token)
+          if (value === null) throw new Error(`Invalid coordinate '${token}'`)
+          return value
+        }),
+        `mmCIF atom coordinates`,
+      )
+
+      const element = mmcif_element(text_at(row, `symbol`), text_at(row, `label`), atom_idx)
+
+      let abc: Vec3 = [0, 0, 0]
+      let xyz: Vec3 = coords
+      if (is_fractional && converters) {
+        abc = wrap_to_unit_cell(coords)
+        xyz = converters.frac_to_cart(abc)
+      } else if (converters) abc = converters.cart_to_frac.convert(coords)
+
+      const occupancy = number_at(row, `occupancy`)
+      const b_factor = number_at(row, `b_factor`)
+      const residue = text_at(row, `residue`)
+      const chain = text_at(row, `chain`)
+      const properties: Record<string, unknown> = {
+        ...(!is_missing(residue) && { residue }),
+        ...(!is_missing(chain) && { chain }),
+        ...(b_factor !== null && { b_factor }),
+      }
+
+      sites.push(
+        make_site(element, abc, xyz, `${element}${atom_idx + 1}`, properties, occupancy ?? 1),
+      )
+    }
+
+    return parsed_result(sites, [], lattice_matrix)
+  })

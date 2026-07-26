@@ -1,0 +1,61 @@
+{
+  "_comment": "SYNTHETIC polarizability derivative tensors (d alpha / d Q) for the CO2 fixture. Phonopy does not produce these; a real workflow reads them from a LEPSILON finite-difference run (vasp_raman.py, phonopy-spectroscopy, ...). The PATTERN is exact: in the centrosymmetric D_inf_h point group only gerade modes have a nonzero polarizability derivative, and for a free molecule the librations do not change the polarizability either, so nu1 is the only Raman-active mode. The MAGNITUDES (0.7 perpendicular, 2.1 parallel, arbitrary units) are made up.",
+  "mode_labels": [
+    "T_x (acoustic)",
+    "T_y (acoustic)",
+    "T_z (acoustic)",
+    "libration R_x (Pi_g)",
+    "libration R_y (Pi_g)",
+    "nu2 bend x (Pi_u)",
+    "nu2 bend y (Pi_u)",
+    "nu1 sym stretch (Sigma_g+)",
+    "nu3 asym stretch (Sigma_u+)"
+  ],
+  "raman_tensors": [
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ],
+    [
+      [0.7, 0, 0],
+      [0, 0.7, 0],
+      [0, 0, 2.1]
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0]
+    ]
+  ]
+}

@@ -62,18 +62,13 @@ describe(`validate_trajectory`, () => {
     expect(validate_trajectory(make_trajectory(5))).toEqual([])
   })
 
+  // oxfmt-ignore
   test.each([
     [`empty frames`, { frames: [] }, `Trajectory must have at least one frame`],
-    [
-      `no structure`,
-      { frames: [{ step: 0 } as TrajectoryFrame] },
-      `Frame 0 missing structure or sites`,
-    ],
-    [
-      `empty sites`,
-      { frames: [{ structure: { sites: [] }, step: 0 }] },
-      `Frame 0 missing structure or sites`,
-    ],
+    [`no structure`, { frames: [{ step: 0 } as TrajectoryFrame] },
+      `Frame 0 missing structure or sites`],
+    [`empty sites`, { frames: [{ structure: { sites: [] }, step: 0 }] },
+      `Frame 0 missing structure or sites`],
   ])(`returns error for %s`, (_desc, trajectory, expected_error) => {
     expect(validate_trajectory(trajectory as TrajectoryType)).toContain(expected_error)
   })

@@ -344,7 +344,49 @@ const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
     )
   })
 
+// Bond cylinder instances actually uploaded to the GPU, read from the live scene graph.
+// The bond filter has a fast path that returns the unfiltered array when nothing is
+// hidden, so a count is the only way to tell "bonds were filtered" from "view changed".
+const rendered_bond_count = (page: Page) =>
+  page.evaluate(async () => {
+    const module_path = `/src/lib/io/export.ts` // via variable so tsc doesn't resolve it
+    const { scene_registry } = await import(/* @vite-ignore */ module_path)
+    const canvas = document.querySelector(`#test-structure canvas`)
+    const scene = canvas && scene_registry.get(canvas)?.scene
+    if (!scene) throw new Error(`structure canvas not registered`)
+    let count = 0
+    // bond cylinders are the only instanced mesh carrying per-end colors
+    scene.traverse((node: { geometry?: { attributes?: object }; count?: number }) => {
+      if (`instanceColorStart` in (node.geometry?.attributes ?? {})) count += node.count ?? 0
+    })
+    return count
+  })
+
 test.describe(`Bond component`, () => {
+  test(`hiding an element drops its bonds from the scene`, async ({ page }) => {
+    await page.goto(`/test/structure?data_url=/structures/mp-756175.json`, {
+      waitUntil: `networkidle`,
+    })
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await set_scene_props(page, { show_bonds: `always` })
+    const expect_bonds = (matcher: (count: number) => void) =>
+      expect(async () => matcher(await rendered_bond_count(page))).toPass({ timeout: 15_000 })
+
+    let all_bonds = 0
+    await expect_bonds((count) => expect((all_bonds = count)).toBeGreaterThan(0))
+
+    const legend_item = page.locator(`#test-structure .atom-legend .legend-item`).first()
+    const toggle = legend_item.locator(`button.toggle-visibility`)
+    await legend_item.hover()
+    await toggle.click()
+    await expect(legend_item.locator(`label`)).toHaveClass(/hidden/)
+    await expect_bonds((count) => expect(count).toBeLessThan(all_bonds))
+
+    await toggle.click()
+    await expect(legend_item.locator(`label`)).not.toHaveClass(/hidden/)
+    await expect_bonds((count) => expect(count).toBe(all_bonds))
+  })
+
   test(`renders bonds from multiple angles and zoom levels without errors`, async ({
     page,
   }) => {

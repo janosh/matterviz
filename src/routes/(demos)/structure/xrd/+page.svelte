@@ -1,15 +1,23 @@
 <script lang="ts">
-  import { sanitize_html } from '$lib/sanitize'
   import type { Crystal, FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
+  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { PLOT_COLORS } from '$lib/colors'
-  import { get_electro_neg_formula } from '$lib/composition'
+  import { format_num } from '$lib/labels'
+  import type { Vec3 } from '$lib/math'
   import { Structure } from '$lib/structure'
-  import type { XrdPattern } from '$lib/xrd'
-  import { compute_xrd_pattern, XrdPlot } from '$lib/xrd'
-  import { structures } from '$site/structures'
+  import type { SaedOptions, SaedPatternData, XrdPattern } from '$lib/xrd'
+  import {
+    compute_saed_pattern,
+    compute_xrd_pattern,
+    electron_wavelength,
+    SaedPattern,
+    XrdPlot,
+  } from '$lib/xrd'
+  import { structure_map, structures } from '$site/structures'
   import { SvelteMap } from 'svelte/reactivity'
-  import { clamp01, to_error } from '$lib/utils'
+  import { to_error } from '$lib/utils'
+  import StructurePicker, { formula_for, hex_with_alpha } from '../../StructurePicker.svelte'
 
   // Auto-discover XRD data files from static/xrd/ (served at /xrd/<name>); restart the dev
   // server to pick up newly added files. Both plain and gzipped (.gz) formats are supported.
@@ -18,155 +26,156 @@
     { query: `?url` },
   )
 
-  // Extension to [category, icon] lookup - default is Powder XRD 📊
-  const ext_categories: Record<string, [string, string]> = {
-    brml: [`Bruker HRXRD`, `🔬`],
-    raw: [`Bruker Binary`, `📦`],
-    ras: [`Rigaku`, `🇯🇵`],
-    uxd: [`Siemens`, `🇩🇪`],
-    gsas: [`GSAS/Rietveld`, `🔬`],
-    gsa: [`GSAS/Rietveld`, `🔬`],
-    gda: [`GSAS/Rietveld`, `🔬`],
-    fxye: [`GSAS/Rietveld`, `🔬`],
-    xrdml: [`PANalytical`, `🇳🇱`],
+  // Extension -> how FilePicker groups, labels and tints that format; one table so category
+  // and swatch color cannot drift apart. Unlisted extensions fall back to plain ASCII.
+  // Colors must keep the `rgba(..., 0.8)` spelling: FilePicker string-replaces that alpha
+  // with 0.08 to tint the file row behind the swatch.
+  type XrdFormat = { category: string; icon: string; color: string }
+  const ascii = { category: `Powder XRD`, icon: `📊` }
+  const gsas = { category: `GSAS/Rietveld`, icon: `🔬`, color: `rgba(255, 215, 0, 0.8)` }
+  const xrd_formats: Record<string, XrdFormat> = {
+    xy: { ...ascii, color: `rgba(50, 205, 50, 0.8)` },
+    xye: { ...ascii, color: `rgba(34, 139, 34, 0.8)` }, // darker green: XY with errors
+    csv: { ...ascii, color: `rgba(46, 139, 87, 0.8)` },
+    dat: { ...ascii, color: `rgba(100, 149, 237, 0.8)` },
+    asc: { ...ascii, color: `rgba(147, 112, 219, 0.8)` },
+    txt: { ...ascii, color: `rgba(128, 128, 128, 0.8)` },
+    gsas,
+    gsa: gsas,
+    gda: gsas,
+    fxye: gsas,
+    xrdml: { category: `PANalytical`, icon: `🇳🇱`, color: `rgba(70, 130, 180, 0.8)` },
+    brml: { category: `Bruker HRXRD`, icon: `🔬`, color: `rgba(255, 140, 0, 0.8)` },
+    raw: { category: `Bruker Binary`, icon: `📦`, color: `rgba(255, 99, 71, 0.8)` },
+    ras: { category: `Rigaku`, icon: `🇯🇵`, color: `rgba(138, 43, 226, 0.8)` },
+    uxd: { category: `Siemens`, icon: `🇩🇪`, color: `rgba(220, 20, 60, 0.8)` },
   }
+  const xrd_file_colors = Object.fromEntries(
+    Object.entries(xrd_formats).map(([ext, { color }]) => [ext, color]),
+  )
 
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map((path) => {
     const name = path.split(`/`).pop() || path
     const url = path.replace(`/static`, ``) // e.g. /xrd/cao.xy
     const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
-    const [category, category_icon] = ext_categories[ext] ?? [`Powder XRD`, `📊`]
-    return { name, url, type: ext, category, category_icon }
+    const { category, icon } = xrd_formats[ext] ?? ascii
+    return { name, url, type: ext, category, category_icon: icon }
   })
 
-  // Custom colors for XRD data file types
-  const xrd_file_colors: Record<string, string> = {
-    xy: `rgba(50, 205, 50, 0.8)`, // Green for basic XY
-    xye: `rgba(34, 139, 34, 0.8)`, // Darker green for XYE (with errors)
-    xrdml: `rgba(70, 130, 180, 0.8)`, // Steel blue for PANalytical
-    brml: `rgba(255, 140, 0, 0.8)`, // Orange for Bruker XML
-    ras: `rgba(138, 43, 226, 0.8)`, // BlueViolet for Rigaku
-    uxd: `rgba(220, 20, 60, 0.8)`, // Crimson for Siemens
-    gsas: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
-    gsa: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
-    gda: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
-    fxye: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
-    raw: `rgba(255, 99, 71, 0.8)`, // Tomato for Bruker binary
-    dat: `rgba(100, 149, 237, 0.8)`, // Cornflower blue for generic DAT
-    csv: `rgba(46, 139, 87, 0.8)`, // SeaGreen for CSV
-    asc: `rgba(147, 112, 219, 0.8)`, // MediumPurple for ASC
-    txt: `rgba(128, 128, 128, 0.8)`, // Gray for TXT
-  }
-
-  // Cache computed XRD patterns to avoid recomputation when navigating structures
+  // Cache computed XRD patterns to avoid recomputation when navigating structures. Writing
+  // the cache is a side effect, so every caller runs inside an $effect, never a $derived.
   const xrd_cache = new SvelteMap<string, XrdPattern>()
-  const get_struct_id = (struct: Crystal): string => struct.id || JSON.stringify(struct)
-
-  // Map structures by id for O(1) lookup
-  const structures_by_id = $derived<Record<string, Crystal>>(
-    Object.fromEntries(structures.map((struct) => [get_struct_id(struct), struct])),
-  )
-
-  // Helper: convert #rrggbb to #rrggbbaa
-  function hex_with_alpha(hex_color: string, alpha_frac: number): string {
-    const alpha_byte = Math.round(clamp01(alpha_frac) * 255)
-    const alpha_hex = alpha_byte.toString(16).padStart(2, `0`)
-    return hex_color.length === 7 ? `${hex_color}${alpha_hex}` : hex_color
+  const ensure_pattern = (struct_id: string): XrdPattern | null => {
+    const cached = xrd_cache.get(struct_id)
+    if (cached) return cached
+    const struct = structure_map.get(struct_id)
+    if (!struct) return null
+    const pattern = compute_xrd_pattern(struct)
+    xrd_cache.set(struct_id, pattern)
+    return pattern
   }
 
   // On-the-fly computed patterns
-  const compute_ids = structures.map(get_struct_id)
+  const compute_ids = structures.map((struct) => struct.id ?? ``)
   let compute_id = $state<string>(compute_ids[0] || ``)
-  const computed_struct = $derived<Crystal | null>(structures_by_id[compute_id] ?? null)
+  const computed_struct = $derived<Crystal | null>(structure_map.get(compute_id) ?? null)
   let compute_error = $state<string | null>(null)
   let computed_pattern = $state<XrdPattern | null>(null)
   $effect(() => {
-    const struct = computed_struct
-    if (!struct) {
-      computed_pattern = null
-      return
-    }
     try {
+      computed_pattern = ensure_pattern(compute_id)
       compute_error = null
-      const struct_id = get_struct_id(struct)
-      const cached = xrd_cache.get(struct_id)
-      if (cached) computed_pattern = cached
-      else {
-        const result = compute_xrd_pattern(struct)
-        xrd_cache.set(struct_id, result)
-        computed_pattern = result
-      }
     } catch (exc) {
       compute_error = to_error(exc).message
       computed_pattern = null
     }
   })
 
+  // Radiation comparison: the same structure probed with X-rays, neutrons and electrons.
+  // XrdPlot already accepts an array of patterns, so overlaying them needs no plot changes.
+  let probe_wavelength = $state(1.54184) // Å, shared so peak positions line up exactly
+  let show_neutron = $state(true)
+  let show_electron = $state(false)
+  const radiation_overlay = $derived.by(() => {
+    const struct = computed_struct
+    const entries: { label: string; pattern: XrdPattern; color: string }[] = []
+    const errors: string[] = []
+    if (!struct) return { entries, errors }
+
+    const requested = [
+      [`xray`, `X-ray`, PLOT_COLORS[0], true],
+      [`neutron`, `Neutron`, PLOT_COLORS[1], show_neutron],
+      [`electron`, `Electron`, PLOT_COLORS[2], show_electron],
+    ] as const
+    for (const [radiation, label, color, enabled] of requested) {
+      if (!enabled) continue
+      try {
+        const pattern = compute_xrd_pattern(struct, {
+          radiation,
+          wavelength: probe_wavelength,
+          two_theta_range: [0, 90],
+        })
+        entries.push({ label: `${label} (λ = ${probe_wavelength} Å)`, pattern, color })
+      } catch (exc) {
+        errors.push(`${label}: ${to_error(exc).message}`)
+      }
+    }
+    return { entries, errors }
+  })
+
+  // SAED: zone-axis electron diffraction for the currently selected structure
+  let zone_axis = $state<Vec3>([0, 0, 1])
+  let accelerating_voltage = $state(200)
+  let max_g = $state(2)
+  let crystal_thickness = $state(50)
+  // compute_saed_pattern is synchronous and runs on the main thread, so recomputing on every
+  // keystroke of these number inputs would freeze the page. Settle first, then compute.
+  let saed_options = $state<SaedOptions>({})
+  $effect(() => {
+    const next: SaedOptions = {
+      zone_axis: [...zone_axis],
+      accelerating_voltage,
+      max_g,
+      crystal_thickness,
+    }
+    const timer = setTimeout(() => (saed_options = next), 250)
+    return () => clearTimeout(timer)
+  })
+  const saed = $derived.by((): { pattern: SaedPatternData | null; error: string | null } => {
+    const struct = computed_struct
+    if (!struct) return { pattern: null, error: null }
+    try {
+      return { pattern: compute_saed_pattern(struct, saed_options), error: null }
+    } catch (exc) {
+      return { pattern: null, error: to_error(exc).message }
+    }
+  })
+
   // Multi-select demo: allow overlaying multiple structures
   let selected_ids = $state<string[]>(compute_ids.slice(0, 4))
-  function toggle_select(struct_id: string) {
-    selected_ids = selected_ids.includes(struct_id)
-      ? selected_ids.filter((selected_id) => selected_id !== struct_id)
-      : [...selected_ids, struct_id]
-  }
   // Fill cache for all selected structures (side-effect done outside of $derived)
   $effect(() => {
-    for (const id of selected_ids) {
-      const struct = structures_by_id[id]
-      if (!struct) continue
-      const struct_id = get_struct_id(struct)
-      if (!xrd_cache.has(struct_id)) {
-        try {
-          const pat = compute_xrd_pattern(struct)
-          xrd_cache.set(struct_id, pat)
-        } catch (exc) {
-          console.error(`Failed to compute XRD for ${struct_id}`, exc)
-        }
+    for (const struct_id of selected_ids) {
+      try {
+        ensure_pattern(struct_id)
+      } catch (exc) {
+        console.error(`Failed to compute XRD for ${struct_id}`, exc)
       }
     }
   })
-  let selected_patterns = $derived.by(() => {
-    const out: { label: string; pattern: XrdPattern }[] = []
-    for (const id of selected_ids) {
-      const struct = structures_by_id[id]
-      if (!struct) continue
-      const sid = get_struct_id(struct)
-      const pat = xrd_cache.get(sid)
-      if (pat) out.push({ label: `${sid} ${formula_for(sid)}`, pattern: pat })
-    }
-    return out
-  })
-
-  // Precomputed carousel removed; computing on the fly below
-
-  function formula_for(id: string): string {
-    const struct = structures_by_id[id]
-    if (!struct) return ``
-    try {
-      return get_electro_neg_formula(struct, false)
-    } catch {
-      return ``
-    }
-  }
+  let selected_patterns = $derived(
+    selected_ids.flatMap((struct_id) => {
+      const pattern = xrd_cache.get(struct_id)
+      return pattern ? [{ label: `${struct_id} ${formula_for(struct_id)}`, pattern }] : []
+    }),
+  )
 </script>
 
 <h1>XRD Patterns</h1>
 
 <div class="bleed-1400">
-  <nav>
-    {#each structures as struct (get_struct_id(struct))}
-      {@const struct_id = get_struct_id(struct)}
-      <button
-        class:selected={struct_id === compute_id}
-        onclick={() => (compute_id = struct_id)}
-        title={struct_id}
-      >
-        <span class="id">{struct_id}</span>
-        <span class="formula">{@html sanitize_html(formula_for(struct_id))}</span>
-      </button>
-    {/each}
-  </nav>
+  <StructurePicker bind:selected={compute_id} />
   <section>
     <XrdPlot
       patterns={computed_pattern
@@ -189,25 +198,77 @@
     {/if}
   </section>
 
+  <h2>X-ray vs neutron vs electron</h2>
+  <p>
+    All three probes share the same Bragg geometry, so the peaks sit at identical 2θ for a
+    given wavelength — only the relative intensities change. Neutrons scatter off nuclei, and
+    the negative <code>b_coh</code> of H, Li, Ti, V and Mn can invert which reflection is strongest.
+    Electrons use Mott–Bethe form factors; a real electron pattern would use a wavelength near 0.025
+    Å, but the shared wavelength here keeps the comparison aligned.
+  </p>
+  <div class="demo-controls">
+    <label>
+      λ (Å)
+      <input type="number" min="0.1" max="5" step="0.001" bind:value={probe_wavelength} />
+    </label>
+    <label><input type="checkbox" bind:checked={show_neutron} /> Neutron</label>
+    <label><input type="checkbox" bind:checked={show_electron} /> Electron</label>
+  </div>
+  {#each radiation_overlay.errors as message (message)}
+    <p class="error">{message}</p>
+  {/each}
+  <XrdPlot
+    patterns={radiation_overlay.entries}
+    annotate_peaks={4}
+    hkl_format="compact"
+    style="height: 420px"
+  />
+
+  <h2>Electron diffraction (SAED)</h2>
+  <p>
+    Spot pattern down a direct-lattice zone axis [uvw] for {compute_id}. At {accelerating_voltage}
+    kV the electron wavelength is {format_num(
+      electron_wavelength(accelerating_voltage),
+      `.4~`,
+    )} Å, so the Ewald sphere radius is {format_num(
+      1 / electron_wavelength(accelerating_voltage),
+      `.4~`,
+    )}
+    1/Å — nearly flat across the pattern, which is why a whole plane of reflections lights up at
+    once.
+  </p>
+  <div class="demo-controls">
+    <MillerIndexInput bind:value={zone_axis} />
+    <label>
+      kV
+      <input type="number" min="10" max="1000" step="10" bind:value={accelerating_voltage} />
+    </label>
+    <label>
+      max |g| (1/Å)
+      <input type="number" min="0.5" max="5" step="0.25" bind:value={max_g} />
+    </label>
+    <label>
+      thickness (Å)
+      <input type="number" min="5" max="500" step="5" bind:value={crystal_thickness} />
+    </label>
+    {#each [[0, 0, 1], [1, 1, 1], [1, 1, 0], [1, 0, 0]] as const as preset (preset.join(``))}
+      <button onclick={() => (zone_axis = [...preset])}>[{preset.join(``)}]</button>
+    {/each}
+  </div>
+  {#if saed.error}
+    <p class="error">SAED error: {saed.error}</p>
+  {:else if saed.pattern}
+    <section>
+      <SaedPattern pattern={saed.pattern} style="height: 520px" />
+      {#if computed_struct}
+        <Structure structure={computed_struct} style="height: 520px" />
+      {/if}
+    </section>
+  {/if}
+
   <h2>Overlay multiple structures</h2>
   <p>Click on a structure to add it to the overlay.</p>
-  <nav>
-    {#each structures as struct (get_struct_id(struct))}
-      {@const struct_id = get_struct_id(struct)}
-      {@const sel_idx = selected_ids.indexOf(struct_id)}
-      {@const series_color = sel_idx >= 0 ? PLOT_COLORS[sel_idx % PLOT_COLORS.length] : null}
-      {@const btn_bg = series_color ? hex_with_alpha(series_color, 0.15) : null}
-      <button
-        class:active={sel_idx >= 0}
-        onclick={() => toggle_select(struct_id)}
-        title={struct_id}
-        style:background-color={btn_bg}
-      >
-        <span class="id">{struct_id}</span>
-        <span class="formula">{@html sanitize_html(formula_for(struct_id))}</span>
-      </button>
-    {/each}
-  </nav>
+  <StructurePicker bind:selected={selected_ids} />
   <section>
     <XrdPlot
       patterns={selected_patterns}
@@ -217,7 +278,7 @@
     />
     <div class="selected-structures-grid">
       {#each selected_ids as struct_id, idx (struct_id)}
-        {@const struct_obj = structures_by_id[struct_id]}
+        {@const struct_obj = structure_map.get(struct_id)}
         {@const series_color = PLOT_COLORS[idx % PLOT_COLORS.length]}
         {#if struct_obj}
           <div
@@ -266,29 +327,29 @@
 </div>
 
 <style>
-  nav {
-    display: flex;
-    flex-wrap: wrap;
-    place-content: center;
-    gap: 6px;
-    margin: 1em;
+  .demo-controls {
+    label {
+      gap: 0.4em;
+      font-size: 0.9em;
+    }
+    input[type='number'] {
+      width: 6em;
+      padding: 0.15em 0.3em;
+      border: 1px solid var(--border-color, #ccc);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+    }
+    button {
+      font-size: 0.8em;
+      padding: 4px 8px;
+      border: 1px dotted var(--text-color-muted);
+      background: transparent;
+    }
   }
-  nav button {
-    font-size: 0.8em;
-    flex: 0 0 auto;
-    padding: 6px 8px 3px;
-    border: 1px dotted var(--text-color-muted);
-    background: transparent;
-  }
-  nav button.selected {
-    outline: 2px solid var(--accent-color, #4e79a7);
-  }
-  nav .id {
-    font-weight: 500;
-  }
-  nav .formula {
-    color: var(--text-color-muted);
-    font-size: 0.9em;
+  .error {
+    color: var(--error-color, crimson);
+    text-align: center;
   }
   .bleed-1400 > section {
     display: grid;

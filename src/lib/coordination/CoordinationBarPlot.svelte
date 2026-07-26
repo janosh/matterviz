@@ -1,306 +1,131 @@
 <script lang="ts">
   import { PLOT_COLORS } from '$lib/colors'
-  import { StatusMessage } from '$lib/feedback'
-  import { create_file_drop_handler, drag_over_handlers } from '$lib/io'
-  import type { FileLoadCallback, FileLoadMeta } from '$lib/io'
   import { format_value } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
-  import { BarPlot } from '$lib/plot'
-  import type {
-    AxisConfig,
-    BarHandlerProps,
-    BarSeries,
-    Orientation,
-  } from '$lib/plot/core/types'
-  import type { AnyStructure } from '$lib/structure'
+  import type { StructurePlotProps } from '$lib/plot/bar'
+  import StructureBarPlot from '$lib/plot/bar/StructureBarPlot.svelte'
+  import { to_structure_entries } from '$lib/plot/core/structure-input'
+  import type { StructureEntry } from '$lib/plot/core/structure-input'
+  import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
   import { calc_structure_coordination } from '$lib/structure/atom-properties'
-  import type { BondingStrategy } from '$lib/structure/bonding'
-  import { parse_any_structure } from '$lib/structure/parse'
-  import { is_crystal } from '$lib/structure/validation'
-  import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { CoordinationData } from './calc-coordination'
   import type { SplitMode } from './index'
-  import { to_error } from '$lib/utils'
 
-  type CoordinationMetadata = {
-    element?: string
-    structure_label?: string
-  } & Record<string, unknown>
-
-  interface StructureEntry {
+  // Series identity travels as string metadata, which StructureBarPlot turns into the tooltip
+  // prefix; `element` and `structure_label` are only ever set one at a time.
+  // The plot boundary widens to `unknown`: BarPlot's snippet prop is invariant in its
+  // metadata type, so a narrower one here fails to satisfy it.
+  type CoordinationMetadata = Record<string, string>
+  type PlotMetadata = Record<string, unknown>
+  type CnGroup = {
     label: string
-    structure: AnyStructure
+    histogram: Map<number, number>
     color?: string
-    data?: CoordinationData
+    metadata: CoordinationMetadata
   }
+
   let {
     structures,
     strategy = `electroneg_ratio`,
     split_mode = `by_element`,
     mode = $bindable(`grouped`),
-    orientation = `vertical` as Orientation,
-    x_axis = {},
-    y_axis = {},
-    allow_file_drop = true,
-    on_file_drop,
     loading = $bindable(false),
     error_msg = $bindable(),
     ...rest
-  }: Omit<ComponentProps<typeof BarPlot>, `series`> & {
-    structures:
-      | AnyStructure
-      | Record<string, AnyStructure | { structure: AnyStructure; color?: string }>
-      | StructureEntry[]
-    strategy?: BondingStrategy
-    split_mode?: SplitMode
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    allow_file_drop?: boolean
-    on_file_drop?: (
-      content: string | ArrayBuffer,
-      filename: string,
-      metadata: FileLoadMeta,
-    ) => Promise<void> | void
-    loading?: boolean
-    error_msg?: string
-  } = $props()
+  }: StructurePlotProps & { split_mode?: SplitMode } = $props()
 
-  let dragover = $state(false)
   let dropped_entries = $state<StructureEntry[]>([])
-  let is_horizontal = $derived(orientation === `horizontal`)
-
-  // Normalize input to consistent array of { label, structure, color }
-  const structure_entries = $derived.by<StructureEntry[]>(() => {
-    if (!structures) return []
-
-    const base_entries = Array.isArray(structures)
-      ? (structures as StructureEntry[])
-      : is_crystal(structures)
-        ? [{ label: `Structure`, structure: structures as AnyStructure }]
-        : Object.entries(
-            structures as Record<
-              string,
-              AnyStructure | { structure: AnyStructure; color?: string }
-            >,
-          ).map(([label, value]) =>
-            `structure` in value
-              ? { label, ...value }
-              : { label, structure: value as AnyStructure },
-          )
-
-    // Merge user-provided structures with dropped structures
-    return [...base_entries, ...dropped_entries]
-  })
 
   // Compute coordination data for each structure via the shared PBC-aware helper so
   // boundary-atom coordination matches the 3D viewer (which uses the same path).
   const entries_with_data = $derived(
-    structure_entries.map((entry) => ({
+    [...to_structure_entries(structures), ...dropped_entries].map((entry) => ({
       ...entry,
       data: calc_structure_coordination(entry.structure, strategy),
     })),
   )
 
-  // Derive integer CN ticks for axis labels
-  const cn_ticks = $derived.by(() => {
-    // Always include minimum CN values 0-4, then actual CN values from data
-    const all_cns = new SvelteSet<number>([0, 1, 2, 3, 4])
-    for (const entry of entries_with_data) {
-      for (const [cn] of entry.data.cn_histogram) all_cns.add(cn)
-    }
-    return Array.from(all_cns).toSorted((cn1, cn2) => cn1 - cn2)
-  })
-
-  // CN axis spans all ticks with half-bar margin; count axis always starts at 0
-  const ranges = $derived({
-    count: [0, null] as [number, null],
-    cn: [-0.5, (cn_ticks.at(-1) ?? 4) + 0.5] as Vec2,
-  })
-  // Build BarPlot series based on split_mode
-  const bar_series = $derived.by<BarSeries<CoordinationMetadata>[]>(() => {
+  // Every split mode reduces to a list of CN->count histograms, one per series
+  const groups = $derived.by<CnGroup[]>(() => {
     if (split_mode === `by_element`) {
-      // One series per element across all structures
-      const element_series_map = new SvelteMap<string, Map<number, number>>()
-
-      // Collect all unique CNs across all elements
-      const all_cns = new SvelteSet<number>()
-
+      // One series per element, summed across all structures
+      const by_element = new SvelteMap<string, SvelteMap<number, number>>()
       for (const entry of entries_with_data) {
-        for (const [element, cn_histogram] of entry.data.cn_histogram_by_element) {
-          let element_map = element_series_map.get(element)
-          if (!element_map) {
-            element_map = new SvelteMap()
-            element_series_map.set(element, element_map)
-          }
-          for (const [cn, count] of cn_histogram) {
-            all_cns.add(cn)
-            element_map.set(cn, (element_map.get(cn) ?? 0) + count)
-          }
+        for (const [element, histogram] of entry.data.cn_histogram_by_element) {
+          let target = by_element.get(element)
+          if (!target) by_element.set(element, (target = new SvelteMap()))
+          for (const [cn, count] of histogram) target.set(cn, (target.get(cn) ?? 0) + count)
         }
       }
-
-      // Sort CNs for consistent x-axis
-      const sorted_cns = Array.from(all_cns).toSorted((a, b) => a - b)
-
-      // Convert map to array and ensure all series have same x-values
-      return Array.from(element_series_map.entries())
-        .toSorted((a, b) => a[0].localeCompare(b[0]))
-        .map(([element, cn_map], idx) => {
-          return {
-            x: sorted_cns,
-            y: sorted_cns.map((cn) => cn_map.get(cn) ?? 0),
-            label: element,
-            color: PLOT_COLORS[idx % PLOT_COLORS.length],
-            bar_width: 0.8,
-            visible: true,
-            metadata: { element },
-          }
-        })
-    } else if (split_mode === `by_structure`) {
-      // One series per structure
-      // First collect all unique CNs
-      const all_cns = new SvelteSet<number>()
-      for (const entry of entries_with_data) {
-        for (const [cn] of entry.data.cn_histogram) {
-          all_cns.add(cn)
-        }
-      }
-      const sorted_cns = Array.from(all_cns).toSorted((a, b) => a - b)
-
-      return entries_with_data.map((entry, idx) => {
-        return {
-          x: sorted_cns,
-          y: sorted_cns.map((cn) => entry.data.cn_histogram.get(cn) ?? 0),
-          label: entry.label,
-          color: entry.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
-          bar_width: 0.8,
-          visible: true,
-          metadata: { structure_label: entry.label },
-        }
-      })
+      return Array.from(by_element.entries())
+        .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+        .map(([element, histogram]) => ({ label: element, histogram, metadata: { element } }))
     }
-    // split_mode === 'none': combine all into single series
-    const combined_histogram = new SvelteMap<number, number>()
-
+    if (split_mode === `by_structure`) {
+      return entries_with_data.map((entry) => ({
+        label: entry.label,
+        histogram: entry.data.cn_histogram,
+        color: entry.color,
+        metadata: { structure_label: entry.label },
+      }))
+    }
+    // split_mode === `none`: every site of every structure in one series
+    const combined = new SvelteMap<number, number>()
     for (const entry of entries_with_data) {
       for (const [cn, count] of entry.data.cn_histogram) {
-        combined_histogram.set(cn, (combined_histogram.get(cn) ?? 0) + count)
+        combined.set(cn, (combined.get(cn) ?? 0) + count)
       }
     }
-
-    const x_vals = Array.from(combined_histogram.keys()).toSorted((a, b) => a - b)
-    const y_vals = x_vals.map((cn) => combined_histogram.get(cn) ?? 0)
-
-    return [
-      {
-        x: x_vals,
-        y: y_vals,
-        label: `All Sites`,
-        color: PLOT_COLORS[0],
-        bar_width: 0.8,
-        visible: true,
-        metadata: {},
-      },
-    ]
+    return [{ label: `All Sites`, histogram: combined, metadata: {} }]
   })
 
-  const compute_and_add: FileLoadCallback = (content, filename, _metadata) => {
-    try {
-      const text_content =
-        content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-      const parsed_structure = parse_any_structure(text_content, filename)
-      if (is_crystal(parsed_structure)) {
-        dropped_entries = [
-          {
-            label: filename || `Dropped structure`,
-            structure: parsed_structure,
-          },
-          ...dropped_entries,
-        ]
-      } else {
-        error_msg = `Structure has no lattice or sites; cannot compute coordination`
-      }
-    } catch (exc) {
-      error_msg = `Failed to process structure: ${to_error(exc).message}`
-    }
-  }
-
-  const handle_file_drop = create_file_drop_handler({
-    allow: () => allow_file_drop,
-    on_drop: (content, filename, metadata) =>
-      (on_file_drop ?? compute_and_add)(content, filename, metadata),
-    on_error: (msg) => {
-      error_msg = msg
-    },
-    set_loading: (val) => {
-      loading = val
-      if (val) [error_msg, dragover] = [undefined, false]
-    },
+  // All series share one x axis spanning the union of their CNs so grouped bars line up. Every
+  // split mode partitions the same sites, so this union equals the one over cn_histogram.
+  const cns = $derived.by(() => {
+    const seen = new SvelteSet(groups.flatMap((group) => [...group.histogram.keys()]))
+    return Array.from(seen).toSorted((cn1, cn2) => cn1 - cn2)
   })
+  const bar_series = $derived<BarSeries<PlotMetadata>[]>(
+    groups.map(({ label, histogram, color, metadata }, idx) => ({
+      x: cns,
+      y: cns.map((cn) => histogram.get(cn) ?? 0),
+      label,
+      color: color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
+      bar_width: 0.8,
+      visible: true,
+      metadata,
+    })),
+  )
 
-  let display = $state({ x_zero_line: false, y_zero_line: false })
-  // Update display when orientation changes
-  $effect(() => {
-    display.x_zero_line = is_horizontal
-    display.y_zero_line = !is_horizontal
+  // Axis ticks always show the minimum CN values 0-4, plus whatever the series reach
+  const cn_ticks = $derived(
+    Array.from(new SvelteSet([0, 1, 2, 3, 4, ...cns])).toSorted((cn1, cn2) => cn1 - cn2),
+  )
+  // CN axis spans all ticks with half-bar margin; count axis always starts at 0
+  const cn_axis = $derived({
+    label: `Coordination Number`,
+    format: `d`,
+    range: [-0.5, (cn_ticks.at(-1) ?? 4) + 0.5] as Vec2,
+    ticks: cn_ticks,
   })
-
-  const cn_axis = { label: `Coordination Number`, format: `d` }
-  const count_axis = { label: `Count`, format: `d` }
+  const count_axis = { label: `Count`, format: `d`, range: [0, null] as [number, null] }
 </script>
 
-<StatusMessage bind:message={error_msg} type="error" dismissible />
-
-{#if bar_series.length === 0}
-  <StatusMessage
-    message={allow_file_drop
-      ? `Drag and drop structure files here to compute coordination numbers`
-      : `No coordination data to display`}
-  />
-{:else}
-  {#snippet tooltip(info: BarHandlerProps<CoordinationMetadata>)}
-    {@const cn = info.x}
-    {@const count = info.y}
-    {@const element = info.metadata?.element}
-    {@const structure_label = info.metadata?.structure_label}
-    {#if element}
-      {element} —
-    {/if}
-    {#if structure_label}
-      {structure_label} —
-    {/if}
-    CN: {format_value(cn, `.0f`)}
+<StructureBarPlot
+  {...rest}
+  series={bar_series}
+  primary_axis={cn_axis}
+  value_axis={count_axis}
+  subject="coordination numbers"
+  empty_subject="coordination data"
+  bind:dropped_entries
+  bind:mode
+  bind:loading
+  bind:error_msg
+>
+  {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
+    CN: {format_value(info.x, `.0f`)}
     <br />
-    Sites: {format_value(count, `.0f`)}
+    Sites: {format_value(info.y, `.0f`)}
   {/snippet}
-
-  <BarPlot
-    {...rest}
-    series={bar_series}
-    bind:orientation
-    bind:mode
-    x_axis={{
-      ...(is_horizontal ? count_axis : cn_axis),
-      range: is_horizontal ? ranges.count : ranges.cn,
-      ticks: is_horizontal ? undefined : cn_ticks,
-      ...x_axis,
-      label_shift: (is_horizontal ? y_axis : x_axis).label_shift,
-    }}
-    y_axis={{
-      ...(is_horizontal ? cn_axis : count_axis),
-      range: is_horizontal ? ranges.cn : ranges.count,
-      ticks: is_horizontal ? cn_ticks : undefined,
-      ...y_axis,
-      label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
-    }}
-    bind:display
-    {tooltip}
-    ondrop={handle_file_drop}
-    {...drag_over_handlers({
-      allow: () => allow_file_drop,
-      set_dragover: (over) => (dragover = over),
-    })}
-    class={[rest.class, dragover && `dragover`]}
-  />
-{/if}
+</StructureBarPlot>

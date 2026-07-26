@@ -164,10 +164,10 @@ export function get_unsupported_format_message(
     }
   }
 
-  // .dump files are LAMMPS binary dumps which require external tools to parse.
-  // .lammpstrj files are LAMMPS text-based trajectory files supported by parse_lammps_trajectory().
+  // .dump is NOT listed here: text dumps parse fine (as a structure via
+  // parse_lammps_dump, as frames via parse_lammps_trajectory) and the is_binary check
+  // below already catches genuinely binary ones.
   const formats = [
-    { extensions: [`.dump`], name: `LAMMPS binary dump`, tool: `pymatgen` },
     { extensions: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
     { extensions: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
   ]

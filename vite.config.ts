@@ -9,7 +9,14 @@ import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 
-const TEXT_EXT_RE = /\.(?:xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
+// Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
+// the structure/trajectory/phonon fixtures this repo imports (from src/site and tests), not
+// every format the library can parse: it therefore carries trajectory extensions that
+// STRUCTURE_EXTENSIONS in src/lib/constants.ts lacks (xyz, extxyz, lammpstrj, yaml.gz) and
+// omits ones no fixture imports (.vasp, .cube). Add an extension here before importing a
+// fixture that uses it, else rolldown parses the fixture as JavaScript and the build dies.
+const TEXT_EXT_RE =
+  /\.(?:xyz|extxyz|cif|mmcif|mcif|poscar|pdb|mol2|mol|sdf|lmp|data|dump|lammpstrj|yaml\.gz)$/
 const strip_query = (path: string) => path.replace(/\?.*$/, ``)
 const split_query = (path: string): [clean: string, query: string] => {
   const clean = strip_query(path)

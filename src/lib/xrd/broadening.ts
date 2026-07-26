@@ -21,63 +21,42 @@ export const DEFAULT_BROADENING: BroadeningParams = {
   shape_factor: 0.5, // Mixed Gaussian/Lorentzian
 }
 
-// Calculates the Full Width at Half Maximum (FWHM) at a given theta angle
-// using the Caglioti formula: FWHM^2 = U * tan^2(theta) + V * tan(theta) + W
-export function caglioti_fwhm(
-  two_theta: number, // Angle in degrees (2θ)
-  U: number, // Caglioti parameter U
-  V: number, // Caglioti parameter V
-  W: number, // Caglioti parameter W
-): number {
-  // FWHM in degrees (2θ)
-  const theta_rad = (two_theta / 2) * (Math.PI / 180)
-  const tan_theta = Math.tan(theta_rad)
-  const fwhm_sq = U * tan_theta ** 2 + V * tan_theta + W
-  // Ensure non-negative squared width
-  return Math.sqrt(Math.max(1e-9, fwhm_sq))
+// FWHM in degrees (2θ) at the Bragg angle `two_theta` (degrees) from the Caglioti formula
+// FWHM^2 = U·tan^2(theta) + V·tan(theta) + W, floored to keep the square root real.
+export function caglioti_fwhm(two_theta: number, U: number, V: number, W: number): number {
+  const tan_theta = Math.tan((two_theta / 2) * (Math.PI / 180))
+  return Math.sqrt(Math.max(1e-9, U * tan_theta ** 2 + V * tan_theta + W))
 }
 
-// Normalized Gaussian profile. x: position, x0: peak center, fwhm: Full Width at Half Maximum
-function gaussian(x: number, x0: number, fwhm: number): number {
-  // Intensity at x
-  const safe_fwhm = Math.max(fwhm, 1e-9)
-  const sigma = safe_fwhm / (2 * Math.sqrt(2 * LOG_2))
+// Area-normalized Gaussian of width `fwhm` centered on `x0`, evaluated at `x`
+const gaussian = (x: number, x0: number, fwhm: number): number => {
+  const sigma = Math.max(fwhm, 1e-9) / (2 * Math.sqrt(2 * LOG_2))
   const prefactor = 1 / (sigma * Math.sqrt(2 * Math.PI))
-  const exponent = -((x - x0) ** 2) / (2 * sigma ** 2)
-  return prefactor * Math.exp(exponent)
+  return prefactor * Math.exp(-((x - x0) ** 2) / (2 * sigma ** 2))
 }
 
-// Normalized Lorentzian profile. x: position, x0: peak center, fwhm: Full Width at Half Maximum
-function lorentzian(x: number, x0: number, fwhm: number): number {
-  // Intensity at x
-  const safe_fwhm = Math.max(fwhm, 1e-9)
-  const gamma = safe_fwhm / 2
-  const prefactor = 1 / (Math.PI * gamma)
-  const denominator = 1 + ((x - x0) / gamma) ** 2
-  return prefactor / denominator
+// Area-normalized Lorentzian of width `fwhm` centered on `x0`, evaluated at `x`
+const lorentzian = (x: number, x0: number, fwhm: number): number => {
+  const gamma = Math.max(fwhm, 1e-9) / 2
+  return 1 / (Math.PI * gamma) / (1 + ((x - x0) / gamma) ** 2)
 }
 
-// Pseudo-Voigt profile (linear combination of Gaussian and Lorentzian).
-export function pseudo_voigt(
-  x: number, // Position
-  x0: number, // Peak center
-  fwhm: number, // Full Width at Half Maximum
-  eta: number, // Mixing parameter (0 = Gaussian, 1 = Lorentzian)
-): number {
-  // Intensity at x
-  // Clamp eta to [0, 1]
+// Pseudo-Voigt profile: `eta` mixes Lorentzian (1) into Gaussian (0), clamped to [0, 1].
+export function pseudo_voigt(x: number, x0: number, fwhm: number, eta: number): number {
   const safe_eta = clamp01(eta)
   return safe_eta * lorentzian(x, x0, fwhm) + (1 - safe_eta) * gaussian(x, x0, fwhm)
 }
 
-// Computes a broadened XRD pattern from discrete peaks.
-export function compute_broadened_pattern(
-  pattern: XrdPattern, // Discrete XRD pattern (peaks)
-  params: BroadeningParams, // Broadening parameters (U, V, W, shape_factor)
-  range: Vec2, // Angular range [min, max] in degrees
-  step_size: number = 0.02, // Step size in degrees (default 0.02)
+// Accumulates pseudo-Voigt peaks onto a uniform grid, with the FWHM model supplied by the
+// caller. Bragg-angle broadening (Caglioti) is only one such model — vibrational spectra need
+// constant or frequency-dependent widths, for which the Caglioti formula is meaningless.
+export function broaden_peaks(
+  pattern: XrdPattern, // Discrete peaks
+  fwhm_fn: (peak_center: number) => number, // FWHM model evaluated at each peak center
+  shape_factor: number, // Pseudo-Voigt mixing parameter (0 = Gaussian, 1 = Lorentzian)
+  range: Vec2, // [min, max] in the pattern's x units
+  step_size: number = 0.02, // Grid step in the pattern's x units
 ): XrdPattern {
-  // Continuous broadened pattern
   if (!Number.isFinite(step_size) || step_size <= 0) {
     throw new Error(`step_size must be > 0 and finite`)
   }
@@ -87,46 +66,48 @@ export function compute_broadened_pattern(
     throw new Error(`range must be finite and max > min`)
   }
 
-  const { U, V, W, shape_factor } = params
-
-  // Create x grid
   const n_steps = Math.ceil((max_angle - min_angle) / step_size)
   const xs = new Float32Array(n_steps)
   const ys = new Float32Array(n_steps)
-
-  for (let idx = 0; idx < n_steps; idx++) {
-    xs[idx] = min_angle + idx * step_size
-  }
+  for (let idx = 0; idx < n_steps; idx++) xs[idx] = min_angle + idx * step_size
 
   const { x: peak_pos, y: peak_int } = pattern
 
-  // Optimization: Process each peak and add to grid
   for (let peak_idx = 0; peak_idx < peak_pos.length; peak_idx++) {
     const x0 = peak_pos[peak_idx]
     const intensity = peak_int[peak_idx]
 
-    // Skip negligible peaks
+    // Skip peaks too faint to register, and those whose tails cannot reach the grid
     if (intensity < 1e-5) continue
-    // Skip peaks outside range (with some buffer)
     if (x0 < min_angle - 5 || x0 > max_angle + 5) continue
 
-    const fwhm = caglioti_fwhm(x0, U, V, W)
-
-    // Define window for calculation (e.g. +/- 10 * FWHM or fixed reasonable range)
-    // Lorentzian tails are long, so we need a decent window.
-    // 20 * FWHM is usually sufficient for visual purposes.
+    const fwhm = fwhm_fn(x0)
+    // Lorentzian tails are long, so a narrow window truncates them visibly; 20 * FWHM is
+    // wide enough that the residual is below plotting resolution.
     const window = 20 * fwhm
     const start_idx = Math.max(0, Math.floor((x0 - window - min_angle) / step_size))
     const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_angle) / step_size))
 
     for (let idx = start_idx; idx <= end_idx; idx++) {
-      const x = xs[idx]
-      ys[idx] += intensity * pseudo_voigt(x, x0, fwhm, shape_factor)
+      ys[idx] += intensity * pseudo_voigt(xs[idx], x0, fwhm, shape_factor)
     }
   }
 
-  // Convert back to number[]
-  // We don't map hkls to continuous profile points usually,
-  // or we could try to map them to the nearest peak, but for now leave undefined.
+  // hkls are dropped: a continuous profile has no single reflection per grid point
   return { x: Array.from(xs), y: Array.from(ys) }
 }
+
+// Computes a broadened XRD pattern from discrete peaks, using Caglioti angle-dependent widths.
+export const compute_broadened_pattern = (
+  pattern: XrdPattern,
+  params: BroadeningParams,
+  range: Vec2, // Angular range [min, max] in degrees
+  step_size: number = 0.02, // Step size in degrees
+): XrdPattern =>
+  broaden_peaks(
+    pattern,
+    (peak_center) => caglioti_fwhm(peak_center, params.U, params.V, params.W),
+    params.shape_factor,
+    range,
+    step_size,
+  )

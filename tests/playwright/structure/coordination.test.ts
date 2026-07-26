@@ -1,6 +1,30 @@
 import { expect, test } from '@playwright/test'
 import { expect_bottom_within, get_chart_svg } from '../helpers'
 
+test(`structure picker selects one structure and toggles many`, async ({ page }) => {
+  await page.goto(`/structure/coordination`, { waitUntil: `networkidle` })
+
+  const [single_picker, multi_picker] = [0, 1].map((idx) =>
+    page.locator(`nav.structure-picker`).nth(idx),
+  )
+  const single_target = single_picker.getByTitle(`mp-1`, { exact: true })
+  // retried as a unit: a click that lands before hydration is silently dropped
+  await expect(async () => {
+    await single_target.click()
+    await expect(single_target).toHaveClass(/selected/)
+  }).toPass()
+  // single-select moves the highlight instead of accumulating it
+  await expect(single_picker.locator(`button.selected`)).toHaveCount(1)
+
+  // multi-select adds on click and removes on a second click
+  const tiles = page.locator(`.selected-structures-grid .structure-tile`)
+  await expect(tiles).toHaveCount(3)
+  await multi_picker.getByTitle(`mp-1`, { exact: true }).click()
+  await expect(tiles).toHaveCount(4)
+  await multi_picker.getByTitle(`mp-1`, { exact: true }).click()
+  await expect(tiles).toHaveCount(3)
+})
+
 test(`keeps the multi-structure layout bounded and responsive`, async ({ page }) => {
   await page.goto(`/structure/coordination`, { waitUntil: `networkidle` })
 

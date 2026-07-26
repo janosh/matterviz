@@ -1,0 +1,97 @@
+# SYNTHETIC FIXTURE - hand-constructed, not the output of any DFT or phonopy run.
+#
+# NaCl rocksalt primitive cell (2 atoms), Gamma point, phonopy band.yaml style.
+# Provenance:
+#   - eigenvectors: EXACT. A 2-atom cell has only one optical branch per direction,
+#     and it is fixed by orthogonality to the acoustic branch:
+#       acoustic e = (sqrt(M_Na), sqrt(M_Cl)) / sqrt(M_Na + M_Cl)
+#       optical  e = (sqrt(M_Cl), -sqrt(M_Na)) / sqrt(M_Na + M_Cl)
+#     phonopy convention: mass-weighted, sum |e|^2 = 1, displacement = e/sqrt(M).
+#   - optical frequency: experimental TO frequency 164 cm^-1, converted to THz.
+#   - lattice constant 5.64 A and masses: standard reference values.
+#
+# The T1u optical mode is IR active and (Fm-3m being centrosymmetric) Raman inactive;
+# NaCl has no Raman-active modes at all, so no Raman tensor file accompanies this one.
+nqpoint: 1
+natom: 2
+lattice:
+  - [0.00000000000000, 2.82000000000000, 2.82000000000000]
+  - [2.82000000000000, 0.00000000000000, 2.82000000000000]
+  - [2.82000000000000, 2.82000000000000, 0.00000000000000]
+points:
+  - symbol: Na
+    coordinates: [0.00000000000000, 0.00000000000000, 0.00000000000000]
+    mass: 22.98976928
+  - symbol: Cl
+    coordinates: [0.50000000000000, 0.50000000000000, 0.50000000000000]
+    mass: 35.453
+phonon:
+  - q-position: [0.00000000000000, 0.00000000000000, 0.00000000000000]
+    distance: 0.00000000000000
+    band:
+      - # 1 acoustic x
+        frequency: 0.00000000000000
+        eigenvector:
+          - # atom 1
+            - [0.62719402609513, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+          - # atom 2
+            - [0.77886305191002, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+      - # 2 acoustic y
+        frequency: 0.00000000000000
+        eigenvector:
+          - # atom 1
+            - [0.00000000000000, 0.00000000000000]
+            - [0.62719402609513, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+          - # atom 2
+            - [0.00000000000000, 0.00000000000000]
+            - [0.77886305191002, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+      - # 3 acoustic z
+        frequency: 0.00000000000000
+        eigenvector:
+          - # atom 1
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [0.62719402609513, 0.00000000000000]
+          - # atom 2
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [0.77886305191002, 0.00000000000000]
+      - # 4 TO x (T1u)
+        frequency: 4.91659631120000
+        eigenvector:
+          - # atom 1
+            - [0.77886305191002, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+          - # atom 2
+            - [-0.62719402609513, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+      - # 5 TO y (T1u)
+        frequency: 4.91659631120000
+        eigenvector:
+          - # atom 1
+            - [0.00000000000000, 0.00000000000000]
+            - [0.77886305191002, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+          - # atom 2
+            - [0.00000000000000, 0.00000000000000]
+            - [-0.62719402609513, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+      - # 6 TO z (T1u)
+        frequency: 4.91659631120000
+        eigenvector:
+          - # atom 1
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [0.77886305191002, 0.00000000000000]
+          - # atom 2
+            - [0.00000000000000, 0.00000000000000]
+            - [0.00000000000000, 0.00000000000000]
+            - [-0.62719402609513, 0.00000000000000]

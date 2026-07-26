@@ -1,26 +1,16 @@
 <script lang="ts">
-  import { sanitize_html } from '$lib/sanitize'
-  import { clamp01 } from '$lib/utils'
   import { type Crystal, SETTINGS_CONFIG } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
-  import { get_electro_neg_formula } from '$lib/composition'
   import type { SplitMode } from '$lib/coordination'
   import { CoordinationBarPlot, SPLIT_MODES } from '$lib/coordination'
   import { type AtomColorConfig, Structure } from '$lib/structure'
   import type { BondingStrategy } from '$lib/structure/bonding'
-  import { structures } from '$site/structures'
-
-  // Map structures by id for O(1) lookup (structures is a static import, not reactive)
-  const structures_by_id: Record<string, Crystal> = Object.fromEntries(
-    structures.map((struct) => [struct.id, struct]),
-  )
-
-  // Helper: convert #rrggbb to #rrggbbaa
-  function hex_with_alpha(hex_color: string, alpha_frac: number): string {
-    const alpha_byte = Math.round(clamp01(alpha_frac) * 255)
-    const alpha_hex = alpha_byte.toString(16).padStart(2, `0`)
-    return hex_color.length === 7 ? `${hex_color}${alpha_hex}` : hex_color
-  }
+  import { structure_map } from '$site/structures'
+  import EnumSelect from '../../EnumSelect.svelte'
+  import StructurePicker, {
+    hex_with_alpha,
+    labeled_structures,
+  } from '../../StructurePicker.svelte'
 
   // Single structure example. Default to a complex oxide (Zr16Bi16O56) whose sites span
   // coordination numbers 4, 6 and 8, so the discrete color bar shows several segments.
@@ -30,7 +20,7 @@
   )
   let single_split_mode = $state<SplitMode>(`by_element`)
 
-  const single_struct = $derived<Crystal | null>(structures_by_id[single_id] ?? null)
+  const single_struct = $derived<Crystal | null>(structure_map.get(single_id) ?? null)
 
   // Color the structure viewers by coordination number so the discrete color bar shows
   // live next to the histogram; each section's scene_props links its bonding strategy so
@@ -59,37 +49,9 @@
   let multi_color_config = $state({ ...coord_coloring })
   let multi_scene_props = $derived({ bonding_strategy: multi_strategy, gizmo: false })
 
-  function toggle_select(id: string) {
-    selected_ids = selected_ids.includes(id)
-      ? selected_ids.filter((selected_id) => selected_id !== id)
-      : [...selected_ids, id]
-  }
+  const selected_structures = $derived(labeled_structures(selected_ids))
 
-  const selected_structures = $derived<Record<string, Crystal>>(
-    Object.fromEntries(
-      selected_ids
-        .map((id) => structures_by_id[id])
-        // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
-        .filter((struct): struct is Crystal => Boolean(struct))
-        .map((struct) => [`${struct.id} ${formula_for(struct.id ?? ``)}`, struct]),
-    ),
-  )
-
-  function formula_for(id: string): string {
-    const struct = structures_by_id[id]
-    if (!struct) return ``
-    try {
-      return get_electro_neg_formula(struct, false)
-    } catch {
-      return ``
-    }
-  }
-
-  const strategies = Object.entries(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}).map(
-    ([value, label]) => ({ value, label }),
-  )
-
-  const split_modes = Object.entries(SPLIT_MODES).map(([value, label]) => ({ value, label }))
+  const strategies = SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}
 </script>
 
 <h1>Coordination Number Histograms</h1>
@@ -105,39 +67,12 @@
 <div class="bleed-1400">
   <h2>Single Structure</h2>
 
-  <div class="controls">
-    <label>
-      Strategy:
-      <select bind:value={single_strategy}>
-        {#each strategies as { value, label } (value)}
-          <option {value}>{label}</option>
-        {/each}
-      </select>
-    </label>
-
-    <label>
-      Split Mode:
-      <select bind:value={single_split_mode}>
-        {#each split_modes as { value, label } (value)}
-          <option {value}>{label}</option>
-        {/each}
-      </select>
-    </label>
+  <div class="demo-controls">
+    <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
+    <EnumSelect label="Split Mode" options={SPLIT_MODES} bind:value={single_split_mode} />
   </div>
 
-  <nav>
-    {#each structures as struct (struct.id)}
-      {@const struct_id = struct.id ?? ``}
-      <button
-        class:selected={struct_id === single_id}
-        onclick={() => (single_id = struct_id)}
-        title={struct_id}
-      >
-        <span class="id">{struct_id}</span>
-        <span class="formula">{@html sanitize_html(formula_for(struct_id))}</span>
-      </button>
-    {/each}
-  </nav>
+  <StructurePicker bind:selected={single_id} />
 
   <section>
     {#if single_struct}
@@ -158,43 +93,12 @@
 
   <h2>Multiple Structures Overlay</h2>
 
-  <div class="controls">
-    <label>
-      Strategy:
-      <select bind:value={multi_strategy}>
-        {#each strategies as { value, label } (value)}
-          <option {value}>{label}</option>
-        {/each}
-      </select>
-    </label>
-
-    <label>
-      Split Mode:
-      <select bind:value={multi_split_mode}>
-        {#each split_modes as { value, label } (value)}
-          <option {value}>{label}</option>
-        {/each}
-      </select>
-    </label>
+  <div class="demo-controls">
+    <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />
+    <EnumSelect label="Split Mode" options={SPLIT_MODES} bind:value={multi_split_mode} />
   </div>
 
-  <nav>
-    {#each structures as struct (struct.id)}
-      {@const struct_id = struct.id ?? ``}
-      {@const sel_idx = selected_ids.indexOf(struct_id)}
-      {@const series_color = sel_idx >= 0 ? PLOT_COLORS[sel_idx % PLOT_COLORS.length] : null}
-      {@const btn_bg = series_color ? hex_with_alpha(series_color, 0.15) : null}
-      <button
-        class:active={sel_idx >= 0}
-        onclick={() => toggle_select(struct_id)}
-        title={struct_id}
-        style:background-color={btn_bg}
-      >
-        <span class="id">{struct_id}</span>
-        <span class="formula">{@html sanitize_html(formula_for(struct_id))}</span>
-      </button>
-    {/each}
-  </nav>
+  <StructurePicker bind:selected={selected_ids} />
 
   <section class="multi-structure-layout" style="height: 400px">
     <CoordinationBarPlot
@@ -206,7 +110,7 @@
     />
     <div class="selected-structures-grid">
       {#each selected_ids as struct_id, idx (struct_id)}
-        {@const struct_obj = structures_by_id[struct_id]}
+        {@const struct_obj = structure_map.get(struct_id)}
         {@const series_color = PLOT_COLORS[idx % PLOT_COLORS.length]}
         {#if struct_obj}
           <div
@@ -232,40 +136,6 @@
 <style>
   .bleed-1400 {
     container-type: inline-size;
-  }
-  .controls {
-    display: flex;
-    gap: 1em;
-    margin: 1em 0;
-    flex-wrap: wrap;
-  }
-  .controls label {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-  }
-  nav {
-    display: flex;
-    flex-wrap: wrap;
-    place-content: center;
-    gap: 6px;
-    margin: 1em;
-  }
-  nav button {
-    font-size: 0.8em;
-    flex: 0 0 auto;
-    padding: 6px 8px 3px;
-    background: color-mix(in srgb, var(--nav-link-bg) 40%, transparent);
-  }
-  nav button.selected {
-    outline: 1px solid var(--accent-color, #4e79a7);
-  }
-  nav .id {
-    font-weight: 500;
-  }
-  nav .formula {
-    color: var(--text-color-muted);
-    font-size: 0.9em;
   }
   .bleed-1400 > section {
     display: grid;

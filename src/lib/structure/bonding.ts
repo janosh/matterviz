@@ -16,8 +16,12 @@ const covalent_radii = new Map<string, number>(
 
 // Majority-occupancy element of a (possibly disordered) site
 export const get_majority_element = (site: Site | undefined): ElementSymbol | null => {
-  if (!site?.species?.length) return null
-  return site.species.reduce((max, spec) => (spec.occu > max.occu ? spec : max)).element
+  const species = site?.species
+  if (!species?.length) return null
+  // ordered-site shortcut: bonding, PBC image search and polyhedra each call this once per
+  // site, i.e. tens of thousands of times per supercell rebuild
+  if (species.length === 1) return species[0].element
+  return species.reduce((max, spec) => (spec.occu > max.occu ? spec : max)).element
 }
 
 // Large low-valent A-site cations whose coordination polyhedra (CN 8-12) tend to
@@ -563,6 +567,18 @@ export function apply_explicit_bond_metadata(
   return merged
 }
 
+// Render exactly the bonds declared in structure.properties.bonds, running no proximity
+// search. Formats like PDB/MOL/MOL2/SDF carry authoritative bond blocks, for which
+// covalent-radius perception both invents spurious bonds and misses coordination bonds.
+// Structures without declared bonds yield no bonds — falling back to a perception
+// strategy here would hide a missing or unparsed bond block.
+// `_options` is unused but required: compute_bonds calls the strategy union with two
+// arguments, which TS rejects if any registry member has a lower arity.
+export const explicit_only = (structure: AnyStructure, _options = {}): BondPair[] =>
+  get_explicit_bond_metadata(structure).map((bond) =>
+    structure_bond_to_bond_pair(structure, bond),
+  )
+
 export function scale_and_offset_bond_matrix(
   transform_matrix: Float32Array,
   offset: number,
@@ -729,62 +745,90 @@ const CELL_OFFSET = 512
 export const pack_cell_key = (x: number, y: number, z: number): number =>
   (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
 
-// Build spatial grid by dividing 3D space into cubic cells.
-function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
+// Cell-key offsets to probe around a bond center, own cell (delta 0) first. pack_cell_key
+// is linear in the cell coordinates, so a neighbor's key is the center's key plus a
+// constant — no re-packing per probe. The half shell keeps only the 13 lexicographically
+// "forward" offsets, so of any two adjacent cells exactly one sees the other; combined
+// with taking only larger indices from the own cell it visits each pair once, not twice.
+const shell_deltas = (half_shell: boolean): number[] => {
+  const deltas: number[] = []
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const rank = dx * 9 + dy * 3 + dz // lexicographic order; > 0 is the forward half
+        if (!half_shell || rank >= 0) deltas.push(dx * 1048576 + dy * 1024 + dz)
+      }
+    }
+  }
+  return deltas
+}
+const SHELL_DELTAS = { full: shell_deltas(false), half: shell_deltas(true) }
+
+// Positions as a flat [x, y, z, ...] buffer. The pair loops below read these millions of
+// times on large supercells, where a typed array beats two object hops per access.
+const flatten_positions = (sites: Site[]): Float64Array => {
+  const positions = new Float64Array(sites.length * 3)
+  for (const [idx, { xyz }] of sites.entries()) {
+    positions[idx * 3] = xyz[0]
+    positions[idx * 3 + 1] = xyz[1]
+    positions[idx * 3 + 2] = xyz[2]
+  }
+  return positions
+}
+
+// Spatial decomposition into cubic cells of `cutoff` size. Skipped below 50 atoms, where
+// the all-pairs loop is cheaper than building and probing the grid.
+function setup_spatial_grid(positions: Float64Array, n_sites: number, cutoff: number) {
+  if (n_sites <= 50) return null
   const grid: SpatialGrid = new Map()
-  for (let idx = 0; idx < sites.length; idx++) {
+  for (let idx = 0; idx < n_sites; idx++) {
     const key = pack_cell_key(
-      Math.floor(sites[idx].xyz[0] / cell_size),
-      Math.floor(sites[idx].xyz[1] / cell_size),
-      Math.floor(sites[idx].xyz[2] / cell_size),
+      Math.floor(positions[idx * 3] / cutoff),
+      Math.floor(positions[idx * 3 + 1] / cutoff),
+      Math.floor(positions[idx * 3 + 2] / cutoff),
     )
     const cell = grid.get(key)
     if (cell) cell.push(idx)
     else grid.set(key, [idx])
   }
-  return grid
+  return { grid, cell_size: cutoff }
 }
 
-// Get all site indices in 3x3x3 cube of cells around position.
-// Fills and returns a REUSED module-level array (valid until the next call):
-// this runs once per bond center, so per-call allocations would dominate GC
+// Partner indices to test against bond center `idx_a`, already restricted so no pair is
+// visited twice. Fills and returns a REUSED module-level array (valid until the next
+// call): this runs once per bond center, so per-call allocations would dominate GC
 // pressure when computing bonds for large supercells.
 const scratch_neighbors: number[] = []
-function get_neighbors_from_grid(pos: Vec3, grid: SpatialGrid, cell_size: number): number[] {
-  const [cx, cy, cz] = [
-    Math.floor(pos[0] / cell_size),
-    Math.floor(pos[1] / cell_size),
-    Math.floor(pos[2] / cell_size),
-  ]
+function collect_candidates(
+  idx_a: number,
+  n_sites: number,
+  positions: Float64Array,
+  spatial: ReturnType<typeof setup_spatial_grid>,
+  half_shell: boolean,
+): number[] {
   scratch_neighbors.length = 0
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dz = -1; dz <= 1; dz++) {
-        const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
-        if (cell) for (const site_idx of cell) scratch_neighbors.push(site_idx)
-      }
-    }
+  if (!spatial) {
+    for (let idx_b = idx_a + 1; idx_b < n_sites; idx_b++) scratch_neighbors.push(idx_b)
+    return scratch_neighbors
+  }
+  const { grid, cell_size } = spatial
+  const base_key = pack_cell_key(
+    Math.floor(positions[idx_a * 3] / cell_size),
+    Math.floor(positions[idx_a * 3 + 1] / cell_size),
+    Math.floor(positions[idx_a * 3 + 2] / cell_size),
+  )
+  for (const delta of SHELL_DELTAS[half_shell ? `half` : `full`]) {
+    const cell = grid.get(base_key + delta)
+    if (!cell) continue
+    // forward cells contribute everything; the own cell only larger indices, so a pair
+    // sitting in a single cell is still taken exactly once
+    const take_all = half_shell && delta !== 0
+    for (const idx_b of cell) if (take_all || idx_b > idx_a) scratch_neighbors.push(idx_b)
   }
   return scratch_neighbors
 }
 
-// Setup spatial decomposition for structures with >50 atoms.
-function setup_spatial_grid(sites: Site[], cutoff: number) {
-  const use_grid = sites.length > 50
-  return use_grid ? { grid: build_spatial_grid(sites, cutoff), cell_size: cutoff } : null
-}
-
-// Get candidate neighbor indices using spatial grid or all sites.
-const get_candidates = (
-  pos: Vec3,
-  sites: Site[],
-  spatial: ReturnType<typeof setup_spatial_grid>,
-): number[] =>
-  spatial
-    ? get_neighbors_from_grid(pos, spatial.grid, spatial.cell_size)
-    : Array.from({ length: sites.length }, (_, idx) => idx)
-
-export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle } as const
+export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle, explicit_only } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
@@ -841,7 +885,10 @@ export function electroneg_ratio(
   // millions of candidate pairs in large supercells, so object property chains
   // and Map lookups are replaced with indexed array reads.
   const n_sites = sites.length
-  const n_center = Math.min(center_count, n_sites - 1)
+  // Half-shell scanning finds a pair from only one of its two ends, so it needs every
+  // site to act as a center; a restricted center_count falls back to the full shell.
+  const full_scan = center_count >= n_sites - 1
+  const n_center = full_scan ? n_sites : Math.min(center_count, n_sites - 1)
   const electronegs = new Float64Array(n_sites)
   const radii = new Float64Array(n_sites) // 0 = no covalent radius known
   const metal_flags = new Uint8Array(n_sites)
@@ -884,7 +931,9 @@ export function electroneg_ratio(
   }
   const bond_reach = max_radius * 2 * max_distance_ratio
   const max_cutoff = bond_reach > 0 && Number.isFinite(bond_reach) ? bond_reach : 1
-  const spatial = setup_spatial_grid(sites, max_cutoff)
+  const positions = flatten_positions(sites)
+  const spatial = setup_spatial_grid(positions, n_sites, max_cutoff)
+  const half_shell = full_scan && spatial !== null
 
   // Two-pass approach to ensure symmetry between original and image atoms:
   // 1. Collect all potential bonds and determine closest neighbor distance for each unique atom (orig_idx)
@@ -905,21 +954,20 @@ export function electroneg_ratio(
   for (let idx_a = 0; idx_a < n_center; idx_a++) {
     const radius_a = radii[idx_a]
     if (radius_a === 0) continue // no covalent radius -> no pairs (symmetric: idx_b skips too)
-    const [x1, y1, z1] = sites[idx_a].xyz
+    const x1 = positions[idx_a * 3]
+    const y1 = positions[idx_a * 3 + 1]
+    const z1 = positions[idx_a * 3 + 2]
     const electroneg_a = electronegs[idx_a]
     const is_metal_a = metal_flags[idx_a] === 1
     const is_nonmetal_a = nonmetal_flags[idx_a] === 1
     const elem_id_a = elem_ids[idx_a]
 
-    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
-      if (idx_b <= idx_a) continue
-
+    for (const idx_b of collect_candidates(idx_a, n_sites, positions, spatial, half_shell)) {
       const radius_b = radii[idx_b]
       if (radius_b === 0) continue
-      const [x2, y2, z2] = sites[idx_b].xyz
-      const dx = x2 - x1
-      const dy = y2 - y1
-      const dz = z2 - z1
+      const dx = positions[idx_b * 3] - x1
+      const dy = positions[idx_b * 3 + 1] - y1
+      const dz = positions[idx_b * 3 + 2] - z1
       const dist_sq = dx * dx + dy * dy + dz * dz
       if (dist_sq < min_dist_sq) continue
 
@@ -967,9 +1015,11 @@ export function electroneg_ratio(
       if (norm_dist < closest[orig_idx_a]) closest[orig_idx_a] = norm_dist
       if (norm_dist < closest[orig_idx_b]) closest[orig_idx_b] = norm_dist
 
+      // min/max: half-shell scanning can reach a lower-indexed partner, but the output
+      // keeps the ascending site_idx_1 < site_idx_2 convention
       potential_bonds.push({
-        site_idx_1: idx_a,
-        site_idx_2: idx_b,
+        site_idx_1: Math.min(idx_a, idx_b),
+        site_idx_2: Math.max(idx_a, idx_b),
         dist,
         expected_dist: expected,
         base_strength: strength,
@@ -1035,28 +1085,35 @@ export function solid_angle(
   const bonds: BondPair[] = []
   const min_dist_sq = min_bond_dist ** 2
   const max_dist_sq = max_distance ** 2
-  const spatial = setup_spatial_grid(sites, max_distance)
-  const n_center = Math.min(center_count, sites.length - 1)
+  const n_sites = sites.length
+  const positions = flatten_positions(sites)
+  const spatial = setup_spatial_grid(positions, n_sites, max_distance)
+  // see electroneg_ratio: the half shell needs every site to act as a center
+  const full_scan = center_count >= n_sites - 1
+  const n_center = full_scan ? n_sites : Math.min(center_count, n_sites - 1)
+  const half_shell = full_scan && spatial !== null
+  // Covalent radius per site, resolved once instead of once per candidate pair
+  const radii = sites.map((site) => {
+    const elem = get_majority_element(site)
+    return (elem ? covalent_radii.get(elem) : undefined) ?? 0
+  })
 
   for (let idx_a = 0; idx_a < n_center; idx_a++) {
+    const radius_a = radii[idx_a]
+    if (!radius_a) continue
     const [x1, y1, z1] = sites[idx_a].xyz
-    const elem_a = get_majority_element(sites[idx_a])
-    const radius_a = elem_a ? covalent_radii.get(elem_a) : undefined
 
-    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
-      if (idx_b <= idx_a) continue
+    for (const idx_b of collect_candidates(idx_a, n_sites, positions, spatial, half_shell)) {
+      const radius_b = radii[idx_b]
+      if (!radius_b) continue
 
-      const [x2, y2, z2] = sites[idx_b].xyz
-      const elem_b = get_majority_element(sites[idx_b])
-      const radius_b = elem_b ? covalent_radii.get(elem_b) : undefined
-
-      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
+      const dx = positions[idx_b * 3] - x1
+      const dy = positions[idx_b * 3 + 1] - y1
+      const dz = positions[idx_b * 3 + 2] - z1
       const dist_sq = dx * dx + dy * dy + dz * dz
       const dist = Math.sqrt(dist_sq)
 
-      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq || !radius_a || !radius_b) {
-        continue
-      }
+      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq) continue
 
       const avg_radius = (radius_a + radius_b) / 2.0
       const face_area = Math.PI * avg_radius * avg_radius
@@ -1068,8 +1125,10 @@ export function solid_angle(
       const angle_strength = Math.min(bond_solid_angle / (4.0 * Math.PI), 1.0)
       const strength = angle_strength * dist_penalty
 
+      // min/max keeps the ascending endpoint convention (half-shell can reach a lower index)
       if (strength > strength_threshold) {
-        bonds.push(make_bond(sites, idx_a, idx_b, dist, strength))
+        const [lo, hi] = [Math.min(idx_a, idx_b), Math.max(idx_a, idx_b)]
+        bonds.push(make_bond(sites, lo, hi, dist, strength))
       }
     }
   }

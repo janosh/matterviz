@@ -4,7 +4,7 @@
   import { RdfPlot } from '$lib/rdf'
   import type { Crystal } from '$lib/structure'
   import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
-  import nacl from '$site/structures/mp-1234.json'
+  import al2lu from '$site/structures/mp-1234.json'
   import pd from '$site/structures/mp-2.json'
 
   // Synthetic RDF patterns for testing
@@ -48,7 +48,7 @@
   ]
 
   const structures = {
-    NaCl: nacl,
+    'Al₂Lu': al2lu,
     Pd: pd,
     'Bi₂Zr₂O₈': bi2zr2o8,
   } as unknown as Record<string, Crystal>
@@ -85,7 +85,7 @@
 <h2>Single Structure - Element Pairs</h2>
 <RdfPlot
   id="single-structure-element-pairs-plot"
-  structures={structures.NaCl}
+  structures={structures[`Al₂Lu`]}
   mode="element_pairs"
   cutoff={7}
   n_bins={100}
@@ -95,7 +95,7 @@
 <h2>Single Structure - Full RDF</h2>
 <RdfPlot
   id="single-structure-full"
-  structures={structures.NaCl}
+  structures={structures[`Al₂Lu`]}
   mode="full"
   cutoff={7}
   n_bins={100}
