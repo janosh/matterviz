@@ -108,7 +108,7 @@
     hover_data?: FermiHoverData | null
   } = $props()
 
-  bind_renderer(
+  const threlte = bind_renderer(
     (threlte_scene, threlte_camera) => {
       scene = threlte_scene
       camera = threlte_camera
@@ -145,6 +145,9 @@
   $effect(() => {
     clipping_group.clippingPlanes = clip_plane ? [clip_plane] : []
     clipping_group.enabled = Boolean(clip_plane)
+    // Mutating a three object bypasses the <T> props Threlte watches, so under this scene's
+    // on-demand render mode nothing would repaint until the next unrelated invalidation.
+    threlte.invalidate()
   })
 
   extras.interactivity()
