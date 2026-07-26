@@ -8,6 +8,7 @@
   } from '$lib/isosurface/types'
   import { DEFAULT_ISOSURFACE_SETTINGS, grid_data_range } from '$lib/isosurface/types'
   import type { Matrix3x3, Vec3 } from '$lib/math'
+  import { create_renderer } from '$lib/scene'
   import { Canvas, T } from '@threlte/core'
   import { onMount } from 'svelte'
 
@@ -37,6 +38,9 @@
   let color_mode = $state<`cross_grid` | `same_grid`>(`cross_grid`)
   let volumes = $state.raw<VolumetricData[]>([])
   let settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] })
+  // Unproxied so the profiler doesn't bill itself to what it measures; `event_count` is the
+  // reactive half that makes the markup re-read this array.
+  // svelte-ignore non_reactive_update
   let profile_events: IsosurfaceProfileEvent[] = []
   let event_count = $state(0)
   let fps = $state<number | undefined>()
@@ -168,7 +172,7 @@
 
 <div class="benchmark-canvas" data-testid="isosurface-benchmark-canvas">
   {#if volumes.length}
-    <Canvas>
+    <Canvas createRenderer={create_renderer}>
       <T.PerspectiveCamera makeDefault position={[2, 2, 12] satisfies Vec3} />
       <T.AmbientLight intensity={1.4} />
       <T.DirectionalLight position={[5, 8, 10]} intensity={2} />

@@ -1,13 +1,11 @@
-import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
-import type { Gizmo } from '@threlte/extras'
-import type { ComponentProps } from 'svelte'
-import type { Camera, Scene, Vector3 } from 'three'
+import type { Camera, Scene, Vector3 } from 'three/webgpu'
+import type { GizmoOptions } from './gizmo'
 
 // Reactive page visibility — pause auto-rotation while the tab/window is
 // hidden. Desktop embedders like Tauri often disable background throttling,
-// which would otherwise leave every auto-rotating WebGL canvas burning GPU.
+// which would otherwise leave every auto-rotating 3D canvas burning GPU.
 export const page_visibility = $state({
   visible: typeof document === `undefined` || document.visibilityState === `visible`,
 })
@@ -35,39 +33,21 @@ export type SceneControlProps = {
   initial_zoom?: number // initial orthographic camera zoom
   ambient_light?: number
   directional_light?: number
-  gizmo?: boolean | ComponentProps<typeof Gizmo>
+  gizmo?: boolean | GizmoOptions
   auto_rotate?: number // speed; 0 disables auto-rotation
   scene?: Scene // bindable: Threlte scene for external use (e.g. export pane)
   camera?: Camera // bindable: active camera for external use
 }
 
 // ScatterPlot3DScene keeps its own gizmo/orbit props on purpose: its gizmo offset is
-// ColorBar-aware (build_gizmo_props' fixed offset would clobber it) and its orbit controls
-// differ by design (no zoom-to-cursor / ortho zoom-doubling / camera-moving tracking).
+// ColorBar-aware and its orbit controls differ by design (no zoom-to-cursor / ortho
+// zoom-doubling / camera-moving tracking).
 
-// Shared Gizmo config: colored +/- axis handles, transparent background, responsive sizing. An object `gizmo` overrides the per-axis defaults.
-export function build_gizmo_props(gizmo: boolean | ComponentProps<typeof Gizmo>) {
-  return {
-    background: { enabled: false },
-    className: `responsive-gizmo`,
-    ...Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
-        axis,
-        {
-          color,
-          labelColor: `#111`,
-          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
-          hover: {
-            color: hover,
-            labelColor: `#222`,
-            opacity: axis.startsWith(`n`) ? 1 : 0.9,
-          },
-        },
-      ]),
-    ),
-    ...(typeof gizmo === `object` ? gizmo : {}),
-    offset: { left: 5, bottom: 5 },
-  }
+// Shared Gizmo config; per-axis appearance comes from GIZMO_DEFAULT_STYLES inside the gizmo
+export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
+  const overrides = typeof gizmo === `object` ? gizmo : {}
+  // offset is merged, not replaced, so callers can nudge one edge (e.g. to clear a ColorBar)
+  return { ...overrides, offset: { left: 5, bottom: 5, ...overrides.offset } }
 }
 
 // Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving (e.g. StructureScene closes hover tooltips/context menus)
@@ -111,4 +91,22 @@ export function build_orbit_props(opts: {
     },
     onend: () => opts.set_camera_is_moving?.(false),
   }
+}
+
+// Keys the viewer owns once mounted: StructureScene computes the camera placement and the
+// orbit controls move it from there. Mirroring the caller's (stale) values back over them on
+// a later pass snaps the view to its default, discarding any orbit or auto-rotation.
+const VIEWER_OWNED_SCENE_KEYS = new Set([`camera_position`, `camera_target`])
+
+// Shallow-merge caller-supplied scene props into the viewer's local model. Camera keys apply
+// only while seeding (the first pass), so callers can still set an initial view.
+export function mirror_scene_props(
+  model: object,
+  incoming: object,
+  seed_camera: boolean,
+): void {
+  const entries = Object.entries(incoming).filter(
+    ([key]) => seed_camera || !VIEWER_OWNED_SCENE_KEYS.has(key),
+  )
+  Object.assign(model, Object.fromEntries(entries))
 }

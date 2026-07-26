@@ -33,3 +33,10 @@ jobs:
         run: npx playwright install chromium
       - name: E2E tests (shard ${{ matrix.shard }}/4)
         run: npx playwright test --shard=${{ matrix.shard }}/4
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-shard-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7

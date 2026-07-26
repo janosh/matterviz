@@ -8,6 +8,7 @@
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
+  import { create_renderer, webgpu_available } from '$lib/scene'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -393,9 +394,9 @@
       {/if}
     </ViewerChrome>
 
-    {#if typeof WebGLRenderingContext !== `undefined`}
+    {#if webgpu_available()}
       <div style="overflow: hidden; height: 100%">
-        <Canvas>
+        <Canvas createRenderer={create_renderer}>
           <BrillouinZoneScene
             {bz_data}
             {surface_color}

@@ -5,7 +5,7 @@ import {
   quaternion_from_direction,
   rotation_from_direction,
 } from '$lib/structure/geometry'
-import { Euler, Matrix4, Vector3 } from 'three'
+import { Euler, Matrix4, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
 
 describe(`quaternion_from_direction`, () => {

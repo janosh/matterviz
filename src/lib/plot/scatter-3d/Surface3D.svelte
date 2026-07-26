@@ -2,7 +2,7 @@
   import type { Vec2 } from '$lib/math'
   import type { Surface3DConfig } from '$lib/plot/core/types'
   import { T } from '@threlte/core'
-  import * as THREE from 'three'
+  import * as THREE from 'three/webgpu'
 
   let {
     config,

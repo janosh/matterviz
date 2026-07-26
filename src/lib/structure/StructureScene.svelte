@@ -52,8 +52,8 @@
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { BufferAttribute, BufferGeometry, Color, DoubleSide, Vector3 } from 'three'
-  import type { Mesh, Object3D } from 'three'
+  import { BufferAttribute, BufferGeometry, Color, DoubleSide, Vector3 } from 'three/webgpu'
+  import type { Mesh, Object3D } from 'three/webgpu'
   import Bond from './Bond.svelte'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
@@ -104,8 +104,10 @@
     base_structure = undefined,
     atom_radius = DEFAULTS.structure.atom_radius,
     same_size_atoms = false,
-    camera_position = DEFAULTS.structure.camera_position,
-    camera_target = undefined,
+    // bindable: the auto-placement effect below assigns the position it computes, which a
+    // plain prop would strand here, leaving the parent to re-push its stale value
+    camera_position = $bindable(DEFAULTS.structure.camera_position),
+    camera_target = $bindable(undefined),
     camera_direction = undefined,
     camera_projection = DEFAULTS.structure.camera_projection,
     rotation_damping = DEFAULTS.structure.rotation_damping,

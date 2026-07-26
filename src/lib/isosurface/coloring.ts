@@ -3,7 +3,7 @@
 import type { D3InterpolateName } from '$lib/colors'
 import { get_d3_interpolator } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
-import { Color } from 'three'
+import { Color } from 'three/webgpu'
 import type { DataRange } from './types'
 
 // Curated continuous colormaps offered in the isosurface controls UI.

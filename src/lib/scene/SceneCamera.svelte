@@ -5,6 +5,8 @@
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
+  import type { GizmoOptions } from './gizmo'
+  import Gizmo from './Gizmo.svelte'
   import { build_gizmo_props, build_orbit_props } from './props.svelte'
 
   let {
@@ -25,7 +27,7 @@
     near?: number // perspective near plane (orthographic always uses -100)
     far?: number // far plane (applied to either projection when provided)
     orbit_props: ReturnType<typeof build_orbit_props>
-    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
+    gizmo?: boolean | GizmoOptions
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
   } = $props()
 
@@ -40,7 +42,7 @@
 
 {#snippet camera_contents()}
   <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props}>
-    {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
+    {#if gizmo}<Gizmo {...gizmo_props} />{/if}
   </extras.OrbitControls>
 {/snippet}
 
@@ -53,10 +55,3 @@
     {@render camera_contents()}
   </T.OrthographicCamera>
 {/if}
-
-<style>
-  :global(.responsive-gizmo) {
-    width: clamp(70px, 18cqmin, 100px) !important;
-    height: clamp(70px, 18cqmin, 100px) !important;
-  }
-</style>

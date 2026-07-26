@@ -267,6 +267,67 @@ export async function expect_canvas_changed(
   }).toPass({ timeout: effective_timeout })
 }
 
+export type GizmoHandleHit = { key: string; x: number; y: number }
+
+// Find the gizmo's axis handles in a canvas. It has no DOM element, so hover a grid of cells
+// over the corner it's anchored in and keep those that flip the cursor to `pointer`, returning
+// viewport coords ready for page.mouse. `bottom_offset` lifts the swept square (for gizmos
+// parked above a ColorBar). Synthetic moves keep this to one round trip — page.mouse would
+// overrun the test timeout.
+export function sweep_gizmo_handles(
+  canvas: Locator,
+  options: { probe?: number; steps?: number; bottom_offset?: number } = {},
+): Promise<GizmoHandleHit[]> {
+  return canvas.evaluate(
+    async (cvs: HTMLCanvasElement, { probe, steps, lift }) => {
+      const bounds = cvs.getBoundingClientRect()
+      const hits: GizmoHandleHit[] = []
+      for (let row = 0; row < steps; row++) {
+        for (let col = 0; col < steps; col++) {
+          const x = bounds.left + ((col + 0.5) / steps) * probe
+          const y = bounds.bottom - lift - ((row + 0.5) / steps) * probe
+          const move = new PointerEvent(`pointermove`, {
+            clientX: x,
+            clientY: y,
+            bubbles: true,
+          })
+          cvs.dispatchEvent(move)
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+          if (cvs.style.cursor === `pointer`) hits.push({ key: `${row},${col}`, x, y })
+        }
+      }
+      return hits
+    },
+    {
+      probe: options.probe ?? 100,
+      steps: options.steps ?? 10,
+      lift: options.bottom_offset ?? 0,
+    },
+  )
+}
+
+// Click the first handle a sweep finds and assert the camera flew there. Handles are fixed in
+// gizmo space, so their screen positions shift only if the camera moved — unlike canvas pixels,
+// which hover alone disturbs. The re-sweep must find handles too, else a gizmo that stopped
+// drawing would trivially differ from the sweep before.
+export async function expect_gizmo_click_flies_camera(
+  canvas: Locator,
+  options: Parameters<typeof sweep_gizmo_handles>[1] = {},
+): Promise<void> {
+  const before = await sweep_gizmo_handles(canvas, options)
+  // Nothing to click where the scene never composites: CI's software WebGPU hands out an
+  // adapter but paints no pixels, so the sweep comes up empty however healthy the gizmo is.
+  if (before.length === 0 && IS_CI) return
+  expect(before.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+
+  await canvas.page().mouse.click(before[0].x, before[0].y)
+  await canvas.page().waitForTimeout(800) // the fly-to animates over 400ms; let it land
+
+  const after = await sweep_gizmo_handles(canvas, options)
+  expect(after.length, `gizmo handles after the fly-to`).toBeGreaterThan(0)
+  expect(after.map((hit) => hit.key)).not.toEqual(before.map((hit) => hit.key))
+}
+
 // Seeded random number generator using Linear Congruential Generator (LCG).
 // Parameters match glibc for reproducibility.
 class SeededRandom {

@@ -1,26 +1,31 @@
-import { build_gizmo_props, build_orbit_props, page_visibility } from '$lib/scene'
+import {
+  build_gizmo_props,
+  build_orbit_props,
+  mirror_scene_props,
+  GIZMO_DEFAULT_STYLES,
+  page_visibility,
+} from '$lib/scene'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 describe(`build_gizmo_props`, () => {
   test(`shared axis defaults`, () => {
-    const props = build_gizmo_props(true) as Record<string, unknown>
-    expect(props.className).toBe(`responsive-gizmo`)
-    expect(props.offset).toEqual({ left: 5, bottom: 5 })
+    expect(build_gizmo_props(true)).toEqual({ offset: { left: 5, bottom: 5 } })
     // negative axes render denser than positive ones
-    const nx = props.nx as { opacity: number; hover: { opacity: number } }
-    const px = props.x as { opacity: number; hover: { opacity: number } }
-    expect([nx.opacity, nx.hover.opacity]).toEqual([0.9, 1])
-    expect([px.opacity, px.hover.opacity]).toEqual([0.8, 0.9])
+    const { nx, x: px } = GIZMO_DEFAULT_STYLES
+    expect([nx.opacity, nx.hover?.opacity]).toEqual([0.9, 1])
+    expect([px.opacity, px.hover?.opacity]).toEqual([0.8, 0.9])
   })
 
-  test(`object gizmo overrides axes but offset is applied last`, () => {
-    const props = build_gizmo_props({ size: 42, x: { color: `#abc` } }) as Record<
-      string,
-      unknown
-    >
+  test(`object gizmo overrides axes and merges offset over the defaults`, () => {
+    const props = build_gizmo_props({
+      size: 42,
+      x: { color: `#abc` },
+      offset: { right: 10, bottom: 20 },
+    }) as Record<string, unknown>
     expect(props.size).toBe(42)
     expect(props.x).toEqual({ color: `#abc` })
-    expect(props.offset).toEqual({ left: 5, bottom: 5 })
+    // caller edges win; edges it left out keep their defaults
+    expect(props.offset).toEqual({ left: 5, bottom: 20, right: 10 })
   })
 })
 
@@ -82,4 +87,23 @@ describe(`build_orbit_props`, () => {
       expect(props.autoRotateSpeed).toBe(1.5) // resumes at full speed when shown
     })
   })
+})
+
+// Regression guard: the viewer computes its camera placement and the orbit controls move it
+// from there, so a later mirror pass must not copy the caller's stale camera back over it.
+test.each([
+  [`seeding copies every key`, true, { show_bonds: true, camera_position: [1, 2, 3] }],
+  [`later passes skip camera keys`, false, { show_bonds: true }],
+])(`mirror_scene_props: %s`, (_label, seed_camera, expected) => {
+  const model = { show_bonds: false, camera_position: [9, 9, 9], camera_target: [1, 1, 1] }
+  const incoming = { show_bonds: true, camera_position: [1, 2, 3], camera_target: undefined }
+
+  mirror_scene_props(model, incoming, seed_camera)
+
+  expect(model).toMatchObject(expected)
+  // the viewer's live camera survives once seeded, and non-camera config always applies
+  if (!seed_camera) {
+    expect(model.camera_position).toEqual([9, 9, 9])
+    expect(model.camera_target).toEqual([1, 1, 1])
+  }
 })

@@ -1,7 +1,7 @@
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Camera } from 'three'
-import { Matrix4 } from 'three'
+import type { Camera } from 'three/webgpu'
+import { Matrix4 } from 'three/webgpu'
 
 export const LABEL_OFFSET_EPS = 1e-9
 

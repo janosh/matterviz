@@ -297,6 +297,39 @@ describe(`apply_gaussian_smearing`, () => {
     expect(smeared).toEqual(densities)
     expect(smeared.every((val) => !Number.isNaN(val))).toBe(true)
   })
+
+  // The two-pointer window is only valid on an ascending grid; anything else falls back to
+  // scanning every point. Pin that fallback to an unwindowed reference so the optimization
+  // can't silently start dropping terms on grids that arrive out of order.
+  const brute_force = (xs: number[], ys: number[], sigma: number): number[] => {
+    const raw = xs.map((energy) =>
+      xs.reduce((sum, other, jdx) => {
+        const delta = energy - other
+        if (Math.abs(delta) > 4 * sigma) return sum
+        return sum + ys[jdx] * Math.exp(-(delta ** 2) / (2 * sigma ** 2))
+      }, 0),
+    )
+    const total = raw.reduce((acc, val) => acc + val, 0)
+    if (total === 0) return ys
+    const orig = ys.reduce((acc, val) => acc + val, 0)
+    return raw.map((val) => val * (orig / total))
+  }
+
+  const grid = Array.from({ length: 60 }, (_, idx) => idx * 0.1)
+  it.each([
+    [`descending`, grid.toReversed()],
+    [`ascending then descending`, [...grid.slice(0, 30), ...grid.slice(30).toReversed()]],
+    [
+      `interleaved`,
+      grid.filter((_, idx) => idx % 2 === 0).concat(grid.filter((_, idx) => idx % 2)),
+    ],
+    [`with duplicates`, grid.map((val, idx) => (idx % 4 === 0 ? grid[0] : val))],
+  ])(`matches an unwindowed reference on a %s grid`, (_label, xs) => {
+    const ys = xs.map((_, idx) => ((idx * 37) % 11) + 0.5)
+    const smeared = apply_gaussian_smearing(xs, ys, 0.25)
+    const expected = brute_force(xs, ys, 0.25)
+    smeared.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 10))
+  })
 })
 
 describe(`get_band_xaxis_ticks`, () => {

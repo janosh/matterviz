@@ -31,8 +31,9 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Scene } from 'three/webgpu'
   import { calculate_domain, create_color_scale } from '$lib/plot/core/scales'
+  import { create_renderer, type GizmoOptions, webgpu_available } from '$lib/scene'
   import ScatterPlot3DControls from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 
@@ -127,7 +128,7 @@
     ambient_light?: number
     directional_light?: number
     sphere_segments?: number
-    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
+    gizmo?: boolean | GizmoOptions
     controls?: ControlsConfig3D
     hovered?: boolean
     tooltip_point?: InternalPoint3D<Metadata> | null
@@ -249,21 +250,9 @@
   let computed_gizmo = $derived.by(() => {
     if (gizmo === false) return false
     const base_offset = { left: 5, bottom: has_color_bar ? 70 : 5 }
-    // className enables CSS targeting for z-index and pointer-events
-    const base = {
-      background: { enabled: false },
-      offset: base_offset,
-      className: `scatter3d-gizmo`,
-    }
+    const base = { offset: base_offset }
     if (gizmo === true) return base
-    // Merge user-provided gizmo config, preserving scatter3d-gizmo class
-    const merged_class = `scatter3d-gizmo ${gizmo.className ?? ``}`.trim()
-    return {
-      ...base,
-      ...gizmo,
-      offset: { ...base_offset, ...gizmo.offset },
-      className: merged_class,
-    }
+    return { ...base, ...gizmo, offset: { ...base_offset, ...gizmo.offset } }
   })
 
   function toggle_series_visibility(idx: number) {
@@ -306,8 +295,8 @@
     </div>
 
     <!-- Prevent Canvas from rendering during SSR to avoid hydration mismatch -->
-    {#if mounted && typeof WebGLRenderingContext !== `undefined`}
-      <Canvas>
+    {#if mounted && webgpu_available()}
+      <Canvas createRenderer={create_renderer}>
         <ScatterPlot3DScene
           {series}
           {series_visibility}
@@ -466,12 +455,6 @@
     height: 100% !important;
     flex: 1;
     outline: none;
-  }
-  /* Ensure gizmo is clickable above other overlay elements (ColorBar, Legend, etc.)
-     Use !important to override inline z-index: 1000 set by three-viewport-gizmo */
-  div.scatter-3d :global(.scatter3d-gizmo) {
-    z-index: 10000 !important;
-    pointer-events: auto !important;
   }
   .header-controls {
     position: absolute;

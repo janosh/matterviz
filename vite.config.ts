@@ -170,6 +170,11 @@ export default defineConfig({
 
   resolve: {
     conditions: process.env.VITEST ? [`browser`] : undefined,
+    // Redirect bare `three` — which three/examples/jsm addons and @threlte import, but we
+    // don't — onto the WebGPU build via a shim supplying the WebGL-only exports it lacks, so
+    // the bundle carries one copy of three. Exact-match regex: three/webgpu, three/tsl and
+    // three/examples/* must resolve normally.
+    alias: [{ find: /^three$/, replacement: resolve(`src/lib/scene/three-compat.ts`) }],
   },
 
   // Binary/compressed files imported via ?url that rolldown would otherwise

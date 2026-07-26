@@ -7,7 +7,7 @@
   import * as exports from '$lib/structure/export'
   import type { StructTextFormat } from '$lib/structure/export'
   import type { ComponentProps } from 'svelte'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Scene } from 'three/webgpu'
 
   let {
     export_pane_open = $bindable(false),

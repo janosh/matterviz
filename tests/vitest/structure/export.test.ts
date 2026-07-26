@@ -32,7 +32,7 @@ import {
   Scene,
   ShaderMaterial,
   SphereGeometry,
-} from 'three'
+} from 'three/webgpu'
 import { assert, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { complex_structure, simple_structure } from '../setup'
 

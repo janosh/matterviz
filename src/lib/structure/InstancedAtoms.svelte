@@ -11,7 +11,13 @@
   import type { Vec3 } from '$lib/math'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
-  import { Color, InstancedMesh, Matrix4, MeshStandardMaterial, SphereGeometry } from 'three'
+  import {
+    Color,
+    InstancedMesh,
+    Matrix4,
+    MeshStandardMaterial,
+    SphereGeometry,
+  } from 'three/webgpu'
 
   type InstancedAtom = {
     position: Vec3

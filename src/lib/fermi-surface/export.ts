@@ -1,5 +1,5 @@
 // Export Fermi surface to various 3D formats
-import type { Scene } from 'three'
+import type { Scene } from 'three/webgpu'
 import { download } from '$lib/io/fetch'
 import { to_error } from '$lib/utils'
 

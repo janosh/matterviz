@@ -24,13 +24,14 @@
     BackSide,
     BufferAttribute,
     BufferGeometry,
+    ClippingGroup,
     Color,
     DoubleSide,
     FrontSide,
     Matrix4,
     Plane,
     Vector3,
-  } from 'three'
+  } from 'three/webgpu'
   import * as constants from './constants'
   import { IDENTITY_4x4, OH_SYMMETRY_MATRICES } from './symmetry'
   import type {
@@ -136,17 +137,17 @@
     return new Plane(new Vector3(...normal_arr), constant)
   })
 
-  // Apply clipping plane to renderer
-  $effect(() => {
-    if (!threlte.renderer) return
+  // Apply the clipping plane to every object in the scene. WebGPURenderer has no global
+  // clippingPlanes; clipping is encoded in the scene graph instead, so this group wraps the
+  // scene contents and its planes cascade to all descendants.
+  const clipping_group = new ClippingGroup()
 
-    if (clip_plane) {
-      threlte.renderer.clippingPlanes = [clip_plane]
-      threlte.renderer.localClippingEnabled = true
-    } else {
-      threlte.renderer.clippingPlanes = []
-      threlte.renderer.localClippingEnabled = false
-    }
+  $effect(() => {
+    clipping_group.clippingPlanes = clip_plane ? [clip_plane] : []
+    clipping_group.enabled = Boolean(clip_plane)
+    // Mutating a three object bypasses the <T> props Threlte watches, so under this scene's
+    // on-demand render mode nothing would repaint until the next unrelated invalidation.
+    threlte.invalidate()
   })
 
   extras.interactivity()
@@ -492,7 +493,7 @@
 <T.DirectionalLight position={[-3, -5, -10]} intensity={directional_light * 0.5} />
 <T.AmbientLight intensity={ambient_light} />
 
-<T.Group position={rotation_target}>
+<T is={clipping_group} position={rotation_target}>
   <!-- Brillouin zone overlay -->
   {#if show_bz && bz_data && bz_geometry}
     <T.Mesh geometry={bz_geometry}>
@@ -570,4 +571,4 @@
       {/each}
     {/if}
   {/each}
-</T.Group>
+</T>

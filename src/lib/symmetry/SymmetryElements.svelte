@@ -43,7 +43,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     RepeatWrapping,
     RGBAFormat,
     Vector3,
-  } from 'three'
+  } from 'three/webgpu'
   import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
   let {

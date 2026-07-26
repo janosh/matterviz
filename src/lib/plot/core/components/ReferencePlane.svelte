@@ -3,7 +3,7 @@
   import type { Vec2, Vec3 } from '$lib/math'
   import { cross_3d, normalize_vec } from '$lib/math'
   import { T } from '@threlte/core'
-  import * as THREE from 'three'
+  import * as THREE from 'three/webgpu'
   import { create_to_threejs, span_or } from '$lib/plot/core/reference-line'
   import type { RefPlane } from '$lib/plot/core/types'
 

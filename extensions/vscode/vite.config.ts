@@ -30,8 +30,15 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 6000,
   },
   resolve: {
-    alias: {
-      $lib: resolve(import.meta.dirname, `../../src/lib`),
-    },
+    // Array form so `three` matches exactly — a string alias prefix-matches and would
+    // rewrite three/webgpu, three/tsl and three/examples/* too.
+    alias: [
+      { find: `$lib`, replacement: resolve(import.meta.dirname, `../../src/lib`) },
+      // one copy of three: matterviz imports three/webgpu, its addons and @threlte plain three
+      {
+        find: /^three$/,
+        replacement: resolve(import.meta.dirname, `../../src/lib/scene/three-compat.ts`),
+      },
+    ],
   },
 }))
