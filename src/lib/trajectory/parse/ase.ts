@@ -29,6 +29,24 @@ export interface AseFrameOptions {
   base_offset?: number
 }
 
+// A frame's calculator results, under either spelling ASE writes. ULM suffixes a key
+// with `.` when its value is a nested item, and ASE always nests the calculator —
+// checked against ase 3.28 down to a calculator holding nothing but a scalar energy,
+// so this is not about forces or ndarrays. Reading only the undotted name silently
+// dropped the energy of every relaxation ASE has ever written. ndarray entries are
+// left out: they are file pointers, not values.
+export const ase_calculator_data = (
+  frame_data: Record<string, unknown>,
+): Record<string, unknown> => {
+  const calculator = frame_data[`calculator.`] ?? frame_data.calculator
+  if (!calculator || typeof calculator !== `object`) return {}
+  return Object.fromEntries(
+    Object.entries(calculator).filter(
+      ([, value]) => !(value && typeof value === `object` && `ndarray` in value),
+    ),
+  )
+}
+
 // Decode a single ASE/ULM frame (JSON header + optional ndarray payloads) into a
 // TrajectoryFrame. Returns the atomic numbers actually used so callers can cache them
 // as fallback for later frames that omit `numbers` (ASE stores them only once).
@@ -75,7 +93,7 @@ export function decode_ase_frame(
   const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
   const metadata: Record<string, unknown> = {
     step,
-    ...frame_data.calculator,
+    ...ase_calculator_data(frame_data),
     ...frame_data.info,
   }
   if (cell) {

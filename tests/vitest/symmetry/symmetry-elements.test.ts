@@ -337,10 +337,9 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
   test(`R-3m (#166) emits a g-glide: rhombohedral diagonal glides reduce to no a/b/c/n/d letter in the hexagonal-axes basis, so glide_letter must fall back to "g"`, () => {
     // The reduced glide vector (1/6, 1/3, 1/3) — no half cell-axis (a/b/c), half diagonal
     // (n), or quarter diagonal (d) — hits glide_letter's otherwise-untested catch-all "g".
-    const labels = elements_for(166).map((elem) => elem.label)
-    expect(labels).toContain(`g`)
-    // and it really is a glide plane, not mislabeled as something else
     const g_glides = elements_for(166).filter((elem) => elem.label === `g`)
+    expect(g_glides).toHaveLength(3) // non-empty, so the every() below cannot pass vacuously
+    // and they really are glide planes, not mislabeled as something else
     expect(g_glides.every((elem) => elem.kind === `glide` && elem.order === 2)).toBe(true)
   })
 
@@ -404,29 +403,21 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
 describe(`cell clipping helpers`, () => {
   const cubic_2 = cubic_matrix(2)
 
-  test(`clip_line_to_cell: axis along z through the origin spans the cell`, () => {
-    const seg = clip_line_to_cell([0, 0, 0], [0, 0, 1], cubic_2)
-    expect(seg).not.toBeNull()
-    const [start, end] = seg as [Vec3, Vec3]
-    expect([start, end].toSorted((s1, s2) => s1[2] - s2[2])).toEqual([
-      [0, 0, 0],
-      [0, 0, 2],
-    ])
-  })
-
-  test(`clip_line_to_cell: shifted axis and body diagonal`, () => {
-    const shifted = clip_line_to_cell([0.25, 0.25, 0.5], [0, 0, 1], cubic_2)
-    expect(shifted).not.toBeNull()
-    const [s1, s2] = (shifted as [Vec3, Vec3]).toSorted((v1, v2) => v1[2] - v2[2])
-    expect(s1).toEqual([0.5, 0.5, 0])
-    expect(s2).toEqual([0.5, 0.5, 2])
-
-    const diag = clip_line_to_cell([0, 0, 0], [1, 1, 1], cubic_2)
-    expect(diag).not.toBeNull()
-    const [d1, d2] = (diag as [Vec3, Vec3]).toSorted((v1, v2) => v1[2] - v2[2])
-    expect(d1).toEqual([0, 0, 0])
-    expect(d2).toEqual([2, 2, 2])
-  })
+  // [name, point, direction, low and high endpoint]. clip_line_to_cell promises no endpoint
+  // ordering, so the returned pair is sorted by z before comparing.
+  test.each([
+    [`axis along z through origin`, [0, 0, 0], [0, 0, 1], [0, 0, 0], [0, 0, 2]],
+    [`shifted axis`, [0.25, 0.25, 0.5], [0, 0, 1], [0.5, 0.5, 0], [0.5, 0.5, 2]],
+    [`body diagonal`, [0, 0, 0], [1, 1, 1], [0, 0, 0], [2, 2, 2]],
+  ] as [string, Vec3, Vec3, Vec3, Vec3][])(
+    `clip_line_to_cell: %s spans the cell`,
+    (_name, point, direction, low_end, high_end) => {
+      const seg = clip_line_to_cell(point, direction, cubic_2)
+      expect(seg).not.toBeNull()
+      const sorted = (seg as [Vec3, Vec3]).toSorted((v1, v2) => v1[2] - v2[2])
+      expect(sorted).toEqual([low_end, high_end])
+    },
+  )
 
   test(`clip_line_to_cell: line outside the cell returns null`, () => {
     expect(clip_line_to_cell([1.5, 0.5, 0], [0, 0, 1], cubic_2)).toBeNull()
@@ -541,16 +532,14 @@ describe(`dash_segments`, () => {
     }
   })
 
+  // Below two dash periods (2*0.45 + 0.3 = 1.2) only a single dash fits: it spans the whole
+  // segment while shorter than one dash length, and is centered once it is capped at 0.45
   test.each([
-    { length: 0.3, label: `shorter than one dash` },
-    { length: 0.45, label: `exactly one dash` },
-  ])(`$label: single full-length segment`, ({ length }) => {
-    expect(dash_segments(length, 0.45, 0.3)).toEqual([{ center: length / 2, length }])
-  })
-
-  test(`between one and two dash periods: single centered dash`, () => {
-    const segs = dash_segments(0.9, 0.45, 0.3) // 0.9 < 2*0.45 + 0.3
-    expect(segs).toEqual([{ center: 0.45, length: 0.45 }])
+    [`shorter than one dash`, 0.3, [{ center: 0.15, length: 0.3 }]],
+    [`exactly one dash`, 0.45, [{ center: 0.225, length: 0.45 }]],
+    [`between one and two dash periods`, 0.9, [{ center: 0.45, length: 0.45 }]],
+  ])(`%s: a single segment`, (_label, length, expected) => {
+    expect(dash_segments(length, 0.45, 0.3)).toEqual(expected)
   })
 
   test.each([

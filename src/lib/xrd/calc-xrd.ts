@@ -4,9 +4,9 @@ import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { Vec2 } from '$lib/math'
 import type { RadiationType } from '$lib/scattering'
-import { gaussian_turning_point } from '$lib/scattering'
 import {
   ELECTRON_FORM_FACTOR_CONST,
+  gaussian_turning_point,
   neutron_scattering_length,
   XRAY_GAUSSIAN_PREFACTOR,
 } from '$lib/scattering'

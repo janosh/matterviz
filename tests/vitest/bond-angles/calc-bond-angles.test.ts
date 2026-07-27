@@ -8,7 +8,7 @@ import {
   to_angle_bar_series,
   to_angle_density,
 } from '$lib/bond-angles'
-import type { SplitMode } from '$lib/bond-angles'
+import type { BondAngleOptions, SplitMode } from '$lib/bond-angles'
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
@@ -112,18 +112,24 @@ const rocksalt = make_crystal(5.64, [
 const palladium = fixture(`mp-2`)
 
 describe(`compute_bond_angles analytic geometry`, () => {
+  // angle_tally buckets every triplet, so the tally values also pin the total angle count
   test.each([
-    [`tetrahedral methane`, methane, { [TETRAHEDRAL_ANGLE.toFixed(4)]: 6 }],
-    [`octahedral SF6`, octahedron, { '90.0000': 12, '180.0000': 3 }],
-    [`square planar PtCl4`, square_planar, { '90.0000': 4, '180.0000': 2 }],
-    [`linear CO2`, linear_triatomic, { '180.0000': 1 }],
-  ] as const)(`%s reproduces the ideal angle multiset`, (_name, structure, expected) => {
-    expect(angle_tally(compute_bond_angles(structure))).toEqual(expected)
-  })
+    [`tetrahedral methane`, methane, { [TETRAHEDRAL_ANGLE.toFixed(4)]: 6 }, `H-C-H`],
+    [`octahedral SF6`, octahedron, { '90.0000': 12, '180.0000': 3 }, `F-S-F`],
+    [`square planar PtCl4`, square_planar, { '90.0000': 4, '180.0000': 2 }, `Cl-Pt-Cl`],
+    [`linear CO2`, linear_triatomic, { '180.0000': 1 }, `O-C-O`],
+  ] as const)(
+    `%s reproduces the ideal angle multiset, every angle labelled %s`,
+    (_name, structure, expected, label) => {
+      const triplets = compute_bond_angles(structure)
+      expect(angle_tally(triplets)).toEqual(expected)
+      expect(triplets.every((triplet) => triplet.triplet === label)).toBe(true)
+    },
+  )
 
   test(`methane H-C-H angles match acos(-1/3) to double precision`, () => {
     const triplets = compute_bond_angles(methane)
-    expect(triplets).toHaveLength(6)
+    expect(triplets).toHaveLength(6) // else Math.max over an empty deviation list passes
     // Measured: all six come out at 109.471220634490692, i.e. bit-identical to
     // Math.acos(-1/3) in degrees (deviation exactly 0). Math.acos is not required to be
     // correctly rounded across engines, so assert 1e-12 deg rather than strict equality —
@@ -132,17 +138,6 @@ describe(`compute_bond_angles analytic geometry`, () => {
     expect(exact).toBe(TETRAHEDRAL_ANGLE)
     const deviations = triplets.map((triplet) => Math.abs(triplet.angle - exact))
     expect(Math.max(...deviations)).toBeLessThan(1e-12)
-    expect(new Set(triplets.map((triplet) => triplet.triplet))).toEqual(new Set([`H-C-H`]))
-  })
-
-  test.each([
-    [`octahedral SF6`, octahedron, `F-S-F`, 15],
-    [`square planar PtCl4`, square_planar, `Cl-Pt-Cl`, 6],
-    [`linear CO2`, linear_triatomic, `O-C-O`, 1],
-  ])(`%s labels every angle %s`, (_name, structure, label, count) => {
-    const triplets = compute_bond_angles(structure)
-    expect(triplets).toHaveLength(count)
-    expect(triplets.every((triplet) => triplet.triplet === label)).toBe(true)
   })
 })
 
@@ -184,11 +179,13 @@ describe(`periodic image expansion`, () => {
     expect(triplets.every((triplet) => triplet.triplet === `Po-Po-Po`)).toBe(true)
   })
 
-  test.each([
-    [true, 15],
-    [false, 0],
-  ])(`auto_expand=%s gives %s angles for a one-atom cell`, (auto_expand, expected) => {
-    expect(compute_bond_angles(simple_cubic, { auto_expand })).toHaveLength(expected)
+  test.each<[BondAngleOptions, number]>([
+    [{ auto_expand: true }, 15],
+    [{ auto_expand: false }, 0],
+    // switching every axis to non-periodic is the same switch under another name
+    [{ pbc: [false, false, false] }, 0],
+  ])(`%j gives %s angles for a one-atom cell`, (options, expected) => {
+    expect(compute_bond_angles(simple_cubic, options)).toHaveLength(expected)
   })
 
   // On real crystals image expansion is not a small correction: without it every angle
@@ -205,10 +202,6 @@ describe(`periodic image expansion`, () => {
     const structure = fixture(id)
     expect(compute_bond_angles(structure)).toHaveLength(expanded)
     expect(compute_bond_angles(structure, { auto_expand: false })).toHaveLength(bare)
-  })
-
-  test(`pbc=[false, false, false] disables expansion just like auto_expand=false`, () => {
-    expect(compute_bond_angles(simple_cubic, { pbc: [false, false, false] })).toHaveLength(0)
   })
 
   // Bond displacements must stay raw pos_2 - pos_1. With a bond length of exactly a/2 the

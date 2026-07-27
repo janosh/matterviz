@@ -19,7 +19,7 @@ import {
   validate_3x3_matrix,
 } from './helpers'
 import { indexed_trajectory_format } from '$lib/trajectory/format-detect'
-import { decode_ase_frame, read_ase_header } from './parse/ase'
+import { ase_calculator_data, decode_ase_frame, read_ase_header } from './parse/ase'
 import { build_xyz_frame, parse_xyz_comment_metadata } from './parse/xyz'
 
 const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
@@ -534,23 +534,24 @@ export class TrajFrameReader implements FrameLoader {
     const properties: Record<string, number> = {}
     const step = frame_number
 
-    if (frame_data.calculator && typeof frame_data.calculator === `object`) {
-      copy_numeric_fields(properties, frame_data.calculator as Record<string, unknown>, [
+    // ASE puts computed results in the calculator and user-set values in `info`, but
+    // which scalar lands where is up to whoever wrote the file, so both sections get
+    // every alias. Reading one from a single section drops it from the other exactly
+    // as silently as the dotted-key bug did.
+    for (const section of [ase_calculator_data(frame_data), frame_data.info]) {
+      if (!section || typeof section !== `object`) continue
+      copy_numeric_fields(properties, section as Record<string, unknown>, [
         `energy`,
         `potential_energy`,
         `kinetic_energy`,
         `total_energy`,
-      ])
-    }
-
-    if (frame_data.info && typeof frame_data.info === `object`) {
-      copy_numeric_fields(properties, frame_data.info as Record<string, unknown>, [
         `force_max`,
         `force_norm`,
         `stress_max`,
         `stress_frobenius`,
         `pressure`,
         `temperature`,
+        `bandgap`,
       ])
     }
 

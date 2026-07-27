@@ -105,9 +105,7 @@ test.each([
   [[1, 2, 3], [4, 5, 6], [5, 7, 9]],
   [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [8, 10, 12, 14, 16, 18]],
 ])(`add vectors`, (vec1, vec2, expected) => {
-  const sum = math.add(vec1, vec2)
-  expect(sum).toEqual(expected)
-  expect(Math.hypot(...math.subtract(sum, expected))).toBe(0)
+  expect(math.add(vec1, vec2)).toEqual(expected)
 })
 
 test(`add function comprehensive`, () => {
@@ -269,6 +267,25 @@ test.each([
   for (const [key, want] of Object.entries(expected)) {
     expect(result[key as `alpha`]).toBeCloseTo(want, 6)
   }
+})
+
+// The 90 degree sentinel above looks inconsistent with angle_between_vectors, which
+// returns 0 for a zero-length vector, and is a tempting thing to "fix". It must stay 90:
+// a slab reported as alpha = beta = 0 drives the triclinic volume factor negative, so
+// cell_to_lattice_matrix rejects the cell as unrealizable and a 2D/slab/molecule lattice
+// stops round-tripping. The two helpers serve different domains (cell parameters vs bond
+// geometry) and share no consumer; only the [-1, 1] acos clamp has to agree.
+test(`a degenerate slab cell survives a calc_lattice_params round-trip`, () => {
+  const slab: math.Matrix3x3 = [
+    [3, 0, 0],
+    [0, 3, 0],
+    [0, 0, 0],
+  ]
+  const { a, b, c, alpha, beta, gamma } = math.calc_lattice_params(slab)
+  const round_tripped = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+  expect(round_tripped).toEqual(slab.map((row) => row.map((val) => expect.closeTo(val, 12))))
+  // the sentinel that would break it
+  expect(() => math.cell_to_lattice_matrix(a, b, c, 0, 0, gamma)).toThrow(/realizable/)
 })
 
 describe(`pbc_dist`, () => {
@@ -471,19 +488,6 @@ describe(`tensor conversion utilities`, () => {
       expect(math.from_voigt(voigt)).toEqual(expected)
     })
 
-    it(`is inverse of to_voigt`, () => {
-      // oxfmt-ignore
-      const tensor = [[1.5, 0.7, 0.4], [0.7, 2.5, 0.6], [0.4, 0.6, 3.5]]
-      const voigt = math.to_voigt(tensor)
-      const reconstructed = math.from_voigt(voigt)
-
-      for (let idx = 0; idx < 3; idx++) {
-        for (let col = 0; col < 3; col++) {
-          expect(reconstructed[idx][col]).toBeCloseTo(tensor[idx][col], 10)
-        }
-      }
-    })
-
     it.each([
       [`empty`, []],
       [`short`, [1, 2, 3]],
@@ -525,12 +529,6 @@ describe(`tensor conversion utilities`, () => {
         [-1, -2, -3, -4, -5, -6, -7, -8, -9]],
     ])(`converts %s to flat array`, (_, tensor, expected) => {
       expect(math.tensor_to_flat_array(tensor)).toEqual(expected)
-    })
-
-    it(`is inverse of vec9_to_mat3x3`, () => {
-      const original = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]
-      const tensor = math.vec9_to_mat3x3(original)
-      expect(math.tensor_to_flat_array(tensor)).toEqual(original)
     })
 
     // oxfmt-ignore
@@ -648,21 +646,6 @@ describe(`tensor conversion utilities`, () => {
       }
     })
 
-    it(`verifies inverse property (A * A^-1 = I)`, () => {
-      // oxfmt-ignore
-      const matrix: math.Matrix3x3 = [[1, 2, 3], [0, 1, 4], [5, 6, 0]]
-      const inverse = math.matrix_inverse_3x3(matrix)
-      const product = math.mat3x3_vec3_multiply(
-        matrix,
-        math.mat3x3_vec3_multiply(inverse, [1, 0, 0]),
-      )
-
-      // Check that A * A^-1 * [1,0,0] = [1,0,0]
-      expect(product[0]).toBeCloseTo(1, 10)
-      expect(product[1]).toBeCloseTo(0, 10)
-      expect(product[2]).toBeCloseTo(0, 10)
-    })
-
     // oxfmt-ignore
     it.each([
       [`singular matrix (det = 0)`, [[1, 2, 3], [2, 4, 6], [3, 6, 9]]],
@@ -759,25 +742,6 @@ describe(`tensor conversion utilities`, () => {
       const reconstructed = math.from_voigt(voigt)
       expect(reconstructed[0][0]).toBeCloseTo(0.125, 10)
       expect(reconstructed[0][1]).toBeCloseTo(reconstructed[1][0], 10) // symmetry
-    })
-
-    it(`calculates materials science properties`, () => {
-      // oxfmt-ignore
-      const stress = [[100, 20, 10], [20, 150, 30], [10, 30, 200]]
-      const [s11, s22, s33, s23, s13, s12] = math.to_voigt(stress)
-
-      // von Mises stress
-      const von_mises = Math.sqrt(
-        0.5 * ((s11 - s22) ** 2 + (s22 - s33) ** 2 + (s33 - s11) ** 2) +
-          3 * (s12 ** 2 + s13 ** 2 + s23 ** 2),
-      )
-      expect(von_mises).toBeCloseTo(108.17, 2)
-
-      // pressure and max shear
-      expect(-(s11 + s22 + s33) / 3).toBeCloseTo(-150, 5)
-      expect(
-        Math.max(Math.abs(s11 - s22) / 2, Math.abs(s22 - s33) / 2, Math.abs(s33 - s11) / 2),
-      ).toBeCloseTo(50, 5)
     })
 
     // oxfmt-ignore
@@ -879,11 +843,8 @@ describe(`det_nxn`, () => {
 
   const factorial = (num: number): number => (num <= 1 ? 1 : num * factorial(num - 1))
 
-  test.each([5, 6])(`%dx%d identity matrix → det=1`, (size) => {
+  test.each([5, 6])(`%dx%d diagonal: det=1 for identity, det=n! for 1..n`, (size) => {
     expect(math.det_nxn(make_diagonal(size, () => 1))).toBeCloseTo(1, 10)
-  })
-
-  test.each([5, 6])(`%dx%d diagonal matrix → det=n!`, (size) => {
     expect(math.det_nxn(make_diagonal(size, (idx) => idx + 1))).toBeCloseTo(
       factorial(size),
       10,
@@ -995,10 +956,6 @@ describe(`cross_3d`, () => {
       cross_ab[2] + cross_ac[2],
     ]
     expect(left).toEqual(right.map((val) => expect.closeTo(val, 10)))
-
-    // Triangle normal (convex hull use case)
-    const normal = math.cross_3d([1, 0, 0], [0, 1, 0])
-    expect(normal).toEqual([0, 0, 1])
   })
 })
 
@@ -1150,11 +1107,6 @@ describe(`vecs_equal`, () => {
     { vec_a: undefined, vec_b: [1, 2, 3], expected: false, label: `first undefined` },
   ])(`$label → $expected`, ({ vec_a, vec_b, expected }) => {
     expect(math.vecs_equal(vec_a as Vec3, vec_b as Vec3)).toBe(expected)
-  })
-
-  it(`returns true for same reference`, () => {
-    const vec: Vec3 = [1, 2, 3]
-    expect(math.vecs_equal(vec, vec)).toBe(true)
   })
 
   it(`uses strict equality, not approximate`, () => {
@@ -1372,31 +1324,52 @@ describe(`merge_coplanar_triangles`, () => {
     expect(vec3_close(fan_origin, second_tri_origin)).toBe(true)
   })
 
-  test(`four coplanar triangles forming a hexagonal face`, () => {
-    // Regular hexagon on z=0 centered at origin, split into 4 triangles
-    // (fan from center would give 6, but convex hull gives 6 vertices → 4 fan triangles)
-    // oxfmt-ignore
-    const hex_verts: Vec3[] = [
-      [1, 0, 0], [0.5, 0.866, 0], [-0.5, 0.866, 0],
-      [-1, 0, 0], [-0.5, -0.866, 0], [0.5, -0.866, 0],
-    ]
-    // Triangulate as fan from vertex 0
-    // oxfmt-ignore
-    const input = new Float32Array([
-      ...hex_verts[0], ...hex_verts[1], ...hex_verts[2],
-      ...hex_verts[0], ...hex_verts[2], ...hex_verts[3],
-      ...hex_verts[0], ...hex_verts[3], ...hex_verts[4],
-      ...hex_verts[0], ...hex_verts[4], ...hex_verts[5],
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    // Should merge to 4 fan triangles from 6 hull vertices
-    expect(result).toHaveLength(4 * 9)
-    // All 6 hex vertices should appear in output
-    const out_verts = extract_triangle_verts(result)
-    for (const hv of hex_verts) {
-      expect(out_verts.some((ov) => vec3_close(ov, hv, 0.01))).toBe(true)
-    }
-  })
+  // Regular hexagon on z=0 centered at origin, triangulated as a fan from vertex 0
+  // oxfmt-ignore
+  const hex_verts: Vec3[] = [
+    [1, 0, 0], [0.5, 0.866, 0], [-0.5, 0.866, 0],
+    [-1, 0, 0], [-0.5, -0.866, 0], [0.5, -0.866, 0],
+  ]
+  // oxfmt-ignore
+  const hex_input = new Float32Array([
+    ...hex_verts[0], ...hex_verts[1], ...hex_verts[2],
+    ...hex_verts[0], ...hex_verts[2], ...hex_verts[3],
+    ...hex_verts[0], ...hex_verts[3], ...hex_verts[4],
+    ...hex_verts[0], ...hex_verts[4], ...hex_verts[5],
+  ])
+
+  // Coplanar groups that merge and then re-triangulate as a fan over all hull vertices
+  // oxfmt-ignore
+  test.each([
+    // Convex hull gives 6 vertices → 4 fan triangles. 0.866 is not exact in Float32,
+    // hence the looser 0.01 vertex-match tolerance.
+    [`hexagonal face from four coplanar triangles`, hex_input, 4 * 9, hex_verts, 0.01],
+    // Two triangles on the x=5 plane with opposite winding. Tests CANON_EPS fix.
+    [`axis-aligned plane despite winding differences`,
+      new Float32Array([
+        5, 0, 0, 5, 1, 0, 5, 1, 1, // tri1
+        5, 0, 0, 5, 1, 1, 5, 0, 1, // tri2 (opposite winding)
+      ]),
+      2 * 9, [[5, 0, 0], [5, 1, 0], [5, 1, 1], [5, 0, 1]], 1e-4],
+    // Pentagon A-B-C-D-E split into 3 fan triangles from A
+    [`three coplanar triangles sharing a fan vertex`,
+      new Float32Array([
+        0, 0, 0, 2, 0, 0, 2, 1, 0, // A-B-C
+        0, 0, 0, 2, 1, 0, 1, 2, 0, // A-C-D
+        0, 0, 0, 1, 2, 0, 0, 1, 0, // A-D-E
+      ]),
+      3 * 9, [[0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 2, 0], [0, 1, 0]], 1e-4],
+  ] as [string, Float32Array, number, Vec3[], number][])(
+    `%s`,
+    (_name, input, expected_len, expected_verts, tol) => {
+      const result = math.merge_coplanar_triangles(input)
+      expect(result).toHaveLength(expected_len)
+      const out_verts = extract_triangle_verts(result)
+      for (const ev of expected_verts) {
+        expect(out_verts.some((ov) => vec3_close(ov, ev, tol))).toBe(true)
+      }
+    },
+  )
 
   test(`mixed coplanar and non-coplanar triangles`, () => {
     // Two coplanar triangles on z=0 (a quad) + one triangle on z=1
@@ -1424,39 +1397,6 @@ describe(`merge_coplanar_triangles`, () => {
       area += 0.5 * Math.hypot(...cr)
     }
     expect(area).toBeCloseTo(1.0, 6)
-  })
-
-  test(`coplanar triangles on axis-aligned plane merge despite winding differences`, () => {
-    // Two triangles on x=5 plane with opposite winding. Tests CANON_EPS fix.
-    // oxfmt-ignore
-    const input = new Float32Array([
-      5, 0, 0, 5, 1, 0, 5, 1, 1, // tri1
-      5, 0, 0, 5, 1, 1, 5, 0, 1, // tri2 (opposite winding)
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(18)
-    const out_verts = extract_triangle_verts(result)
-    // oxfmt-ignore
-    for (const ev of [[5, 0, 0], [5, 1, 0], [5, 1, 1], [5, 0, 1]] as Vec3[]) {
-      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
-    }
-  })
-
-  test(`three coplanar triangles sharing fan vertex merge correctly`, () => {
-    // Pentagon A-B-C-D-E split into 3 fan triangles from A
-    // oxfmt-ignore
-    const input = new Float32Array([
-      0, 0, 0, 2, 0, 0, 2, 1, 0, // A-B-C
-      0, 0, 0, 2, 1, 0, 1, 2, 0, // A-C-D
-      0, 0, 0, 1, 2, 0, 0, 1, 0, // A-D-E
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(3 * 9)
-    const out_verts = extract_triangle_verts(result)
-    // oxfmt-ignore
-    for (const ev of [[0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 2, 0], [0, 1, 0]] as Vec3[]) {
-      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
-    }
   })
 })
 

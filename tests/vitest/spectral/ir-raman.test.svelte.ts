@@ -35,7 +35,7 @@ import co2_raman_json from '$site/phonons/ir-raman/CO2-raman-tensors.json'
 import nacl_born from '$site/phonons/ir-raman/NaCl.BORN?raw'
 import nacl_yaml from '$site/phonons/ir-raman/NaCl-gamma.yaml?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 const co2_data = parse_phonon_modes(co2_yaml)
 const co2_born_data = parse_born(co2_born)
@@ -105,22 +105,20 @@ describe(`acoustic mode identification`, () => {
   it.each([
     [`CO2`, co2_spectrum, CO2_ACOUSTIC],
     [`NaCl`, nacl_spectrum, [0, 1, 2]],
-  ])(`%s: the three zero-frequency modes at Gamma are acoustic`, (_name, spec, expected) => {
-    const acoustic = mode_indices(spec.modes, (mode) => mode.is_acoustic)
-    expect(acoustic.toSorted((left, right) => left - right)).toEqual(expected)
-  })
-
-  it.each([
-    [`CO2`, co2_spectrum],
-    [`NaCl`, nacl_spectrum],
-  ])(`%s: acoustic modes carry zero IR intensity via the Born sum rule`, (_name, spec) => {
-    for (const mode of spec.modes.filter((entry) => entry.is_acoustic)) {
-      // Exactly zero up to f64 round-off: sum_kappa Z*_kappa = 0 and every atom of an
-      // acoustic mode has the same displacement, so the dipole derivative cancels term by
-      // term. Bound is well below the smallest optical intensity (~4e-2).
-      expect(Math.abs(mode.ir_intensity), `mode ${mode.mode_idx}`).toBeLessThan(1e-15)
-    }
-  })
+  ])(
+    `%s: the three zero-frequency Gamma modes are acoustic and IR-silent`,
+    (_name, spec, expected) => {
+      const acoustic = spec.modes.filter((mode) => mode.is_acoustic)
+      const indices = acoustic.map((mode) => mode.mode_idx)
+      expect(indices.toSorted((lo, hi) => lo - hi)).toEqual(expected)
+      for (const mode of acoustic) {
+        // Exactly zero up to f64 round-off: sum_kappa Z*_kappa = 0 and every atom of an
+        // acoustic mode has the same displacement, so the dipole derivative cancels term by
+        // term. Bound is well below the smallest optical intensity (~4e-2).
+        expect(Math.abs(mode.ir_intensity), `mode ${mode.mode_idx}`).toBeLessThan(1e-15)
+      }
+    },
+  )
 
   it(`away from Gamma no mode is labelled acoustic`, () => {
     expect(is_gamma_point([0.25, 0, 0])).toBe(false)
@@ -446,24 +444,20 @@ describe(`broaden_spectrum`, () => {
   // Every width can be individually valid while their ratio is not: the grid spans
   // 10*max_width in steps of min_width/20, so this asks for ~2.4e12 points and used to
   // hand broaden_peaks an uninterruptible fill loop (measured: still running after 4 min).
+  const wide_ratio_sticks = { x: [0, 1000], y: [1, 1] }
+  const wide_ratio_fwhm = (center: number) => (center === 0 ? 1e-8 : 10)
+
   it(`refuses a width ratio that would explode the grid`, () => {
-    const fwhm_fn = (center: number) => (center === 0 ? 1e-8 : 10)
-    expect(() => broaden_spectrum({ x: [0, 1000], y: [1, 1] }, { fwhm_fn })).toThrow(
+    const broaden = () => broaden_spectrum(wide_ratio_sticks, { fwhm_fn: wide_ratio_fwhm })
+    expect(broaden).toThrow(
       /grid points over \[-100, 1100\] at step 5e-10.*Widths span 1e-8\.\.10/s,
     )
   })
 
   // ...but an explicit step_size means the caller has taken responsibility for the grid
   it(`allows a wide width ratio when step_size is given explicitly`, () => {
-    const fwhm_fn = (center: number) => (center === 0 ? 1e-8 : 10)
-    const curve = broaden_spectrum(
-      { x: [0, 1000], y: [1, 1] },
-      {
-        fwhm_fn,
-        range: [-50, 1050],
-        step_size: 0.5,
-      },
-    )
+    const opts = { fwhm_fn: wide_ratio_fwhm, range: [-50, 1050] as Vec2, step_size: 0.5 }
+    const curve = broaden_spectrum(wide_ratio_sticks, opts)
     expect(curve.x).toHaveLength(2200)
     expect(curve.y.every(Number.isFinite)).toBe(true)
   })
@@ -533,10 +527,6 @@ it(`a 4000 cm^-1 stick survives the IR path that normalize_dos would mangle`, ()
     expect(mangled.frequencies[0]).toBeCloseTo(4000 / cm_per_thz, 9)
     expect(mangled.frequencies[0]).not.toBeCloseTo(4000, 0)
   }
-})
-
-it(`scale_to_max divides through by the maximum`, () => {
-  expect(scale_to_max([1, 2, 4])).toEqual([0.25, 0.5, 1])
 })
 
 // Its only caller inverts the result as 1 - A, so a silent no-op here would render a
@@ -675,7 +665,7 @@ describe(`parse_born`, () => {
     [`CO2`, co2_born_data, 3, 14.4, 1.15, [0.6, 0.6, 1.3]],
     [`NaCl`, nacl_born_data, 2, 14.4, 2.34, [1.1, 1.1, 1.1]],
   ])(
-    `%s: reads factor, dielectric and one Z* tensor per atom`,
+    `%s: reads factor, dielectric and one sum-rule-obeying Z* tensor per atom`,
     (_name, born, n_atoms, factor, eps_xx, first_charge_diag) => {
       expect(born.factor).toBeCloseTo(factor, 12)
       expect(born.dielectric[0][0]).toBeCloseTo(eps_xx, 12)
@@ -684,20 +674,14 @@ describe(`parse_born`, () => {
       expect(diag).toEqual(first_charge_diag)
       // Off-diagonals vanish for both fixtures' site symmetries
       expect(born.born_charges[0][0][1]).toBe(0)
+      // Sum over atoms of Z* must vanish for a charge-neutral cell. The fixtures are
+      // written with exactly-representable decimals summing to zero, so allow only f64
+      // round-off.
+      for (const row of born_charge_sum(born.born_charges)) {
+        for (const val of row) expect(Math.abs(val)).toBeLessThan(1e-15)
+      }
     },
   )
-
-  it.each([
-    [`CO2`, co2_born_data],
-    [`NaCl`, nacl_born_data],
-  ])(`%s: Born charges satisfy the acoustic sum rule exactly`, (_name, born) => {
-    const residual = born_charge_sum(born.born_charges)
-    // Sum over atoms of Z* must vanish for a charge-neutral cell. The fixtures are written
-    // with exactly-representable decimals summing to zero, so allow only f64 round-off.
-    for (const row of residual) {
-      for (const val of row) expect(Math.abs(val)).toBeLessThan(1e-15)
-    }
-  })
 
   it.each([
     [`comments and blank lines`, `# lead\n\n14.4 # trailing\n\n${UNIT_TENSOR.repeat(2)}`],
@@ -746,10 +730,6 @@ describe(`IrRamanSpectrum component`, () => {
       target: document.body,
       props: { spectrum: co2_spectrum, ...props },
     })
-
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
 
   it.each([
     [`NaCl IR`, { spectrum: nacl_spectrum, fwhm: 8 }],

@@ -181,8 +181,13 @@
   // singular one) disables the button and explains why, instead of throwing out of the
   // handler. Derived, so the message clears itself as soon as the indices or mode change.
   let zone_axis = $derived.by(() => {
-    if (!lattice_matrix || !is_valid_zone_axis(zone_axis_indices)) {
-      return { direction: null, error: `` }
+    // Molecules have no crystallographic directions; the button's own title already says so
+    if (!lattice_matrix) return { direction: null, error: `` }
+    // MillerIndexInput accepts `000` and `Infinity 0 0`, which would otherwise grey the
+    // button out with no reason given. The indices themselves are in the adjacent input.
+    if (!is_valid_zone_axis(zone_axis_indices)) {
+      const error = `${zone_axis_mode} indices must be finite and not all zero`
+      return { direction: null, error }
     }
     try {
       const indices = [...zone_axis_indices] as Vec3

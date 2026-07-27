@@ -10,7 +10,7 @@ import {
   scale_lattice_matrix,
 } from '$lib/structure/supercell'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal, type SimpleSite } from '../setup'
 
 // Sample structure for testing
 const sample_structure = make_crystal(
@@ -240,20 +240,21 @@ describe(`validation and formatting`, () => {
 
 describe(`integration tests`, () => {
   test(`handles complex structures`, () => {
-    const complex_structure: Crystal = {
-      ...sample_structure,
-      sites: [
-        ...sample_structure.sites,
+    const complex_structure = make_crystal(
+      4,
+      [
+        [`Ba`, [0, 0, 0], 2],
+        [`Ti`, [0.5, 0.5, 0.5], 4],
         {
-          species: [{ element: `O`, occu: 1.0, oxidation_state: -2 }],
-          abc: [0.5, 0.0, 0.0],
-          xyz: [2.0, 0.0, 0.0],
+          element: `O`,
+          abc: [0.5, 0, 0],
+          oxidation_state: -2,
           label: `O1`,
           properties: { force: [0.1, 0.2, 0.3] },
         },
       ],
-      charge: 2,
-    }
+      { charge: 2 },
+    )
 
     const supercell = make_supercell(complex_structure, [2, 2, 1])
 
@@ -263,24 +264,13 @@ describe(`integration tests`, () => {
   })
 
   test(`works with different lattice shapes`, () => {
-    const hexagonal_structure: Crystal = {
-      ...sample_structure,
-      lattice: {
-        matrix: [
-          [3.0, 0.0, 0.0],
-          [-1.5, 2.598, 0.0],
-          [0.0, 0.0, 5.0],
-        ],
-        pbc: [true, true, true],
-        volume: 39.0,
-        a: 3.0,
-        b: 3.0,
-        c: 5.0,
-        alpha: 90.0,
-        beta: 90.0,
-        gamma: 120.0,
-      },
-    }
+    const hexagonal_structure = make_crystal(
+      math.cell_to_lattice_matrix(3, 3, 5, 90, 90, 120),
+      [
+        [`Ba`, [0, 0, 0], 2],
+        [`Ti`, [0.5, 0.5, 0.5], 4],
+      ],
+    )
 
     const supercell = make_supercell(hexagonal_structure, [2, 2, 1])
 
@@ -383,90 +373,59 @@ describe(`image atom behavior`, () => {
 })
 
 describe(`oblique cell bug tests`, () => {
-  test(`handles oblique cells like MgNiF6 correctly`, () => {
-    // MgNiF6.cif structure with oblique lattice (56.455° angles)
-    const mgf6_structure = make_crystal(
-      math.cell_to_lattice_matrix(5.2219, 5.2219, 5.2219, 56.455, 56.455, 56.455),
-      [
-        { element: `Mg`, abc: [0.5, 0.5, 0.5], oxidation_state: 2 },
-        { element: `Ni`, abc: [0, 0, 0], oxidation_state: 2 },
-      ],
-      { charge: 0 },
-    )
-
-    const supercell = make_supercell(mgf6_structure, [2, 2, 2])
-
-    // Verify all atoms are within the supercell volume bounds
-    const lattice_matrix = supercell.lattice.matrix
-    const det = math.det_3x3(lattice_matrix)
-
-    expect(det).toBeGreaterThan(0) // Positive determinant
-    expect(supercell.sites).toHaveLength(16) // 2 atoms × 8 cells
-
-    // Check that all fractional coordinates are within [0, 1) after folding
-    for (const site of supercell.sites) {
-      for (const coord of site.abc) {
-        expect(coord).toBeGreaterThanOrEqual(0)
-        expect(coord).toBeLessThan(1)
-      }
-    }
-
-    // Verify coordinate consistency: fractional → cartesian → fractional should match
-    for (const site of supercell.sites) {
-      const recalc_xyz = math.mat3x3_vec3_multiply(
-        math.transpose_3x3_matrix(lattice_matrix),
-        site.abc,
-      )
-      const recalc_abc = math.mat3x3_vec3_multiply(
-        math.matrix_inverse_3x3(math.transpose_3x3_matrix(lattice_matrix)),
-        recalc_xyz,
-      )
-
-      // Check xyz consistency (within numerical precision)
-      for (let idx = 0; idx < 3; idx++) {
-        expect(Math.abs(site.xyz[idx] - recalc_xyz[idx])).toBeLessThan(1e-10)
-      }
-
-      // Check abc consistency after wrapping
-      for (let idx = 0; idx < 3; idx++) {
-        let wrapped_recalc = recalc_abc[idx] % 1
-        if (wrapped_recalc < 0) wrapped_recalc += 1
-        // Handle floating point precision: if very close to 1, set to 0
-        if (Math.abs(wrapped_recalc - 1) < 1e-10) wrapped_recalc = 0
-        expect(Math.abs(site.abc[idx] - wrapped_recalc)).toBeLessThan(1e-10)
-      }
-    }
-  })
+  const h_site: SimpleSite[] = [{ element: `H`, abc: [0.25, 0.25, 0.25] }]
 
   test.each([
-    { name: `triclinic`, a: 4.0, b: 5.0, c: 6.0, alpha: 70, beta: 80, gamma: 110 },
-    { name: `monoclinic`, a: 3.5, b: 4.5, c: 5.5, alpha: 90, beta: 95, gamma: 90 },
-    { name: `hexagonal-like`, a: 4.0, b: 4.0, c: 6.0, alpha: 90, beta: 90, gamma: 120 },
+    {
+      // MgNiF6.cif structure with oblique lattice (56.455° angles)
+      name: `MgNiF6`,
+      cell: [5.2219, 5.2219, 5.2219, 56.455, 56.455, 56.455],
+      sites: [
+        { element: `Mg`, abc: [0.5, 0.5, 0.5], oxidation_state: 2 },
+        { element: `Ni`, abc: [0, 0, 0], oxidation_state: 2 },
+      ] as SimpleSite[],
+    },
+    { name: `triclinic`, cell: [4.0, 5.0, 6.0, 70, 80, 110], sites: h_site },
+    { name: `monoclinic`, cell: [3.5, 4.5, 5.5, 90, 95, 90], sites: h_site },
+    { name: `hexagonal-like`, cell: [4.0, 4.0, 6.0, 90, 90, 120], sites: h_site },
   ])(
-    `all atoms stay within supercell bounds for $name cell`,
-    ({ a, b, c, alpha, beta, gamma }) => {
+    `$name supercell folds all atoms into consistent in-bounds coordinates`,
+    ({ cell, sites }) => {
+      const [a, b, c, alpha, beta, gamma] = cell
       const structure = make_crystal(
         math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma),
-        [{ element: `H`, abc: [0.25, 0.25, 0.25] }],
+        sites,
         { charge: 0 },
       )
 
       const supercell = make_supercell(structure, [2, 2, 2])
+      const lattice_matrix = supercell.lattice.matrix
+      const transposed = math.transpose_3x3_matrix(lattice_matrix)
+
+      expect(math.det_3x3(lattice_matrix)).toBeGreaterThan(0) // Positive determinant
+      expect(supercell.sites).toHaveLength(sites.length * 8)
 
       for (const site of supercell.sites) {
-        // All fractional coordinates should be in [0, 1)
+        // All fractional coordinates should be in [0, 1) after folding
         for (const coord of site.abc) {
           expect(coord).toBeGreaterThanOrEqual(0)
           expect(coord).toBeLessThan(1)
         }
 
-        // Verify coordinate transformation consistency
-        const recalc_xyz = math.mat3x3_vec3_multiply(
-          math.transpose_3x3_matrix(supercell.lattice.matrix),
-          site.abc,
+        // Coordinate consistency: fractional → cartesian → fractional should match
+        const recalc_xyz = math.mat3x3_vec3_multiply(transposed, site.abc)
+        const recalc_abc = math.mat3x3_vec3_multiply(
+          math.matrix_inverse_3x3(transposed),
+          recalc_xyz,
         )
         for (let idx = 0; idx < 3; idx++) {
           expect(Math.abs(site.xyz[idx] - recalc_xyz[idx])).toBeLessThan(1e-10)
+
+          let wrapped_recalc = recalc_abc[idx] % 1
+          if (wrapped_recalc < 0) wrapped_recalc += 1
+          // Handle floating point precision: if very close to 1, set to 0
+          if (Math.abs(wrapped_recalc - 1) < 1e-10) wrapped_recalc = 0
+          expect(Math.abs(site.abc[idx] - wrapped_recalc)).toBeLessThan(1e-10)
         }
       }
     },
@@ -485,30 +444,13 @@ describe(`performance tests`, () => {
   ])(
     `constructs supercell for %d atoms with scaling %s`,
     (atom_count, scaling, expected_atoms, timeout_ms) => {
-      const test_structure = {
-        lattice: {
-          matrix: [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ] satisfies Matrix3x3,
-          a: 1,
-          b: 1,
-          c: 1,
-          alpha: 90,
-          beta: 90,
-          gamma: 90,
-          pbc: [true, true, true],
-          volume: 1,
-        },
-        sites: Array.from({ length: atom_count }, (_, idx) => ({
-          species: [{ element: `H` as const, occu: 1.0, oxidation_state: 0 }],
+      const test_structure = make_crystal(
+        1,
+        Array.from({ length: atom_count }, (_, idx) => ({
+          element: `H`,
           abc: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
-          xyz: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
-          label: `H${idx}`,
-          properties: {},
         })),
-      } as const
+      )
 
       const start_time = performance.now()
       const supercell = make_supercell(test_structure, scaling)

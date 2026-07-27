@@ -29,7 +29,7 @@ const minimal_doc = (extra: Record<string, unknown> = {}) => ({
 })
 
 describe(`reaction-path JSON`, () => {
-  test(`single-path document parses into one keyed path`, () => {
+  test(`single-path document parses into one path keyed by its label, else the filename`, () => {
     const paths = parse_reaction_path_json(JSON.stringify(minimal_doc()), `hop.json`)
     expect(Object.keys(paths)).toEqual([`hop.json`])
     const path = paths[`hop.json`]
@@ -37,11 +37,12 @@ describe(`reaction-path JSON`, () => {
     expect(path.energy_unit).toBe(`eV`)
     expect(path.images.map((image) => image.label)).toEqual([`IS`, `TS`, `FS`])
     expect(analyze_barrier(path).forward_barrier).toBeCloseTo(0.8, 12)
-  })
 
-  test(`a document label becomes the path key`, () => {
-    const paths = parse_reaction_path_json(JSON.stringify(minimal_doc({ label: `vacancy` })))
-    expect(Object.keys(paths)).toEqual([`vacancy`])
+    // a document label takes over as the key, and stands in for a missing filename
+    const labelled = parse_reaction_path_json(
+      JSON.stringify(minimal_doc({ label: `vacancy` })),
+    )
+    expect(Object.keys(labelled)).toEqual([`vacancy`])
   })
 
   test.each([
@@ -122,19 +123,17 @@ describe(`extended XYZ reaction paths`, () => {
     expect(path.images.map((image) => image.energy)).toEqual([-10, -9.2])
   })
 
-  test(`reads a forces block declared in the Properties spec`, () => {
-    const content = [frame(0, -10, true), frame(1, -9.2, true), frame(2, -9.7, true)]
-    const path = parse_xyz_reaction_path(content.join(`\n`), `neb.xyz`)
+  test(`reads forces only when the Properties spec declares them`, () => {
+    const with_forces = [frame(0, -10, true), frame(1, -9.2, true), frame(2, -9.7, true)]
+    const path = parse_xyz_reaction_path(with_forces.join(`\n`), `neb.xyz`)
     expect(path.images.map((image) => image.forces?.[0])).toEqual([
       [0, 0, 10],
       [0, 0, 9.2],
       [0, 0, 9.7],
     ])
-  })
 
-  test(`omits forces when the Properties spec has no forces block`, () => {
-    const content = [frame(0, -10), frame(1, -9.2)].join(`\n`)
-    expect(parse_xyz_reaction_path(content).images[0].forces).toBeUndefined()
+    const no_forces = [frame(0, -10), frame(1, -9.2)].join(`\n`)
+    expect(parse_xyz_reaction_path(no_forces).images[0].forces).toBeUndefined()
   })
 
   // oxfmt-ignore
@@ -207,15 +206,13 @@ describe(`dropped files`, () => {
 })
 
 describe(`Li/MgO demo fixture`, () => {
-  test(`ships two mechanisms for the same hop`, () => {
+  test(`ships two mechanisms whose images all hold the same 9 atoms, migrating Li last`, () => {
     expect(Object.keys(reaction_paths)).toEqual([`direct hop`, `curved hop`])
     expect(reaction_paths[`direct hop`].images).toHaveLength(7)
     expect(reaction_paths[`curved hop`].images).toHaveLength(9)
     expect(li_mgo_hop_json).toContain(REACTION_PATH_FORMAT)
     expect(LI_MGO_HOP_FILENAME).toBe(`li-mgo-interstitial-hop.json`)
-  })
 
-  test(`every image holds the same 9 atoms with the migrating Li last`, () => {
     for (const path of Object.values(reaction_paths)) {
       for (const image of path.images) {
         expect(image.structure.sites).toHaveLength(9)
@@ -258,22 +255,14 @@ describe(`Li/MgO demo fixture`, () => {
     expect(raw).toBeGreaterThan(min_image + 3)
   })
 
+  // `rel` is the analytic saddle of the generating profile, relative to the initial state
   // oxfmt-ignore
   test.each(
-    [[`direct hop`, `force-hermite`], [`curved hop`, `natural-cubic`]] as const,
-  )(`%s is fitted with the %s spline`, (key, method) => {
-    const spline = path_spline(reaction_paths[key])
-    expect(spline.method).toBe(method)
-    expect(spline.fitted_max.energy).toBeGreaterThanOrEqual(spline.highest_image.energy)
-  })
-
-  // Analytic saddle of the generating profile, relative to the initial state
-  // oxfmt-ignore
-  test.each(
-    [[`direct hop`, 0.8411], [`curved hop`, 1.1408]],
-  )(`%s fitted saddle recovers the analytic barrier and outranks every image`, (key, rel) => {
+    [[`direct hop`, `force-hermite`, 0.8411], [`curved hop`, `natural-cubic`, 1.1408]] as const,
+  )(`%s is fitted with the %s spline, whose saddle recovers the analytic barrier and outranks every image`, (key, method, rel) => {
     const path = reaction_paths[key]
     const spline = path_spline(path)
+    expect(spline.method).toBe(method)
     // The fit interpolates a smooth profile from 7-9 samples, so agreement to 5 meV
     // is the accuracy claim, not machine precision
     expect(spline.fitted_max.energy - path.images[0].energy).toBeCloseTo(rel, 2)
@@ -295,7 +284,10 @@ const sized = async (root: HTMLElement | null, label: string): Promise<HTMLEleme
   return root
 }
 
+// Both mounters clear the body first so a test can mount twice and still query the
+// component it just made rather than the leftovers of the previous mount.
 const mount_plot = (props: ComponentProps<typeof NebPlot>): Promise<HTMLElement> => {
+  document.body.innerHTML = ``
   const style = `width: 500px; height: 340px`
   mount(NebPlot, { target: document.body, props: { ...props, style } })
   return sized(document.querySelector<HTMLElement>(`.scatter`), `NebPlot`)
@@ -304,6 +296,7 @@ const mount_plot = (props: ComponentProps<typeof NebPlot>): Promise<HTMLElement>
 const mount_viewer = async (
   props: ComponentProps<typeof NebViewer> = {},
 ): Promise<HTMLElement> => {
+  document.body.innerHTML = ``
   mount(NebViewer, { target: document.body, props })
   await tick()
   return sized(document.querySelector<HTMLElement>(`.neb-viewer`), `NebViewer`)
@@ -336,17 +329,13 @@ describe(`NebPlot`, () => {
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(expected)
   })
 
-  test(`annotates the forward barrier of the active path`, async () => {
+  test(`annotates the forward barrier and the fitted saddle of the active path`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
     // Forward barrier of the direct hop is 0.8339 eV, formatted with 3 significant digits
     expect(squash(plot.textContent)).toContain(`Ea = 0.834 eV`)
     // One dashed rule per IS/TS/FS energy, plus the active-image marker
     expect(plot.querySelectorAll(`line[stroke-dasharray="4 4"]`)).toHaveLength(3)
     expect(plot.querySelectorAll(`line[stroke-dasharray="2 3"]`)).toHaveLength(1)
-  })
-
-  test(`marks the fitted saddle separately from the highest image`, async () => {
-    const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
     // The fit sits ~7 meV above image #3; the label states the excess, not a total
     expect(plot.textContent).toMatch(/fit \+0\.00\d+/)
   })
@@ -387,7 +376,6 @@ describe(`NebViewer`, () => {
     const multi = await mount_viewer({ paths: reaction_paths })
     // path picker + x-axis mode + energy reference
     expect(multi.querySelectorAll(`.controls select`)).toHaveLength(3)
-    document.body.innerHTML = ``
     const single = await mount_viewer({ paths: reaction_paths[`direct hop`] })
     expect(single.querySelectorAll(`.controls select`)).toHaveLength(2)
   })
@@ -425,7 +413,6 @@ describe(`NebViewer`, () => {
 
   test(`the fitted saddle is a physical energy, not an artefact of the x-axis`, async () => {
     const fitted_excess = async (coord_mode: `arc_length` | `image_index`) => {
-      document.body.innerHTML = ``
       const viewer = await mount_viewer({
         paths: reaction_paths,
         active_path_key: `direct hop`,

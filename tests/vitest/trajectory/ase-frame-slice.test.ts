@@ -5,6 +5,7 @@
 // whole-file parser produces.
 import type { Vec3 } from '$lib/math'
 import type { TrajectoryFrame } from '$lib/trajectory'
+import type { AseFrameOptions } from '$lib/trajectory/parse/ase'
 import {
   decode_ase_frame,
   parse_ase_trajectory,
@@ -51,6 +52,14 @@ describe(`ASE frame slicing`, () => {
   const buffer = read_binary_test_file(FIXTURE)
   const spans = index_frame_spans(buffer)
 
+  // Decode one span the way a streaming host does: cut the frame's bytes out and hand
+  // the decoder nothing but that slice. `options` passes through verbatim so tests can
+  // withhold `base_offset` to check the bounds guard.
+  const decode_span = (span: FrameSpan, frame_idx: number, options: AseFrameOptions) => {
+    const slice = buffer.slice(span.byte_offset, span.byte_offset + span.size)
+    return decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, options)
+  }
+
   test(`frame spans tile the data region and contain their own header`, () => {
     expect(spans).toHaveLength(2)
     // Golden values for this fixture, cross-checked against the Rust indexer's
@@ -77,14 +86,10 @@ describe(`ASE frame slicing`, () => {
     let cached_numbers: number[] | undefined
     let max_abs_diff = 0
     for (const [frame_idx, span] of spans.entries()) {
-      const slice = buffer.slice(span.byte_offset, span.byte_offset + span.size)
-      const { frame, numbers } = decode_ase_frame(
-        new DataView(slice),
-        slice,
-        span.header_offset,
-        frame_idx,
-        { base_offset: span.byte_offset, fallback_numbers: cached_numbers },
-      )
+      const { frame, numbers } = decode_span(span, frame_idx, {
+        base_offset: span.byte_offset,
+        fallback_numbers: cached_numbers,
+      })
       cached_numbers = numbers
 
       const expected = whole_file.frames[frame_idx]
@@ -109,38 +114,11 @@ describe(`ASE frame slicing`, () => {
     // ASE writes `numbers` only into the first frame, so a slice of frame 1 has
     // no elements of its own and must be handed frame 0's.
     const [first_span, second_span] = spans
-    const second_slice = buffer.slice(
-      second_span.byte_offset,
-      second_span.byte_offset + second_span.size,
-    )
-    expect(() =>
-      decode_ase_frame(
-        new DataView(second_slice),
-        second_slice,
-        second_span.header_offset,
-        1,
-        { base_offset: second_span.byte_offset },
-      ),
-    ).toThrow(/missing numbers/)
+    const base_offset = second_span.byte_offset
+    expect(() => decode_span(second_span, 1, { base_offset })).toThrow(/missing numbers/)
 
-    const first_slice = buffer.slice(
-      first_span.byte_offset,
-      first_span.byte_offset + first_span.size,
-    )
-    const { numbers } = decode_ase_frame(
-      new DataView(first_slice),
-      first_slice,
-      first_span.header_offset,
-      0,
-      { base_offset: first_span.byte_offset },
-    )
-    const { frame } = decode_ase_frame(
-      new DataView(second_slice),
-      second_slice,
-      second_span.header_offset,
-      1,
-      { base_offset: second_span.byte_offset, fallback_numbers: numbers },
-    )
+    const { numbers } = decode_span(first_span, 0, { base_offset: first_span.byte_offset })
+    const { frame } = decode_span(second_span, 1, { base_offset, fallback_numbers: numbers })
     expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual(
       parse_ase_trajectory(buffer, FIXTURE).frames[1].structure.sites.map(
         (site) => site.species[0].element,
@@ -158,10 +136,6 @@ describe(`ASE frame slicing`, () => {
     [0, undefined],
     [1, /outside the \d+ byte slice/],
   ])(`frame %i cannot be decoded from its slice without the origin`, (frame_idx, message) => {
-    const span = spans[frame_idx]
-    const slice = buffer.slice(span.byte_offset, span.byte_offset + span.size)
-    expect(() =>
-      decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, {}),
-    ).toThrow(message)
+    expect(() => decode_span(spans[frame_idx], frame_idx, {})).toThrow(message)
   })
 })

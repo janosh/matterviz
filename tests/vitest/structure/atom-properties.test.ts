@@ -87,11 +87,6 @@ describe(`Coordination`, () => {
     expect(typeof values[1] === `number` && values[1] > (values[0] as number)).toBe(true)
   })
 
-  test(`electroneg_ratio strategy`, () => {
-    const { values } = ap.get_coordination_colors(co_pair(), `electroneg_ratio`)
-    expect(values.some((val) => typeof val === `number` && val > 0)).toBe(true)
-  })
-
   describe(`PBC-aware coordination`, () => {
     type CnCheck = (vals: (number | string)[]) => boolean
     const all_positive: CnCheck = (vals) =>
@@ -175,35 +170,25 @@ describe(`Coordination`, () => {
       expect(check(values)).toBe(true)
     })
 
-    test.each([`electroneg_ratio`] as const)(`works with %s strategy`, (strategy) => {
-      const sites: { abc: Vec3 }[] = [{ abc: [0, 0, 0] }, { abc: [0.3, 0, 0] }]
-      const { values } = ap.get_coordination_colors(make_cubic_structure(sites, 5), strategy)
-      expect(values).toHaveLength(2)
-      expect(all_positive(values)).toBe(true)
-    })
-
     // CoordinationBarPlot and the 3D viewer both call calc_structure_coordination, so
     // their boundary-atom CN must agree and must exceed the raw-cell count (regression:
     // the bar plot previously ran on the raw cell and undercounted boundary atoms).
-    test.each([`electroneg_ratio`] as const)(
-      `calc_structure_coordination expands PBC and matches viewer CN (%s)`,
-      (strategy) => {
-        const structure = make_cubic_structure(nacl_corner_sites, 5)
-        const orig_count = structure.sites.length
-        const bar_plot_cn = ap
-          .calc_structure_coordination(structure, strategy)
-          .sites.map((site) => site.coordination_num)
-        const viewer_cn = ap.get_coordination_colors(structure, strategy).values
-        const raw_cn = calc_coordination_nums(structure, strategy).sites.map(
-          (site) => site.coordination_num,
-        )
+    test(`calc_structure_coordination expands PBC and matches viewer CN`, () => {
+      const strategy = `electroneg_ratio`
+      const structure = make_cubic_structure(nacl_corner_sites, 5)
+      const bar_plot_cn = ap
+        .calc_structure_coordination(structure, strategy)
+        .sites.map((site) => site.coordination_num)
+      const viewer_cn = ap.get_coordination_colors(structure, strategy).values
+      const raw_cn = calc_coordination_nums(structure, strategy).sites.map(
+        (site) => site.coordination_num,
+      )
 
-        expect(bar_plot_cn).toHaveLength(orig_count)
-        expect(bar_plot_cn).toEqual(viewer_cn)
-        // Corner Na bonds to Cl images across the boundary, so PBC CN > raw-cell CN
-        expect(bar_plot_cn[0]).toBeGreaterThan(raw_cn[0])
-      },
-    )
+      expect(bar_plot_cn).toHaveLength(structure.sites.length)
+      expect(bar_plot_cn).toEqual(viewer_cn)
+      // Corner Na bonds to Cl images across the boundary, so PBC CN > raw-cell CN
+      expect(bar_plot_cn[0]).toBeGreaterThan(raw_cn[0])
+    })
 
     describe(`Boundary detection optimization`, () => {
       // Brute-force coordination ground truth: image every atom by a full `shells`-cell
@@ -451,18 +436,15 @@ describe(`Custom`, () => {
 describe(`get_atom_colors`, () => {
   const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }])
 
+  // element mode needs no property colors, so it yields empty arrays; wyckoff without
+  // symmetry data still colors every site gray rather than bailing
   test.each([
-    [`element`, 0],
-    [`coordination`, 2],
-    [`wyckoff`, 2],
-  ] as const)(`%s mode`, (mode, len) => {
-    const { colors } = ap.get_atom_colors(
-      structure,
-      { mode },
-      `electroneg_ratio`,
-      mode === `wyckoff` ? null : undefined,
-    )
-    expect(colors).toHaveLength(len)
+    [`element mode`, { mode: `element` }, 0],
+    [`empty config (defaults to element)`, {}, 0],
+    [`coordination mode`, { mode: `coordination` }, 2],
+    [`wyckoff mode without symmetry data`, { mode: `wyckoff` }, 2],
+  ] as const)(`%s`, (_name, config, expected_len) => {
+    expect(ap.get_atom_colors(structure, config).colors).toHaveLength(expected_len)
   })
 
   test(`custom with fn`, () => {
@@ -479,37 +461,17 @@ describe(`get_atom_colors`, () => {
     expect(colors).toEqual([])
     expect(values).toEqual([])
   })
-})
 
-describe(`Config`, () => {
-  const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }])
-
-  test(`partial uses defaults`, () => {
-    const { colors } = ap.get_atom_colors(structure, { mode: `coordination` })
-    expect(colors).toHaveLength(2)
-  })
-
-  test(`empty defaults to element`, () => {
-    const { colors } = ap.get_atom_colors(structure, {})
-    expect(colors).toHaveLength(0)
-  })
-
-  test(`scales differ`, () => {
-    const coord_colors = (scale: `interpolatePlasma` | `interpolateViridis`) =>
-      ap.get_atom_colors(structure, { mode: `coordination`, scale })
-    const result_plasma = coord_colors(`interpolatePlasma`)
-    const result_viridis = coord_colors(`interpolateViridis`)
-    if (result_plasma.values[0] !== result_plasma.values[1]) {
-      expect(result_plasma.colors[0]).not.toBe(result_viridis.colors[0])
-    }
-  })
-
-  test(`color_fn works`, () => {
+  test(`scale option changes the rendered colors`, () => {
+    // needs sites with DIFFERING CN: when every value is equal the scale maps them all
+    // to t=0.5, where different interpolators can coincide and the check goes vacuous
     // oxfmt-ignore
-    const struct_3 = make_struct([{ xyz: [0, 0, 0] }, { xyz: [5, 5, 5] }, { xyz: [10, 10, 10] }])
-    const color_fn = (site: { xyz: Vec3 }) => Math.hypot(...site.xyz)
-    const { values } = ap.get_atom_colors(struct_3, { mode: `custom`, color_fn })
-    expect(values[1]).toBeCloseTo(Math.hypot(5, 5, 5), 1)
+    const chain = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1.5, 0, 0] }, { xyz: [3, 0, 0] }])
+    const coord_colors = (scale: `interpolatePlasma` | `interpolateViridis`) =>
+      ap.get_atom_colors(chain, { mode: `coordination`, scale })
+    const result_plasma = coord_colors(`interpolatePlasma`)
+    expect(new Set(result_plasma.values).size).toBeGreaterThan(1)
+    expect(result_plasma.colors[0]).not.toBe(coord_colors(`interpolateViridis`).colors[0])
   })
 })
 

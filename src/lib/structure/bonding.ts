@@ -833,6 +833,12 @@ function collect_candidates(
 // between symmetry-equivalent bonds can't flip one of them into the penalized branch.
 const SHELL_TOL = 1.001
 
+// Anion neighbours a cation needs before its cation-cation contacts count as second shell.
+// Matches DEFAULTS.structure.polyhedra_min_neighbors: a tetrahedron is the smallest real
+// coordination environment, so anything below it is an unsaturated (metal-rich) cation
+// whose metal-metal contacts are structural.
+const MIN_ANION_SHELL = 4
+
 export const BONDING_STRATEGIES = { electroneg_ratio, explicit_only } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
@@ -945,6 +951,8 @@ export function electroneg_ratio(
   }
   // Closest normalized bond distance per original atom (typed array instead of Map)
   const closest = new Float64Array(n_sites).fill(Infinity)
+  // Anion-former neighbours, filled during pass 1 (see the cation gate in pass 2)
+  const site_anion_neighbors = new Int32Array(n_sites)
 
   // Cells must span the longest possible bond, since only a 3x3x3 block is scanned per center.
   // Sizing that off the whole periodic table pins every structure at Cs/Fr (2.6 Å), so an
@@ -974,95 +982,136 @@ export function electroneg_ratio(
     base_strength: number
     orig_idx_a: number
     orig_idx_b: number
-    same_species: boolean
   }
 
-  const potential_bonds: PotentialBond[] = []
+  // The cation-cation penalty normally rides in pass 1 so the early strength cutoff can
+  // reject a damped contact before it costs a candidate object. Deferring it wholesale
+  // nearly doubled the candidates on a rocksalt supercell (22.8k -> 44.5k), all of them
+  // destined for rejection. It only NEEDS deferring when some cation lacks a full anion
+  // shell, which is rare (metal-rich compounds) and cannot be known until the shells are
+  // counted. So sweep once with the penalty applied, and replay only if that census turns
+  // up an unsaturated cation. The census counts cation-anion contacts, which the penalty
+  // never touches, so it is identical either way.
+  let potential_bonds: PotentialBond[] = []
 
-  for (let idx_a = 0; idx_a < n_center; idx_a++) {
-    const radius_a = radii[idx_a]
-    if (radius_a === 0) continue // no covalent radius -> no pairs (symmetric: idx_b skips too)
-    const x1 = positions[idx_a * 3]
-    const y1 = positions[idx_a * 3 + 1]
-    const z1 = positions[idx_a * 3 + 2]
-    const electroneg_a = electronegs[idx_a]
-    const is_metal_a = metal_flags[idx_a] === 1
-    const is_nonmetal_a = nonmetal_flags[idx_a] === 1
-    const elem_id_a = elem_ids[idx_a]
+  const sweep_candidates = (defer_cation_penalty: boolean) => {
+    potential_bonds = []
+    site_anion_neighbors.fill(0)
+    closest.fill(Infinity)
 
-    for (const idx_b of collect_candidates(idx_a, n_sites, positions, spatial, half_shell)) {
-      const radius_b = radii[idx_b]
-      if (radius_b === 0) continue
-      const dx = positions[idx_b * 3] - x1
-      const dy = positions[idx_b * 3 + 1] - y1
-      const dz = positions[idx_b * 3 + 2] - z1
-      const dist_sq = dx * dx + dy * dy + dz * dz
-      if (dist_sq < min_dist_sq) continue
+    for (let idx_a = 0; idx_a < n_center; idx_a++) {
+      const radius_a = radii[idx_a]
+      if (radius_a === 0) continue // no covalent radius -> no pairs (symmetric: idx_b skips too)
+      const x1 = positions[idx_a * 3]
+      const y1 = positions[idx_a * 3 + 1]
+      const z1 = positions[idx_a * 3 + 2]
+      const electroneg_a = electronegs[idx_a]
+      const is_metal_a = metal_flags[idx_a] === 1
+      const is_nonmetal_a = nonmetal_flags[idx_a] === 1
 
-      // Compare squared distances to defer the sqrt until a pair survives the
-      // cutoff (the vast majority of candidate pairs are rejected here)
-      const expected = radius_a + radius_b
-      const max_dist = expected * max_distance_ratio
-      if (dist_sq > max_dist * max_dist) continue
-      const dist = Math.sqrt(dist_sq)
+      for (const idx_b of collect_candidates(idx_a, n_sites, positions, spatial, half_shell)) {
+        const radius_b = radii[idx_b]
+        if (radius_b === 0) continue
+        const dx = positions[idx_b * 3] - x1
+        const dy = positions[idx_b * 3 + 1] - y1
+        const dz = positions[idx_b * 3 + 2] - z1
+        const dist_sq = dx * dx + dy * dy + dz * dz
+        if (dist_sq < min_dist_sq) continue
 
-      const electroneg_b = electronegs[idx_b]
-      const electroneg_diff = Math.abs(electroneg_a - electroneg_b)
-      const electroneg_balance = electroneg_diff / (electroneg_a + electroneg_b)
+        // Compare squared distances to defer the sqrt until a pair survives the
+        // cutoff (the vast majority of candidate pairs are rejected here)
+        const expected = radius_a + radius_b
+        const max_dist = expected * max_distance_ratio
+        if (dist_sq > max_dist * max_dist) continue
+        const dist = Math.sqrt(dist_sq)
 
-      const is_metal_b = metal_flags[idx_b] === 1
-      const is_nonmetal_b = nonmetal_flags[idx_b] === 1
-      let bond_strength = 1.0
-      if (is_metal_a && is_metal_b) {
-        bond_strength *= metal_metal_penalty
-      } else if ((is_metal_a && is_nonmetal_b) || (is_nonmetal_a && is_metal_b)) {
-        bond_strength *= metal_nonmetal_bonus
-        if (electroneg_diff > electronegativity_threshold) bond_strength *= 1.3
-      } else if (electroneg_diff < 0.5) {
-        bond_strength *= similar_electronegativity_bonus
+        const electroneg_b = electronegs[idx_b]
+        const electroneg_diff = Math.abs(electroneg_a - electroneg_b)
+        const electroneg_balance = electroneg_diff / (electroneg_a + electroneg_b)
+
+        const is_metal_b = metal_flags[idx_b] === 1
+        const is_nonmetal_b = nonmetal_flags[idx_b] === 1
+        let bond_strength = 1.0
+        if (is_metal_a && is_metal_b) {
+          bond_strength *= metal_metal_penalty
+        } else if ((is_metal_a && is_nonmetal_b) || (is_nonmetal_a && is_metal_b)) {
+          bond_strength *= metal_nonmetal_bonus
+          if (electroneg_diff > electronegativity_threshold) bond_strength *= 1.3
+        } else if (electroneg_diff < 0.5) {
+          bond_strength *= similar_electronegativity_bonus
+        }
+
+        const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
+        const electroneg_weight = 1.0 - 0.3 * electroneg_balance
+        let strength = bond_strength * dist_weight * electroneg_weight
+
+        // same_species_penalty is deferred to the second pass, where `closest` is known:
+        // it must fire for a second-shell contact like Na-Na in NaCl but NOT when the
+        // homoatomic contact IS the atom's primary bond (elemental metals, diamond)
+        if (!defer_cation_penalty && cation_flags[idx_a] === 1 && cation_flags[idx_b] === 1) {
+          strength *= cation_cation_penalty
+        }
+
+        // If raw strength is already too low, we can skip early
+        // (penalties will only reduce it further)
+        if (strength <= strength_threshold) continue
+
+        // Use precomputed original-site indices to handle supercell and image atoms
+        const orig_idx_a = orig_idxs[idx_a]
+        const orig_idx_b = orig_idxs[idx_b]
+
+        // Update closest known normalized distance (dist / expected) for original atoms
+        // Normalized distance handles atoms of different sizes better than raw distance
+        // (e.g. C-H is short but C-C is longer; we don't want C-H to penalize C-C just because H is small)
+        const norm_dist = dist / expected
+        if (norm_dist < closest[orig_idx_a]) closest[orig_idx_a] = norm_dist
+        if (norm_dist < closest[orig_idx_b]) closest[orig_idx_b] = norm_dist
+
+        // Anion-shell census, read by the cation-cation gate below. Counted per SITE, not
+        // per original: unlike `closest` (a min, idempotent under duplication) a count
+        // aggregated over every periodic image of an atom would multiply by the copy count.
+        // Two typed-array increments per surviving candidate, riding along in pass 1 because
+        // the counts must be complete before any gating decision.
+        if (cation_flags[idx_a] === 0) site_anion_neighbors[idx_b]++
+        if (cation_flags[idx_b] === 0) site_anion_neighbors[idx_a]++
+
+        // min/max: half-shell scanning can reach a lower-indexed partner, but the output
+        // keeps the ascending site_idx_1 < site_idx_2 convention
+        potential_bonds.push({
+          site_idx_1: Math.min(idx_a, idx_b),
+          site_idx_2: Math.max(idx_a, idx_b),
+          dist,
+          expected_dist: expected,
+          base_strength: strength,
+          orig_idx_a,
+          orig_idx_b,
+        })
       }
-      if (cation_flags[idx_a] === 1 && cation_flags[idx_b] === 1) {
-        bond_strength *= cation_cation_penalty
-      }
-
-      const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
-      const electroneg_weight = 1.0 - 0.3 * electroneg_balance
-      let strength = bond_strength * dist_weight * electroneg_weight
-
-      // same_species_penalty is deferred to the second pass, where `closest` is known:
-      // it must fire for a second-shell contact like Na-Na in NaCl but NOT when the
-      // homoatomic contact IS the atom's primary bond (elemental metals, diamond)
-      const same_species = elem_id_a === elem_ids[idx_b]
-
-      // If raw strength is already too low, we can skip early
-      // (penalties will only reduce it further)
-      if (strength <= strength_threshold) continue
-
-      // Use precomputed original-site indices to handle supercell and image atoms
-      const orig_idx_a = orig_idxs[idx_a]
-      const orig_idx_b = orig_idxs[idx_b]
-
-      // Update closest known normalized distance (dist / expected) for original atoms
-      // Normalized distance handles atoms of different sizes better than raw distance
-      // (e.g. C-H is short but C-C is longer; we don't want C-H to penalize C-C just because H is small)
-      const norm_dist = dist / expected
-      if (norm_dist < closest[orig_idx_a]) closest[orig_idx_a] = norm_dist
-      if (norm_dist < closest[orig_idx_b]) closest[orig_idx_b] = norm_dist
-
-      // min/max: half-shell scanning can reach a lower-indexed partner, but the output
-      // keeps the ascending site_idx_1 < site_idx_2 convention
-      potential_bonds.push({
-        site_idx_1: Math.min(idx_a, idx_b),
-        site_idx_2: Math.max(idx_a, idx_b),
-        dist,
-        expected_dist: expected,
-        base_strength: strength,
-        orig_idx_a,
-        orig_idx_b,
-        same_species,
-      })
     }
   }
+  sweep_candidates(false)
+
+  // Reduce the per-site census to the best-observed shell per original atom. A boundary
+  // atom's own copy may see only part of its shell while an interior copy sees all of it,
+  // and the gate has to reach the same verdict for every copy or images and originals
+  // would bond differently. One O(n_sites) sweep.
+  const anion_neighbors = new Int32Array(n_sites)
+  for (let idx = 0; idx < n_sites; idx++) {
+    const orig = orig_idxs[idx]
+    if (site_anion_neighbors[idx] > anion_neighbors[orig]) {
+      anion_neighbors[orig] = site_anion_neighbors[idx]
+    }
+  }
+
+  // Replay only for metal-rich compositions, where a cation's metal-metal contacts are
+  // structural and the first sweep may have discarded them below the strength cutoff
+  let has_unsaturated_cation = false
+  for (let idx = 0; idx < n_sites && !has_unsaturated_cation; idx++) {
+    if (cation_flags[idx] === 1 && anion_neighbors[orig_idxs[idx]] < MIN_ANION_SHELL) {
+      has_unsaturated_cation = true
+    }
+  }
+  if (has_unsaturated_cation) sweep_candidates(true)
 
   // Second pass: Apply penalties and filter
   for (const bond of potential_bonds) {
@@ -1074,7 +1123,6 @@ export function electroneg_ratio(
       base_strength,
       orig_idx_a,
       orig_idx_b,
-      same_species,
     } = bond
 
     const closest_dist_a = closest[orig_idx_a]
@@ -1082,6 +1130,11 @@ export function electroneg_ratio(
     const norm_dist = dist / expected_dist
 
     let strength = base_strength
+    // Recomputed rather than carried on the candidate record: two extra fields widened
+    // every one of the ~23k objects a 8000-site supercell allocates, which cost more than
+    // the two array reads it saved.
+    const same_species = elem_ids[site_idx_1] === elem_ids[site_idx_2]
+    const cation_cation = cation_flags[site_idx_1] === 1 && cation_flags[site_idx_2] === 1
 
     // A homoatomic contact is spurious only when the atom has a SHORTER contact of some
     // other kind - Na-Na in NaCl sits in the second shell behind Na-Cl. In an elemental
@@ -1094,6 +1147,22 @@ export function electroneg_ratio(
       norm_dist > closest_dist_b * SHELL_TOL
     )
       strength *= same_species_penalty
+
+    // A cation-cation contact is a second-shell artifact only once BOTH ends already have
+    // a real anion coordination shell. Gating on normalized distance the way same_species
+    // does cannot work here: for two cations of unequal radius the metric inverts, and
+    // Cs-Cs (0.844) reads as shorter than Cs-Cl (1.031) in CsCl, Sr-Ti (0.952) shorter
+    // than Sr-O (1.058) in SrTiO3. But applying it unconditionally destroyed metal-rich
+    // compounds - Ti2O dropped from Ti CN 15 to 3, erasing the entire hcp Ti framework
+    // that IS the structure, because Ti's 3 oxygens never saturate it. MIN_ANION_SHELL is
+    // the same threshold polyhedra_min_neighbors uses: below a tetrahedron there is no
+    // coordination environment to be a second shell of.
+    if (
+      cation_cation &&
+      anion_neighbors[orig_idx_a] >= MIN_ANION_SHELL &&
+      anion_neighbors[orig_idx_b] >= MIN_ANION_SHELL
+    )
+      strength *= cation_cation_penalty
 
     // Apply penalty if this bond is much longer (relative to radii) than the closest known bond
     if (norm_dist > closest_dist_a) {

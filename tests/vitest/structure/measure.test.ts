@@ -186,49 +186,42 @@ describe(`measure: angles`, () => {
     [`fully skewed`, [[3, 0.5, 0.3], [0.7, 4, 0.2], [0.4, 0.6, 5]]],
   ]
 
-  test.each(non_ortho_lattices)(
-    `lattice vector equivalence (%s): dist to any lattice translate is 0`,
-    (_name, lattice) => {
-      const origin: Vec3 = [0, 0, 0]
-      // Each row is a lattice vector — displacement by any single vector is the same site
-      for (const vec of lattice) expect(distance_pbc(origin, vec, lattice)).toBeCloseTo(0, 10)
-      // Sum of all three lattice vectors is also an equivalent site
-      const all_sum = lattice[0].map(
-        (_val, axis) => lattice[0][axis] + lattice[1][axis] + lattice[2][axis],
-      ) as Vec3
-      expect(distance_pbc(origin, all_sum, lattice)).toBeCloseTo(0, 10)
-
-      // Half a lattice vector is NOT an equivalent site — guard against always-zero bugs
-      const half_a = lattice[0].map((val) => val / 2) as Vec3
-      const half_dist = distance_pbc(origin, half_a, lattice)
-      expect(half_dist).toBeGreaterThan(0.1)
-      const half_disp = Math.hypot(...displacement_pbc(origin, half_a, lattice))
-      expect(half_disp).toBeCloseTo(half_dist, 10)
-    },
-  )
-
-  test.each(non_ortho_lattices)(
-    `displacement antisymmetry (%s): disp(a,b) = -disp(b,a)`,
-    (_name, lattice) => {
-      const pos1: Vec3 = [0.3, 0.7, 1.2]
-      const pos2: Vec3 = [2.1, 1.5, 0.8]
-      const d_ab = displacement_pbc(pos1, pos2, lattice)
-      const negated_ba = displacement_pbc(pos2, pos1, lattice).map((val) => -val)
-      for (const [axis, value] of negated_ba.entries()) {
-        expect(d_ab[axis]).toBeCloseTo(value, 10)
-      }
-    },
-  )
-
   // oxfmt-ignore
   const pbc_pairs: [Vec3, Vec3][] = [
     [[0, 0, 0], [1.5, 1.5, 1.5]],
     [[0.1, 0.2, 0.3], [3.7, 2.9, 3.1]],
   ]
-  test.each(non_ortho_lattices)(`PBC ≤ direct distance (%s)`, (_name, lattice) => {
-    for (const [pos1, pos2] of pbc_pairs) {
-      const direct = Math.hypot(pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2])
-      expect(distance_pbc(pos1, pos2, lattice)).toBeLessThanOrEqual(direct + 1e-10)
+
+  test.each(non_ortho_lattices)(`minimum image in a %s lattice`, (_name, lattice) => {
+    // Lattice vector equivalence: each row is a lattice vector, so displacement by
+    // any single vector — or by their sum — lands on the same site
+    const origin: Vec3 = [0, 0, 0]
+    for (const vec of lattice) expect(distance_pbc(origin, vec, lattice)).toBeCloseTo(0, 10)
+    const all_sum = lattice[0].map(
+      (_val, axis) => lattice[0][axis] + lattice[1][axis] + lattice[2][axis],
+    ) as Vec3
+    expect(distance_pbc(origin, all_sum, lattice)).toBeCloseTo(0, 10)
+
+    // Half a lattice vector is NOT an equivalent site — guard against always-zero bugs
+    const half_a = lattice[0].map((val) => val / 2) as Vec3
+    const half_dist = distance_pbc(origin, half_a, lattice)
+    expect(half_dist).toBeGreaterThan(0.1)
+    const half_disp = Math.hypot(...displacement_pbc(origin, half_a, lattice))
+    expect(half_disp).toBeCloseTo(half_dist, 10)
+
+    // Displacement antisymmetry: disp(a,b) = -disp(b,a)
+    const pos1: Vec3 = [0.3, 0.7, 1.2]
+    const pos2: Vec3 = [2.1, 1.5, 0.8]
+    const d_ab = displacement_pbc(pos1, pos2, lattice)
+    const negated_ba = displacement_pbc(pos2, pos1, lattice).map((val) => -val)
+    for (const [axis, value] of negated_ba.entries()) {
+      expect(d_ab[axis]).toBeCloseTo(value, 10)
+    }
+
+    // The minimum image can never be farther than the direct separation
+    for (const [start, end] of pbc_pairs) {
+      const direct = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2])
+      expect(distance_pbc(start, end, lattice)).toBeLessThanOrEqual(direct + 1e-10)
     }
   })
 
@@ -367,9 +360,10 @@ describe(`measure: displacement fields`, () => {
   const cubic_cur: Vec3[] = [[9.8, 0, 0], [5.2, 5.1, 4.9], [0.2, 1, 1]]
 
   test(`uses the minimum image so atoms that relaxed across a face move a fraction of an Angstrom`, () => {
+    const [reference, current] = [sites(cubic_ref), sites(cubic_cur)]
     const { vectors, rmsd, max_displacement } = compute_displacements(
-      sites(cubic_ref),
-      sites(cubic_cur),
+      reference,
+      current,
       cubic(10),
       PBC_ALL,
     )
@@ -380,14 +374,12 @@ describe(`measure: displacement fields`, () => {
     }
     expect(rmsd).toBeCloseTo(0.282842712474619, 12) // sqrt(0.24 / 3)
     expect(max_displacement).toBeCloseTo(0.3, 12)
-  })
 
-  test(`ignoring periodicity inflates the same relaxation by more than an order of magnitude`, () => {
-    const without_pbc = compute_displacements(sites(cubic_ref), sites(cubic_cur), null)
+    // Ignoring periodicity inflates the very same relaxation by over an order of magnitude
+    const without_pbc = compute_displacements(reference, current, null)
     expect(without_pbc.rmsd).toBeCloseTo(7.921279357948858, 12)
     expect(without_pbc.max_displacement).toBeCloseTo(9.7, 12)
-    const args = [sites(cubic_ref), sites(cubic_cur), cubic(10), PBC_ALL] as const
-    expect(without_pbc.rmsd / compute_displacements(...args).rmsd).toBeGreaterThan(25)
+    expect(without_pbc.rmsd / rmsd).toBeGreaterThan(25)
   })
 
   // Atom 0 hops the a face (a real 0.3 A relaxation) and atom 2 sits at the two ends of a

@@ -42,8 +42,13 @@ describe(`Trajectory Streaming`, () => {
     return frames.join(`\n`)
   }
 
-  // Helper to create synthetic ASE trajectory data (minimal valid structure)
-  const create_synthetic_ase = (num_frames: number): ArrayBuffer => {
+  // Helper to create synthetic ASE trajectory data (minimal valid structure).
+  // `extra_fields` merge into every frame's JSON header, for cases that turn on
+  // which section a scalar was written to.
+  const create_synthetic_ase = (
+    num_frames: number,
+    extra_fields: Record<string, unknown> = {},
+  ): ArrayBuffer => {
     // Create minimal valid ASE trajectory with proper header
     const signature = `- of Ulm\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0`
     const version = new ArrayBuffer(8)
@@ -68,6 +73,7 @@ describe(`Trajectory Streaming`, () => {
         [0, 0, 5],
       ],
       pbc: [true, true, true],
+      ...extra_fields,
     })
 
     const total_size = 48 + num_frames * 8 + frame_data.length * num_frames + num_frames * 8
@@ -163,6 +169,19 @@ describe(`Trajectory Streaming`, () => {
         }
       },
     )
+
+    // Which section a scalar lands in is up to whoever wrote the file, so reading
+    // each alias from only one of them drops it from the other, silently.
+    it(`extracts scalars from whichever section the writer used`, async () => {
+      const data = create_synthetic_ase(1, {
+        [`calculator.`]: { pressure: 2.5 },
+        info: { energy: -7.25 },
+      })
+      const [metadata] = await new TrajFrameReader(`sections.traj`).extract_plot_metadata(data)
+
+      expect(metadata.properties.pressure).toBe(2.5)
+      expect(metadata.properties.energy).toBe(-7.25)
+    })
 
     it(`should report progress during indexing`, async () => {
       const data = create_synthetic_xyz(1000) // Larger for progress testing

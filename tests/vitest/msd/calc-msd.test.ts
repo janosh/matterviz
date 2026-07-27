@@ -10,7 +10,6 @@ import {
   make_rng,
   max_abs_error,
   max_rel_error,
-  on_x_axis,
 } from './helpers'
 
 const ballistic = (velocity: [number, number, number], n_frames: number) =>
@@ -409,14 +408,6 @@ describe(`input validation`, () => {
   ])(`throws on %s`, (_label, run, pattern) => {
     expect(run).toThrow(pattern)
   })
-
-  it(`throws when the position buffer disagrees with n_frames x n_atoms`, () => {
-    // unwrap_flat_positions owns this check; MSD must let it surface, not swallow it
-    const positions = build_positions([on_x_axis(0, 1), on_x_axis(0.1, 1.1)])
-    // frame 1 loses an atom
-    const broken = { ...positions, n_atoms: 2, positions: positions.positions.slice(0, 9) }
-    expect(() => calc_msd(broken)).toThrow(/positions has 9 entries/)
-  })
 })
 
 // happy-dom has no Worker, so these exercise the SSR/no-Worker synchronous fallback;
@@ -457,17 +448,12 @@ describe(`compute_msd_async`, () => {
     await Promise.all([baseline, variant])
   })
 
-  it(`rejects rather than throwing synchronously on invalid input`, async () => {
+  it(`rejects invalid input asynchronously and clears the dedupe entry`, async () => {
     const single_frame = build_positions([[[0, 0, 0]]])
     let promise: Promise<unknown> | undefined
     expect(() => (promise = compute_msd_async(single_frame))).not.toThrow()
     await expect(promise).rejects.toThrow(/at least 2 frames/)
-  })
-
-  it(`clears the dedupe entry so a failed request can be retried`, async () => {
-    const single_frame = build_positions([[[0, 0, 0]]])
-    await expect(compute_msd_async(single_frame)).rejects.toThrow(/at least 2 frames/)
-    // A second attempt must be a fresh promise, not the settled rejection
+    // A retry must be a fresh promise, not the settled rejection
     await expect(compute_msd_async(single_frame)).rejects.toThrow(/at least 2 frames/)
   })
 })

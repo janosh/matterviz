@@ -123,12 +123,12 @@ describe(`compute_xrd_pattern edge cases`, () => {
     [`MoKa`, 0.71073],
   ] as const)(
     `asin clamping yields finite values and 2θ≈180° at boundary (%s)`,
-    (_label, wavelength) => {
-      const a_len = wavelength / 2
-      const structure = make_simple_cubic_structure(a_len)
+    (anode, wavelength) => {
+      // a = λ/2 puts the (100) reflection exactly on the Ewald limit, i.e. 2θ = 180°
+      const structure = make_simple_cubic_structure(wavelength / 2)
 
       const pattern = compute_xrd_pattern(structure, {
-        wavelength: _label,
+        wavelength: anode,
         scaled: true,
         two_theta_range: null,
       })
@@ -280,9 +280,9 @@ describe(`enumerate_reciprocal_points`, () => {
     [1.3, 3.7, 0],
     [0.8, -1.1, 5.2],
   ]
+  const recip_rows = math.transpose_3x3_matrix(math.matrix_inverse_3x3(triclinic_rows))
 
   test(`g_norm is |h·b1 + k·b2 + l·b3|, within the shell, sorted with h, k, l descending`, () => {
-    const recip_rows = math.transpose_3x3_matrix(math.matrix_inverse_3x3(triclinic_rows))
     const [row_b1, row_b2, row_b3] = recip_rows
     const [min_radius, max_radius] = [0.2, 1.5]
     const points = enumerate_reciprocal_points(
@@ -321,7 +321,6 @@ describe(`enumerate_reciprocal_points`, () => {
   test.each([0, 1, 3])(
     `a Laue bound of %i selects the same points as filtering`,
     (max_laue) => {
-      const recip_rows = math.transpose_3x3_matrix(math.matrix_inverse_3x3(triclinic_rows))
       const zone_axis: Vec3 = [1, 0, 2]
       const unbounded = enumerate_reciprocal_points(recip_rows, triclinic_rows, 1.5, 0)
       const bounded = enumerate_reciprocal_points(recip_rows, triclinic_rows, 1.5, 0, {
@@ -386,8 +385,9 @@ describe(`electron_wavelength`, () => {
 
 describe(`radiation types`, () => {
   const cu_wavelength = WAVELENGTHS.CuKa
+  const tic = make_rocksalt(4.328, `Ti`, `C`)
   const probe_structures = [
-    [`rocksalt TiC`, make_rocksalt(4.328, `Ti`, `C`)],
+    [`rocksalt TiC`, tic],
     [`rocksalt MnO`, make_rocksalt(4.445, `Mn`, `O`)],
     [`simple cubic H`, make_simple_cubic_structure(3)],
   ] as const
@@ -477,8 +477,7 @@ describe(`radiation types`, () => {
   test.each([`xray`, `neutron`, `electron`] as const)(
     `%s intensities are all finite and positive`,
     (radiation: RadiationType) => {
-      const structure = make_rocksalt(4.328, `Ti`, `C`)
-      const pattern = compute_xrd_pattern(structure, {
+      const pattern = compute_xrd_pattern(tic, {
         radiation,
         // electron wavelengths are 60x shorter, so cap 2θ to keep the reflection count sane
         wavelength: radiation === `electron` ? electron_wavelength(200) : cu_wavelength,
@@ -495,8 +494,7 @@ describe(`radiation types`, () => {
   // Mott–Bethe divides (Z − f_x) by s², which naively diverges at forward scattering. The
   // s² cancels analytically in $lib/scattering, and this asserts it survives our call path.
   test(`electron structure factor is finite at s = 0`, () => {
-    const structure = make_rocksalt(4.328, `Ti`, `C`)
-    const forward = structure_factors_squared(structure, `electron`, {}, [
+    const forward = structure_factors_squared(tic, `electron`, {}, [
       { hkl: [0, 0, 0], g_norm: 0 },
       { hkl: [1, 1, 1], g_norm: 1e-12 }, // just off zero, where a literal 1/s² also blows up
     ])
@@ -556,13 +554,12 @@ describe(`radiation types`, () => {
   })
 
   test(`electron pattern accepts an accelerating voltage and uses that wavelength`, () => {
-    const structure = make_rocksalt(4.328, `Ti`, `C`)
-    const by_voltage = compute_xrd_pattern(structure, {
+    const by_voltage = compute_xrd_pattern(tic, {
       radiation: `electron`,
       accelerating_voltage: 200,
       two_theta_range: [0, 3],
     })
-    const by_wavelength = compute_xrd_pattern(structure, {
+    const by_wavelength = compute_xrd_pattern(tic, {
       radiation: `electron`,
       wavelength: electron_wavelength(200),
       two_theta_range: [0, 3],
@@ -669,20 +666,17 @@ describe(`compute_xrd_pattern options`, () => {
     )
   })
 
-  test(`valid numeric wavelength works`, () => {
-    const pattern = compute_xrd_pattern(make_simple_cubic_structure(2), {
-      wavelength: 1.54184,
-    })
-    expect(pattern.x.length).toBeGreaterThan(0)
-    expect(pattern.y).toHaveLength(pattern.x.length)
-  })
-
-  test(`hkls and d_hkls line up with x`, () => {
-    const pattern = compute_xrd_pattern(make_simple_cubic_structure(2), { wavelength: `CuKa` })
-    expect(pattern.x.length).toBeGreaterThan(0)
-    expect(pattern.hkls).toHaveLength(pattern.x.length)
-    expect(pattern.d_hkls).toHaveLength(pattern.x.length)
-  })
+  // Both wavelength input forms are accepted, and every parallel array lines up with x
+  test.each([1.54184, `CuKa`] as const)(
+    `wavelength %p yields aligned output arrays`,
+    (wavelength) => {
+      const pattern = compute_xrd_pattern(make_simple_cubic_structure(2), { wavelength })
+      expect(pattern.x.length).toBeGreaterThan(0)
+      expect(pattern.y).toHaveLength(pattern.x.length)
+      expect(pattern.hkls).toHaveLength(pattern.x.length)
+      expect(pattern.d_hkls).toHaveLength(pattern.x.length)
+    },
+  )
 
   test.each([
     [0, 30],

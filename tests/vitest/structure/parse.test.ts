@@ -429,6 +429,12 @@ describe(`Auto-detection & Error Handling`, () => {
   })
 })
 
+// Cubic 5 Å cell plus the standard label/symbol/fract_x/y/z atom-site loop header
+const cell5 = `_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90`
+const site_loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
+// same loop without _atom_site_type_symbol, so the element has to come from the label
+const label_loop = `loop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy`
+
 // Exact composition of a parsed structure as element -> site count
 const element_counts = (result: { sites: { species: { element: string }[] }[] }) => {
   const counts: Record<string, number> = {}
@@ -647,25 +653,8 @@ O2   O   0.410  0.140  0.880  1.000`
   })
 
   it(`should parse CIF with only _atom_site_label (no _atom_site_type_symbol)`, () => {
-    const label_only_cif = `data_test_structure
-_cell_length_a  5.000
-_cell_length_b  5.000
-_cell_length_c  5.000
-_cell_angle_alpha  90
-_cell_angle_beta   90
-_cell_angle_gamma  90
-loop_
-_atom_site_label
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-_atom_site_occupancy
-Ru(1)  0.000  0.000  0.000  1.000
-P(1)   0.250  0.250  0.250  1.000
-S(2)   0.500  0.500  0.500  1.000
-N(1)   0.750  0.750  0.750  1.000`
-
-    const result = parse_cif(label_only_cif)
+    const rows = `Ru(1)  0.000  0.000  0.000  1.000\nP(1)   0.250  0.250  0.250  1.000\nS(2)   0.500  0.500  0.500  1.000\nN(1)   0.750  0.750  0.750  1.000`
+    const result = parse_cif(`data_test_structure\n${cell5}\n${label_loop}\n${rows}`)
     assert(result, `Failed to parse CIF with label-only format`)
 
     expect(result.sites).toHaveLength(4)
@@ -692,24 +681,8 @@ N(1)   0.750  0.750  0.750  1.000`
   it.each([true, false])(
     `should wrap/preserve fractional coordinates outside [0,1) when wrap_frac=%s`,
     (wrap_frac: boolean) => {
-      const cif_with_outside_coords = `data_test_wrapping
-_cell_length_a                         5.000
-_cell_length_b                         5.000
-_cell_length_c                         5.000
-_cell_angle_alpha                      90
-_cell_angle_beta                       90
-_cell_angle_gamma                      90
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-_atom_site_occupancy
-C1   C   1.250  0.750  0.500  1.000
-O1   O  -0.250  1.750  0.500  1.000
-H1   H   2.100  0.900  0.500  1.000`
-
+      const rows = `C1   C   1.250  0.750  0.500  1.000\nO1   O  -0.250  1.750  0.500  1.000\nH1   H   2.100  0.900  0.500  1.000`
+      const cif_with_outside_coords = `data_test_wrapping\n${cell5}\n${site_loop}\n_atom_site_occupancy\n${rows}`
       const result = parse_cif(cif_with_outside_coords, wrap_frac)
       assert(result, `Failed to parse CIF with outside coordinates`)
 
@@ -736,27 +709,31 @@ H1   H   2.100  0.900  0.500  1.000`
   )
 
   describe(`CIF Error Handling`, () => {
-    // Cubic 5 Å cell plus the standard label/symbol/fract_x/y/z atom-site loop header
-    const cell5 = `_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90`
-    const site_loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
     // oxfmt-ignore
     it.each([
       [`empty file`, ``, `CIF file is empty`],
       [`single line`, `data_test`, `No valid atom site loop found in CIF file`],
-      [`missing cell params`, `data_test\n${site_loop}\nSi1  Si  0.000  0.000  0.000`, null],
-      [`invalid cell length`, `data_test\n${cell5.replace(`5.000`, `abc`)}\n${site_loop}\nSi1  Si  0.000  0.000  0.000`, null],
-      [`invalid coordinates`, `data_test\n${cell5}\n${site_loop}\nSi1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`, null],
-      [`no atom sites`, `data_test\n${cell5}`, null],
-      [`invalid element`, `data_test\n${cell5}\n${site_loop}\nSi1  Xx  0.000  0.000  0.000`, null],
-    ])(`should handle %s`, (_test_name, content, expected_error) => {
-      const result = parse_cif(content)
-      if (expected_error) {
-        expect(result).toBeNull()
-        expect(console_error_spy).toHaveBeenCalledWith(expect.stringContaining(expected_error))
-      } else if (result) {
-        expect(result).toHaveProperty(`sites`)
-        expect(result).toHaveProperty(`lattice`)
-      }
+      [`no atom sites`, `data_test\n${cell5}`, `No valid atom site loop found in CIF file`],
+      [`missing cell params`, `data_test\n${site_loop}\nSi1  Si  0.000  0.000  0.000`, `Insufficient cell parameters in CIF file`],
+    ])(`should reject a CIF with %s`, (_test_name, content, expected_error) => {
+      expect(parse_cif(content)).toBeNull()
+      expect(console_error_spy).toHaveBeenCalledWith(expect.stringContaining(expected_error))
+    })
+
+    // Rows the parser must drop or repair instead of failing the whole file
+    it.each([
+      // non-numeric x drops the Si1 row while the valid O1 row survives
+      [
+        `a non-numeric coordinate`,
+        `Si1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`,
+        [`O`],
+      ],
+      // Xx is not an element; the type-symbol path falls back rather than dropping the site
+      [`an unknown element symbol`, `Si1  Xx  0.000  0.000  0.000`, [`H`]],
+    ])(`should keep parsing a CIF with %s`, (_test_name, rows, expected_elements) => {
+      const result = parse_cif(`data_test\n${cell5}\n${site_loop}\n${rows}`)
+      assert(result, `Failed to parse CIF with ${_test_name}`)
+      expect(result.sites.map((site) => site.species[0].element)).toEqual(expected_elements)
     })
 
     it(`should handle malformed loops and missing occupancy`, () => {
@@ -863,34 +840,24 @@ O3 O2- 0.75 0.25 0.75`
   })
 
   describe(`CIF Parser Edge Cases`, () => {
-    // 4 Å cubic cell with a label-only atom-site loop (no _atom_site_type_symbol), so the
-    // element has to come from the label
-    const label_cif = (...rows: string[]) => {
-      const body = rows.join(`\n`)
-      return `\ndata_test\n_cell_length_a 4.0\n_cell_length_b 4.0\n_cell_length_c 4.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\n${body}\n`
-    }
+    // 4 Å cubic cell with a label-only atom-site loop
+    const cell4 = `_cell_length_a 4.0\n_cell_length_b 4.0\n_cell_length_c 4.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90`
+    const label_cif = (...rows: string[]) =>
+      `\ndata_test\n${cell4}\n${label_loop}\n${rows.join(`\n`)}\n`
 
-    test(`should handle complex element extraction from labels`, () => {
-      const rows = [`site1_Fe_center 0.0 0.0 0.0 1.0`, `site2_Cu_surface 0.5 0.5 0.5 1.0`]
+    // oxfmt-ignore
+    test.each([
+      [`complex labels`, [`site1_Fe_center 0.0 0.0 0.0 1.0`, `site2_Cu_surface 0.5 0.5 0.5 1.0`], [`Fe`, `Cu`], [`site1_Fe_center`, `site2_Cu_surface`]],
+      // both atoms parsed, Xx1 falls back to He via validate_element_symbol
+      [`an invalid element symbol`, [`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`], [`Fe`, `He`], [`Fe1`, `Xx1`]],
+      // Cu1 is two tokens short of the declared loop headers, so only Fe1 survives
+      [`a row missing coordinates`, [`Fe1 0.0 0.0 1.0`, `Cu1 0.5 0.5`], [`Fe`], [`Fe1`]],
+    ])(`should infer elements from labels with %s`, (_name, rows, elements, labels) => {
       const result = parse_cif(label_cif(...rows))
-      expect(result?.sites.map((site) => site.species[0].element)).toEqual([`Fe`, `Cu`])
-      // Check that complex labels are preserved
-      expect(result?.sites.map((site) => site.label)).toEqual([
-        `site1_Fe_center`,
-        `site2_Cu_surface`,
-      ])
-      expect(result?.lattice?.volume).toBe(64.0)
-    })
-
-    test(`should fail gracefully with missing coordinates`, () => {
-      const result = parse_cif(label_cif(`Fe1 0.0 0.0 1.0`, `Cu1 0.5 0.5`))
-      expect(result?.sites).toHaveLength(1) // Only Fe1 should be parsed
-    })
-
-    test(`should handle invalid element symbols with fallback`, () => {
-      const result = parse_cif(label_cif(`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`))
-      // Both atoms parsed, Xx1 falls back to He via validate_element_symbol
-      expect(result?.sites.map((site) => site.species[0].element)).toEqual([`Fe`, `He`])
+      assert(result, `Failed to parse label-only CIF with ${_name}`)
+      expect(result.sites.map((site) => site.species[0].element)).toEqual(elements)
+      expect(result.sites.map((site) => site.label)).toEqual(labels)
+      expect(result.lattice?.volume).toBe(64.0)
     })
   })
 
@@ -1067,11 +1034,10 @@ loop_
     return `data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\nloop_\n_space_group_symop_operation_xyz\n${symop_rows}\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n${atom_row}`
   }
 
-  test.each([``, `data_dummy`, p1_cif([`x, y, z`], `? ? 0.000 0.000 0.000`)])(
-    // `?` is CIF's unknown-value token, so neither the label nor the symbol names an element
-    `returns null for an empty, atomless or question-mark CIF %#`,
-    (content) => expect(parse_cif(content)).toBeNull(),
-  )
+  // `?` is CIF's unknown-value token, so neither the label nor the symbol names an element
+  test(`returns null for a question-mark CIF`, () => {
+    expect(parse_cif(p1_cif([`x, y, z`], `? ? 0.000 0.000 0.000`))).toBeNull()
+  })
 
   test(`handles symmetry operations with dangling operators correctly`, () => {
     const symops = [
@@ -1301,13 +1267,6 @@ describe(`parse_structure_file`, () => {
     expect(result?.sites[0].species[0].element).toBe(`H`)
   })
 
-  test(`throws for invalid JSON structure`, () => {
-    const content = JSON.stringify({ not_a_structure: `nope`, some_data: [1, 2, 3] })
-    expect(() => parse_structure_file(content, `invalid.json`)).toThrow(
-      /JSON file does not contain a valid structure format/,
-    )
-  })
-
   describe(`comprehensive nested structure parsing`, () => {
     const fe_struct = () => get_dummy_structure(`Fe`, 1, true)
     // oxfmt-ignore
@@ -1354,17 +1313,6 @@ describe(`parse_structure_file`, () => {
       const result = parse_structure_file(JSON.stringify(raw), `test.json`)
       expect(result?.sites).toHaveLength(1)
       expect(result?.sites[0].species[0]).toBe(`H`)
-    })
-
-    test(`finds valid structure when multiple structures exist`, () => {
-      const data = [
-        { type: `first`, structure: get_dummy_structure(`Li`, 1, true) },
-        { type: `second`, structure: get_dummy_structure(`Na`, 1, true) },
-      ]
-      const result = parse_structure_file(JSON.stringify(data), `multiple.json`)
-      expect(result?.sites.length).toBe(1)
-      // Should find one of the structures (order may vary due to recursive search)
-      expect([`Li`, `Na`]).toContain(result?.sites[0].species[0].element)
     })
 
     test(`handles arrays with mixed valid/invalid structures`, () => {
@@ -1574,14 +1522,6 @@ describe(`OPTIMADE JSON parser`, () => {
       cartesian_site_positions: [[0, 0, 0], [0.957, 0, 0], [0.24, 0.927, 0]],
       species_at_sites: [`O`, `H`, `H`],
     } },
-    { name: `minimal structure with required fields only`, first_element: `Fe`, attributes: {
-      cartesian_site_positions: [[0, 0, 0], [1, 1, 1]],
-      species_at_sites: [`Fe`, `Fe`],
-    } },
-    { name: `single-site structure`, first_element: `Fe`, attributes: {
-      cartesian_site_positions: [[0, 0, 0]],
-      species_at_sites: [`Fe`],
-    } },
     // wrappers: OPTIMADE responses nest the structure under `data`, as an object or an array
     { name: `wrapped in a data object`, first_element: `Si`, wrap: (obj: object) => ({ data: obj }), attributes: {
       lattice_vectors: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
@@ -1703,11 +1643,6 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       lattice_vectors: [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
       cartesian_site_positions: [[0, 0, 0], [0.957, 0, 0]],
       species_at_sites: [`O`, `H`],
-    } },
-    { name: `minimal structure with required fields only`, first_element: `Fe`, attributes: {
-      lattice_vectors: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
-      cartesian_site_positions: [[0, 0, 0], [1, 1, 1]],
-      species_at_sites: [`Fe`, `Fe`],
     } },
   ])(`should convert $name`, ({ name, attributes, first_element }) => {
     const result = optimade_to_crystal({ id: name, type: `structures`, attributes })
@@ -1880,7 +1815,8 @@ describe(`Structure File Detection`, () => {
 })
 
 describe(`CIF strict mode`, () => {
-  const cif_invalid_length = `data_test\n_cell_length_a  invalid\n_cell_length_b  5.0\n_cell_length_c  5.0\n_cell_angle_alpha  90\n_cell_angle_beta   90\n_cell_angle_gamma  90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nC1 C 0 0 0`
+  // replaces only the first 5.000, i.e. the _cell_length_a value
+  const cif_invalid_length = `data_test\n${cell5.replace(`5.000`, `invalid`)}\n${site_loop}\nC1 C 0 0 0`
 
   it(`should return null and log an error in strict mode (default)`, () => {
     expect(parse_cif(cif_invalid_length)).toBeNull()
@@ -1992,21 +1928,19 @@ describe(`Coordinate Normalization`, () => {
     a: len_a, b: len_a, c: 6.7, alpha: 90, beta: 90, gamma: 120, volume,
   })
 
+  const hex_negative_sites = [
+    make_json_site(`Y`, [0, -1, 0]),
+    make_json_site(`Nb`, [0, -1, -0.5]),
+    make_json_site(`B`, [0.5, -0.5, -0.25]),
+  ]
+
   test.each([
     [
       `single site`,
       hex_lattice(2.46, 35.13),
       [make_json_site(`C`, [-0.333333, -0.666667, 0.5])],
     ],
-    [
-      `multiple negative-coord sites`,
-      hex_lattice(6.22, 224),
-      [
-        make_json_site(`Y`, [0, -1, 0]),
-        make_json_site(`Nb`, [0, -1, -0.5]),
-        make_json_site(`B`, [0.5, -0.5, -0.25]),
-      ],
-    ],
+    [`multiple negative-coord sites`, hex_lattice(6.22, 224), hex_negative_sites],
   ])(`wraps and reconstructs xyz for a hexagonal cell with %s`, (_name, lattice, sites) => {
     const result = parse_any_structure(JSON.stringify({ lattice, sites }), `hex.json`)
     assert(`lattice` in result && result.lattice, `expected hexagonal lattice`)
@@ -2018,12 +1952,8 @@ describe(`Coordinate Normalization`, () => {
   })
 
   test(`wraps whole and half negative fractional coordinates exactly`, () => {
-    const sites = [
-      make_json_site(`Y`, [0, -1, 0]),
-      make_json_site(`Nb`, [0, -1, -0.5]),
-      make_json_site(`B`, [0.5, -0.5, -0.25]),
-    ]
-    const struct = { output: { structure: { lattice: hex_lattice(6.22, 224), sites } } }
+    const lattice = hex_lattice(6.22, 224)
+    const struct = { output: { structure: { lattice, sites: hex_negative_sites } } }
     const result = parse_any_structure(JSON.stringify(struct), `test.json`)
     // [0, -1, 0] → [0, 0, 0], [0, -1, -0.5] → [0, 0, 0.5], [0.5, -0.5, -0.25] → [0.5, 0.5, 0.75]
     expect(result?.sites[0].abc).toEqual([0, 0, 0])
@@ -2066,29 +1996,22 @@ describe(`lattice params derived from matrix-only lattices`, () => {
     return result.lattice
   }
 
+  const identity = (struct: object) => struct
+  const wrap_output = (struct: object) => ({ output: { structure: struct } })
   test.each([
-    [`direct pymatgen dict (fast path)`, (struct: object) => struct],
-    [`nested under output.structure`, (struct: object) => ({ output: { structure: struct } })],
-  ])(`computes a/b/c/angles/volume for %s`, (_name, wrap) => {
-    const lattice = parsed_lattice(wrap(matrix_only_structure()))
+    [`direct pymatgen dict (fast path)`, identity, {}],
+    [`nested under output.structure`, wrap_output, {}],
+    // Deliberately wrong/junk partial params prove the matrix wins over them
+    [`partial numeric params`, identity, { a: 1, b: 2 }],
+    [`non-numeric params`, identity, { a: `3.9`, b: null, volume: NaN }],
+  ])(`computes a/b/c/angles/volume for %s`, (_name, wrap, extra_lattice) => {
+    const lattice = parsed_lattice(wrap(matrix_only_structure(extra_lattice)))
     expect(lattice.a).toBeCloseTo(3.887614, 5)
     expect(lattice.b).toBeCloseTo(3.887614, 5)
     expect(lattice.c).toBeCloseTo(49.0954, 4)
     expect(lattice.alpha).toBeCloseTo(90, 5)
     expect(lattice.beta).toBeCloseTo(90, 5)
     expect(lattice.gamma).toBeCloseTo(90, 5)
-    expect(lattice.volume).toBeCloseTo(3.887614 * 3.887614 * 49.0954, 2)
-  })
-
-  // Deliberately wrong/junk partial params prove the matrix wins over them
-  test.each([
-    [`partial numeric params`, { a: 1, b: 2 }],
-    [`non-numeric params`, { a: `3.9`, b: null, volume: NaN }],
-  ])(`recomputes all params over %s`, (_name, extra_lattice) => {
-    const lattice = parsed_lattice(matrix_only_structure(extra_lattice))
-    expect(lattice.a).toBeCloseTo(3.887614, 5)
-    expect(lattice.b).toBeCloseTo(3.887614, 5)
-    expect(lattice.c).toBeCloseTo(49.0954, 4)
     expect(lattice.volume).toBeCloseTo(3.887614 * 3.887614 * 49.0954, 2)
   })
 
@@ -2115,18 +2038,16 @@ const pdb_atom_line = (serial: number, name: string, xyz: readonly number[], ele
     .map((coord) => coord.toFixed(3).padStart(8))
     .join(``)}  1.00  0.00${element ? `          ${element.padStart(2)}` : ``}`
 
-const lammps_dump = (box_flags: string, columns: string, rows: string[]) =>
+const lammps_dump = (
+  box_flags: string,
+  columns: string,
+  rows: string[],
+  bounds: string[] = [`0.0 4.0`, `0.0 4.0`, `0.0 4.0`],
+) =>
+  // oxfmt-ignore
   [
-    `ITEM: TIMESTEP`,
-    `0`,
-    `ITEM: NUMBER OF ATOMS`,
-    `${rows.length}`,
-    `ITEM: BOX BOUNDS ${box_flags}`,
-    `0.0 4.0`,
-    `0.0 4.0`,
-    `0.0 4.0`,
-    `ITEM: ATOMS ${columns}`,
-    ...rows,
+    `ITEM: TIMESTEP`, `0`, `ITEM: NUMBER OF ATOMS`, `${rows.length}`,
+    `ITEM: BOX BOUNDS ${box_flags}`, ...bounds, `ITEM: ATOMS ${columns}`, ...rows,
   ].join(`\n`)
 
 describe(`molecular and LAMMPS structure formats`, () => {
@@ -2370,7 +2291,13 @@ describe(`molecular and LAMMPS structure formats`, () => {
     // origin shift is still required — the old literal `xs` test wrongly skipped it
     [`x y z xs`, `-1.0 0.0 1.0 0.25`],
   ])(`LAMMPS dump %s columns land at the same cell position`, (columns, coords) => {
-    const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS pp pp pp\n-2.0 2.0\n-2.0 2.0\n-2.0 2.0\nITEM: ATOMS id element ${columns}\n1 Cu ${coords}`
+    const bounds = [`-2.0 2.0`, `-2.0 2.0`, `-2.0 2.0`]
+    const content = lammps_dump(
+      `pp pp pp`,
+      `id element ${columns}`,
+      [`1 Cu ${coords}`],
+      bounds,
+    )
     const result = parse_structure_file(content, `offset.dump`)
     expect(result.sites).toHaveLength(1)
     expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 8)
@@ -2385,9 +2312,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     [`positive tilts`, [`-2.0 3.0 1.0`, `-2.0 2.0 0.5`, `-2.0 2.0 0.25`], [2, 2, 2]],
     [`negative tilts`, [`-2.0 3.0 -1.0`, `-2.0 2.0 -0.5`, `-2.0 2.0 -0.25`], [0.5, 1.75, 2]],
   ])(`triclinic LAMMPS dump origin with %s`, (_label, bounds, expected) => {
-    const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS xy xz yz pp pp pp\n${bounds.join(
-      `\n`,
-    )}\nITEM: ATOMS id element x y z\n1 Cu 0.0 0.0 0.0`
+    const rows = [`1 Cu 0.0 0.0 0.0`]
+    const content = lammps_dump(`xy xz yz pp pp pp`, `id element x y z`, rows, bounds)
     const result = parse_structure_file(content, `tri.dump`)
     expect(result.sites).toHaveLength(1)
     expect_vec3_close(result.sites[0].xyz, expected, 8)

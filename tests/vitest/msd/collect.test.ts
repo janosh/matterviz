@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { type Component, type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
-import { cubic_matrix, read_maybe_gz, resize_element } from '../setup'
+import { cubic_matrix, read_maybe_gz } from '../setup'
 import { drift_positions, make_frame, max_rel_error, on_x_axis } from './helpers'
 
 const TRAJECTORY_DIR = `src/site/trajectories`
@@ -421,9 +421,7 @@ describe(`MsdPlot`, () => {
 
   it(`renders a curve per result series plus its Einstein fit`, async () => {
     const text = await mount_plot({ result: calc_msd(drift_positions(40)) })
-    const plot = document.querySelector<HTMLElement>(`.scatter`)
-    expect(plot).not.toBeNull()
-    if (plot) await resize_element(plot, 400, 300)
+    expect(document.querySelector(`.scatter`)).not.toBeNull()
     // Single species: one MSD curve plus one dashed fit line
     expect(text).toContain(`Total`)
     expect(text).toContain(`R²`)
@@ -463,6 +461,17 @@ describe(`TrajectoryMsdPane`, () => {
   const mount_pane = (trajectory: TrajectoryType): Promise<string> =>
     mount_and_read(TrajectoryMsdPane, { trajectory, pane_open: true })
 
+  const type_stride = async (raw_stride: string) => {
+    // the only whole-number input in the pane; the others step in fractions
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.msd-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
+    stride_input.value = raw_stride
+    stride_input.dispatchEvent(new Event(`input`))
+    await settle()
+  }
+
   it.each([
     [`in-memory trajectory`, in_memory, false],
     [`indexed trajectory`, lazy, true],
@@ -492,14 +501,7 @@ describe(`TrajectoryMsdPane`, () => {
   // already coerced to 1, so those rows only pin that behaviour against regressions.
   it.each([``, `0`, `2.5`])(`normalises a frame stride of %j`, async (raw_stride) => {
     await mount_pane(in_memory)
-    // the only whole-number input in the pane; the others step in fractions
-    const stride_input = document.querySelector<HTMLInputElement>(
-      `.msd-controls input[min='1'][step='1']`,
-    )
-    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
-    stride_input.value = raw_stride
-    stride_input.dispatchEvent(new Event(`input`))
-    await settle()
+    await type_stride(raw_stride)
     const hint = document.querySelector(`.msd-controls p.hint`)?.textContent ?? ``
     expect(hint).not.toContain(`NaN`)
     // stride 2.5 floors to 2, everything invalid falls back to 1
@@ -510,13 +512,7 @@ describe(`TrajectoryMsdPane`, () => {
   // else accumulate_positions rejects the fraction outright
   it(`collects with a floored stride rather than rejecting a fractional one`, async () => {
     await mount_pane(in_memory)
-    const stride_input = document.querySelector<HTMLInputElement>(
-      `.msd-controls input[min='1'][step='1']`,
-    )
-    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
-    stride_input.value = `2.5`
-    stride_input.dispatchEvent(new Event(`input`))
-    await settle()
+    await type_stride(`2.5`)
     await run_collect()
     expect(document.body.textContent).not.toContain(`must be a positive integer`)
     expect(document.body.textContent).toContain(`1 in 2 frames`)

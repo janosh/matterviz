@@ -51,58 +51,66 @@ describe(`StructureControls`, () => {
     },
   )
 
-  test(`handles structure without lattice`, () => {
-    const structure_without_lattice: AnyStructure = {
-      id: `test_no_lattice`,
-      sites: simple_structure.sites,
-      // No lattice property
-    }
+  // The supercell input needs a lattice, so neither a lattice-less structure nor no
+  // structure at all may render one - and neither may crash the controls
+  test.each<[string, AnyStructure | undefined]>([
+    [`structure without lattice`, { id: `test_no_lattice`, sites: simple_structure.sites }],
+    [`undefined structure`, undefined],
+  ])(`renders no supercell input for %s`, (_name, structure) => {
     mount(StructureControls, {
       target: document.body,
-      props: { structure: structure_without_lattice, controls_open: true },
+      props: { structure, controls_open: true },
     })
-    // Should not crash and supercell input should not be visible
-    const supercell_inputs = document.querySelectorAll(`input[placeholder="1x1x1"]`)
-    expect(supercell_inputs).toHaveLength(0)
+    expect(document.querySelectorAll(`input[placeholder="1x1x1"]`)).toHaveLength(0)
   })
 
-  // zone_axis_direction throws on a cell it cannot resolve a direction in. Resolving it in
-  // a $derived means the button is disabled and the reason shown BEFORE any click, so the
-  // throw can never escape the handler. The hkl/singular variant of the same throw is
-  // covered directly in scene/camera-orientation.test.ts — the mode is just an argument to
-  // the identical guarded call, and happy-dom cannot drive a Svelte <select> binding.
+  const mount_zone_axis = async (matrix: Matrix3x3 = cubic_matrix(10)) => {
+    mount(StructureControls, {
+      target: document.body,
+      props: { structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]), controls_open: true },
+    })
+    await tick()
+    const miller_input = doc_query<HTMLInputElement>(`.zone-axis .miller-input input`)
+    return async (typed: string) => {
+      miller_input.value = typed
+      miller_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+    }
+  }
+  const zone_axis_error = () => document.querySelector(`.zone-axis .control-error`)
+  const view_button = () =>
+    [...document.querySelectorAll(`button`)].find((btn) => btn.textContent?.trim() === `View`)
+
+  // zone_axis_direction throws on a cell it cannot resolve a direction in, and
+  // MillerIndexInput accepts indices it cannot use. Resolving both in a $derived means the
+  // button is disabled and the reason shown BEFORE any click, so the throw can never escape
+  // the handler. The hkl/singular variant is covered directly in
+  // scene/camera-orientation.test.ts — the mode is just an argument to the identical
+  // guarded call, and happy-dom cannot drive a Svelte <select> binding.
   // oxfmt-ignore
   test.each([
-    [`a well-formed cell`, cubic_matrix(10), null],
-    [`a cell with a zero c vector`, [[10, 0, 0], [0, 10, 0], [0, 0, 0]], /Degenerate uvw direction/],
-  ] as [string, Matrix3x3, RegExp | null][])(
+    [`a well-formed cell`, cubic_matrix(10), `001`, null],
+    [`a cell with a zero c vector`, [[10, 0, 0], [0, 10, 0], [0, 0, 0]], `001`, /Degenerate uvw direction/],
+    [`all-zero indices`, cubic_matrix(10), `000`, /uvw indices must be finite and not all zero/],
+    [`a non-finite index`, cubic_matrix(10), `Infinity 0 0`, /must be finite and not all zero/],
+  ] as [string, Matrix3x3, string, RegExp | null][])(
     `zone axis View button on %s`,
-    async (_name, matrix, expected_error) => {
-      mount(StructureControls, {
-        target: document.body,
-        props: {
-          structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]),
-          controls_open: true,
-        },
-      })
-      await tick()
-      const view_button = [...document.querySelectorAll(`button`)].find((btn) =>
-        btn.textContent?.trim() === `View`
-      )
-      if (!view_button) throw new Error(`no zone-axis View button rendered`)
-      const error_text = document.querySelector(`.zone-axis .control-error`)
-      expect(view_button.disabled).toBe(expected_error !== null)
-      if (expected_error) expect(error_text?.textContent).toMatch(expected_error)
-      else expect(error_text).toBeNull()
+    async (_name, matrix, typed, expected_error) => {
+      const type_indices = await mount_zone_axis(matrix)
+      await type_indices(typed)
+      expect(view_button()?.disabled).toBe(expected_error !== null)
+      if (expected_error) expect(zone_axis_error()?.textContent).toMatch(expected_error)
+      else expect(zone_axis_error()).toBeNull()
     },
   )
 
-  test(`handles undefined structure`, () => {
-    const cmp = mount(StructureControls, {
-      target: document.body,
-      props: { structure: undefined, controls_open: true },
-    })
-    expect(cmp).toBeDefined()
+  // ...and typing a usable direction clears it again, since the message is derived
+  test(`zone axis error clears when the indices become valid`, async () => {
+    const type_indices = await mount_zone_axis()
+    await type_indices(`000`)
+    expect(zone_axis_error()).not.toBeNull()
+    await type_indices(`110`)
+    expect(zone_axis_error()).toBeNull()
   })
 
   test.each([

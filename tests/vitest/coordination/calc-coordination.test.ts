@@ -45,19 +45,16 @@ test.each([
 })
 
 describe(`calc_coordination_nums`, () => {
-  test.each([`electroneg_ratio`] as const)(
-    `computes per-element coordination (%s)`,
-    (strategy) => {
-      const result = calc_coordination_nums(simple_cubic, strategy)
-      expect(result.sites).toHaveLength(4)
-      expect(result.cn_histogram.size).toBeGreaterThan(0)
-      expect(result.cn_by_element.size).toBe(2) // Na and Cl
-      for (const elem of [`Na`, `Cl`] as const) {
-        expect(result.cn_by_element.has(elem)).toBe(true)
-        expect(result.cn_histogram_by_element.has(elem)).toBe(true)
-      }
-    },
-  )
+  test(`computes per-element coordination`, () => {
+    const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`)
+    expect(result.sites).toHaveLength(4)
+    expect(result.cn_histogram.size).toBeGreaterThan(0)
+    expect(result.cn_by_element.size).toBe(2) // Na and Cl
+    for (const elem of [`Na`, `Cl`] as const) {
+      expect(result.cn_by_element.has(elem)).toBe(true)
+      expect(result.cn_histogram_by_element.has(elem)).toBe(true)
+    }
+  })
 
   test(`should handle structure with distant atoms`, () => {
     const isolated_atoms = make_crystal(
@@ -126,20 +123,17 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
     [`single lattice-less molecule`, { structures: water }],
     [`record of structures`, { structures: { cubic: simple_cubic } }],
     [`array of entries`, { structures: [{ label: `cubic`, structure: simple_cubic }] }],
+    [
+      `split_mode=by_structure`,
+      { structures: { cubic: simple_cubic }, split_mode: `by_structure` },
+    ],
+    [`split_mode=none`, { structures: { cubic: simple_cubic }, split_mode: `none` }],
   ])(`renders coordination bars for %s`, async (_name, props) => {
     const root = await mount_plot(props)
     expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
     expect(root.textContent).toContain(`Coordination Number`)
     expect(root.textContent).toContain(`Count`)
   })
-
-  test.each([`by_structure`, `none`] as const)(
-    `split_mode=%s renders without error`,
-    async (split_mode) => {
-      const root = await mount_plot({ structures: { cubic: simple_cubic }, split_mode })
-      expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
-    },
-  )
 
   test.each([
     [true, `Drag and drop structure files`],

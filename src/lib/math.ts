@@ -82,10 +82,18 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
   // ratio exceeds 1 (a_vec = b_vec = (1,1,1) gives 1.0000000000000002), and a zero-length
   // vector giving 0/0 - which is exactly what 2D/slab/molecule parse paths produce. The
   // NaN then propagates silently into every derived quantity. angle_between_vectors in
-  // measure.ts already clamps the same computation; these must not disagree.
+  // measure.ts needs the same [-1, 1] clamp for the same reason.
+  //
+  // Its zero-length sentinel is 0, not 90, and that difference is deliberate: it measures
+  // angles between bond vectors, where a zero-length vector has no direction and 0 is the
+  // natural "no angle" answer. Cell angles have to stay a self-consistent CELL. A slab
+  // (c = 0) reported as alpha = beta = 0 drives the triclinic volume factor
+  // 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ to -1, so cell_to_lattice_matrix rejects it
+  // as unrealizable and the cell no longer round-trips; 90 keeps the radicand at 1 and
+  // recovers the original slab. The two functions must agree on the clamp, not the sentinel.
   const safe_angle = (dot: number, len_1: number, len_2: number): number => {
     const denom = len_1 * len_2
-    if (denom === 0) return 90 // degenerate axis: report orthogonal rather than NaN
+    if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
     return Math.acos(Math.max(-1, Math.min(1, dot / denom))) * RAD_TO_DEG
   }
   const alpha = safe_angle(dot_bc, b, c)

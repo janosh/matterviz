@@ -970,6 +970,24 @@ ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
       expect(trajectory.metadata?.source_format).toBe(expected)
     })
 
+    // ASE always writes the calculator as a nested ULM item, so its key carries a
+    // trailing dot. Reading only the undotted name dropped every relaxation's energy.
+    it(`reads calculator energies ASE wrote under the dotted key`, async () => {
+      const trajectory = await parse_trajectory_data(
+        read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`),
+        `ase-LiMnO2-chgnet-relax.traj`,
+      )
+      const energies = trajectory.frames.map((frame) => frame.metadata?.energy)
+      expect(energies).toEqual([-58.97273254394531, -58.59364700317383])
+      // `forces.`/`magmoms.` are ndarray pointers, not values; metadata must not
+      // carry them as unresolved `{ndarray}` objects.
+      for (const frame of trajectory.frames) {
+        for (const [key, value] of Object.entries(frame.metadata ?? {})) {
+          expect(`${key}: ${JSON.stringify(value)}`).not.toMatch(/ndarray/)
+        }
+      }
+    })
+
     it.each([
       [`data.json`, `${single_frame}\n${single_frame}`, `Unsupported text format`],
       [undefined, `not a trajectory`, `Unsupported text format`],

@@ -197,8 +197,7 @@ test(`find_image_atoms handles a degenerate (zero-volume) lattice without NaN`, 
   }
 })
 
-test(`find_image_atoms finds correct images for normal cell`, async () => {
-  const normal_structure_extxyz = `8
+const normal_cell_extxyz = `8
 Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
 Cl       0.0       0.0       0.0
 Cl       2.5       0.0       2.5
@@ -209,27 +208,53 @@ Cl       0.0       0.0       2.5
 Cl       0.0       2.5       0.0
 Cl       2.5       2.5       2.5`
 
-  const normal_trajectory = await parse_trajectory_data(normal_structure_extxyz, `test.xyz`)
-  const normal_structure = normal_trajectory.frames[0].structure as Crystal
-  if (!(`lattice` in normal_structure) || !normal_structure.lattice) {
-    throw new Error(`Structure should have lattice`)
+const trajectory_like_extxyz = `8
+Lattice="15.0 0.0 0.0 0.0 15.0 0.0 0.0 0.0 15.0" Properties=species:S:1:pos:R:3 pbc="T T T"
+C         1.0       1.0       1.0
+C         9.0       1.0       9.0
+C         1.0       9.0       9.0
+C         9.0       9.0       1.0
+C         8.0       2.0       2.0
+C        16.0       2.0      16.0
+C         2.0      17.0      17.0
+C        -2.0      10.0      12.0`
+
+// Trajectory heuristic through a real parse (the synthetic threshold cases live in the
+// `trajectory detection threshold` test below)
+test.each([
+  // Atoms sit within the unit cell, so this is treated as a normal crystal and generates
+  // image atoms near cell boundaries. Few/no atoms read as outside the [-0.1, 1.1] margin,
+  // i.e. below the 10% trajectory-detection threshold.
+  { name: `normal cell`, content: normal_cell_extxyz, expect_images: true, max_outside: 0.1 },
+  // Detected as trajectory data → no image atoms, structure returned unchanged. abc coords
+  // are wrapped into the cell on parse, so none read as outside the [-0.1, 1.1] margin (the
+  // raw cartesian positions extend past the 15 Å box, which is what flags trajectory).
+  {
+    name: `trajectory-like cell`,
+    content: trajectory_like_extxyz,
+    expect_images: false,
+    max_outside: 0,
+  },
+])(`find_image_atoms on a parsed $name`, async ({ content, expect_images, max_outside }) => {
+  const trajectory = await parse_trajectory_data(content, `test.xyz`)
+  const structure = trajectory.frames[0].structure as Crystal
+  if (!structure.lattice) throw new Error(`Structure should have lattice`)
+
+  const images = find_image_atoms(structure)
+  const imaged_sites = get_pbc_image_sites(structure).sites
+  if (expect_images) {
+    expect(images.length).toBeGreaterThan(0)
+    expect(imaged_sites.length).toBeGreaterThan(structure.sites.length)
+  } else {
+    expect(images).toHaveLength(0)
+    expect(imaged_sites).toHaveLength(structure.sites.length)
   }
 
-  // Atoms sit within the unit cell, so this is treated as a normal crystal and
-  // generates image atoms for atoms near cell boundaries
-  expect(find_image_atoms(normal_structure).length).toBeGreaterThan(0)
-  expect(get_pbc_image_sites(normal_structure).sites.length).toBeGreaterThan(
-    normal_structure.sites.length,
-  )
-
-  // Few/no atoms outside the unit cell (below the 10% trajectory-detection threshold)
-  const atoms_outside = normal_structure.sites.filter(({ abc }) =>
+  const atoms_outside = structure.sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
-  expect(atoms_outside.length).toBeLessThanOrEqual(normal_structure.sites.length * 0.1)
+  expect(atoms_outside.length).toBeLessThanOrEqual(structure.sites.length * max_outside)
 })
-
-// Additional regression tests for trajectory threshold, triclinic correctness, tolerance edges, and boundary wrapping
 
 test.each([
   {
@@ -268,47 +293,16 @@ test.each([
   },
 )
 
-test(`triclinic lattice image xyz must match lattice * abc`, () => {
-  const matrix = math.cell_to_lattice_matrix(4, 5, 6, 75, 85, 65)
-  const structure = make_crystal(matrix, [[`C`, [0, 0, 0]]])
-
-  const images = find_image_atoms(structure)
-  expect(images.length).toBeGreaterThanOrEqual(7)
-
-  for (const [orig_idx, img_xyz, img_abc] of images) {
-    const orig_abc = structure.sites[orig_idx].abc
-    assert_integer_translation(orig_abc, img_abc, 1e-8)
-    assert_xyz_matches_lattice(matrix, img_abc, img_xyz, 9)
-  }
-})
-
 // Non-orthogonal lattices where L ≠ L^T — using cubic lattices here can't
 // distinguish L*frac from L^T*frac, so these catch wrong-convention bugs.
-const non_ortho_lattices = [
-  {
-    name: `monoclinic`,
-    lattice: [
-      [5, 0, 0],
-      [0, 6, 0],
-      [2, 0, 7],
-    ] as Matrix3x3,
-  },
-  {
-    name: `hexagonal`,
-    lattice: [
-      [4, 0, 0],
-      [2, 3.464, 0],
-      [0, 0, 8],
-    ] as Matrix3x3,
-  },
-  {
-    name: `triclinic`,
-    lattice: [
-      [5, 0, 0],
-      [2.5, 4.33, 0],
-      [1, 1, 4],
-    ] as Matrix3x3,
-  },
+// oxfmt-ignore
+const non_ortho_lattices: { name: string; lattice: Matrix3x3 }[] = [
+  { name: `monoclinic`, lattice: [[5, 0, 0], [0, 6, 0], [2, 0, 7]] },
+  { name: `hexagonal`, lattice: [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]] },
+  { name: `triclinic`, lattice: [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]] },
+  // built from cell params rather than hand-written, so it also covers the
+  // a/b/c/alpha/beta/gamma → matrix convention feeding image generation
+  { name: `triclinic from cell params`, lattice: math.cell_to_lattice_matrix(4, 5, 6, 75, 85, 65) },
 ]
 
 test.each(non_ortho_lattices)(
@@ -319,7 +313,7 @@ test.each(non_ortho_lattices)(
       [`Cl`, [0.01, 0.5, 0.5]],
     ])
     const images = find_image_atoms(structure)
-    expect(images.length).toBeGreaterThan(0)
+    expect(images.length).toBeGreaterThanOrEqual(7) // ≥ the corner atom's 2³-1 replicas
 
     for (const [orig_idx, img_xyz, img_abc] of images) {
       assert_xyz_matches_lattice(lattice, img_abc, img_xyz)
@@ -336,26 +330,25 @@ test.each(non_ortho_lattices)(
   },
 )
 
+// The face check is a strict `|coord| < tol`, so a coordinate sitting exactly at the
+// tolerance generates nothing. Face rows ([x, 0.5, 0.5]) touch one face; corner rows
+// ([x, 0, 0]) also touch y=0 and z=0, so they yield several images — the cap of 26
+// (all 3³-1 neighbour cells) catches runaway generation.
 test.each([
-  {
-    tolerance: 0.02,
-    coord: 0.0199999,
-    expect_images: true,
-    description: `|coord| < tol`,
+  { tolerance: 0.02, abc: [0.0199999, 0.5, 0.5], images: [1, 26], desc: `|coord| < tol` },
+  { tolerance: 0.02, abc: [0.02, 0.5, 0.5], images: [0, 0], desc: `|coord| == tol` },
+  { tolerance: 0.02, abc: [0.0200001, 0.5, 0.5], images: [0, 0], desc: `|coord| > tol` },
+  { tolerance: 0.01, abc: [0.005, 0, 0], images: [1, 26], desc: `strict tol, corner atom` },
+  { tolerance: 0.05, abc: [0.02, 0, 0], images: [1, 26], desc: `default tol, corner atom` },
+  { tolerance: 0.1, abc: [0.08, 0, 0], images: [1, 26], desc: `loose tol, corner atom` },
+] as { tolerance: number; abc: Vec3; images: [number, number]; desc: string }[])(
+  `tolerance boundary behavior: $desc`,
+  ({ tolerance, abc, images: [min_images, max_images] }) => {
+    const image_atoms = find_image_atoms(make_crystal(5, [[`Na`, abc]]), { tolerance })
+    expect(image_atoms.length).toBeGreaterThanOrEqual(min_images)
+    expect(image_atoms.length).toBeLessThanOrEqual(max_images)
   },
-  { tolerance: 0.02, coord: 0.02, expect_images: false, description: `|coord| == tol` },
-  {
-    tolerance: 0.02,
-    coord: 0.0200001,
-    expect_images: false,
-    description: `|coord| > tol`,
-  },
-])(`tolerance boundary behavior: $description`, ({ tolerance, coord, expect_images }) => {
-  const structure = make_crystal(5, [[`Na`, [coord, 0.5, 0.5]]])
-  const images = find_image_atoms(structure, { tolerance })
-  if (expect_images) expect(images.length).toBeGreaterThan(0)
-  else expect(images).toHaveLength(0)
-})
+)
 
 test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
   const structure = make_crystal(5, [[`Cl`, [1.0, 0.5, 0.5]]])
@@ -391,38 +384,6 @@ test(`get_pbc_image_sites preserves explicit periodic bond metadata`, () => {
   expect(with_images.properties?.bonds).toEqual([
     { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
   ])
-})
-
-test(`find_image_atoms finds correct images for trajectory-like cell`, async () => {
-  const trajectory_like_extxyz = `8
-Lattice="15.0 0.0 0.0 0.0 15.0 0.0 0.0 0.0 15.0" Properties=species:S:1:pos:R:3 pbc="T T T"
-C         1.0       1.0       1.0
-C         9.0       1.0       9.0
-C         1.0       9.0       9.0
-C         9.0       9.0       1.0
-C         8.0       2.0       2.0
-C        16.0       2.0      16.0
-C         2.0      17.0      17.0
-C        -2.0      10.0      12.0`
-
-  const trajectory_like = await parse_trajectory_data(trajectory_like_extxyz, `test.xyz`)
-  const trajectory_structure = trajectory_like.frames[0].structure as Crystal
-  if (!(`lattice` in trajectory_structure) || !trajectory_structure.lattice) {
-    throw new Error(`Structure should have lattice`)
-  }
-
-  // Detected as trajectory data → no image atoms, structure returned unchanged
-  expect(find_image_atoms(trajectory_structure)).toHaveLength(0)
-  expect(get_pbc_image_sites(trajectory_structure).sites).toHaveLength(
-    trajectory_structure.sites.length,
-  )
-
-  // abc coords are wrapped into the cell on parse, so none read as outside the [-0.1, 1.1]
-  // margin (the raw cartesian positions extend past the 15 Å box, which is what flags trajectory)
-  const atoms_outside = trajectory_structure.sites.filter(({ abc }) =>
-    abc.some((coord) => coord < -0.1 || coord > 1.1),
-  )
-  expect(atoms_outside).toHaveLength(0)
 })
 
 // Comprehensive tests for find_image_atoms with real structure files
@@ -559,23 +520,6 @@ test(`edge detection should be precise for atoms at boundaries`, () => {
   }
 })
 
-// Test tolerance parameter effects with clearer edge cases
-test.each([
-  { tolerance: 0.01, abc_coords: [0.005, 0.0, 0.0], description: `strict tolerance` },
-  { tolerance: 0.05, abc_coords: [0.02, 0.0, 0.0], description: `default tolerance` },
-  { tolerance: 0.1, abc_coords: [0.08, 0.0, 0.0], description: `loose tolerance` },
-])(
-  `atom within tolerance of edge generates images: $description`,
-  ({ tolerance, abc_coords }) => {
-    const test_structure = make_crystal(5, [[`Na`, abc_coords as Vec3]])
-    const image_atoms = find_image_atoms(test_structure, { tolerance })
-
-    // Edge/corner combinations may create several images; cap catches runaway generation
-    expect(image_atoms.length).toBeGreaterThanOrEqual(1)
-    expect(image_atoms.length).toBeLessThanOrEqual(26)
-  },
-)
-
 // Test image atom generation with various crystal systems
 // oxfmt-ignore
 test.each([
@@ -591,22 +535,10 @@ test.each([
     lattice as Matrix3x3,
     abc_list.map((abc) => ({ element: `C`, abc: abc as Vec3 })),
   )
-  const expected_min = 7 // at least 7 images for the corner atom
 
   const image_atoms = find_image_atoms(test_structure)
-  expect(image_atoms.length).toBeGreaterThanOrEqual(expected_min)
-
-  // Validate all image atoms
-  for (const [orig_idx, image_xyz, image_abc] of image_atoms) {
-    expect(orig_idx).toBeGreaterThanOrEqual(0)
-    expect(orig_idx).toBeLessThan(test_structure.sites.length)
-    expect(image_xyz.every((coord) => Number.isFinite(coord))).toBe(true)
-    expect(image_abc.every((coord) => Number.isFinite(coord))).toBe(true)
-
-    // Verify fractional coordinates are related by integer translations
-    const orig_abc = test_structure.sites[orig_idx].abc
-    assert_integer_translation(orig_abc, image_abc, 1e-8)
-  }
+  expect(image_atoms.length).toBeGreaterThanOrEqual(7) // at least 7 images for the corner atom
+  validate_image_tuples(test_structure, image_atoms)
 })
 
 // Test the new behavior: abc coordinates should be preserved and synchronized with xyz
@@ -648,44 +580,27 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
   }
 })
 
-// Test that highly oblique cells are handled correctly
-test(`highly oblique cells should have finite, well-defined fractional coordinates`, () => {
-  const image_atoms = find_image_atoms(tl_bi_se2_struct)
+// Regression test: highly oblique cells must still yield well-defined image atoms and sites
+test.each([
+  [`TlBiSe2 highly oblique cell`, tl_bi_se2_struct],
+  [`mp-1204603 large oblique cell`, mp_1204603_struct],
+])(`image atoms and sites stay valid for %s`, (_name, structure) => {
+  const image_atoms = find_image_atoms(structure)
   expect(image_atoms.length).toBeGreaterThan(0)
 
-  // Check that all image atoms have finite fractional coordinates (no specific range check)
-  // We no longer force them to be inside [0, 1] because for visualization/bonding
-  // we want them at their true periodic positions (which might be outside).
+  // Fractional coords are finite but deliberately NOT forced inside [0, 1]: for
+  // visualization/bonding we want images at their true periodic positions (possibly
+  // outside the cell), only reachable from the original by integer translations.
   for (const [orig_idx, __, img_abc] of image_atoms) {
     expect(img_abc.every((coord) => Number.isFinite(coord))).toBe(true)
-
-    // Also verify they are valid integer translations from the original
-    const orig_abc = tl_bi_se2_struct.sites[orig_idx].abc
-    assert_integer_translation(orig_abc, img_abc, 1e-8)
+    assert_integer_translation(structure.sites[orig_idx].abc, img_abc, 1e-8)
   }
-})
 
-// Regression test: ensure image sites for highly oblique large cell are valid
-test(`mp-1204603 image sites are valid integer translations`, () => {
-  const structure = mp_1204603_struct
-
-  // Sanity: has lattice and angles imply non-orthogonal
-  expect(`lattice` in structure).toBe(true)
-  if (!(`lattice` in structure) || !structure.lattice) throw new Error(`no lattice`)
-
-  const image_atoms = find_image_atoms(structure)
-  const with_images = get_pbc_image_sites(structure)
-
-  // Slice out just the image sites appended at the end
-  const orig_len = structure.sites.length
-  const image_sites = with_images.sites.slice(orig_len)
-
-  // Allow deduplication to remove coincident images
+  // Slice out just the image sites appended at the end; deduplication may drop coincident ones
+  const image_sites = get_pbc_image_sites(structure).sites.slice(structure.sites.length)
   expect(image_sites.length).toBeLessThanOrEqual(image_atoms.length)
-
-  const lattice_matrix = structure.lattice.matrix
   for (const site of image_sites) {
-    assert_xyz_matches_lattice(lattice_matrix, site.abc, site.xyz, 9)
+    assert_xyz_matches_lattice(structure.lattice.matrix, site.abc, site.xyz, 9)
   }
 })
 
@@ -790,23 +705,19 @@ describe(`wrap_to_unit_cell`, () => {
   })
 })
 
-describe(`find_image_atoms respects lattice.pbc`, () => {
-  test(`skips image generation along non-periodic axes (slab)`, () => {
-    // Corner atom in a fully periodic cell generates images along all 3 dims
-    const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])
-    const periodic_images = find_image_atoms(periodic)
-    expect(periodic_images).toHaveLength(7) // 2^3 - 1 corner images
+test(`find_image_atoms skips image generation along non-periodic axes (slab)`, () => {
+  // Corner atom in a fully periodic cell generates images along all 3 dims
+  const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])
+  const periodic_images = find_image_atoms(periodic)
+  expect(periodic_images).toHaveLength(7) // 2^3 - 1 corner images
 
-    // Slab with vacuum along z: no image may be shifted along z
-    const slab = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [true, true, false] })
-    const slab_images = find_image_atoms(slab)
-    expect(slab_images).toHaveLength(3) // 2^2 - 1 in-plane images
-    for (const [, , img_abc] of slab_images) expect(img_abc[2]).toBe(0)
+  // Slab with vacuum along z: no image may be shifted along z
+  const slab = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [true, true, false] })
+  const slab_images = find_image_atoms(slab)
+  expect(slab_images).toHaveLength(3) // 2^2 - 1 in-plane images
+  for (const [, , img_abc] of slab_images) expect(img_abc[2]).toBe(0)
 
-    // Fully non-periodic: no images at all
-    const molecule_like = make_crystal(5, [[`Na`, [0, 0, 0]]], {
-      pbc: [false, false, false],
-    })
-    expect(find_image_atoms(molecule_like)).toHaveLength(0)
-  })
+  // Fully non-periodic: no images at all
+  const molecule_like = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [false, false, false] })
+  expect(find_image_atoms(molecule_like)).toHaveLength(0)
 })
