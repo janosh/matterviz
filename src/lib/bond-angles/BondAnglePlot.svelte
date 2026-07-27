@@ -47,9 +47,9 @@
     })),
   )
 
-  // bin_width is public, so a caller can hand us 0, NaN or 500; resolve_angle_bins rejects
-  // those by throwing, which would take down the whole render. The failure rides back with
-  // the results because writing to a prop from inside a $derived is state_unsafe_mutation.
+  // resolve_angle_bins throws for a bin_width outside (0, 180], and bin_width is public.
+  // The failure rides back with the results because writing to a prop from inside a
+  // $derived is state_unsafe_mutation.
   const binned = $derived.by(() => {
     try {
       const entries = entries_with_triplets.map((entry) => ({

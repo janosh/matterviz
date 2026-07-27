@@ -175,15 +175,12 @@ describe(`Coordination`, () => {
       expect(check(values)).toBe(true)
     })
 
-    test.each([`electroneg_ratio`] as const)(
-      `works with %s strategy`,
-      (strategy) => {
-        const sites: { abc: Vec3 }[] = [{ abc: [0, 0, 0] }, { abc: [0.3, 0, 0] }]
-        const { values } = ap.get_coordination_colors(make_cubic_structure(sites, 5), strategy)
-        expect(values).toHaveLength(2)
-        expect(all_positive(values)).toBe(true)
-      },
-    )
+    test.each([`electroneg_ratio`] as const)(`works with %s strategy`, (strategy) => {
+      const sites: { abc: Vec3 }[] = [{ abc: [0, 0, 0] }, { abc: [0.3, 0, 0] }]
+      const { values } = ap.get_coordination_colors(make_cubic_structure(sites, 5), strategy)
+      expect(values).toHaveLength(2)
+      expect(all_positive(values)).toBe(true)
+    })
 
     // CoordinationBarPlot and the 3D viewer both call calc_structure_coordination, so
     // their boundary-atom CN must agree and must exceed the raw-cell count (regression:
@@ -602,6 +599,7 @@ describe(`Selective dynamics`, () => {
     [`POSCAR string flags (T T F)`, [`T`, `T`, `F`], `partially fixed`],
     [`lowercase words`, [`false`, `false`, `false`], `fixed`],
     [`numeric flags`, [1, 1, 1], `free`],
+    [`padded and mixed-case flags`, [` T `, `TRUE`, `f`], `partially fixed`],
     // ...anything else is `unknown`: this runs per site during render, so it must not throw
     [`four booleans`, [true, false, true, false], `unknown`],
     [`two booleans`, [true, false], `unknown`],

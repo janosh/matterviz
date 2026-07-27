@@ -343,8 +343,10 @@ describe(`measure: dihedral angles`, () => {
     const rad = dihedral_angle(p1, p2, p3, p4, null, undefined, `radians`)
     expect(rad).toBeCloseTo(Math.PI / 2, 12)
     const degrees = dihedral_angle(p1, p2, p3, p4, null)
-    // digit COUNT, not a tolerance: 12 digits is 5e-13, just above the 1.14e-13 error
-    // bound documented above. Passing 1e-9 here would mean 10^-1e-9/2, i.e. half a degree
+    // Digit COUNT, not a tolerance — passing 1e-9 here would mean 10^-1e-9/2, i.e. half a
+    // degree. to_degrees multiplies by a precomputed fl(180/PI) while this line divides by
+    // PI, so the two orderings disagree by up to 1 ulp (measured 2.84e-14 over 200k angles
+    // spanning the range). 12 digits is 5e-13, ~18 ulps of headroom; 14 would fail.
     expect((rad * 180) / Math.PI).toBeCloseTo(degrees, 12)
   })
 

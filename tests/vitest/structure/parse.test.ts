@@ -2366,6 +2366,9 @@ describe(`molecular and LAMMPS structure formats`, () => {
     [`xsu ysu zsu`, `0.25 0.5 0.75`],
     // both present: xsu wins over the absolute triple, so x y z is ignored entirely
     [`x y z xsu ysu zsu`, `-1.0 0.0 1.0 0.25 0.5 0.75`],
+    // a lone `xs` is not a scaled triple, so the parser falls back to x/y/z and the
+    // origin shift is still required — the old literal `xs` test wrongly skipped it
+    [`x y z xs`, `-1.0 0.0 1.0 0.25`],
   ])(`LAMMPS dump %s columns land at the same cell position`, (columns, coords) => {
     const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS pp pp pp\n-2.0 2.0\n-2.0 2.0\n-2.0 2.0\nITEM: ATOMS id element ${columns}\n1 Cu ${coords}`
     const result = parse_structure_file(content, `offset.dump`)
@@ -2373,6 +2376,22 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 8)
     expect_vec3_close(result.sites[0].abc, [0.25, 0.5, 0.75], 8)
     expect_abc_in_unit_cell(result.sites[0])
+  })
+
+  // Triclinic dumps write the axis-aligned bounding box, so recovering the origin means
+  // subtracting the tilt overhang. Negative tilts are the case where Math.min(0, ...) is
+  // non-zero, i.e. where this formula can drift from parse_lammps_box's copy of it.
+  test.each([
+    [`positive tilts`, [`-2.0 3.0 1.0`, `-2.0 2.0 0.5`, `-2.0 2.0 0.25`], [2, 2, 2]],
+    [`negative tilts`, [`-2.0 3.0 -1.0`, `-2.0 2.0 -0.5`, `-2.0 2.0 -0.25`], [0.5, 1.75, 2]],
+  ])(`triclinic LAMMPS dump origin with %s`, (_label, bounds, expected) => {
+    const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS xy xz yz pp pp pp\n${bounds.join(
+      `\n`,
+    )}\nITEM: ATOMS id element x y z\n1 Cu 0.0 0.0 0.0`
+    const result = parse_structure_file(content, `tri.dump`)
+    expect(result.sites).toHaveLength(1)
+    expect_vec3_close(result.sites[0].xyz, expected, 8)
+    expect_vec3_close(result.sites[0].abc, [0.357142857142857, 0.5, 0.5], 8)
   })
 
   test(`LAMMPS data shifts coordinates by the box origin`, () => {
@@ -2563,6 +2582,8 @@ describe(`malformed molecular / LAMMPS input records a failure reason`, () => {
     [`MOL with a truncated bond block`, `bonds.mol`, `x\n\n\n  2  3  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 C   0  0\n    1.0000    0.0000    0.0000 C   0  0\n  1  2  1  0\nM  END\n`, /bond block invalid or truncated/],
     // bond line cut off after its two atom ids: the blank type field must not read as 0
     [`MOL with a bond line missing its type`, `notype.mol`, `x\n\n\n  2  1  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 C   0  0\n    1.0000    0.0000    0.0000 C   0  0\n  1  2\nM  END\n`, /bond block invalid or truncated/],
+    // `bbb` is mandatory in an MDL counts line, so a bare atom count is not "0 bonds"
+    [`MOL whose counts line omits the bond count`, `nobonds.mol`, `x\n\n\n  2\n    0.0000    0.0000    0.0000 C   0  0\n    1.0000    0.0000    0.0000 C   0  0\nM  END\n`, /Invalid atom\/bond counts in MOL counts line/],
     [`MOL2 without an ATOM section`, `empty.mol2`, `@<TRIPOS>MOLECULE\nx\n 0 0 0 0 0\nSMALL\nNO_CHARGES\n`, /no @<TRIPOS>ATOM section/],
     [`mmCIF without coordinate columns`, `no-coords.mmcif`, `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.label_atom_id\nC C1\n`, /missing coordinates/],
     [`LAMMPS data without an Atoms section`, `empty.lmp`, `# header only\n\n2 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n`, /no Atoms section/],
