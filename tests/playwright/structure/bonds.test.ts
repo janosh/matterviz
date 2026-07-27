@@ -538,6 +538,13 @@ test.describe(`Bond component`, () => {
       await expect(menu).toBeHidden()
       steps.after_set_double = await read_history()
 
+      // Reopen the menu before resetting. This is the only step the failing test does that an
+      // earlier version of this diagnostic skipped, and that version passed on the same CI run
+      // where the test failed, so the reopen is what makes the reset go wrong.
+      await click_canvas_center(page, canvas, `right`)
+      await expect(menu).toBeVisible({ timeout: 15_000 })
+      steps.reopened_menu_text = await menu.textContent().catch(() => `unreadable`)
+
       const len_before_reset = await history_length()
       await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
       // Wait for the bonds effect's post-reset push and for the sequence to stop growing, so
