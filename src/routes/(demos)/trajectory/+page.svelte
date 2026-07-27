@@ -20,6 +20,17 @@
 
 <h1>Trajectory</h1>
 
+<h2>Mean Squared Displacement</h2>
+<p>
+  Every viewer below carries an MSD / diffusion pane (the orbit icon in the controls bar). It
+  averages |r(t₀+Δt) − r(t₀)|² over all atoms and all time origins, unwraps trajectories across
+  periodic boundaries first (honouring LAMMPS <code>xu/yu/zu</code> coordinates, which are
+  already unwrapped), decomposes by element, and fits <code>D = slope / 2d</code> over an adjustable
+  lag window. The lag axis is labelled in frames unless you supply a timestep, since no trajectory
+  format we read records one. Indexed (streamed) trajectories are swept in full rather than analysed
+  over the handful of frames kept in memory.
+</p>
+
 {#each trajectory_files_paths as file (file)}
   {#if file === `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`}
     <h2>Bindable <code>visible_properties</code> Demo</h2>

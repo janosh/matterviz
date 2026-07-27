@@ -1,0 +1,539 @@
+import {
+  angle_bin_centers,
+  angle_bin_index,
+  BondAnglePlot,
+  calc_bond_angle_distribution,
+  compute_bond_angles,
+  resolve_angle_bins,
+  to_angle_bar_series,
+  to_angle_density,
+} from '$lib/bond-angles'
+import type { BondAngleOptions, SplitMode } from '$lib/bond-angles'
+import { element_by_symbol } from '$lib/element/data'
+import type { Vec3 } from '$lib/math'
+import type { ElementSymbol } from '$lib/element'
+import type { Molecule } from '$lib/structure'
+import { calc_structure_coordination } from '$lib/structure/atom-properties'
+import { structure_map } from '$site/structures'
+import { tick } from 'svelte'
+import { describe, expect, test } from 'vitest'
+import { make_crystal, mount_sized } from '../setup'
+
+// Exact tetrahedral angle: acos(-1/3) in degrees
+const TETRAHEDRAL_ANGLE = 109.47122063449069
+
+const make_molecule = (atoms: [string, Vec3][]): Molecule => ({
+  sites: atoms.map(([element, xyz], idx) => ({
+    species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
+    abc: [0, 0, 0] as Vec3,
+    xyz,
+    label: `${element}${idx}`,
+    properties: {},
+  })),
+})
+
+const scaled = (vec: Vec3, length: number): Vec3 => {
+  const norm = Math.hypot(...vec)
+  return [(vec[0] / norm) * length, (vec[1] / norm) * length, (vec[2] / norm) * length]
+}
+
+// One central atom surrounded by `bond`-length ligands, one along each direction in `dirs`
+const ligand_shell = (center: string, ligand: string, dirs: Vec3[], bond: number): Molecule =>
+  make_molecule([
+    [center, [0, 0, 0]],
+    ...dirs.map((dir) => [ligand, scaled(dir, bond)] as [string, Vec3]),
+  ])
+
+const fixture = (id: string) => {
+  const struct = structure_map.get(id)
+  if (!struct) throw new Error(`fixture ${id} not found in $site/structures`)
+  return struct
+}
+
+const tally = (keys: readonly string[]): Record<string, number> => {
+  const counts: Record<string, number> = {}
+  for (const key of keys) counts[key] = (counts[key] ?? 0) + 1
+  return counts
+}
+// Tally angles into { rounded_angle: count } so expectations read as geometry, not indices
+const angle_tally = (triplets: readonly { angle: number }[]): Record<string, number> =>
+  tally(triplets.map((triplet) => triplet.angle.toFixed(4)))
+// ...and the same for the `A-B-C` triplet labels of a freshly computed structure
+const label_tally = (
+  structure: Parameters<typeof compute_bond_angles>[0],
+  options: Parameters<typeof compute_bond_angles>[1] = {},
+): Record<string, number> =>
+  tally(compute_bond_angles(structure, options).map((triplet) => triplet.triplet))
+
+const axis_dirs: Vec3[] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+]
+
+// C-H 1.087 Å along the four alternating cube diagonals
+const methane = ligand_shell(
+  `C`,
+  `H`,
+  [
+    [1, 1, 1],
+    [1, -1, -1],
+    [-1, 1, -1],
+    [-1, -1, 1],
+  ],
+  1.087,
+)
+// S-F 1.56 Å along all six Cartesian axes
+const octahedron = ligand_shell(`S`, `F`, axis_dirs, 1.56)
+// Pt-Cl 2.31 Å, four ligands in the xy plane
+const square_planar = ligand_shell(`Pt`, `Cl`, axis_dirs.slice(0, 4), 2.31)
+// O=C=O, 1.16 Å
+const linear_triatomic = make_molecule([
+  [`C`, [0, 0, 0]],
+  [`O`, [1.16, 0, 0]],
+  [`O`, [-1.16, 0, 0]],
+])
+
+// Rocksalt NaCl: every Na is octahedrally surrounded by Cl and vice versa. 8 sites x
+// C(6, 2) = 120 angles, split evenly between the two centre elements.
+const rocksalt = make_crystal(5.64, [
+  [`Na`, [0, 0, 0]],
+  [`Na`, [0, 0.5, 0.5]],
+  [`Na`, [0.5, 0, 0.5]],
+  [`Na`, [0.5, 0.5, 0]],
+  [`Cl`, [0.5, 0.5, 0.5]],
+  [`Cl`, [0.5, 0, 0]],
+  [`Cl`, [0, 0.5, 0]],
+  [`Cl`, [0, 0, 0.5]],
+])
+const palladium = fixture(`mp-2`)
+
+describe(`compute_bond_angles analytic geometry`, () => {
+  // angle_tally buckets every triplet, so the tally values also pin the total angle count
+  test.each([
+    [`tetrahedral methane`, methane, { [TETRAHEDRAL_ANGLE.toFixed(4)]: 6 }, `H-C-H`],
+    [`octahedral SF6`, octahedron, { '90.0000': 12, '180.0000': 3 }, `F-S-F`],
+    [`square planar PtCl4`, square_planar, { '90.0000': 4, '180.0000': 2 }, `Cl-Pt-Cl`],
+    [`linear CO2`, linear_triatomic, { '180.0000': 1 }, `O-C-O`],
+  ] as const)(
+    `%s reproduces the ideal angle multiset, every angle labelled %s`,
+    (_name, structure, expected, label) => {
+      const triplets = compute_bond_angles(structure)
+      expect(angle_tally(triplets)).toEqual(expected)
+      expect(triplets.every((triplet) => triplet.triplet === label)).toBe(true)
+    },
+  )
+
+  test(`methane H-C-H angles match acos(-1/3) to double precision`, () => {
+    const triplets = compute_bond_angles(methane)
+    expect(triplets).toHaveLength(6) // else Math.max over an empty deviation list passes
+    // Measured: all six come out at 109.471220634490692, i.e. bit-identical to
+    // Math.acos(-1/3) in degrees (deviation exactly 0). Math.acos is not required to be
+    // correctly rounded across engines, so assert 1e-12 deg rather than strict equality —
+    // still ~10 orders below any physically meaningful angle difference.
+    const exact = (Math.acos(-1 / 3) * 180) / Math.PI
+    expect(exact).toBe(TETRAHEDRAL_ANGLE)
+    const deviations = triplets.map((triplet) => Math.abs(triplet.angle - exact))
+    expect(Math.max(...deviations)).toBeLessThan(1e-12)
+  })
+})
+
+// Bonds are emitted once per unordered pair, so a one-directional neighbour list leaves every
+// centre half-populated. The exact identity below only holds when both endpoints of each bond
+// register the other.
+test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
+  `%s yields exactly sum_atoms C(coordination_number, 2) angles`,
+  (id) => {
+    const structure = fixture(id)
+    const { sites } = calc_structure_coordination(structure, `electroneg_ratio`)
+    const expected = sites.reduce(
+      (sum, site) => sum + (site.coordination_num * (site.coordination_num - 1)) / 2,
+      0,
+    )
+    expect(expected).toBeGreaterThan(0)
+    expect(compute_bond_angles(structure, { strategy: `electroneg_ratio` })).toHaveLength(
+      expected,
+    )
+  },
+)
+
+describe(`periodic image expansion`, () => {
+  // One atom per cell with a = 2 * covalent_radius: nearest neighbours sit at exactly the
+  // sum of covalent radii (bonded), the face diagonal at sqrt(2) times that (not bonded).
+  // Every neighbour of the single atom is therefore one of its own periodic images.
+  const radius = element_by_symbol.get(`Po`)?.covalent_radius
+  if (!radius) throw new Error(`Po has no covalent radius, the cell size would be arbitrary`)
+  const simple_cubic = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
+
+  test(`six-coordinate simple cubic gives 12 right angles and 3 straight angles`, () => {
+    const triplets = compute_bond_angles(simple_cubic)
+    expect(angle_tally(triplets)).toEqual({ '90.0000': 12, '180.0000': 3 })
+    expect(triplets).toHaveLength(15) // C(6, 2)
+    // Every neighbour is an image of atom 0, reported against its original index
+    expect(triplets.every((triplet) => triplet.neighbor_idxs.every((idx) => idx === 0))).toBe(
+      true,
+    )
+    expect(triplets.every((triplet) => triplet.triplet === `Po-Po-Po`)).toBe(true)
+  })
+
+  test.each<[BondAngleOptions, number]>([
+    [{ auto_expand: true }, 15],
+    [{ auto_expand: false }, 0],
+    // switching every axis to non-periodic is the same switch under another name
+    [{ pbc: [false, false, false] }, 0],
+  ])(`%j gives %s angles for a one-atom cell`, (options, expected) => {
+    expect(compute_bond_angles(simple_cubic, options)).toHaveLength(expected)
+  })
+
+  // On real crystals image expansion is not a small correction: without it every angle
+  // that closes through a cell face is silently lost.
+  test.each([
+    [`mp-1`, 56, 0],
+    [`mp-2`, 264, 12],
+    // LuAl2 is a MgCu2-type Laves phase: Al-Al (2.727 Å) is the shortest bond in the
+    // structure and forms the tetrahedral B-site network. It used to be suppressed by a
+    // flat same-species penalty, which is now applied only to contacts that sit behind a
+    // shorter one, so those angles are counted (303 -> 339 without expansion).
+    [`mp-1234`, 1200, 339],
+  ])(`%s has %s angles with image expansion but only %s without`, (id, expanded, bare) => {
+    const structure = fixture(id)
+    expect(compute_bond_angles(structure)).toHaveLength(expanded)
+    expect(compute_bond_angles(structure, { auto_expand: false })).toHaveLength(bare)
+  })
+
+  // Bond displacements must stay raw pos_2 - pos_1. With a bond length of exactly a/2 the
+  // centre's two partners sit at +2 and -2 Å, which minimum-imaging would both fold to -2,
+  // collapsing the straight angles into {0: 1, 180: 1}.
+  test(`partners exactly half a lattice vector apart stay distinct directions`, () => {
+    const chain = make_crystal(4, [
+      [`C`, [0, 0, 0]],
+      [`C`, [0.5, 0, 0]],
+    ])
+    const triplets = compute_bond_angles(chain, { strategy: `electroneg_ratio` })
+    expect(angle_tally(triplets)).toEqual({ '180.0000': 2 })
+  })
+})
+
+describe(`triplet labelling`, () => {
+  test(`distinguishes A-B-A from B-A-B`, () => {
+    expect(label_tally(rocksalt)).toEqual({ 'Cl-Na-Cl': 60, 'Na-Cl-Na': 60 })
+    expect(angle_tally(compute_bond_angles(rocksalt))).toEqual({
+      '90.0000': 96,
+      '180.0000': 24,
+    })
+  })
+
+  test(`outer elements are sorted so mirrored triplets collapse to one label`, () => {
+    // Formaldehyde has a centre with two DIFFERENT outer elements, so the sort is
+    // load-bearing: O is listed before the hydrogens, so neighbour insertion order would
+    // label the two H-C-O angles `O-C-H` and split one chemical triplet over two buckets.
+    // Coordinates are built from the target angle so the expectations stay exact: O along
+    // +y, the two H mirrored about it at hco_angle each.
+    const [hco_angle, ch_bond, co_bond] = [121.9, 1.111, 1.208]
+    const hco_rad = (hco_angle * Math.PI) / 180
+    const [h_x, h_y] = [ch_bond * Math.sin(hco_rad), ch_bond * Math.cos(hco_rad)]
+    const formaldehyde = make_molecule([
+      [`C`, [0, 0, 0]],
+      [`O`, [0, co_bond, 0]],
+      [`H`, [h_x, h_y, 0]],
+      [`H`, [-h_x, h_y, 0]],
+    ])
+    const triplets = compute_bond_angles(formaldehyde)
+    expect(triplets.map((triplet) => triplet.triplet)).toEqual([`H-C-O`, `H-C-O`, `H-C-H`])
+    const [hco_1, hco_2, hch] = triplets.map((triplet) => triplet.angle)
+    expect(hco_1).toBeCloseTo(hco_angle, 12)
+    expect(hco_2).toBeCloseTo(hco_angle, 12)
+    expect(hch).toBeCloseTo(360 - 2 * hco_angle, 12) // the three angles close a full turn
+  })
+
+  test.each([
+    [{ center_elements: [`Na`] }, { 'Cl-Na-Cl': 60 }],
+    [{ center_elements: [`Cl`] }, { 'Na-Cl-Na': 60 }],
+    [{ neighbor_elements: [`Cl`] }, { 'Cl-Na-Cl': 60 }],
+    [{ center_elements: [`Na`], neighbor_elements: [`Na`] }, {}],
+  ])(`element filter %j keeps %j`, (options, expected) => {
+    expect(label_tally(rocksalt, options)).toEqual(expected)
+  })
+})
+
+describe(`explicit bonds`, () => {
+  // Computed bonds never carry a cell_shift, but explicit ones do, and the shifted partner
+  // position lives only on BondPair.pos_2. Keying the neighbour list on displacement rather
+  // than site index is what lets both ends of such a bond see the right direction.
+  const shifted_chain = make_crystal(4, [
+    [`C`, [0, 0, 0]],
+    [`C`, [0.5, 0, 0]],
+  ])
+  shifted_chain.properties = {
+    bonds: [
+      { site_idx_1: 0, site_idx_2: 1, order: 1 },
+      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [-1, 0, 0] },
+    ],
+  }
+
+  // Under a proximity strategy the same two bonds are also found against image atoms, with
+  // matching displacements but different search-site indices. Keying the dedup on the
+  // ORIGINAL neighbour index is what stops apply_explicit_bond_metadata adding a second copy
+  // of each — which would put a bond vector against itself, i.e. a spurious 0 degree angle.
+  test.each([`explicit_only`, `electroneg_ratio`] as const)(
+    `cell_shift on an explicit bond gives one straight angle per atom under %s`,
+    (strategy) => {
+      const triplets = compute_bond_angles(shifted_chain, { strategy })
+      // Both atoms sit between two partners 4 Å apart on the x axis: one straight angle each
+      expect(triplets.map((triplet) => triplet.center_idx)).toEqual([0, 1])
+      for (const triplet of triplets) expect(triplet.angle).toBeCloseTo(180, 12)
+    },
+  )
+
+  // Rocksalt has a full proximity-found bond network, so a periodic explicit record on top of
+  // it is the case where a shift-keyed dedup silently double-counts. Measured before the fix:
+  // 132 angles as { 0: 2, 90: 104, 180: 26 } instead of the correct 120.
+  test(`a periodic explicit bond does not perturb the rocksalt histogram`, () => {
+    const with_explicit = { ...rocksalt }
+    with_explicit.properties = {
+      bonds: [{ site_idx_1: 0, site_idx_2: 5, order: 1, cell_shift: [-1, 0, 0] }],
+    }
+    const expected = { '90.0000': 96, '180.0000': 24 }
+    for (const structure of [rocksalt, with_explicit]) {
+      const triplets = compute_bond_angles(structure, { strategy: `electroneg_ratio` })
+      expect(angle_tally(triplets)).toEqual(expected)
+    }
+  })
+
+  test(`explicit_only without declared bonds yields no angles`, () => {
+    expect(compute_bond_angles(methane, { strategy: `explicit_only` })).toEqual([])
+  })
+})
+
+describe(`binning`, () => {
+  test.each([
+    [`exactly 0`, 0, { bin_width: 2 }, 0],
+    [`just below the first boundary`, 1.999, { bin_width: 2 }, 0],
+    [`exactly on a bin boundary`, 2, { bin_width: 2 }, 1],
+    // half-open on the lower edge: 5 deg belongs to [5, 10), not to [0, 5)
+    [`just below a 5 deg boundary`, 4.999999, { bin_width: 5 }, 0],
+    [`exactly on a 5 deg boundary`, 5, { bin_width: 5 }, 1],
+    [`exactly on an interior boundary`, 90, { bin_width: 2 }, 45],
+    [`exactly 180`, 180, { bin_width: 2 }, 89],
+    [`just below 180`, 179.999, { bin_width: 2 }, 89],
+    [`exactly 180 with a single bin`, 180, { bin_width: 180 }, 0],
+    [`exactly 0 with a single bin`, 0, { bin_width: 180 }, 0],
+    // 180/7 is not binary-exact, so 3 * bin_width evaluates to 77.14285714285714 while
+    // 3 * bin_width recomputed by the division lands a hair above it: the boundary falls one
+    // bin LOW rather than into the upper bin. Documented, not fixed — only exactly-on-boundary
+    // angles are affected, they move by a single bin, and every width the UI can produce
+    // (0.5 deg slider steps) is binary-exact.
+    [`a boundary of a non-binary-exact width`, 3 * (180 / 7), { n_bins: 7 }, 2],
+  ])(`%s lands in the expected bin`, (_name, angle, options, expected_bin) => {
+    const { n_bins, bin_width } = resolve_angle_bins(options)
+    expect(angle_bin_index(angle, n_bins, bin_width)).toBe(expected_bin)
+  })
+
+  test(`bin centers sit half a width above each lower edge`, () => {
+    expect(angle_bin_centers(4, 45)).toEqual([22.5, 67.5, 112.5, 157.5])
+  })
+
+  test.each([
+    [{ bin_width: 2, n_bins: 90 }, /not both/],
+    [{ n_bins: 0 }, /positive integer/],
+    [{ n_bins: 2.5 }, /positive integer/],
+    [{ bin_width: 0 }, /must be a number in/],
+    [{ bin_width: -1 }, /must be a number in/],
+    [{ bin_width: 181 }, /must be a number in/],
+  ])(`resolve_angle_bins(%j) throws`, (options, message) => {
+    expect(() => resolve_angle_bins(options)).toThrow(message)
+  })
+
+  test.each([
+    [{ bin_width: 2 }, 90, 2],
+    [{ bin_width: 5 }, 36, 5],
+    [{ n_bins: 36 }, 36, 5],
+    [{ bin_width: 7 }, 26, 7], // does not divide 180: last bin overhangs to 182
+    [{}, 90, 2], // default
+  ])(`resolve_angle_bins(%j) -> %s bins of %s deg`, (options, n_bins, bin_width) => {
+    expect(resolve_angle_bins(options)).toEqual({ n_bins, bin_width })
+  })
+})
+
+describe(`calc_bond_angle_distribution`, () => {
+  test(`octahedron histogram puts 12 counts at 90 deg and 3 at 180 deg`, () => {
+    const data = calc_bond_angle_distribution(octahedron, { bin_width: 2 })
+    expect(data.n_angles).toBe(15)
+    expect(data.total.counts[angle_bin_index(90, data.n_bins, data.bin_width)]).toBe(12)
+    expect(data.total.counts.at(-1)).toBe(3)
+    expect(data.total.counts.reduce((sum, count) => sum + count, 0)).toBe(15)
+    expect(data.by_triplet.map((series) => series.triplet)).toEqual([`F-S-F`])
+  })
+
+  test(`density integrates to 1 over degrees and per-triplet densities sum to the total`, () => {
+    const data = calc_bond_angle_distribution(rocksalt, { bin_width: 3 })
+    const integral = data.total.density.reduce((sum, val) => sum + val, 0) * data.bin_width
+    expect(integral).toBeCloseTo(1, 12)
+    expect(data.by_triplet).toHaveLength(2)
+    for (const [bin_idx, total] of data.total.density.entries()) {
+      const summed = data.by_triplet.reduce((sum, series) => sum + series.density[bin_idx], 0)
+      expect(summed).toBeCloseTo(total, 12)
+    }
+  })
+
+  test(`split_by_triplet=false skips the per-triplet histograms but keeps the total`, () => {
+    const data = calc_bond_angle_distribution(octahedron, { split_by_triplet: false })
+    expect(data.by_triplet).toEqual([])
+    expect(data.n_angles).toBe(15)
+  })
+
+  test(`empty and angle-free structures give zeroed histograms rather than NaN`, () => {
+    for (const structure of [make_molecule([]), make_molecule([[`H`, [0, 0, 0]]])]) {
+      const data = calc_bond_angle_distribution(structure)
+      expect(data.n_angles).toBe(0)
+      expect(data.total.counts.every((count) => count === 0)).toBe(true)
+      expect(data.total.density.every((val) => val === 0)).toBe(true)
+    }
+  })
+
+  test(`center_elements keeps only angles centred on the filtered atoms`, () => {
+    // Only S has two neighbours, so filtering to it keeps all 15; filtering it out keeps none
+    expect(calc_bond_angle_distribution(octahedron, { center_elements: [`S`] }).n_angles).toBe(
+      15,
+    )
+    expect(calc_bond_angle_distribution(octahedron, { center_elements: [`F`] }).n_angles).toBe(
+      0,
+    )
+  })
+})
+
+test.each([
+  [[2, 4, 4], 10, 2, [0.1, 0.2, 0.2]],
+  [[1, 1], 2, 90, [1 / 180, 1 / 180]],
+  [[0, 0], 0, 2, [0, 0]],
+])(
+  `to_angle_density: counts %j over %s angles / %s deg bins`,
+  (counts, n_angles, bin_width, expected) => {
+    const density = to_angle_density(counts, n_angles, bin_width)
+    for (const [idx, value] of density.entries()) expect(value).toBeCloseTo(expected[idx], 15)
+  },
+)
+
+// Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
+describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
+  // Water, so a lattice-less molecule exercises the single-structure input shape
+  const water = make_molecule([
+    [`O`, [0, 0, 0]],
+    [`H`, [0.757, 0.587, 0]],
+    [`H`, [-0.757, 0.587, 0]],
+  ])
+  const mount_plot = (props: Record<string, unknown>) =>
+    mount_sized(BondAnglePlot, props, { selector: `.bar-plot, .status-message, section` })
+
+  test.each([
+    [`single crystal`, { structures: rocksalt }],
+    // is_crystal() would misread a lattice-less molecule as a Record of structures
+    [`single lattice-less molecule`, { structures: water }],
+    [`record of structures`, { structures: { NaCl: rocksalt, Pd: palladium } }],
+    [
+      `record with per-entry color`,
+      {
+        structures: { NaCl: { structure: rocksalt, color: `#ff0000` } },
+      },
+    ],
+    [
+      `array of entries`,
+      {
+        structures: [
+          { label: `NaCl`, structure: rocksalt },
+          { label: `Pd`, structure: palladium },
+        ],
+      },
+    ],
+  ])(`renders bars on a 0-180 degree axis for %s`, async (_name, props) => {
+    const root = await mount_plot(props)
+    expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+    expect(root.querySelectorAll(`path, rect`).length).toBeGreaterThan(0)
+    expect(root.textContent).toContain(`Bond Angle (°)`)
+    expect(root.textContent).toContain(`Count`)
+  })
+
+  // by_triplet is the default and is covered above
+  test.each([`by_structure`, `none`] as SplitMode[])(
+    `split_mode=%s renders without error`,
+    async (split_mode) => {
+      const root = await mount_plot({
+        structures: { NaCl: rocksalt, Pd: palladium },
+        split_mode,
+      })
+      expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+    },
+  )
+
+  test(`normalize=density relabels the value axis`, async () => {
+    const root = await mount_plot({ structures: rocksalt, normalize: `density` })
+    expect(root.textContent).toContain(`Density (1/°)`)
+    expect(root.textContent).not.toContain(`Count`)
+  })
+
+  test.each([
+    [true, `Drag and drop structure files`],
+    [false, `No bond angles to display`],
+  ])(`allow_file_drop=%s shows %s when empty`, async (allow_file_drop, message) => {
+    const root = await mount_plot({ structures: {}, allow_file_drop })
+    expect(root.textContent).toContain(message)
+  })
+
+  // 180 is the inclusive upper bound in resolve_angle_bins, so it must still plot
+  test(`accepts a bin_width of exactly 180`, async () => {
+    const root = await mount_plot({ structures: rocksalt, bin_width: 180 })
+    expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+  })
+
+  // bin_width is a public prop and resolve_angle_bins throws on anything outside (0, 180],
+  // so an unguarded binning derived would take the whole render down with it
+  test.each([0, -2, 500, 180.0001, NaN, Infinity])(
+    `reports bin_width=%s as an error instead of crashing the render`,
+    async (bin_width) => {
+      // the error StatusMessage is a sibling of the mount root, so read the whole container
+      const container = (await mount_plot({ structures: rocksalt, bin_width })).parentElement
+      await tick()
+      expect(container?.textContent).toContain(`bin_width must be a number in (0, 180]`)
+      expect(container?.querySelector(`svg`)).toBeNull()
+    },
+  )
+})
+
+// The mounted plot only shows that bars exist, so the weighting maths is asserted against
+// to_angle_bar_series, the function the component feeds BarPlot. NaCl and Pd have very
+// different angle counts, so an unweighted sum would be dominated by one of them.
+describe(`to_angle_bar_series density weighting`, () => {
+  const BIN_WIDTH = 3
+  const entries = [rocksalt, palladium].map((structure, idx) => ({
+    label: [`NaCl`, `Pd`][idx],
+    data: calc_bond_angle_distribution(structure, { bin_width: BIN_WIDTH }),
+  }))
+  const integral_of = (y_values: readonly number[]): number =>
+    y_values.reduce((sum, value) => sum + value, 0) * BIN_WIDTH
+
+  test.each([`by_triplet`, `none`] as SplitMode[])(
+    `split_mode=%s makes the union of the plotted series integrate to 1`,
+    (split_mode) => {
+      const series = to_angle_bar_series(entries, split_mode, `density`)
+      const total = series.reduce((sum, one) => sum + integral_of(one.y), 0)
+      // ~200 float multiply-accumulates over two structures, so ~1e-15 of drift at most
+      expect(total).toBeCloseTo(1, 12)
+    },
+  )
+
+  test(`split_mode=by_structure gives every structure its own unit-area density`, () => {
+    const series = to_angle_bar_series(entries, `by_structure`, `density`)
+    expect(series).toHaveLength(2)
+    for (const one of series) expect(integral_of(one.y)).toBeCloseTo(1, 12)
+  })
+
+  test(`normalize=counts leaves the raw angle counts untouched`, () => {
+    const series = to_angle_bar_series(entries, `by_structure`, `counts`)
+    expect(series.map((one) => one.y.reduce((sum, value) => sum + value, 0))).toEqual(
+      entries.map((entry) => entry.data.n_angles),
+    )
+  })
+})

@@ -9,6 +9,7 @@
   import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
+  import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
@@ -118,6 +119,7 @@
     hovered = $bindable(false),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
+    msd_pane_open = $bindable(false),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
     ...rest
@@ -153,7 +155,7 @@
       // - 'hover': controls visible on component hover (default)
       // - 'never': controls never visible
       // - object: { mode, hidden, style } for fine-grained control
-      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'view-mode', 'fullscreen'
+      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'view-mode', 'fullscreen'
       show_controls?: ShowControlsProp
       // show/hide the fullscreen button
       fullscreen_toggle?: FullscreenToggleProp
@@ -196,6 +198,8 @@
       controls_open?: boolean
       // bindable: whether the trajectory info pane is currently open
       info_pane_open?: boolean
+      // bindable: whether the MSD / diffusion pane is currently open
+      msd_pane_open?: boolean
       // bindable: top-level wrapper element
       wrapper?: HTMLDivElement
       // bindable: fullscreen state
@@ -1111,7 +1115,8 @@
     controls_open ||
     scatter_controls.open ||
     trajectory_export_open ||
-    info_pane_open}
+    info_pane_open ||
+    msd_pane_open}
   bind:this={wrapper}
   bind:clientWidth={element_size.width}
   bind:clientHeight={element_size.height}
@@ -1309,6 +1314,16 @@
                 {wrapper}
                 filename={current_filename || `trajectory`}
                 on_step_change={go_to_step}
+                pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
+              />
+            {/if}
+            <!-- MSD / diffusion pane. Kept out of display_mode because MSD is plotted
+            against lag time, not frame index, so it cannot share the step-linked plot. -->
+            {#if trajectory && controls_config.visible(`msd-pane`)}
+              <TrajectoryMsdPane
+                {trajectory}
+                raw_data={orig_data}
+                bind:pane_open={msd_pane_open}
                 pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
               />
             {/if}

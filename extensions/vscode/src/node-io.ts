@@ -8,8 +8,8 @@ import { normalize_browser_supported_filename } from '$lib/file-viewer/eligibili
 import {
   detect_compression_format,
   is_browser_decompressible_format,
-  type BrowserCompressionFormat,
 } from '$lib/io/decompress'
+import type { BrowserCompressionFormat } from '$lib/io/decompress'
 import {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,

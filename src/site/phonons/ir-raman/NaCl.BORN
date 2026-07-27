@@ -1,0 +1,10 @@
+# Born effective charges and dielectric tensor for NaCl (mp-22862), PBEsol.
+# Source: PhononDB https://mdr.nims.go.jp/concern/datasets/gf06g7088
+# (index: https://github.com/atztogo/phonondb, DOI 10.48505/nims.4197), read out of
+# phonopy_params.yaml's nac_params. Cubic site symmetry makes both tensors isotropic and
+# the acoustic sum rule Z*(Na) + Z*(Cl) = 0 holds exactly in the source data.
+# Line 1 = NAC unit conversion factor, line 2 = dielectric tensor, then one tensor/atom.
+14.399652
+2.56544675 0.0 0.0 0.0 2.56544675 0.0 0.0 0.0 2.56544675
+1.08875538 0.0 0.0 0.0 1.08875538 0.0 0.0 0.0 1.08875538
+-1.08875538 0.0 0.0 0.0 -1.08875538 0.0 0.0 0.0 -1.08875538

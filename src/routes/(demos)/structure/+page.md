@@ -150,6 +150,104 @@ bond's context menu to update an existing bond order interactively.
 />
 ```
 
+## Selective Dynamics
+
+POSCAR files with a `Selective dynamics` block record a per-axis `T`/`F` flag triple
+for every atom. Pick **Selective Dynamics** under _Atoms → Atom coloring_ to color
+atoms by how constrained they are. The flags are per-axis, so there are three real
+categories, not two: `free` (`T T T`), `partially fixed` (e.g. `T T F`, an atom pinned
+out of plane but free to slide within it) and `fixed` (`F F F`). Sites that never declare
+the property read as `unknown`; anything declared that is not three booleans throws rather
+than being read as unconstrained. The mode is disabled for structures where no site
+declares the property.
+
+Like the other property modes, this feeds the atom legend, so clicking a category hides
+those atoms — a quick way to isolate the relaxing adlayer of a slab.
+
+## Dihedral (Torsion) Measurement
+
+The measurement menu has a third mode next to Distance and Angle. Click exactly four
+atoms and the viewer draws the p1-p2-p3-p4 chain and labels the central bond with the
+**signed** torsion in (-180°, 180°]. The sign follows the IUPAC convention (viewed along
+p2→p3, positive means the front bond p2→p1 rotates clockwise to eclipse the rear bond
+p3→p4), so gauche+ and gauche- conformers, and a molecule versus its mirror image, are
+distinguishable.
+
+Displacements are chained through the minimum image convention, so a torsion whose atoms
+straddle a cell boundary measures the real bonded geometry instead of the angle to a
+distant periodic image. Three collinear consecutive atoms leave the torsion undefined and
+report 0 rather than NaN.
+
+## Zone-Axis Camera
+
+_Camera → Crystallographic View_ points the camera along a crystallographic direction
+while keeping the current viewing distance. Two index conventions are offered because
+they only coincide for cubic cells:
+
+- **Zone axis [uvw]** is a direct-lattice direction, `u·a + v·b + w·c`.
+- **Plane normal (hkl)** needs the reciprocal lattice, `h·b1 + k·b2 + l·b3`.
+
+For a triclinic cell the two can differ by tens of degrees for the same index triple.
+The control is disabled for molecules, which have no lattice. The flight reuses the same
+easing and pole handling as the orientation gizmo's axis handles.
+
+## Comparing Two Structures
+
+Pass a `reference_structure` alongside `structure` to overlay per-atom displacement
+arrows — useful for showing what a relaxation actually moved. Displacements use the
+minimum image convention, so an atom that relaxed across a cell face draws a short arrow
+rather than one spanning the whole box. Sites pair up by index, so a mismatched atom count
+or a reordered species list fails loudly instead of reporting a confident RMSD for atoms
+that were never the same atom.
+
+Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the
+atom spacing (relaxations are usually smaller than an atomic radius, so true-length arrows
+would sit entirely inside their own atoms). The true numbers are reported instead: the
+controls pane shows the RMSD and the largest single displacement, and `Structure` exposes
+the RMSD through the bindable `displacement_rmsd` prop.
+
+```svelte example
+<script lang="ts">
+  import type { AnyStructure, Vec3 } from 'matterviz'
+  import { format_num, Structure } from 'matterviz'
+  import { structures } from '$site/structures'
+
+  const relaxed = structures.find(
+    (struct) => `lattice` in struct && struct.sites.length > 3 && struct.sites.length < 30,
+  ) as AnyStructure | undefined
+
+  // Stand-in for an unrelaxed input geometry: a smooth per-atom offset, deliberately large
+  // enough that some atoms end up on the far side of a cell face.
+  const unrelaxed: AnyStructure | undefined = relaxed && {
+    ...relaxed,
+    sites: relaxed.sites.map((site, site_idx) => ({
+      ...site,
+      xyz: site.xyz.map(
+        (coord, axis) => coord + 0.35 * Math.sin(1.7 * site_idx + 2.1 * axis),
+      ) as Vec3,
+    })),
+  }
+
+  let displacement_rmsd = $state<number | undefined>()
+</script>
+
+{#if relaxed && unrelaxed}
+  <p>
+    RMSD vs reference:
+    <strong>
+      {displacement_rmsd === undefined ? `-` : format_num(displacement_rmsd, `.4~f`)} Å
+    </strong>
+  </p>
+  <Structure
+    structure={relaxed}
+    reference_structure={unrelaxed}
+    bind:displacement_rmsd
+    show_controls="always"
+    style="height: 500px"
+  />
+{/if}
+```
+
 ## Different Crystal Systems
 
 Showcasing structures with different crystal systems.

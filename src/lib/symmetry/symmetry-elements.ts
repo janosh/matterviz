@@ -162,9 +162,6 @@ function invariant_projector(mat: Matrix3x3): { proj: Matrix3x3; order: number }
   throw new Error(`Matrix is not of finite crystallographic order`)
 }
 
-const gcd = (val_a: number, val_b: number): number =>
-  val_b === 0 ? val_a : gcd(val_b, val_a % val_b)
-
 // Extract the (1D) invariant axis of a proper rotation as a reduced integer vector with
 // canonical sign (first nonzero component positive). proj must have rank 1.
 function axis_from_projector(proj: Matrix3x3, order: number): Vec3 | null {
@@ -181,7 +178,7 @@ function axis_from_projector(proj: Matrix3x3, order: number): Vec3 | null {
     }
   }
   if (!best) return null
-  const divisor = best.reduce((acc, val) => gcd(acc, Math.abs(val)), 0)
+  const divisor = math.gcd_all(best)
   let axis = best.map((val) => val / divisor) as Vec3
   const first_nonzero = axis.find((val) => val !== 0) ?? 1
   // normalize -0 to 0 when flipping to canonical sign (first nonzero positive)
@@ -292,6 +289,68 @@ type RotationInfo = {
   period: number
   // invariant lattice translations (for glide reduction)
   invariant_candidates: Vec3[]
+  // Plane-equation normal for mirrors/glides, as an integer COVECTOR: the plane is
+  // {x : normal_eq·x = const}. This is the −1 eigenvector of Wᵀ, not of W. `axis` above is
+  // the −1 eigenvector of W, i.e. the normal DIRECTION in direct space; the two are
+  // parallel only when the metric leaves `axis` an eigenvector (essentially cubic), so
+  // keying a plane offset off `axis` gets the wrong period. Null for non-planar kinds.
+  normal_eq: Vec3 | null
+  // Two integer covectors spanning the annihilator of `axis`, used to key axis lines. See
+  // line_covectors. Null for inversion centers (no axis).
+  covectors: [Vec3, Vec3] | null
+}
+
+// Two integer covectors n₁, n₂ that annihilate `axis` and generate the whole annihilator
+// lattice {n ∈ ℤ³ : n·axis = 0}. Together they coordinatize a line's position modulo
+// lattice translations: nᵢ·x is constant along the line (since nᵢ·axis = 0) and shifts by
+// an integer under x → x + lattice vector, so (n₁·x mod 1, n₂·x mod 1) is exactly the
+// lattice-invariant identity of the line. A perpendicular foot wrapped mod 1 does NOT
+// work here: it is not lattice-covariant, so parallel lines one translation apart key
+// differently.
+//
+// Found by search rather than an extended-gcd construction: crystallographic axes have
+// tiny components, the result is cached per axis, and cross(n₁,n₂) = ±axis is a cheap
+// exact certificate that the pair generates the annihilator (not merely two independent
+// members of it).
+const covector_cache = new Map<string, [Vec3, Vec3]>()
+function line_covectors(axis: Vec3): [Vec3, Vec3] {
+  const cache_key = axis.join(`,`)
+  const cached = covector_cache.get(cache_key)
+  if (cached) return cached
+
+  const candidates: Vec3[] = []
+  const reach = 4 // symmetry axes are tiny integer vectors; their annihilators are too
+  for (let n_x = -reach; n_x <= reach; n_x++) {
+    for (let n_y = -reach; n_y <= reach; n_y++) {
+      for (let n_z = -reach; n_z <= reach; n_z++) {
+        if (n_x === 0 && n_y === 0 && n_z === 0) continue
+        if (n_x * axis[0] + n_y * axis[1] + n_z * axis[2] !== 0) continue
+        candidates.push([n_x, n_y, n_z])
+      }
+    }
+  }
+  // shortest first, so the key is built from the smallest representatives
+  candidates.sort((vec_a, vec_b) => math.dot(vec_a, vec_a) - math.dot(vec_b, vec_b))
+  for (const first of candidates) {
+    for (const second of candidates) {
+      const cross: Vec3 = [
+        first[1] * second[2] - first[2] * second[1],
+        first[2] * second[0] - first[0] * second[2],
+        first[0] * second[1] - first[1] * second[0],
+      ]
+      // cross === ±axis exactly. Testing each sign as a whole rules out a mixed-sign
+      // match like (1, -1, 0) against (1, 1, 0), which is not a scalar multiple.
+      const is_multiple = (sign: number) => cross.every((val, idx) => val === sign * axis[idx])
+      if (is_multiple(1) || is_multiple(-1)) {
+        const pair: [Vec3, Vec3] = [first, second]
+        covector_cache.set(cache_key, pair)
+        return pair
+      }
+    }
+  }
+  throw new Error(
+    `No covector basis found for axis ${cache_key}; expected a primitive integer axis`,
+  )
 }
 
 // Translation-independent analysis of a rotation matrix. Returns null for the identity
@@ -319,6 +378,8 @@ function build_rotation_info(
       axis_sq: 0,
       period: 1,
       invariant_candidates: [],
+      normal_eq: null,
+      covectors: null,
     }
   }
 
@@ -353,6 +414,8 @@ function build_rotation_info(
       axis_sq,
       period,
       invariant_candidates: [],
+      normal_eq: null,
+      covectors: line_covectors(axis),
     }
   }
 
@@ -364,6 +427,13 @@ function build_rotation_info(
   if (!axis) throw new Error(`Failed to extract improper-operation axis`)
 
   if (tr === 1) {
+    // Plane-equation normal: the −1 eigenvector of Wᵀ, obtained as the +1 eigenvector of
+    // −Wᵀ exactly the way `axis` above is the +1 eigenvector of −W. Integer and primitive
+    // like `axis`, but a covector — see the normal_eq field docs for why they differ.
+    const transposed = math.transpose_3x3_matrix(proper_part)
+    const { proj: t_proj, order: t_order } = invariant_projector(transposed)
+    const normal_eq = axis_from_projector(t_proj, t_order)
+    if (!normal_eq) throw new Error(`Failed to extract mirror plane-equation normal`)
     return {
       mat,
       proj,
@@ -374,6 +444,8 @@ function build_rotation_info(
       axis_sq: math.dot(axis, axis),
       period: 1,
       invariant_candidates: invariant_translations(mat, centerings),
+      normal_eq,
+      covectors: null,
     }
   }
 
@@ -390,6 +462,8 @@ function build_rotation_info(
     axis_sq: math.dot(axis, axis),
     period: 1,
     invariant_candidates: [],
+    normal_eq: null,
+    covectors: line_covectors(axis),
   }
 }
 
@@ -461,20 +535,25 @@ export function classify_symmetry_op(
 //   integer since the normal is an integer vector
 // - axis lines: (direction, line intercept x₀ − λ·u wrapped mod 1) — wrapping merges
 //   lattice-equivalent parallel lines
-function element_locus_key(elem: ClassifiedOperation): string {
+function element_locus_key(elem: ClassifiedOperation, info: RotationInfo): string {
   const fmt = (val: number) => (Math.abs(val) < 1e-4 ? 0 : val).toFixed(4)
+  // Fractional coordinate of an integer covector against the element point, mod 1. Both
+  // operands are lattice quantities, so a lattice translation shifts this by an integer
+  // and the wrapped value is invariant — which is what "modulo lattice translations" needs.
+  const covector_coord = (covector: Vec3) => {
+    const raw = math.dot(elem.point, covector)
+    const wrapped = raw - Math.floor(raw + 1e-6)
+    return fmt(wrapped >= 1 - 1e-4 ? 0 : wrapped)
+  }
   if (elem.axis === null) return `center|${elem.point.map(fmt).join(`,`)}`
   const axis_key = elem.axis.join(`,`)
   if (elem.kind === `mirror` || elem.kind === `glide`) {
-    const offset = math.dot(elem.point, elem.axis)
-    const wrapped = offset - Math.floor(offset + 1e-6)
-    return `plane|${axis_key}|${fmt(wrapped >= 1 - 1e-4 ? 0 : wrapped)}`
+    if (!info.normal_eq) throw new Error(`Plane element has no plane-equation normal`)
+    return `plane|${axis_key}|${covector_coord(info.normal_eq)}`
   }
-  const lambda = math.dot(elem.point, elem.axis) / math.dot(elem.axis, elem.axis)
-  const intercept = wrap_point(
-    math.subtract(elem.point, elem.axis.map((val) => val * lambda) as Vec3),
-  )
-  return `line|${axis_key}|${intercept.map(fmt).join(`,`)}`
+  if (!info.covectors) throw new Error(`Axis element has no covector basis`)
+  const [first, second] = info.covectors
+  return `line|${axis_key}|${covector_coord(first)},${covector_coord(second)}`
 }
 
 // Derive all distinct symmetry elements (modulo lattice translations) from a list of
@@ -519,7 +598,7 @@ export function symmetry_elements_from_ops(
         for (let dz = 0; dz <= 1; dz++) {
           const shifted: Vec3 = [translation[0] + dx, translation[1] + dy, translation[2] + dz]
           const elem = classify_with_rotation_info(info, shifted)
-          const key = `${elem.kind}|${elem.label}|${element_locus_key(elem)}`
+          const key = `${elem.kind}|${elem.label}|${element_locus_key(elem, info)}`
           if (!seen.has(key)) seen.set(key, elem)
         }
       }

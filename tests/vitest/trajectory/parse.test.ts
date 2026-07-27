@@ -191,57 +191,7 @@ describe(`Trajectory File Detection`, () => {
 
 describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
   describe(`is_trajectory_file with content parameter`, () => {
-    test.each([
-      [
-        `single-frame.xyz`,
-        `3\ncomment line\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`,
-        false,
-      ],
-      [
-        `molecule.extxyz`,
-        `5\nenergy=-10.5\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\nH 0.0 0.0 1.0\nH -1.0 0.0 0.0`,
-        false,
-      ],
-      [`single-frame-lattice.extxyz`, `1\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\n`, false],
-      [
-        `trajectory.xyz`,
-        `3\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`,
-        true,
-      ],
-      [
-        `md-simulation.extxyz`,
-        `2\nstep=0 energy=-5.2\nC 0.0 0.0 0.0\nO 1.2 0.0 0.0\n2\nstep=1 energy=-5.1\nC 0.05 0.0 0.0\nO 1.15 0.0 0.0`,
-        true,
-      ],
-      [
-        `relaxation.xyz`,
-        `4\nProperties=species:S:1:pos:R:3 energy=-12.5\nSi 0.0 0.0 0.0\nSi 2.7 0.0 0.0\nO 1.35 0.0 0.0\nO 1.35 1.5 0.0\n4\nProperties=species:S:1:pos:R:3 energy=-12.8\nSi 0.05 0.0 0.0\nSi 2.65 0.0 0.0\nO 1.35 0.0 0.1\nO 1.35 1.45 0.0`,
-        true,
-      ],
-      [
-        `trajectory-with-gaps.xyz`,
-        `\n2\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\n\n2\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\n`,
-        true,
-      ],
-      [`two-frames.xyz`, `1\nfirst\nH 0.0 0.0 0.0\n1\nsecond\nH 0.1 0.0 0.0`, true],
-      [
-        `crystal-trajectory.extxyz`,
-        `2\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nSi 0.0 0.0 0.0\nSi 2.5 2.5 2.5\n2\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nSi 0.05 0.0 0.0\nSi 2.45 2.5 2.5`,
-        true,
-      ],
-      [
-        `forces-trajectory.extxyz`,
-        `2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 -0.1 0.0 0.0\n2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.05 0.0 0.0 0.08 0.0 0.0\nH 1.05 0.0 0.0 -0.08 0.0 0.0`,
-        true,
-      ],
-      [
-        `metadata-trajectory.xyz`,
-        `3\nenergy=-15.2 temperature=300 pressure=1.0\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-15.1 temperature=305 pressure=1.1\nC 0.01 0.0 0.0\nH 1.01 0.0 0.0\nH 0.01 1.0 0.0`,
-        true,
-      ],
-      [
-        `mixed.xyz`,
-        `
+    const mixed_xyz = `
         invalid
         comment
         H 0.0 0.0 0.0
@@ -261,21 +211,54 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
         H 0.1 0.0 0.0
         H 1.1 0.0 0.0
         H 0.1 1.0 0.0
-      `,
-        true,
-      ],
+      `
+    // oxfmt-ignore
+    test.each([
+      [`single-frame.xyz`,
+        `3\ncomment line\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`, false],
+      [`molecule.extxyz`,
+        `5\nenergy=-10.5\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\nH 0.0 0.0 1.0\nH -1.0 0.0 0.0`,
+        false],
+      [`single-frame-lattice.extxyz`, `1\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\n`, false],
+      [`trajectory.xyz`,
+        `3\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`,
+        true],
+      [`md-simulation.extxyz`,
+        `2\nstep=0 energy=-5.2\nC 0.0 0.0 0.0\nO 1.2 0.0 0.0\n2\nstep=1 energy=-5.1\nC 0.05 0.0 0.0\nO 1.15 0.0 0.0`,
+        true],
+      [`relaxation.xyz`,
+        `4\nProperties=species:S:1:pos:R:3 energy=-12.5\nSi 0.0 0.0 0.0\nSi 2.7 0.0 0.0\nO 1.35 0.0 0.0\nO 1.35 1.5 0.0\n4\nProperties=species:S:1:pos:R:3 energy=-12.8\nSi 0.05 0.0 0.0\nSi 2.65 0.0 0.0\nO 1.35 0.0 0.1\nO 1.35 1.45 0.0`,
+        true],
+      [`trajectory-with-gaps.xyz`,
+        `\n2\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\n\n2\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\n`,
+        true],
+      [`two-frames.xyz`, `1\nfirst\nH 0.0 0.0 0.0\n1\nsecond\nH 0.1 0.0 0.0`, true],
+      [`crystal-trajectory.extxyz`,
+        `2\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nSi 0.0 0.0 0.0\nSi 2.5 2.5 2.5\n2\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nSi 0.05 0.0 0.0\nSi 2.45 2.5 2.5`,
+        true],
+      [`forces-trajectory.extxyz`,
+        `2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 -0.1 0.0 0.0\n2\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.05 0.0 0.0 0.08 0.0 0.0\nH 1.05 0.0 0.0 -0.08 0.0 0.0`,
+        true],
+      [`metadata-trajectory.xyz`,
+        `3\nenergy=-15.2 temperature=300 pressure=1.0\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-15.1 temperature=305 pressure=1.1\nC 0.01 0.0 0.0\nH 1.01 0.0 0.0\nH 0.01 1.0 0.0`,
+        true],
+      [`mixed.xyz`, mixed_xyz, true],
       [`malformed.xyz`, `invalid\nno atom count\nH 0.0 0.0 0.0`, false],
       [`broken-count.xyz`, `not_a_number\ncomment\nH 0.0 0.0 0.0`, false],
       [`incomplete.xyz`, `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`, false],
       [`empty.xyz`, ``, false],
       [`whitespace.xyz`, `   \n  \n  `, false],
       [`bad-coords.xyz`, `2\ntest\nH not_a_number 0.0 0.0\nH 1.0 invalid 0.0`, false],
-      [
-        `negative-count.xyz`,
+      [`negative-count.xyz`,
         `-1\nshould be skipped\nH 0.0 0.0 0.0\n2\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`,
-        false,
-      ],
+        false],
       [`zero-count.xyz`, `0\nempty frame\n\n1\nvalid frame\nH 0.0 0.0 0.0`, false],
+      // md/nvt/nve.data are common LAMMPS *data* (single-structure) names: the trajectory
+      // keyword in the name must not outrank a file that plainly is a LAMMPS data file
+      [`md.data`,
+        `# LAMMPS data\n\n1 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`,
+        false],
+      [`md.data`, `step energy\n0 -1.5\n1 -1.6\n`, true],
     ])(`should detect "%s" as trajectory: %s`, (filename, content, expected) => {
       expect(is_trajectory_file(filename, content)).toBe(expected)
     })
@@ -433,6 +416,52 @@ describe(`LAMMPS Trajectory Format`, () => {
     expect(trajectory.frames[0].structure.sites).toHaveLength(3)
   })
 
+  // xu/yu/zu columns are already unwrapped by LAMMPS, so consumers must skip the
+  // minimum image convention for them. xs/ys/zs and x/y/z are both wrapped into the box.
+  // oxfmt-ignore
+  it.each([
+    { name: `xu yu zu fixture`, file: `mdanalysis-chain-dump.lammpstrj`, expected: true },
+    { name: `x y z fixture`, file: `mdanalysis-additional-columns.lammpstrj`, expected: false },
+  ])(`flags coords_unwrapped=$expected for the $name`, async ({ file, expected }) => {
+    const traj = await parse_trajectory_data(read_test_file(file), file)
+    expect(traj.frames.length).toBeGreaterThan(0)
+    for (const frame of traj.frames) expect(frame.metadata?.coords_unwrapped).toBe(expected)
+  })
+
+  // Coordinate values are 0.25, 0.5, 0.75, ... in column order, so the expected Cartesian
+  // position also pins which triple was picked and whether the 10 A cell was applied.
+  it.each([
+    { cols: `id type xu yu zu`, expected: true, xyz: [0.25, 0.5, 0.75] },
+    { cols: `id type xs ys zs`, expected: false, xyz: [2.5, 5, 7.5] },
+    { cols: `id type x y z`, expected: false, xyz: [0.25, 0.5, 0.75] },
+    // Scaled AND unwrapped: fractional coords that LAMMPS already un-imaged
+    { cols: `id type xsu ysu zsu`, expected: true, xyz: [2.5, 5, 7.5] },
+    // Unwrapped columns win over wrapped ones when a dump carries both
+    { cols: `id type x y z xu yu zu`, expected: true, xyz: [1, 1.25, 1.5] },
+    { cols: `id type xs ys zs xsu ysu zsu`, expected: true, xyz: [10, 12.5, 15] },
+  ])(
+    `flags coords_unwrapped=$expected for columns "$cols"`,
+    async ({ cols, expected, xyz }) => {
+      const n_coords = cols.split(/\s+/).length - 2
+      const coords = Array.from({ length: n_coords }, (_, idx) => 0.25 * (idx + 1)).join(` `)
+      const content = [
+        `ITEM: TIMESTEP`,
+        `0`,
+        `ITEM: NUMBER OF ATOMS`,
+        `1`,
+        `ITEM: BOX BOUNDS pp pp pp`,
+        `0.0 10.0`,
+        `0.0 10.0`,
+        `0.0 10.0`,
+        `ITEM: ATOMS ${cols}`,
+        `1 1 ${coords}`,
+      ].join(`\n`)
+      const traj = await parse_trajectory_data(content, `test.lammpstrj`)
+      expect(traj.frames[0].metadata?.coords_unwrapped).toBe(expected)
+      expect(traj.frames[0].structure.sites[0].xyz).toEqual(xyz)
+    },
+  )
+
   it(`should reject invalid LAMMPS content`, async () => {
     const invalid_content = `This is not a LAMMPS file`
     await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects.toThrow(
@@ -460,27 +489,17 @@ ITEM: ATOMS id type x y z\n1 1 5.0 5.0 5.0`
       return structure.lattice.matrix
     }
 
+    // oxfmt-ignore
     it.each<[string, string[], { xy: number; xz: number; yz: number; diag?: number[] }]>([
-      [
-        `positive tilts`,
-        [`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`],
-        { xy: 2.0, xz: 1.0, yz: 0.5 },
-      ],
-      [
-        `bounding box conversion with large tilts`,
-        [`-3.0 13.0 3.0`, `-1.0 11.0 2.0`, `0.0 10.0 1.0`],
-        { xy: 3.0, xz: 2.0, yz: 1.0 },
-      ],
-      [
-        `negative tilts`,
-        [`-2.5 12.5 -2.5`, `-1.5 11.5 -1.5`, `0.0 10.0 -0.5`],
-        { xy: -2.5, xz: -1.5, yz: -0.5 },
-      ],
-      [
-        `zero tilts (degenerate triclinic = orthogonal)`,
+      [`positive tilts`, [`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`],
+        { xy: 2.0, xz: 1.0, yz: 0.5 }],
+      [`bounding box conversion with large tilts`,
+        [`-3.0 13.0 3.0`, `-1.0 11.0 2.0`, `0.0 10.0 1.0`], { xy: 3.0, xz: 2.0, yz: 1.0 }],
+      [`negative tilts`, [`-2.5 12.5 -2.5`, `-1.5 11.5 -1.5`, `0.0 10.0 -0.5`],
+        { xy: -2.5, xz: -1.5, yz: -0.5 }],
+      [`zero tilts (degenerate triclinic = orthogonal)`,
         [`0.0 10.0 0.0`, `0.0 8.0 0.0`, `0.0 6.0 0.0`],
-        { xy: 0, xz: 0, yz: 0, diag: [10.0, 8.0, 6.0] },
-      ],
+        { xy: 0, xz: 0, yz: 0, diag: [10.0, 8.0, 6.0] }],
     ])(`parses tilt factors: %s`, async (_name, bounds, { xy, xz, yz, diag }) => {
       const trajectory = await parse_trajectory_data(triclinic_frame(bounds), `test.lammpstrj`)
       expect(trajectory.frames).toHaveLength(1)
@@ -570,19 +589,12 @@ Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}
 Si 0 0 0
 `
 
+  // oxfmt-ignore
   it.each([
-    [
-      `multi-frame`,
+    [`multi-frame`,
       `3\nenergy=-10.5\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`,
-      `xyz_trajectory`,
-      2,
-    ],
-    [
-      `single-frame`,
-      `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`,
-      `single_xyz`,
-      1,
-    ],
+      `xyz_trajectory`, 2],
+    [`single-frame`, `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`, `single_xyz`, 1],
   ])(`should parse %s XYZ`, async (_, content, expected_format, expected_frames) => {
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
     expect(trajectory.metadata?.source_format).toBe(expected_format)
@@ -651,26 +663,15 @@ Si 0 0 0
     warn.mockRestore()
   })
 
+  // oxfmt-ignore
   it.each<[string, string, number[][]]>([
     // forces directly after pos, after momenta, and after a scalar column
-    [
-      `species:S:1:pos:R:3:forces:R:3`,
-      `H 0 0 0 0.1 0 0\nH 1 0 0 0 0 0.3`,
-      [
-        [0.1, 0, 0],
-        [0, 0, 0.3],
-      ],
-    ],
-    [
-      `species:S:1:pos:R:3:momenta:R:3:forces:R:3`,
-      `H 0 0 0 9.9 9.9 9.9 0.1 0.2 0.3`,
-      [[0.1, 0.2, 0.3]],
-    ],
-    [
-      `species:S:1:pos:R:3:node_energy:R:1:forces:R:3`,
-      `H 0 0 0 9.9 0.1 0.2 0.3`,
-      [[0.1, 0.2, 0.3]],
-    ],
+    [`species:S:1:pos:R:3:forces:R:3`, `H 0 0 0 0.1 0 0\nH 1 0 0 0 0 0.3`,
+      [[0.1, 0, 0], [0, 0, 0.3]]],
+    [`species:S:1:pos:R:3:momenta:R:3:forces:R:3`, `H 0 0 0 9.9 9.9 9.9 0.1 0.2 0.3`,
+      [[0.1, 0.2, 0.3]]],
+    [`species:S:1:pos:R:3:node_energy:R:1:forces:R:3`, `H 0 0 0 9.9 0.1 0.2 0.3`,
+      [[0.1, 0.2, 0.3]]],
   ])(
     `should read forces at Properties column offset: %s`,
     async (properties, atom_lines, expected_forces) => {
@@ -703,15 +704,13 @@ Si 0 0 0
   )
 
   const valid_frame = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+  // oxfmt-ignore
   it.each([
     [`invalid text count`, `invalid\ncomment\nH 0.0 0.0 0.0\n${valid_frame}`, 1],
     [`negative count`, `-1\ncomment\nH 0.0 0.0 0.0\n${valid_frame}`, 1],
     [`zero count`, `0\ncomment\n\n${valid_frame}`, 1],
-    [
-      `empty lines and malformed frames`,
-      `\n\n${valid_frame}\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n${valid_frame}`,
-      2,
-    ],
+    [`empty lines and malformed frames`,
+      `\n\n${valid_frame}\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n${valid_frame}`, 2],
   ])(`skips %s and parses valid frames`, async (_name, content, expected_frames) => {
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
     expect(trajectory.frames).toHaveLength(expected_frames)
@@ -898,13 +897,12 @@ describe(`JSON Formats`, () => {
     }
   })
 
+  // oxfmt-ignore
   it.each([
     [`array`, JSON.stringify([{ structure: get_dummy_structure(), step: 0 }]), `array`],
-    [
-      `object_with_frames`,
+    [`object_with_frames`,
       JSON.stringify({ frames: [{ structure: get_dummy_structure(), step: 0 }] }),
-      `object_with_frames`,
-    ],
+      `object_with_frames`],
     [`single_structure`, JSON.stringify(get_dummy_structure()), `single_structure`],
   ])(`should parse %s format`, async (_, content, expected_format) => {
     const trajectory = await parse_trajectory_data(content, `test.json`)
@@ -972,6 +970,24 @@ ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
       expect(trajectory.metadata?.source_format).toBe(expected)
     })
 
+    // ASE always writes the calculator as a nested ULM item, so its key carries a
+    // trailing dot. Reading only the undotted name dropped every relaxation's energy.
+    it(`reads calculator energies ASE wrote under the dotted key`, async () => {
+      const trajectory = await parse_trajectory_data(
+        read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`),
+        `ase-LiMnO2-chgnet-relax.traj`,
+      )
+      const energies = trajectory.frames.map((frame) => frame.metadata?.energy)
+      expect(energies).toEqual([-58.97273254394531, -58.59364700317383])
+      // `forces.`/`magmoms.` are ndarray pointers, not values; metadata must not
+      // carry them as unresolved `{ndarray}` objects.
+      for (const frame of trajectory.frames) {
+        for (const [key, value] of Object.entries(frame.metadata ?? {})) {
+          expect(`${key}: ${JSON.stringify(value)}`).not.toMatch(/ndarray/)
+        }
+      }
+    })
+
     it.each([
       [`data.json`, `${single_frame}\n${single_frame}`, `Unsupported text format`],
       [undefined, `not a trajectory`, `Unsupported text format`],
@@ -986,7 +1002,6 @@ ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
 
 describe(`Unsupported Formats`, () => {
   it.each([
-    [`test.dump`, `LAMMPS binary dump`, false],
     [`test.nc`, `NetCDF`, false],
     [`test.dcd`, `DCD`, false],
     [`test.lammpstrj.bz2`, `BZ2`, true],
@@ -996,6 +1011,10 @@ describe(`Unsupported Formats`, () => {
     const message = get_unsupported_format_message(filename, ``)
     expect(message).toContain(expected)
     if (compression) expect(message).toContain(`compression not supported`)
+  })
+
+  it(`accepts a text LAMMPS dump, which both the structure and frame parsers read`, () => {
+    expect(get_unsupported_format_message(`md.dump`, `ITEM: TIMESTEP\n0\n`)).toBeNull()
   })
 
   it(`should detect binary content as unsupported`, () => {

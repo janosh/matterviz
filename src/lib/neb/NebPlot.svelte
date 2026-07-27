@@ -1,0 +1,221 @@
+<script lang="ts">
+  // Energy profile of one or more reaction paths, with the barrier annotated and the
+  // fitted saddle drawn distinctly from the highest computed image.
+  import { PLOT_COLORS } from '$lib/colors'
+  import { format_num } from '$lib/labels'
+  import type { DataSeries } from '$lib/plot'
+  import { ScatterPlot } from '$lib/plot'
+  import type { ComponentProps } from 'svelte'
+  import type { EnergyReference, ReactionPathInput } from './index'
+  import {
+    nearest_image_idx,
+    normalize_paths,
+    path_energy_unit,
+    path_profile,
+  } from './reaction-path'
+  import type { PathSplineOptions } from './reaction-path'
+
+  // Metadata carried by every image point so hover/click can map back to an image
+  type PointMeta = { path_key: string; image_idx: number }
+  // Presentation attributes spread onto the shared `seg` line snippet below
+  type SegAttrs = Record<string, string | number>
+  // ScatterPlot's metadata generic must stay mutually assignable with Record<string, unknown>,
+  // so the plotted variant has optional fields and is narrowed before use. Spline series carry
+  // no metadata at all, so the optionality is real, not just a type-level concession.
+  type PlotPointMeta = Partial<PointMeta> & Record<string, unknown>
+
+  let {
+    paths,
+    // One object for the coordinate mode, metric and spline settings, so a parent that
+    // also analyses the same paths cannot end up measuring them a different way.
+    coord_options = {},
+    energy_reference = `initial`,
+    show_spline = true,
+    annotate_barrier = true,
+    active_path_key = $bindable(``),
+    active_image_idx = $bindable(0),
+    on_image_change,
+    x_axis = {},
+    y_axis = {},
+    ...rest
+  }: {
+    paths: ReactionPathInput
+    coord_options?: PathSplineOptions
+    energy_reference?: EnergyReference
+    show_spline?: boolean
+    annotate_barrier?: boolean
+    active_path_key?: string
+    active_image_idx?: number
+    on_image_change?: (payload: PointMeta) => void
+    x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
+    y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
+  } & Omit<ComponentProps<typeof ScatterPlot>, `series` | `x_axis` | `y_axis`> = $props()
+
+  const named_paths = $derived(normalize_paths(paths))
+
+  // Everything the plot needs per path, recomputed only when inputs or modes change
+  const profiles = $derived(
+    named_paths.map(({ key, path }, path_idx) => {
+      const profile = path_profile(path, coord_options)
+      const offset = energy_reference === `initial` ? path.images[0].energy : 0
+      return {
+        ...profile,
+        key,
+        path,
+        energies: profile.energies.map((energy) => energy - offset),
+        offset,
+        color: PLOT_COLORS[path_idx % PLOT_COLORS.length],
+      }
+    }),
+  )
+
+  const active = $derived(
+    profiles.find((profile) => profile.key === active_path_key) ?? profiles[0],
+  )
+  const energy_unit = $derived(path_energy_unit(active.path))
+  const max_image_idx = $derived(active.path.images.length - 1)
+  const clamped_idx = $derived(Math.min(Math.max(active_image_idx, 0), max_image_idx))
+
+  const select_image = (path_key: string, image_idx: number) => {
+    active_path_key = path_key
+    active_image_idx = image_idx
+    on_image_change?.({ path_key, image_idx })
+  }
+
+  const series = $derived<DataSeries<PlotPointMeta>[]>(
+    profiles.flatMap(({ key, color, coords, energies, spline, offset }) => {
+      const points: DataSeries<PlotPointMeta> = {
+        id: `${key}-images`,
+        x: coords,
+        y: energies,
+        label: key,
+        markers: show_spline ? `points` : `line+points`,
+        metadata: energies.map((_energy, image_idx) => ({ path_key: key, image_idx })),
+        point_style: { fill: color, radius: key === active.key ? 6 : 4 },
+        line_style: { stroke: color, stroke_width: 2 },
+        unit: energy_unit,
+      }
+      if (!show_spline) return [points]
+      const curve: DataSeries<PlotPointMeta> = {
+        id: `${key}-spline`,
+        x: spline.coords,
+        y: spline.energies.map((energy) => energy - offset),
+        label: `${key} (${spline.method})`,
+        markers: `line`,
+        line_style: { stroke: color, stroke_width: 1.5, curve: `linear` },
+      }
+      return [curve, points]
+    }),
+  )
+
+  const x_label = $derived(
+    coord_options.mode === `image_index` ? `Image index` : `Reaction coordinate (Å)`,
+  )
+  const y_label = $derived(
+    energy_reference === `initial`
+      ? `Energy relative to initial state (${energy_unit})`
+      : `Energy (${energy_unit})`,
+  )
+
+  const current_coord = $derived(active.coords[clamped_idx])
+  const IS_TS_FS_RULE: SegAttrs = {
+    'stroke-width': 0.75,
+    'stroke-dasharray': `4 4`,
+    opacity: 0.55,
+  }
+
+  const handle_change = (data: { x: number; metadata?: PlotPointMeta | null } | null) => {
+    if (!data) return
+    const { path_key, image_idx } = data.metadata ?? {}
+    if (path_key !== undefined && image_idx !== undefined) {
+      return select_image(path_key, image_idx)
+    }
+    // Spline points carry no metadata; map the hovered coordinate to the nearest image
+    select_image(active.key, nearest_image_idx(active.coords, data.x))
+  }
+</script>
+
+<ScatterPlot
+  {...rest}
+  {series}
+  x_axis={{ label: x_label, ...x_axis }}
+  y_axis={{ label: y_label, ...y_axis }}
+  current_x_value={current_coord}
+  change={handle_change}
+  on_point_click={(event) => handle_change({ x: event.x, metadata: event.metadata })}
+>
+  {#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad })}
+    {@const left = pad.l}
+    {@const right = width - pad.r}
+    {@const top = pad.t}
+    {@const bottom = height - pad.b}
+    {@const in_x = (val: number) => Number.isFinite(val) && val >= left && val <= right}
+    {@const in_y = (val: number) => Number.isFinite(val) && val >= top && val <= bottom}
+    {#snippet seg(xy: [number, number, number, number], extra: SegAttrs)}
+      <line x1={xy[0]} y1={xy[1]} x2={xy[2]} y2={xy[3]} stroke={active.color} {...extra} />
+    {/snippet}
+    <!-- active image marker: a full-height rule so the 3D view and plot stay tied together -->
+    {@const marker_x = x_scale_fn(current_coord)}
+    {#if in_x(marker_x)}
+      {@render seg([marker_x, top, marker_x, bottom], {
+        stroke: `var(--scatter-current-frame-color, #ff6b35)`,
+        'stroke-width': 1,
+        'stroke-dasharray': `2 3`,
+        opacity: 0.7,
+      })}
+    {/if}
+    {#if annotate_barrier}
+      <!-- barrier geometry in data coordinates; `offset` puts it on the plotted y axis -->
+      {@const { analysis, spline, offset } = active}
+      {@const y_initial = y_scale_fn(analysis.initial_energy - offset)}
+      {@const y_ts = y_scale_fn(analysis.ts_energy - offset)}
+      {@const y_final = y_scale_fn(analysis.final_energy - offset)}
+      {@const arrow_x = Math.min(x_scale_fn(analysis.ts_coordinate) + 14, right - 4)}
+      <!-- reference rules at the initial, transition and final state energies -->
+      {#each [y_initial, y_ts, y_final] as y_pos, rule_idx (rule_idx)}
+        {#if in_y(y_pos)}{@render seg([left, y_pos, right, y_pos], IS_TS_FS_RULE)}{/if}
+      {/each}
+      {#if in_y(y_initial) && in_y(y_ts) && in_x(arrow_x)}
+        {@render seg([arrow_x, y_initial, arrow_x, y_ts], { 'stroke-width': 1.25 })}
+        {#each [[y_initial, 1], [y_ts, -1]] as const as [y_tip, dir] (dir)}
+          <path
+            d="M{arrow_x - 4} {y_tip - 5 * dir} L{arrow_x} {y_tip} L{arrow_x + 4} {y_tip -
+              5 * dir}"
+            fill="none"
+            stroke={active.color}
+            stroke-width="1.25"
+          />
+        {/each}
+        <text
+          x={arrow_x + 6}
+          y={(y_initial + y_ts) / 2}
+          fill={active.color}
+          font-size="0.8em"
+          dominant-baseline="middle"
+        >
+          Ea = {format_num(analysis.forward_barrier, `.3~`)}
+          {energy_unit}
+        </text>
+      {/if}
+      <!-- fitted saddle: a cross, never a data point, since no image was computed there -->
+      {@const fit_x = x_scale_fn(spline.fitted_max.coord)}
+      {@const fit_y = y_scale_fn(spline.fitted_max.energy - offset)}
+      {#if in_x(fit_x) && in_y(fit_y)}
+        {#each [[-5, -5, 5, 5], [-5, 5, 5, -5]] as const as [dx1, dy1, dx2, dy2] (dx1 + dy1)}
+          {@render seg([fit_x + dx1, fit_y + dy1, fit_x + dx2, fit_y + dy2], {
+            'stroke-width': 1.5,
+          })}
+        {/each}
+        <text
+          x={fit_x}
+          y={fit_y - 9}
+          fill={active.color}
+          font-size="0.75em"
+          text-anchor="middle"
+        >
+          fit +{format_num(spline.fitted_max.energy - analysis.ts_energy, `.3~`)}
+        </text>
+      {/if}
+    {/if}
+  {/snippet}
+</ScatterPlot>

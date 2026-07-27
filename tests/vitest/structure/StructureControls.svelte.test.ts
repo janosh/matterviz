@@ -1,3 +1,4 @@
+import { DEFAULTS } from '$lib/settings'
 import { StructureControls } from '$lib/structure'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -121,6 +122,50 @@ describe(`StructureControls reactive props`, () => {
     // no split-character artifacts from string iteration
     expect(center_label(`F`)).toBeUndefined()
     expect(center_label(`e`)).toBeUndefined()
+  })
+
+  // Sections wire `current_values` and `on_reset` from one shared key list, so this covers
+  // every scene_props-driven section: the reset offer appears only once something differs
+  // from the mount-time snapshot, and clicking it puts every key of that section back.
+  test(`offers a section reset only after a change and restores every key`, async () => {
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    // every key defined at its default, so the mount-time snapshot the reset offer compares
+    // against isn't perturbed by `bind:` writing back into an undefined prop
+    const state = $state({ scene_props: { ...DEFAULTS.structure } })
+
+    mount(StructureControls, {
+      target,
+      props: bind_props(
+        {
+          structure: simple_structure,
+          controls_open: true,
+          displacement_summary: { rmsd: 0.12, max_displacement: 0.34, error: null },
+        },
+        state,
+      ),
+    })
+    await tick()
+
+    const reset_button = (section: string) =>
+      target.querySelector<HTMLButtonElement>(
+        `button[aria-label="Reset ${section} to defaults"]`,
+      )
+    // nothing differs from the mount-time snapshot yet, so neither section offers a reset
+    expect(reset_button(`displacement overlay`)).toBeNull()
+    expect(reset_button(`polyhedra`)).toBeNull()
+
+    state.scene_props.displacement_arrow_color = `#123456`
+    state.scene_props.polyhedra_excluded_elements = [`O`]
+    await tick()
+    reset_button(`displacement overlay`)?.click()
+    reset_button(`polyhedra`)?.click()
+    await tick()
+
+    expect(state.scene_props.displacement_arrow_color).toBe(
+      DEFAULTS.structure.displacement_arrow_color,
+    )
+    expect(state.scene_props.polyhedra_excluded_elements).toEqual([])
   })
 
   test(`explains unavailable multi-view and enables it when space becomes available`, async () => {

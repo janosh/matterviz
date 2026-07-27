@@ -33,164 +33,76 @@ const make_traj = (frames: TrajectoryFrame[]): TrajectoryType => ({
 })
 
 describe(`Energy Data Extractor`, () => {
+  // oxfmt-ignore
+  const all_energies = {
+    energy: -10.5, energy_per_atom: -5.25, potential_energy: -12.0,
+    kinetic_energy: 1.5, total_energy: -10.5,
+  }
+  // oxfmt-ignore
   it.each([
-    {
-      name: `extracts energy properties from metadata`,
-      step: 5,
-      metadata: {
-        energy: -10.5,
-        energy_per_atom: -5.25,
-        potential_energy: -12.0,
-        kinetic_energy: 1.5,
-        total_energy: -10.5,
-      },
-      expected: {
-        Step: 5,
-        energy: -10.5,
-        energy_per_atom: -5.25,
-        potential_energy: -12.0,
-        kinetic_energy: 1.5,
-        total_energy: -10.5,
-      },
-    },
+    { name: `extracts energy properties from metadata`, step: 5, metadata: all_energies,
+      expected: { Step: 5, ...all_energies } },
     { name: `handles missing metadata`, step: 0, metadata: {}, expected: { Step: 0 } },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = make_trajectory_frame(step, 1, metadata)
-    const data = energy_data_extractor(frame, { frames: [], metadata: {} })
-    expect(data).toEqual(expected)
+    expect(energy_data_extractor(frame, { frames: [], metadata: {} })).toEqual(expected)
   })
 })
 
 describe(`Force and Stress Data Extractor`, () => {
+  // oxfmt-ignore
+  const fallback_forces = { force_max: 5.0, force_norm: 3.5, stress_max: 2.1, pressure: 1.5 }
+  // oxfmt-ignore
   it.each([
-    {
-      name: `calculate force properties from forces array`,
-      step: 1,
-      metadata: {
-        forces: [
-          [1.0, 0.0, 0.0],
-          [0.0, 2.0, 0.0],
-          [0.0, 0.0, 3.0],
-        ],
-      },
-      expected: {
-        Step: 1,
-        force_max: 3.0, // max magnitude
-        force_norm: expect.closeTo(2.16, 2), // RMS of magnitudes
-      },
-    },
-    {
-      name: `use metadata force values as fallback`,
-      step: 2,
-      metadata: { force_max: 5.0, force_norm: 3.5, stress_max: 2.1, pressure: 1.5 },
-      expected: {
-        Step: 2,
-        force_max: 5.0,
-        force_norm: 3.5,
-        stress_max: 2.1,
-        pressure: 1.5,
-      },
-    },
-    {
-      name: `use force_rms as fallback for force_norm`,
-      step: 3,
-      metadata: { force_rms: 2.8 },
-      expected: {
-        Step: 3,
-        force_norm: 2.8,
-      },
-    },
+    { name: `calculate force properties from forces array`, step: 1,
+      metadata: { forces: [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]] },
+      // force_max is the max magnitude, force_norm the RMS of the magnitudes
+      expected: { Step: 1, force_max: 3.0, force_norm: expect.closeTo(2.16, 2) } },
+    { name: `use metadata force values as fallback`, step: 2, metadata: fallback_forces,
+      expected: { Step: 2, ...fallback_forces } },
+    { name: `use force_rms as fallback for force_norm`, step: 3, metadata: { force_rms: 2.8 },
+      expected: { Step: 3, force_norm: 2.8 } },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = make_trajectory_frame(step, 1, metadata)
-    const data = force_stress_data_extractor(frame, { frames: [], metadata: {} })
-    expect(data).toEqual(expected)
+    expect(force_stress_data_extractor(frame, { frames: [], metadata: {} })).toEqual(expected)
   })
 })
 
 describe(`Structural Data Extractor`, () => {
+  // oxfmt-ignore
+  const unit_cell = { a: 1.0, b: 1.0, c: 1.0, alpha: 90, beta: 90, gamma: 90, volume: 1.0 }
+  // oxfmt-ignore
   it.each([
-    {
-      name: `extract lattice properties`,
-      step: 4,
-      lattice_params: {
-        a: 1.0,
-        b: 1.0,
-        c: 1.0,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 1.0,
-      },
+    { name: `extract lattice properties`, step: 4, lattice_params: unit_cell,
       metadata: { density: 2.5, temperature: 300 },
-      expected: {
-        Step: 4,
-        volume: 1.0,
-        a: 1.0,
-        b: 1.0,
-        c: 1.0,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        density: 2.5,
-        temperature: 300,
-      },
-    },
-    {
-      name: `use metadata volume as fallback`,
-      step: 5,
-      lattice_params: null,
-      metadata: { volume: 2.5 },
-      expected: {
-        Step: 5,
-        volume: 2.5,
-      },
-    },
-    {
-      name: `preserve metadata density of exactly 0`,
-      step: 6,
-      lattice_params: null,
-      metadata: { density: 0 },
-      expected: {
-        Step: 6,
-        density: 0,
-      },
-    },
+      expected: { Step: 4, ...unit_cell, density: 2.5, temperature: 300 } },
+    { name: `use metadata volume as fallback`, step: 5, lattice_params: null,
+      metadata: { volume: 2.5 }, expected: { Step: 5, volume: 2.5 } },
+    { name: `preserve metadata density of exactly 0`, step: 6, lattice_params: null,
+      metadata: { density: 0 }, expected: { Step: 6, density: 0 } },
   ])(`should $name`, ({ step, lattice_params, metadata, expected }) => {
     const frame = lattice_params
       ? create_frame_with_lattice(step, lattice_params, metadata)
       : make_trajectory_frame(step, 1, metadata)
 
-    const data = structural_data_extractor(frame, { frames: [], metadata: {} })
-    expect(data).toEqual(expected)
+    expect(structural_data_extractor(frame, { frames: [], metadata: {} })).toEqual(expected)
   })
 
-  it(`should calculate density when not provided in metadata`, () => {
-    // Create a simple cubic lattice with known density
-    const frame = create_frame_with_lattice(
-      0,
-      { a: 2.0, b: 2.0, c: 2.0, volume: 8.0 },
-      {}, // No density in metadata
-    )
+  const cube_2a = { a: 2.0, b: 2.0, c: 2.0, volume: 8.0 }
 
+  it(`should calculate density when not provided in metadata`, () => {
+    // No density in metadata, so it must be calculated from the structure
+    const frame = create_frame_with_lattice(0, cube_2a, {})
     const data = structural_data_extractor(frame, { frames: [], metadata: {} })
 
-    // Should calculate density from structure
     expect(data.density).toBeDefined()
     expect(typeof data.density).toBe(`number`)
     expect(data.density).toBeGreaterThan(0)
   })
 
   it(`should prefer metadata density over calculated density`, () => {
-    const frame = create_frame_with_lattice(
-      0,
-      { a: 2.0, b: 2.0, c: 2.0, volume: 8.0 },
-      { density: 5.0 }, // Explicit density in metadata
-    )
-
-    const data = structural_data_extractor(frame, { frames: [], metadata: {} })
-
-    // Should use metadata density
-    expect(data.density).toBe(5.0)
+    const frame = create_frame_with_lattice(0, cube_2a, { density: 5.0 })
+    expect(structural_data_extractor(frame, { frames: [], metadata: {} }).density).toBe(5.0)
   })
 })
 
@@ -239,33 +151,17 @@ describe(`Full Data Extractor`, () => {
 
   // No structure lattice → constancy is read from frame.metadata: a param is constant only
   // if observed (finite) in ≥1 frame and never varies (single pass, cached per trajectory).
+  // oxfmt-ignore
   it.each([
-    {
-      name: `varying a, constant b/c, absent angles aren't constant`,
-      frames_meta: [
-        { a: 5.0, b: 5.0, c: 5.0 },
-        { a: 5.1, b: 5.0, c: 5.0 },
-      ],
-      expected: {
-        constant_a: undefined,
-        constant_b: 1,
-        constant_c: 1,
-        constant_alpha: undefined,
-        constant_beta: undefined,
-        constant_gamma: undefined,
-      },
-    },
-    {
-      // NaN is typeof `number`; without a finiteness guard it poisons `first` so the real
-      // 5 → 10 variation goes undetected and `a` is wrongly marked constant.
-      name: `non-finite value is unobserved (NaN doesn't mask 5 → 10 variation)`,
-      frames_meta: [
-        { a: NaN, b: 5.0 },
-        { a: 5.0, b: 5.0 },
-        { a: 10.0, b: 5.0 },
-      ],
-      expected: { constant_a: undefined, constant_b: 1 },
-    },
+    { name: `varying a, constant b/c, absent angles aren't constant`,
+      frames_meta: [{ a: 5.0, b: 5.0, c: 5.0 }, { a: 5.1, b: 5.0, c: 5.0 }],
+      expected: { constant_a: undefined, constant_b: 1, constant_c: 1,
+        constant_alpha: undefined, constant_beta: undefined, constant_gamma: undefined } },
+    // NaN is typeof `number`; without a finiteness guard it poisons `first` so the real
+    // 5 → 10 variation goes undetected and `a` is wrongly marked constant.
+    { name: `non-finite value is unobserved (NaN doesn't mask 5 → 10 variation)`,
+      frames_meta: [{ a: NaN, b: 5.0 }, { a: 5.0, b: 5.0 }, { a: 10.0, b: 5.0 }],
+      expected: { constant_a: undefined, constant_b: 1 } },
   ])(`metadata-fallback constancy: $name`, ({ frames_meta, expected }) => {
     const traj = make_traj(frames_meta.map((meta, idx) => make_trajectory_frame(idx, 1, meta)))
     const all = traj.frames.map((frame) => full_data_extractor(frame, traj))

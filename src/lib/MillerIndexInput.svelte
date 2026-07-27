@@ -2,8 +2,17 @@
   // Compact single-field input for Miller indices (hkl).
   // Accepts "001", "111", "-101", "1 0 1", "10, 0, 1" and emits a Vec3 tuple.
   import type { Vec3 } from '$lib/math'
+  import type { HTMLInputAttributes } from 'svelte/elements'
 
-  let { value = $bindable([0, 0, 1]) }: { value?: Vec3 } = $props()
+  // `label` also names the indices in the tooltip, so callers reading direct-lattice
+  // directions can pass `uvw` instead of the default reciprocal-lattice `hkl`.
+  let {
+    value = $bindable([0, 0, 1]),
+    label = `hkl`,
+    ...rest
+    // Omit `value`: HTMLInputAttributes types it as string|number|string[], which would
+    // intersect with Vec3 to an unusable type and make `.every()` infer `any`
+  }: { value?: Vec3; label?: string } & Omit<HTMLInputAttributes, `value`> = $props()
 
   // Format: compact "001" for single-digit, spaced "10 0 1" for multi-digit
   let hkl_text = $derived(
@@ -32,14 +41,15 @@
 </script>
 
 <label class="miller-input">
-  <span>hkl</span>
+  <span>{label}</span>
   <input
     type="text"
     value={hkl_text}
     {oninput}
     placeholder="001"
     maxlength="12"
-    title="Miller indices (e.g. 001, -101, or 10 0 1)"
+    title="{label} indices (e.g. 001, -101, or 10 0 1)"
+    {...rest}
   />
 </label>
 

@@ -9,7 +9,7 @@
   import type { StructurePopupContext, StructurePopupStats } from './types'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { draggable } from 'svelte-multiselect/attachments'
+  import { click_outside, draggable } from 'svelte-multiselect/attachments'
 
   let {
     structure,
@@ -50,16 +50,10 @@
   </button>
 {/snippet}
 
-<svelte:window
-  onkeydown={(event) => event.key === `Escape` && onclose?.()}
-  onmousedown={(event) => {
-    if (!close_on_outside) return
-    if (!popup_div || !(event.target instanceof Node)) return
-    if (!popup_div.contains(event.target)) onclose?.()
-  }}
-/>
+<svelte:window onkeydown={(event) => event.key === `Escape` && onclose?.()} />
 
 <div
+  {@attach click_outside({ enabled: close_on_outside, callback: () => onclose?.() })}
   {@attach draggable({
     handle_selector: `.drag-handle`,
   })}

@@ -1,0 +1,11 @@
+HEADER    ROCK SALT
+CRYST1    5.640    5.640    5.640  90.00  90.00  90.00 P 1           8
+HETATM    1 NA    NA     1       0.000   0.000   0.000  1.00  0.00          NA
+HETATM    2 NA    NA     2       0.000   2.820   2.820  1.00  0.00          NA
+HETATM    3 NA    NA     3       2.820   0.000   2.820  1.00  0.00          NA
+HETATM    4 NA    NA     4       2.820   2.820   0.000  1.00  0.00          NA
+HETATM    5 CL    CL     5       2.820   2.820   2.820  1.00  0.00          CL
+HETATM    6 CL    CL     6       2.820   0.000   0.000  1.00  0.00          CL
+HETATM    7 CL    CL     7       0.000   2.820   0.000  1.00  0.00          CL
+HETATM    8 CL    CL     8       0.000   0.000   2.820  1.00  0.00          CL
+END

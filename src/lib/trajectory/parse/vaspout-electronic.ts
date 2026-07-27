@@ -11,10 +11,9 @@ import {
   create_frac_to_cart,
   euclidean_dist,
   matrix_inverse_3x3,
-  type Matrix3x3,
   transpose_3x3_matrix,
-  type Vec3,
 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import { pretty_sym_point } from '$lib/spectral/helpers'
 import type { Branch, ElectronicBandStructure, ElectronicDos, QPoint } from '$lib/spectral'
 import type * as h5wasm from 'h5wasm'

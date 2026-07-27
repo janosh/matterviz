@@ -1,0 +1,502 @@
+// Reaction-coordinate, barrier and cubic-interpolation math for NEB paths.
+//
+// The interpolant is a piecewise cubic Hermite curve; the two supported methods differ
+// only in where the knot slopes dE/ds come from:
+//   `force-hermite` — slopes from the forces projected on the path tangent, the standard
+//                     NEB construction (Henkelman & Jónsson, JCP 113, 9978).
+//   `natural-cubic` — slopes from a natural cubic spline through the energies alone, used
+//                     when forces are unavailable.
+// The fitted saddle is the maximum of the continuous curve and generally sits BETWEEN
+// images; it is reported separately from the highest computed image, since quoting the
+// interpolated value as if it were a computed image is a common reporting error.
+
+import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
+import { create_lattice_converters } from '$lib/math'
+import type { AnyStructure } from '$lib/structure'
+import { displacement_pbc } from '$lib/structure/measure'
+import type { Pbc } from '$lib/structure/pbc'
+import type {
+  EnergyReference,
+  NamedReactionPath,
+  NebImage,
+  PathMetricOptions,
+  ReactionCoordOptions,
+  ReactionPath,
+  ReactionPathInput,
+} from './index'
+
+// Index of the largest value; ties go to the first, as a forward scan would.
+const arg_max = (values: readonly number[]): number =>
+  values.reduce((best, val, idx) => (val > values[best] ? idx : best), 0)
+
+// Images of a path, or the array itself when given bare images.
+const path_images = (path: ReactionPath | NebImage[]): NebImage[] =>
+  Array.isArray(path) ? path : path.images
+
+export const path_energy_unit = (path: ReactionPath | NebImage[]): string =>
+  (Array.isArray(path) ? undefined : path.energy_unit) ?? `eV`
+
+const is_single_path = (input: ReactionPathInput): input is ReactionPath =>
+  Array.isArray((input as ReactionPath).images)
+
+// Flatten any accepted input shape into an ordered list of keyed paths.
+export function normalize_paths(input: ReactionPathInput): NamedReactionPath[] {
+  if (Array.isArray(input)) return [{ key: `path 1`, path: { images: input } }]
+  if (is_single_path(input)) return [{ key: input.label ?? `path 1`, path: input }]
+  const entries = Object.entries(input)
+  if (entries.length === 0) {
+    throw new Error(`normalize_paths got an empty record of reaction paths`)
+  }
+  return entries.map(([key, value]) => ({
+    key,
+    path: Array.isArray(value) ? { images: value } : value,
+  }))
+}
+
+// A reaction path needs at least an initial and a final state; anything less has no
+// coordinate, no barrier and no reaction energy, so fail loudly instead of yielding NaN.
+export function assert_path(
+  path: ReactionPath | NebImage[],
+  context = `reaction path`,
+): NebImage[] {
+  const images = path_images(path)
+  if (images.length < 2) {
+    throw new Error(
+      `${context} needs at least 2 images (initial and final state), got ${images.length}`,
+    )
+  }
+  for (const [idx, image] of images.entries()) {
+    if (typeof image.energy !== `number` || !Number.isFinite(image.energy)) {
+      throw new TypeError(`${context} image ${idx} has non-finite energy ${image.energy}`)
+    }
+    if (!image.structure?.sites?.length) {
+      throw new Error(`${context} image ${idx} has no structure sites`)
+    }
+  }
+  return images
+}
+
+// Cached lattice geometry so a whole path is walked with one matrix inversion.
+type PathGeometry = {
+  lattice_matrix: Matrix3x3 | null
+  converters?: LatticeConverters
+  pbc?: Pbc
+}
+
+function path_geometry(
+  reference: AnyStructure,
+  options: PathMetricOptions = {},
+): PathGeometry {
+  // `cartesian` deliberately drops the lattice so displacement_pbc falls through to
+  // raw subtraction — only meaningful when no atom crosses a cell boundary.
+  if (options.metric === `cartesian` || !(`lattice` in reference)) {
+    return { lattice_matrix: null }
+  }
+  const lattice_matrix = reference.lattice.matrix
+  return {
+    lattice_matrix,
+    converters: create_lattice_converters(lattice_matrix),
+    pbc: options.pbc ?? reference.lattice.pbc,
+  }
+}
+
+// Per-atom displacement vectors taking every atom by its shortest route.
+function image_displacements(
+  from: AnyStructure,
+  to: AnyStructure,
+  geometry: PathGeometry,
+): Vec3[] {
+  if (from.sites.length !== to.sites.length) {
+    throw new Error(
+      `image_displacements: image site counts differ (${from.sites.length} vs ${to.sites.length}); ` +
+        `reaction-path images must contain the same atoms in the same order`,
+    )
+  }
+  const { lattice_matrix, converters, pbc } = geometry
+  return from.sites.map((site, site_idx) =>
+    displacement_pbc(site.xyz, to.sites[site_idx].xyz, lattice_matrix, converters, pbc),
+  )
+}
+
+// Euclidean norm of a 3N vector held as one Vec3 per atom.
+const rss_norm = (vectors: readonly Vec3[]): number =>
+  Math.sqrt(vectors.reduce((sum, vec) => sum + vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2, 0))
+
+// Distance between two images in configuration space: the root-sum-square of the
+// per-atom displacements, i.e. the Euclidean norm of the 3N displacement vector.
+export const image_distance = (
+  from: AnyStructure,
+  to: AnyStructure,
+  options: PathMetricOptions = {},
+): number => rss_norm(image_displacements(from, to, path_geometry(from, options)))
+
+// Reaction coordinate of every image. `arc_length` (default) accumulates the
+// configuration-space distance between consecutive images, so unevenly spaced images
+// land where they physically belong; `image_index` returns the bare bead numbers.
+export function reaction_coordinate(
+  path: ReactionPath | NebImage[],
+  options: ReactionCoordOptions = {},
+): number[] {
+  const images = assert_path(path, `reaction_coordinate`)
+  if (options.mode === `image_index`) return images.map((_image, idx) => idx)
+
+  const geometry = path_geometry(images[0].structure, options)
+  const coords = [0]
+  for (const [idx, image] of images.slice(1).entries()) {
+    const step = image_displacements(images[idx].structure, image.structure, geometry)
+    coords.push(coords[idx] + rss_norm(step))
+  }
+  return coords
+}
+
+// Energies as displayed: raw, or shifted so the initial state sits at zero.
+export function relative_energies(
+  path: ReactionPath | NebImage[],
+  reference: EnergyReference = `absolute`,
+): number[] {
+  const images = assert_path(path, `relative_energies`)
+  const offset = reference === `initial` ? images[0].energy : 0
+  return images.map((image) => image.energy - offset)
+}
+
+export type BarrierAnalysis = {
+  initial_energy: number
+  final_energy: number
+  // Index of the highest computed image — the transition state as sampled by NEB.
+  ts_image_idx: number
+  ts_energy: number
+  ts_coordinate: number
+  // Uphill from the initial state to the highest image.
+  forward_barrier: number
+  // Uphill from the final state to the highest image.
+  reverse_barrier: number
+  // Endpoint difference. Algebraically identical to forward_barrier - reverse_barrier;
+  // in IEEE-754 the two differ by a few ulps, so compare them with a tolerance.
+  reaction_energy: number
+  energy_unit: string
+}
+
+// Barrier arithmetic from the computed images only (no interpolation).
+export function analyze_barrier(
+  path: ReactionPath | NebImage[],
+  options: ReactionCoordOptions = {},
+): BarrierAnalysis {
+  const energies = assert_path(path, `analyze_barrier`).map((image) => image.energy)
+  const ts_image_idx = arg_max(energies)
+  const [initial_energy, final_energy] = [energies[0], energies[energies.length - 1]]
+  const ts_energy = energies[ts_image_idx]
+
+  return {
+    initial_energy,
+    final_energy,
+    ts_image_idx,
+    ts_energy,
+    ts_coordinate: reaction_coordinate(path, options)[ts_image_idx],
+    forward_barrier: ts_energy - initial_energy,
+    reverse_barrier: ts_energy - final_energy,
+    reaction_energy: final_energy - initial_energy,
+    energy_unit: path_energy_unit(path),
+  }
+}
+
+// Unit tangent of the path at each image, as a 3N vector flattened per atom.
+// Central differences inside, one-sided at the endpoints.
+function path_tangents(images: NebImage[], geometry: PathGeometry): Vec3[][] {
+  return images.map((image, image_idx) => {
+    const left = images[Math.max(0, image_idx - 1)].structure
+    const right = images[Math.min(images.length - 1, image_idx + 1)].structure
+    const raw = image_displacements(left, right, geometry)
+    const norm = rss_norm(raw)
+    if (norm === 0) {
+      throw new Error(
+        `Image ${image_idx} (${image.label ?? `unlabelled`}) has a zero-length path tangent; ` +
+          `neighbouring images are identical, so dE/ds is undefined`,
+      )
+    }
+    return raw.map((vec): Vec3 => [vec[0] / norm, vec[1] / norm, vec[2] / norm])
+  })
+}
+
+// dE/ds at each image from the forces projected on the path tangent: dE/ds = -F·τ̂.
+// Returns null when any image lacks forces, so callers can drop to a plain cubic.
+export function projected_force_slopes(
+  path: ReactionPath | NebImage[],
+  options: PathMetricOptions = {},
+): number[] | null {
+  const images = assert_path(path, `projected_force_slopes`)
+  if (!images.every((image) => image.forces)) return null
+
+  const tangents = path_tangents(images, path_geometry(images[0].structure, options))
+  return images.map((image, image_idx) => {
+    const forces = image.forces
+    if (!forces) throw new Error(`Image ${image_idx} unexpectedly lost its forces`)
+    if (forces.length !== image.structure.sites.length) {
+      throw new Error(
+        `Image ${image_idx} has ${forces.length} force vectors for ${image.structure.sites.length} sites`,
+      )
+    }
+    const tangent = tangents[image_idx]
+    let projection = 0
+    for (const [atom_idx, force] of forces.entries()) {
+      const tau = tangent[atom_idx]
+      projection += force[0] * tau[0] + force[1] * tau[1] + force[2] * tau[2]
+    }
+    return -projection
+  })
+}
+
+// === Piecewise cubic interpolation ===
+
+// Validate a strictly increasing knot sequence and return the interval widths.
+function knot_widths(xs: readonly number[], ys: readonly number[]): number[] {
+  if (xs.length !== ys.length) {
+    throw new Error(
+      `Spline needs matching x/y lengths, got ${xs.length} x-values and ${ys.length} y-values`,
+    )
+  }
+  if (xs.length < 2) throw new Error(`Spline needs at least 2 knots, got ${xs.length}`)
+  return xs.slice(1).map((next, idx) => {
+    if (!(next - xs[idx] > 0)) {
+      throw new Error(
+        `Spline knots must strictly increase, got x[${idx}]=${xs[idx]} and x[${
+          idx + 1
+        }]=${next}`,
+      )
+    }
+    return next - xs[idx]
+  })
+}
+
+// Knot slopes of the natural cubic spline (zero curvature at both ends) through (xs, ys).
+export function natural_cubic_slopes(xs: readonly number[], ys: readonly number[]): number[] {
+  const widths = knot_widths(xs, ys)
+  const n_knots = xs.length
+  // Second derivatives, zero at both ends by the natural boundary condition
+  const curvature = Array.from<number>({ length: n_knots }).fill(0)
+
+  // Thomas algorithm over the interior rows. The system is strictly diagonally dominant
+  // (diagonal 2(h_left + h_right) against off-diagonals h_left + h_right, both positive),
+  // so no pivot can vanish and no pivoting is needed.
+  const n_interior = n_knots - 2
+  const c_prime = Array.from<number>({ length: n_interior }).fill(0)
+  const d_prime = Array.from<number>({ length: n_interior }).fill(0)
+  for (let row = 0; row < n_interior; row++) {
+    const [left, right] = [widths[row], widths[row + 1]]
+    const rhs = 6 * ((ys[row + 2] - ys[row + 1]) / right - (ys[row + 1] - ys[row]) / left)
+    const denom = 2 * (left + right) - (row > 0 ? left * c_prime[row - 1] : 0)
+    c_prime[row] = right / denom
+    d_prime[row] = (rhs - (row > 0 ? left * d_prime[row - 1] : 0)) / denom
+  }
+  for (let row = n_interior - 1; row >= 0; row--) {
+    curvature[row + 1] = d_prime[row] - c_prime[row] * curvature[row + 2]
+  }
+
+  const slopes = widths.map(
+    (width, knot) =>
+      (ys[knot + 1] - ys[knot]) / width -
+      (width * (2 * curvature[knot] + curvature[knot + 1])) / 6,
+  )
+  const last = n_knots - 1
+  const width = widths[last - 1]
+  slopes.push(
+    (ys[last] - ys[last - 1]) / width +
+      (width * (curvature[last - 1] + 2 * curvature[last])) / 6,
+  )
+  return slopes
+}
+
+// Cubic Hermite basis evaluated on a unit interval; `m0`/`m1` are tangents in t-space.
+const hermite = (p0: number, p1: number, m0: number, m1: number, t_val: number): number => {
+  const t_sq = t_val * t_val
+  const t_cu = t_sq * t_val
+  return (
+    (2 * t_cu - 3 * t_sq + 1) * p0 +
+    (t_cu - 2 * t_sq + t_val) * m0 +
+    (-2 * t_cu + 3 * t_sq) * p1 +
+    (t_cu - t_sq) * m1
+  )
+}
+
+// Evaluate segment `seg` of the piecewise Hermite curve at `coord`, converting the knot
+// slopes dy/dx into the t-space tangents the basis expects.
+const hermite_at = (
+  xs: readonly number[],
+  ys: readonly number[],
+  slopes: readonly number[],
+  seg: number,
+  width: number,
+  coord: number,
+): number =>
+  hermite(
+    ys[seg],
+    ys[seg + 1],
+    slopes[seg] * width,
+    slopes[seg + 1] * width,
+    Math.min(1, Math.max(0, (coord - xs[seg]) / width)),
+  )
+
+// Evaluate the piecewise Hermite curve at an arbitrary coordinate, clamped to the knots.
+export function eval_hermite(
+  xs: readonly number[],
+  ys: readonly number[],
+  slopes: readonly number[],
+  coord: number,
+): number {
+  const widths = knot_widths(xs, ys)
+  const last = xs.length - 1
+  if (coord <= xs[0]) return ys[0]
+  if (coord >= xs[last]) return ys[last]
+  let seg = 0
+  while (seg < last - 1 && coord > xs[seg + 1]) seg++
+  return hermite_at(xs, ys, slopes, seg, widths[seg], coord)
+}
+
+// Interior critical points of one Hermite segment, as t-values in (0, 1).
+function segment_critical_points(p0: number, p1: number, m0: number, m1: number): number[] {
+  // d/dt of the Hermite cubic is the quadratic quad_a·t² + quad_b·t + quad_c
+  const quad_a = 6 * p0 - 6 * p1 + 3 * m0 + 3 * m1
+  const quad_b = -6 * p0 + 6 * p1 - 4 * m0 - 2 * m1
+  const quad_c = m0
+  const in_range = (t_val: number) => t_val > 0 && t_val < 1
+  if (quad_a === 0) return quad_b === 0 ? [] : [-quad_c / quad_b].filter(in_range)
+  const discriminant = quad_b * quad_b - 4 * quad_a * quad_c
+  if (discriminant < 0) return []
+  const sqrt_disc = Math.sqrt(discriminant)
+  const roots = [(-quad_b + sqrt_disc) / (2 * quad_a), (-quad_b - sqrt_disc) / (2 * quad_a)]
+  return roots.filter(in_range)
+}
+
+export type PathSpline = {
+  method: `force-hermite` | `natural-cubic`
+  // Densely sampled curve for plotting.
+  coords: number[]
+  energies: number[]
+  // dE/ds at each image, in energy_unit / Å.
+  knot_slopes: number[]
+  // Maximum of the fitted curve — the interpolated saddle. `between_images` are the
+  // indices bracketing it, the same index twice when the maximum lands on an image.
+  fitted_max: { coord: number; energy: number; between_images: [number, number] }
+  // Highest actually computed image. Never conflate with `fitted_max`.
+  highest_image: { idx: number; coord: number; energy: number }
+  // True when the fitted saddle coincides with an image rather than lying between two.
+  saddle_at_image: boolean
+}
+
+// Fit a cubic through the image energies and locate the interpolated saddle exactly.
+// The knots themselves are candidates, so `fitted_max.energy >= max(energies)` always
+// holds. `slopes` (dE/ds per knot) selects the force-projected Hermite spline; without
+// them a natural cubic through the energies supplies the slopes instead.
+export function fit_path_spline(
+  coords: readonly number[],
+  energies: readonly number[],
+  options: { slopes?: readonly number[]; n_samples?: number } = {},
+): PathSpline {
+  const widths = knot_widths(coords, energies)
+  const { slopes: given_slopes, n_samples = 200 } = options
+  if (given_slopes && given_slopes.length !== coords.length) {
+    throw new Error(
+      `Got ${given_slopes.length} knot slopes for ${coords.length} images; they must match one-to-one`,
+    )
+  }
+  if (n_samples < 2) throw new Error(`fit_path_spline needs n_samples >= 2, got ${n_samples}`)
+  const knot_slopes = given_slopes ? [...given_slopes] : natural_cubic_slopes(coords, energies)
+  const highest_idx = arg_max(energies)
+
+  // Start from the highest knot; interior critical points can only push it higher
+  let best: PathSpline[`fitted_max`] = {
+    coord: coords[highest_idx],
+    energy: energies[highest_idx],
+    between_images: [highest_idx, highest_idx],
+  }
+  for (const [seg, width] of widths.entries()) {
+    const [tan_0, tan_1] = [knot_slopes[seg] * width, knot_slopes[seg + 1] * width]
+    const criticals = segment_critical_points(energies[seg], energies[seg + 1], tan_0, tan_1)
+    for (const t_val of criticals) {
+      const energy = hermite(energies[seg], energies[seg + 1], tan_0, tan_1, t_val)
+      if (energy > best.energy) {
+        best = { coord: coords[seg] + t_val * width, energy, between_images: [seg, seg + 1] }
+      }
+    }
+  }
+
+  const [start, end] = [coords[0], coords[coords.length - 1]]
+  const sample_coords: number[] = []
+  const sample_energies: number[] = []
+  // Samples are generated in increasing order, so the segment cursor only moves forward
+  let seg = 0
+  for (let sample = 0; sample < n_samples; sample++) {
+    const coord = start + ((end - start) * sample) / (n_samples - 1)
+    while (seg < widths.length - 1 && coord > coords[seg + 1]) seg++
+    sample_coords.push(coord)
+    sample_energies.push(hermite_at(coords, energies, knot_slopes, seg, widths[seg], coord))
+  }
+
+  return {
+    method: given_slopes ? `force-hermite` : `natural-cubic`,
+    coords: sample_coords,
+    energies: sample_energies,
+    knot_slopes,
+    fitted_max: best,
+    highest_image: {
+      idx: highest_idx,
+      coord: coords[highest_idx],
+      energy: energies[highest_idx],
+    },
+    saddle_at_image: best.between_images[0] === best.between_images[1],
+  }
+}
+
+export type PathSplineOptions = ReactionCoordOptions & {
+  // Number of points in the sampled curve returned for plotting.
+  n_samples?: number
+  // Force `natural-cubic` even when forces are present (e.g. to compare methods).
+  ignore_forces?: boolean
+}
+
+// Fit the conventional smooth NEB curve through the images, preferring the
+// force-projected Hermite spline when forces are available.
+export function path_spline(
+  path: ReactionPath | NebImage[],
+  options: PathSplineOptions = {},
+): PathSpline {
+  const { ignore_forces, mode, n_samples } = options
+  const energies = assert_path(path, `path_spline`).map((image) => image.energy)
+  const coords = reaction_coordinate(path, options)
+  let slopes = ignore_forces ? null : projected_force_slopes(path, options)
+  // projected_force_slopes always returns dE/ds in energy per Å of arc length. Grafting
+  // those onto the unitless bead-number axis would scale every Hermite tangent by the arc
+  // length of its segment, so apply the chain rule dE/di = (dE/ds)(ds/di) instead. The
+  // arc length per unit bead number is a central difference inside and one-sided at the
+  // endpoints, matching the tangent construction in path_tangents.
+  if (slopes && mode === `image_index`) {
+    const arc = reaction_coordinate(path, { ...options, mode: `arc_length` })
+    slopes = slopes.map((slope, idx) => {
+      const [left, right] = [Math.max(0, idx - 1), Math.min(arc.length - 1, idx + 1)]
+      return slope * ((arc[right] - arc[left]) / (right - left))
+    })
+  }
+  return fit_path_spline(coords, energies, { n_samples, slopes: slopes ?? undefined })
+}
+
+// Everything a viewer needs about one path under ONE set of options, so a summary table
+// and a plot annotation of the same path cannot drift apart via separate option literals.
+export const path_profile = (
+  path: ReactionPath | NebImage[],
+  options: PathSplineOptions = {},
+) => ({
+  coords: reaction_coordinate(path, options),
+  energies: path_images(path).map((image) => image.energy),
+  analysis: analyze_barrier(path, options),
+  spline: path_spline(path, options),
+})
+
+// Index of the image whose reaction coordinate is closest to `coord`. Reaction
+// coordinates are not indices, so a hovered plot position maps back by nearest
+// neighbour rather than by rounding.
+export function nearest_image_idx(coords: readonly number[], coord: number): number {
+  if (coords.length === 0) throw new Error(`nearest_image_idx got an empty coordinate array`)
+  return coords.reduce(
+    (best, val, idx) => (Math.abs(val - coord) < Math.abs(coords[best] - coord) ? idx : best),
+    0,
+  )
+}

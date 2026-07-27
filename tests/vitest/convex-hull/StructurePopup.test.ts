@@ -23,21 +23,28 @@ describe(`StructurePopup`, () => {
     },
     {
       name: `closes on click outside`,
-      act: () => document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true })),
+      act: () => document.body.dispatchEvent(new MouseEvent(`click`, { bubbles: true })),
       expect_close: true,
     },
     {
       name: `can keep popups open on outside click`,
       props: { close_on_outside: false },
-      act: () => document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true })),
+      act: () => document.body.dispatchEvent(new MouseEvent(`click`, { bubbles: true })),
       expect_close: false,
     },
     {
       name: `does not close on click inside`,
       act: () =>
         doc_query(`.structure-popup`).dispatchEvent(
-          new MouseEvent(`mousedown`, { bubbles: true }),
+          new MouseEvent(`click`, { bubbles: true }),
         ),
+      expect_close: false,
+    },
+    {
+      // the popup is draggable, so a press that starts outside must not close it before
+      // the drag even begins; only the completed click does
+      name: `ignores a bare mousedown outside`,
+      act: () => document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true })),
       expect_close: false,
     },
   ])(`$name`, ({ props = {}, act, expect_close }) => {

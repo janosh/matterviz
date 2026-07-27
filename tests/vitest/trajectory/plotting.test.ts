@@ -160,13 +160,10 @@ describe(`generate_plot_series`, () => {
     expect(series).toHaveLength(expected_length)
   })
 
+  // oxfmt-ignore
   it.each([
     { name: `constant`, values: [10.0, 10.0, 10.0], should_include: false },
-    {
-      name: `nearly constant`,
-      values: [10.000001, 10.000002, 10.000001],
-      should_include: false,
-    },
+    { name: `nearly constant`, values: [10.000001, 10.000002, 10.000001], should_include: false },
     { name: `varying`, values: [10.0, 10.1, 10.2], should_include: true },
   ])(`should filter $name properties`, ({ values, should_include }) => {
     const trajectory = create_trajectory(values.map((value) => ({ test_prop: value })))
@@ -230,15 +227,12 @@ describe(`generate_plot_series`, () => {
 describe(`should_hide_plot`, () => {
   const trajectory = create_trajectory(COMMON_TRAJECTORIES.multi_property)
 
+  // oxfmt-ignore
   it.each([
     { name: `no series`, series: [], expected: true },
     { name: `constant series`, series: [create_series([1.0, 1.0, 1.0])], expected: true },
     { name: `varying series`, series: [create_series([1.0, 2.0, 3.0])], expected: false },
-    {
-      name: `hidden varying series`,
-      series: [create_series([1.0, 2.0, 3.0], false)],
-      expected: false,
-    },
+    { name: `hidden varying series`, series: [create_series([1.0, 2.0, 3.0], false)], expected: false },
   ])(`should hide plot for $name`, ({ series, expected }) => {
     expect(should_hide_plot(trajectory, series)).toBe(expected)
   })
@@ -269,120 +263,69 @@ describe(`should_hide_plot`, () => {
 })
 
 describe(`generate_axis_labels`, () => {
+  // oxfmt-ignore
   it.each([
-    {
-      name: `single series with unit`,
-      series: [create_series([1, 2], true, `Energy`, `eV`)],
-      expected: { y1: `Energy (eV)`, y2: `Value` },
-    },
-    {
-      name: `multiple series same unit`,
-      series: [
-        create_series([1, 2], true, `A`, `Å`),
-        create_series([3, 4], true, `B`, `Å`),
-        create_series([5, 6], true, `C`, `Å`),
-      ],
-      expected: { y1: `A / B / C (Å)`, y2: `Value` },
-    },
-    {
-      name: `series without units`,
+    { name: `single series with unit`, series: [create_series([1, 2], true, `Energy`, `eV`)],
+      expected: { y1: `Energy (eV)`, y2: `Value` } },
+    { name: `multiple series same unit`, series: [
+      create_series([1, 2], true, `A`, `Å`), create_series([3, 4], true, `B`, `Å`),
+      create_series([5, 6], true, `C`, `Å`),
+    ], expected: { y1: `A / B / C (Å)`, y2: `Value` } },
+    { name: `series without units`,
       series: [create_series([1, 2], true, `Dimensionless`, ``)],
-      expected: { y1: `Dimensionless`, y2: `Value` },
-    },
-    {
-      name: `only hidden series`,
-      series: [create_series([1, 2], false, `Hidden`, `eV`)],
-      expected: { y1: `Value`, y2: `Value` },
-    },
-    {
-      name: `mixed visibility (hidden series excluded from labels)`,
-      series: [
-        create_series([1, 2], true, `Visible`, `eV`, `y1`),
-        create_series([3, 4], false, `Hidden`, `eV`, `y1`), // Same unit, but hidden
-        create_series([5, 6], true, `Another`, `Å`, `y2`),
-      ],
-      expected: { y1: `Visible (eV)`, y2: `Another (Å)` },
-    },
-    {
-      name: `series split across y1 and y2`,
-      series: [
-        create_series([1, 2], true, `Energy`, `eV`, `y1`),
-        create_series([3, 4], true, `Force`, `eV/Å`, `y2`),
-      ],
-      expected: { y1: `Energy (eV)`, y2: `Force (eV/Å)` },
-    },
-    {
-      name: `multiple series concatenated on y1 with separate y2`,
-      series: [
-        create_series([5.0, 5.1], true, `A`, `Å`, `y1`),
-        create_series([5.1, 5.2], true, `B`, `Å`, `y1`),
-        create_series([1.0, 2.0], true, `Energy`, `eV`, `y2`),
-      ],
-      expected: { y1: `A / B (Å)`, y2: `Energy (eV)` },
-    },
+      expected: { y1: `Dimensionless`, y2: `Value` } },
+    { name: `only hidden series`, series: [create_series([1, 2], false, `Hidden`, `eV`)],
+      expected: { y1: `Value`, y2: `Value` } },
+    { name: `mixed visibility (hidden series excluded from labels)`, series: [
+      create_series([1, 2], true, `Visible`, `eV`, `y1`),
+      create_series([3, 4], false, `Hidden`, `eV`, `y1`), // Same unit, but hidden
+      create_series([5, 6], true, `Another`, `Å`, `y2`),
+    ], expected: { y1: `Visible (eV)`, y2: `Another (Å)` } },
+    { name: `series split across y1 and y2`, series: [
+      create_series([1, 2], true, `Energy`, `eV`, `y1`),
+      create_series([3, 4], true, `Force`, `eV/Å`, `y2`),
+    ], expected: { y1: `Energy (eV)`, y2: `Force (eV/Å)` } },
+    { name: `multiple series concatenated on y1 with separate y2`, series: [
+      create_series([5.0, 5.1], true, `A`, `Å`, `y1`),
+      create_series([5.1, 5.2], true, `B`, `Å`, `y1`),
+      create_series([1.0, 2.0], true, `Energy`, `eV`, `y2`),
+    ], expected: { y1: `A / B (Å)`, y2: `Energy (eV)` } },
   ])(`should generate axis labels for $name`, ({ series, expected }) => {
-    const labels = generate_axis_labels(series)
-    expect(labels).toEqual(expected)
+    expect(generate_axis_labels(series)).toEqual(expected)
   })
 })
 
 describe(`generate_axis_scale_types`, () => {
+  const all_linear = { y1: `linear`, y2: `linear` }
+  // oxfmt-ignore
   it.each([
-    {
-      name: `positive non-SCF series spanning >=3 decades stays linear`,
-      series: [create_series([1e-6, 1e-4, 1e-2, 1])],
-      expected: { y1: `linear`, y2: `linear` },
-    },
-    {
-      name: `positive SCF axis group spanning >=3 decades goes log`,
+    { name: `positive non-SCF series spanning >=3 decades stays linear`,
+      series: [create_series([1e-6, 1e-4, 1e-2, 1])], expected: all_linear },
+    { name: `positive SCF axis group spanning >=3 decades goes log`,
       series: [create_series([1e-6, 1e-4, 1e-2, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
-      expected: { y1: `log`, y2: `linear` },
-    },
-    {
-      name: `negative values stay linear despite decade span`,
-      series: [create_series([-10, 1e-4, 1])],
-      expected: { y1: `linear`, y2: `linear` },
-    },
-    {
-      name: `zero values stay linear`,
-      series: [create_series([0, 1e-4, 1])],
-      expected: { y1: `linear`, y2: `linear` },
-    },
-    {
-      name: `positive but narrow span stays linear`,
-      series: [create_series([1, 5, 100])],
-      expected: { y1: `linear`, y2: `linear` },
-    },
-    {
-      name: `hidden series don't affect the axis scale`,
-      series: [
-        create_series([-10, -11, -12], true, `Energy`, `eV`),
-        create_series([1e-6, 1], false, `Residual`, `a.u.`),
-      ],
-      expected: { y1: `linear`, y2: `linear` },
-    },
-    {
-      name: `per-axis decision: linear energy on y1, log residual on y2`,
-      series: [
-        create_series([-10, -11, -12], true, `Energy`, `eV`, `y1`),
-        create_series([1, 1e-3, 1e-7], true, `Residual`, `eV`, `y2`, `eV (SCF)`),
-      ],
-      expected: { y1: `linear`, y2: `log` },
-    },
-    {
-      name: `mixed-sign axis stays linear even when one series qualifies`,
-      series: [
-        create_series([-10, -11, -12], true, `Energy`, `eV`, `y1`),
-        create_series([1, 1e-3, 1e-7], true, `Residual`, `a.u.`, `y1`),
-      ],
-      expected: { y1: `linear`, y2: `linear` },
-    },
-    { name: `no series`, series: [], expected: { y1: `linear`, y2: `linear` } },
-    {
-      name: `NaN values are ignored for the decision`,
+      expected: { y1: `log`, y2: `linear` } },
+    { name: `negative values stay linear despite decade span`,
+      series: [create_series([-10, 1e-4, 1])], expected: all_linear },
+    { name: `zero values stay linear`, series: [create_series([0, 1e-4, 1])],
+      expected: all_linear },
+    { name: `positive but narrow span stays linear`, series: [create_series([1, 5, 100])],
+      expected: all_linear },
+    { name: `hidden series don't affect the axis scale`, series: [
+      create_series([-10, -11, -12], true, `Energy`, `eV`),
+      create_series([1e-6, 1], false, `Residual`, `a.u.`),
+    ], expected: all_linear },
+    { name: `per-axis decision: linear energy on y1, log residual on y2`, series: [
+      create_series([-10, -11, -12], true, `Energy`, `eV`, `y1`),
+      create_series([1, 1e-3, 1e-7], true, `Residual`, `eV`, `y2`, `eV (SCF)`),
+    ], expected: { y1: `linear`, y2: `log` } },
+    { name: `mixed-sign axis stays linear even when one series qualifies`, series: [
+      create_series([-10, -11, -12], true, `Energy`, `eV`, `y1`),
+      create_series([1, 1e-3, 1e-7], true, `Residual`, `a.u.`, `y1`),
+    ], expected: all_linear },
+    { name: `no series`, series: [], expected: all_linear },
+    { name: `NaN values are ignored for the decision`,
       series: [create_series([NaN, 1e-5, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
-      expected: { y1: `log`, y2: `linear` },
-    },
+      expected: { y1: `log`, y2: `linear` } },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
   })

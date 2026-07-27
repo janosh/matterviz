@@ -8,6 +8,7 @@ import {
   XDATCAR_REGEX,
 } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
+import { is_lammps_data_content } from '$lib/structure/format-detect'
 import { parse_leading_num } from '$lib/utils'
 import { count_xyz_frames } from './helpers'
 
@@ -102,6 +103,11 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   if (/\.(?:h5|hdf5)$/i.test(base_name)) {
     return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_REGEX.test(base_name)
   }
+
+  // `.data` is a fallback trajectory extension but also the LAMMPS structure extension,
+  // and md.data/nvt.data/nve.data are among the most common LAMMPS names — so a real
+  // data file must not be claimed here just because its name carries a trajectory keyword
+  if (content && /\.data$/i.test(base_name) && is_lammps_data_content(content)) return false
 
   // For other extensions, require both keywords and specific extensions
   return TRAJ_KEYWORDS_REGEX.test(base_name) && TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)

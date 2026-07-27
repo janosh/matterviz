@@ -9,8 +9,11 @@ import {
 import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { parse_structure_file } from '$lib/structure/parse'
+import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
+import type { LargeFileMarker } from './host-transfer'
+import { parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
 import type { RenderableType } from './detect'
@@ -33,6 +36,35 @@ export interface ParseResult {
   type: ViewType
   data: unknown
   filename: string
+  // Set only for host-streamed trajectories: the on-disk path the host serves
+  // frames from. `create_display` turns it into a frame loader.
+  streaming_info?: { file_path: string }
+}
+
+// A file past the host's inline-transfer limit arrives as a `LARGE_FILE:` marker
+// instead of its contents, and is served frame by frame over the host's
+// postMessage bridge. That bridge is imported lazily: this module also runs in a
+// Web Worker, where no host exists and a marker never arrives, so the import
+// stays off the worker's critical path.
+const resolve_large_file = async (
+  marker: LargeFileMarker,
+  filename: string,
+): Promise<ParseResult> => {
+  if (!is_indexable_trajectory_filename(filename)) {
+    throw new Error(
+      `Large-file loading is only supported for indexed trajectories: ${filename}`,
+    )
+  }
+  const { request_large_file_content } = await import(`./host-bridge`)
+  console.info(
+    `Handling large file: ${filename} (${Math.round(marker.file_size / 1024 / 1024)}MB)`,
+  )
+  return {
+    type: `trajectory`,
+    data: await request_large_file_content(marker.file_path, filename),
+    filename,
+    streaming_info: { file_path: marker.file_path },
+  }
 }
 
 // Convert base64 to ArrayBuffer for binary files
@@ -51,6 +83,11 @@ export const parse_file_content = async (
   filename: string,
   is_base64: boolean = false,
 ): Promise<ParseResult> => {
+  // Oversized files never carry their own bytes — the host sends a marker and
+  // serves frames on demand. Check before anything tries to parse the marker text.
+  const large_file_marker = parse_large_file_marker(content)
+  if (large_file_marker) return resolve_large_file(large_file_marker, filename)
+
   // Handle base64-encoded compressed/binary files by converting them first
   if (is_base64) {
     let buffer = base64_to_array_buffer(content)

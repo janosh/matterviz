@@ -110,3 +110,69 @@ export interface HoveredData {
   hovered_band_point?: InternalPoint | null
   hovered_qpoint_index?: number | null
 }
+
+// === Vibrational (IR / Raman) spectroscopy ===
+
+// A complex amplitude as phonopy writes it: [real, imaginary].
+export type Complex = [re: number, im: number]
+
+// One atom of a phonopy cell, carrying the mass needed to undo eigenvector mass weighting.
+export interface PhononModeAtom {
+  symbol: string
+  mass: number // atomic mass units
+  coordinates: Vec3 // fractional
+}
+
+// A single phonon mode. `eigenvector` is [n_atoms][3] complex, in phonopy's convention:
+// eigenvector of the mass-weighted dynamical matrix, normalised to sum |e|^2 = 1.
+// null when the source file listed a frequency without an eigenvector block.
+export interface PhononMode {
+  frequency: number // THz, as written by phonopy
+  eigenvector: Complex[][] | null
+}
+
+export interface PhononQPointModes {
+  q_position: Vec3
+  distance: number | null
+  modes: PhononMode[]
+}
+
+export interface PhononModeData {
+  n_atoms: number
+  atoms: PhononModeAtom[]
+  lattice: Matrix3x3 | null
+  qpoints: PhononQPointModes[]
+}
+
+// Born effective charges and high-frequency dielectric tensor from a phonopy BORN file.
+export interface BornChargeData {
+  factor: number // NAC unit conversion factor, recorded but not applied here
+  dielectric: Matrix3x3
+  born_charges: Matrix3x3[] // one Z* tensor per atom, in units of e
+}
+
+// One mode of a vibrational spectrum with its computed activities.
+export interface VibrationalMode {
+  mode_idx: number
+  frequency: number // THz
+  ir_intensity: number // e^2/amu, from Born charges and eigenvectors
+  raman_activity: number | null // 45a^2 + 7*gamma^2, null when no polarizability data
+  depolarization_ratio: number | null
+  is_acoustic: boolean
+  is_imaginary: boolean
+}
+
+// Discrete vibrational spectrum. Deliberately NOT a DosData: DOS normalization applies a
+// cm^-1-vs-THz heuristic keyed on max frequency > 100, which would silently mangle
+// vibrational modes that legitimately reach 4000 cm^-1.
+export interface VibrationalSpectrum {
+  modes: VibrationalMode[]
+  n_atoms: number
+  q_position: Vec3
+  has_raman: boolean
+}
+
+// Which activity a plot should show.
+export type SpectrumKind = `ir` | `raman`
+// IR spectra are conventionally drawn as transmittance (peaks pointing down).
+export type SpectrumPresentation = `absorbance` | `transmittance`

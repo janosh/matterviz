@@ -8,12 +8,14 @@ import type { DataSeries } from '$lib/plot/core/types'
 import { apply_gaussian_smearing } from '$lib/spectral/helpers'
 import {
   detect_instability,
-  type LocalOutlierConfig,
-  type OscillationWeights,
   remove_local_outliers,
-  type SmoothingConfig,
   smooth_moving_average,
   smooth_savitzky_golay,
+} from '$lib/plot/core/data-cleaning-signal'
+import type {
+  LocalOutlierConfig,
+  OscillationWeights,
+  SmoothingConfig,
 } from '$lib/plot/core/data-cleaning-signal'
 
 export * from '$lib/plot/core/data-cleaning-signal'

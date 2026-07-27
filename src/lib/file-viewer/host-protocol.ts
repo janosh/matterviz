@@ -24,6 +24,10 @@ type WatchedFileContext = {
 type HostFileRequest = {
   request_id: string
   file_path: string
+  // The host picks a per-format indexer/decoder from the name. The VS Code
+  // extension derives its own from `file_path`, but hosts that index by name
+  // (Hive) reject the request without this, so the webview always sends it.
+  filename: string
 }
 
 export type FileChangeMessage = WatchedFileContext &

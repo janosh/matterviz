@@ -42,8 +42,13 @@ describe(`Trajectory Streaming`, () => {
     return frames.join(`\n`)
   }
 
-  // Helper to create synthetic ASE trajectory data (minimal valid structure)
-  const create_synthetic_ase = (num_frames: number): ArrayBuffer => {
+  // Helper to create synthetic ASE trajectory data (minimal valid structure).
+  // `extra_fields` merge into every frame's JSON header, for cases that turn on
+  // which section a scalar was written to.
+  const create_synthetic_ase = (
+    num_frames: number,
+    extra_fields: Record<string, unknown> = {},
+  ): ArrayBuffer => {
     // Create minimal valid ASE trajectory with proper header
     const signature = `- of Ulm\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0`
     const version = new ArrayBuffer(8)
@@ -68,6 +73,7 @@ describe(`Trajectory Streaming`, () => {
         [0, 0, 5],
       ],
       pbc: [true, true, true],
+      ...extra_fields,
     })
 
     const total_size = 48 + num_frames * 8 + frame_data.length * num_frames + num_frames * 8
@@ -164,6 +170,19 @@ describe(`Trajectory Streaming`, () => {
       },
     )
 
+    // Which section a scalar lands in is up to whoever wrote the file, so reading
+    // each alias from only one of them drops it from the other, silently.
+    it(`extracts scalars from whichever section the writer used`, async () => {
+      const data = create_synthetic_ase(1, {
+        [`calculator.`]: { pressure: 2.5 },
+        info: { energy: -7.25 },
+      })
+      const [metadata] = await new TrajFrameReader(`sections.traj`).extract_plot_metadata(data)
+
+      expect(metadata.properties.pressure).toBe(2.5)
+      expect(metadata.properties.energy).toBe(-7.25)
+    })
+
     it(`should report progress during indexing`, async () => {
       const data = create_synthetic_xyz(1000) // Larger for progress testing
       const loader = new TrajFrameReader(`test.xyz`)
@@ -221,6 +240,65 @@ describe(`Trajectory Streaming`, () => {
       expect(loaded?.metadata?.forces).toEqual([[0.1, 0.2, 0.3]])
       expect(loaded?.metadata?.energy).toBe(-1.5)
       expect(loaded?.metadata?.volume).toBe(216) // derived from lattice (6^3), parity with eager parser
+    })
+
+    // A whole-trajectory sweep is the only way MSD-style analyses can see past the
+    // 10-frame window an indexed parse leaves in trajectory.frames
+    it.each([
+      [`XYZ`, create_synthetic_xyz(25), `stream.xyz`, 1, 25],
+      [`XYZ strided`, create_synthetic_xyz(25), `stream.xyz`, 4, 7],
+      [`ASE`, create_synthetic_ase(8), `stream.traj`, 1, 8],
+    ])(
+      `streams flat positions for %s`,
+      async (_fmt, data, filename, frame_stride, expected_frames) => {
+        const stream = await new TrajFrameReader(filename).stream_positions(data, {
+          frame_stride,
+        })
+
+        expect(stream.n_frames).toBe(expected_frames)
+        expect(stream.positions).toHaveLength(stream.n_frames * stream.n_atoms * 3)
+        expect(stream.elements).toHaveLength(stream.n_atoms)
+        expect(stream.frame_stride).toBe(frame_stride)
+        expect(stream.steps).toHaveLength(expected_frames)
+        // Wrapped/unwrapped is a LAMMPS-only distinction; these formats are wrapped
+        expect(stream.coords_unwrapped).toBe(false)
+      },
+    )
+
+    it(`streamed positions match frame-by-frame loads exactly`, async () => {
+      const data = create_synthetic_xyz(12, 3)
+      const loader = new TrajFrameReader(`stream.xyz`)
+      const stream = await loader.stream_positions(data)
+
+      for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
+        const frame = await loader.load_frame(data, frame_idx)
+        expect(frame).not.toBeNull()
+        for (const [atom_idx, site] of (frame?.structure.sites ?? []).entries()) {
+          const off = (frame_idx * stream.n_atoms + atom_idx) * 3
+          expect([
+            stream.positions[off],
+            stream.positions[off + 1],
+            stream.positions[off + 2],
+          ]).toEqual([site.xyz[0], site.xyz[1], site.xyz[2]])
+        }
+      }
+    })
+
+    it.each([
+      [`zero stride`, 0, /frame_stride must be a positive integer/],
+      [`fractional stride`, 1.5, /frame_stride must be a positive integer/],
+    ])(`rejects a %s`, async (_label, frame_stride, pattern) => {
+      const loader = new TrajFrameReader(`stream.xyz`)
+      await expect(
+        loader.stream_positions(create_synthetic_xyz(5), { frame_stride }),
+      ).rejects.toThrow(pattern)
+    })
+
+    it(`refuses to allocate past the position-buffer budget`, async () => {
+      const loader = new TrajFrameReader(`stream.xyz`)
+      await expect(
+        loader.stream_positions(create_synthetic_xyz(100, 3), { max_bytes: 512 }),
+      ).rejects.toThrow(/over the 512 byte budget\. Use frame_stride >=/)
     })
 
     it(`should preserve EXTXYZ PBC in indexed loads`, async () => {
@@ -337,13 +415,10 @@ Si 0 0 0`
     })
 
     // use_indexing forces streaming even for small files, incl. compressed filenames
+    // oxfmt-ignore
     it.each([
-      [
-        `explicit request`,
-        `force_streaming.xyz`,
-        { use_indexing: true, extract_plot_metadata: true },
-        true,
-      ],
+      [`explicit request`, `force_streaming.xyz`,
+        { use_indexing: true, extract_plot_metadata: true }, true],
       [`compressed filename`, `compressed-trajectory.xyz.gz`, { use_indexing: true }, false],
     ])(
       `forces indexed loading (%s)`,

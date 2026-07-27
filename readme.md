@@ -13,7 +13,9 @@
 
 </h4>
 
-`matterviz` is a toolkit for building interactive web UIs for materials science: 3D crystal structures, molecules, MD/relaxation trajectories, periodic tables, phase diagrams, convex hulls, spectral data (bands, DOS, XRD), heatmaps, and scatter plots.
+`matterviz` is a toolkit for building interactive web UIs for materials science: 3D crystal structures, molecules, MD/relaxation trajectories, periodic tables, phase diagrams, convex hulls, spectral data (bands, DOS, IR/Raman), diffraction and pair distribution
+functions (XRD, SAED, PDF/RDF), diffusion analysis (MSD), reaction paths (NEB), heatmaps,
+and scatter plots.
 
 ## 🔌 &thinsp; [MatterViz VSCode Extension]
 

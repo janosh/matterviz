@@ -13,7 +13,8 @@
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
   import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
   import type { PhaseDiagramData } from '$lib/phase-diagram/types'
-  import { merge, type DefaultSettings,build_structure_props_from_settings as structure_props } from '$lib/settings'
+  import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
+  import type { DefaultSettings } from '$lib/settings'
   import Bands from '$lib/spectral/Bands.svelte'
   import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
   import Dos from '$lib/spectral/Dos.svelte'
@@ -24,7 +25,7 @@
     normalize_fractional_coords,
     parse_optimade_from_raw,
   } from '$lib/structure/parse'
-    import Structure from '$lib/structure/Structure.svelte'
+  import Structure from '$lib/structure/Structure.svelte'
   import type { XrdPattern } from '$lib/xrd'
   import XrdPlot from '$lib/xrd/XrdPlot.svelte'
   import { mount, unmount } from 'svelte'
@@ -319,6 +320,18 @@
   const browser_id = $props.id()
   let panel_id_count = 0
   const make_panel_id = (): string => `panel_${browser_id}_${panel_id_count++}`
+  const make_panel = (
+    data_path: string,
+    detected_type: RenderableType,
+    val: unknown,
+  ): PanelInfo => ({
+    id: make_panel_id(),
+    data_path,
+    detected_type,
+    val,
+    component: null,
+    element: null,
+  })
 
   // Click replaces the single/first panel; drag adds a split
   function replace_or_add_panel(
@@ -327,20 +340,11 @@
     val: unknown,
   ): void {
     if (panels.length === 0) {
-      panels = [
-        { id: make_panel_id(), data_path, detected_type, val, component: null, element: null },
-      ]
+      panels = [make_panel(data_path, detected_type, val)]
       panel_sizes = [1]
     } else {
       unmount_panel(0)
-      panels[0] = {
-        id: make_panel_id(),
-        data_path,
-        detected_type,
-        val,
-        component: null,
-        element: null,
-      }
+      panels[0] = make_panel(data_path, detected_type, val)
       panels = [...panels] // trigger reactivity
     }
     requestAnimationFrame(() => mount_all_panels())
@@ -353,14 +357,7 @@
     target_idx: number,
     zone: `top` | `bottom` | `left` | `right`,
   ): void {
-    const new_panel: PanelInfo = {
-      id: make_panel_id(),
-      data_path,
-      detected_type,
-      val,
-      component: null,
-      element: null,
-    }
+    const new_panel = make_panel(data_path, detected_type, val)
     const direction: SplitDirection =
       zone === `top` || zone === `bottom` ? `vertical` : `horizontal`
     const insert_before = zone === `top` || zone === `left`

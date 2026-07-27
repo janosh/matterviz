@@ -8,7 +8,11 @@ import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 export type CellType = `original` | `conventional` | `primitive`
 
-const transferable_properties = (properties: Crystal[`properties`]): Crystal[`properties`] => {
+// Drops `bonds`: site indices change under any cell transform, so stale bond indices
+// would mis-render. Shared with the slab builder, which has the same constraint.
+export const transferable_properties = (
+  properties: Crystal[`properties`],
+): Crystal[`properties`] => {
   if (properties === undefined) return undefined
   const rest = { ...properties }
   delete rest.bonds

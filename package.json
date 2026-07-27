@@ -38,6 +38,10 @@
     "./app.css": {
       "default": "./dist/app.css"
     },
+    "./bond-angles": {
+      "types": "./dist/bond-angles/index.d.ts",
+      "default": "./dist/bond-angles/index.js"
+    },
     "./brillouin": {
       "types": "./dist/brillouin/index.d.ts",
       "default": "./dist/brillouin/index.js"
@@ -138,6 +142,10 @@
       "types": "./dist/layout/index.d.ts",
       "default": "./dist/layout/index.js"
     },
+    "./lineshape": {
+      "types": "./dist/lineshape.d.ts",
+      "default": "./dist/lineshape.js"
+    },
     "./math": {
       "types": "./dist/math.d.ts",
       "default": "./dist/math.js"
@@ -145,6 +153,14 @@
     "./marching-cubes": {
       "types": "./dist/marching-cubes.d.ts",
       "default": "./dist/marching-cubes.js"
+    },
+    "./msd": {
+      "types": "./dist/msd/index.d.ts",
+      "default": "./dist/msd/index.js"
+    },
+    "./neb": {
+      "types": "./dist/neb/index.d.ts",
+      "default": "./dist/neb/index.js"
     },
     "./optimade": {
       "types": "./dist/api/optimade.d.ts",
@@ -185,6 +201,10 @@
     "./sanitize": {
       "types": "./dist/sanitize.d.ts",
       "default": "./dist/sanitize.js"
+    },
+    "./scattering": {
+      "types": "./dist/scattering/index.d.ts",
+      "default": "./dist/scattering/index.js"
     },
     "./settings": {
       "types": "./dist/settings.d.ts",

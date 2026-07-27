@@ -1,11 +1,8 @@
 import { parse_structure_file } from '$lib/structure/parse'
 import type * as TrajectoryParseModule from '$lib/trajectory/parse'
 import { create_display, VSCodeFrameLoader } from '$lib/file-viewer/main'
-import {
-  base64_to_array_buffer,
-  parse_file_content,
-  type ParseResult,
-} from '$lib/file-viewer/parse'
+import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
+import type { ParseResult } from '$lib/file-viewer/parse'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
@@ -53,11 +50,10 @@ const last_mount_props = () =>
 
 describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
   test.each([
-    [`SGVsbG8gV29ybGQ=`, `Hello World`, 11], // Basic ASCII
-    [`QUJDREVGR0g=`, `ABCDEFGH`, 8], // Another ASCII
+    [`SGVsbG8gV29ybGQ=`, `Hello World`, 11], // Basic ASCII, one `=` pad
     [``, ``, 0], // Empty string
-    [`QQ==`, `A`, 1], // Single character
-    [`QUI=`, `AB`, 2], // Two characters
+    [`QQ==`, `A`, 1], // Single character, two `=` pads
+    [`QUI=`, `AB`, 2], // Two characters, one `=` pad
   ])(`base64_to_array_buffer: %s → %s (%i bytes)`, (base64, expected, byte_length) => {
     const result = base64_to_array_buffer(base64)
     expect(result).toBeInstanceOf(ArrayBuffer)
@@ -65,18 +61,16 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
     expect(new TextDecoder().decode(result)).toBe(expected)
   })
 
-  test.each([1024, 8192, 32768])(
-    `handles typical ASE trajectory file size: %i bytes`,
-    (size) => {
-      // bytes cycle through 0-255, so full equality also proves byte-order
-      // preservation for every possible byte value
-      const data = new Uint8Array(size)
-      for (let idx = 0; idx < size; idx++) data[idx] = idx % 256
-      const result = base64_to_array_buffer(uint8_as_base64(data))
-      expect(result.byteLength).toBe(size)
-      expect(Array.from(new Uint8Array(result))).toEqual(Array.from(data))
-    },
-  )
+  // Both padding classes at a size past 256, so every byte value appears in each
+  test.each([1024, 8192])(`handles typical ASE trajectory file size: %i bytes`, (size) => {
+    // bytes cycle through 0-255, so full equality also proves byte-order
+    // preservation for every possible byte value
+    const data = new Uint8Array(size)
+    for (let idx = 0; idx < size; idx++) data[idx] = idx % 256
+    const result = base64_to_array_buffer(uint8_as_base64(data))
+    expect(result.byteLength).toBe(size)
+    expect(Array.from(new Uint8Array(result))).toEqual(Array.from(data))
+  })
 })
 
 describe(`parse_file_content structure guard`, () => {
@@ -94,39 +88,20 @@ describe(`parse_file_content structure guard`, () => {
   })
 })
 
-describe(`parse_file_content JSON renderable routing`, () => {
-  test(`renders convex hull JSON whose filename contains convex`, async () => {
-    const convex_hull_entries = [
-      {
-        composition: { Al: 1 },
-        energy: 0,
-        e_form_per_atom: 0,
-        e_above_hull: 0,
-        is_stable: true,
-      },
-      {
-        composition: { Cu: 1 },
-        energy: 0,
-        e_form_per_atom: 0,
-        e_above_hull: 0,
-        is_stable: true,
-      },
-      {
-        composition: { Al: 1, Cu: 1 },
-        energy: -0.2,
-        e_form_per_atom: -0.1,
-        e_above_hull: 0,
-        is_stable: true,
-      },
-    ]
+test(`parse_file_content renders convex hull JSON whose filename contains convex`, async () => {
+  // oxfmt-ignore
+  const convex_hull_entries = [
+    { composition: { Al: 1 }, energy: 0, e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
+    { composition: { Cu: 1 }, energy: 0, e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
+    { composition: { Al: 1, Cu: 1 }, energy: -0.2, e_form_per_atom: -0.1, e_above_hull: 0, is_stable: true },
+  ]
 
-    await expect(
-      parse_file_content(JSON.stringify(convex_hull_entries), `Al-Cu-convex-hull.json`),
-    ).resolves.toMatchObject({
-      type: `convex_hull`,
-      data: convex_hull_entries,
-      filename: `Al-Cu-convex-hull.json`,
-    })
+  await expect(
+    parse_file_content(JSON.stringify(convex_hull_entries), `Al-Cu-convex-hull.json`),
+  ).resolves.toMatchObject({
+    type: `convex_hull`,
+    data: convex_hull_entries,
+    filename: `Al-Cu-convex-hull.json`,
   })
 })
 
@@ -269,7 +244,7 @@ describe(`VS Code frame loader`, () => {
     vi.stubGlobal(`removeEventListener`, message_bus.removeEventListener.bind(message_bus))
     try {
       const post_message = vi.fn()
-      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, {
+      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
         postMessage: post_message,
       })
       const frame_promise = loader.load_frame(``, 7)
@@ -278,6 +253,8 @@ describe(`VS Code frame loader`, () => {
         command: `request_frame`,
         request_id: expect.any(String),
         file_path: `/tmp/movie.extxyz`,
+        // The host picks its per-format frame decoder from the name.
+        filename: `movie.extxyz`,
         frame_index: 7,
       })
 
@@ -324,31 +301,38 @@ describe(`VSCode Download Integration`, () => {
     })
   })
 
-  test(`handles binary data (PNG) correctly`, async () => {
+  // Both binary download paths need a FileReader stub whose async read is driven by
+  // fake timers. `outcome` picks which of the two listeners main.ts registers fires:
+  // `load` also fills in `result` from the real Blob for end-to-end correctness.
+  const stub_file_reader = (outcome: `load` | `error`) => {
     vi.useFakeTimers()
-    let load_listener: (() => void) | undefined
-    let result: string | null = null
 
     globalThis.FileReader = vi.fn(function (this: FileReader) {
+      // Per instance, not per stub: overlapping downloads would otherwise share one
+      // listener and result, so the second read would clobber the first
+      let listener: (() => void) | undefined
+      let result: string | null = null
+
       this.readAsDataURL = vi.fn((blob: Blob) => {
         setTimeout(() => {
           void (async () => {
-            // Read actual Blob content for end-to-end correctness
-            const array_buffer = await blob.arrayBuffer()
-            const uint8_array = new Uint8Array(array_buffer)
-            const binary_string = String.fromCharCode(...uint8_array)
-            const base64_string = btoa(binary_string)
-            result = `data:${blob.type};base64,${base64_string}`
-            load_listener?.()
+            if (outcome === `load`) {
+              const bytes = new Uint8Array(await blob.arrayBuffer())
+              result = `data:${blob.type};base64,${btoa(String.fromCharCode(...bytes))}`
+            }
+            listener?.()
           })()
         }, 0)
       })
-      this.addEventListener = vi.fn((type: string, listener: EventListener) => {
-        if (type === `load`) load_listener = listener as () => void
+      this.addEventListener = vi.fn((type: string, handler: EventListener) => {
+        if (type === outcome) listener = handler as () => void
       })
       Object.defineProperty(this, `result`, { get: () => result })
     }) as unknown as typeof FileReader
+  }
 
+  test(`handles binary data (PNG) correctly`, async () => {
+    stub_file_reader(`load`)
     const mock_post_message = await init_download()
     globalThis.download(
       new Blob([`fake png data`], { type: `image/png` }),
@@ -373,16 +357,7 @@ describe(`VSCode Download Integration`, () => {
   })
 
   test(`handles FileReader errors for binary data`, async () => {
-    vi.useFakeTimers()
-    let error_listener: (() => void) | undefined
-
-    globalThis.FileReader = vi.fn(function (this: FileReader) {
-      this.readAsDataURL = vi.fn(() => setTimeout(() => error_listener?.(), 0))
-      this.addEventListener = vi.fn((type: string, listener: EventListener) => {
-        if (type === `error`) error_listener = listener as () => void
-      })
-    }) as unknown as typeof FileReader
-
+    stub_file_reader(`error`)
     const mock_post_message = await init_download()
     globalThis.download(new Blob([`data`]), `test.png`, `image/png`)
     await vi.runAllTimersAsync()

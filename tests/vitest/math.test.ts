@@ -2,6 +2,9 @@ import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { describe, expect, it, test } from 'vitest'
 
+// Per-axis periodicity flags, structurally the Pbc type math.ts takes but does not re-export
+type Pbc3 = [boolean, boolean, boolean]
+
 describe(`combinations`, () => {
   // oxfmt-ignore
   test.each([
@@ -62,42 +65,38 @@ describe(`centered_frac`, () => {
   })
 })
 
-describe(`angle conversions`, () => {
-  test.each([
-    [0, 0, `zero angle`],
-    [Math.PI / 6, 30, `30 degrees`],
-    [Math.PI / 4, 45, `45 degrees`],
-    [Math.PI / 3, 60, `60 degrees`],
-    [Math.PI / 2, 90, `90 degrees`],
-    [Math.PI, 180, `180 degrees`],
-    [(3 * Math.PI) / 2, 270, `270 degrees`],
-    [2 * Math.PI, 360, `360 degrees`],
-    [-Math.PI / 2, -90, `negative 90 degrees`],
-    [-Math.PI, -180, `negative 180 degrees`],
-    [2.5, 143.2394, `arbitrary positive`],
-    [-1.5, -85.9437, `arbitrary negative`],
-  ])(`converts $desc: $radians rad ↔ $degrees deg`, (radians, degrees) => {
-    expect(math.to_degrees(radians)).toBeCloseTo(degrees, 3)
-    expect(math.to_radians(degrees)).toBeCloseTo(radians, 5)
-    // test round trip
-    expect(math.to_degrees(math.to_radians(radians))).toBeCloseTo(radians, 5)
-    expect(math.to_radians(math.to_degrees(degrees))).toBeCloseTo(degrees, 3)
-  })
+test.each([
+  [0, 0, `zero angle`],
+  [Math.PI / 6, 30, `30 degrees`],
+  [Math.PI / 4, 45, `45 degrees`],
+  [Math.PI / 3, 60, `60 degrees`],
+  [Math.PI / 2, 90, `90 degrees`],
+  [Math.PI, 180, `180 degrees`],
+  [(3 * Math.PI) / 2, 270, `270 degrees`],
+  [2 * Math.PI, 360, `360 degrees`],
+  [-Math.PI / 2, -90, `negative 90 degrees`],
+  [-Math.PI, -180, `negative 180 degrees`],
+  [2.5, 143.2394, `arbitrary positive`],
+  [-1.5, -85.9437, `arbitrary negative`],
+])(`angle conversion round trip: %f rad ↔ %f deg`, (radians, degrees) => {
+  expect(math.to_degrees(radians)).toBeCloseTo(degrees, 3)
+  expect(math.to_radians(degrees)).toBeCloseTo(radians, 5)
+  // test round trip
+  expect(math.to_degrees(math.to_radians(radians))).toBeCloseTo(radians, 5)
+  expect(math.to_radians(math.to_degrees(degrees))).toBeCloseTo(degrees, 3)
 })
 
-describe(`euclidean_dist`, () => {
-  // oxfmt-ignore
-  test.each([
-    [[0, 0, 0], [1, 0, 0], 1.0], // unit distance along x-axis
-    [[0, 0, 0], [0, 1, 0], 1.0], // unit distance along y-axis
-    [[0, 0, 0], [0, 0, 1], 1.0], // unit distance along z-axis
-    [[0, 0, 0], [1, 1, 1], Math.sqrt(3)], // diagonal distance
-    [[1, 2, 3], [4, 6, 8], Math.hypot(3, 4, 5)], // arbitrary points
-    [[-1, -1, -1], [1, 1, 1], Math.sqrt(12)], // negative to positive
-    [[1, 2, 3], [1, 2, 3], 0.0], // identical points
-  ])(`dist(%j, %j) = %f`, (point1, point2, expected) => {
-    expect(math.euclidean_dist(point1, point2)).toBeCloseTo(expected, 6)
-  })
+// oxfmt-ignore
+test.each([
+  [[0, 0, 0], [1, 0, 0], 1.0], // unit distance along x-axis
+  [[0, 0, 0], [0, 1, 0], 1.0], // unit distance along y-axis
+  [[0, 0, 0], [0, 0, 1], 1.0], // unit distance along z-axis
+  [[0, 0, 0], [1, 1, 1], Math.sqrt(3)], // diagonal distance
+  [[1, 2, 3], [4, 6, 8], Math.hypot(3, 4, 5)], // arbitrary points
+  [[-1, -1, -1], [1, 1, 1], Math.sqrt(12)], // negative to positive
+  [[1, 2, 3], [1, 2, 3], 0.0], // identical points
+])(`euclidean_dist(%j, %j) = %f`, (point1, point2, expected) => {
+  expect(math.euclidean_dist(point1, point2)).toBeCloseTo(expected, 6)
 })
 
 // oxfmt-ignore
@@ -106,9 +105,7 @@ test.each([
   [[1, 2, 3], [4, 5, 6], [5, 7, 9]],
   [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [8, 10, 12, 14, 16, 18]],
 ])(`add vectors`, (vec1, vec2, expected) => {
-  const sum = math.add(vec1, vec2)
-  expect(sum).toEqual(expected)
-  expect(Math.hypot(...math.subtract(sum, expected))).toBe(0)
+  expect(math.add(vec1, vec2)).toEqual(expected)
 })
 
 test(`add function comprehensive`, () => {
@@ -151,27 +148,17 @@ test.each([
 
 test(`dot function comprehensive`, () => {
   // Test matrix-vector and matrix-matrix multiplication
-  const matrix: math.Matrix3x3 = [
-    [1, 2, 3],
-    [4, 5, 6],
-    [7, 8, 9],
-  ]
+  // oxfmt-ignore
+  const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
   const vector = [2, 3, 4]
-  const matrix1 = [
-    [1, 2, 3],
-    [4, 5, 6],
-  ]
-  const matrix2 = [
-    [7, 8],
-    [9, 10],
-    [11, 12],
-  ]
+  // oxfmt-ignore
+  const matrix1 = [[1, 2, 3], [4, 5, 6]]
+  // oxfmt-ignore
+  const matrix2 = [[7, 8], [9, 10], [11, 12]]
 
   expect(math.dot(matrix, vector)).toEqual([20, 47, 74])
-  expect(math.dot(matrix1, matrix2)).toEqual([
-    [58, 64],
-    [139, 154],
-  ])
+  // oxfmt-ignore
+  expect(math.dot(matrix1, matrix2)).toEqual([[58, 64], [139, 154]])
 
   expect(() => math.dot([1, 2], [3, 4, 5])).toThrow(`Vectors must be of same length`)
   expect(() => math.dot([], [1, 2])).toThrow(`Vectors must be of same length`)
@@ -180,11 +167,8 @@ test(`dot function comprehensive`, () => {
   )
 
   // Test edge cases - rectangular matrix validation
-  const jagged_matrix = [
-    [1, 2],
-    [3, 4, 5],
-    [6, 7],
-  ]
+  // oxfmt-ignore
+  const jagged_matrix = [[1, 2], [3, 4, 5], [6, 7]]
   const zero_cols_matrix: number[][] = [[], [], []]
   const undefined_cols_matrix = [[1, 2], undefined, [3, 4]]
 
@@ -253,13 +237,61 @@ test.each([
   expect(result.volume).toBeCloseTo(expected.volume, 1)
 })
 
+// acos of a ratio that floating point pushed past 1, and division by a zero-length axis,
+// both used to return NaN and propagate silently into every derived quantity. A zero third
+// vector is exactly what 2D/slab/molecule parse paths produce.
+test.each([
+  [
+    `parallel a and b`,
+    [
+      [1, 1, 1],
+      [1, 1, 1],
+      [0, 0, 1],
+    ],
+    { gamma: 0 },
+  ],
+  [
+    `zero-length c`,
+    [
+      [3, 0, 0],
+      [0, 3, 0],
+      [0, 0, 0],
+    ],
+    { alpha: 90, beta: 90, gamma: 90 },
+  ],
+])(`calc_lattice_params stays finite for degenerate cells: %s`, (_label, matrix, expected) => {
+  const result = math.calc_lattice_params(matrix as math.Matrix3x3)
+  for (const key of [`a`, `b`, `c`, `alpha`, `beta`, `gamma`, `volume`] as const) {
+    expect(Number.isFinite(result[key]), `${key} = ${result[key]}`).toBe(true)
+  }
+  for (const [key, want] of Object.entries(expected)) {
+    expect(result[key as `alpha`]).toBeCloseTo(want, 6)
+  }
+})
+
+// The 90 degree sentinel above looks inconsistent with angle_between_vectors, which
+// returns 0 for a zero-length vector, and is a tempting thing to "fix". It must stay 90:
+// a slab reported as alpha = beta = 0 drives the triclinic volume factor negative, so
+// cell_to_lattice_matrix rejects the cell as unrealizable and a 2D/slab/molecule lattice
+// stops round-tripping. The two helpers serve different domains (cell parameters vs bond
+// geometry) and share no consumer; only the [-1, 1] acos clamp has to agree.
+test(`a degenerate slab cell survives a calc_lattice_params round-trip`, () => {
+  const slab: math.Matrix3x3 = [
+    [3, 0, 0],
+    [0, 3, 0],
+    [0, 0, 0],
+  ]
+  const { a, b, c, alpha, beta, gamma } = math.calc_lattice_params(slab)
+  const round_tripped = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+  expect(round_tripped).toEqual(slab.map((row) => row.map((val) => expect.closeTo(val, 12))))
+  // the sentinel that would break it
+  expect(() => math.cell_to_lattice_matrix(a, b, c, 0, 0, gamma)).toThrow(/realizable/)
+})
+
 describe(`pbc_dist`, () => {
   test(`hexagonal lattice PBC wrapping`, () => {
-    const hex_lattice: math.Matrix3x3 = [
-      [4, 0, 0],
-      [2, 3.464, 0],
-      [0, 0, 8],
-    ]
+    // oxfmt-ignore
+    const hex_lattice: math.Matrix3x3 = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
     expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.592, 3)
   })
 
@@ -346,14 +378,11 @@ describe(`pbc_dist`, () => {
   })
 
   test(`guards against explosive minimum-image enumeration for ill-conditioned lattices`, () => {
-    const ill_conditioned_lattice: math.Matrix3x3 = [
-      [1, 0, 0],
-      [0.999999, 0.000001, 0],
-      [0, 0, 1],
-    ]
+    // oxfmt-ignore
+    const ill_conditioned: math.Matrix3x3 = [[1, 0, 0], [0.999999, 0.000001, 0], [0, 0, 1]]
 
     expect(() =>
-      math.pbc_dist([0, 0, 0] as Vec3, [0.49, 0.49, 0.49] as Vec3, ill_conditioned_lattice),
+      math.pbc_dist([0, 0, 0] as Vec3, [0.49, 0.49, 0.49] as Vec3, ill_conditioned),
     ).toThrow(/Minimum-image search would test/)
   })
 
@@ -372,7 +401,7 @@ describe(`pbc_dist`, () => {
     [`nanowire: z not periodic`, wire_lattice, [10, 10, 1], [10, 10, 9], [false, false, false], 8],
     [`only x periodic`, slab_lattice, [0.5, 10, 10], [9.5, 10, 10], [true, false, false], 1],
     [`only y periodic`, slab_lattice, [5, 0.5, 10], [5, 9.5, 10], [false, true, false], 1],
-  ] as [string, math.Matrix3x3, Vec3, Vec3, [boolean, boolean, boolean], number][])(
+  ] as [string, math.Matrix3x3, Vec3, Vec3, Pbc3, number][])(
     `axis-specific PBC flags: %s`,
     (_name, lattice, pos1, pos2, pbc, expected) => {
       expect(math.pbc_dist(pos1, pos2, lattice, undefined, pbc)).toBeCloseTo(expected, 5)
@@ -385,9 +414,11 @@ describe(`pbc_dist`, () => {
     // Key property: enabling PBC on specific axes should give different results than no PBC
     const pos1: Vec3 = [0.5, 1.0, 1.0]
     const pos2: Vec3 = [9.5, 1.0, 11.0]
+    const no_pbc: Pbc3 = [false, false, false]
+    const x_only: Pbc3 = [true, false, false]
 
-    const dist_no_pbc = math.pbc_dist(pos1, pos2, triclinic, undefined, [false, false, false])
-    const dist_x_only = math.pbc_dist(pos1, pos2, triclinic, undefined, [true, false, false])
+    const dist_no_pbc = math.pbc_dist(pos1, pos2, triclinic, undefined, no_pbc)
+    const dist_x_only = math.pbc_dist(pos1, pos2, triclinic, undefined, x_only)
     const dist_z_only = math.pbc_dist(pos1, pos2, triclinic, undefined, [false, false, true])
     const dist_xz = math.pbc_dist(pos1, pos2, triclinic, undefined, [true, false, true])
 
@@ -398,21 +429,12 @@ describe(`pbc_dist`, () => {
 
     // Verify wrapping is selective: points separated only in z with PBC only in x
     // should not wrap (x-wrapping shouldn't affect z-separation)
-    const z_sep: [Vec3, Vec3] = [
-      [5, 4, 1],
-      [5, 4, 11],
-    ]
-    const dist_z_sep_x_pbc = math.pbc_dist(...z_sep, triclinic, undefined, [
-      true,
-      false,
-      false,
-    ])
-    const dist_z_sep_no_pbc = math.pbc_dist(...z_sep, triclinic, undefined, [
-      false,
-      false,
-      false,
-    ])
-    expect(dist_z_sep_x_pbc).toBeCloseTo(dist_z_sep_no_pbc, 5)
+    // oxfmt-ignore
+    const z_sep: [Vec3, Vec3] = [[5, 4, 1], [5, 4, 11]]
+    expect(math.pbc_dist(...z_sep, triclinic, undefined, x_only)).toBeCloseTo(
+      math.pbc_dist(...z_sep, triclinic, undefined, no_pbc),
+      5,
+    )
   })
 
   // Non-orthogonal lattice tests live in measure.test.ts where they exercise
@@ -421,18 +443,12 @@ describe(`pbc_dist`, () => {
 
 describe(`tensor conversion utilities`, () => {
   // Test fixtures
-  const symmetric_tensor = [
-    [1, 0.5, 0.3],
-    [0.5, 2, 0.2],
-    [0.3, 0.2, 3],
-  ]
+  // oxfmt-ignore
+  const symmetric_tensor = [[1, 0.5, 0.3], [0.5, 2, 0.2], [0.3, 0.2, 3]]
   const expected_voigt = [1, 2, 3, 0.2, 0.3, 0.5]
   const flat_array = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-  const tensor_3x3 = [
-    [1, 2, 3],
-    [4, 5, 6],
-    [7, 8, 9],
-  ]
+  // oxfmt-ignore
+  const tensor_3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 
   describe(`to_voigt`, () => {
     // oxfmt-ignore
@@ -472,22 +488,6 @@ describe(`tensor conversion utilities`, () => {
       expect(math.from_voigt(voigt)).toEqual(expected)
     })
 
-    it(`is inverse of to_voigt`, () => {
-      const tensor = [
-        [1.5, 0.7, 0.4],
-        [0.7, 2.5, 0.6],
-        [0.4, 0.6, 3.5],
-      ]
-      const voigt = math.to_voigt(tensor)
-      const reconstructed = math.from_voigt(voigt)
-
-      for (let idx = 0; idx < 3; idx++) {
-        for (let col = 0; col < 3; col++) {
-          expect(reconstructed[idx][col]).toBeCloseTo(tensor[idx][col], 10)
-        }
-      }
-    })
-
     it.each([
       [`empty`, []],
       [`short`, [1, 2, 3]],
@@ -502,16 +502,10 @@ describe(`tensor conversion utilities`, () => {
     it.each([
       [`sequential array`, flat_array, tensor_3x3],
       [`identity`, [1, 0, 0, 0, 1, 0, 0, 0, 1], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
-      [
-        `negative`,
-        [-1, -2, -3, -4, -5, -6, -7, -8, -9],
-        [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]],
-      ],
-      [
-        `float`,
-        [1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9],
-        [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6], [7.7, 8.8, 9.9]],
-      ],
+      [`negative`, [-1, -2, -3, -4, -5, -6, -7, -8, -9],
+        [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]]],
+      [`float`, [1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9],
+        [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6], [7.7, 8.8, 9.9]]],
     ])(`converts %s to 3x3 tensor`, (_, input, expected) => {
       expect(math.vec9_to_mat3x3(input)).toEqual(expected)
     })
@@ -531,19 +525,10 @@ describe(`tensor conversion utilities`, () => {
       [`sequential tensor`, tensor_3x3, flat_array],
       [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 0, 0, 0, 1, 0, 0, 0, 1]],
       [`symmetric`, [[1, 2, 3], [2, 4, 5], [3, 5, 6]], [1, 2, 3, 2, 4, 5, 3, 5, 6]],
-      [
-        `negative`,
-        [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]],
-        [-1, -2, -3, -4, -5, -6, -7, -8, -9],
-      ],
+      [`negative`, [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]],
+        [-1, -2, -3, -4, -5, -6, -7, -8, -9]],
     ])(`converts %s to flat array`, (_, tensor, expected) => {
       expect(math.tensor_to_flat_array(tensor)).toEqual(expected)
-    })
-
-    it(`is inverse of vec9_to_mat3x3`, () => {
-      const original = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]
-      const tensor = math.vec9_to_mat3x3(original)
-      expect(math.tensor_to_flat_array(tensor)).toEqual(original)
     })
 
     // oxfmt-ignore
@@ -562,21 +547,15 @@ describe(`tensor conversion utilities`, () => {
     it.each([
       [`basic`, [[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[1, 4, 7], [2, 5, 8], [3, 6, 9]]],
       [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
-      [
-        `negative`,
-        [[-1, 2, -3], [4, -5, 6], [-7, 8, -9]],
-        [[-1, 4, -7], [2, -5, 8], [-3, 6, -9]],
-      ],
+      [`negative`, [[-1, 2, -3], [4, -5, 6], [-7, 8, -9]],
+        [[-1, 4, -7], [2, -5, 8], [-3, 6, -9]]],
     ])(`%s matrix`, (_, input, expected) => {
       expect(math.transpose_3x3_matrix(input as math.Matrix3x3)).toEqual(expected)
     })
 
     it(`is involution (A^T^T = A)`, () => {
-      const matrix: math.Matrix3x3 = [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-      ]
+      // oxfmt-ignore
+      const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
       expect(math.transpose_3x3_matrix(math.transpose_3x3_matrix(matrix))).toEqual(matrix)
     })
   })
@@ -594,6 +573,22 @@ describe(`tensor conversion utilities`, () => {
         expect(matrix).toEqual(
           expected.map((row) => row.map((val) => expect.closeTo(val, 6))),
         )
+      },
+    )
+
+    // A radicand below zero means the angle triple describes no realizable lattice, and
+    // sin(gamma) = 0 means a and b are collinear. Both used to sail through as NaN:
+    // (3,3,3,170,170,170) returned a c vector of [-2.95, -33.77, NaN], already nonsense at
+    // c_y for a vector that should have length 3, so one mistyped CIF angle turned every
+    // derived Cartesian coordinate into NaN with no diagnostic.
+    it.each([
+      [`angles violating the triclinic inequality`, [3, 3, 3, 170, 170, 170], /realizable/],
+      [`gamma = 0 (collinear a and b)`, [3, 3, 3, 90, 90, 0], /degenerate/],
+      [`gamma = 180 (collinear a and b)`, [3, 3, 3, 90, 90, 180], /degenerate/],
+    ] as [string, [number, number, number, number, number, number], RegExp][])(
+      `throws on %s`,
+      (_name, cell_params, message) => {
+        expect(() => math.cell_to_lattice_matrix(...cell_params)).toThrow(message)
       },
     )
 
@@ -631,30 +626,15 @@ describe(`tensor conversion utilities`, () => {
   describe(`matrix_inverse_3x3`, () => {
     // oxfmt-ignore
     it.each([
-      [
-        `identity matrix`,
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      ],
-      [
-        `diagonal matrix`,
-        [[2, 0, 0], [0, 3, 0], [0, 0, 4]],
-        [[0.5, 0, 0], [0, 0.333333, 0], [0, 0, 0.25]],
-      ],
-      [
-        `simple matrix`,
-        [[1, 2, 3], [0, 1, 4], [5, 6, 0]],
-        [[-24, 18, 5], [20, -15, -4], [-5, 4, 1]],
-      ],
-      [
-        `symmetric matrix`,
-        [[4, 2, 1], [2, 5, 3], [1, 3, 6]],
-        [
-          [0.313433, -0.134328, 0.014925],
-          [-0.134328, 0.343284, -0.149254],
-          [0.014925, -0.149254, 0.238806],
-        ],
-      ],
+      [`identity matrix`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
+      [`diagonal matrix`, [[2, 0, 0], [0, 3, 0], [0, 0, 4]],
+        [[0.5, 0, 0], [0, 0.333333, 0], [0, 0, 0.25]]],
+      [`simple matrix`, [[1, 2, 3], [0, 1, 4], [5, 6, 0]],
+        [[-24, 18, 5], [20, -15, -4], [-5, 4, 1]]],
+      [`symmetric matrix`, [[4, 2, 1], [2, 5, 3], [1, 3, 6]],
+        [[0.313433, -0.134328, 0.014925], [-0.134328, 0.343284, -0.149254],
+          [0.014925, -0.149254, 0.238806]]],
     ])(`inverts %s`, (_, matrix, expected) => {
       const inverse = math.matrix_inverse_3x3(matrix as math.Matrix3x3)
 
@@ -666,67 +646,30 @@ describe(`tensor conversion utilities`, () => {
       }
     })
 
-    it(`verifies inverse property (A * A^-1 = I)`, () => {
-      const matrix: math.Matrix3x3 = [
-        [1, 2, 3],
-        [0, 1, 4],
-        [5, 6, 0],
-      ]
-      const inverse = math.matrix_inverse_3x3(matrix)
-      const product = math.mat3x3_vec3_multiply(
-        matrix,
-        math.mat3x3_vec3_multiply(inverse, [1, 0, 0]),
-      )
-
-      // Check that A * A^-1 * [1,0,0] = [1,0,0]
-      expect(product[0]).toBeCloseTo(1, 10)
-      expect(product[1]).toBeCloseTo(0, 10)
-      expect(product[2]).toBeCloseTo(0, 10)
-    })
-
-    it(`throws error for singular matrix`, () => {
-      const singular_matrix: math.Matrix3x3 = [
-        [1, 2, 3],
-        [2, 4, 6],
-        [3, 6, 9],
-      ] // determinant = 0
-      expect(() => math.matrix_inverse_3x3(singular_matrix)).toThrow(
+    // oxfmt-ignore
+    it.each([
+      [`singular matrix (det = 0)`, [[1, 2, 3], [2, 4, 6], [3, 6, 9]]],
+      [`vanishing determinant (1e-30)`, [[1e-10, 0, 0], [0, 1e-10, 0], [0, 0, 1e-10]]],
+    ] as [string, math.Matrix3x3][])(`throws for %s`, (_name, matrix) => {
+      expect(() => math.matrix_inverse_3x3(matrix)).toThrow(
         `Matrix is singular or ill-conditioned; cannot invert`,
       )
     })
 
-    it(`handles edge cases`, () => {
-      // Very small determinant
-      const small_det_matrix: math.Matrix3x3 = [
-        [1e-10, 0, 0],
-        [0, 1e-10, 0],
-        [0, 0, 1e-10],
-      ]
-      expect(() => math.matrix_inverse_3x3(small_det_matrix)).toThrow(
-        `Matrix is singular or ill-conditioned; cannot invert`,
-      )
-
-      // Large numbers
-      const large_matrix: math.Matrix3x3 = [
-        [1e10, 0, 0],
-        [0, 1e10, 0],
-        [0, 0, 1e10],
-      ]
-      const large_inverse = math.matrix_inverse_3x3(large_matrix)
-      expect(large_inverse[0][0]).toBeCloseTo(1e-10, 10)
+    it(`inverts a large-magnitude matrix`, () => {
+      // oxfmt-ignore
+      const large_matrix: math.Matrix3x3 = [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e10]]
+      expect(math.matrix_inverse_3x3(large_matrix)[0][0]).toBeCloseTo(1e-10, 10)
     })
 
     it(`random matrices: A * inv(A) ≈ I and det consistency`, () => {
       // Test 50 random non-singular matrices + edge cases
-      const random_matrices = Array.from(
-        { length: 50 },
-        () =>
-          [
-            [1 + Math.random(), Math.random(), Math.random()],
-            [Math.random(), 1 + Math.random(), Math.random()],
-            [Math.random(), Math.random(), 1 + Math.random()],
-          ] as math.Matrix3x3,
-      )
+      // oxfmt-ignore
+      const random_matrices = Array.from({ length: 50 }, () => [
+        [1 + Math.random(), Math.random(), Math.random()],
+        [Math.random(), 1 + Math.random(), Math.random()],
+        [Math.random(), Math.random(), 1 + Math.random()],
+      ] as math.Matrix3x3)
 
       // oxfmt-ignore
       const edge_cases: math.Matrix3x3[] = [
@@ -766,63 +709,31 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`Integration & Edge Cases`, () => {
-    it(`maintains round-trip consistency`, () => {
-      const stress_tensors = [
-        [
-          [100, 0, 0],
-          [0, 100, 0],
-          [0, 0, 100],
-        ], // hydrostatic
-        [
-          [200, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ], // uniaxial
-        [
-          [0, 50, 0],
-          [50, 0, 0],
-          [0, 0, 0],
-        ], // shear
-        [
-          [150, 75, 25],
-          [75, 200, 50],
-          [25, 50, 300],
-        ], // complex
-      ]
+    // oxfmt-ignore
+    it.each([
+      [`hydrostatic`, [[100, 0, 0], [0, 100, 0], [0, 0, 100]]],
+      [`uniaxial`, [[200, 0, 0], [0, 0, 0], [0, 0, 0]]],
+      [`shear`, [[0, 50, 0], [50, 0, 0], [0, 0, 0]]],
+      [`complex`, [[150, 75, 25], [75, 200, 50], [25, 50, 300]]],
+    ] as [string, number[][]][])(`Voigt round-trips a %s stress tensor`, (_name, tensor) => {
+      expect(math.from_voigt(math.to_voigt(tensor))).toEqual(
+        tensor.map((row) => row.map((val) => expect.closeTo(val, 10))),
+      )
+    })
 
-      const test_arrays = [
-        [1, 2, 3, 4, 5, 6, 7, 8, 9],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [-1, -2, -3, -4, -5, -6, -7, -8, -9],
-        [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5],
-      ]
-
-      // Test Voigt round-trip
-      stress_tensors.forEach((tensor) => {
-        const voigt = math.to_voigt(tensor)
-        const reconstructed = math.from_voigt(voigt)
-        for (let idx = 0; idx < 3; idx++) {
-          for (let col = 0; col < 3; col++) {
-            expect(reconstructed[idx][col]).toBeCloseTo(tensor[idx][col], 10)
-          }
-        }
-      })
-
-      // Test flat array round-trip
-      test_arrays.forEach((array) => {
-        const tensor = math.vec9_to_mat3x3(array)
-        const reconstructed = math.tensor_to_flat_array(tensor)
-        expect(reconstructed).toEqual(array)
-      })
+    it.each([
+      [[1, 2, 3, 4, 5, 6, 7, 8, 9]],
+      [[0, 0, 0, 0, 0, 0, 0, 0, 0]],
+      [[-1, -2, -3, -4, -5, -6, -7, -8, -9]],
+      [[1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]],
+    ])(`flat array round-trips %j`, (array) => {
+      expect(math.tensor_to_flat_array(math.vec9_to_mat3x3(array))).toEqual(array)
     })
 
     it(`handles real-world stress calculations`, () => {
       // MD simulation stress tensor (GPa)
-      const md_stress = [
-        [0.125, 0.003, -0.012],
-        [0.003, 0.089, 0.007],
-        [-0.012, 0.007, 0.156],
-      ]
+      // oxfmt-ignore
+      const md_stress = [[0.125, 0.003, -0.012], [0.003, 0.089, 0.007], [-0.012, 0.007, 0.156]]
       const voigt = math.to_voigt(md_stress)
 
       expect(voigt).toEqual([0.125, 0.089, 0.156, 0.007, -0.012, 0.003])
@@ -831,28 +742,6 @@ describe(`tensor conversion utilities`, () => {
       const reconstructed = math.from_voigt(voigt)
       expect(reconstructed[0][0]).toBeCloseTo(0.125, 10)
       expect(reconstructed[0][1]).toBeCloseTo(reconstructed[1][0], 10) // symmetry
-    })
-
-    it(`calculates materials science properties`, () => {
-      const stress = [
-        [100, 20, 10],
-        [20, 150, 30],
-        [10, 30, 200],
-      ]
-      const [s11, s22, s33, s23, s13, s12] = math.to_voigt(stress)
-
-      // von Mises stress
-      const von_mises = Math.sqrt(
-        0.5 * ((s11 - s22) ** 2 + (s22 - s33) ** 2 + (s33 - s11) ** 2) +
-          3 * (s12 ** 2 + s13 ** 2 + s23 ** 2),
-      )
-      expect(von_mises).toBeCloseTo(108.17, 2)
-
-      // pressure and max shear
-      expect(-(s11 + s22 + s33) / 3).toBeCloseTo(-150, 5)
-      expect(
-        Math.max(Math.abs(s11 - s22) / 2, Math.abs(s22 - s33) / 2, Math.abs(s33 - s11) / 2),
-      ).toBeCloseTo(50, 5)
     })
 
     // oxfmt-ignore
@@ -897,28 +786,20 @@ test.each([
   expect(math.det_3x3(matrix as math.Matrix3x3)).toBeCloseTo(expected, 10)
 })
 
-describe(`get_coefficient_of_variation`, () => {
-  test.each([
-    { values: [], expected: 0, desc: `empty array` },
-    { values: [5], expected: 0, desc: `single value` },
-    { values: [5, 5, 5, 5], expected: 0, desc: `constant values` },
-    { values: [10, 20], expected: 1 / 3, desc: `simple case` }, // std=5, mean=15, CoV=5/15=1/3
-    { values: [1, 2, 3, 4, 5], expected: Math.sqrt(2) / 3, desc: `sequential values` }, // std=sqrt(2), mean=3
-    { values: [-2, -1, 0, 1, 2], expected: Math.sqrt(2), desc: `zero mean returns std` }, // returns sqrt(variance)
-    {
-      values: [1e-11, 2e-11, 3e-11],
-      expected: Math.sqrt(2 / 3) * 1e-11,
-      desc: `near-zero mean case`,
-    }, // mean=2e-11 < 1e-10, returns sqrt(variance)
-    {
-      values: [100, 200, 300],
-      expected: Math.sqrt(20000 / 3) / 200,
-      desc: `large values`,
-    }, // std=sqrt(20000/3), mean=200
-  ])(`$desc: get_coefficient_of_variation($values) = $expected`, ({ values, expected }) => {
-    const result = math.get_coefficient_of_variation(values)
-    expect(result).toBeCloseTo(expected, 3)
-  })
+// oxfmt-ignore
+test.each([
+  { values: [], expected: 0, desc: `empty array` },
+  { values: [5], expected: 0, desc: `single value` },
+  { values: [5, 5, 5, 5], expected: 0, desc: `constant values` },
+  { values: [10, 20], expected: 1 / 3, desc: `simple case` }, // std=5, mean=15, CoV=5/15=1/3
+  { values: [1, 2, 3, 4, 5], expected: Math.sqrt(2) / 3, desc: `sequential values` }, // std=sqrt(2), mean=3
+  { values: [-2, -1, 0, 1, 2], expected: Math.sqrt(2), desc: `zero mean returns std` }, // returns sqrt(variance)
+  // mean=2e-11 < 1e-10, returns sqrt(variance)
+  { values: [1e-11, 2e-11, 3e-11], expected: Math.sqrt(2 / 3) * 1e-11, desc: `near-zero mean` },
+  // std=sqrt(20000/3), mean=200
+  { values: [100, 200, 300], expected: Math.sqrt(20000 / 3) / 200, desc: `large values` },
+])(`$desc: get_coefficient_of_variation($values) = $expected`, ({ values, expected }) => {
+  expect(math.get_coefficient_of_variation(values)).toBeCloseTo(expected, 3)
 })
 
 describe(`det_nxn`, () => {
@@ -955,24 +836,19 @@ describe(`det_nxn`, () => {
   })
 
   // Test higher-dimensional matrices (5x5 and 6x6 for N-element convex hulls)
-  const make_identity = (size: number) =>
-    Array.from({ length: size }, (_row, idx) =>
-      Array.from({ length: size }, (_col, jdx) => (idx === jdx ? 1 : 0)),
-    )
-
-  const make_diagonal = (size: number) =>
-    Array.from({ length: size }, (_row, idx) =>
-      Array.from({ length: size }, (_col, jdx) => (idx === jdx ? idx + 1 : 0)),
+  const make_diagonal = (size: number, diag_at: (idx: number) => number) =>
+    Array.from({ length: size }, (_row, row) =>
+      Array.from({ length: size }, (_col, col) => (row === col ? diag_at(row) : 0)),
     )
 
   const factorial = (num: number): number => (num <= 1 ? 1 : num * factorial(num - 1))
 
-  test.each([5, 6])(`%dx%d identity matrix → det=1`, (size) => {
-    expect(math.det_nxn(make_identity(size))).toBeCloseTo(1, 10)
-  })
-
-  test.each([5, 6])(`%dx%d diagonal matrix → det=n!`, (size) => {
-    expect(math.det_nxn(make_diagonal(size))).toBeCloseTo(factorial(size), 10)
+  test.each([5, 6])(`%dx%d diagonal: det=1 for identity, det=n! for 1..n`, (size) => {
+    expect(math.det_nxn(make_diagonal(size, () => 1))).toBeCloseTo(1, 10)
+    expect(math.det_nxn(make_diagonal(size, (idx) => idx + 1))).toBeCloseTo(
+      factorial(size),
+      10,
+    )
   })
 
   test(`5x5 singular matrix → det=0`, () => {
@@ -991,16 +867,13 @@ describe(`det_nxn`, () => {
 
   test(`numerical stability for near-singular matrix`, () => {
     // Matrix with small but non-zero determinant
+    // oxfmt-ignore
     const near_singular = [
-      [1, 1, 1, 1, 1],
-      [1, 1.0001, 1, 1, 1],
-      [1, 1, 1.0001, 1, 1],
-      [1, 1, 1, 1.0001, 1],
-      [1, 1, 1, 1, 1.0001],
+      [1, 1, 1, 1, 1], [1, 1.0001, 1, 1, 1], [1, 1, 1.0001, 1, 1],
+      [1, 1, 1, 1.0001, 1], [1, 1, 1, 1, 1.0001],
     ]
-    const det = math.det_nxn(near_singular)
     // Should be small but non-zero
-    expect(Math.abs(det)).toBeLessThan(1e-10)
+    expect(Math.abs(math.det_nxn(near_singular))).toBeLessThan(1e-10)
   })
 })
 
@@ -1021,19 +894,13 @@ describe(`det_4x4`, () => {
   })
 
   test(`barycentric coordinates (tetrahedron unit test)`, () => {
-    const tet_matrix: math.Matrix4x4 = [
-      [0, 1, 0, 0],
-      [0, 0, 1, 0],
-      [0, 0, 0, 1],
-      [1, 1, 1, 1],
-    ]
+    // oxfmt-ignore
+    const tet_matrix: math.Matrix4x4 = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
     expect(math.det_4x4(tet_matrix)).toBeCloseTo(-1, 10)
 
+    // oxfmt-ignore
     const bary_matrix: math.Matrix4x4 = [
-      [0.25, 1, 0, 0],
-      [0.25, 0, 1, 0],
-      [0.25, 0, 0, 1],
-      [1, 1, 1, 1],
+      [0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1],
     ]
     expect(math.det_4x4(bary_matrix) / math.det_4x4(tet_matrix)).toBeCloseTo(0.25, 10)
   })
@@ -1089,10 +956,6 @@ describe(`cross_3d`, () => {
       cross_ab[2] + cross_ac[2],
     ]
     expect(left).toEqual(right.map((val) => expect.closeTo(val, 10)))
-
-    // Triangle normal (convex hull use case)
-    const normal = math.cross_3d([1, 0, 0], [0, 1, 0])
-    expect(normal).toEqual([0, 0, 1])
   })
 })
 
@@ -1143,88 +1006,78 @@ describe(`frac_cutoff_per_axis`, () => {
   })
 })
 
-describe(`cross_2d`, () => {
-  test.each([
-    [`counter-clockwise unit triangle`, [0, 0], [1, 0], [0, 1], 1],
-    [`clockwise unit triangle`, [0, 0], [0, 1], [1, 0], -1],
-    [`translated origin`, [2, 3], [5, 3], [2, 7], 12],
-    [`collinear points`, [-1, -1], [1, 1], [3, 3], 0],
-  ] satisfies [string, Vec2, Vec2, Vec2, number][])(
-    `%s`,
-    (_case_name, origin, point_a, point_b, expected) => {
-      expect(math.cross_2d(origin, point_a, point_b)).toBe(expected)
-    },
-  )
+// oxfmt-ignore
+test.each([
+  [`counter-clockwise unit triangle`, [0, 0], [1, 0], [0, 1], 1],
+  [`clockwise unit triangle`, [0, 0], [0, 1], [1, 0], -1],
+  [`translated origin`, [2, 3], [5, 3], [2, 7], 12],
+  [`collinear points`, [-1, -1], [1, 1], [3, 3], 0],
+] satisfies [string, Vec2, Vec2, Vec2, number][])(
+  `cross_2d: %s`,
+  (_name, origin, pt_a, pt_b, expected) => {
+    expect(math.cross_2d(origin, pt_a, pt_b)).toBe(expected)
+  },
+)
+
+// oxfmt-ignore
+test.each([
+  // Valid square matrices
+  [[[1]], 1, true],
+  [[[1, 2], [3, 4]], 2, true],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 3, true],
+  [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], 4, true],
+  [Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 1)), 5, true],
+  // Non-square matrices
+  [[[1, 2, 3], [4, 5, 6]], 2, false],
+  [[[1, 2], [3, 4], [5, 6]], 3, false],
+  // Wrong dimension checks
+  [[[1, 2], [3, 4]], 3, false],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 2, false],
+  // Jagged arrays
+  [[[1, 2, 3], [4, 5], [7, 8, 9]], 3, false],
+  [[[1, 2, 3], [4, 5, 6, 7], [8, 9, 10]], 3, false],
+  // Edge cases
+  [[], 0, true],
+  [[[]], 1, false],
+  [[], -1, false],
+  // Invalid inputs
+  [`not an array`, 3, false],
+  [123, 3, false],
+  [null, 3, false],
+  [undefined, 3, false],
+  [[1, 2, 3], 3, false],
+  [[[1, 2, 3], `not an array`, [7, 8, 9]], 3, false],
+  // Non-numeric entries (predicate claims number[][], so entries must be numbers)
+  [[[1, 2, `3`], [4, 5, 6], [7, 8, 9]], 3, false],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, null]], 3, false],
+  // Non-finite entries rejected (NaN/Infinity pass typeof but break consumers)
+  [[[1, 2, 3], [4, NaN, 6], [7, 8, 9]], 3, false],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, Infinity]], 3, false],
+])(`is_square_matrix dim=%i expected=%s`, (matrix, dim, expected) => {
+  expect(math.is_square_matrix(matrix, dim)).toBe(expected)
 })
 
-describe(`is_square_matrix`, () => {
-  // oxfmt-ignore
-  test.each([
-    // Valid square matrices
-    [[[1]], 1, true],
-    [[[1, 2], [3, 4]], 2, true],
-    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 3, true],
-    [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], 4, true],
-    [Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 1)), 5, true],
-    // Non-square matrices
-    [[[1, 2, 3], [4, 5, 6]], 2, false],
-    [[[1, 2], [3, 4], [5, 6]], 3, false],
-    // Wrong dimension checks
-    [[[1, 2], [3, 4]], 3, false],
-    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 2, false],
-    // Jagged arrays
-    [[[1, 2, 3], [4, 5], [7, 8, 9]], 3, false],
-    [[[1, 2, 3], [4, 5, 6, 7], [8, 9, 10]], 3, false],
-    // Edge cases
-    [[], 0, true],
-    [[[]], 1, false],
-    [[], -1, false],
-    // Invalid inputs
-    [`not an array`, 3, false],
-    [123, 3, false],
-    [null, 3, false],
-    [undefined, 3, false],
-    [[1, 2, 3], 3, false],
-    [[[1, 2, 3], `not an array`, [7, 8, 9]], 3, false],
-    // Non-numeric entries (predicate claims number[][], so entries must be numbers)
-    [[[1, 2, `3`], [4, 5, 6], [7, 8, 9]], 3, false],
-    [[[1, 2, 3], [4, 5, 6], [7, 8, null]], 3, false],
-    // Non-finite entries rejected (NaN/Infinity pass typeof but break consumers)
-    [[[1, 2, 3], [4, NaN, 6], [7, 8, 9]], 3, false],
-    [[[1, 2, 3], [4, 5, 6], [7, 8, Infinity]], 3, false],
-  ])(`dim=%i expected=%s`, (matrix, dim, expected) => {
-    expect(math.is_square_matrix(matrix, dim)).toBe(expected)
-  })
+test.each([
+  [0, 10, 0, 0, `t=0 returns start`],
+  [0, 10, 1, 10, `t=1 returns end`],
+  [0, 10, 0.5, 5, `t=0.5 returns midpoint`],
+  [0, 10, 0.25, 2.5, `t=0.25 returns quarter`],
+  [-5, 5, 0.5, 0, `negative to positive midpoint`],
+  [10, 0, 0.5, 5, `reversed order midpoint`],
+  [0, 10, 2, 20, `extrapolation t>1`],
+  [0, 10, -0.5, -5, `extrapolation t<0`],
+])(`lerp(%f, %f, %f) = %f - %s`, (start, end, t, expected) => {
+  expect(math.lerp(start, end, t)).toBeCloseTo(expected)
 })
 
-describe(`lerp`, () => {
-  test.each([
-    [0, 10, 0, 0, `t=0 returns start`],
-    [0, 10, 1, 10, `t=1 returns end`],
-    [0, 10, 0.5, 5, `t=0.5 returns midpoint`],
-    [0, 10, 0.25, 2.5, `t=0.25 returns quarter`],
-    [-5, 5, 0.5, 0, `negative to positive midpoint`],
-    [10, 0, 0.5, 5, `reversed order midpoint`],
-    [0, 10, 2, 20, `extrapolation t>1`],
-    [0, 10, -0.5, -5, `extrapolation t<0`],
-  ])(`lerp(%f, %f, %f) = %f - %s`, (a, b, t, expected) => {
-    expect(math.lerp(a, b, t)).toBeCloseTo(expected)
-  })
-})
-
-describe(`lerp_vec3`, () => {
-  // oxfmt-ignore
-  it.each([
-    [[0, 0, 0], [10, 20, 30], 0, [0, 0, 0]],
-    [[0, 0, 0], [10, 20, 30], 1, [10, 20, 30]],
-    [[0, 0, 0], [10, 20, 30], 0.5, [5, 10, 15]],
-    [[-10, -20, -30], [10, 20, 30], 0.5, [0, 0, 0]],
-  ] as [Vec3, Vec3, number, Vec3][])(
-    `lerp_vec3(%j, %j, %d) = %j`,
-    (start, end, t, expected) => {
-      expect(math.lerp_vec3(start, end, t)).toEqual(expected)
-    },
-  )
+// oxfmt-ignore
+it.each([
+  [[0, 0, 0], [10, 20, 30], 0, [0, 0, 0]],
+  [[0, 0, 0], [10, 20, 30], 1, [10, 20, 30]],
+  [[0, 0, 0], [10, 20, 30], 0.5, [5, 10, 15]],
+  [[-10, -20, -30], [10, 20, 30], 0.5, [0, 0, 0]],
+] as [Vec3, Vec3, number, Vec3][])(`lerp_vec3(%j, %j, %d) = %j`, (start, end, t, expect_v) => {
+  expect(math.lerp_vec3(start, end, t)).toEqual(expect_v)
 })
 
 describe(`normalize_vec`, () => {
@@ -1256,27 +1109,20 @@ describe(`vecs_equal`, () => {
     expect(math.vecs_equal(vec_a as Vec3, vec_b as Vec3)).toBe(expected)
   })
 
-  it(`returns true for same reference`, () => {
-    const vec: Vec3 = [1, 2, 3]
-    expect(math.vecs_equal(vec, vec)).toBe(true)
-  })
-
   it(`uses strict equality, not approximate`, () => {
     expect(math.vecs_equal([0.1 + 0.2, 0, 0], [0.3, 0, 0])).toBe(false)
   })
 })
 
-describe(`compute_bounding_box`, () => {
-  // oxfmt-ignore
-  it.each([
-    [`empty array → zero box`, [], [0, 0, 0], [0, 0, 0]],
-    [`single vertex`, [[5, 10, 15]], [5, 10, 15], [5, 10, 15]],
-    [`multiple vertices`, [[0, 0, 0], [10, 5, 3], [-5, 20, -10], [3, -3, 15]],
-      [-5, -3, -10], [10, 20, 15]],
-    [`all negative`, [[-10, -20, -30], [-5, -10, -15]], [-10, -20, -30], [-5, -10, -15]],
-  ] as [string, Vec3[], Vec3, Vec3][])(`%s`, (_name, vertices, min, max) => {
-    expect(math.compute_bounding_box(vertices)).toEqual({ min, max })
-  })
+// oxfmt-ignore
+it.each([
+  [`empty array → zero box`, [], [0, 0, 0], [0, 0, 0]],
+  [`single vertex`, [[5, 10, 15]], [5, 10, 15], [5, 10, 15]],
+  [`multiple vertices`, [[0, 0, 0], [10, 5, 3], [-5, 20, -10], [3, -3, 15]],
+    [-5, -3, -10], [10, 20, 15]],
+  [`all negative`, [[-10, -20, -30], [-5, -10, -15]], [-10, -20, -30], [-5, -10, -15]],
+] as [string, Vec3[], Vec3, Vec3][])(`compute_bounding_box: %s`, (_name, vertices, min, max) => {
+  expect(math.compute_bounding_box(vertices)).toEqual({ min, max })
 })
 
 describe(`create_frac_to_cart and create_cart_to_frac`, () => {
@@ -1287,25 +1133,15 @@ describe(`create_frac_to_cart and create_cart_to_frac`, () => {
   // oxfmt-ignore
   const hexagonal: math.Matrix3x3 = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
 
+  // oxfmt-ignore
   test.each([
     { frac: [0, 0, 0], lattice: cubic, expected: [0, 0, 0], desc: `origin` },
     { frac: [1, 0, 0], lattice: cubic, expected: [5, 0, 0], desc: `a-vector` },
     { frac: [0.5, 0.5, 0.5], lattice: cubic, expected: [2.5, 2.5, 2.5], desc: `body center` },
-    {
-      frac: [0.5, 0.5, 0],
-      lattice: hexagonal,
-      expected: [3, 1.732, 0],
-      desc: `hexagonal face`,
-    },
-    {
-      frac: [1, 1, 1],
-      lattice: triclinic,
-      expected: [8.5, 5.33, 4],
-      desc: `triclinic corner`,
-    },
+    { frac: [0.5, 0.5, 0], lattice: hexagonal, expected: [3, 1.732, 0], desc: `hexagonal face` },
+    { frac: [1, 1, 1], lattice: triclinic, expected: [8.5, 5.33, 4], desc: `triclinic corner` },
   ])(`create_frac_to_cart: $desc`, ({ frac, lattice, expected }) => {
-    const frac_to_cart = math.create_frac_to_cart(lattice)
-    const result = frac_to_cart(frac as Vec3)
+    const result = math.create_frac_to_cart(lattice)(frac as Vec3)
     result.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 2))
   })
 
@@ -1346,19 +1182,14 @@ describe(`point_in_polygon`, () => {
   })
 })
 
-describe(`compute_bounding_box_2d`, () => {
-  // oxfmt-ignore
-  test.each([
-    [`unit square`, [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0], [1, 1], 1, 1],
-    [`negative coords`, [[-3, -2], [1, 4]], [-3, -2], [1, 4], 4, 6],
-    [`empty`, [], [0, 0], [0, 0], 0, 0],
-    [`single point`, [[5, 7]], [5, 7], [5, 7], 0, 0],
-  ] as [string, Vec2[], Vec2, Vec2, number, number][])(
-    `%s`,
-    (_name, pts, min, max, width, height) => {
-      expect(math.compute_bounding_box_2d(pts)).toEqual({ min, max, width, height })
-    },
-  )
+// oxfmt-ignore
+test.each([
+  { name: `unit square`, pts: [[0, 0], [1, 0], [1, 1], [0, 1]], min: [0, 0], max: [1, 1], width: 1, height: 1 },
+  { name: `negative coords`, pts: [[-3, -2], [1, 4]], min: [-3, -2], max: [1, 4], width: 4, height: 6 },
+  { name: `empty`, pts: [], min: [0, 0], max: [0, 0], width: 0, height: 0 },
+  { name: `single point`, pts: [[5, 7]], min: [5, 7], max: [5, 7], width: 0, height: 0 },
+])(`compute_bounding_box_2d: $name`, ({ name: _name, pts, ...expected }) => {
+  expect(math.compute_bounding_box_2d(pts as Vec2[])).toEqual(expected)
 })
 
 describe(`solve_linear_system`, () => {
@@ -1383,22 +1214,18 @@ describe(`solve_linear_system`, () => {
 })
 
 describe(`convex_hull_2d`, () => {
-  test(`pentagon with interior point`, () => {
-    // oxfmt-ignore
-    const pts: Vec2[] = [[0, 0], [4, 0], [5, 3], [2.5, 5], [0, 3], [2.5, 2]] // last is interior
-    expect(math.convex_hull_2d(pts)).toHaveLength(5) // interior excluded
-  })
-
-  test(`duplicate points`, () => {
-    // oxfmt-ignore
-    const pts: Vec2[] = [[0, 0], [1, 0], [1, 0], [0, 1], [0, 1]]
-    expect(math.convex_hull_2d(pts)).toHaveLength(3)
+  // oxfmt-ignore
+  test.each([
+    // last point is interior, so the hull keeps only the 5 outer vertices
+    [`pentagon with interior point`, [[0, 0], [4, 0], [5, 3], [2.5, 5], [0, 3], [2.5, 2]], 5],
+    [`duplicate points`, [[0, 0], [1, 0], [1, 0], [0, 1], [0, 1]], 3],
+  ] as [string, Vec2[], number][])(`%s -> %i vertices`, (_name, pts, expected_len) => {
+    expect(math.convex_hull_2d(pts)).toHaveLength(expected_len)
   })
 
   test(`all same point`, () => {
     // oxfmt-ignore
-    const hull = math.convex_hull_2d([[3, 3], [3, 3], [3, 3]])
-    expect(hull.length).toBeLessThanOrEqual(3)
+    expect(math.convex_hull_2d([[3, 3], [3, 3], [3, 3]]).length).toBeLessThanOrEqual(3)
   })
 
   test(`counter-clockwise winding`, () => {
@@ -1415,24 +1242,16 @@ describe(`convex_hull_2d`, () => {
   })
 })
 
-describe(`polygon_centroid (from math)`, () => {
-  test(`rectangle centroid`, () => {
-    // oxfmt-ignore
-    const centroid = math.polygon_centroid([[0, 0], [4, 0], [4, 2], [0, 2]])
-    expect(centroid[0]).toBeCloseTo(2, 6)
-    expect(centroid[1]).toBeCloseTo(1, 6)
-  })
-
-  test(`degenerate collinear polygon falls back to average`, () => {
-    // oxfmt-ignore
-    const centroid = math.polygon_centroid([[0, 0], [1, 0], [2, 0]])
-    expect(centroid[0]).toBeCloseTo(1, 6)
-    expect(centroid[1]).toBeCloseTo(0, 6)
-  })
-
-  test(`empty polygon returns [0, 0] without throwing`, () => {
-    expect(math.polygon_centroid([])).toEqual([0, 0])
-  })
+// oxfmt-ignore
+test.each([
+  [`rectangle`, [[0, 0], [4, 0], [4, 2], [0, 2]], [2, 1]],
+  // zero signed area, so the shoelace formula falls back to the vertex average
+  [`degenerate collinear polygon`, [[0, 0], [1, 0], [2, 0]], [1, 0]],
+  [`empty polygon (must not throw)`, [], [0, 0]],
+] as [string, Vec2[], Vec2][])(`polygon_centroid: %s`, (_name, vertices, expected) => {
+  expect(math.polygon_centroid(vertices)).toEqual(
+    expected.map((val) => expect.closeTo(val, 6)),
+  )
 })
 
 describe(`are_coplanar`, () => {
@@ -1450,35 +1269,34 @@ describe(`are_coplanar`, () => {
     expect(math.are_coplanar(pts)).toBe(expected)
   })
 
-  test(`nearly coplanar within tolerance returns true`, () => {
-    // oxfmt-ignore
-    const pts = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1e-8]]
-    expect(math.are_coplanar(pts, 1e-6)).toBe(true)
-  })
-
-  test(`point offset beyond tolerance returns false`, () => {
-    // oxfmt-ignore
-    const pts = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.5, 0.01]]
-    expect(math.are_coplanar(pts, 1e-6)).toBe(false)
+  // 1e-8 sits two decades below the 1e-6 tolerance, 0.01 four decades above it
+  // oxfmt-ignore
+  test.each([
+    [`nearly coplanar within tolerance`, [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1e-8]], true],
+    [`point offset beyond tolerance`, [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.5, 0.01]], false],
+  ])(`%s returns %s`, (_name, pts, expected) => {
+    expect(math.are_coplanar(pts, 1e-6)).toBe(expected)
   })
 })
 
 describe(`merge_coplanar_triangles`, () => {
-  test(`empty input returns empty Float32Array`, () => {
-    const result = math.merge_coplanar_triangles(new Float32Array(0))
-    expect(result).toBeInstanceOf(Float32Array)
-    expect(result).toHaveLength(0)
-  })
-
-  test(`single triangle passes through unchanged`, () => {
-    // Triangle on xy-plane
-    const input = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+  // Nothing to merge: output keeps the input vertex set (order may differ within a fan)
+  // oxfmt-ignore
+  test.each([
+    [`empty input`, [], 0],
+    [`single triangle on the xy-plane`, [0, 0, 0, 1, 0, 0, 0, 1, 0], 9],
+    // Two triangles sharing edge (0,0,0)-(1,0,0) but at 90° dihedral
+    [`two non-coplanar adjacent triangles`,
+      [0, 0, 0, 1, 0, 0, 0.5, 1, 0, 0, 0, 0, 1, 0, 0, 0.5, 0, 1], 18],
+    // All 3 vertices are the same point
+    [`degenerate zero-area triangle`, [1, 1, 1, 1, 1, 1, 1, 1, 1], 9],
+  ] as [string, number[], number][])(`%s passes through`, (_name, coords, expected_len) => {
+    const input = new Float32Array(coords)
     const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(9)
-    // Vertices should match (order may differ within fan)
-    const verts_in = extract_triangle_verts(input)
-    const verts_out = extract_triangle_verts(result)
-    expect(same_vertex_set(verts_in, verts_out)).toBe(true)
+    expect(result).toBeInstanceOf(Float32Array)
+    expect(result).toHaveLength(expected_len)
+    expect(same_vertex_set(extract_triangle_verts(input), extract_triangle_verts(result)))
+      .toBe(true)
   })
 
   test(`two coplanar adjacent triangles forming a quad are merged`, () => {
@@ -1506,45 +1324,52 @@ describe(`merge_coplanar_triangles`, () => {
     expect(vec3_close(fan_origin, second_tri_origin)).toBe(true)
   })
 
-  test(`two non-coplanar adjacent triangles remain unchanged`, () => {
-    // Two triangles sharing edge (0,0,0)-(1,0,0) but at 90° dihedral
-    // oxfmt-ignore
-    const input = new Float32Array([
-      0, 0, 0, 1, 0, 0, 0.5, 1, 0, // xy-plane
-      0, 0, 0, 1, 0, 0, 0.5, 0, 1, // xz-plane
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(18)
-    expect(
-      same_vertex_set(extract_triangle_verts(input), extract_triangle_verts(result)),
-    ).toBe(true)
-  })
+  // Regular hexagon on z=0 centered at origin, triangulated as a fan from vertex 0
+  // oxfmt-ignore
+  const hex_verts: Vec3[] = [
+    [1, 0, 0], [0.5, 0.866, 0], [-0.5, 0.866, 0],
+    [-1, 0, 0], [-0.5, -0.866, 0], [0.5, -0.866, 0],
+  ]
+  // oxfmt-ignore
+  const hex_input = new Float32Array([
+    ...hex_verts[0], ...hex_verts[1], ...hex_verts[2],
+    ...hex_verts[0], ...hex_verts[2], ...hex_verts[3],
+    ...hex_verts[0], ...hex_verts[3], ...hex_verts[4],
+    ...hex_verts[0], ...hex_verts[4], ...hex_verts[5],
+  ])
 
-  test(`four coplanar triangles forming a hexagonal face`, () => {
-    // Regular hexagon on z=0 centered at origin, split into 4 triangles
-    // (fan from center would give 6, but convex hull gives 6 vertices → 4 fan triangles)
-    // oxfmt-ignore
-    const hex_verts: Vec3[] = [
-      [1, 0, 0], [0.5, 0.866, 0], [-0.5, 0.866, 0],
-      [-1, 0, 0], [-0.5, -0.866, 0], [0.5, -0.866, 0],
-    ]
-    // Triangulate as fan from vertex 0
-    // oxfmt-ignore
-    const input = new Float32Array([
-      ...hex_verts[0], ...hex_verts[1], ...hex_verts[2],
-      ...hex_verts[0], ...hex_verts[2], ...hex_verts[3],
-      ...hex_verts[0], ...hex_verts[3], ...hex_verts[4],
-      ...hex_verts[0], ...hex_verts[4], ...hex_verts[5],
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    // Should merge to 4 fan triangles from 6 hull vertices
-    expect(result).toHaveLength(4 * 9)
-    // All 6 hex vertices should appear in output
-    const out_verts = extract_triangle_verts(result)
-    for (const hv of hex_verts) {
-      expect(out_verts.some((ov) => vec3_close(ov, hv, 0.01))).toBe(true)
-    }
-  })
+  // Coplanar groups that merge and then re-triangulate as a fan over all hull vertices
+  // oxfmt-ignore
+  test.each([
+    // Convex hull gives 6 vertices → 4 fan triangles. 0.866 is not exact in Float32,
+    // hence the looser 0.01 vertex-match tolerance.
+    [`hexagonal face from four coplanar triangles`, hex_input, 4 * 9, hex_verts, 0.01],
+    // Two triangles on the x=5 plane with opposite winding. Tests CANON_EPS fix.
+    [`axis-aligned plane despite winding differences`,
+      new Float32Array([
+        5, 0, 0, 5, 1, 0, 5, 1, 1, // tri1
+        5, 0, 0, 5, 1, 1, 5, 0, 1, // tri2 (opposite winding)
+      ]),
+      2 * 9, [[5, 0, 0], [5, 1, 0], [5, 1, 1], [5, 0, 1]], 1e-4],
+    // Pentagon A-B-C-D-E split into 3 fan triangles from A
+    [`three coplanar triangles sharing a fan vertex`,
+      new Float32Array([
+        0, 0, 0, 2, 0, 0, 2, 1, 0, // A-B-C
+        0, 0, 0, 2, 1, 0, 1, 2, 0, // A-C-D
+        0, 0, 0, 1, 2, 0, 0, 1, 0, // A-D-E
+      ]),
+      3 * 9, [[0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 2, 0], [0, 1, 0]], 1e-4],
+  ] as [string, Float32Array, number, Vec3[], number][])(
+    `%s`,
+    (_name, input, expected_len, expected_verts, tol) => {
+      const result = math.merge_coplanar_triangles(input)
+      expect(result).toHaveLength(expected_len)
+      const out_verts = extract_triangle_verts(result)
+      for (const ev of expected_verts) {
+        expect(out_verts.some((ov) => vec3_close(ov, ev, tol))).toBe(true)
+      }
+    },
+  )
 
   test(`mixed coplanar and non-coplanar triangles`, () => {
     // Two coplanar triangles on z=0 (a quad) + one triangle on z=1
@@ -1573,45 +1398,459 @@ describe(`merge_coplanar_triangles`, () => {
     }
     expect(area).toBeCloseTo(1.0, 6)
   })
+})
 
-  test(`degenerate zero-area triangle passes through`, () => {
-    // All 3 vertices are the same point
-    const input = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1])
-    const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(9)
+describe(`unwrap_positions`, () => {
+  // oxfmt-ignore
+  const cubic_10: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+  // Strongly skewed cell. min_image_displacement's rounded-fractional guess is only
+  // approximate here, so this is where image-shift bugs hide.
+  // oxfmt-ignore
+  const triclinic: math.Matrix3x3 = [[8, 0, 0], [5.5, 6.2, 0], [4.1, 3.7, 7.3]]
+
+  // Wrap a Cartesian position into the [0,1) fractional cell
+  const wrap_into_cell = (pos: Vec3, lattice: math.Matrix3x3): Vec3 => {
+    const frac = math.create_cart_to_frac(lattice)(pos)
+    const wrapped_frac = frac.map((val) => val - Math.floor(val)) as Vec3
+    return math.create_frac_to_cart(lattice)(wrapped_frac)
+  }
+
+  const max_abs_err = (actual: Vec3[][], expected: Vec3[][]): number => {
+    let worst = 0
+    for (const [frame_idx, frame] of actual.entries()) {
+      for (const [atom_idx, pos] of frame.entries()) {
+        for (const axis of [0, 1, 2] as const) {
+          worst = Math.max(worst, Math.abs(pos[axis] - expected[frame_idx][atom_idx][axis]))
+        }
+      }
+    }
+    return worst
+  }
+
+  // Deterministic MINSTD generator so the random-walk cases are reproducible without a
+  // seeded RNG dependency. state * 16807 stays under 2^45, so every step is exact in f64.
+  const make_rng = (seed: number) => {
+    let state = seed % 2147483647
+    return (): number => {
+      state = (state * 16807) % 2147483647
+      return state / 2147483647
+    }
+  }
+
+  // Random walk with per-step displacement bounded by `max_step` on each axis
+  const random_walk = (seed: number, n_frames: number, max_step: number): Vec3[][] => {
+    const rng = make_rng(seed)
+    // Array literals evaluate left to right, so x, y, z draw in that fixed order
+    const jitter = (): number => (rng() - 0.5) * 2 * max_step
+    let pos: Vec3 = [1, 2, 3]
+    const path: Vec3[][] = [[pos]]
+    for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
+      pos = [pos[0] + jitter(), pos[1] + jitter(), pos[2] + jitter()]
+      path.push([pos])
+    }
+    return path
+  }
+
+  // An atom driven repeatedly across the same face. The unwrapped coordinate must keep
+  // marching in one direction, and the accumulated image shift must be exactly
+  // n_crossings whole cell lengths. All step/start values are dyadic rationals so the
+  // reference trajectory is exact in binary floating point.
+  it.each([
+    { step: 2.5, start: 1, n_frames: 13, n_crossings: 3 },
+    { step: -2.5, start: 9, n_frames: 13, n_crossings: -3 },
+    { step: 4.75, start: 0.5, n_frames: 9, n_crossings: 3 },
+    { step: -1.25, start: 0.25, n_frames: 25, n_crossings: -3 },
+  ])(
+    `accumulates $n_crossings crossings for step $step`,
+    ({ step, start, n_frames, n_crossings }) => {
+      const cell_len = 10
+      const true_x = Array.from({ length: n_frames }, (_, idx) => start + idx * step)
+      const wrapped: Vec3[][] = true_x.map((x_pos) => [
+        [x_pos - Math.floor(x_pos / cell_len) * cell_len, 5, 5],
+      ])
+      const out = math.unwrap_positions(wrapped, cubic_10)
+
+      // Reference: frame 0 anchors at its wrapped value, which equals true_x[0] since
+      // every `start` lies inside the first cell
+      const expected: Vec3[][] = true_x.map((x_pos) => [[x_pos, 5, 5]])
+      // Exact equality, not a tolerance: every start/step is a dyadic rational and the
+      // applied image shift is a whole number of exact 10 A cell lengths, so the
+      // unwrapped path is bit-identical to the reference. Measured error is 0.
+      expect(max_abs_err(out, expected)).toBe(0)
+
+      // Strictly monotonic in the direction of travel
+      for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
+        const delta = out[frame_idx][0][0] - out[frame_idx - 1][0][0]
+        expect(Math.sign(delta)).toBe(Math.sign(step))
+      }
+
+      // Total accumulated image shift is exactly n_crossings * cell_length
+      const total_shift = out[n_frames - 1][0][0] - wrapped[n_frames - 1][0][0]
+      expect(total_shift).toBe(n_crossings * cell_len)
+    },
+  )
+
+  it.each([
+    { name: `cubic`, lattice: cubic_10 },
+    { name: `triclinic`, lattice: triclinic },
+  ])(`is a no-op to round-off when no boundary is crossed ($name)`, ({ lattice }) => {
+    // Dyadic-rational coordinates well inside the cell: any spurious image shift would
+    // show up as a whole-cell jump, orders of magnitude above the round-off bound below
+    // oxfmt-ignore
+    const frames: Vec3[][] = [
+      [[2, 3, 4], [5, 5, 5]],
+      [[2.5, 3.25, 4.5], [5.5, 5.25, 4.75]],
+      [[3, 3.5, 5], [6, 5.5, 4.5]],
+      [[2.75, 3.75, 5.25], [5.75, 5.75, 4.25]],
+    ]
+    // Same bound and reasoning as the random-walk case below: the endpoints round-trip
+    // through fractional space, so the result is within a few f64 ulps, not bit-exact
+    expect(max_abs_err(math.unwrap_positions(frames, lattice), frames)).toBeLessThan(1e-14)
   })
 
-  test(`coplanar triangles on axis-aligned plane merge despite winding differences`, () => {
-    // Two triangles on x=5 plane with opposite winding. Tests CANON_EPS fix.
-    // oxfmt-ignore
-    const input = new Float32Array([
-      5, 0, 0, 5, 1, 0, 5, 1, 1, // tri1
-      5, 0, 0, 5, 1, 1, 5, 0, 1, // tri2 (opposite winding)
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(18)
-    const out_verts = extract_triangle_verts(result)
-    // oxfmt-ignore
-    for (const ev of [[5, 0, 0], [5, 1, 0], [5, 1, 1], [5, 0, 1]] as Vec3[]) {
-      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
-    }
+  it.each([
+    { name: `cubic`, lattice: cubic_10, max_step: 2 },
+    { name: `triclinic`, lattice: triclinic, max_step: 1 },
+  ])(`round trips a wrapped random walk ($name)`, ({ lattice, max_step }) => {
+    // Minimum image can only recover a step shorter than half the perpendicular cell
+    // height; document that precondition rather than assuming it
+    const min_half_height = Math.min(...math.cell_heights(lattice)) / 2
+    expect(max_step * Math.sqrt(3)).toBeLessThan(min_half_height)
+
+    const original = random_walk(42, 60, max_step)
+    const wrapped = original.map((frame) => frame.map((pos) => wrap_into_cell(pos, lattice)))
+    // Anchor the reference to frame 0 of the wrapped path, which is where unwrapping starts
+    const offset = [0, 1, 2].map((axis) => wrapped[0][0][axis] - original[0][0][axis])
+    const expected = original.map((frame) =>
+      frame.map((pos): Vec3 => [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]]),
+    )
+
+    const out = math.unwrap_positions(wrapped, lattice)
+    // Wrapping round-trips coordinates through fractional space, so unlike the
+    // no-crossing case this cannot be bit-exact. Measured max error is 8.9e-16 (cubic)
+    // and 1.8e-15 (triclinic), i.e. 4-8x the f64 machine eps of 2.2e-16 and under one
+    // ulp at the ~15 A coordinates this walk reaches. 1e-14 gives ~6x headroom and is
+    // still 15 orders of magnitude below the cell size a missed image shift would add.
+    expect(max_abs_err(out, expected)).toBeLessThan(1e-14)
   })
 
-  test(`three coplanar triangles sharing fan vertex merge correctly`, () => {
-    // Pentagon A-B-C-D-E split into 3 fan triangles from A
+  it(`uses each frame's own cell when given per-frame lattices`, () => {
+    // Atom truly moves +4 A: 9.0 in a 10 A cell, then 13.0 wrapped into a 12 A cell -> 1.0.
+    // Only the 12 A cell recovers +4; reading the shift off the 10 A cell gives +2.
+    const wrapped: Vec3[][] = [[[9, 5, 5]], [[1, 5, 5]]]
     // oxfmt-ignore
-    const input = new Float32Array([
-      0, 0, 0, 2, 0, 0, 2, 1, 0, // A-B-C
-      0, 0, 0, 2, 1, 0, 1, 2, 0, // A-C-D
-      0, 0, 0, 1, 2, 0, 0, 1, 0, // A-D-E
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(3 * 9)
-    const out_verts = extract_triangle_verts(result)
+    const cell_12: math.Matrix3x3 = [[12, 0, 0], [0, 12, 0], [0, 0, 12]]
+
+    expect(math.unwrap_positions(wrapped, [cubic_10, cell_12])[1][0][0]).toBeCloseTo(13, 12)
+    expect(math.unwrap_positions(wrapped, cubic_10)[1][0][0]).toBeCloseTo(11, 12)
+  })
+
+  it(`matches the fixed-lattice result when every per-frame cell is the same`, () => {
+    const frames = random_walk(7, 20, 2).map((frame) =>
+      frame.map((pos) => wrap_into_cell(pos, cubic_10)),
+    )
+    const per_frame = frames.map(() => cubic_10)
+    expect(math.unwrap_positions(frames, per_frame)).toEqual(
+      math.unwrap_positions(frames, cubic_10),
+    )
+  })
+
+  it.each([
+    { name: `null`, lattice: null },
+    { name: `undefined`, lattice: undefined },
+  ])(`falls through to plain subtraction for a $name lattice`, ({ lattice }) => {
+    // Positions that look like a boundary crossing must be left alone without a cell
+    const frames: Vec3[][] = [[[9, 5, 5]], [[1, 5, 5]], [[9, 5, 5]]]
+    expect(math.unwrap_positions(frames, lattice)).toEqual(frames)
+  })
+
+  it.each([
+    { name: `fixed lattice`, lattices: cubic_10 },
+    { name: `per-frame lattices`, lattices: [cubic_10, cubic_10, cubic_10] },
+  ])(`throws when the atom count changes ($name)`, ({ lattices }) => {
     // oxfmt-ignore
-    for (const ev of [[0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 2, 0], [0, 1, 0]] as Vec3[]) {
-      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
+    const frames: Vec3[][] = [
+      [[1, 1, 1], [2, 2, 2]],
+      [[1, 1, 1], [2, 2, 2]],
+      [[1, 1, 1]],
+    ]
+    expect(() => math.unwrap_positions(frames, lattices)).toThrow(
+      /atom count changed at frame 2 \(2 atoms in frame 1, 1 in frame 2\)/,
+    )
+  })
+
+  it(`throws when the per-frame lattice count does not match the frame count`, () => {
+    const frames: Vec3[][] = [[[1, 1, 1]], [[2, 2, 2]], [[3, 3, 3]]]
+    expect(() => math.unwrap_positions(frames, [cubic_10, cubic_10])).toThrow(
+      /got 2 lattice matrices for 3 frames/,
+    )
+  })
+
+  // A ragged row is only reachable through the per-frame path, which used to hand it
+  // straight to create_lattice_converters and fail with a bare TypeError
+  // oxfmt-ignore
+  const ragged = [[1, 2, 3], [4, 5], [7, 8, 9]] as unknown as math.Matrix3x3
+  // oxfmt-ignore
+  const with_nan = [[1, 2, 3], [4, 5, NaN], [7, 8, 9]] as unknown as math.Matrix3x3
+  // oxfmt-ignore
+  it.each([
+    { name: `fixed lattice`, lattices: with_nan,
+      error: /unwrap_positions lattice must be a finite 3x3 matrix/ },
+    { name: `per-frame lattice, named by frame index`, lattices: [cubic_10, cubic_10, ragged],
+      error: /frame 2 lattice must be a finite 3x3 matrix, got \[\[1,2,3\],\[4,5\],\[7,8,9\]\]/ },
+    // The unwrap loop starts at frame 1, so frame 0's own cell is only ever read as the
+    // fallback for later frames without one - it has to be checked before that, not skipped
+    { name: `frame-0 per-frame lattice`, lattices: [with_nan, null, null],
+      error: /frame 0 lattice must be a finite 3x3 matrix/ },
+  ])(`throws on a malformed $name`, ({ lattices, error }) => {
+    const frames: Vec3[][] = [[[1, 1, 1]], [[2, 2, 2]], [[3, 3, 3]]]
+    expect(() => math.unwrap_positions(frames, lattices)).toThrow(error)
+  })
+
+  // A cell only applies to the frames that actually carry one. Three nullish entries look
+  // like the three rows of a 3x3, so an all-null list used to be misread as a fixed cell
+  // and hit the fixed-cell validator instead of falling through to plain subtraction.
+  // oxfmt-ignore
+  it.each([
+    { name: `all null`, lattices: [null, null, null], expected: [9, 1, 9] },
+    { name: `all undefined`, lattices: [undefined, undefined, undefined], expected: [9, 1, 9] },
+    { name: `a cell on the last frame only`, lattices: [null, null, cubic_10], expected: [9, 1, -1] },
+  ])(`per-frame list with $name`, ({ lattices, expected }) => {
+    const out = math.unwrap_positions([[[9, 5, 5]], [[1, 5, 5]], [[9, 5, 5]]], lattices)
+    out.forEach((frame, idx) => expect(frame[0][0]).toBeCloseTo(expected[idx], 12))
+  })
+
+  it(`returns an empty array for an empty trajectory`, () => {
+    expect(math.unwrap_positions([], cubic_10)).toEqual([])
+  })
+
+  it(`does not alias the input frames`, () => {
+    const frames: Vec3[][] = [[[1, 2, 3]], [[1.5, 2, 3]]]
+    const out = math.unwrap_positions(frames, cubic_10)
+    out[0][0][0] = 999
+    expect(frames[0][0][0]).toBe(1)
+  })
+})
+
+describe(`apply_transformation_matrix`, () => {
+  // oxfmt-ignore
+  const diag_lattice: math.Matrix3x3 = [[2, 0, 0], [0, 3, 0], [0, 0, 4]]
+  // oxfmt-ignore
+  const identity: math.Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+
+  // oxfmt-ignore
+  it.each([
+    [`identity leaves the lattice untouched`, identity, [[2, 0, 0], [0, 3, 0], [0, 0, 4]], 1],
+    // a' = a + b = (2,0,0) + (0,3,0), b' = b, c' = c
+    [`shear adds b into a`,
+      [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [[2, 3, 0], [0, 3, 0], [0, 0, 4]], 1],
+    [`2x2x2 supercell`,
+      [[2, 0, 0], [0, 2, 0], [0, 0, 2]], [[4, 0, 0], [0, 6, 0], [0, 0, 8]], 8],
+    // a' = a + b + c, b' = -a + b, c' = c  ->  det = 1*1 - 1*(-1) = 2
+    [`body-centred style transform`,
+      [[1, 1, 1], [-1, 1, 0], [0, 0, 1]], [[2, 3, 4], [-2, 3, 0], [0, 0, 4]], 2],
+    [`orientation-flipping transform still reports positive multiplicity`,
+      [[0, 1, 0], [1, 0, 0], [0, 0, 1]], [[0, 3, 0], [2, 0, 0], [0, 0, 4]], 1],
+  ] as [string, math.Matrix3x3, math.Matrix3x3, number][])(
+    `%s`,
+    (_name, transform, expected, multiplicity) => {
+      expect(math.apply_transformation_matrix(transform, diag_lattice)).toEqual(expected)
+      expect(math.transformation_cell_multiplicity(transform)).toBe(multiplicity)
+    },
+  )
+
+  it(`preserves volume ratio equal to |det(P)| for a triclinic cell`, () => {
+    // oxfmt-ignore
+    const triclinic: math.Matrix3x3 = [[8, 0, 0], [5.5, 6.2, 0], [4.1, 3.7, 7.3]]
+    // oxfmt-ignore
+    const transform: math.Matrix3x3 = [[2, 1, 0], [0, 1, 0], [1, 0, 3]]
+    const transformed = math.apply_transformation_matrix(transform, triclinic)
+    const ratio =
+      math.calc_lattice_params(transformed).volume / math.calc_lattice_params(triclinic).volume
+    expect(ratio).toBeCloseTo(math.transformation_cell_multiplicity(transform), 10)
+  })
+
+  // oxfmt-ignore
+  it.each([
+    [`non-integer entries`, [[1.5, 0, 0], [0, 1, 0], [0, 0, 1]],
+      /must have integer entries, got \[1\.5\]/],
+    [`singular (repeated row)`, [[1, 1, 0], [1, 1, 0], [0, 0, 1]],
+      /is singular \(determinant 0\)/],
+    // row 3 = row 1 + row 2, so exactly singular, but a float determinant rounds it to 1024
+    [`singular despite a non-zero float determinant`,
+      [[123456789, 987654321, 5], [987654321, 123456789, 7], [1111111110, 1111111110, 12]],
+      /is singular \(determinant 0\)/],
+    [`all-zero`, [[0, 0, 0], [0, 0, 0], [0, 0, 0]], /is singular \(determinant 0\)/],
+    [`NaN entry`, [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]], /must be a finite 3x3 matrix/],
+  ] as [string, math.Matrix3x3, RegExp][])(`throws for %s`, (_name, transform, error) => {
+    expect(() => math.apply_transformation_matrix(transform, diag_lattice)).toThrow(error)
+    expect(() => math.transformation_cell_multiplicity(transform)).toThrow(error)
+  })
+
+  // |det| = 1e19 rounds through Number(), so the count is refused rather than misreported.
+  // Only this boundary needs a number: the two callers that validate and discard the
+  // determinant keep working, hermite_normal_form included.
+  it(`refuses a cell multiplicity beyond the safe integer range`, () => {
+    // oxfmt-ignore
+    const huge: math.Matrix3x3 = [[1e6, 0, 0], [0, 1e6, 0], [0, 0, 1e7]]
+    expect(() => math.transformation_cell_multiplicity(huge)).toThrow(
+      /\|determinant\| 10000000000000000000, beyond the safe integer range/,
+    )
+    expect(math.apply_transformation_matrix(huge, diag_lattice)).toBeDefined()
+    expect(math.hermite_normal_form(huge).hnf).toEqual(huge)
+  })
+
+  it(`throws for a malformed lattice matrix`, () => {
+    // oxfmt-ignore
+    const bad = [[1, 0, 0], [0, 1, 0]] as unknown as math.Matrix3x3
+    expect(() => math.apply_transformation_matrix(identity, bad)).toThrow(
+      /Lattice matrix must be a finite 3x3 matrix/,
+    )
+  })
+})
+
+describe(`gcd and Miller index reduction`, () => {
+  it.each([
+    [0, 0, 0],
+    [0, 5, 5],
+    [5, 0, 5],
+    [12, 18, 6],
+    [18, 12, 6],
+    [-12, 18, 6],
+    [12, -18, 6],
+    [-12, -18, 6],
+    [7, 13, 1],
+    [1, 1, 1],
+    [100, 100, 100],
+    [2 ** 20, 2 ** 15, 2 ** 15],
+  ])(`gcd(%i, %i) = %i`, (val_a, val_b, expected) => {
+    expect(math.gcd(val_a, val_b)).toBe(expected)
+  })
+
+  it.each([1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 2])(
+    `gcd throws for non-integer %p`,
+    (val) => {
+      expect(() => math.gcd(val, 6)).toThrow(/requires safe integers/)
+      expect(() => math.gcd(6, val)).toThrow(/requires safe integers/)
+    },
+  )
+
+  it.each([
+    { values: [], expected: 0 },
+    { values: [0, 0, 0], expected: 0 },
+    { values: [9], expected: 9 },
+    { values: [-9], expected: 9 },
+    { values: [4, 6, 8], expected: 2 },
+    { values: [4, 6, 9], expected: 1 },
+    { values: [0, 6, 9], expected: 3 },
+    { values: [-6, -9, -12], expected: 3 },
+  ])(`gcd_all($values) = $expected`, ({ values, expected }) => {
+    expect(math.gcd_all(values)).toBe(expected)
+  })
+
+  it.each([
+    { hkl: [0, 0, 0] as Vec3, expected: [0, 0, 0] as Vec3 },
+    { hkl: [1, 1, 0] as Vec3, expected: [1, 1, 0] as Vec3 },
+    { hkl: [2, 2, 0] as Vec3, expected: [1, 1, 0] as Vec3 },
+    { hkl: [0, 0, 3] as Vec3, expected: [0, 0, 1] as Vec3 },
+    { hkl: [4, 6, 8] as Vec3, expected: [2, 3, 4] as Vec3 },
+    { hkl: [-2, -2, 0] as Vec3, expected: [-1, -1, 0] as Vec3 },
+    { hkl: [-2, 4, 0] as Vec3, expected: [-1, 2, 0] as Vec3 },
+    { hkl: [1, 2, 3] as Vec3, expected: [1, 2, 3] as Vec3 },
+    { hkl: [6, -3, 9] as Vec3, expected: [2, -1, 3] as Vec3 },
+  ])(`reduce_miller_indices($hkl) = $expected`, ({ hkl, expected }) => {
+    expect(math.reduce_miller_indices(hkl)).toEqual(expected)
+  })
+
+  it(`reduce_miller_indices keeps opposite surfaces distinct`, () => {
+    expect(math.reduce_miller_indices([2, 2, 0])).not.toEqual(
+      math.reduce_miller_indices([-2, -2, 0]),
+    )
+  })
+})
+
+describe(`hermite_normal_form`, () => {
+  // Every HNF invariant at once: transform is unimodular, transform · matrix === hnf
+  // exactly (integers, so exact equality is the right check), and hnf is upper
+  // triangular with a positive diagonal and off-diagonal entries reduced into [0, pivot)
+  const assert_hnf_invariants = (matrix: math.Matrix3x3) => {
+    const { hnf, transform } = math.hermite_normal_form(matrix)
+    expect(Math.abs(math.det_3x3(transform))).toBe(1)
+    expect(transform.flat().every(Number.isInteger)).toBe(true)
+    expect(math.dot(transform, matrix)).toEqual(hnf)
+    // Diagonal product equals |det| for any HNF, since the transform is unimodular
+    expect(hnf[0][0] * hnf[1][1] * hnf[2][2]).toBe(Math.abs(math.det_3x3(matrix)))
+    for (let row = 0; row < 3; row++) {
+      expect(hnf[row][row]).toBeGreaterThan(0)
+      for (let col = 0; col < row; col++) expect(hnf[row][col]).toBe(0)
+      for (let col = row + 1; col < 3; col++) {
+        expect(hnf[row][col]).toBeGreaterThanOrEqual(0)
+        expect(hnf[row][col]).toBeLessThan(hnf[col][col])
+      }
     }
+    return hnf
+  }
+
+  // oxfmt-ignore
+  it.each([
+    [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
+    [`already in HNF`, [[2, 1, 0], [0, 3, 1], [0, 0, 4]], [[2, 1, 0], [0, 3, 1], [0, 0, 4]]],
+    [`negative diagonal gets normalized`,
+      [[-2, 0, 0], [0, -3, 0], [0, 0, -4]], [[2, 0, 0], [0, 3, 0], [0, 0, 4]]],
+    [`permuted rows`, [[0, 0, 1], [1, 0, 0], [0, 1, 0]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
+    // det = 2, so the diagonal product must be 2. Rows check out by hand:
+    // (1,1,0) = a - c, (0,2,0) = a + b - c, (0,0,1) = c
+    [`body-centred cubic sublattice`,
+      [[1, 1, 1], [-1, 1, 0], [0, 0, 1]], [[1, 1, 0], [0, 2, 0], [0, 0, 1]]],
+    // det = 105 = 1 * 3 * 35. Rows check out by hand: (1,1,28) = a - 3b + 4c,
+    // (0,3,14) = -b + 2c, (0,0,35) = a - 4b + 5c
+    [`lower triangular becomes upper triangular`,
+      [[3, 0, 0], [2, 5, 0], [1, 4, 7]], [[1, 1, 28], [0, 3, 14], [0, 0, 35]]],
+    // Pins the BigInt arithmetic: a plain-Number transcription hits |factor * entry| =
+    // 2.4e16 here, past 2^53, and returns 526820376 for hnf[0][2] instead of 526820374
+    [`three-digit entries overflow float64 in the above-pivot reduction`,
+      [[-586, -743, -713], [958, -754, -882], [-553, 912, 42]],
+      [[1, 0, 526820374], [0, 1, 723872075], [0, 0, 1110962848]]],
+  ] as [string, math.Matrix3x3, math.Matrix3x3][])(`%s`, (_name, matrix, expected) => {
+    expect(assert_hnf_invariants(matrix)).toEqual(expected)
+  })
+
+  // oxfmt-ignore
+  it.each([
+    [[[6, 4, 2], [3, 9, 12], [8, 2, 5]]],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, 10]]],
+    [[[-5, 3, 0], [2, -7, 4], [1, 1, -9]]],
+    [[[100, 0, 0], [0, 1, 0], [37, 0, 1]]],
+    [[[0, 0, -3], [0, -5, 0], [-7, 0, 0]]],
+  ] as [math.Matrix3x3][])(`satisfies all HNF invariants for %j`, (matrix) => {
+    // HNF is a canonical form, so reducing an HNF again must be a no-op
+    const hnf = assert_hnf_invariants(matrix)
+    expect(assert_hnf_invariants(hnf)).toEqual(hnf)
+  })
+
+  it(`gives a transform usable with apply_transformation_matrix`, () => {
+    // oxfmt-ignore
+    const lattice: math.Matrix3x3 = [[3, 0, 0], [0, 4, 0], [0, 0, 5]]
+    // oxfmt-ignore
+    const sublattice: math.Matrix3x3 = [[1, 1, 1], [-1, 1, 0], [0, 0, 1]]
+    const { hnf, transform } = math.hermite_normal_form(sublattice)
+    // Transforming by U then by HNF must land on the same cell as transforming by U·M
+    expect(math.apply_transformation_matrix(hnf, lattice)).toEqual(
+      math.apply_transformation_matrix(
+        transform,
+        math.apply_transformation_matrix(sublattice, lattice),
+      ),
+    )
+  })
+
+  // oxfmt-ignore
+  it.each([
+    [`non-integer entries`, [[1, 0.5, 0], [0, 1, 0], [0, 0, 1]],
+      /hermite_normal_form matrix must have integer entries, got \[0\.5\]/],
+    [`singular matrix`, [[1, 2, 3], [2, 4, 6], [1, 1, 1]], /is singular \(determinant 0\)/],
+    [`NaN entry`, [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]], /must be a finite 3x3 matrix/],
+  ] as [string, math.Matrix3x3, RegExp][])(`throws for %s`, (_name, matrix, error) => {
+    expect(() => math.hermite_normal_form(matrix)).toThrow(error)
   })
 })
 

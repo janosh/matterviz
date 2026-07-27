@@ -1,13 +1,12 @@
 // Tests for HKL plane slicing and trilinear interpolation
 import { trilinear_interpolate } from '$lib/isosurface/sampling'
 import {
-  type CartesianPlane,
-  type PlaneSliceOptions,
   resolve_slice_cartesian_point,
   sample_hkl_slice,
   sample_plane_slice,
   volume_center,
 } from '$lib/isosurface/slice'
+import type { CartesianPlane, PlaneSliceOptions } from '$lib/isosurface/slice'
 import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
