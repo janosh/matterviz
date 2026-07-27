@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { IconName } from '$lib'
   import { Icon, ICON_DATA } from '$lib'
-  import { fuzzy_match } from 'svelte-widgets'
+  import { fuzzy_match } from 'svelte-widgets/utils'
   import { highlight_matches } from 'svelte-widgets/attachments'
 
   let filter_text = $state(``)
