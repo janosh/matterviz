@@ -7,7 +7,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import * as io from '$lib/io'
-  import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
+  import { handle_and_prevent } from '$lib/keyboard'
   import { webgpu_available } from '$lib/scene'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
@@ -24,7 +24,7 @@
     normalize_active_volume_idx,
   } from '$lib/isosurface/types'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
-  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
@@ -57,7 +57,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { click_outside, tooltip } from 'svelte-widgets/attachments'
+  import { click_outside, forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
@@ -687,6 +687,7 @@
     if (signature === last_emitted_bond_signature) return
     last_emitted_bond_signature = signature
     bonds = next_bonds
+    bond_trace(`emit_readback`, trace_id, { readback: bond_signature(bonds) })
     on_bonds_change?.(next_bonds)
   }
 
@@ -1772,15 +1773,10 @@
     get_wrapper: () => wrapper,
     get_fullscreen: () => fullscreen,
     set_fullscreen: (val) => (fullscreen = val),
-    bg_css_var: `--struct-bg-fullscreen`,
+    get_bg_css_var: () => `--struct-bg-fullscreen`,
     on_change: (val) => on_fullscreen_change?.({ structure, fullscreen: val }),
   })
 </script>
-
-<!-- Forward shortcuts to the hovered viewer when focus is on <body> (see
-  forward_window_keydown). Edit modes are excluded so destructive keys
-  (delete/undo) still require focus, not just a hovering mouse. -->
-<svelte:window onkeydown={forward_window_keydown(() => hovered, handle_hover_keydown)} />
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
@@ -1794,8 +1790,8 @@
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
-  onmouseenter={() => (hovered = true)}
-  onmouseleave={() => (hovered = false)}
+  onpointerenter={() => (hovered = true)}
+  onpointerleave={() => (hovered = false)}
   onfocusin={() => (focused = true)}
   onfocusout={(event) => {
     if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
@@ -1810,6 +1806,7 @@
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
+  {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}
