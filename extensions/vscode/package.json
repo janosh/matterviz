@@ -19,7 +19,8 @@
     "prebuild": "npm run sync-config",
     "build": "rm -rf dist && vite build --config vite.extension.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
     "package": "npm run build && vsce package --no-dependencies",
-    "test": "vitest"
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
