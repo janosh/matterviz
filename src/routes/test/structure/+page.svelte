@@ -178,8 +178,15 @@
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
   })
 
+  // structure_bond_history records every value `bonds` takes, not just the latest. Diagnostic
+  // for the CI-only bond-edit regression (see the note in bonds.test.ts): the reset path
+  // snapshots `bonds` the first tick an edit exists, so the sequence shows whether the
+  // snapshot could have been taken before or after the edit landed.
+  const bond_history: unknown[] = []
   $effect(() => {
     if (typeof window === `undefined`) return
+    bond_history.push($state.snapshot(bonds))
+    ;(globalThis as Record<string, unknown>).structure_bond_history = bond_history
     ;(globalThis as Record<string, unknown>).structure_bonds = bonds
   })
 
