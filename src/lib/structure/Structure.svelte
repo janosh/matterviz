@@ -24,7 +24,7 @@
     normalize_active_volume_idx,
   } from '$lib/isosurface/types'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
-  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
+  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
