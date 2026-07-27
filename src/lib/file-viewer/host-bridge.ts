@@ -41,7 +41,7 @@ export const get_vscode_api = (): VSCodeAPI | null => host_api
 // host: tags the request with a UUID, forwards responses carrying that id to
 // on_response (which returns true once it settled the promise), and rejects
 // on timeout. Always removes the listener + timer once settled.
-export function post_request<T>(
+function post_request<T>(
   api: VSCodeAPI,
   message: Record<string, unknown>,
   timeout_ms: number,

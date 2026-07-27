@@ -344,22 +344,28 @@ const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
     )
   })
 
-// Bond cylinder instances actually uploaded to the GPU, read from the live scene graph.
-// The bond filter has a fast path that returns the unfiltered array when nothing is
-// hidden, so a count is the only way to tell "bonds were filtered" from "view changed".
-const rendered_bond_count = (page: Page) =>
+// Instances actually uploaded to the GPU, read from the live scene graph. The bond filter
+// has a fast path that returns the unfiltered array when nothing is hidden, so counts are
+// the only way to tell "bonds were filtered" from "view changed". Atoms are reported
+// alongside bonds because they pin down which half of the pipeline is at fault when this
+// disagrees with the legend: a scene still in the element-hidden state drops both, while a
+// scene that only lost its bond mesh keeps its full atom count.
+const rendered_instance_counts = (page: Page) =>
   page.evaluate(async () => {
     const module_path = `/src/lib/io/export.ts` // via variable so tsc doesn't resolve it
     const { scene_registry } = await import(/* @vite-ignore */ module_path)
     const canvas = document.querySelector(`#test-structure canvas`)
     const scene = canvas && scene_registry.get(canvas)?.scene
     if (!scene) throw new Error(`structure canvas not registered`)
-    let count = 0
+    const counts = { bonds: 0, atoms: 0 }
     // bond cylinders are the only instanced mesh carrying per-end colors
     scene.traverse((node: { geometry?: { attributes?: object }; count?: number }) => {
-      if (`instanceColorStart` in (node.geometry?.attributes ?? {})) count += node.count ?? 0
+      if (node.count === undefined || !node.geometry) return
+      const attributes = node.geometry.attributes ?? {}
+      if (`instanceColorStart` in attributes) counts.bonds += node.count
+      else counts.atoms += node.count
     })
-    return count
+    return counts
   })
 
 test.describe(`Bond component`, () => {
@@ -369,22 +375,31 @@ test.describe(`Bond component`, () => {
     })
     await wait_for_3d_canvas(page, `#test-structure`)
     await set_scene_props(page, { show_bonds: `always` })
-    const expect_bonds = (matcher: (count: number) => void) =>
-      expect(async () => matcher(await rendered_bond_count(page))).toPass({ timeout: 15_000 })
+    type Counts = Awaited<ReturnType<typeof rendered_instance_counts>>
+    const expect_counts = (matcher: (counts: Counts) => void) =>
+      expect(async () => matcher(await rendered_instance_counts(page))).toPass({
+        timeout: 15_000,
+      })
 
-    let all_bonds = 0
-    await expect_bonds((count) => expect((all_bonds = count)).toBeGreaterThan(0))
+    let all_visible: Counts = { bonds: 0, atoms: 0 }
+    await expect_counts((counts) => {
+      all_visible = counts
+      expect(counts.bonds).toBeGreaterThan(0)
+    })
 
     const legend_item = page.locator(`#test-structure .atom-legend .legend-item`).first()
     const toggle = legend_item.locator(`button.toggle-visibility`)
     await legend_item.hover()
     await toggle.click()
     await expect(legend_item.locator(`label`)).toHaveClass(/hidden/)
-    await expect_bonds((count) => expect(count).toBeLessThan(all_bonds))
+    await expect_counts((counts) => {
+      expect(counts.bonds).toBeLessThan(all_visible.bonds)
+      expect(counts.atoms).toBeLessThan(all_visible.atoms)
+    })
 
     await toggle.click()
     await expect(legend_item.locator(`label`)).not.toHaveClass(/hidden/)
-    await expect_bonds((count) => expect(count).toBe(all_bonds))
+    await expect_counts((counts) => expect(counts).toEqual(all_visible))
   })
 
   test(`renders bonds from multiple angles and zoom levels without errors`, async ({

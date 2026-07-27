@@ -32,7 +32,6 @@ class Structure(MatterViz):
         bonds: list | None = None,
         cell_type: Any | None = None,
         data_url: str | None = None,
-        displacement_rmsd: float | None = None,
         displayed_structure: Any | None = None,
         dragover: bool | None = None,
         element_mapping: dict | None = None,
@@ -56,7 +55,6 @@ class Structure(MatterViz):
         multi_view: bool | None = None,
         performance_mode: Any | None = None,
         png_dpi: float | None = None,
-        reference_structure: Any | None = None,
         reset_text: str | None = None,
         scene_props: dict | None = None,
         selected_sites: list[int] | None = None,
@@ -83,6 +81,8 @@ class Structure(MatterViz):
         multi_view_min_pane_width: float | None = None,
         display_mode: Any | None = None,
         slice_settings: dict | None = None,
+        reference_structure: Any | None = None,
+        displacement_rmsd: float | None = None,
         **kwargs,
     ):
         if mv_props is None:
