@@ -1,7 +1,17 @@
 // functions for measuring distances and angles between structure sites
 
 import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
-import { dot, min_image_displacement, subtract, to_degrees } from '$lib/math'
+import {
+  create_lattice_converters,
+  cross_3d,
+  dot,
+  EPS,
+  min_image_displacement,
+  scale,
+  subtract,
+  to_degrees,
+} from '$lib/math'
+import type { Site } from '$lib/structure'
 import type { Pbc } from './pbc'
 
 export type AngleMode = `degrees` | `radians`
@@ -35,5 +45,107 @@ export function angle_between_vectors(v1: Vec3, v2: Vec3, mode: AngleMode = `deg
   const clamped = Math.max(-1, Math.min(1, cos_angle))
 
   const ang = Math.acos(clamped)
+  return mode === `degrees` ? to_degrees(ang) : ang
+}
+
+export type DisplacementField = {
+  vectors: Vec3[] // per-site reference -> current displacement, in Cartesian Angstrom
+  rmsd: number // root-mean-square displacement over all sites
+  max_displacement: number
+}
+
+// UI-facing digest of a DisplacementField: either the two numbers worth reading or the reason
+// there are none. Discriminated on `error` so the success branch narrows both to `number`.
+export type DisplacementSummary =
+  | { rmsd: number; max_displacement: number; error: null }
+  | { rmsd?: undefined; max_displacement?: undefined; error: string }
+
+// Per-site displacement from a reference geometry to the current one, e.g. unrelaxed vs relaxed.
+// Uses minimum-image displacements rather than raw coordinate subtraction: an atom that relaxed
+// across a cell face has moved a fraction of an Angstrom, but its coordinates jump by a whole
+// lattice vector, which would draw an arrow spanning the entire box and wreck the RMSD.
+// Sites pair up by index, so both a count mismatch and a species mismatch throw — zipping the
+// shorter list or dropping Si onto O would report a confidently wrong number.
+export function compute_displacements(
+  reference_sites: Site[],
+  current_sites: Site[],
+  lattice_matrix: Matrix3x3 | null | undefined,
+  pbc?: Pbc,
+): DisplacementField {
+  if (reference_sites.length !== current_sites.length) {
+    throw new Error(
+      `Cannot compare structures with different atom counts: reference has ` +
+        `${reference_sites.length} sites, current has ${current_sites.length}`,
+    )
+  }
+  // Built once rather than per site: min_image_displacement rebuilds the cart<->frac
+  // converters for every call it isn't handed them, which dominates a 2000-site recompute.
+  const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
+  const vectors = current_sites.map((site, idx) => {
+    const ref_site = reference_sites[idx]
+    const ref_element = ref_site.species[0]?.element
+    const cur_element = site.species[0]?.element
+    if (ref_element !== cur_element) {
+      throw new Error(
+        `Species mismatch at site ${idx}: reference has ${ref_element}, current has ` +
+          `${cur_element}. Displacements pair sites by index, so both geometries must ` +
+          `list the same atoms in the same order.`,
+      )
+    }
+    return displacement_pbc(ref_site.xyz, site.xyz, lattice_matrix, converters, pbc)
+  })
+  let sum_sq = 0
+  let max_sq = 0
+  for (const vec of vectors) {
+    const norm_sq = vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
+    sum_sq += norm_sq
+    max_sq = Math.max(max_sq, norm_sq)
+  }
+  return {
+    vectors,
+    rmsd: vectors.length > 0 ? Math.sqrt(sum_sq / vectors.length) : 0,
+    max_displacement: Math.sqrt(max_sq),
+  }
+}
+
+// Signed torsion (dihedral) angle of the chain p1-p2-p3-p4, in (-180, 180] degrees.
+// Chains three minimum-image displacements instead of differencing Cartesian coordinates,
+// so a torsion whose atoms straddle a cell boundary measures the real bonded geometry
+// rather than the angle to a distant periodic image.
+// atan2 (not acos) is what makes the result signed: the sign follows the IUPAC convention,
+// i.e. viewed along p2->p3, a positive angle means the front bond p2->p1 must rotate clockwise
+// to eclipse the rear bond p3->p4. Enantiomers and gauche+/gauche- conformers therefore stay
+// distinguishable, and the sign labels their handedness correctly.
+export function dihedral_angle(
+  p1: Vec3,
+  p2: Vec3,
+  p3: Vec3,
+  p4: Vec3,
+  lattice_matrix: Matrix3x3 | null | undefined,
+  pbc?: Pbc,
+  mode: AngleMode = `degrees`,
+): number {
+  // One converter set for all three bonds instead of three (this runs per label render)
+  const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
+  const bond_12 = displacement_pbc(p1, p2, lattice_matrix, converters, pbc)
+  const bond_23 = displacement_pbc(p2, p3, lattice_matrix, converters, pbc)
+  const bond_34 = displacement_pbc(p3, p4, lattice_matrix, converters, pbc)
+
+  // Plane normals of the p1-p2-p3 and p2-p3-p4 triangles
+  const normal_123 = cross_3d(bond_12, bond_23)
+  const normal_234 = cross_3d(bond_23, bond_34)
+  const axis_len = Math.hypot(...bond_23)
+
+  // Any three collinear consecutive points (or a coincident pair) leave a plane undefined,
+  // so there is no torsion to report. Returning 0 keeps callers off the 0/0 NaN that atan2
+  // would otherwise produce, matching angle_between_vectors' zero-length-vector behavior.
+  const lengths = [axis_len, Math.hypot(...normal_123), Math.hypot(...normal_234)]
+  if (lengths.some((len) => len < EPS)) return 0
+
+  const axis_hat = scale(bond_23, 1 / axis_len)
+  const ang = Math.atan2(
+    dot(cross_3d(normal_123, normal_234), axis_hat),
+    dot(normal_123, normal_234),
+  )
   return mode === `degrees` ? to_degrees(ang) : ang
 }

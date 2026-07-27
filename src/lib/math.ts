@@ -77,10 +77,25 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
   const dot_ac = a_vec[0] * c_vec[0] + a_vec[1] * c_vec[1] + a_vec[2] * c_vec[2]
   const dot_bc = b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]
 
-  // Convert to angles in degrees
-  const alpha = Math.acos(dot_bc / (b * c)) * RAD_TO_DEG
-  const beta = Math.acos(dot_ac / (a * c)) * RAD_TO_DEG
-  const gamma = Math.acos(dot_ab / (a * b)) * RAD_TO_DEG
+  // Convert to angles in degrees. Two ways this yields NaN without the guard: parallel
+  // vectors, where the dot product and the two hypot calls round differently and the
+  // ratio exceeds 1 (a_vec = b_vec = (1,1,1) gives 1.0000000000000002), and a zero-length
+  // vector giving 0/0 - which is exactly what 2D/slab/molecule parse paths produce. The
+  // NaN then propagates silently into every derived quantity. angle_between_vectors in
+  // measure.ts needs the same [-1, 1] clamp for the same reason.
+  //
+  // Its zero-length sentinel is 0, not 90, and the difference is deliberate: for bond
+  // vectors 0 means "no direction", but a slab reported as alpha = beta = 0 drives the
+  // triclinic volume radicand 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ to -1, so
+  // cell_to_lattice_matrix rejects the cell. 90 keeps it at 1 and round-trips.
+  const safe_angle = (dot: number, len_1: number, len_2: number): number => {
+    const denom = len_1 * len_2
+    if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
+    return Math.acos(Math.max(-1, Math.min(1, dot / denom))) * RAD_TO_DEG
+  }
+  const alpha = safe_angle(dot_bc, b, c)
+  const beta = safe_angle(dot_ac, a, c)
+  const gamma = safe_angle(dot_ab, a, b)
 
   return { a, b, c, alpha, beta, gamma, volume }
 }
@@ -177,6 +192,122 @@ export const pbc_dist = (
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
 ): number => Math.hypot(...min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc))
+
+// Shared shape guard for the matrix-taking entry points below. Names the offender and
+// dumps its value so a malformed cell is identifiable from the message alone.
+const assert_finite_3x3 = (matrix: Matrix3x3, name: string): void => {
+  if (!is_square_matrix(matrix, 3)) {
+    throw new Error(`${name} must be a finite 3x3 matrix, got ${JSON.stringify(matrix)}`)
+  }
+}
+
+// A single frame's cell, or nothing when that frame has no periodicity to undo
+export type FrameLattice = Matrix3x3 | null | undefined
+// Either one fixed cell for the whole run, or one cell per frame (NPT)
+export type UnwrapLattices = Matrix3x3 | FrameLattice[] | null | undefined
+
+// A Matrix3x3's entries are Vec3s of numbers; a per-frame list's entries are
+// matrices or nullish. Only a list whose every entry is a numeric row is a single
+// fixed cell, so an all-null per-frame list stays per-frame instead of being fed
+// to the fixed-cell validator.
+const is_per_frame_lattices = (
+  lattices: NonNullable<UnwrapLattices>,
+): lattices is FrameLattice[] =>
+  !lattices.every((entry) => Array.isArray(entry) && typeof entry[0] === `number`)
+
+// Turn per-frame WRAPPED Cartesian positions into a continuous unwrapped trajectory
+// by accumulating minimum-image displacements between consecutive frames. Atom
+// order is the atom identity, so it must be identical in every frame.
+//
+// CALLER BEWARE: the input must be wrapped coordinates. Feeding coordinates that
+// are ALREADY unwrapped (e.g. a LAMMPS dump with xu/yu/zu columns, which the
+// parser flags as `coords_unwrapped: true` on the frame metadata) re-applies the
+// minimum image convention and silently truncates every real displacement longer
+// than half a cell — check that flag before calling this.
+//
+// `lattice_matrices` takes a single fixed cell or one cell per frame (NPT runs
+// where the box fluctuates). A null/undefined cell means nothing was wrapped, so
+// we fall through to plain subtraction the way `displacement_pbc` does.
+export function unwrap_positions(
+  frames: Vec3[][],
+  lattice_matrices: UnwrapLattices,
+  pbc: Pbc = [true, true, true],
+): Vec3[][] {
+  if (frames.length === 0) return []
+
+  // Split in an if/else so the guard's false branch narrows to the fixed cell.
+  // Deriving one from the other keeps the whole union on both.
+  let per_frame_lattices: FrameLattice[] | null = null
+  let fixed_lattice: Matrix3x3 | null = null
+  if (lattice_matrices != null) {
+    if (is_per_frame_lattices(lattice_matrices)) per_frame_lattices = lattice_matrices
+    else fixed_lattice = lattice_matrices
+  }
+  if (fixed_lattice != null) assert_finite_3x3(fixed_lattice, `unwrap_positions lattice`)
+  if (per_frame_lattices && per_frame_lattices.length !== frames.length) {
+    throw new Error(
+      `unwrap_positions: got ${per_frame_lattices.length} lattice matrices for ` +
+        `${frames.length} frames; per-frame lattices must be one per frame`,
+    )
+  }
+  // Built once for a fixed cell: each rebuild inverts a 3x3, and the atom loop
+  // below runs O(n_frames * n_atoms) times.
+  const fixed_converters = fixed_lattice ? create_lattice_converters(fixed_lattice) : null
+
+  // Copy frame 0 verbatim so the output never aliases the input
+  const unwrapped: Vec3[][] = [frames[0].map((pos): Vec3 => [pos[0], pos[1], pos[2]])]
+  // Frame 0's own cell is never seen by the per-frame check below, since the loop starts at
+  // 1, yet later frames with a missing lattice fall back to it. Unchecked, a NaN here would
+  // propagate through every one of them.
+  const frame_0_lattice = per_frame_lattices?.[0] ?? null
+  if (frame_0_lattice != null) {
+    assert_finite_3x3(frame_0_lattice, `unwrap_positions frame 0 lattice`)
+  }
+  // Most recent non-null cell, used for frames whose own lattice entry is missing
+  let last_lattice: Matrix3x3 | null = frame_0_lattice ?? fixed_lattice
+
+  for (let frame_idx = 1; frame_idx < frames.length; frame_idx++) {
+    const prev_frame = frames[frame_idx - 1]
+    const curr_frame = frames[frame_idx]
+    if (curr_frame.length !== prev_frame.length) {
+      throw new Error(
+        `unwrap_positions: atom count changed at frame ${frame_idx} ` +
+          `(${prev_frame.length} atoms in frame ${frame_idx - 1}, ${curr_frame.length} in ` +
+          `frame ${frame_idx}); unwrapping needs a fixed atom ordering across frames`,
+      )
+    }
+    const frame_lattice = per_frame_lattices ? per_frame_lattices[frame_idx] : fixed_lattice
+    if (frame_lattice != null) {
+      assert_finite_3x3(frame_lattice, `unwrap_positions frame ${frame_idx} lattice`)
+      last_lattice = frame_lattice
+    }
+    // Carry the last known cell into frames whose own lattice is missing: a null entry
+    // mid-trajectory is a parse gap, not an aperiodic frame, and its neighbours ARE
+    // wrapped, so a plain difference there admits a jump of up to one box length that
+    // then propagates through the whole cumulative unwrap.
+    const lattice = frame_lattice ?? last_lattice
+    // Hoisted out of the atom loop; reuses the cached converters for a fixed cell
+    const converters = lattice
+      ? (fixed_converters ?? create_lattice_converters(lattice))
+      : null
+
+    const prev_unwrapped = unwrapped[frame_idx - 1]
+    const curr_unwrapped: Vec3[] = Array.from({ length: curr_frame.length })
+    for (let atom_idx = 0; atom_idx < curr_frame.length; atom_idx++) {
+      const from = prev_frame[atom_idx]
+      const to = curr_frame[atom_idx]
+      const step =
+        lattice && converters
+          ? min_image_displacement(from, to, lattice, converters, pbc)
+          : subtract(to, from)
+      const base = prev_unwrapped[atom_idx]
+      curr_unwrapped[atom_idx] = [base[0] + step[0], base[1] + step[1], base[2] + step[2]]
+    }
+    unwrapped.push(curr_unwrapped)
+  }
+
+  return unwrapped
+}
 
 export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   const [[m11, m12, m13], [m21, m22, m23], [m31, m32, m33]] = matrix
@@ -436,10 +567,33 @@ export function cell_to_lattice_matrix(
   const cos_gamma = Math.cos(gamma_rad)
   const sin_gamma = Math.sin(gamma_rad)
 
-  // Calculate volume factor for triclinic system
-  const vol_factor = Math.sqrt(
-    1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma,
-  )
+  // Calculate volume factor for triclinic system. The radicand goes negative whenever the
+  // angle triple violates the triclinic inequality, and sin_gamma is zero at gamma 0/180.
+  // Both used to sail through as NaN: (3,3,3,170,170,170) returned a c vector of
+  // [-2.95, -33.77, NaN] - already nonsense at c_y, which should have length 3 - so one
+  // mistyped CIF angle turned every derived Cartesian coordinate into NaN with no
+  // diagnostic anywhere. Fail here instead, naming the offending parameters.
+  const radicand =
+    1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
+  const cell_desc = `a=${a} b=${b} c=${c} alpha=${alpha} beta=${beta} gamma=${gamma}`
+  // sin_gamma first: at gamma = 180° the radicand also lands (just) below zero, and
+  // "a and b are collinear" is the more actionable of the two diagnoses
+  // Tolerance, not === 0: Math.sin(Math.PI) is 1.22e-16, so gamma = 180° would slip past
+  // an exact test and surface as the less useful "not realizable" error below
+  if (Math.abs(sin_gamma) < 1e-12) {
+    throw new Error(
+      `Cell has gamma=${gamma}° (${cell_desc}), making the a and b axes collinear and the ` +
+        `cell degenerate. Lattice vectors are undefined.`,
+    )
+  }
+  if (radicand < 0) {
+    throw new Error(
+      `Cell angles do not describe a realizable lattice (${cell_desc}): the triclinic ` +
+        `volume factor 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ is ${radicand}, which ` +
+        `must be >= 0. Check for a mistyped angle.`,
+    )
+  }
+  const vol_factor = Math.sqrt(radicand)
 
   // Standard crystallographic lattice vectors
   const c_x = c * cos_beta
@@ -461,6 +615,180 @@ export function det_3x3(matrix: Matrix3x3): number {
     m01 * (m10 * m22 - m12 * m20) +
     m02 * (m10 * m21 - m11 * m20)
   )
+}
+
+// === Integer lattice transformations ===
+
+// Validate an integer 3x3 matrix and return its determinant. Entries must be integers
+// (fractional entries do not map a lattice onto a commensurate lattice) and the
+// determinant must be non-zero (a singular matrix collapses the cell to zero volume and
+// leaves a Hermite pivot undefined). BigInt because each cofactor term multiplies three
+// entries, so a float determinant stops being exact past entries of cbrt(2^53) ~ 2e5 and
+// rounds some singular matrices to non-zero, handing hermite_normal_form a zero pivot.
+// Stays a bigint on the way out: only transformation_cell_multiplicity needs a number, and
+// narrowing here would also reject the large-determinant matrices hermite_normal_form handles.
+function validate_int_matrix_3x3(matrix: Matrix3x3, name: string): bigint {
+  assert_finite_3x3(matrix, name)
+  const non_integer = matrix.flat().filter((val) => !Number.isSafeInteger(val))
+  if (non_integer.length > 0) {
+    throw new Error(
+      `${name} must have integer entries, got ${JSON.stringify(non_integer)} ` +
+        `in ${JSON.stringify(matrix)}`,
+    )
+  }
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix.map((row) =>
+    row.map(BigInt),
+  )
+  const det =
+    m00 * (m11 * m22 - m12 * m21) -
+    m01 * (m10 * m22 - m12 * m20) +
+    m02 * (m10 * m21 - m11 * m20)
+  if (det === 0n) {
+    throw new Error(`${name} is singular (determinant 0): ${JSON.stringify(matrix)}`)
+  }
+  return det
+}
+
+// Transform a lattice by an integer matrix P: M_new = P · M_old. Under the
+// row-vector convention that means a' = P[0][0]·a + P[0][1]·b + P[0][2]·c, so an
+// integer P maps the lattice onto a commensurate super- or sub-lattice.
+// Replicating the sites into the new cell is the caller's job — see
+// transformation_cell_multiplicity for how many copies that takes.
+export function apply_transformation_matrix(
+  transform: Matrix3x3,
+  lattice_matrix: Matrix3x3,
+): Matrix3x3 {
+  validate_int_matrix_3x3(transform, `Transformation matrix`)
+  assert_finite_3x3(lattice_matrix, `Lattice matrix`)
+  return dot(transform, lattice_matrix)
+}
+
+// Number of primitive cells inside a cell transformed by P, i.e. |det(P)|. This is
+// the factor the site count grows by under apply_transformation_matrix.
+export function transformation_cell_multiplicity(transform: Matrix3x3): number {
+  const det = validate_int_matrix_3x3(transform, `Transformation matrix`)
+  const abs_det = det < 0n ? -det : det
+  const multiplicity = Number(abs_det)
+  // The determinant is exact, so this conversion is the only place that precision can be
+  // lost. A rounded count would misreport how many site copies the transform takes.
+  if (!Number.isSafeInteger(multiplicity)) {
+    throw new RangeError(
+      `Transformation matrix has |determinant| ${abs_det}, beyond the safe integer ` +
+        `range: ${JSON.stringify(transform)}`,
+    )
+  }
+  return multiplicity
+}
+
+// Greatest common divisor of two integers, taken on absolute values. gcd(0, 0) = 0.
+export function gcd(val_a: number, val_b: number): number {
+  if (!Number.isSafeInteger(val_a) || !Number.isSafeInteger(val_b)) {
+    throw new TypeError(`gcd requires safe integers, got (${val_a}, ${val_b})`)
+  }
+  let [left, right] = [Math.abs(val_a), Math.abs(val_b)]
+  while (right !== 0) [left, right] = [right, left % right]
+  return left
+}
+
+// n-ary gcd. Empty input gives 0, gcd's identity element (consistent with gcd(0, 0)).
+export const gcd_all = (values: number[]): number =>
+  values.reduce((acc, val) => gcd(acc, val), 0)
+
+// Reduce Miller indices to the smallest equivalent integer triple, e.g. (2,2,0) →
+// (1,1,0). (0,0,0) picks out no plane, so it is returned unchanged instead of
+// dividing by zero. Signs are kept: (h,k,l) and (-h,-k,-l) are opposite surfaces.
+export function reduce_miller_indices(hkl: Vec3): Vec3 {
+  const divisor = gcd_all(hkl)
+  if (divisor === 0) return [hkl[0], hkl[1], hkl[2]]
+  return [hkl[0] / divisor, hkl[1] / divisor, hkl[2] / divisor]
+}
+
+// hnf is upper triangular with a positive diagonal and every entry above a pivot
+// reduced into [0, pivot); transform is unimodular (integer, |det| = 1) and
+// satisfies transform · matrix = hnf.
+export type HermiteNormalForm = { hnf: Matrix3x3; transform: Matrix3x3 }
+
+// Row-style Hermite Normal Form of an integer 3x3 matrix. With row-vector lattices
+// the HNF rows are integer combinations of the input lattice vectors, so hnf is a
+// canonical cell for the very same lattice — the usual starting point for building
+// a Miller-index slab. Feed transform to apply_transformation_matrix to get there.
+// All arithmetic runs in BigInt because the intermediates outgrow float64's exact
+// integer range: `factor * work[source][col]` in the above-pivot reduction exceeds
+// 2^53 once entries reach ~1e3, and past that Number rounds and the result is wrong.
+// Requires a non-singular matrix: a zero pivot has no well-defined reduction.
+export function hermite_normal_form(matrix: Matrix3x3): HermiteNormalForm {
+  validate_int_matrix_3x3(matrix, `hermite_normal_form matrix`)
+
+  const work = matrix.map((row) => row.map(BigInt))
+  const uni = [
+    [1n, 0n, 0n],
+    [0n, 1n, 0n],
+    [0n, 0n, 1n],
+  ]
+  const swap_rows = (row_a: number, row_b: number): void => {
+    ;[work[row_a], work[row_b]] = [work[row_b], work[row_a]]
+    ;[uni[row_a], uni[row_b]] = [uni[row_b], uni[row_a]]
+  }
+  const negate_row = (row_idx: number): void => {
+    for (let col = 0; col < 3; col++) {
+      work[row_idx][col] = -work[row_idx][col]
+      uni[row_idx][col] = -uni[row_idx][col]
+    }
+  }
+  // row_target -= factor * row_source, applied to both matrices in lockstep so the
+  // invariant uni · matrix === work holds after every operation
+  const reduce_row = (row_target: number, row_source: number, factor: bigint): void => {
+    if (factor === 0n) return
+    for (let col = 0; col < 3; col++) {
+      work[row_target][col] -= factor * work[row_source][col]
+      uni[row_target][col] -= factor * uni[row_source][col]
+    }
+  }
+  const abs_big = (val: bigint): bigint => (val < 0n ? -val : val)
+
+  // Clear each column below the diagonal by the Euclidean algorithm on rows
+  for (let col = 0; col < 3; col++) {
+    for (let row = col + 1; row < 3; row++) {
+      while (work[row][col] !== 0n) {
+        // Keep the larger magnitude in the lower row so the quotient is non-zero and
+        // the remainder strictly shrinks each pass, which is what makes this terminate
+        if (work[col][col] === 0n || abs_big(work[col][col]) > abs_big(work[row][col])) {
+          swap_rows(col, row)
+        }
+        if (work[row][col] === 0n) break
+        reduce_row(row, col, work[row][col] / work[col][col]) // BigInt / truncates toward zero
+      }
+    }
+    // Non-singular input guarantees a non-zero pivot in every column
+    if (work[col][col] < 0n) negate_row(col)
+  }
+
+  // Reduce entries above each pivot into [0, pivot) using floor division
+  for (let col = 1; col < 3; col++) {
+    const pivot = work[col][col]
+    for (let row = 0; row < col; row++) {
+      const numerator = work[row][col]
+      let quotient = numerator / pivot
+      // pivot is positive here, so only a negative numerator needs the floor correction
+      if (numerator < 0n && numerator % pivot !== 0n) quotient -= 1n
+      reduce_row(row, col, quotient)
+    }
+  }
+
+  const to_matrix = (rows: bigint[][], name: string): Matrix3x3 =>
+    rows.map((row) =>
+      row.map((val) => {
+        const as_number = Number(val)
+        if (!Number.isSafeInteger(as_number)) {
+          throw new TypeError(
+            `hermite_normal_form ${name} entry ${val} exceeds safe integer range`,
+          )
+        }
+        return as_number
+      }),
+    ) as Matrix3x3
+
+  return { hnf: to_matrix(work, `hnf`), transform: to_matrix(uni, `transform`) }
 }
 
 export function get_coefficient_of_variation(values: number[]): number {

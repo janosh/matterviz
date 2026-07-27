@@ -149,12 +149,61 @@ export function make_supercell(
   let write_idx = 0
   const sites = structure.sites
 
+  // wrap_frac_coord rounds via toFixed, which costs more than the rest of the loop body.
+  // A coordinate only depends on its own axis' cell index, so precomputing per axis runs
+  // it n_sites * (scale_x + scale_y + scale_z) times instead of 3 * n_sites * total_cells.
+  const wrapped_frac = supercell_scaling.map((scale, axis) => {
+    const coords = new Float64Array(n_sites * scale)
+    for (let cell_idx = 0; cell_idx < scale; cell_idx++) {
+      for (let site_idx = 0; site_idx < n_sites; site_idx++) {
+        const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
+        coords[cell_idx * n_sites + site_idx] = to_unit_cell ? wrap_frac_coord(coord) : coord
+      }
+    }
+    return coords
+  })
+  // How far the wrap moved each coordinate, in units of the ORIGINAL lattice vector (the
+  // supercell-fractional shift times `scale`), so the Cartesian offset below is just the
+  // shift against the already-destructured lattice rows. Zero unless the input `abc` lay
+  // outside [0,1) — but when it did, `abc` was wrapped while `xyz` was not, so the two
+  // described cells a lattice vector apart and consumers reading `abc` (PBC image
+  // generation, symmetry) disagreed with those reading `xyz` (rendering, bonding) about
+  // where the atom is. Applied to `xyz` so both always name the same position.
+  const frac_shift = supercell_scaling.map((scale, axis) => {
+    const shifts = new Float64Array(n_sites * scale)
+    if (!to_unit_cell) return shifts
+    for (let cell_idx = 0; cell_idx < scale; cell_idx++) {
+      for (let site_idx = 0; site_idx < n_sites; site_idx++) {
+        const flat_idx = cell_idx * n_sites + site_idx
+        const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
+        shifts[flat_idx] = (wrapped_frac[axis][flat_idx] - coord) * scale
+      }
+    }
+    return shifts
+  })
+  const any_frac_shift = frac_shift.some((axis_shifts) =>
+    axis_shifts.some((shift) => shift !== 0),
+  )
+
+  // Identical for every image of a base site, so build once and share the reference —
+  // supercell sites already share their base site's `species` array the same way.
+  const site_properties = sites.map((site, site_idx) => ({
+    ...site.properties,
+    orig_unit_cell_idx: site_idx,
+  }))
+
+  const needs_label_separator = supercell_scaling.some((scale) => scale > 10)
+
   // Loop order: k, j, i to match typical pymatgen/standard ordering
   for (let kk = 0; kk < scale_z; kk++) {
     for (let jj = 0; jj < scale_y; jj++) {
       for (let ii = 0; ii < scale_x; ii++) {
-        // 1x1x1 short-circuits above, so every site gets a cell-index suffix
-        const label_suffix = `_${ii}${jj}${kk}`
+        // 1x1x1 short-circuits above, so every site gets a cell-index suffix. Bare
+        // concatenation stops being injective once an index reaches two digits — a
+        // [12,12,2] supercell gave 288 sites but only 284 distinct labels, since
+        // (1,10,0) and (11,0,0) both render as "_1100" — so separate the indices when
+        // any axis can produce one. Small supercells keep the compact form.
+        const label_suffix = needs_label_separator ? `_${ii}_${jj}_${kk}` : `_${ii}${jj}${kk}`
 
         // Translation = ii * vec_a + jj * vec_b + kk * vec_c (inlined for performance)
         const tx = ii * ax + jj * bx + kk * cx
@@ -163,24 +212,28 @@ export function make_supercell(
 
         for (let site_idx = 0; site_idx < n_sites; site_idx++) {
           const site = sites[site_idx]
-
-          // new_abc = (old_abc + [ii, jj, kk]) / supercell_scaling
-          let new_a = (site.abc[0] + ii) / scale_x
-          let new_b = (site.abc[1] + jj) / scale_y
-          let new_c = (site.abc[2] + kk) / scale_z
-
-          if (to_unit_cell) {
-            new_a = wrap_frac_coord(new_a)
-            new_b = wrap_frac_coord(new_b)
-            new_c = wrap_frac_coord(new_c)
+          let [wx, wy, wz] = [0, 0, 0]
+          if (any_frac_shift) {
+            const [shift_a, shift_b, shift_c] = [
+              frac_shift[0][ii * n_sites + site_idx],
+              frac_shift[1][jj * n_sites + site_idx],
+              frac_shift[2][kk * n_sites + site_idx],
+            ]
+            wx = shift_a * ax + shift_b * bx + shift_c * cx
+            wy = shift_a * ay + shift_b * by + shift_c * cy
+            wz = shift_a * az + shift_b * bz + shift_c * cz
           }
 
           new_sites[write_idx++] = {
             species: site.species,
-            xyz: [site.xyz[0] + tx, site.xyz[1] + ty, site.xyz[2] + tz],
-            abc: [new_a, new_b, new_c],
+            xyz: [site.xyz[0] + tx + wx, site.xyz[1] + ty + wy, site.xyz[2] + tz + wz],
+            abc: [
+              wrapped_frac[0][ii * n_sites + site_idx],
+              wrapped_frac[1][jj * n_sites + site_idx],
+              wrapped_frac[2][kk * n_sites + site_idx],
+            ],
             label: `${site.label}${label_suffix}`,
-            properties: { ...site.properties, orig_unit_cell_idx: site_idx },
+            properties: site_properties[site_idx],
           }
         }
       }

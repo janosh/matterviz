@@ -7,7 +7,6 @@ import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 import { create_test_structure, make_crystal } from '../setup'
 
-// Use actual structure files from the project
 const lu_al_structure = structure_map.get(`mp-1234`) // Lu-Al structure (binary compound)
 const pd_structure = structure_map.get(`mp-2`) // Pd (simple metallic FCC)
 const bi2zr2o8_structure = structure_map.get(`Bi2Zr2O8-Fm3m`) // Complex multi-element oxide
@@ -22,7 +21,6 @@ const make_site = (element: ElementSymbol, xyz: number[]) => ({
   xyz,
 })
 
-// Helper to check basic RDF properties that all RDFs should satisfy
 function check_basic_rdf_properties(radii: number[], g_r: number[], n_bins: number): void {
   expect(radii).toHaveLength(n_bins)
   expect(g_r).toHaveLength(n_bins)
@@ -62,25 +60,18 @@ describe(`calculate_rdf`, () => {
   )
 
   test.each([
-    { sites: [], name: `empty structure`, should_be_zero: true },
-    { sites: [make_site(`Si`, [0, 0, 0])], name: `single atom`, should_be_zero: true },
+    { sites: [], name: `empty structure` },
+    { sites: [make_site(`Si`, [0, 0, 0])], name: `single atom` },
     {
       sites: [make_site(`Si`, [0, 0, 0]), make_site(`Si`, [4.5, 4.5, 4.5])],
       name: `distant atoms (cutoff 0.1)`,
-      should_be_zero: true,
       cutoff: 0.1,
     },
-  ])(`should handle edge cases: $name`, ({ sites, should_be_zero, cutoff = 5 }) => {
+  ])(`should handle edge cases: $name`, ({ sites, cutoff = 5 }) => {
     const structure = create_test_structure(5, sites)
-    const result = calculate_rdf(structure, {
-      n_bins: 50,
-      cutoff,
-      pbc: [false, false, false],
-    })
+    const result = calculate_rdf(structure, { n_bins: 50, cutoff, pbc: [false, false, false] })
     check_basic_rdf_properties(result.r, result.g_r, 50)
-    if (should_be_zero) {
-      expect(result.g_r.every((val) => val === 0)).toBe(true)
-    }
+    expect(result.g_r.every((val) => val === 0)).toBe(true)
   })
 
   test.each([
@@ -98,17 +89,14 @@ describe(`calculate_rdf`, () => {
   })
 
   test.each([
-    { cutoff: -5, n_bins: 50 },
-    { cutoff: 10, n_bins: 0 },
-    { cutoff: -1, n_bins: -1 },
-  ])(
-    `should throw error for invalid parameters (cutoff=$cutoff, n_bins=$n_bins)`,
-    ({ cutoff, n_bins }) => {
-      expect(() => calculate_rdf(pd_structure, { cutoff, n_bins })).toThrow(
-        /cutoff and n_bins must be positive/,
-      )
-    },
-  )
+    [-5, 50],
+    [10, 0],
+    [-1, -1],
+  ])(`should throw error for invalid parameters (cutoff=%s, n_bins=%s)`, (cutoff, n_bins) => {
+    expect(() => calculate_rdf(pd_structure, { cutoff, n_bins })).toThrow(
+      /cutoff and n_bins must be positive/,
+    )
+  })
 
   test(`should have correct radii spacing`, () => {
     const [cutoff, n_bins] = [15, 75]
@@ -144,15 +132,12 @@ describe(`calculate_rdf`, () => {
     [0.5, 9.5, 0.5],
     [9.5, 9.5, 0.5],
   ].map((xyz) => make_site(`Si`, xyz))
+  const slab_sites = [make_site(`Si`, [0.5, 0.5, 5.0]), make_site(`Si`, [9.5, 0.5, 5.0])]
 
   test.each([
     { pbc: [true, true, true] as Pbc, name: `full PBC`, sites: corner_sites },
     { pbc: [false, false, false] as Pbc, name: `no PBC`, sites: corner_sites },
-    {
-      pbc: [true, true, false] as Pbc,
-      name: `slab PBC (xy only)`,
-      sites: [make_site(`Si`, [0.5, 0.5, 5.0]), make_site(`Si`, [9.5, 0.5, 5.0])],
-    },
+    { pbc: [true, true, false] as Pbc, name: `slab PBC (xy only)`, sites: slab_sites },
   ])(`PBC effects: $name`, ({ pbc, sites }) => {
     expect.assertions(5)
     const structure = create_test_structure(10, sites)
@@ -186,17 +171,10 @@ describe(`calculate_rdf`, () => {
 
   // 1D chain: no y/z bleed + first-shell amplitude exactly 2 (not 1×/4×)
   test(`mixed-PBC auto_expand: first-shell coordination exactly 2`, () => {
-    const a_len = 5
-    const cutoff = 9
-    const n_bins = 90
+    const [a_len, cutoff, n_bins] = [5, 9, 90]
     const { r, g_r } = calculate_rdf(
       create_test_structure(a_len, [make_site(`Si`, [0, 0, 0])]),
-      {
-        cutoff,
-        n_bins,
-        auto_expand: true,
-        pbc: [true, false, false],
-      },
+      { cutoff, n_bins, auto_expand: true, pbc: [true, false, false] },
     )
     const density = 1 / a_len ** 3
     const bin_size = cutoff / n_bins
@@ -315,15 +293,15 @@ describe(`calculate_rdf`, () => {
     {
       name: `triclinic`,
       lattice: [
-        [5.0, 0.0, 0.0],
-        [1.0, 6.0, 0.0],
-        [0.5, 1.5, 7.0],
+        [5, 0, 0],
+        [1, 6, 0],
+        [0.5, 1.5, 7],
       ] satisfies Matrix3x3,
       sites: [
-        make_site(`Si`, [0.0, 0.0, 0.0]),
-        make_site(`Si`, [2.5, 3.0, 3.5]),
-        make_site(`O`, [1.0, 1.0, 1.0]),
-        make_site(`O`, [3.0, 4.0, 4.5]),
+        make_site(`Si`, [0, 0, 0]),
+        make_site(`Si`, [2.5, 3, 3.5]),
+        make_site(`O`, [1, 1, 1]),
+        make_site(`O`, [3, 4, 4.5]),
       ],
       cutoff: 10,
       n_bins: 100,
@@ -331,11 +309,11 @@ describe(`calculate_rdf`, () => {
     {
       name: `monoclinic`,
       lattice: [
-        [5.0, 0.0, 0.0],
-        [0.0, 6.0, 0.0],
-        [2.0, 0.0, 7.0],
+        [5, 0, 0],
+        [0, 6, 0],
+        [2, 0, 7],
       ] satisfies Matrix3x3,
-      sites: [make_site(`Na`, [0.0, 0.0, 0.0]), make_site(`Cl`, [2.5, 3.0, 3.5])],
+      sites: [make_site(`Na`, [0, 0, 0]), make_site(`Cl`, [2.5, 3, 3.5])],
       cutoff: 8,
       n_bins: 80,
     },
@@ -373,8 +351,8 @@ describe(`calculate_all_pair_rdfs`, () => {
       cutoff: 15,
       n_bins: 150,
       max_peak: 50,
-      name: `Pd (auto_expand)`,
       auto_expand: true,
+      name: `Pd (auto_expand)`,
     },
     {
       structure: bi2zr2o8_structure,
@@ -397,20 +375,8 @@ describe(`calculate_all_pair_rdfs`, () => {
   )
 
   test.each([
-    {
-      cutoff: 0.1,
-      n_bins: 10,
-      auto_expand: false,
-      name: `tiny cutoff`,
-      should_be_zero: true,
-    },
-    {
-      cutoff: 10,
-      n_bins: 1000,
-      auto_expand: true,
-      name: `many bins`,
-      should_be_zero: false,
-    },
+    { cutoff: 0.1, n_bins: 10, auto_expand: false, name: `tiny cutoff`, should_be_zero: true },
+    { cutoff: 10, n_bins: 1000, auto_expand: true, name: `many bins`, should_be_zero: false },
     { cutoff: 5, n_bins: 20, auto_expand: true, name: `few bins`, should_be_zero: false },
   ])(`extreme parameters: $name`, ({ cutoff, n_bins, auto_expand, should_be_zero }) => {
     const result = calculate_rdf(pd_structure, { cutoff, n_bins, auto_expand })
@@ -453,7 +419,6 @@ describe(`calculate_all_pair_rdfs`, () => {
       ),
     }
 
-    // Calculate max difference
     const max_diff = Math.max(
       ...full_rdf_correct.g_r.map((val, idx) => Math.abs(val - full_rdf_wrong.g_r[idx])),
     )

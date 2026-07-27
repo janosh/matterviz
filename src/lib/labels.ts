@@ -372,6 +372,9 @@ export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
   stress_max: { label: `σ<sub>max</sub>`, unit: `GPa` },
   stress_frobenius: { label: `σ<sub>F</sub>`, unit: `GPa` },
 
+  // Electronic structure
+  bandgap: { label: `Band gap`, unit: `eV` },
+
   // SCF/electronic convergence properties (e.g. from VASP vaspout.h5 OSZICAR data)
   n_scf_steps: { label: `SCF steps`, unit: `steps` },
   scf_energy_delta: { label: `|ΔE<sub>SCF</sub>|`, unit: `eV`, axis_group: SCF_AXIS_GROUP },

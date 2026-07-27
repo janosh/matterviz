@@ -3,6 +3,7 @@ import type { CompositionType } from '$lib/composition'
 import { default as element_data } from '$lib/element/data'
 import { is_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS } from '$lib/labels'
+import { gcd_all } from '$lib/math'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access
 export const ATOMIC_NUMBER_TO_SYMBOL: Record<number, ElementSymbol> = {}
@@ -216,19 +217,15 @@ export const parse_composition = (
   return normalize_composition(input)
 }
 
-// Calculate GCD of two numbers
-const gcd = (num_a: number, num_b: number): number =>
-  num_b === 0 ? num_a : gcd(num_b, num_a % num_b)
-
 // Get reduced formula by dividing all amounts by their GCD
 // Example: Fe2O4 -> FeO2, H4O2 -> H2O
 export const get_reduced_formula = (composition: CompositionType): CompositionType => {
   const amounts = Object.values(composition).filter((amt) => amt > 0)
   if (amounts.length === 0) return {}
-  // Find GCD of all amounts (works with integers; for floats, find approximate GCD)
-  const all_integers = amounts.every((amt) => Number.isInteger(amt))
-  if (!all_integers) return composition // Can't reduce non-integer compositions
-  const divisor = amounts.reduce((acc, amt) => gcd(acc, amt))
+  // Only exactly representable integers can be reduced: gcd is meaningless for floats
+  // and unreliable past 2^53, where consecutive integers are no longer distinguishable
+  if (!amounts.every((amt) => Number.isSafeInteger(amt))) return composition
+  const divisor = gcd_all(amounts)
   if (divisor <= 1) return composition
   const reduced: CompositionType = {}
   for (const [elem, amt] of Object.entries(composition)) {

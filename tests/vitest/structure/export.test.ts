@@ -62,80 +62,40 @@ const make_site = (
   properties,
 })
 
+// oxfmt-ignore
 const diag_lattice = (a: number, b = a, c = a): LatticeType => ({
-  matrix: [
-    [a, 0, 0],
-    [0, b, 0],
-    [0, 0, c],
-  ],
-  pbc: [true, true, true],
-  a,
-  b,
-  c,
-  alpha: 90,
-  beta: 90,
-  gamma: 90,
-  volume: a * b * c,
+  matrix: [[a, 0, 0], [0, b, 0], [0, 0, c]],
+  pbc: [true, true, true], a, b, c, alpha: 90, beta: 90, gamma: 90, volume: a * b * c,
 })
 
 const real_structure_json = `{"@module": "pymatgen.core.structure", "@class": "Structure", "charge": 0, "lattice": {"matrix": [[6.256930122878799, 0.0, 3.831264723736088e-16], [1.0061911048045417e-15, 6.256930122878799, 3.831264723736088e-16], [0.0, 0.0, 6.256930122878799]], "pbc": [true, true, true], "a": 6.256930122878799, "b": 6.256930122878799, "c": 6.256930122878799, "alpha": 90.0, "beta": 90.0, "gamma": 90.0, "volume": 244.95364960649798}, "sites": [{"species": [{"element": "Cs", "occu": 1}], "abc": [0.0, 0.0, 0.0], "xyz": [0.0, 0.0, 0.0], "label": "Cs", "properties": {}}]}`
 
+// oxfmt-ignore
+const water_xyz_rows = [
+  `H 0.757000 0.586000 0.000000`, `O 0.000000 0.000000 0.000000`,
+  `H -0.757000 0.586000 0.000000`,
+]
+
 // Test cases for structure export
+// oxfmt-ignore
 const export_cases = [
-  {
-    name: `simple structure`,
-    structure: simple_structure,
+  { name: `simple structure`, structure: simple_structure, expected_json: simple_structure,
+    formula: `H2O`, filename_contains: [`test_h2o`, `H2O`, `3sites`],
+    expected_xyz: [`3`, `test_h2o H2O`, ...water_xyz_rows] },
+  { name: `complex structure`, structure: complex_structure, expected_json: complex_structure,
+    formula: `LiFeP4O7`, filename_contains: [`test_complex`, `LiFeP4O7`, `7sites`],
     expected_xyz: [
-      `3`,
-      `test_h2o H2O`,
-      `H 0.757000 0.586000 0.000000`,
-      `O 0.000000 0.000000 0.000000`,
-      `H -0.757000 0.586000 0.000000`,
-    ],
-    expected_json: simple_structure,
-    formula: `H2O`,
-    filename_contains: [`test_h2o`, `H2O`, `3sites`],
-  },
-  {
-    name: `complex structure`,
-    structure: complex_structure,
-    expected_xyz: [
-      `7`,
-      `test_complex LiFeP4O7`,
-      `Li 0.000000 0.000000 0.000000`,
-      `Fe 2.500000 0.000000 0.000000`,
-      `P 0.000000 2.500000 0.000000`,
-      `O 1.250000 1.250000 0.000000`,
-      `O 3.750000 1.250000 0.000000`,
-      `O 1.250000 3.750000 0.000000`,
-      `O 3.750000 3.750000 0.000000`,
-    ],
-    expected_json: complex_structure,
-    formula: `LiFeP4O7`,
-    filename_contains: [`test_complex`, `LiFeP4O7`, `7sites`],
-  },
-  {
-    name: `structure without ID`,
-    structure: { ...simple_structure, id: undefined },
-    expected_xyz: [
-      `3`,
-      `H2O`,
-      `H 0.757000 0.586000 0.000000`,
-      `O 0.000000 0.000000 0.000000`,
-      `H -0.757000 0.586000 0.000000`,
-    ],
-    expected_json: { ...simple_structure, id: undefined },
-    formula: `H2O`,
-    filename_contains: [`H2O`, `3sites`],
-  },
-  {
-    name: `empty structure`,
-    structure: { ...simple_structure, sites: [] },
-    expected_xyz: [`0`, `test_h2o Empty`],
-    expected_json: { ...simple_structure, sites: [] },
-    formula: `Empty`,
-    filename_contains: [`test_h2o`, `Empty`],
-  },
+      `7`, `test_complex LiFeP4O7`, `Li 0.000000 0.000000 0.000000`,
+      `Fe 2.500000 0.000000 0.000000`, `P 0.000000 2.500000 0.000000`,
+      `O 1.250000 1.250000 0.000000`, `O 3.750000 1.250000 0.000000`,
+      `O 1.250000 3.750000 0.000000`, `O 3.750000 3.750000 0.000000`,
+    ] },
+  { name: `structure without ID`, structure: { ...simple_structure, id: undefined },
+    expected_json: { ...simple_structure, id: undefined }, formula: `H2O`,
+    filename_contains: [`H2O`, `3sites`], expected_xyz: [`3`, `H2O`, ...water_xyz_rows] },
+  { name: `empty structure`, structure: { ...simple_structure, sites: [] },
+    expected_json: { ...simple_structure, sites: [] }, formula: `Empty`,
+    filename_contains: [`test_h2o`, `Empty`], expected_xyz: [`0`, `test_h2o Empty`] },
 ]
 
 describe(`Export functionality`, () => {
@@ -190,28 +150,11 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Round-trip tests`, () => {
+    // oxfmt-ignore
     it.each([
-      {
-        name: `JSON`,
-        structure: complex_structure,
-        ext: `json`,
-        to_str: structure_to_json_str,
-        preserves_id: true,
-      },
-      {
-        name: `XYZ`,
-        structure: simple_structure,
-        ext: `xyz`,
-        to_str: structure_to_xyz_str,
-        preserves_id: false,
-      },
-      {
-        name: `pymatgen JSON`,
-        structure: JSON.parse(real_structure_json),
-        ext: `json`,
-        to_str: structure_to_json_str,
-        preserves_id: false,
-      },
+      { name: `JSON`, structure: complex_structure, ext: `json`, to_str: structure_to_json_str, preserves_id: true },
+      { name: `XYZ`, structure: simple_structure, ext: `xyz`, to_str: structure_to_xyz_str, preserves_id: false },
+      { name: `pymatgen JSON`, structure: JSON.parse(real_structure_json), ext: `json`, to_str: structure_to_json_str, preserves_id: false },
     ])(`round-trips $name export and parse`, ({ structure, ext, to_str, preserves_id }) => {
       const content = to_str(structure as AnyStructure)
       const parsed = parse_structure_file(content, `test.${ext}`)
@@ -239,17 +182,10 @@ describe(`Export functionality`, () => {
         }),
       }) as AnyStructure
 
+    // oxfmt-ignore
     it.each([
-      {
-        name: `XYZ quartz`,
-        parse: () => parse_xyz(extended_xyz_quartz),
-        out: structure_to_xyz_str,
-      },
-      {
-        name: `POSCAR BaTiO3`,
-        parse: () => parse_poscar(ba_ti_o3_tetragonal),
-        out: structure_to_poscar_str,
-      },
+      { name: `XYZ quartz`, parse: () => parse_xyz(extended_xyz_quartz), out: structure_to_xyz_str },
+      { name: `POSCAR BaTiO3`, parse: () => parse_poscar(ba_ti_o3_tetragonal), out: structure_to_poscar_str },
       { name: `CIF TiO2`, parse: () => parse_cif(tio2_cif), out: structure_to_cif_str },
     ])(`round-trips %s`, ({ parse, out }) => {
       const parsed = parse()
@@ -260,46 +196,23 @@ describe(`Export functionality`, () => {
       expect(reparsed.sites).toHaveLength(parsed.sites.length)
       const frac_to_cart = math.create_frac_to_cart(reparsed.lattice.matrix)
       reparsed.sites.forEach((site, idx) => {
-        expect(site.abc[0]).toBeCloseTo(parsed.sites[idx].abc[0], TOL)
-        expect(site.abc[1]).toBeCloseTo(parsed.sites[idx].abc[1], TOL)
-        expect(site.abc[2]).toBeCloseTo(parsed.sites[idx].abc[2], TOL)
-        const recon = frac_to_cart(site.abc)
-        expect(recon[0]).toBeCloseTo(site.xyz[0], TOL)
-        expect(recon[1]).toBeCloseTo(site.xyz[1], TOL)
-        expect(recon[2]).toBeCloseTo(site.xyz[2], TOL)
+        for (const axis of [0, 1, 2]) {
+          expect(site.abc[axis]).toBeCloseTo(parsed.sites[idx].abc[axis], TOL)
+          expect(frac_to_cart(site.abc)[axis]).toBeCloseTo(site.xyz[axis], TOL)
+        }
       })
     })
   })
 
   describe(`Coordinate handling and conversion`, () => {
+    // oxfmt-ignore
     it.each([
-      {
-        name: `orthogonal`,
-        lattice_matrix: [
-          [2.0, 0.0, 0.0],
-          [0.0, 2.0, 0.0],
-          [0.0, 0.0, 2.0],
-        ] satisfies Matrix3x3,
-        abc: [0.5, 0.5, 0.5] as math.Vec3,
-      },
-      {
-        name: `non-orthogonal`,
-        lattice_matrix: [
-          [2.0, 0.5, 0.0],
-          [0.0, 2.0, 0.3],
-          [0.0, 0.0, 2.0],
-        ] satisfies Matrix3x3,
-        abc: [0.25, 0.75, 0.5] as math.Vec3,
-      },
-      {
-        name: `triclinic`,
-        lattice_matrix: [
-          [3.0, 0.5, 0.2],
-          [0.0, 2.5, 0.4],
-          [0.0, 0.0, 1.8],
-        ] satisfies Matrix3x3,
-        abc: [0.1, 0.3, 0.7] as math.Vec3,
-      },
+      { name: `orthogonal`, abc: [0.5, 0.5, 0.5] as math.Vec3,
+        lattice_matrix: [[2.0, 0, 0], [0, 2.0, 0], [0, 0, 2.0]] satisfies Matrix3x3 },
+      { name: `non-orthogonal`, abc: [0.25, 0.75, 0.5] as math.Vec3,
+        lattice_matrix: [[2.0, 0.5, 0], [0, 2.0, 0.3], [0, 0, 2.0]] satisfies Matrix3x3 },
+      { name: `triclinic`, abc: [0.1, 0.3, 0.7] as math.Vec3,
+        lattice_matrix: [[3.0, 0.5, 0.2], [0, 2.5, 0.4], [0, 0, 1.8]] satisfies Matrix3x3 },
     ])(
       `converts fractional to cartesian when xyz missing ($name)`,
       ({ lattice_matrix, abc }) => {
@@ -314,16 +227,12 @@ describe(`Export functionality`, () => {
           },
         }
 
-        const xyz_content = structure_to_xyz_str(structure_with_abc)
-        const lines = xyz_content.split(`\n`)
+        const lines = structure_to_xyz_str(structure_with_abc).split(`\n`)
         expect(lines[0]).toBe(`1`)
 
-        const L_T = math.transpose_3x3_matrix(lattice_matrix)
-        const expected = math.mat3x3_vec3_multiply(L_T, abc)
-        const expected_line = `C ${expected[0].toFixed(6)} ${expected[1].toFixed(6)} ${expected[2].toFixed(
-          6,
-        )}`
-        expect(lines[2]).toBe(expected_line)
+        const lattice_T = math.transpose_3x3_matrix(lattice_matrix)
+        const expected = math.mat3x3_vec3_multiply(lattice_T, abc)
+        expect(lines[2]).toBe(`C ${expected.map((coord) => coord.toFixed(6)).join(` `)}`)
       },
     )
 
@@ -334,9 +243,7 @@ describe(`Export functionality`, () => {
         sites: [make_site(`H`, [0.5, 0.5, 0.5], [1.0, 2.0, 3.0])],
         lattice: diag_lattice(2),
       }
-
-      const xyz_content = structure_to_xyz_str(structure_both_coords)
-      const lines = xyz_content.split(`\n`)
+      const lines = structure_to_xyz_str(structure_both_coords).split(`\n`)
       expect(lines[2]).toBe(`H 1.000000 2.000000 3.000000`)
     })
 
@@ -344,30 +251,26 @@ describe(`Export functionality`, () => {
       const structure_short_coords: AnyStructure = {
         sites: [make_site(`H`, [0.1, 0.2] as unknown as Vec3, [1.0, 2.0] as unknown as Vec3)],
       }
-
-      const xyz_content = structure_to_xyz_str(structure_short_coords)
-      const lines = xyz_content.split(`\n`)
       // length < 3 falls through to the [0, 0, 0] fallback
+      const lines = structure_to_xyz_str(structure_short_coords).split(`\n`)
       expect(lines[2]).toBe(`H 0.000000 0.000000 0.000000`)
     })
 
-    // Test cartesian→fractional conversion with various xyz array formats
+    // Test cartesian→fractional conversion with various xyz array formats.
+    // The 4-component rows are a regression guard: the check is xyz.length >= 3, not === 3
+    // oxfmt-ignore
     it.each([
       { format: `CIF`, xyz: [1, 1, 1], desc: `standard xyz` },
-      { format: `CIF`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` }, // regression: xyz.length >= 3
+      { format: `CIF`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` },
       { format: `POSCAR`, xyz: [1, 1, 1], desc: `standard xyz` },
       { format: `POSCAR`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` },
     ])(`$format export converts $desc to fractional coords`, ({ format, xyz }) => {
-      const structure: AnyStructure = {
-        sites: [
-          {
-            ...make_site(`H`),
-            xyz: xyz as unknown as Vec3,
-            abc: undefined as unknown as Vec3,
-          },
-        ],
-        lattice: diag_lattice(2),
+      const site = {
+        ...make_site(`H`),
+        xyz: xyz as unknown as Vec3,
+        abc: undefined as unknown as Vec3,
       }
+      const structure: AnyStructure = { sites: [site], lattice: diag_lattice(2) }
       const content =
         format === `CIF` ? structure_to_cif_str(structure) : structure_to_poscar_str(structure)
       expect(content).toContain(`0.50000000 0.50000000 0.50000000`)
@@ -375,25 +278,15 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Filename generation`, () => {
+    const repeated_sites = (count: number, element: ElementSymbol) =>
+      Array.from({ length: count }, () => make_site(element))
+
+    // oxfmt-ignore
     it.each([
-      {
-        name: `basic structure with ID`,
-        structure: {
-          id: `water_molecule`,
-          sites: Array.from({ length: 2 }, () => make_site(`H`)),
-        },
-        extension: `xyz`,
-        should_contain: [`water_molecule`, `2sites`, `.xyz`],
-      },
-      {
-        name: `structure with many sites`,
-        structure: {
-          id: `complex_crystal`,
-          sites: Array.from({ length: 24 }, () => make_site(`Si`)),
-        },
-        extension: `json`,
-        should_contain: [`complex_crystal`, `24sites`, `.json`],
-      },
+      { name: `basic structure with ID`, extension: `xyz`, should_contain: [`water_molecule`, `2sites`, `.xyz`],
+        structure: { id: `water_molecule`, sites: repeated_sites(2, `H`) } },
+      { name: `structure with many sites`, extension: `json`, should_contain: [`complex_crystal`, `24sites`, `.json`],
+        structure: { id: `complex_crystal`, sites: repeated_sites(24, `Si`) } },
     ])(`generates filename for $name`, ({ structure, extension, should_contain }) => {
       const result = create_structure_filename(structure, extension)
       should_contain.forEach((part) => expect(result).toContain(part))
@@ -406,12 +299,11 @@ describe(`Export functionality`, () => {
       )
       const structure = {
         id: `lithium_oxide`,
-        sites: Array.from({ length: 3 }, () => make_site(`Li`)),
+        sites: repeated_sites(3, `Li`),
       } as AnyStructure
       const result = create_structure_filename(structure, `xyz`)
       expect(result).toContain(`Li2O`)
-      expect(result).not.toContain(`<sub>`)
-      expect(result).not.toContain(`</sub>`)
+      expect(result).not.toMatch(/<\/?sub>/)
 
       // Verify plain_text flag is always true to prevent HTML leaking into filenames
       expect(mock_get_electro_neg_formula).toHaveBeenCalledWith(expect.any(Object), true)
@@ -419,29 +311,18 @@ describe(`Export functionality`, () => {
 
     it(`removes spaces from chemical formulas`, () => {
       mock_get_electro_neg_formula.mockReturnValue(`Li4 Fe4 P4 O16`)
-      const structure = {
-        id: `mp-19017`,
-        sites: Array.from({ length: 28 }, () => make_site(`Li`)),
-      } as AnyStructure
-      const result = create_structure_filename(structure, `png`)
-      expect(result).toBe(`mp-19017-Li4Fe4P4O16-28sites.png`)
+      const structure = { id: `mp-19017`, sites: repeated_sites(28, `Li`) } as AnyStructure
+      expect(create_structure_filename(structure, `png`)).toBe(
+        `mp-19017-Li4Fe4P4O16-28sites.png`,
+      )
     })
 
+    // oxfmt-ignore
     it.each([
-      {
-        id: `A/B:C*D?E"FH|`,
-        formula: `Li2/O`,
-        ext: `xyz`,
-        expected: `A_B_C_D_E_FH-Li2_O-1sites.xyz`,
-        desc: `sanitizes invalid chars and condenses underscores`,
-      },
-      {
-        id: `___test///name:::here___`,
-        formula: `test`,
-        ext: `cif`,
-        expected: `test_name_here-test-1sites.cif`,
-        desc: `handles consecutive invalid characters`,
-      },
+      { desc: `sanitizes invalid chars and condenses underscores`, id: `A/B:C*D?E"FH|`,
+        formula: `Li2/O`, ext: `xyz`, expected: `A_B_C_D_E_FH-Li2_O-1sites.xyz` },
+      { desc: `handles consecutive invalid characters`, id: `___test///name:::here___`,
+        formula: `test`, ext: `cif`, expected: `test_name_here-test-1sites.cif` },
     ])(`$desc`, ({ id, formula, ext, expected }) => {
       mock_get_electro_neg_formula.mockReturnValue(formula)
       const structure = { id, sites: [make_site(`H`)] } as AnyStructure
@@ -482,53 +363,31 @@ describe(`Export functionality`, () => {
       expect(() => func(structure_no_lattice)).toThrow(error_msg)
     })
 
+    // oxfmt-ignore
     it.each([
-      {
-        name: `species without element`,
-        species: [{ element: undefined, occu: 1, oxidation_state: 0 }],
-        expected: `X 0.000000 0.000000 0.000000`,
-      },
-      {
-        name: `empty species array`,
-        species: [],
-        expected: `X 0.000000 0.000000 0.000000`,
-      },
-      {
-        name: `missing coordinates`,
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        xyz: undefined,
-        abc: undefined,
-        expected: `H 0.000000 0.000000 0.000000`,
-      },
+      { name: `species without element`, expected: `X 0.000000 0.000000 0.000000`,
+        species: [{ element: undefined, occu: 1, oxidation_state: 0 }] },
+      { name: `empty species array`, expected: `X 0.000000 0.000000 0.000000`, species: [] },
+      { name: `missing coordinates`, expected: `H 0.000000 0.000000 0.000000`, xyz: undefined,
+        abc: undefined, species: [{ element: `H`, occu: 1, oxidation_state: 0 }] },
     ] as const)(`handles $name gracefully`, ({ species, xyz, abc, expected }) => {
-      const structure: AnyStructure = {
-        sites: [
-          {
-            // @ts-expect-error - test invalid species
-            species,
-            xyz: xyz ?? [0.0, 0.0, 0.0],
-            abc: abc ?? [0.0, 0.0, 0.0],
-            label: `H`,
-            properties: {},
-          },
-        ],
+      const site = {
+        species, // deliberately invalid: missing element / empty array
+        xyz: xyz ?? [0.0, 0.0, 0.0],
+        abc: abc ?? [0.0, 0.0, 0.0],
+        label: `H`,
+        properties: {},
       }
-      const xyz_content = structure_to_xyz_str(structure)
-      const lines = xyz_content.split(`\n`)
-      expect(lines[2]).toBe(expected)
+      const structure = { sites: [site] } as unknown as AnyStructure
+      expect(structure_to_xyz_str(structure).split(`\n`)[2]).toBe(expected)
     })
 
     it(`handles invalid lattice matrix in POSCAR`, () => {
+      // oxfmt-ignore
+      const matrix = [[1, 2], [3, 4]] as unknown as Matrix3x3 // 2x2 instead of 3x3
       const structure_invalid_lattice: AnyStructure = {
         sites: [make_site(`H`)],
-        lattice: {
-          ...diag_lattice(1),
-          // 2x2 instead of 3x3
-          matrix: [
-            [1, 2],
-            [3, 4],
-          ] as unknown as Matrix3x3,
-        },
+        lattice: { ...diag_lattice(1), matrix },
       }
       expect(() => structure_to_poscar_str(structure_invalid_lattice)).toThrow(
         `No valid lattice matrix for POSCAR export`,
@@ -536,74 +395,51 @@ describe(`Export functionality`, () => {
     })
 
     it(`handles non-finite lattice values`, () => {
+      // oxfmt-ignore
+      const matrix: Matrix3x3 = [[NaN, 0, 0], [0, Infinity, 0], [0, 0, 1]]
       const structure_nan_lattice: AnyStructure = {
         sites: [make_site(`H`)],
-        lattice: {
-          ...diag_lattice(1),
-          matrix: [
-            [NaN, 0, 0],
-            [0, Infinity, 0],
-            [0, 0, 1],
-          ],
-        },
+        lattice: { ...diag_lattice(1), matrix },
       }
-      const xyz_content = structure_to_xyz_str(structure_nan_lattice)
-      const lines = xyz_content.split(`\n`)
-      expect(lines[1]).toContain(
-        `Lattice="0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 1.00000000"`,
-      )
+      const lines = structure_to_xyz_str(structure_nan_lattice).split(`\n`)
+      const zeros = Array(8).fill(`0.00000000`).join(` `)
+      expect(lines[1]).toContain(`Lattice="${zeros} 1.00000000"`)
     })
 
     it(`exports CIF format correctly`, () => {
-      const cif_content = structure_to_cif_str(complex_structure)
-      const lines = cif_content.split(`\n`)
+      const lines = structure_to_cif_str(complex_structure).split(`\n`)
 
       // Check CIF header with data block (required by pymatgen)
       expect(lines[0]).toBe(`# CIF file generated by MatterViz`)
       // Formula should be alphabetically sorted: Fe1Li1O4P1 -> FeLiO4P
       expect(lines[1]).toBe(`data_FeLiO4P`)
 
-      // Check cell parameters (order may vary)
-      expect(lines.some((line) => line.includes(`_cell_length_a`))).toBe(true)
-      expect(lines.some((line) => line.includes(`_cell_length_b`))).toBe(true)
-      expect(lines.some((line) => line.includes(`_cell_length_c`))).toBe(true)
-
+      // Cell parameters may appear in any order, so check membership not position
+      const contains = (needle: string) => lines.some((line) => line.includes(needle))
+      for (const tag of [`_cell_length_a`, `_cell_length_b`, `_cell_length_c`]) {
+        expect(contains(tag), tag).toBe(true)
+      }
       // Check atom site loop
-      expect(lines).toContain(`loop_`)
-      expect(lines).toContain(`_atom_site_label`)
-      expect(lines).toContain(`_atom_site_type_symbol`)
-      expect(lines).toContain(`_atom_site_fract_x`)
-      expect(lines).toContain(`_atom_site_fract_y`)
-      expect(lines).toContain(`_atom_site_fract_z`)
-
+      const loop_tags = [
+        `loop_`,
+        `_atom_site_label`,
+        `_atom_site_type_symbol`,
+        `_atom_site_fract_x`,
+        `_atom_site_fract_y`,
+        `_atom_site_fract_z`,
+      ]
+      for (const tag of loop_tags) expect(lines).toContain(tag)
       // Check atom data (should have Li, Fe, P, O atoms)
-      expect(lines.some((line) => line.includes(`Li`))).toBe(true)
-      expect(lines.some((line) => line.includes(`Fe`))).toBe(true)
-      expect(lines.some((line) => line.includes(`P`))).toBe(true)
-      expect(lines.some((line) => line.includes(`O`))).toBe(true)
+      for (const element of [`Li`, `Fe`, `P`, `O`])
+        expect(contains(element), element).toBe(true)
     })
 
+    // oxfmt-ignore
     it.each([
-      {
-        id: `test_complex`,
-        expected: `data_test_complex`,
-        desc: `uses structure.id as fallback for empty sites`,
-      },
-      {
-        id: `mp-12345/Fe2O3 (hematite)`,
-        expected: `data_mp_12345_Fe2O3_hematite_`,
-        desc: `sanitizes special characters`,
-      },
-      {
-        id: `test:::complex`,
-        expected: `data_test_complex`,
-        desc: `condenses consecutive underscores`,
-      },
-      {
-        id: undefined,
-        expected: `data_structure`,
-        desc: `falls back to generic name when id is missing`,
-      },
+      { desc: `uses structure.id as fallback for empty sites`, id: `test_complex`, expected: `data_test_complex` },
+      { desc: `sanitizes special characters`, id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3_hematite_` },
+      { desc: `condenses consecutive underscores`, id: `test:::complex`, expected: `data_test_complex` },
+      { desc: `falls back to generic name when id is missing`, id: undefined, expected: `data_structure` },
     ])(`CIF data block name $desc`, ({ id, expected }) => {
       const struct = { ...complex_structure, id, sites: [] }
       const lines = structure_to_cif_str(struct).split(`\n`)
@@ -612,34 +448,22 @@ describe(`Export functionality`, () => {
 
     it(`CIF data block excludes elements with zero rounded occupancy`, () => {
       // Occupancies are rounded to integers for formula; 0.3 rounds to 0 and is excluded
-      const struct = {
-        ...complex_structure,
-        id: `low_occ_test`,
-        sites: [
-          {
-            species: [{ element: `Fe` as const, occu: 0.3, oxidation_state: 0 }],
-            abc: [0, 0, 0] as math.Vec3,
-            xyz: [0, 0, 0] as math.Vec3,
-            label: `Fe1`,
-            properties: {},
-          },
-          {
-            species: [{ element: `O` as const, occu: 2.0, oxidation_state: 0 }],
-            abc: [0.5, 0.5, 0.5] as math.Vec3,
-            xyz: [1, 1, 1] as math.Vec3,
-            label: `O1`,
-            properties: {},
-          },
-        ],
-      }
+      const partial_site = (element: ElementSymbol, occu: number, abc: math.Vec3) => ({
+        ...make_site(element, abc, abc),
+        species: [{ element, occu, oxidation_state: 0 }],
+      })
+      const sites = [
+        partial_site(`Fe`, 0.3, [0, 0, 0]),
+        partial_site(`O`, 2.0, [0.5, 0.5, 0.5]),
+      ]
+      const struct = { ...complex_structure, id: `low_occ_test`, sites }
       const lines = structure_to_cif_str(struct).split(`\n`)
       // Fe rounds to 0, O rounds to 2, so formula should be just "O2"
       expect(lines[1]).toBe(`data_O2`)
     })
 
     it(`exports POSCAR format correctly`, () => {
-      const poscar_content = structure_to_poscar_str(complex_structure)
-      const lines = poscar_content.split(`\n`)
+      const lines = structure_to_poscar_str(complex_structure).split(`\n`)
 
       expect(lines[0]).toBe(complex_structure.id) // title
       expect(lines[1]).toBe(`1.0`) // scale factor
@@ -659,35 +483,22 @@ describe(`Export functionality`, () => {
       expect(lines[8]).toMatch(/^0\.\d+ 0\.\d+ 0\.\d+$/)
     })
 
+    // oxfmt-ignore
     it.each([
-      {
-        name: `with selective dynamics`,
+      { name: `with selective dynamics`, has_sd: true, expected_coords: [`T F T`, `F F F`],
         sites: [
-          make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, {
-            selective_dynamics: [true, false, true, false],
-          }),
-          make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1], `O1`, {
-            selective_dynamics: [false, false, false],
-          }),
-        ],
-        has_sd: true,
-        expected_coords: [`T F T`, `F F F`],
-      },
-      {
-        name: `without selective dynamics`,
-        sites: [make_site(`H`)],
-        has_sd: false,
-        expected_coords: [`0.00000000 0.00000000 0.00000000`],
-      },
+          make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, { selective_dynamics: [true, false, true, false] }),
+          make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1], `O1`, { selective_dynamics: [false, false, false] }),
+        ] },
+      { name: `without selective dynamics`, has_sd: false, sites: [make_site(`H`)],
+        expected_coords: [`0.00000000 0.00000000 0.00000000`] },
     ])(`exports POSCAR $name correctly`, ({ sites, has_sd, expected_coords }) => {
       const structure: AnyStructure = {
         id: `test_${has_sd ? `sd` : `no_sd`}`,
         sites,
         lattice: diag_lattice(2),
       }
-
-      const poscar_content = structure_to_poscar_str(structure)
-      const lines = poscar_content.split(`\n`)
+      const lines = structure_to_poscar_str(structure).split(`\n`)
 
       if (has_sd) {
         expect(lines).toContain(`Selective dynamics`)
@@ -767,120 +578,74 @@ describe(`Export functionality`, () => {
       expect(species.find((sp) => sp.element === `Au`)?.occu).toBeCloseTo(0.3, 8)
     })
 
+    const occu_site = (occu: number | undefined) => ({
+      ...make_site(`H`),
+      species: [{ element: `H` as const, occu, oxidation_state: 0 }],
+    })
+    // oxfmt-ignore
     it.each([
-      {
-        name: `precision in all formats`,
-        sites: [
-          make_site(
-            `H`,
-            [0.123456789, 0.987654321, 0.555555555],
-            [1.23456789, 9.87654321, 5.55555555],
-          ),
-        ],
-        lattice: diag_lattice(2.123456789, 2.987654321, 2.555555555),
+      { name: `precision in all formats`, lattice: diag_lattice(2.123456789, 2.987654321, 2.555555555),
+        sites: [make_site(`H`, [0.123456789, 0.987654321, 0.555555555], [1.23456789, 9.87654321, 5.55555555])],
         tests: [
           { format: `xyz`, expected: `H 1.234568 9.876543 5.555556` },
           { format: `cif`, expected: `0.12345679 0.98765432 0.55555555` },
           { format: `poscar`, expected: `0.12345679 0.98765432 0.55555555` },
-        ],
-      },
-      {
-        name: `occupancy 0.75`,
-        sites: [
-          {
-            ...make_site(`H`),
-            species: [{ element: `H`, occu: 0.75, oxidation_state: 0 }],
-          },
-        ],
-        lattice: diag_lattice(2),
-        tests: [{ format: `cif`, expected: `0.75000000` }],
-      },
-      {
-        name: `missing occupancy (defaults to 1.0)`,
-        sites: [
-          {
-            ...make_site(`H`),
-            species: [{ element: `H`, occu: undefined, oxidation_state: 0 }],
-          },
-        ],
-        lattice: diag_lattice(2),
-        tests: [{ format: `cif`, expected: `1.00000000` }],
-      },
+        ] },
+      { name: `occupancy 0.75`, lattice: diag_lattice(2), sites: [occu_site(0.75)],
+        tests: [{ format: `cif`, expected: `0.75000000` }] },
+      { name: `missing occupancy (defaults to 1.0)`, lattice: diag_lattice(2), sites: [occu_site(undefined)],
+        tests: [{ format: `cif`, expected: `1.00000000` }] },
     ])(`handles $name correctly`, ({ sites, lattice, tests }) => {
-      const structure: AnyStructure = {
-        id: `test`,
-        sites: sites as Site[],
-        lattice,
-      }
+      const structure: AnyStructure = { id: `test`, sites: sites as Site[], lattice }
 
       tests.forEach(({ format, expected }) => {
-        let content: string
-        if (format === `xyz`) content = structure_to_xyz_str(structure)
-        else if (format === `cif`) content = structure_to_cif_str(structure)
-        else content = structure_to_poscar_str(structure)
-
-        const lines = content.split(`\n`)
         if (format === `xyz`) {
-          expect(lines[2]).toBe(expected)
-        } else {
-          const coord_line =
-            format === `cif`
-              ? lines.find((line) => line.includes(`H1`))
-              : lines.find((line) => /^0\.\d+ 0\.\d+ 0\.\d+$/.exec(line)) // poscar
-          expect(coord_line).toBeDefined()
-          expect(coord_line).toContain(expected)
+          expect(structure_to_xyz_str(structure).split(`\n`)[2]).toBe(expected)
+          return
         }
+        const is_cif = format === `cif`
+        const exporter = is_cif ? structure_to_cif_str : structure_to_poscar_str
+        const lines = exporter(structure).split(`\n`)
+        const coord_line = is_cif
+          ? lines.find((line) => line.includes(`H1`))
+          : lines.find((line) => /^0\.\d+ 0\.\d+ 0\.\d+$/.exec(line))
+        expect(coord_line).toBeDefined()
+        expect(coord_line).toContain(expected)
       })
     })
 
+    const cube2_lattice_str = [
+      `2.00000000 0.00000000 0.00000000`,
+      `0.00000000 2.00000000 0.00000000`,
+      `0.00000000 0.00000000 2.00000000`,
+    ].join(` `)
+    // oxfmt-ignore
     it.each([
-      {
-        name: `with lattice information`,
-        structure: { id: `lattice_test`, sites: [make_site(`H`)], lattice: diag_lattice(2) },
-        expected_comment: `lattice_test H2O Lattice="2.00000000 0.00000000 0.00000000 0.00000000 2.00000000 0.00000000 0.00000000 0.00000000 2.00000000"`,
-      },
-      {
-        name: `without lattice information`,
-        structure: { id: `no_lattice_test`, sites: [make_site(`H`)] },
-        expected_comment: `no_lattice_test H2O`,
-      },
+      { name: `with lattice information`, expected_comment: `lattice_test H2O Lattice="${cube2_lattice_str}"`,
+        structure: { id: `lattice_test`, sites: [make_site(`H`)], lattice: diag_lattice(2) } },
+      { name: `without lattice information`, expected_comment: `no_lattice_test H2O`,
+        structure: { id: `no_lattice_test`, sites: [make_site(`H`)] } },
     ])(`handles XYZ $name correctly`, ({ structure, expected_comment }) => {
-      const xyz_content = structure_to_xyz_str(structure)
-      const lines = xyz_content.split(`\n`)
-      expect(lines[1]).toBe(expected_comment)
+      expect(structure_to_xyz_str(structure).split(`\n`)[1]).toBe(expected_comment)
     })
 
+    // a null symbol must be dropped, but a non-numeric IT number still gets written out
+    // oxfmt-ignore
     it.each([
-      {
-        name: `missing symmetry information`,
-        symmetry: undefined,
-        expected: { has_symbol: false, has_number: false },
-      },
-      {
-        name: `malformed symmetry data`,
-        symmetry: {
-          space_group_symbol: null,
-          space_group_number: `invalid`,
-        },
-        expected: { has_symbol: false, has_number: true },
-      },
-    ])(`handles $name gracefully`, ({ symmetry, expected }) => {
+      { name: `missing symmetry information`, symmetry: undefined, has_symbol: false, has_number: false },
+      { name: `malformed symmetry data`, has_symbol: false, has_number: true,
+        symmetry: { space_group_symbol: null, space_group_number: `invalid` } },
+    ])(`handles $name gracefully`, ({ symmetry, has_symbol, has_number }) => {
       const structure: AnyStructure = {
         id: `test`,
         sites: [make_site(`H`)],
         lattice: diag_lattice(2),
         ...(symmetry && { symmetry }),
       }
-
-      const cif_content = structure_to_cif_str(structure)
-      const lines = cif_content.split(`\n`)
-
-      expect(lines.some((line) => line.includes(`_space_group_name_H-M_alt`))).toBe(
-        expected.has_symbol,
-      )
-      expect(lines.some((line) => line.includes(`_space_group_IT_number`))).toBe(
-        expected.has_number,
-      )
+      const lines = structure_to_cif_str(structure).split(`\n`)
+      const contains = (needle: string) => lines.some((line) => line.includes(needle))
+      expect(contains(`_space_group_name_H-M_alt`)).toBe(has_symbol)
+      expect(contains(`_space_group_IT_number`)).toBe(has_number)
     })
 
     it(`handles very large structures efficiently`, () => {
@@ -891,10 +656,8 @@ describe(`Export functionality`, () => {
         ),
         lattice: diag_lattice(10),
       }
-
       // Check that all sites are exported
-      const xyz_content = structure_to_xyz_str(large_structure)
-      const lines = xyz_content.split(`\n`)
+      const lines = structure_to_xyz_str(large_structure).split(`\n`)
       expect(lines[0]).toBe(`1000`)
       expect(lines).toHaveLength(1002) // 1 count + 1 comment + 1000 atoms
     })
@@ -908,14 +671,12 @@ describe(`Export functionality`, () => {
         ],
         lattice: diag_lattice(2),
       }
-
-      const xyz_content = structure_to_xyz_str(mixed_coords_structure)
-      const lines = xyz_content.split(`\n`)
-
-      // First atom should use xyz coordinates
-      expect(lines[2]).toBe(`H 1.000000 1.000000 1.000000`)
-      // Second atom should convert abc to xyz
-      expect(lines[3]).toBe(`O 1.000000 1.000000 1.000000`)
+      const lines = structure_to_xyz_str(mixed_coords_structure).split(`\n`)
+      // First atom uses its xyz; the second has none, so abc is converted
+      expect(lines.slice(2, 4)).toEqual([
+        `H 1.000000 1.000000 1.000000`,
+        `O 1.000000 1.000000 1.000000`,
+      ])
     })
   })
 })

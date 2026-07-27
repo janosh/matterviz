@@ -81,6 +81,8 @@ class Structure(MatterViz):
         multi_view_min_pane_width: float | None = None,
         display_mode: Any | None = None,
         slice_settings: dict | None = None,
+        reference_structure: Any | None = None,
+        displacement_rmsd: float | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -101,6 +103,8 @@ class Structure(MatterViz):
             mv_props["cell_type"] = cell_type
         if data_url is not None:
             mv_props["data_url"] = data_url
+        if displacement_rmsd is not None:
+            mv_props["displacement_rmsd"] = displacement_rmsd
         if display_mode is not None:
             mv_props["display_mode"] = display_mode
         if displayed_structure is not None:
@@ -157,6 +161,8 @@ class Structure(MatterViz):
             mv_props["performance_mode"] = performance_mode
         if png_dpi is not None:
             mv_props["png_dpi"] = png_dpi
+        if reference_structure is not None:
+            mv_props["reference_structure"] = reference_structure
         if reset_text is not None:
             mv_props["reset_text"] = reset_text
         if scene_props is not None:
@@ -381,6 +387,7 @@ class Trajectory(MatterViz):
         info_pane_open: bool | None = None,
         layout: Any | None = None,
         loading_options: Any | None = None,
+        msd_pane_open: bool | None = None,
         plot_skimming: bool | None = None,
         scatter_props: dict | None = None,
         show_controls: Any | None = None,
@@ -436,6 +443,8 @@ class Trajectory(MatterViz):
             mv_props["layout"] = layout
         if loading_options is not None:
             mv_props["loading_options"] = loading_options
+        if msd_pane_open is not None:
+            mv_props["msd_pane_open"] = msd_pane_open
         if plot_skimming is not None:
             mv_props["plot_skimming"] = plot_skimming
         if scatter_props is not None:
@@ -1202,6 +1211,7 @@ class XrdPlot(MatterViz):
         hkl_format: Any | None = None,
         loading: bool | None = None,
         peak_width: float | None = None,
+        radiation: Any | None = None,
         show_angles: bool | None = None,
         wavelength: float | None = None,
         x_axis: Any | None = None,
@@ -1236,6 +1246,8 @@ class XrdPlot(MatterViz):
             mv_props["loading"] = loading
         if peak_width is not None:
             mv_props["peak_width"] = peak_width
+        if radiation is not None:
+            mv_props["radiation"] = radiation
         if show_angles is not None:
             mv_props["show_angles"] = show_angles
         if wavelength is not None:
@@ -1755,8 +1767,6 @@ class RdfPlot(MatterViz):
     """Radial distribution function (RDF) plot.
 
     Component key: ``rdf/RdfPlot``
-
-    Events: on_file_drop
     """
 
     def __init__(
@@ -1770,6 +1780,7 @@ class RdfPlot(MatterViz):
         loading: bool | None = None,
         mode: Any | None = None,
         n_bins: int | None = None,
+        on_file_drop: Any | None = None,
         patterns: list | None = None,
         pbc: Any | None = None,
         show_reference_line: bool | None = None,
@@ -1803,6 +1814,8 @@ class RdfPlot(MatterViz):
             mv_props["mode"] = mode
         if n_bins is not None:
             mv_props["n_bins"] = n_bins
+        if on_file_drop is not None:
+            mv_props["on_file_drop"] = on_file_drop
         if patterns is not None:
             mv_props["patterns"] = patterns
         if pbc is not None:

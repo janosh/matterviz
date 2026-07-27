@@ -12,7 +12,8 @@ import { is_fermi_surface_data } from '$lib/fermi-surface/types'
 import type { VolumetricData } from '$lib/isosurface/types'
 import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { PhaseDiagramData } from '$lib/phase-diagram/types'
-import { type DefaultSettings, merge,build_structure_props_from_settings as structure_props } from '$lib/settings'
+import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
+import type { DefaultSettings } from '$lib/settings'
 import type { DosInput } from '$lib/spectral'
 import Bands from '$lib/spectral/Bands.svelte'
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
@@ -23,25 +24,23 @@ import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/theme/themes.mjs'
-import type {
-  FrameIndex,
-  FrameLoader,
-  TrajectoryFrame,
-  TrajectoryMetadata,
-  TrajectoryType,
-  TrajHandlerData,
-} from '$lib/trajectory'
-import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
+import type { TrajectoryType, TrajHandlerData } from '$lib/trajectory'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
+import type { VSCodeAPI } from './host-bridge'
+import { get_vscode_api, VSCodeFrameLoader } from './host-bridge'
 import type { FileChangeMessage, FileData, WebviewBootstrapData } from './host-protocol'
-import { parse_large_file_marker } from './host-transfer'
 import JsonBrowser from './JsonBrowser.svelte'
 import type { ParseResult } from './parse'
 import { parse_file_content } from './parse'
 import { escape_html, to_error } from '$lib/utils'
+
+// host-bridge has no export map subpath of its own, so this module (published as
+// `matterviz/file-viewer/webview`) stays the way hosts reach the frame loader.
+export { VSCodeFrameLoader } from './host-bridge'
+export type { VSCodeAPI } from './host-bridge'
 
 export type MatterVizData = WebviewBootstrapData
 
@@ -60,87 +59,6 @@ export interface DisplayOptions {
   on_step_change?: (step_idx: number, total_frames: number) => void
 }
 
-// Shared postMessage request/response plumbing for talking to the extension
-// host: tags the request with a UUID, forwards responses carrying that id to
-// on_response (which returns true once it settled the promise), and rejects
-// on timeout. Always removes the listener + timer once settled.
-function post_request<T>(
-  api: VSCodeAPI,
-  message: Record<string, unknown>,
-  timeout_ms: number,
-  timeout_error: string,
-  on_response: (
-    data: Record<string, unknown>,
-    resolve: (value: T) => void,
-    reject: (error: Error) => void,
-  ) => boolean,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const request_id = crypto.randomUUID()
-    const timer = setTimeout(() => {
-      globalThis.removeEventListener(`message`, handler)
-      reject(new Error(timeout_error))
-    }, timeout_ms)
-    const handler = (event: MessageEvent) => {
-      if (event.data?.request_id !== request_id) return
-      if (on_response(event.data, resolve, reject)) {
-        globalThis.removeEventListener(`message`, handler)
-        clearTimeout(timer)
-      }
-    }
-    globalThis.addEventListener(`message`, handler)
-    api.postMessage({ ...message, request_id })
-  })
-}
-
-// VS Code Frame Loader - streams frames via extension communication
-export class VSCodeFrameLoader implements FrameLoader {
-  constructor(
-    private readonly file_path: string,
-    private readonly vscode_api: VSCodeAPI,
-  ) {}
-
-  // Only implement the method we actually use
-  async load_frame(
-    _data: string | ArrayBuffer,
-    frame_index: number,
-    timeout: number = 10, // 10 seconds
-  ): Promise<TrajectoryFrame | null> {
-    const message = {
-      command: `request_frame`,
-      file_path: this.file_path,
-      frame_index,
-    }
-    return post_request(
-      this.vscode_api,
-      message,
-      timeout * 1000,
-      `Frame ${frame_index} timeout after ${timeout}s`,
-      (data, resolve, reject) => {
-        if (data.command !== `frame_response`) return false
-        if (data.error) reject(new Error(data.error as string))
-        else resolve(data.frame as TrajectoryFrame | null)
-        return true
-      },
-    )
-  }
-
-  // Required by the FrameLoader interface but never called for host-streamed trajectories
-  async get_total_frames(): Promise<number> {
-    throw new Error(`Not implemented`)
-  }
-  async build_frame_index(): Promise<FrameIndex[]> {
-    throw new Error(`Not implemented`)
-  }
-  async extract_plot_metadata(): Promise<TrajectoryMetadata[]> {
-    throw new Error(`Not implemented`)
-  }
-}
-
-export interface VSCodeAPI {
-  postMessage(message: unknown): void
-}
-
 // Extend globalThis interface for MatterViz data
 declare global {
   interface Window {
@@ -152,13 +70,11 @@ declare global {
   // Also declare as global var for direct access via globalThis.matterviz_data
   // Both are needed: Window.matterviz_data is set by extension.ts, accessed via globalThis
   var matterviz_data: MatterVizData | undefined
-
-  // VSCode webview API
-  function acquireVsCodeApi(): VSCodeAPI
 }
 
-// Store VSCode API instance to avoid multiple acquisitions
-let vscode_api: VSCodeAPI | null = null
+// host-bridge.ts owns the single acquireVsCodeApi() call; VS Code throws on a
+// second one.
+const vscode_api: VSCodeAPI | null = get_vscode_api()
 let current_app: MatterVizApp | null = null
 let file_change_listener_registered = false
 let file_change_generation = 0
@@ -170,14 +86,6 @@ const is_current_file_change = (generation: number): boolean =>
   !viewer_disposed && generation === file_change_generation
 const is_current_lifecycle = (generation: number): boolean =>
   !viewer_disposed && generation === viewer_lifecycle_generation
-
-// Initialize VSCode API at module level
-try {
-  vscode_api = globalThis.acquireVsCodeApi?.() ?? null
-} catch (error) {
-  console.warn(`VSCode API already acquired or not available:`, error)
-  vscode_api = null
-}
 
 // Set up VSCode-specific download override for file exports
 export const setup_vscode_download = (): void => {
@@ -292,61 +200,8 @@ const process_file_change = (message: FileChangeMessage): void => {
     })
 }
 
-// Request host-side parsing for a file too large to copy into the webview.
-function request_large_file_content(
-  file_path: string,
-  timeout: number = 120_000, // large host-side indexing can take longer than eager reads
-): Promise<TrajectoryType> {
-  if (!vscode_api) throw new Error(`VS Code API not available`)
-
-  const message = { command: `request_large_file`, file_path }
-  return post_request(
-    vscode_api,
-    message,
-    timeout,
-    `Large file timeout`,
-    (data, resolve, reject) => {
-      if (data.command === `large_file_progress`) {
-        // TODO maybe forward file load progress to UI
-        console.info(`Progress: ${data.stage} - ${data.progress}%`)
-        return false
-      }
-      if (data.command !== `large_file_response`) return false
-      if (data.error) reject(new Error(data.error as string))
-      else if (data.parsed_trajectory && typeof data.parsed_trajectory === `object`) {
-        resolve(data.parsed_trajectory as TrajectoryType)
-      } else reject(new TypeError(`Malformed large-file response`))
-      return true
-    },
-  )
-}
-
-type DisplayResult = ParseResult & { streaming_info?: { file_path: string } }
-
-async function parse_file_data({
-  content,
-  filename,
-  is_base64,
-}: FileData): Promise<DisplayResult> {
-  const marker = parse_large_file_marker(content)
-  if (!marker) return parse_file_content(content, filename, is_base64)
-  if (!is_indexable_trajectory_filename(filename)) {
-    throw new Error(
-      `Large-file loading is only supported for indexed trajectories: ${filename}`,
-    )
-  }
-
-  console.info(
-    `Handling large file: ${filename} (${Math.round(marker.file_size / 1024 / 1024)}MB)`,
-  )
-  const trajectory = await request_large_file_content(marker.file_path)
-  return {
-    type: `trajectory`,
-    data: trajectory,
-    filename,
-    streaming_info: { file_path: marker.file_path },
-  }
-}
+const parse_file_data = ({ content, filename, is_base64 }: FileData): Promise<ParseResult> =>
+  parse_file_content(content, filename, is_base64)
 
 // Create error display in container
 const create_error_display = (
@@ -373,7 +228,7 @@ const create_error_display = (
 // Mount Svelte component and create display
 export const create_display = (
   container: HTMLElement,
-  result: DisplayResult,
+  result: ParseResult,
   display_options?: DisplayOptions,
 ): MatterVizApp => {
   const { filename } = result
@@ -412,7 +267,11 @@ export const create_display = (
         ...final_trajectory,
         is_indexed: true,
         frames: final_trajectory.frames || [],
-        frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode_api),
+        frame_loader: new VSCodeFrameLoader(
+          result.streaming_info.file_path,
+          filename,
+          vscode_api,
+        ),
       }
     }
 
@@ -521,6 +380,15 @@ export const create_display = (
 // Map defaults to trajectory component props
 const trajectory_props = (defaults: DefaultSettings) => {
   const { trajectory, plot, scatter, histogram } = defaults
+  // Settings every plot kind honours, so adding one does not have to be remembered twice
+  const shared_plot_props = {
+    enable_zoom: plot.enable_zoom,
+    zoom_factor: plot.zoom_factor,
+    auto_fit_range: plot.auto_fit_range,
+    show_grid: plot.grid_lines,
+    show_axis_labels: plot.axis_labels,
+    animation_duration: plot.animation_duration,
+  }
   return {
     ...trajectory,
     structure_props: structure_props(defaults),
@@ -539,24 +407,14 @@ const trajectory_props = (defaults: DefaultSettings) => {
       line_width: scatter.line.width,
       point_size: scatter.point.size,
       show_legend: scatter.show_legend,
-      enable_zoom: plot.enable_zoom,
-      zoom_factor: plot.zoom_factor,
-      auto_fit_range: plot.auto_fit_range,
-      show_grid: plot.grid_lines,
-      show_axis_labels: plot.axis_labels,
-      animation_duration: plot.animation_duration,
+      ...shared_plot_props,
       legend: { show: scatter.show_legend },
     },
     histogram_props: {
       mode: histogram.mode,
       show_legend: histogram.show_legend,
       bin_count: histogram.bin_count,
-      enable_zoom: plot.enable_zoom,
-      zoom_factor: plot.zoom_factor,
-      auto_fit_range: plot.auto_fit_range,
-      show_grid: plot.grid_lines,
-      show_axis_labels: plot.axis_labels,
-      animation_duration: plot.animation_duration,
+      ...shared_plot_props,
       legend: { show: histogram.show_legend },
     },
     spinner_props: { show_progress: trajectory.show_parsing_progress },

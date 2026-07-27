@@ -191,35 +191,19 @@ describe(`Trajectory`, () => {
     )
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      label: `parse failures include file_size`,
-      data_url: `/bad.xyz`,
+    { label: `parse failures include file_size`, data_url: `/bad.xyz`,
       fetch_impl: () => new Response(`not a valid trajectory`),
-      expected: {
-        filename: `bad.xyz`,
-        file_size: new Blob([`not a valid trajectory`]).size,
-        error_msg: expect.stringMatching(/Failed to parse|unsupported/i),
-      },
-    },
-    {
-      label: `fetch failures use basename`,
-      data_url: `/missing/traj.xyz`,
+      expected: { filename: `bad.xyz`, file_size: new Blob([`not a valid trajectory`]).size,
+        error_msg: expect.stringMatching(/Failed to parse|unsupported/i) } },
+    { label: `fetch failures use basename`, data_url: `/missing/traj.xyz`,
       fetch_impl: () => Promise.reject(new Error(`network down`)),
-      expected: {
-        filename: `traj.xyz`,
-        error_msg: expect.stringContaining(`network down`),
-      },
-    },
+      expected: { filename: `traj.xyz`, error_msg: expect.stringContaining(`network down`) } },
   ])(`on_error reports $label`, async ({ data_url, fetch_impl, expected }) => {
     const on_error = vi.fn()
     await with_fetch(vi.fn(fetch_impl), async () => {
-      mount_traj({
-        data_url,
-        display_mode: `structure`,
-        show_controls: `never`,
-        on_error,
-      })
+      mount_traj({ data_url, display_mode: `structure`, show_controls: `never`, on_error })
       await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
       expect(on_error.mock.calls[0][0]).toEqual(expect.objectContaining(expected))
     })

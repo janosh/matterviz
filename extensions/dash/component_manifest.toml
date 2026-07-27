@@ -20,6 +20,8 @@ trailing_props = [
   "multi_view_min_pane_width",
   "display_mode",
   "slice_settings",
+  "reference_structure",
+  "displacement_rmsd",
 ]
 
 [components.PeriodicTable]

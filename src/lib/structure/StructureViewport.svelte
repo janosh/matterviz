@@ -20,6 +20,7 @@
     StructureBond,
     StructureHandlerData,
   } from '$lib/structure'
+  import type { DisplacementSummary } from '$lib/structure/measure'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
@@ -77,6 +78,7 @@
     // Shared scene inputs (one-way)
     structure = undefined,
     base_structure = undefined,
+    reference_structure = undefined,
     scene_props = {},
     gizmo = false,
     lattice_props = {},
@@ -94,6 +96,11 @@
     camera_projection = `orthographic`,
     camera_position = $bindable([0, 0, 0]),
     camera_target = $bindable(undefined),
+    // One-shot fly-to, routed to the primary pane only: `scene_props` is spread into every
+    // pane, so putting the request there would collapse all four fixed multi-view directions
+    // onto one axis. Bindable because StructureScene clears it as it starts the flight.
+    fly_to_request = $bindable(undefined),
+    displacement_summary = $bindable(null),
 
     // Edit-mode callbacks
     on_sites_moved = undefined,
@@ -133,6 +140,7 @@
     on_camera_reset?: (data: StructureHandlerData) => void
     structure?: AnyStructure
     base_structure?: AnyStructure
+    reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
     lattice_props?: ComponentProps<typeof StructureScene>[`lattice_props`]
@@ -150,6 +158,8 @@
     camera_projection?: CameraProjection
     camera_position?: Vec3
     camera_target?: Vec3
+    fly_to_request?: Vec3
+    displacement_summary?: DisplacementSummary | null
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
     on_bond_edit_start?: () => void
@@ -222,9 +232,17 @@
       if (typeof orbit_controls.update === `function`) orbit_controls.update()
       camera_position = read_camera_position() ?? camera_position
       camera_target = read_orbit_target()
+      self_written = { position: camera_position, target: camera_target }
     }
     on_camera_reset?.({ structure, camera_has_moved: false, camera_position, camera_target })
   }
+
+  // The pose this pane last wrote into the bindable props; anything else appearing there came
+  // from the caller. That is the only way to tell the two apart, since both arrive as props.
+  let self_written: { position?: Vec3; target?: Vec3 } = {}
+  const same_pose = (pose_a?: Vec3, pose_b?: Vec3): boolean =>
+    pose_a === pose_b ||
+    Boolean(pose_a && pose_b && pose_a.every((coord, idx) => coord === pose_b[idx]))
 
   // Track camera movement: keep camera_target in sync with the orbit controls and emit
   // on_camera_move (primary pane only) while the controls are active.
@@ -237,6 +255,7 @@
       const target = read_orbit_target()
       camera_position = pos
       camera_target = target
+      self_written = { position: pos, target }
       on_camera_move?.({
         structure,
         camera_has_moved: true,
@@ -246,7 +265,35 @@
     }
     sync()
     const interval = setInterval(sync, 200)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      // Movement always stops between ticks (mouse release, fly-to landing), so the final
+      // pose needs one more sync. Skipped when the effect re-runs for any other reason —
+      // e.g. a structure swap mid-drag, where the pose is about to be reset anyway.
+      if (!camera_is_moving) sync()
+    }
+  })
+
+  // Push a caller-supplied pose onto the live camera and orbit target instead of leaving it
+  // to the declarative <T.PerspectiveCamera position>: while the controls settle (damping,
+  // auto-rotate) the move sync above writes the live pose back over the prop, losing the
+  // caller's. Poses this pane wrote itself are skipped — re-applying them would fight the
+  // controls that produced them.
+  $effect(() => {
+    const [next_position, next_target] = [camera_position, camera_target]
+    untrack(() => {
+      if (!camera || !orbit_controls?.target) return
+      const move_camera =
+        next_position.some((coord) => coord !== 0) &&
+        !same_pose(next_position, self_written.position)
+      const target =
+        next_target && !same_pose(next_target, self_written.target) ? next_target : undefined
+      if (!move_camera && !target) return
+      if (move_camera) camera.position.set(...next_position)
+      if (target) orbit_controls.target.set(...target)
+      orbit_controls.update?.()
+      self_written = { position: read_camera_position(), target: read_orbit_target() }
+    })
   })
 
   // Reset on parent request (reset-all button bumps reset_token for every pane)
@@ -317,10 +364,13 @@
       <StructureScene
         {structure}
         {base_structure}
+        {reference_structure}
         {...scene_props}
         {...in_grid ? { auto_rotate: 0 } : {}}
         bind:camera_position
         bind:camera_target
+        bind:fly_to_request
+        bind:displacement_summary
         {camera_projection}
         {camera_direction}
         {interactive}

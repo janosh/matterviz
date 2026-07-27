@@ -1,10 +1,7 @@
 // Plotting utilities for trajectory visualization
 import { PLOT_COLORS } from '$lib/colors'
-import {
-  SCF_AXIS_GROUP,
-  trajectory_property_config,
-  type TrajPropertyConfig,
-} from '$lib/labels'
+import { SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
+import type { TrajPropertyConfig } from '$lib/labels'
 import { get_coefficient_of_variation } from '$lib/math'
 import type { DataSeries, ScaleType } from '$lib/plot/core/types'
 import type {

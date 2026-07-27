@@ -1,18 +1,12 @@
-import type { BondOrder, BondPair, ElementSymbol, Vec2, Vec3 } from '$lib'
+import type { BondOrder, BondPair, ElementSymbol, Vec3 } from '$lib'
 import type { Crystal, StructureBond } from '$lib/structure'
-import type { BondEditState, BondingAlgo, BondingStrategy } from '$lib/structure/bonding'
+import type { BondEditState } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { test_molecules } from '$site/molecules'
 import process from 'node:process'
 import { describe, expect, test, vi } from 'vitest'
-import { create_test_structure, make_crystal } from '../setup'
-
-const measure_performance = (func: () => void): number => {
-  const start = performance.now()
-  func()
-  return performance.now() - start
-}
+import { make_crystal } from '../setup'
 
 // Simple helper for tests that only need xyz coordinates
 const get_test_structure = (sites: { xyz: Vec3; element?: ElementSymbol }[]): Crystal =>
@@ -41,35 +35,20 @@ const find_bond = (bonds: BondPair[], idx_a: number, idx_b: number): BondPair | 
   )
 
 describe(`Bonding Algorithms`, () => {
-  const algorithms: [BondingAlgo, BondingStrategy, Vec2[]][] = [
-    [
-      bonding.electroneg_ratio,
-      `electroneg_ratio`,
-      [
-        [50, 60],
-        [200, 200],
-        [1000, 800],
-      ],
-    ],
-    [
-      bonding.solid_angle,
-      `solid_angle`,
-      [
-        [50, 100],
-        [200, 200],
-        [1000, 800],
-      ],
-    ],
-  ]
-
-  test.each(algorithms)(`$name performance benchmarks`, (_func, name, times) => {
+  test(`electroneg_ratio performance benchmarks`, () => {
+    const times: [number, number][] = [
+      [50, 60],
+      [200, 200],
+      [1000, 800],
+    ]
     for (const [atom_count, max_time] of times) {
       const structure = make_random_structure(atom_count)
-      const func = bonding.BONDING_STRATEGIES[name]
-      func(structure) // Warm-up
-      const measurements = Array.from({ length: 3 }, () =>
-        measure_performance(() => func(structure)),
-      )
+      bonding.electroneg_ratio(structure) // Warm-up
+      const measurements = Array.from({ length: 3 }, () => {
+        const start = performance.now()
+        bonding.electroneg_ratio(structure)
+        return performance.now() - start
+      })
       const avg_time = measurements.reduce((sum, val) => sum + val, 0) / measurements.length
       const is_ci =
         typeof process !== `undefined` && [`true`, `1`].includes(process.env?.CI ?? ``)
@@ -77,19 +56,19 @@ describe(`Bonding Algorithms`, () => {
 
       expect(
         avg_time,
-        `${name} with ${atom_count} atoms: ${avg_time.toFixed(1)}ms > ${max_allowed}ms`,
+        `electroneg_ratio with ${atom_count} atoms: ` +
+          `${avg_time.toFixed(1)}ms > ${max_allowed}ms`,
       ).toBeLessThanOrEqual(max_allowed)
     }
   })
 
-  test.each(algorithms)(`$name returns valid BondPair format`, (func) => {
+  test(`electroneg_ratio returns valid BondPair format`, () => {
     const structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2, 0, 0], element: `O` },
       { xyz: [4, 0, 0], element: `C` },
     ])
-    const bonds = func(structure)
-    for (const bond of bonds) {
+    for (const bond of bonding.electroneg_ratio(structure)) {
       expect(bond.pos_1).toHaveLength(3)
       expect(bond.pos_2).toHaveLength(3)
       expect(bond.site_idx_1).toBeTypeOf(`number`)
@@ -104,8 +83,8 @@ describe(`Bonding Algorithms`, () => {
     }
   })
 
-  test.each(algorithms)(`$name generates unique bonds`, (func) => {
-    const bonds = func(make_random_structure(50))
+  test(`electroneg_ratio generates unique bonds`, () => {
+    const bonds = bonding.electroneg_ratio(make_random_structure(50))
     const bond_pairs = bonds.map(
       (bond) =>
         `${Math.min(bond.site_idx_1, bond.site_idx_2)}-${Math.max(
@@ -116,11 +95,11 @@ describe(`Bonding Algorithms`, () => {
     expect(new Set(bond_pairs).size).toBe(bonds.length)
   })
 
-  test.each(algorithms)(`$name handles edge cases`, (func) => {
-    expect(func(get_test_structure([]))).toHaveLength(0)
-    expect(func(get_test_structure([{ xyz: [0, 0, 0] }]))).toHaveLength(0)
+  test(`electroneg_ratio handles edge cases`, () => {
+    expect(bonding.electroneg_ratio(get_test_structure([]))).toHaveLength(0)
+    expect(bonding.electroneg_ratio(get_test_structure([{ xyz: [0, 0, 0] }]))).toHaveLength(0)
     expect(
-      func(
+      bonding.electroneg_ratio(
         get_test_structure([
           // @ts-expect-error unknown element symbol
           { xyz: [0, 0, 0], element: `Xx` },
@@ -130,29 +109,12 @@ describe(`Bonding Algorithms`, () => {
       ),
     ).toBeDefined()
   })
-
-  test.each(algorithms)(`$name handles distant atoms`, (func) => {
-    const structure = create_test_structure(
-      [
-        [20, 0, 0],
-        [0, 20, 0],
-        [0, 0, 20],
-      ],
-      [`H`, `H`],
-      [
-        [0, 0, 0],
-        [10, 10, 10],
-      ],
-    )
-    const bonds = func(structure)
-    bonds.forEach((bond) => expect(bond.bond_length).toBeGreaterThan(5))
-  })
 })
 
 describe(`Explicit Bond Metadata`, () => {
-  test.each(Object.values(bonding.BONDING_STRATEGIES))(
-    `maps structure.properties.bonds onto computed and missing bonds`,
-    (strategy) => {
+  test.each(Object.entries(bonding.BONDING_STRATEGIES))(
+    `%s maps structure.properties.bonds onto computed and missing bonds`,
+    (_name, strategy) => {
       const structure = get_test_structure([
         { xyz: [0, 0, 0], element: `C` },
         { xyz: [1.4, 0, 0], element: `C` },
@@ -552,12 +514,16 @@ describe(`Explicit Bond Metadata`, () => {
       [`O`, [0.05, 0.5, 0.5]],
     ])
     structure.properties = {
-      bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+      bonds: [
+        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
+        { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
+      ],
     }
 
     const explicit_bonds = bonding.get_explicit_bond_metadata(structure)
     expect(explicit_bonds).toEqual([
       { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
+      { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
     ])
     expect(bonding.get_bond_key(0, 1, [1, 0, 0])).toBe(`0-1@1,0,0`)
 
@@ -568,29 +534,20 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bond.bond_length).toBeCloseTo(1)
     expect(bond.bond_order).toBe(2)
     expect(bond.cell_shift).toEqual([1, 0, 0])
-    expect(bonding.apply_explicit_bond_metadata(structure, [])).toHaveLength(1)
-  })
 
-  test(`keeps explicit periodic bonds with matching site indices distinct`, () => {
-    const structure = make_crystal(10, [
-      [`C`, [0.95, 0.5, 0.5]],
-      [`O`, [0.05, 0.5, 0.5]],
-    ])
-    structure.properties = {
-      bonds: [
-        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
-        { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
-      ],
-    }
-
-    const bonds = bonding.apply_explicit_bond_metadata(structure, [])
+    // matching site indices with opposite shifts must stay two distinct bonds
     const bonds_by_key = new Map(
-      bonds.map((bond) => [
-        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
-        bond,
-      ]),
+      bonding
+        .apply_explicit_bond_metadata(structure, [])
+        .map((bond_pair) => [
+          bonding.get_bond_key(
+            bond_pair.site_idx_1,
+            bond_pair.site_idx_2,
+            bond_pair.cell_shift,
+          ),
+          bond_pair,
+        ]),
     )
-
     expect([...bonds_by_key.keys()].toSorted()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
     expect(bonds_by_key.get(`0-1@1,0,0`)?.bond_order).toBe(2)
     expect(bonds_by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
@@ -650,26 +607,140 @@ describe(`Explicit Bond Metadata`, () => {
   )
 })
 
-describe(`Molecular Bonding Analysis`, () => {
+describe(`explicit_only strategy`, () => {
+  // All 3 pairs are within covalent bonding range, so electroneg_ratio perceives bonds
+  // between them regardless of what the structure declares
+  const make_bonded_triangle = (bonds?: StructureBond[]): Crystal => {
+    const structure = get_test_structure([
+      { xyz: [0, 0, 0], element: `C` },
+      { xyz: [1.4, 0, 0], element: `C` },
+      { xyz: [0, 1.2, 0], element: `O` },
+    ])
+    if (bonds) structure.properties = { bonds }
+    return structure
+  }
+
   test.each([
-    [`water`, test_molecules.water, 2, 0.8, 1.2],
-    [`methane`, test_molecules.methane, 4, 0.9, 1.3],
-  ])(`%s has expected bonds`, (_name, molecule, expected_bonds, min_dist, max_dist) => {
-    const bonds = bonding.electroneg_ratio(molecule)
-    expect(bonds.length).toBeGreaterThanOrEqual(expected_bonds)
-    bonds.forEach((bond) => {
-      expect(bond.bond_length).toBeGreaterThan(min_dist)
-      expect(bond.bond_length).toBeLessThan(max_dist)
-    })
+    { desc: `no bonds property`, declared: undefined, expected: [] },
+    { desc: `an empty bonds array`, declared: [], expected: [] },
+    {
+      desc: `a single declared bond`,
+      declared: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
+      expected: [[0, 1, 2]],
+    },
+    {
+      desc: `declared bonds of mixed order`,
+      declared: [
+        { site_idx_1: 2, site_idx_2: 0, order: 1 },
+        { site_idx_1: 0, site_idx_2: 1, order: `aromatic` },
+      ],
+      // reversed indices are normalized to ascending order, declaration order is kept
+      expected: [
+        [0, 2, 1],
+        [0, 1, `aromatic`],
+      ],
+    },
+  ] satisfies {
+    desc: string
+    declared?: StructureBond[]
+    expected: [number, number, BondOrder][]
+  }[])(`returns exactly the bonds for $desc`, ({ declared, expected }) => {
+    const structure = make_bonded_triangle(declared)
+    const bonds = bonding.explicit_only(structure)
+
+    expect(bonds.map((bond) => [bond.site_idx_1, bond.site_idx_2, bond.bond_order])).toEqual(
+      expected,
+    )
+    for (const bond of bonds) {
+      expect(bond.pos_1).toEqual(structure.sites[bond.site_idx_1].xyz)
+      expect(bond.pos_2).toEqual(structure.sites[bond.site_idx_2].xyz)
+      expect(bond.bond_length).toBeCloseTo(
+        Math.hypot(...bond.pos_2.map((coord, idx) => coord - bond.pos_1[idx])),
+      )
+      expect(bond.transform_matrix).toHaveLength(16)
+    }
   })
 
+  test(`returns no bonds instead of perceived ones when none are declared`, () => {
+    const structure = make_bonded_triangle()
+
+    // key regression guard: no silent fallback to a proximity strategy, which would
+    // mask a missing or unparsed bond block in formats like PDB/MOL/MOL2/SDF
+    expect(bonding.explicit_only(structure)).toEqual([])
+    expect(bonding.electroneg_ratio(structure).length).toBeGreaterThan(0)
+  })
+
+  test(`does not invent bonds that electroneg_ratio perceives`, () => {
+    const declared: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    const structure = make_bonded_triangle(declared)
+
+    const explicit_bonds = bonding.explicit_only(structure)
+    // electroneg_ratio merges the declared bond in, so its count is the perceived superset
+    const perceived_bonds = bonding.electroneg_ratio(structure)
+
+    expect(explicit_bonds).toHaveLength(1)
+    expect(perceived_bonds.length).toBeGreaterThan(explicit_bonds.length)
+    // the undeclared C-O pair is perceived but must not show up in explicit_only
+    expect(find_bond(perceived_bonds, 0, 2)).toBeDefined()
+    expect(find_bond(explicit_bonds, 0, 2)).toBeUndefined()
+  })
+
+  test(`respects cell_shift on periodic structures`, () => {
+    const structure = make_crystal(10, [
+      [`C`, [0.95, 0.5, 0.5]],
+      [`O`, [0.05, 0.5, 0.5]],
+    ])
+    structure.properties = {
+      bonds: [
+        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
+        { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
+      ],
+    }
+
+    const bonds = bonding.explicit_only(structure)
+    const by_key = new Map(
+      bonds.map((bond) => [
+        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
+        bond,
+      ]),
+    )
+
+    expect([...by_key.keys()].toSorted()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
+    // the +1 image of O sits at x=10.5, 1 A from C at x=9.5 (not the 9 A in-cell distance)
+    expect(by_key.get(`0-1@1,0,0`)?.pos_2).toEqual([10.5, 5, 5])
+    expect(by_key.get(`0-1@1,0,0`)?.bond_length).toBeCloseTo(1)
+    expect(by_key.get(`0-1@1,0,0`)?.bond_order).toBe(2)
+    expect(by_key.get(`0-1@-1,0,0`)?.pos_2).toEqual([-9.5, 5, 5])
+    expect(by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
+  })
+})
+
+describe(`Molecular Bonding Analysis`, () => {
+  // Lower strength threshold to ensure all bond types (incl. C-C) are captured
+  const loose_opts = {
+    max_distance_ratio: 2,
+    strength_threshold: 0.2,
+    same_species_penalty: 0.8,
+  }
+
+  test.each([
+    [`water`, test_molecules.water, 2, 0.8, 1.2, undefined],
+    [`methane`, test_molecules.methane, 4, 0.9, 1.3, undefined],
+    [`ethanol`, test_molecules.ethanol, 6, 0.8, 2.0, loose_opts],
+  ] as [string, Crystal, number, number, number, typeof loose_opts | undefined][])(
+    `%s has expected bonds`,
+    (_name, molecule, expected_bonds, min_dist, max_dist, options) => {
+      const bonds = bonding.electroneg_ratio(molecule, options)
+      expect(bonds.length).toBeGreaterThanOrEqual(expected_bonds)
+      for (const bond of bonds) {
+        expect(bond.bond_length).toBeGreaterThan(min_dist)
+        expect(bond.bond_length).toBeLessThan(max_dist)
+      }
+    },
+  )
+
   test(`benzene has aromatic C-C bonds`, () => {
-    // Lower strength threshold to ensure C-C bonds are captured alongside C-H bonds
-    const bonds = bonding.electroneg_ratio(test_molecules.benzene, {
-      max_distance_ratio: 2,
-      strength_threshold: 0.2,
-      same_species_penalty: 0.8,
-    })
+    const bonds = bonding.electroneg_ratio(test_molecules.benzene, loose_opts)
     expect(bonds.length).toBeGreaterThanOrEqual(6)
     const cc_bonds = bonds.filter((bond) => {
       const elem_1 = test_molecules.benzene.sites[bond.site_idx_1].species[0].element
@@ -680,78 +751,227 @@ describe(`Molecular Bonding Analysis`, () => {
     })
     expect(cc_bonds.length).toBeGreaterThanOrEqual(6)
   })
-
-  test(`ethanol has multiple bond types`, () => {
-    // Lower strength threshold to ensure all bond types are captured
-    const bonds = bonding.electroneg_ratio(test_molecules.ethanol, {
-      max_distance_ratio: 2,
-      strength_threshold: 0.2,
-      same_species_penalty: 0.8,
-    })
-    expect(bonds.length).toBeGreaterThanOrEqual(6)
-    const distances = bonds.map((bond) => bond.bond_length)
-    expect(Math.min(...distances)).toBeGreaterThan(0.8)
-    expect(Math.max(...distances)).toBeLessThan(2.0)
-  })
 })
 
-describe(`Crystal Structure Bonding`, () => {
-  test(`simple cubic lattice`, () => {
-    const structure = create_test_structure(
-      [
-        [3, 0, 0],
-        [0, 3, 0],
-        [0, 0, 3],
-      ],
-      [`Na`, `Cl`],
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-    )
-    const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 3 })
-    expect(bonds.length).toBeGreaterThan(0)
-  })
+// === Coordination-number benchmark ===
+// Perceived bonding is a pile of interacting heuristics, so the only meaningful
+// regression net is whether it reproduces textbook coordination numbers on structures
+// whose answer is not in doubt. Every atom of the unit cell is checked (not just
+// interior ones), which also pins the PBC boundary completion in find_image_atoms.
 
-  test(`diamond structure`, () => {
-    const structure = create_test_structure(
-      [
-        [3.57, 0, 0],
-        [0, 3.57, 0],
-        [0, 0, 3.57],
-      ],
-      [`C`, `C`],
-      [
-        [0, 0, 0],
-        [0.25, 0.25, 0.25],
-      ],
+const wrap_frac = (val: number) => val - Math.floor(val)
+const fcc_offsets: Vec3[] = [
+  [0, 0, 0],
+  [0.5, 0.5, 0],
+  [0.5, 0, 0.5],
+  [0, 0.5, 0.5],
+]
+// fcc lattice sites for `element`, once per basis vector
+const fcc = (element: ElementSymbol, basis: Vec3[] = [[0, 0, 0]]) =>
+  fcc_offsets.flatMap((off) =>
+    basis.map((vec) => ({
+      element,
+      abc: [
+        wrap_frac(off[0] + vec[0]),
+        wrap_frac(off[1] + vec[1]),
+        wrap_frac(off[2] + vec[2]),
+      ] as Vec3,
+    })),
+  )
+const tetragonal = (a: number, c: number): Vec3[] => [
+  [a, 0, 0],
+  [0, a, 0],
+  [0, 0, c],
+]
+const hexagonal = (a: number, c: number): Vec3[] => [
+  [a, 0, 0],
+  [-a / 2, (a * Math.sqrt(3)) / 2, 0],
+  [0, 0, c],
+]
+
+// [label, lattice, sites, expected coordination number per element]
+const cn_benchmark: [
+  string,
+  number | Vec3[],
+  ReturnType<typeof fcc>,
+  Record<string, number>,
+][] = [
+  [
+    `diamond C`,
+    3.567,
+    fcc(`C`, [
+      [0, 0, 0],
+      [0.25, 0.25, 0.25],
+    ]),
+    { C: 4 },
+  ],
+  [
+    `Si diamond`,
+    5.431,
+    fcc(`Si`, [
+      [0, 0, 0],
+      [0.25, 0.25, 0.25],
+    ]),
+    { Si: 4 },
+  ],
+  [`fcc Cu`, 3.615, fcc(`Cu`), { Cu: 12 }],
+  [`fcc Al`, 4.05, fcc(`Al`), { Al: 12 }],
+  [`fcc Pb`, 4.95, fcc(`Pb`), { Pb: 12 }],
+  [`fcc Ag`, 4.085, fcc(`Ag`), { Ag: 12 }],
+  [`NaCl rocksalt`, 5.64, [...fcc(`Na`), ...fcc(`Cl`, [[0.5, 0, 0]])], { Na: 6, Cl: 6 }],
+  [`MgO rocksalt`, 4.212, [...fcc(`Mg`), ...fcc(`O`, [[0.5, 0, 0]])], { Mg: 6, O: 6 }],
+  [
+    `ZnS zincblende`,
+    5.41,
+    [...fcc(`Zn`), ...fcc(`S`, [[0.25, 0.25, 0.25]])],
+    {
+      Zn: 4,
+      S: 4,
+    },
+  ],
+  [
+    `CaF2 fluorite`,
+    5.463,
+    [...fcc(`Ca`), ...fcc(`F`, [[0.25, 0.25, 0.25]]), ...fcc(`F`, [[0.75, 0.75, 0.75]])],
+    { Ca: 8, F: 4 },
+  ],
+  [
+    `pyrite FeS2`,
+    5.416,
+    [...fcc(`Fe`), ...fcc(`S`, [[0.385, 0.385, 0.385]]), ...fcc(`S`, [[0.615, 0.615, 0.615]])],
+    { Fe: 6, S: 4 },
+  ],
+  [
+    `CsCl`,
+    4.119,
+    [
+      { element: `Cs`, abc: [0, 0, 0] as Vec3 },
+      { element: `Cl`, abc: [0.5, 0.5, 0.5] as Vec3 },
+    ],
+    { Cs: 8, Cl: 8 },
+  ],
+  [
+    `SrTiO3 perovskite`,
+    3.905,
+    [
+      { element: `Sr`, abc: [0.5, 0.5, 0.5] as Vec3 },
+      { element: `Ti`, abc: [0, 0, 0] as Vec3 },
+      { element: `O`, abc: [0.5, 0, 0] as Vec3 },
+      { element: `O`, abc: [0, 0.5, 0] as Vec3 },
+      { element: `O`, abc: [0, 0, 0.5] as Vec3 },
+      // O is left unchecked: Sr is a spectator A-site cation, so find_image_atoms
+      // deliberately generates no Sr images and the base O atoms see 1 Sr instead of 4.
+      // Sr 12 / Ti 6 are the point here - they only hold if Sr-Ti does NOT bond.
+    ],
+    { Sr: 12, Ti: 6 },
+  ],
+  // TiC and Ti2O are the pair that pins cation_cation_penalty's anion-shell gate. Both are
+  // Ti plus a nonmetal, and in both the Ti-Ti contact is SHORTER than Ti-nonmetal once
+  // normalized by covalent radii (0.956 vs 0.915, and 0.919 vs 0.923), so no
+  // distance-based rule separates them. What separates them is saturation: TiC's Ti has a
+  // complete octahedral C shell and its Ti-Ti at 3.06 A is a genuine second shell, while
+  // Ti2O's Ti has only 3 O and the hcp Ti framework at 2.95 A IS the structure. Applying
+  // the penalty unconditionally took Ti2O from CN 15 to 3 and erased that framework.
+  [`TiC rocksalt`, 4.33, [...fcc(`Ti`), ...fcc(`C`, [[0.5, 0, 0]])], { Ti: 6, C: 6 }],
+  [
+    `Ti2O suboxide`,
+    hexagonal(2.9587, 4.7852),
+    [
+      { element: `Ti`, abc: [1 / 3, 2 / 3, 0.25] as Vec3 },
+      { element: `Ti`, abc: [2 / 3, 1 / 3, 0.75] as Vec3 },
+      { element: `O`, abc: [0, 0, 0] as Vec3 },
+    ],
+    { Ti: 15, O: 6 },
+  ], // 12 Ti + 3 O around each Ti
+  [
+    `hcp Ti`,
+    hexagonal(2.9587, 4.7852),
+    [
+      { element: `Ti`, abc: [1 / 3, 2 / 3, 0.25] as Vec3 },
+      { element: `Ti`, abc: [2 / 3, 1 / 3, 0.75] as Vec3 },
+    ],
+    { Ti: 12 },
+  ], // control: no anion-former, so the gate is inert either way
+  [
+    `graphite C`,
+    [
+      [2.464, 0, 0],
+      [-1.232, 2.13389, 0],
+      [0, 0, 6.711],
+    ] as Vec3[],
+    [
+      { element: `C`, abc: [0, 0, 0.25] as Vec3 },
+      { element: `C`, abc: [0, 0, 0.75] as Vec3 },
+      { element: `C`, abc: [1 / 3, 2 / 3, 0.25] as Vec3 },
+      { element: `C`, abc: [2 / 3, 1 / 3, 0.75] as Vec3 },
+    ],
+    { C: 3 },
+  ],
+  [
+    `rutile TiO2`,
+    tetragonal(4.594, 2.959),
+    [
+      { element: `Ti`, abc: [0, 0, 0] },
+      { element: `Ti`, abc: [0.5, 0.5, 0.5] },
+      { element: `O`, abc: [0.3053, 0.3053, 0] },
+      { element: `O`, abc: [0.6947, 0.6947, 0] },
+      { element: `O`, abc: [0.8053, 0.1947, 0.5] },
+      { element: `O`, abc: [0.1947, 0.8053, 0.5] },
+    ],
+    { Ti: 6, O: 3 },
+  ],
+]
+
+describe(`coordination number benchmark`, () => {
+  test.each(cn_benchmark)(`%s`, (_label, lattice, sites, expected) => {
+    const base = make_crystal(
+      typeof lattice === `number`
+        ? lattice
+        : ([lattice[0], lattice[1], lattice[2]] as [Vec3, Vec3, Vec3]),
+      sites,
     )
-    const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 3 })
-    expect(bonds.length).toBeGreaterThan(0)
-    bonds.forEach((bond) => {
-      expect(bond.bond_length).toBeGreaterThan(1.2)
-      expect(bond.bond_length).toBeLessThan(2.5)
-    })
+    // image atoms complete the shells of atoms sitting on cell faces
+    const imaged = get_pbc_image_sites(base)
+    const counts = Array.from<number>({ length: imaged.sites.length }).fill(0)
+    for (const { site_idx_1, site_idx_2 } of bonding.electroneg_ratio(imaged)) {
+      counts[site_idx_1]++
+      counts[site_idx_2]++
+    }
+    // only the original unit-cell sites are checked; image copies are partial by design
+    const actual: Record<string, number[]> = {}
+    for (let idx = 0; idx < base.sites.length; idx++) {
+      const element = bonding.get_majority_element(imaged.sites[idx]) ?? `?`
+      ;(actual[element] ??= []).push(counts[idx])
+    }
+    for (const [element, cns] of Object.entries(actual)) {
+      if (!(element in expected)) continue
+      // every atom of that element must hit the textbook CN, boundary copies included
+      expect({ element, min: Math.min(...cns), max: Math.max(...cns) }).toEqual({
+        element,
+        min: expected[element],
+        max: expected[element],
+      })
+    }
   })
 })
 
 describe(`Electronegativity-Based Bonding`, () => {
-  test(`bond type identification`, () => {
-    const na_cl = get_test_structure([
-      { xyz: [0, 0, 0], element: `Na` },
-      { xyz: [2.3, 0, 0], element: `Cl` },
-    ])
-    const c_c = get_test_structure([
-      { xyz: [0, 0, 0], element: `C` },
-      { xyz: [1.5, 0, 0], element: `C` },
-    ])
-    const ionic = bonding.electroneg_ratio(na_cl, { max_distance_ratio: 2.5 })
-    const covalent = bonding.electroneg_ratio(c_c, { max_distance_ratio: 2.5 })
-    expect(ionic).toHaveLength(1)
-    expect(covalent).toHaveLength(1)
-    expect(ionic[0].bond_length).toBeCloseTo(2.3, 1)
-    expect(covalent[0].bond_length).toBeCloseTo(1.5, 1)
-  })
+  test.each([
+    [`Na`, `Cl`, 2.3], // ionic
+    [`C`, `C`, 1.5], // covalent, same species
+    [`C`, `O`, 1.5], // covalent, heteronuclear
+  ] as [ElementSymbol, ElementSymbol, number][])(
+    `%s-%s at %s A is a single bond of that length`,
+    (elem_1, elem_2, dist) => {
+      const structure = get_test_structure([
+        { xyz: [0, 0, 0], element: elem_1 },
+        { xyz: [dist, 0, 0], element: elem_2 },
+      ])
+      const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 2.5 })
+      expect(bonds).toHaveLength(1)
+      expect(bonds[0].bond_length).toBeCloseTo(dist, 1)
+    },
+  )
 
   test(`parameter sensitivity`, () => {
     const structure = get_test_structure([
@@ -759,15 +979,43 @@ describe(`Electronegativity-Based Bonding`, () => {
       { xyz: [2.5, 0, 0], element: `Fe` },
       { xyz: [1.25, 2.2, 0], element: `O` },
     ])
-    const lenient = bonding.electroneg_ratio(structure, {
-      metal_metal_penalty: 0.8,
-      metal_nonmetal_bonus: 1.2,
-    })
-    const strict = bonding.electroneg_ratio(structure, {
-      metal_metal_penalty: 0.1,
-      metal_nonmetal_bonus: 2.5,
-    })
-    expect(lenient).not.toHaveLength(strict.length)
+    // One bridging O leaves both Fe far short of an anion shell, so the cation gate stays
+    // out of the way and the Fe-Fe contact is kept alongside the two Fe-O bonds
+    expect(bonding.electroneg_ratio(structure)).toHaveLength(3)
+
+    // Surround each Fe with enough O to saturate it and the same Fe-Fe contact is dropped:
+    // now it really is a second shell behind a complete coordination environment
+    const saturated = get_test_structure([
+      { xyz: [0, 0, 0], element: `Fe` },
+      { xyz: [2.5, 0, 0], element: `Fe` },
+      ...(
+        [
+          [1.25, 1.7, 0],
+          [1.25, -1.7, 0],
+          [1.25, 0, 1.7],
+          [1.25, 0, -1.7],
+          [-1.9, 0, 0],
+          [4.4, 0, 0],
+        ] as Vec3[]
+      ).map((xyz) => ({ xyz, element: `O` as const })),
+    ])
+    const fe_fe = (bonds: BondPair[]) =>
+      bonds.filter((bond) => bond.site_idx_1 === 0 && bond.site_idx_2 === 1)
+    expect(fe_fe(bonding.electroneg_ratio(saturated))).toHaveLength(0)
+    // lifting the gate brings it back, confirming that is what removed it
+    expect(
+      fe_fe(bonding.electroneg_ratio(saturated, { cation_cation_penalty: 1 })),
+    ).toHaveLength(1)
+
+    // with no anion present the gate is inert and metal_metal_penalty governs again
+    const metal_only = get_test_structure([
+      { xyz: [0, 0, 0], element: `Fe` },
+      { xyz: [2.5, 0, 0], element: `Fe` },
+    ])
+    const lenient = bonding.electroneg_ratio(metal_only, { metal_metal_penalty: 0.8 })
+    const strict = bonding.electroneg_ratio(metal_only, { metal_metal_penalty: 0.1 })
+    expect(lenient).toHaveLength(1)
+    expect(strict).toHaveLength(0)
   })
 
   test(`distance constraints`, () => {
@@ -776,17 +1024,6 @@ describe(`Electronegativity-Based Bonding`, () => {
       { xyz: [10, 0, 0], element: `Cl` },
     ])
     expect(bonding.electroneg_ratio(structure, { max_distance_ratio: 5 })).toHaveLength(0)
-  })
-})
-
-describe(`Algorithm Comparison`, () => {
-  test(`simple bonds`, () => {
-    const structure = get_test_structure([
-      { xyz: [0, 0, 0], element: `C` },
-      { xyz: [1.5, 0, 0], element: `O` },
-    ])
-    expect(bonding.solid_angle(structure)).toHaveLength(1)
-    expect(bonding.electroneg_ratio(structure)).toHaveLength(1)
   })
 })
 
@@ -930,17 +1167,10 @@ describe(`compute_bonds memo`, () => {
     )
   })
 
-  test(`repeated identical calls reuse the cached array (multi-view dedup)`, () => {
-    // simulate the 4 panes computing bonds for the same structure in one flush
-    const first = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    const second = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    expect(second).toBe(first) // same reference => no recompute
-  })
-
   const other_structure = get_test_structure([{ xyz: [0, 0, 0] }])
   test.each([
     [`different structure`, other_structure, `electroneg_ratio`, {}],
-    [`different strategy`, structure, `solid_angle`, {}],
+    [`different strategy`, structure, `explicit_only`, {}],
     [`different options`, structure, `electroneg_ratio`, { max_distance_ratio: 3 }],
   ] as const)(`recomputes on %s`, (_desc, struct, strategy, options) => {
     const base = bonding.compute_bonds(structure, `electroneg_ratio`, {})
@@ -950,8 +1180,8 @@ describe(`compute_bonds memo`, () => {
 
   test(`caches per-structure so interleaved distinct structures don't thrash`, () => {
     // Two Structure components on one page compute bonds for different structures in the same
-    // flush. A single global memo slot would evict each other every call; the per-structure
-    // WeakMap keeps both warm so repeat calls still hit the cache.
+    // flush (as do the 4 panes of the multi-side view). A single global memo slot would evict
+    // each other every call; the per-structure WeakMap keeps both warm so repeat calls hit.
     const a1 = bonding.compute_bonds(structure, `electroneg_ratio`, {})
     const b1 = bonding.compute_bonds(other_structure, `electroneg_ratio`, {})
     expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(a1)
@@ -962,9 +1192,13 @@ describe(`compute_bonds memo`, () => {
     // A single { sig, bonds } slot per structure would evict the prior result on every
     // strategy/options switch; the per-signature map keeps each warm so switching back hits cache.
     const eneg = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    const solid = bonding.compute_bonds(structure, `solid_angle`, {})
+    const wide = bonding.compute_bonds(structure, `electroneg_ratio`, {
+      max_distance_ratio: 3,
+    })
     expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(eneg)
-    expect(bonding.compute_bonds(structure, `solid_angle`, {})).toBe(solid)
+    expect(
+      bonding.compute_bonds(structure, `electroneg_ratio`, { max_distance_ratio: 3 }),
+    ).toBe(wide)
   })
 })
 
@@ -986,26 +1220,63 @@ describe(`spatial grid scratch array reuse`, () => {
     )
   }
 
-  test.each([`electroneg_ratio`, `solid_angle`] as const)(
-    `%s bonds are stable and duplicate-free across repeated + interleaved calls`,
-    (strategy) => {
-      // >50 sites forces the spatial-grid path, whose neighbor lookup fills a
-      // REUSED module-level scratch array. Interleaving two structures then
-      // recomputing the first would surface any state leaking between calls.
-      const struct_a = make_deterministic_structure(80)
-      const struct_b = make_deterministic_structure(120)
-      const bond_key = (bond: BondPair) => `${bond.site_idx_1}-${bond.site_idx_2}`
+  test(`bonds are stable and duplicate-free across repeated + interleaved calls`, () => {
+    // >50 sites forces the spatial-grid path, whose neighbor lookup fills a
+    // REUSED module-level scratch array. Interleaving two structures then
+    // recomputing the first would surface any state leaking between calls.
+    const struct_a = make_deterministic_structure(80)
+    const struct_b = make_deterministic_structure(120)
+    const bond_key = (bond: BondPair) => `${bond.site_idx_1}-${bond.site_idx_2}`
 
-      const first_a = bonding.BONDING_STRATEGIES[strategy](struct_a)
-      const first_b = bonding.BONDING_STRATEGIES[strategy](struct_b)
-      const second_a = bonding.BONDING_STRATEGIES[strategy](struct_a)
+    const first_a = bonding.electroneg_ratio(struct_a)
+    const first_b = bonding.electroneg_ratio(struct_b)
+    const second_a = bonding.electroneg_ratio(struct_a)
 
-      expect(first_a.length).toBeGreaterThan(0)
-      expect(second_a.map(bond_key)).toEqual(first_a.map(bond_key))
-      expect(new Set(first_a.map(bond_key)).size).toBe(first_a.length)
-      expect(new Set(first_b.map(bond_key)).size).toBe(first_b.length)
-    },
-  )
+    expect(first_a.length).toBeGreaterThan(0)
+    expect(second_a.map(bond_key)).toEqual(first_a.map(bond_key))
+    expect(new Set(first_a.map(bond_key)).size).toBe(first_a.length)
+    expect(new Set(first_b.map(bond_key)).size).toBe(first_b.length)
+  })
+
+  // The grid scan visits only the 13 "forward" neighbor cells of each center, relying on
+  // the other 13 pairs being found from the opposite end — a wrong offset set would
+  // silently drop bonds in whole directions. The cell is one bond cutoff wide
+  // (0.76 = C covalent radius), so a mid-cell center puts every partner just past a
+  // face, and strength_threshold 0 keeps the distance model from dropping the diagonals.
+  test(`grid scan finds partners in the own cell and all 26 neighbors`, () => {
+    const center = (2 * 0.76 * 2) / 2
+    const offset = center + 0.1
+    const partner_sites = [-1, 0, 1].flatMap((dx) =>
+      [-1, 0, 1].flatMap((dy) =>
+        [-1, 0, 1]
+          .filter((dz) => dx || dy || dz)
+          .map((dz) => ({
+            element: `C` as const,
+            xyz: [center + dx * offset, center + dy * offset, center + dz * offset] as Vec3,
+          })),
+      ),
+    )
+    const structure = make_crystal(500, [
+      { element: `C`, xyz: [center, center, center] },
+      ...partner_sites,
+      // 27th partner stays inside the center's own cell, which the scan reaches by a
+      // different route (index filter rather than a neighbor offset)
+      { element: `C`, xyz: [center + 1, center, center] },
+      // pad past the 50-site grid threshold with far-apart, non-bonding atoms
+      ...Array.from({ length: 40 }, (_, idx) => ({
+        element: `C` as const,
+        xyz: [200 + idx * 20, 200, 200] as Vec3,
+      })),
+    ])
+
+    const partners = bonding
+      .electroneg_ratio(structure, { strength_threshold: 0 })
+      .filter((bond) => bond.site_idx_1 === 0 || bond.site_idx_2 === 0)
+      .map((bond) => (bond.site_idx_1 === 0 ? bond.site_idx_2 : bond.site_idx_1))
+    expect(partners.toSorted((a, b) => a - b)).toEqual(
+      Array.from({ length: 27 }, (_, idx) => idx + 1),
+    )
+  })
 })
 
 test(`pack_cell_key is injective in a dense block and safe-integer at ±512 range corners`, () => {

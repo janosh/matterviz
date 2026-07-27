@@ -10,6 +10,14 @@ import {
 } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
 
+// A LAMMPS data file always declares its atom count in the header and holds an `Atoms`
+// section; used to tell a real .data file from the many other things called `*.data`
+export const is_lammps_data_content = (content: string): boolean =>
+  /^\s*\d+\s+atoms\s*(?:#.*)?$/im.test(content) && /^\s*Atoms\b/im.test(content)
+
+export const is_lammps_dump_content = (content: string): boolean =>
+  /^\s*ITEM:\s*TIMESTEP/im.test(content)
+
 // Filename-only detection lives apart from the parsers so lightweight callers
 // (desktop recents, file pickers) do not load YAML, structure math, and element
 // data just to choose an icon.

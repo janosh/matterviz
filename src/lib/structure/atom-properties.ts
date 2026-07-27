@@ -10,6 +10,7 @@ import type { AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { get_majority_element } from '$lib/structure/bonding'
+import type { Pbc } from '$lib/structure/pbc'
 import { wrap_frac_coord } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
@@ -35,11 +36,10 @@ const DEFAULT_COLOR_SCALE = `interpolateViridis`
 // Cap on periodic image shells per axis when expanding for coordination. Guards
 // against image explosion in very thin / highly oblique cells (coordination is ~O(n²)).
 const MAX_IMAGE_SHELLS = 3
-// Max bond distance each strategy can form, mirroring the defaults in bonding.ts
-// (electroneg_ratio.max_distance_ratio, solid_angle.max_distance). Used to size PBC
-// image expansion just tightly enough that coordination never misses a bonded neighbor.
+// Max bond distance electroneg_ratio can form, mirroring its max_distance_ratio default
+// in bonding.ts. Used to size PBC image expansion just tightly enough that coordination
+// never misses a bonded neighbor.
 const ELECTRONEG_MAX_RATIO = 2
-const SOLID_ANGLE_MAX_DIST = 5 // Å
 type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
 export const get_d3_color_scales = (): string[] =>
@@ -138,22 +138,24 @@ export const get_orig_site_idx = (site: Site | undefined, site_idx: number): num
       : site_idx
 
 // Expand a periodic structure with the neighbor images needed for correct
-// coordination. Each atom's `reach` (the largest bond `strategy` can form for it —
-// electroneg_ratio's (r + r_max)·ratio or solid_angle's flat cap) sizes how many whole
-// cells to image per periodic axis, measured over the perpendicular cell height (not
+// coordination. Each atom's `reach` (the largest bond that can form for it,
+// (r + r_max)·ratio) sizes how many whole cells to image per periodic axis, measured
+// over the perpendicular cell height (not
 // the lattice vector length, so oblique cells work), keeping only images within `reach`
 // of the [0,1] cell and capping at MAX_IMAGE_SHELLS/axis (warns + may undercount beyond
 // that — near-degenerate cells only). Smaller atoms image less; atoms with no covalent
 // radius form no bonds and get no images.
-function expand_structure_for_pbc(
+// `pbc_override` lets callers (bond angles) analyse a structure under different
+// periodicity than the lattice declares, without copying this whole routine.
+export function expand_structure_for_pbc(
   structure: AnyStructure,
-  strategy: BondingStrategy,
+  pbc_override?: Pbc,
 ): AnyStructure {
   if (!(`lattice` in structure) || !structure.lattice || structure.sites.length === 0) {
     return structure
   }
   const { sites, lattice } = structure
-  const pbc = lattice.pbc ?? [true, true, true]
+  const pbc = pbc_override ?? lattice.pbc ?? [true, true, true]
   if (!pbc.some(Boolean)) return structure
 
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
@@ -175,10 +177,7 @@ function expand_structure_for_pbc(
   })
   let max_radius = 0
   for (const radius of radii) if (radius > max_radius) max_radius = radius
-  const reach_of = (radius: number): number =>
-    strategy === `solid_angle`
-      ? SOLID_ANGLE_MAX_DIST
-      : (radius + max_radius) * ELECTRONEG_MAX_RATIO
+  const reach_of = (radius: number): number => (radius + max_radius) * ELECTRONEG_MAX_RATIO
 
   const heights = math.cell_heights(lattice.matrix)
   // Axes we image along: periodic and non-degenerate (finite height). Non-live axes
@@ -242,7 +241,7 @@ export function calc_structure_coordination(
   const pbc = has_lattice ? structure.lattice.pbc : undefined
   const has_pbc = has_lattice && (pbc === undefined || pbc.some(Boolean))
   // Image atoms still count as neighbors but aren't iterated as centers (big speedup)
-  const coord_structure = has_pbc ? expand_structure_for_pbc(structure, strategy) : structure
+  const coord_structure = has_pbc ? expand_structure_for_pbc(structure) : structure
   return calc_coordination_nums(coord_structure, strategy, structure.sites.length)
 }
 
@@ -314,6 +313,67 @@ export function get_wyckoff_colors(
   return { colors, values: orbit_ids, unique_values }
 }
 
+// POSCAR selective dynamics is a PER-AXIS flag triple (`T`/`F` per lattice direction), so an
+// atom can be frozen along some axes only. Collapsing to a binary free/fixed split would hide
+// that, hence the separate `partially fixed` category. `unknown` = site never declared the
+// property, which the POSCAR parser emits for coordinate lines too short to carry flags.
+export const SELECTIVE_DYNAMICS_CATEGORIES = [
+  `free`,
+  `partially fixed`,
+  `fixed`,
+  `unknown`,
+] as const
+export type SelectiveDynamicsCategory = (typeof SELECTIVE_DYNAMICS_CATEGORIES)[number]
+
+// `true` means the atom may relax along that axis (POSCAR `T`), `false` means frozen (`F`).
+// Every parser MatterViz ships writes three booleans, but hand-authored and third-party
+// structures spell the same triple as `T`/`F` (the POSCAR literal) or 0/1, so those are
+// coerced too. Anything else lands in `unknown`: this runs per site while rendering, where
+// throwing would blank the whole structure over one malformed property.
+const to_relax_flag = (flag: unknown): boolean | undefined => {
+  if (typeof flag === `boolean`) return flag
+  if (typeof flag !== `string` && typeof flag !== `number`) return undefined
+  const key = String(flag).trim().toLowerCase()
+  if ([`t`, `true`, `1`].includes(key)) return true
+  if ([`f`, `false`, `0`].includes(key)) return false
+  return undefined
+}
+
+// Array.isArray also rejects the undefined/null of a site that never declared the property
+export function categorize_selective_dynamics(value: unknown): SelectiveDynamicsCategory {
+  if (!Array.isArray(value) || value.length !== 3) return `unknown`
+  const flags = value.map(to_relax_flag)
+  if (flags.includes(undefined)) return `unknown`
+  if (flags.every(Boolean)) return `free`
+  if (flags.some(Boolean)) return `partially fixed`
+  return `fixed`
+}
+
+export const structure_has_selective_dynamics = (
+  structure: AnyStructure | undefined | null,
+): boolean =>
+  structure?.sites.some((site) => site.properties?.selective_dynamics !== undefined) ?? false
+
+export function get_selective_dynamics_colors(
+  structure: AnyStructure,
+  scale = DEFAULT_COLOR_SCALE,
+): AtomPropertyColors {
+  if (structure.sites.length === 0) return { colors: [], values: [] }
+  const categories = structure.sites.map((site) =>
+    categorize_selective_dynamics(site.properties?.selective_dynamics),
+  )
+  // Order the legend free → partially fixed → fixed (mobility descending) instead of
+  // alphabetically, so the color ramp reads as a constraint gradient
+  const { colors, unique_values } = make_categorical(
+    categories,
+    scale,
+    (cat_a, cat_b) =>
+      SELECTIVE_DYNAMICS_CATEGORIES.indexOf(cat_a) -
+      SELECTIVE_DYNAMICS_CATEGORIES.indexOf(cat_b),
+  )
+  return { colors, values: categories, unique_values }
+}
+
 export function get_custom_colors(
   structure: AnyStructure,
   fn: (site: Site, idx: number) => number | string,
@@ -346,6 +406,7 @@ export function get_atom_colors(
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
+  if (mode === `selective_dynamics`) return get_selective_dynamics_colors(structure, scale)
   if (mode === `custom` && config.color_fn) {
     return get_custom_colors(structure, config.color_fn, scale, scale_type)
   }

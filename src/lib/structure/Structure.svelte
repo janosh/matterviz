@@ -67,6 +67,7 @@
   import { BOND_ORDER_OPTIONS, merge_bond_edits, remap_bonds_after_deletion } from './bonding'
   import { mirror_scene_props } from '$lib/scene/props.svelte'
   import type { StructureHandlerData } from './index'
+  import type { DisplacementSummary } from './measure'
   import { MAX_SELECTED_SITES } from './measure'
   import {
     ensure_lattice_params,
@@ -138,6 +139,8 @@
 
   let {
     structure = $bindable(),
+    reference_structure = undefined,
+    displacement_rmsd = $bindable(undefined),
     bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
     lattice_props: lattice_props_in = $bindable(),
@@ -234,6 +237,10 @@
     ...rest
   }: {
     structure?: AnyStructure
+    // Comparison overlay: draw per-atom displacement arrows from this geometry (e.g. the
+    // unrelaxed cell) to `structure`. Same atom count and ordering required.
+    reference_structure?: AnyStructure
+    displacement_rmsd?: number // (output) RMSD in Angstrom vs reference_structure
     bonds?: StructureBond[]
     scene_props?: ComponentProps<typeof StructureScene>
     // Controls visibility configuration.
@@ -352,13 +359,11 @@
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
-      mirror_scene_props(scene_props, scene_props_in, !camera_seeded)
-      camera_seeded = true
+      mirror_scene_props(scene_props, scene_props_in)
     }
     if (lattice_props_in && typeof lattice_props_in === `object`) {
       Object.assign(lattice_props, lattice_props_in)
     }
-  let camera_seeded = false // camera keys mirror only while seeding, see mirror_scene_props
   })
 
   // Keep stale externally-controlled indices from blanking either volumetric view.
@@ -794,7 +799,7 @@
   let add_element = $state<ElementSymbol>(`C`)
   const has_selection = () => selected_sites.length > 0 || measured_sites.length > 0
   let is_measure_selection_mode = $derived(
-    measure_mode === `distance` || measure_mode === `angle`,
+    measure_mode === `distance` || measure_mode === `angle` || measure_mode === `dihedral`,
   )
   let show_measure_selection_limit = $derived(
     is_measure_selection_mode && measured_sites.length >= MAX_SELECTED_SITES,
@@ -1202,9 +1207,20 @@
 
   // Inputs shared by every StructureViewport (single + all multi-view panes). Camera,
   // selection bindings, and per-pane chrome differ and stay on each snippet below.
+  // The primary pane's StructureScene owns the reference comparison and binds its readout
+  // back here; recomputing it alongside would risk the numbers and the arrows disagreeing.
+  let displacement_summary = $state<DisplacementSummary | null>(null)
+  // One-shot zone-axis flight, written by StructureControls and consumed by the primary
+  // pane's scene. Deliberately NOT part of scene_props, which every pane receives.
+  let fly_to_request = $state<Vec3 | undefined>(undefined)
+  $effect(() => {
+    displacement_rmsd = displacement_summary?.rmsd
+  })
+
   let shared_viewport_props = $derived({
     structure: internal_displayed_structure,
     base_structure: cell_transformed_structure,
+    reference_structure,
     scene_props,
     gizmo: scene_gizmo_props,
     lattice_props,
@@ -1865,6 +1881,7 @@
                   {
                     distance: `Ruler`,
                     angle: `Angle`,
+                    dihedral: `Orbit`,
                     'edit-bonds': `Link`,
                     'edit-atoms': `Edit`,
                   } as const
@@ -1887,7 +1904,7 @@
           {/if}
           {#if measure_menu_open}
             <div class="view-mode-dropdown">
-              {#each [{ mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 }, { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 }, { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 }, { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 }] as const as { mode, icon, label, scale } (mode)}
+              {#each [{ mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 }, { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 }, { mode: `dihedral`, icon: `Orbit`, label: `Dihedral`, scale: 1.1 }, { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 }, { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 }] as const as { mode, icon, label, scale } (mode)}
                 <button
                   class="view-mode-option"
                   class:selected={measure_mode === mode}
@@ -2094,6 +2111,8 @@
           {supercell_loading}
           {sym_data}
           {polyhedra_rendered_elements}
+          {displacement_summary}
+          bind:fly_to_request
         />
       {/if}
 
@@ -2149,6 +2168,8 @@
         camera_projection={view.projection ?? scene_props.camera_projection}
         bind:camera_position={scene_props.camera_position}
         bind:camera_target={scene_props.camera_target}
+        bind:fly_to_request
+        bind:displacement_summary
         bind:scene
         bind:camera
         bind:selected_sites

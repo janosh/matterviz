@@ -3,10 +3,8 @@ import {
   compute_vertex_normals,
   marching_cubes,
   marching_cubes_buffers,
-  type ScalarGrid3D,
-  type ScalarGridArray,
-  type ScalarGridOrder,
 } from '$lib/marching-cubes'
+import type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '$lib/marching-cubes'
 import { flatten_grid } from '$lib/isosurface/grid'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'

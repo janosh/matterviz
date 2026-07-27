@@ -333,18 +333,53 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
 
 // --- Bond graph adjacency ---
 
-// Symmetric site_idx -> neighbor site_idx set from rendered bond pairs.
-export function build_adjacency(bonds: readonly BondPair[]): Map<number, Set<number>> {
-  const adjacency = new Map<number, Set<number>>()
-  const link = (from: number, to: number) => {
-    const neighbors = adjacency.get(from)
-    if (neighbors) neighbors.add(to)
-    else adjacency.set(from, new Set([to]))
+export interface PolyhedronNeighbor {
+  site_idx: number // index into the displayed structure's sites
+  // Displacement from the center to this neighbor, non-null only for bonds carrying a
+  // periodic cell_shift. Such a bond ends at a lattice image of sites[site_idx], not at
+  // its in-cell position, so the vertex has to be placed at center + offset. Left null
+  // for the common (proximity-perceived) case so vertices stay the exact site positions.
+  offset: Vec3 | null
+}
+
+// Symmetric site_idx -> neighbor list from rendered bond pairs. Self-bonds are dropped:
+// even a periodic one (an image of the center itself) shares the center's element and so
+// can never clear the strictly-higher-electronegativity test in is_anion_vertex.
+export function build_adjacency(
+  bonds: readonly BondPair[],
+): Map<number, PolyhedronNeighbor[]> {
+  const adjacency = new Map<number, PolyhedronNeighbor[]>()
+  const link = (from: number, to: number, offset: Vec3 | null) => {
+    let neighbors = adjacency.get(from)
+    if (!neighbors) adjacency.set(from, (neighbors = []))
+    // The same site can appear twice through different periodic images, so dedupe on
+    // (site, image) rather than site alone. Coordination shells are tiny (CN 4-12), so
+    // this linear scan beats building a string key for every bond in a supercell.
+    const is_dup = neighbors.some(
+      (nbr) =>
+        nbr.site_idx === to &&
+        (nbr.offset === null
+          ? offset === null
+          : offset !== null &&
+            nbr.offset[0] === offset[0] &&
+            nbr.offset[1] === offset[1] &&
+            nbr.offset[2] === offset[2]),
+    )
+    if (!is_dup) neighbors.push({ site_idx: to, offset })
   }
-  for (const { site_idx_1, site_idx_2 } of bonds) {
+  for (const { site_idx_1, site_idx_2, pos_1, pos_2, cell_shift } of bonds) {
     if (site_idx_1 === site_idx_2) continue
-    link(site_idx_1, site_idx_2)
-    link(site_idx_2, site_idx_1)
+    if (cell_shift === undefined || cell_shift.every((val) => val === 0)) {
+      link(site_idx_1, site_idx_2, null)
+      link(site_idx_2, site_idx_1, null)
+    } else {
+      // pos_2 already carries the lattice translation (structure_bond_to_bond_pair), so
+      // the bond vector is the center -> neighbor displacement; the reverse is its negation
+      const [dx, dy, dz] = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
+      const flip = (val: number) => (val === 0 ? 0 : -val) // no -0, matching negate_cell_shift
+      link(site_idx_1, site_idx_2, [dx, dy, dz])
+      link(site_idx_2, site_idx_1, [flip(dx), flip(dy), flip(dz)])
+    }
   }
   return adjacency
 }
@@ -381,9 +416,10 @@ function is_anion_vertex(
 // cations (alkali, heavy alkaline-earth) are skipped when framework cations exist,
 // CN > max_neighbors hulls (e.g. CN-12 cuboctahedra) are skipped, and
 // boundary-truncated copies only render when their vertex count matches the max
-// among all copies of the same original site. Every polyhedron corner is a
-// displayed atom (boundary shells are completed upstream by bond-completing image
-// atoms - see find_image_atoms in pbc.ts).
+// among all copies of the same original site. Corners are displayed atoms for
+// proximity-perceived bonds (boundary shells are completed upstream by
+// bond-completing image atoms - see find_image_atoms in pbc.ts); explicit bonds
+// carrying a cell_shift put the corner at the lattice image the bond points to.
 export function compute_polyhedra(
   structure: AnyStructure,
   bonds: readonly BondPair[],
@@ -404,6 +440,11 @@ export function compute_polyhedra(
   const sites = structure?.sites
   if (!sites?.length || bonds.length === 0) return []
 
+  // Only bonds carrying a cell_shift can name a neighbor the graph already reaches under
+  // another site index (an explicit record against the base atom vs a proximity match
+  // against its image copy). Absent those, positions are unique by construction and the
+  // coincidence scan below is skipped so large supercells don't pay for it.
+  const has_shifted_bonds = bonds.some((bond) => bond.cell_shift?.some((val) => val !== 0))
   const adjacency = build_adjacency(bonds)
   const excluded = new Set(excluded_center_elements)
   const included = new Set(included_center_elements)
@@ -449,11 +490,12 @@ export function compute_polyhedra(
     orig_idx: number
     element: ElementSymbol
     vertex_site_idxs: number[]
+    vertex_positions: Vec3[] // parallel to vertex_site_idxs, PBC images resolved
     mean_norm_dist: number | null // mean bond dist / covalent-radii sum (bond softness)
   }
   const candidates: Candidate[] = []
   for (const [site_idx, neighbors] of adjacency) {
-    if (neighbors.size < min_neighbors) continue
+    if (neighbors.length < min_neighbors) continue
     const element = site_elements[site_idx]
     if (!element || excluded.has(element)) continue
     const { accepts, radii_sums } = center_info(element)
@@ -462,14 +504,32 @@ export function compute_polyhedra(
 
     // Bonded anion vertices (parallel arrays to avoid per-vertex object churn)
     const vert_idxs: number[] = []
+    const vert_positions: Vec3[] = []
     const vert_dists: number[] = []
     let min_dist = Infinity
-    for (const idx of neighbors) {
+    for (const { site_idx: idx, offset } of neighbors) {
       const n_elem = site_elements[idx]
       if (!n_elem || !accepts.has(n_elem)) continue
-      const [nx, ny, nz] = sites[idx].xyz
-      const dist = Math.hypot(nx - cx, ny - cy, nz - cz)
+      const pos: Vec3 =
+        offset === null ? sites[idx].xyz : [cx + offset[0], cy + offset[1], cz + offset[2]]
+      // One physical neighbor reached twice would inflate the coordination number that
+      // gates max_neighbors and the boundary-completeness check (the hull dedupes the
+      // vertex itself, so only the count is wrong). 1e-6 Å because the two paths build
+      // the position differently - frac_to_cart(frac + shift) vs xyz + shift * lattice -
+      // and disagree at ~1e-15, six orders below any real neighbor separation.
+      if (
+        has_shifted_bonds &&
+        vert_positions.some(
+          (prev) =>
+            Math.abs(prev[0] - pos[0]) < 1e-6 &&
+            Math.abs(prev[1] - pos[1]) < 1e-6 &&
+            Math.abs(prev[2] - pos[2]) < 1e-6,
+        )
+      )
+        continue
+      const dist = Math.hypot(pos[0] - cx, pos[1] - cy, pos[2] - cz)
       vert_idxs.push(idx)
+      vert_positions.push(pos)
       vert_dists.push(dist)
       if (dist < min_dist) min_dist = dist
     }
@@ -480,11 +540,13 @@ export function compute_polyhedra(
     // oxygen at 2.5 Å around P whose true tetrahedron has 1.5 Å bonds
     const cutoff = min_dist * (1 + distance_factor)
     const vertex_site_idxs: number[] = []
+    const vertex_positions: Vec3[] = []
     let [norm_sum, norm_count] = [0, 0]
     for (let pos = 0; pos < vert_idxs.length; pos++) {
       if (vert_dists[pos] > cutoff) continue
       const idx = vert_idxs[pos]
       vertex_site_idxs.push(idx)
+      vertex_positions.push(vert_positions[pos])
       // Bond softness: how stretched the kept bonds are vs the covalent-radii sum
       const n_elem = site_elements[idx]
       const r_sum = n_elem ? (radii_sums.get(n_elem) ?? null) : null
@@ -500,6 +562,7 @@ export function compute_polyhedra(
       orig_idx: get_orig_site_idx(sites[site_idx], site_idx),
       element,
       vertex_site_idxs,
+      vertex_positions,
       mean_norm_dist: norm_count > 0 ? norm_sum / norm_count : null,
     })
   }
@@ -557,7 +620,7 @@ export function compute_polyhedra(
   // atom vs PBC image)
   const polyhedra: Polyhedron[] = []
   const seen_positions = new Set<string>()
-  for (const { site_idx, orig_idx, element, vertex_site_idxs } of visible) {
+  for (const { site_idx, orig_idx, element, vertex_site_idxs, vertex_positions } of visible) {
     if (vertex_site_idxs.length !== max_cn_by_orig.get(orig_idx)) continue
     if (vertex_site_idxs.length > max_neighbors && !included.has(element)) continue
 
@@ -566,7 +629,7 @@ export function compute_polyhedra(
     if (seen_positions.has(pos_key)) continue
     seen_positions.add(pos_key)
 
-    const hull = convex_hull_3d(vertex_site_idxs.map((idx) => sites[idx].xyz))
+    const hull = convex_hull_3d(vertex_positions)
     if (hull.faces.length === 0 || hull.volume < volume_eps) continue
 
     polyhedra.push({

@@ -1,0 +1,15 @@
+# SYNTHETIC Born effective charges for the CO2 fixture - not from a DFT run.
+# Magnitudes are representative of a covalent triatomic; what matters physically is
+# that they respect the two hard constraints:
+#   1. D_inf_h site symmetry: every tensor is diagonal with Z_xx = Z_yy != Z_zz,
+#      and the two oxygens are related by the inversion centre so their tensors are
+#      identical (Z* is even under inversion).
+#   2. Acoustic sum rule: Z*(C) + 2 Z*(O) = 0 exactly.
+# The symmetry-forced zero IR intensities of the gerade modes follow from these
+# constraints alone and are independent of the magnitudes chosen.
+# Line 1 = NAC unit conversion factor, line 2 = dielectric tensor, then one tensor/atom.
+14.400
+1.15000000 0.00000000 0.00000000 0.00000000 1.15000000 0.00000000 0.00000000 0.00000000 1.30000000
+0.60000000 0.00000000 0.00000000 0.00000000 0.60000000 0.00000000 0.00000000 0.00000000 1.30000000
+-0.30000000 0.00000000 0.00000000 0.00000000 -0.30000000 0.00000000 0.00000000 0.00000000 -0.65000000
+-0.30000000 0.00000000 0.00000000 0.00000000 -0.30000000 0.00000000 0.00000000 0.00000000 -0.65000000

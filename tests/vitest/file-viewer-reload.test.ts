@@ -111,14 +111,21 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
   expect(mount).toHaveBeenCalledTimes(4)
   await window.cleanupMatterViz?.()
 
+  // Marker handling lives inside parse_file_content, so these two cases delegate
+  // to the real implementation instead of the stub the rest of the test uses.
+  const { parse_file_content: real_parse_file_content } =
+    await vi.importActual<typeof ParseModule>(`$lib/file-viewer/parse`)
+
+  parse_file_content.mockImplementationOnce(real_parse_file_content)
   set_file_data(`LARGE_FILE:/tmp/structure.cif:536870912`, `structure.cif`)
   expect(await window.initializeMatterViz?.()).toBeNull()
-  expect(parse_file_content).toHaveBeenCalledTimes(6)
+  expect(parse_file_content).toHaveBeenCalledTimes(7)
   expect(post_message).toHaveBeenLastCalledWith({
     command: `error`,
     text: expect.stringContaining(`only supported for indexed trajectories`),
   })
 
+  parse_file_content.mockImplementationOnce(real_parse_file_content)
   set_file_data(`LARGE_FILE:/tmp/movie.traj:536870912`, `movie.traj`)
   const valid_marker_initialization = window.initializeMatterViz?.()
   await vi.waitFor(() =>
@@ -127,6 +134,8 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
     ),
   )
   const request = post_message.mock.lastCall?.[0] as Record<string, unknown>
+  // The host picks its indexer from the name, so the request has to carry it.
+  expect(request).toMatchObject({ file_path: `/tmp/movie.traj`, filename: `movie.traj` })
   globalThis.dispatchEvent(
     new MessageEvent(`message`, {
       data: {
@@ -142,7 +151,7 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
   parse_file_content.mockReturnValueOnce(initialization_parse.promise)
   set_file_data(`pending-initialization`)
   const pending_initialization = window.initializeMatterViz?.()
-  await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(7))
+  await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(9))
   const mount_count = mount.mock.calls.length
   await window.cleanupMatterViz?.()
   initialization_parse.resolve(result(`pending-initialization`))

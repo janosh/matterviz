@@ -19,6 +19,14 @@ jobs:
           extensions: vscode anywidget
       - uses: j178/prek-action@v2
 
+      # The root tsconfig excludes extensions/, and `vite build` strips types without
+      # checking them, so extensions/vscode/tsconfig.json never ran anywhere. The
+      # extension imports $lib types directly (file-viewer/eligibility, io/decompress,
+      # trajectory/format-detect), so a change to a shared type broke it silently -
+      # e.g. making HostFileRequest.filename required produced four errors nothing caught.
+      - name: Type check VSCode extension against $lib
+        run: pnpm -C extensions/vscode run typecheck
+
   knip:
     runs-on: ubuntu-latest
     steps:

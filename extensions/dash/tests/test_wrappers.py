@@ -137,6 +137,12 @@ def test_trailing_props_use_python_names(tmp_path: Path) -> None:
     )
     assert 'mv_props["someProp"] = some_prop' in generated
 
+    # RdfPlot has no frozen v0.4.3 baseline, so pin only the width of its alphabetically
+    # sorted prop block. A new prop belongs in trailing_props (landing after style);
+    # one inserted into the sorted block instead shifts every later positional argument.
+    rdf_params = list(inspect.signature(mvc.RdfPlot.__init__).parameters)[1:]
+    assert rdf_params.index("mv_props") == 16
+
 
 def test_structure_preserves_legacy_positional_bindings() -> None:
     """Structure documents file drops without shifting legacy arguments."""
@@ -154,6 +160,8 @@ def test_structure_preserves_legacy_positional_bindings() -> None:
         "multi_view_min_pane_width",
         "display_mode",
         "slice_settings",
+        "reference_structure",
+        "displacement_rmsd",
         "kwargs",
     ]
 

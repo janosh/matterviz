@@ -31,7 +31,8 @@ describe(`InstancedMesh limits`, () => {
     expect(get_tags(source)).toHaveLength(0)
     expect(source).not.toContain(`extras.Instance`)
     expect(source.match(/<InstancedAtoms\b/g)).toHaveLength(2)
-    // per-site vector arrows are instanced too (2 draw calls per layer)
-    expect(source.match(/<ArrowInstances\b/g)).toHaveLength(1)
+    // arrows are instanced too (2 draw calls per layer): one call site for per-site
+    // vectors (forces, magmoms), one for the displacement-vs-reference overlay
+    expect(source.match(/<ArrowInstances\b/g)).toHaveLength(2)
   })
 })

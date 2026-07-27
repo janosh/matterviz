@@ -1,3 +1,31 @@
+// Named rather than star exports: bond-angles' SPLIT_MODES/SplitMode clash with
+// coordination's, its NormalizeMode with heatmap-matrix's, and its barrel re-exports
+// plot/core/structure-input, which already reaches here through './plot'
+export {
+  angle_bin_centers,
+  angle_bin_index,
+  bin_bond_angles,
+  BondAnglePlot,
+  calc_bond_angle_distribution,
+  compute_bond_angles,
+  DEFAULT_BIN_WIDTH as BOND_ANGLE_DEFAULT_BIN_WIDTH,
+  MAX_BOND_ANGLE,
+  NORMALIZE_MODES as BOND_ANGLE_NORMALIZE_MODES,
+  resolve_angle_bins,
+  SPLIT_MODES as BOND_ANGLE_SPLIT_MODES,
+  to_angle_bar_series,
+  to_angle_density,
+  TOTAL_TRIPLET_LABEL,
+} from './bond-angles'
+export type {
+  BondAngleData,
+  BondAngleMetadata,
+  BondAngleOptions,
+  BondAngleSeries,
+  BondAngleTriplet,
+  NormalizeMode as BondAngleNormalizeMode,
+  SplitMode as BondAngleSplitMode,
+} from './bond-angles'
 export * from './brillouin'
 export * from './chempot-diagram'
 export * from './colors'
@@ -84,7 +112,10 @@ export type {
 } from './isosurface'
 export * from './labels'
 export * from './layout'
+export * from './lineshape'
 export * from './math'
+export * from './msd'
+export * from './neb'
 export * from './api/optimade'
 export * from './overlays'
 export * from './periodic-table'
@@ -92,6 +123,7 @@ export * from './phase-diagram'
 export * from './plot'
 export * from './rdf'
 export * from './sanitize'
+export * from './scattering'
 export * from './scene'
 export * from './settings'
 export * from './spectral'

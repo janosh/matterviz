@@ -3,7 +3,7 @@
 // Reference: pymatgen/analysis/chempot_diagram.py
 
 import type { PhaseData } from '$lib/convex-hull/types'
-import { convex_hull_2d, EPS, polygon_centroid, solve_linear_system } from '$lib/math'
+import { convex_hull_2d, EPS, gcd_all, polygon_centroid, solve_linear_system } from '$lib/math'
 import type { Vec2 } from '$lib/math'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
@@ -12,9 +12,6 @@ import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } 
 // that the worker bundler can't handle).
 const count_atoms_in_composition = (composition: Record<string, number>): number =>
   Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
-
-const gcd = (num_a: number, num_b: number): number =>
-  num_b === 0 ? num_a : gcd(num_b, num_a % num_b)
 
 const get_reduced_formula = (composition: Record<string, number>): Record<string, number> => {
   const amounts = Object.values(composition).filter((amt) => amt > 0)
@@ -31,7 +28,9 @@ const get_reduced_formula = (composition: Record<string, number>): Record<string
     if (scale === 0) return composition
   }
   const int_amounts = amounts.map((amt) => Math.round(amt * scale))
-  const divisor = int_amounts.reduce((acc, amt) => gcd(acc, amt))
+  // gcd is unreliable past 2^53, where consecutive integers stop being distinguishable
+  if (!int_amounts.every((amt) => Number.isSafeInteger(amt))) return composition
+  const divisor = gcd_all(int_amounts)
   if (scale === 1 && divisor <= 1) return composition
   const factor = scale / divisor
   return Object.fromEntries(

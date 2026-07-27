@@ -1,11 +1,7 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
-import {
-  grid_dimensions,
-  scalar_grid_strides,
-  type ScalarGridArray,
-  type ScalarGridLike,
-} from '$lib/isosurface/grid'
+import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
+import type { ScalarGridArray, ScalarGridLike } from '$lib/isosurface/grid'
 import { mat3x3_vec3_multiply, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
 export type {

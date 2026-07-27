@@ -16,8 +16,12 @@ const covalent_radii = new Map<string, number>(
 
 // Majority-occupancy element of a (possibly disordered) site
 export const get_majority_element = (site: Site | undefined): ElementSymbol | null => {
-  if (!site?.species?.length) return null
-  return site.species.reduce((max, spec) => (spec.occu > max.occu ? spec : max)).element
+  const species = site?.species
+  if (!species?.length) return null
+  // ordered-site shortcut: bonding, PBC image search and polyhedra each call this once per
+  // site, i.e. tens of thousands of times per supercell rebuild
+  if (species.length === 1) return species[0].element
+  return species.reduce((max, spec) => (spec.occu > max.occu ? spec : max)).element
 }
 
 // Large low-valent A-site cations whose coordination polyhedra (CN 8-12) tend to
@@ -563,6 +567,18 @@ export function apply_explicit_bond_metadata(
   return merged
 }
 
+// Render exactly the bonds declared in structure.properties.bonds, running no proximity
+// search. Formats like PDB/MOL/MOL2/SDF carry authoritative bond blocks, for which
+// covalent-radius perception both invents spurious bonds and misses coordination bonds.
+// Structures without declared bonds yield no bonds — falling back to a perception
+// strategy here would hide a missing or unparsed bond block.
+// `_options` is unused but required: compute_bonds calls the strategy union with two
+// arguments, which TS rejects if any registry member has a lower arity.
+export const explicit_only = (structure: AnyStructure, _options = {}): BondPair[] =>
+  get_explicit_bond_metadata(structure).map((bond) =>
+    structure_bond_to_bond_pair(structure, bond),
+  )
+
 export function scale_and_offset_bond_matrix(
   transform_matrix: Float32Array,
   offset: number,
@@ -635,76 +651,65 @@ function get_orig_idx(site: Site, fallback: number): number {
 // Compute 4x4 transformation matrix for bond cylinder between two positions.
 // Uses Y-up, right-handed coordinate system convention for Three.js compatibility.
 export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
-  const [dx, dy, dz] = math.subtract(pos_2, pos_1)
-  const height = Math.hypot(dx, dy, dz)
+  // Written out in scalars with indexed stores rather than array destructuring and a
+  // Float32Array(array literal): a 8000-site supercell builds ~23k of these, and the
+  // temporaries dominated.
+  //
+  // Math.sqrt over Math.hypot for the same reason: hypot guards against intermediate
+  // overflow, which needs coordinates above ~1e154 to matter and costs 13x here (57ms vs
+  // 4ms per 5M calls). Output is unaffected - both forms agree bit for bit across 20k
+  // random and degenerate position pairs, since the result is rounded to f32 regardless.
+  const dx = pos_2[0] - pos_1[0]
+  const dy = pos_2[1] - pos_1[1]
+  const dz = pos_2[2] - pos_1[2]
+  // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- see above
+  const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
 
+  const matrix = new Float32Array(16)
+  matrix[15] = 1
   if (height < 1e-10) {
-    return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+    matrix[0] = 1
+    matrix[5] = 1
+    matrix[10] = 1
+    return matrix
   }
 
-  const [dir_x, dir_y, dir_z] = [dx / height, dy / height, dz / height]
-  let [m00, m01, m02, m10, m11, m12, m20, m21, m22] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+  const dir_x = dx / height
+  const dir_y = dy / height
+  const dir_z = dz / height
 
-  // Special case: bond pointing straight up (+Y)
-  if (Math.abs(dir_y - 1.0) < 1e-10) {
-    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
-  } else if (Math.abs(dir_y + 1.0) < 1e-10) {
-    // Special case: bond pointing straight down (-Y)
-    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, -1, 0, 0, 0, 1]
-  } else {
-    // General case: construct orthonormal basis (right, dir, up)
-    // Right vector: perpendicular to dir in XZ plane
-    const [rx, rz] = [-dir_z, dir_x]
-    const r_len = Math.hypot(rx, rz)
-    const [right_x, right_z] = [rx / r_len, rz / r_len]
-    // Up vector: cross product of dir and right
-    const [up_x, up_y, up_z] = [
-      dir_y * right_z,
-      dir_z * right_x - dir_x * right_z,
-      -dir_y * right_x,
-    ]
-    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [
-      right_x,
-      dir_x,
-      up_x,
-      0,
-      dir_y,
-      up_y,
-      right_z,
-      dir_z,
-      up_z,
-    ]
+  // Orthonormal basis (right, dir, up) as the rotation columns. Straight up/down need the
+  // special case because the right vector is derived in the XZ plane, which degenerates.
+  let [right_x, right_z] = [1, 0]
+  let [up_x, up_y, up_z] = [0, 0, 1]
+  if (Math.abs(dir_y - 1) >= 1e-10 && Math.abs(dir_y + 1) >= 1e-10) {
+    const rx = -dir_z
+    const rz = dir_x
+    // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- see above
+    const r_len = Math.sqrt(rx * rx + rz * rz)
+    right_x = rx / r_len
+    right_z = rz / r_len
+    up_x = dir_y * right_z
+    up_y = dir_z * right_x - dir_x * right_z
+    up_z = -dir_y * right_x
   }
 
-  // Position at midpoint between the two atoms
-  const [px, py, pz] = [
-    (pos_1[0] + pos_2[0]) / 2,
-    (pos_1[1] + pos_2[1]) / 2,
-    (pos_1[2] + pos_2[2]) / 2,
-  ]
-
-  return new Float32Array([
-    // Return flattened column-major 4x4 matrix for Three.js
-    m00,
-    m10,
-    m20,
-    0,
-    m01 * height,
-    m11 * height,
-    m21 * height,
-    0,
-    m02,
-    m12,
-    m22,
-    0,
-    px,
-    py,
-    pz,
-    1,
-  ])
+  // Column-major 4x4 for Three.js: right, dir*height, up, then the midpoint translation
+  matrix[0] = right_x
+  matrix[2] = right_z
+  matrix[4] = dir_x * height
+  matrix[5] = dir_y * height
+  matrix[6] = dir_z * height
+  matrix[8] = up_x
+  matrix[9] = up_y
+  matrix[10] = up_z
+  matrix[12] = (pos_1[0] + pos_2[0]) / 2
+  matrix[13] = (pos_1[1] + pos_2[1]) / 2
+  matrix[14] = (pos_1[2] + pos_2[2]) / 2
+  return matrix
 }
 
-// Build a BondPair between two sites (shared by electroneg_ratio and solid_angle)
+// Build a BondPair between two sites
 const make_bond = (
   sites: Site[],
   idx_1: number,
@@ -729,62 +734,101 @@ const CELL_OFFSET = 512
 export const pack_cell_key = (x: number, y: number, z: number): number =>
   (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
 
-// Build spatial grid by dividing 3D space into cubic cells.
-function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
+// Cell-key offsets to probe around a bond center, own cell (delta 0) first. pack_cell_key
+// is linear in the cell coordinates, so a neighbor's key is the center's key plus a
+// constant — no re-packing per probe. The half shell keeps only the 13 lexicographically
+// "forward" offsets, so of any two adjacent cells exactly one sees the other; combined
+// with taking only larger indices from the own cell it visits each pair once, not twice.
+const shell_deltas = (half_shell: boolean): number[] => {
+  const deltas: number[] = []
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const rank = dx * 9 + dy * 3 + dz // lexicographic order; > 0 is the forward half
+        if (!half_shell || rank >= 0) deltas.push(dx * 1048576 + dy * 1024 + dz)
+      }
+    }
+  }
+  return deltas
+}
+const SHELL_DELTAS = { full: shell_deltas(false), half: shell_deltas(true) }
+
+// Positions as a flat [x, y, z, ...] buffer. The pair loops below read these millions of
+// times on large supercells, where a typed array beats two object hops per access.
+const flatten_positions = (sites: Site[]): Float64Array => {
+  const positions = new Float64Array(sites.length * 3)
+  for (const [idx, { xyz }] of sites.entries()) {
+    positions[idx * 3] = xyz[0]
+    positions[idx * 3 + 1] = xyz[1]
+    positions[idx * 3 + 2] = xyz[2]
+  }
+  return positions
+}
+
+// Spatial decomposition into cubic cells of `cutoff` size. Skipped below 50 atoms, where
+// the all-pairs loop is cheaper than building and probing the grid.
+function setup_spatial_grid(positions: Float64Array, n_sites: number, cutoff: number) {
+  if (n_sites <= 50) return null
   const grid: SpatialGrid = new Map()
-  for (let idx = 0; idx < sites.length; idx++) {
+  for (let idx = 0; idx < n_sites; idx++) {
     const key = pack_cell_key(
-      Math.floor(sites[idx].xyz[0] / cell_size),
-      Math.floor(sites[idx].xyz[1] / cell_size),
-      Math.floor(sites[idx].xyz[2] / cell_size),
+      Math.floor(positions[idx * 3] / cutoff),
+      Math.floor(positions[idx * 3 + 1] / cutoff),
+      Math.floor(positions[idx * 3 + 2] / cutoff),
     )
     const cell = grid.get(key)
     if (cell) cell.push(idx)
     else grid.set(key, [idx])
   }
-  return grid
+  return { grid, cell_size: cutoff }
 }
 
-// Get all site indices in 3x3x3 cube of cells around position.
-// Fills and returns a REUSED module-level array (valid until the next call):
-// this runs once per bond center, so per-call allocations would dominate GC
+// Partner indices to test against bond center `idx_a`, already restricted so no pair is
+// visited twice. Fills and returns a REUSED module-level array (valid until the next
+// call): this runs once per bond center, so per-call allocations would dominate GC
 // pressure when computing bonds for large supercells.
 const scratch_neighbors: number[] = []
-function get_neighbors_from_grid(pos: Vec3, grid: SpatialGrid, cell_size: number): number[] {
-  const [cx, cy, cz] = [
-    Math.floor(pos[0] / cell_size),
-    Math.floor(pos[1] / cell_size),
-    Math.floor(pos[2] / cell_size),
-  ]
+function collect_candidates(
+  idx_a: number,
+  n_sites: number,
+  positions: Float64Array,
+  spatial: ReturnType<typeof setup_spatial_grid>,
+  half_shell: boolean,
+): number[] {
   scratch_neighbors.length = 0
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dz = -1; dz <= 1; dz++) {
-        const cell = grid.get(pack_cell_key(cx + dx, cy + dy, cz + dz))
-        if (cell) for (const site_idx of cell) scratch_neighbors.push(site_idx)
-      }
-    }
+  if (!spatial) {
+    for (let idx_b = idx_a + 1; idx_b < n_sites; idx_b++) scratch_neighbors.push(idx_b)
+    return scratch_neighbors
+  }
+  const { grid, cell_size } = spatial
+  const base_key = pack_cell_key(
+    Math.floor(positions[idx_a * 3] / cell_size),
+    Math.floor(positions[idx_a * 3 + 1] / cell_size),
+    Math.floor(positions[idx_a * 3 + 2] / cell_size),
+  )
+  for (const delta of SHELL_DELTAS[half_shell ? `half` : `full`]) {
+    const cell = grid.get(base_key + delta)
+    if (!cell) continue
+    // forward cells contribute everything; the own cell only larger indices, so a pair
+    // sitting in a single cell is still taken exactly once
+    const take_all = half_shell && delta !== 0
+    for (const idx_b of cell) if (take_all || idx_b > idx_a) scratch_neighbors.push(idx_b)
   }
   return scratch_neighbors
 }
 
-// Setup spatial decomposition for structures with >50 atoms.
-function setup_spatial_grid(sites: Site[], cutoff: number) {
-  const use_grid = sites.length > 50
-  return use_grid ? { grid: build_spatial_grid(sites, cutoff), cell_size: cutoff } : null
-}
+// Relative slack for "is this contact in the atom's first shell?". Distances within
+// 0.1% of the shortest normalized contact count as the same shell, so float noise
+// between symmetry-equivalent bonds can't flip one of them into the penalized branch.
+const SHELL_TOL = 1.001
 
-// Get candidate neighbor indices using spatial grid or all sites.
-const get_candidates = (
-  pos: Vec3,
-  sites: Site[],
-  spatial: ReturnType<typeof setup_spatial_grid>,
-): number[] =>
-  spatial
-    ? get_neighbors_from_grid(pos, spatial.grid, spatial.cell_size)
-    : Array.from({ length: sites.length }, (_, idx) => idx)
+// Anion neighbours a cation needs before its cation-cation contacts count as second shell.
+// Matches DEFAULTS.structure.polyhedra_min_neighbors: a tetrahedron is the smallest real
+// coordination environment, so anything below it is an unsaturated (metal-rich) cation
+// whose metal-metal contacts are structural.
+const MIN_ANION_SHELL = 4
 
-export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle } as const
+export const BONDING_STRATEGIES = { electroneg_ratio, explicit_only } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
@@ -820,6 +864,13 @@ export function electroneg_ratio(
     max_distance_ratio = 2.0, // Max distance as multiple of sum of covalent radii
     min_bond_dist = 0.4, // Minimum bond distance in Angstroms
     metal_metal_penalty = 0.7, // Strength penalty for metal-metal bonds
+    // Penalty for contacts between two cation-like atoms (metals less electronegative
+    // than an anion-former in the composition). Cs-Cs in CsCl and Sr-Ti in SrTiO3 pass
+    // the distance model easily, but they are second-shell contacts across the anion
+    // sublattice, not bonds - the same distinction is_anion_vertex draws in polyhedra.ts.
+    // Elemental metals and intermetallics have no anion-former, so their homoatomic
+    // contacts are untouched.
+    cation_cation_penalty = 0.3,
     metal_nonmetal_bonus = 1.5, // Strength bonus for metal-nonmetal bonds
     similar_electronegativity_bonus = 1.2, // Bonus for similar electronegativity
     same_species_penalty = 0.5, // Penalty for bonds between same element
@@ -841,7 +892,10 @@ export function electroneg_ratio(
   // millions of candidate pairs in large supercells, so object property chains
   // and Map lookups are replaced with indexed array reads.
   const n_sites = sites.length
-  const n_center = Math.min(center_count, n_sites - 1)
+  // Half-shell scanning finds a pair from only one of its two ends, so it needs every
+  // site to act as a center; a restricted center_count falls back to the full shell.
+  const full_scan = center_count >= n_sites - 1
+  const n_center = full_scan ? n_sites : Math.min(center_count, n_sites - 1)
   const electronegs = new Float64Array(n_sites)
   const radii = new Float64Array(n_sites) // 0 = no covalent radius known
   const metal_flags = new Uint8Array(n_sites)
@@ -849,10 +903,25 @@ export function electroneg_ratio(
   const elem_ids = new Int32Array(n_sites) // same-species check via integer ids
   const orig_idxs = new Int32Array(n_sites)
   const elem_id_lookup = new Map<string, number>()
+  // Highest electronegativity among anion-formers (nonmetals/metalloids) present. Atoms
+  // below it are cation-like; -Infinity in an all-metal composition, so nothing is.
+  let max_anion_en = -Infinity
+  for (const site of sites) {
+    const elem = get_majority_element(site)
+    const data = elem ? element_by_symbol.get(elem) : undefined
+    if (!data?.nonmetal && !data?.metalloid) continue
+    const en = data.electronegativity
+    if (en != null && en > max_anion_en) max_anion_en = en
+  }
+  const cation_flags = new Uint8Array(n_sites)
   for (let idx = 0; idx < n_sites; idx++) {
     const elem = get_majority_element(sites[idx])
     const data = elem ? element_by_symbol.get(elem) : undefined
     electronegs[idx] = data?.electronegativity ?? 2.0
+    // Metal only, like is_anion_vertex in polyhedra.ts: "less electronegative than the
+    // most electronegative element present" alone would brand C and H as cations in an
+    // organic molecule and delete every C-H bond.
+    cation_flags[idx] = data?.metal && electronegs[idx] < max_anion_en ? 1 : 0
     metal_flags[idx] = data?.metal ? 1 : 0
     nonmetal_flags[idx] = data?.nonmetal ? 1 : 0
     radii[idx] = (elem ? covalent_radii.get(elem) : undefined) ?? 0
@@ -869,8 +938,11 @@ export function electroneg_ratio(
     orig_idxs[idx] =
       Number.isInteger(orig_idx) && orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
   }
-  // Closest normalized bond distance per original atom (typed array instead of Map)
-  const closest = new Float64Array(n_sites).fill(Infinity)
+  // Closest normalized bond distance per original atom (typed array instead of Map).
+  // Filled by each sweep, so no initial fill here.
+  const closest = new Float64Array(n_sites)
+  // Anion-former neighbours, filled during pass 1 (see the cation gate in pass 2)
+  const site_anion_neighbors = new Int32Array(n_sites)
 
   // Cells must span the longest possible bond, since only a 3x3x3 block is scanned per center.
   // Sizing that off the whole periodic table pins every structure at Cs/Fr (2.6 Å), so an
@@ -882,9 +954,73 @@ export function electroneg_ratio(
   for (const radius of radii) {
     if (radius > max_radius) max_radius = radius
   }
-  const bond_reach = max_radius * 2 * max_distance_ratio
-  const max_cutoff = bond_reach > 0 && Number.isFinite(bond_reach) ? bond_reach : 1
-  const spatial = setup_spatial_grid(sites, max_cutoff)
+  // Per-element-pair acceptance table. bond_strength and electroneg_weight depend only on
+  // the element pair, and dist_weight = exp(-((d/expected - 1)^2)/0.18) is at most 1, so
+  // the whole pair is unreachable when bond_strength * electroneg_weight <= threshold, and
+  // otherwise passes only while (d/expected - 1)^2 < -0.18*ln(threshold / that product).
+  // That is a band around `expected`, not just a ceiling: dist_weight is a Gaussian in
+  // (ratio - 1), so an over-SHORT contact fails too, and dropping the floor would let one
+  // into `closest` and over-penalize every real bond on that atom. Inverting both edges to
+  // squared distances turns the inner loop's cutoff into two array reads and lets the
+  // spatial grid size itself off the true reach instead of max_distance_ratio. For
+  // rocksalt that is 4.2 A rather than 6.6, and Na-Na becomes unreachable outright.
+  const n_elem = elem_id_lookup.size
+  const elem_radius = new Float64Array(n_elem)
+  const elem_en = new Float64Array(n_elem)
+  const elem_metal = new Uint8Array(n_elem)
+  const elem_nonmetal = new Uint8Array(n_elem)
+  const elem_cation = new Uint8Array(n_elem)
+  for (let idx = 0; idx < n_sites; idx++) {
+    const elem_id = elem_ids[idx]
+    elem_radius[elem_id] = radii[idx]
+    elem_en[elem_id] = electronegs[idx]
+    elem_metal[elem_id] = metal_flags[idx]
+    elem_nonmetal[elem_id] = nonmetal_flags[idx]
+    elem_cation[elem_id] = cation_flags[idx]
+  }
+  // expected bond length, the distance-independent strength factor, and the squared
+  // acceptance radius, per ordered pair (symmetric, but indexing both ways is cheaper)
+  const pair_expected = new Float64Array(n_elem * n_elem)
+  const pair_factor = new Float64Array(n_elem * n_elem)
+  const build_pair_reach = (apply_cation_penalty: boolean) => {
+    const reach_hi_sq = new Float64Array(n_elem * n_elem)
+    const reach_lo_sq = new Float64Array(n_elem * n_elem)
+    let max_reach = 0
+    for (let id_a = 0; id_a < n_elem; id_a++) {
+      for (let id_b = 0; id_b < n_elem; id_b++) {
+        const expected = elem_radius[id_a] + elem_radius[id_b]
+        pair_expected[id_a * n_elem + id_b] = expected
+        if (elem_radius[id_a] === 0 || elem_radius[id_b] === 0) continue
+        const en_diff = Math.abs(elem_en[id_a] - elem_en[id_b])
+        let strength = 1
+        if (elem_metal[id_a] && elem_metal[id_b]) strength *= metal_metal_penalty
+        else if (
+          (elem_metal[id_a] && elem_nonmetal[id_b]) ||
+          (elem_nonmetal[id_a] && elem_metal[id_b])
+        ) {
+          strength *= metal_nonmetal_bonus
+          if (en_diff > electronegativity_threshold) strength *= 1.3
+        } else if (en_diff < 0.5) strength *= similar_electronegativity_bonus
+        if (apply_cation_penalty && elem_cation[id_a] && elem_cation[id_b]) {
+          strength *= cation_cation_penalty
+        }
+        strength *= 1 - 0.3 * (en_diff / (elem_en[id_a] + elem_en[id_b]))
+        pair_factor[id_a * n_elem + id_b] = strength
+        // dist_weight <= 1, so nothing in this pair can clear the threshold
+        if (strength <= strength_threshold) continue
+        const spread = Math.sqrt(-0.18 * Math.log(strength_threshold / strength))
+        const reach = expected * Math.min(1 + spread, max_distance_ratio)
+        const floor = spread >= 1 ? 0 : expected * (1 - spread)
+        reach_hi_sq[id_a * n_elem + id_b] = reach * reach
+        reach_lo_sq[id_a * n_elem + id_b] = floor * floor
+        if (reach > max_reach) max_reach = reach
+      }
+    }
+    return { reach_hi_sq, reach_lo_sq, max_reach }
+  }
+  const grid_cutoff = (max_reach: number) =>
+    max_reach > 0 && Number.isFinite(max_reach) ? max_reach : 1
+  const positions = flatten_positions(sites)
 
   // Two-pass approach to ensure symmetry between original and image atoms:
   // 1. Collect all potential bonds and determine closest neighbor distance for each unique atom (orig_idx)
@@ -900,84 +1036,112 @@ export function electroneg_ratio(
     orig_idx_b: number
   }
 
-  const potential_bonds: PotentialBond[] = []
+  // The cation-cation penalty normally rides in pass 1 so the early strength cutoff can
+  // reject a damped contact before it costs a candidate object. Deferring it wholesale
+  // nearly doubled the candidates on a rocksalt supercell (22.8k -> 44.5k), all of them
+  // destined for rejection. It only NEEDS deferring when some cation lacks a full anion
+  // shell, which is rare (metal-rich compounds) and cannot be known until the shells are
+  // counted. So sweep once with the penalty applied, and replay only if that census turns
+  // up an unsaturated cation. The census counts cation-anion contacts, which the penalty
+  // never touches, so it is identical either way.
+  const sweep_candidates = (defer_cation_penalty: boolean) => {
+    // Grid cells span the longest reach of THIS sweep. Rebuilding on the rare replay beats
+    // sizing both off the penalty-free table: with the cation penalty on, rocksalt's Na-Na
+    // is unreachable and the cell shrinks from 4.6 A to Na-Cl's 4.2, and candidate volume
+    // goes as the cube of that.
+    const { reach_hi_sq, reach_lo_sq, max_reach } = build_pair_reach(!defer_cation_penalty)
+    const spatial = setup_spatial_grid(positions, n_sites, grid_cutoff(max_reach))
+    const half_shell = full_scan && spatial !== null
+    const potential_bonds: PotentialBond[] = []
+    site_anion_neighbors.fill(0)
+    closest.fill(Infinity)
 
-  for (let idx_a = 0; idx_a < n_center; idx_a++) {
-    const radius_a = radii[idx_a]
-    if (radius_a === 0) continue // no covalent radius -> no pairs (symmetric: idx_b skips too)
-    const [x1, y1, z1] = sites[idx_a].xyz
-    const electroneg_a = electronegs[idx_a]
-    const is_metal_a = metal_flags[idx_a] === 1
-    const is_nonmetal_a = nonmetal_flags[idx_a] === 1
-    const elem_id_a = elem_ids[idx_a]
+    for (let idx_a = 0; idx_a < n_center; idx_a++) {
+      const radius_a = radii[idx_a]
+      if (radius_a === 0) continue // no covalent radius -> no pairs (symmetric: idx_b skips too)
+      const x1 = positions[idx_a * 3]
+      const y1 = positions[idx_a * 3 + 1]
+      const z1 = positions[idx_a * 3 + 2]
+      const pair_row = elem_ids[idx_a] * n_elem
 
-    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
-      if (idx_b <= idx_a) continue
+      for (const idx_b of collect_candidates(idx_a, n_sites, positions, spatial, half_shell)) {
+        const dx = positions[idx_b * 3] - x1
+        const dy = positions[idx_b * 3 + 1] - y1
+        const dz = positions[idx_b * 3 + 2] - z1
+        const dist_sq = dx * dx + dy * dy + dz * dz
+        if (dist_sq < min_dist_sq) continue
 
-      const radius_b = radii[idx_b]
-      if (radius_b === 0) continue
-      const [x2, y2, z2] = sites[idx_b].xyz
-      const dx = x2 - x1
-      const dy = y2 - y1
-      const dz = z2 - z1
-      const dist_sq = dx * dx + dy * dy + dz * dz
-      if (dist_sq < min_dist_sq) continue
+        // Two table reads replace the radius sum, the ratio cutoff and the whole
+        // metal/nonmetal/electronegativity branch chain. Both bounds are zero for pairs no
+        // distance can save, so a missing covalent radius falls out of the ceiling test too.
+        const pair = pair_row + elem_ids[idx_b]
+        if (dist_sq > reach_hi_sq[pair] || dist_sq < reach_lo_sq[pair]) continue
 
-      // Compare squared distances to defer the sqrt until a pair survives the
-      // cutoff (the vast majority of candidate pairs are rejected here)
-      const expected = radius_a + radius_b
-      const max_dist = expected * max_distance_ratio
-      if (dist_sq > max_dist * max_dist) continue
-      const dist = Math.sqrt(dist_sq)
+        const expected = pair_expected[pair]
+        const dist = Math.sqrt(dist_sq)
+        const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
+        const strength = pair_factor[pair] * dist_weight
 
-      const electroneg_b = electronegs[idx_b]
-      const electroneg_diff = Math.abs(electroneg_a - electroneg_b)
-      const electroneg_balance = electroneg_diff / (electroneg_a + electroneg_b)
+        // same_species_penalty is deferred to the second pass, where `closest` is known:
+        // it must fire for a second-shell contact like Na-Na in NaCl but NOT when the
+        // homoatomic contact IS the atom's primary bond (elemental metals, diamond)
+        //
+        // reach_sq already encodes the threshold, so no strength re-check is needed here
 
-      const is_metal_b = metal_flags[idx_b] === 1
-      const is_nonmetal_b = nonmetal_flags[idx_b] === 1
-      let bond_strength = 1.0
-      if (is_metal_a && is_metal_b) {
-        bond_strength *= metal_metal_penalty
-      } else if ((is_metal_a && is_nonmetal_b) || (is_nonmetal_a && is_metal_b)) {
-        bond_strength *= metal_nonmetal_bonus
-        if (electroneg_diff > electronegativity_threshold) bond_strength *= 1.3
-      } else if (electroneg_diff < 0.5) {
-        bond_strength *= similar_electronegativity_bonus
+        // Use precomputed original-site indices to handle supercell and image atoms
+        const orig_idx_a = orig_idxs[idx_a]
+        const orig_idx_b = orig_idxs[idx_b]
+
+        // Update closest known normalized distance (dist / expected) for original atoms
+        // Normalized distance handles atoms of different sizes better than raw distance
+        // (e.g. C-H is short but C-C is longer; we don't want C-H to penalize C-C just because H is small)
+        const norm_dist = dist / expected
+        if (norm_dist < closest[orig_idx_a]) closest[orig_idx_a] = norm_dist
+        if (norm_dist < closest[orig_idx_b]) closest[orig_idx_b] = norm_dist
+
+        // Anion-shell census, read by the cation-cation gate below. Counted per SITE, not
+        // per original: unlike `closest` (a min, idempotent under duplication) a count
+        // aggregated over every periodic image of an atom would multiply by the copy count.
+        // Two typed-array increments per surviving candidate, riding along in pass 1 because
+        // the counts must be complete before any gating decision.
+        if (cation_flags[idx_a] === 0) site_anion_neighbors[idx_b]++
+        if (cation_flags[idx_b] === 0) site_anion_neighbors[idx_a]++
+
+        // min/max: half-shell scanning can reach a lower-indexed partner, but the output
+        // keeps the ascending site_idx_1 < site_idx_2 convention
+        potential_bonds.push({
+          site_idx_1: Math.min(idx_a, idx_b),
+          site_idx_2: Math.max(idx_a, idx_b),
+          dist,
+          expected_dist: expected,
+          base_strength: strength,
+          orig_idx_a,
+          orig_idx_b,
+        })
       }
+    }
+    return potential_bonds
+  }
+  let potential_bonds = sweep_candidates(false)
 
-      const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
-      const electroneg_weight = 1.0 - 0.3 * electroneg_balance
-      let strength = bond_strength * dist_weight * electroneg_weight
-
-      if (elem_id_a === elem_ids[idx_b]) strength *= same_species_penalty
-
-      // If raw strength is already too low, we can skip early
-      // (penalty will only reduce it further)
-      if (strength <= strength_threshold) continue
-
-      // Use precomputed original-site indices to handle supercell and image atoms
-      const orig_idx_a = orig_idxs[idx_a]
-      const orig_idx_b = orig_idxs[idx_b]
-
-      // Update closest known normalized distance (dist / expected) for original atoms
-      // Normalized distance handles atoms of different sizes better than raw distance
-      // (e.g. C-H is short but C-C is longer; we don't want C-H to penalize C-C just because H is small)
-      const norm_dist = dist / expected
-      if (norm_dist < closest[orig_idx_a]) closest[orig_idx_a] = norm_dist
-      if (norm_dist < closest[orig_idx_b]) closest[orig_idx_b] = norm_dist
-
-      potential_bonds.push({
-        site_idx_1: idx_a,
-        site_idx_2: idx_b,
-        dist,
-        expected_dist: expected,
-        base_strength: strength,
-        orig_idx_a,
-        orig_idx_b,
-      })
+  // Reduce the per-site census to the best-observed shell per original atom. A boundary
+  // atom's own copy may see only part of its shell while an interior copy sees all of it,
+  // and the gate has to reach the same verdict for every copy or images and originals
+  // would bond differently. One O(n_sites) sweep.
+  const anion_neighbors = new Int32Array(n_sites)
+  for (let idx = 0; idx < n_sites; idx++) {
+    const orig = orig_idxs[idx]
+    if (site_anion_neighbors[idx] > anion_neighbors[orig]) {
+      anion_neighbors[orig] = site_anion_neighbors[idx]
     }
   }
+
+  // Replay only for metal-rich compositions, where a cation's metal-metal contacts are
+  // structural and the first sweep may have discarded them below the strength cutoff
+  const has_unsaturated_cation = cation_flags.some(
+    (flag, idx) => flag === 1 && anion_neighbors[orig_idxs[idx]] < MIN_ANION_SHELL,
+  )
+  if (has_unsaturated_cation) potential_bonds = sweep_candidates(true)
 
   // Second pass: Apply penalties and filter
   for (const bond of potential_bonds) {
@@ -996,6 +1160,40 @@ export function electroneg_ratio(
     const norm_dist = dist / expected_dist
 
     let strength = base_strength
+    // Recomputed rather than carried on the candidate record: two extra fields widened
+    // every one of the ~23k objects a 8000-site supercell allocates, which cost more than
+    // the two array reads it saved.
+    const same_species = elem_ids[site_idx_1] === elem_ids[site_idx_2]
+    const cation_cation = cation_flags[site_idx_1] === 1 && cation_flags[site_idx_2] === 1
+
+    // A homoatomic contact is spurious only when the atom has a SHORTER contact of some
+    // other kind - Na-Na in NaCl sits in the second shell behind Na-Cl. In an elemental
+    // metal or diamond it IS the primary bond, so norm_dist equals closest and the strict
+    // comparisons below skip the penalty. That skip is what keeps fcc Al and Pb bonded at
+    // all: were it applied there, 0.5 would stack with metal_metal_penalty's 0.7 for a
+    // 0.35 ceiling against the 0.3 strength_threshold.
+    if (
+      same_species &&
+      norm_dist > closest_dist_a * SHELL_TOL &&
+      norm_dist > closest_dist_b * SHELL_TOL
+    )
+      strength *= same_species_penalty
+
+    // A cation-cation contact is a second-shell artifact only once BOTH ends already have
+    // a real anion coordination shell. Gating on normalized distance the way same_species
+    // does cannot work here: for two cations of unequal radius the metric inverts, and
+    // Cs-Cs (0.844) reads as shorter than Cs-Cl (1.031) in CsCl, Sr-Ti (0.952) shorter
+    // than Sr-O (1.058) in SrTiO3. But applying it unconditionally destroyed metal-rich
+    // compounds - Ti2O dropped from Ti CN 15 to 3, erasing the entire hcp Ti framework
+    // that IS the structure, because Ti's 3 oxygens never saturate it. MIN_ANION_SHELL is
+    // the same threshold polyhedra_min_neighbors uses: below a tetrahedron there is no
+    // coordination environment to be a second shell of.
+    if (
+      cation_cation &&
+      anion_neighbors[orig_idx_a] >= MIN_ANION_SHELL &&
+      anion_neighbors[orig_idx_b] >= MIN_ANION_SHELL
+    )
+      strength *= cation_cation_penalty
 
     // Apply penalty if this bond is much longer (relative to radii) than the closest known bond
     if (norm_dist > closest_dist_a) {
@@ -1010,68 +1208,5 @@ export function electroneg_ratio(
     }
   }
 
-  return apply_explicit_bond_metadata(structure, bonds)
-}
-
-// Solid angle-based bonding using geometric proximity heuristics.
-// Inspired by Voronoi tessellation without having to actually compute Voronoi cells.
-// This algorithm computes bond strength based on the solid angle subtended by atoms
-// and their distance penalty. Bonds are only created if the computed strength exceeds
-// the strength_threshold parameter.
-export function solid_angle(
-  structure: AnyStructure,
-  {
-    min_solid_angle = 0.01,
-    min_face_area = 0.05,
-    max_distance = 5.0,
-    min_bond_dist = 0.4,
-    strength_threshold = 0.05,
-    center_count = Infinity, // see electroneg_ratio: limit bond centers to first N sites
-  } = {},
-): BondPair[] {
-  const { sites } = structure
-  if (sites.length < 2) return []
-
-  const bonds: BondPair[] = []
-  const min_dist_sq = min_bond_dist ** 2
-  const max_dist_sq = max_distance ** 2
-  const spatial = setup_spatial_grid(sites, max_distance)
-  const n_center = Math.min(center_count, sites.length - 1)
-
-  for (let idx_a = 0; idx_a < n_center; idx_a++) {
-    const [x1, y1, z1] = sites[idx_a].xyz
-    const elem_a = get_majority_element(sites[idx_a])
-    const radius_a = elem_a ? covalent_radii.get(elem_a) : undefined
-
-    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
-      if (idx_b <= idx_a) continue
-
-      const [x2, y2, z2] = sites[idx_b].xyz
-      const elem_b = get_majority_element(sites[idx_b])
-      const radius_b = elem_b ? covalent_radii.get(elem_b) : undefined
-
-      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
-      const dist_sq = dx * dx + dy * dy + dz * dz
-      const dist = Math.sqrt(dist_sq)
-
-      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq || !radius_a || !radius_b) {
-        continue
-      }
-
-      const avg_radius = (radius_a + radius_b) / 2.0
-      const face_area = Math.PI * avg_radius * avg_radius
-      const bond_solid_angle = face_area / dist_sq
-
-      if (bond_solid_angle < min_solid_angle || face_area < min_face_area) continue
-
-      const dist_penalty = Math.exp(-((dist / (radius_a + radius_b) - 1) ** 2) / 0.4)
-      const angle_strength = Math.min(bond_solid_angle / (4.0 * Math.PI), 1.0)
-      const strength = angle_strength * dist_penalty
-
-      if (strength > strength_threshold) {
-        bonds.push(make_bond(sites, idx_a, idx_b, dist, strength))
-      }
-    }
-  }
   return apply_explicit_bond_metadata(structure, bonds)
 }

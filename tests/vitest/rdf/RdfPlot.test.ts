@@ -1,10 +1,11 @@
-import { RdfPlot } from '$lib'
+import { PdfPlot, RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
+import type { RadiationType } from '$lib/scattering'
 import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, resize_element } from '../setup'
+import { make_crystal, mount_sized, resize_element } from '../setup'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 
 const nacl_structure = structure_map.get(`mp-1234`)
@@ -31,19 +32,17 @@ function create_synthetic_pattern(
   return { r: radii, g_r, element_pair: [`Li`, `O`] }
 }
 
-async function mount_sized_rdf_plot(
-  props: ComponentProps<typeof RdfPlot>,
-): Promise<HTMLElement> {
-  mount(RdfPlot, {
-    target: document.body,
-    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
-  })
-  const plot = document.querySelector<HTMLElement>(`.scatter, .empty-drop`)
-  if (!plot) throw new Error(`RdfPlot root element not found`)
-  if (plot.classList.contains(`scatter`)) {
-    await resize_element(plot, 400, 300)
-  }
-  return plot
+const mount_sized_rdf_plot = (props: ComponentProps<typeof RdfPlot>) =>
+  mount_sized(RdfPlot, props, { selector: `.scatter, .empty-drop` })
+
+// Mounted un-sized: the harness wraps the plot in a binding parent, and the tests resize
+// whichever plot they care about themselves.
+const mount_harness = async (props: ComponentProps<typeof RdfPlotHarness>) => {
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  mount(RdfPlotHarness, { target, props })
+  await tick()
+  return target
 }
 
 describe(`RdfPlot`, () => {
@@ -84,9 +83,9 @@ describe(`RdfPlot`, () => {
   })
 
   test.each([
-    [{ cutoff: 1, n_bins: 20 }],
-    [{ cutoff: 10, n_bins: 100 }],
-    [{ cutoff: 20, n_bins: 200 }],
+    { cutoff: 1, n_bins: 20 },
+    { cutoff: 10, n_bins: 100 },
+    { cutoff: 20, n_bins: 200 },
   ])(
     `cutoff/n_bins %s`,
     async (opts) => {
@@ -130,14 +129,7 @@ describe(`RdfPlot`, () => {
   })
 
   test(`updates axis title when external axis props change`, async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    mount(RdfPlotHarness, {
-      target,
-      props: { pattern: create_synthetic_pattern() },
-    })
-    await tick()
-
+    const target = await mount_harness({ pattern: create_synthetic_pattern() })
     let plot = target.querySelector<HTMLElement>(`.scatter`)
     if (!plot) throw new Error(`RdfPlot root element not found`)
     await resize_element(plot, 400, 300)
@@ -186,5 +178,139 @@ describe(`RdfPlot`, () => {
     })
     expect(plot.textContent).toContain(`Red`)
     expect(plot.textContent).toContain(`Blue`)
+  })
+})
+
+describe(`PdfPlot`, () => {
+  const nih = make_crystal(3.73, [
+    [`Ni`, [0, 0, 0]],
+    [`Ni`, [0, 0.5, 0.5]],
+    [`Ni`, [0.5, 0, 0.5]],
+    [`Ni`, [0.5, 0.5, 0]],
+    [`H`, [0.5, 0, 0]],
+    [`H`, [0.5, 0.5, 0.5]],
+    [`H`, [0, 0, 0.5]],
+    [`H`, [0, 0.5, 0]],
+  ])
+
+  // Returns the container, not the plot: the empty and error states below have no `.scatter`
+  // at all, which mount_sized would reject.
+  const mount_pdf_plot = async (props: ComponentProps<typeof PdfPlot>) => {
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const style = `width: 400px; height: 300px;`
+    mount(PdfPlot, { target, props: { cutoff: 8, n_bins: 400, ...props, style } })
+    await tick()
+    const plot = target.querySelector<HTMLElement>(`.scatter`)
+    if (plot) await resize_element(plot, 400, 300)
+    return target
+  }
+
+  // Regression: computing the PDFs inside a $derived used to assign the error message to a
+  // bindable prop, which Svelte 5 rejects with state_unsafe_mutation and which tore down the
+  // whole page — a passing calc-pdf suite said nothing about it.
+  test.each([`xray`, `neutron`, `electron`] as const)(
+    `mounts and draws for radiation=%s`,
+    async (radiation: RadiationType) => {
+      const target = await mount_pdf_plot({ structures: nih, radiation })
+      expect(target.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
+      expect(target.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`G(r)`)
+      // the weight caption must be plain text, not the <sub>-tagged formula markup
+      const caption = target.querySelector(`.weights`)?.textContent ?? ``
+      expect(caption).toContain(`w(H-Ni)`)
+      expect(caption).not.toContain(`<`)
+    },
+  )
+
+  test.each([
+    { quantity: `g_r` as const, axis_label: `g(r)`, reference: `g(r) = 1` },
+    { quantity: `reduced_g_r` as const, axis_label: `G(r)`, reference: `G(r) = 0` },
+  ])(
+    `quantity=$quantity labels the axis and reference line`,
+    async ({ quantity, axis_label, reference }) => {
+      const target = await mount_pdf_plot({ structures: nih, quantity })
+      expect(target.querySelector(`.y-axis .axis-label`)?.textContent).toContain(axis_label)
+      expect(target.textContent).toContain(reference)
+    },
+  )
+
+  test(`surfaces a missing scattering length instead of crashing`, async () => {
+    // Po has no entry in the NIST b_coh table
+    const target = await mount_pdf_plot({
+      structures: make_crystal(3.35, [[`Po`, [0, 0, 0]]]),
+      radiation: `neutron`,
+      cutoff: 6,
+      n_bins: 200,
+    })
+    expect(target.textContent).toContain(`No neutron scattering length for Po`)
+    expect(target.querySelector(`svg[role="application"]`)).toBeNull()
+    // a structure WAS supplied, so the empty-state message would contradict the error
+    expect(target.textContent).not.toContain(`No structures to compute a PDF for`)
+  })
+
+  // error_msg is bindable on all nine sibling plot components; PdfPlot has to reach the parent
+  // through an $effect because the failure is produced inside a $derived
+  test(`error_msg reaches a binding parent`, async () => {
+    const target = await mount_harness({
+      pattern: create_synthetic_pattern(),
+      pdf_structure: make_crystal(3.35, [[`Po`, [0, 0, 0]]]),
+    })
+    expect(target.querySelector(`.pdf-error-mirror`)?.textContent).toContain(
+      `No neutron scattering length for Po`,
+    )
+  })
+
+  test(`renders a message when given no structures`, async () => {
+    const target = await mount_pdf_plot({})
+    expect(target.textContent).toContain(`No structures to compute a PDF for`)
+  })
+
+  // The control panel was previously reachable only through props, so none of its buttons,
+  // sliders or checkboxes were ever clicked.
+  test(`quantity and radiation buttons redraw the plot`, async () => {
+    const target = await mount_pdf_plot({ structures: nih })
+    const click = (label: string): HTMLButtonElement => {
+      const btn = [...target.querySelectorAll(`button`)].find(
+        (candidate) => candidate.textContent?.trim() === label,
+      )
+      if (!btn) throw new Error(`No control button labelled ${label}`)
+      btn.click()
+      return btn
+    }
+    const caption = () => target.querySelector(`.weights`)?.textContent ?? ``
+    const y_label = () => target.querySelector(`.y-axis .axis-label`)?.textContent ?? ``
+
+    // b_coh(H) < 0, so switching to neutrons is what flips w(H-Ni) negative. format_num emits
+    // U+2212 MINUS SIGN, not ASCII hyphen.
+    expect(caption()).not.toContain(`w(H-Ni) = −`)
+    const neutron_btn = click(`Neutron`)
+    await tick()
+    expect(neutron_btn.classList.contains(`active`)).toBe(true)
+    expect(caption()).toContain(`w(H-Ni) = −`)
+
+    expect(y_label()).toContain(`G(r)`)
+    click(`g(r)`)
+    await tick()
+    expect(y_label()).toContain(`g(r)`)
+  })
+
+  test(`the partials checkbox adds one curve per element pair`, async () => {
+    const target = await mount_pdf_plot({ structures: nih })
+    // ScatterPlot draws no legend for a lone series, so the total on its own has none
+    expect(target.querySelectorAll(`.legend-label`)).toHaveLength(0)
+
+    const checkbox = target.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+    if (!checkbox) throw new Error(`Partials checkbox not rendered`)
+    checkbox.click()
+    await tick()
+
+    // the total plus the three unordered H/Ni pairs
+    const labels = [...target.querySelectorAll(`.legend-label`)].map((el) =>
+      el.textContent?.trim(),
+    )
+    expect(labels).toHaveLength(4)
+    for (const pair of [`H-H`, `H-Ni`, `Ni-Ni`]) {
+      expect(labels.filter((label) => label?.endsWith(pair))).toHaveLength(1)
+    }
   })
 })

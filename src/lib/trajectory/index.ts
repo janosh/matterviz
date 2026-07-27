@@ -1,7 +1,9 @@
 // Utility functions for working with trajectory data
 import type { ComponentProps } from 'svelte'
+import type { ElementSymbol } from '$lib/element'
 import type { FileLoadData } from '$lib/io/types'
-import type { AnyStructure } from '$lib/structure/index'
+import type { Matrix3x3 } from '$lib/math'
+import type { AnyStructure, Pbc } from '$lib/structure/index'
 import type Trajectory from './Trajectory.svelte'
 
 export { default as Trajectory } from './Trajectory.svelte'
@@ -88,8 +90,47 @@ export type TrajectoryDataExtractor = (
   trajectory: TrajectoryType,
 ) => Record<string, number>
 
+// Flat per-frame Cartesian positions for a whole trajectory, laid out as n_frames
+// blocks of n_atoms xyz triples: positions[(frame * n_atoms + atom) * 3 + axis].
+// Flat so the buffer can be transferred (not structured-cloned) into a Web Worker,
+// and so a whole-trajectory sweep never holds n_frames TrajectoryFrame objects at once.
+export interface TrajectoryPositionStream {
+  positions: Float64Array
+  n_frames: number
+  n_atoms: number
+  // One entry per atom. Atom order is the atom identity and must be stable across frames.
+  elements: ElementSymbol[]
+  // One cell per frame (NPT-safe); null entries mean that frame had no periodicity.
+  // Null overall when no frame carried a lattice.
+  lattice_matrices: (Matrix3x3 | null)[] | null
+  pbc: Pbc | null
+  // True when the source format already stores unwrapped coordinates (LAMMPS xu/yu/zu),
+  // in which case consumers must NOT re-apply the minimum image convention.
+  coords_unwrapped: boolean
+  // Every `frame_stride`-th source frame was collected (1 = every frame)
+  frame_stride: number
+  // MD step number of each collected frame, in collection order
+  steps: number[]
+}
+
+export interface PositionStreamOptions {
+  // Collect every Nth frame. Use `suggest_frame_stride` to stay inside a memory budget.
+  frame_stride?: number
+  // Hard ceiling on the allocated position buffer; the sweep throws (with the stride
+  // that would fit) rather than attempting a multi-GB allocation.
+  max_bytes?: number
+}
+
 export interface FrameLoader {
   get_total_frames: (data: string | ArrayBuffer) => Promise<number>
+  // Optional single sequential pass over the payload emitting flat positions.
+  // Whole-trajectory analyses (e.g. MSD) need this for indexed trajectories, whose
+  // in-memory `frames` array holds only the first handful of frames.
+  stream_positions?: (
+    data: string | ArrayBuffer,
+    options?: PositionStreamOptions,
+    on_progress?: (progress: ParseProgress) => void,
+  ) => Promise<TrajectoryPositionStream>
   build_frame_index: (
     data: string | ArrayBuffer,
     sample_rate: number,

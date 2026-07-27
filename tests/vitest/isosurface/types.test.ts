@@ -6,7 +6,6 @@ import {
   downsample_grid,
   generate_layers,
   grid_data_range,
-  type IsosurfaceLayer,
   label_file_volumes,
   lattices_match,
   LAYER_COLORS,
@@ -16,8 +15,8 @@ import {
   pad_periodic_grid,
   remove_volume,
   tile_volumetric_data,
-  type VolumetricData,
 } from '$lib/isosurface/types'
+import type { IsosurfaceLayer, VolumetricData } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { make_grid, make_volume as make_volume_fixture } from '../setup'
