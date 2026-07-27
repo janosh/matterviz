@@ -42,7 +42,8 @@
   let max_lag_fraction = $state(0.5)
   let fit_start_fraction = $state(0.2)
   let fit_end_fraction = $state(0.8)
-  let frame_stride = $state(1)
+  // null, not 0, is what <input type="number"> writes back when cleared
+  let frame_stride = $state<number | null>(1)
 
   let positions = $state<MsdPositions | undefined>(undefined)
   let collecting = $state(false)
@@ -51,8 +52,8 @@
   let progress = $state<ParseProgress | null>(null)
 
   // trajectory_total_frames throws for an indexed trajectory that reports no total_frames,
-  // and has_all_frames_in_memory/suggest_msd_frame_stride both route through it. Uncaught,
-  // that takes down the render, so the message rides back with the values instead.
+  // and the other two route through it. The message rides back with the values because
+  // writing to state from inside a $derived is state_unsafe_mutation.
   let { total_frames, is_lazy, suggested_stride, setup_error } = $derived.by(() => {
     const blank = { total_frames: 0, is_lazy: false, suggested_stride: null }
     if (!trajectory) return { ...blank, setup_error: undefined }
@@ -69,10 +70,12 @@
   })
   let loaded_frames = $derived(trajectory?.frames.length ?? 0)
   let n_atoms = $derived(trajectory?.frames[0]?.structure.sites.length ?? 0)
-  // <input type="number"> hands back null when cleared and happily yields fractions, so
-  // normalise once — every consumer of the stride needs a positive integer
+  // accumulate_positions rejects a non-integer stride outright, so normalise once here.
+  // Number.isFinite also catches the Infinity a `1e999` entry produces.
   let safe_stride = $derived(
-    Number.isFinite(frame_stride) && frame_stride >= 1 ? Math.floor(frame_stride) : 1,
+    frame_stride !== null && Number.isFinite(frame_stride) && frame_stride >= 1
+      ? Math.floor(frame_stride)
+      : 1,
   )
   let collected_frames = $derived(Math.ceil(total_frames / safe_stride))
   let estimated_bytes = $derived(collected_frames * n_atoms * 3 * 8)
@@ -110,7 +113,10 @@
         on_progress: (parse_progress) => (progress = parse_progress),
       })
     } catch (exc) {
+      // clearing only `positions` would leave MsdPlot's effect early-returning on the
+      // missing input, so the previous curves stay up and hide this error
       positions = undefined
+      result = undefined
       error_msg = to_error(exc).message
     } finally {
       collecting = false
@@ -163,7 +169,7 @@
       <label>
         Frame stride
         <input type="number" min="1" step="1" bind:value={frame_stride} />
-        {#if suggested_stride && suggested_stride > frame_stride}
+        {#if suggested_stride && suggested_stride > safe_stride}
           <span class="hint">needs ≥ {suggested_stride}</span>
         {/if}
       </label>

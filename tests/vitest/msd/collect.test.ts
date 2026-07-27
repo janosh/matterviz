@@ -134,6 +134,25 @@ describe(`atom-identity invariants fail loudly`, () => {
     expect(result.curves[0].msd.every((value) => value === 0)).toBe(true)
   })
 
+  // ...but the same threshold has no meaning for sub-sampled UNWRAPPED coordinates: their
+  // displacement is not folded into the cell, so it grows as sqrt(stride) without bound and
+  // a clean diffusive run trips it on its own. Nothing needs unwrapping there either.
+  it(`does not reject a strided unwrapped run whose atoms cross the cell`, async () => {
+    // 4 atoms marching a full cell per collected frame — far past the quarter-cell bar
+    const frames = Array.from({ length: 8 }, (_unused, idx) =>
+      make_frame(
+        idx,
+        Array.from({ length: 4 }, (_atom, atom_idx) => [atom_idx + 12 * idx, 0, 0]),
+        { box_length: 10, coords_unwrapped: true },
+      ),
+    )
+    await expect(collect_msd_positions({ frames }, { frame_stride: 2 })).resolves.toBeDefined()
+    // stride 1 keeps the guard, since there a jump that large really is implausible
+    await expect(collect_msd_positions({ frames })).rejects.toThrow(
+      /moved more than a quarter/,
+    )
+  })
+
   it(`rejects a trajectory whose coords_unwrapped flag flips mid-run`, async () => {
     const trajectory: TrajectoryType = {
       frames: [
@@ -253,6 +272,7 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
   it.each([
     [1, 3], // 1500 collected frames -> reports at 500, 1000, 1500
     [3, 1], // 500 collected frames -> one report
+    [500, 0], // 3 collected frames -> silent, where a source-number interval fired twice
   ])(
     `reports progress every 500 collected frames at stride %i`,
     async (frame_stride, expected_reports) => {
@@ -264,8 +284,13 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
         frame_stride,
         on_progress: (progress) => stages.push(progress.stage),
       })
-      expect(stages).toHaveLength(expected_reports)
-      expect(stages[0]).toMatch(/Reading positions/)
+      // report k fires on the 500k-th collected frame, i.e. source frame (500k - 1) * stride
+      expect(stages).toEqual(
+        Array.from(
+          { length: expected_reports },
+          (_unused, idx) => `Reading positions: ${(500 * (idx + 1) - 1) * frame_stride}/1500`,
+        ),
+      )
     },
   )
 
@@ -367,6 +392,20 @@ const settle = async () => {
   }
 }
 
+// Click Compute/Recollect and drain it: collect() awaits a microtask per frame, so a
+// single settle() leaves it mid-sweep. The button re-enables once collecting AND the
+// downstream MsdPlot compute have both finished.
+const run_collect = async () => {
+  const button = document.querySelector<HTMLButtonElement>(`.msd-controls button`)
+  if (!button) throw new Error(`no compute button in the MSD pane`)
+  button.click()
+  for (let round = 0; round < 40; round++) {
+    await settle()
+    if (!button.disabled) return
+  }
+  throw new Error(`collect never finished: button still disabled`)
+}
+
 const mount_and_read = async <Props extends Record<string, unknown>>(
   component: Component<Props>,
   props: Props,
@@ -448,8 +487,9 @@ describe(`TrajectoryMsdPane`, () => {
     expect(text).toContain(`reports no total_frames`)
   })
 
-  // <input type="number"> yields null when cleared, which used to leak into the byte
-  // estimate and the collected-frame count as NaN
+  // A fraction is the case that bit: `Math.max(1, stride)` passed 2.5 straight through to
+  // accumulate_positions, which rejects any non-integer stride. Cleared/zero input was
+  // already coerced to 1, so those rows only pin that behaviour against regressions.
   it.each([``, `0`, `2.5`])(`normalises a frame stride of %j`, async (raw_stride) => {
     await mount_pane(in_memory)
     // the only whole-number input in the pane; the others step in fractions
@@ -464,5 +504,36 @@ describe(`TrajectoryMsdPane`, () => {
     expect(hint).not.toContain(`NaN`)
     // stride 2.5 floors to 2, everything invalid falls back to 1
     expect(hint).toContain(`${raw_stride === `2.5` ? 10 : 20} frames`)
+  })
+
+  // ...and the stride the hint advertises has to be the one collection actually uses,
+  // else accumulate_positions rejects the fraction outright
+  it(`collects with a floored stride rather than rejecting a fractional one`, async () => {
+    await mount_pane(in_memory)
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.msd-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
+    stride_input.value = `2.5`
+    stride_input.dispatchEvent(new Event(`input`))
+    await settle()
+    await run_collect()
+    expect(document.body.textContent).not.toContain(`must be a positive integer`)
+    expect(document.body.textContent).toContain(`1 in 2 frames`)
+  })
+
+  // Same defect MsdPlot had: clearing only `positions` leaves its effect early-returning,
+  // so the old curves stay up and the message area never shows the failure
+  it(`drops stale curves when a recollect fails`, async () => {
+    const trajectory = { ...make_drift_trajectory(20) }
+    await mount_pane(trajectory)
+    await run_collect()
+    expect(document.body.textContent).toContain(`R²`)
+    // mutated in place so the trajectory-swap effect (which compares by reference, and
+    // would reset `result` for us) does not fire
+    trajectory.total_frames = 500
+    await run_collect()
+    expect(document.body.textContent).toContain(`only 20 are in memory`)
+    expect(document.body.textContent).not.toContain(`R²`)
   })
 })
