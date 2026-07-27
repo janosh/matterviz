@@ -1784,6 +1784,12 @@
   })
 </script>
 
+<!-- Hover-scoped shortcuts: keys reach the hovered viewer without a click first, while
+  focus stays respected, so several viewers on one page never all respond (see
+  forward_window_keydown). Edit modes are excluded so destructive keys
+  (delete/undo) still require focus, not just a hovering mouse. -->
+<svelte:window onkeydown={forward_window_keydown(() => hovered, handle_hover_keydown)} />
+
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:dragover
@@ -1812,7 +1818,6 @@
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
-  {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}
