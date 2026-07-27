@@ -266,7 +266,7 @@ describe(`VS Code frame loader`, () => {
     vi.stubGlobal(`removeEventListener`, message_bus.removeEventListener.bind(message_bus))
     try {
       const post_message = vi.fn()
-      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, {
+      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
         postMessage: post_message,
       })
       const frame_promise = loader.load_frame(``, 7)
@@ -275,6 +275,8 @@ describe(`VS Code frame loader`, () => {
         command: `request_frame`,
         request_id: expect.any(String),
         file_path: `/tmp/movie.extxyz`,
+        // The host picks its per-format frame decoder from the name.
+        filename: `movie.extxyz`,
         frame_index: 7,
       })
 

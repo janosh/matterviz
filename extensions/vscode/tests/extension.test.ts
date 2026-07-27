@@ -424,6 +424,7 @@ describe(`MatterViz Extension`, () => {
         command: `request_large_file`,
         request_id: `large-request`,
         file_path,
+        filename: `movie.extxyz.gz`,
       },
       mock_webview,
     )
@@ -448,6 +449,7 @@ describe(`MatterViz Extension`, () => {
         command: `request_frame`,
         request_id: `frame-request`,
         file_path,
+        filename: `movie.extxyz.gz`,
         frame_index: 1,
       },
       mock_webview,
@@ -466,6 +468,7 @@ describe(`MatterViz Extension`, () => {
         command: `request_large_file`,
         request_id: ``,
         file_path: `/test/movie.extxyz`,
+        filename: `movie.extxyz`,
       },
       mock_webview,
     )
@@ -487,6 +490,7 @@ describe(`MatterViz Extension`, () => {
         command: `request_frame`,
         request_id: `frame-request`,
         file_path,
+        filename: file_path.split(`/`).pop() ?? file_path,
         frame_index,
       },
       mock_webview,
