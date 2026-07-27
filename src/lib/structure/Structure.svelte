@@ -1802,7 +1802,7 @@
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
-  onpointerenter={() => (hovered = true)}
+  onmouseenter={() => (hovered = true)}
   onpointerleave={() => (hovered = false)}
   onfocusin={() => (focused = true)}
   onfocusout={(event) => {
