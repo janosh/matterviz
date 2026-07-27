@@ -131,10 +131,9 @@ export function calculate_total_pdf(
     })
   }
 
+  // No emptiness check: number_density above already rejects a structure with no atoms,
+  // and any atom yields at least a self-pair.
   const partial_rdfs = calculate_all_pair_rdfs(structure, with_pdf_defaults(rdf_options))
-  if (partial_rdfs.length === 0) {
-    throw new Error(`Crystal has no species, cannot compute a total PDF`)
-  }
 
   const radii = partial_rdfs[0].r
   const n_bins = radii.length

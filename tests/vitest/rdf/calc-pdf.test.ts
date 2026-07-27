@@ -297,6 +297,21 @@ describe(`reduced PDF G(r)`, () => {
     expect(number_density(structure)).toBeCloseTo(3 / volume, 15)
   })
 
+  // rho_0 = N/V is the normalization every g(r) and G(r) divides by, so each way it can
+  // fail to exist has to say so rather than return NaN or Infinity.
+  // oxfmt-ignore
+  test.each([
+    [`no lattice`, { sites: cubic_cell(`Cu`, FCC_FRAC).sites } as unknown as Crystal, /must have a lattice/],
+    [`zero cell volume`, make_crystal([[1, 0, 0], [2, 0, 0], [0, 0, 1]], [[`Cu`, [0, 0, 0]]]), /volume is 0 Å³/],
+    [`no sites`, make_crystal(4, []), /has 0 atoms/],
+  ])(`number_density rejects a crystal with %s`, (_name, structure, pattern) => {
+    expect(() => number_density(structure)).toThrow(pattern)
+    // and calculate_total_pdf inherits the guard rather than weighting an empty composition
+    if (structure.sites.length === 0) {
+      expect(() => calculate_total_pdf(structure)).toThrow(pattern)
+    }
+  })
+
   test(`PDF defaults are finer than the RDF defaults and leave them untouched`, () => {
     const structure = cubic_cell(`Cu`, FCC_FRAC)
     expect([PDF_DEFAULT_CUTOFF, PDF_DEFAULT_N_BINS]).toEqual([30, 1500])

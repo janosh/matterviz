@@ -70,6 +70,8 @@ const co2_spectrum = spectrum_from_phonon_data(co2_data, co2_born_data, {
   raman_tensors: co2_raman_tensors,
 })
 const nacl_spectrum = spectrum_from_phonon_data(nacl_data, nacl_born_data)
+// mode 3 is the first optical branch; used to drive ir_intensity's own guards
+const nacl_optical_eigvec = nacl_data.qpoints[0].modes[3].eigenvector ?? []
 
 // alpha-quartz: the only fixture carrying real polarizability derivatives. Point group 32
 // splits the 27 modes into A1 (Raman only), A2 (IR only) and doubly degenerate E (both).
@@ -188,6 +190,22 @@ describe(`IR intensities against closed-form results`, () => {
     const compute = () => compute_ir_raman_spectrum(nacl_data.qpoints[0], nacl_masses, born)
     expect(compute).toThrow(/1 Born charge tensors for 2 atoms/)
   })
+
+  // Building a spectrum means pairing a phonopy YAML with a BORN and maybe a Raman file,
+  // routinely from different sources, so every shape mismatch has to name what disagreed
+  // rather than silently truncate to the shorter array.
+  const nacl_q = () => nacl_data.qpoints[0]
+  const spec = (opts = {}, qpoint = nacl_q()) =>
+    compute_ir_raman_spectrum(qpoint, nacl_masses, nacl_born_data, opts)
+  const charges = nacl_born_data.born_charges
+  // oxfmt-ignore
+  it.each([
+    [`fewer modes than 3N`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.slice(0, 5) }), /5 modes for 2 atoms, expected 3N = 6/],
+    [`one Raman tensor for six modes`, () => spec({ raman_tensors: [mat3([1, 0, 0], [0, 1, 0], [0, 0, 1])] }), /1 Raman tensors for 6 modes/],
+    [`one Raman activity for six modes`, () => spec({ raman_activities: [1] }), /1 Raman activities for 6 modes/],
+    [`a mass array shorter than the eigenvector`, () => ir_intensity(nacl_optical_eigvec, [M_NA], charges), /length mismatch/],
+    [`a non-physical mass`, () => ir_intensity(nacl_optical_eigvec, [0, M_CL], charges), /atom 0 has invalid mass 0/],
+  ])(`rejects %s`, (_name, run, pattern) => expect(run).toThrow(pattern))
 
   it(`throws when a mode has no eigenvector`, () => {
     const modes = nacl_data.qpoints[0].modes.map((mode) => ({ ...mode, eigenvector: null }))
