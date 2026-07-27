@@ -2,7 +2,13 @@
 // trace has to ship to be readable. Inert unless a caller opts in by setting
 // globalThis.matterviz_bond_trace to an array. Delete this module once the cause is pinned.
 
-export const bond_trace = (event: string, detail: Record<string, unknown>) => {
+// The sink is global, so every Structure and StructureScene on the page writes to it. Without
+// an id per component instance there is no way to tell a parent ignoring its child's write-back
+// from two unrelated instances reporting independently.
+let next_trace_id = 0
+export const new_trace_id = (prefix: string) => `${prefix}${next_trace_id++}`
+
+export const bond_trace = (event: string, id: string, detail: Record<string, unknown>) => {
   const sink = (globalThis as Record<string, unknown>).matterviz_bond_trace
-  if (Array.isArray(sink)) sink.push({ event, ...detail })
+  if (Array.isArray(sink)) sink.push({ event, id, ...detail })
 }
