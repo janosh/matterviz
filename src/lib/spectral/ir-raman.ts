@@ -259,6 +259,10 @@ export function spectrum_sticks(
   }
 }
 
+// Grid-size ceiling for broaden_spectrum. 1e7 points is ~80 MB of f64 and already far past
+// anything plottable; beyond it broaden_peaks stops being interruptible.
+const MAX_GRID_POINTS = 1e7
+
 export interface BroadenOptions {
   fwhm?: number // constant FWHM in the stick spectrum's own x units
   fwhm_fn?: (peak_center: number) => number // frequency-dependent width, wins over fwhm
@@ -284,36 +288,64 @@ export function broaden_spectrum(
   options: BroadenOptions = {},
 ): SpectrumCurve {
   const { fwhm = 10, fwhm_fn, shape_factor = 0.5 } = options
-  if (!fwhm_fn && (!Number.isFinite(fwhm) || fwhm <= 0)) {
-    throw new Error(`broaden_spectrum: fwhm must be > 0 and finite, got ${fwhm}`)
-  }
   if (sticks.x.length !== sticks.y.length) {
     throw new Error(
       `broaden_spectrum: ${sticks.x.length} positions but ${sticks.y.length} intensities`,
     )
   }
+  // Before the width checks, so both the constant and the fwhm_fn path treat "nothing to
+  // broaden" as a no-op rather than one throwing and the other returning empty
   if (sticks.x.length === 0) return { x: [], y: [] }
 
-  const width_at = fwhm_fn ?? (() => fwhm)
-  const widths = sticks.x.map(width_at)
-  // fwhm_fn is caller-supplied, so its output needs the same check the constant path gets:
-  // a zero or NaN width turns step_size into 0/NaN and n_points into Infinity/NaN below
-  for (const width of widths) {
-    if (!Number.isFinite(width) || width <= 0) {
-      throw new Error(`broaden_spectrum: fwhm must be > 0 and finite, got ${width}`)
+  if (!Number.isFinite(shape_factor) || shape_factor < 0 || shape_factor > 1) {
+    // clamp01 maps NaN to NaN, so pseudo_voigt would return an all-NaN curve
+    throw new Error(`broaden_spectrum: shape_factor must be in [0, 1], got ${shape_factor}`)
+  }
+  // NaN poisons every grid point; a negative is silently dropped by broaden_peaks' relative
+  // intensity floor, coming back as an all-zero curve indistinguishable from "no such mode".
+  // Neither is producible by ir_intensity/raman_activity (both sums of squares).
+  for (const [stick_idx, intensity] of sticks.y.entries()) {
+    if (!Number.isFinite(intensity) || intensity < 0) {
+      throw new Error(
+        `broaden_spectrum: stick ${stick_idx} at ${sticks.x[stick_idx]} has intensity ` +
+          `${intensity}, expected a finite non-negative value`,
+      )
     }
   }
-  const max_width = Math.max(...widths)
+
+  // fwhm_fn is caller-supplied, so its output needs the same check the constant path gets.
+  // Named per peak because broaden_peaks' own check reports the position too.
+  const width_at = fwhm_fn ?? (() => fwhm)
+  const widths = sticks.x.map((peak_center) => {
+    const width = width_at(peak_center)
+    if (!Number.isFinite(width) || width <= 0) {
+      throw new Error(
+        `broaden_spectrum: fwhm must be > 0 and finite, got ${width} at peak ${peak_center}`,
+      )
+    }
+    return width
+  })
+  const [min_width, max_width] = [Math.min(...widths), Math.max(...widths)]
   const [min_stick, max_stick] = [Math.min(...sticks.x), Math.max(...sticks.x)]
   const [range_lo, range_hi] =
     options.range ?? ([min_stick - 10 * max_width, max_stick + 10 * max_width] as Vec2)
-  const step_size = options.step_size ?? Math.min(...widths) / 20
+  const step_size = options.step_size ?? min_width / 20
 
   const max_intensity = Math.max(...sticks.y)
   const scale = max_intensity > 0 ? 1 / max_intensity : 1
   const lo_steps = Math.max(0, Math.ceil((range_lo - min_stick) / step_size))
   const hi_steps = Math.max(0, Math.ceil((max_stick - range_hi) / step_size))
   const n_points = Math.ceil((range_hi - range_lo) / step_size)
+  // Every width can be individually sane while their RATIO is not: the grid spans
+  // 10*max_width past the sticks in steps of min_width/20, so a soft mode 9 orders below
+  // the rest asks for ~1e12 points and broaden_peaks fills them in an uninterruptible loop.
+  if (n_points > MAX_GRID_POINTS) {
+    throw new Error(
+      `broaden_spectrum: ${n_points} grid points over [${range_lo}, ${range_hi}] at step ` +
+        `${step_size}. Widths span ${min_width}..${max_width}; pass an explicit step_size ` +
+        `or range for a spectrum with this width spread.`,
+    )
+  }
 
   const broad = broaden_peaks(
     { x: sticks.x, y: sticks.y.map((intensity) => intensity * scale) },

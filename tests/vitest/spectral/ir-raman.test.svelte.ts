@@ -421,8 +421,9 @@ describe(`broaden_spectrum`, () => {
     expect(Math.max(...curve.y) / expected).toBeCloseTo(1, 3)
   })
 
-  // A caller-supplied fwhm_fn gets the same check as the constant: an unusable width makes
-  // step_size 0 or NaN, so n_points goes Infinity/NaN and the grid loop never terminates
+  // A caller-supplied fwhm_fn gets the same check as the constant. Without it the failure
+  // surfaces downstream as "step_size must be > 0", naming a derived value rather than the
+  // width model that produced it.
   it.each([
     [`zero fwhm`, { fwhm: 0 }, /fwhm must be > 0/],
     [`negative fwhm`, { fwhm: -3 }, /fwhm must be > 0/],
@@ -434,12 +435,54 @@ describe(`broaden_spectrum`, () => {
     expect(() => broaden_spectrum({ x: [100], y: [1] }, options)).toThrow(pattern)
   })
 
-  // ...but only the bad one: a width model that fails at a single peak must still name it
-  it(`rejects an fwhm_fn that goes bad at only one of several sticks`, () => {
+  // ...but only the bad one, and the message has to name which stick it was
+  it(`names the stick whose width model went bad`, () => {
     const fwhm_fn = (center: number) => (center === 2000 ? 0 : 10)
     expect(() => broaden_spectrum({ x: [500, 2000], y: [1, 1] }, { fwhm_fn })).toThrow(
-      /fwhm must be > 0 and finite, got 0/,
+      /got 0 at peak 2000/,
     )
+  })
+
+  // Every width can be individually valid while their ratio is not: the grid spans
+  // 10*max_width in steps of min_width/20, so this asks for ~2.4e12 points and used to
+  // hand broaden_peaks an uninterruptible fill loop (measured: still running after 4 min).
+  it(`refuses a width ratio that would explode the grid`, () => {
+    const fwhm_fn = (center: number) => (center === 0 ? 1e-8 : 10)
+    expect(() => broaden_spectrum({ x: [0, 1000], y: [1, 1] }, { fwhm_fn })).toThrow(
+      /grid points over \[-100, 1100\] at step 5e-10.*Widths span 1e-8\.\.10/s,
+    )
+  })
+
+  // ...but an explicit step_size means the caller has taken responsibility for the grid
+  it(`allows a wide width ratio when step_size is given explicitly`, () => {
+    const fwhm_fn = (center: number) => (center === 0 ? 1e-8 : 10)
+    const curve = broaden_spectrum(
+      { x: [0, 1000], y: [1, 1] },
+      {
+        fwhm_fn,
+        range: [-50, 1050],
+        step_size: 0.5,
+      },
+    )
+    expect(curve.x).toHaveLength(2200)
+    expect(curve.y.every(Number.isFinite)).toBe(true)
+  })
+
+  // NaN would otherwise come back as a full curve of NaN, a negative as an all-zero curve
+  // (broaden_peaks drops it under the relative intensity floor), neither with any signal
+  it.each([
+    [`a NaN stick intensity`, { y: [NaN] }, {}, /stick 0 at 1000 has intensity NaN/],
+    [`a negative stick intensity`, { y: [-5] }, {}, /has intensity -5, expected a finite/],
+    [`a NaN shape_factor`, {}, { shape_factor: NaN }, /shape_factor must be in \[0, 1\]/],
+    [
+      `an out-of-range shape_factor`,
+      {},
+      { shape_factor: 2 },
+      /shape_factor must be in \[0, 1\]/,
+    ],
+  ])(`rejects %s`, (_name, stick_override, opt_override, pattern) => {
+    const sticks = { x: [1000], y: [1], ...stick_override }
+    expect(() => broaden_spectrum(sticks, { fwhm: 10, ...opt_override })).toThrow(pattern)
   })
 
   it(`throws on mismatched stick arrays and returns empty for no sticks`, () => {
