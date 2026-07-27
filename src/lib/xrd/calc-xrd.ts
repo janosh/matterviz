@@ -4,6 +4,7 @@ import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { Vec2 } from '$lib/math'
 import type { RadiationType } from '$lib/scattering'
+import { gaussian_turning_point } from '$lib/scattering'
 import {
   ELECTRON_FORM_FACTOR_CONST,
   neutron_scattering_length,
@@ -264,6 +265,9 @@ export function structure_factors_squared(
     b: number[]
     z: number
     dw: number
+    // s² past which the X-ray Gaussian fit turns back up toward Z instead of decaying
+    // (see gaussian_turning_point in $lib/scattering). Resolved once per element.
+    s_sq_max: number
     // Bound coherent neutron scattering length in fm. Carries no s dependence whatsoever, so
     // it is resolved once here rather than re-read for every reciprocal point.
     b_coh: number
@@ -277,7 +281,13 @@ export function structure_factors_squared(
   for (const site of structure.sites) {
     for (const species of site.species) {
       const element_symbol = species.element
-      if (ELEMENT_Z[element_symbol] === undefined) {
+      // Only the X-ray and electron branches read z; neutrons scatter off the nucleus and
+      // use b_coh alone. Gating the throw on radiation keeps a species that has a neutron
+      // scattering length but no atomic number (deuterium, once Site.species can carry it
+      // - ElementSymbol excludes `D` today) from being rejected before it reaches the
+      // branch that would have worked.
+      const z = ELEMENT_Z[element_symbol]
+      if (z === undefined && radiation !== `neutron`) {
         throw new Error(`Unknown atomic number for element ${element_symbol}`)
       }
       let element_id = element_index.get(element_symbol)
@@ -308,8 +318,9 @@ export function structure_factors_squared(
         element_coeffs.push({
           a: raw_coeff ? raw_coeff.map((row) => row[0]) : [],
           b: raw_coeff ? raw_coeff.map((row) => row[1]) : [],
-          z: ELEMENT_Z[element_symbol],
+          z: z ?? 0, // unreachable on the x-ray/electron paths; neutrons never read it
           dw: debye_waller_factors[element_symbol] ?? 0,
+          s_sq_max: raw_coeff ? gaussian_turning_point(element_symbol) : Infinity,
           b_coh,
         })
       }
@@ -353,15 +364,22 @@ export function structure_factors_squared(
     // share one sum_terms. Neutrons see an s-independent b_coh, leaving nothing to update.
     if (!is_neutron || has_debye_waller) {
       for (let elem = 0; elem < n_elements; elem++) {
-        const { a: a_arr, b: b_arr, z: atomic_number, dw } = element_coeffs[elem]
+        const { a: a_arr, b: b_arr, z: atomic_number, dw, s_sq_max } = element_coeffs[elem]
         if (!is_neutron) {
+          // The X-ray fit is only valid below its turning point; past it the expression
+          // climbs back to +Z instead of decaying to 0 (see xray_form_factor in
+          // $lib/scattering). Hold it flat there and floor at 0. The Mott-Bethe electron
+          // form has no such issue - the s² cancels, leaving a monotone Gaussian sum.
+          const s_sq = is_electron
+            ? sin_theta_over_lambda_sq
+            : Math.min(sin_theta_over_lambda_sq, s_sq_max)
           let sum_terms = 0
           for (let term = 0; term < a_arr.length; term++) {
-            sum_terms += a_arr[term] * Math.exp(-b_arr[term] * sin_theta_over_lambda_sq)
+            sum_terms += a_arr[term] * Math.exp(-b_arr[term] * s_sq)
           }
           f_by_element[elem] = is_electron
             ? ELECTRON_FORM_FACTOR_CONST * sum_terms
-            : atomic_number - XRAY_GAUSSIAN_PREFACTOR * sin_theta_over_lambda_sq * sum_terms
+            : Math.max(0, atomic_number - XRAY_GAUSSIAN_PREFACTOR * s_sq * sum_terms)
         }
         // Thermal damping is geometric, not electronic: it applies to every radiation
         if (has_debye_waller) dw_by_element[elem] = Math.exp(-dw * sin_theta_over_lambda_sq)
@@ -401,9 +419,14 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     math.matrix_inverse_3x3(structure.lattice.matrix),
   )
 
-  // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda
+  // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda.
+  // Upper default is 90°, matching pymatgen's XRDCalculator: the powder Lorentz factor
+  // 1/(sin²θ·|cosθ|) diverges as 2θ → 180°, and the clamp below turns that into a ~1e10
+  // spike that becomes the normalization maximum and pushes every real peak under
+  // scaled_intensity_tol. A cubic cell with a = λ used to return one artifact peak at
+  // 180° with its true 60° reflection dropped. Pass an explicit range to go past 90°.
   const two_theta_range: Vec2 | null =
-    options.two_theta_range === null ? null : (options.two_theta_range ?? [0, 180])
+    options.two_theta_range === null ? null : (options.two_theta_range ?? [0, 90])
   const [min_radius, max_radius] =
     two_theta_range === null
       ? [0, 2 / wavelength]
@@ -492,10 +515,15 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     d_out.push(peak.d_hkl)
   }
 
-  // Final scaling if requested
-  if (options.scaled ?? true) {
-    const max_y = Math.max(1, ...ys)
-    for (let idx = 0; idx < ys.length; idx++) ys[idx] = (ys[idx] / max_y) * 100
+  // Final scaling if requested. Divide by the true maximum, not max(1, ...): raw |F|² is
+  // in electrons² for X-rays but fm² for neutrons and Å² for electrons, so a small b_coh
+  // or a suppressed form factor puts every peak under 1 and a floor of 1 silently
+  // under-scales the whole pattern (Mo Kα on a 2 Å H cell topped out at 43.6, not 100).
+  // Looped rather than spread for the same stack-overflow reason as max_intensity above.
+  if ((options.scaled ?? true) && ys.length > 0) {
+    let max_y = -Infinity
+    for (const val of ys) if (val > max_y) max_y = val
+    if (max_y > 0) for (let idx = 0; idx < ys.length; idx++) ys[idx] = (ys[idx] / max_y) * 100
   }
 
   return { x: xs, y: ys, hkls: hkls_out, d_hkls: d_out }

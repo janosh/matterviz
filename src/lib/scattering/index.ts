@@ -83,16 +83,53 @@ export function neutron_scattering_length(element: ScatteringSpecies): number {
   return b_coh
 }
 
-// X-ray atomic form factor in electrons, f_x(s) = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²).
-// Mirrors the inline expression in calc-xrd.ts, which we cannot import from without
-// pulling in the whole pattern-computation module.
+// s² beyond which f_x(s) = Z − prefactor·s²·Σaᵢexp(−bᵢs²) stops being usable. The aᵢ are
+// Doyle–Turner ELECTRON amplitudes and the Mott–Bethe inversion only holds at small s: as
+// s → ∞ the correction term vanishes and the expression climbs back to +Z, whereas a real
+// form factor (the transform of a positive, monotonically decreasing charge density) decays
+// to 0 and is never negative. Unclamped, hydrogen dips to −0.0021 near s = 0.85 and returns
+// to 1.000 by s = 4, which inverted whole Mo/Ag Kα patterns (a pure artifact at 165° taking
+// the 100 while the real 16° reflection reported 9).
+//
+// The turning point is where d/du [u·Σaᵢexp(−bᵢu)] = Σaᵢexp(−bᵢu)(1 − bᵢu) crosses zero,
+// with u = s². That derivative is Σaᵢ > 0 at u = 0 and negative for large u, so bisection
+// converges. Cached per element: this is called once per species per pattern.
+const turning_point_cache = new Map<ScatteringSpecies, number>()
+export const gaussian_turning_point = (element: ScatteringSpecies): number => {
+  const cached = turning_point_cache.get(element)
+  if (cached !== undefined) return cached
+  const params = GAUSSIAN_PARAMS[element] ?? []
+  const slope = (u_val: number) => {
+    let total = 0
+    for (const [amplitude, decay] of params) {
+      total += amplitude * Math.exp(-decay * u_val) * (1 - decay * u_val)
+    }
+    return total
+  }
+  let [lo, hi] = [0, 1]
+  while (slope(hi) > 0 && hi < 1e4) hi *= 2
+  for (let iter = 0; iter < 80; iter++) {
+    const mid = (lo + hi) / 2
+    if (slope(mid) > 0) lo = mid
+    else hi = mid
+  }
+  turning_point_cache.set(element, hi)
+  return hi
+}
+
+// X-ray atomic form factor in electrons, f_x(s) = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²), held
+// flat past the point where that fit turns back up (see gaussian_turning_point) and floored
+// at 0. Beyond the turning point the parameterization carries no information, so the
+// minimum is the closest defensible value - and it is far closer to the true (near-zero)
+// high-s factor than the +Z the raw expression returns.
 export function xray_form_factor(element: ScatteringSpecies, s_val: number): number {
   assert_valid_s(s_val)
-  const s_sq = s_val * s_val
   // Deuterium has hydrogen's electronic structure, so X-rays and electrons see it as H
   const entry = element_by_symbol.get(element === `D` ? `H` : element)
   if (!entry) throw new Error(`No atomic number for ${element}.`)
-  return entry.number - XRAY_GAUSSIAN_PREFACTOR * s_sq * gaussian_sum(element, s_sq)
+  const s_sq = Math.min(s_val * s_val, gaussian_turning_point(element))
+  const raw = entry.number - XRAY_GAUSSIAN_PREFACTOR * s_sq * gaussian_sum(element, s_sq)
+  return Math.max(0, raw)
 }
 
 // Electron atomic form factor in Angstrom via Mott–Bethe. Finite at s = 0 by construction.

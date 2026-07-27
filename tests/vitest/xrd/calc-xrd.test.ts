@@ -2,7 +2,7 @@ import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { RadiationType } from '$lib/scattering'
-import { electron_form_factor } from '$lib/scattering'
+import { electron_form_factor, xray_form_factor } from '$lib/scattering'
 import type { Crystal } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import {
@@ -142,6 +142,68 @@ describe(`compute_xrd_pattern edge cases`, () => {
       expect(Math.abs(max_angle - 180)).toBeLessThan(1e-6)
     },
   )
+
+  test(`default two_theta_range stops short of the Lorentz singularity`, () => {
+    // The powder Lorentz factor 1/(sin²θ·|cosθ|) diverges at 2θ = 180°, and the clamp in
+    // the intensity loop turns that into a ~1e10 spike which becomes the normalization
+    // maximum and pushes every real peak under scaled_intensity_tol. With a = λ the (100)
+    // reflection sits at 60°; a [0, 180] default returned only a 180° artifact instead.
+    const structure = make_simple_cubic_structure(1.54184)
+    const pattern = compute_xrd_pattern(structure)
+    expect(pattern.x).toHaveLength(1)
+    expect(pattern.x[0]).toBeCloseTo(60, 6)
+    expect(pattern.y[0]).toBe(100)
+  })
+
+  test(`x-ray form factor decays monotonically instead of returning to Z`, () => {
+    // f_x(s) = Z − 41.78·s²·Σaᵢexp(−bᵢs²) is a Mott–Bethe inversion of Doyle–Turner
+    // ELECTRON amplitudes, valid only at small s: the correction vanishes as s → ∞ and the
+    // expression climbs back to +Z. A real form factor decays to 0 and is never negative —
+    // unclamped, H dipped to −0.0021 near s = 0.85 and was back at 1.000 by s = 4, which
+    // inverted Mo/Ag Kα patterns (s_max = 1/λ reaches 1.41 and 1.78 respectively).
+    for (const element of [`H`, `C`, `Si`, `Fe`, `Cs`] as const) {
+      let prev = Infinity
+      for (let s_val = 0; s_val <= 6; s_val += 0.005) {
+        const val = xray_form_factor(element, s_val)
+        expect(val).toBeGreaterThanOrEqual(0)
+        expect(val).toBeLessThanOrEqual(prev + 1e-12)
+        prev = val
+      }
+    }
+  })
+
+  test(`Ag Ka pattern is led by a real reflection, not a back-reflection artifact`, () => {
+    const nacl = make_crystal(5.64, [
+      { element: `Na`, abc: [0, 0, 0] },
+      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
+    ])
+    const pattern = compute_xrd_pattern(nacl, {
+      wavelength: `AgKa`,
+      two_theta_range: [0, 180],
+    })
+    const strongest = pattern.x[pattern.y.indexOf(Math.max(...pattern.y))]
+    expect(strongest).toBeLessThan(20) // was a spurious 176° peak
+  })
+
+  test(`intensities scale to 100 even when raw values are below 1`, () => {
+    // Raw |F|² is electrons² for X-rays but fm² for neutrons: V's b_coh of −0.3824 fm puts
+    // every peak under 1, where a Math.max(1, ...) normalization floor silently capped the
+    // pattern at 92 instead of 100.
+    const structure = make_crystal(
+      [
+        [3.1, 0, 0],
+        [0.7, 3.3, 0],
+        [0.4, 0.9, 3.7],
+      ],
+      [{ element: `V`, abc: [0, 0, 0] }],
+    )
+    const pattern = compute_xrd_pattern(structure, {
+      radiation: `neutron`,
+      wavelength: 1.5,
+      two_theta_range: [80, 100],
+    })
+    expect(Math.max(...pattern.y)).toBeCloseTo(100, 10)
+  })
 
   test(`scaled_intensity_tol filters peaks as configured`, () => {
     const structure = make_simple_cubic_structure(3)
