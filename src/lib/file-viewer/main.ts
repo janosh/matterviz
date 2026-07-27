@@ -380,6 +380,15 @@ export const create_display = (
 // Map defaults to trajectory component props
 const trajectory_props = (defaults: DefaultSettings) => {
   const { trajectory, plot, scatter, histogram } = defaults
+  // Settings every plot kind honours, so adding one does not have to be remembered twice
+  const shared_plot_props = {
+    enable_zoom: plot.enable_zoom,
+    zoom_factor: plot.zoom_factor,
+    auto_fit_range: plot.auto_fit_range,
+    show_grid: plot.grid_lines,
+    show_axis_labels: plot.axis_labels,
+    animation_duration: plot.animation_duration,
+  }
   return {
     ...trajectory,
     structure_props: structure_props(defaults),
@@ -398,24 +407,14 @@ const trajectory_props = (defaults: DefaultSettings) => {
       line_width: scatter.line.width,
       point_size: scatter.point.size,
       show_legend: scatter.show_legend,
-      enable_zoom: plot.enable_zoom,
-      zoom_factor: plot.zoom_factor,
-      auto_fit_range: plot.auto_fit_range,
-      show_grid: plot.grid_lines,
-      show_axis_labels: plot.axis_labels,
-      animation_duration: plot.animation_duration,
+      ...shared_plot_props,
       legend: { show: scatter.show_legend },
     },
     histogram_props: {
       mode: histogram.mode,
       show_legend: histogram.show_legend,
       bin_count: histogram.bin_count,
-      enable_zoom: plot.enable_zoom,
-      zoom_factor: plot.zoom_factor,
-      auto_fit_range: plot.auto_fit_range,
-      show_grid: plot.grid_lines,
-      show_axis_labels: plot.axis_labels,
-      animation_duration: plot.animation_duration,
+      ...shared_plot_props,
       legend: { show: histogram.show_legend },
     },
     spinner_props: { show_progress: trajectory.show_parsing_progress },
